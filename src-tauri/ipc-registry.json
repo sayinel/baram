@@ -1,0 +1,258 @@
+{
+  "$schema": "./ipc-registry-schema.json",
+  "_comment": "Baram IPC Registry — Rust ↔ TypeScript 커맨드 및 이벤트 목록. 프론트엔드 타입과 동기화 유지 필수.",
+  "commands": [
+    {
+      "name": "read_file",
+      "input": { "path": "string" },
+      "output": "string",
+      "module": "fs",
+      "spec": "§3.2",
+      "phase": 1,
+      "milestone": "M2",
+      "status": "planned",
+      "description": "파일 내용 읽기 (UTF-8)"
+    },
+    {
+      "name": "write_file",
+      "input": { "path": "string", "content": "string" },
+      "output": "void",
+      "module": "fs",
+      "spec": "§3.2",
+      "phase": 1,
+      "milestone": "M2",
+      "status": "planned",
+      "description": "파일 쓰기 (원자적 쓰기)"
+    },
+    {
+      "name": "list_dir",
+      "input": { "path": "string", "recursive": "boolean?" },
+      "output": "FileEntry[]",
+      "module": "fs",
+      "spec": "§3.2",
+      "phase": 1,
+      "milestone": "M2",
+      "status": "planned",
+      "description": "디렉토리 목록 조회"
+    },
+    {
+      "name": "rename_file",
+      "input": { "from": "string", "to": "string" },
+      "output": "void",
+      "module": "fs",
+      "spec": "§3.2",
+      "phase": 1,
+      "milestone": "M4",
+      "status": "planned",
+      "description": "파일/폴더 이름 변경"
+    },
+    {
+      "name": "delete_file",
+      "input": { "path": "string" },
+      "output": "void",
+      "module": "fs",
+      "spec": "§3.2",
+      "phase": 1,
+      "milestone": "M4",
+      "status": "planned",
+      "description": "파일/폴더 삭제 (휴지통 이동)"
+    },
+    {
+      "name": "watch_dir",
+      "input": { "path": "string" },
+      "output": "void",
+      "module": "fs",
+      "spec": "§3.2",
+      "phase": 1,
+      "milestone": "M2",
+      "status": "planned",
+      "description": "디렉토리 변경 감시 시작 (notify crate)"
+    },
+    {
+      "name": "get_config",
+      "input": { "key": "string?" },
+      "output": "JsonValue",
+      "module": "config",
+      "spec": "§3.2",
+      "phase": 1,
+      "milestone": "M2",
+      "status": "planned",
+      "description": "설정값 조회"
+    },
+    {
+      "name": "set_config",
+      "input": { "key": "string", "value": "JsonValue" },
+      "output": "void",
+      "module": "config",
+      "spec": "§3.2",
+      "phase": 1,
+      "milestone": "M2",
+      "status": "planned",
+      "description": "설정값 저장"
+    },
+    {
+      "name": "search_files",
+      "input": { "query": "string", "options": "SearchOptions?" },
+      "output": "SearchResult[]",
+      "module": "search",
+      "spec": "§3.2",
+      "phase": 2,
+      "milestone": "M7",
+      "status": "planned",
+      "description": "전역 텍스트 검색 (tantivy)"
+    },
+    {
+      "name": "get_backlinks",
+      "input": { "filePath": "string" },
+      "output": "BacklinkEntry[]",
+      "module": "index",
+      "spec": "§3.2",
+      "phase": 2,
+      "milestone": "M7",
+      "status": "planned",
+      "description": "백링크 조회"
+    },
+    {
+      "name": "get_link_index",
+      "input": {},
+      "output": "LinkGraph",
+      "module": "index",
+      "spec": "§3.2",
+      "phase": 2,
+      "milestone": "M7",
+      "status": "planned",
+      "description": "전체 링크 그래프 조회"
+    },
+    {
+      "name": "refresh_index",
+      "input": { "full": "boolean?" },
+      "output": "IndexStats",
+      "module": "index",
+      "spec": "§3.2",
+      "phase": 2,
+      "milestone": "M7",
+      "status": "planned",
+      "description": "인덱스 재구축"
+    },
+    {
+      "name": "llm_complete",
+      "input": { "prompt": "string", "model": "string", "systemPrompt": "string?", "maxTokens": "number?" },
+      "output": "stream",
+      "module": "llm",
+      "spec": "§6.3",
+      "phase": 1,
+      "milestone": "M5",
+      "status": "planned",
+      "description": "LLM 호출 (스트리밍, 이벤트: llm:token, llm:done, llm:error)"
+    },
+    {
+      "name": "export_document",
+      "input": { "path": "string", "format": "pdf|html", "options": "ExportOptions?" },
+      "output": "string",
+      "module": "export",
+      "spec": "§3.2",
+      "phase": 1,
+      "milestone": "M6",
+      "status": "planned",
+      "description": "문서 내보내기 (PDF/HTML)"
+    },
+    {
+      "name": "git_status",
+      "input": { "path": "string" },
+      "output": "GitStatus",
+      "module": "git",
+      "spec": "§3.2",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "planned",
+      "description": "Git 상태 조회"
+    },
+    {
+      "name": "git_commit",
+      "input": { "path": "string", "message": "string" },
+      "output": "string",
+      "module": "git",
+      "spec": "§3.2",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "planned",
+      "description": "Git 커밋 (커밋 해시 반환)"
+    },
+    {
+      "name": "create_snapshot",
+      "input": { "path": "string", "label": "string?" },
+      "output": "SnapshotInfo",
+      "module": "fs",
+      "spec": "§3.2",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "planned",
+      "description": "수동 파일 스냅샷"
+    }
+  ],
+  "events": [
+    {
+      "name": "file:changed",
+      "payload": { "path": "string", "kind": "modified|created|deleted" },
+      "module": "fs",
+      "spec": "§3.2",
+      "phase": 1,
+      "milestone": "M2",
+      "description": "파일 변경 감지 (notify)"
+    },
+    {
+      "name": "file:created",
+      "payload": { "path": "string" },
+      "module": "fs",
+      "spec": "§3.2",
+      "phase": 1,
+      "milestone": "M2",
+      "description": "파일 생성 감지"
+    },
+    {
+      "name": "file:deleted",
+      "payload": { "path": "string" },
+      "module": "fs",
+      "spec": "§3.2",
+      "phase": 1,
+      "milestone": "M2",
+      "description": "파일 삭제 감지"
+    },
+    {
+      "name": "llm:token",
+      "payload": { "requestId": "string", "token": "string" },
+      "module": "llm",
+      "spec": "§6.3",
+      "phase": 1,
+      "milestone": "M5",
+      "description": "LLM 스트리밍 토큰"
+    },
+    {
+      "name": "llm:done",
+      "payload": { "requestId": "string", "totalTokens": "number" },
+      "module": "llm",
+      "spec": "§6.3",
+      "phase": 1,
+      "milestone": "M5",
+      "description": "LLM 응답 완료"
+    },
+    {
+      "name": "llm:error",
+      "payload": { "requestId": "string", "error": "string" },
+      "module": "llm",
+      "spec": "§6.3",
+      "phase": 1,
+      "milestone": "M5",
+      "description": "LLM 에러"
+    },
+    {
+      "name": "index:updated",
+      "payload": { "filesIndexed": "number", "duration": "number" },
+      "module": "index",
+      "spec": "§3.2",
+      "phase": 2,
+      "milestone": "M7",
+      "description": "인덱스 갱신 완료"
+    }
+  ]
+}

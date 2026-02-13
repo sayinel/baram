@@ -1,0 +1,116 @@
+# Rust Backend — Baram (src-tauri)
+
+## 이 디렉토리의 역할
+
+Tauri 2.0 기반 Rust 백엔드. 파일 I/O, 검색 엔진, 링크 인덱싱, LLM 프록시, 내보내기 등
+성능이 중요한 모든 로직을 처리한다. 프론트엔드와는 IPC(Tauri Commands + Events)로 통신한다.
+
+## 아키텍처 (Part 3 §3.2)
+
+```
+commands/     ← IPC 핸들러 (thin layer, 로직은 각 모듈에 위임)
+  ↓
+fs/           ← 파일 읽기/쓰기/감시/이름변경 (notify crate)
+search/       ← tantivy 기반 전문 검색 + 한글 2-gram 토크나이저
+index/        ← SQLite 기반 링크 인덱스, 블록 인덱스, 태그 인덱스
+git/          ← git2 crate 기반 Git 연동
+llm/          ← LLM API 프록시 (Claude, OpenAI, Ollama 지원, 스트리밍)
+export/       ← PDF (wkhtmltopdf 또는 headless), HTML 내보내기
+config/       ← 설정 파일 관리 (.baram/config.json)
+```
+
+## IPC 커맨드 규칙
+
+### 커맨드 정의 패턴
+```rust
+use tauri::command;
+
+#[command]
+pub async fn read_file(path: String) -> Result<String, String> {
+    crate::fs::read_file(&path)
+        .await
+        .map_err(|e| e.to_string())
+}
+```
+
+### 에러 처리
+- 내부 모듈: `thiserror` 기반 커스텀 에러 타입 사용
+- IPC 경계: `Result<T, String>`으로 변환 (Tauri 직렬화 제약)
+- 프론트엔드에서 에러 메시지를 사용자에게 표시 가능하도록 한국어/영어 메시지 포함
+
+### 이벤트 발행 패턴
+```rust
+use tauri::Emitter;
+
+app_handle.emit("file:changed", FileChangedPayload {
+    path: path.to_string(),
+    kind: "modified".to_string(),
+}).unwrap();
+```
+
+## IPC 커맨드 목록 (Part 3 §3.2)
+
+| Command | 모듈 | Phase | 설명 |
+|---------|------|-------|------|
+| `read_file` | fs | 1 (M2) | 파일 읽기 |
+| `write_file` | fs | 1 (M2) | 파일 쓰기 (원자적) |
+| `list_dir` | fs | 1 (M2) | 디렉토리 목록 |
+| `rename_file` | fs | 1 (M4) | 파일 이름 변경 |
+| `delete_file` | fs | 1 (M4) | 파일 삭제 |
+| `watch_dir` | fs | 1 (M2) | 디렉토리 감시 시작 |
+| `search_files` | search | 2 (M7) | 전역 텍스트 검색 |
+| `get_link_index` | index | 2 (M7) | 링크 그래프 조회 |
+| `get_backlinks` | index | 2 (M7) | 백링크 조회 |
+| `refresh_index` | index | 2 (M7) | 인덱스 재구축 |
+| `git_status` | git | 2 (M9) | Git 상태 |
+| `git_commit` | git | 2 (M9) | Git 커밋 |
+| `llm_complete` | llm | 1 (M5) | LLM 호출 (스트리밍) |
+| `export_document` | export | 1 (M6) | PDF/HTML 내보내기 |
+| `create_snapshot` | fs | 2 (M9) | 수동 스냅샷 |
+| `get_config` | config | 1 (M2) | 설정 조회 |
+| `set_config` | config | 1 (M2) | 설정 저장 |
+
+## 이벤트 목록
+
+| Event | Payload | 모듈 | 설명 |
+|-------|---------|------|------|
+| `file:changed` | `{ path, kind }` | fs | 파일 변경 감지 |
+| `file:created` | `{ path }` | fs | 파일 생성 감지 |
+| `file:deleted` | `{ path }` | fs | 파일 삭제 감지 |
+| `llm:token` | `{ requestId, token }` | llm | LLM 스트리밍 토큰 |
+| `llm:done` | `{ requestId }` | llm | LLM 응답 완료 |
+| `llm:error` | `{ requestId, error }` | llm | LLM 에러 |
+| `index:updated` | `{ filesIndexed }` | index | 인덱스 갱신 완료 |
+| `git:progress` | `{ operation, percent }` | git | Git 작업 진행률 |
+
+## 파일 쓰기 규칙 (Part 3 §3.6)
+
+항상 원자적 쓰기(atomic write)를 사용한다:
+1. 같은 디렉토리에 임시 파일(`{name}.tmp`) 생성
+2. 전체 내용을 임시 파일에 쓰기
+3. `fs::rename()`으로 원본 파일을 교체 (OS 수준 원자적 보장)
+4. 실패 시 임시 파일 삭제
+
+## Cargo.toml 핵심 의존성
+
+```toml
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "protocol-asset"] }
+tauri-plugin-fs = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-updater = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+tantivy = "0.22"
+notify = "6"
+git2 = "0.18"
+reqwest = { version = "0.12", features = ["stream", "json"] }
+thiserror = "1"
+```
+
+## ipc-registry.json 유지 규칙
+
+IPC 커맨드나 이벤트를 추가/수정할 때 반드시 `ipc-registry.json`도 업데이트할 것.
+프론트엔드의 `src/ipc/types.ts`도 동기화 필요.

@@ -1,0 +1,293 @@
+{
+  "$schema": "./registry-schema.json",
+  "_comment": "Baram Extension Registry — 모든 Extension의 메타데이터. 스킬과 슬래시 커맨드가 이 파일을 참조한다.",
+  "nodes": [
+    {
+      "name": "heading",
+      "file": "nodes/heading.ts",
+      "markdown": "# ~ ######",
+      "spec": "§5.1",
+      "phase": 1,
+      "milestone": "M2",
+      "status": "planned",
+      "hasNodeView": false,
+      "inputRules": ["# ", "## ", "### ", "#### ", "##### ", "###### "],
+      "shortcuts": { "Mod-1": "H1", "Mod-2": "H2", "Mod-3": "H3", "Mod-4": "H4", "Mod-5": "H5", "Mod-6": "H6" }
+    },
+    {
+      "name": "paragraph",
+      "file": "nodes/paragraph.ts",
+      "markdown": "(default)",
+      "spec": "§5.1",
+      "phase": 1,
+      "milestone": "M2",
+      "status": "planned",
+      "hasNodeView": false,
+      "inputRules": [],
+      "shortcuts": {}
+    },
+    {
+      "name": "blockquote",
+      "file": "nodes/blockquote.ts",
+      "markdown": "> ",
+      "spec": "§5.1",
+      "phase": 1,
+      "milestone": "M2",
+      "status": "planned",
+      "hasNodeView": false,
+      "inputRules": ["> "],
+      "shortcuts": { "Mod-Shift->": "toggle blockquote" }
+    },
+    {
+      "name": "bulletList",
+      "file": "nodes/bullet-list.ts",
+      "markdown": "- , * ",
+      "spec": "§5.1",
+      "phase": 1,
+      "milestone": "M2",
+      "status": "planned",
+      "hasNodeView": false,
+      "inputRules": ["- ", "* "],
+      "shortcuts": { "Mod-Shift-8": "toggle bullet list" }
+    },
+    {
+      "name": "orderedList",
+      "file": "nodes/ordered-list.ts",
+      "markdown": "1. ",
+      "spec": "§5.1",
+      "phase": 1,
+      "milestone": "M2",
+      "status": "planned",
+      "hasNodeView": false,
+      "inputRules": ["1. "],
+      "shortcuts": { "Mod-Shift-7": "toggle ordered list" }
+    },
+    {
+      "name": "taskList",
+      "file": "nodes/task-list.ts",
+      "markdown": "- [ ] , - [x] ",
+      "spec": "§5.1",
+      "phase": 1,
+      "milestone": "M2",
+      "status": "planned",
+      "hasNodeView": false,
+      "inputRules": ["- [ ] ", "- [x] "],
+      "shortcuts": {}
+    },
+    {
+      "name": "horizontalRule",
+      "file": "nodes/horizontal-rule.ts",
+      "markdown": "---",
+      "spec": "§5.1",
+      "phase": 1,
+      "milestone": "M2",
+      "status": "planned",
+      "hasNodeView": false,
+      "inputRules": ["---", "***"],
+      "shortcuts": {}
+    },
+    {
+      "name": "image",
+      "file": "nodes/image.ts",
+      "markdown": "![alt](url)",
+      "spec": "§5.1",
+      "phase": 1,
+      "milestone": "M2",
+      "status": "planned",
+      "hasNodeView": true,
+      "inputRules": [],
+      "shortcuts": {}
+    },
+    {
+      "name": "codeBlock",
+      "file": "nodes/code-block.ts",
+      "markdown": "```lang",
+      "spec": "§5.4",
+      "phase": 1,
+      "milestone": "M3",
+      "status": "planned",
+      "hasNodeView": true,
+      "inputRules": ["```"],
+      "shortcuts": { "Mod-Shift-c": "toggle code block" }
+    },
+    {
+      "name": "mathBlock",
+      "file": "nodes/math-block.ts",
+      "markdown": "$$...$$",
+      "spec": "§5.3",
+      "phase": 1,
+      "milestone": "M3",
+      "status": "planned",
+      "hasNodeView": true,
+      "inputRules": ["$$"],
+      "shortcuts": { "Mod-Shift-m": "insert math block" }
+    },
+    {
+      "name": "table",
+      "file": "nodes/table.ts",
+      "markdown": "| | |",
+      "spec": "§5.5",
+      "phase": 1,
+      "milestone": "M3",
+      "status": "planned",
+      "hasNodeView": true,
+      "inputRules": [],
+      "shortcuts": {}
+    },
+    {
+      "name": "frontmatter",
+      "file": "nodes/frontmatter.ts",
+      "markdown": "---\\nyaml\\n---",
+      "spec": "§5.8",
+      "phase": 1,
+      "milestone": "M3",
+      "status": "planned",
+      "hasNodeView": true,
+      "inputRules": [],
+      "shortcuts": {}
+    },
+    {
+      "name": "callout",
+      "file": "nodes/callout.ts",
+      "markdown": "> [!type] title",
+      "spec": "§5.9",
+      "phase": 2,
+      "milestone": "M7",
+      "status": "planned",
+      "hasNodeView": true,
+      "inputRules": ["> [!"],
+      "shortcuts": {}
+    },
+    {
+      "name": "mermaid",
+      "file": "nodes/mermaid.ts",
+      "markdown": "```mermaid",
+      "spec": "§5.14",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "planned",
+      "hasNodeView": true,
+      "inputRules": [],
+      "shortcuts": {}
+    }
+  ],
+  "marks": [
+    {
+      "name": "bold",
+      "file": "marks/bold.ts",
+      "markdown": "**text**",
+      "spec": "§5.1",
+      "phase": 1,
+      "milestone": "M2",
+      "status": "planned",
+      "inputRules": ["**"],
+      "shortcuts": { "Mod-b": "toggle bold" }
+    },
+    {
+      "name": "italic",
+      "file": "marks/italic.ts",
+      "markdown": "*text*",
+      "spec": "§5.1",
+      "phase": 1,
+      "milestone": "M2",
+      "status": "planned",
+      "inputRules": ["*"],
+      "shortcuts": { "Mod-i": "toggle italic" }
+    },
+    {
+      "name": "code",
+      "file": "marks/code.ts",
+      "markdown": "`text`",
+      "spec": "§5.1",
+      "phase": 1,
+      "milestone": "M2",
+      "status": "planned",
+      "inputRules": ["`"],
+      "shortcuts": { "Mod-e": "toggle code" }
+    },
+    {
+      "name": "strike",
+      "file": "marks/strike.ts",
+      "markdown": "~~text~~",
+      "spec": "§5.1",
+      "phase": 1,
+      "milestone": "M2",
+      "status": "planned",
+      "inputRules": ["~~"],
+      "shortcuts": { "Mod-Shift-x": "toggle strikethrough" }
+    },
+    {
+      "name": "link",
+      "file": "marks/link.ts",
+      "markdown": "[text](url)",
+      "spec": "§5.1",
+      "phase": 1,
+      "milestone": "M2",
+      "status": "planned",
+      "inputRules": [],
+      "shortcuts": { "Mod-k": "insert link" }
+    },
+    {
+      "name": "inlineMath",
+      "file": "marks/inline-math.ts",
+      "markdown": "$text$",
+      "spec": "§5.3",
+      "phase": 1,
+      "milestone": "M3",
+      "status": "planned",
+      "inputRules": ["$"],
+      "shortcuts": {}
+    },
+    {
+      "name": "highlight",
+      "file": "marks/highlight.ts",
+      "markdown": "==text==",
+      "spec": "§5.1",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "planned",
+      "inputRules": ["=="],
+      "shortcuts": { "Mod-Shift-h": "toggle highlight" }
+    },
+    {
+      "name": "wikilink",
+      "file": "marks/wikilink.ts",
+      "markdown": "[[page]]",
+      "spec": "§5.10",
+      "phase": 2,
+      "milestone": "M7",
+      "status": "planned",
+      "inputRules": ["[["],
+      "shortcuts": {}
+    }
+  ],
+  "plugins": [
+    {
+      "name": "history",
+      "file": "plugins/history.ts",
+      "spec": "§5.2",
+      "phase": 1,
+      "milestone": "M2",
+      "status": "planned",
+      "shortcuts": { "Mod-z": "undo", "Mod-Shift-z": "redo" }
+    },
+    {
+      "name": "search",
+      "file": "plugins/search.ts",
+      "spec": "§5.6",
+      "phase": 2,
+      "milestone": "M7",
+      "status": "planned",
+      "shortcuts": { "Mod-f": "find", "Mod-Shift-f": "find and replace" }
+    },
+    {
+      "name": "dragHandle",
+      "file": "plugins/drag-handle.ts",
+      "spec": "§4.8",
+      "phase": 1,
+      "milestone": "M4",
+      "status": "planned",
+      "shortcuts": {}
+    }
+  ]
+}
