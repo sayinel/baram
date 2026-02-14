@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "katex/dist/katex.min.css";
 
 /* §4.1 디자인 원칙: 에디터 중심, 최소 크롬 */
 
@@ -91,4 +92,1198 @@ body {
 
 .tiptap:focus {
   outline: none;
+}
+
+/* Mode indicator */
+.mode-indicator {
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--color-border-light);
+  background-color: var(--color-bg-secondary);
+}
+
+.mode-toggle-btn {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  padding: 2px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg-primary);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.mode-toggle-btn:hover {
+  background: var(--color-accent);
+  color: white;
+  border-color: var(--color-accent);
+}
+
+/* Source code editor */
+.source-code-editor {
+  background: var(--color-bg-primary);
+}
+
+.source-code-editor .cm-editor {
+  height: 100%;
+}
+
+/* §5.1 Heading styles */
+.tiptap h1 {
+  font-size: 2em;
+  font-weight: 700;
+  line-height: 1.2;
+  margin: 1em 0 0.5em;
+}
+
+.tiptap h2 {
+  font-size: 1.5em;
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 0.8em 0 0.4em;
+}
+
+.tiptap h3 {
+  font-size: 1.25em;
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 0.6em 0 0.3em;
+}
+
+.tiptap h4 {
+  font-size: 1.1em;
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 0.5em 0 0.25em;
+}
+
+.tiptap h5 {
+  font-size: 1em;
+  font-weight: 600;
+  line-height: 1.5;
+  margin: 0.4em 0 0.2em;
+}
+
+.tiptap h6 {
+  font-size: 0.9em;
+  font-weight: 600;
+  line-height: 1.5;
+  margin: 0.4em 0 0.2em;
+  color: var(--color-text-secondary);
+}
+
+.tiptap h1:first-child,
+.tiptap h2:first-child,
+.tiptap h3:first-child,
+.tiptap h4:first-child,
+.tiptap h5:first-child,
+.tiptap h6:first-child {
+  margin-top: 0;
+}
+
+/* Paragraph */
+.tiptap p {
+  margin: 0.5em 0;
+}
+
+/* §5.1 Blockquote */
+.tiptap blockquote {
+  border-left: 3px solid var(--color-border);
+  padding-left: 1em;
+  margin: 0.5em 0;
+  color: var(--color-text-secondary);
+}
+
+.tiptap blockquote p {
+  margin: 0.25em 0;
+}
+
+/* §5.1 Lists */
+.tiptap ul {
+  list-style-type: disc;
+  padding-left: 1.6em;
+  margin: 0.5em 0;
+}
+
+.tiptap ol {
+  list-style-type: decimal;
+  padding-left: 1.6em;
+  margin: 0.5em 0;
+}
+
+.tiptap li {
+  margin: 0.15em 0;
+  padding-left: 0.2em;
+}
+
+.tiptap li p {
+  margin: 0;
+}
+
+/* Nested lists */
+.tiptap ul ul,
+.tiptap ol ul {
+  list-style-type: circle;
+}
+
+.tiptap ul ul ul,
+.tiptap ol ul ul {
+  list-style-type: square;
+}
+
+/* §5.1 Task List */
+.tiptap ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0;
+}
+
+.tiptap ul[data-type="taskList"] li[data-type="taskItem"] {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4em;
+}
+
+.tiptap ul[data-type="taskList"] li[data-type="taskItem"] > label {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  height: 1.75em; /* match line-height of body text */
+  user-select: none;
+}
+
+.tiptap ul[data-type="taskList"] li[data-type="taskItem"] > label input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: var(--color-accent);
+  margin: 0;
+  width: 14px;
+  height: 14px;
+}
+
+.tiptap ul[data-type="taskList"] li[data-type="taskItem"] > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.tiptap ul[data-type="taskList"] li[data-type="taskItem"][data-checked="true"] > div {
+  text-decoration: line-through;
+  color: var(--color-text-muted);
+}
+
+/* §5.1 Horizontal Rule */
+.tiptap hr {
+  border: none;
+  border-top: 2px solid var(--color-border);
+  margin: 1.5em 0;
+}
+
+/* §5.1 Code Block */
+.tiptap pre {
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-light);
+  border-radius: 6px;
+  padding: 0.75em 1em;
+  margin: 0.5em 0;
+  overflow-x: auto;
+}
+
+.tiptap pre code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  line-height: 1.6;
+  background: none;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  color: inherit;
+}
+
+/* Inline code */
+.tiptap code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-light);
+  border-radius: 3px;
+  padding: 0.1em 0.3em;
+}
+
+/* §5.1 Image */
+.tiptap img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  margin: 0.5em 0;
+}
+
+.tiptap img.ProseMirror-selectednode {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Inline marks */
+.tiptap strong {
+  font-weight: 700;
+}
+
+.tiptap em {
+  font-style: italic;
+}
+
+.tiptap del {
+  text-decoration: line-through;
+}
+
+.tiptap a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.tiptap a:hover {
+  color: var(--color-accent-hover);
+}
+
+/* §5.3 Math Block — split source + preview */
+.tiptap .math-block {
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-light);
+  border-radius: 6px;
+  padding: 0.75em 1em;
+  margin: 0.5em 0;
+}
+
+.tiptap .math-block-split {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.tiptap .math-block-source-section {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+}
+
+.tiptap .math-block-section-label {
+  font-family: var(--font-mono);
+  font-size: 0.65em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.tiptap .math-block-source {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  line-height: 1.6;
+  padding: 0.25em 0;
+  outline: none;
+  background: none;
+  border: none;
+  white-space: pre-wrap;
+}
+
+.tiptap .math-block-preview-section {
+  border-top: 1px solid var(--color-border-light);
+  padding-top: 0.5em;
+  margin-top: 0.25em;
+}
+
+.tiptap .math-block-katex {
+  text-align: center;
+  padding: 0.5em 0;
+  overflow-x: auto;
+}
+
+.tiptap .math-block-katex-empty {
+  color: var(--color-text-muted);
+  font-style: italic;
+  font-size: 0.875em;
+}
+
+.tiptap .math-block-error {
+  font-family: var(--font-mono);
+  font-size: 0.75em;
+  color: #dc2626;
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 4px;
+  padding: 0.35em 0.6em;
+  margin-top: 0.35em;
+}
+
+@media (prefers-color-scheme: dark) {
+  .tiptap .math-block-error {
+    color: #fca5a5;
+    background-color: #450a0a;
+    border-color: #7f1d1d;
+  }
+}
+
+.tiptap .math-block-selected {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* §5.3 Math size variants */
+.tiptap [data-math-size="small"] .math-block-katex,
+.tiptap [data-math-size="small"] .katex {
+  font-size: 0.85em;
+}
+
+.tiptap [data-math-size="large"] .math-block-katex,
+.tiptap [data-math-size="large"] .katex {
+  font-size: 1.4em;
+}
+
+/* §5.3 Math Inline */
+.tiptap .math-inline {
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.tiptap .math-inline-rendered {
+  padding: 0 0.15em;
+}
+
+.tiptap .math-inline-rendered:hover {
+  background-color: var(--color-bg-secondary);
+}
+
+.tiptap .math-inline-selected {
+  background-color: var(--color-editor-selection);
+}
+
+.tiptap .math-inline-editing {
+  background-color: var(--color-bg-secondary);
+  padding: 0 0.15em;
+}
+
+.tiptap .math-inline-dollar {
+  font-family: var(--font-mono);
+  font-size: 0.8em;
+  color: var(--color-text-muted);
+}
+
+.tiptap .math-inline-input {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  border: none;
+  background: transparent;
+  outline: none;
+  color: var(--color-text-primary);
+  padding: 0;
+  min-width: 1em;
+}
+
+/* §5.3 Math Inline Preview Popover */
+.math-inline-preview-popover {
+  position: fixed;
+  z-index: 50;
+  background-color: var(--color-bg-primary, #ffffff);
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  padding: 6px 10px;
+  max-width: 400px;
+  overflow-x: auto;
+  pointer-events: none;
+}
+
+.math-inline-preview-content {
+  text-align: center;
+  min-height: 1em;
+}
+
+.math-inline-preview-error {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.7em;
+  color: #dc2626;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid #fecaca;
+}
+
+@media (prefers-color-scheme: dark) {
+  .math-inline-preview-popover {
+    background-color: var(--color-bg-primary, #1a1a2e);
+    border-color: var(--color-border, #374151);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+
+  .math-inline-preview-error {
+    color: #fca5a5;
+    border-color: #7f1d1d;
+  }
+}
+
+/* §5.5 Table */
+.tiptap table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.5em 0;
+  table-layout: auto;
+}
+
+.tiptap th,
+.tiptap td {
+  border: 1px solid var(--color-border);
+  padding: 0.4em 0.75em;
+  min-width: 60px;
+  vertical-align: top;
+}
+
+.tiptap th {
+  font-weight: 600;
+  background-color: var(--color-bg-secondary);
+}
+
+.tiptap th p,
+.tiptap td p {
+  margin: 0;
+}
+
+.tiptap .selectedCell {
+  background-color: var(--color-editor-selection);
+}
+
+/* §5.8 Frontmatter */
+.tiptap .frontmatter {
+  background-color: var(--color-bg-secondary);
+  border: 1px dashed var(--color-border);
+  border-radius: 6px;
+  padding: 0.5em 1em;
+  margin-bottom: 1em;
+}
+
+.tiptap .frontmatter pre {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.tiptap .frontmatter pre code {
+  font-family: var(--font-mono);
+  font-size: 0.8em;
+  color: var(--color-text-secondary);
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+/* §5.4 Code Block with language header */
+.code-block-wrapper {
+  margin: 0.5em 0;
+}
+
+.code-block-header {
+  display: flex;
+  justify-content: flex-start;
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-light);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  padding: 2px 8px;
+}
+
+.code-block-lang-select {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  padding: 1px 4px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.code-block-editor .cm-editor {
+  border: 1px solid var(--color-border-light);
+  border-radius: 0 0 6px 6px;
+  font-size: 0.875em;
+}
+
+/* ============================================
+   §4.2 App Layout — 3-Column Resizable
+   ============================================ */
+
+.app-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-layout-body {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-sidebar {
+  flex-shrink: 0;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--color-bg-sidebar);
+  border-right: 1px solid var(--color-border-light);
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.app-right-panel {
+  flex-shrink: 0;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--color-bg-sidebar);
+  border-left: 1px solid var(--color-border-light);
+}
+
+.right-panel-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.editor-area {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* §4.2 Splitter */
+.splitter {
+  flex-shrink: 0;
+  background: transparent;
+  transition: background-color 0.15s;
+}
+
+.splitter:hover {
+  background-color: var(--color-accent);
+}
+
+.splitter-horizontal {
+  width: 3px;
+  cursor: col-resize;
+}
+
+.splitter-vertical {
+  height: 3px;
+  cursor: row-resize;
+}
+
+/* ============================================
+   §4.3 Tab Bar
+   ============================================ */
+
+.tab-bar {
+  display: flex;
+  align-items: stretch;
+  background-color: var(--color-bg-secondary);
+  border-bottom: 1px solid var(--color-border-light);
+  overflow-x: auto;
+  flex-shrink: 0;
+  height: 34px;
+}
+
+.tab-bar::-webkit-scrollbar {
+  height: 0;
+}
+
+.tab-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  border-right: 1px solid var(--color-border-light);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  transition: background-color 0.1s;
+}
+
+.tab-item:hover {
+  background-color: var(--color-bg-primary);
+}
+
+.tab-active {
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  border-bottom: 2px solid var(--color-accent);
+}
+
+.tab-title {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+}
+
+.tab-close:hover {
+  background-color: var(--color-border);
+  color: var(--color-text-primary);
+}
+
+/* ============================================
+   §4.3 Sidebar
+   ============================================ */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.sidebar-tabs {
+  display: flex;
+  gap: 0;
+  padding: 0;
+  border-bottom: 1px solid var(--color-border-light);
+  flex-shrink: 0;
+}
+
+.sidebar-tab {
+  flex: 1;
+  padding: 6px 0;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-align: center;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  border-bottom: 2px solid transparent;
+}
+
+.sidebar-tab:hover {
+  color: var(--color-text-secondary);
+}
+
+.sidebar-tab-active {
+  color: var(--color-text-primary);
+  border-bottom-color: var(--color-accent);
+}
+
+.sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* §4.3 File Tree */
+.file-tree {
+  padding: 4px 0;
+}
+
+.file-tree-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 200px;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.file-tree-open-btn {
+  padding: 6px 16px;
+  font-size: 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg-primary);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.file-tree-open-btn:hover {
+  background: var(--color-accent);
+  color: white;
+  border-color: var(--color-accent);
+}
+
+.file-tree-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background-color 0.1s;
+}
+
+.file-tree-item:hover {
+  background-color: var(--color-bg-primary);
+}
+
+.file-tree-icon {
+  font-size: 0.7rem;
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+}
+
+.file-tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* §4.3 Outline */
+.outline {
+  padding: 4px 0;
+}
+
+.outline-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100px;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.outline-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background-color 0.1s;
+}
+
+.outline-item:hover {
+  background-color: var(--color-bg-primary);
+}
+
+.outline-level {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  flex-shrink: 0;
+  width: 20px;
+}
+
+.outline-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================
+   §4.8 Status Bar
+   ============================================ */
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 28px;
+  padding: 0 12px;
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+  background-color: var(--color-bg-secondary);
+  border-top: 1px solid var(--color-border-light);
+  flex-shrink: 0;
+}
+
+.status-bar-left,
+.status-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-mode {
+  padding: 1px 6px;
+  border-radius: 3px;
+  background-color: var(--color-bg-primary);
+  border: 1px solid var(--color-border-light);
+}
+
+.status-separator {
+  color: var(--color-border);
+}
+
+.status-words,
+.status-position {
+  cursor: default;
+}
+
+/* ============================================
+   §4.5 Command Palette
+   ============================================ */
+
+.command-palette-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  padding-top: 15vh;
+}
+
+.command-palette {
+  width: 520px;
+  max-height: 400px;
+  background-color: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.command-palette-input {
+  padding: 12px 16px;
+  font-size: 0.95rem;
+  border: none;
+  border-bottom: 1px solid var(--color-border-light);
+  background: transparent;
+  color: var(--color-text-primary);
+  outline: none;
+  font-family: var(--font-sans);
+}
+
+.command-palette-input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.command-palette-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.command-palette-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.command-palette-group {
+  padding: 2px 0;
+}
+
+.command-palette-category {
+  padding: 6px 16px 2px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+}
+
+.command-palette-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 16px;
+  cursor: pointer;
+  transition: background-color 0.05s;
+}
+
+.command-palette-item:hover,
+.command-palette-item-selected {
+  background-color: var(--color-bg-secondary);
+}
+
+.command-item-label {
+  font-size: 0.875rem;
+  color: var(--color-text-primary);
+}
+
+.command-item-shortcut {
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+  padding: 1px 6px;
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-light);
+  border-radius: 3px;
+}
+
+/* ============================================
+   §4.6 Slash Menu
+   ============================================ */
+
+.slash-menu-popup {
+  position: fixed;
+  z-index: 50;
+}
+
+.slash-menu {
+  width: 280px;
+  max-height: 320px;
+  overflow-y: auto;
+  background-color: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  padding: 4px 0;
+}
+
+.slash-menu-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.slash-menu-group {
+  padding: 2px 0;
+}
+
+.slash-menu-category {
+  padding: 6px 12px 2px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+}
+
+.slash-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background-color 0.05s;
+}
+
+.slash-menu-item:hover,
+.slash-item-selected {
+  background-color: var(--color-bg-secondary);
+}
+
+.slash-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.slash-item-label {
+  font-size: 0.875rem;
+  color: var(--color-text-primary);
+}
+
+.slash-item-desc {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.slash-item-hint {
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+  padding: 1px 6px;
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-light);
+  border-radius: 3px;
+}
+
+/* ============================================
+   §4.7 Floating Toolbar
+   ============================================ */
+
+.floating-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  background-color: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.floating-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: all 0.1s;
+}
+
+.floating-toolbar-btn:hover {
+  background-color: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+}
+
+.floating-toolbar-btn-active {
+  background-color: var(--color-accent);
+  color: white;
+}
+
+.floating-toolbar-btn-active:hover {
+  background-color: var(--color-accent-hover);
+  color: white;
+}
+
+.floating-toolbar-separator {
+  width: 1px;
+  height: 20px;
+  background-color: var(--color-border-light);
+  margin: 0 2px;
+}
+
+/* ============================================
+   §4.8 Block Handle
+   ============================================ */
+
+.block-handle {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  gap: 2px;
+  opacity: 0.4;
+  transition: opacity 0.15s;
+}
+
+.block-handle:hover {
+  opacity: 1;
+}
+
+.block-handle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 24px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.block-handle-btn:hover {
+  background-color: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+}
+
+.block-handle-menu {
+  position: fixed;
+  z-index: 40;
+  min-width: 140px;
+  background-color: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  padding: 4px 0;
+  margin-top: 24px;
+}
+
+.block-handle-menu-item {
+  display: block;
+  width: 100%;
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.block-handle-menu-item:hover {
+  background-color: var(--color-bg-secondary);
+}
+
+.block-handle-separator {
+  height: 1px;
+  background-color: var(--color-border-light);
+  margin: 4px 0;
+}
+
+/* ============================================
+   §4.8 Context Menu
+   ============================================ */
+
+.context-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 160px;
+  background-color: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  padding: 4px 0;
+}
+
+.context-menu-item {
+  display: block;
+  width: 100%;
+  padding: 5px 16px;
+  font-size: 0.8rem;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.context-menu-item:hover {
+  background-color: var(--color-bg-secondary);
+}
+
+.context-menu-separator {
+  height: 1px;
+  background-color: var(--color-border-light);
+  margin: 4px 0;
 }
