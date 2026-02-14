@@ -2,7 +2,6 @@
 import { useUIStore } from "../../stores/ui-store";
 import { FileTree } from "../sidebar/FileTree";
 import { Outline } from "../sidebar/Outline";
-import baramSymbol from "../../assets/baram-symbol.png";
 import type { Editor } from "@tiptap/react";
 
 interface SidebarProps {
@@ -19,10 +18,6 @@ export function Sidebar({ editor }: SidebarProps) {
 
   return (
     <div className="sidebar">
-      <div className="sidebar-brand">
-        <img src={baramSymbol} alt="Baram" className="sidebar-brand-icon" />
-        <span className="sidebar-brand-name">Baram</span>
-      </div>
       <div className="sidebar-tabs">
         {SIDEBAR_TABS.map((tab) => (
           <button
