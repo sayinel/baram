@@ -1,6 +1,10 @@
-# Baram
+<p align="center">
+  <img src="src/assets/baram-logo.png" alt="Baram" width="280" />
+</p>
 
-A lightweight, beautiful WYSIWYG markdown editor.
+<p align="center">
+  A lightweight, beautiful WYSIWYG markdown editor.
+</p>
 
 Baram is a desktop editor that lets you create rich content naturally without seeing raw markdown syntax. As you type, markdown formatting disappears and your finished document appears instantly.
 
