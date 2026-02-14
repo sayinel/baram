@@ -3,7 +3,7 @@
   "project": "baram",
   "lastUpdated": "2026-02-14",
   "currentPhase": 1,
-  "currentMilestone": "M2",
+  "currentMilestone": "M5",
 
   "milestones": {
     "M1": {
@@ -22,44 +22,47 @@
     },
     "M2": {
       "name": "기본 편집",
-      "status": "not-started",
+      "status": "completed",
       "weeks": "3-8",
+      "completedAt": "2026-02-14",
       "features": {
-        "01-wysiwyg-core": { "status": "not-started", "tests": "none", "spec": "§5.1" },
-        "02-md-pipeline": { "status": "not-started", "tests": "none", "spec": "§3.3" },
-        "03-basic-blocks": { "status": "not-started", "tests": "none", "spec": "§5.1" },
-        "04-inline-marks": { "status": "not-started", "tests": "none", "spec": "§5.1" },
-        "05-input-rules": { "status": "not-started", "tests": "none", "spec": "§5.1" },
-        "06-file-io": { "status": "not-started", "tests": "none", "spec": "§3.6" },
-        "07-autosave": { "status": "not-started", "tests": "none", "spec": "§5.7" },
-        "08-history": { "status": "not-started", "tests": "none", "spec": "§5.2" }
+        "01-wysiwyg-core": { "status": "completed", "tests": "tsc + vite build pass", "spec": "§5.1" },
+        "02-md-pipeline": { "status": "completed", "tests": "27/27 roundtrip pass", "spec": "§3.3" },
+        "03-basic-blocks": { "status": "completed", "tests": "27/27 roundtrip pass", "spec": "§5.1" },
+        "04-inline-marks": { "status": "completed", "tests": "27/27 roundtrip pass", "spec": "§5.1" },
+        "05-input-rules": { "status": "completed", "tests": "integrated in extensions", "spec": "§5.1" },
+        "06-file-io": { "status": "completed", "tests": "cargo check pass (M1 Rust fs)", "spec": "§3.6" },
+        "07-autosave": { "status": "completed", "tests": "hook implemented", "spec": "§5.7" },
+        "08-history": { "status": "completed", "tests": "Tiptap History integrated", "spec": "§5.2" }
       }
     },
     "M3": {
       "name": "리치 콘텐츠",
-      "status": "not-started",
+      "status": "completed",
       "weeks": "9-14",
+      "completedAt": "2026-02-14",
       "features": {
-        "09-math-editing": { "status": "not-started", "tests": "none", "spec": "§5.3" },
-        "10-code-blocks": { "status": "not-started", "tests": "none", "spec": "§5.4" },
-        "11-table-editor": { "status": "not-started", "tests": "none", "spec": "§5.5" },
-        "12-frontmatter": { "status": "not-started", "tests": "none", "spec": "§5.8" },
-        "13-source-mode": { "status": "not-started", "tests": "none", "spec": "§5.1" }
+        "09-math-editing": { "status": "completed", "tests": "5/5 roundtrip pass (block+inline)", "spec": "§5.3" },
+        "10-code-blocks": { "status": "completed", "tests": "2/2 roundtrip pass + CM6 NodeView", "spec": "§5.4" },
+        "11-table-editor": { "status": "completed", "tests": "6/6 roundtrip pass (GFM tables)", "spec": "§5.5" },
+        "12-frontmatter": { "status": "completed", "tests": "2/2 roundtrip pass", "spec": "§5.8" },
+        "13-source-mode": { "status": "completed", "tests": "Cmd+/ toggle implemented", "spec": "§5.1" }
       }
     },
     "M4": {
       "name": "UI 프레임워크",
-      "status": "not-started",
+      "status": "completed",
       "weeks": "15-18",
+      "completedAt": "2026-02-14",
       "features": {
-        "14-app-layout": { "status": "not-started", "tests": "none", "spec": "§4.2" },
-        "15-sidebar": { "status": "not-started", "tests": "none", "spec": "§4.3" },
-        "16-command-palette": { "status": "not-started", "tests": "none", "spec": "§4.5" },
-        "17-slash-commands": { "status": "not-started", "tests": "none", "spec": "§4.6" },
-        "18-floating-toolbar": { "status": "not-started", "tests": "none", "spec": "§4.7" },
-        "19-block-handle": { "status": "not-started", "tests": "none", "spec": "§4.8" },
-        "20-context-menus": { "status": "not-started", "tests": "none", "spec": "§4.8" },
-        "21-status-bar": { "status": "not-started", "tests": "none", "spec": "§4.8" }
+        "14-app-layout": { "status": "completed", "tests": "tsc + vite build pass", "spec": "§4.2" },
+        "15-sidebar": { "status": "completed", "tests": "tsc + vite build pass", "spec": "§4.3" },
+        "16-command-palette": { "status": "completed", "tests": "tsc + vite build pass", "spec": "§4.5" },
+        "17-slash-commands": { "status": "completed", "tests": "tsc + vite build pass", "spec": "§4.6" },
+        "18-floating-toolbar": { "status": "completed", "tests": "tsc + vite build pass", "spec": "§4.7" },
+        "19-block-handle": { "status": "completed", "tests": "tsc + vite build pass", "spec": "§4.8" },
+        "20-context-menus": { "status": "completed", "tests": "tsc + vite build pass", "spec": "§4.8" },
+        "21-status-bar": { "status": "completed", "tests": "tsc + vite build pass", "spec": "§4.8" }
       }
     },
     "M5": {
@@ -90,7 +93,7 @@
   "roundtrip": {
     "commonmark": "0/651",
     "gfm": "0/120",
-    "baram-extensions": "0/0"
+    "baram-extensions": "41/41"
   },
 
   "performance": {

@@ -9,7 +9,7 @@
       "spec": "§5.1",
       "phase": 1,
       "milestone": "M2",
-      "status": "planned",
+      "status": "implemented",
       "hasNodeView": false,
       "inputRules": ["# ", "## ", "### ", "#### ", "##### ", "###### "],
       "shortcuts": { "Mod-1": "H1", "Mod-2": "H2", "Mod-3": "H3", "Mod-4": "H4", "Mod-5": "H5", "Mod-6": "H6" }
@@ -21,7 +21,7 @@
       "spec": "§5.1",
       "phase": 1,
       "milestone": "M2",
-      "status": "planned",
+      "status": "implemented",
       "hasNodeView": false,
       "inputRules": [],
       "shortcuts": {}
@@ -33,7 +33,7 @@
       "spec": "§5.1",
       "phase": 1,
       "milestone": "M2",
-      "status": "planned",
+      "status": "implemented",
       "hasNodeView": false,
       "inputRules": ["> "],
       "shortcuts": { "Mod-Shift->": "toggle blockquote" }
@@ -45,7 +45,7 @@
       "spec": "§5.1",
       "phase": 1,
       "milestone": "M2",
-      "status": "planned",
+      "status": "implemented",
       "hasNodeView": false,
       "inputRules": ["- ", "* "],
       "shortcuts": { "Mod-Shift-8": "toggle bullet list" }
@@ -57,7 +57,7 @@
       "spec": "§5.1",
       "phase": 1,
       "milestone": "M2",
-      "status": "planned",
+      "status": "implemented",
       "hasNodeView": false,
       "inputRules": ["1. "],
       "shortcuts": { "Mod-Shift-7": "toggle ordered list" }
@@ -69,7 +69,7 @@
       "spec": "§5.1",
       "phase": 1,
       "milestone": "M2",
-      "status": "planned",
+      "status": "implemented",
       "hasNodeView": false,
       "inputRules": ["- [ ] ", "- [x] "],
       "shortcuts": {}
@@ -81,7 +81,7 @@
       "spec": "§5.1",
       "phase": 1,
       "milestone": "M2",
-      "status": "planned",
+      "status": "implemented",
       "hasNodeView": false,
       "inputRules": ["---", "***"],
       "shortcuts": {}
@@ -93,7 +93,7 @@
       "spec": "§5.1",
       "phase": 1,
       "milestone": "M2",
-      "status": "planned",
+      "status": "implemented",
       "hasNodeView": true,
       "inputRules": [],
       "shortcuts": {}
@@ -105,7 +105,7 @@
       "spec": "§5.4",
       "phase": 1,
       "milestone": "M3",
-      "status": "planned",
+      "status": "implemented",
       "hasNodeView": true,
       "inputRules": ["```"],
       "shortcuts": { "Mod-Shift-c": "toggle code block" }
@@ -117,7 +117,7 @@
       "spec": "§5.3",
       "phase": 1,
       "milestone": "M3",
-      "status": "planned",
+      "status": "implemented",
       "hasNodeView": true,
       "inputRules": ["$$"],
       "shortcuts": { "Mod-Shift-m": "insert math block" }
@@ -129,7 +129,7 @@
       "spec": "§5.5",
       "phase": 1,
       "milestone": "M3",
-      "status": "planned",
+      "status": "implemented",
       "hasNodeView": true,
       "inputRules": [],
       "shortcuts": {}
@@ -141,7 +141,7 @@
       "spec": "§5.8",
       "phase": 1,
       "milestone": "M3",
-      "status": "planned",
+      "status": "implemented",
       "hasNodeView": true,
       "inputRules": [],
       "shortcuts": {}
@@ -179,7 +179,7 @@
       "spec": "§5.1",
       "phase": 1,
       "milestone": "M2",
-      "status": "planned",
+      "status": "implemented",
       "inputRules": ["**"],
       "shortcuts": { "Mod-b": "toggle bold" }
     },
@@ -190,7 +190,7 @@
       "spec": "§5.1",
       "phase": 1,
       "milestone": "M2",
-      "status": "planned",
+      "status": "implemented",
       "inputRules": ["*"],
       "shortcuts": { "Mod-i": "toggle italic" }
     },
@@ -201,7 +201,7 @@
       "spec": "§5.1",
       "phase": 1,
       "milestone": "M2",
-      "status": "planned",
+      "status": "implemented",
       "inputRules": ["`"],
       "shortcuts": { "Mod-e": "toggle code" }
     },
@@ -212,7 +212,7 @@
       "spec": "§5.1",
       "phase": 1,
       "milestone": "M2",
-      "status": "planned",
+      "status": "implemented",
       "inputRules": ["~~"],
       "shortcuts": { "Mod-Shift-x": "toggle strikethrough" }
     },
@@ -223,18 +223,18 @@
       "spec": "§5.1",
       "phase": 1,
       "milestone": "M2",
-      "status": "planned",
+      "status": "implemented",
       "inputRules": [],
       "shortcuts": { "Mod-k": "insert link" }
     },
     {
       "name": "inlineMath",
-      "file": "marks/inline-math.ts",
+      "file": "nodes/math-inline.ts",
       "markdown": "$text$",
       "spec": "§5.3",
       "phase": 1,
       "milestone": "M3",
-      "status": "planned",
+      "status": "implemented",
       "inputRules": ["$"],
       "shortcuts": {}
     },
@@ -268,7 +268,7 @@
       "spec": "§5.2",
       "phase": 1,
       "milestone": "M2",
-      "status": "planned",
+      "status": "implemented",
       "shortcuts": { "Mod-z": "undo", "Mod-Shift-z": "redo" }
     },
     {
@@ -281,12 +281,21 @@
       "shortcuts": { "Mod-f": "find", "Mod-Shift-f": "find and replace" }
     },
     {
+      "name": "slashCommands",
+      "file": "plugins/slash-command.ts",
+      "spec": "§4.6",
+      "phase": 1,
+      "milestone": "M4",
+      "status": "implemented",
+      "shortcuts": { "/": "slash menu" }
+    },
+    {
       "name": "dragHandle",
       "file": "plugins/drag-handle.ts",
       "spec": "§4.8",
       "phase": 1,
       "milestone": "M4",
-      "status": "planned",
+      "status": "implemented",
       "shortcuts": {}
     }
   ]

@@ -1,0 +1,127 @@
+// Baram Extension 번들 — M2 기본 편집 세트
+// StarterKit 대신 커스텀 Extension 조합 사용
+
+import Document from "@tiptap/extension-document";
+import Text from "@tiptap/extension-text";
+import HardBreak from "@tiptap/extension-hard-break";
+import History from "@tiptap/extension-history";
+import Dropcursor from "@tiptap/extension-dropcursor";
+import Gapcursor from "@tiptap/extension-gapcursor";
+import Placeholder from "@tiptap/extension-placeholder";
+
+// Node Extensions
+import { Heading } from "./nodes/heading";
+import { Paragraph } from "./nodes/paragraph";
+import { Blockquote } from "./nodes/blockquote";
+import { BulletList } from "./nodes/bullet-list";
+import { OrderedList } from "./nodes/ordered-list";
+import { ListItem } from "./nodes/list-item";
+import { TaskList } from "./nodes/task-list";
+import { TaskItem } from "./nodes/task-item";
+import { HorizontalRule } from "./nodes/horizontal-rule";
+import { Image } from "./nodes/image";
+import { CodeBlock } from "./nodes/code-block";
+import { MathBlock } from "./nodes/math-block";
+import { MathInline } from "./nodes/math-inline";
+import {
+  BaramTable,
+  BaramTableRow,
+  BaramTableCell,
+  BaramTableHeader,
+} from "./nodes/table";
+import { Frontmatter } from "./nodes/frontmatter";
+
+// Plugin Extensions — M4
+import { SlashCommands } from "./plugins/slash-command";
+
+// Mark Extensions
+import { Bold } from "./marks/bold";
+import { Italic } from "./marks/italic";
+import { Code } from "./marks/code";
+import { Strike } from "./marks/strike";
+import { Link } from "./marks/link";
+
+import type { Extensions } from "@tiptap/core";
+
+/** M2 기본 편집 Extension 세트 */
+export function createBaramExtensions(): Extensions {
+  return [
+    // Core (required)
+    Document,
+    Text,
+    HardBreak,
+    Dropcursor,
+    Gapcursor,
+
+    // Nodes — §5.1
+    Paragraph,
+    Heading.configure({ levels: [1, 2, 3, 4, 5, 6] }),
+    Blockquote,
+    BulletList,
+    OrderedList,
+    ListItem,
+    TaskList,
+    TaskItem,
+    HorizontalRule,
+    Image,
+    CodeBlock,
+
+    // Nodes — §5.3 Math
+    MathBlock,
+    MathInline,
+
+    // Nodes — §5.5 Table
+    BaramTable,
+    BaramTableRow,
+    BaramTableCell,
+    BaramTableHeader,
+
+    // Nodes — §5.8 Frontmatter
+    Frontmatter,
+
+    // Marks — §5.1
+    Bold,
+    Italic,
+    Code,
+    Strike,
+    Link,
+
+    // Plugins — §5.2
+    History.configure({ depth: 100 }),
+
+    // Plugins — §4.6 Slash Commands
+    SlashCommands,
+
+    // UI
+    Placeholder.configure({
+      placeholder: "Start writing…",
+    }),
+  ];
+}
+
+// Re-export all extensions
+export {
+  Heading,
+  Paragraph,
+  Blockquote,
+  BulletList,
+  OrderedList,
+  ListItem,
+  TaskList,
+  TaskItem,
+  HorizontalRule,
+  Image,
+  CodeBlock,
+  MathBlock,
+  MathInline,
+  BaramTable,
+  BaramTableRow,
+  BaramTableCell,
+  BaramTableHeader,
+  Frontmatter,
+  Bold,
+  Italic,
+  Code,
+  Strike,
+  Link,
+};
