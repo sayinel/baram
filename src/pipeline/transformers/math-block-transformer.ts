@@ -15,16 +15,14 @@ export const mathBlockTransformer: NodeTransformerEntry = {
 
   mdastToPm(node: MdastNode, schema: Schema) {
     const math = node as MdastMath;
-    return schema.nodes.mathBlock.create(
-      { formula: math.value || "" },
-      math.value ? [schema.text(math.value)] : [],
-    );
+    // atom:true — formula stored in attrs only, no text children
+    return schema.nodes.mathBlock.create({ formula: math.value || "" });
   },
 
   pmToMdast(node: PmNode): MdastNode {
     return {
       type: "math",
-      value: node.textContent || (node.attrs.formula as string) || "",
+      value: (node.attrs.formula as string) || "",
     } as MdastMath;
   },
 };

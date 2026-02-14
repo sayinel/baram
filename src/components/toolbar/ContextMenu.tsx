@@ -47,19 +47,19 @@ export function ContextMenu({ editor }: ContextMenuProps) {
   const buildMathBlockMenu = useCallback(
     (pos: number): MenuItem[] => {
       const resolved = editor.state.doc.resolve(pos);
-      // For mathBlock, the node is the block itself — find it via resolved.parent
-      // or by walking up to find the mathBlock node
-      let mathNode = resolved.parent;
-      let mathPos = resolved.before();
-      if (mathNode.type.name !== "mathBlock") {
-        // Try grandparent
-        if (resolved.depth >= 2) {
-          mathNode = resolved.node(resolved.depth - 1);
-          mathPos = resolved.before(resolved.depth - 1);
-        }
+      // atom:true — find the mathBlock node via nodeAt or nodeAfter
+      let mathNode = editor.state.doc.nodeAt(pos);
+      let mathPos = pos;
+      if (!mathNode || mathNode.type.name !== "mathBlock") {
+        mathNode = resolved.nodeAfter;
+        mathPos = pos;
+      }
+      if (!mathNode || mathNode.type.name !== "mathBlock") {
+        mathNode = resolved.parent;
+        mathPos = resolved.before();
       }
 
-      const formula = mathNode.textContent || "";
+      const formula = (mathNode.attrs.formula as string) || "";
       const currentSize = (mathNode.attrs.mathSize as string) || "normal";
 
       return [
@@ -198,13 +198,8 @@ export function ContextMenu({ editor }: ContextMenuProps) {
             const tr = editor.state.tr;
             const mathBlockType = editor.schema.nodes.mathBlock;
             if (!mathBlockType) return;
-            const textNode = formula
-              ? editor.schema.text(formula)
-              : undefined;
-            const blockNode = mathBlockType.create(
-              null,
-              textNode ? [textNode] : undefined,
-            );
+            // atom:true — formula in attrs, no text children
+            const blockNode = mathBlockType.create({ formula });
             tr.replaceWith(nodePos, nodePos + mathNode.nodeSize, blockNode);
             editor.view.dispatch(tr);
           },

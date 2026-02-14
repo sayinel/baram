@@ -33,27 +33,8 @@
   --spacing-editor-padding: 4rem;
 }
 
-/* Dark mode */
-@media (prefers-color-scheme: dark) {
-  @theme {
-    --color-bg-primary: #1a1a2e;
-    --color-bg-secondary: #16213e;
-    --color-bg-sidebar: #0f3460;
-    --color-text-primary: #e5e5e5;
-    --color-text-secondary: #9ca3af;
-    --color-text-muted: #6b7280;
-    --color-border: #374151;
-    --color-border-light: #1f2937;
-    --color-accent: #60a5fa;
-    --color-accent-hover: #3b82f6;
-
-    --color-editor-bg: #1a1a2e;
-    --color-editor-text: #e5e5e5;
-    --color-editor-selection: #1e3a5f;
-    --color-editor-cursor: #e5e5e5;
-    --color-editor-line-highlight: #16213e;
-  }
-}
+/* Dark mode — activated by adding data-theme="dark" to <html> */
+/* Default is light theme */
 
 /* Base styles */
 html, body, #root {
@@ -346,60 +327,67 @@ body {
   color: var(--color-accent-hover);
 }
 
-/* §5.3 Math Block — split source + preview */
+/* §5.3 Math Block — atom:true, selected=textarea+preview, unselected=KaTeX only */
 .tiptap .math-block {
+  margin: 0.5em 0;
+}
+
+.tiptap .math-block-preview {
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 0.25em 0;
+}
+
+.tiptap .math-block-preview:hover {
+  background-color: var(--color-bg-secondary);
+}
+
+.tiptap .math-block-editing {
   background-color: var(--color-bg-secondary);
   border: 1px solid var(--color-border-light);
   border-radius: 6px;
   padding: 0.75em 1em;
-  margin: 0.5em 0;
 }
 
-.tiptap .math-block-split {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-.tiptap .math-block-source-section {
-  display: flex;
-  align-items: center;
-  gap: 0.5em;
-}
-
-.tiptap .math-block-section-label {
-  font-family: var(--font-mono);
-  font-size: 0.65em;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-text-muted);
-  user-select: none;
-  flex-shrink: 0;
-}
-
-.tiptap .math-block-source {
+.tiptap .math-block-textarea {
   display: block;
+  width: 100%;
   font-family: var(--font-mono);
   font-size: 0.875em;
   line-height: 1.6;
-  padding: 0.25em 0;
+  padding: 0.5em;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border-light);
+  border-radius: 4px;
+  color: var(--color-text-primary);
+  resize: none;
   outline: none;
-  background: none;
-  border: none;
-  white-space: pre-wrap;
+  overflow: hidden;
+  margin-bottom: 0.5em;
 }
 
-.tiptap .math-block-preview-section {
-  border-top: 1px solid var(--color-border-light);
-  padding-top: 0.5em;
-  margin-top: 0.25em;
+.tiptap .math-block-textarea:focus {
+  border-color: var(--color-accent);
+}
+
+.tiptap .math-block-row {
+  display: flex;
+  align-items: center;
 }
 
 .tiptap .math-block-katex {
+  flex: 1;
   text-align: center;
   padding: 0.5em 0;
   overflow-x: auto;
+}
+
+.tiptap .math-block-eq-number {
+  flex-shrink: 0;
+  font-size: 0.95em;
+  color: var(--color-text-secondary);
+  padding-right: 0.25em;
+  user-select: none;
 }
 
 .tiptap .math-block-katex-empty {
@@ -419,18 +407,12 @@ body {
   margin-top: 0.35em;
 }
 
-@media (prefers-color-scheme: dark) {
-  .tiptap .math-block-error {
-    color: #fca5a5;
-    background-color: #450a0a;
-    border-color: #7f1d1d;
-  }
+[data-theme="dark"] .tiptap .math-block-error {
+  color: #fca5a5;
+  background-color: #450a0a;
+  border-color: #7f1d1d;
 }
 
-.tiptap .math-block-selected {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
 
 /* §5.3 Math size variants */
 .tiptap [data-math-size="small"] .math-block-katex,
@@ -443,7 +425,7 @@ body {
   font-size: 1.4em;
 }
 
-/* §5.3 Math Inline */
+/* §5.3 Math Inline — atom render-only */
 .tiptap .math-inline {
   border-radius: 3px;
   cursor: pointer;
@@ -461,26 +443,11 @@ body {
   background-color: var(--color-editor-selection);
 }
 
-.tiptap .math-inline-editing {
-  background-color: var(--color-bg-secondary);
-  padding: 0 0.15em;
-}
-
-.tiptap .math-inline-dollar {
+/* §5.3 Math Inline Edit — ProseMirror plugin delimiter decorations */
+.tiptap .math-delimiter {
   font-family: var(--font-mono);
-  font-size: 0.8em;
+  font-size: 0.85em;
   color: var(--color-text-muted);
-}
-
-.tiptap .math-inline-input {
-  font-family: var(--font-mono);
-  font-size: 0.875em;
-  border: none;
-  background: transparent;
-  outline: none;
-  color: var(--color-text-primary);
-  padding: 0;
-  min-width: 1em;
 }
 
 /* §5.3 Math Inline Preview Popover */
@@ -511,17 +478,15 @@ body {
   border-top: 1px solid #fecaca;
 }
 
-@media (prefers-color-scheme: dark) {
-  .math-inline-preview-popover {
-    background-color: var(--color-bg-primary, #1a1a2e);
-    border-color: var(--color-border, #374151);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  }
+[data-theme="dark"] .math-inline-preview-popover {
+  background-color: var(--color-bg-primary, #1a1a2e);
+  border-color: var(--color-border, #374151);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
 
-  .math-inline-preview-error {
-    color: #fca5a5;
-    border-color: #7f1d1d;
-  }
+[data-theme="dark"] .math-inline-preview-error {
+  color: #fca5a5;
+  border-color: #7f1d1d;
 }
 
 /* §5.5 Table */

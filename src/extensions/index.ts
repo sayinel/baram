@@ -31,7 +31,8 @@ import {
 } from "./nodes/table";
 import { Frontmatter } from "./nodes/frontmatter";
 
-// Plugin Extensions — M4
+// Plugin Extensions — M3/M4
+import { MathInlineEdit } from "./plugins/math-inline-edit";
 import { SlashCommands } from "./plugins/slash-command";
 
 // Mark Extensions
@@ -69,6 +70,7 @@ export function createBaramExtensions(): Extensions {
     // Nodes — §5.3 Math
     MathBlock,
     MathInline,
+    MathInlineEdit,
 
     // Nodes — §5.5 Table
     BaramTable,

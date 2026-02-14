@@ -1,6 +1,5 @@
-// §5.3 Math Inline Extension — $...$
+// §5.3 Math Inline Node — atom:true, render-only (editing handled by MathInlineEdit plugin)
 import { Node, mergeAttributes } from "@tiptap/core";
-import { InputRule } from "@tiptap/core";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 import { MathInlineView } from "./math-inline-view";
 
@@ -55,7 +54,6 @@ export const MathInline = Node.create<MathInlineOptions>({
         "data-math-size": node.attrs.mathSize || "normal",
         class: "math-inline",
       }),
-      `$${node.attrs.formula}$`,
     ];
   },
 
@@ -68,28 +66,7 @@ export const MathInline = Node.create<MathInlineOptions>({
       setMathInline:
         (attrs) =>
         ({ commands }) =>
-          commands.insertContent({
-            type: this.name,
-            attrs,
-          }),
+          commands.insertContent({ type: this.name, attrs }),
     };
-  },
-
-  addInputRules() {
-    return [
-      new InputRule({
-        // Match $formula$ but not $$ (block math)
-        find: /(?<!\$)\$([^$\s][^$]*[^$\s])\$(?!\$)$/,
-        handler: ({ state, range, match }) => {
-          const formula = match[1];
-          const { tr } = state;
-          tr.replaceWith(
-            range.from,
-            range.to,
-            this.type.create({ formula }),
-          );
-        },
-      }),
-    ];
   },
 });
