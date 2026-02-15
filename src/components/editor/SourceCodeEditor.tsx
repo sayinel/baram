@@ -64,7 +64,11 @@ export const SourceCodeEditor = forwardRef<SourceCodeEditorRef, SourceCodeEditor
       const state = EditorState.create({
         doc: content,
         extensions: [
-          keymap.of([...defaultKeymap, indentWithTab]),
+          keymap.of([
+            { key: "Mod-/", run: () => true }, // Swallow — handled by App's global shortcut
+            ...defaultKeymap,
+            indentWithTab,
+          ]),
           lineNumbers(),
           drawSelection(),
           bracketMatching(),

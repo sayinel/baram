@@ -130,7 +130,24 @@ function splitMarkdownBlocks(markdown: string): MarkdownBlock[] {
     return [{ start: 0, end: markdown.length, length: markdown.length }];
   }
 
-  return blocks;
+  // Insert empty blocks for extra blank lines to match enrichWithEmptyParagraphs
+  // in md-to-pm.ts — formula: emptyParas = floor((newlines - 2) / 2)
+  const enriched: MarkdownBlock[] = [];
+  for (let i = 0; i < blocks.length; i++) {
+    enriched.push(blocks[i]);
+    if (i < blocks.length - 1) {
+      const gapStart = blocks[i].end;
+      const gapEnd = blocks[i + 1].start;
+      const gap = markdown.substring(gapStart, gapEnd);
+      const newlineCount = (gap.match(/\n/g) || []).length;
+      const emptyParas = Math.max(0, Math.floor((newlineCount - 2) / 2));
+      for (let j = 0; j < emptyParas; j++) {
+        enriched.push({ start: gapEnd, end: gapEnd, length: 0 });
+      }
+    }
+  }
+
+  return enriched;
 }
 
 /**

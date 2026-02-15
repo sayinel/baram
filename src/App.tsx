@@ -16,11 +16,7 @@ import { CommandPalette } from "./components/command/CommandPalette";
 import { FloatingToolbar } from "./components/toolbar/FloatingToolbar";
 import { BlockHandle } from "./components/toolbar/BlockHandle";
 import { ContextMenu } from "./components/toolbar/ContextMenu";
-import { SettingsModal } from "./components/settings/SettingsModal";
-import { InlineAIEdit } from "./components/ai/InlineAIEdit";
-import { SlashAIHandler } from "./components/ai/SlashAIHandler";
 import { useUIStore } from "./stores/ui-store";
-import { useAIStore } from "./stores/ai-store";
 import "./App.css";
 
 // Error boundary to catch and display runtime errors
@@ -58,12 +54,10 @@ function App() {
   const [isSourceMode, setIsSourceMode] = useState(false);
   const [sourceContent, setSourceContent] = useState("");
   const [sourceCursorOffset, setSourceCursorOffset] = useState(0);
-  const [inlineAIEditOpen, setInlineAIEditOpen] = useState(false);
   const sourceEditorRef = useRef<SourceCodeEditorRef>(null);
   // Ref mirrors sourceContent state — always has the latest value, immune to stale closures
   const sourceContentRef = useRef("");
   const { toggleSidebar, toggleCommandPalette } = useUIStore();
-  const isConfigured = useAIStore((s) => s.isConfigured);
 
   const editor = useEditor({
     extensions: createBaramExtensions(),
@@ -147,23 +141,17 @@ function App() {
         return;
       }
 
-      // Cmd+K — inline AI edit (when selection) or command palette (no selection)
+      // Cmd+K — command palette
       if (mod && e.key === "k") {
         e.preventDefault();
-        const hasSelection =
-          editor && !editor.state.selection.empty && !isSourceMode;
-        if (hasSelection && isConfigured()) {
-          setInlineAIEditOpen(true);
-        } else {
-          toggleCommandPalette();
-        }
+        toggleCommandPalette();
         return;
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [toggleSourceMode, toggleSidebar, toggleCommandPalette, editor, isSourceMode, isConfigured]);
+  }, [toggleSourceMode, toggleSidebar, toggleCommandPalette, editor, isSourceMode]);
 
   return (
     <>
@@ -188,12 +176,6 @@ function App() {
                 <FloatingToolbar editor={editor} />
                 <BlockHandle editor={editor} />
                 <ContextMenu editor={editor} />
-                {inlineAIEditOpen && (
-                  <InlineAIEdit
-                    editor={editor}
-                    onClose={() => setInlineAIEditOpen(false)}
-                  />
-                )}
               </>
             )}
             </>
@@ -201,8 +183,6 @@ function App() {
         </div>
       </AppLayout>
       <CommandPalette editor={editor} onToggleSourceMode={toggleSourceMode} />
-      <SettingsModal />
-      {editor && <SlashAIHandler editor={editor} />}
     </>
   );
 }

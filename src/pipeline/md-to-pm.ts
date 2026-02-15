@@ -36,7 +36,50 @@ export function markdownToProsemirror(
   schema: Schema,
 ): PmNode {
   const mdast = parseMdast(markdown);
-  return mdastToProsemirror(mdast, schema);
+  const enriched = enrichWithEmptyParagraphs(mdast, markdown);
+  return mdastToProsemirror(enriched, schema);
+}
+
+/**
+ * Detect extra blank lines between top-level blocks in the original markdown
+ * and insert empty paragraph nodes into the mdast tree to preserve them.
+ *
+ * Markdown collapses multiple blank lines into one separator, but WYSIWYG
+ * editors need to preserve empty paragraphs for the user's formatting.
+ *
+ * Formula: between two blocks, if the gap has N newlines,
+ * empty paragraphs = floor((N - 2) / 2).
+ * (2 newlines = standard separator, each additional pair = 1 empty paragraph)
+ */
+function enrichWithEmptyParagraphs(root: Root, markdown: string): Root {
+  const children = root.children;
+  if (children.length === 0) return root;
+
+  const enriched: Content[] = [];
+
+  for (let i = 0; i < children.length; i++) {
+    enriched.push(children[i]);
+
+    if (i < children.length - 1) {
+      const gapStart = children[i].position?.end?.offset;
+      const gapEnd = children[i + 1].position?.start?.offset;
+
+      if (gapStart != null && gapEnd != null && gapEnd > gapStart) {
+        const gap = markdown.substring(gapStart, gapEnd);
+        const newlineCount = (gap.match(/\n/g) || []).length;
+        const emptyParas = Math.max(0, Math.floor((newlineCount - 2) / 2));
+
+        for (let j = 0; j < emptyParas; j++) {
+          enriched.push({
+            type: "paragraph",
+            children: [],
+          } as Content);
+        }
+      }
+    }
+  }
+
+  return { ...root, children: enriched };
 }
 
 /** Convert block-level mdast children to PM nodes */

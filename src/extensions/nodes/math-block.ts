@@ -98,6 +98,18 @@ export const MathBlock = Node.create<MathBlockOptions>({
             return value;
           },
         },
+        props: {
+          handleClickOn(view, _pos, node, nodePos, _event, direct) {
+            if (node.type.name === "mathBlock" && direct) {
+              const tr = view.state.tr.setSelection(
+                NodeSelection.create(view.state.doc, nodePos),
+              );
+              view.dispatch(tr);
+              return true;
+            }
+            return false;
+          },
+        },
       }),
     ];
   },
@@ -116,6 +128,22 @@ export const MathBlock = Node.create<MathBlockOptions>({
   addKeyboardShortcuts() {
     return {
       "Mod-Shift-m": () => this.editor.commands.setMathBlock(),
+      Enter: () => {
+        const { state } = this.editor;
+        const { $from } = state.selection;
+        if (
+          $from.parent.type.name === "paragraph" &&
+          $from.parent.textContent === "$$"
+        ) {
+          const pos = $from.before();
+          const { tr } = state;
+          tr.replaceWith(pos, $from.after(), this.type.create({ formula: "" }));
+          tr.setSelection(NodeSelection.create(tr.doc, pos));
+          this.editor.view.dispatch(tr);
+          return true;
+        }
+        return false;
+      },
     };
   },
 
@@ -127,12 +155,15 @@ export const MathBlock = Node.create<MathBlockOptions>({
         handler({ state, range }) {
           const $start = state.doc.resolve(range.from);
           const { tr } = state;
+          const blockPos = $start.before($start.depth);
           // Replace the current paragraph with an empty mathBlock
           tr.replaceWith(
-            $start.before($start.depth),
+            blockPos,
             $start.after($start.depth),
             type.create({ formula: "" }),
           );
+          // Select the new mathBlock so NodeView enters edit mode
+          tr.setSelection(NodeSelection.create(tr.doc, blockPos));
         },
       }),
     ];

@@ -91,6 +91,21 @@ describe("Roundtrip: Paragraphs", () => {
     const input = "First paragraph\n\nSecond paragraph\n";
     expect(roundtrip(input)).toBe(input);
   });
+
+  it("preserves one empty paragraph between blocks", () => {
+    const input = "Hello\n\n\n\nWorld\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  it("preserves two empty paragraphs between blocks", () => {
+    const input = "Hello\n\n\n\n\n\nWorld\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  it("preserves empty paragraph between heading and paragraph", () => {
+    const input = "# Title\n\n\n\nContent\n";
+    expect(roundtrip(input)).toBe(input);
+  });
 });
 
 describe("Roundtrip: Blockquote", () => {
