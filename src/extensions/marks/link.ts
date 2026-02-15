@@ -1,5 +1,5 @@
 // §5.1 Link Mark Extension — [text](url)
-import { Mark, mergeAttributes, markPasteRule } from "@tiptap/core";
+import { Mark, mergeAttributes, markPasteRule, InputRule } from "@tiptap/core";
 
 export interface LinkOptions {
   HTMLAttributes: Record<string, string>;
@@ -16,6 +16,10 @@ declare module "@tiptap/core" {
     };
   }
 }
+
+// [text](url) or [text](url "title") — typed inline → auto-convert to link
+// Negative lookbehind for ! to exclude image syntax
+const linkInputRegex = /(?<!!)\[([^\]]+)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)$/;
 
 // Auto-detect URLs on paste
 const pasteRegex = /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_+.~#?&//=]*)/g;
@@ -81,6 +85,24 @@ export const Link = Mark.create<LinkOptions>({
         return true;
       },
     };
+  },
+
+  addInputRules() {
+    return [
+      new InputRule({
+        find: linkInputRegex,
+        handler: ({ state, range, match }) => {
+          const [, text, href, title] = match;
+          const { tr } = state;
+          const mark = this.type.create({ href, title: title || null });
+          tr.replaceWith(
+            range.from,
+            range.to,
+            state.schema.text(text, [mark]),
+          );
+        },
+      }),
+    ];
   },
 
   addPasteRules() {

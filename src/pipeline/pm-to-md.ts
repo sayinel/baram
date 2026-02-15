@@ -203,6 +203,32 @@ function convertPmInlineChildren(node: PmNode): PhrasingContent[] {
     }
   });
 
+  // Coalesce adjacent </u><u> pairs
+  return coalesceUnderlineTags(result);
+}
+
+/** Remove adjacent </u><u> pairs (from consecutive underlined text nodes) */
+function coalesceUnderlineTags(nodes: PhrasingContent[]): PhrasingContent[] {
+  const result: PhrasingContent[] = [];
+
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    const next = nodes[i + 1];
+
+    // Skip </u> followed by <u>
+    if (
+      node.type === "html" &&
+      (node as { value: string }).value === "</u>" &&
+      next?.type === "html" &&
+      (next as { value: string }).value === "<u>"
+    ) {
+      i++; // skip both
+      continue;
+    }
+
+    result.push(node);
+  }
+
   return result;
 }
 
@@ -224,11 +250,15 @@ function convertTextWithMarks(
     return [{ type: "inlineCode", value: text } as PhrasingContent];
   }
 
+  // Separate underline mark — handled as raw HTML <u></u>
+  const underlineMark = marks.find((m) => m.type.name === "underline");
+  const otherMarks = marks.filter((m) => m.type.name !== "underline");
+
   // Build nested mark structure from innermost to outermost
   let current: PhrasingContent[] = [{ type: "text", value: text } as Text];
 
   // Process marks in consistent order for deterministic output
-  const sortedMarks = [...marks].sort((a, b) =>
+  const sortedMarks = [...otherMarks].sort((a, b) =>
     a.type.name.localeCompare(b.type.name),
   );
 
@@ -238,6 +268,15 @@ function convertTextWithMarks(
       const wrapped = transformer.markToMdast(mark, current);
       current = [wrapped as PhrasingContent];
     }
+  }
+
+  // Wrap with <u></u> HTML nodes if underline is active
+  if (underlineMark) {
+    current = [
+      { type: "html", value: "<u>" } as PhrasingContent,
+      ...current,
+      { type: "html", value: "</u>" } as PhrasingContent,
+    ];
   }
 
   return current;

@@ -1,5 +1,5 @@
 // §5.1 Image Extension (block-level)
-import { Node, mergeAttributes } from "@tiptap/core";
+import { Node, mergeAttributes, InputRule } from "@tiptap/core";
 
 export interface ImageOptions {
   HTMLAttributes: Record<string, string>;
@@ -60,5 +60,23 @@ export const Image = Node.create<ImageOptions>({
             attrs: options,
           }),
     };
+  },
+
+  addInputRules() {
+    // ![alt](url) or ![alt](url "title") at start of line → replace with image block
+    return [
+      new InputRule({
+        find: /^!\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)$/,
+        handler: ({ state, range, match }) => {
+          const [, alt, src, title] = match;
+          const { tr } = state;
+          tr.replaceWith(range.from, range.to, this.type.create({
+            src,
+            alt: alt || null,
+            title: title || null,
+          }));
+        },
+      }),
+    ];
   },
 });

@@ -60,6 +60,7 @@ const schema = new Schema({
       },
       inclusive: false,
     },
+    underline: {},
   },
 });
 
@@ -196,6 +197,23 @@ describe("Roundtrip: Image", () => {
 
   it("image with title", () => {
     const input = '![Alt text](https://example.com/image.png "Title")\n';
+    expect(roundtrip(input)).toBe(input);
+  });
+});
+
+describe("Roundtrip: Underline", () => {
+  it("simple underline", () => {
+    const input = "This is <u>underlined</u> text\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  it("underline with bold inside", () => {
+    const input = "<u>**bold underlined**</u>\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  it("multiple underline segments", () => {
+    const input = "<u>first</u> and <u>second</u>\n";
     expect(roundtrip(input)).toBe(input);
   });
 });

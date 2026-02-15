@@ -34,6 +34,7 @@ import { Frontmatter } from "./nodes/frontmatter";
 // Plugin Extensions — M3/M4
 import { MathInlineEdit } from "./plugins/math-inline-edit";
 import { SlashCommands } from "./plugins/slash-command";
+import { SyntaxReveal } from "./plugins/syntax-reveal";
 
 // Mark Extensions
 import { Bold } from "./marks/bold";
@@ -41,6 +42,7 @@ import { Italic } from "./marks/italic";
 import { Code } from "./marks/code";
 import { Strike } from "./marks/strike";
 import { Link } from "./marks/link";
+import { Underline } from "./marks/underline";
 
 import type { Extensions } from "@tiptap/core";
 
@@ -87,12 +89,16 @@ export function createBaramExtensions(): Extensions {
     Code,
     Strike,
     Link,
+    Underline,
 
     // Plugins — §5.2
     History.configure({ depth: 100 }),
 
     // Plugins — §4.6 Slash Commands
     SlashCommands,
+
+    // Plugins — §5.1 Syntax Reveal (Typora-style)
+    SyntaxReveal,
 
     // UI
     Placeholder.configure({
@@ -126,4 +132,5 @@ export {
   Code,
   Strike,
   Link,
+  Underline,
 };

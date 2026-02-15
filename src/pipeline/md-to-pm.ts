@@ -293,8 +293,27 @@ function convertInlineChildren(
 ): PmNode[] {
   const result: PmNode[] = [];
 
+  // Track <u>/<\/u> HTML nodes for underline mark
+  let underlineActive = false;
+
   for (const child of children) {
-    const nodes = convertInlineNode(child, schema, parentMarks);
+    if (child.type === "html") {
+      const val = (child as { value: string }).value.trim().toLowerCase();
+      if (val === "<u>") {
+        underlineActive = true;
+        continue;
+      }
+      if (val === "</u>") {
+        underlineActive = false;
+        continue;
+      }
+    }
+
+    const marks =
+      underlineActive && schema.marks.underline
+        ? [...parentMarks, schema.marks.underline.create()]
+        : parentMarks;
+    const nodes = convertInlineNode(child, schema, marks);
     result.push(...nodes);
   }
 

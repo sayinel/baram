@@ -12,7 +12,7 @@
       "status": "implemented",
       "hasNodeView": false,
       "inputRules": ["# ", "## ", "### ", "#### ", "##### ", "###### "],
-      "shortcuts": { "Mod-1": "H1", "Mod-2": "H2", "Mod-3": "H3", "Mod-4": "H4", "Mod-5": "H5", "Mod-6": "H6" }
+      "shortcuts": { "Mod-1": "H1", "Mod-2": "H2", "Mod-3": "H3", "Mod-4": "H4", "Mod-5": "H5", "Mod-6": "H6", "Mod-=": "increase level", "Mod--": "decrease level" }
     },
     {
       "name": "paragraph",
@@ -95,7 +95,7 @@
       "milestone": "M2",
       "status": "implemented",
       "hasNodeView": true,
-      "inputRules": [],
+      "inputRules": ["![alt](url)"],
       "shortcuts": {}
     },
     {
@@ -224,8 +224,19 @@
       "phase": 1,
       "milestone": "M2",
       "status": "implemented",
-      "inputRules": [],
+      "inputRules": ["[text](url)"],
       "shortcuts": { "Mod-k": "insert link" }
+    },
+    {
+      "name": "underline",
+      "file": "marks/underline.ts",
+      "markdown": "<u>text</u>",
+      "spec": "§5.1",
+      "phase": 1,
+      "milestone": "M2",
+      "status": "implemented",
+      "inputRules": [],
+      "shortcuts": { "Mod-u": "toggle underline" }
     },
     {
       "name": "inlineMath",
@@ -288,6 +299,15 @@
       "milestone": "M4",
       "status": "implemented",
       "shortcuts": { "/": "slash menu" }
+    },
+    {
+      "name": "syntaxReveal",
+      "file": "plugins/syntax-reveal.ts",
+      "spec": "§5.1",
+      "phase": 1,
+      "milestone": "M2",
+      "status": "implemented",
+      "shortcuts": {}
     },
     {
       "name": "dragHandle",
