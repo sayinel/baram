@@ -1,11 +1,14 @@
 // §4.2 Baram App — 3-Column layout with editor
-import { Component, useEffect, useState, useCallback } from "react";
+import { Component, useEffect, useState, useCallback, useRef } from "react";
 import type { ReactNode, ErrorInfo } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
+import { EditorState, TextSelection } from "@tiptap/pm/state";
 import { createBaramExtensions } from "./extensions";
 import { prosemirrorToMarkdown } from "./pipeline/pm-to-md";
 import { markdownToProsemirror } from "./pipeline/md-to-pm";
 import { SourceCodeEditor } from "./components/editor/SourceCodeEditor";
+import type { SourceCodeEditorRef } from "./components/editor/SourceCodeEditor";
+import { pmPosToMdOffset, mdOffsetToPmPos } from "./utils/cursor-mapper";
 import { AppLayout } from "./components/layout/AppLayout";
 import { TabBar } from "./components/layout/TabBar";
 import { StatusBar } from "./components/layout/StatusBar";
@@ -13,7 +16,11 @@ import { CommandPalette } from "./components/command/CommandPalette";
 import { FloatingToolbar } from "./components/toolbar/FloatingToolbar";
 import { BlockHandle } from "./components/toolbar/BlockHandle";
 import { ContextMenu } from "./components/toolbar/ContextMenu";
+import { SettingsModal } from "./components/settings/SettingsModal";
+import { InlineAIEdit } from "./components/ai/InlineAIEdit";
+import { SlashAIHandler } from "./components/ai/SlashAIHandler";
 import { useUIStore } from "./stores/ui-store";
+import { useAIStore } from "./stores/ai-store";
 import "./App.css";
 
 // Error boundary to catch and display runtime errors
@@ -50,7 +57,13 @@ class ErrorBoundary extends Component<
 function App() {
   const [isSourceMode, setIsSourceMode] = useState(false);
   const [sourceContent, setSourceContent] = useState("");
+  const [sourceCursorOffset, setSourceCursorOffset] = useState(0);
+  const [inlineAIEditOpen, setInlineAIEditOpen] = useState(false);
+  const sourceEditorRef = useRef<SourceCodeEditorRef>(null);
+  // Ref mirrors sourceContent state — always has the latest value, immune to stale closures
+  const sourceContentRef = useRef("");
   const { toggleSidebar, toggleCommandPalette } = useUIStore();
+  const isConfigured = useAIStore((s) => s.isConfigured);
 
   const editor = useEditor({
     extensions: createBaramExtensions(),
@@ -58,21 +71,62 @@ function App() {
     immediatelyRender: false,
   });
 
-  // Cmd+/ toggle between WYSIWYG and Source Code mode
+  // Stable onChange for SourceCodeEditor — updates both ref and state
+  const handleSourceChange = useCallback((content: string) => {
+    sourceContentRef.current = content;
+    setSourceContent(content);
+  }, []);
+
+  // Cmd+/ toggle between WYSIWYG and Source Code mode (§5.1 cursor preservation)
   const toggleSourceMode = useCallback(() => {
     if (!editor) return;
 
     if (!isSourceMode) {
+      // WYSIWYG → Source: map PM cursor to markdown offset
       const md = prosemirrorToMarkdown(editor.state.doc);
+      const pmPos = editor.state.selection.from;
+      const mdOffset = pmPosToMdOffset(editor.state.doc, pmPos, md);
+
+      sourceContentRef.current = md;
       setSourceContent(md);
+      setSourceCursorOffset(mdOffset);
       setIsSourceMode(true);
     } else {
-      const doc = markdownToProsemirror(sourceContent, editor.schema);
-      editor.commands.setContent(doc.toJSON());
+      // Source → WYSIWYG
+      // Use original markdown unless the user actually edited in Source mode.
+      // WebKit injects "<!--  -->" into CodeMirror on focus — getContent()
+      // would return corrupted content if the user didn't edit.
+      const userEdited = sourceEditorRef.current?.hasUserEdited() ?? false;
+      const currentSource = userEdited
+        ? (sourceEditorRef.current?.getContent() ?? sourceContentRef.current)
+        : sourceContentRef.current;
+      const mdOffset = sourceEditorRef.current?.getCursorOffset() ?? 0;
+
+      const newDoc = markdownToProsemirror(currentSource, editor.schema);
+      const pmPos = mdOffsetToPmPos(newDoc, mdOffset, currentSource);
+
+      // Replace the ProseMirror state directly (bypasses Tiptap setContent
+      // which can conflict with EditorContent mount/unmount lifecycle)
+      const clampedPos = Math.min(Math.max(pmPos, 0), newDoc.content.size);
+      const newState = EditorState.create({
+        doc: newDoc,
+        plugins: editor.state.plugins,
+        selection: TextSelection.near(newDoc.resolve(clampedPos)),
+      });
+      editor.view.updateState(newState);
+
       setIsSourceMode(false);
-      editor.commands.focus();
+
+      // Focus after EditorContent mounts
+      requestAnimationFrame(() => {
+        try {
+          editor.commands.focus();
+        } catch {
+          // ignore focus errors
+        }
+      });
     }
-  }, [editor, isSourceMode, sourceContent]);
+  }, [editor, isSourceMode]);
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -93,20 +147,23 @@ function App() {
         return;
       }
 
-      // Cmd+K — command palette (when no selection in editor)
+      // Cmd+K — inline AI edit (when selection) or command palette (no selection)
       if (mod && e.key === "k") {
+        e.preventDefault();
         const hasSelection =
           editor && !editor.state.selection.empty && !isSourceMode;
-        if (!hasSelection) {
-          e.preventDefault();
+        if (hasSelection && isConfigured()) {
+          setInlineAIEditOpen(true);
+        } else {
           toggleCommandPalette();
         }
+        return;
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [toggleSourceMode, toggleSidebar, toggleCommandPalette, editor, isSourceMode]);
+  }, [toggleSourceMode, toggleSidebar, toggleCommandPalette, editor, isSourceMode, isConfigured]);
 
   return (
     <>
@@ -118,8 +175,10 @@ function App() {
         <div className="editor-area">
           {isSourceMode ? (
             <SourceCodeEditor
+              ref={sourceEditorRef}
               content={sourceContent}
-              onChange={setSourceContent}
+              onChange={handleSourceChange}
+              initialCursorOffset={sourceCursorOffset}
             />
           ) : (
             <>
@@ -129,6 +188,12 @@ function App() {
                 <FloatingToolbar editor={editor} />
                 <BlockHandle editor={editor} />
                 <ContextMenu editor={editor} />
+                {inlineAIEditOpen && (
+                  <InlineAIEdit
+                    editor={editor}
+                    onClose={() => setInlineAIEditOpen(false)}
+                  />
+                )}
               </>
             )}
             </>
@@ -136,6 +201,8 @@ function App() {
         </div>
       </AppLayout>
       <CommandPalette editor={editor} onToggleSourceMode={toggleSourceMode} />
+      <SettingsModal />
+      {editor && <SlashAIHandler editor={editor} />}
     </>
   );
 }
