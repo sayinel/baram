@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <strong>Typora's WYSIWYG quality + Obsidian's extensibility + AI-native editing</strong>
+  <strong>Beautiful WYSIWYG &middot; Lossless Markdown &middot; AI-native Editing</strong>
 </p>
 
 <p align="center">
@@ -22,7 +22,7 @@
 
 ## What is Baram?
 
-Baram(바람) is a desktop markdown editor where formatting syntax disappears as you type. Move your cursor into a heading and the `## ` prefix reappears for editing; move away and only the styled text remains. This Typora-style experience extends to bold, italic, links, images, math, and more — all while maintaining **lossless markdown roundtrip fidelity**.
+Baram(바람) is a desktop markdown editor where formatting syntax disappears as you type. Move your cursor into a heading and the `## ` prefix reappears for editing; move away and only the styled text remains. This experience extends to bold, italic, links, images, math, and more — all while maintaining **lossless markdown roundtrip fidelity**.
 
 Your `.md` files stay 100% standard markdown. No proprietary format, no lock-in.
 
@@ -109,9 +109,9 @@ Full-featured code editing inside your markdown:
 - Syntax highlighting with a CodeMirror 6 editor instance per block
 - Languages are lazy-loaded — only the language you select gets downloaded
 
-### Tables (GFM)
+### Tables
 
-Standard GitHub Flavored Markdown pipe tables:
+GFM (GitHub Flavored Markdown) pipe table support:
 
 - **Tab** / **Shift+Tab** to navigate between cells
 - Column alignment (`:---`, `:---:`, `---:`) preserved on roundtrip
