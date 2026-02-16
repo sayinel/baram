@@ -69,10 +69,7 @@ function findMarkRange(
   });
 
   for (const range of ranges) {
-    // Use strict < for right boundary: cursor exactly at range.to (mark end)
-    // should NOT trigger expansion. This prevents the infinite cycle where
-    // InputRule places cursor at mark boundary → expand → collapse → re-expand.
-    if (cursorPos >= range.from && cursorPos < range.to) {
+    if (cursorPos >= range.from && cursorPos <= range.to) {
       return range;
     }
   }
@@ -106,7 +103,20 @@ function expandMark(
   tr.insert(range.from, state.schema.text(delim.open));
 
   const newTo = range.to + delim.open.length + delim.close.length;
-  const newCursorPos = cursorPos + delim.open.length;
+
+  // Cursor placement depends on which boundary triggered expansion:
+  // - Left boundary: before opening delimiter  → |**hello**
+  // - Right boundary: after closing delimiter  → **hello**|
+  // - Inside: shift by opening delimiter length → **hel|lo**
+  // checkCursorOut uses strict inequality so boundaries are inside the range.
+  let newCursorPos: number;
+  if (cursorPos <= range.from) {
+    newCursorPos = range.from;
+  } else if (cursorPos >= range.to) {
+    newCursorPos = newTo;
+  } else {
+    newCursorPos = cursorPos + delim.open.length;
+  }
 
   tr.setSelection(TextSelection.create(tr.doc, newCursorPos));
   tr.setMeta(syntaxRevealKey, {
@@ -145,7 +155,15 @@ function expandLink(
   tr.insert(range.from, state.schema.text(openDelim));
 
   const newTo = range.to + openDelim.length + closeDelim.length;
-  const newCursorPos = cursorPos + openDelim.length;
+
+  let newCursorPos: number;
+  if (cursorPos <= range.from) {
+    newCursorPos = range.from;
+  } else if (cursorPos >= range.to) {
+    newCursorPos = newTo;
+  } else {
+    newCursorPos = cursorPos + openDelim.length;
+  }
 
   tr.setSelection(TextSelection.create(tr.doc, newCursorPos));
   tr.setMeta(syntaxRevealKey, {
@@ -393,9 +411,11 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         if (meta !== undefined) return meta;
         if (!value.expanded) return value;
 
-        // Map positions through the transaction
-        const from = tr.mapping.map(value.expanded.from, -1);
-        const to = tr.mapping.map(value.expanded.to, 1);
+        // Map positions through the transaction.
+        // Bias 1 for from: inserts AT from push it right (typing at left boundary).
+        // Bias -1 for to: inserts AT to don't grow the range (typing at right boundary).
+        const from = tr.mapping.map(value.expanded.from, 1);
+        const to = tr.mapping.map(value.expanded.to, -1);
 
         // Validate open delimiter
         try {
@@ -443,9 +463,9 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
       handleClick(view, pos, _event) {
         const es = syntaxRevealKey.getState(view.state);
 
-        // Active + click outside range → collapse
+        // Active + click outside range → collapse (strict: boundaries are inside)
         if (es?.expanded) {
-          if (pos <= es.expanded.from || pos >= es.expanded.to) {
+          if (pos < es.expanded.from || pos > es.expanded.to) {
             collapseExpanded(view, es.expanded);
             return false;
           }
@@ -532,7 +552,9 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         const es = syntaxRevealKey.getState(view.state);
         if (!es?.expanded) return;
         const { from } = view.state.selection;
-        if (from <= es.expanded.from || from >= es.expanded.to) {
+        // Strict: cursor AT the boundary stays expanded.
+        // Must move PAST the boundary to collapse.
+        if (from < es.expanded.from || from > es.expanded.to) {
           collapseExpanded(view, es.expanded);
         }
       }
@@ -548,9 +570,25 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         const parentNode = $pos.parent;
         if (!parentNode.isTextblock) return;
         const parentPos = $pos.before($pos.depth) + 1;
-        const marks = $pos.marks();
 
-        for (const mark of marks) {
+        // Collect marks: $pos.marks() covers inside + right boundary.
+        // At left boundary (textOffset=0), $pos.marks() uses the node BEFORE
+        // cursor, which lacks the mark. Also check nodeAfter's marks.
+        const marks = $pos.marks();
+        const allMarks: Mark[] = [...marks];
+
+        if ($pos.textOffset === 0) {
+          const nodeAfter = parentNode.maybeChild($pos.index($pos.depth));
+          if (nodeAfter) {
+            for (const m of nodeAfter.marks) {
+              if (!allMarks.some((existing) => existing.eq(m))) {
+                allMarks.push(m);
+              }
+            }
+          }
+        }
+
+        for (const mark of allMarks) {
           const delim = MARK_DELIMITERS[mark.type.name];
           if (!delim) continue;
 
@@ -575,13 +613,22 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         if (!(selection instanceof TextSelection)) return;
 
         const $pos = selection.$from;
-        const marks = $pos.marks();
-        const linkMark = marks.find((m) => m.type.name === "link");
-        if (!linkMark) return;
-
         const parentNode = $pos.parent;
         if (!parentNode.isTextblock) return;
         const parentPos = $pos.before($pos.depth) + 1;
+
+        // Check $pos.marks() + nodeAfter marks for left boundary
+        const marks = $pos.marks();
+        let linkMark = marks.find((m) => m.type.name === "link");
+
+        if (!linkMark && $pos.textOffset === 0) {
+          const nodeAfter = parentNode.maybeChild($pos.index($pos.depth));
+          if (nodeAfter) {
+            linkMark = nodeAfter.marks.find((m) => m.type.name === "link");
+          }
+        }
+
+        if (!linkMark) return;
 
         const range = findMarkRange(
           parentNode,
@@ -618,14 +665,33 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         }
       }
 
+      // Track cursor position at last doc change to prevent
+      // InputRule/collapse → cursor at mark boundary → immediate re-expand.
+      // Expansion is only allowed after the cursor MOVES from this position.
+      let cursorAtDocChange: number | null = null;
+
       return {
-        update(view: EditorView) {
+        update(view: EditorView, prevState: EditorState) {
           checkNodeSelection(view);
 
           const es = syntaxRevealKey.getState(view.state);
           if (es?.expanded) {
             checkCursorOut(view);
             return;
+          }
+
+          // On doc change, remember cursor position and skip expansion
+          if (view.state.doc !== prevState.doc) {
+            cursorAtDocChange = view.state.selection.from;
+            return;
+          }
+
+          // Skip expansion until cursor moves from the doc-change position
+          if (cursorAtDocChange !== null) {
+            if (view.state.selection.from === cursorAtDocChange) {
+              return;
+            }
+            cursorAtDocChange = null;
           }
 
           // Try link first, then mark
