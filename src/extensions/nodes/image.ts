@@ -1,5 +1,7 @@
-// §5.1 Image Extension (block-level)
+// §5.1 Image Extension (block-level) with §3.3 NodeView
 import { Node, mergeAttributes, InputRule } from "@tiptap/core";
+import { ReactNodeViewRenderer } from "@tiptap/react";
+import { ImageView } from "./image-view";
 
 export interface ImageOptions {
   HTMLAttributes: Record<string, string>;
@@ -36,6 +38,7 @@ export const Image = Node.create<ImageOptions>({
       src: { default: null },
       alt: { default: null },
       title: { default: null },
+      widthPercent: { default: 100 },
     };
   },
 
@@ -48,6 +51,10 @@ export const Image = Node.create<ImageOptions>({
       "img",
       mergeAttributes(this.options.HTMLAttributes, HTMLAttributes),
     ];
+  },
+
+  addNodeView() {
+    return ReactNodeViewRenderer(ImageView);
   },
 
   addCommands() {

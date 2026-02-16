@@ -290,17 +290,95 @@ body {
   padding: 0.1em 0.3em;
 }
 
-/* §5.1 Image */
-.tiptap img {
-  max-width: 100%;
-  height: auto;
-  border-radius: 4px;
+/* §5.1 Image + §3.3 Image NodeView */
+.tiptap .image-node-view {
   margin: 0.5em 0;
 }
 
-.tiptap img.ProseMirror-selectednode {
+.tiptap .image-figure {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  margin: 0;
+  transition: width 0.2s ease;
+}
+
+.tiptap .image-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
+.tiptap .image-figure.image-selected img {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
+}
+
+.tiptap .image-toolbar {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 6px;
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 6px;
+  z-index: 10;
+}
+
+.tiptap .image-toolbar-btn {
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  color: #e5e5e5;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.tiptap .image-toolbar-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.tiptap .image-toolbar-btn-active {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.tiptap .image-toolbar-sep {
+  width: 1px;
+  height: 14px;
+  background: rgba(255, 255, 255, 0.25);
+  margin: 0 2px;
+}
+
+.tiptap .image-caption {
+  text-align: center;
+  font-size: 0.85em;
+  color: var(--color-text-secondary);
+  margin-top: 4px;
+  cursor: pointer;
+}
+
+.tiptap .image-caption-input {
+  width: 100%;
+  text-align: center;
+  font-size: 0.85em;
+  color: var(--color-text-primary);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  padding: 2px 6px;
+  outline: none;
+}
+
+.tiptap .image-caption-input:focus {
+  border-color: var(--color-accent);
 }
 
 /* Inline marks */
@@ -1253,30 +1331,13 @@ body {
   margin: 4px 0;
 }
 
-/* §5.1 Syntax Reveal — Typora-style focus-based syntax */
+/* §5.1 + §3.3 Syntax Reveal — Typora-style editable source mode */
 
-/* Heading prefix (## ) shown when cursor is inside */
-.tiptap h1.syntax-visible::before { content: "# "; }
-.tiptap h2.syntax-visible::before { content: "## "; }
-.tiptap h3.syntax-visible::before { content: "### "; }
-.tiptap h4.syntax-visible::before { content: "#### "; }
-.tiptap h5.syntax-visible::before { content: "##### "; }
-.tiptap h6.syntax-visible::before { content: "###### "; }
-
-.tiptap .syntax-visible::before {
+/* Block-level highlight when in source editing mode */
+.tiptap .syntax-editing {
+  background-color: var(--color-bg-secondary);
+  border-radius: 4px;
   font-family: var(--font-mono);
-  font-weight: 400;
-  font-size: 0.75em;
-  color: var(--color-text-muted);
-  opacity: 0.7;
-}
-
-/* Mark delimiters (**, *, ~~, `, <u>, [](url)) */
-.syntax-delimiter {
-  font-family: var(--font-mono);
-  font-size: 0.85em;
-  color: var(--color-text-muted);
-  opacity: 0.6;
-  user-select: none;
-  pointer-events: none;
+  font-size: 0.95em;
+  transition: background-color 0.15s ease;
 }

@@ -310,6 +310,15 @@
       "shortcuts": {}
     },
     {
+      "name": "dropHandler",
+      "file": "plugins/drop-handler.ts",
+      "spec": "§3.3",
+      "phase": 1,
+      "milestone": "M2",
+      "status": "implemented",
+      "shortcuts": {}
+    },
+    {
       "name": "dragHandle",
       "file": "plugins/drag-handle.ts",
       "spec": "§4.8",

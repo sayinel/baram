@@ -35,6 +35,7 @@ import { Frontmatter } from "./nodes/frontmatter";
 import { MathInlineEdit } from "./plugins/math-inline-edit";
 import { SlashCommands } from "./plugins/slash-command";
 import { SyntaxReveal } from "./plugins/syntax-reveal";
+import { DropHandler } from "./plugins/drop-handler";
 
 // Mark Extensions
 import { Bold } from "./marks/bold";
@@ -99,6 +100,9 @@ export function createBaramExtensions(): Extensions {
 
     // Plugins — §5.1 Syntax Reveal (Typora-style)
     SyntaxReveal,
+
+    // Plugins — §3.3 Drop Handler (drag-and-drop images)
+    DropHandler,
 
     // UI
     Placeholder.configure({
