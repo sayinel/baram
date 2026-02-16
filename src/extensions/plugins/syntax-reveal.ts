@@ -45,6 +45,26 @@ const MARK_DELIMITERS: Record<string, { open: string; close: string }> = {
 // ── Helpers ───────────────────────────────────────────────────────────
 
 /**
+ * Compute the content length (text between delimiters) of an expanded range.
+ */
+function computeContentLen(state: EditorState, expanded: ExpandedRange): number {
+  const { from, to, kind, openCheck, closeCheck } = expanded;
+  if (kind === "mark" && closeCheck) {
+    return (to - closeCheck.length) - (from + openCheck.length);
+  }
+  if (kind === "link") {
+    try {
+      const fullText = state.doc.textBetween(from, to);
+      const bracketIdx = fullText.indexOf("](");
+      return bracketIdx >= 0 ? bracketIdx - 1 : 0;
+    } catch {
+      return 0;
+    }
+  }
+  return 0;
+}
+
+/**
  * Find the contiguous range of a specific mark that contains the cursor.
  */
 function findMarkRange(
@@ -220,9 +240,16 @@ function expandImage(
 
 // ── Collapse expanded range ───────────────────────────────────────────
 
+/**
+ * Collapse expanded delimiters back to marks/nodes.
+ * @param cursorTarget — if provided, place cursor here in the collapsed doc.
+ *   Otherwise ProseMirror's default position mapping through the replace steps
+ *   determines the final cursor position.
+ */
 function collapseExpanded(
   view: EditorView,
   expanded: ExpandedRange,
+  cursorTarget?: number,
 ): void {
   const { state } = view;
   const { tr } = state;
@@ -242,8 +269,9 @@ function collapseExpanded(
     return;
   }
 
+  let contentLen = 0;
+
   if (kind === "mark" && markName) {
-    // ── Collapse mark ──
     const markType = state.schema.marks[markName];
     if (!markType || !closeCheck) {
       tr.setMeta(syntaxRevealKey, INACTIVE);
@@ -251,14 +279,9 @@ function collapseExpanded(
       return;
     }
 
-    // Validate both delimiters
     try {
-      const closeText = state.doc.textBetween(
-        to - closeCheck.length,
-        to,
-      );
+      const closeText = state.doc.textBetween(to - closeCheck.length, to);
       if (closeText !== closeCheck) {
-        // Delimiters modified → leave as plain text
         tr.setMeta(syntaxRevealKey, INACTIVE);
         view.dispatch(tr);
         return;
@@ -271,63 +294,83 @@ function collapseExpanded(
 
     const contentFrom = from + openCheck.length;
     const contentTo = to - closeCheck.length;
-    const contentLen = contentTo - contentFrom;
+    contentLen = contentTo - contentFrom;
 
     if (contentLen <= 0) {
-      // Empty → delete everything
       tr.delete(from, to);
     } else {
-      // Get content preserving other marks
       const content = state.doc.slice(contentFrom, contentTo).content;
       tr.replaceWith(from, to, content);
       tr.addMark(from, from + contentLen, markType.create());
     }
   } else if (kind === "link") {
-    // ── Collapse link ──
     const fullText = state.doc.textBetween(from, to);
     const linkMatch = fullText.match(
       /^\[([^\]]*)\]\((\S+?)(?:\s+"([^"]*)")?\)$/,
     );
+    if (!linkMatch) {
+      tr.setMeta(syntaxRevealKey, INACTIVE);
+      view.dispatch(tr);
+      return;
+    }
 
-    if (linkMatch) {
-      const [, , href, title] = linkMatch;
-      const bracketIdx = fullText.indexOf("](");
+    const [, , href, title] = linkMatch;
+    const bracketIdx = fullText.indexOf("](");
+    if (bracketIdx < 0) {
+      tr.setMeta(syntaxRevealKey, INACTIVE);
+      view.dispatch(tr);
+      return;
+    }
 
-      if (bracketIdx >= 0) {
-        const contentFrom = from + 1;
-        const contentTo = from + bracketIdx;
-        const contentLen = bracketIdx - 1;
+    const contentFrom = from + 1;
+    const contentTo = from + bracketIdx;
+    contentLen = bracketIdx - 1;
 
-        const linkMark = state.schema.marks.link.create({
-          href,
-          title: title || null,
-        });
+    const linkMark = state.schema.marks.link.create({
+      href,
+      title: title || null,
+    });
 
-        if (contentLen <= 0) {
-          tr.delete(from, to);
-        } else {
-          const content = state.doc.slice(contentFrom, contentTo).content;
-          tr.replaceWith(from, to, content);
-          tr.addMark(from, from + contentLen, linkMark);
-        }
-      }
+    if (contentLen <= 0) {
+      tr.delete(from, to);
+    } else {
+      const content = state.doc.slice(contentFrom, contentTo).content;
+      tr.replaceWith(from, to, content);
+      tr.addMark(from, from + contentLen, linkMark);
     }
   } else if (kind === "image") {
-    // ── Collapse image ──
     const fullText = state.doc.textBetween(from, to);
     const imgMatch = fullText.match(
       /^!\[([^\]]*)\]\((\S+?)(?:\s+"([^"]*)")?\)$/,
     );
+    if (!imgMatch) {
+      tr.setMeta(syntaxRevealKey, INACTIVE);
+      view.dispatch(tr);
+      return;
+    }
 
-    if (imgMatch) {
-      const [, alt, src, title] = imgMatch;
-      const imageNode = state.schema.nodes.image.create({
-        src,
-        alt: alt || null,
-        title: title || null,
-      });
-      // Replace the entire paragraph (from-1 to to+1) with image block
-      tr.replaceWith(from - 1, to + 1, imageNode);
+    const [, alt, src, title] = imgMatch;
+    const imageNode = state.schema.nodes.image.create({
+      src,
+      alt: alt || null,
+      title: title || null,
+    });
+    const imgFrom = from - 1;
+    const imgTo = to + 1;
+    tr.replaceWith(imgFrom, imgTo, imageNode);
+  }
+
+  // Set explicit cursor position if requested
+  if (cursorTarget !== undefined) {
+    try {
+      tr.setSelection(
+        TextSelection.create(
+          tr.doc,
+          Math.max(0, Math.min(cursorTarget, tr.doc.content.size)),
+        ),
+      );
+    } catch {
+      // fallback: let ProseMirror's default mapping handle it
     }
   }
 
@@ -447,6 +490,118 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
       },
     },
 
+    // ── appendTransaction: cursor-out collapse ───────────────────────
+    // Using appendTransaction instead of dispatching from view.update()
+    // ensures collapse is batched with the cursor-move transaction into
+    // a single DOM render, preventing visual cursor jumps.
+    appendTransaction(_transactions, _oldState, newState) {
+      const es = syntaxRevealKey.getState(newState);
+      if (!es?.expanded) return null;
+
+      const cursorPos = newState.selection.from;
+      // Strict inequality: cursor AT boundary stays expanded
+      if (cursorPos >= es.expanded.from && cursorPos <= es.expanded.to) {
+        return null;
+      }
+
+      // Cursor moved outside → build collapse transaction with explicit cursor
+      const { from, to, kind, openCheck, closeCheck, markName } = es.expanded;
+      const tr = newState.tr;
+
+      // Validate open delimiter
+      try {
+        const openText = newState.doc.textBetween(from, from + openCheck.length);
+        if (openText !== openCheck) {
+          tr.setMeta(syntaxRevealKey, INACTIVE);
+          return tr;
+        }
+      } catch {
+        tr.setMeta(syntaxRevealKey, INACTIVE);
+        return tr;
+      }
+
+      // Compute content length for cursor mapping
+      let contentLen = 0;
+      if (kind === "mark" && markName && closeCheck) {
+        const markType = newState.schema.marks[markName];
+        if (!markType) { tr.setMeta(syntaxRevealKey, INACTIVE); return tr; }
+
+        try {
+          const closeText = newState.doc.textBetween(to - closeCheck.length, to);
+          if (closeText !== closeCheck) { tr.setMeta(syntaxRevealKey, INACTIVE); return tr; }
+        } catch { tr.setMeta(syntaxRevealKey, INACTIVE); return tr; }
+
+        const contentFrom = from + openCheck.length;
+        const contentTo = to - closeCheck.length;
+        contentLen = contentTo - contentFrom;
+
+        if (contentLen <= 0) {
+          tr.delete(from, to);
+        } else {
+          const content = newState.doc.slice(contentFrom, contentTo).content;
+          tr.replaceWith(from, to, content);
+          tr.addMark(from, from + contentLen, markType.create());
+        }
+      } else if (kind === "link") {
+        const fullText = newState.doc.textBetween(from, to);
+        const linkMatch = fullText.match(
+          /^\[([^\]]*)\]\((\S+?)(?:\s+"([^"]*)")?\)$/,
+        );
+        if (!linkMatch) { tr.setMeta(syntaxRevealKey, INACTIVE); return tr; }
+
+        const [, , href, title] = linkMatch;
+        const bracketIdx = fullText.indexOf("](");
+        if (bracketIdx < 0) { tr.setMeta(syntaxRevealKey, INACTIVE); return tr; }
+
+        contentLen = bracketIdx - 1;
+        const linkMark = newState.schema.marks.link.create({
+          href, title: title || null,
+        });
+
+        if (contentLen <= 0) {
+          tr.delete(from, to);
+        } else {
+          const content = newState.doc.slice(from + 1, from + bracketIdx).content;
+          tr.replaceWith(from, to, content);
+          tr.addMark(from, from + contentLen, linkMark);
+        }
+      } else if (kind === "image") {
+        const fullText = newState.doc.textBetween(from, to);
+        const imgMatch = fullText.match(
+          /^!\[([^\]]*)\]\((\S+?)(?:\s+"([^"]*)")?\)$/,
+        );
+        if (!imgMatch) { tr.setMeta(syntaxRevealKey, INACTIVE); return tr; }
+
+        const [, alt, src, title2] = imgMatch;
+        const imageNode = newState.schema.nodes.image.create({
+          src, alt: alt || null, title: title2 || null,
+        });
+        tr.replaceWith(from - 1, to + 1, imageNode);
+      }
+
+      // Explicit cursor: compute where cursor should be in the collapsed doc
+      const markEnd = from + Math.max(0, contentLen);
+      let targetCursor: number;
+      if (cursorPos > to) {
+        // Cursor was past the expanded range → adjust by size difference
+        targetCursor = cursorPos - (to - from) + Math.max(0, contentLen);
+      } else if (cursorPos < from) {
+        targetCursor = cursorPos;
+      } else {
+        targetCursor = markEnd;
+      }
+
+      try {
+        const clamped = Math.max(0, Math.min(targetCursor, tr.doc.content.size));
+        tr.setSelection(TextSelection.create(tr.doc, clamped));
+      } catch {
+        // fallback: default mapping
+      }
+
+      tr.setMeta(syntaxRevealKey, INACTIVE);
+      return tr;
+    },
+
     // ── Props ────────────────────────────────────────────────────────
     props: {
       decorations(state) {
@@ -463,12 +618,8 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
       handleClick(view, pos, _event) {
         const es = syntaxRevealKey.getState(view.state);
 
-        // Active + click outside range → collapse (strict: boundaries are inside)
+        // Active: let appendTransaction handle collapse if cursor outside
         if (es?.expanded) {
-          if (pos < es.expanded.from || pos > es.expanded.to) {
-            collapseExpanded(view, es.expanded);
-            return false;
-          }
           return false;
         }
 
@@ -523,6 +674,46 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
           return true;
         }
 
+        // ArrowRight at right boundary → collapse + advance cursor past mark
+        if (
+          event.key === "ArrowRight" &&
+          !event.shiftKey &&
+          !event.metaKey &&
+          !event.ctrlKey &&
+          !event.altKey
+        ) {
+          const selFrom = view.state.selection.from;
+          if (selFrom === es.expanded.to) {
+            event.preventDefault();
+            const cLen = computeContentLen(view.state, es.expanded);
+            // After collapse, mark occupies [from, from+cLen].
+            // ArrowRight → one position past the mark end.
+            collapseExpanded(view, es.expanded, es.expanded.from + cLen + 1);
+            return true;
+          }
+        }
+
+        // ArrowLeft at left boundary → collapse + retreat cursor before mark
+        if (
+          event.key === "ArrowLeft" &&
+          !event.shiftKey &&
+          !event.metaKey &&
+          !event.ctrlKey &&
+          !event.altKey
+        ) {
+          const selFrom = view.state.selection.from;
+          if (selFrom === es.expanded.from) {
+            event.preventDefault();
+            // After collapse, mark starts at from. One position before = from - 1.
+            collapseExpanded(
+              view,
+              es.expanded,
+              Math.max(0, es.expanded.from - 1),
+            );
+            return true;
+          }
+        }
+
         // Backspace at opening delimiter → delete entire expanded content
         if (event.key === "Backspace") {
           const { from: selFrom } = view.state.selection;
@@ -546,19 +737,8 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
       },
     },
 
-    // ── Plugin View (cursor-out detection + auto-expand) ──────────
+    // ── Plugin View (auto-expand on cursor entering mark/link) ────
     view() {
-      function checkCursorOut(view: EditorView) {
-        const es = syntaxRevealKey.getState(view.state);
-        if (!es?.expanded) return;
-        const { from } = view.state.selection;
-        // Strict: cursor AT the boundary stays expanded.
-        // Must move PAST the boundary to collapse.
-        if (from < es.expanded.from || from > es.expanded.to) {
-          collapseExpanded(view, es.expanded);
-        }
-      }
-
       function checkCursorInMark(view: EditorView) {
         const es = syntaxRevealKey.getState(view.state);
         if (es?.expanded) return;
@@ -675,10 +855,8 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
           checkNodeSelection(view);
 
           const es = syntaxRevealKey.getState(view.state);
-          if (es?.expanded) {
-            checkCursorOut(view);
-            return;
-          }
+          // If expanded, appendTransaction handles cursor-out collapse.
+          if (es?.expanded) return;
 
           // On doc change, remember cursor position and skip expansion
           if (view.state.doc !== prevState.doc) {
