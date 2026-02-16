@@ -85,7 +85,21 @@ pub fn run() {
                 .item(&view_palette)
                 .build()?;
 
+            // --- App menu (macOS: first submenu = application menu with Quit) ---
+            let app_menu = SubmenuBuilder::new(app, "Baram")
+                .about(None)
+                .separator()
+                .services()
+                .separator()
+                .hide()
+                .hide_others()
+                .show_all()
+                .separator()
+                .quit()
+                .build()?;
+
             let menu = MenuBuilder::new(app)
+                .item(&app_menu)
                 .item(&file_menu)
                 .item(&edit_menu)
                 .item(&view_menu)
