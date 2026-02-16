@@ -1331,6 +1331,181 @@ body {
   margin: 4px 0;
 }
 
+/* ============================================
+   §5.12 Export Dialog
+   ============================================ */
+
+.export-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 20vh;
+}
+
+.export-dialog {
+  width: 400px;
+  background-color: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.export-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.export-dialog-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.export-dialog-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.export-dialog-close:hover {
+  background-color: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+}
+
+.export-dialog-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.export-dialog-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.export-dialog-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.export-format-tabs {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.export-format-tab {
+  flex: 1;
+  padding: 6px 0;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-align: center;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.1s;
+}
+
+.export-format-tab:not(:last-child) {
+  border-right: 1px solid var(--color-border);
+}
+
+.export-format-tab:hover {
+  background-color: var(--color-bg-secondary);
+}
+
+.export-format-tab-active {
+  background-color: var(--color-accent);
+  color: white;
+}
+
+.export-format-tab-active:hover {
+  background-color: var(--color-accent-hover);
+}
+
+.export-dialog-input {
+  padding: 8px 10px;
+  font-size: 0.9rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  outline: none;
+  font-family: var(--font-sans);
+}
+
+.export-dialog-input:focus {
+  border-color: var(--color-accent);
+}
+
+.export-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--color-border-light);
+}
+
+.export-dialog-btn {
+  padding: 6px 16px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.1s;
+  font-family: var(--font-sans);
+}
+
+.export-dialog-btn-cancel {
+  background: var(--color-bg-primary);
+  color: var(--color-text-secondary);
+}
+
+.export-dialog-btn-cancel:hover {
+  background: var(--color-bg-secondary);
+}
+
+.export-dialog-btn-primary {
+  background: var(--color-accent);
+  color: white;
+  border-color: var(--color-accent);
+}
+
+.export-dialog-btn-primary:hover {
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+}
+
+.export-dialog-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* §5.1 + §3.3 Syntax Reveal — Typora-style focus-based syntax */
 
 /* Expanded delimiters — inline decoration on actual editable text */

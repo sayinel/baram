@@ -16,6 +16,19 @@ function buildCommands(
   toggleSourceMode: () => void,
 ): CommandItem[] {
   return [
+    // File
+    {
+      id: "file:export-html",
+      label: "Export as HTML",
+      category: "File",
+      action: () => useUIStore.getState().openExportDialog("html"),
+    },
+    {
+      id: "file:export-pdf",
+      label: "Export as PDF (Print)",
+      category: "File",
+      action: () => useUIStore.getState().openExportDialog("pdf"),
+    },
     // View
     {
       id: "view:source-mode",

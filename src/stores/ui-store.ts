@@ -2,6 +2,7 @@
 import { create } from "zustand";
 
 type SidebarPanel = "files" | "outline" | "search" | "backlinks";
+type ExportFormat = "html" | "pdf";
 
 interface UIState {
   sidebarOpen: boolean;
@@ -11,6 +12,8 @@ interface UIState {
   rightPanelWidth: number;
   commandPaletteOpen: boolean;
   settingsOpen: boolean;
+  exportDialogOpen: boolean;
+  exportFormat: ExportFormat;
 
   toggleSidebar: () => void;
   setSidebarPanel: (panel: SidebarPanel) => void;
@@ -19,6 +22,8 @@ interface UIState {
   setRightPanelWidth: (width: number) => void;
   toggleCommandPalette: () => void;
   toggleSettings: () => void;
+  openExportDialog: (format?: ExportFormat) => void;
+  closeExportDialog: () => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -29,6 +34,8 @@ export const useUIStore = create<UIState>((set) => ({
   rightPanelWidth: 300,
   commandPaletteOpen: false,
   settingsOpen: false,
+  exportDialogOpen: false,
+  exportFormat: "html" as ExportFormat,
 
   toggleSidebar: () =>
     set((state) => ({ sidebarOpen: !state.sidebarOpen })),
@@ -47,4 +54,9 @@ export const useUIStore = create<UIState>((set) => ({
 
   toggleSettings: () =>
     set((state) => ({ settingsOpen: !state.settingsOpen })),
+
+  openExportDialog: (format) =>
+    set({ exportDialogOpen: true, exportFormat: format ?? "html" }),
+
+  closeExportDialog: () => set({ exportDialogOpen: false }),
 }));

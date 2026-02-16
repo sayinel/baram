@@ -15,6 +15,45 @@ export default defineConfig(async () => ({
     },
   },
 
+  // §8.4 Build optimization — vendor chunk splitting
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // ProseMirror + Tiptap core — editor essentials (always needed)
+          "vendor-editor": [
+            "@tiptap/core",
+            "@tiptap/react",
+            "@tiptap/pm/state",
+            "@tiptap/pm/view",
+            "@tiptap/pm/model",
+          ],
+          // CodeMirror core — code blocks / source mode only
+          "vendor-codemirror": [
+            "@codemirror/view",
+            "@codemirror/state",
+            "@codemirror/commands",
+            "@codemirror/language",
+          ],
+          // KaTeX — math content only
+          "vendor-katex": ["katex"],
+          // Markdown pipeline — file open/save
+          "vendor-markdown": [
+            "unified",
+            "remark-parse",
+            "remark-stringify",
+            "remark-gfm",
+            "remark-math",
+            "remark-frontmatter",
+            "mdast-util-from-markdown",
+            "mdast-util-gfm",
+            "mdast-util-to-markdown",
+          ],
+        },
+      },
+    },
+  },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

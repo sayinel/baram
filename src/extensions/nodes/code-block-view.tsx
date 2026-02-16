@@ -22,32 +22,44 @@ export function CodeBlockView({ node, updateAttributes, extension }: NodeViewPro
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const langExt = getLanguageExtension(language);
-    const extensions = [
-      keymap.of([...defaultKeymap, indentWithTab]),
-      lineNumbers(),
-      drawSelection(),
-      bracketMatching(),
-      EditorView.lineWrapping,
-      EditorState.readOnly.of(!extension.options.editable),
-      ...(langExt ? [langExt] : []),
-    ];
+    let destroyed = false;
 
-    const state = EditorState.create({
-      doc: node.textContent,
-      extensions,
-    });
+    // §8.4 Language extensions are loaded asynchronously to reduce initial bundle
+    async function initEditor() {
+      const langExt = await getLanguageExtension(language);
+      if (destroyed || !containerRef.current) return;
 
-    const view = new EditorView({
-      state,
-      parent: containerRef.current,
-    });
+      const extensions = [
+        keymap.of([...defaultKeymap, indentWithTab]),
+        lineNumbers(),
+        drawSelection(),
+        bracketMatching(),
+        EditorView.lineWrapping,
+        EditorState.readOnly.of(!extension.options.editable),
+        ...(langExt ? [langExt] : []),
+      ];
 
-    cmViewRef.current = view;
+      const state = EditorState.create({
+        doc: node.textContent,
+        extensions,
+      });
+
+      const view = new EditorView({
+        state,
+        parent: containerRef.current,
+      });
+
+      cmViewRef.current = view;
+    }
+
+    initEditor();
 
     return () => {
-      view.destroy();
-      cmViewRef.current = null;
+      destroyed = true;
+      if (cmViewRef.current) {
+        cmViewRef.current.destroy();
+        cmViewRef.current = null;
+      }
     };
     // Only recreate when language changes
     // eslint-disable-next-line react-hooks/exhaustive-deps

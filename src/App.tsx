@@ -1,23 +1,47 @@
 // §4.2 Baram App — 3-Column layout with editor
-import { Component, useEffect, useState, useCallback, useRef } from "react";
+import {
+  Component,
+  Suspense,
+  lazy,
+  useEffect,
+  useState,
+  useCallback,
+  useRef,
+} from "react";
 import type { ReactNode, ErrorInfo } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { EditorState, TextSelection } from "@tiptap/pm/state";
 import { createBaramExtensions } from "./extensions";
 import { prosemirrorToMarkdown } from "./pipeline/pm-to-md";
 import { markdownToProsemirror } from "./pipeline/md-to-pm";
-import { SourceCodeEditor } from "./components/editor/SourceCodeEditor";
 import type { SourceCodeEditorRef } from "./components/editor/SourceCodeEditor";
 import { pmPosToMdOffset, mdOffsetToPmPos } from "./utils/cursor-mapper";
 import { AppLayout } from "./components/layout/AppLayout";
 import { TabBar } from "./components/layout/TabBar";
 import { StatusBar } from "./components/layout/StatusBar";
-import { CommandPalette } from "./components/command/CommandPalette";
 import { FloatingToolbar } from "./components/toolbar/FloatingToolbar";
 import { BlockHandle } from "./components/toolbar/BlockHandle";
 import { ContextMenu } from "./components/toolbar/ContextMenu";
 import { useUIStore } from "./stores/ui-store";
+import { logAppReady } from "./utils/perf";
 import "./App.css";
+
+// §8.4 Lazy-loaded components — split into separate chunks, loaded on first use
+const SourceCodeEditor = lazy(() =>
+  import("./components/editor/SourceCodeEditor").then((m) => ({
+    default: m.SourceCodeEditor,
+  })),
+);
+const CommandPalette = lazy(() =>
+  import("./components/command/CommandPalette").then((m) => ({
+    default: m.CommandPalette,
+  })),
+);
+const ExportDialog = lazy(() =>
+  import("./components/export/ExportDialog").then((m) => ({
+    default: m.ExportDialog,
+  })),
+);
 
 // Error boundary to catch and display runtime errors
 class ErrorBoundary extends Component<
@@ -63,6 +87,7 @@ function App() {
     extensions: createBaramExtensions(),
     autofocus: true,
     immediatelyRender: false,
+    onCreate: () => logAppReady(),
   });
 
   // Stable onChange for SourceCodeEditor — updates both ref and state
@@ -162,12 +187,14 @@ function App() {
         <TabBar />
         <div className="editor-area">
           {isSourceMode ? (
-            <SourceCodeEditor
-              ref={sourceEditorRef}
-              content={sourceContent}
-              onChange={handleSourceChange}
-              initialCursorOffset={sourceCursorOffset}
-            />
+            <Suspense fallback={null}>
+              <SourceCodeEditor
+                ref={sourceEditorRef}
+                content={sourceContent}
+                onChange={handleSourceChange}
+                initialCursorOffset={sourceCursorOffset}
+              />
+            </Suspense>
           ) : (
             <>
               <EditorContent editor={editor} />
@@ -182,7 +209,10 @@ function App() {
           )}
         </div>
       </AppLayout>
-      <CommandPalette editor={editor} onToggleSourceMode={toggleSourceMode} />
+      <Suspense fallback={null}>
+        <CommandPalette editor={editor} onToggleSourceMode={toggleSourceMode} />
+        <ExportDialog editor={editor} />
+      </Suspense>
     </>
   );
 }

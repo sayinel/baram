@@ -1,68 +1,91 @@
 // §5.4 CodeMirror 6 language support mapping
+// §8.4 Languages are dynamically imported to reduce initial bundle size (~300KB savings)
 import type { Extension } from "@codemirror/state";
-import { javascript } from "@codemirror/lang-javascript";
-import { python } from "@codemirror/lang-python";
-import { java } from "@codemirror/lang-java";
-import { cpp } from "@codemirror/lang-cpp";
-import { html } from "@codemirror/lang-html";
-import { css } from "@codemirror/lang-css";
-import { json } from "@codemirror/lang-json";
-import { yaml } from "@codemirror/lang-yaml";
-import { markdown } from "@codemirror/lang-markdown";
-import { rust } from "@codemirror/lang-rust";
-import { sql } from "@codemirror/lang-sql";
-import { xml } from "@codemirror/lang-xml";
-import { go } from "@codemirror/lang-go";
-import { php } from "@codemirror/lang-php";
 
-/** Get CodeMirror language extension by name */
-export function getLanguageExtension(lang: string): Extension | null {
+/** Get CodeMirror language extension by name (async — lazy loads language pack) */
+export async function getLanguageExtension(
+  lang: string,
+): Promise<Extension | null> {
   const normalized = lang.toLowerCase().trim();
 
   switch (normalized) {
     case "javascript":
-    case "js":
+    case "js": {
+      const { javascript } = await import("@codemirror/lang-javascript");
       return javascript();
+    }
     case "typescript":
-    case "ts":
+    case "ts": {
+      const { javascript } = await import("@codemirror/lang-javascript");
       return javascript({ typescript: true });
-    case "jsx":
+    }
+    case "jsx": {
+      const { javascript } = await import("@codemirror/lang-javascript");
       return javascript({ jsx: true });
-    case "tsx":
+    }
+    case "tsx": {
+      const { javascript } = await import("@codemirror/lang-javascript");
       return javascript({ typescript: true, jsx: true });
+    }
     case "python":
-    case "py":
+    case "py": {
+      const { python } = await import("@codemirror/lang-python");
       return python();
-    case "java":
+    }
+    case "java": {
+      const { java } = await import("@codemirror/lang-java");
       return java();
+    }
     case "c":
     case "cpp":
-    case "c++":
+    case "c++": {
+      const { cpp } = await import("@codemirror/lang-cpp");
       return cpp();
-    case "html":
+    }
+    case "html": {
+      const { html } = await import("@codemirror/lang-html");
       return html();
-    case "css":
+    }
+    case "css": {
+      const { css } = await import("@codemirror/lang-css");
       return css();
-    case "json":
+    }
+    case "json": {
+      const { json } = await import("@codemirror/lang-json");
       return json();
+    }
     case "yaml":
-    case "yml":
+    case "yml": {
+      const { yaml } = await import("@codemirror/lang-yaml");
       return yaml();
+    }
     case "markdown":
-    case "md":
+    case "md": {
+      const { markdown } = await import("@codemirror/lang-markdown");
       return markdown();
+    }
     case "rust":
-    case "rs":
+    case "rs": {
+      const { rust } = await import("@codemirror/lang-rust");
       return rust();
-    case "sql":
+    }
+    case "sql": {
+      const { sql } = await import("@codemirror/lang-sql");
       return sql();
-    case "xml":
+    }
+    case "xml": {
+      const { xml } = await import("@codemirror/lang-xml");
       return xml();
+    }
     case "go":
-    case "golang":
+    case "golang": {
+      const { go } = await import("@codemirror/lang-go");
       return go();
-    case "php":
+    }
+    case "php": {
+      const { php } = await import("@codemirror/lang-php");
       return php();
+    }
     default:
       return null;
   }
