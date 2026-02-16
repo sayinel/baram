@@ -1333,28 +1333,10 @@ body {
 
 /* §5.1 + §3.3 Syntax Reveal — Typora-style focus-based syntax */
 
-/* Heading prefix (## ) shown when cursor is inside */
-.tiptap h1.syntax-visible::before { content: "# "; }
-.tiptap h2.syntax-visible::before { content: "## "; }
-.tiptap h3.syntax-visible::before { content: "### "; }
-.tiptap h4.syntax-visible::before { content: "#### "; }
-.tiptap h5.syntax-visible::before { content: "##### "; }
-.tiptap h6.syntax-visible::before { content: "###### "; }
-
-.tiptap .syntax-visible::before {
-  font-family: var(--font-mono);
-  font-weight: 400;
-  font-size: 0.75em;
-  color: var(--color-text-muted);
-  opacity: 0.6;
-  transition: opacity 0.15s ease;
-}
-
-/* Mark delimiters — same style as math-delimiter (light gray, mono) */
-.syntax-delimiter {
+/* Expanded delimiters — inline decoration on actual editable text */
+.syntax-delimiter-inline {
   font-family: var(--font-mono);
   font-size: 0.85em;
   color: var(--color-text-muted);
-  user-select: none;
-  pointer-events: none;
+  opacity: 0.7;
 }
