@@ -1,9 +1,9 @@
 {
   "_comment": "Baram 개발 진행 상황 추적. 슬래시 커맨드가 자동으로 업데이트한다.",
   "project": "baram",
-  "lastUpdated": "2026-02-14",
+  "lastUpdated": "2026-02-15",
   "currentPhase": 1,
-  "currentMilestone": "M5",
+  "currentMilestone": "M6",
 
   "milestones": {
     "M1": {
@@ -67,14 +67,27 @@
     },
     "M5": {
       "name": "AI Level 2",
-      "status": "not-started",
+      "status": "completed",
       "weeks": "19-22",
+      "completedAt": "2026-02-14",
       "features": {
-        "22-llm-provider": { "status": "not-started", "tests": "none", "spec": "§6.3" },
-        "23-ai-settings": { "status": "not-started", "tests": "none", "spec": "§6.3" },
-        "24-slash-ai": { "status": "not-started", "tests": "none", "spec": "§6.2" },
-        "25-inline-ai-edit": { "status": "not-started", "tests": "none", "spec": "§6.2" },
-        "26-ai-diff-engine": { "status": "not-started", "tests": "none", "spec": "§6.2" }
+        "22-llm-provider": { "status": "completed", "tests": "3/3 cargo test (SSE parser)", "spec": "§6.3" },
+        "23-ai-settings": { "status": "completed", "tests": "tsc + vite build pass", "spec": "§6.3" },
+        "24-slash-ai": { "status": "completed", "tests": "tsc + vite build pass", "spec": "§6.2" },
+        "25-inline-ai-edit": { "status": "completed", "tests": "13/13 AI diff vitest pass", "spec": "§6.2" },
+        "26-ai-diff-engine": { "status": "completed", "tests": "13/13 AI diff vitest pass", "spec": "§6.2" }
+      }
+    },
+    "M5.1": {
+      "name": "§5.1 Phase 1 미구현 보완",
+      "status": "completed",
+      "completedAt": "2026-02-15",
+      "features": {
+        "syntax-reveal": { "status": "completed", "tests": "9/9 vitest pass", "spec": "§5.1" },
+        "heading-shortcuts": { "status": "completed", "tests": "15/15 vitest pass", "spec": "§5.1" },
+        "underline-mark": { "status": "completed", "tests": "3/3 roundtrip pass", "spec": "§5.1" },
+        "image-nodeview": { "status": "completed", "tests": "tsc + vite build pass", "spec": "§5.1" },
+        "drop-handler": { "status": "completed", "tests": "tsc + vite build pass", "spec": "§3.3" }
       }
     },
     "M6": {
@@ -87,6 +100,22 @@
         "29-perf-optimize": { "status": "not-started", "tests": "none", "spec": "§8.4" },
         "30-release-build": { "status": "not-started", "tests": "none", "spec": "§8.2" }
       }
+    }
+  },
+
+  "testSummary": {
+    "vitest": "98/98 pass",
+    "cargoTest": "3/3 pass",
+    "breakdown": {
+      "stores": 6,
+      "roundtrip-m2": 27,
+      "roundtrip-m3": 14,
+      "roundtrip-stability": 6,
+      "tiptap-toggle": 5,
+      "ai-diff": 13,
+      "heading-shortcuts": 15,
+      "syntax-reveal": 9,
+      "cargo-sse-parser": 3
     }
   },
 
