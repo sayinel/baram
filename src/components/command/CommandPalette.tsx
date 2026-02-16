@@ -14,9 +14,40 @@ export interface CommandItem {
 function buildCommands(
   toggleSidebar: () => void,
   toggleSourceMode: () => void,
+  onNewFile: () => void,
+  onOpenFile: () => void,
+  onSave: () => void,
+  onOpenFolder: () => void,
 ): CommandItem[] {
   return [
     // File
+    {
+      id: "file:new",
+      label: "New File",
+      category: "File",
+      shortcut: "\u2318N",
+      action: () => onNewFile(),
+    },
+    {
+      id: "file:open",
+      label: "Open File",
+      category: "File",
+      shortcut: "\u2318O",
+      action: () => onOpenFile(),
+    },
+    {
+      id: "file:save",
+      label: "Save",
+      category: "File",
+      shortcut: "\u2318S",
+      action: () => onSave(),
+    },
+    {
+      id: "file:open-folder",
+      label: "Open Folder",
+      category: "File",
+      action: () => onOpenFolder(),
+    },
     {
       id: "file:export-html",
       label: "Export as HTML",
@@ -163,9 +194,20 @@ function fuzzyMatch(query: string, text: string): boolean {
 interface CommandPaletteProps {
   editor: Editor | null;
   onToggleSourceMode: () => void;
+  onNewFile: () => void;
+  onOpenFile: () => void;
+  onSave: () => void;
+  onOpenFolder: () => void;
 }
 
-export function CommandPalette({ editor, onToggleSourceMode }: CommandPaletteProps) {
+export function CommandPalette({
+  editor,
+  onToggleSourceMode,
+  onNewFile,
+  onOpenFile,
+  onSave,
+  onOpenFolder,
+}: CommandPaletteProps) {
   const { commandPaletteOpen, toggleCommandPalette, toggleSidebar } =
     useUIStore();
   const [query, setQuery] = useState("");
@@ -173,8 +215,16 @@ export function CommandPalette({ editor, onToggleSourceMode }: CommandPalettePro
   const inputRef = useRef<HTMLInputElement>(null);
 
   const commands = useMemo(
-    () => buildCommands(toggleSidebar, onToggleSourceMode),
-    [toggleSidebar, onToggleSourceMode],
+    () =>
+      buildCommands(
+        toggleSidebar,
+        onToggleSourceMode,
+        onNewFile,
+        onOpenFile,
+        onSave,
+        onOpenFolder,
+      ),
+    [toggleSidebar, onToggleSourceMode, onNewFile, onOpenFile, onSave, onOpenFolder],
   );
 
   const filtered = useMemo(() => {

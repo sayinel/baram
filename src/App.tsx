@@ -11,6 +11,7 @@ import {
 import type { ReactNode, ErrorInfo } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { EditorState, TextSelection } from "@tiptap/pm/state";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { createBaramExtensions } from "./extensions";
 import { prosemirrorToMarkdown } from "./pipeline/pm-to-md";
 import { markdownToProsemirror } from "./pipeline/md-to-pm";
@@ -22,7 +23,11 @@ import { StatusBar } from "./components/layout/StatusBar";
 import { FloatingToolbar } from "./components/toolbar/FloatingToolbar";
 import { BlockHandle } from "./components/toolbar/BlockHandle";
 import { ContextMenu } from "./components/toolbar/ContextMenu";
+import { useEditorStore } from "./stores/editor-store";
+import { useFileStore, openFolder } from "./stores/file-store";
 import { useUIStore } from "./stores/ui-store";
+import { useAutoSave } from "./hooks/use-auto-save";
+import { readFile, writeFile } from "./ipc/invoke";
 import { logAppReady } from "./utils/perf";
 import { forceCollapseSyntaxReveal } from "./extensions/plugins/syntax-reveal";
 import "./App.css";
@@ -83,6 +88,11 @@ function App() {
   // Ref mirrors sourceContent state — always has the latest value, immune to stale closures
   const sourceContentRef = useRef("");
   const { toggleSidebar, toggleCommandPalette } = useUIStore();
+  const { activeTabId, tabs, openTab, markDirty } = useEditorStore();
+  const { openFiles, setFileContent } = useFileStore();
+
+  // Track previously active tab to save its content on switch
+  const prevTabRef = useRef<string | null>(null);
 
   const editor = useEditor({
     extensions: createBaramExtensions(),
@@ -90,6 +100,65 @@ function App() {
     immediatelyRender: false,
     onCreate: () => logAppReady(),
   });
+
+  // Auto-save hook
+  useAutoSave(editor);
+
+  // --- Tab switching: swap editor content when activeTabId changes ---
+  useEffect(() => {
+    if (!editor) return;
+
+    const prevTabId = prevTabRef.current;
+    prevTabRef.current = activeTabId;
+
+    // Save outgoing tab content
+    if (prevTabId && prevTabId !== activeTabId) {
+      const prevTab = tabs.find((t) => t.id === prevTabId);
+      if (prevTab?.filePath) {
+        try {
+          const md = prosemirrorToMarkdown(editor.state.doc);
+          setFileContent(prevTab.filePath, md);
+        } catch {
+          // ignore serialization errors for outgoing tab
+        }
+      }
+    }
+
+    // Load incoming tab content
+    const activeTab = tabs.find((t) => t.id === activeTabId);
+    if (!activeTab) {
+      // No active tab — clear editor
+      const emptyDoc = markdownToProsemirror("", editor.schema);
+      const newState = EditorState.create({
+        doc: emptyDoc,
+        plugins: editor.state.plugins,
+      });
+      editor.view.updateState(newState);
+      return;
+    }
+
+    const content = activeTab.filePath
+      ? openFiles.get(activeTab.filePath)
+      : openFiles.get(activeTab.id);
+
+    if (content !== undefined) {
+      const newDoc = markdownToProsemirror(content, editor.schema);
+      const newState = EditorState.create({
+        doc: newDoc,
+        plugins: editor.state.plugins,
+        selection: TextSelection.atStart(newDoc),
+      });
+      editor.view.updateState(newState);
+    }
+  }, [activeTabId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // --- Window title update ---
+  useEffect(() => {
+    const tab = tabs.find((t) => t.id === activeTabId);
+    document.title = tab
+      ? `${tab.isDirty ? "\u25CF " : ""}${tab.title} \u2014 Baram`
+      : "Baram";
+  }, [activeTabId, tabs]);
 
   // Stable onChange for SourceCodeEditor — updates both ref and state
   const handleSourceChange = useCallback((content: string) => {
@@ -151,6 +220,107 @@ function App() {
     }
   }, [editor, isSourceMode]);
 
+  // --- File action handlers ---
+  const handleNewFile = useCallback(() => {
+    const id = crypto.randomUUID();
+    const tabNumber =
+      tabs.filter((t) => t.title.startsWith("Untitled")).length + 1;
+    const title = tabNumber === 1 ? "Untitled" : `Untitled ${tabNumber}`;
+    useFileStore.getState().setFileContent(id, "");
+    openTab({ id, filePath: "", title, isDirty: false });
+    // Store content under tab id for untitled files
+    const { openFiles: of } = useFileStore.getState();
+    if (!of.has(id)) {
+      useFileStore.getState().setFileContent(id, "");
+    }
+  }, [tabs, openTab]);
+
+  const handleOpenFile = useCallback(async () => {
+    const selected = await open({
+      filters: [
+        { name: "Markdown", extensions: ["md", "markdown", "mdx"] },
+        { name: "Text", extensions: ["txt", "text"] },
+        { name: "All Files", extensions: ["*"] },
+      ],
+    });
+    if (!selected) return;
+
+    // Check if already open
+    const existing = tabs.find((t) => t.filePath === selected);
+    if (existing) {
+      useEditorStore.getState().setActiveTab(existing.id);
+      return;
+    }
+
+    try {
+      const content = await readFile(selected);
+      const fileName = selected.split("/").pop() ?? "Unknown";
+      setFileContent(selected, content);
+      openTab({
+        id: crypto.randomUUID(),
+        filePath: selected,
+        title: fileName,
+        isDirty: false,
+      });
+    } catch (err) {
+      console.error("[App] Failed to open file:", err);
+    }
+  }, [tabs, setFileContent, openTab]);
+
+  const handleSave = useCallback(async () => {
+    if (!editor) return;
+    const activeTab = tabs.find((t) => t.id === activeTabId);
+    if (!activeTab) return;
+
+    const md = prosemirrorToMarkdown(editor.state.doc);
+
+    if (activeTab.filePath) {
+      // Existing file — save directly
+      try {
+        await writeFile(activeTab.filePath, md);
+        setFileContent(activeTab.filePath, md);
+        markDirty(activeTab.id, false);
+      } catch (err) {
+        console.error("[App] Failed to save:", err);
+      }
+    } else {
+      // Untitled — Save As dialog
+      const savePath = await save({
+        filters: [
+          { name: "Markdown", extensions: ["md"] },
+          { name: "All Files", extensions: ["*"] },
+        ],
+      });
+      if (!savePath) return;
+
+      try {
+        await writeFile(savePath, md);
+        // Update tab with real path
+        const fileName = savePath.split("/").pop() ?? "Unknown";
+        // Remove old untitled content
+        useFileStore.getState().removeFileContent(activeTab.id);
+        setFileContent(savePath, md);
+        // Update the tab in store
+        useEditorStore.setState((state) => ({
+          tabs: state.tabs.map((t) =>
+            t.id === activeTab.id
+              ? { ...t, filePath: savePath, title: fileName, isDirty: false }
+              : t,
+          ),
+        }));
+      } catch (err) {
+        console.error("[App] Failed to save as:", err);
+      }
+    }
+  }, [editor, tabs, activeTabId, setFileContent, markDirty]);
+
+  const handleOpenFolder = useCallback(async () => {
+    const selected = await open({ directory: true });
+    if (selected) {
+      await openFolder(selected);
+    }
+  }, []);
+
   // Global keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -176,11 +346,41 @@ function App() {
         toggleCommandPalette();
         return;
       }
+
+      // Cmd+N — new file
+      if (mod && e.key === "n") {
+        e.preventDefault();
+        handleNewFile();
+        return;
+      }
+
+      // Cmd+O — open file
+      if (mod && e.key === "o") {
+        e.preventDefault();
+        handleOpenFile();
+        return;
+      }
+
+      // Cmd+S — save
+      if (mod && e.key === "s") {
+        e.preventDefault();
+        handleSave();
+        return;
+      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [toggleSourceMode, toggleSidebar, toggleCommandPalette, editor, isSourceMode]);
+  }, [
+    toggleSourceMode,
+    toggleSidebar,
+    toggleCommandPalette,
+    handleNewFile,
+    handleOpenFile,
+    handleSave,
+    editor,
+    isSourceMode,
+  ]);
 
   return (
     <>
@@ -214,7 +414,14 @@ function App() {
         </div>
       </AppLayout>
       <Suspense fallback={null}>
-        <CommandPalette editor={editor} onToggleSourceMode={toggleSourceMode} />
+        <CommandPalette
+          editor={editor}
+          onToggleSourceMode={toggleSourceMode}
+          onNewFile={handleNewFile}
+          onOpenFile={handleOpenFile}
+          onSave={handleSave}
+          onOpenFolder={handleOpenFolder}
+        />
         <ExportDialog editor={editor} />
       </Suspense>
     </>

@@ -18,7 +18,7 @@ export function useAutoSave(editor: Editor | null) {
   const activeTab = tabs.find((t) => t.id === activeTabId);
 
   const save = useCallback(async () => {
-    if (!editor || !activeTab) return;
+    if (!editor || !activeTab || !activeTab.filePath) return;
 
     try {
       const markdown = prosemirrorToMarkdown(editor.state.doc);
@@ -30,7 +30,7 @@ export function useAutoSave(editor: Editor | null) {
   }, [editor, activeTab, markDirty]);
 
   useEffect(() => {
-    if (!editor || !autoSave || !activeTab) return;
+    if (!editor || !autoSave || !activeTab || !activeTab.filePath) return;
 
     const handleUpdate = () => {
       markDirty(activeTab.id, true);

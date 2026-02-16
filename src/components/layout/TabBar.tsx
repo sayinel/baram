@@ -1,8 +1,25 @@
 // §4.3 Multi-file tab bar
+import { useCallback } from "react";
+import { ask } from "@tauri-apps/plugin-dialog";
 import { useEditorStore } from "../../stores/editor-store";
 
 export function TabBar() {
   const { tabs, activeTabId, setActiveTab, closeTab } = useEditorStore();
+
+  const handleClose = useCallback(
+    async (tabId: string) => {
+      const tab = tabs.find((t) => t.id === tabId);
+      if (tab?.isDirty) {
+        const confirmed = await ask(
+          "You have unsaved changes. Close without saving?",
+          { title: "Unsaved Changes", kind: "warning" },
+        );
+        if (!confirmed) return;
+      }
+      closeTab(tabId);
+    },
+    [tabs, closeTab],
+  );
 
   if (tabs.length === 0) return null;
 
@@ -22,7 +39,7 @@ export function TabBar() {
             className="tab-close"
             onClick={(e) => {
               e.stopPropagation();
-              closeTab(tab.id);
+              handleClose(tab.id);
             }}
             title="Close tab"
           >

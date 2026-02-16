@@ -63,6 +63,15 @@ async fn list_dir_inner(
             continue;
         }
 
+        // 무거운 디렉토리 제외
+        const SKIP_DIRS: &[&str] = &[
+            "node_modules", "target", "build", "dist",
+            "__pycache__", ".next", ".git",
+        ];
+        if metadata.is_dir() && SKIP_DIRS.contains(&name.as_str()) {
+            continue;
+        }
+
         let file_entry = FileEntry {
             name: name.clone(),
             path: entry.path().to_string_lossy().to_string(),
