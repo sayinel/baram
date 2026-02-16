@@ -43,7 +43,7 @@ export function TabBar() {
             }}
             title="Close tab"
           >
-            \u00D7
+            {"\u00D7"}
           </button>
         </div>
       ))}
