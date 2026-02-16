@@ -263,6 +263,10 @@ export function MathBlockView({
         onKeyDown={handleKeyDown}
         rows={1}
         placeholder="LaTeX formula..."
+        spellCheck={false}
+        autoCorrect="off"
+        autoCapitalize="off"
+        data-gramm="false"
       />
       <div className="math-block-row">
         <div ref={previewRef} className="math-block-katex" contentEditable={false} />

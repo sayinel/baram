@@ -1,5 +1,5 @@
 // §5.1 Underline Mark Extension — <u>text</u>
-import { Mark, mergeAttributes } from "@tiptap/core";
+import { Mark, markInputRule, mergeAttributes } from "@tiptap/core";
 
 export interface UnderlineOptions {
   HTMLAttributes: Record<string, string>;
@@ -44,6 +44,17 @@ export const Underline = Mark.create<UnderlineOptions>({
       toggleUnderline: () => ({ commands }) => commands.toggleMark(this.name),
       unsetUnderline: () => ({ commands }) => commands.unsetMark(this.name),
     };
+  },
+
+  addInputRules() {
+    // Detect <u>text</u> typed in WYSIWYG and convert to underline mark.
+    // Uses Tiptap's markInputRule which properly handles addMark + removeStoredMark.
+    return [
+      markInputRule({
+        find: /<u>([^<]+)<\/u>$/,
+        type: this.type,
+      }),
+    ];
   },
 
   addKeyboardShortcuts() {
