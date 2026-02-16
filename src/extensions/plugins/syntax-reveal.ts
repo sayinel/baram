@@ -890,6 +890,13 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
   });
 }
 
+/** Force-collapse any active expansion. Call before source mode toggle. */
+export function forceCollapseSyntaxReveal(view: EditorView): void {
+  const es = syntaxRevealKey.getState(view.state);
+  if (!es?.expanded) return;
+  collapseExpanded(view, es.expanded);
+}
+
 /** Tiptap Extension wrapper */
 export const SyntaxReveal = Extension.create({
   name: "syntaxReveal",

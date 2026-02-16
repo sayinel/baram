@@ -24,6 +24,7 @@ import { BlockHandle } from "./components/toolbar/BlockHandle";
 import { ContextMenu } from "./components/toolbar/ContextMenu";
 import { useUIStore } from "./stores/ui-store";
 import { logAppReady } from "./utils/perf";
+import { forceCollapseSyntaxReveal } from "./extensions/plugins/syntax-reveal";
 import "./App.css";
 
 // §8.4 Lazy-loaded components — split into separate chunks, loaded on first use
@@ -101,7 +102,10 @@ function App() {
     if (!editor) return;
 
     if (!isSourceMode) {
-      // WYSIWYG → Source: map PM cursor to markdown offset
+      // WYSIWYG → Source: collapse any active syntax reveal expansion first
+      // (SyntaxReveal replaces marks with literal delimiter text, which would
+      // cause remark-stringify to escape angle brackets like \<u>)
+      forceCollapseSyntaxReveal(editor.view);
       const md = prosemirrorToMarkdown(editor.state.doc);
       const pmPos = editor.state.selection.from;
       const mdOffset = pmPosToMdOffset(editor.state.doc, pmPos, md);
