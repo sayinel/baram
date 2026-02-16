@@ -852,13 +852,14 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
 
       return {
         update(view: EditorView, prevState: EditorState) {
-          checkNodeSelection(view);
-
           const es = syntaxRevealKey.getState(view.state);
           // If expanded, appendTransaction handles cursor-out collapse.
           if (es?.expanded) return;
 
-          // On doc change, remember cursor position and skip expansion
+          // On doc change, remember cursor position and skip ALL expansion.
+          // This prevents InputRule → image node → immediate re-expand cycle
+          // (e.g. typing ![text](url) creates image, then SyntaxReveal would
+          // immediately expand it back to text with cursor at ![).
           if (view.state.doc !== prevState.doc) {
             cursorAtDocChange = view.state.selection.from;
             return;
@@ -871,6 +872,9 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
             }
             cursorAtDocChange = null;
           }
+
+          // Check for node selection (image click/arrow-key navigation)
+          checkNodeSelection(view);
 
           // Try link first, then mark
           checkCursorInLink(view);
