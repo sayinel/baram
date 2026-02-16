@@ -11,6 +11,7 @@ import {
 import type { ReactNode, ErrorInfo } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { EditorState, TextSelection } from "@tiptap/pm/state";
+import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { createBaramExtensions } from "./extensions";
 import { prosemirrorToMarkdown } from "./pipeline/pm-to-md";
@@ -380,6 +381,53 @@ function App() {
     handleSave,
     editor,
     isSourceMode,
+  ]);
+
+  // Native menu event listener (Tauri menu bar → frontend dispatch)
+  useEffect(() => {
+    const unlisten = listen<string>("menu-event", (event) => {
+      switch (event.payload) {
+        case "file_new":
+          handleNewFile();
+          break;
+        case "file_open":
+          handleOpenFile();
+          break;
+        case "file_open_folder":
+          handleOpenFolder();
+          break;
+        case "file_save":
+          handleSave();
+          break;
+        case "export_html":
+          useUIStore.getState().openExportDialog("html");
+          break;
+        case "export_pdf":
+          useUIStore.getState().openExportDialog("pdf");
+          break;
+        case "view_source":
+          toggleSourceMode();
+          break;
+        case "view_sidebar":
+          toggleSidebar();
+          break;
+        case "view_palette":
+          toggleCommandPalette();
+          break;
+      }
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [
+    handleNewFile,
+    handleOpenFile,
+    handleOpenFolder,
+    handleSave,
+    toggleSourceMode,
+    toggleSidebar,
+    toggleCommandPalette,
   ]);
 
   return (
