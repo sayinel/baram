@@ -10,33 +10,75 @@
   <strong>Typora's WYSIWYG quality + Obsidian's extensibility + AI-native editing</strong>
 </p>
 
+<p align="center">
+  <a href="#installation">Installation</a> &nbsp;|&nbsp;
+  <a href="#features">Features</a> &nbsp;|&nbsp;
+  <a href="#keyboard-shortcuts">Shortcuts</a> &nbsp;|&nbsp;
+  <a href="#ai-integration">AI</a> &nbsp;|&nbsp;
+  <a href="#build-from-source">Build</a>
+</p>
+
 ---
 
-Baram(바람) is a desktop markdown editor where formatting syntax disappears as you type. Cursor into a heading and the `## ` prefix reappears for editing; move away and only the styled text remains. This Typora-style experience extends to bold, italic, links, images, math, and more — all while maintaining lossless markdown roundtrip fidelity.
+## What is Baram?
+
+Baram(바람) is a desktop markdown editor where formatting syntax disappears as you type. Move your cursor into a heading and the `## ` prefix reappears for editing; move away and only the styled text remains. This Typora-style experience extends to bold, italic, links, images, math, and more — all while maintaining **lossless markdown roundtrip fidelity**.
+
+Your `.md` files stay 100% standard markdown. No proprietary format, no lock-in.
+
+## Installation
+
+### Download
+
+Pre-built binaries for macOS, Windows, and Linux are available on the [Releases](https://github.com/sayinel/baram/releases) page.
+
+| Platform | Architecture | Format |
+|----------|-------------|--------|
+| macOS | Apple Silicon (M1+) / Intel | `.dmg` |
+| Windows | x64 / ARM | `.msi`, `.exe` |
+| Linux | x64 | `.deb`, `.AppImage` |
+
+### Build from Source
+
+**Prerequisites:**
+- [Node.js](https://nodejs.org/) v20+
+- [Rust](https://rustup.rs/) (latest stable)
+- [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform
+
+```bash
+git clone https://github.com/sayinel/baram.git
+cd baram
+npm install
+npm run tauri build
+```
+
+The built application will be in `src-tauri/target/release/bundle/`.
 
 ## Features
 
-### WYSIWYG Editing
+### WYSIWYG with Disappearing Syntax
 
-- **Syntax Reveal** — Markdown delimiters (`**`, `*`, `` ` ``, `~~`, `[](url)`, `![](url)`, `<u></u>`) appear only when the cursor enters the formatted range, then vanish on exit
-- **Source Mode** — Toggle between WYSIWYG and raw markdown (CodeMirror 6) with `Cmd+/`
-- **Roundtrip Fidelity** — MD → ProseMirror → MD conversion preserves the original document exactly
+Baram hides markdown syntax while you write and reveals it only when your cursor enters the formatted range. What you see is what you get — without losing access to the underlying markdown.
 
-### Block Elements
+- **Syntax Reveal** — Delimiters (`**`, `*`, `` ` ``, `~~`, `[](url)`, `<u></u>`) appear on focus, vanish on exit
+- **Source Mode** — Instantly switch to raw markdown editing with `Cmd+/` (CodeMirror 6 powered)
+- **Roundtrip Fidelity** — MD → Editor → MD preserves your document exactly
 
-| Element | Syntax | Input Trigger |
-|---------|--------|---------------|
-| Heading (H1-H6) | `# ` ~ `###### ` | Type `# ` + Space |
-| Blockquote | `> ` | Type `> ` + Space |
-| Bullet List | `- ` / `* ` | Type `- ` + Space |
-| Ordered List | `1. ` | Type `1. ` + Space |
-| Task List | `- [ ] ` / `- [x] ` | Type `- [ ] ` + Space |
-| Horizontal Rule | `---` / `***` | Type `---` + Enter |
-| Code Block | ` ``` ` | Type ` ``` ` + Enter |
-| Math Block | `$$` | Type `$$` + Enter |
-| Table | GFM pipe syntax | Slash command `/table` |
-| Image | `![alt](url)` | Type or drag-and-drop |
-| YAML Frontmatter | `---` yaml `---` | Auto-detected at document start |
+### Rich Block Elements
+
+| Element | How to Create |
+|---------|---------------|
+| Heading (H1–H6) | Type `# ` through `###### ` or press `Cmd+1` – `Cmd+6` |
+| Blockquote | Type `> ` at the start of a line |
+| Bullet List | Type `- ` or `* ` |
+| Ordered List | Type `1. ` |
+| Task List | Type `- [ ] ` or `- [x] ` |
+| Horizontal Rule | Type `---` and press Enter |
+| Code Block | Type ` ``` ` and press Enter, or `Cmd+Shift+C` |
+| Math Block | Type `$$` and press Enter, or `Cmd+Shift+M` |
+| Table | Slash command `/table` |
+| Image | Type `![alt](url)`, drag-and-drop, or paste from clipboard |
+| YAML Frontmatter | Auto-detected at document start |
 
 ### Inline Formatting
 
@@ -50,73 +92,180 @@ Baram(바람) is a desktop markdown editor where formatting syntax disappears as
 | Link | `[text](url)` | `Cmd+K` |
 | Inline Math | `$formula$` | Type `$` |
 
-### Math
+### Math (KaTeX)
 
-- **Block math** — Type `$$` to create a LaTeX block with live KaTeX preview (`Cmd+Shift+M`)
-- **Inline math** — Type `$...$` for inline equations; cursor entering shows LaTeX source, exiting shows rendered formula
-- Powered by KaTeX for fast, high-quality typesetting
+Write LaTeX formulas with live preview powered by KaTeX.
 
-### Code Blocks
+- **Block math** — Type `$$` to create a display equation. Edit the LaTeX source in a textarea while a live preview renders below.
+- **Inline math** — Type `$...$` to insert inline equations. Cursor entering shows the LaTeX source; moving away shows the rendered formula.
+- Equation numbering is automatic.
 
-- Syntax highlighting powered by **CodeMirror 6**
-- Language detection and selection dropdown
-- Full CodeMirror editing experience inside the block
+### Code Blocks (CodeMirror 6)
 
-### Tables
+Full-featured code editing inside your markdown:
 
-- GFM (GitHub Flavored Markdown) pipe table support
-- Tab / Shift+Tab cell navigation
-- Column alignment markers preserved on roundtrip
+- **14 languages** — JavaScript, TypeScript, Python, Rust, Go, Java, C++, HTML, CSS, JSON, SQL, PHP, XML, YAML
+- Language auto-detection and selection dropdown
+- Syntax highlighting with a CodeMirror 6 editor instance per block
+- Languages are lazy-loaded — only the language you select gets downloaded
+
+### Tables (GFM)
+
+Standard GitHub Flavored Markdown pipe tables:
+
+- **Tab** / **Shift+Tab** to navigate between cells
+- Column alignment (`:---`, `:---:`, `---:`) preserved on roundtrip
+- Add/remove rows and columns
 
 ### Images
 
-- **NodeView** with hover toolbar (resize 25%/50%/75%/100%, alt-text editing)
-- Drag-and-drop image files into the editor
-- Paste images from clipboard
-- Click to expand and edit `![alt](url)` syntax directly
+- **Drag-and-drop** image files directly into the editor
+- **Paste** images from clipboard
+- Hover toolbar: resize (25% / 50% / 75% / 100%), edit alt text
+- Click to reveal and edit `![alt](url)` syntax
 
-### AI Integration
+### Export
 
-- **LLM Provider** — Claude API via Rust SSE streaming proxy
-- **Inline AI Editing** — Select text and press `Cmd+K` to give AI instructions
-- **AI Diff Engine** — Character-level diff visualization (insert/delete decorations) with accept/reject
-- **Slash AI Commands** — 7 AI-powered commands via `/` menu (summarize, expand, fix grammar, translate, etc.)
-- **Settings** — Configure provider, API key, model, and privacy options (`Cmd+,`)
+Export your documents to share or publish:
 
-### UI
+- **HTML** — Clean, self-contained HTML with inline styles
+- **PDF** — Print-ready PDF via system print dialog
 
-- **3-Column Layout** — File tree sidebar, editor area, outline sidebar
-- **Command Palette** — `Cmd+Shift+P` for quick access to all commands
-- **Slash Commands** — Type `/` for block insertion menu
-- **Floating Toolbar** — Context-aware formatting toolbar on text selection
-- **Block Handle** — Drag handle for block reordering
-- **Status Bar** — Word count, line count, cursor position
+## AI Integration
+
+Baram has built-in AI writing assistance powered by Claude API.
+
+### Setup
+
+1. Open Settings with `Cmd+,`
+2. Go to the **AI** tab
+3. Enter your Claude API key
+4. Choose your preferred model
+
+### Inline AI Editing (`Cmd+K`)
+
+1. Select text in the editor
+2. Press `Cmd+K`
+3. Type your instruction (e.g., "make this more concise", "translate to Korean")
+4. Review the AI suggestion with **character-level diff** highlighting
+5. **Accept** or **Reject** the changes
+
+### Slash AI Commands
+
+Type `/` to open the slash menu. AI-powered commands include:
+
+| Command | Description |
+|---------|-------------|
+| `/ai-summarize` | Summarize selected text |
+| `/ai-expand` | Expand and elaborate on selected text |
+| `/ai-grammar` | Fix grammar and spelling |
+| `/ai-translate` | Translate to another language |
+| `/ai-tone` | Change writing tone |
+| `/ai-simplify` | Simplify complex text |
+| `/ai-continue` | Continue writing from cursor position |
 
 ## Keyboard Shortcuts
 
+> On Windows/Linux, replace `Cmd` with `Ctrl`.
+
+### Formatting
+
 | Action | Shortcut |
 |--------|----------|
-| Heading 1-6 | `Cmd+1` ~ `Cmd+6` |
-| Increase heading level | `Cmd+=` |
-| Decrease heading level | `Cmd+-` |
 | Bold | `Cmd+B` |
 | Italic | `Cmd+I` |
 | Underline | `Cmd+U` |
-| Inline code | `Cmd+E` |
+| Inline Code | `Cmd+E` |
 | Strikethrough | `Cmd+Shift+X` |
 | Link | `Cmd+K` |
-| Code block | `Cmd+Shift+C` |
-| Math block | `Cmd+Shift+M` |
-| Blockquote | `Cmd+Shift+>` |
-| Bullet list | `Cmd+Shift+8` |
-| Ordered list | `Cmd+Shift+7` |
-| Source mode toggle | `Cmd+/` |
-| AI inline edit | `Cmd+K` (with selection) |
-| Command palette | `Cmd+Shift+P` |
-| Settings | `Cmd+,` |
-| Undo / Redo | `Cmd+Z` / `Cmd+Shift+Z` |
 
-## Architecture
+### Headings
+
+| Action | Shortcut |
+|--------|----------|
+| Heading 1–6 | `Cmd+1` through `Cmd+6` |
+| Increase Heading Level | `Cmd+=` |
+| Decrease Heading Level | `Cmd+-` |
+
+### Blocks
+
+| Action | Shortcut |
+|--------|----------|
+| Code Block | `Cmd+Shift+C` |
+| Math Block | `Cmd+Shift+M` |
+| Blockquote | `Cmd+Shift+>` |
+| Bullet List | `Cmd+Shift+8` |
+| Ordered List | `Cmd+Shift+7` |
+
+### Navigation & Tools
+
+| Action | Shortcut |
+|--------|----------|
+| Source Mode Toggle | `Cmd+/` |
+| Command Palette | `Cmd+Shift+P` |
+| AI Inline Edit | `Cmd+K` (with text selected) |
+| Settings | `Cmd+,` |
+| Undo | `Cmd+Z` |
+| Redo | `Cmd+Shift+Z` |
+
+## User Interface
+
+### 3-Column Layout
+
+- **Left Sidebar** — File tree for navigating your documents (`Cmd+Shift+L` to toggle)
+- **Editor** — Main editing area with WYSIWYG or Source mode
+- **Right Sidebar** — Document outline with heading navigation
+
+### Toolbar & Menus
+
+- **Floating Toolbar** — Appears on text selection with formatting buttons
+- **Block Handle** — Drag handle on the left side of each block for reordering
+- **Slash Commands** — Type `/` at the start of a line for quick block insertion
+- **Command Palette** — `Cmd+Shift+P` for searching and running any command
+- **Context Menu** — Right-click for context-aware options
+
+### Status Bar
+
+Shows word count, line count, and cursor position at the bottom of the editor.
+
+## Development
+
+For contributors who want to work on Baram:
+
+```bash
+# Install dependencies
+npm install
+
+# Start development server (frontend only)
+npm run dev
+
+# Start full Tauri desktop app in dev mode
+npm run tauri dev
+
+# Run tests
+npm test                          # Vitest (frontend)
+cd src-tauri && cargo test        # Rust backend
+
+# Lint & format
+npm run lint
+npm run format
+```
+
+### Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Desktop Framework | Tauri 2.0 |
+| Backend | Rust |
+| Frontend | React 19 + TypeScript |
+| Bundler | Vite 6 |
+| Styling | Tailwind CSS 4 |
+| Editor Engine | Tiptap / ProseMirror |
+| Math | KaTeX |
+| Code | CodeMirror 6 |
+| State | Zustand |
+
+### Architecture
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -134,128 +283,27 @@ Baram(바람) is a desktop markdown editor where formatting syntax disappears as
 └─────────────────────────────────────────────────┘
 ```
 
-### Markdown Pipeline
-
-Bidirectional, lossless conversion between markdown and ProseMirror:
+Markdown pipeline — bidirectional, lossless:
 
 ```
 Forward:  remark-parse → mdast → ProseMirror Document
 Reverse:  ProseMirror Document → mdast → remark-stringify
 ```
 
-Each node/mark type has a dedicated transformer file in `src/pipeline/transformers/` that handles both directions.
-
-### Extension System
-
-All editor features are implemented as Tiptap Extensions (Extension-First architecture):
-
-- **13 Node Extensions** — heading, paragraph, blockquote, bulletList, orderedList, taskList, horizontalRule, image, codeBlock, mathBlock, table, frontmatter (+2 planned)
-- **8 Mark Extensions** — bold, italic, code, strike, link, underline, inlineMath (+2 planned)
-- **6 Plugin Extensions** — history, slashCommands, syntaxReveal, dropHandler, dragHandle (+1 planned)
-
-## Tech Stack
-
-| Layer | Technology | Version |
-|-------|------------|---------|
-| Desktop Framework | Tauri | 2.0 |
-| Backend | Rust | latest stable |
-| Frontend | React + TypeScript | 19 |
-| Bundler | Vite | 6 |
-| Styling | Tailwind CSS | 4 |
-| Editor Engine | Tiptap / ProseMirror | v2 |
-| Math Rendering | KaTeX | latest |
-| Code Editing | CodeMirror | 6 |
-| State Management | Zustand | latest |
-
-## Project Structure
-
-```
-baram/
-├── src/                    # React frontend
-│   ├── extensions/         # Tiptap extensions (nodes/, marks/, plugins/)
-│   ├── pipeline/           # MD ↔ ProseMirror conversion
-│   ├── stores/             # Zustand stores (editor, file, ui, settings, ai)
-│   ├── components/         # React UI components
-│   ├── hooks/              # Custom React hooks
-│   └── ipc/                # Tauri IPC wrappers
-├── src-tauri/              # Rust backend
-│   └── src/
-│       ├── commands/       # IPC command handlers
-│       ├── fs/             # File system operations
-│       ├── llm/            # LLM API proxy (SSE streaming)
-│       ├── search/         # Full-text search (tantivy)
-│       ├── git/            # Git integration
-│       ├── export/         # PDF/HTML export
-│       └── config/         # Settings management
-├── docs/design/            # Design documents (Part 1-9)
-└── tests/                  # E2E tests (Playwright)
-```
-
-## Development
-
-### Prerequisites
-
-- [Node.js](https://nodejs.org/) (v20+)
-- [Rust](https://rustup.rs/) (latest stable)
-- [Tauri CLI](https://v2.tauri.app/start/prerequisites/)
-
-### Setup
-
-```bash
-# Install dependencies
-npm install
-
-# Development (frontend only)
-npm run dev
-
-# Development (full Tauri app)
-npm run tauri dev
-
-# Production build
-npm run tauri build
-```
-
-### Testing
-
-```bash
-# Run all frontend tests (Vitest)
-npx vitest run
-
-# Run Rust tests
-cd src-tauri && cargo test
-
-# Type checking
-npx tsc --noEmit
-```
-
-**Test coverage (98 tests):**
-
-| Suite | Tests | Description |
-|-------|-------|-------------|
-| Roundtrip (M2) | 27 | Headings, paragraphs, blockquotes, lists, images, marks |
-| Roundtrip (M3) | 14 | Math, code blocks, tables, frontmatter |
-| Roundtrip Stability | 6 | Multi-cycle conversion stability |
-| Tiptap Toggle | 5 | Source mode ↔ WYSIWYG roundtrip |
-| Stores | 6 | Zustand store behavior |
-| AI Diff | 13 | Inline diff engine |
-| Heading Shortcuts | 15 | Level increase/decrease/toggle commands |
-| Syntax Reveal | 9 | Mark expansion/collapse behavior |
-| Rust SSE Parser | 3 | LLM streaming parser |
-
 ## Roadmap
 
-**Phase 1 — MVP** (M1-M6)
+**Phase 1 — MVP** (current)
 
 | Milestone | Status | Description |
 |-----------|--------|-------------|
-| M1 Project Setup | Done | Tauri + React + Tiptap + Zustand + Rust modules + CI/CD |
-| M2 Basic Editing | Done | MD pipeline, 11 nodes, 5 marks, history, auto-save |
-| M3 Rich Content | Done | KaTeX math, CodeMirror 6, tables, frontmatter, source mode |
-| M4 UI Framework | Done | 3-column layout, sidebar, command palette, slash commands, toolbar |
-| M5 AI Level 2 | Done | Claude SSE streaming, inline editing (Cmd+K), AI diff, settings |
-| M6 MVP Release | Next | PDF/HTML export, performance optimization, release build |
+| M1 Project Setup | ✅ Done | Tauri + React + Tiptap + Zustand + Rust modules + CI/CD |
+| M2 Basic Editing | ✅ Done | MD pipeline, 11 nodes, 5 marks, history, auto-save |
+| M3 Rich Content | ✅ Done | KaTeX math, CodeMirror 6, tables, frontmatter, source mode |
+| M4 UI Framework | ✅ Done | 3-column layout, sidebar, command palette, slash commands, toolbar |
+| M5 AI Level 2 | ✅ Done | Claude SSE streaming, inline editing, AI diff, settings |
+| M6 MVP Release | 🚧 In Progress | PDF/HTML export, performance optimization, release build |
 
-**Phase 2 — Extensions** (M7-M10)
+**Phase 2 — Extensions**
 
 - Callout blocks, wikilinks, backlinks, find & replace
 - Highlight, subscript, superscript marks
@@ -264,4 +312,4 @@ npx tsc --noEmit
 
 ## License
 
-Editor core: MIT / App: AGPL-3.0
+Editor core: **MIT** / Application: **AGPL-3.0**
