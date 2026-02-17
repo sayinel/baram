@@ -145,12 +145,20 @@ function buildSlashItems(editor: Editor): SlashMenuItem[] {
       category: "Media",
       description: "Insert a hyperlink",
       mdHint: "[text](url)",
-      action: () =>
+      action: () => {
         editor
           .chain()
           .focus()
-          .toggleLink({ href: "" })
-          .run(),
+          .insertContent({
+            type: "text",
+            text: "link",
+            marks: [{ type: "link", attrs: { href: "" } }],
+          })
+          .run();
+        // Select the inserted "link" text for easy replacement
+        const { to } = editor.state.selection;
+        editor.chain().setTextSelection({ from: to - 4, to }).run();
+      },
     },
   ];
 }
