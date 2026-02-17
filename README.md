@@ -15,7 +15,10 @@
   <a href="#features">Features</a> &nbsp;|&nbsp;
   <a href="#keyboard-shortcuts">Shortcuts</a> &nbsp;|&nbsp;
   <a href="#ai-integration">AI</a> &nbsp;|&nbsp;
-  <a href="#build-from-source">Build</a>
+  <a href="#build-from-source">Build</a> &nbsp;|&nbsp;
+  <a href="docs/user-guide.md">User Guide</a> &nbsp;|&nbsp;
+  <a href="docs/keyboard-shortcuts.md">Shortcut Reference</a> &nbsp;|&nbsp;
+  <a href="docs/faq.md">FAQ</a>
 </p>
 
 ---
