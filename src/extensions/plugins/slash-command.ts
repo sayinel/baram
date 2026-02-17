@@ -122,6 +122,36 @@ function buildSlashItems(editor: Editor): SlashMenuItem[] {
           .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
           .run(),
     },
+    // Media & Inline
+    {
+      id: "image",
+      label: "Image",
+      category: "Media",
+      description: "Insert an image",
+      mdHint: "![](url)",
+      action: () =>
+        editor
+          .chain()
+          .focus()
+          .insertContent({
+            type: "image",
+            attrs: { src: "", alt: "", title: "" },
+          })
+          .run(),
+    },
+    {
+      id: "link",
+      label: "Link",
+      category: "Media",
+      description: "Insert a hyperlink",
+      mdHint: "[text](url)",
+      action: () =>
+        editor
+          .chain()
+          .focus()
+          .toggleLink({ href: "" })
+          .run(),
+    },
   ];
 }
 
