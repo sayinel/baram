@@ -7,7 +7,8 @@ import { generateMarkdown } from "../../utils/__tests__/perf-helpers";
 import katex from "katex";
 
 // CI runners are shared machines — allow 3x headroom
-const CI = !!process.env.CI;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const CI = !!(globalThis as any).process?.env?.CI;
 const CI_MULTIPLIER = CI ? 3 : 1;
 
 // Full schema matching M2 + M3 extensions
