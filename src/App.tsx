@@ -49,6 +49,11 @@ const ExportDialog = lazy(() =>
     default: m.ExportDialog,
   })),
 );
+const WelcomeScreen = lazy(() =>
+  import("./components/onboarding/WelcomeScreen").then((m) => ({
+    default: m.WelcomeScreen,
+  })),
+);
 
 // Error boundary to catch and display runtime errors
 class ErrorBoundary extends Component<
@@ -88,7 +93,7 @@ function App() {
   const sourceEditorRef = useRef<SourceCodeEditorRef>(null);
   // Ref mirrors sourceContent state — always has the latest value, immune to stale closures
   const sourceContentRef = useRef("");
-  const { toggleSidebar, toggleCommandPalette } = useUIStore();
+  const { toggleSidebar, toggleCommandPalette, welcomeOpen } = useUIStore();
   const { activeTabId, tabs, openTab, markDirty } = useEditorStore();
   const { openFiles, setFileContent } = useFileStore();
 
@@ -438,7 +443,14 @@ function App() {
       >
         <TabBar />
         <div className="editor-area">
-          {isSourceMode ? (
+          {welcomeOpen && !activeTabId ? (
+            <Suspense fallback={null}>
+              <WelcomeScreen
+                onNewFile={handleNewFile}
+                onOpenFolder={handleOpenFolder}
+              />
+            </Suspense>
+          ) : isSourceMode ? (
             <Suspense fallback={null}>
               <SourceCodeEditor
                 ref={sourceEditorRef}

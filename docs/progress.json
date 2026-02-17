@@ -101,7 +101,7 @@
         "30-native-menu": { "status": "completed", "tests": "cargo check pass", "spec": "§4.4" },
         "31-file-management": { "status": "completed", "tests": "tsc pass (New/Open/Save/Tab)", "spec": "§4.3" },
         "32-integration-tests": { "status": "completed", "tests": "26/26 vitest pass (5 files: lifecycle, multi-tab, export, source-mode, ai-workflow)", "spec": "§8.4" },
-        "33-onboarding": { "status": "not-started", "tests": "none", "spec": "§4.9" },
+        "33-onboarding": { "status": "completed", "tests": "tsc + vitest pass", "spec": "§4.9" },
         "34-documentation": { "status": "not-started", "tests": "none", "spec": "§8.2" },
         "35-installers": { "status": "not-started", "tests": "none", "spec": "§8.2" },
         "36-release-build": { "status": "not-started", "tests": "none", "spec": "§8.2" }

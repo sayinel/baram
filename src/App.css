@@ -63,8 +63,9 @@ body {
   color: var(--color-editor-text);
 }
 
+/* §4.9 Empty document placeholder */
 .tiptap p.is-editor-empty:first-child::before {
-  content: attr(data-placeholder);
+  content: "/ 를 입력하여 블록을 추가하거나, 바로 타이핑을 시작하세요.";
   float: left;
   color: var(--color-text-muted);
   pointer-events: none;
@@ -1547,4 +1548,141 @@ body {
   font-size: 0.85em;
   color: var(--color-text-muted);
   opacity: 0.7;
+}
+
+/* ============================================
+   §4.9 Welcome Screen
+   ============================================ */
+
+.welcome-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 2rem;
+}
+
+.welcome-card {
+  max-width: 480px;
+  width: 100%;
+  background-color: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  padding: 2.5rem;
+  text-align: center;
+}
+
+.welcome-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin: 0 0 0.5rem;
+}
+
+.welcome-tagline {
+  font-size: 0.95rem;
+  color: var(--color-text-secondary);
+  margin: 0 0 2rem;
+}
+
+.welcome-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-bottom: 2rem;
+}
+
+.welcome-btn {
+  padding: 8px 24px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: var(--font-sans);
+}
+
+.welcome-btn-primary {
+  background-color: var(--color-accent);
+  color: white;
+  border: 1px solid var(--color-accent);
+}
+
+.welcome-btn-primary:hover {
+  background-color: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+}
+
+.welcome-btn-secondary {
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+}
+
+.welcome-btn-secondary:hover {
+  background-color: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+}
+
+.welcome-tips {
+  text-align: left;
+  background-color: var(--color-bg-secondary);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.welcome-tips-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin: 0 0 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.welcome-tips-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.welcome-tips-list li {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.welcome-tips-list kbd {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  padding: 1px 5px;
+  background-color: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  color: var(--color-text-primary);
+}
+
+.welcome-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.welcome-footer input[type="checkbox"] {
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
+/* Dark mode adjustments */
+[data-theme="dark"] .welcome-card {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }

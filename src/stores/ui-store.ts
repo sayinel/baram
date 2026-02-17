@@ -14,6 +14,7 @@ interface UIState {
   settingsOpen: boolean;
   exportDialogOpen: boolean;
   exportFormat: ExportFormat;
+  welcomeOpen: boolean;
 
   toggleSidebar: () => void;
   setSidebarPanel: (panel: SidebarPanel) => void;
@@ -24,6 +25,7 @@ interface UIState {
   toggleSettings: () => void;
   openExportDialog: (format?: ExportFormat) => void;
   closeExportDialog: () => void;
+  dismissWelcome: (permanent?: boolean) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -36,6 +38,7 @@ export const useUIStore = create<UIState>((set) => ({
   settingsOpen: false,
   exportDialogOpen: false,
   exportFormat: "html" as ExportFormat,
+  welcomeOpen: localStorage.getItem("baram:onboarding-complete") !== "true",
 
   toggleSidebar: () =>
     set((state) => ({ sidebarOpen: !state.sidebarOpen })),
@@ -59,4 +62,11 @@ export const useUIStore = create<UIState>((set) => ({
     set({ exportDialogOpen: true, exportFormat: format ?? "html" }),
 
   closeExportDialog: () => set({ exportDialogOpen: false }),
+
+  dismissWelcome: (permanent) => {
+    if (permanent) {
+      localStorage.setItem("baram:onboarding-complete", "true");
+    }
+    set({ welcomeOpen: false });
+  },
 }));
