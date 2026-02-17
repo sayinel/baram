@@ -838,9 +838,50 @@ body {
   align-items: stretch;
   background-color: var(--color-bg-secondary);
   border-bottom: 1px solid var(--color-border-light);
-  overflow: hidden;
   flex-shrink: 0;
   height: 34px;
+  position: relative;
+}
+
+.tab-scroll-area {
+  display: flex;
+  align-items: stretch;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scroll-behavior: auto;
+}
+
+.tab-scroll-area::-webkit-scrollbar {
+  height: 0;
+}
+
+.tab-scroll-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  flex-shrink: 0;
+  border: none;
+  background-color: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0;
+  z-index: 1;
+}
+
+.tab-scroll-left {
+  border-right: 1px solid var(--color-border-light);
+}
+
+.tab-scroll-right {
+  border-left: 1px solid var(--color-border-light);
+}
+
+.tab-scroll-btn:hover {
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
 }
 
 .tab-item {
