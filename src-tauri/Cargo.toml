@@ -3,6 +3,7 @@ name = "baram"
 version = "0.1.0"
 description = "Lightweight WYSIWYG Markdown Editor"
 authors = ["Baram Team"]
+license = "AGPL-3.0"
 edition = "2021"
 
 [lib]
@@ -13,7 +14,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["devtools"] }
+tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
@@ -26,3 +27,15 @@ uuid = { version = "1", features = ["v4"] }
 headless_chrome = "1"
 tempfile = "3"
 notify = "7"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+devtools = ["tauri/devtools"]
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = "symbols"
+codegen-units = 1
+panic = "abort"

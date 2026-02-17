@@ -92,7 +92,8 @@
     },
     "M6": {
       "name": "MVP 릴리스",
-      "status": "in-progress",
+      "status": "completed",
+      "completedAt": "2026-02-17",
       "weeks": "23-26",
       "features": {
         "27-export-pdf": { "status": "completed", "tests": "headless Chrome backend + export_document IPC", "spec": "§5.10" },
@@ -104,7 +105,7 @@
         "33-onboarding": { "status": "completed", "tests": "tsc + vitest pass", "spec": "§4.9" },
         "34-documentation": { "status": "completed", "tests": "user-guide + shortcuts + FAQ", "spec": "§8.2" },
         "35-installers": { "status": "completed", "tests": "cargo check pass + tauri info valid", "spec": "§8.2" },
-        "36-release-build": { "status": "not-started", "tests": "none", "spec": "§8.2" }
+        "36-release-build": { "status": "completed", "tests": "release build 9.2MB (target <15MB), .app 9.1MB", "spec": "§8.2" }
       },
       "specCheckIssues": [
         "성능 지표: 자동 측정 4개 완료, 수동 측정 5개 미완 — Tauri 빌드 후 측정 필요 (§8.4)"
@@ -114,7 +115,7 @@
 
   "testSummary": {
     "vitest": "138/138 pass",
-    "cargoTest": "3/3 pass",
+    "cargoTest": "6/6 pass",
     "breakdown": {
       "stores": 6,
       "roundtrip-m2": 33,
@@ -144,7 +145,7 @@
     "app-start-cold": { "value": null, "target": "1.5s", "status": "manual" },
     "app-start-warm": { "value": null, "target": "0.5s", "status": "manual" },
     "typing-latency": { "value": null, "target": "16ms", "status": "manual" },
-    "binary-size": { "value": null, "target": "15MB", "status": "manual" },
+    "binary-size": { "value": "9.2MB", "target": "15MB", "status": "pass" },
     "idle-memory": { "value": null, "target": "100MB", "status": "manual" }
   }
 }
