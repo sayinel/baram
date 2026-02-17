@@ -159,16 +159,16 @@
       "shortcuts": {}
     },
     {
-      "name": "mermaid",
-      "file": "nodes/mermaid.ts",
+      "name": "mermaidBlock",
+      "file": "nodes/mermaid-block.ts",
       "markdown": "```mermaid",
-      "spec": "§5.14",
+      "spec": "§5.5",
       "phase": 2,
       "milestone": "M9",
-      "status": "planned",
+      "status": "implemented",
       "hasNodeView": true,
       "inputRules": [],
-      "shortcuts": {}
+      "shortcuts": { "Mod-Shift-d": "insert mermaid diagram" }
     }
   ],
   "marks": [

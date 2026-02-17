@@ -146,6 +146,18 @@ function convertBlockNode(
     return convertTableNode(node, schema);
   }
 
+  // §5.5 Mermaid: code block with lang="mermaid" → mermaidBlock (if schema supports it)
+  if (
+    node.type === "code" &&
+    (node as { lang?: string }).lang === "mermaid" &&
+    schema.nodes.mermaidBlock
+  ) {
+    const mermaidTransformer = nodeTransformers.get("mermaid");
+    if (mermaidTransformer) {
+      return mermaidTransformer.mdastToPm(node, schema, () => []);
+    }
+  }
+
   // Standard node transformer lookup
   const transformer = nodeTransformers.get(node.type);
   if (transformer) {

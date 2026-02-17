@@ -102,6 +102,14 @@ function buildSlashItems(editor: Editor): SlashMenuItem[] {
           .run(),
     },
     {
+      id: "mermaid",
+      label: "Mermaid Diagram",
+      category: "Rich Content",
+      description: "Flowchart, sequence, and more",
+      mdHint: "```mermaid",
+      action: () => editor.commands.setMermaidBlock(),
+    },
+    {
       id: "table",
       label: "Table",
       category: "Rich Content",

@@ -22,6 +22,7 @@ import { HorizontalRule } from "./nodes/horizontal-rule";
 import { Image } from "./nodes/image";
 import { CodeBlock } from "./nodes/code-block";
 import { MathBlock } from "./nodes/math-block";
+import { MermaidBlock } from "./nodes/mermaid-block";
 import { MathInline } from "./nodes/math-inline";
 import {
   BaramTable,
@@ -72,6 +73,9 @@ export function createBaramExtensions(): Extensions {
 
     // Nodes — §5.3 Math
     MathBlock,
+
+    // Nodes — §5.5 Mermaid
+    MermaidBlock,
     MathInline,
     MathInlineEdit,
 
@@ -125,6 +129,7 @@ export {
   Image,
   CodeBlock,
   MathBlock,
+  MermaidBlock,
   MathInline,
   BaramTable,
   BaramTableRow,
