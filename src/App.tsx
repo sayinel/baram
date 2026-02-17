@@ -57,6 +57,11 @@ const WelcomeScreen = lazy(() =>
     default: m.WelcomeScreen,
   })),
 );
+const QuickSwitcher = lazy(() =>
+  import("./components/command/QuickSwitcher").then((m) => ({
+    default: m.QuickSwitcher,
+  })),
+);
 
 // Error boundary to catch and display runtime errors
 class ErrorBoundary extends Component<
@@ -96,7 +101,8 @@ function App() {
   const sourceEditorRef = useRef<SourceCodeEditorRef>(null);
   // Ref mirrors sourceContent state — always has the latest value, immune to stale closures
   const sourceContentRef = useRef("");
-  const { toggleSidebar, toggleCommandPalette, welcomeOpen } = useUIStore();
+  const { toggleSidebar, toggleCommandPalette, toggleQuickSwitcher, welcomeOpen } =
+    useUIStore();
   const { activeTabId, tabs, openTab, markDirty } = useEditorStore();
   const { openFiles, setFileContent } = useFileStore();
 
@@ -455,6 +461,13 @@ function App() {
         return;
       }
 
+      // §35 Cmd+P — quick switcher
+      if (mod && e.key === "p") {
+        e.preventDefault();
+        toggleQuickSwitcher();
+        return;
+      }
+
       // Cmd+N — new file
       if (mod && e.key === "n") {
         e.preventDefault();
@@ -483,6 +496,7 @@ function App() {
     toggleSourceMode,
     toggleSidebar,
     toggleCommandPalette,
+    toggleQuickSwitcher,
     handleNewFile,
     handleOpenFile,
     handleSave,
@@ -549,6 +563,9 @@ function App() {
         case "go_forward":
           handleGoForward();
           break;
+        case "go_quick_switcher":
+          toggleQuickSwitcher();
+          break;
       }
     });
 
@@ -565,6 +582,7 @@ function App() {
     toggleSourceMode,
     toggleSidebar,
     toggleCommandPalette,
+    toggleQuickSwitcher,
   ]);
 
   return (
@@ -616,6 +634,7 @@ function App() {
           onOpenFolder={handleOpenFolder}
         />
         <ExportDialog editor={editor} />
+        <QuickSwitcher editor={editor} onNewFile={handleNewFile} />
       </Suspense>
       {tabSwitcherOpen && (
         <TabSwitcher

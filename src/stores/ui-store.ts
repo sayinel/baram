@@ -11,6 +11,7 @@ interface UIState {
   rightPanelOpen: boolean;
   rightPanelWidth: number;
   commandPaletteOpen: boolean;
+  quickSwitcherOpen: boolean;
   settingsOpen: boolean;
   exportDialogOpen: boolean;
   exportFormat: ExportFormat;
@@ -22,6 +23,7 @@ interface UIState {
   toggleRightPanel: () => void;
   setRightPanelWidth: (width: number) => void;
   toggleCommandPalette: () => void;
+  toggleQuickSwitcher: () => void;
   toggleSettings: () => void;
   openExportDialog: (format?: ExportFormat) => void;
   closeExportDialog: () => void;
@@ -35,6 +37,7 @@ export const useUIStore = create<UIState>((set) => ({
   rightPanelOpen: false,
   rightPanelWidth: 300,
   commandPaletteOpen: false,
+  quickSwitcherOpen: false,
   settingsOpen: false,
   exportDialogOpen: false,
   exportFormat: "html" as ExportFormat,
@@ -54,6 +57,9 @@ export const useUIStore = create<UIState>((set) => ({
 
   toggleCommandPalette: () =>
     set((state) => ({ commandPaletteOpen: !state.commandPaletteOpen })),
+
+  toggleQuickSwitcher: () =>
+    set((state) => ({ quickSwitcherOpen: !state.quickSwitcherOpen })),
 
   toggleSettings: () =>
     set((state) => ({ settingsOpen: !state.settingsOpen })),
