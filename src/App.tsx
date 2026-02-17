@@ -31,7 +31,7 @@ import { useFileStore, openFolder } from "./stores/file-store";
 import { useUIStore } from "./stores/ui-store";
 import { useNavigationStore } from "./stores/navigation-store";
 import { useAutoSave } from "./hooks/use-auto-save";
-import { readFile, writeFile } from "./ipc/invoke";
+import { readFile, writeFile, getOpenedUrls } from "./ipc/invoke";
 import { logAppReady } from "./utils/perf";
 import { forceCollapseSyntaxReveal } from "./extensions/plugins/syntax-reveal";
 import "./App.css";
@@ -354,6 +354,49 @@ function App() {
       await openFolder(selected);
     }
   }, []);
+
+  // Open file by path — used by macOS file association (Finder → Baram)
+  const handleOpenFilePath = useCallback(async (filePath: string) => {
+    const { tabs: currentTabs } = useEditorStore.getState();
+    const existing = currentTabs.find((t) => t.filePath === filePath);
+    if (existing) {
+      useEditorStore.getState().setActiveTab(existing.id);
+      return;
+    }
+
+    try {
+      const content = await readFile(filePath);
+      const fileName = filePath.split("/").pop() ?? "Unknown";
+      useFileStore.getState().setFileContent(filePath, content);
+      useEditorStore.getState().openTab({
+        id: crypto.randomUUID(),
+        filePath,
+        title: fileName,
+        isDirty: false,
+      });
+    } catch (err) {
+      console.error("[App] Failed to open file from OS:", err);
+    }
+  }, []);
+
+  // Listen for file open events from macOS (Finder "Open With" / double-click)
+  useEffect(() => {
+    // Cold start: check for files queued before frontend was ready
+    getOpenedUrls().then((paths) => {
+      for (const path of paths) {
+        handleOpenFilePath(path);
+      }
+    }).catch(() => {});
+
+    // Hot open: listen for files opened while app is running
+    const unlisten = listen<string>("file:open-request", (event) => {
+      handleOpenFilePath(event.payload);
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [handleOpenFilePath]);
 
   // §37 Navigation back/forward handlers
   const handleGoBack = useCallback(() => {

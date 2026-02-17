@@ -122,6 +122,11 @@ export async function createSnapshot(
   return invoke<SnapshotInfo>("create_snapshot", { path, label });
 }
 
+// macOS file association: get pending file paths from cold start
+export async function getOpenedUrls(): Promise<string[]> {
+  return invoke<string[]>("get_opened_urls");
+}
+
 // §3.2 Config commands
 export async function getConfig(key?: string): Promise<JsonValue> {
   return invoke<JsonValue>("get_config", { key });

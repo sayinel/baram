@@ -9,9 +9,20 @@ mod index;
 mod llm;
 mod search;
 
+use std::sync::Mutex;
+
 use commands::{config_cmd, export_cmd, fs_cmd, llm_cmd};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
+
+/// Pending file paths from macOS file open events (cold start).
+struct PendingOpenFiles(Mutex<Vec<String>>);
+
+#[tauri::command]
+fn get_opened_urls(state: tauri::State<'_, PendingOpenFiles>) -> Vec<String> {
+    let mut pending = state.0.lock().unwrap();
+    pending.drain(..).collect()
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -239,6 +250,7 @@ pub fn run() {
 
             Ok(())
         })
+        .manage(PendingOpenFiles(Mutex::new(Vec::new())))
         .invoke_handler(tauri::generate_handler![
             fs_cmd::read_file,
             fs_cmd::write_file,
@@ -251,7 +263,32 @@ pub fn run() {
             export_cmd::export_pdf,
             export_cmd::export_document,
             llm_cmd::llm_complete,
+            get_opened_urls,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            // macOS file association: handle files opened from Finder / "Open With"
+            if let tauri::RunEvent::Opened { urls } = event {
+                let paths: Vec<String> = urls
+                    .iter()
+                    .filter_map(|u| u.to_file_path().ok())
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .collect();
+
+                // Emit to frontend (works when webview is already loaded)
+                for path in &paths {
+                    let _ = app_handle.emit("file:open-request", path.clone());
+                }
+
+                // Also queue for cold-start (frontend calls get_opened_urls on mount)
+                if let Some(state) = app_handle.try_state::<PendingOpenFiles>() {
+                    if let Ok(mut pending) = state.0.lock() {
+                        for p in paths {
+                            pending.push(p);
+                        }
+                    }
+                }
+            }
+        });
 }
