@@ -417,6 +417,7 @@ function App() {
           toggleSidebar();
           break;
         case "view_palette":
+        case "go_palette":
           toggleCommandPalette();
           break;
       }
