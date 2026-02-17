@@ -103,7 +103,7 @@
         "32-integration-tests": { "status": "completed", "tests": "26/26 vitest pass (5 files: lifecycle, multi-tab, export, source-mode, ai-workflow)", "spec": "§8.4" },
         "33-onboarding": { "status": "completed", "tests": "tsc + vitest pass", "spec": "§4.9" },
         "34-documentation": { "status": "completed", "tests": "user-guide + shortcuts + FAQ", "spec": "§8.2" },
-        "35-installers": { "status": "not-started", "tests": "none", "spec": "§8.2" },
+        "35-installers": { "status": "completed", "tests": "cargo check pass + tauri info valid", "spec": "§8.2" },
         "36-release-build": { "status": "not-started", "tests": "none", "spec": "§8.2" }
       },
       "specCheckIssues": [
