@@ -3,7 +3,6 @@
 use futures::StreamExt;
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex};
 use tauri::Emitter;
 use thiserror::Error;
 
@@ -13,33 +12,6 @@ pub enum LlmError {
     NoApiKey,
     #[error("HTTP request failed: {0}")]
     RequestFailed(String),
-    #[error("SSE parse error: {0}")]
-    ParseError(String),
-    #[error("Request cancelled")]
-    Cancelled,
-}
-
-/// Registry for cancelling in-flight LLM requests
-#[derive(Clone, Default)]
-pub struct CancelRegistry {
-    inner: Arc<Mutex<Vec<String>>>,
-}
-
-impl CancelRegistry {
-    pub fn cancel(&self, request_id: &str) {
-        let mut ids = self.inner.lock().unwrap();
-        ids.push(request_id.to_string());
-    }
-
-    pub fn is_cancelled(&self, request_id: &str) -> bool {
-        let ids = self.inner.lock().unwrap();
-        ids.contains(&request_id.to_string())
-    }
-
-    pub fn remove(&self, request_id: &str) {
-        let mut ids = self.inner.lock().unwrap();
-        ids.retain(|id| id != request_id);
-    }
 }
 
 #[derive(Debug, Serialize)]
@@ -209,13 +181,4 @@ mod tests {
         assert!(event.delta.is_none());
     }
 
-    #[test]
-    fn test_cancel_registry() {
-        let registry = CancelRegistry::default();
-        assert!(!registry.is_cancelled("req-1"));
-        registry.cancel("req-1");
-        assert!(registry.is_cancelled("req-1"));
-        registry.remove("req-1");
-        assert!(!registry.is_cancelled("req-1"));
-    }
 }
