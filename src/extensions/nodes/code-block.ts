@@ -1,5 +1,7 @@
 // §5.1 Code Block Extension (fenced code blocks)
 import { Node, mergeAttributes, textblockTypeInputRule } from "@tiptap/core";
+import { ReactNodeViewRenderer } from "@tiptap/react";
+import { CodeBlockView } from "./code-block-view";
 
 export interface CodeBlockOptions {
   HTMLAttributes: Record<string, string>;
@@ -76,6 +78,10 @@ export const CodeBlock = Node.create<CodeBlockOptions>({
     return {
       "Mod-Alt-c": () => this.editor.commands.toggleCodeBlock(),
     };
+  },
+
+  addNodeView() {
+    return ReactNodeViewRenderer(CodeBlockView);
   },
 
   addInputRules() {
