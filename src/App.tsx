@@ -27,6 +27,7 @@ import { ContextMenu } from "./components/toolbar/ContextMenu";
 import { useEditorStore } from "./stores/editor-store";
 import { useFileStore, openFolder } from "./stores/file-store";
 import { useUIStore } from "./stores/ui-store";
+import { useNavigationStore } from "./stores/navigation-store";
 import { useAutoSave } from "./hooks/use-auto-save";
 import { readFile, writeFile } from "./ipc/invoke";
 import { logAppReady } from "./utils/perf";
@@ -116,6 +117,14 @@ function App() {
 
     const prevTabId = prevTabRef.current;
     prevTabRef.current = activeTabId;
+
+    // §37 Push to navigation history (unless navigating via back/forward)
+    if (prevTabId && prevTabId !== activeTabId) {
+      const navStore = useNavigationStore.getState();
+      if (!navStore._navigating) {
+        navStore.pushHistory(prevTabId);
+      }
+    }
 
     // Save outgoing tab content
     if (prevTabId && prevTabId !== activeTabId) {
@@ -327,10 +336,56 @@ function App() {
     }
   }, []);
 
+  // §37 Navigation back/forward handlers
+  const handleGoBack = useCallback(() => {
+    const { activeTabId: currentId, tabs: currentTabs } =
+      useEditorStore.getState();
+    if (!currentId) return;
+    const openTabIds = new Set(currentTabs.map((t) => t.id));
+    const targetId = useNavigationStore.getState().goBack(currentId, openTabIds);
+    if (targetId) {
+      useEditorStore.getState().setActiveTab(targetId);
+    }
+  }, []);
+
+  const handleGoForward = useCallback(() => {
+    const { activeTabId: currentId, tabs: currentTabs } =
+      useEditorStore.getState();
+    if (!currentId) return;
+    const openTabIds = new Set(currentTabs.map((t) => t.id));
+    const targetId = useNavigationStore
+      .getState()
+      .goForward(currentId, openTabIds);
+    if (targetId) {
+      useEditorStore.getState().setActiveTab(targetId);
+    }
+  }, []);
+
   // Global keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
+
+      // §37 Ctrl+- — navigate back (macOS: ⌃-, Windows/Linux: Alt+←)
+      if (
+        (e.ctrlKey && !e.shiftKey && !e.metaKey && (e.key === "-" || e.code === "Minus")) ||
+        (!e.metaKey && e.altKey && e.key === "ArrowLeft")
+      ) {
+        e.preventDefault();
+        handleGoBack();
+        return;
+      }
+
+      // §37 Ctrl+Shift+- — navigate forward (macOS: ⌃⇧-, Windows/Linux: Alt+→)
+      // Note: Shift+- produces key="_" on most keyboards, so check both
+      if (
+        (e.ctrlKey && e.shiftKey && !e.metaKey && (e.key === "_" || e.key === "-" || e.code === "Minus")) ||
+        (!e.metaKey && e.altKey && e.key === "ArrowRight")
+      ) {
+        e.preventDefault();
+        handleGoForward();
+        return;
+      }
 
       // Cmd+/ — toggle source mode
       if (mod && e.key === "/") {
@@ -384,6 +439,8 @@ function App() {
     handleNewFile,
     handleOpenFile,
     handleSave,
+    handleGoBack,
+    handleGoForward,
     editor,
     isSourceMode,
   ]);
@@ -420,6 +477,12 @@ function App() {
         case "go_palette":
           toggleCommandPalette();
           break;
+        case "go_back":
+          handleGoBack();
+          break;
+        case "go_forward":
+          handleGoForward();
+          break;
       }
     });
 
@@ -431,6 +494,8 @@ function App() {
     handleOpenFile,
     handleOpenFolder,
     handleSave,
+    handleGoBack,
+    handleGoForward,
     toggleSourceMode,
     toggleSidebar,
     toggleCommandPalette,
