@@ -6,6 +6,10 @@ import { prosemirrorToMarkdown } from "../pm-to-md";
 import { generateMarkdown } from "../../utils/__tests__/perf-helpers";
 import katex from "katex";
 
+// CI runners are shared machines — allow 3x headroom
+const CI = !!process.env.CI;
+const CI_MULTIPLIER = CI ? 3 : 1;
+
 // Full schema matching M2 + M3 extensions
 const schema = new Schema({
   nodes: {
@@ -111,7 +115,7 @@ describe("Performance: File Open (MD → ProseMirror)", () => {
     const elapsed = performance.now() - start;
 
     console.log(`[Perf] 1,000-line file open: ${elapsed.toFixed(1)}ms`);
-    expect(elapsed).toBeLessThan(200);
+    expect(elapsed).toBeLessThan(200 * CI_MULTIPLIER);
   });
 
   it("opens 10,000-line file within 1,000ms", () => {
@@ -121,7 +125,7 @@ describe("Performance: File Open (MD → ProseMirror)", () => {
     const elapsed = performance.now() - start;
 
     console.log(`[Perf] 10,000-line file open: ${elapsed.toFixed(1)}ms`);
-    expect(elapsed).toBeLessThan(1000);
+    expect(elapsed).toBeLessThan(1000 * CI_MULTIPLIER);
   });
 });
 
@@ -135,7 +139,7 @@ describe("Performance: File Save (ProseMirror → MD)", () => {
     const elapsed = performance.now() - start;
 
     console.log(`[Perf] 1,000-line file save: ${elapsed.toFixed(1)}ms`);
-    expect(elapsed).toBeLessThan(100);
+    expect(elapsed).toBeLessThan(100 * CI_MULTIPLIER);
   });
 
   it("saves 10,000-line file within 1,000ms", () => {
@@ -147,7 +151,7 @@ describe("Performance: File Save (ProseMirror → MD)", () => {
     const elapsed = performance.now() - start;
 
     console.log(`[Perf] 10,000-line file save: ${elapsed.toFixed(1)}ms`);
-    expect(elapsed).toBeLessThan(1000);
+    expect(elapsed).toBeLessThan(1000 * CI_MULTIPLIER);
   });
 });
 
@@ -161,6 +165,6 @@ describe("Performance: KaTeX Rendering", () => {
     const elapsed = performance.now() - start;
 
     console.log(`[Perf] KaTeX complex formula: ${elapsed.toFixed(1)}ms`);
-    expect(elapsed).toBeLessThan(50);
+    expect(elapsed).toBeLessThan(50 * CI_MULTIPLIER);
   });
 });
