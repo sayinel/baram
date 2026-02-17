@@ -9,7 +9,7 @@ mod index;
 mod llm;
 mod search;
 
-use commands::{config_cmd, fs_cmd};
+use commands::{config_cmd, export_cmd, fs_cmd};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::Emitter;
 
@@ -119,6 +119,7 @@ pub fn run() {
             fs_cmd::list_dir,
             config_cmd::get_config,
             config_cmd::set_config,
+            export_cmd::export_pdf,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

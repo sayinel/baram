@@ -1,4 +1,4 @@
-// §5.12 Export Dialog — HTML/PDF export with format selection
+// §5.12 Export Dialog — HTML/PDF export with format selection + paper size
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import { useUIStore } from "../../stores/ui-store";
@@ -13,13 +13,17 @@ export function ExportDialog({ editor }: ExportDialogProps) {
     useUIStore();
   const [title, setTitle] = useState("Untitled");
   const [exporting, setExporting] = useState(false);
+  const [paperSize, setPaperSize] = useState<"a4" | "letter">("a4");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
 
-  // Reset title when dialog opens
+  // Reset state when dialog opens
   useEffect(() => {
     if (exportDialogOpen) {
       setTitle("Untitled");
       setExporting(false);
+      setPaperSize("a4");
+      setErrorMsg(null);
       setTimeout(() => {
         titleInputRef.current?.focus();
         titleInputRef.current?.select();
@@ -30,18 +34,22 @@ export function ExportDialog({ editor }: ExportDialogProps) {
   const handleExport = useCallback(async () => {
     if (!editor || exporting) return;
     setExporting(true);
+    setErrorMsg(null);
     try {
       if (exportFormat === "html") {
         await exportAsHTML(editor, title);
       } else {
-        await exportAsPDF(editor, title);
+        await exportAsPDF(editor, title, { paperSize });
       }
       closeExportDialog();
     } catch (err) {
-      console.error("[Baram Export]", err);
+      const message =
+        err instanceof Error ? err.message : String(err);
+      console.error("[Baram Export]", message);
+      setErrorMsg(message);
       setExporting(false);
     }
-  }, [editor, exportFormat, title, exporting, closeExportDialog]);
+  }, [editor, exportFormat, title, paperSize, exporting, closeExportDialog]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -109,6 +117,30 @@ export function ExportDialog({ editor }: ExportDialogProps) {
               onChange={(e) => setTitle(e.target.value)}
             />
           </div>
+
+          {exportFormat === "pdf" && (
+            <div className="export-dialog-field">
+              <label className="export-dialog-label">Paper Size</label>
+              <div className="export-format-tabs">
+                <button
+                  className={`export-format-tab ${paperSize === "a4" ? "export-format-tab-active" : ""}`}
+                  onClick={() => setPaperSize("a4")}
+                >
+                  A4
+                </button>
+                <button
+                  className={`export-format-tab ${paperSize === "letter" ? "export-format-tab-active" : ""}`}
+                  onClick={() => setPaperSize("letter")}
+                >
+                  Letter
+                </button>
+              </div>
+            </div>
+          )}
+
+          {errorMsg && (
+            <div className="export-dialog-error">{errorMsg}</div>
+          )}
         </div>
 
         <div className="export-dialog-footer">

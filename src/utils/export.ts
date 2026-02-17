@@ -1,7 +1,8 @@
-// §5.12 Export — HTML file save + PDF print via system dialog
+// §5.12 Export — HTML file save + PDF via headless Chrome backend
 import type { Editor } from "@tiptap/core";
 import { save } from "@tauri-apps/plugin-dialog";
-import { writeFile } from "../ipc/invoke";
+import { writeFile, exportPdf } from "../ipc/invoke";
+import type { PdfOptions } from "../ipc/types";
 import { generateStandaloneHTML } from "./export-html";
 
 /**
@@ -24,55 +25,24 @@ export async function exportAsHTML(
 }
 
 /**
- * Export editor content as PDF via system print dialog.
- * Injects standalone HTML into a hidden iframe and calls window.print().
+ * Export editor content as PDF via Rust headless Chrome backend.
+ * Generates standalone HTML, prompts for save location, then invokes
+ * the Rust export_pdf command for high-fidelity PDF rendering.
  */
 export async function exportAsPDF(
   editor: Editor,
   title: string,
+  options?: PdfOptions,
 ): Promise<void> {
   const html = generateStandaloneHTML(editor.getHTML(), title, {
     theme: "light",
   });
 
-  const iframe = document.createElement("iframe");
-  iframe.style.position = "fixed";
-  iframe.style.left = "-9999px";
-  iframe.style.width = "0";
-  iframe.style.height = "0";
-  iframe.style.border = "none";
-  document.body.appendChild(iframe);
+  const path = await save({
+    filters: [{ name: "PDF", extensions: ["pdf"] }],
+    defaultPath: `${title}.pdf`,
+  });
+  if (!path) return; // user cancelled
 
-  const iframeDoc = iframe.contentDocument ?? iframe.contentWindow?.document;
-  if (!iframeDoc) {
-    document.body.removeChild(iframe);
-    return;
-  }
-
-  iframeDoc.open();
-  iframeDoc.write(html);
-  iframeDoc.close();
-
-  // Wait for content (especially KaTeX fonts) to load before printing
-  iframe.onload = () => {
-    iframe.contentWindow?.focus();
-    iframe.contentWindow?.print();
-    setTimeout(() => {
-      document.body.removeChild(iframe);
-    }, 1000);
-  };
-
-  // Fallback: if onload doesn't fire (some WebView implementations),
-  // trigger print after a short delay
-  setTimeout(() => {
-    if (iframe.parentNode) {
-      iframe.contentWindow?.focus();
-      iframe.contentWindow?.print();
-      setTimeout(() => {
-        if (iframe.parentNode) {
-          document.body.removeChild(iframe);
-        }
-      }, 1000);
-    }
-  }, 500);
+  await exportPdf(html, path, options);
 }

@@ -67,6 +67,18 @@ export interface ExportOptions {
   theme?: string;
 }
 
+// §5.10 PDF export options (headless Chrome backend)
+export interface PdfOptions {
+  paperSize?: "a4" | "letter";
+  landscape?: boolean;
+  printBackground?: boolean;
+  scale?: number;
+  marginTop?: number; // inches
+  marginBottom?: number;
+  marginLeft?: number;
+  marginRight?: number;
+}
+
 // §3.2 Config types
 export type JsonValue =
   | string

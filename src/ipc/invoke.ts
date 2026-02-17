@@ -10,6 +10,7 @@ import type {
   GitStatus,
   ExportFormat,
   ExportOptions,
+  PdfOptions,
   JsonValue,
   SnapshotInfo,
 } from "./types";
@@ -90,6 +91,15 @@ export async function exportDocument(
   options?: ExportOptions,
 ): Promise<string> {
   return invoke<string>("export_document", { path, format, options });
+}
+
+// §5.10 PDF export via headless Chrome
+export async function exportPdf(
+  htmlContent: string,
+  outputPath: string,
+  options?: PdfOptions,
+): Promise<void> {
+  return invoke<void>("export_pdf", { htmlContent, outputPath, options });
 }
 
 // §3.2 Git commands
