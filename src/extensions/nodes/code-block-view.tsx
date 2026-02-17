@@ -4,7 +4,7 @@ import { NodeViewWrapper, NodeViewProps } from "@tiptap/react";
 import { EditorView, keymap, lineNumbers, drawSelection } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { defaultKeymap, indentWithTab } from "@codemirror/commands";
-import { bracketMatching } from "@codemirror/language";
+import { bracketMatching, syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
 import { getLanguageExtension, LANGUAGE_OPTIONS } from "./code-block-languages";
 
 export function CodeBlockView({ node, updateAttributes, extension }: NodeViewProps) {
@@ -34,6 +34,7 @@ export function CodeBlockView({ node, updateAttributes, extension }: NodeViewPro
         lineNumbers(),
         drawSelection(),
         bracketMatching(),
+        syntaxHighlighting(defaultHighlightStyle),
         EditorView.lineWrapping,
         EditorState.readOnly.of(!extension.options.editable),
         ...(langExt ? [langExt] : []),
