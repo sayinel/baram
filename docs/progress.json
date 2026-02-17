@@ -100,7 +100,7 @@
         "29-perf-optimize": { "status": "completed", "tests": "5/5 perf benchmark pass (open/save/katex)", "spec": "§8.4" },
         "30-native-menu": { "status": "completed", "tests": "cargo check pass", "spec": "§4.4" },
         "31-file-management": { "status": "completed", "tests": "tsc pass (New/Open/Save/Tab)", "spec": "§4.3" },
-        "32-integration-tests": { "status": "not-started", "tests": "none", "spec": "§8.4" },
+        "32-integration-tests": { "status": "completed", "tests": "26/26 vitest pass (5 files: lifecycle, multi-tab, export, source-mode, ai-workflow)", "spec": "§8.4" },
         "33-onboarding": { "status": "not-started", "tests": "none", "spec": "§4.9" },
         "34-documentation": { "status": "not-started", "tests": "none", "spec": "§8.2" },
         "35-installers": { "status": "not-started", "tests": "none", "spec": "§8.2" },
@@ -118,7 +118,7 @@
   },
 
   "testSummary": {
-    "vitest": "112/112 pass",
+    "vitest": "138/138 pass",
     "cargoTest": "3/3 pass",
     "breakdown": {
       "stores": 6,
@@ -130,6 +130,7 @@
       "syntax-reveal": 9,
       "export-html": 9,
       "perf-benchmark": 5,
+      "integration": 26,
       "cargo-sse-parser": 3
     }
   },
