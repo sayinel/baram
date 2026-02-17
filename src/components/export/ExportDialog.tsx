@@ -2,6 +2,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import { useUIStore } from "../../stores/ui-store";
+import { useEditorStore } from "../../stores/editor-store";
 import { exportAsHTML, exportAsPDF } from "../../utils/export";
 
 interface ExportDialogProps {
@@ -11,6 +12,7 @@ interface ExportDialogProps {
 export function ExportDialog({ editor }: ExportDialogProps) {
   const { exportDialogOpen, exportFormat, closeExportDialog, openExportDialog } =
     useUIStore();
+  const { activeTabId, tabs } = useEditorStore();
   const [title, setTitle] = useState("Untitled");
   const [exporting, setExporting] = useState(false);
   const [paperSize, setPaperSize] = useState<"a4" | "letter">("a4");
@@ -20,7 +22,12 @@ export function ExportDialog({ editor }: ExportDialogProps) {
   // Reset state when dialog opens
   useEffect(() => {
     if (exportDialogOpen) {
-      setTitle("Untitled");
+      const activeTab = tabs.find((t) => t.id === activeTabId);
+      // Use active file name (without .md extension) or fallback to "Untitled"
+      const defaultTitle = activeTab?.title
+        ? activeTab.title.replace(/\.md$/i, "")
+        : "Untitled";
+      setTitle(defaultTitle);
       setExporting(false);
       setPaperSize("a4");
       setErrorMsg(null);
