@@ -448,6 +448,7 @@ function App() {
             <Suspense fallback={null}>
               <WelcomeScreen
                 onNewFile={handleNewFile}
+                onOpenFile={handleOpenFile}
                 onOpenFolder={handleOpenFolder}
               />
             </Suspense>

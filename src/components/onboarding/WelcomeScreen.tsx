@@ -4,16 +4,22 @@ import { useUIStore } from "../../stores/ui-store";
 
 interface WelcomeScreenProps {
   onNewFile: () => void;
+  onOpenFile: () => void;
   onOpenFolder: () => void;
 }
 
-export function WelcomeScreen({ onNewFile, onOpenFolder }: WelcomeScreenProps) {
+export function WelcomeScreen({ onNewFile, onOpenFile, onOpenFolder }: WelcomeScreenProps) {
   const { dismissWelcome } = useUIStore();
   const [dontShowAgain, setDontShowAgain] = useState(false);
 
   const handleNewFile = () => {
     dismissWelcome(dontShowAgain);
     onNewFile();
+  };
+
+  const handleOpenFile = () => {
+    dismissWelcome(dontShowAgain);
+    onOpenFile();
   };
 
   const handleOpenFolder = () => {
@@ -32,6 +38,9 @@ export function WelcomeScreen({ onNewFile, onOpenFolder }: WelcomeScreenProps) {
         <div className="welcome-actions">
           <button className="welcome-btn welcome-btn-primary" onClick={handleOpenFolder}>
             폴더 열기
+          </button>
+          <button className="welcome-btn welcome-btn-secondary" onClick={handleOpenFile}>
+            파일 열기
           </button>
           <button className="welcome-btn welcome-btn-secondary" onClick={handleNewFile}>
             새 파일
