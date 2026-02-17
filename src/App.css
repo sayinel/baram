@@ -1782,3 +1782,66 @@ body {
 [data-theme="dark"] .welcome-card {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
+
+/* ============================================
+   §39 Tab Switcher (Ctrl+Tab MRU popup)
+   ============================================ */
+
+.tab-switcher-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  padding-top: 20vh;
+}
+
+.tab-switcher-panel {
+  width: 360px;
+  max-height: 400px;
+  background-color: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.tab-switcher-header {
+  padding: 10px 14px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.tab-switcher-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 0.875rem;
+  color: var(--color-text-primary);
+  cursor: default;
+}
+
+.tab-switcher-item--selected {
+  background-color: var(--color-accent);
+  color: #fff;
+}
+
+.tab-switcher-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-switcher-dirty {
+  font-size: 0.65rem;
+  opacity: 0.7;
+}

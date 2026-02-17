@@ -12,18 +12,28 @@ interface EditorState {
   activeTabId: string | null;
   tabs: EditorTab[];
   isSourceMode: boolean;
+  /** §39 MRU tab order — index 0 is most recently used */
+  mruOrder: string[];
 
   setActiveTab: (tabId: string) => void;
   openTab: (tab: EditorTab) => void;
   closeTab: (tabId: string) => void;
   markDirty: (tabId: string, dirty: boolean) => void;
   toggleSourceMode: () => void;
+  /** §39 Move tabId to front of MRU list */
+  touchMru: (tabId: string) => void;
+  /** §39 Get next/previous tab in MRU order (wraps around). Returns null if ≤1 tab. */
+  getNextMruTab: (
+    currentId: string,
+    direction: "forward" | "backward",
+  ) => string | null;
 }
 
-export const useEditorStore = create<EditorState>((set) => ({
+export const useEditorStore = create<EditorState>((set, get) => ({
   activeTabId: null,
   tabs: [],
   isSourceMode: false,
+  mruOrder: [],
 
   setActiveTab: (tabId) => set({ activeTabId: tabId }),
 
@@ -31,11 +41,19 @@ export const useEditorStore = create<EditorState>((set) => ({
     set((state) => {
       const existing = state.tabs.find((t) => t.filePath === tab.filePath);
       if (existing) {
-        return { activeTabId: existing.id };
+        // §39 Touch MRU for existing tab
+        const mruOrder = [
+          existing.id,
+          ...state.mruOrder.filter((id) => id !== existing.id),
+        ];
+        return { activeTabId: existing.id, mruOrder };
       }
+      // §39 New tab goes to front of MRU
+      const mruOrder = [tab.id, ...state.mruOrder];
       return {
         tabs: [...state.tabs, tab],
         activeTabId: tab.id,
+        mruOrder,
       };
     }),
 
@@ -46,7 +64,9 @@ export const useEditorStore = create<EditorState>((set) => ({
         state.activeTabId === tabId
           ? (tabs[tabs.length - 1]?.id ?? null)
           : state.activeTabId;
-      return { tabs, activeTabId };
+      // §39 Remove closed tab from MRU
+      const mruOrder = state.mruOrder.filter((id) => id !== tabId);
+      return { tabs, activeTabId, mruOrder };
     }),
 
   markDirty: (tabId, dirty) =>
@@ -58,4 +78,21 @@ export const useEditorStore = create<EditorState>((set) => ({
 
   toggleSourceMode: () =>
     set((state) => ({ isSourceMode: !state.isSourceMode })),
+
+  touchMru: (tabId) =>
+    set((state) => {
+      const filtered = state.mruOrder.filter((id) => id !== tabId);
+      return { mruOrder: [tabId, ...filtered] };
+    }),
+
+  getNextMruTab: (currentId, direction) => {
+    const { mruOrder } = get();
+    if (mruOrder.length <= 1) return null;
+    const idx = mruOrder.indexOf(currentId);
+    if (idx === -1) return null;
+    if (direction === "forward") {
+      return mruOrder[(idx + 1) % mruOrder.length];
+    }
+    return mruOrder[(idx - 1 + mruOrder.length) % mruOrder.length];
+  },
 }));

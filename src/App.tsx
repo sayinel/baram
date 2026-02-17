@@ -17,6 +17,8 @@ import { createBaramExtensions } from "./extensions";
 import { prosemirrorToMarkdown } from "./pipeline/pm-to-md";
 import { markdownToProsemirror } from "./pipeline/md-to-pm";
 import type { SourceCodeEditorRef } from "./components/editor/SourceCodeEditor";
+import type { EditorTab } from "./stores/editor-store";
+import { TabSwitcher } from "./components/layout/TabSwitcher";
 import { pmPosToMdOffset, mdOffsetToPmPos } from "./utils/cursor-mapper";
 import { AppLayout } from "./components/layout/AppLayout";
 import { TabBar } from "./components/layout/TabBar";
@@ -100,6 +102,12 @@ function App() {
 
   // Track previously active tab to save its content on switch
   const prevTabRef = useRef<string | null>(null);
+  // §37 Ref-based flag for back/forward navigation (avoids _navigating timing bug)
+  const isNavBackForwardRef = useRef(false);
+  // §39 Tab switcher state
+  const [tabSwitcherOpen, setTabSwitcherOpen] = useState(false);
+  const [tabSwitcherIndex, setTabSwitcherIndex] = useState(0);
+  const tabSwitcherMruRef = useRef<EditorTab[]>([]);
 
   const editor = useEditor({
     extensions: createBaramExtensions(),
@@ -120,10 +128,15 @@ function App() {
 
     // §37 Push to navigation history (unless navigating via back/forward)
     if (prevTabId && prevTabId !== activeTabId) {
-      const navStore = useNavigationStore.getState();
-      if (!navStore._navigating) {
-        navStore.pushHistory(prevTabId);
+      if (!isNavBackForwardRef.current) {
+        useNavigationStore.getState().pushHistory(prevTabId);
       }
+      isNavBackForwardRef.current = false;
+    }
+
+    // §39 Touch MRU for the newly active tab
+    if (activeTabId) {
+      useEditorStore.getState().touchMru(activeTabId);
     }
 
     // Save outgoing tab content
@@ -344,6 +357,7 @@ function App() {
     const openTabIds = new Set(currentTabs.map((t) => t.id));
     const targetId = useNavigationStore.getState().goBack(currentId, openTabIds);
     if (targetId) {
+      isNavBackForwardRef.current = true;
       useEditorStore.getState().setActiveTab(targetId);
     }
   }, []);
@@ -357,6 +371,7 @@ function App() {
       .getState()
       .goForward(currentId, openTabIds);
     if (targetId) {
+      isNavBackForwardRef.current = true;
       useEditorStore.getState().setActiveTab(targetId);
     }
   }, []);
@@ -365,6 +380,38 @@ function App() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
+
+      // §39 Escape closes tab switcher without switching
+      if (e.key === "Escape" && tabSwitcherOpen) {
+        e.preventDefault();
+        setTabSwitcherOpen(false);
+        return;
+      }
+
+      // §39 Ctrl+Tab — MRU tab switcher popup
+      if (e.ctrlKey && !e.metaKey && e.key === "Tab") {
+        e.preventDefault();
+        const { mruOrder, tabs: currentTabs } = useEditorStore.getState();
+        if (mruOrder.length <= 1) return;
+
+        if (!tabSwitcherOpen) {
+          // Freeze MRU order and open the switcher
+          const mruTabs = mruOrder
+            .map((id) => currentTabs.find((t) => t.id === id))
+            .filter((t): t is EditorTab => t !== undefined);
+          if (mruTabs.length <= 1) return;
+          tabSwitcherMruRef.current = mruTabs;
+          setTabSwitcherIndex(e.shiftKey ? mruTabs.length - 1 : 1);
+          setTabSwitcherOpen(true);
+        } else {
+          // Navigate within the open switcher
+          const len = tabSwitcherMruRef.current.length;
+          setTabSwitcherIndex((prev) =>
+            e.shiftKey ? (prev - 1 + len) % len : (prev + 1) % len,
+          );
+        }
+        return;
+      }
 
       // §37 Ctrl+- — navigate back (macOS: ⌃-, Windows/Linux: Alt+←)
       if (
@@ -443,7 +490,26 @@ function App() {
     handleGoForward,
     editor,
     isSourceMode,
+    tabSwitcherOpen,
   ]);
+
+  // §39 Ctrl keyup — commit tab switcher selection
+  useEffect(() => {
+    if (!tabSwitcherOpen) return;
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Control") {
+        const selectedTab = tabSwitcherMruRef.current[tabSwitcherIndex];
+        if (selectedTab) {
+          useEditorStore.getState().setActiveTab(selectedTab.id);
+        }
+        setTabSwitcherOpen(false);
+      }
+    };
+
+    window.addEventListener("keyup", handleKeyUp);
+    return () => window.removeEventListener("keyup", handleKeyUp);
+  }, [tabSwitcherOpen, tabSwitcherIndex]);
 
   // Native menu event listener (Tauri menu bar → frontend dispatch)
   useEffect(() => {
@@ -551,6 +617,12 @@ function App() {
         />
         <ExportDialog editor={editor} />
       </Suspense>
+      {tabSwitcherOpen && (
+        <TabSwitcher
+          mruTabs={tabSwitcherMruRef.current}
+          selectedIndex={tabSwitcherIndex}
+        />
+      )}
     </>
   );
 }
