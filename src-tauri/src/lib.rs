@@ -9,7 +9,7 @@ mod index;
 mod llm;
 mod search;
 
-use commands::{config_cmd, export_cmd, fs_cmd};
+use commands::{config_cmd, export_cmd, fs_cmd, llm_cmd};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::Emitter;
 
@@ -85,6 +85,130 @@ pub fn run() {
                 .item(&view_palette)
                 .build()?;
 
+            // --- Insert menu (§4.4) ---
+            let insert_h1 = MenuItemBuilder::new("Heading 1")
+                .id("insert_h1")
+                .accelerator("CmdOrCtrl+1")
+                .build(app)?;
+            let insert_h2 = MenuItemBuilder::new("Heading 2")
+                .id("insert_h2")
+                .accelerator("CmdOrCtrl+2")
+                .build(app)?;
+            let insert_h3 = MenuItemBuilder::new("Heading 3")
+                .id("insert_h3")
+                .accelerator("CmdOrCtrl+3")
+                .build(app)?;
+            let insert_paragraph = MenuItemBuilder::new("Paragraph")
+                .id("insert_paragraph")
+                .accelerator("CmdOrCtrl+0")
+                .build(app)?;
+            let insert_bold = MenuItemBuilder::new("Bold")
+                .id("insert_bold")
+                .accelerator("CmdOrCtrl+B")
+                .build(app)?;
+            let insert_italic = MenuItemBuilder::new("Italic")
+                .id("insert_italic")
+                .accelerator("CmdOrCtrl+I")
+                .build(app)?;
+            let insert_underline = MenuItemBuilder::new("Underline")
+                .id("insert_underline")
+                .accelerator("CmdOrCtrl+U")
+                .build(app)?;
+            let insert_strikethrough = MenuItemBuilder::new("Strikethrough")
+                .id("insert_strikethrough")
+                .build(app)?;
+            let insert_inline_code = MenuItemBuilder::new("Inline Code")
+                .id("insert_inline_code")
+                .build(app)?;
+            let insert_link = MenuItemBuilder::new("Link")
+                .id("insert_link")
+                .build(app)?;
+            let insert_image = MenuItemBuilder::new("Image")
+                .id("insert_image")
+                .build(app)?;
+            let insert_table = MenuItemBuilder::new("Table")
+                .id("insert_table")
+                .build(app)?;
+            let insert_code_block = MenuItemBuilder::new("Code Block")
+                .id("insert_code_block")
+                .build(app)?;
+            let insert_math_block = MenuItemBuilder::new("Math Block")
+                .id("insert_math_block")
+                .build(app)?;
+            let insert_blockquote = MenuItemBuilder::new("Blockquote")
+                .id("insert_blockquote")
+                .build(app)?;
+            let insert_ordered_list = MenuItemBuilder::new("Ordered List")
+                .id("insert_ordered_list")
+                .build(app)?;
+            let insert_unordered_list = MenuItemBuilder::new("Unordered List")
+                .id("insert_unordered_list")
+                .build(app)?;
+            let insert_task_list = MenuItemBuilder::new("Task List")
+                .id("insert_task_list")
+                .build(app)?;
+            let insert_hr = MenuItemBuilder::new("Horizontal Rule")
+                .id("insert_hr")
+                .build(app)?;
+            let insert_frontmatter = MenuItemBuilder::new("YAML Front Matter")
+                .id("insert_frontmatter")
+                .build(app)?;
+
+            let insert_menu = SubmenuBuilder::new(app, "Insert")
+                .item(&insert_h1)
+                .item(&insert_h2)
+                .item(&insert_h3)
+                .item(&insert_paragraph)
+                .separator()
+                .item(&insert_bold)
+                .item(&insert_italic)
+                .item(&insert_underline)
+                .item(&insert_strikethrough)
+                .item(&insert_inline_code)
+                .separator()
+                .item(&insert_link)
+                .item(&insert_image)
+                .separator()
+                .item(&insert_table)
+                .item(&insert_code_block)
+                .item(&insert_math_block)
+                .separator()
+                .item(&insert_blockquote)
+                .item(&insert_ordered_list)
+                .item(&insert_unordered_list)
+                .item(&insert_task_list)
+                .separator()
+                .item(&insert_hr)
+                .item(&insert_frontmatter)
+                .build()?;
+
+            // --- Go menu (§4.4) ---
+            let go_palette = MenuItemBuilder::new("Command Palette")
+                .id("go_palette")
+                .accelerator("CmdOrCtrl+K")
+                .build(app)?;
+            let go_back = MenuItemBuilder::new("Back")
+                .id("go_back")
+                .accelerator("Ctrl+-")
+                .build(app)?;
+            let go_forward = MenuItemBuilder::new("Forward")
+                .id("go_forward")
+                .accelerator("Ctrl+Shift+-")
+                .build(app)?;
+            let go_switch_doc = MenuItemBuilder::new("Switch Document")
+                .id("go_switch_doc")
+                .accelerator("Ctrl+Tab")
+                .build(app)?;
+
+            let go_menu = SubmenuBuilder::new(app, "Go")
+                .item(&go_palette)
+                .separator()
+                .item(&go_back)
+                .item(&go_forward)
+                .separator()
+                .item(&go_switch_doc)
+                .build()?;
+
             // --- App menu (macOS: first submenu = application menu with Quit) ---
             let app_menu = SubmenuBuilder::new(app, "Baram")
                 .about(None)
@@ -103,6 +227,8 @@ pub fn run() {
                 .item(&file_menu)
                 .item(&edit_menu)
                 .item(&view_menu)
+                .item(&insert_menu)
+                .item(&go_menu)
                 .build()?;
 
             app.set_menu(menu)?;
@@ -117,9 +243,14 @@ pub fn run() {
             fs_cmd::read_file,
             fs_cmd::write_file,
             fs_cmd::list_dir,
+            fs_cmd::rename_file,
+            fs_cmd::delete_file,
+            fs_cmd::watch_dir,
             config_cmd::get_config,
             config_cmd::set_config,
             export_cmd::export_pdf,
+            export_cmd::export_document,
+            llm_cmd::llm_complete,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

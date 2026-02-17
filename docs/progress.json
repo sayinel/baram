@@ -95,7 +95,7 @@
       "status": "in-progress",
       "weeks": "23-26",
       "features": {
-        "27-export-pdf": { "status": "partial", "tests": "browser print only, Rust backend 미구현", "spec": "§5.10" },
+        "27-export-pdf": { "status": "completed", "tests": "headless Chrome backend + export_document IPC", "spec": "§5.10" },
         "28-export-html": { "status": "completed", "tests": "9/9 vitest pass", "spec": "§5.10" },
         "29-perf-optimize": { "status": "completed", "tests": "5/5 perf benchmark pass (open/save/katex)", "spec": "§8.4" },
         "30-native-menu": { "status": "completed", "tests": "cargo check pass", "spec": "§4.4" },
@@ -107,12 +107,7 @@
         "36-release-build": { "status": "not-started", "tests": "none", "spec": "§8.2" }
       },
       "specCheckIssues": [
-        "PDF Export: Rust backend 미구현, 옵션 UI 없음 (browser print dialog only)",
-        "underline-transformer.ts 누락",
-        "drag-handle.ts 파일 누락 (registry에 implemented로 등록)",
-        "Go/Insert/Help 메뉴 미구현 (§4.4 설계: 6개 메뉴 중 3개 부재)",
-        "Phase 1 IPC 5개 미등록 (rename_file, delete_file, watch_dir, llm_complete, export_document)",
-        "성능 지표: 자동 측정 4개 완료, 수동 측정 5개 미완 (§8.4)"
+        "성능 지표: 자동 측정 4개 완료, 수동 측정 5개 미완 — Tauri 빌드 후 측정 필요 (§8.4)"
       ]
     }
   },

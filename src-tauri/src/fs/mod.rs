@@ -1,7 +1,10 @@
-// §3.6 파일 시스템 모듈 — 읽기/쓰기/디렉토리 목록
+// §3.6 파일 시스템 모듈 — 읽기/쓰기/디렉토리 목록/이름변경/삭제/감시
 
 use crate::commands::fs_cmd::FileEntry;
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::Path;
+use std::sync::mpsc;
+use tauri::Emitter;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -10,6 +13,8 @@ pub enum FsError {
     NotFound(String),
     #[error("파일 읽기 실패: {0}")]
     ReadError(#[from] std::io::Error),
+    #[error("파일 감시 실패: {0}")]
+    WatchError(String),
 }
 
 /// UTF-8 파일 읽기
@@ -91,5 +96,73 @@ async fn list_dir_inner(
             Box::pin(list_dir_inner(&entry.path(), true, entries)).await?;
         }
     }
+    Ok(())
+}
+
+/// 파일 이름 변경 / 이동
+pub async fn rename_file(from: &str, to: &str) -> Result<(), FsError> {
+    if !Path::new(from).exists() {
+        return Err(FsError::NotFound(from.to_string()));
+    }
+    tokio::fs::rename(from, to).await.map_err(FsError::ReadError)
+}
+
+/// 파일 삭제
+pub async fn delete_file(path: &str) -> Result<(), FsError> {
+    if !Path::new(path).exists() {
+        return Err(FsError::NotFound(path.to_string()));
+    }
+    tokio::fs::remove_file(path)
+        .await
+        .map_err(FsError::ReadError)
+}
+
+/// 디렉토리 감시 시작 — notify crate 기반
+/// file:changed, file:created, file:deleted 이벤트를 프론트엔드로 emit
+pub fn watch_dir(path: &str, app_handle: tauri::AppHandle) -> Result<(), FsError> {
+    let path = path.to_string();
+    let (tx, rx) = mpsc::channel::<notify::Result<Event>>();
+
+    let mut watcher: RecommendedWatcher =
+        Watcher::new(tx, notify::Config::default()).map_err(|e| FsError::WatchError(e.to_string()))?;
+
+    watcher
+        .watch(Path::new(&path), RecursiveMode::Recursive)
+        .map_err(|e| FsError::WatchError(e.to_string()))?;
+
+    // Spawn a thread to receive file system events and emit to frontend
+    std::thread::spawn(move || {
+        // Keep watcher alive for the duration of this thread
+        let _watcher = watcher;
+        for result in rx {
+            if let Ok(event) = result {
+                for event_path in &event.paths {
+                    let path_str = event_path.to_string_lossy().to_string();
+                    match event.kind {
+                        EventKind::Create(_) => {
+                            let _ = app_handle.emit(
+                                "file:created",
+                                serde_json::json!({ "path": path_str }),
+                            );
+                        }
+                        EventKind::Modify(_) => {
+                            let _ = app_handle.emit(
+                                "file:changed",
+                                serde_json::json!({ "path": path_str, "kind": "modified" }),
+                            );
+                        }
+                        EventKind::Remove(_) => {
+                            let _ = app_handle.emit(
+                                "file:deleted",
+                                serde_json::json!({ "path": path_str }),
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    });
+
     Ok(())
 }

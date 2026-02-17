@@ -31,3 +31,22 @@ pub async fn list_dir(path: String, recursive: Option<bool>) -> Result<Vec<FileE
         .await
         .map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub async fn rename_file(from: String, to: String) -> Result<(), String> {
+    crate::fs::rename_file(&from, &to)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_file(path: String) -> Result<(), String> {
+    crate::fs::delete_file(&path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn watch_dir(path: String, app_handle: tauri::AppHandle) -> Result<(), String> {
+    crate::fs::watch_dir(&path, app_handle).map_err(|e| e.to_string())
+}
