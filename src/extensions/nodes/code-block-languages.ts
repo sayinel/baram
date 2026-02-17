@@ -1,6 +1,7 @@
 // §5.4 CodeMirror 6 language support mapping
 // §8.4 Languages are dynamically imported to reduce initial bundle size (~300KB savings)
 import type { Extension } from "@codemirror/state";
+import { StreamLanguage } from "@codemirror/language";
 
 /** Get CodeMirror language extension by name (async — lazy loads language pack) */
 export async function getLanguageExtension(
@@ -86,6 +87,31 @@ export async function getLanguageExtension(
       const { php } = await import("@codemirror/lang-php");
       return php();
     }
+    case "shell":
+    case "bash":
+    case "sh": {
+      const { shell } = await import("@codemirror/legacy-modes/mode/shell");
+      return StreamLanguage.define(shell);
+    }
+    case "ruby":
+    case "rb": {
+      const { ruby } = await import("@codemirror/legacy-modes/mode/ruby");
+      return StreamLanguage.define(ruby);
+    }
+    case "swift": {
+      const { swift } = await import("@codemirror/legacy-modes/mode/swift");
+      return StreamLanguage.define(swift);
+    }
+    case "kotlin":
+    case "kt": {
+      const { kotlin } = await import("@codemirror/legacy-modes/mode/clike");
+      return StreamLanguage.define(kotlin);
+    }
+    case "latex":
+    case "tex": {
+      const { latex } = await import("codemirror-lang-latex");
+      return latex();
+    }
     default:
       return null;
   }
@@ -101,6 +127,10 @@ export const SUPPORTED_LANGUAGES = [
   "java",
   "c",
   "cpp",
+  "shell",
+  "ruby",
+  "swift",
+  "kotlin",
   "html",
   "css",
   "json",
@@ -109,24 +139,30 @@ export const SUPPORTED_LANGUAGES = [
   "sql",
   "xml",
   "php",
+  "latex",
 ] as const;
 
 /** Language options for the dropdown UI — only includes languages with actual highlighting support */
 export const LANGUAGE_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
-  { value: "javascript", label: "JavaScript" },
-  { value: "typescript", label: "TypeScript" },
-  { value: "python", label: "Python" },
-  { value: "rust", label: "Rust" },
-  { value: "go", label: "Go" },
-  { value: "java", label: "Java" },
   { value: "c", label: "C" },
   { value: "cpp", label: "C++" },
-  { value: "html", label: "HTML" },
   { value: "css", label: "CSS" },
+  { value: "go", label: "Go" },
+  { value: "html", label: "HTML" },
+  { value: "java", label: "Java" },
+  { value: "javascript", label: "JavaScript" },
   { value: "json", label: "JSON" },
-  { value: "yaml", label: "YAML" },
+  { value: "kotlin", label: "Kotlin" },
+  { value: "latex", label: "LaTeX" },
   { value: "markdown", label: "Markdown" },
-  { value: "sql", label: "SQL" },
-  { value: "xml", label: "XML" },
   { value: "php", label: "PHP" },
+  { value: "python", label: "Python" },
+  { value: "ruby", label: "Ruby" },
+  { value: "rust", label: "Rust" },
+  { value: "shell", label: "Shell" },
+  { value: "sql", label: "SQL" },
+  { value: "swift", label: "Swift" },
+  { value: "typescript", label: "TypeScript" },
+  { value: "xml", label: "XML" },
+  { value: "yaml", label: "YAML" },
 ];
