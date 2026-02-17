@@ -110,3 +110,23 @@ export const SUPPORTED_LANGUAGES = [
   "xml",
   "php",
 ] as const;
+
+/** Language options for the dropdown UI — only includes languages with actual highlighting support */
+export const LANGUAGE_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+  { value: "javascript", label: "JavaScript" },
+  { value: "typescript", label: "TypeScript" },
+  { value: "python", label: "Python" },
+  { value: "rust", label: "Rust" },
+  { value: "go", label: "Go" },
+  { value: "java", label: "Java" },
+  { value: "c", label: "C" },
+  { value: "cpp", label: "C++" },
+  { value: "html", label: "HTML" },
+  { value: "css", label: "CSS" },
+  { value: "json", label: "JSON" },
+  { value: "yaml", label: "YAML" },
+  { value: "markdown", label: "Markdown" },
+  { value: "sql", label: "SQL" },
+  { value: "xml", label: "XML" },
+  { value: "php", label: "PHP" },
+];
