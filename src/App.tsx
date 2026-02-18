@@ -184,50 +184,42 @@ function App() {
 
     if (content !== undefined) {
       const newDoc = markdownToProsemirror(content, editor.schema);
+
+      // §29 If navigating from backlinks, set cursor at the target line
+      const pendingLine = useLinkStore.getState().pendingScrollLine;
+      let selection;
+      if (pendingLine) {
+        useLinkStore.getState().setPendingScrollLine(null);
+        const lines = content.split("\n");
+        let offset = 0;
+        for (let i = 0; i < Math.min(pendingLine - 1, lines.length); i++) {
+          offset += lines[i].length + 1;
+        }
+        const pmPos = mdOffsetToPmPos(newDoc, offset, content);
+        const clampedPos = Math.min(
+          Math.max(pmPos, 0),
+          newDoc.content.size,
+        );
+        selection = TextSelection.near(newDoc.resolve(clampedPos));
+      } else {
+        selection = TextSelection.atStart(newDoc);
+      }
+
       const newState = EditorState.create({
         doc: newDoc,
         plugins: editor.state.plugins,
-        selection: TextSelection.atStart(newDoc),
+        selection,
       });
       editor.view.updateState(newState);
+
+      // Scroll after DOM update if navigating from backlinks
+      if (pendingLine) {
+        requestAnimationFrame(() => {
+          editor.commands.scrollIntoView();
+        });
+      }
     }
   }, [activeTabId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // §29 Scroll to backlink source line after backlink navigation
-  useEffect(() => {
-    const pendingLine = useLinkStore.getState().pendingScrollLine;
-    if (!pendingLine || !editor) return;
-
-    // Clear immediately so it only fires once
-    useLinkStore.getState().setPendingScrollLine(null);
-
-    // Wait for editor to render the new doc
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (!editor) return;
-
-        // Get the markdown source for this file to map line → offset
-        const tab = tabs.find((t) => t.id === activeTabId);
-        const key = tab?.filePath || tab?.id || "";
-        const markdown = useFileStore.getState().openFiles.get(key) ?? "";
-
-        // Compute character offset of the start of the target line (1-based)
-        const lines = markdown.split("\n");
-        let offset = 0;
-        for (let i = 0; i < Math.min(pendingLine - 1, lines.length); i++) {
-          offset += lines[i].length + 1; // +1 for \n
-        }
-
-        const pmPos = mdOffsetToPmPos(editor.state.doc, offset, markdown);
-        const clampedPos = Math.min(
-          Math.max(pmPos, 0),
-          editor.state.doc.content.size,
-        );
-        editor.commands.setTextSelection(clampedPos);
-        editor.commands.scrollIntoView();
-      });
-    });
-  }, [activeTabId, tabs, editor]);
 
   // --- Window title update ---
   useEffect(() => {
