@@ -64,14 +64,10 @@ export function Backlinks() {
     }
   }, [filePath, indexVersion, fetchBacklinks]);
 
-  // Handle clicking a backlink entry → open that file and scroll to wikilink
+  // Handle clicking a backlink entry → open that file and scroll to line
   const handleClick = useCallback(
-    (sourcePath: string) => {
-      // Tell App.tsx to scroll to the wikilink referencing the current file
-      if (filePath) {
-        const stem = extractFileNameFromPath(filePath).replace(/\.md$/i, "");
-        useLinkStore.getState().setPendingScrollTarget(stem);
-      }
+    (sourcePath: string, line: number) => {
+      useLinkStore.getState().setPendingScrollLine(line);
 
       const { tabs: currentTabs, openTab, setActiveTab } =
         useEditorStore.getState();
@@ -134,7 +130,7 @@ export function Backlinks() {
         <div key={group.sourcePath} className="backlinks-group">
           <div
             className="backlinks-source"
-            onClick={() => handleClick(group.sourcePath)}
+            onClick={() => handleClick(group.sourcePath, group.entries[0].line)}
           >
             {extractFileNameFromPath(group.sourcePath)}
           </div>
@@ -142,7 +138,7 @@ export function Backlinks() {
             <div
               key={i}
               className="backlinks-context"
-              onClick={() => handleClick(group.sourcePath)}
+              onClick={() => handleClick(group.sourcePath, entry.line)}
             >
               <span className="backlinks-line">L{entry.line}</span>
               <span className="backlinks-text">{entry.context}</span>

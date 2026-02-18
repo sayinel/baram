@@ -193,42 +193,41 @@ function App() {
     }
   }, [activeTabId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // §29 Scroll to wikilink node after backlink navigation
+  // §29 Scroll to backlink source line after backlink navigation
   useEffect(() => {
-    const target = useLinkStore.getState().pendingScrollTarget;
-    if (!target || !editor) return;
+    const pendingLine = useLinkStore.getState().pendingScrollLine;
+    if (!pendingLine || !editor) return;
 
     // Clear immediately so it only fires once
-    useLinkStore.getState().setPendingScrollTarget(null);
+    useLinkStore.getState().setPendingScrollLine(null);
 
     // Wait for editor to render the new doc
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         if (!editor) return;
 
-        // Find the first wikilink node whose target matches
-        const targetLower = target.toLowerCase();
-        let targetPos: number | null = null;
+        // Get the markdown source for this file to map line → offset
+        const tab = tabs.find((t) => t.id === activeTabId);
+        const key = tab?.filePath || tab?.id || "";
+        const markdown = useFileStore.getState().openFiles.get(key) ?? "";
 
-        editor.state.doc.descendants((node, pos) => {
-          if (targetPos !== null) return false;
-          if (
-            node.type.name === "wikilink" &&
-            (node.attrs.target as string).toLowerCase() === targetLower
-          ) {
-            targetPos = pos;
-            return false;
-          }
-          return true;
-        });
-
-        if (targetPos !== null) {
-          editor.commands.setTextSelection(targetPos);
-          editor.commands.scrollIntoView();
+        // Compute character offset of the start of the target line (1-based)
+        const lines = markdown.split("\n");
+        let offset = 0;
+        for (let i = 0; i < Math.min(pendingLine - 1, lines.length); i++) {
+          offset += lines[i].length + 1; // +1 for \n
         }
+
+        const pmPos = mdOffsetToPmPos(editor.state.doc, offset, markdown);
+        const clampedPos = Math.min(
+          Math.max(pmPos, 0),
+          editor.state.doc.content.size,
+        );
+        editor.commands.setTextSelection(clampedPos);
+        editor.commands.scrollIntoView();
       });
     });
-  }, [activeTabId, editor]);
+  }, [activeTabId, tabs, editor]);
 
   // --- Window title update ---
   useEffect(() => {
