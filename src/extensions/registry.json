@@ -319,6 +319,15 @@
       "shortcuts": {}
     },
     {
+      "name": "wikilinkSuggest",
+      "file": "plugins/wikilink-suggest.ts",
+      "spec": "§31",
+      "phase": 2,
+      "milestone": "M7",
+      "status": "implemented",
+      "shortcuts": { "[[": "wikilink autocomplete" }
+    },
+    {
       "name": "dragHandle",
       "file": "plugins/drag-handle.ts",
       "spec": "§4.8",

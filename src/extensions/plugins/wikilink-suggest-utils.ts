@@ -1,4 +1,5 @@
-// §31 Wikilink autocomplete — utility functions (stub for TDD)
+// §31 Wikilink autocomplete — utility functions
+import { fuzzyScore } from "../../utils/file-search";
 
 export interface WikilinkSuggestionItem {
   id: string;
@@ -9,16 +10,32 @@ export interface WikilinkSuggestionItem {
 
 /** Filter and rank files by fuzzy query. Returns sorted results. */
 export function filterFiles(
-  _files: WikilinkSuggestionItem[],
-  _query: string,
-  _limit?: number,
+  files: WikilinkSuggestionItem[],
+  query: string,
+  limit: number = 20,
 ): WikilinkSuggestionItem[] {
-  // TODO: implement
-  return [];
+  if (!query) {
+    return files.slice(0, limit);
+  }
+
+  const scored = files
+    .map((file) => ({
+      file,
+      score: fuzzyScore(query, file.target),
+    }))
+    .filter(({ score }) => score < Infinity)
+    .sort((a, b) => a.score - b.score);
+
+  return scored.slice(0, limit).map(({ file }) => file);
 }
 
 /** Remove .md or .markdown extension from a filename */
-export function fileNameWithoutExtension(_name: string): string {
-  // TODO: implement
-  return "";
+export function fileNameWithoutExtension(name: string): string {
+  if (name.endsWith(".markdown")) {
+    return name.slice(0, -9);
+  }
+  if (name.endsWith(".md")) {
+    return name.slice(0, -3);
+  }
+  return name;
 }

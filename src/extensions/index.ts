@@ -38,6 +38,7 @@ import { MathInlineEdit } from "./plugins/math-inline-edit";
 import { SlashCommands } from "./plugins/slash-command";
 import { SyntaxReveal } from "./plugins/syntax-reveal";
 import { DropHandler } from "./plugins/drop-handler";
+import { WikilinkSuggest } from "./plugins/wikilink-suggest";
 
 // Mark Extensions
 import { Bold } from "./marks/bold";
@@ -111,6 +112,9 @@ export function createBaramExtensions(): Extensions {
 
     // Plugins — §3.3 Drop Handler (drag-and-drop images)
     DropHandler,
+
+    // Plugins — §31 Wikilink Autocomplete ([[)
+    WikilinkSuggest,
 
     // UI
     Placeholder.configure({

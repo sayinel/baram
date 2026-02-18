@@ -123,7 +123,7 @@
         "§36-bookmark": { "status": "planned", "spec": "§36" },
         "§29-backlink-panel": { "status": "completed", "tests": "11/11 vitest + 9/9 cargo test (link index)", "spec": "§29" },
         "§30-graph-view": { "status": "planned", "spec": "§30" },
-        "§31-link-autocomplete": { "status": "planned", "spec": "§31" },
+        "§31-link-autocomplete": { "status": "completed", "tests": "11/11 vitest pass (filterFiles + fileNameWithoutExtension + Suggestion UI)", "spec": "§31" },
         "§32-hover-preview": { "status": "planned", "spec": "§32" },
         "§33-auto-rename": { "status": "planned", "spec": "§33" },
         "§34-unlinked-mentions": { "status": "planned", "spec": "§34" }
@@ -132,7 +132,7 @@
   },
 
   "testSummary": {
-    "vitest": "232/232 pass",
+    "vitest": "243/243 pass",
     "cargoTest": "15/15 pass (1 ignored)",
     "breakdown": {
       "stores": 6,
@@ -148,6 +148,7 @@
       "wikilink": 31,
       "link-store": 6,
       "backlink-panel": 5,
+      "wikilink-suggest": 11,
       "file-search": 20,
       "export-html": 9,
       "perf-benchmark": 5,
