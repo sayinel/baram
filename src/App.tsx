@@ -19,7 +19,11 @@ import { markdownToProsemirror } from "./pipeline/md-to-pm";
 import type { SourceCodeEditorRef } from "./components/editor/SourceCodeEditor";
 import type { EditorTab } from "./stores/editor-store";
 import { TabSwitcher } from "./components/layout/TabSwitcher";
-import { pmPosToMdOffset, mdOffsetToPmPos } from "./utils/cursor-mapper";
+import {
+  pmPosToMdOffset,
+  mdOffsetToPmPos,
+  mdLineToPmBlockStart,
+} from "./utils/cursor-mapper";
 import { AppLayout } from "./components/layout/AppLayout";
 import { TabBar } from "./components/layout/TabBar";
 import { StatusBar } from "./components/layout/StatusBar";
@@ -190,12 +194,7 @@ function App() {
       let scrollPos: number | null = null;
       if (pendingLine) {
         useLinkStore.getState().setPendingScrollLine(null);
-        const lines = content.split("\n");
-        let offset = 0;
-        for (let i = 0; i < Math.min(pendingLine - 1, lines.length); i++) {
-          offset += lines[i].length + 1;
-        }
-        const pmPos = mdOffsetToPmPos(newDoc, offset, content);
+        const pmPos = mdLineToPmBlockStart(newDoc, content, pendingLine);
         scrollPos = Math.min(Math.max(pmPos, 0), newDoc.content.size);
       }
 
@@ -206,18 +205,25 @@ function App() {
       });
       editor.view.updateState(newState);
 
-      // Dispatch a proper transaction for selection + scroll so ProseMirror
-      // handles the DOM scrolling (updateState alone does not scroll)
+      // Dispatch a proper transaction for selection + scroll, then
+      // use DOM scrollIntoView as fallback for the scroll container
       if (scrollPos !== null) {
         requestAnimationFrame(() => {
           try {
+            const resolvedPos = editor.view.state.doc.resolve(scrollPos);
             const tr = editor.view.state.tr
-              .setSelection(
-                TextSelection.near(editor.view.state.doc.resolve(scrollPos)),
-              )
+              .setSelection(TextSelection.near(resolvedPos))
               .scrollIntoView();
             editor.view.dispatch(tr);
             editor.view.focus();
+
+            // DOM-level scroll fallback — ensures .editor-area scrolls
+            const domInfo = editor.view.domAtPos(scrollPos);
+            const el =
+              domInfo.node instanceof HTMLElement
+                ? domInfo.node
+                : domInfo.node.parentElement;
+            el?.scrollIntoView({ block: "center" });
           } catch {
             // ignore invalid position
           }

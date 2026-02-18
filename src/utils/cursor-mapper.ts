@@ -225,3 +225,102 @@ export function mdOffsetToPmPos(
   const pmOffset = Math.round(ratio * blockTextSize);
   return Math.min(pmBlockStart + pmOffset, pmBlockStart + blockTextSize);
 }
+
+/**
+ * Markdown line number (1-based) → PM block start position.
+ * Directly maps line to the containing PM block, bypassing proportional offset.
+ * Handles fenced code blocks, frontmatter, and enriched empty paragraphs.
+ */
+export function mdLineToPmBlockStart(
+  doc: PMNode,
+  content: string,
+  line: number,
+): number {
+  if (doc.childCount === 0) return 0;
+
+  const lines = content.split("\n");
+
+  // Compute character offset of the start of the target line
+  let targetOffset = 0;
+  for (let i = 0; i < Math.min(line - 1, lines.length); i++) {
+    targetOffset += lines[i].length + 1;
+  }
+
+  // Build raw block structure (without enriched empty paragraphs)
+  const rawBlocks: { start: number; end: number }[] = [];
+  let blockStartLine = 0;
+  let inFencedCode = false;
+  let inFrontmatter = lines.length > 0 && lines[0] === "---";
+  let lineOffset = 0;
+  const lineOffsets: number[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    lineOffsets.push(lineOffset);
+    lineOffset += lines[i].length + 1;
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+
+    if (!inFrontmatter && /^(`{3,}|~{3,})/.test(l)) {
+      inFencedCode = !inFencedCode;
+      continue;
+    }
+    if (inFrontmatter && i > 0 && l === "---") {
+      inFrontmatter = false;
+      continue;
+    }
+    if (inFencedCode || inFrontmatter) continue;
+
+    if (l === "" && i > blockStartLine) {
+      rawBlocks.push({
+        start: lineOffsets[blockStartLine],
+        end: lineOffsets[i - 1] + lines[i - 1].length,
+      });
+      blockStartLine = i + 1;
+    } else if (l === "" && i === blockStartLine) {
+      blockStartLine = i + 1;
+    }
+  }
+
+  // Final block
+  if (blockStartLine < lines.length) {
+    const lastLine = lines.length - 1;
+    rawBlocks.push({
+      start: lineOffsets[blockStartLine],
+      end: lineOffsets[lastLine] + lines[lastLine].length,
+    });
+  }
+
+  if (rawBlocks.length === 0) return 1;
+
+  // Find which raw block contains the target offset
+  let rawBlockIdx = rawBlocks.length - 1;
+  for (let i = 0; i < rawBlocks.length; i++) {
+    if (targetOffset <= rawBlocks[i].end) {
+      rawBlockIdx = i;
+      break;
+    }
+  }
+
+  // Count enriched empty paragraphs before this block
+  let emptyParasBefore = 0;
+  for (let i = 0; i < rawBlockIdx && i < rawBlocks.length - 1; i++) {
+    const gap = content.substring(rawBlocks[i].end, rawBlocks[i + 1].start);
+    const newlineCount = (gap.match(/\n/g) || []).length;
+    emptyParasBefore += Math.max(0, Math.floor((newlineCount - 2) / 2));
+  }
+
+  // PM child index = raw block index + enriched empty paras before it
+  const pmIdx = Math.min(
+    rawBlockIdx + emptyParasBefore,
+    doc.childCount - 1,
+  );
+
+  // Compute PM position for the start of this block's content
+  let pos = 0;
+  for (let i = 0; i < pmIdx; i++) {
+    pos += doc.child(i).nodeSize;
+  }
+  return pos + 1; // +1 for opening token
+}
