@@ -185,9 +185,9 @@ function App() {
     if (content !== undefined) {
       const newDoc = markdownToProsemirror(content, editor.schema);
 
-      // §29 If navigating from backlinks, set cursor at the target line
+      // §29 Check if navigating from backlinks — compute scroll position
       const pendingLine = useLinkStore.getState().pendingScrollLine;
-      let selection;
+      let scrollPos: number | null = null;
       if (pendingLine) {
         useLinkStore.getState().setPendingScrollLine(null);
         const lines = content.split("\n");
@@ -196,26 +196,31 @@ function App() {
           offset += lines[i].length + 1;
         }
         const pmPos = mdOffsetToPmPos(newDoc, offset, content);
-        const clampedPos = Math.min(
-          Math.max(pmPos, 0),
-          newDoc.content.size,
-        );
-        selection = TextSelection.near(newDoc.resolve(clampedPos));
-      } else {
-        selection = TextSelection.atStart(newDoc);
+        scrollPos = Math.min(Math.max(pmPos, 0), newDoc.content.size);
       }
 
       const newState = EditorState.create({
         doc: newDoc,
         plugins: editor.state.plugins,
-        selection,
+        selection: TextSelection.atStart(newDoc),
       });
       editor.view.updateState(newState);
 
-      // Scroll after DOM update if navigating from backlinks
-      if (pendingLine) {
+      // Dispatch a proper transaction for selection + scroll so ProseMirror
+      // handles the DOM scrolling (updateState alone does not scroll)
+      if (scrollPos !== null) {
         requestAnimationFrame(() => {
-          editor.commands.scrollIntoView();
+          try {
+            const tr = editor.view.state.tr
+              .setSelection(
+                TextSelection.near(editor.view.state.doc.resolve(scrollPos)),
+              )
+              .scrollIntoView();
+            editor.view.dispatch(tr);
+            editor.view.focus();
+          } catch {
+            // ignore invalid position
+          }
         });
       }
     }
