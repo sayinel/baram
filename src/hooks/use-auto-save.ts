@@ -26,7 +26,7 @@ export function useAutoSave(editor: Editor | null) {
       await writeFile(activeTab.filePath, markdown);
       markDirty(activeTab.id, false);
       updateFileIndex(activeTab.filePath)
-        .then(() => useLinkStore.getState().clear())
+        .then(() => useLinkStore.getState().invalidate())
         .catch(() => {});
     } catch {
       // Save failed — keep dirty state, will retry on next edit

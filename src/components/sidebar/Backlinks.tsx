@@ -13,7 +13,7 @@ export function Backlinks() {
   const activeTabId = useEditorStore((s) => s.activeTabId);
   const tabs = useEditorStore((s) => s.tabs);
   const rootPath = useFileStore((s) => s.rootPath);
-  const { backlinks, loading, error, setBacklinks, setLoading, setError } =
+  const { backlinks, loading, error, indexVersion, setBacklinks, setLoading, setError } =
     useLinkStore();
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
@@ -56,17 +56,20 @@ export function Backlinks() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rootPath]);
 
-  // Fetch backlinks when active file changes
-  // Always refetch — IPC is fast (in-memory HashMap), caching causes stale data
+  // Fetch backlinks when active file changes or when index is updated (save)
+  // IPC is fast (in-memory HashMap) so always refetch
   useEffect(() => {
     if (filePath) {
       fetchBacklinks(filePath);
     }
-  }, [filePath, fetchBacklinks]);
+  }, [filePath, indexVersion, fetchBacklinks]);
 
-  // Handle clicking a backlink entry → open that file
+  // Handle clicking a backlink entry → open that file and scroll to line
   const handleClick = useCallback(
-    (sourcePath: string) => {
+    (sourcePath: string, line: number) => {
+      // Set pending scroll target so App.tsx scrolls after tab loads
+      useLinkStore.getState().setPendingScrollLine(line);
+
       const { tabs: currentTabs, openTab, setActiveTab } =
         useEditorStore.getState();
       const existing = currentTabs.find((t) => t.filePath === sourcePath);
@@ -128,7 +131,7 @@ export function Backlinks() {
         <div key={group.sourcePath} className="backlinks-group">
           <div
             className="backlinks-source"
-            onClick={() => handleClick(group.sourcePath)}
+            onClick={() => handleClick(group.sourcePath, group.entries[0].line)}
           >
             {extractFileNameFromPath(group.sourcePath)}
           </div>
@@ -136,7 +139,7 @@ export function Backlinks() {
             <div
               key={i}
               className="backlinks-context"
-              onClick={() => handleClick(group.sourcePath)}
+              onClick={() => handleClick(group.sourcePath, entry.line)}
             >
               <span className="backlinks-line">L{entry.line}</span>
               <span className="backlinks-text">{entry.context}</span>

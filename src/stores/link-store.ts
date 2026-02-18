@@ -11,6 +11,8 @@ interface LinkState {
   error: string | null;
   /** Path of the file whose backlinks are cached */
   cachedPath: string | null;
+  /** Monotonic counter — incremented when the Rust index changes, triggers refetch */
+  indexVersion: number;
 
   /** Set backlinks data (called after IPC response) */
   setBacklinks: (path: string, entries: BacklinkEntry[]) => void;
@@ -20,13 +22,20 @@ interface LinkState {
   setError: (error: string | null) => void;
   /** Clear all cached data */
   clear: () => void;
+  /** Signal that the Rust index was updated — triggers Backlinks refetch */
+  invalidate: () => void;
+  /** Pending line to scroll to after backlink navigation */
+  pendingScrollLine: number | null;
+  /** Set pending scroll line (consumed by App.tsx after tab switch) */
+  setPendingScrollLine: (line: number | null) => void;
 }
 
-export const useLinkStore = create<LinkState>((set) => ({
+export const useLinkStore = create<LinkState>((set, get) => ({
   backlinks: [],
   loading: false,
   error: null,
   cachedPath: null,
+  indexVersion: 0,
 
   setBacklinks: (path, entries) =>
     set({ backlinks: entries, cachedPath: path, loading: false, error: null }),
@@ -37,4 +46,9 @@ export const useLinkStore = create<LinkState>((set) => ({
 
   clear: () =>
     set({ backlinks: [], loading: false, error: null, cachedPath: null }),
+
+  invalidate: () => set({ indexVersion: get().indexVersion + 1 }),
+
+  pendingScrollLine: null,
+  setPendingScrollLine: (line) => set({ pendingScrollLine: line }),
 }));

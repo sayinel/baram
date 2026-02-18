@@ -193,6 +193,45 @@ function App() {
     }
   }, [activeTabId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // §29 Scroll to backlink target line after tab switch
+  useEffect(() => {
+    const pendingLine = useLinkStore.getState().pendingScrollLine;
+    if (!pendingLine || !editor) return;
+
+    // Clear immediately so it only fires once
+    useLinkStore.getState().setPendingScrollLine(null);
+
+    // Wait for editor to render the new doc
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (!editor) return;
+
+        // Map markdown line number to ProseMirror position
+        // Walk through top-level block nodes; each roughly = one markdown line
+        let currentLine = 1;
+        let targetPos: number | null = null;
+
+        editor.state.doc.descendants((node, pos) => {
+          if (targetPos !== null) return false;
+          if (node.isBlock && node.type.name !== "doc") {
+            if (currentLine === pendingLine) {
+              targetPos = pos;
+              return false;
+            }
+            currentLine++;
+          }
+          return true;
+        });
+
+        if (targetPos !== null) {
+          // Place cursor at the start of the block
+          editor.commands.setTextSelection(targetPos + 1);
+          editor.commands.scrollIntoView();
+        }
+      });
+    });
+  }, [activeTabId, editor]);
+
   // --- Window title update ---
   useEffect(() => {
     const tab = tabs.find((t) => t.id === activeTabId);
@@ -322,7 +361,7 @@ function App() {
         setFileContent(activeTab.filePath, md);
         markDirty(activeTab.id, false);
         updateFileIndex(activeTab.filePath)
-          .then(() => useLinkStore.getState().clear())
+          .then(() => useLinkStore.getState().invalidate())
           .catch(() => {});
       } catch (err) {
         console.error("[App] Failed to save:", err);
@@ -340,7 +379,7 @@ function App() {
       try {
         await writeFile(savePath, md);
         updateFileIndex(savePath)
-          .then(() => useLinkStore.getState().clear())
+          .then(() => useLinkStore.getState().invalidate())
           .catch(() => {});
         // Update tab with real path
         const fileName = savePath.split("/").pop() ?? "Unknown";
