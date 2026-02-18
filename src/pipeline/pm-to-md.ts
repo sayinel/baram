@@ -18,6 +18,24 @@ import remarkFrontmatter from "remark-frontmatter";
 import type { Root, Content, PhrasingContent, Text } from "mdast";
 import type { Node as PmNode, Mark } from "@tiptap/pm/model";
 import { pmNodeTransformers, pmMarkTransformers } from "./transformers";
+import { serializeWikilink } from "./transformers/wikilink-transformer";
+
+/** §28 Remark plugin: serialize wikiLink mdast nodes verbatim */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function remarkWikiLink(this: any) {
+  const data = this.data();
+  const key = "toMarkdownExtensions";
+  const list: unknown[] = data[key] || (data[key] = []);
+  list.push({
+    handlers: {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      wikiLink(node: { value: string }, _parent: any, state: any, info: any) {
+        const tracker = state.createTracker(info);
+        return tracker.move(node.value);
+      },
+    },
+  });
+}
 
 /** remark serializer — mdast → markdown string */
 const serializer = unified()
@@ -32,7 +50,8 @@ const serializer = unified()
   })
   .use(remarkGfm)
   .use(remarkMath)
-  .use(remarkFrontmatter, ["yaml"]);
+  .use(remarkFrontmatter, ["yaml"])
+  .use(remarkWikiLink);
 
 /** Convert ProseMirror document to mdast tree */
 export function prosemirrorToMdast(doc: PmNode): Root {
@@ -200,6 +219,15 @@ function convertPmInlineChildren(node: PmNode): PhrasingContent[] {
         const imgNode = transformer.pmToMdast(child, () => []);
         if (imgNode) result.push(imgNode as PhrasingContent);
       }
+    } else if (child.type.name === "wikilink") {
+      // §28: Custom wikiLink mdast node — handler in serializer outputs verbatim
+      const text = serializeWikilink(child.attrs as {
+        target: string;
+        display?: string | null;
+        heading?: string | null;
+        blockId?: string | null;
+      });
+      result.push({ type: "wikiLink", value: text } as unknown as PhrasingContent);
     }
   });
 

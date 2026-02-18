@@ -11,6 +11,10 @@ import type { Root, Content, PhrasingContent, Text } from "mdast";
 import type { Node as PmNode, Schema, Mark } from "@tiptap/pm/model";
 import { nodeTransformers, markTransformers } from "./transformers";
 import { isStandaloneImage } from "./transformers/image-transformer";
+import {
+  WIKILINK_RE,
+  parseWikilinkMatch,
+} from "./transformers/wikilink-transformer";
 
 /** remark parser — markdown string → mdast */
 const parser = unified()
@@ -338,10 +342,17 @@ function convertInlineNode(
   schema: Schema,
   parentMarks: Mark[],
 ): PmNode[] {
-  // Text node
+  // Text node — split on [[wikilink]] patterns
   if (node.type === "text") {
     const text = node as Text;
     if (!text.value) return [];
+
+    // Check for wikilink patterns and split if schema supports it
+    if (schema.nodes.wikilink && text.value.includes("[[")) {
+      const nodes = splitTextWithWikilinks(text.value, schema, parentMarks);
+      if (nodes.length > 0) return nodes;
+    }
+
     return [schema.text(text.value, parentMarks)];
   }
 
@@ -406,4 +417,44 @@ function isInlineNode(node: Content): boolean {
     "html",
     "inlineMath",
   ].includes(node.type);
+}
+
+/** Split a text string at [[wikilink]] boundaries into mixed text + wikilink PM nodes */
+function splitTextWithWikilinks(
+  text: string,
+  schema: Schema,
+  parentMarks: Mark[],
+): PmNode[] {
+  const result: PmNode[] = [];
+  const re = new RegExp(WIKILINK_RE.source, "g");
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = re.exec(text)) !== null) {
+    // Text before the wikilink
+    if (match.index > lastIndex) {
+      const before = text.slice(lastIndex, match.index);
+      result.push(schema.text(before, parentMarks));
+    }
+
+    // Wikilink node
+    const parsed = parseWikilinkMatch(match);
+    result.push(
+      schema.nodes.wikilink.create({
+        target: parsed.target,
+        display: parsed.display,
+        heading: parsed.heading,
+        blockId: parsed.blockId,
+      }),
+    );
+
+    lastIndex = re.lastIndex;
+  }
+
+  // Text after the last wikilink
+  if (lastIndex < text.length) {
+    result.push(schema.text(text.slice(lastIndex), parentMarks));
+  }
+
+  return result;
 }

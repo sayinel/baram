@@ -262,12 +262,12 @@
     },
     {
       "name": "wikilink",
-      "file": "marks/wikilink.ts",
+      "file": "nodes/wikilink.ts",
       "markdown": "[[page]]",
-      "spec": "§5.10",
+      "spec": "§28",
       "phase": 2,
       "milestone": "M7",
-      "status": "planned",
+      "status": "completed",
       "inputRules": ["[["],
       "shortcuts": {}
     }

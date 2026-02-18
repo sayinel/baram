@@ -1,14 +1,42 @@
 // §28 Wikilink Node Extension — [[page]], [[page|display]], [[page#heading]]
-// Stub — to be implemented in Step 3
+import { Node, InputRule } from "@tiptap/core";
+import { Plugin } from "@tiptap/pm/state";
+import { ReactNodeViewRenderer } from "@tiptap/react";
+import { WikilinkView } from "./wikilink-view";
 
-import { Node } from "@tiptap/core";
+export interface WikilinkOptions {
+  onNavigate: (target: string, heading?: string | null) => void;
+}
 
-export const Wikilink = Node.create({
+declare module "@tiptap/core" {
+  interface Commands<ReturnType> {
+    wikilink: {
+      insertWikilink: (attrs: {
+        target: string;
+        display?: string | null;
+        heading?: string | null;
+        blockId?: string | null;
+      }) => ReturnType;
+    };
+  }
+}
+
+// [[target]], [[target|display]], [[target#heading]], [[target#heading|display]]
+const wikilinkInputRegex =
+  /\[\[([^\]|#^]+)(?:#([^\]|^]+))?(?:\^([^\]|]+))?(?:\|([^\]]+))?\]\]$/;
+
+export const Wikilink = Node.create<WikilinkOptions>({
   name: "wikilink",
   group: "inline",
   inline: true,
   atom: true,
   marks: "",
+
+  addOptions() {
+    return {
+      onNavigate: () => {},
+    };
+  },
 
   addAttributes() {
     return {
@@ -24,10 +52,91 @@ export const Wikilink = Node.create({
   },
 
   renderHTML({ HTMLAttributes }) {
+    const display =
+      HTMLAttributes.display || HTMLAttributes.target || "";
     return [
       "span",
-      { ...HTMLAttributes, "data-type": "wikilink", class: "wikilink" },
-      HTMLAttributes.display || HTMLAttributes.target || "",
+      {
+        "data-type": "wikilink",
+        "data-target": HTMLAttributes.target,
+        "data-display": HTMLAttributes.display || "",
+        "data-heading": HTMLAttributes.heading || "",
+        "data-block-id": HTMLAttributes.blockId || "",
+        class: "wikilink",
+      },
+      display,
+    ];
+  },
+
+  addNodeView() {
+    return ReactNodeViewRenderer(WikilinkView);
+  },
+
+  addCommands() {
+    return {
+      insertWikilink:
+        (attrs) =>
+        ({ commands }) =>
+          commands.insertContent({
+            type: this.name,
+            attrs,
+          }),
+    };
+  },
+
+  addInputRules() {
+    return [
+      new InputRule({
+        find: wikilinkInputRegex,
+        handler: ({ state, range, match }) => {
+          const [, target, heading, blockId, display] = match;
+          const { tr } = state;
+          tr.replaceWith(
+            range.from,
+            range.to,
+            this.type.create({
+              target,
+              display: display || null,
+              heading: heading || null,
+              blockId: blockId || null,
+            }),
+          );
+        },
+      }),
+    ];
+  },
+
+  // Cmd+click navigates to the wikilink target
+  addProseMirrorPlugins() {
+    const extension = this;
+    return [
+      new Plugin({
+        props: {
+          handleClick(view, pos, event) {
+            if (!(event.metaKey || event.ctrlKey)) return false;
+
+            const { state } = view;
+            const resolved = state.doc.resolve(pos);
+            const node = state.doc.nodeAt(pos);
+
+            // Check if clicked on a wikilink node or its parent
+            const wikilinkNode =
+              node?.type.name === "wikilink"
+                ? node
+                : resolved.parent?.type.name === "wikilink"
+                  ? resolved.parent
+                  : null;
+
+            if (!wikilinkNode) return false;
+
+            extension.options.onNavigate(
+              wikilinkNode.attrs.target as string,
+              wikilinkNode.attrs.heading as string | null,
+            );
+            return true;
+          },
+        },
+      }),
     ];
   },
 });

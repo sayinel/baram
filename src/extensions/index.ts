@@ -31,6 +31,7 @@ import {
   BaramTableHeader,
 } from "./nodes/table";
 import { Frontmatter } from "./nodes/frontmatter";
+import { Wikilink } from "./nodes/wikilink";
 
 // Plugin Extensions — M3/M4
 import { MathInlineEdit } from "./plugins/math-inline-edit";
@@ -88,6 +89,9 @@ export function createBaramExtensions(): Extensions {
     // Nodes — §5.8 Frontmatter
     Frontmatter,
 
+    // Nodes — §28 Wikilink
+    Wikilink,
+
     // Marks — §5.1
     Bold,
     Italic,
@@ -136,6 +140,7 @@ export {
   BaramTableCell,
   BaramTableHeader,
   Frontmatter,
+  Wikilink,
   Bold,
   Italic,
   Code,

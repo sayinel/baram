@@ -1980,3 +1980,27 @@ body {
   color: var(--color-text-muted);
   flex-shrink: 0;
 }
+
+/* ============================================
+   §28 Wikilink
+   ============================================ */
+
+.wikilink {
+  color: var(--color-accent, #7c3aed);
+  cursor: pointer;
+  border-bottom: 1px dashed var(--color-accent, #7c3aed);
+  padding: 0 1px;
+  border-radius: 2px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.wikilink:hover {
+  background-color: color-mix(in srgb, var(--color-accent, #7c3aed) 10%, transparent);
+}
+
+.wikilink-selected {
+  background-color: color-mix(in srgb, var(--color-accent, #7c3aed) 15%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--color-accent, #7c3aed) 40%, transparent);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
