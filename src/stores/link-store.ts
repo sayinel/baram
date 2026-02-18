@@ -24,10 +24,10 @@ interface LinkState {
   clear: () => void;
   /** Signal that the Rust index was updated — triggers Backlinks refetch */
   invalidate: () => void;
-  /** Pending line to scroll to after backlink navigation */
-  pendingScrollLine: number | null;
-  /** Set pending scroll line (consumed by App.tsx after tab switch) */
-  setPendingScrollLine: (line: number | null) => void;
+  /** Wikilink target to scroll to after backlink navigation (filename stem) */
+  pendingScrollTarget: string | null;
+  /** Set pending scroll target (consumed by App.tsx after tab switch) */
+  setPendingScrollTarget: (target: string | null) => void;
 }
 
 export const useLinkStore = create<LinkState>((set, get) => ({
@@ -49,6 +49,6 @@ export const useLinkStore = create<LinkState>((set, get) => ({
 
   invalidate: () => set({ indexVersion: get().indexVersion + 1 }),
 
-  pendingScrollLine: null,
-  setPendingScrollLine: (line) => set({ pendingScrollLine: line }),
+  pendingScrollTarget: null,
+  setPendingScrollTarget: (target) => set({ pendingScrollTarget: target }),
 }));

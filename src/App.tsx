@@ -193,39 +193,37 @@ function App() {
     }
   }, [activeTabId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // §29 Scroll to backlink target line after tab switch
+  // §29 Scroll to wikilink node after backlink navigation
   useEffect(() => {
-    const pendingLine = useLinkStore.getState().pendingScrollLine;
-    if (!pendingLine || !editor) return;
+    const target = useLinkStore.getState().pendingScrollTarget;
+    if (!target || !editor) return;
 
     // Clear immediately so it only fires once
-    useLinkStore.getState().setPendingScrollLine(null);
+    useLinkStore.getState().setPendingScrollTarget(null);
 
     // Wait for editor to render the new doc
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         if (!editor) return;
 
-        // Map markdown line number to ProseMirror position
-        // Walk through top-level block nodes; each roughly = one markdown line
-        let currentLine = 1;
+        // Find the first wikilink node whose target matches
+        const targetLower = target.toLowerCase();
         let targetPos: number | null = null;
 
         editor.state.doc.descendants((node, pos) => {
           if (targetPos !== null) return false;
-          if (node.isBlock && node.type.name !== "doc") {
-            if (currentLine === pendingLine) {
-              targetPos = pos;
-              return false;
-            }
-            currentLine++;
+          if (
+            node.type.name === "wikilink" &&
+            (node.attrs.target as string).toLowerCase() === targetLower
+          ) {
+            targetPos = pos;
+            return false;
           }
           return true;
         });
 
         if (targetPos !== null) {
-          // Place cursor at the start of the block
-          editor.commands.setTextSelection(targetPos + 1);
+          editor.commands.setTextSelection(targetPos);
           editor.commands.scrollIntoView();
         }
       });
