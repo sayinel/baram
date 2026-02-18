@@ -22,6 +22,7 @@ import {
 import { useFileStore } from "../../stores/file-store";
 import { flattenFileTree, fuzzyScore } from "../../utils/file-search";
 import { writeFile, refreshIndex } from "../../ipc/invoke";
+import { isSyntaxRevealExpanded } from "./syntax-reveal";
 
 const MENU_HEIGHT = 280;
 
@@ -62,6 +63,8 @@ export const WikilinkSuggest = Extension.create({
         editor,
         char: "[[",
         pluginKey: new PluginKey("wikilinkSuggest"),
+        // Don't trigger autocomplete when SyntaxReveal is editing an expanded wikilink
+        allow: ({ state }) => !isSyntaxRevealExpanded(state),
         command: ({
           editor: ed,
           range,

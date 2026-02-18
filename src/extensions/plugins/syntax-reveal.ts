@@ -1027,6 +1027,12 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
   });
 }
 
+/** Check if SyntaxReveal has an active expansion (used by other plugins to avoid conflicts). */
+export function isSyntaxRevealExpanded(state: EditorState): boolean {
+  const es = syntaxRevealKey.getState(state);
+  return !!es?.expanded;
+}
+
 /** Force-collapse any active expansion. Call before source mode toggle. */
 export function forceCollapseSyntaxReveal(view: EditorView): void {
   const es = syntaxRevealKey.getState(view.state);
