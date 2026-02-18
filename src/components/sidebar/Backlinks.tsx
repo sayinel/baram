@@ -13,7 +13,7 @@ export function Backlinks() {
   const activeTabId = useEditorStore((s) => s.activeTabId);
   const tabs = useEditorStore((s) => s.tabs);
   const rootPath = useFileStore((s) => s.rootPath);
-  const { backlinks, loading, error, cachedPath, setBacklinks, setLoading, setError } =
+  const { backlinks, loading, error, setBacklinks, setLoading, setError } =
     useLinkStore();
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
@@ -56,12 +56,13 @@ export function Backlinks() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rootPath]);
 
-  // Fetch backlinks when active file changes (not on vault rebuild)
+  // Fetch backlinks when active file changes
+  // Always refetch — IPC is fast (in-memory HashMap), caching causes stale data
   useEffect(() => {
-    if (filePath && filePath !== cachedPath) {
+    if (filePath) {
       fetchBacklinks(filePath);
     }
-  }, [filePath, cachedPath, fetchBacklinks]);
+  }, [filePath, fetchBacklinks]);
 
   // Handle clicking a backlink entry → open that file
   const handleClick = useCallback(

@@ -32,6 +32,7 @@ import { useUIStore } from "./stores/ui-store";
 import { useNavigationStore } from "./stores/navigation-store";
 import { useAutoSave } from "./hooks/use-auto-save";
 import { readFile, writeFile, getOpenedUrls, updateFileIndex } from "./ipc/invoke";
+import { useLinkStore } from "./stores/link-store";
 import { logAppReady } from "./utils/perf";
 import { resolveWikilinkTarget } from "./utils/wikilink-nav";
 import { forceCollapseSyntaxReveal } from "./extensions/plugins/syntax-reveal";
@@ -320,7 +321,9 @@ function App() {
         await writeFile(activeTab.filePath, md);
         setFileContent(activeTab.filePath, md);
         markDirty(activeTab.id, false);
-        updateFileIndex(activeTab.filePath).catch(() => {});
+        updateFileIndex(activeTab.filePath)
+          .then(() => useLinkStore.getState().clear())
+          .catch(() => {});
       } catch (err) {
         console.error("[App] Failed to save:", err);
       }
@@ -336,7 +339,9 @@ function App() {
 
       try {
         await writeFile(savePath, md);
-        updateFileIndex(savePath).catch(() => {});
+        updateFileIndex(savePath)
+          .then(() => useLinkStore.getState().clear())
+          .catch(() => {});
         // Update tab with real path
         const fileName = savePath.split("/").pop() ?? "Unknown";
         // Remove old untitled content
