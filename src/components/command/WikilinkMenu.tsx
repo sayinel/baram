@@ -71,11 +71,25 @@ export const WikilinkMenuList = forwardRef<WikilinkMenuRef, WikilinkMenuProps>(
         {items.map((item, idx) => (
           <div
             key={item.id}
-            className={`wikilink-menu-item ${idx === selectedIndex ? "wikilink-item-selected" : ""}`}
+            className={`wikilink-menu-item ${idx === selectedIndex ? "wikilink-item-selected" : ""}${item.kind === "create" ? " wikilink-item-create" : ""}`}
             onClick={() => selectItem(idx)}
             onMouseEnter={() => setSelectedIndex(idx)}
           >
-            <span className="wikilink-item-label">{item.target}</span>
+            {item.kind === "create" ? (
+              <>
+                <span className="wikilink-item-icon">+</span>
+                <span className="wikilink-item-label">{item.label}</span>
+              </>
+            ) : item.kind === "heading" ? (
+              <>
+                <span className="wikilink-heading-icon">
+                  {"#".repeat(item.headingLevel ?? 1)}
+                </span>
+                <span className="wikilink-item-label">{item.heading}</span>
+              </>
+            ) : (
+              <span className="wikilink-item-label">{item.target}</span>
+            )}
           </div>
         ))}
       </div>

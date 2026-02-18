@@ -2130,3 +2130,25 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.wikilink-item-create {
+  opacity: 0.8;
+  font-style: italic;
+}
+
+.wikilink-item-icon {
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-accent);
+  margin-right: 6px;
+}
+
+.wikilink-heading-icon {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  min-width: 20px;
+  margin-right: 4px;
+}

@@ -1,11 +1,17 @@
 // §31 Wikilink autocomplete — utility functions
-import { fuzzyScore } from "../../utils/file-search";
+import { fuzzyScore, extractHeadings } from "../../utils/file-search";
+import { useFileStore } from "../../stores/file-store";
+import { readFile } from "../../ipc/invoke";
+import type { HeadingEntry } from "../../utils/file-search";
 
 export interface WikilinkSuggestionItem {
   id: string;
   target: string;
   label: string;
   path: string;
+  kind?: "file" | "heading" | "create";
+  heading?: string;
+  headingLevel?: number;
 }
 
 /** Filter and rank files by fuzzy query. Returns sorted results. */
@@ -27,6 +33,24 @@ export function filterFiles(
     .sort((a, b) => a.score - b.score);
 
   return scored.slice(0, limit).map(({ file }) => file);
+}
+
+/**
+ * Load headings from a file. Uses in-memory cache if available, falls back to readFile IPC.
+ */
+export async function loadFileHeadings(filePath: string): Promise<HeadingEntry[]> {
+  // Check if file content is already cached in openFiles
+  const cached = useFileStore.getState().openFiles.get(filePath);
+  if (cached !== undefined) {
+    return extractHeadings(cached);
+  }
+
+  try {
+    const content = await readFile(filePath);
+    return extractHeadings(content);
+  } catch {
+    return [];
+  }
 }
 
 /** Remove .md or .markdown extension from a filename */

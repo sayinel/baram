@@ -16,10 +16,12 @@ import {
 import {
   filterFiles,
   fileNameWithoutExtension,
+  loadFileHeadings,
   type WikilinkSuggestionItem,
 } from "./wikilink-suggest-utils";
 import { useFileStore } from "../../stores/file-store";
-import { flattenFileTree } from "../../utils/file-search";
+import { flattenFileTree, fuzzyScore } from "../../utils/file-search";
+import { writeFile, refreshIndex } from "../../ipc/invoke";
 
 const MENU_HEIGHT = 280;
 
@@ -69,16 +71,97 @@ export const WikilinkSuggest = Extension.create({
           range: { from: number; to: number };
           props: WikilinkSuggestionItem;
         }) => {
+          if (props.kind === "create") {
+            // Create new file and insert wikilink
+            const { rootPath } = useFileStore.getState();
+            if (rootPath) {
+              const newPath = `${rootPath}/${props.target}.md`;
+              writeFile(newPath, `# ${props.target}\n`)
+                .then(() => refreshIndex(rootPath))
+                .catch(() => {});
+            }
+            ed.chain()
+              .focus()
+              .deleteRange(range)
+              .insertWikilink({ target: props.target })
+              .run();
+            return;
+          }
+
           // Delete the [[ + query text and insert a wikilink node
+          const attrs: { target: string; heading?: string | null } = {
+            target: props.target,
+          };
+          if (props.heading) {
+            attrs.heading = props.heading;
+          }
           ed.chain()
             .focus()
             .deleteRange(range)
-            .insertWikilink({ target: props.target })
+            .insertWikilink(attrs)
             .run();
         },
-        items: ({ query }: { query: string }) => {
+        items: async ({ query }: { query: string }) => {
           const files = getFileItems();
-          return filterFiles(files, query, 10);
+          const hashIdx = query.indexOf("#");
+
+          if (hashIdx >= 0) {
+            // Heading mode: "file#heading"
+            const fileQuery = query.slice(0, hashIdx);
+            const headingQuery = query.slice(hashIdx + 1);
+            const matchedFiles = filterFiles(files, fileQuery, 1);
+            if (matchedFiles.length === 0) return [];
+
+            const bestFile = matchedFiles[0];
+            const headings = await loadFileHeadings(bestFile.path);
+
+            const headingItems: WikilinkSuggestionItem[] = headings.map(
+              (h, idx) => ({
+                id: `heading-${idx}`,
+                target: bestFile.target,
+                label: h.text,
+                path: bestFile.path,
+                kind: "heading" as const,
+                heading: h.text,
+                headingLevel: h.level,
+              }),
+            );
+
+            if (!headingQuery) return headingItems.slice(0, 10);
+
+            // Fuzzy filter headings
+            return headingItems
+              .map((item) => ({
+                item,
+                score: fuzzyScore(headingQuery, item.heading!),
+              }))
+              .filter(({ score }) => score < Infinity)
+              .sort((a, b) => a.score - b.score)
+              .slice(0, 10)
+              .map(({ item }) => item);
+          }
+
+          // File mode
+          const filtered = filterFiles(files, query, 10);
+
+          // Add "Create" option if query is non-empty and no exact match
+          if (query) {
+            const queryLower = query.toLowerCase();
+            const hasExact = files.some(
+              (f) => f.target.toLowerCase() === queryLower,
+            );
+            if (!hasExact) {
+              filtered.push({
+                id: "__create__",
+                target: query,
+                label: `Create "${query}"`,
+                path: "",
+                kind: "create",
+              });
+            }
+          }
+
+          return filtered;
         },
         render: () => {
           let component: ReactRenderer<WikilinkMenuRef> | null = null;

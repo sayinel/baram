@@ -31,8 +31,9 @@ import { useFileStore, openFolder } from "./stores/file-store";
 import { useUIStore } from "./stores/ui-store";
 import { useNavigationStore } from "./stores/navigation-store";
 import { useAutoSave } from "./hooks/use-auto-save";
-import { readFile, writeFile, getOpenedUrls } from "./ipc/invoke";
+import { readFile, writeFile, getOpenedUrls, updateFileIndex } from "./ipc/invoke";
 import { logAppReady } from "./utils/perf";
+import { resolveWikilinkTarget } from "./utils/wikilink-nav";
 import { forceCollapseSyntaxReveal } from "./extensions/plugins/syntax-reveal";
 import "./App.css";
 
@@ -106,6 +107,9 @@ function App() {
   const { activeTabId, tabs, openTab, markDirty } = useEditorStore();
   const { openFiles, setFileContent } = useFileStore();
 
+  // §28 Wikilink navigation ref — breaks circular dependency (editor ↔ navigate)
+  const navigateRef = useRef<(target: string, heading?: string | null) => void>(() => {});
+
   // Track previously active tab to save its content on switch
   const prevTabRef = useRef<string | null>(null);
   // §37 Ref-based flag for back/forward navigation (avoids _navigating timing bug)
@@ -116,7 +120,9 @@ function App() {
   const tabSwitcherMruRef = useRef<EditorTab[]>([]);
 
   const editor = useEditor({
-    extensions: createBaramExtensions(),
+    extensions: createBaramExtensions({
+      onNavigate: (target, heading) => navigateRef.current(target, heading),
+    }),
     autofocus: true,
     immediatelyRender: false,
     onCreate: () => logAppReady(),
@@ -314,6 +320,7 @@ function App() {
         await writeFile(activeTab.filePath, md);
         setFileContent(activeTab.filePath, md);
         markDirty(activeTab.id, false);
+        updateFileIndex(activeTab.filePath).catch(() => {});
       } catch (err) {
         console.error("[App] Failed to save:", err);
       }
@@ -329,6 +336,7 @@ function App() {
 
       try {
         await writeFile(savePath, md);
+        updateFileIndex(savePath).catch(() => {});
         // Update tab with real path
         const fileName = savePath.split("/").pop() ?? "Unknown";
         // Remove old untitled content
@@ -378,6 +386,51 @@ function App() {
       console.error("[App] Failed to open file from OS:", err);
     }
   }, []);
+
+  // §28 Wikilink Cmd+Click navigation
+  const handleWikilinkNavigate = useCallback(
+    (target: string, heading?: string | null) => {
+      const resolved = resolveWikilinkTarget(target);
+      if (!resolved) return;
+
+      // Open the file (reuses existing tab if already open)
+      handleOpenFilePath(resolved.path).then(() => {
+        if (!heading || !editor) return;
+
+        // Wait for editor state to settle after tab switch
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            if (!editor) return;
+            const headingLower = heading.toLowerCase();
+            let targetPos: number | null = null;
+
+            editor.state.doc.descendants((node, pos) => {
+              if (targetPos !== null) return false;
+              if (
+                node.type.name === "heading" &&
+                node.textContent.toLowerCase() === headingLower
+              ) {
+                targetPos = pos;
+                return false;
+              }
+              return true;
+            });
+
+            if (targetPos !== null) {
+              editor.commands.setTextSelection(targetPos + 1);
+              editor.commands.scrollIntoView();
+            }
+          });
+        });
+      });
+    },
+    [handleOpenFilePath, editor],
+  );
+
+  // Keep navigateRef in sync
+  useEffect(() => {
+    navigateRef.current = handleWikilinkNavigate;
+  }, [handleWikilinkNavigate]);
 
   // Listen for file open events from macOS (Finder "Open With" / double-click)
   useEffect(() => {

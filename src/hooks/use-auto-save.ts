@@ -4,7 +4,7 @@ import type { Editor } from "@tiptap/core";
 import { useEditorStore } from "../stores/editor-store";
 import { useSettingsStore } from "../stores/settings-store";
 import { prosemirrorToMarkdown } from "../pipeline";
-import { writeFile } from "../ipc/invoke";
+import { writeFile, updateFileIndex } from "../ipc/invoke";
 
 /**
  * Auto-save hook: 마지막 편집 후 설정된 딜레이(기본 2초) 뒤 자동 저장
@@ -24,6 +24,7 @@ export function useAutoSave(editor: Editor | null) {
       const markdown = prosemirrorToMarkdown(editor.state.doc);
       await writeFile(activeTab.filePath, markdown);
       markDirty(activeTab.id, false);
+      updateFileIndex(activeTab.filePath).catch(() => {});
     } catch {
       // Save failed — keep dirty state, will retry on next edit
     }

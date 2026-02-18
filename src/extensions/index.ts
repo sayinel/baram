@@ -50,8 +50,12 @@ import { Underline } from "./marks/underline";
 
 import type { Extensions } from "@tiptap/core";
 
+interface BaramExtensionOptions {
+  onNavigate?: (target: string, heading?: string | null) => void;
+}
+
 /** M2 기본 편집 Extension 세트 */
-export function createBaramExtensions(): Extensions {
+export function createBaramExtensions(options?: BaramExtensionOptions): Extensions {
   return [
     // Core (required)
     Document,
@@ -91,7 +95,9 @@ export function createBaramExtensions(): Extensions {
     Frontmatter,
 
     // Nodes — §28 Wikilink
-    Wikilink,
+    Wikilink.configure({
+      onNavigate: options?.onNavigate ?? (() => {}),
+    }),
 
     // Marks — §5.1
     Bold,

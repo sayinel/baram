@@ -17,7 +17,7 @@ import type { Node as PmNode, Mark } from "@tiptap/pm/model";
 // ── Plugin state ──────────────────────────────────────────────────────
 
 interface ExpandedRange {
-  kind: "mark" | "link" | "image";
+  kind: "mark" | "link" | "image" | "wikilink";
   markName?: string; // for marks: "bold", "italic", etc.
   from: number; // start of expanded text (for images: inside paragraph)
   to: number; // end of expanded text
@@ -60,6 +60,10 @@ function computeContentLen(state: EditorState, expanded: ExpandedRange): number 
     } catch {
       return 0;
     }
+  }
+  if (kind === "wikilink") {
+    // Wikilink atom node = 1 position when collapsed
+    return 0;
   }
   return 0;
 }
@@ -238,6 +242,55 @@ function expandImage(
   view.dispatch(tr);
 }
 
+// ── Wikilink expansion ───────────────────────────────────────────────
+
+function expandWikilink(
+  view: EditorView,
+  node: PmNode,
+  pos: number,
+): void {
+  const target = (node.attrs.target as string) || "";
+  const heading = node.attrs.heading as string | null;
+  const blockId = node.attrs.blockId as string | null;
+  const display = node.attrs.display as string | null;
+
+  // Build [[target#heading^blockId|display]] text
+  let inner = target;
+  if (heading) inner += `#${heading}`;
+  if (blockId) inner += `^${blockId}`;
+  if (display) inner += `|${display}`;
+  const text = `[[${inner}]]`;
+
+  const { tr } = view.state;
+
+  // Wikilink is inline atom (nodeSize=1) — replace with text in same paragraph
+  const textNode = view.state.schema.text(text);
+  tr.replaceWith(pos, pos + node.nodeSize, textNode);
+
+  // from = pos, to = pos + text.length
+  const from = pos;
+  const to = pos + text.length;
+  // Place cursor after [[
+  const cursorPos = pos + 2;
+
+  tr.setSelection(TextSelection.create(tr.doc, cursorPos));
+  tr.setMeta(syntaxRevealKey, {
+    expanded: {
+      kind: "wikilink",
+      from,
+      to,
+      openCheck: "[[",
+      closeCheck: "]]",
+    },
+  });
+
+  view.dispatch(tr);
+}
+
+// Regex to parse expanded wikilink text: [[target#heading^blockId|display]]
+const WIKILINK_REGEX =
+  /^\[\[([^\]|#^]+)(?:#([^\]|^]+))?(?:\^([^\]|]+))?(?:\|([^\]]+))?\]\]$/;
+
 // ── Collapse expanded range ───────────────────────────────────────────
 
 /**
@@ -358,6 +411,25 @@ function collapseExpanded(
     const imgFrom = from - 1;
     const imgTo = to + 1;
     tr.replaceWith(imgFrom, imgTo, imageNode);
+  } else if (kind === "wikilink") {
+    const fullText = state.doc.textBetween(from, to);
+    const wlMatch = fullText.match(WIKILINK_REGEX);
+    if (!wlMatch) {
+      // Invalid syntax — just deactivate, keep as text (lenient)
+      tr.setMeta(syntaxRevealKey, INACTIVE);
+      view.dispatch(tr);
+      return;
+    }
+
+    const [, wlTarget, wlHeading, wlBlockId, wlDisplay] = wlMatch;
+    const wikilinkNode = state.schema.nodes.wikilink.create({
+      target: wlTarget,
+      heading: wlHeading || null,
+      blockId: wlBlockId || null,
+      display: wlDisplay || null,
+    });
+    tr.replaceWith(from, to, wikilinkNode);
+    contentLen = 0; // atom node = 1 position after collapse
   }
 
   // Set explicit cursor position if requested
@@ -420,6 +492,18 @@ function buildExpandedDecorations(
           }),
         );
       }
+    } else if (kind === "wikilink" && closeCheck) {
+      // Style [[ and ]]
+      decos.push(
+        Decoration.inline(from, from + openCheck.length, {
+          class: "syntax-delimiter-inline",
+        }),
+      );
+      decos.push(
+        Decoration.inline(to - closeCheck.length, to, {
+          class: "syntax-delimiter-inline",
+        }),
+      );
     }
   } catch {
     // Position out of range, skip
@@ -577,6 +661,20 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
           src, alt: alt || null, title: title2 || null,
         });
         tr.replaceWith(from - 1, to + 1, imageNode);
+      } else if (kind === "wikilink") {
+        const fullText = newState.doc.textBetween(from, to);
+        const wlMatch = fullText.match(WIKILINK_REGEX);
+        if (!wlMatch) { tr.setMeta(syntaxRevealKey, INACTIVE); return tr; }
+
+        const [, wlTarget, wlHeading, wlBlockId, wlDisplay] = wlMatch;
+        const wikilinkNode = newState.schema.nodes.wikilink.create({
+          target: wlTarget,
+          heading: wlHeading || null,
+          blockId: wlBlockId || null,
+          display: wlDisplay || null,
+        });
+        tr.replaceWith(from, to, wikilinkNode);
+        contentLen = 0;
       }
 
       // Explicit cursor: compute where cursor should be in the collapsed doc
@@ -615,7 +713,7 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
       },
 
       // ── Click handling ──────────────────────────────────────────
-      handleClick(view, pos, _event) {
+      handleClick(view, pos, event) {
         const es = syntaxRevealKey.getState(view.state);
 
         // Active: let appendTransaction handle collapse if cursor outside
@@ -631,6 +729,17 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
           return true;
         }
 
+        // Click on wikilink atom → expand (but not Cmd+Click which navigates)
+        if (
+          nodeAfter &&
+          nodeAfter.type.name === "wikilink" &&
+          !event.metaKey &&
+          !event.ctrlKey
+        ) {
+          expandWikilink(view, nodeAfter, pos);
+          return true;
+        }
+
         return false;
       },
 
@@ -638,28 +747,32 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
       handleKeyDown(view, event) {
         const es = syntaxRevealKey.getState(view.state);
 
-        // ── Re-edit: character typed on NodeSelection of image ──
+        // ── Re-edit: character typed on NodeSelection of image or wikilink ──
         if (!es?.expanded) {
           const { selection } = view.state;
-          if (
-            selection instanceof NodeSelection &&
-            selection.node.type.name === "image"
-          ) {
-            if (event.key === "Backspace" || event.key === "Delete")
-              return false;
+          if (selection instanceof NodeSelection) {
+            const nodeName = selection.node.type.name;
+            if (nodeName === "image" || nodeName === "wikilink") {
+              if (event.key === "Backspace" || event.key === "Delete")
+                return false;
 
-            if (
-              event.key.length === 1 &&
-              !event.metaKey &&
-              !event.ctrlKey &&
-              !event.altKey
-            ) {
-              if (pendingRaf) {
-                cancelAnimationFrame(pendingRaf);
-                pendingRaf = null;
+              if (
+                event.key.length === 1 &&
+                !event.metaKey &&
+                !event.ctrlKey &&
+                !event.altKey
+              ) {
+                if (pendingRaf) {
+                  cancelAnimationFrame(pendingRaf);
+                  pendingRaf = null;
+                }
+                if (nodeName === "image") {
+                  expandImage(view, selection.node, selection.from);
+                } else {
+                  expandWikilink(view, selection.node, selection.from);
+                }
+                return true;
               }
-              expandImage(view, selection.node, selection.from);
-              return true;
             }
           }
           return false;
@@ -826,22 +939,42 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         if (es?.expanded) return;
 
         const { selection } = view.state;
-        if (
-          selection instanceof NodeSelection &&
-          selection.node.type.name === "image"
-        ) {
-          if (pendingRaf) cancelAnimationFrame(pendingRaf);
+        if (selection instanceof NodeSelection) {
+          const nodeName = selection.node.type.name;
+          if (nodeName === "image" || nodeName === "wikilink") {
+            if (pendingRaf) cancelAnimationFrame(pendingRaf);
 
-          pendingRaf = requestAnimationFrame(() => {
-            pendingRaf = null;
-            const { selection: sel } = view.state;
-            if (
-              !(sel instanceof NodeSelection) ||
-              sel.node.type.name !== "image"
-            )
-              return;
-            expandImage(view, sel.node, sel.from);
-          });
+            pendingRaf = requestAnimationFrame(() => {
+              pendingRaf = null;
+              const { selection: sel } = view.state;
+              if (!(sel instanceof NodeSelection)) return;
+              if (sel.node.type.name === "image") {
+                expandImage(view, sel.node, sel.from);
+              } else if (sel.node.type.name === "wikilink") {
+                expandWikilink(view, sel.node, sel.from);
+              }
+            });
+          }
+        }
+      }
+
+      function checkCursorAdjacentToWikilink(view: EditorView) {
+        const es = syntaxRevealKey.getState(view.state);
+        if (es?.expanded) return;
+
+        const { selection } = view.state;
+        if (!(selection instanceof TextSelection)) return;
+
+        const $pos = selection.$from;
+        // Check nodeAfter (cursor before wikilink)
+        if ($pos.nodeAfter?.type.name === "wikilink") {
+          expandWikilink(view, $pos.nodeAfter, $pos.pos);
+          return;
+        }
+        // Check nodeBefore (cursor after wikilink)
+        if ($pos.nodeBefore?.type.name === "wikilink") {
+          const wikilinkPos = $pos.pos - $pos.nodeBefore.nodeSize;
+          expandWikilink(view, $pos.nodeBefore, wikilinkPos);
         }
       }
 
@@ -873,8 +1006,12 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
             cursorAtDocChange = null;
           }
 
-          // Check for node selection (image click/arrow-key navigation)
+          // Check for node selection (image/wikilink click/arrow-key navigation)
           checkNodeSelection(view);
+
+          // Check cursor adjacent to wikilink
+          checkCursorAdjacentToWikilink(view);
+          if (syntaxRevealKey.getState(view.state)?.expanded) return;
 
           // Try link first, then mark
           checkCursorInLink(view);
