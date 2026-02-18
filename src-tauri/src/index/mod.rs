@@ -213,7 +213,12 @@ fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
             // Build context: the line containing the link, trimmed
             let context = line.trim().to_string();
             let context = if context.len() > 200 {
-                format!("{}…", &context[..200])
+                // Find a valid UTF-8 char boundary at or before byte 200
+                let mut end = 200;
+                while !context.is_char_boundary(end) {
+                    end -= 1;
+                }
+                format!("{}…", &context[..end])
             } else {
                 context
             };
