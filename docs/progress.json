@@ -1,9 +1,9 @@
 {
   "_comment": "Baram 개발 진행 상황 추적. 슬래시 커맨드가 자동으로 업데이트한다.",
   "project": "baram",
-  "lastUpdated": "2026-02-17",
-  "currentPhase": 1,
-  "currentMilestone": "M6",
+  "lastUpdated": "2026-02-18",
+  "currentPhase": 2,
+  "currentMilestone": "M7",
 
   "milestones": {
     "M1": {
@@ -110,20 +110,43 @@
       "specCheckIssues": [
         "성능 지표: 자동 측정 4개 완료, 수동 측정 5개 미완 — Tauri 빌드 후 측정 필요 (§8.4)"
       ]
+    },
+    "M7": {
+      "name": "연결 시스템 & 네비게이션",
+      "status": "in-progress",
+      "features": {
+        "§28-wikilink": { "status": "completed", "tests": "31/31 vitest pass (parsing+roundtrip+PM structure)", "spec": "§28" },
+        "§35-quick-switcher": { "status": "completed", "tests": "20/20 vitest pass", "spec": "§35" },
+        "§37-back-forward-nav": { "status": "completed", "tests": "12/12 vitest pass", "spec": "§37" },
+        "§39-tab-switching": { "status": "completed", "tests": "12/12 vitest pass", "spec": "§39" },
+        "macos-file-association": { "status": "completed", "tests": "cargo check pass + tsc clean", "spec": "macOS" },
+        "§36-bookmark": { "status": "planned", "spec": "§36" },
+        "§29-backlink-panel": { "status": "planned", "spec": "§29" },
+        "§30-graph-view": { "status": "planned", "spec": "§30" },
+        "§31-link-autocomplete": { "status": "planned", "spec": "§31" },
+        "§32-hover-preview": { "status": "planned", "spec": "§32" },
+        "§33-auto-rename": { "status": "planned", "spec": "§33" },
+        "§34-unlinked-mentions": { "status": "planned", "spec": "§34" }
+      }
     }
   },
 
   "testSummary": {
-    "vitest": "138/138 pass",
+    "vitest": "221/221 pass",
     "cargoTest": "6/6 pass",
     "breakdown": {
       "stores": 6,
+      "editor-store-mru": 12,
+      "navigation-store": 12,
       "roundtrip-m2": 33,
       "roundtrip-m3": 14,
       "roundtrip-stability": 16,
+      "roundtrip-mermaid": 8,
       "tiptap-toggle": 5,
       "heading-shortcuts": 15,
       "syntax-reveal": 9,
+      "wikilink": 31,
+      "file-search": 20,
       "export-html": 9,
       "perf-benchmark": 5,
       "integration": 26,
