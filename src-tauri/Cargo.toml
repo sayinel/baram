@@ -27,6 +27,7 @@ uuid = { version = "1", features = ["v4"] }
 headless_chrome = "1"
 tempfile = "3"
 notify = "7"
+regex = "1"
 
 [features]
 default = ["custom-protocol"]

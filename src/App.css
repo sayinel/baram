@@ -2004,3 +2004,79 @@ body {
   outline-offset: 1px;
   border-radius: 2px;
 }
+
+/* ============================================
+   §29 Backlinks Panel
+   ============================================ */
+
+.backlinks {
+  padding: 8px 0;
+  overflow-y: auto;
+}
+
+.backlinks-header {
+  padding: 4px 12px 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+}
+
+.backlinks-empty {
+  padding: 16px 12px;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.backlinks-error {
+  color: var(--color-danger, #ef4444);
+}
+
+.backlinks-group {
+  margin-bottom: 4px;
+}
+
+.backlinks-source {
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.1s ease;
+}
+
+.backlinks-source:hover {
+  background-color: var(--color-bg-hover);
+}
+
+.backlinks-context {
+  padding: 3px 12px 3px 24px;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  border-radius: 4px;
+  transition: background-color 0.1s ease;
+}
+
+.backlinks-context:hover {
+  background-color: var(--color-bg-hover);
+}
+
+.backlinks-line {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  min-width: 28px;
+}
+
+.backlinks-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

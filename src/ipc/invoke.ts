@@ -65,8 +65,12 @@ export async function getLinkIndex(): Promise<LinkGraph> {
   return invoke<LinkGraph>("get_link_index");
 }
 
-export async function refreshIndex(full?: boolean): Promise<IndexStats> {
-  return invoke<IndexStats>("refresh_index", { full });
+export async function refreshIndex(rootPath: string): Promise<IndexStats> {
+  return invoke<IndexStats>("refresh_index", { rootPath });
+}
+
+export async function updateFileIndex(filePath: string): Promise<void> {
+  return invoke<void>("update_file_index", { filePath });
 }
 
 // §6.3 LLM commands

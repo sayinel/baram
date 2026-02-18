@@ -1,4 +1,4 @@
-// §29 Backlink panel utility functions — stub for TDD
+// §29 Backlink panel utility functions
 import type { BacklinkEntry } from "../../ipc/types";
 
 export interface BacklinkGroup {
@@ -8,14 +8,28 @@ export interface BacklinkGroup {
 
 /** Group backlink entries by source file path */
 export function groupBacklinksByFile(
-  _entries: BacklinkEntry[],
+  entries: BacklinkEntry[],
 ): BacklinkGroup[] {
-  // TODO: implement
-  return [];
+  if (entries.length === 0) return [];
+
+  const map = new Map<string, BacklinkEntry[]>();
+  for (const entry of entries) {
+    const existing = map.get(entry.sourcePath);
+    if (existing) {
+      existing.push(entry);
+    } else {
+      map.set(entry.sourcePath, [entry]);
+    }
+  }
+
+  return Array.from(map.entries()).map(([sourcePath, groupEntries]) => ({
+    sourcePath,
+    entries: groupEntries,
+  }));
 }
 
 /** Extract file name from a full path */
-export function extractFileNameFromPath(_path: string): string {
-  // TODO: implement
-  return "";
+export function extractFileNameFromPath(path: string): string {
+  const parts = path.split("/");
+  return parts[parts.length - 1] || path;
 }

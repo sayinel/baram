@@ -101,7 +101,7 @@ function App() {
   const sourceEditorRef = useRef<SourceCodeEditorRef>(null);
   // Ref mirrors sourceContent state — always has the latest value, immune to stale closures
   const sourceContentRef = useRef("");
-  const { toggleSidebar, toggleCommandPalette, toggleQuickSwitcher, welcomeOpen } =
+  const { toggleSidebar, toggleCommandPalette, toggleQuickSwitcher, setSidebarPanel, welcomeOpen } =
     useUIStore();
   const { activeTabId, tabs, openTab, markDirty } = useEditorStore();
   const { openFiles, setFileContent } = useFileStore();
@@ -497,6 +497,15 @@ function App() {
         return;
       }
 
+      // §29 Cmd+Shift+B — open backlinks panel
+      if (mod && e.shiftKey && e.key === "B") {
+        e.preventDefault();
+        const ui = useUIStore.getState();
+        if (!ui.sidebarOpen) ui.toggleSidebar();
+        setSidebarPanel("backlinks");
+        return;
+      }
+
       // Cmd+K — command palette
       if (mod && e.key === "k") {
         e.preventDefault();
@@ -540,6 +549,7 @@ function App() {
     toggleSidebar,
     toggleCommandPalette,
     toggleQuickSwitcher,
+    setSidebarPanel,
     handleNewFile,
     handleOpenFile,
     handleSave,

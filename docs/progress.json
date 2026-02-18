@@ -121,7 +121,7 @@
         "§39-tab-switching": { "status": "completed", "tests": "12/12 vitest pass", "spec": "§39" },
         "macos-file-association": { "status": "completed", "tests": "cargo check pass + tsc clean", "spec": "macOS" },
         "§36-bookmark": { "status": "planned", "spec": "§36" },
-        "§29-backlink-panel": { "status": "planned", "spec": "§29" },
+        "§29-backlink-panel": { "status": "completed", "tests": "11/11 vitest + 9/9 cargo test (link index)", "spec": "§29" },
         "§30-graph-view": { "status": "planned", "spec": "§30" },
         "§31-link-autocomplete": { "status": "planned", "spec": "§31" },
         "§32-hover-preview": { "status": "planned", "spec": "§32" },
@@ -132,8 +132,8 @@
   },
 
   "testSummary": {
-    "vitest": "221/221 pass",
-    "cargoTest": "6/6 pass",
+    "vitest": "232/232 pass",
+    "cargoTest": "15/15 pass (1 ignored)",
     "breakdown": {
       "stores": 6,
       "editor-store-mru": 12,
@@ -146,6 +146,8 @@
       "heading-shortcuts": 15,
       "syntax-reveal": 9,
       "wikilink": 31,
+      "link-store": 6,
+      "backlink-panel": 5,
       "file-search": 20,
       "export-html": 9,
       "perf-benchmark": 5,

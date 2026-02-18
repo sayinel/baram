@@ -11,7 +11,7 @@ mod search;
 
 use std::sync::Mutex;
 
-use commands::{config_cmd, export_cmd, fs_cmd, llm_cmd};
+use commands::{config_cmd, export_cmd, fs_cmd, index_cmd, llm_cmd};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 
@@ -251,6 +251,9 @@ pub fn run() {
             Ok(())
         })
         .manage(PendingOpenFiles(Mutex::new(Vec::new())))
+        .manage(index_cmd::LinkIndexState(Mutex::new(
+            index::LinkIndex::new(),
+        )))
         .invoke_handler(tauri::generate_handler![
             fs_cmd::read_file,
             fs_cmd::write_file,
@@ -263,6 +266,10 @@ pub fn run() {
             export_cmd::export_pdf,
             export_cmd::export_document,
             llm_cmd::llm_complete,
+            index_cmd::get_backlinks,
+            index_cmd::get_link_index,
+            index_cmd::refresh_index,
+            index_cmd::update_file_index,
             get_opened_urls,
         ])
         .build(tauri::generate_context!())
