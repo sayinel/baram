@@ -22,7 +22,7 @@ import {
 import { useFileStore } from "../../stores/file-store";
 import { flattenFileTree, fuzzyScore } from "../../utils/file-search";
 import { writeFile, refreshIndex } from "../../ipc/invoke";
-import { isSyntaxRevealExpanded } from "./syntax-reveal";
+import { getSyntaxRevealExpanded, syntaxRevealKey } from "./syntax-reveal";
 
 const MENU_HEIGHT = 280;
 
@@ -63,8 +63,13 @@ export const WikilinkSuggest = Extension.create({
         editor,
         char: "[[",
         pluginKey: new PluginKey("wikilinkSuggest"),
-        // Don't trigger autocomplete when SyntaxReveal is editing an expanded wikilink
-        allow: ({ state }) => !isSyntaxRevealExpanded(state),
+        // Block autocomplete when SyntaxReveal is editing non-wikilink expansions (marks, links, images).
+        // Allow during wikilink expansion so user can change the target via autocomplete.
+        allow: ({ state }) => {
+          const expanded = getSyntaxRevealExpanded(state);
+          if (!expanded) return true;
+          return expanded.kind === "wikilink";
+        },
         command: ({
           editor: ed,
           range,
@@ -74,6 +79,20 @@ export const WikilinkSuggest = Extension.create({
           range: { from: number; to: number };
           props: WikilinkSuggestionItem;
         }) => {
+          // When SyntaxReveal has a wikilink expanded, replace the entire expanded range
+          // instead of just the Suggestion range (which misses the trailing ]])
+          const expanded = getSyntaxRevealExpanded(ed.view.state);
+          const effectiveRange = expanded?.kind === "wikilink"
+            ? { from: expanded.from, to: expanded.to }
+            : range;
+
+          // Clear SyntaxReveal state if it was expanded
+          if (expanded?.kind === "wikilink") {
+            const { tr } = ed.view.state;
+            tr.setMeta(syntaxRevealKey, { expanded: null });
+            ed.view.dispatch(tr);
+          }
+
           if (props.kind === "create") {
             // Create new file and insert wikilink
             const { rootPath } = useFileStore.getState();
@@ -85,13 +104,13 @@ export const WikilinkSuggest = Extension.create({
             }
             ed.chain()
               .focus()
-              .deleteRange(range)
+              .deleteRange(effectiveRange)
               .insertWikilink({ target: props.target })
               .run();
             return;
           }
 
-          // Delete the [[ + query text and insert a wikilink node
+          // Delete the range and insert a wikilink node
           const attrs: { target: string; heading?: string | null } = {
             target: props.target,
           };
@@ -100,7 +119,7 @@ export const WikilinkSuggest = Extension.create({
           }
           ed.chain()
             .focus()
-            .deleteRange(range)
+            .deleteRange(effectiveRange)
             .insertWikilink(attrs)
             .run();
         },

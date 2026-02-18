@@ -248,6 +248,7 @@ function expandWikilink(
   view: EditorView,
   node: PmNode,
   pos: number,
+  cursorAt: "front" | "back" = "front",
 ): void {
   const target = (node.attrs.target as string) || "";
   const heading = node.attrs.heading as string | null;
@@ -270,8 +271,8 @@ function expandWikilink(
   // from = pos, to = pos + text.length
   const from = pos;
   const to = pos + text.length;
-  // Place cursor after [[
-  const cursorPos = pos + 2;
+  // Place cursor based on entry direction
+  const cursorPos = cursorAt === "back" ? to - 2 : pos + 2;
 
   tr.setSelection(TextSelection.create(tr.doc, cursorPos));
   tr.setMeta(syntaxRevealKey, {
@@ -966,15 +967,15 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         if (!(selection instanceof TextSelection)) return;
 
         const $pos = selection.$from;
-        // Check nodeAfter (cursor before wikilink)
+        // Check nodeAfter (cursor before wikilink → entering from left)
         if ($pos.nodeAfter?.type.name === "wikilink") {
-          expandWikilink(view, $pos.nodeAfter, $pos.pos);
+          expandWikilink(view, $pos.nodeAfter, $pos.pos, "front");
           return;
         }
-        // Check nodeBefore (cursor after wikilink)
+        // Check nodeBefore (cursor after wikilink → entering from right)
         if ($pos.nodeBefore?.type.name === "wikilink") {
           const wikilinkPos = $pos.pos - $pos.nodeBefore.nodeSize;
-          expandWikilink(view, $pos.nodeBefore, wikilinkPos);
+          expandWikilink(view, $pos.nodeBefore, wikilinkPos, "back");
         }
       }
 
@@ -1032,6 +1033,15 @@ export function isSyntaxRevealExpanded(state: EditorState): boolean {
   const es = syntaxRevealKey.getState(state);
   return !!es?.expanded;
 }
+
+/** Get the active expanded range info (used by wikilink-suggest to replace entire expanded text). */
+export function getSyntaxRevealExpanded(state: EditorState): ExpandedRange | null {
+  const es = syntaxRevealKey.getState(state);
+  return es?.expanded ?? null;
+}
+
+/** Get the SyntaxReveal PluginKey (used by other plugins to clear expansion state via meta). */
+export { syntaxRevealKey };
 
 /** Force-collapse any active expansion. Call before source mode toggle. */
 export function forceCollapseSyntaxReveal(view: EditorView): void {
