@@ -61,8 +61,10 @@ export interface GitStatus {
 
 // §6.3 LLM types
 export interface LLMCompleteInput {
+  apiKey: string;
   prompt: string;
   model: string;
+  requestId: string;
   systemPrompt?: string;
   maxTokens?: number;
 }

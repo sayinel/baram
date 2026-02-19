@@ -48,12 +48,13 @@ export async function watchDir(path: string): Promise<void> {
   return invoke<void>("watch_dir", { path });
 }
 
-// §3.2 Search commands
+// §3.2 Search commands — TODO: Rust handler not yet implemented (M7 search)
 export async function searchFiles(
-  query: string,
-  options?: SearchOptions,
+  _query: string,
+  _options?: SearchOptions,
 ): Promise<SearchResult[]> {
-  return invoke<SearchResult[]>("search_files", { query, options });
+  console.warn("[IPC] search_files not yet implemented");
+  return [];
 }
 
 // §3.2 Index commands
@@ -93,14 +94,18 @@ export async function renameFileWithLinks(
 
 // §6.3 LLM commands
 export async function llmComplete(
+  apiKey: string,
   prompt: string,
   model: string,
+  requestId: string,
   systemPrompt?: string,
   maxTokens?: number,
 ): Promise<void> {
   return invoke<void>("llm_complete", {
+    apiKey,
     prompt,
     model,
+    requestId,
     systemPrompt,
     maxTokens,
   });
@@ -124,24 +129,27 @@ export async function exportPdf(
   return invoke<void>("export_pdf", { htmlContent, outputPath, options });
 }
 
-// §3.2 Git commands
-export async function gitStatus(path: string): Promise<GitStatus> {
-  return invoke<GitStatus>("git_status", { path });
+// §3.2 Git commands — TODO: Rust handler not yet implemented (M9)
+export async function gitStatus(_path: string): Promise<GitStatus> {
+  console.warn("[IPC] git_status not yet implemented");
+  return { branch: "", modified: [], staged: [], untracked: [] };
 }
 
 export async function gitCommit(
-  path: string,
-  message: string,
+  _path: string,
+  _message: string,
 ): Promise<string> {
-  return invoke<string>("git_commit", { path, message });
+  console.warn("[IPC] git_commit not yet implemented");
+  return "";
 }
 
-// §3.2 Snapshot commands
+// §3.2 Snapshot commands — TODO: Rust handler not yet implemented (M9)
 export async function createSnapshot(
-  path: string,
-  label?: string,
+  _path: string,
+  _label?: string,
 ): Promise<SnapshotInfo> {
-  return invoke<SnapshotInfo>("create_snapshot", { path, label });
+  console.warn("[IPC] create_snapshot not yet implemented");
+  return { id: "", path: "", label: "", createdAt: 0 };
 }
 
 // macOS file association: get pending file paths from cold start
