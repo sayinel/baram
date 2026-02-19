@@ -13,6 +13,7 @@ import type {
   PdfOptions,
   JsonValue,
   SnapshotInfo,
+  RenameResult,
 } from "./types";
 
 // §3.2 File System commands
@@ -71,6 +72,14 @@ export async function refreshIndex(rootPath: string): Promise<IndexStats> {
 
 export async function updateFileIndex(filePath: string): Promise<void> {
   return invoke<void>("update_file_index", { filePath });
+}
+
+// §33 Rename file with wikilink auto-update
+export async function renameFileWithLinks(
+  oldPath: string,
+  newPath: string,
+): Promise<RenameResult> {
+  return invoke<RenameResult>("rename_file_with_links", { oldPath, newPath });
 }
 
 // §6.3 LLM commands

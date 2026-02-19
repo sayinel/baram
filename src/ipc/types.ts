@@ -96,6 +96,11 @@ export interface SnapshotInfo {
   createdAt: number;
 }
 
+// §33 Rename result
+export interface RenameResult {
+  updatedFiles: string[];
+}
+
 // Event payloads
 export interface FileChangedPayload {
   path: string;

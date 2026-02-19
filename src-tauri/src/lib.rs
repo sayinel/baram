@@ -270,6 +270,7 @@ pub fn run() {
             index_cmd::get_link_index,
             index_cmd::refresh_index,
             index_cmd::update_file_index,
+            index_cmd::rename_file_with_links,
             get_opened_urls,
         ])
         .build(tauri::generate_context!())

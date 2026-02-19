@@ -19,6 +19,8 @@ interface FileState {
   setFileTree: (tree: FileEntry[]) => void;
   setFileContent: (path: string, content: string) => void;
   removeFileContent: (path: string) => void;
+  /** §33 Rename a file entry in the tree and update openFiles cache key */
+  renameFileEntry: (oldPath: string, newPath: string, newName: string) => void;
 }
 
 /**
@@ -97,5 +99,31 @@ export const useFileStore = create<FileState>((set) => ({
       const openFiles = new Map(state.openFiles);
       openFiles.delete(path);
       return { openFiles };
+    }),
+
+  renameFileEntry: (oldPath, newPath, newName) =>
+    set((state) => {
+      // Update openFiles cache: move content from old key to new key
+      const openFiles = new Map(state.openFiles);
+      const content = openFiles.get(oldPath);
+      if (content !== undefined) {
+        openFiles.delete(oldPath);
+        openFiles.set(newPath, content);
+      }
+
+      // Update file tree: recursively find and rename the entry
+      function updateTree(entries: FileEntry[]): FileEntry[] {
+        return entries.map((e) => {
+          if (e.path === oldPath) {
+            return { ...e, name: newName, path: newPath };
+          }
+          if (e.isDir && e.children) {
+            return { ...e, children: updateTree(e.children) };
+          }
+          return e;
+        });
+      }
+
+      return { openFiles, fileTree: updateTree(state.fileTree) };
     }),
 }));

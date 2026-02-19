@@ -27,6 +27,8 @@ interface EditorState {
     currentId: string,
     direction: "forward" | "backward",
   ) => string | null;
+  /** §33 Rename tab: update filePath and title for a renamed file */
+  renameTab: (oldPath: string, newPath: string, newTitle: string) => void;
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -84,6 +86,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const filtered = state.mruOrder.filter((id) => id !== tabId);
       return { mruOrder: [tabId, ...filtered] };
     }),
+
+  renameTab: (oldPath, newPath, newTitle) =>
+    set((state) => ({
+      tabs: state.tabs.map((t) =>
+        t.filePath === oldPath ? { ...t, filePath: newPath, title: newTitle } : t,
+      ),
+    })),
 
   getNextMruTab: (currentId, direction) => {
     const { mruOrder } = get();

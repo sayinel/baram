@@ -183,6 +183,23 @@ impl LinkIndex {
         }
     }
 
+    /// §33 Get list of source files that link to a given target (normalized)
+    pub fn get_files_linking_to(&self, target: &str) -> Vec<String> {
+        let normalized = normalize_target(target);
+        self.incoming
+            .get(&normalized)
+            .map(|entries| {
+                let mut paths: Vec<String> = entries
+                    .iter()
+                    .map(|e| e.source_path.clone())
+                    .collect();
+                paths.sort();
+                paths.dedup();
+                paths
+            })
+            .unwrap_or_default()
+    }
+
     /// Update index for a single file using already-read content (sync, no I/O)
     pub fn update_file_from_content(&mut self, file_path: &str, content: &str) {
         self.remove_file(file_path);
@@ -233,6 +250,33 @@ fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
     }
 
     entries
+}
+
+/// §33 Replace wikilink targets in file content.
+/// Handles [[old]], [[old|display]], [[old#heading]], [[old#heading|display]], [[old^blockId]], etc.
+/// Only replaces the target portion, preserving display, heading, and blockId.
+pub fn replace_wikilink_target(content: &str, old_target: &str, new_target: &str) -> String {
+    // Match all wikilink forms: [[target]], [[target|display]], [[target#heading]], etc.
+    // We need a regex that captures the full wikilink and allows us to replace just the target part.
+    static REPLACE_RE: LazyLock<Regex> = LazyLock::new(|| {
+        // Capture groups: (1) target, (2) rest — #heading, ^blockId, |display in any combo
+        Regex::new(r"\[\[([^\]|#^]+)((?:#[^\]|^]+)?(?:\^[^\]|]+)?(?:\|[^\]]+)?)\]\]").unwrap()
+    });
+
+    REPLACE_RE
+        .replace_all(content, |caps: &regex::Captures| {
+            let captured_target = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+            let rest = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+
+            // Case-insensitive comparison for target matching
+            if captured_target.trim().eq_ignore_ascii_case(old_target.trim()) {
+                format!("[[{}{rest}]]", new_target)
+            } else {
+                // No match — return original
+                caps[0].to_string()
+            }
+        })
+        .to_string()
 }
 
 /// Normalize a wikilink target to a comparable key (lowercase, no extension)
@@ -386,6 +430,75 @@ mod tests {
         let backlinks = index.get_backlinks("/vault/architecture.md");
         assert_eq!(backlinks.len(), 1);
         assert_eq!(backlinks[0].source_path, "/vault/overview.md");
+    }
+
+    // §33 get_files_linking_to tests
+    #[test]
+    fn test_get_files_linking_to() {
+        let mut index = LinkIndex::new();
+
+        // a.md links to "target", b.md links to "target", c.md links to "other"
+        index.update_file_from_content("/vault/a.md", "See [[target]] here.");
+        index.update_file_from_content("/vault/b.md", "Also [[target|alias]].");
+        index.update_file_from_content("/vault/c.md", "Unrelated [[other]].");
+
+        let mut files = index.get_files_linking_to("target");
+        files.sort();
+        assert_eq!(files, vec!["/vault/a.md", "/vault/b.md"]);
+
+        // Case-insensitive
+        let files2 = index.get_files_linking_to("Target");
+        assert_eq!(files2.len(), 2);
+
+        // No match
+        let files3 = index.get_files_linking_to("nonexistent");
+        assert!(files3.is_empty());
+    }
+
+    // §33 replace_wikilink_target tests
+    #[test]
+    fn test_replace_wikilink_target_basic() {
+        let content = "See [[old-note]] for details.";
+        let result = replace_wikilink_target(content, "old-note", "new-note");
+        assert_eq!(result, "See [[new-note]] for details.");
+    }
+
+    #[test]
+    fn test_replace_wikilink_target_with_display() {
+        let content = "Read [[old-note|my alias]] here.";
+        let result = replace_wikilink_target(content, "old-note", "new-note");
+        assert_eq!(result, "Read [[new-note|my alias]] here.");
+    }
+
+    #[test]
+    fn test_replace_wikilink_target_with_heading() {
+        let content = "See [[old-note#intro]] and [[old-note#summary|要約]].";
+        let result = replace_wikilink_target(content, "old-note", "new-note");
+        assert_eq!(
+            result,
+            "See [[new-note#intro]] and [[new-note#summary|要約]]."
+        );
+    }
+
+    #[test]
+    fn test_replace_wikilink_target_case_insensitive() {
+        let content = "Links: [[Old-Note]] and [[old-note]].";
+        let result = replace_wikilink_target(content, "old-note", "new-note");
+        assert_eq!(result, "Links: [[new-note]] and [[new-note]].");
+    }
+
+    #[test]
+    fn test_replace_wikilink_target_multiple_per_line() {
+        let content = "Both [[old]] and [[other]] and [[old|display]].";
+        let result = replace_wikilink_target(content, "old", "new");
+        assert_eq!(result, "Both [[new]] and [[other]] and [[new|display]].");
+    }
+
+    #[test]
+    fn test_replace_wikilink_target_no_match() {
+        let content = "See [[unrelated]] for details.";
+        let result = replace_wikilink_target(content, "old", "new");
+        assert_eq!(result, "See [[unrelated]] for details.");
     }
 
     #[test]
