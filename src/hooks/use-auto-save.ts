@@ -13,31 +13,37 @@ import { useLinkStore } from "../stores/link-store";
  */
 export function useAutoSave(editor: Editor | null) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { activeTabId, tabs, markDirty } = useEditorStore();
   const { autoSave, autoSaveDelay } = useSettingsStore();
 
-  const activeTab = tabs.find((t) => t.id === activeTabId);
-
   const save = useCallback(async () => {
-    if (!editor || !activeTab || !activeTab.filePath) return;
+    if (!editor) return;
+    // Read current tab from store at save time — avoids stale closure
+    const { activeTabId, tabs, markDirty } = useEditorStore.getState();
+    const tab = tabs.find((t) => t.id === activeTabId);
+    if (!tab || !tab.filePath) return;
 
     try {
       const markdown = prosemirrorToMarkdown(editor.state.doc);
-      await writeFile(activeTab.filePath, markdown);
-      markDirty(activeTab.id, false);
-      updateFileIndex(activeTab.filePath)
+      await writeFile(tab.filePath, markdown);
+      markDirty(tab.id, false);
+      updateFileIndex(tab.filePath)
         .then(() => useLinkStore.getState().invalidate())
         .catch(() => {});
     } catch {
       // Save failed — keep dirty state, will retry on next edit
     }
-  }, [editor, activeTab, markDirty]);
+  }, [editor]);
 
   useEffect(() => {
-    if (!editor || !autoSave || !activeTab || !activeTab.filePath) return;
+    if (!editor || !autoSave) return;
 
     const handleUpdate = () => {
-      markDirty(activeTab.id, true);
+      // Read current tab at event time — avoids stale closure
+      const { activeTabId, tabs, markDirty } = useEditorStore.getState();
+      const tab = tabs.find((t) => t.id === activeTabId);
+      if (!tab?.filePath) return;
+
+      markDirty(tab.id, true);
 
       if (timerRef.current) {
         clearTimeout(timerRef.current);
@@ -56,7 +62,7 @@ export function useAutoSave(editor: Editor | null) {
         clearTimeout(timerRef.current);
       }
     };
-  }, [editor, autoSave, autoSaveDelay, activeTab, markDirty, save]);
+  }, [editor, autoSave, autoSaveDelay, save]);
 
   return { save };
 }
