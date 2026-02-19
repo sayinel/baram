@@ -991,6 +991,40 @@ body {
   padding: 4px 0;
 }
 
+.file-tree-search {
+  padding: 4px 8px 4px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.file-tree-search input {
+  width: 100%;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  font-family: inherit;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  outline: none;
+}
+
+.file-tree-search input:focus {
+  border-color: var(--color-accent);
+}
+
+.file-tree-results {
+  padding: 4px 0;
+}
+
+.file-tree-result-path {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .file-tree-empty {
   display: flex;
   flex-direction: column;

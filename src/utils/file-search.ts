@@ -51,6 +51,20 @@ export function flattenFileTree(
   return result;
 }
 
+/** Check if query looks like a glob pattern (contains * or ?). */
+export function isGlobPattern(query: string): boolean {
+  return query.includes("*") || query.includes("?");
+}
+
+/** Match text against a glob pattern. * matches any characters, ? matches one character. */
+export function globMatch(pattern: string, text: string): boolean {
+  const escaped = pattern
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*/g, ".*")
+    .replace(/\?/g, ".");
+  return new RegExp(`^${escaped}$`, "i").test(text);
+}
+
 /** Fuzzy match query against text. Returns true if all characters match in order. */
 export function fuzzyMatch(query: string, text: string): boolean {
   const q = query.toLowerCase();

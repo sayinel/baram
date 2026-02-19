@@ -1,11 +1,12 @@
 // §4.3 File tree sidebar — directory browsing + file opening
 // §33 Inline rename with wikilink auto-update
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useFileStore, openFolder, type FileEntry } from "../../stores/file-store";
 import { useEditorStore } from "../../stores/editor-store";
 import { useLinkStore } from "../../stores/link-store";
 import { readFile, renameFileWithLinks } from "../../ipc/invoke";
+import { flattenFileTree, fuzzyMatch, fuzzyScore, isGlobPattern, globMatch } from "../../utils/file-search";
 
 function FileTreeNode({
   entry,
@@ -125,7 +126,22 @@ export function FileTree() {
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const treeRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const searchResults = useMemo(() => {
+    const q = searchQuery.trim();
+    if (!q || !rootPath) return null;
+    const flat = flattenFileTree(fileTree, rootPath);
+    if (isGlobPattern(q)) {
+      // Glob: match against relativePath (supports "docs/*.md"), fall back to name
+      return flat.filter((f) => globMatch(q, f.name) || globMatch(q, f.relativePath));
+    }
+    return flat
+      .filter((f) => fuzzyMatch(q, f.name))
+      .sort((a, b) => fuzzyScore(q, a.name) - fuzzyScore(q, b.name));
+  }, [searchQuery, fileTree, rootPath]);
 
   // Sync selectedPath with active tab
   const activeTab = tabs.find((t) => t.id === activeTabId);
@@ -278,21 +294,65 @@ export function FileTree() {
       tabIndex={0}
       onKeyDown={handleTreeKeyDown}
     >
-      {fileTree.map((entry) => (
-        <FileTreeNode
-          key={entry.path}
-          entry={entry}
-          depth={0}
-          expandedDirs={expandedDirs}
-          onToggleDir={handleToggleDir}
-          onFileClick={handleFileClick}
-          selectedPath={selectedPath}
-          renamingPath={renamingPath}
-          onStartRename={handleStartRename}
-          onConfirmRename={handleConfirmRename}
-          onCancelRename={handleCancelRename}
+      <div className="file-tree-search">
+        <input
+          ref={searchInputRef}
+          type="text"
+          placeholder="Filter files…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              setSearchQuery("");
+              searchInputRef.current?.blur();
+            }
+            e.stopPropagation();
+          }}
         />
-      ))}
+      </div>
+      {searchResults ? (
+        <div className="file-tree-results">
+          {searchResults.map((file) => (
+            <div
+              key={file.path}
+              className={`file-tree-item file-tree-file ${selectedPath === file.path ? "file-tree-item-active" : ""}`}
+              style={{ paddingLeft: "8px" }}
+              onClick={() => {
+                handleFileClick({ name: file.name, path: file.path, isDir: false });
+                setSearchQuery("");
+              }}
+            >
+              <span className="file-tree-icon">{"\uD83D\uDCC4"}</span>
+              <span className="file-tree-name">
+                {file.name}
+                <span className="file-tree-result-path">{file.relativePath}</span>
+              </span>
+            </div>
+          ))}
+          {searchResults.length === 0 && (
+            <div className="file-tree-empty" style={{ height: "auto", padding: "16px 0" }}>
+              No matching files
+            </div>
+          )}
+        </div>
+      ) : (
+        fileTree.map((entry) => (
+          <FileTreeNode
+            key={entry.path}
+            entry={entry}
+            depth={0}
+            expandedDirs={expandedDirs}
+            onToggleDir={handleToggleDir}
+            onFileClick={handleFileClick}
+            selectedPath={selectedPath}
+            renamingPath={renamingPath}
+            onStartRename={handleStartRename}
+            onConfirmRename={handleConfirmRename}
+            onCancelRename={handleCancelRename}
+          />
+        ))
+      )}
     </div>
   );
 }
