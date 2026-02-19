@@ -1,7 +1,7 @@
 {
   "_comment": "Baram 개발 진행 상황 추적. 슬래시 커맨드가 자동으로 업데이트한다.",
   "project": "baram",
-  "lastUpdated": "2026-02-18",
+  "lastUpdated": "2026-02-19",
   "currentPhase": 2,
   "currentMilestone": "M7",
 
@@ -126,14 +126,14 @@
         "§31-link-autocomplete": { "status": "completed", "tests": "11/11 vitest pass (filterFiles + fileNameWithoutExtension + Suggestion UI)", "spec": "§31" },
         "§32-hover-preview": { "status": "completed", "tests": "10/10 vitest pass (truncate+position+timing)", "spec": "§32" },
         "§33-auto-rename": { "status": "completed", "tests": "tsc pass + manual verified", "spec": "§33" },
-        "§34-unlinked-mentions": { "status": "planned", "spec": "§34" }
+        "§34-unlinked-mentions": { "status": "completed", "tests": "9/9 vitest pass + 4/4 cargo test (strip_wikilinks)", "spec": "§34" }
       }
     }
   },
 
   "testSummary": {
-    "vitest": "267/267 pass",
-    "cargoTest": "15/15 pass (1 ignored)",
+    "vitest": "282/282 pass",
+    "cargoTest": "19/19 pass (1 ignored)",
     "breakdown": {
       "stores": 6,
       "editor-store-mru": 12,
@@ -148,8 +148,9 @@
       "wikilink": 31,
       "link-store": 6,
       "backlink-panel": 5,
-      "wikilink-suggest": 11,
-      "hover-preview": 10,
+      "wikilink-suggest": 18,
+      "hover-preview": 16,
+      "unlinked-mentions": 9,
       "file-search": 20,
       "export-html": 9,
       "perf-benchmark": 5,

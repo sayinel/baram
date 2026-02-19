@@ -1,7 +1,7 @@
 // §29 인덱스 IPC 커맨드 — 백링크 조회, 인덱스 빌드/갱신
 // §33 파일 이름 변경 시 wikilink 자동 갱신
 
-use crate::index::{replace_wikilink_target, BacklinkResult, IndexStats, LinkGraph, LinkIndex};
+use crate::index::{find_unlinked_mentions, replace_wikilink_target, BacklinkResult, IndexStats, LinkGraph, LinkIndex, UnlinkedMentionResult};
 use serde::Serialize;
 use std::path::Path;
 use std::sync::Mutex;
@@ -59,6 +59,17 @@ pub async fn update_file_index(
     let mut index = state.0.lock().map_err(|e| e.to_string())?;
     index.update_file_from_content(&file_path, &content);
     Ok(())
+}
+
+/// §34 Find unlinked mentions — text occurrences of a file's name in other files
+#[tauri::command]
+pub async fn get_unlinked_mentions(
+    file_path: String,
+    root_path: String,
+) -> Result<Vec<UnlinkedMentionResult>, String> {
+    find_unlinked_mentions(&file_path, &root_path)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// §33 Result of renaming a file with wikilink updates

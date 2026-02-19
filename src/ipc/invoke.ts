@@ -2,6 +2,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   FileEntry,
+  UnlinkedMention,
   SearchOptions,
   SearchResult,
   BacklinkEntry,
@@ -60,6 +61,14 @@ export async function getBacklinks(
   filePath: string,
 ): Promise<BacklinkEntry[]> {
   return invoke<BacklinkEntry[]>("get_backlinks", { filePath });
+}
+
+// §34 Unlinked Mentions
+export async function getUnlinkedMentions(
+  filePath: string,
+  rootPath: string,
+): Promise<UnlinkedMention[]> {
+  return invoke<UnlinkedMention[]>("get_unlinked_mentions", { filePath, rootPath });
 }
 
 export async function getLinkIndex(): Promise<LinkGraph> {

@@ -1,10 +1,13 @@
 // §29 링크 인덱스 스토어 — 백링크, 링크 그래프 프론트엔드 캐시
+// §34 언링크드 멘션 상태 추가
 import { create } from "zustand";
-import type { BacklinkEntry } from "../ipc/types";
+import type { BacklinkEntry, UnlinkedMention } from "../ipc/types";
 
 interface LinkState {
   /** Backlinks for the currently viewed file */
   backlinks: BacklinkEntry[];
+  /** §34 Unlinked mentions for the currently viewed file */
+  unlinkedMentions: UnlinkedMention[];
   /** Whether backlinks are being loaded */
   loading: boolean;
   /** Last error from IPC */
@@ -16,6 +19,8 @@ interface LinkState {
 
   /** Set backlinks data (called after IPC response) */
   setBacklinks: (path: string, entries: BacklinkEntry[]) => void;
+  /** §34 Set unlinked mentions data */
+  setUnlinkedMentions: (entries: UnlinkedMention[]) => void;
   /** Set loading state */
   setLoading: (loading: boolean) => void;
   /** Set error state */
@@ -32,6 +37,7 @@ interface LinkState {
 
 export const useLinkStore = create<LinkState>((set, get) => ({
   backlinks: [],
+  unlinkedMentions: [],
   loading: false,
   error: null,
   cachedPath: null,
@@ -40,12 +46,14 @@ export const useLinkStore = create<LinkState>((set, get) => ({
   setBacklinks: (path, entries) =>
     set({ backlinks: entries, cachedPath: path, loading: false, error: null }),
 
+  setUnlinkedMentions: (entries) => set({ unlinkedMentions: entries }),
+
   setLoading: (loading) => set({ loading }),
 
   setError: (error) => set({ error, loading: false }),
 
   clear: () =>
-    set({ backlinks: [], loading: false, error: null, cachedPath: null }),
+    set({ backlinks: [], unlinkedMentions: [], loading: false, error: null, cachedPath: null }),
 
   invalidate: () => set({ indexVersion: get().indexVersion + 1 }),
 

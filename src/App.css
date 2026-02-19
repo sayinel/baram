@@ -2178,6 +2178,41 @@ body {
   white-space: nowrap;
 }
 
+/* §34 Unlinked mentions */
+.backlinks-header-unlinked {
+  margin-top: 8px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 8px;
+}
+
+.backlinks-empty-inline {
+  padding: 4px 12px 8px;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.backlinks-linkify-btn {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  font-size: 0.7rem;
+  background: transparent;
+  color: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  border-radius: 3px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.backlinks-context:hover .backlinks-linkify-btn {
+  opacity: 1;
+}
+
+.backlinks-linkify-btn:hover {
+  background: var(--color-accent);
+  color: white;
+}
+
 /* ============================================
    §31 Wikilink Autocomplete Menu
    ============================================ */

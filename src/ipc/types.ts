@@ -43,6 +43,14 @@ export interface IndexStats {
   duration: number;
 }
 
+// §34 Unlinked Mentions
+export interface UnlinkedMention {
+  sourcePath: string;
+  line: number;
+  context: string;
+  matchText: string;
+}
+
 // §3.2 Git types
 export interface GitStatus {
   branch: string;

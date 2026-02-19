@@ -301,6 +301,91 @@ fn resolve_target(root: &str, normalized_target: &str) -> String {
     format!("{}/{}.md", root, normalized_target)
 }
 
+/// §34 Unlinked mention result returned to the frontend
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnlinkedMentionResult {
+    pub source_path: String,
+    pub line: u32,
+    pub context: String,
+    pub match_text: String,
+}
+
+/// §34 Find unlinked mentions — text occurrences of a file stem in other files,
+/// NOT inside [[wikilink]] brackets. Case-insensitive, word-boundary aware.
+pub async fn find_unlinked_mentions(
+    file_path: &str,
+    root_path: &str,
+) -> Result<Vec<UnlinkedMentionResult>, IndexError> {
+    let stem = Path::new(file_path)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    if stem.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let md_files = collect_md_files(root_path).await?;
+    let mut results = Vec::new();
+
+    // Build a word-boundary regex for the stem (case-insensitive)
+    let escaped = regex::escape(&stem);
+    let pattern = format!(r"(?i)\b{}\b", escaped);
+    let stem_re = Regex::new(&pattern).map_err(|e| IndexError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+
+    for md_path in &md_files {
+        // Skip the current file itself
+        if md_path == file_path {
+            continue;
+        }
+
+        let content = match tokio::fs::read_to_string(md_path).await {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        for (line_idx, line) in content.lines().enumerate() {
+            // Strip all [[...]] wikilinks from the line, replacing with spaces of same length
+            let stripped = strip_wikilinks(line);
+
+            // Search for the stem in the stripped text
+            for mat in stem_re.find_iter(&stripped) {
+                let context = line.trim().to_string();
+                let context = if context.len() > 200 {
+                    let mut end = 200;
+                    while !context.is_char_boundary(end) {
+                        end -= 1;
+                    }
+                    format!("{}…", &context[..end])
+                } else {
+                    context
+                };
+
+                results.push(UnlinkedMentionResult {
+                    source_path: md_path.clone(),
+                    line: (line_idx + 1) as u32,
+                    context,
+                    match_text: mat.as_str().to_string(),
+                });
+
+                // Only one mention per line to avoid duplicates
+                break;
+            }
+        }
+    }
+
+    Ok(results)
+}
+
+/// Replace [[...]] wikilink blocks with spaces of the same byte length.
+/// This allows searching for unlinked mentions without matching linked ones.
+fn strip_wikilinks(line: &str) -> String {
+    WIKILINK_RE.replace_all(line, |caps: &regex::Captures| {
+        " ".repeat(caps[0].len())
+    }).to_string()
+}
+
 /// Recursively collect all .md files under a root path
 async fn collect_md_files(root: &str) -> Result<Vec<String>, IndexError> {
     let mut files = Vec::new();
@@ -525,5 +610,39 @@ mod tests {
         index.remove_file("/vault/a.md");
         assert!(index.outgoing.get("/vault/a.md").is_none());
         assert!(index.get_backlinks("/vault/b.md").is_empty());
+    }
+
+    // §34 strip_wikilinks tests
+    #[test]
+    fn test_strip_wikilinks_basic() {
+        let line = "See [[architecture]] for details about architecture.";
+        let stripped = strip_wikilinks(line);
+        // [[architecture]] (18 chars) should be replaced with spaces
+        assert!(!stripped.contains("[["));
+        assert!(stripped.contains("architecture")); // the plain text one remains
+    }
+
+    #[test]
+    fn test_strip_wikilinks_preserves_plain_text() {
+        let line = "No wikilinks here, just architecture text.";
+        let stripped = strip_wikilinks(line);
+        assert_eq!(stripped, line);
+    }
+
+    #[test]
+    fn test_strip_wikilinks_with_display() {
+        let line = "See [[arch|the doc]] and architecture here.";
+        let stripped = strip_wikilinks(line);
+        assert!(!stripped.contains("[["));
+        assert!(stripped.contains("architecture"));
+    }
+
+    #[test]
+    fn test_strip_wikilinks_multiple() {
+        let line = "Both [[foo]] and [[bar]] plus foo and bar text.";
+        let stripped = strip_wikilinks(line);
+        assert!(!stripped.contains("[["));
+        assert!(stripped.contains("foo"));
+        assert!(stripped.contains("bar"));
     }
 }
