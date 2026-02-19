@@ -147,6 +147,32 @@
       "shortcuts": {}
     },
     {
+      "name": "listItem",
+      "file": "nodes/list-item.ts",
+      "markdown": "(internal — child of bulletList/orderedList)",
+      "spec": "§5.1",
+      "phase": 1,
+      "milestone": "M2",
+      "status": "implemented",
+      "hasNodeView": false,
+      "inputRules": [],
+      "shortcuts": {},
+      "_note": "Internal supporting node. Transformer exists but list conversion is handled directly in md-to-pm/pm-to-md."
+    },
+    {
+      "name": "taskItem",
+      "file": "nodes/task-item.ts",
+      "markdown": "(internal — child of taskList)",
+      "spec": "§5.1",
+      "phase": 1,
+      "milestone": "M2",
+      "status": "implemented",
+      "hasNodeView": false,
+      "inputRules": [],
+      "shortcuts": {},
+      "_note": "Internal supporting node. Conversion handled in task-list-transformer."
+    },
+    {
       "name": "callout",
       "file": "nodes/callout.ts",
       "markdown": "> [!type] title",
@@ -326,6 +352,15 @@
       "milestone": "M7",
       "status": "implemented",
       "shortcuts": { "[[": "wikilink autocomplete" }
+    },
+    {
+      "name": "mathInlineEdit",
+      "file": "plugins/math-inline-edit.ts",
+      "spec": "§5.3",
+      "phase": 1,
+      "milestone": "M3",
+      "status": "implemented",
+      "shortcuts": {}
     },
     {
       "name": "dragHandle",

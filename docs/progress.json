@@ -125,14 +125,14 @@
         "§30-graph-view": { "status": "planned", "spec": "§30" },
         "§31-link-autocomplete": { "status": "completed", "tests": "11/11 vitest pass (filterFiles + fileNameWithoutExtension + Suggestion UI)", "spec": "§31" },
         "§32-hover-preview": { "status": "completed", "tests": "10/10 vitest pass (truncate+position+timing)", "spec": "§32" },
-        "§33-auto-rename": { "status": "completed", "tests": "tsc pass + manual verified", "spec": "§33" },
+        "§33-auto-rename": { "status": "completed", "tests": "11/11 vitest pass (wikilink replace + contract) + 6/6 cargo test", "spec": "§33" },
         "§34-unlinked-mentions": { "status": "completed", "tests": "9/9 vitest pass + 4/4 cargo test (strip_wikilinks)", "spec": "§34" }
       }
     }
   },
 
   "testSummary": {
-    "vitest": "297/297 pass",
+    "vitest": "308/308 pass",
     "cargoTest": "19/19 pass (1 ignored)",
     "breakdown": {
       "stores": 6,
@@ -155,6 +155,7 @@
       "file-search": 20,
       "export-html": 9,
       "perf-benchmark": 5,
+      "auto-rename": 11,
       "integration": 26,
       "cargo-sse-parser": 3
     }

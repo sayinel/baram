@@ -10,7 +10,7 @@
       "spec": "§3.2",
       "phase": 1,
       "milestone": "M2",
-      "status": "planned",
+      "status": "implemented",
       "description": "파일 내용 읽기 (UTF-8)"
     },
     {
@@ -21,7 +21,7 @@
       "spec": "§3.2",
       "phase": 1,
       "milestone": "M2",
-      "status": "planned",
+      "status": "implemented",
       "description": "파일 쓰기 (원자적 쓰기)"
     },
     {
@@ -32,7 +32,7 @@
       "spec": "§3.2",
       "phase": 1,
       "milestone": "M2",
-      "status": "planned",
+      "status": "implemented",
       "description": "디렉토리 목록 조회"
     },
     {
@@ -43,7 +43,7 @@
       "spec": "§3.2",
       "phase": 1,
       "milestone": "M4",
-      "status": "planned",
+      "status": "implemented",
       "description": "파일/폴더 이름 변경"
     },
     {
@@ -54,7 +54,7 @@
       "spec": "§3.2",
       "phase": 1,
       "milestone": "M4",
-      "status": "planned",
+      "status": "implemented",
       "description": "파일/폴더 삭제 (휴지통 이동)"
     },
     {
@@ -65,7 +65,7 @@
       "spec": "§3.2",
       "phase": 1,
       "milestone": "M2",
-      "status": "planned",
+      "status": "implemented",
       "description": "디렉토리 변경 감시 시작 (notify crate)"
     },
     {
@@ -76,7 +76,7 @@
       "spec": "§3.2",
       "phase": 1,
       "milestone": "M2",
-      "status": "planned",
+      "status": "implemented",
       "description": "설정값 조회"
     },
     {
@@ -87,7 +87,7 @@
       "spec": "§3.2",
       "phase": 1,
       "milestone": "M2",
-      "status": "planned",
+      "status": "implemented",
       "description": "설정값 저장"
     },
     {
@@ -98,18 +98,18 @@
       "spec": "§3.2",
       "phase": 2,
       "milestone": "M7",
-      "status": "planned",
-      "description": "전역 텍스트 검색 (tantivy)"
+      "status": "stub",
+      "description": "전역 텍스트 검색 (tantivy) — Rust stub만 존재, TS는 빈 배열 반환"
     },
     {
       "name": "get_backlinks",
       "input": { "filePath": "string" },
       "output": "BacklinkEntry[]",
       "module": "index",
-      "spec": "§3.2",
+      "spec": "§29",
       "phase": 2,
       "milestone": "M7",
-      "status": "planned",
+      "status": "implemented",
       "description": "백링크 조회"
     },
     {
@@ -117,32 +117,65 @@
       "input": {},
       "output": "LinkGraph",
       "module": "index",
-      "spec": "§3.2",
+      "spec": "§29",
       "phase": 2,
       "milestone": "M7",
-      "status": "planned",
+      "status": "implemented",
       "description": "전체 링크 그래프 조회"
     },
     {
       "name": "refresh_index",
-      "input": { "full": "boolean?" },
+      "input": { "rootPath": "string" },
       "output": "IndexStats",
       "module": "index",
-      "spec": "§3.2",
+      "spec": "§29",
       "phase": 2,
       "milestone": "M7",
-      "status": "planned",
-      "description": "인덱스 재구축"
+      "status": "implemented",
+      "description": "인덱스 재구축 (전체 디렉토리 스캔)"
+    },
+    {
+      "name": "update_file_index",
+      "input": { "filePath": "string" },
+      "output": "void",
+      "module": "index",
+      "spec": "§29",
+      "phase": 2,
+      "milestone": "M7",
+      "status": "implemented",
+      "description": "단일 파일 인덱스 갱신 (incremental)"
+    },
+    {
+      "name": "rename_file_with_links",
+      "input": { "oldPath": "string", "newPath": "string" },
+      "output": "RenameResult",
+      "module": "index",
+      "spec": "§33",
+      "phase": 2,
+      "milestone": "M7",
+      "status": "implemented",
+      "description": "파일 이름 변경 + 모든 [[]] 참조 자동 갱신"
+    },
+    {
+      "name": "get_unlinked_mentions",
+      "input": { "filePath": "string", "rootPath": "string" },
+      "output": "UnlinkedMention[]",
+      "module": "index",
+      "spec": "§34",
+      "phase": 2,
+      "milestone": "M7",
+      "status": "implemented",
+      "description": "언링크드 멘션 검색 (파일명이 본문에 [[]] 없이 언급된 곳)"
     },
     {
       "name": "llm_complete",
-      "input": { "prompt": "string", "model": "string", "systemPrompt": "string?", "maxTokens": "number?" },
+      "input": { "apiKey": "string", "prompt": "string", "model": "string", "requestId": "string", "systemPrompt": "string?", "maxTokens": "number?" },
       "output": "stream",
       "module": "llm",
       "spec": "§6.3",
       "phase": 1,
       "milestone": "M5",
-      "status": "planned",
+      "status": "implemented",
       "description": "LLM 호출 (스트리밍, 이벤트: llm:token, llm:done, llm:error)"
     },
     {
@@ -150,11 +183,33 @@
       "input": { "path": "string", "format": "pdf|html", "options": "ExportOptions?" },
       "output": "string",
       "module": "export",
-      "spec": "§3.2",
+      "spec": "§5.10",
       "phase": 1,
       "milestone": "M6",
-      "status": "planned",
-      "description": "문서 내보내기 (PDF/HTML)"
+      "status": "implemented",
+      "description": "문서 내보내기 (HTML)"
+    },
+    {
+      "name": "export_pdf",
+      "input": { "htmlContent": "string", "outputPath": "string", "options": "PdfOptions?" },
+      "output": "void",
+      "module": "export",
+      "spec": "§5.10",
+      "phase": 1,
+      "milestone": "M6",
+      "status": "implemented",
+      "description": "PDF 내보내기 (headless Chrome 백엔드)"
+    },
+    {
+      "name": "get_opened_urls",
+      "input": {},
+      "output": "string[]",
+      "module": "app",
+      "spec": "macOS",
+      "phase": 1,
+      "milestone": "M6",
+      "status": "implemented",
+      "description": "macOS 파일 연결: 콜드 스타트 시 대기 중인 파일 경로 조회"
     },
     {
       "name": "git_status",
@@ -164,8 +219,8 @@
       "spec": "§3.2",
       "phase": 2,
       "milestone": "M9",
-      "status": "planned",
-      "description": "Git 상태 조회"
+      "status": "stub",
+      "description": "Git 상태 조회 — Rust stub만 존재"
     },
     {
       "name": "git_commit",
@@ -175,8 +230,8 @@
       "spec": "§3.2",
       "phase": 2,
       "milestone": "M9",
-      "status": "planned",
-      "description": "Git 커밋 (커밋 해시 반환)"
+      "status": "stub",
+      "description": "Git 커밋 (커밋 해시 반환) — Rust stub만 존재"
     },
     {
       "name": "create_snapshot",
@@ -186,8 +241,8 @@
       "spec": "§3.2",
       "phase": 2,
       "milestone": "M9",
-      "status": "planned",
-      "description": "수동 파일 스냅샷"
+      "status": "stub",
+      "description": "수동 파일 스냅샷 — 미구현"
     }
   ],
   "events": [
@@ -217,6 +272,15 @@
       "phase": 1,
       "milestone": "M2",
       "description": "파일 삭제 감지"
+    },
+    {
+      "name": "file:open-request",
+      "payload": "string",
+      "module": "app",
+      "spec": "macOS",
+      "phase": 1,
+      "milestone": "M6",
+      "description": "macOS 파일 연결: 앱 실행 중 파일 열기 요청"
     },
     {
       "name": "llm:token",
@@ -249,7 +313,7 @@
       "name": "index:updated",
       "payload": { "filesIndexed": "number", "duration": "number" },
       "module": "index",
-      "spec": "§3.2",
+      "spec": "§29",
       "phase": 2,
       "milestone": "M7",
       "description": "인덱스 갱신 완료"
