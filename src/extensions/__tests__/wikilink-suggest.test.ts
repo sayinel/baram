@@ -3,6 +3,7 @@ import { describe, it, expect } from "vitest";
 import {
   filterFiles,
   fileNameWithoutExtension,
+  longestCommonPrefix,
   type WikilinkSuggestionItem,
 } from "../plugins/wikilink-suggest-utils";
 
@@ -70,5 +71,41 @@ describe("fileNameWithoutExtension", () => {
 
   it("handles names with dots", () => {
     expect(fileNameWithoutExtension("v1.0-notes.md")).toBe("v1.0-notes");
+  });
+});
+
+describe("longestCommonPrefix", () => {
+  it("returns empty string for empty array", () => {
+    expect(longestCommonPrefix([])).toBe("");
+  });
+
+  it("returns the full string for single item", () => {
+    expect(longestCommonPrefix(["architecture"])).toBe("architecture");
+  });
+
+  it("finds common prefix for multiple items", () => {
+    expect(longestCommonPrefix(["architecture", "architecture-decisions"])).toBe(
+      "architecture",
+    );
+  });
+
+  it("returns empty when no common prefix", () => {
+    expect(longestCommonPrefix(["api-design", "roadmap"])).toBe("");
+  });
+
+  it("is case-insensitive, preserves first item casing", () => {
+    expect(longestCommonPrefix(["Architecture", "architecture-decisions"])).toBe(
+      "Architecture",
+    );
+  });
+
+  it("handles heading mode targets", () => {
+    expect(
+      longestCommonPrefix(["architecture#Overview", "architecture#Options"]),
+    ).toBe("architecture#O");
+  });
+
+  it("handles all identical strings", () => {
+    expect(longestCommonPrefix(["abc", "abc", "abc"])).toBe("abc");
   });
 });

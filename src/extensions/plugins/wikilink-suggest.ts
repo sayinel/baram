@@ -17,6 +17,7 @@ import {
   filterFiles,
   fileNameWithoutExtension,
   loadFileHeadings,
+  longestCommonPrefix,
   type WikilinkSuggestionItem,
 } from "./wikilink-suggest-utils";
 import { useFileStore } from "../../stores/file-store";
@@ -62,6 +63,7 @@ export const WikilinkSuggest = Extension.create({
       Suggestion({
         editor,
         char: "[[",
+        allowSpaces: true,
         pluginKey: new PluginKey("wikilinkSuggest"),
         // Block autocomplete when SyntaxReveal is editing non-wikilink expansions (marks, links, images).
         // Allow during wikilink expansion so user can change the target via autocomplete.
@@ -188,12 +190,17 @@ export const WikilinkSuggest = Extension.create({
         render: () => {
           let component: ReactRenderer<WikilinkMenuRef> | null = null;
           let popup: HTMLDivElement | null = null;
+          let latestItems: WikilinkSuggestionItem[] = [];
+          let latestRange: { from: number; to: number } | null = null;
 
           return {
             onStart: (props: SuggestionProps) => {
+              latestItems = props.items as WikilinkSuggestionItem[];
+              latestRange = { from: props.range.from, to: props.range.to };
+
               component = new ReactRenderer(WikilinkMenuList, {
                 props: {
-                  items: props.items as WikilinkSuggestionItem[],
+                  items: latestItems,
                   command: props.command,
                 },
                 editor: props.editor,
@@ -210,8 +217,11 @@ export const WikilinkSuggest = Extension.create({
               }
             },
             onUpdate: (props: SuggestionProps) => {
+              latestItems = props.items as WikilinkSuggestionItem[];
+              latestRange = { from: props.range.from, to: props.range.to };
+
               component?.updateProps({
-                items: props.items as WikilinkSuggestionItem[],
+                items: latestItems,
                 command: props.command,
               });
 
@@ -228,6 +238,37 @@ export const WikilinkSuggest = Extension.create({
                 component = null;
                 return true;
               }
+
+              // Tab: bash-style common-prefix completion
+              if (props.event.key === "Tab" && latestRange) {
+                const queryFrom = latestRange.from + 2; // skip [[
+                const currentQuery = editor.view.state.doc.textBetween(
+                  queryFrom,
+                  latestRange.to,
+                );
+                const queryLower = currentQuery.toLowerCase();
+
+                // Only use prefix-matching items for LCP (exclude fuzzy-only matches)
+                const targets = latestItems
+                  .filter((i) => i.kind !== "create")
+                  .map((i) =>
+                    i.kind === "heading"
+                      ? `${i.target}#${i.heading}`
+                      : i.target,
+                  )
+                  .filter((t) => t.toLowerCase().startsWith(queryLower));
+
+                if (targets.length > 0) {
+                  const prefix = longestCommonPrefix(targets);
+                  if (prefix.length > currentQuery.length) {
+                    const { tr } = editor.view.state;
+                    tr.insertText(prefix, queryFrom, latestRange.to);
+                    editor.view.dispatch(tr);
+                  }
+                }
+                return true;
+              }
+
               return component?.ref?.onKeyDown(props.event) ?? false;
             },
             onExit: () => {
@@ -235,6 +276,8 @@ export const WikilinkSuggest = Extension.create({
               component?.destroy();
               popup = null;
               component = null;
+              latestItems = [];
+              latestRange = null;
             },
           };
         },

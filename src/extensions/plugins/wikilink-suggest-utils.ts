@@ -53,6 +53,27 @@ export async function loadFileHeadings(filePath: string): Promise<HeadingEntry[]
   }
 }
 
+/** Longest common prefix of strings (case-insensitive compare, first item's casing preserved). */
+export function longestCommonPrefix(strings: string[]): string {
+  if (strings.length === 0) return "";
+  if (strings.length === 1) return strings[0];
+
+  const first = strings[0];
+  const lowered = strings.map((s) => s.toLowerCase());
+  let len = first.length;
+  for (let i = 1; i < lowered.length; i++) {
+    len = Math.min(len, lowered[i].length);
+    for (let j = 0; j < len; j++) {
+      if (lowered[0][j] !== lowered[i][j]) {
+        len = j;
+        break;
+      }
+    }
+    if (len === 0) return "";
+  }
+  return first.slice(0, len);
+}
+
 /** Remove .md or .markdown extension from a filename */
 export function fileNameWithoutExtension(name: string): string {
   if (name.endsWith(".markdown")) {
