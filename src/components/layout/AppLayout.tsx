@@ -3,6 +3,7 @@ import { useCallback } from "react";
 import { useUIStore } from "../../stores/ui-store";
 import { Splitter } from "./Splitter";
 import { Sidebar } from "./Sidebar";
+import { ActivityBar } from "./ActivityBar";
 import type { Editor } from "@tiptap/react";
 
 interface AppLayoutProps {
@@ -52,6 +53,9 @@ export function AppLayout({ editor, children, statusBar }: AppLayoutProps) {
     <div className="app-layout">
       {/* Body: sidebar + main + right panel */}
       <div className="app-layout-body">
+        {/* Activity Bar — always visible */}
+        <ActivityBar />
+
         {/* Left Sidebar */}
         {sidebarOpen && (
           <>
