@@ -29,24 +29,26 @@ export function AppLayout({ editor, children, statusBar }: AppLayoutProps) {
 
   const handleSidebarResize = useCallback(
     (delta: number) => {
+      const current = useUIStore.getState().sidebarWidth;
       setSidebarWidth(
-        Math.min(MAX_SIDEBAR, Math.max(MIN_SIDEBAR, sidebarWidth + delta)),
+        Math.min(MAX_SIDEBAR, Math.max(MIN_SIDEBAR, current + delta)),
       );
     },
-    [sidebarWidth, setSidebarWidth],
+    [setSidebarWidth],
   );
 
   const handleRightPanelResize = useCallback(
     (delta: number) => {
       // Right panel: negative delta means expanding (dragging left)
+      const current = useUIStore.getState().rightPanelWidth;
       setRightPanelWidth(
         Math.min(
           MAX_RIGHT_PANEL,
-          Math.max(MIN_RIGHT_PANEL, rightPanelWidth - delta),
+          Math.max(MIN_RIGHT_PANEL, current - delta),
         ),
       );
     },
-    [rightPanelWidth, setRightPanelWidth],
+    [setRightPanelWidth],
   );
 
   return (
