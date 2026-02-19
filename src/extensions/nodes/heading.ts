@@ -34,6 +34,7 @@ export const Heading = Node.create<HeadingOptions>({
   addAttributes() {
     return {
       level: { default: 1, rendered: false },
+      blockId: { default: null, rendered: false },
     };
   },
 
@@ -46,9 +47,12 @@ export const Heading = Node.create<HeadingOptions>({
 
   renderHTML({ node, HTMLAttributes }) {
     const level = node.attrs.level as number;
+    const attrs = node.attrs.blockId
+      ? { ...HTMLAttributes, "data-block-id": node.attrs.blockId as string }
+      : HTMLAttributes;
     return [
       `h${level}`,
-      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes),
+      mergeAttributes(this.options.HTMLAttributes, attrs),
       0,
     ];
   },

@@ -33,6 +33,10 @@ interface LinkState {
   pendingScrollLine: number | null;
   /** Set pending scroll line (consumed by App.tsx after tab switch) */
   setPendingScrollLine: (line: number | null) => void;
+  /** §30c Block ID to scroll to after block ref navigation */
+  pendingScrollBlockId: string | null;
+  /** Set pending scroll block ID (consumed by App.tsx after tab switch) */
+  setPendingScrollBlockId: (id: string | null) => void;
 }
 
 export const useLinkStore = create<LinkState>((set, get) => ({
@@ -59,4 +63,6 @@ export const useLinkStore = create<LinkState>((set, get) => ({
 
   pendingScrollLine: null,
   setPendingScrollLine: (line) => set({ pendingScrollLine: line }),
+  pendingScrollBlockId: null,
+  setPendingScrollBlockId: (id) => set({ pendingScrollBlockId: id }),
 }));

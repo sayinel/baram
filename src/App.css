@@ -2146,6 +2146,51 @@ body {
   border-radius: 2px;
 }
 
+/* §30c Block Reference — inline chip */
+.block-reference {
+  color: var(--color-accent, #7c3aed);
+  cursor: pointer;
+  background-color: color-mix(in srgb, var(--color-accent, #7c3aed) 8%, transparent);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 0.9em;
+  border: 1px solid color-mix(in srgb, var(--color-accent, #7c3aed) 25%, transparent);
+}
+.block-reference:hover {
+  background-color: color-mix(in srgb, var(--color-accent, #7c3aed) 15%, transparent);
+}
+.block-reference-selected {
+  outline: 2px solid color-mix(in srgb, var(--color-accent, #7c3aed) 40%, transparent);
+}
+
+/* §30c Block Embed — bordered preview container */
+.block-embed {
+  border: 1px solid var(--color-border, #313244);
+  border-left: 3px solid var(--color-accent, #7c3aed);
+  border-radius: 6px;
+  margin: 8px 0;
+  overflow: hidden;
+}
+.block-embed-header {
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  color: var(--color-accent, #7c3aed);
+  background: color-mix(in srgb, var(--color-accent, #7c3aed) 5%, transparent);
+  cursor: pointer;
+  border-bottom: 1px solid var(--color-border, #313244);
+}
+.block-embed-header:hover {
+  background: color-mix(in srgb, var(--color-accent, #7c3aed) 10%, transparent);
+}
+.block-embed-content {
+  padding: 8px 12px;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+}
+.block-embed-selected {
+  outline: 2px solid color-mix(in srgb, var(--color-accent, #7c3aed) 40%, transparent);
+}
+
 /* §32 Hover Preview */
 .hover-preview {
   position: fixed;

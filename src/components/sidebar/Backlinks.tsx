@@ -107,8 +107,12 @@ export function Backlinks() {
 
   // Handle clicking a backlink entry → open that file and scroll to line
   const handleClick = useCallback(
-    (sourcePath: string, line: number) => {
-      useLinkStore.getState().setPendingScrollLine(line);
+    (sourcePath: string, line: number, blockId?: string) => {
+      if (blockId) {
+        useLinkStore.getState().setPendingScrollBlockId(blockId);
+      } else {
+        useLinkStore.getState().setPendingScrollLine(line);
+      }
 
       const { tabs: currentTabs, openTab, setActiveTab } =
         useEditorStore.getState();
@@ -221,10 +225,24 @@ export function Backlinks() {
               <div
                 key={i}
                 className="backlinks-context"
-                onClick={() => handleClick(group.sourcePath, entry.line)}
+                onClick={() => handleClick(group.sourcePath, entry.line, entry.blockId)}
               >
                 <span className="backlinks-line">L{entry.line}</span>
                 <span className="backlinks-text">{entry.context}</span>
+                {entry.blockId && (
+                  <span
+                    style={{
+                      flexShrink: 0,
+                      fontSize: "0.65rem",
+                      padding: "0 4px",
+                      borderRadius: "3px",
+                      background: "color-mix(in srgb, var(--color-accent) 15%, transparent)",
+                      color: "var(--color-accent)",
+                    }}
+                  >
+                    ^{entry.blockId}
+                  </span>
+                )}
               </div>
             ))}
           </div>

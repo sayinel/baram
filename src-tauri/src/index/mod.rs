@@ -16,17 +16,21 @@ pub enum IndexError {
     IoError(#[from] std::io::Error),
 }
 
-/// A single wikilink found in a source file
+/// A single link found in a source file (wikilink, block ref, or block embed)
 #[derive(Debug, Clone, Serialize)]
 pub struct LinkEntry {
-    /// The file containing the wikilink
+    /// The file containing the link
     pub source_path: String,
-    /// The target referenced by [[target]]
+    /// The target referenced by the link
     pub target: String,
     /// Line number (1-based)
     pub line: u32,
     /// Context text around the link
     pub context: String,
+    /// Link type: "wikilink", "blockRef", "blockEmbed"
+    pub link_type: String,
+    /// Block ID for block refs/embeds (e.g., "abc123" from ^abc123)
+    pub block_id: Option<String>,
 }
 
 /// Backlink entry returned to the frontend
@@ -37,6 +41,8 @@ pub struct BacklinkResult {
     pub target_path: String,
     pub context: String,
     pub line: u32,
+    pub link_type: String,
+    pub block_id: Option<String>,
 }
 
 /// Link graph for the frontend
@@ -75,6 +81,16 @@ pub struct LinkIndex {
 // Wikilink regex: [[target]], [[target|display]], [[target#heading]], etc.
 static WIKILINK_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\[\[([^\]|#^]+)(?:#[^\]|^]+)?(?:\^[^\]|]+)?(?:\|[^\]]+)?\]\]").unwrap()
+});
+
+// §30c Block reference regex: ((target#^blockId)) or ((target#^blockId|display)) or ((#^blockId))
+static BLOCK_REF_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\(\(([^)#|]*?)#\^([a-zA-Z0-9][\w-]*)(?:\|[^)]+)?\)\)").unwrap()
+});
+
+// §30c Block embed regex: {{embed ((target#^blockId))}}
+static BLOCK_EMBED_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\{\{embed \(\(([^)#|]*?)#\^([a-zA-Z0-9][\w-]*)\)\)\}\}").unwrap()
 });
 
 impl LinkIndex {
@@ -150,6 +166,8 @@ impl LinkIndex {
                         target_path: file_path.to_string(),
                         context: e.context.clone(),
                         line: e.line,
+                        link_type: e.link_type.clone(),
+                        block_id: e.block_id.clone(),
                     })
                     .collect()
             })
@@ -215,36 +233,107 @@ impl LinkIndex {
     }
 }
 
-/// Extract all [[wikilink]] entries from file content
+/// Build a truncated context string from a line
+fn build_context(line: &str) -> String {
+    let context = line.trim().to_string();
+    if context.len() > 200 {
+        let mut end = 200;
+        while !context.is_char_boundary(end) {
+            end -= 1;
+        }
+        format!("{}…", &context[..end])
+    } else {
+        context
+    }
+}
+
+/// Get the file stem (name without .md extension) from a path
+fn file_stem_from_path(path: &str) -> String {
+    Path::new(path)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default()
+}
+
+/// Extract all links (wikilinks, block refs, block embeds) from file content
 fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
     let mut entries = Vec::new();
     let lines: Vec<&str> = content.lines().collect();
 
     for (line_idx, line) in lines.iter().enumerate() {
+        // §29 Wikilinks: [[target]], [[target|display]], etc.
         for cap in WIKILINK_RE.captures_iter(line) {
             let target = cap.get(1).map(|m| m.as_str().trim()).unwrap_or("");
             if target.is_empty() {
                 continue;
             }
 
-            // Build context: the line containing the link, trimmed
-            let context = line.trim().to_string();
-            let context = if context.len() > 200 {
-                // Find a valid UTF-8 char boundary at or before byte 200
-                let mut end = 200;
-                while !context.is_char_boundary(end) {
-                    end -= 1;
-                }
-                format!("{}…", &context[..end])
-            } else {
-                context
-            };
-
             entries.push(LinkEntry {
                 source_path: file_path.to_string(),
                 target: target.to_string(),
                 line: (line_idx + 1) as u32,
-                context,
+                context: build_context(line),
+                link_type: "wikilink".to_string(),
+                block_id: None,
+            });
+        }
+
+        // §30c Block embeds first (so we can skip them in block ref matching)
+        for cap in BLOCK_EMBED_RE.captures_iter(line) {
+            let raw_target = cap.get(1).map(|m| m.as_str().trim()).unwrap_or("");
+            let block_id = cap.get(2).map(|m| m.as_str()).unwrap_or("");
+            if block_id.is_empty() {
+                continue;
+            }
+
+            // Self-ref ((#^id)) → use current file stem as target
+            let target = if raw_target.is_empty() {
+                file_stem_from_path(file_path)
+            } else {
+                raw_target.to_string()
+            };
+
+            entries.push(LinkEntry {
+                source_path: file_path.to_string(),
+                target,
+                line: (line_idx + 1) as u32,
+                context: build_context(line),
+                link_type: "blockEmbed".to_string(),
+                block_id: Some(block_id.to_string()),
+            });
+        }
+
+        // §30c Block references: ((target#^blockId))
+        for cap in BLOCK_REF_RE.captures_iter(line) {
+            let raw_target = cap.get(1).map(|m| m.as_str().trim()).unwrap_or("");
+            let block_id = cap.get(2).map(|m| m.as_str()).unwrap_or("");
+            if block_id.is_empty() {
+                continue;
+            }
+
+            // Skip if this match is part of a block embed (already captured above)
+            let match_start = cap.get(0).unwrap().start();
+            if match_start >= 8 {
+                let prefix = &line[..match_start];
+                if prefix.ends_with("{{embed ") {
+                    continue;
+                }
+            }
+
+            // Self-ref ((#^id)) → use current file stem as target
+            let target = if raw_target.is_empty() {
+                file_stem_from_path(file_path)
+            } else {
+                raw_target.to_string()
+            };
+
+            entries.push(LinkEntry {
+                source_path: file_path.to_string(),
+                target,
+                line: (line_idx + 1) as u32,
+                context: build_context(line),
+                link_type: "blockRef".to_string(),
+                block_id: Some(block_id.to_string()),
             });
         }
     }
@@ -439,6 +528,8 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].target, "architecture");
         assert_eq!(entries[0].line, 1);
+        assert_eq!(entries[0].link_type, "wikilink");
+        assert!(entries[0].block_id.is_none());
     }
 
     #[test]
@@ -473,6 +564,62 @@ mod tests {
         assert_eq!(entries[1].line, 4);
     }
 
+    // §30c Block reference tests
+    #[test]
+    fn test_extract_block_refs() {
+        let entries = extract_links("/test.md", "See ((notes#^abc123)) for context.");
+        let block_refs: Vec<_> = entries.iter().filter(|e| e.link_type == "blockRef").collect();
+        assert_eq!(block_refs.len(), 1);
+        assert_eq!(block_refs[0].target, "notes");
+        assert_eq!(block_refs[0].block_id, Some("abc123".to_string()));
+    }
+
+    #[test]
+    fn test_extract_block_embeds() {
+        let entries = extract_links("/test.md", "{{embed ((notes#^def456))}}");
+        let embeds: Vec<_> = entries.iter().filter(|e| e.link_type == "blockEmbed").collect();
+        assert_eq!(embeds.len(), 1);
+        assert_eq!(embeds[0].target, "notes");
+        assert_eq!(embeds[0].block_id, Some("def456".to_string()));
+        // Embed should NOT also produce a blockRef
+        let refs: Vec<_> = entries.iter().filter(|e| e.link_type == "blockRef").collect();
+        assert_eq!(refs.len(), 0);
+    }
+
+    #[test]
+    fn test_self_block_ref() {
+        // ((#^id)) with empty target → self-reference to current file stem
+        let entries = extract_links("/vault/notes.md", "See ((#^myid)) here.");
+        let block_refs: Vec<_> = entries.iter().filter(|e| e.link_type == "blockRef").collect();
+        assert_eq!(block_refs.len(), 1);
+        assert_eq!(block_refs[0].target, "notes");
+        assert_eq!(block_refs[0].block_id, Some("myid".to_string()));
+    }
+
+    #[test]
+    fn test_mixed_links() {
+        let content = "Link: [[foo]], ref: ((bar#^id1)), embed: {{embed ((baz#^id2))}}";
+        let entries = extract_links("/test.md", content);
+        let wikilinks: Vec<_> = entries.iter().filter(|e| e.link_type == "wikilink").collect();
+        let refs: Vec<_> = entries.iter().filter(|e| e.link_type == "blockRef").collect();
+        let embeds: Vec<_> = entries.iter().filter(|e| e.link_type == "blockEmbed").collect();
+        assert_eq!(wikilinks.len(), 1);
+        assert_eq!(wikilinks[0].target, "foo");
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].target, "bar");
+        assert_eq!(embeds.len(), 1);
+        assert_eq!(embeds[0].target, "baz");
+    }
+
+    #[test]
+    fn test_block_ref_with_display() {
+        let entries = extract_links("/test.md", "See ((notes#^abc|my label)) here.");
+        let block_refs: Vec<_> = entries.iter().filter(|e| e.link_type == "blockRef").collect();
+        assert_eq!(block_refs.len(), 1);
+        assert_eq!(block_refs[0].target, "notes");
+        assert_eq!(block_refs[0].block_id, Some("abc".to_string()));
+    }
+
     #[test]
     fn test_normalize_target() {
         assert_eq!(normalize_target("Architecture"), "architecture");
@@ -500,6 +647,8 @@ mod tests {
             target: "architecture".to_string(),
             line: 5,
             context: "See [[architecture]] for details".to_string(),
+            link_type: "wikilink".to_string(),
+            block_id: None,
         };
         index
             .outgoing
@@ -595,6 +744,8 @@ mod tests {
             target: "b".to_string(),
             line: 1,
             context: "[[b]]".to_string(),
+            link_type: "wikilink".to_string(),
+            block_id: None,
         };
         index
             .outgoing

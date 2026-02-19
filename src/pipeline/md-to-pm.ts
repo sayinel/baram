@@ -15,6 +15,7 @@ import {
   WIKILINK_RE,
   parseWikilinkMatch,
 } from "./transformers/wikilink-transformer";
+import { extractBlockId, BLOCK_REF_RE, parseBlockRefMatch, BLOCK_EMBED_RE, parseBlockEmbedMatch } from "./block-id";
 
 /** remark parser — markdown string → mdast */
 const parser = unified()
@@ -162,10 +163,32 @@ function convertBlockNode(
     }
   }
 
+  // §30b: Detect block embed — paragraph with single text child matching {{embed ((...))}}
+  if (node.type === "paragraph" && schema.nodes.blockEmbed) {
+    const children = (node as { children?: Content[] }).children;
+    if (children?.length === 1 && children[0].type === "text") {
+      const text = (children[0] as Text).value;
+      const embedMatch = BLOCK_EMBED_RE.exec(text);
+      if (embedMatch) {
+        const parsed = parseBlockEmbedMatch(embedMatch);
+        return schema.nodes.blockEmbed.create({
+          target: parsed.target,
+          blockId: parsed.blockId,
+        });
+      }
+    }
+  }
+
+  // §30a: Extract block ID from paragraph/heading before conversion
+  let blockId: string | null = null;
+  if (node.type === "paragraph" || node.type === "heading") {
+    blockId = extractBlockIdFromMdast(node);
+  }
+
   // Standard node transformer lookup
   const transformer = nodeTransformers.get(node.type);
   if (transformer) {
-    return transformer.mdastToPm(node, schema, (parent) => {
+    const result = transformer.mdastToPm(node, schema, (parent) => {
       // If parent has inline children (heading, paragraph), use inline conversion
       const children = (parent as { children?: Content[] }).children;
       if (!children) return [];
@@ -181,6 +204,19 @@ function convertBlockNode(
       // Otherwise block-level
       return convertBlockChildren(children, schema);
     });
+
+    // §30a: Inject blockId attribute if extracted and schema supports it
+    if (blockId && result && !Array.isArray(result)) {
+      if (result.type.spec.attrs && "blockId" in result.type.spec.attrs) {
+        return result.type.create(
+          { ...result.attrs, blockId },
+          result.content,
+          result.marks,
+        );
+      }
+    }
+
+    return result;
   }
 
   // Fallback: unknown node type → skip
@@ -353,6 +389,12 @@ function convertInlineNode(
       if (nodes.length > 0) return nodes;
     }
 
+    // §30b: Check for block reference patterns and split if schema supports it
+    if (schema.nodes.blockReference && text.value.includes("((")) {
+      const nodes = splitTextWithBlockRefs(text.value, schema, parentMarks);
+      if (nodes.length > 0) return nodes;
+    }
+
     return [schema.text(text.value, parentMarks)];
   }
 
@@ -401,6 +443,34 @@ function convertInlineNode(
   }
 
   return [];
+}
+
+/**
+ * §30a: Extract block ID from the last text child of an mdast node.
+ * Mutates the node in-place (strips ` ^{id}` from text).
+ * Returns the block ID string, or null if not found.
+ */
+function extractBlockIdFromMdast(node: Content): string | null {
+  const children = (node as { children?: Content[] }).children;
+  if (!children || children.length === 0) return null;
+
+  // Find the last text node (block ID must be at the very end of block content)
+  const lastChild = children[children.length - 1];
+  if (lastChild.type !== "text") return null;
+
+  const text = (lastChild as Text).value;
+  const result = extractBlockId(text);
+  if (!result) return null;
+
+  // Mutate the text node to strip the block ID suffix
+  if (result.strippedText) {
+    (lastChild as Text).value = result.strippedText;
+  } else {
+    // If stripping leaves empty text, remove the node
+    children.pop();
+  }
+
+  return result.blockId;
 }
 
 /** Check if an mdast node is inline-level */
@@ -452,6 +522,45 @@ function splitTextWithWikilinks(
   }
 
   // Text after the last wikilink
+  if (lastIndex < text.length) {
+    result.push(schema.text(text.slice(lastIndex), parentMarks));
+  }
+
+  return result;
+}
+
+/** §30b: Split text at ((block-ref)) boundaries into mixed text + blockReference PM nodes */
+function splitTextWithBlockRefs(
+  text: string,
+  schema: Schema,
+  parentMarks: Mark[],
+): PmNode[] {
+  const result: PmNode[] = [];
+  const re = new RegExp(BLOCK_REF_RE.source, "g");
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = re.exec(text)) !== null) {
+    // Text before the block reference
+    if (match.index > lastIndex) {
+      const before = text.slice(lastIndex, match.index);
+      result.push(schema.text(before, parentMarks));
+    }
+
+    // Block reference node
+    const parsed = parseBlockRefMatch(match);
+    result.push(
+      schema.nodes.blockReference.create({
+        target: parsed.target,
+        blockId: parsed.blockId,
+        display: parsed.display,
+      }),
+    );
+
+    lastIndex = re.lastIndex;
+  }
+
+  // Text after the last block reference
   if (lastIndex < text.length) {
     result.push(schema.text(text.slice(lastIndex), parentMarks));
   }

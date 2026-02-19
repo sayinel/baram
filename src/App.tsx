@@ -41,6 +41,7 @@ import { useLinkStore } from "./stores/link-store";
 import { useBookmarkStore } from "./stores/bookmark-store";
 import { logAppReady } from "./utils/perf";
 import { resolveWikilinkTarget } from "./utils/wikilink-nav";
+import { findBlockPosById } from "./utils/block-nav";
 import { forceCollapseSyntaxReveal } from "./extensions/plugins/syntax-reveal";
 import "./App.css";
 
@@ -126,6 +127,8 @@ function App() {
 
   // §28 Wikilink navigation ref — breaks circular dependency (editor ↔ navigate)
   const navigateRef = useRef<(target: string, heading?: string | null) => void>(() => {});
+  // §30c Block reference navigation ref
+  const blockRefNavigateRef = useRef<(target: string, blockId: string) => void>(() => {});
 
   // Track previously active tab to save its content on switch
   const prevTabRef = useRef<string | null>(null);
@@ -139,6 +142,7 @@ function App() {
   const editor = useEditor({
     extensions: createBaramExtensions({
       onNavigate: (target, heading) => navigateRef.current(target, heading),
+      onNavigateBlockRef: (target, blockId) => blockRefNavigateRef.current(target, blockId),
     }),
     autofocus: true,
     immediatelyRender: false,
@@ -232,8 +236,15 @@ function App() {
 
       // §29 Check if navigating from backlinks — compute scroll position
       const pendingLine = useLinkStore.getState().pendingScrollLine;
+      const pendingBlockId = useLinkStore.getState().pendingScrollBlockId;
       let scrollPos: number | null = null;
-      if (pendingLine) {
+      if (pendingBlockId) {
+        useLinkStore.getState().setPendingScrollBlockId(null);
+        const blockPos = findBlockPosById(newDoc, pendingBlockId);
+        if (blockPos !== null) {
+          scrollPos = Math.min(Math.max(blockPos, 0), newDoc.content.size);
+        }
+      } else if (pendingLine) {
         useLinkStore.getState().setPendingScrollLine(null);
         const pmPos = mdLineToPmBlockStart(newDoc, content, pendingLine);
         scrollPos = Math.min(Math.max(pmPos, 0), newDoc.content.size);
@@ -514,10 +525,59 @@ function App() {
     [handleOpenFilePath, editor],
   );
 
+  // §30c Block reference Cmd+Click navigation
+  const handleBlockRefNavigate = useCallback(
+    (target: string, blockId: string) => {
+      if (!editor) return;
+
+      if (!target) {
+        // Same file — find block in current doc and scroll
+        const pos = findBlockPosById(editor.state.doc, blockId);
+        if (pos !== null) {
+          editor.commands.setTextSelection(pos + 1);
+          editor.commands.scrollIntoView();
+        }
+        return;
+      }
+
+      // Different file — resolve and open
+      const resolved = resolveWikilinkTarget(target);
+      if (!resolved) return;
+
+      // Set pending block ID for scroll after tab switch
+      useLinkStore.getState().setPendingScrollBlockId(blockId);
+
+      handleOpenFilePath(resolved.path).then(() => {
+        // Wait for editor state to settle
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            if (!editor) return;
+            const pos = findBlockPosById(editor.state.doc, blockId);
+            if (pos !== null) {
+              try {
+                editor.commands.setTextSelection(pos + 1);
+                editor.commands.scrollIntoView();
+              } catch {
+                // ignore invalid position
+              }
+            }
+            useLinkStore.getState().setPendingScrollBlockId(null);
+          });
+        });
+      });
+    },
+    [handleOpenFilePath, editor],
+  );
+
   // Keep navigateRef in sync
   useEffect(() => {
     navigateRef.current = handleWikilinkNavigate;
   }, [handleWikilinkNavigate]);
+
+  // Keep blockRefNavigateRef in sync
+  useEffect(() => {
+    blockRefNavigateRef.current = handleBlockRefNavigate;
+  }, [handleBlockRefNavigate]);
 
   // Listen for file open events from macOS (Finder "Open With" / double-click)
   useEffect(() => {

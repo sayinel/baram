@@ -19,8 +19,9 @@ import type { Root, Content, PhrasingContent, Text } from "mdast";
 import type { Node as PmNode, Mark } from "@tiptap/pm/model";
 import { pmNodeTransformers, pmMarkTransformers } from "./transformers";
 import { serializeWikilink } from "./transformers/wikilink-transformer";
+import { appendBlockId, serializeBlockRef, serializeBlockEmbed } from "./block-id";
 
-/** §28 Remark plugin: serialize wikiLink mdast nodes verbatim */
+/** §28 Remark plugin: serialize wikiLink + §30b blockReference mdast nodes verbatim */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function remarkWikiLink(this: any) {
   const data = this.data();
@@ -30,6 +31,11 @@ function remarkWikiLink(this: any) {
     handlers: {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       wikiLink(node: { value: string }, _parent: any, state: any, info: any) {
+        const tracker = state.createTracker(info);
+        return tracker.move(node.value);
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      blockReference(node: { value: string }, _parent: any, state: any, info: any) {
         const tracker = state.createTracker(info);
         return tracker.move(node.value);
       },
@@ -96,7 +102,15 @@ function convertPmNode(node: PmNode): Content | null {
   if (typeName === "paragraph" || typeName === "heading") {
     const transformer = pmNodeTransformers.get(typeName);
     if (transformer) {
-      return transformer.pmToMdast(node, convertPmInlineChildren) as Content;
+      const mdastNode = transformer.pmToMdast(node, convertPmInlineChildren) as Content;
+
+      // §30a: Append block ID to last text child
+      const blockId = node.attrs.blockId as string | null;
+      if (blockId && mdastNode) {
+        appendBlockIdToMdast(mdastNode, blockId);
+      }
+
+      return mdastNode;
     }
   }
 
@@ -107,6 +121,15 @@ function convertPmNode(node: PmNode): Content | null {
 
   if (typeName === "listItem" || typeName === "taskItem") {
     return convertListItemNode(node) as Content;
+  }
+
+  // §30b: Block embed → paragraph with embed text
+  if (typeName === "blockEmbed") {
+    const text = serializeBlockEmbed(node.attrs as { target: string; blockId: string });
+    return {
+      type: "paragraph",
+      children: [{ type: "text", value: text } as PhrasingContent],
+    } as Content;
   }
 
   // Image → wrap in paragraph for mdast (mdast image is inline)
@@ -139,6 +162,29 @@ function convertPmNode(node: PmNode): Content | null {
   }
 
   return null;
+}
+
+/**
+ * §30a: Append ` ^{id}` to the last text child of an mdast node.
+ * If the node has no text children, adds a new text node.
+ */
+function appendBlockIdToMdast(node: Content, blockId: string): void {
+  const children = (node as { children?: PhrasingContent[] }).children;
+  if (!children) return;
+
+  if (children.length > 0) {
+    const lastChild = children[children.length - 1];
+    if (lastChild.type === "text") {
+      (lastChild as { value: string }).value = appendBlockId(
+        (lastChild as { value: string }).value,
+        blockId,
+      );
+      return;
+    }
+  }
+
+  // No text child at end — append a new text node with the block ID
+  children.push({ type: "text", value: ` ^${blockId}` } as PhrasingContent);
 }
 
 /** Convert a PM list node (bulletList/orderedList/taskList) to mdast list */
@@ -228,6 +274,14 @@ function convertPmInlineChildren(node: PmNode): PhrasingContent[] {
         blockId?: string | null;
       });
       result.push({ type: "wikiLink", value: text } as unknown as PhrasingContent);
+    } else if (child.type.name === "blockReference") {
+      // §30b: Custom blockReference mdast node — handler in serializer outputs verbatim
+      const text = serializeBlockRef(child.attrs as {
+        target: string;
+        blockId: string;
+        display?: string | null;
+      });
+      result.push({ type: "blockReference", value: text } as unknown as PhrasingContent);
     }
   });
 

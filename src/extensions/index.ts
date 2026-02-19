@@ -32,6 +32,8 @@ import {
 } from "./nodes/table";
 import { Frontmatter } from "./nodes/frontmatter";
 import { Wikilink } from "./nodes/wikilink";
+import { BlockReference } from "./nodes/block-reference";
+import { BlockEmbed } from "./nodes/block-embed";
 
 // Plugin Extensions — M3/M4
 import { MathInlineEdit } from "./plugins/math-inline-edit";
@@ -52,6 +54,7 @@ import type { Extensions } from "@tiptap/core";
 
 interface BaramExtensionOptions {
   onNavigate?: (target: string, heading?: string | null) => void;
+  onNavigateBlockRef?: (target: string, blockId: string) => void;
 }
 
 /** M2 기본 편집 Extension 세트 */
@@ -97,6 +100,14 @@ export function createBaramExtensions(options?: BaramExtensionOptions): Extensio
     // Nodes — §28 Wikilink
     Wikilink.configure({
       onNavigate: options?.onNavigate ?? (() => {}),
+    }),
+
+    // Nodes — §30c Block Reference & Embed
+    BlockReference.configure({
+      onNavigate: options?.onNavigateBlockRef ?? (() => {}),
+    }),
+    BlockEmbed.configure({
+      onNavigate: options?.onNavigateBlockRef ?? (() => {}),
     }),
 
     // Marks — §5.1
@@ -151,6 +162,8 @@ export {
   BaramTableHeader,
   Frontmatter,
   Wikilink,
+  BlockReference,
+  BlockEmbed,
   Bold,
   Italic,
   Code,

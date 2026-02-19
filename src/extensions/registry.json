@@ -195,6 +195,32 @@
       "hasNodeView": true,
       "inputRules": [],
       "shortcuts": { "Mod-Shift-d": "insert mermaid diagram" }
+    },
+    {
+      "name": "blockReference",
+      "file": "nodes/block-reference.ts",
+      "markdown": "((target#^id))",
+      "spec": "§30c",
+      "phase": 2,
+      "milestone": "M7",
+      "status": "implemented",
+      "hasNodeView": true,
+      "inputRules": [],
+      "shortcuts": {},
+      "_note": "Inline atom node with NodeView. Cmd+click navigates to target block."
+    },
+    {
+      "name": "blockEmbed",
+      "file": "nodes/block-embed.ts",
+      "markdown": "{{embed ((target#^id))}}",
+      "spec": "§30c",
+      "phase": 2,
+      "milestone": "M7",
+      "status": "implemented",
+      "hasNodeView": true,
+      "inputRules": [],
+      "shortcuts": {},
+      "_note": "Block atom node with NodeView. Shows read-only preview of referenced block."
     }
   ],
   "marks": [

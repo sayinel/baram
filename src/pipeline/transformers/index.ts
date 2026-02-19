@@ -16,6 +16,8 @@ import { mathInlineTransformer } from "./math-inline-transformer";
 import { tableTransformer } from "./table-transformer";
 import { frontmatterTransformer } from "./frontmatter-transformer";
 import { mermaidBlockTransformer } from "./mermaid-block-transformer";
+import { blockReferenceTransformer } from "./block-reference-transformer";
+import { blockEmbedTransformer } from "./block-embed-transformer";
 
 import { boldTransformer } from "./bold-transformer";
 import { italicTransformer } from "./italic-transformer";
@@ -52,6 +54,8 @@ const nodeEntries: NodeTransformerEntry[] = [
   tableTransformer,
   frontmatterTransformer,
   mermaidBlockTransformer,
+  blockReferenceTransformer,
+  blockEmbedTransformer,
 ];
 
 for (const entry of nodeEntries) {

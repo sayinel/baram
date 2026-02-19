@@ -30,6 +30,8 @@ export interface BacklinkEntry {
   targetPath: string;
   context: string;
   line: number;
+  linkType?: string;   // "wikilink" | "blockRef" | "blockEmbed"
+  blockId?: string;    // ^blockId for block refs/embeds
 }
 
 export interface LinkGraph {

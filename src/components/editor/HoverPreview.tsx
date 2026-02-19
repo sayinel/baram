@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useFileStore } from "../../stores/file-store";
 import { resolveWikilinkTarget } from "../../utils/wikilink-nav";
+import { findBlockContent } from "../../utils/block-nav";
 import { readFile } from "../../ipc/invoke";
 
 const MAX_LINES = 20;
@@ -45,6 +46,7 @@ export function calcPosition(
 interface HoverTarget {
   target: string;
   element: HTMLElement;
+  blockId?: string; // §30c block reference hover
 }
 
 export function HoverPreview() {
@@ -58,7 +60,7 @@ export function HoverPreview() {
   const isOverPopupRef = useRef(false);
 
   const showPreview = useCallback(async (hoverTarget: HoverTarget) => {
-    const { target, element } = hoverTarget;
+    const { target, element, blockId } = hoverTarget;
     const resolved = resolveWikilinkTarget(target);
     if (!resolved) return;
 
@@ -78,9 +80,20 @@ export function HoverPreview() {
     // Don't show if target changed during async load
     if (currentTargetRef.current !== target) return;
 
-    const truncated = truncatePreview(fileContent, MAX_LINES);
-    setTitle(resolved.name);
-    setContent(truncated || "Empty document");
+    // §30c Block reference: show only the referenced block content
+    let previewContent: string;
+    let previewTitle: string;
+    if (blockId) {
+      const blockText = findBlockContent(fileContent, blockId);
+      previewContent = blockText ?? `Block ^${blockId} not found`;
+      previewTitle = `${resolved.name} > ^${blockId}`;
+    } else {
+      previewContent = truncatePreview(fileContent, MAX_LINES) || "Empty document";
+      previewTitle = resolved.name;
+    }
+
+    setTitle(previewTitle);
+    setContent(previewContent);
 
     const rect = element.getBoundingClientRect();
     const pos = calcPosition(
@@ -112,26 +125,34 @@ export function HoverPreview() {
       if (!(e.metaKey || e.ctrlKey)) return;
 
       const wikilinkEl = (e.target as HTMLElement).closest?.("[data-target].wikilink") as HTMLElement | null;
-      if (!wikilinkEl) return;
+      // §30c Also detect block-reference elements
+      const blockRefEl = !wikilinkEl
+        ? (e.target as HTMLElement).closest?.("[data-target].block-reference") as HTMLElement | null
+        : null;
+      const hoverEl = wikilinkEl || blockRefEl;
+      if (!hoverEl) return;
 
-      const dataTarget = wikilinkEl.getAttribute("data-target");
-
+      const dataTarget = hoverEl.getAttribute("data-target");
       if (!dataTarget) return;
 
-      // Avoid re-triggering for same target
-      if (currentTargetRef.current === dataTarget && visible) return;
+      // §30c Extract blockId if hovering over a block reference
+      const blockId = blockRefEl?.getAttribute("data-block-id") || undefined;
 
-      currentTargetRef.current = dataTarget;
+      // Avoid re-triggering for same target
+      const cacheKey = blockId ? `${dataTarget}#^${blockId}` : dataTarget;
+      if (currentTargetRef.current === cacheKey && visible) return;
+
+      currentTargetRef.current = cacheKey;
 
       if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
       hoverTimerRef.current = setTimeout(() => {
-        showPreview({ target: dataTarget, element: wikilinkEl });
+        showPreview({ target: dataTarget, element: hoverEl, blockId });
       }, HOVER_DELAY);
     };
 
     const handleMouseOut = (e: MouseEvent) => {
-      const wikilinkEl = (e.target as HTMLElement).closest?.(".wikilink");
-      if (wikilinkEl) {
+      const hoverEl = (e.target as HTMLElement).closest?.(".wikilink, .block-reference");
+      if (hoverEl) {
         hidePreview();
       }
     };

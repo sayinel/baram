@@ -17,11 +17,20 @@ export const Paragraph = Node.create<ParagraphOptions>({
     };
   },
 
+  addAttributes() {
+    return {
+      blockId: { default: null, rendered: false },
+    };
+  },
+
   parseHTML() {
     return [{ tag: "p" }];
   },
 
-  renderHTML({ HTMLAttributes }) {
-    return ["p", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
+  renderHTML({ node, HTMLAttributes }) {
+    const attrs = node.attrs.blockId
+      ? { ...HTMLAttributes, "data-block-id": node.attrs.blockId as string }
+      : HTMLAttributes;
+    return ["p", mergeAttributes(this.options.HTMLAttributes, attrs), 0];
   },
 });
