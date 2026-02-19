@@ -166,7 +166,7 @@ export const WikilinkSuggest = Extension.create({
           }
 
           // File mode
-          const filtered = filterFiles(files, query, 10);
+          const filtered = filterFiles(files, query, 20);
 
           // Add "Create" option if query is non-empty and no exact match
           if (query) {
