@@ -31,6 +31,7 @@ export function WikilinkView({ node, selected, extension }: NodeViewProps) {
     <NodeViewWrapper
       as="span"
       className={`wikilink ${selected ? "wikilink-selected" : ""}`}
+      data-target={target}
       onClick={handleClick}
     >
       {text}

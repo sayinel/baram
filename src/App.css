@@ -2053,6 +2053,55 @@ body {
   border-radius: 2px;
 }
 
+/* §32 Hover Preview */
+.hover-preview {
+  position: fixed;
+  z-index: 9999;
+  max-width: 400px;
+  max-height: 300px;
+  background: var(--color-bg-secondary, #1e1e2e);
+  border: 1px solid var(--color-border, #313244);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.hover-preview-title {
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+
+.hover-preview-divider {
+  height: 1px;
+  background: var(--color-border, #313244);
+  flex-shrink: 0;
+}
+
+.hover-preview-content {
+  padding: 8px 12px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.hover-preview-content pre {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+}
+
 /* ============================================
    §29 Backlinks Panel
    ============================================ */

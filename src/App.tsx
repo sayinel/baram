@@ -68,6 +68,11 @@ const QuickSwitcher = lazy(() =>
     default: m.QuickSwitcher,
   })),
 );
+const HoverPreview = lazy(() =>
+  import("./components/editor/HoverPreview").then((m) => ({
+    default: m.HoverPreview,
+  })),
+);
 
 // Error boundary to catch and display runtime errors
 class ErrorBoundary extends Component<
@@ -785,6 +790,7 @@ function App() {
         />
         <ExportDialog editor={editor} />
         <QuickSwitcher editor={editor} onNewFile={handleNewFile} />
+        <HoverPreview />
       </Suspense>
       {tabSwitcherOpen && (
         <TabSwitcher
