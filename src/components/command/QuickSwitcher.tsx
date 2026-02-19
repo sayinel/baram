@@ -283,6 +283,7 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
           filePath: file.path,
           title: file.name,
           isDirty: false,
+          isPinned: false,
         });
       } catch (err) {
         console.error("[QuickSwitcher] Failed to open file:", err);

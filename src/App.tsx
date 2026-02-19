@@ -353,7 +353,7 @@ function App() {
       title = tabNumber === 1 ? "Untitled" : `Untitled ${tabNumber}`;
     }
     useFileStore.getState().setFileContent(id, "");
-    openTab({ id, filePath: "", title, isDirty: false });
+    openTab({ id, filePath: "", title, isDirty: false, isPinned: false });
   }, [tabs, openTab]);
 
   const handleOpenFile = useCallback(async () => {
@@ -382,6 +382,7 @@ function App() {
         filePath: selected,
         title: fileName,
         isDirty: false,
+        isPinned: false,
       });
     } catch (err) {
       console.error("[App] Failed to open file:", err);
@@ -466,6 +467,7 @@ function App() {
         filePath,
         title: fileName,
         isDirty: false,
+        isPinned: false,
       });
     } catch (err) {
       console.error("[App] Failed to open file from OS:", err);

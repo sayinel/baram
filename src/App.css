@@ -1050,6 +1050,18 @@ body {
   color: var(--color-text-primary);
 }
 
+/* §38 Tab Pin */
+.tab-pinned .tab-close { display: none; }
+.tab-pin-icon { width: 14px; height: 14px; color: var(--color-text-muted); }
+.tab-pinned .tab-pin-icon { color: var(--color-accent); }
+.tab-pin-divider { width: 1px; background: var(--color-border); margin: 4px 0; flex-shrink: 0; }
+
+/* §38 Tab Context Menu */
+.tab-context-menu { position: fixed; z-index: 1000; min-width: 180px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: 6px; padding: 4px 0; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+.tab-context-item { padding: 6px 24px; font-size: 0.8rem; cursor: pointer; color: var(--color-text-primary); }
+.tab-context-item:hover { background: var(--color-bg-primary); }
+.tab-context-item--disabled { opacity: 0.4; pointer-events: none; }
+
 /* ============================================
    §4.3 Sidebar
    ============================================ */

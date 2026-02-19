@@ -69,8 +69,8 @@ describe("MRU Tab Order", () => {
   it("closeTab removes tabId from mruOrder", () => {
     useEditorStore.setState({
       tabs: [
-        { id: "a", filePath: "a.md", title: "A", isDirty: false },
-        { id: "b", filePath: "b.md", title: "B", isDirty: false },
+        { id: "a", filePath: "a.md", title: "A", isDirty: false, isPinned: false },
+        { id: "b", filePath: "b.md", title: "B", isDirty: false, isPinned: false },
       ],
       activeTabId: "a",
       mruOrder: ["a", "b"],
@@ -86,6 +86,7 @@ describe("MRU Tab Order", () => {
       filePath: "b.md",
       title: "B",
       isDirty: false,
+      isPinned: false,
     });
     expect(useEditorStore.getState().mruOrder).toEqual(["b", "a"]);
   });

@@ -47,6 +47,7 @@ describe("Zustand stores smoke test", () => {
       filePath: "/test.md",
       title: "test.md",
       isDirty: false,
+      isPinned: false,
     });
 
     expect(store.getState().tabs).toHaveLength(1);

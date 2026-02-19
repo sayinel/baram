@@ -203,6 +203,7 @@ export function FileTree() {
           filePath: entry.path,
           title: entry.name,
           isDirty: false,
+          isPinned: false,
         });
       } catch (err) {
         console.error("[FileTree] Failed to read file:", err);

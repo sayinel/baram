@@ -9,6 +9,7 @@ function makeTab(id: string, filePath: string): EditorTab {
     filePath,
     title: filePath.split("/").pop() || id,
     isDirty: false,
+    isPinned: false,
   };
 }
 

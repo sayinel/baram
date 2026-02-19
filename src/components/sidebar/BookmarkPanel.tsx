@@ -71,6 +71,7 @@ export function BookmarkPanel() {
             filePath: bookmark.filePath,
             title: fileName,
             isDirty: false,
+            isPinned: false,
           });
           // Heading scroll will be handled after editor mounts
           if (bookmark.type === "heading" && bookmark.headingText) {

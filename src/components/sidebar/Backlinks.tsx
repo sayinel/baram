@@ -129,6 +129,7 @@ export function Backlinks() {
             filePath: sourcePath,
             title: fileName,
             isDirty: false,
+            isPinned: false,
           });
         } catch (err) {
           console.error("[Backlinks] Failed to open file:", err);
