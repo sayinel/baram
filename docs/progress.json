@@ -120,7 +120,7 @@
         "§37-back-forward-nav": { "status": "completed", "tests": "12/12 vitest pass", "spec": "§37" },
         "§39-tab-switching": { "status": "completed", "tests": "12/12 vitest pass", "spec": "§39" },
         "macos-file-association": { "status": "completed", "tests": "cargo check pass + tsc clean", "spec": "macOS" },
-        "§36-bookmark": { "status": "planned", "spec": "§36" },
+        "§36-bookmark": { "status": "completed", "tests": "15/15 vitest pass (type contract + utils)", "spec": "§36" },
         "§29-backlink-panel": { "status": "completed", "tests": "11/11 vitest + 9/9 cargo test (link index)", "spec": "§29" },
         "§30-graph-view": { "status": "planned", "spec": "§30" },
         "§31-link-autocomplete": { "status": "completed", "tests": "11/11 vitest pass (filterFiles + fileNameWithoutExtension + Suggestion UI)", "spec": "§31" },
@@ -132,7 +132,7 @@
   },
 
   "testSummary": {
-    "vitest": "282/282 pass",
+    "vitest": "297/297 pass",
     "cargoTest": "19/19 pass (1 ignored)",
     "breakdown": {
       "stores": 6,
@@ -151,6 +151,7 @@
       "wikilink-suggest": 18,
       "hover-preview": 16,
       "unlinked-mentions": 9,
+      "bookmark": 15,
       "file-search": 20,
       "export-html": 9,
       "perf-benchmark": 5,

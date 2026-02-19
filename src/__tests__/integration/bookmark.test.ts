@@ -1,5 +1,5 @@
 // §36 북마크 시스템 — 통합 테스트
-import { describe, test, expect, beforeEach } from "vitest";
+import { describe, test, expect } from "vitest";
 
 // ── BookmarkItem 타입 계약 ──
 

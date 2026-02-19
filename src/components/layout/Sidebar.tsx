@@ -3,6 +3,7 @@ import { useUIStore } from "../../stores/ui-store";
 import { FileTree } from "../sidebar/FileTree";
 import { Outline } from "../sidebar/Outline";
 import { Backlinks } from "../sidebar/Backlinks";
+import { BookmarkPanel } from "../sidebar/BookmarkPanel";
 import type { Editor } from "@tiptap/react";
 
 interface SidebarProps {
@@ -13,6 +14,7 @@ const SIDEBAR_TABS = [
   { id: "files" as const, label: "Files" },
   { id: "outline" as const, label: "Outline" },
   { id: "backlinks" as const, label: "Backlinks" },
+  { id: "bookmarks" as const, label: "Bookmarks" },
 ] as const;
 
 export function Sidebar({ editor }: SidebarProps) {
@@ -36,6 +38,7 @@ export function Sidebar({ editor }: SidebarProps) {
         {sidebarPanel === "files" && <FileTree />}
         {sidebarPanel === "outline" && <Outline editor={editor} />}
         {sidebarPanel === "backlinks" && <Backlinks />}
+        {sidebarPanel === "bookmarks" && <BookmarkPanel />}
       </div>
     </div>
   );

@@ -37,6 +37,7 @@ import { useNavigationStore } from "./stores/navigation-store";
 import { useAutoSave } from "./hooks/use-auto-save";
 import { readFile, writeFile, getOpenedUrls, updateFileIndex } from "./ipc/invoke";
 import { useLinkStore } from "./stores/link-store";
+import { useBookmarkStore } from "./stores/bookmark-store";
 import { logAppReady } from "./utils/perf";
 import { resolveWikilinkTarget } from "./utils/wikilink-nav";
 import { forceCollapseSyntaxReveal } from "./extensions/plugins/syntax-reveal";
@@ -605,6 +606,26 @@ function App() {
         const ui = useUIStore.getState();
         if (!ui.sidebarOpen) ui.toggleSidebar();
         setSidebarPanel("backlinks");
+        return;
+      }
+
+      // §36 Cmd+D — bookmark current file
+      if (mod && e.key === "d") {
+        e.preventDefault();
+        const bs = useBookmarkStore.getState();
+        const es = useEditorStore.getState();
+        const fs = useFileStore.getState();
+        const activeTab = es.tabs.find((t) => t.id === es.activeTabId);
+        if (activeTab?.filePath && fs.rootPath) {
+          const fileName = activeTab.filePath.split("/").pop() ?? activeTab.filePath;
+          bs.addBookmark({
+            type: "file",
+            filePath: activeTab.filePath,
+            label: fileName,
+            group: "Default",
+          });
+          bs.saveBookmarks(fs.rootPath);
+        }
         return;
       }
 
