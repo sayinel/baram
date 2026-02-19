@@ -966,6 +966,21 @@ body {
   border-bottom: 2px solid var(--color-accent);
 }
 
+/* Tab drag reorder — VS Code style */
+.tab-dragging {
+  opacity: 0.4;
+}
+
+.tab-drop-before {
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+.tab-drop-indicator-end {
+  flex-shrink: 0;
+  width: 2px;
+  background-color: var(--color-accent);
+}
+
 .tab-title {
   overflow: hidden;
   text-overflow: ellipsis;

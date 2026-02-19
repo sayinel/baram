@@ -29,6 +29,8 @@ interface EditorState {
   ) => string | null;
   /** §33 Rename tab: update filePath and title for a renamed file */
   renameTab: (oldPath: string, newPath: string, newTitle: string) => void;
+  /** Reorder tab from one index to another */
+  reorderTab: (fromIndex: number, toIndex: number) => void;
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -93,6 +95,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         t.filePath === oldPath ? { ...t, filePath: newPath, title: newTitle } : t,
       ),
     })),
+
+  reorderTab: (fromIndex, toIndex) =>
+    set((state) => {
+      const tabs = [...state.tabs];
+      const [moved] = tabs.splice(fromIndex, 1);
+      tabs.splice(toIndex, 0, moved);
+      return { tabs };
+    }),
 
   getNextMruTab: (currentId, direction) => {
     const { mruOrder } = get();
