@@ -4,13 +4,15 @@ import { NodeViewWrapper, NodeViewProps } from "@tiptap/react";
 import { EditorView, keymap, lineNumbers, drawSelection } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { defaultKeymap, indentWithTab } from "@codemirror/commands";
-import { bracketMatching, syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
+import { bracketMatching, syntaxHighlighting, defaultHighlightStyle, indentUnit } from "@codemirror/language";
 import { getLanguageExtension, LANGUAGE_OPTIONS } from "./code-block-languages";
+import { useSettingsStore } from "../../stores/settings-store";
 
 export function CodeBlockView({ node, updateAttributes, extension }: NodeViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cmViewRef = useRef<EditorView | null>(null);
   const language = (node.attrs.language as string) || "";
+  const tabSize = useSettingsStore((s) => s.tabSize);
 
   const handleLanguageChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -29,6 +31,7 @@ export function CodeBlockView({ node, updateAttributes, extension }: NodeViewPro
       const langExt = await getLanguageExtension(language);
       if (destroyed || !containerRef.current) return;
 
+      const currentTabSize = useSettingsStore.getState().tabSize;
       const extensions = [
         keymap.of([...defaultKeymap, indentWithTab]),
         lineNumbers(),
@@ -36,6 +39,8 @@ export function CodeBlockView({ node, updateAttributes, extension }: NodeViewPro
         bracketMatching(),
         syntaxHighlighting(defaultHighlightStyle),
         EditorView.lineWrapping,
+        EditorState.tabSize.of(currentTabSize),
+        indentUnit.of(" ".repeat(currentTabSize)),
         EditorState.readOnly.of(!extension.options.editable),
         ...(langExt ? [langExt] : []),
       ];
@@ -62,9 +67,9 @@ export function CodeBlockView({ node, updateAttributes, extension }: NodeViewPro
         cmViewRef.current = null;
       }
     };
-    // Only recreate when language changes
+    // Recreate when language or tabSize changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language]);
+  }, [language, tabSize]);
 
   return (
     <NodeViewWrapper className="code-block-wrapper" data-language={language}>

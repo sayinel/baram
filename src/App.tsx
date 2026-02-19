@@ -33,6 +33,7 @@ import { ContextMenu } from "./components/toolbar/ContextMenu";
 import { useEditorStore } from "./stores/editor-store";
 import { useFileStore, openFolder } from "./stores/file-store";
 import { useUIStore } from "./stores/ui-store";
+import { useSettingsStore } from "./stores/settings-store";
 import { useNavigationStore } from "./stores/navigation-store";
 import { useAutoSave } from "./hooks/use-auto-save";
 import { readFile, writeFile, getOpenedUrls, updateFileIndex } from "./ipc/invoke";
@@ -72,6 +73,11 @@ const QuickSwitcher = lazy(() =>
 const HoverPreview = lazy(() =>
   import("./components/editor/HoverPreview").then((m) => ({
     default: m.HoverPreview,
+  })),
+);
+const SettingsModal = lazy(() =>
+  import("./components/settings/SettingsModal").then((m) => ({
+    default: m.SettingsModal,
   })),
 );
 
@@ -141,6 +147,35 @@ function App() {
 
   // Auto-save hook
   useAutoSave(editor);
+
+  // Apply settings to DOM
+  const { theme, fontSize, fontFamily, lineHeight, spellCheck } = useSettingsStore();
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === "system") {
+      root.removeAttribute("data-theme");
+    } else {
+      root.dataset.theme = theme;
+    }
+  }, [theme]);
+
+  useEffect(() => {
+    const tiptap = document.querySelector<HTMLElement>(".tiptap");
+    if (!tiptap) return;
+    tiptap.style.fontSize = `${fontSize}px`;
+    tiptap.style.fontFamily = fontFamily
+      ? `${fontFamily}, var(--font-editor)`
+      : "";
+    tiptap.style.lineHeight = String(lineHeight);
+  }, [fontSize, fontFamily, lineHeight, editor]);
+
+  useEffect(() => {
+    const tiptap = document.querySelector<HTMLElement>(".tiptap");
+    if (tiptap) {
+      tiptap.setAttribute("spellcheck", String(spellCheck));
+    }
+  }, [spellCheck, editor]);
 
   // --- Tab switching: swap editor content when activeTabId changes ---
   useEffect(() => {
@@ -811,6 +846,7 @@ function App() {
         />
         <ExportDialog editor={editor} />
         <QuickSwitcher editor={editor} onNewFile={handleNewFile} />
+        <SettingsModal />
         <HoverPreview />
       </Suspense>
       {tabSwitcherOpen && (

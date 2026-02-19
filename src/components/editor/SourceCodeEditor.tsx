@@ -4,7 +4,8 @@ import { EditorView, keymap, lineNumbers, drawSelection } from "@codemirror/view
 import { EditorState, EditorSelection } from "@codemirror/state";
 import { defaultKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
-import { bracketMatching } from "@codemirror/language";
+import { bracketMatching, indentUnit } from "@codemirror/language";
+import { useSettingsStore } from "../../stores/settings-store";
 
 export interface SourceCodeEditorRef {
   getCursorOffset(): number;
@@ -60,6 +61,7 @@ export const SourceCodeEditor = forwardRef<SourceCodeEditorRef, SourceCodeEditor
       });
 
       const cursorPos = Math.min(initialCursorOffset ?? 0, content.length);
+      const currentTabSize = useSettingsStore.getState().tabSize;
 
       const state = EditorState.create({
         doc: content,
@@ -75,6 +77,8 @@ export const SourceCodeEditor = forwardRef<SourceCodeEditorRef, SourceCodeEditor
           markdown(),
           updateListener,
           EditorView.lineWrapping,
+          EditorState.tabSize.of(currentTabSize),
+          indentUnit.of(" ".repeat(currentTabSize)),
           EditorView.theme({
             "&": {
               height: "100%",

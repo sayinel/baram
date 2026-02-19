@@ -12,6 +12,7 @@ interface SettingsState {
   autoSave: boolean;
   autoSaveDelay: number; // ms
   spellCheck: boolean;
+  showWelcome: boolean;
 
   setTheme: (theme: Theme) => void;
   setFontSize: (size: number) => void;
@@ -21,6 +22,7 @@ interface SettingsState {
   setAutoSave: (enabled: boolean) => void;
   setAutoSaveDelay: (delay: number) => void;
   setSpellCheck: (enabled: boolean) => void;
+  setShowWelcome: (show: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>((set) => ({
@@ -32,6 +34,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   autoSave: true,
   autoSaveDelay: 2000,
   spellCheck: false,
+  showWelcome: localStorage.getItem("baram:onboarding-complete") !== "true",
 
   setTheme: (theme) => set({ theme }),
   setFontSize: (fontSize) => set({ fontSize }),
@@ -41,4 +44,12 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setAutoSave: (autoSave) => set({ autoSave }),
   setAutoSaveDelay: (autoSaveDelay) => set({ autoSaveDelay }),
   setSpellCheck: (spellCheck) => set({ spellCheck }),
+  setShowWelcome: (showWelcome) => {
+    if (!showWelcome) {
+      localStorage.setItem("baram:onboarding-complete", "true");
+    } else {
+      localStorage.removeItem("baram:onboarding-complete");
+    }
+    set({ showWelcome });
+  },
 }));
