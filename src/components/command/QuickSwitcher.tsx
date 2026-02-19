@@ -15,7 +15,7 @@ import type { FlatFile } from "../../utils/file-search";
 
 interface QuickSwitcherProps {
   editor: Editor | null;
-  onNewFile: () => void;
+  onNewFile: (name?: string) => void;
 }
 
 /** Heading with ProseMirror position for direct navigation. */
@@ -296,7 +296,9 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
       toggleQuickSwitcher();
 
       if (item.type === "create") {
-        onNewFile();
+        // Extract the typed name from the label: '+ Create "name"' → "name"
+        const match = item.label.match(/\+ Create "(.+)"/);
+        onNewFile(match?.[1]);
         return;
       }
 

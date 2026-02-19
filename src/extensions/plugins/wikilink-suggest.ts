@@ -101,7 +101,15 @@ export const WikilinkSuggest = Extension.create({
             if (rootPath) {
               const newPath = `${rootPath}/${props.target}.md`;
               writeFile(newPath, `# ${props.target}\n`)
-                .then(() => refreshIndex(rootPath))
+                .then(async () => {
+                  await refreshIndex(rootPath);
+                  // Refresh file tree so the new file appears in sidebar & navigation
+                  const { listDir } = await import("../../ipc/invoke");
+                  const { buildFileTree } = await import("../../stores/file-store");
+                  const entries = await listDir(rootPath, true);
+                  const tree = buildFileTree(entries, rootPath);
+                  useFileStore.getState().setFileTree(tree);
+                })
                 .catch(() => {});
             }
             ed.chain()

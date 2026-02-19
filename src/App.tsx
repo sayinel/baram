@@ -307,18 +307,18 @@ function App() {
   }, [editor, isSourceMode]);
 
   // --- File action handlers ---
-  const handleNewFile = useCallback(() => {
+  const handleNewFile = useCallback((name?: string) => {
     const id = crypto.randomUUID();
-    const tabNumber =
-      tabs.filter((t) => t.title.startsWith("Untitled")).length + 1;
-    const title = tabNumber === 1 ? "Untitled" : `Untitled ${tabNumber}`;
+    let title: string;
+    if (name) {
+      title = name;
+    } else {
+      const tabNumber =
+        tabs.filter((t) => t.title.startsWith("Untitled")).length + 1;
+      title = tabNumber === 1 ? "Untitled" : `Untitled ${tabNumber}`;
+    }
     useFileStore.getState().setFileContent(id, "");
     openTab({ id, filePath: "", title, isDirty: false });
-    // Store content under tab id for untitled files
-    const { openFiles: of } = useFileStore.getState();
-    if (!of.has(id)) {
-      useFileStore.getState().setFileContent(id, "");
-    }
   }, [tabs, openTab]);
 
   const handleOpenFile = useCallback(async () => {
