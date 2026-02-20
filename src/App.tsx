@@ -496,7 +496,25 @@ function App() {
   const handleWikilinkNavigate = useCallback(
     (target: string, heading?: string | null) => {
       const resolved = resolveWikilinkTarget(target);
-      if (!resolved) return;
+
+      // File doesn't exist → create it, refresh tree, then open
+      if (!resolved) {
+        const { rootPath } = useFileStore.getState();
+        if (!rootPath) return;
+        const newPath = `${rootPath}/${target}.md`;
+        writeFile(newPath, `# ${target}\n`)
+          .then(async () => {
+            const { refreshIndex, listDir } = await import("./ipc/invoke");
+            const { buildFileTree } = await import("./stores/file-store");
+            await refreshIndex(rootPath);
+            const entries = await listDir(rootPath, true);
+            const tree = buildFileTree(entries, rootPath);
+            useFileStore.getState().setFileTree(tree);
+            await handleOpenFilePath(newPath);
+          })
+          .catch(console.error);
+        return;
+      }
 
       // Open the file (reuses existing tab if already open)
       handleOpenFilePath(resolved.path).then(() => {
