@@ -65,7 +65,7 @@ export function isDuplicateBlockId(
 function createHintWidget(blockId: string): HTMLElement {
   const span = document.createElement("span");
   span.className = "block-id-hint";
-  span.textContent = "\u2693"; // ⚓
+  span.textContent = "#";
   span.title = `^${blockId}`;
   span.contentEditable = "false";
   return span;
