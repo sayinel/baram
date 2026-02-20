@@ -206,11 +206,18 @@ function App() {
       const prevTab = tabs.find((t) => t.id === prevTabId);
       if (prevTab?.filePath) {
         try {
-          const md = prosemirrorToMarkdown(editor.state.doc);
+          // In source mode, save from CodeMirror (ProseMirror is stale)
+          const md = isSourceMode
+            ? sourceContentRef.current
+            : prosemirrorToMarkdown(editor.state.doc);
           setFileContent(prevTab.filePath, md);
         } catch {
           // ignore serialization errors for outgoing tab
         }
+      }
+      // Exit source mode when switching tabs
+      if (isSourceMode) {
+        setIsSourceMode(false);
       }
     }
 
