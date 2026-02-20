@@ -1,6 +1,8 @@
 // §3.3 Image NodeView — hover toolbar (resize, caption editing)
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { useEditorStore } from "../../stores/editor-store";
 
 const RESIZE_OPTIONS = [
   { label: "25%", value: 25 },
@@ -9,15 +11,47 @@ const RESIZE_OPTIONS = [
   { label: "100%", value: 100 },
 ];
 
+/** Check if src is a remote URL or data URI (no conversion needed) */
+function isRemoteOrData(src: string): boolean {
+  return /^https?:\/\/|^data:/i.test(src);
+}
+
+/** Resolve image src for Tauri webview.
+ *  - Remote URLs and data URIs pass through unchanged.
+ *  - Local paths (absolute or relative) are converted via Tauri's asset protocol.
+ */
+function resolveImageSrc(src: string): string {
+  if (!src || isRemoteOrData(src)) return src;
+
+  // Resolve relative path against the current file's directory
+  let absolutePath = src;
+  if (!src.startsWith("/")) {
+    const activeTabId = useEditorStore.getState().activeTabId;
+    const tabs = useEditorStore.getState().tabs;
+    const activeTab = tabs.find((t) => t.id === activeTabId);
+    const filePath = activeTab?.filePath;
+    if (filePath) {
+      const dir = filePath.substring(0, filePath.lastIndexOf("/"));
+      absolutePath = `${dir}/${src}`;
+    }
+  }
+
+  return convertFileSrc(absolutePath);
+}
+
 export function ImageView({
   node,
   updateAttributes,
   selected,
 }: NodeViewProps) {
-  const src = node.attrs.src as string;
+  const rawSrc = node.attrs.src as string;
   const alt = (node.attrs.alt as string) || "";
   const title = (node.attrs.title as string) || "";
   const widthPercent = (node.attrs.widthPercent as number) || 100;
+
+  // Resolve src for Tauri webview (memoize to avoid repeated conversion)
+  const activeTabId = useEditorStore((s) => s.activeTabId);
+  const src = useMemo(() => resolveImageSrc(rawSrc), [rawSrc, activeTabId]);
 
   const [hovered, setHovered] = useState(false);
   const [editingCaption, setEditingCaption] = useState(false);
