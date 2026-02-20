@@ -678,23 +678,14 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         contentLen = 0;
       }
 
-      // Explicit cursor: compute where cursor should be in the collapsed doc
-      const markEnd = from + Math.max(0, contentLen);
-      let targetCursor: number;
-      if (cursorPos > to) {
-        // Cursor was past the expanded range → adjust by size difference
-        targetCursor = cursorPos - (to - from) + Math.max(0, contentLen);
-      } else if (cursorPos < from) {
-        targetCursor = cursorPos;
-      } else {
-        targetCursor = markEnd;
-      }
-
+      // Map cursor through the collapse operations (handles all kinds correctly,
+      // including image where replaceWith spans from-1..to+1 for paragraph wrapper)
       try {
-        const clamped = Math.max(0, Math.min(targetCursor, tr.doc.content.size));
+        const mapped = tr.mapping.map(cursorPos);
+        const clamped = Math.max(0, Math.min(mapped, tr.doc.content.size));
         tr.setSelection(TextSelection.create(tr.doc, clamped));
       } catch {
-        // fallback: default mapping
+        // fallback: let ProseMirror's default mapping handle it
       }
 
       tr.setMeta(syntaxRevealKey, INACTIVE);
@@ -722,13 +713,10 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
           return false;
         }
 
-        // Click on image atom → expand
+        // Click on image atom → let NodeSelection show blue outline.
+        // Expansion to markdown only on Enter/character key (handleKeyDown).
         const $pos = view.state.doc.resolve(pos);
         const nodeAfter = $pos.nodeAfter;
-        if (nodeAfter && nodeAfter.type.name === "image") {
-          expandImage(view, nodeAfter, pos);
-          return true;
-        }
 
         // Click on wikilink atom → expand (but not Cmd+Click which navigates)
         if (
@@ -748,7 +736,7 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
       handleKeyDown(view, event) {
         const es = syntaxRevealKey.getState(view.state);
 
-        // ── Re-edit: character typed on NodeSelection of image or wikilink ──
+        // ── Re-edit: Enter or character typed on NodeSelection of image or wikilink ──
         if (!es?.expanded) {
           const { selection } = view.state;
           if (selection instanceof NodeSelection) {
@@ -757,12 +745,16 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
               if (event.key === "Backspace" || event.key === "Delete")
                 return false;
 
-              if (
+              // Enter or printable character → expand to markdown for editing
+              const isEnter = event.key === "Enter";
+              const isPrintable =
                 event.key.length === 1 &&
                 !event.metaKey &&
                 !event.ctrlKey &&
-                !event.altKey
-              ) {
+                !event.altKey;
+
+              if (isEnter || isPrintable) {
+                if (isEnter) event.preventDefault();
                 if (pendingRaf) {
                   cancelAnimationFrame(pendingRaf);
                   pendingRaf = null;
@@ -942,16 +934,16 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         const { selection } = view.state;
         if (selection instanceof NodeSelection) {
           const nodeName = selection.node.type.name;
-          if (nodeName === "image" || nodeName === "wikilink") {
+          // Image: don't auto-expand on NodeSelection (preserves blue outline).
+          // User can press Enter or type a character to expand (handleKeyDown).
+          if (nodeName === "wikilink") {
             if (pendingRaf) cancelAnimationFrame(pendingRaf);
 
             pendingRaf = requestAnimationFrame(() => {
               pendingRaf = null;
               const { selection: sel } = view.state;
               if (!(sel instanceof NodeSelection)) return;
-              if (sel.node.type.name === "image") {
-                expandImage(view, sel.node, sel.from);
-              } else if (sel.node.type.name === "wikilink") {
+              if (sel.node.type.name === "wikilink") {
                 expandWikilink(view, sel.node, sel.from);
               }
             });

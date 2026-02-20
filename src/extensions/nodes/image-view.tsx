@@ -58,6 +58,11 @@ export function ImageView({
   const [captionText, setCaptionText] = useState(alt);
   const captionRef = useRef<HTMLInputElement>(null);
 
+  // §5.1: Image click → NodeSelection is handled by the ProseMirror plugin
+  // in image.ts (handleDOMEvents.mousedown). React handlers must NOT call
+  // stopPropagation() because React 18 processes onMouseDown during the
+  // capture phase on #root, which would block the event from reaching PM.
+
   const showToolbar = hovered || selected;
 
   const handleResize = useCallback(
@@ -68,9 +73,14 @@ export function ImageView({
   );
 
   const handleCaptionSave = useCallback(() => {
-    updateAttributes({ alt: captionText });
     setEditingCaption(false);
-  }, [updateAttributes, captionText]);
+    // Only update if changed; defer to let ProseMirror's selection settle first
+    if (captionText !== alt) {
+      requestAnimationFrame(() => {
+        updateAttributes({ alt: captionText });
+      });
+    }
+  }, [updateAttributes, captionText, alt]);
 
   const handleCaptionKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -96,7 +106,6 @@ export function ImageView({
   return (
     <NodeViewWrapper
       className="image-node-view"
-      data-drag-handle=""
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -109,6 +118,7 @@ export function ImageView({
           alt={alt}
           title={title || undefined}
           draggable={false}
+          data-drag-handle=""
         />
 
         {/* Hover toolbar */}
