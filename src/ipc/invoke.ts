@@ -92,6 +92,15 @@ export async function renameFileWithLinks(
   return invoke<RenameResult>("rename_file_with_links", { oldPath, newPath });
 }
 
+// §30a Rename block ID with reference auto-update
+export async function renameBlockId(
+  filePath: string,
+  oldId: string,
+  newId: string,
+): Promise<RenameResult> {
+  return invoke<RenameResult>("rename_block_id", { filePath, oldId, newId });
+}
+
 // §6.3 LLM commands
 export async function llmComplete(
   apiKey: string,

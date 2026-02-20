@@ -389,6 +389,16 @@
       "shortcuts": {}
     },
     {
+      "name": "blockIdDecoration",
+      "file": "plugins/block-id-decoration.ts",
+      "spec": "§30a",
+      "phase": 2,
+      "milestone": "M7",
+      "status": "implemented",
+      "shortcuts": {},
+      "_note": "Focus-reveal + hint dot for block IDs. Shows ⚓ hint when unfocused, ^blockId when focused, inline input on double-click."
+    },
+    {
       "name": "dragHandle",
       "file": "plugins/drag-handle.ts",
       "spec": "§4.8",

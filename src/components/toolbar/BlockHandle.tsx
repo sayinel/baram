@@ -1,6 +1,7 @@
 // §4.8 Block Handle — drag handle + menu on block hover
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { Editor } from "@tiptap/react";
+import { addBlockId, editBlockId } from "../../extensions/plugins/block-id-decoration";
 
 interface BlockHandleProps {
   editor: Editor;
@@ -98,6 +99,32 @@ export function BlockHandle({ editor }: BlockHandleProps) {
 
   if (!handle) return null;
 
+  // Build block ID menu item for paragraph/heading nodes
+  const blockIdItem: DropdownItem | null = (() => {
+    if (!handle) return null;
+    const node = editor.state.doc.nodeAt(handle.pos);
+    if (!node) return null;
+    if (node.type.name !== "paragraph" && node.type.name !== "heading") return null;
+    const existingId = node.attrs.blockId as string | null;
+    if (existingId) {
+      return {
+        label: `Edit Block ID (^${existingId})`,
+        separator: true,
+        action: () => {
+          editBlockId(editor.view, handle.pos);
+          setMenuOpen(false);
+        },
+      };
+    }
+    return {
+      label: "Add Block ID",
+      separator: true,
+      action: () => {
+        addBlockId(editor.view, handle.pos);
+      },
+    };
+  })();
+
   const menuItems: DropdownItem[] = [
     {
       label: "Duplicate",
@@ -166,6 +193,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
         }
       },
     },
+    ...(blockIdItem ? [blockIdItem] : []),
   ];
 
   const editorRect = editor.view.dom.getBoundingClientRect();

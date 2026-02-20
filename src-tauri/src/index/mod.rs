@@ -368,6 +368,43 @@ pub fn replace_wikilink_target(content: &str, old_target: &str, new_target: &str
         .to_string()
 }
 
+/// §30a Replace block ID references in file content.
+/// Updates ((target#^oldId)), ((target#^oldId|display)), ((#^oldId)),
+/// and {{embed ((target#^oldId))}} patterns.
+pub fn replace_block_id_refs(content: &str, old_id: &str, new_id: &str) -> String {
+    // Regex: block embed — {{embed ((target#^ID))}}
+    static EMBED_REPLACE_RE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"\{\{embed \(\(([^)#|]*?)#\^([a-zA-Z0-9][\w-]*)\)\)\}\}").unwrap()
+    });
+    // Regex: block ref — ((target#^ID)) or ((target#^ID|display))
+    static REF_REPLACE_RE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"\(\(([^)#|]*?)#\^([a-zA-Z0-9][\w-]*)(\|[^)]+)?\)\)").unwrap()
+    });
+
+    let step1 = EMBED_REPLACE_RE.replace_all(content, |caps: &regex::Captures| {
+        let target = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+        let id = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+        if id == old_id {
+            format!("{{{{embed (({target}#^{new_id}))}}}}")
+        } else {
+            caps[0].to_string()
+        }
+    });
+
+    REF_REPLACE_RE
+        .replace_all(&step1, |caps: &regex::Captures| {
+            let target = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+            let id = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+            let display = caps.get(3).map(|m| m.as_str()).unwrap_or("");
+            if id == old_id {
+                format!("(({target}#^{new_id}{display}))")
+            } else {
+                caps[0].to_string()
+            }
+        })
+        .to_string()
+}
+
 /// Normalize a wikilink target to a comparable key (lowercase, no extension)
 fn normalize_target(target: &str) -> String {
     let t = target.trim();
@@ -795,5 +832,58 @@ mod tests {
         assert!(!stripped.contains("[["));
         assert!(stripped.contains("foo"));
         assert!(stripped.contains("bar"));
+    }
+
+    // §30a replace_block_id_refs tests
+    #[test]
+    fn test_replace_block_id_refs_basic() {
+        let content = "See ((notes#^abc123)) for details.";
+        let result = replace_block_id_refs(content, "abc123", "xyz789");
+        assert_eq!(result, "See ((notes#^xyz789)) for details.");
+    }
+
+    #[test]
+    fn test_replace_block_id_refs_with_display() {
+        let content = "See ((notes#^abc123|my label)) here.";
+        let result = replace_block_id_refs(content, "abc123", "xyz789");
+        assert_eq!(result, "See ((notes#^xyz789|my label)) here.");
+    }
+
+    #[test]
+    fn test_replace_block_id_refs_self_ref() {
+        let content = "See ((#^abc123)) here.";
+        let result = replace_block_id_refs(content, "abc123", "xyz789");
+        assert_eq!(result, "See ((#^xyz789)) here.");
+    }
+
+    #[test]
+    fn test_replace_block_id_refs_embed() {
+        let content = "{{embed ((notes#^abc123))}}";
+        let result = replace_block_id_refs(content, "abc123", "xyz789");
+        assert_eq!(result, "{{embed ((notes#^xyz789))}}");
+    }
+
+    #[test]
+    fn test_replace_block_id_refs_no_match() {
+        let content = "See ((notes#^other)) and {{embed ((notes#^other))}}";
+        let result = replace_block_id_refs(content, "abc123", "xyz789");
+        assert_eq!(result, content);
+    }
+
+    #[test]
+    fn test_replace_block_id_refs_multiple() {
+        let content = "((a#^id1)) and ((b#^id1)) and ((c#^id2))";
+        let result = replace_block_id_refs(content, "id1", "newId");
+        assert_eq!(result, "((a#^newId)) and ((b#^newId)) and ((c#^id2))");
+    }
+
+    #[test]
+    fn test_replace_block_id_refs_mixed() {
+        let content = "ref: ((notes#^abc)) embed: {{embed ((notes#^abc))}} other: ((notes#^def))";
+        let result = replace_block_id_refs(content, "abc", "xyz");
+        assert_eq!(
+            result,
+            "ref: ((notes#^xyz)) embed: {{embed ((notes#^xyz))}} other: ((notes#^def))"
+        );
     }
 }

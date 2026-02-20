@@ -2,6 +2,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import { copyMathToPNG } from "../../utils/katex-to-png";
+import {
+  addBlockId,
+  editBlockId,
+  removeBlockId,
+  copyBlockId,
+} from "../../extensions/plugins/block-id-decoration";
 
 interface ContextMenuProps {
   editor: Editor;
@@ -309,6 +315,40 @@ export function ContextMenu({ editor }: ContextMenuProps) {
         ];
       }
 
+      // Block ID items for paragraph/heading
+      const blockIdItems: MenuItem[] = [];
+      if (node.type.name === "paragraph" || node.type.name === "heading") {
+        const blockPos = resolved.before();
+        const blockNode = editor.state.doc.nodeAt(blockPos);
+        if (blockNode) {
+          const existingId = blockNode.attrs.blockId as string | null;
+          blockIdItems.push(
+            { label: "", action: () => {}, separator: true },
+          );
+          if (existingId) {
+            blockIdItems.push(
+              {
+                label: `Edit Block ID (^${existingId})`,
+                action: () => editBlockId(editor.view, blockPos),
+              },
+              {
+                label: "Copy Block ID",
+                action: () => copyBlockId(existingId),
+              },
+              {
+                label: "Remove Block ID",
+                action: () => removeBlockId(editor.view, blockPos),
+              },
+            );
+          } else {
+            blockIdItems.push({
+              label: "Add Block ID",
+              action: () => addBlockId(editor.view, blockPos),
+            });
+          }
+        }
+      }
+
       // General text context menu — format options
       return [
         ...baseItems,
@@ -329,6 +369,7 @@ export function ContextMenu({ editor }: ContextMenuProps) {
           label: "Inline Code",
           action: () => editor.chain().focus().toggleCode().run(),
         },
+        ...blockIdItems,
       ];
     },
     [editor, buildMathBlockMenu],

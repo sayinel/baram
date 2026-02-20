@@ -1827,6 +1827,59 @@ body {
   opacity: 0.7;
 }
 
+/* §30a Block ID Decoration — Focus-Reveal + Hint */
+.block-id-hint {
+  font-size: 0.7em;
+  color: var(--color-text-muted);
+  opacity: 0.35;
+  margin-left: 4px;
+  user-select: none;
+  cursor: default;
+}
+.block-id-hint:hover {
+  opacity: 0.7;
+}
+.block-id-focused {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--color-text-muted);
+  opacity: 0.6;
+  margin-left: 2px;
+  cursor: pointer;
+  user-select: none;
+}
+.block-id-focused:hover {
+  opacity: 1;
+  color: var(--color-accent);
+}
+.block-id-editing {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 2px;
+}
+.block-id-caret {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--color-text-muted);
+}
+.block-id-input {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  color: var(--color-text-primary);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  padding: 0 4px;
+  outline: none;
+  min-width: 40px;
+}
+.block-id-input:focus {
+  border-color: var(--color-accent);
+}
+.block-id-input-invalid {
+  border-color: #dc2626;
+}
+
 /* ============================================
    §4.9 Welcome Screen
    ============================================ */

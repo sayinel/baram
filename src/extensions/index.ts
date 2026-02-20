@@ -41,6 +41,7 @@ import { SlashCommands } from "./plugins/slash-command";
 import { SyntaxReveal } from "./plugins/syntax-reveal";
 import { DropHandler } from "./plugins/drop-handler";
 import { WikilinkSuggest } from "./plugins/wikilink-suggest";
+import { BlockIdDecoration } from "./plugins/block-id-decoration";
 
 // Mark Extensions
 import { Bold } from "./marks/bold";
@@ -132,6 +133,9 @@ export function createBaramExtensions(options?: BaramExtensionOptions): Extensio
 
     // Plugins — §31 Wikilink Autocomplete ([[)
     WikilinkSuggest,
+
+    // Plugins — §30a Block ID Decoration (Focus-Reveal + Hint)
+    BlockIdDecoration,
 
     // UI
     Placeholder.configure({

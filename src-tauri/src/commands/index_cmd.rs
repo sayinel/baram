@@ -1,7 +1,7 @@
 // §29 인덱스 IPC 커맨드 — 백링크 조회, 인덱스 빌드/갱신
 // §33 파일 이름 변경 시 wikilink 자동 갱신
 
-use crate::index::{find_unlinked_mentions, replace_wikilink_target, BacklinkResult, IndexStats, LinkGraph, LinkIndex, UnlinkedMentionResult};
+use crate::index::{find_unlinked_mentions, replace_block_id_refs, replace_wikilink_target, BacklinkResult, IndexStats, LinkGraph, LinkIndex, UnlinkedMentionResult};
 use serde::Serialize;
 use std::path::Path;
 use std::sync::Mutex;
@@ -156,6 +156,61 @@ pub async fn rename_file_with_links(
     {
         let mut index = state.0.lock().map_err(|e| e.to_string())?;
         index.update_file_from_content(&new_path, &renamed_content);
+    }
+
+    Ok(RenameResult { updated_files })
+}
+
+/// §30a Rename a block ID and update all references in other files
+#[tauri::command]
+pub async fn rename_block_id(
+    file_path: String,
+    old_id: String,
+    new_id: String,
+    state: State<'_, LinkIndexState>,
+) -> Result<RenameResult, String> {
+    // 1. Get referring files from index (block_id == old_id, target == this file)
+    let referring_files = {
+        let index = state.0.lock().map_err(|e| e.to_string())?;
+        let backlinks = index.get_backlinks(&file_path);
+        let mut files: Vec<String> = backlinks
+            .iter()
+            .filter(|b| b.block_id.as_deref() == Some(old_id.as_str()))
+            .map(|b| b.source_path.clone())
+            .collect();
+        files.sort();
+        files.dedup();
+        files
+    };
+
+    // 2. Read + replace + write (outside lock)
+    let mut updated_files = Vec::new();
+    let mut updated_contents: Vec<(String, String)> = Vec::new();
+
+    for ref_path in &referring_files {
+        if ref_path == &file_path {
+            continue;
+        }
+        let content = match tokio::fs::read_to_string(ref_path).await {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let new_content = replace_block_id_refs(&content, &old_id, &new_id);
+        if new_content != content {
+            crate::fs::write_file(ref_path, &new_content)
+                .await
+                .map_err(|e| e.to_string())?;
+            updated_files.push(ref_path.clone());
+            updated_contents.push((ref_path.clone(), new_content));
+        }
+    }
+
+    // 3. Update index (inside lock)
+    {
+        let mut index = state.0.lock().map_err(|e| e.to_string())?;
+        for (path, content) in &updated_contents {
+            index.update_file_from_content(path, content);
+        }
     }
 
     Ok(RenameResult { updated_files })
