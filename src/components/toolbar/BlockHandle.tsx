@@ -77,6 +77,18 @@ export function BlockHandle({ editor }: BlockHandleProps) {
     };
   }, [editor, menuOpen]);
 
+  // Reset handle when document changes (e.g. tab switch, wikilink navigation)
+  useEffect(() => {
+    const handler = () => {
+      setHandle(null);
+      setMenuOpen(false);
+    };
+    editor.on("update", handler);
+    return () => {
+      editor.off("update", handler);
+    };
+  }, [editor]);
+
   // Close menu on outside click
   useEffect(() => {
     if (!menuOpen) return;
@@ -98,6 +110,9 @@ export function BlockHandle({ editor }: BlockHandleProps) {
   );
 
   if (!handle) return null;
+
+  // Guard: stale position after document change
+  if (handle.pos >= editor.state.doc.content.size) return null;
 
   // Build block ID menu item for paragraph/heading nodes
   const blockIdItem: DropdownItem | null = (() => {
