@@ -32,6 +32,10 @@ export function parseMdast(markdown: string): Root {
 /** Convert mdast tree to ProseMirror document */
 export function mdastToProsemirror(root: Root, schema: Schema): PmNode {
   const children = convertBlockChildren(root.children, schema);
+  // Ensure at least one block node (doc content spec is "block+")
+  if (children.length === 0) {
+    children.push(schema.nodes.paragraph.create());
+  }
   return schema.nodes.doc.create(null, children);
 }
 
