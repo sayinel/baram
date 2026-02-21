@@ -123,58 +123,68 @@ export const Link = Mark.create<LinkOptions>({
       new Plugin({
         key: new PluginKey("linkClick"),
         props: {
-          handleClick(view, pos, event) {
-            // Cmd+Click (Mac) or Ctrl+Click (Win/Linux) to open link
-            if (!(event.metaKey || event.ctrlKey)) return false;
+          handleDOMEvents: {
+            // Intercept at mousedown — before ProseMirror moves cursor,
+            // so SyntaxReveal doesn't expand the link into edit mode.
+            mousedown(view, event) {
+              if (!(event.metaKey || event.ctrlKey)) return false;
 
-            // Strategy 1: DOM — find <a> tag (works when link is rendered as-is)
-            const target = event.target as HTMLElement;
-            const anchor = target.closest("a");
-            if (anchor) {
-              const href = anchor.getAttribute("href");
-              if (href) {
-                event.preventDefault();
-                openUrl(href).catch(console.error);
-                return true;
-              }
-            }
+              const target = event.target as HTMLElement;
 
-            // Strategy 2: ProseMirror marks (link not expanded by SyntaxReveal)
-            const $pos = view.state.doc.resolve(pos);
-            let linkMark = $pos.marks().find((m) => m.type.name === "link");
-            if (!linkMark && $pos.textOffset === 0) {
-              const nodeAfter = $pos.parent.maybeChild($pos.index($pos.depth));
-              if (nodeAfter) {
-                linkMark = nodeAfter.marks.find((m) => m.type.name === "link");
+              // Strategy 1: DOM — find <a> tag (link rendered normally)
+              const anchor = target.closest("a");
+              if (anchor) {
+                const href = anchor.getAttribute("href");
+                if (href) {
+                  event.preventDefault();
+                  openUrl(href).catch(console.error);
+                  return true;
+                }
               }
-            }
-            if (!linkMark && pos > 0) {
-              linkMark = view.state.doc.resolve(pos - 1).marks().find((m) => m.type.name === "link");
-            }
-            if (linkMark) {
-              const href = linkMark.attrs.href as string;
-              if (href) {
-                event.preventDefault();
-                openUrl(href).catch(console.error);
-                return true;
-              }
-            }
 
-            // Strategy 3: SyntaxReveal expanded link — mark removed, text is [text](url)
-            const srState = syntaxRevealKey.getState(view.state);
-            if (srState?.expanded?.kind === "link") {
-              const { from, to } = srState.expanded;
-              const expandedText = view.state.doc.textBetween(from, to);
-              // Parse URL from [text](url) or [text](url "title")
-              const m = expandedText.match(/\[.*?\]\(([^)\s]+)(?:\s+"[^"]*")?\)/);
-              if (m?.[1]) {
-                event.preventDefault();
-                openUrl(m[1]).catch(console.error);
-                return true;
-              }
-            }
+              // Strategy 2: ProseMirror marks — resolve pos from DOM coords
+              const coords = { left: event.clientX, top: event.clientY };
+              const posResult = view.posAtCoords(coords);
+              if (posResult) {
+                const { pos } = posResult;
+                const $pos = view.state.doc.resolve(pos);
 
-            return false;
+                let linkMark = $pos.marks().find((m) => m.type.name === "link");
+                if (!linkMark && $pos.textOffset === 0) {
+                  const nodeAfter = $pos.parent.maybeChild($pos.index($pos.depth));
+                  if (nodeAfter) {
+                    linkMark = nodeAfter.marks.find((m) => m.type.name === "link");
+                  }
+                }
+                if (!linkMark && pos > 0) {
+                  linkMark = view.state.doc.resolve(pos - 1).marks().find((m) => m.type.name === "link");
+                }
+
+                if (linkMark) {
+                  const href = linkMark.attrs.href as string;
+                  if (href) {
+                    event.preventDefault();
+                    openUrl(href).catch(console.error);
+                    return true;
+                  }
+                }
+              }
+
+              // Strategy 3: SyntaxReveal expanded link — text is [text](url)
+              const srState = syntaxRevealKey.getState(view.state);
+              if (srState?.expanded?.kind === "link") {
+                const { from, to } = srState.expanded;
+                const expandedText = view.state.doc.textBetween(from, to);
+                const m = expandedText.match(/\[.*?\]\(([^)\s]+)(?:\s+"[^"]*")?\)/);
+                if (m?.[1]) {
+                  event.preventDefault();
+                  openUrl(m[1]).catch(console.error);
+                  return true;
+                }
+              }
+
+              return false;
+            },
           },
         },
       }),
