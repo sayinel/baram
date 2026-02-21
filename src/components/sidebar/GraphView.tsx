@@ -5,7 +5,7 @@ import type { Core, EventObject, StylesheetStyle } from "cytoscape";
 import { useFileStore } from "../../stores/file-store";
 import { useEditorStore } from "../../stores/editor-store";
 import { useLinkStore } from "../../stores/link-store";
-import { getLinkIndex } from "../../ipc/invoke";
+import { getLinkIndex, readFile } from "../../ipc/invoke";
 import { toGraphElements, nodeSize } from "./graph-utils";
 
 /** Cytoscape stylesheet */
@@ -102,21 +102,36 @@ export function GraphView() {
     };
   }, []);
 
-  // Handle node click → open file
+  // Handle node click → open file (mirrors FileTree pattern)
   const handleNodeTap = useCallback(
-    (evt: EventObject) => {
+    async (evt: EventObject) => {
       const filePath = evt.target.id();
       if (!filePath) return;
 
-      const { openTab } = useEditorStore.getState();
-      const fileName = filePath.split("/").pop() ?? filePath;
-      openTab({
-        id: filePath,
-        title: fileName,
-        filePath,
-        isDirty: false,
-        isPinned: false,
-      });
+      const { tabs, setActiveTab, openTab } = useEditorStore.getState();
+
+      // If file is already open, just activate the tab
+      const existing = tabs.find((t) => t.filePath === filePath);
+      if (existing) {
+        setActiveTab(existing.id);
+        return;
+      }
+
+      // Read file content → store → open tab
+      try {
+        const content = await readFile(filePath);
+        useFileStore.getState().setFileContent(filePath, content);
+        const fileName = filePath.split("/").pop() ?? filePath;
+        openTab({
+          id: crypto.randomUUID(),
+          filePath,
+          title: fileName,
+          isDirty: false,
+          isPinned: false,
+        });
+      } catch (err) {
+        console.error("§30 GraphView: failed to open file", err);
+      }
     },
     [],
   );
