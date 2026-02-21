@@ -9,8 +9,9 @@ import remarkMath from "remark-math";
 import remarkFrontmatter from "remark-frontmatter";
 import type { Root, Content, PhrasingContent, Text } from "mdast";
 import type { Node as PmNode, Schema, Mark } from "@tiptap/pm/model";
-import { nodeTransformers, markTransformers } from "./transformers";
+import { nodeTransformers, markTransformers, pmNodeTransformers } from "./transformers";
 import { isStandaloneImage } from "./transformers/image-transformer";
+import { parseCalloutHeader } from "./transformers/callout-transformer";
 import {
   WIKILINK_RE,
   parseWikilinkMatch,
@@ -179,6 +180,30 @@ function convertBlockNode(
           target: parsed.target,
           blockId: parsed.blockId,
         });
+      }
+    }
+  }
+
+  // §5.9: Detect callout — blockquote whose first paragraph starts with [!type]
+  if (node.type === "blockquote" && schema.nodes.callout) {
+    const bqChildren = (node as { children: Content[] }).children;
+    const firstChild = bqChildren[0];
+    if (firstChild?.type === "paragraph") {
+      const firstText = ((firstChild as { children: Content[] }).children[0] as Text | undefined)?.value || "";
+      const firstLine = firstText.split("\n")[0];
+      if (parseCalloutHeader(firstLine)) {
+        const calloutT = pmNodeTransformers.get("callout");
+        if (calloutT) {
+          return calloutT.mdastToPm(node, schema, (parent) => {
+            const children = (parent as { children?: Content[] }).children;
+            if (!children) return [];
+            const first = children[0];
+            if (first && isInlineNode(first)) {
+              return convertInlineChildren(children as PhrasingContent[], schema, []);
+            }
+            return convertBlockChildren(children, schema);
+          });
+        }
       }
     }
   }

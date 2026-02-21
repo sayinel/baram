@@ -179,7 +179,7 @@
       "spec": "§5.9",
       "phase": 2,
       "milestone": "M7",
-      "status": "planned",
+      "status": "implemented",
       "hasNodeView": true,
       "inputRules": ["> [!"],
       "shortcuts": {}

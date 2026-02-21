@@ -53,7 +53,16 @@ const serializer = unified()
     fences: true, // §7.1: fenced code block
     listItemIndent: "one", // compact indent
     tightDefinitions: true,
-  })
+    extensions: [{
+      handlers: {
+        // §5.9: Callout title — output [!type] verbatim (prevent bracket escaping)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        calloutTitle(node: { value: string }) {
+          return node.value;
+        },
+      },
+    }],
+  } as Parameters<typeof remarkStringify>[0])
   .use(remarkGfm)
   .use(remarkMath)
   .use(remarkFrontmatter, ["yaml"])
@@ -121,6 +130,30 @@ function convertPmNode(node: PmNode): Content | null {
 
   if (typeName === "listItem" || typeName === "taskItem") {
     return convertListItemNode(node) as Content;
+  }
+
+  // §5.9: Callout → serialize manually to preserve [!type] without escaping
+  if (typeName === "callout") {
+    const cType = (node.attrs.type as string) || "info";
+    const cTitle = (node.attrs.title as string) || "";
+    const cCollapsed = node.attrs.collapsed as boolean;
+
+    let header = `[!${cType}]`;
+    if (cCollapsed) header += "-";
+    if (cTitle) header += ` ${cTitle}`;
+
+    // Serialize body to markdown via the normal pipeline
+    const bodyMdast: Root = { type: "root", children: convertPmChildren(node) as Content[] };
+    const bodyMd = mdastToMarkdown(bodyMdast).trimEnd();
+
+    // Build blockquote lines manually
+    const lines = [`> ${header}`];
+    for (const line of bodyMd.split("\n")) {
+      lines.push(line ? `> ${line}` : ">");
+    }
+
+    // Return as html flow node (remark-stringify passes through verbatim)
+    return { type: "html", value: lines.join("\n") } as Content;
   }
 
   // §30b: Block embed → paragraph with embed text

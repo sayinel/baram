@@ -79,6 +79,14 @@ function buildSlashItems(editor: Editor): SlashMenuItem[] {
       mdHint: "---",
       action: () => editor.chain().focus().setHorizontalRule().run(),
     },
+    {
+      id: "callout",
+      label: "Callout",
+      category: "Basic",
+      description: "Callout block (tip, warning, …)",
+      mdHint: "> [!",
+      action: () => editor.commands.setCallout({ type: "info" }),
+    },
     // Rich content
     {
       id: "code-block",

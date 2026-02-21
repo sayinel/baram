@@ -34,6 +34,7 @@ import { Frontmatter } from "./nodes/frontmatter";
 import { Wikilink } from "./nodes/wikilink";
 import { BlockReference } from "./nodes/block-reference";
 import { BlockEmbed } from "./nodes/block-embed";
+import { Callout } from "./nodes/callout";
 
 // Plugin Extensions — M3/M4
 import { MathInlineEdit } from "./plugins/math-inline-edit";
@@ -103,6 +104,9 @@ export function createBaramExtensions(options?: BaramExtensionOptions): Extensio
       onNavigate: options?.onNavigate ?? (() => {}),
     }),
 
+    // Nodes — §5.9 Callout
+    Callout,
+
     // Nodes — §30c Block Reference & Embed
     BlockReference.configure({
       onNavigate: options?.onNavigateBlockRef ?? (() => {}),
@@ -168,6 +172,7 @@ export {
   Wikilink,
   BlockReference,
   BlockEmbed,
+  Callout,
   Bold,
   Italic,
   Code,

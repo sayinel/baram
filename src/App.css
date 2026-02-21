@@ -223,6 +223,131 @@ body {
   margin: 0.25em 0;
 }
 
+/* §5.9 Callout */
+.tiptap .callout {
+  border-left: 4px solid var(--color-accent);
+  border-radius: 4px;
+  background: var(--color-bg-secondary);
+  margin: 0.5em 0;
+  padding: 0;
+}
+
+.tiptap .callout-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.5em 0.75em;
+  font-weight: 600;
+  font-size: 0.95em;
+  user-select: none;
+  cursor: default;
+}
+
+.tiptap .callout-icon {
+  flex-shrink: 0;
+  font-size: 1.1em;
+}
+
+.tiptap .callout-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.tiptap .callout-title-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  padding: 0.1em 0.3em;
+  font: inherit;
+  font-weight: 600;
+  background: var(--color-bg-primary);
+  outline: none;
+}
+
+.tiptap .callout-collapse-btn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.7em;
+  color: var(--color-text-muted);
+  padding: 0.2em 0.3em;
+  border-radius: 3px;
+  line-height: 1;
+}
+
+.tiptap .callout-collapse-btn:hover {
+  background: var(--color-border-light);
+  color: var(--color-text-secondary);
+}
+
+.tiptap .callout-body {
+  padding: 0 0.75em 0.5em;
+}
+
+.tiptap .callout-body p {
+  margin: 0.25em 0;
+}
+
+.tiptap .callout-body-collapsed {
+  display: none;
+}
+
+/* Callout type colors */
+.tiptap .callout-tip    { border-left-color: #10b981; }
+.tiptap .callout-info   { border-left-color: #3b82f6; }
+.tiptap .callout-warning { border-left-color: #f59e0b; }
+.tiptap .callout-danger  { border-left-color: #ef4444; }
+.tiptap .callout-note    { border-left-color: #6b7280; }
+.tiptap .callout-abstract { border-left-color: #8b5cf6; }
+.tiptap .callout-todo    { border-left-color: #06b6d4; }
+.tiptap .callout-example { border-left-color: #14b8a6; }
+.tiptap .callout-quote   { border-left-color: #9ca3af; }
+.tiptap .callout-bug     { border-left-color: #ef4444; }
+.tiptap .callout-success { border-left-color: #22c55e; }
+.tiptap .callout-failure { border-left-color: #ef4444; }
+.tiptap .callout-question { border-left-color: #eab308; }
+
+/* Callout type backgrounds (subtle tint) */
+.tiptap .callout-tip    { background: #ecfdf5; }
+.tiptap .callout-info   { background: #eff6ff; }
+.tiptap .callout-warning { background: #fffbeb; }
+.tiptap .callout-danger  { background: #fef2f2; }
+.tiptap .callout-note    { background: #f9fafb; }
+.tiptap .callout-abstract { background: #f5f3ff; }
+.tiptap .callout-todo    { background: #ecfeff; }
+.tiptap .callout-example { background: #f0fdfa; }
+.tiptap .callout-quote   { background: #f9fafb; }
+.tiptap .callout-bug     { background: #fef2f2; }
+.tiptap .callout-success { background: #f0fdf4; }
+.tiptap .callout-failure { background: #fef2f2; }
+.tiptap .callout-question { background: #fefce8; }
+
+/* Dark mode callout overrides */
+[data-theme="dark"] .tiptap .callout {
+  background: rgba(255, 255, 255, 0.05);
+}
+[data-theme="dark"] .tiptap .callout-tip    { background: rgba(16, 185, 129, 0.1); }
+[data-theme="dark"] .tiptap .callout-info   { background: rgba(59, 130, 246, 0.1); }
+[data-theme="dark"] .tiptap .callout-warning { background: rgba(245, 158, 11, 0.1); }
+[data-theme="dark"] .tiptap .callout-danger  { background: rgba(239, 68, 68, 0.1); }
+[data-theme="dark"] .tiptap .callout-note    { background: rgba(107, 114, 128, 0.1); }
+[data-theme="dark"] .tiptap .callout-abstract { background: rgba(139, 92, 246, 0.1); }
+[data-theme="dark"] .tiptap .callout-todo    { background: rgba(6, 182, 212, 0.1); }
+[data-theme="dark"] .tiptap .callout-example { background: rgba(20, 184, 166, 0.1); }
+[data-theme="dark"] .tiptap .callout-quote   { background: rgba(156, 163, 175, 0.1); }
+[data-theme="dark"] .tiptap .callout-bug     { background: rgba(239, 68, 68, 0.1); }
+[data-theme="dark"] .tiptap .callout-success { background: rgba(34, 197, 94, 0.1); }
+[data-theme="dark"] .tiptap .callout-failure { background: rgba(239, 68, 68, 0.1); }
+[data-theme="dark"] .tiptap .callout-question { background: rgba(234, 179, 8, 0.1); }
+
+[data-theme="dark"] .tiptap .callout-title-input {
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  border-color: var(--color-border);
+}
+
 /* §5.1 Lists */
 .tiptap ul {
   list-style-type: disc;

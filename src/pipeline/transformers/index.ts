@@ -18,6 +18,7 @@ import { frontmatterTransformer } from "./frontmatter-transformer";
 import { mermaidBlockTransformer } from "./mermaid-block-transformer";
 import { blockReferenceTransformer } from "./block-reference-transformer";
 import { blockEmbedTransformer } from "./block-embed-transformer";
+import { calloutTransformer } from "./callout-transformer";
 
 import { boldTransformer } from "./bold-transformer";
 import { italicTransformer } from "./italic-transformer";
@@ -56,6 +57,7 @@ const nodeEntries: NodeTransformerEntry[] = [
   mermaidBlockTransformer,
   blockReferenceTransformer,
   blockEmbedTransformer,
+  calloutTransformer,
 ];
 
 for (const entry of nodeEntries) {
