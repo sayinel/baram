@@ -207,11 +207,27 @@ export const Image = Node.create<ImageOptions>({
         handler: ({ state, range, match }) => {
           const [, alt, src, title] = match;
           const { tr } = state;
-          tr.replaceWith(range.from, range.to, this.type.create({
+          const imageNode = this.type.create({
             src,
             alt: alt || null,
             title: title || null,
-          }));
+          });
+
+          // Replace the entire parent paragraph (not just text positions)
+          // to avoid leaving an empty paragraph remnant above the image.
+          const $from = state.doc.resolve(range.from);
+          const paraStart = $from.before($from.depth);
+          const paraEnd = $from.after($from.depth);
+          tr.replaceWith(paraStart, paraEnd, imageNode);
+
+          // Ensure a paragraph exists after the image for the cursor
+          const posAfterImage = paraStart + imageNode.nodeSize;
+          if (!tr.doc.resolve(posAfterImage).nodeAfter?.isTextblock) {
+            tr.insert(posAfterImage, state.schema.nodes.paragraph.create());
+          }
+
+          // Place cursor in the paragraph after the image
+          tr.setSelection(TextSelection.create(tr.doc, posAfterImage + 1));
         },
       }),
     ];
