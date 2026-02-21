@@ -1,7 +1,7 @@
 {
   "_comment": "Baram 개발 진행 상황 추적. 슬래시 커맨드가 자동으로 업데이트한다.",
   "project": "baram",
-  "lastUpdated": "2026-02-19",
+  "lastUpdated": "2026-02-21",
   "currentPhase": 2,
   "currentMilestone": "M7",
 
@@ -115,25 +115,33 @@
       "name": "연결 시스템 & 네비게이션",
       "status": "in-progress",
       "features": {
+        "§5.9-callout": { "status": "completed", "tests": "12/12 vitest pass (roundtrip + structure)", "spec": "§5.9" },
+        "§5.1-toggle": { "status": "completed", "tests": "25/25 vitest pass (roundtrip + structure + heading + nested)", "spec": "§5.1" },
+        "§5.5-mermaid": { "status": "completed", "tests": "8/8 vitest pass (roundtrip)", "spec": "§5.5" },
         "§28-wikilink": { "status": "completed", "tests": "31/31 vitest pass (parsing+roundtrip+PM structure)", "spec": "§28" },
-        "§35-quick-switcher": { "status": "completed", "tests": "20/20 vitest pass", "spec": "§35" },
-        "§37-back-forward-nav": { "status": "completed", "tests": "12/12 vitest pass", "spec": "§37" },
-        "§39-tab-switching": { "status": "completed", "tests": "12/12 vitest pass", "spec": "§39" },
-        "macos-file-association": { "status": "completed", "tests": "cargo check pass + tsc clean", "spec": "macOS" },
-        "§36-bookmark": { "status": "completed", "tests": "15/15 vitest pass (type contract + utils)", "spec": "§36" },
         "§29-backlink-panel": { "status": "completed", "tests": "11/11 vitest + 9/9 cargo test (link index)", "spec": "§29" },
-        "§30-graph-view": { "status": "planned", "spec": "§30" },
+        "§30-block-id": { "status": "completed", "tests": "8/8 vitest pass (block-id-decoration)", "spec": "§30a" },
+        "§30-block-ref": { "status": "completed", "tests": "15/15 vitest pass (parsing + roundtrip + structure)", "spec": "§30b" },
+        "§30-block-embed": { "status": "completed", "tests": "6/6 vitest pass (block-embed-edit)", "spec": "§30c" },
+        "§30d-block-embed-edit": { "status": "completed", "tests": "6/6 vitest pass (replaceBlockInContent)", "spec": "§30d" },
         "§31-link-autocomplete": { "status": "completed", "tests": "11/11 vitest pass (filterFiles + fileNameWithoutExtension + Suggestion UI)", "spec": "§31" },
         "§32-hover-preview": { "status": "completed", "tests": "10/10 vitest pass (truncate+position+timing)", "spec": "§32" },
         "§33-auto-rename": { "status": "completed", "tests": "11/11 vitest pass (wikilink replace + contract) + 6/6 cargo test", "spec": "§33" },
-        "§34-unlinked-mentions": { "status": "completed", "tests": "9/9 vitest pass + 4/4 cargo test (strip_wikilinks)", "spec": "§34" }
+        "§34-unlinked-mentions": { "status": "completed", "tests": "9/9 vitest pass + 4/4 cargo test (strip_wikilinks)", "spec": "§34" },
+        "§35-quick-switcher": { "status": "completed", "tests": "20/20 vitest pass", "spec": "§35" },
+        "§36-bookmark": { "status": "completed", "tests": "15/15 vitest pass (type contract + utils)", "spec": "§36" },
+        "§37-back-forward-nav": { "status": "completed", "tests": "12/12 vitest pass", "spec": "§37" },
+        "§38-tab-pin": { "status": "completed", "tests": "tsc clean", "spec": "§38" },
+        "§39-tab-switching": { "status": "completed", "tests": "12/12 vitest pass", "spec": "§39" },
+        "macos-file-association": { "status": "completed", "tests": "cargo check pass + tsc clean", "spec": "macOS" },
+        "§30-graph-view": { "status": "planned", "spec": "§30" }
       }
     }
   },
 
   "testSummary": {
-    "vitest": "308/308 pass",
-    "cargoTest": "19/19 pass (1 ignored)",
+    "vitest": "491/491 pass (37 test files)",
+    "cargoTest": "38/38 pass (1 ignored)",
     "breakdown": {
       "stores": 6,
       "editor-store-mru": 12,
@@ -142,7 +150,12 @@
       "roundtrip-m3": 14,
       "roundtrip-stability": 16,
       "roundtrip-mermaid": 8,
-      "tiptap-toggle": 5,
+      "roundtrip-callout": 12,
+      "roundtrip-toggle": 25,
+      "roundtrip-block-ref": 15,
+      "block-id-decoration": 8,
+      "block-embed-edit": 6,
+      "block-replace": 9,
       "heading-shortcuts": 15,
       "syntax-reveal": 9,
       "wikilink": 31,

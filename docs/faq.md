@@ -6,7 +6,7 @@
 
 ### What is Baram?
 
-Baram(바람) is a lightweight desktop WYSIWYG markdown editor built with Tauri 2.0, React, and Tiptap/ProseMirror. It combines Typora-style "disappearing syntax" WYSIWYG editing with AI-powered writing assistance.
+Baram(바람) is a lightweight desktop WYSIWYG markdown editor built with Tauri 2.0, React, and Tiptap/ProseMirror. It combines Typora-style "disappearing syntax" WYSIWYG editing with bidirectional links and AI-powered writing assistance.
 
 ### What platforms does Baram support?
 
@@ -19,9 +19,10 @@ The editor core is licensed under MIT. The application is licensed under AGPL-3.
 ### What makes Baram different from other markdown editors?
 
 - **WYSIWYG with lossless roundtrip** — Formatting syntax disappears as you type, but your `.md` files stay 100% standard markdown with no data loss
+- **Bidirectional links** — Wikilinks, backlinks, hover preview, block references, and auto-rename — like Obsidian, but with true WYSIWYG
 - **AI-native editing** — Built-in inline AI editing with character-level diff review
 - **Lightweight** — Under 15MB binary size, powered by Tauri instead of Electron
-- **Rich content** — KaTeX math, CodeMirror 6 code blocks, GFM tables, all within the WYSIWYG experience
+- **Rich content** — KaTeX math, CodeMirror 6 code blocks, Mermaid diagrams, GFM tables, callouts, toggles, all within the WYSIWYG experience
 
 ---
 
@@ -37,7 +38,7 @@ Yes. Baram's core principle is **lossless roundtrip fidelity**. When you open a 
 
 ### What file formats does Baram support?
 
-Baram works with standard markdown files (`.md`, `.markdown`). It supports CommonMark, GitHub Flavored Markdown (GFM) extensions (tables, task lists, strikethrough), and additional syntax for math (`$`, `$$`) and YAML frontmatter.
+Baram works with standard markdown files (`.md`, `.markdown`). It supports CommonMark, GitHub Flavored Markdown (GFM) extensions (tables, task lists, strikethrough), and additional syntax for math (`$`, `$$`), YAML frontmatter, callouts (`> [!type]`), and wikilinks (`[[page]]`).
 
 ### How do I insert a table?
 
@@ -59,9 +60,65 @@ Math is rendered using KaTeX. A live preview shows while you type.
 
 Type ` ``` ` followed by a language name (e.g., `python`, `javascript`) and press Enter. Baram creates a CodeMirror 6 editor with syntax highlighting for that language. 14 languages are supported.
 
+### How do I create a callout block?
+
+Type `> [!info]` at the start of a line, or use the slash command `/callout`. Baram supports 12 callout types: `info`, `tip`, `warning`, `danger`, `note`, `abstract`, `todo`, `success`, `question`, `failure`, `example`, `quote`. Add `-` after the type for a collapsible callout.
+
+### How do I create a toggle (collapsible) block?
+
+Use the slash command `/toggle` or `/toggle heading 1` for a toggle with heading summary. Click the triangle indicator or press `Cmd+Enter` to open/close. In markdown, toggles use the HTML `<details>` / `<summary>` syntax.
+
+### How do I insert a Mermaid diagram?
+
+Use the slash command `/mermaid` or press `Cmd+Shift+D`. Write Mermaid syntax and a live preview renders below. Supports flowcharts, sequence diagrams, class diagrams, and more.
+
 ### What is Source Mode?
 
 Press `Cmd+/` (macOS) or `Ctrl+/` (Windows/Linux) to toggle Source Mode. This shows the raw markdown in a CodeMirror editor, useful for precise editing or troubleshooting formatting.
+
+---
+
+## Linking & Navigation
+
+### How do wikilinks work?
+
+Type `[[` to start a wikilink. An autocomplete popup appears with matching files from your workspace. Select a file to insert a link like `[[My Note]]`. Cmd+click (or Ctrl+click on Windows) to navigate to the linked page.
+
+Advanced syntax:
+- `[[page|custom text]]` — Display custom text
+- `[[page#heading]]` — Link to a specific heading
+- `[[page#^block-id]]` — Link to a specific block
+
+### What are backlinks?
+
+Backlinks are the reverse of wikilinks — they show you which documents link *to* the current file. Press `Cmd+Shift+B` to open the backlinks panel in the sidebar. Each backlink shows the source file and context.
+
+### What are unlinked mentions?
+
+Unlinked mentions show files that contain the current file's name in their text, but don't include an actual `[[wikilink]]`. This helps you discover connections you might want to formalize.
+
+### What are block references and block embeds?
+
+- **Block reference** `((file#^id))` — An inline reference to a specific block in another file. Cmd+click to navigate.
+- **Block embed** `{{embed ((file#^id))}}` — Embeds a live preview of the referenced block. You can edit the embedded content directly.
+
+To create a referenceable block, add `^my-id` at the end of a paragraph or heading.
+
+### What happens when I rename a file?
+
+When you rename a file in the file tree (press `F2`), all wikilinks pointing to that file are automatically updated across your workspace. No broken links.
+
+### How do I navigate between recently viewed files?
+
+Use `Ctrl+-` (macOS) or `Alt+Left` (Windows/Linux) to go back, and `Ctrl+Shift+-` or `Alt+Right` to go forward. This works like browser navigation history.
+
+### How do I bookmark files?
+
+Press `Cmd+D` (macOS) or `Ctrl+D` (Windows/Linux) to bookmark the current file. Bookmarked files appear in the Bookmarks section of the left sidebar. Press again to remove.
+
+### How do I quickly switch between files?
+
+Press `Cmd+P` to open the Quick Switcher. Type to search files by name. Type `#` to search by heading. The switcher also supports `Ctrl+Tab` for MRU (Most Recently Used) tab switching.
 
 ---
 
@@ -149,6 +206,12 @@ Baram preserves your markdown with lossless roundtrip fidelity. If something loo
 - The file used non-standard markdown syntax that Baram doesn't support
 
 If you believe there's a roundtrip bug, please [report it on GitHub](https://github.com/sayinel/baram/issues).
+
+### Wikilinks aren't working
+
+- Make sure you have a workspace (folder) open — wikilinks link to files within your workspace
+- File names are matched case-insensitively
+- If autocomplete doesn't show a file, check that the file exists in your workspace folder
 
 ---
 

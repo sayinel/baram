@@ -15,8 +15,7 @@ Complete list of keyboard shortcuts available in Baram.
 | Save | `Cmd+S` | `Ctrl+S` |
 | Save As | `Cmd+Shift+S` | `Ctrl+Shift+S` |
 | Close Tab | `Cmd+W` | `Ctrl+W` |
-| Next Tab | `Ctrl+Tab` | `Ctrl+Tab` |
-| Previous Tab | `Ctrl+Shift+Tab` | `Ctrl+Shift+Tab` |
+| Quick Switcher | `Cmd+P` | `Ctrl+P` |
 | Settings | `Cmd+,` | `Ctrl+,` |
 
 ## Editing
@@ -37,7 +36,7 @@ Complete list of keyboard shortcuts available in Baram.
 | Bold | `Cmd+B` | `Ctrl+B` |
 | Italic | `Cmd+I` | `Ctrl+I` |
 | Underline | `Cmd+U` | `Ctrl+U` |
-| Strikethrough | `Cmd+Shift+X` | `Ctrl+Shift+X` |
+| Strikethrough | `Cmd+Shift+S` | `Ctrl+Shift+S` |
 | Inline Code | `Cmd+E` | `Ctrl+E` |
 | Link | `Cmd+K` (with selection) | `Ctrl+K` (with selection) |
 
@@ -53,11 +52,14 @@ Complete list of keyboard shortcuts available in Baram.
 | Heading 6 | `Cmd+6` | `Ctrl+6` |
 | Increase Heading Level | `Cmd+=` | `Ctrl+=` |
 | Decrease Heading Level | `Cmd+-` | `Ctrl+-` |
-| Code Block | `Cmd+Shift+C` | `Ctrl+Shift+C` |
+| Code Block | `Cmd+Alt+C` | `Ctrl+Alt+C` |
 | Math Block | `Cmd+Shift+M` | `Ctrl+Shift+M` |
-| Blockquote | `Cmd+Shift+>` | `Ctrl+Shift+>` |
+| Blockquote | `Cmd+Shift+B` | `Ctrl+Shift+B` |
 | Bullet List | `Cmd+Shift+8` | `Ctrl+Shift+8` |
 | Ordered List | `Cmd+Shift+7` | `Ctrl+Shift+7` |
+| Task List | `Cmd+Shift+9` | `Ctrl+Shift+9` |
+| Mermaid Diagram | `Cmd+Shift+D` | `Ctrl+Shift+D` |
+| Toggle Open/Close | `Cmd+Enter` | `Ctrl+Enter` |
 | Indent | `Tab` | `Tab` |
 | Outdent | `Shift+Tab` | `Shift+Tab` |
 
@@ -68,7 +70,19 @@ Complete list of keyboard shortcuts available in Baram.
 | Source Mode Toggle | `Cmd+/` | `Ctrl+/` |
 | Toggle Left Sidebar | `Cmd+Shift+L` | `Ctrl+Shift+L` |
 
-## Navigation & Tools
+## Navigation
+
+| Action | macOS | Windows / Linux |
+|--------|-------|-----------------|
+| Quick Switcher | `Cmd+P` | `Ctrl+P` |
+| Navigate Back | `Ctrl+-` | `Alt+Left` |
+| Navigate Forward | `Ctrl+Shift+-` | `Alt+Right` |
+| Tab Switcher (MRU) | `Ctrl+Tab` | `Ctrl+Tab` |
+| Previous Tab (MRU) | `Ctrl+Shift+Tab` | `Ctrl+Shift+Tab` |
+| Bookmark Current File | `Cmd+D` | `Ctrl+D` |
+| Backlink Panel | `Cmd+Shift+B` | `Ctrl+Shift+B` |
+
+## Tools
 
 | Action | macOS | Windows / Linux |
 |--------|-------|-----------------|
@@ -96,13 +110,23 @@ Complete list of keyboard shortcuts available in Baram.
 | Confirm Block Math | `Shift+Enter` | `Shift+Enter` |
 | Cancel / Exit | `Esc` | `Esc` |
 
+## File Tree
+
+| Action | macOS | Windows / Linux |
+|--------|-------|-----------------|
+| Rename File | `F2` | `F2` |
+| Confirm Rename | `Enter` | `Enter` |
+| Cancel Rename | `Esc` | `Esc` |
+
 ---
 
 ## Tips
 
 - **Slash Commands**: Type `/` at the start of an empty line to open the block insertion menu
+- **Wikilinks**: Type `[[` to start a wikilink with autocomplete
 - **Markdown Shortcuts**: You can always type raw markdown syntax (e.g., `**bold**`, `# Heading`) — Baram converts it automatically
 - **Floating Toolbar**: Select text to see a floating toolbar with formatting options
+- **Tab Switcher**: Hold `Ctrl` while pressing `Tab` to cycle through recently used tabs; release `Ctrl` to select
 
 ---
 

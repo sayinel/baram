@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <strong>Beautiful WYSIWYG &middot; Lossless Markdown &middot; AI-native Editing</strong>
+  <strong>Beautiful WYSIWYG &middot; Lossless Markdown &middot; AI-native Editing &middot; Bidirectional Links</strong>
 </p>
 
 <p align="center">
@@ -77,10 +77,14 @@ Baram hides markdown syntax while you write and reveals it only when your cursor
 | Ordered List | Type `1. ` |
 | Task List | Type `- [ ] ` or `- [x] ` |
 | Horizontal Rule | Type `---` and press Enter |
-| Code Block | Type ` ``` ` and press Enter, or `Cmd+Shift+C` |
+| Code Block | Type ` ``` ` and press Enter, or `Cmd+Alt+C` |
 | Math Block | Type `$$` and press Enter, or `Cmd+Shift+M` |
 | Table | Slash command `/table` |
 | Image | Type `![alt](url)`, drag-and-drop, or paste from clipboard |
+| Callout | Type `> [!info]` (supports info, tip, warning, danger, note, etc.) |
+| Toggle | Slash command `/toggle` — collapsible details block |
+| Toggle Heading | Slash command `/toggle heading 1` – `/toggle heading 3` |
+| Mermaid Diagram | Slash command `/mermaid` or `Cmd+Shift+D` |
 | YAML Frontmatter | Auto-detected at document start |
 
 ### Inline Formatting
@@ -90,10 +94,66 @@ Baram hides markdown syntax while you write and reveals it only when your cursor
 | **Bold** | `**text**` | `Cmd+B` |
 | *Italic* | `*text*` | `Cmd+I` |
 | `Code` | `` `text` `` | `Cmd+E` |
-| ~~Strikethrough~~ | `~~text~~` | `Cmd+Shift+X` |
+| ~~Strikethrough~~ | `~~text~~` | `Cmd+Shift+S` |
 | <u>Underline</u> | `<u>text</u>` | `Cmd+U` |
 | Link | `[text](url)` | `Cmd+K` |
 | Inline Math | `$formula$` | Type `$` |
+
+### Bidirectional Links (Wikilinks)
+
+Connect your notes with `[[wikilinks]]`:
+
+- **Type `[[`** to insert a wikilink with autocomplete — matching files appear as you type
+- **Heading links** — `[[page#heading]]` links to a specific heading
+- **Block links** — `[[page#^block-id]]` links to a specific block
+- **Display text** — `[[page|custom text]]` shows custom text
+- **Cmd+click** to navigate to the linked page
+- **Hover preview** — hover over a wikilink to see a preview of the target
+
+### Backlinks
+
+See which documents link to the current one:
+
+- **Backlink Panel** — Press `Cmd+Shift+B` to open the backlinks sidebar
+- **Unlinked Mentions** — Shows pages that mention the current file name but don't link to it
+- **Auto-rename** — Renaming a file automatically updates all wikilinks pointing to it
+
+### Block References
+
+Reference and embed specific blocks from other documents:
+
+- **Block ID** — Add `^block-id` to any paragraph or heading to create a referenceable block
+- **Block Reference** — `((file#^id))` inserts an inline reference that navigates on Cmd+click
+- **Block Embed** — `{{embed ((file#^id))}}` embeds a live preview of the referenced block
+- Embedded blocks are editable — changes sync back to the source file
+
+### Callout Blocks
+
+Obsidian-compatible callout syntax with 12 types:
+
+```markdown
+> [!info] Title
+> Content goes here.
+```
+
+Supported types: `info`, `tip`, `warning`, `danger`, `note`, `abstract`, `todo`, `success`, `question`, `failure`, `example`, `quote`. Collapsible callouts supported with `> [!info]-`.
+
+### Toggle Blocks
+
+Collapsible content blocks using HTML `<details>` syntax:
+
+```markdown
+<details>
+<summary>Click to expand</summary>
+
+Hidden content here.
+
+</details>
+```
+
+- **Toggle Heading** — Use a heading as the toggle summary for collapsible sections
+- **Cmd+Enter** to toggle open/close
+- Nested toggles supported
 
 ### Math (KaTeX)
 
@@ -111,6 +171,14 @@ Full-featured code editing inside your markdown:
 - Language auto-detection and selection dropdown
 - Syntax highlighting with a CodeMirror 6 editor instance per block
 - Languages are lazy-loaded — only the language you select gets downloaded
+
+### Mermaid Diagrams
+
+Create flowcharts, sequence diagrams, and more with Mermaid.js:
+
+- Type `/mermaid` or press `Cmd+Shift+D` to insert a diagram block
+- Edit Mermaid source code with live preview rendering below
+- Supports all Mermaid diagram types: flowchart, sequence, class, state, ER, gantt, pie, etc.
 
 ### Tables
 
@@ -179,7 +247,7 @@ Type `/` to open the slash menu. AI-powered commands include:
 | Italic | `Cmd+I` |
 | Underline | `Cmd+U` |
 | Inline Code | `Cmd+E` |
-| Strikethrough | `Cmd+Shift+X` |
+| Strikethrough | `Cmd+Shift+S` |
 | Link | `Cmd+K` |
 
 ### Headings
@@ -194,19 +262,28 @@ Type `/` to open the slash menu. AI-powered commands include:
 
 | Action | Shortcut |
 |--------|----------|
-| Code Block | `Cmd+Shift+C` |
+| Code Block | `Cmd+Alt+C` |
 | Math Block | `Cmd+Shift+M` |
-| Blockquote | `Cmd+Shift+>` |
+| Blockquote | `Cmd+Shift+B` |
 | Bullet List | `Cmd+Shift+8` |
 | Ordered List | `Cmd+Shift+7` |
+| Task List | `Cmd+Shift+9` |
+| Mermaid Diagram | `Cmd+Shift+D` |
+| Toggle Open/Close | `Cmd+Enter` |
 
 ### Navigation & Tools
 
 | Action | Shortcut |
 |--------|----------|
 | Source Mode Toggle | `Cmd+/` |
+| Quick Switcher | `Cmd+P` |
 | Command Palette | `Cmd+Shift+P` |
 | AI Inline Edit | `Cmd+K` (with text selected) |
+| Backlink Panel | `Cmd+Shift+B` |
+| Bookmark | `Cmd+D` |
+| Navigate Back | `Ctrl+-` |
+| Navigate Forward | `Ctrl+Shift+-` |
+| Tab Switcher (MRU) | `Ctrl+Tab` |
 | Settings | `Cmd+,` |
 | Undo | `Cmd+Z` |
 | Redo | `Cmd+Shift+Z` |
@@ -215,7 +292,7 @@ Type `/` to open the slash menu. AI-powered commands include:
 
 ### 3-Column Layout
 
-- **Left Sidebar** — File tree for navigating your documents (`Cmd+Shift+L` to toggle)
+- **Left Sidebar** — File tree + Backlinks + Bookmarks (`Cmd+Shift+L` to toggle)
 - **Editor** — Main editing area with WYSIWYG or Source mode
 - **Right Sidebar** — Document outline with heading navigation
 
@@ -225,7 +302,15 @@ Type `/` to open the slash menu. AI-powered commands include:
 - **Block Handle** — Drag handle on the left side of each block for reordering
 - **Slash Commands** — Type `/` at the start of a line for quick block insertion
 - **Command Palette** — `Cmd+Shift+P` for searching and running any command
-- **Context Menu** — Right-click for context-aware options
+- **Quick Switcher** — `Cmd+P` for quickly opening files and jumping to headings
+- **Context Menu** — Right-click for context-aware options (copy, paste, block type, pin tab, etc.)
+
+### Tabs
+
+- **Multiple tabs** — Open several files at once
+- **Tab Pin** — Right-click a tab to pin it (pinned tabs show as icons, can't be accidentally closed)
+- **Tab Switcher** — `Ctrl+Tab` opens MRU (Most Recently Used) tab switcher
+- **Undo history preserved** — Switching tabs preserves your undo/redo history per tab
 
 ### Status Bar
 
@@ -266,6 +351,7 @@ npm run format
 | Editor Engine | Tiptap / ProseMirror |
 | Math | KaTeX |
 | Code | CodeMirror 6 |
+| Diagrams | Mermaid.js |
 | State | Zustand |
 
 ### Architecture
@@ -279,9 +365,10 @@ npm run format
 │  │            │              │                │  │
 │  │ Tiptap     │              │ File System    │  │
 │  │ ProseMirror│              │ LLM Proxy      │  │
-│  │ Zustand    │              │ Search (tantivy)│ │
-│  │ CodeMirror │              │ Git Integration│  │
-│  │ KaTeX      │              │ Export Engine  │  │
+│  │ Zustand    │              │ Link Index     │  │
+│  │ CodeMirror │              │ Search (tantivy)│ │
+│  │ KaTeX      │              │ Git Integration│  │
+│  │ Mermaid    │              │ Export Engine  │  │
 │  └────────────┘              └────────────────┘  │
 └─────────────────────────────────────────────────┘
 ```
@@ -295,7 +382,7 @@ Reverse:  ProseMirror Document → mdast → remark-stringify
 
 ## Roadmap
 
-**Phase 1 — MVP** (current)
+**Phase 1 — MVP** (completed)
 
 | Milestone | Status | Description |
 |-----------|--------|-------------|
@@ -304,13 +391,20 @@ Reverse:  ProseMirror Document → mdast → remark-stringify
 | M3 Rich Content | ✅ Done | KaTeX math, CodeMirror 6, tables, frontmatter, source mode |
 | M4 UI Framework | ✅ Done | 3-column layout, sidebar, command palette, slash commands, toolbar |
 | M5 AI Level 2 | ✅ Done | Claude SSE streaming, inline editing, AI diff, settings |
-| M6 MVP Release | 🚧 In Progress | PDF/HTML export, performance optimization, release build |
+| M6 MVP Release | ✅ Done | PDF/HTML export, performance optimization, release build |
 
-**Phase 2 — Extensions**
+**Phase 2 — Connection System & Navigation** (current)
 
-- Callout blocks, wikilinks, backlinks, find & replace
+| Milestone | Status | Description |
+|-----------|--------|-------------|
+| M7 Connection & Navigation | 🚧 In Progress | Wikilinks, backlinks, block references, callouts, toggles, mermaid, quick switcher, bookmarks, tab features |
+
+**Upcoming**
+
+- Find & replace
 - Highlight, subscript, superscript marks
-- Mermaid diagrams, table of contents
+- Table of contents
+- Graph view
 - Plugin marketplace
 
 ## License
