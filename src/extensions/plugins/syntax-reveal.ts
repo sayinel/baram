@@ -713,10 +713,14 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
           return false;
         }
 
-        // Click on image atom → let NodeSelection show blue outline.
-        // Expansion to markdown only on Enter/character key (handleKeyDown).
         const $pos = view.state.doc.resolve(pos);
         const nodeAfter = $pos.nodeAfter;
+
+        // Click on image atom → expand to editable markdown
+        if (nodeAfter && nodeAfter.type.name === "image") {
+          expandImage(view, nodeAfter, pos);
+          return true;
+        }
 
         // Click on wikilink atom → expand (but not Cmd+Click which navigates)
         if (
@@ -934,16 +938,16 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         const { selection } = view.state;
         if (selection instanceof NodeSelection) {
           const nodeName = selection.node.type.name;
-          // Image: don't auto-expand on NodeSelection (preserves blue outline).
-          // User can press Enter or type a character to expand (handleKeyDown).
-          if (nodeName === "wikilink") {
+          if (nodeName === "image" || nodeName === "wikilink") {
             if (pendingRaf) cancelAnimationFrame(pendingRaf);
 
             pendingRaf = requestAnimationFrame(() => {
               pendingRaf = null;
               const { selection: sel } = view.state;
               if (!(sel instanceof NodeSelection)) return;
-              if (sel.node.type.name === "wikilink") {
+              if (sel.node.type.name === "image") {
+                expandImage(view, sel.node, sel.from);
+              } else if (sel.node.type.name === "wikilink") {
                 expandWikilink(view, sel.node, sel.from);
               }
             });

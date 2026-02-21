@@ -4,6 +4,7 @@ import { ReactNodeViewRenderer } from "@tiptap/react";
 import { Plugin, PluginKey, NodeSelection, TextSelection } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { ImageView } from "./image-view";
+import { getSyntaxRevealExpanded } from "../plugins/syntax-reveal";
 
 export interface ImageOptions {
   HTMLAttributes: Record<string, string>;
@@ -74,48 +75,21 @@ export const Image = Node.create<ImageOptions>({
   addProseMirrorPlugins() {
     // §5.1 Fix: image click handling for trackpad (WebKit/Tauri)
     //
-    // Root cause: React 18 registers a capture-phase mousedown listener on
-    // #root. Any React onMouseDown handler that calls e.stopPropagation()
-    // will call nativeEvent.stopPropagation() during capture at #root,
-    // preventing the event from reaching ProseMirror's bubble-phase handler.
-    // Additionally, trackpad tap/click moves mouse >4px → PM allowDefault=true
-    //   → selectClickedLeaf skipped → no NodeSelection for image
-    //   → DOMObserver reads browser's native caret → dispatches TextSelection
+    // Problem: trackpad tap/click moves mouse >4px → PM allowDefault=true
+    //   → selectClickedLeaf skipped → no NodeSelection for image.
+    // Also: image-view.tsx must NOT use onMouseDown with stopPropagation()
+    //   because React 18's capture-phase listener on #root would block PM.
     //
-    // Fix: image-view.tsx must NOT use onMouseDown with stopPropagation().
-    // This plugin handles all image click logic via handleDOMEvents.mousedown.
-    //
-    // Defense strategy (3 layers, working WITH ProseMirror):
-    //   Layer 1: mousedown — dispatch NodeSelection immediately
-    //            (with coordinate-based fallback for wrong event.target)
-    //   Layer 2: createSelectionBetween — intercept DOMObserver's selection
-    //            creation so it produces NodeSelection, not TextSelection
-    //   Layer 3: appendTransaction — last-resort guard if layers 1+2 fail
+    // Strategy:
+    //   mousedown — detect image click via DOM, dispatch NodeSelection.
+    //   createSelectionBetween — intercept DOMObserver so it returns
+    //     NodeSelection (not TextSelection) until SyntaxReveal expands.
 
     const pluginKey = new PluginKey("imageClickGuard");
 
-    // Layer 2 flag: which image was clicked (mousedown sets, createSelectionBetween reads)
+    // Flag: which image was clicked (mousedown sets, createSelectionBetween reads)
     let clickedImagePos: number | null = null;
     let clickedImageTimer: ReturnType<typeof setTimeout> | null = null;
-
-    // Layer 3 guard — protects NodeSelection from DOMObserver override
-    let guardImagePos: number | null = null;
-    let guardTimer: ReturnType<typeof setTimeout> | null = null;
-    let guardCorrectionCount = 0;
-    const MAX_GUARD = 5;
-
-    const setGuard = (pos: number) => {
-      guardImagePos = pos;
-      guardCorrectionCount = 0;
-      if (guardTimer) clearTimeout(guardTimer);
-      guardTimer = setTimeout(() => { guardImagePos = null; guardTimer = null; }, 300);
-    };
-
-    // Track when we last set NodeSelection on an image.
-    // WebKit may fail to update native selection when clicking away from
-    // a block-selected NodeView; we use this to explicitly dispatch
-    // TextSelection for subsequent non-image clicks.
-    let lastImageSelTime = 0;
 
     /** Find PM document position for the N-th image by matching DOM order */
     const findImagePos = (view: EditorView, wrapperIdx: number): number => {
@@ -134,28 +108,9 @@ export const Image = Node.create<ImageOptions>({
       new Plugin({
         key: pluginKey,
 
-        // Layer 3: last-resort correction if DOMObserver still overrides
-        appendTransaction(transactions, _oldState, newState) {
-          if (guardImagePos === null) return null;
-          if (transactions.some(tr => tr.getMeta(pluginKey))) return null;
-
-          try {
-            const nodeAfter = newState.doc.resolve(guardImagePos).nodeAfter;
-            if (nodeAfter?.type.name !== "image") { guardImagePos = null; return null; }
-            const sel = newState.selection;
-            if (!(sel instanceof NodeSelection) || sel.from !== guardImagePos) {
-              if (guardCorrectionCount >= MAX_GUARD) { guardImagePos = null; return null; }
-              guardCorrectionCount++;
-              const tr = newState.tr.setSelection(NodeSelection.create(newState.doc, guardImagePos));
-              tr.setMeta(pluginKey, true);
-              return tr;
-            }
-          } catch { guardImagePos = null; }
-          return null;
-        },
-
         props: {
-          // Layer 2: intercept DOMObserver's selection creation
+          // Intercept DOMObserver's selection creation to preserve NodeSelection
+          // until SyntaxReveal expands the image (via RAF, ~16ms).
           createSelectionBetween(view) {
             if (clickedImagePos === null) return null;
             const pos = clickedImagePos;
@@ -173,19 +128,10 @@ export const Image = Node.create<ImageOptions>({
             mousedown(view, event) {
               if (event.button !== 0) return false;
 
-              // Clear stale guards — a new user click should not be fought
-              // by guards from the previous image selection.
-              guardImagePos = null;
-              clickedImagePos = null;
-              if (clickedImageTimer) { clearTimeout(clickedImageTimer); clickedImageTimer = null; }
-              if (guardTimer) { clearTimeout(guardTimer); guardTimer = null; }
-
               const target = event.target as HTMLElement;
               let imageWrapper = target.closest(".image-node-view") as HTMLElement | null;
 
-              // Coordinate-based fallback: if event.target is not inside
-              // an image wrapper (e.g. WebKit reports wrong target), check
-              // if click coordinates overlap any <img> bounding rect.
+              // Coordinate-based fallback: WebKit may report wrong event.target.
               if (!imageWrapper) {
                 for (const img of view.dom.querySelectorAll("img")) {
                   const rect = img.getBoundingClientRect();
@@ -204,7 +150,6 @@ export const Image = Node.create<ImageOptions>({
                 }
               }
 
-              // === Case 1: click on image body → NodeSelection ===
               if (imageWrapper && !target.closest(".image-toolbar") && !target.closest(".image-caption") && target.tagName !== "INPUT") {
                 const allWrappers = view.dom.querySelectorAll(".image-node-view");
                 let wrapperIdx = -1;
@@ -215,35 +160,27 @@ export const Image = Node.create<ImageOptions>({
 
                 if (wrapperIdx >= 0 && imagePos >= 0) {
                   try {
-                    // Layer 2: flag for createSelectionBetween
                     clickedImagePos = imagePos;
                     if (clickedImageTimer) clearTimeout(clickedImageTimer);
                     clickedImageTimer = setTimeout(() => { clickedImagePos = null; clickedImageTimer = null; }, 500);
 
-                    // Layer 3: appendTransaction guard
-                    setGuard(imagePos);
-
-                    // Layer 1: direct dispatch + focus
                     event.preventDefault();
                     view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, imagePos)));
                     view.focus();
-                    lastImageSelTime = Date.now();
-
                     return true;
-                  } catch { guardImagePos = null; clickedImagePos = null; }
+                  } catch { clickedImagePos = null; }
                 }
-                return false;
               }
 
-              // Non-image click: if we recently set NodeSelection on an image,
-              // explicitly dispatch TextSelection. WebKit fails to update the
-              // native selection when clicking away from a block-selected NodeView,
-              // so ProseMirror's default handling (which relies on DOMObserver
-              // reading the native selection) doesn't move the cursor.
-              if (Date.now() - lastImageSelTime < 5000) {
-                lastImageSelTime = 0;
+              // If SyntaxReveal has an active image expansion (![alt](url) text)
+              // and user clicked outside it, explicitly dispatch TextSelection.
+              // Without this, WebKit's native selection handling after the
+              // collapse (appendTransaction) creates a stale selection that
+              // keeps the cursor stuck near the image.
+              const expanded = getSyntaxRevealExpanded(view.state);
+              if (expanded?.kind === "image") {
                 const coords = view.posAtCoords({ left: event.clientX, top: event.clientY });
-                if (coords) {
+                if (coords && (coords.pos < expanded.from || coords.pos > expanded.to)) {
                   try {
                     const $pos = view.state.doc.resolve(coords.pos);
                     event.preventDefault();
