@@ -415,6 +415,40 @@ body {
   display: none;
 }
 
+/* Toggle Heading — summary is a heading node */
+.tiptap .toggle-body > h1:first-child,
+.tiptap .toggle-body > h2:first-child,
+.tiptap .toggle-body > h3:first-child,
+.tiptap .toggle-body > div > h1:first-child,
+.tiptap .toggle-body > div > h2:first-child,
+.tiptap .toggle-body > div > h3:first-child {
+  margin: 0.1em 0;
+}
+
+/* H1 summary: font-size 2em × line-height 1.2 = 2.4em */
+.tiptap .toggle[data-summary-level="1"] .toggle-indicator {
+  height: 2.4em;
+  margin-top: 0.1em;
+}
+.tiptap .toggle[data-summary-level="1"] .toggle-arrow {
+  border-width: 5px 0 5px 7px;
+}
+
+/* H2 summary: font-size 1.5em × line-height 1.3 = 1.95em */
+.tiptap .toggle[data-summary-level="2"] .toggle-indicator {
+  height: 1.95em;
+  margin-top: 0.1em;
+}
+.tiptap .toggle[data-summary-level="2"] .toggle-arrow {
+  border-width: 5px 0 5px 6px;
+}
+
+/* H3 summary: font-size 1.25em × line-height 1.4 = 1.75em */
+.tiptap .toggle[data-summary-level="3"] .toggle-indicator {
+  height: 1.75em;
+  margin-top: 0.1em;
+}
+
 /* §5.1 Lists */
 .tiptap ul {
   list-style-type: disc;

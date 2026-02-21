@@ -14,7 +14,11 @@ export interface ToggleOptions {
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
     toggle: {
-      setToggle: (attrs?: { open?: boolean }) => ReturnType;
+      setToggle: (attrs?: {
+        open?: boolean;
+        summaryType?: "heading";
+        level?: number;
+      }) => ReturnType;
       toggleToggle: () => ReturnType;
       unsetToggle: () => ReturnType;
     };
@@ -60,7 +64,7 @@ function moveAfterToggle(
 export const Toggle = Node.create<ToggleOptions>({
   name: "toggle",
   group: "block",
-  content: "paragraph block*",
+  content: "(paragraph | heading) block*",
   defining: true,
 
   addOptions() {
@@ -99,12 +103,20 @@ export const Toggle = Node.create<ToggleOptions>({
     return {
       setToggle:
         (attrs) =>
-        ({ commands }) =>
-          commands.insertContent({
+        ({ commands }) => {
+          const isHeading = attrs?.summaryType === "heading";
+          const summaryContent = isHeading
+            ? {
+                type: "heading" as const,
+                attrs: { level: attrs?.level ?? 2 },
+              }
+            : { type: "paragraph" as const };
+          return commands.insertContent({
             type: this.name,
-            attrs: { open: true, ...attrs },
-            content: [{ type: "paragraph" }],
-          }),
+            attrs: { open: attrs?.open ?? true },
+            content: [summaryContent],
+          });
+        },
       toggleToggle:
         () =>
         ({ state, commands }) => {
@@ -157,16 +169,26 @@ export const Toggle = Node.create<ToggleOptions>({
 
             // Insert new toggle after current toggle
             const toggleAfterPos = tr.mapping.map($from.after(toggleDepth));
-            const newSummary = state.schema.nodes.paragraph.create(
-              null,
-              afterContent.size > 0 ? afterContent : undefined,
-            );
+
+            // Preserve summary type: if heading, new sibling gets same heading level
+            let newSummary;
+            if (parentNode.type.name === "heading") {
+              newSummary = state.schema.nodes.heading.create(
+                { level: parentNode.attrs.level },
+                afterContent.size > 0 ? afterContent : undefined,
+              );
+            } else {
+              newSummary = state.schema.nodes.paragraph.create(
+                null,
+                afterContent.size > 0 ? afterContent : undefined,
+              );
+            }
             const newToggle = state.schema.nodes.toggle.create(
               { open: false },
               [newSummary],
             );
             tr.insert(toggleAfterPos, newToggle);
-            // Cursor at start of new toggle's summary (+1 toggle open, +1 paragraph open)
+            // Cursor at start of new toggle's summary (+1 toggle open, +1 summary open)
             tr.setSelection(
               TextSelection.create(tr.doc, toggleAfterPos + 2),
             );

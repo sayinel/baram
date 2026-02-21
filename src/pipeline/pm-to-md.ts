@@ -137,9 +137,21 @@ function convertPmNode(node: PmNode): Content | null {
     const isOpen = node.attrs.open as boolean;
     const openTag = isOpen ? "<details open>" : "<details>";
 
-    // First child is summary paragraph
-    const summaryText =
-      node.childCount > 0 ? node.child(0).textContent : "";
+    // First child is summary (paragraph or heading)
+    const summaryChild = node.childCount > 0 ? node.child(0) : null;
+    let summaryText = "";
+    if (summaryChild) {
+      if (summaryChild.type.name === "heading") {
+        // Heading summary: prefix with # marks
+        const level = summaryChild.attrs.level as number;
+        const prefix = "#".repeat(level);
+        summaryText = summaryChild.textContent
+          ? `${prefix} ${summaryChild.textContent}`
+          : prefix;
+      } else {
+        summaryText = summaryChild.textContent;
+      }
+    }
 
     // Build body from remaining children
     const bodyChildren: Content[] = [];

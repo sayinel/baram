@@ -95,6 +95,33 @@ function buildSlashItems(editor: Editor): SlashMenuItem[] {
       mdHint: "<details>",
       action: () => editor.commands.setToggle(),
     },
+    {
+      id: "toggle-heading-1",
+      label: "Toggle Heading 1",
+      category: "Basic",
+      description: "Collapsible heading 1",
+      mdHint: "# ▸",
+      action: () =>
+        editor.commands.setToggle({ summaryType: "heading", level: 1 }),
+    },
+    {
+      id: "toggle-heading-2",
+      label: "Toggle Heading 2",
+      category: "Basic",
+      description: "Collapsible heading 2",
+      mdHint: "## ▸",
+      action: () =>
+        editor.commands.setToggle({ summaryType: "heading", level: 2 }),
+    },
+    {
+      id: "toggle-heading-3",
+      label: "Toggle Heading 3",
+      category: "Basic",
+      description: "Collapsible heading 3",
+      mdHint: "### ▸",
+      action: () =>
+        editor.commands.setToggle({ summaryType: "heading", level: 3 }),
+    },
     // Rich content
     {
       id: "code-block",

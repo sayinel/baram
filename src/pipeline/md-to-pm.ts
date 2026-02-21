@@ -176,15 +176,27 @@ function tryConvertToggle(
       ? convertBlockChildren(bodyMdastChildren, schema)
       : [];
 
-  // Create summary paragraph (first child of toggle)
-  const summaryPara = parsed.summary
-    ? schema.nodes.paragraph.create(null, [schema.text(parsed.summary)])
-    : schema.nodes.paragraph.create();
+  // Create summary node (first child of toggle)
+  // Detect heading prefix: "## Title" → heading level 2
+  const headingMatch = parsed.summary.match(/^(#{1,6})\s+(.*)$/);
+  let summaryNode;
+  if (headingMatch && schema.nodes.heading) {
+    const level = headingMatch[1].length;
+    const text = headingMatch[2];
+    summaryNode = schema.nodes.heading.create(
+      { level },
+      text ? [schema.text(text)] : undefined,
+    );
+  } else {
+    summaryNode = parsed.summary
+      ? schema.nodes.paragraph.create(null, [schema.text(parsed.summary)])
+      : schema.nodes.paragraph.create();
+  }
 
-  // Build toggle node: summary paragraph + body blocks
+  // Build toggle node: summary (paragraph or heading) + body blocks
   const toggleNode = schema.nodes.toggle.create(
     { open: parsed.isOpen },
-    [summaryPara, ...bodyPmNodes],
+    [summaryNode, ...bodyPmNodes],
   );
 
   return { node: toggleNode, endIndex };

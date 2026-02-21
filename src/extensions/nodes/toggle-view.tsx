@@ -9,6 +9,13 @@ export const ToggleView: React.FC<NodeViewProps> = ({
 }) => {
   const isOpen = node.attrs.open as boolean;
 
+  // Detect if first child is a heading (toggle heading)
+  const firstChild = node.firstChild;
+  const isHeadingSummary = firstChild?.type.name === "heading";
+  const headingLevel = isHeadingSummary
+    ? (firstChild!.attrs.level as number)
+    : undefined;
+
   const handleToggle = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
@@ -22,6 +29,12 @@ export const ToggleView: React.FC<NodeViewProps> = ({
     <NodeViewWrapper
       data-type="toggle"
       data-open={isOpen ? "true" : "false"}
+      {...(isHeadingSummary
+        ? {
+            "data-summary-type": "heading",
+            "data-summary-level": String(headingLevel),
+          }
+        : {})}
       className="toggle"
     >
       <div

@@ -20,7 +20,7 @@ const schema = new Schema({
       attrs: { level: { default: 1 }, blockId: { default: null } },
     },
     toggle: {
-      content: "paragraph block*",
+      content: "(paragraph | heading) block*",
       group: "block",
       attrs: {
         open: { default: true },
@@ -202,5 +202,85 @@ describe("Nested toggles", () => {
 
     // Roundtrip
     expect(roundtrip(input)).toBe(input);
+  });
+});
+
+// ── Toggle Heading ──────────────────────────────────────────────────
+
+describe("Roundtrip: Toggle Heading", () => {
+  it("toggle with H1 summary", () => {
+    const input =
+      "<details>\n<summary># Chapter Title</summary>\n\nChapter content.\n\n</details>\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  it("toggle with H2 summary", () => {
+    const input =
+      "<details>\n<summary>## Section Title</summary>\n\nSection content.\n\n</details>\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  it("toggle with H3 summary", () => {
+    const input =
+      "<details>\n<summary>### Subsection</summary>\n\nSubsection content.\n\n</details>\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  it("toggle heading with open attribute", () => {
+    const input =
+      "<details open>\n<summary>## Open Heading</summary>\n\nVisible content.\n\n</details>\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  it("toggle heading with multi-paragraph body", () => {
+    const input =
+      "<details>\n<summary>## Title</summary>\n\nFirst paragraph.\n\nSecond paragraph.\n\n</details>\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  it("toggle heading summary only (no body)", () => {
+    const input =
+      "<details>\n<summary>## Just Heading</summary>\n\n</details>\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+});
+
+describe("Toggle Heading PM structure", () => {
+  it("creates heading node as first child", () => {
+    const input =
+      "<details>\n<summary>## My Heading</summary>\n\nBody.\n\n</details>\n";
+    const doc = markdownToProsemirror(input, schema);
+    const toggle = doc.firstChild!;
+    expect(toggle.type.name).toBe("toggle");
+    expect(toggle.child(0).type.name).toBe("heading");
+    expect(toggle.child(0).attrs.level).toBe(2);
+    expect(toggle.child(0).textContent).toBe("My Heading");
+  });
+
+  it("H1 heading level is preserved", () => {
+    const input =
+      "<details>\n<summary># Big Heading</summary>\n\nBody.\n\n</details>\n";
+    const doc = markdownToProsemirror(input, schema);
+    const toggle = doc.firstChild!;
+    expect(toggle.child(0).type.name).toBe("heading");
+    expect(toggle.child(0).attrs.level).toBe(1);
+  });
+
+  it("H3 heading level is preserved", () => {
+    const input =
+      "<details>\n<summary>### Small Heading</summary>\n\nBody.\n\n</details>\n";
+    const doc = markdownToProsemirror(input, schema);
+    const toggle = doc.firstChild!;
+    expect(toggle.child(0).type.name).toBe("heading");
+    expect(toggle.child(0).attrs.level).toBe(3);
+  });
+
+  it("plain text summary is still a paragraph", () => {
+    const input =
+      "<details>\n<summary>Not a heading</summary>\n\nBody.\n\n</details>\n";
+    const doc = markdownToProsemirror(input, schema);
+    const toggle = doc.firstChild!;
+    expect(toggle.child(0).type.name).toBe("paragraph");
+    expect(toggle.child(0).textContent).toBe("Not a heading");
   });
 });
