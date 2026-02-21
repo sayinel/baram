@@ -132,6 +132,8 @@ function App() {
 
   // Track previously active tab to save its content on switch
   const prevTabRef = useRef<string | null>(null);
+  // Per-tab EditorState cache — preserves undo/redo history across tab switches
+  const editorStateCache = useRef(new Map<string, EditorState>());
   // §37 Ref-based flag for back/forward navigation (avoids _navigating timing bug)
   const isNavBackForwardRef = useRef(false);
   // §39 Tab switcher state
@@ -201,8 +203,12 @@ function App() {
       useEditorStore.getState().touchMru(activeTabId);
     }
 
-    // Save outgoing tab content
+    // Save outgoing tab content + cache EditorState (preserves undo history)
     if (prevTabId && prevTabId !== activeTabId) {
+      // Cache EditorState before switching (keeps undo/redo stack intact)
+      if (!isSourceMode) {
+        editorStateCache.current.set(prevTabId, editor.state);
+      }
       const prevTab = tabs.find((t) => t.id === prevTabId);
       if (prevTab?.filePath) {
         try {
@@ -239,30 +245,37 @@ function App() {
       : openFiles.get(activeTab.id);
 
     if (content !== undefined) {
-      const newDoc = markdownToProsemirror(content, editor.schema);
+      // Try cached EditorState first (preserves undo/redo history)
+      const cachedState = editorStateCache.current.get(activeTabId!);
+      if (cachedState) {
+        editor.view.updateState(cachedState);
+      } else {
+        // No cache — create fresh state from markdown (first open)
+        const newDoc = markdownToProsemirror(content, editor.schema);
+        const newState = EditorState.create({
+          doc: newDoc,
+          plugins: editor.state.plugins,
+          selection: TextSelection.atStart(newDoc),
+        });
+        editor.view.updateState(newState);
+      }
 
       // §29 Check if navigating from backlinks — compute scroll position
       const pendingLine = useLinkStore.getState().pendingScrollLine;
       const pendingBlockId = useLinkStore.getState().pendingScrollBlockId;
       let scrollPos: number | null = null;
+      const doc = editor.view.state.doc;
       if (pendingBlockId) {
         useLinkStore.getState().setPendingScrollBlockId(null);
-        const blockPos = findBlockPosById(newDoc, pendingBlockId);
+        const blockPos = findBlockPosById(doc, pendingBlockId);
         if (blockPos !== null) {
-          scrollPos = Math.min(Math.max(blockPos, 0), newDoc.content.size);
+          scrollPos = Math.min(Math.max(blockPos, 0), doc.content.size);
         }
       } else if (pendingLine) {
         useLinkStore.getState().setPendingScrollLine(null);
-        const pmPos = mdLineToPmBlockStart(newDoc, content, pendingLine);
-        scrollPos = Math.min(Math.max(pmPos, 0), newDoc.content.size);
+        const pmPos = mdLineToPmBlockStart(doc, content, pendingLine);
+        scrollPos = Math.min(Math.max(pmPos, 0), doc.content.size);
       }
-
-      const newState = EditorState.create({
-        doc: newDoc,
-        plugins: editor.state.plugins,
-        selection: TextSelection.atStart(newDoc),
-      });
-      editor.view.updateState(newState);
 
       // Dispatch a proper transaction for selection + scroll, then
       // use DOM scrollIntoView as fallback for the scroll container
@@ -287,6 +300,14 @@ function App() {
             // ignore invalid position
           }
         });
+      }
+
+      // Clean up cache for closed tabs
+      const openTabIds = new Set(tabs.map((t) => t.id));
+      for (const cachedId of editorStateCache.current.keys()) {
+        if (!openTabIds.has(cachedId)) {
+          editorStateCache.current.delete(cachedId);
+        }
       }
     }
   }, [activeTabId]); // eslint-disable-line react-hooks/exhaustive-deps
