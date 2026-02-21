@@ -1,5 +1,7 @@
 // §5.1 Link Mark Extension — [text](url)
 import { Mark, mergeAttributes, markPasteRule, InputRule } from "@tiptap/core";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 export interface LinkOptions {
   HTMLAttributes: Record<string, string>;
@@ -111,6 +113,32 @@ export const Link = Mark.create<LinkOptions>({
         find: pasteRegex,
         type: this.type,
         getAttributes: (match) => ({ href: match[0] }),
+      }),
+    ];
+  },
+
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: new PluginKey("linkClick"),
+        props: {
+          handleClick(view, pos, event) {
+            // Cmd+Click (Mac) or Ctrl+Click (Win/Linux) to open link
+            if (!(event.metaKey || event.ctrlKey)) return false;
+
+            const $pos = view.state.doc.resolve(pos);
+            const marks = $pos.marks();
+            const linkMark = marks.find((m) => m.type.name === "link");
+            if (!linkMark) return false;
+
+            const href = linkMark.attrs.href as string;
+            if (!href) return false;
+
+            event.preventDefault();
+            openUrl(href).catch(console.error);
+            return true;
+          },
+        },
       }),
     ];
   },
