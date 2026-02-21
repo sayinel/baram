@@ -348,6 +348,73 @@ body {
   border-color: var(--color-border);
 }
 
+/* §5.1 Toggle (Details/Summary) — Notion-style minimal */
+.tiptap .toggle {
+  display: flex;
+  margin: 0.5em 0;
+  padding: 0.1em 0;
+}
+
+.tiptap .toggle-indicator {
+  flex-shrink: 0;
+  width: 1.2em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--color-text-muted);
+  margin-top: 0.2em;
+  height: 1.75em;
+  align-self: flex-start;
+  transition: background 0.15s ease;
+}
+
+.tiptap .toggle-indicator:hover {
+  background: rgba(55, 53, 47, 0.08);
+  color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .tiptap .toggle-indicator:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.tiptap .toggle-arrow {
+  display: block;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 4px 0 4px 5px;
+  border-color: transparent transparent transparent currentColor;
+  transition: transform 0.2s ease;
+}
+
+.tiptap .toggle-arrow-open {
+  transform: rotate(90deg);
+}
+
+.tiptap .toggle-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.tiptap .toggle-body p {
+  margin: 0.2em 0;
+}
+
+/* Body content indentation: align with summary text start */
+.tiptap .toggle-body > :not(:first-child),
+.tiptap .toggle-body > div > :not(:first-child) {
+  padding-left: 1.2em;
+}
+
+/* Collapse: hide everything except summary */
+.tiptap .toggle-body-collapsed > :not(:first-child),
+.tiptap .toggle-body-collapsed > div > :not(:first-child) {
+  display: none;
+}
+
 /* §5.1 Lists */
 .tiptap ul {
   list-style-type: disc;

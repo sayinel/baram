@@ -221,6 +221,19 @@
       "inputRules": [],
       "shortcuts": {},
       "_note": "Block atom node with NodeView. Shows read-only preview of referenced block."
+    },
+    {
+      "name": "toggle",
+      "file": "nodes/toggle.ts",
+      "markdown": "<details><summary>title</summary>body</details>",
+      "spec": "§5.1",
+      "phase": 2,
+      "milestone": "M7",
+      "status": "implemented",
+      "hasNodeView": true,
+      "inputRules": [],
+      "shortcuts": {},
+      "_note": "Collapsible toggle block using HTML details/summary. Slash command /toggle."
     }
   ],
   "marks": [

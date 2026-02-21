@@ -132,6 +132,46 @@ function convertPmNode(node: PmNode): Content | null {
     return convertListItemNode(node) as Content;
   }
 
+  // §5.1: Toggle → <details><summary>...</summary> body </details>
+  if (typeName === "toggle") {
+    const isOpen = node.attrs.open as boolean;
+    const openTag = isOpen ? "<details open>" : "<details>";
+
+    // First child is summary paragraph
+    const summaryText =
+      node.childCount > 0 ? node.child(0).textContent : "";
+
+    // Build body from remaining children
+    const bodyChildren: Content[] = [];
+    for (let ci = 1; ci < node.childCount; ci++) {
+      const childMdast = convertPmNode(node.child(ci));
+      if (childMdast) bodyChildren.push(childMdast);
+    }
+
+    // Serialize body to markdown
+    let bodyMd = "";
+    if (bodyChildren.length > 0) {
+      const bodyMdast: Root = { type: "root", children: bodyChildren };
+      bodyMd = mdastToMarkdown(bodyMdast).trimEnd();
+    }
+
+    // Build the complete HTML block
+    const parts: string[] = [];
+    if (summaryText) {
+      parts.push(`${openTag}\n<summary>${summaryText}</summary>`);
+    } else {
+      parts.push(openTag);
+    }
+    if (bodyMd) {
+      parts.push(""); // blank line to separate HTML from markdown
+      parts.push(bodyMd);
+    }
+    parts.push(""); // blank line before closing tag
+    parts.push("</details>");
+
+    return { type: "html", value: parts.join("\n") } as Content;
+  }
+
   // §5.9: Callout → serialize manually to preserve [!type] without escaping
   if (typeName === "callout") {
     const cType = (node.attrs.type as string) || "info";

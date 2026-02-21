@@ -87,6 +87,14 @@ function buildSlashItems(editor: Editor): SlashMenuItem[] {
       mdHint: "> [!",
       action: () => editor.commands.setCallout({ type: "info" }),
     },
+    {
+      id: "toggle",
+      label: "Toggle",
+      category: "Basic",
+      description: "Collapsible details block",
+      mdHint: "<details>",
+      action: () => editor.commands.setToggle(),
+    },
     // Rich content
     {
       id: "code-block",

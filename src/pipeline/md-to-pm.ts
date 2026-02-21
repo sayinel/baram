@@ -16,6 +16,11 @@ import {
   WIKILINK_RE,
   parseWikilinkMatch,
 } from "./transformers/wikilink-transformer";
+import {
+  parseDetailsOpening,
+  isDetailsClosing,
+  isDetailsOpening,
+} from "./transformers/toggle-transformer";
 import { extractBlockId, BLOCK_REF_RE, parseBlockRefMatch, BLOCK_EMBED_RE, parseBlockEmbedMatch } from "./block-id";
 
 /** remark parser — markdown string → mdast */
@@ -98,8 +103,24 @@ function convertBlockChildren(
   schema: Schema,
 ): PmNode[] {
   const result: PmNode[] = [];
+  let i = 0;
 
-  for (const child of children) {
+  while (i < children.length) {
+    const child = children[i];
+
+    // §5.1: Detect <details> html pattern → toggle node
+    if (child.type === "html" && schema.nodes.toggle) {
+      const htmlVal = (child as { value: string }).value;
+      if (isDetailsOpening(htmlVal)) {
+        const toggleResult = tryConvertToggle(children, i, schema);
+        if (toggleResult) {
+          result.push(toggleResult.node);
+          i = toggleResult.endIndex + 1;
+          continue;
+        }
+      }
+    }
+
     const node = convertBlockNode(child, schema);
     if (node) {
       if (Array.isArray(node)) {
@@ -108,9 +129,65 @@ function convertBlockChildren(
         result.push(node);
       }
     }
+    i++;
   }
 
   return result;
+}
+
+/**
+ * §5.1: Try to convert a sequence of html(<details>...) + block* + html(</details>)
+ * into a toggle PM node. Returns null if pattern not matched.
+ */
+function tryConvertToggle(
+  children: Content[],
+  startIndex: number,
+  schema: Schema,
+): { node: PmNode; endIndex: number } | null {
+  const openHtml = (children[startIndex] as { value: string }).value;
+  const parsed = parseDetailsOpening(openHtml);
+  if (!parsed) return null;
+
+  // Find matching </details>, handling nesting
+  let depth = 1;
+  let endIndex = -1;
+  for (let j = startIndex + 1; j < children.length; j++) {
+    if (children[j].type === "html") {
+      const val = (children[j] as { value: string }).value;
+      if (isDetailsOpening(val)) depth++;
+      if (isDetailsClosing(val)) {
+        depth--;
+        if (depth === 0) {
+          endIndex = j;
+          break;
+        }
+      }
+    }
+  }
+
+  if (endIndex === -1) return null; // No matching closing tag
+
+  // Collect body children (between opening and closing html nodes)
+  const bodyMdastChildren = children.slice(startIndex + 1, endIndex);
+
+  // Recursively convert body children (handles nested toggles)
+  const bodyPmNodes =
+    bodyMdastChildren.length > 0
+      ? convertBlockChildren(bodyMdastChildren, schema)
+      : [];
+
+  // Create summary paragraph (first child of toggle)
+  const summaryPara = parsed.summary
+    ? schema.nodes.paragraph.create(null, [schema.text(parsed.summary)])
+    : schema.nodes.paragraph.create();
+
+  // Build toggle node: summary paragraph + body blocks
+  const toggleNode = schema.nodes.toggle.create(
+    { open: parsed.isOpen },
+    [summaryPara, ...bodyPmNodes],
+  );
+
+  return { node: toggleNode, endIndex };
 }
 
 /** Convert a single block-level mdast node to PM node(s) */
