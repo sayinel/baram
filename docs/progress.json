@@ -113,7 +113,8 @@
     },
     "M7": {
       "name": "연결 시스템 & 네비게이션",
-      "status": "in-progress",
+      "status": "completed",
+      "completedAt": "2026-02-21",
       "features": {
         "§5.9-callout": { "status": "completed", "tests": "12/12 vitest pass (roundtrip + structure)", "spec": "§5.9" },
         "§5.1-toggle": { "status": "completed", "tests": "25/25 vitest pass (roundtrip + structure + heading + nested)", "spec": "§5.1" },
@@ -134,13 +135,13 @@
         "§38-tab-pin": { "status": "completed", "tests": "tsc clean", "spec": "§38" },
         "§39-tab-switching": { "status": "completed", "tests": "12/12 vitest pass", "spec": "§39" },
         "macos-file-association": { "status": "completed", "tests": "cargo check pass + tsc clean", "spec": "macOS" },
-        "§30-graph-view": { "status": "planned", "spec": "§30" }
+        "§30-graph-view": { "status": "completed", "tests": "15/15 vitest pass (displayName + toGraphElements + nodeSize)", "spec": "§30" }
       }
     }
   },
 
   "testSummary": {
-    "vitest": "491/491 pass (37 test files)",
+    "vitest": "506/506 pass (38 test files)",
     "cargoTest": "38/38 pass (1 ignored)",
     "breakdown": {
       "stores": 6,
@@ -170,7 +171,8 @@
       "perf-benchmark": 5,
       "auto-rename": 11,
       "integration": 26,
-      "cargo-sse-parser": 3
+      "cargo-sse-parser": 3,
+      "graph-view": 15
     }
   },
 

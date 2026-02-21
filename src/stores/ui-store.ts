@@ -1,7 +1,7 @@
 // §3.5 UI 레이아웃 스토어
 import { create } from "zustand";
 
-type SidebarPanel = "files" | "outline" | "search" | "backlinks" | "bookmarks";
+type SidebarPanel = "files" | "outline" | "search" | "backlinks" | "bookmarks" | "graph";
 type ExportFormat = "html" | "pdf";
 
 interface UIState {

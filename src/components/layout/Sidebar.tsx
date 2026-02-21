@@ -4,6 +4,7 @@ import { FileTree } from "../sidebar/FileTree";
 import { Outline } from "../sidebar/Outline";
 import { Backlinks } from "../sidebar/Backlinks";
 import { BookmarkPanel } from "../sidebar/BookmarkPanel";
+import { GraphView } from "../sidebar/GraphView";
 import type { Editor } from "@tiptap/react";
 
 interface SidebarProps {
@@ -20,6 +21,7 @@ export function Sidebar({ editor }: SidebarProps) {
         {sidebarPanel === "outline" && <Outline editor={editor} />}
         {sidebarPanel === "backlinks" && <Backlinks />}
         {sidebarPanel === "bookmarks" && <BookmarkPanel />}
+        {sidebarPanel === "graph" && <GraphView />}
       </div>
     </div>
   );

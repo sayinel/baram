@@ -3079,3 +3079,73 @@ body {
   background-color: var(--color-bg-secondary);
   color: var(--color-text-primary);
 }
+
+/* ─── §30 Graph View ─── */
+
+.graph-view-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.graph-view-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.graph-view-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+}
+
+.graph-view-stats {
+  font-size: 10px;
+  color: var(--color-text-muted);
+}
+
+.graph-view-canvas {
+  flex: 1;
+  min-height: 0;
+  background: var(--color-bg-primary);
+}
+
+.graph-view-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  padding: 16px;
+  text-align: center;
+}
+
+/* Graph color variables — light theme */
+:root {
+  --graph-node-color: #6b7280;
+  --graph-active-color: #3b82f6;
+  --graph-active-border: #60a5fa;
+  --graph-neighbor-color: #8b5cf6;
+  --graph-orphan-color: #d1d5db;
+  --graph-edge-color: #9ca3af;
+  --graph-label-color: #374151;
+}
+
+/* Graph color variables — dark theme */
+[data-theme="dark"] {
+  --graph-node-color: #6b7280;
+  --graph-active-color: #60a5fa;
+  --graph-active-border: #93c5fd;
+  --graph-neighbor-color: #a78bfa;
+  --graph-orphan-color: #4b5563;
+  --graph-edge-color: #374151;
+  --graph-label-color: #d1d5db;
+}

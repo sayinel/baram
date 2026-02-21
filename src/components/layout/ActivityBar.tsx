@@ -2,7 +2,7 @@
 import type { ReactNode } from "react";
 import { useUIStore } from "../../stores/ui-store";
 
-type PanelId = "files" | "outline" | "backlinks" | "bookmarks";
+type PanelId = "files" | "outline" | "backlinks" | "bookmarks" | "graph";
 
 const PANEL_ICONS: { id: PanelId; label: string; icon: ReactNode }[] = [
   {
@@ -45,6 +45,21 @@ const PANEL_ICONS: { id: PanelId; label: string; icon: ReactNode }[] = [
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
         <line x1="4" y1="22" x2="4" y2="15" />
+      </svg>
+    ),
+  },
+  {
+    id: "graph",
+    label: "Graph View",
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="6" cy="6" r="3" />
+        <circle cx="18" cy="6" r="3" />
+        <circle cx="6" cy="18" r="3" />
+        <circle cx="18" cy="18" r="3" />
+        <line x1="8.5" y1="7.5" x2="15.5" y2="16.5" />
+        <line x1="15.5" y1="7.5" x2="8.5" y2="16.5" />
+        <line x1="6" y1="9" x2="6" y2="15" />
       </svg>
     ),
   },
