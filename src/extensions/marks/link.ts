@@ -2,6 +2,7 @@
 import { Mark, mergeAttributes, markPasteRule, InputRule } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { syntaxRevealKey } from "../plugins/syntax-reveal";
 
 export interface LinkOptions {
   HTMLAttributes: Record<string, string>;
@@ -126,7 +127,7 @@ export const Link = Mark.create<LinkOptions>({
             // Cmd+Click (Mac) or Ctrl+Click (Win/Linux) to open link
             if (!(event.metaKey || event.ctrlKey)) return false;
 
-            // Strategy 1: DOM — find <a> tag (works when link is rendered)
+            // Strategy 1: DOM — find <a> tag (works when link is rendered as-is)
             const target = event.target as HTMLElement;
             const anchor = target.closest("a");
             if (anchor) {
@@ -138,34 +139,37 @@ export const Link = Mark.create<LinkOptions>({
               }
             }
 
-            // Strategy 2: ProseMirror marks — works when SyntaxReveal
-            // has expanded link to plain text (no <a> in DOM)
+            // Strategy 2: ProseMirror marks (link not expanded by SyntaxReveal)
             const $pos = view.state.doc.resolve(pos);
-
-            // Check marks at position (covers most cases)
             let linkMark = $pos.marks().find((m) => m.type.name === "link");
-
-            // At left boundary, also check nodeAfter
             if (!linkMark && $pos.textOffset === 0) {
               const nodeAfter = $pos.parent.maybeChild($pos.index($pos.depth));
               if (nodeAfter) {
                 linkMark = nodeAfter.marks.find((m) => m.type.name === "link");
               }
             }
-
-            // Also check nodeBefore for right boundary
-            if (!linkMark) {
-              const nodeBefore = pos > 0 ? view.state.doc.resolve(pos - 1) : null;
-              if (nodeBefore) {
-                linkMark = nodeBefore.marks().find((m) => m.type.name === "link");
-              }
+            if (!linkMark && pos > 0) {
+              linkMark = view.state.doc.resolve(pos - 1).marks().find((m) => m.type.name === "link");
             }
-
             if (linkMark) {
               const href = linkMark.attrs.href as string;
               if (href) {
                 event.preventDefault();
                 openUrl(href).catch(console.error);
+                return true;
+              }
+            }
+
+            // Strategy 3: SyntaxReveal expanded link — mark removed, text is [text](url)
+            const srState = syntaxRevealKey.getState(view.state);
+            if (srState?.expanded?.kind === "link") {
+              const { from, to } = srState.expanded;
+              const expandedText = view.state.doc.textBetween(from, to);
+              // Parse URL from [text](url) or [text](url "title")
+              const m = expandedText.match(/\[.*?\]\(([^)\s]+)(?:\s+"[^"]*")?\)/);
+              if (m?.[1]) {
+                event.preventDefault();
+                openUrl(m[1]).catch(console.error);
                 return true;
               }
             }
