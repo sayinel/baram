@@ -352,6 +352,7 @@ body {
 .tiptap .toggle {
   display: flex;
   margin: 0.5em 0;
+  margin-left: -1.2em; /* indicator sits in editor padding area */
   padding: 0.1em 0;
 }
 
@@ -401,12 +402,6 @@ body {
 
 .tiptap .toggle-body p {
   margin: 0.2em 0;
-}
-
-/* Body content indentation: align with summary text start */
-.tiptap .toggle-body > :not(:first-child),
-.tiptap .toggle-body > div > :not(:first-child) {
-  padding-left: 1.2em;
 }
 
 /* Collapse: hide everything except summary */
