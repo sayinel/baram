@@ -126,17 +126,51 @@ export const Link = Mark.create<LinkOptions>({
             // Cmd+Click (Mac) or Ctrl+Click (Win/Linux) to open link
             if (!(event.metaKey || event.ctrlKey)) return false;
 
+            // Strategy 1: DOM — find <a> tag (works when link is rendered)
+            const target = event.target as HTMLElement;
+            const anchor = target.closest("a");
+            if (anchor) {
+              const href = anchor.getAttribute("href");
+              if (href) {
+                event.preventDefault();
+                openUrl(href).catch(console.error);
+                return true;
+              }
+            }
+
+            // Strategy 2: ProseMirror marks — works when SyntaxReveal
+            // has expanded link to plain text (no <a> in DOM)
             const $pos = view.state.doc.resolve(pos);
-            const marks = $pos.marks();
-            const linkMark = marks.find((m) => m.type.name === "link");
-            if (!linkMark) return false;
 
-            const href = linkMark.attrs.href as string;
-            if (!href) return false;
+            // Check marks at position (covers most cases)
+            let linkMark = $pos.marks().find((m) => m.type.name === "link");
 
-            event.preventDefault();
-            openUrl(href).catch(console.error);
-            return true;
+            // At left boundary, also check nodeAfter
+            if (!linkMark && $pos.textOffset === 0) {
+              const nodeAfter = $pos.parent.maybeChild($pos.index($pos.depth));
+              if (nodeAfter) {
+                linkMark = nodeAfter.marks.find((m) => m.type.name === "link");
+              }
+            }
+
+            // Also check nodeBefore for right boundary
+            if (!linkMark) {
+              const nodeBefore = pos > 0 ? view.state.doc.resolve(pos - 1) : null;
+              if (nodeBefore) {
+                linkMark = nodeBefore.marks().find((m) => m.type.name === "link");
+              }
+            }
+
+            if (linkMark) {
+              const href = linkMark.attrs.href as string;
+              if (href) {
+                event.preventDefault();
+                openUrl(href).catch(console.error);
+                return true;
+              }
+            }
+
+            return false;
           },
         },
       }),
