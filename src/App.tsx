@@ -13,6 +13,7 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import { EditorState, TextSelection } from "@tiptap/pm/state";
 import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { createBaramExtensions } from "./extensions";
 import { prosemirrorToMarkdown } from "./pipeline/pm-to-md";
 import { markdownToProsemirror } from "./pipeline/md-to-pm";
@@ -921,7 +922,7 @@ function App() {
 
   // Native menu event listener (Tauri menu bar → frontend dispatch)
   useEffect(() => {
-    const unlisten = listen<string>("menu-event", (event) => {
+    const unlisten = listen<string>("menu-event", async (event) => {
       switch (event.payload) {
         case "file_new":
           handleNewFile();
@@ -969,6 +970,97 @@ function App() {
         case "go_quick_switcher":
           toggleQuickSwitcher();
           break;
+
+        // --- Insert menu handlers ---
+        case "insert_h1":
+          editor?.chain().focus().toggleHeading({ level: 1 }).run();
+          break;
+        case "insert_h2":
+          editor?.chain().focus().toggleHeading({ level: 2 }).run();
+          break;
+        case "insert_h3":
+          editor?.chain().focus().toggleHeading({ level: 3 }).run();
+          break;
+        case "insert_paragraph":
+          editor?.chain().focus().setNode("paragraph").run();
+          break;
+        case "insert_bold":
+          editor?.chain().focus().toggleBold().run();
+          break;
+        case "insert_italic":
+          editor?.chain().focus().toggleItalic().run();
+          break;
+        case "insert_underline":
+          editor?.chain().focus().toggleUnderline().run();
+          break;
+        case "insert_strikethrough":
+          editor?.chain().focus().toggleStrike().run();
+          break;
+        case "insert_inline_code":
+          editor?.chain().focus().toggleCode().run();
+          break;
+        case "insert_link": {
+          if (!editor) break;
+          const { from, to } = editor.state.selection;
+          if (from === to) break; // Need selection for link
+          const url = window.prompt("Enter URL:");
+          if (url) {
+            editor.chain().focus().toggleLink({ href: url }).run();
+          }
+          break;
+        }
+        case "insert_image": {
+          if (!editor) break;
+          const imagePath = await open({
+            filters: [
+              { name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "svg", "webp"] },
+            ],
+          });
+          if (imagePath) {
+            editor.chain().focus().setImage({ src: imagePath }).run();
+          }
+          break;
+        }
+        case "insert_table":
+          editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+          break;
+        case "insert_code_block":
+          editor?.chain().focus().toggleCodeBlock().run();
+          break;
+        case "insert_math_block":
+          editor?.chain().focus().setMathBlock().run();
+          break;
+        case "insert_blockquote":
+          editor?.chain().focus().toggleBlockquote().run();
+          break;
+        case "insert_ordered_list":
+          editor?.chain().focus().toggleOrderedList().run();
+          break;
+        case "insert_unordered_list":
+          editor?.chain().focus().toggleBulletList().run();
+          break;
+        case "insert_task_list":
+          editor?.chain().focus().toggleTaskList().run();
+          break;
+        case "insert_hr":
+          editor?.chain().focus().setHorizontalRule().run();
+          break;
+        case "insert_frontmatter":
+          editor?.chain().focus().insertContent({ type: "frontmatter", attrs: { yaml: "" } }).run();
+          break;
+
+        // --- Help menu handlers ---
+        case "help_shortcuts": {
+          const { rootPath } = useFileStore.getState();
+          if (rootPath) {
+            const shortcutsPath = `${rootPath}/docs/keyboard-shortcuts.md`;
+            handleOpenFilePath(shortcutsPath).catch(() => {});
+          }
+          break;
+        }
+        case "help_report":
+          openUrl("https://github.com/anthropics/baram/issues").catch(() => {});
+          break;
       }
     });
 
@@ -984,11 +1076,13 @@ function App() {
     handleCloseTab,
     handleGoBack,
     handleGoForward,
+    handleOpenFilePath,
     toggleSourceMode,
     toggleSidebar,
     toggleCommandPalette,
     toggleQuickSwitcher,
     toggleSettings,
+    editor,
   ]);
 
   return (

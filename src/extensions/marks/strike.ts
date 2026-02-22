@@ -46,7 +46,7 @@ export const Strike = Mark.create<StrikeOptions>({
   },
 
   addKeyboardShortcuts() {
-    return { "Mod-Shift-s": () => this.editor.commands.toggleStrike() };
+    return { "Mod-Shift-x": () => this.editor.commands.toggleStrike() };
   },
 
   addInputRules() {

@@ -37,7 +37,7 @@ Complete list of keyboard shortcuts available in Baram.
 | Bold | `Cmd+B` | `Ctrl+B` |
 | Italic | `Cmd+I` | `Ctrl+I` |
 | Underline | `Cmd+U` | `Ctrl+U` |
-| Strikethrough | `Cmd+Shift+S` | `Ctrl+Shift+S` |
+| Strikethrough | `Cmd+Shift+X` | `Ctrl+Shift+X` |
 | Inline Code | `Cmd+E` | `Ctrl+E` |
 
 ## Block Formatting

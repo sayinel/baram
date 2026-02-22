@@ -142,9 +142,11 @@ pub fn run() {
                 .build(app)?;
             let insert_strikethrough = MenuItemBuilder::new("Strikethrough")
                 .id("insert_strikethrough")
+                .accelerator("CmdOrCtrl+Shift+X")
                 .build(app)?;
             let insert_inline_code = MenuItemBuilder::new("Inline Code")
                 .id("insert_inline_code")
+                .accelerator("CmdOrCtrl+E")
                 .build(app)?;
             let insert_link = MenuItemBuilder::new("Link")
                 .id("insert_link")
@@ -157,21 +159,26 @@ pub fn run() {
                 .build(app)?;
             let insert_code_block = MenuItemBuilder::new("Code Block")
                 .id("insert_code_block")
+                .accelerator("CmdOrCtrl+Alt+C")
                 .build(app)?;
             let insert_math_block = MenuItemBuilder::new("Math Block")
                 .id("insert_math_block")
+                .accelerator("CmdOrCtrl+Shift+M")
                 .build(app)?;
             let insert_blockquote = MenuItemBuilder::new("Blockquote")
                 .id("insert_blockquote")
                 .build(app)?;
             let insert_ordered_list = MenuItemBuilder::new("Ordered List")
                 .id("insert_ordered_list")
+                .accelerator("CmdOrCtrl+Shift+7")
                 .build(app)?;
             let insert_unordered_list = MenuItemBuilder::new("Unordered List")
                 .id("insert_unordered_list")
+                .accelerator("CmdOrCtrl+Shift+8")
                 .build(app)?;
             let insert_task_list = MenuItemBuilder::new("Task List")
                 .id("insert_task_list")
+                .accelerator("CmdOrCtrl+Shift+9")
                 .build(app)?;
             let insert_hr = MenuItemBuilder::new("Horizontal Rule")
                 .id("insert_hr")
@@ -235,6 +242,27 @@ pub fn run() {
                 .item(&go_switch_doc)
                 .build()?;
 
+            // --- Window menu (macOS standard) ---
+            let window_menu = SubmenuBuilder::new(app, "Window")
+                .minimize()
+                .maximize()
+                .separator()
+                .close_window()
+                .build()?;
+
+            // --- Help menu ---
+            let help_shortcuts = MenuItemBuilder::new("Keyboard Shortcuts")
+                .id("help_shortcuts")
+                .build(app)?;
+            let help_report = MenuItemBuilder::new("Report Issue...")
+                .id("help_report")
+                .build(app)?;
+
+            let help_menu = SubmenuBuilder::new(app, "Help")
+                .item(&help_shortcuts)
+                .item(&help_report)
+                .build()?;
+
             // --- App menu (macOS: first submenu = application menu with Quit) ---
             let file_settings = MenuItemBuilder::new("Settings...")
                 .id("file_settings")
@@ -262,6 +290,8 @@ pub fn run() {
                 .item(&view_menu)
                 .item(&insert_menu)
                 .item(&go_menu)
+                .item(&window_menu)
+                .item(&help_menu)
                 .build()?;
 
             app.set_menu(menu)?;
