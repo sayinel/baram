@@ -2,7 +2,7 @@
 // §38 Tab Pin — context menu, pinned rendering, drag boundary clamping
 import { useCallback, useRef, useState, useEffect } from "react";
 import { ask } from "@tauri-apps/plugin-dialog";
-import { useEditorStore } from "../../stores/editor-store";
+import { useEditorStore, isFileTab } from "../../stores/editor-store";
 
 const DRAG_THRESHOLD = 3; // px before drag activates
 
@@ -273,7 +273,7 @@ export function TabBar() {
               >
                 {tab.isPinned && <PinIcon className="tab-pin-icon" />}
                 <span className="tab-title">
-                  {tab.isDirty ? "\u25CF " : ""}
+                  {tab.isDirty && isFileTab(tab) ? "\u25CF " : ""}
                   {tab.title}
                 </span>
                 <button

@@ -3,7 +3,7 @@ import { useEffect, useRef, useCallback, useState } from "react";
 import cytoscape from "cytoscape";
 import type { Core, EventObject, StylesheetStyle } from "cytoscape";
 import { useFileStore } from "../../stores/file-store";
-import { useEditorStore } from "../../stores/editor-store";
+import { useEditorStore, isGraphTab } from "../../stores/editor-store";
 import { useLinkStore } from "../../stores/link-store";
 import { getLinkIndex, readFile } from "../../ipc/invoke";
 import { toGraphElements, nodeSize } from "./graph-utils";
@@ -75,7 +75,15 @@ export function GraphView() {
   const rootPath = useFileStore((s) => s.rootPath);
   const activeFilePath = useEditorStore((s) => {
     const tab = s.tabs.find((t) => t.id === s.activeTabId);
-    return tab?.filePath ?? null;
+    if (tab?.filePath) return tab.filePath;
+    // When graph tab is active, find the most recently used file tab for highlighting
+    if (isGraphTab(tab)) {
+      for (const mruId of s.mruOrder) {
+        const mruTab = s.tabs.find((t) => t.id === mruId);
+        if (mruTab?.filePath) return mruTab.filePath;
+      }
+    }
+    return null;
   });
   const indexVersion = useLinkStore((s) => s.indexVersion);
   const [nodeCount, setNodeCount] = useState(0);
@@ -239,6 +247,10 @@ export function GraphView() {
     );
   }
 
+  const handleOpenInTab = useCallback(() => {
+    useEditorStore.getState().openGraphTab();
+  }, []);
+
   return (
     <div className="graph-view-container">
       <div className="graph-view-header">
@@ -246,6 +258,15 @@ export function GraphView() {
         <span className="graph-view-stats">
           {nodeCount} nodes, {edgeCount} edges
         </span>
+        <button
+          className="graph-view-expand-btn"
+          onClick={handleOpenInTab}
+          title="Open in editor tab"
+        >
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+            <path d="M2 1h5v1H3v4H2V1zm12 0h-5v1h4v4h1V1zM2 15h5v-1H3v-4H2v5zm12 0h-5v-1h4v-4h1v5z" />
+          </svg>
+        </button>
       </div>
       <div ref={containerRef} className="graph-view-canvas" />
     </div>

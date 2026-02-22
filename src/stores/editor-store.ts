@@ -1,6 +1,8 @@
 // §3.5 에디터 상태 스토어
 import { create } from "zustand";
 
+export type EditorTabType = "file" | "graph";
+
 export interface EditorTab {
   id: string;
   filePath: string;
@@ -8,6 +10,15 @@ export interface EditorTab {
   isDirty: boolean;
   /** §38 Tab Pin */
   isPinned: boolean;
+  /** Tab type — defaults to "file" for backward compat */
+  type?: EditorTabType;
+}
+
+export function isFileTab(tab: EditorTab | undefined): boolean {
+  return !!tab && (!tab.type || tab.type === "file");
+}
+export function isGraphTab(tab: EditorTab | undefined): boolean {
+  return tab?.type === "graph";
 }
 
 interface EditorState {
@@ -43,6 +54,8 @@ interface EditorState {
   closeOtherTabs: (tabId: string) => void;
   /** §38 Close unpinned tabs to the right of the given tab */
   closeTabsToRight: (tabId: string) => void;
+  /** Open graph view as a singleton tab */
+  openGraphTab: () => void;
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -55,7 +68,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   openTab: (tab) =>
     set((state) => {
-      const existing = state.tabs.find((t) => t.filePath === tab.filePath);
+      // Only dedup on non-empty filePath to avoid untitled/graph collisions
+      const existing = tab.filePath
+        ? state.tabs.find((t) => t.filePath === tab.filePath)
+        : undefined;
       if (existing) {
         // §39 Touch MRU for existing tab
         const mruOrder = [
@@ -204,6 +220,24 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const mruOrder = state.mruOrder.filter((id) => !closedIds.has(id));
       return { tabs, activeTabId, mruOrder };
     }),
+
+  openGraphTab: () => {
+    const { tabs, openTab: open, setActiveTab } = get();
+    // Singleton: if graph tab already exists, just activate it
+    const existing = tabs.find((t) => t.type === "graph");
+    if (existing) {
+      setActiveTab(existing.id);
+      return;
+    }
+    open({
+      id: crypto.randomUUID(),
+      filePath: "",
+      title: "Graph View",
+      isDirty: false,
+      isPinned: false,
+      type: "graph",
+    });
+  },
 
   getNextMruTab: (currentId, direction) => {
     const { mruOrder } = get();

@@ -1,6 +1,7 @@
 // §4.5 Command Palette — Cmd+P
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useUIStore } from "../../stores/ui-store";
+import { useEditorStore } from "../../stores/editor-store";
 import type { Editor } from "@tiptap/react";
 
 export interface CommandItem {
@@ -74,6 +75,12 @@ function buildCommands(
       category: "View",
       shortcut: "\u21E7\u2318L",
       action: () => toggleSidebar(),
+    },
+    {
+      id: "view:graph-tab",
+      label: "Open Graph View in Tab",
+      category: "View",
+      action: () => useEditorStore.getState().openGraphTab(),
     },
     // Insert — Headings
     {

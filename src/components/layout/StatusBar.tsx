@@ -5,6 +5,7 @@ import type { Editor } from "@tiptap/react";
 interface StatusBarProps {
   editor: Editor | null;
   isSourceMode: boolean;
+  isGraphMode?: boolean;
 }
 
 function countWords(text: string): number {
@@ -13,7 +14,7 @@ function countWords(text: string): number {
   return trimmed.split(/\s+/).length;
 }
 
-export function StatusBar({ editor, isSourceMode }: StatusBarProps) {
+export function StatusBar({ editor, isSourceMode, isGraphMode }: StatusBarProps) {
   const stats = useMemo(() => {
     if (!editor) return { words: 0, chars: 0, line: 0, col: 0 };
 
@@ -55,18 +56,20 @@ export function StatusBar({ editor, isSourceMode }: StatusBarProps) {
     <div className="status-bar">
       <div className="status-bar-left">
         <span className="status-mode">
-          {isSourceMode ? "Source" : "WYSIWYG"}
+          {isGraphMode ? "Graph" : isSourceMode ? "Source" : "WYSIWYG"}
         </span>
       </div>
-      <div className="status-bar-right">
-        <span className="status-words" title={`${stats.chars} characters`}>
-          {stats.words} words
-        </span>
-        <span className="status-separator">|</span>
-        <span className="status-position">
-          Ln {stats.line}, Col {stats.col}
-        </span>
-      </div>
+      {!isGraphMode && (
+        <div className="status-bar-right">
+          <span className="status-words" title={`${stats.chars} characters`}>
+            {stats.words} words
+          </span>
+          <span className="status-separator">|</span>
+          <span className="status-position">
+            Ln {stats.line}, Col {stats.col}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

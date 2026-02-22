@@ -19,6 +19,7 @@ import { prosemirrorToMarkdown } from "./pipeline/pm-to-md";
 import { markdownToProsemirror } from "./pipeline/md-to-pm";
 import type { SourceCodeEditorRef } from "./components/editor/SourceCodeEditor";
 import type { EditorTab } from "./stores/editor-store";
+import { isFileTab, isGraphTab } from "./stores/editor-store";
 import { TabSwitcher } from "./components/layout/TabSwitcher";
 import {
   pmPosToMdOffset,
@@ -80,6 +81,11 @@ const HoverPreview = lazy(() =>
 const SettingsModal = lazy(() =>
   import("./components/settings/SettingsModal").then((m) => ({
     default: m.SettingsModal,
+  })),
+);
+const GraphViewTab = lazy(() =>
+  import("./components/sidebar/GraphView").then((m) => ({
+    default: m.GraphView,
   })),
 );
 
@@ -209,20 +215,23 @@ function App() {
 
     // Save outgoing tab content + cache EditorState (preserves undo history)
     if (prevTabId && prevTabId !== activeTabId) {
-      // Cache EditorState before switching (keeps undo/redo stack intact)
-      if (!isSourceMode) {
-        editorStateCache.current.set(prevTabId, editor.state);
-      }
       const prevTab = tabs.find((t) => t.id === prevTabId);
-      if (prevTab?.filePath) {
-        try {
-          // In source mode, save from CodeMirror (ProseMirror is stale)
-          const md = isSourceMode
-            ? sourceContentRef.current
-            : prosemirrorToMarkdown(editor.state.doc);
-          setFileContent(prevTab.filePath, md);
-        } catch {
-          // ignore serialization errors for outgoing tab
+      // Only save ProseMirror state for file tabs (graph tabs have no editor state)
+      if (isFileTab(prevTab)) {
+        // Cache EditorState before switching (keeps undo/redo stack intact)
+        if (!isSourceMode) {
+          editorStateCache.current.set(prevTabId, editor.state);
+        }
+        if (prevTab?.filePath) {
+          try {
+            // In source mode, save from CodeMirror (ProseMirror is stale)
+            const md = isSourceMode
+              ? sourceContentRef.current
+              : prosemirrorToMarkdown(editor.state.doc);
+            setFileContent(prevTab.filePath, md);
+          } catch {
+            // ignore serialization errors for outgoing tab
+          }
         }
       }
       // Exit source mode when switching tabs
@@ -243,6 +252,9 @@ function App() {
       editor.view.updateState(newState);
       return;
     }
+
+    // Graph tab — no ProseMirror content to load
+    if (isGraphTab(activeTab)) return;
 
     const content = activeTab.filePath
       ? openFiles.get(activeTab.filePath)
@@ -320,7 +332,7 @@ function App() {
   useEffect(() => {
     const tab = tabs.find((t) => t.id === activeTabId);
     document.title = tab
-      ? `${tab.isDirty ? "\u25CF " : ""}${tab.title} \u2014 Baram`
+      ? `${tab.isDirty && isFileTab(tab) ? "\u25CF " : ""}${tab.title} \u2014 Baram`
       : "Baram";
   }, [activeTabId, tabs]);
 
@@ -333,6 +345,9 @@ function App() {
   // Cmd+/ toggle between WYSIWYG and Source Code mode (§5.1 cursor preservation)
   const toggleSourceMode = useCallback(() => {
     if (!editor) return;
+    // Graph tab has no editor content — source mode not applicable
+    const currentTab = tabs.find((t) => t.id === activeTabId);
+    if (isGraphTab(currentTab)) return;
 
     if (!isSourceMode) {
       // WYSIWYG → Source: collapse any active syntax reveal expansion first
@@ -382,7 +397,7 @@ function App() {
         }
       });
     }
-  }, [editor, isSourceMode]);
+  }, [editor, isSourceMode, tabs, activeTabId]);
 
   // --- File action handlers ---
   const handleNewFile = useCallback((name?: string) => {
@@ -436,6 +451,7 @@ function App() {
     if (!editor) return;
     const activeTab = tabs.find((t) => t.id === activeTabId);
     if (!activeTab) return;
+    if (isGraphTab(activeTab)) return;
 
     const md = prosemirrorToMarkdown(editor.state.doc);
 
@@ -489,6 +505,7 @@ function App() {
     if (!editor) return;
     const activeTab = tabs.find((t) => t.id === activeTabId);
     if (!activeTab) return;
+    if (isGraphTab(activeTab)) return;
 
     const md = prosemirrorToMarkdown(editor.state.doc);
     const savePath = await save({
@@ -1085,11 +1102,13 @@ function App() {
     editor,
   ]);
 
+  const isGraphTabActive = isGraphTab(tabs.find((t) => t.id === activeTabId));
+
   return (
     <>
       <AppLayout
         editor={editor}
-        statusBar={<StatusBar editor={editor} isSourceMode={isSourceMode} />}
+        statusBar={<StatusBar editor={editor} isSourceMode={isSourceMode} isGraphMode={isGraphTabActive} />}
       >
         <TabBar />
         <div className="editor-area">
@@ -1100,6 +1119,10 @@ function App() {
                 onOpenFile={handleOpenFile}
                 onOpenFolder={handleOpenFolder}
               />
+            </Suspense>
+          ) : isGraphTabActive ? (
+            <Suspense fallback={null}>
+              <GraphViewTab />
             </Suspense>
           ) : isSourceMode ? (
             <Suspense fallback={null}>

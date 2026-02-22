@@ -3380,6 +3380,26 @@ body {
   color: var(--color-text-muted);
 }
 
+.graph-view-expand-btn {
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+}
+.graph-view-expand-btn:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-secondary);
+}
+
+/* Graph View rendered in editor area (tab) */
+.editor-area > .graph-view-container {
+  height: 100%;
+}
+
 .graph-view-canvas {
   flex: 1;
   min-height: 0;
