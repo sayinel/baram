@@ -5,7 +5,57 @@ use reqwest::header::{HeaderValue, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
 use tauri::Emitter;
 
-use super::LlmError;
+use super::{LlmError, ModelInfo};
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct OllamaTagsResponse {
+    pub models: Vec<OllamaModelEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct OllamaModelEntry {
+    pub name: String,
+}
+
+/// List available Ollama models (no auth required).
+pub async fn list_models(base_url: &str) -> Result<Vec<ModelInfo>, LlmError> {
+    let url = format!("{}/api/tags", base_url.trim_end_matches('/'));
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| LlmError::RequestFailed(e.to_string()))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "unknown error".to_string());
+        return Err(LlmError::RequestFailed(format!(
+            "HTTP {}: {}",
+            status, body_text
+        )));
+    }
+
+    let body: OllamaTagsResponse = response
+        .json()
+        .await
+        .map_err(|e| LlmError::RequestFailed(e.to_string()))?;
+
+    let models = body
+        .models
+        .into_iter()
+        .map(|m| ModelInfo {
+            name: m.name.clone(),
+            id: m.name,
+        })
+        .collect();
+
+    Ok(models)
+}
 
 #[derive(Debug, Serialize)]
 struct OllamaRequest {

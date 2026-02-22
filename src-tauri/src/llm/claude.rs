@@ -5,7 +5,72 @@ use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
 use tauri::Emitter;
 
-use super::LlmError;
+use super::{LlmError, ModelInfo};
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ClaudeModelsResponse {
+    pub data: Vec<ClaudeModelEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ClaudeModelEntry {
+    pub id: String,
+    #[serde(default)]
+    pub display_name: Option<String>,
+}
+
+/// List available Claude models via the Anthropic API.
+pub async fn list_models(api_key: &str) -> Result<Vec<ModelInfo>, LlmError> {
+    if api_key.is_empty() {
+        return Err(LlmError::NoApiKey);
+    }
+
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        "x-api-key",
+        HeaderValue::from_str(api_key).map_err(|e| LlmError::RequestFailed(e.to_string()))?,
+    );
+    headers.insert(
+        "anthropic-version",
+        HeaderValue::from_static("2023-06-01"),
+    );
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get("https://api.anthropic.com/v1/models")
+        .headers(headers)
+        .send()
+        .await
+        .map_err(|e| LlmError::RequestFailed(e.to_string()))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "unknown error".to_string());
+        return Err(LlmError::RequestFailed(format!(
+            "HTTP {}: {}",
+            status, body_text
+        )));
+    }
+
+    let body: ClaudeModelsResponse = response
+        .json()
+        .await
+        .map_err(|e| LlmError::RequestFailed(e.to_string()))?;
+
+    let models = body
+        .data
+        .into_iter()
+        .map(|m| ModelInfo {
+            name: m.display_name.unwrap_or_else(|| m.id.clone()),
+            id: m.id,
+        })
+        .collect();
+
+    Ok(models)
+}
 
 #[derive(Debug, Serialize)]
 struct ClaudeRequest {

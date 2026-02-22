@@ -4,7 +4,15 @@ pub mod claude;
 pub mod ollama;
 pub mod openai;
 
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+/// Model information returned from provider APIs
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelInfo {
+    pub id: String,
+    pub name: String,
+}
 
 #[derive(Error, Debug)]
 pub enum LlmError {
@@ -84,6 +92,26 @@ pub async fn complete(
                 app_handle,
             )
             .await
+        }
+        _ => Err(LlmError::UnknownProvider(provider.to_string())),
+    }
+}
+
+/// List available models from the specified provider.
+pub async fn list_models(
+    provider: &str,
+    api_key: &str,
+    base_url: Option<&str>,
+) -> Result<Vec<ModelInfo>, LlmError> {
+    match provider {
+        "claude" => claude::list_models(api_key).await,
+        "openai" => {
+            let url = base_url.unwrap_or(OPENAI_DEFAULT_BASE_URL);
+            openai::list_models(api_key, url).await
+        }
+        "ollama" => {
+            let url = base_url.unwrap_or(OLLAMA_DEFAULT_BASE_URL);
+            ollama::list_models(url).await
         }
         _ => Err(LlmError::UnknownProvider(provider.to_string())),
     }
@@ -222,5 +250,86 @@ mod tests {
         let err = LlmError::UnknownProvider("foo".to_string());
         assert!(err.to_string().contains("Unknown provider"));
         assert!(err.to_string().contains("foo"));
+    }
+
+    // --- ModelInfo tests ---
+
+    #[test]
+    fn test_model_info_serialization() {
+        let model = ModelInfo {
+            id: "claude-sonnet-4-5-20250929".to_string(),
+            name: "Claude Sonnet 4.5".to_string(),
+        };
+        let json = serde_json::to_value(&model).unwrap();
+        assert_eq!(json["id"], "claude-sonnet-4-5-20250929");
+        assert_eq!(json["name"], "Claude Sonnet 4.5");
+    }
+
+    #[test]
+    fn test_model_info_deserialization() {
+        let json = r#"{"id":"gpt-4o","name":"gpt-4o"}"#;
+        let model: ModelInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(model.id, "gpt-4o");
+        assert_eq!(model.name, "gpt-4o");
+    }
+
+    // --- API response parsing tests (Claude models) ---
+
+    #[test]
+    fn test_claude_models_response_parse() {
+        let json = r#"{"data":[{"id":"claude-sonnet-4-5-20250929","display_name":"Claude Sonnet 4.5"},{"id":"claude-3-haiku-20240307","display_name":"Claude 3 Haiku"}]}"#;
+        let resp: claude::ClaudeModelsResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.data.len(), 2);
+        assert_eq!(resp.data[0].id, "claude-sonnet-4-5-20250929");
+        assert_eq!(resp.data[0].display_name.as_deref(), Some("Claude Sonnet 4.5"));
+        assert_eq!(resp.data[1].id, "claude-3-haiku-20240307");
+    }
+
+    #[test]
+    fn test_claude_models_response_no_display_name() {
+        let json = r#"{"data":[{"id":"claude-unknown-model"}]}"#;
+        let resp: claude::ClaudeModelsResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.data.len(), 1);
+        assert_eq!(resp.data[0].id, "claude-unknown-model");
+        assert!(resp.data[0].display_name.is_none());
+    }
+
+    // --- API response parsing tests (OpenAI models) ---
+
+    #[test]
+    fn test_openai_models_response_parse() {
+        let json = r#"{"data":[{"id":"gpt-4o","object":"model","owned_by":"openai"},{"id":"gpt-4o-mini","object":"model","owned_by":"openai"},{"id":"dall-e-3","object":"model","owned_by":"openai"}]}"#;
+        let resp: openai::OpenAIModelsResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.data.len(), 3);
+        assert_eq!(resp.data[0].id, "gpt-4o");
+    }
+
+    #[test]
+    fn test_openai_chat_model_filter() {
+        let prefixes = &["gpt-", "o1-", "o3-", "o4-", "chatgpt-"];
+        let models = vec!["gpt-4o", "gpt-4o-mini", "dall-e-3", "whisper-1", "o1-preview", "chatgpt-4o-latest"];
+        let filtered: Vec<&str> = models
+            .into_iter()
+            .filter(|id| prefixes.iter().any(|p| id.starts_with(p)))
+            .collect();
+        assert_eq!(filtered, vec!["gpt-4o", "gpt-4o-mini", "o1-preview", "chatgpt-4o-latest"]);
+    }
+
+    // --- API response parsing tests (Ollama tags) ---
+
+    #[test]
+    fn test_ollama_tags_response_parse() {
+        let json = r#"{"models":[{"name":"llama3:latest","size":4661224676},{"name":"mistral:latest","size":4108928000}]}"#;
+        let resp: ollama::OllamaTagsResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.models.len(), 2);
+        assert_eq!(resp.models[0].name, "llama3:latest");
+        assert_eq!(resp.models[1].name, "mistral:latest");
+    }
+
+    #[test]
+    fn test_ollama_tags_response_empty() {
+        let json = r#"{"models":[]}"#;
+        let resp: ollama::OllamaTagsResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.models.is_empty());
     }
 }

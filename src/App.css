@@ -3310,6 +3310,64 @@ body {
   color: var(--color-text-primary);
 }
 
+/* Model selector row */
+.settings-model-row {
+  display: flex;
+  gap: 6px;
+  width: 180px;
+}
+
+.settings-input-model,
+.settings-select-model {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+
+.settings-model-refresh {
+  padding: 5px 8px;
+  font-size: 0.875rem;
+  font-family: var(--font-sans);
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.settings-model-refresh:hover:not(:disabled) {
+  background-color: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+}
+
+.settings-model-refresh:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.settings-model-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: settings-spin 0.6s linear infinite;
+}
+
+@keyframes settings-spin {
+  to { transform: rotate(360deg); }
+}
+
+.settings-model-error {
+  margin-top: 4px;
+  font-size: 0.7rem;
+  color: var(--color-error, #e53e3e);
+  line-height: 1.3;
+}
+
 /* Font Family Picker */
 .settings-font-picker {
   position: relative;

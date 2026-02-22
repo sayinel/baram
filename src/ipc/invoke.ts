@@ -15,6 +15,7 @@ import type {
   JsonValue,
   SnapshotInfo,
   RenameResult,
+  ModelInfo,
 } from "./types";
 
 // §3.2 File System commands
@@ -110,6 +111,14 @@ export async function renameBlockId(
 }
 
 // §6.3 LLM commands
+export async function llmListModels(
+  provider: string,
+  apiKey?: string,
+  baseUrl?: string,
+): Promise<ModelInfo[]> {
+  return invoke<ModelInfo[]>("llm_list_models", { provider, apiKey, baseUrl });
+}
+
 export async function llmComplete(
   apiKey: string,
   prompt: string,

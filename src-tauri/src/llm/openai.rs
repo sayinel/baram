@@ -5,7 +5,75 @@ use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
 use tauri::Emitter;
 
-use super::LlmError;
+use super::{LlmError, ModelInfo};
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct OpenAIModelsResponse {
+    pub data: Vec<OpenAIModelEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct OpenAIModelEntry {
+    pub id: String,
+}
+
+/// Chat model prefixes to filter from the full model list.
+const CHAT_MODEL_PREFIXES: &[&str] = &["gpt-", "o1-", "o3-", "o4-", "chatgpt-"];
+
+/// List available OpenAI models, filtered to chat-relevant models.
+pub async fn list_models(api_key: &str, base_url: &str) -> Result<Vec<ModelInfo>, LlmError> {
+    if api_key.is_empty() {
+        return Err(LlmError::NoApiKey);
+    }
+
+    let mut headers = HeaderMap::new();
+    let auth_value = format!("Bearer {}", api_key);
+    headers.insert(
+        AUTHORIZATION,
+        HeaderValue::from_str(&auth_value)
+            .map_err(|e| LlmError::RequestFailed(e.to_string()))?,
+    );
+
+    let url = format!("{}/v1/models", base_url.trim_end_matches('/'));
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&url)
+        .headers(headers)
+        .send()
+        .await
+        .map_err(|e| LlmError::RequestFailed(e.to_string()))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "unknown error".to_string());
+        return Err(LlmError::RequestFailed(format!(
+            "HTTP {}: {}",
+            status, body_text
+        )));
+    }
+
+    let body: OpenAIModelsResponse = response
+        .json()
+        .await
+        .map_err(|e| LlmError::RequestFailed(e.to_string()))?;
+
+    let mut models: Vec<ModelInfo> = body
+        .data
+        .into_iter()
+        .filter(|m| CHAT_MODEL_PREFIXES.iter().any(|prefix| m.id.starts_with(prefix)))
+        .map(|m| ModelInfo {
+            name: m.id.clone(),
+            id: m.id,
+        })
+        .collect();
+
+    models.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok(models)
+}
 
 #[derive(Debug, Serialize)]
 struct OpenAIRequest {

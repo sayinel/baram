@@ -62,6 +62,11 @@ export interface GitStatus {
 }
 
 // §6.3 LLM types
+export interface ModelInfo {
+  id: string;
+  name: string;
+}
+
 export interface LLMCompleteInput {
   apiKey: string;
   prompt: string;

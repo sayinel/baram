@@ -5,6 +5,8 @@ import { useUIStore } from "../../stores/ui-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useAIStore } from "../../stores/ai-store";
 import { CustomAICommandEditor } from "./CustomAICommandEditor";
+import { llmListModels } from "../../ipc/invoke";
+import type { ModelInfo } from "../../ipc/types";
 
 type SettingsTab = "general" | "editor" | "appearance" | "files" | "markdown" | "ai";
 
@@ -331,6 +333,10 @@ function AITab() {
     maxSuggestionLength, setMaxSuggestionLength,
   } = useAIStore();
   const [showKey, setShowKey] = useState(false);
+  const [models, setModels] = useState<ModelInfo[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsError, setModelsError] = useState<string | null>(null);
+  const [customMode, setCustomMode] = useState(false);
 
   const handleProviderChange = useCallback(
     (newProvider: "claude" | "openai" | "ollama") => {
@@ -338,9 +344,31 @@ function AITab() {
       if (newProvider === "claude") setModel("claude-sonnet-4-5-20250929");
       else if (newProvider === "openai") setModel("gpt-4o");
       else if (newProvider === "ollama") setModel("llama3");
+      setModels([]);
+      setModelsError(null);
+      setCustomMode(false);
     },
     [setProvider, setModel],
   );
+
+  const fetchModels = useCallback(async () => {
+    setModelsLoading(true);
+    setModelsError(null);
+    try {
+      const baseUrl = provider === "ollama" ? ollamaUrl || undefined : undefined;
+      const key = provider === "ollama" ? undefined : apiKey;
+      const result = await llmListModels(provider, key, baseUrl);
+      setModels(result);
+      setCustomMode(false);
+    } catch (err) {
+      setModelsError(err instanceof Error ? err.message : String(err));
+      setModels([]);
+    } finally {
+      setModelsLoading(false);
+    }
+  }, [provider, apiKey, ollamaUrl]);
+
+  const canFetchModels = provider === "ollama" || apiKey.length > 0;
 
   return (
     <div className="settings-section">
@@ -356,15 +384,6 @@ function AITab() {
           <option value="openai">OpenAI</option>
           <option value="ollama">Ollama (Local)</option>
         </select>
-      </SettingsRow>
-
-      <SettingsRow label="Model" description="Model name or ID to use for requests">
-        <input
-          type="text"
-          className="settings-input"
-          value={model}
-          onChange={(e) => setModel(e.target.value)}
-        />
       </SettingsRow>
 
       {provider !== "ollama" && (
@@ -399,6 +418,54 @@ function AITab() {
           />
         </SettingsRow>
       )}
+
+      <SettingsRow label="Model" description="Model name or ID to use for requests">
+        <div className="settings-model-row">
+          {customMode || (models.length === 0 && !modelsLoading) ? (
+            <input
+              type="text"
+              className="settings-input settings-input-model"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder="Enter model name..."
+            />
+          ) : (
+            <select
+              className="settings-select settings-select-model"
+              value={model}
+              onChange={(e) => {
+                if (e.target.value === "__custom__") {
+                  setCustomMode(true);
+                } else {
+                  setModel(e.target.value);
+                }
+              }}
+            >
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+              <option value="__custom__">Custom...</option>
+            </select>
+          )}
+          <button
+            className="settings-model-refresh"
+            onClick={fetchModels}
+            disabled={!canFetchModels || modelsLoading}
+            title={!canFetchModels ? "Enter API key first" : "Fetch available models"}
+          >
+            {modelsLoading ? (
+              <span className="settings-model-spinner" />
+            ) : (
+              "\u21BB"
+            )}
+          </button>
+        </div>
+        {modelsError && (
+          <div className="settings-model-error">{modelsError}</div>
+        )}
+      </SettingsRow>
 
       <SettingsSectionHeader title="Privacy" />
 

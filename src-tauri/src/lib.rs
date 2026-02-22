@@ -324,6 +324,7 @@ pub fn run() {
             export_cmd::export_pdf,
             export_cmd::export_document,
             llm_cmd::llm_complete,
+            llm_cmd::llm_list_models,
             index_cmd::get_backlinks,
             index_cmd::get_link_index,
             index_cmd::refresh_index,
