@@ -1,5 +1,7 @@
 // §3.5 사용자 설정 스토어
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
+import { tauriStorage } from "./tauri-storage";
 
 type Theme = "light" | "dark" | "system";
 type OnLaunch = "newFile" | "restoreLastFolder" | "restoreLastFile";
@@ -72,13 +74,13 @@ interface SettingsState {
   setSmartPunctuation: (enabled: boolean) => void;
 }
 
-export const useSettingsStore = create<SettingsState>((set) => ({
+export const useSettingsStore = create<SettingsState>()(persist((set) => ({
   // General
   onLaunch: "restoreLastFolder",
   autoSave: true,
   autoSaveDelay: 2000,
   spellCheck: false,
-  showWelcome: localStorage.getItem("baram:onboarding-complete") !== "true",
+  showWelcome: true,
 
   // Editor
   fontFamily: "Pretendard",
@@ -110,14 +112,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setAutoSave: (autoSave) => set({ autoSave }),
   setAutoSaveDelay: (autoSaveDelay) => set({ autoSaveDelay }),
   setSpellCheck: (spellCheck) => set({ spellCheck }),
-  setShowWelcome: (showWelcome) => {
-    if (!showWelcome) {
-      localStorage.setItem("baram:onboarding-complete", "true");
-    } else {
-      localStorage.removeItem("baram:onboarding-complete");
-    }
-    set({ showWelcome });
-  },
+  setShowWelcome: (showWelcome) => set({ showWelcome }),
 
   // Editor setters
   setFontFamily: (fontFamily) => set({ fontFamily }),
@@ -143,4 +138,31 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setCodeBlockLineNumbers: (codeBlockLineNumbers) => set({ codeBlockLineNumbers }),
   setCodeBlockStyle: (codeBlockStyle) => set({ codeBlockStyle }),
   setSmartPunctuation: (smartPunctuation) => set({ smartPunctuation }),
+}), {
+  name: "baram:settings",
+  storage: createJSONStorage(() => tauriStorage),
+  partialize: (state) => ({
+    onLaunch: state.onLaunch,
+    autoSave: state.autoSave,
+    autoSaveDelay: state.autoSaveDelay,
+    spellCheck: state.spellCheck,
+    showWelcome: state.showWelcome,
+    fontFamily: state.fontFamily,
+    fontSize: state.fontSize,
+    lineHeight: state.lineHeight,
+    tabSize: state.tabSize,
+    lineNumbers: state.lineNumbers,
+    autoPairBrackets: state.autoPairBrackets,
+    editorMaxWidth: state.editorMaxWidth,
+    theme: state.theme,
+    wikilinkFormat: state.wikilinkFormat,
+    autoUpdateLinks: state.autoUpdateLinks,
+    inlineMath: state.inlineMath,
+    highlight: state.highlight,
+    strikethrough: state.strikethrough,
+    diagrams: state.diagrams,
+    codeBlockLineNumbers: state.codeBlockLineNumbers,
+    codeBlockStyle: state.codeBlockStyle,
+    smartPunctuation: state.smartPunctuation,
+  }),
 }));

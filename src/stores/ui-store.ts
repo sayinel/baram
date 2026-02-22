@@ -1,5 +1,6 @@
 // §3.5 UI 레이아웃 스토어
 import { create } from "zustand";
+import { useSettingsStore } from "./settings-store";
 
 type SidebarPanel = "files" | "outline" | "search" | "backlinks" | "bookmarks" | "graph";
 type ExportFormat = "html" | "pdf";
@@ -53,7 +54,7 @@ export const useUIStore = create<UIState>((set) => ({
   aboutOpen: false,
   exportDialogOpen: false,
   exportFormat: "html" as ExportFormat,
-  welcomeOpen: localStorage.getItem("baram:onboarding-complete") !== "true",
+  welcomeOpen: useSettingsStore.getState().showWelcome,
   newSkillDialogOpen: false,
   skillGeneratorDialogOpen: false,
   skillTestDialogOpen: false,
@@ -91,7 +92,7 @@ export const useUIStore = create<UIState>((set) => ({
 
   dismissWelcome: (permanent) => {
     if (permanent) {
-      localStorage.setItem("baram:onboarding-complete", "true");
+      useSettingsStore.getState().setShowWelcome(false);
     }
     set({ welcomeOpen: false });
   },

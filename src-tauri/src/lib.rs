@@ -321,6 +321,7 @@ pub fn run() {
             fs_cmd::watch_dir,
             config_cmd::get_config,
             config_cmd::set_config,
+            config_cmd::remove_config,
             export_cmd::export_pdf,
             export_cmd::export_document,
             llm_cmd::llm_complete,

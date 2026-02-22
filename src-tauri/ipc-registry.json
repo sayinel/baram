@@ -70,25 +70,36 @@
     },
     {
       "name": "get_config",
-      "input": { "key": "string?" },
-      "output": "JsonValue",
+      "input": { "key": "string" },
+      "output": "string | null",
       "module": "config",
       "spec": "§3.2",
       "phase": 1,
       "milestone": "M2",
       "status": "implemented",
-      "description": "설정값 조회"
+      "description": "설정값 조회 (app_data_dir/config.json)"
     },
     {
       "name": "set_config",
-      "input": { "key": "string", "value": "JsonValue" },
+      "input": { "key": "string", "value": "string" },
       "output": "void",
       "module": "config",
       "spec": "§3.2",
       "phase": 1,
       "milestone": "M2",
       "status": "implemented",
-      "description": "설정값 저장"
+      "description": "설정값 저장 (app_data_dir/config.json)"
+    },
+    {
+      "name": "remove_config",
+      "input": { "key": "string" },
+      "output": "void",
+      "module": "config",
+      "spec": "§3.2",
+      "phase": 1,
+      "milestone": "M2",
+      "status": "implemented",
+      "description": "설정값 삭제 (app_data_dir/config.json)"
     },
     {
       "name": "search_files",
@@ -176,7 +187,7 @@
       "phase": 1,
       "milestone": "M8",
       "status": "implemented",
-      "description": "AI Provider의 사용 가능한 모델 목록 조회 (Claude/OpenAI/Ollama)"
+      "description": "AI Provider의 사용 가능한 모델 목록 조회 (Claude/OpenAI/Ollama/Gemini)"
     },
     {
       "name": "llm_complete",
@@ -187,7 +198,7 @@
       "phase": 1,
       "milestone": "M5",
       "status": "implemented",
-      "description": "LLM 호출 (스트리밍, 이벤트: llm:token, llm:done, llm:error). M8: provider(claude/openai/ollama), baseUrl, privacyMode 파라미터 추가"
+      "description": "LLM 호출 (스트리밍, 이벤트: llm:token, llm:done, llm:error). M8: provider(claude/openai/ollama/gemini), baseUrl, privacyMode 파라미터 추가"
     },
     {
       "name": "create_dir",

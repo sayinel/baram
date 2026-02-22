@@ -6,6 +6,7 @@ import { useSettingsStore } from "../../stores/settings-store";
 import { useAIStore } from "../../stores/ai-store";
 import { CustomAICommandEditor } from "./CustomAICommandEditor";
 import { llmListModels } from "../../ipc/invoke";
+import { formatAIError } from "../../utils/format-error";
 import type { ModelInfo } from "../../ipc/types";
 
 type SettingsTab = "general" | "editor" | "appearance" | "files" | "markdown" | "ai";
@@ -339,11 +340,12 @@ function AITab() {
   const [customMode, setCustomMode] = useState(false);
 
   const handleProviderChange = useCallback(
-    (newProvider: "claude" | "openai" | "ollama") => {
+    (newProvider: "claude" | "openai" | "ollama" | "gemini") => {
       setProvider(newProvider);
       if (newProvider === "claude") setModel("claude-sonnet-4-5-20250929");
       else if (newProvider === "openai") setModel("gpt-4o");
       else if (newProvider === "ollama") setModel("llama3");
+      else if (newProvider === "gemini") setModel("gemini-2.0-flash");
       setModels([]);
       setModelsError(null);
       setCustomMode(false);
@@ -369,6 +371,7 @@ function AITab() {
   }, [provider, apiKey, ollamaUrl]);
 
   const canFetchModels = provider === "ollama" || apiKey.length > 0;
+  const showApiKey = provider !== "ollama";
 
   return (
     <div className="settings-section">
@@ -378,15 +381,16 @@ function AITab() {
         <select
           className="settings-select"
           value={provider}
-          onChange={(e) => handleProviderChange(e.target.value as "claude" | "openai" | "ollama")}
+          onChange={(e) => handleProviderChange(e.target.value as "claude" | "openai" | "ollama" | "gemini")}
         >
           <option value="claude">Claude</option>
           <option value="openai">OpenAI</option>
+          <option value="gemini">Google Gemini</option>
           <option value="ollama">Ollama (Local)</option>
         </select>
       </SettingsRow>
 
-      {provider !== "ollama" && (
+      {showApiKey && (
         <SettingsRow label="API Key" description="Your API key for the selected provider">
           <div className="settings-key-row">
             <input
@@ -462,10 +466,17 @@ function AITab() {
             )}
           </button>
         </div>
-        {modelsError && (
-          <div className="settings-model-error">{modelsError}</div>
-        )}
       </SettingsRow>
+
+      {modelsError && (() => {
+        const formatted = formatAIError(modelsError);
+        return (
+          <div className="settings-model-error">
+            <strong>{formatted.title}</strong>
+            <span>{formatted.detail}</span>
+          </div>
+        );
+      })()}
 
       <SettingsSectionHeader title="Privacy" />
 

@@ -12,7 +12,6 @@ import type {
   ExportFormat,
   ExportOptions,
   PdfOptions,
-  JsonValue,
   SnapshotInfo,
   RenameResult,
   ModelInfo,
@@ -189,14 +188,18 @@ export async function getOpenedUrls(): Promise<string[]> {
   return invoke<string[]>("get_opened_urls");
 }
 
-// §3.2 Config commands
-export async function getConfig(key?: string): Promise<JsonValue> {
-  return invoke<JsonValue>("get_config", { key });
+// §3.2 Config commands — app_data_dir/config.json 기반 영속화
+export async function getConfig(key: string): Promise<string | null> {
+  return invoke<string | null>("get_config", { key });
 }
 
 export async function setConfig(
   key: string,
-  value: JsonValue,
+  value: string,
 ): Promise<void> {
   return invoke<void>("set_config", { key, value });
+}
+
+export async function removeConfig(key: string): Promise<void> {
+  return invoke<void>("remove_config", { key });
 }

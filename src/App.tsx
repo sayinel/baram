@@ -41,6 +41,7 @@ import { useAutoSave } from "./hooks/use-auto-save";
 import { useGhostText } from "./hooks/use-ghost-text";
 import { readFile, writeFile, getOpenedUrls, updateFileIndex } from "./ipc/invoke";
 import { useLinkStore } from "./stores/link-store";
+import { migrateFromLocalStorage } from "./stores/tauri-storage";
 import { useBookmarkStore } from "./stores/bookmark-store";
 import { logAppReady } from "./utils/perf";
 import { resolveWikilinkTarget } from "./utils/wikilink-nav";
@@ -190,6 +191,11 @@ function App() {
 
   // §43 Ghost Text — inline AI completion
   useGhostText(editor);
+
+  // §3.2 One-time migration: localStorage → Tauri app_data_dir
+  useEffect(() => {
+    migrateFromLocalStorage().catch(() => {});
+  }, []);
 
   // Apply settings to DOM
   const { theme, fontSize, fontFamily, lineHeight, spellCheck, editorMaxWidth } = useSettingsStore();

@@ -1,6 +1,7 @@
 // §6.3 LLM API proxy module — multi-provider dispatch with privacy mode
 
 pub mod claude;
+pub mod gemini;
 pub mod ollama;
 pub mod openai;
 
@@ -29,6 +30,7 @@ pub enum LlmError {
 /// Default base URLs for each provider
 const OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com";
 const OLLAMA_DEFAULT_BASE_URL: &str = "http://localhost:11434";
+// Note: Gemini uses API key in query params, not a configurable base URL
 
 /// Multi-provider LLM streaming dispatch.
 ///
@@ -93,6 +95,18 @@ pub async fn complete(
             )
             .await
         }
+        "gemini" => {
+            gemini::complete_stream(
+                api_key,
+                prompt,
+                model,
+                system_prompt,
+                max_tokens,
+                request_id,
+                app_handle,
+            )
+            .await
+        }
         _ => Err(LlmError::UnknownProvider(provider.to_string())),
     }
 }
@@ -113,6 +127,7 @@ pub async fn list_models(
             let url = base_url.unwrap_or(OLLAMA_DEFAULT_BASE_URL);
             ollama::list_models(url).await
         }
+        "gemini" => gemini::list_models(api_key).await,
         _ => Err(LlmError::UnknownProvider(provider.to_string())),
     }
 }
@@ -176,6 +191,34 @@ mod tests {
         assert!(resp.done);
     }
 
+    // --- Gemini SSE parsing tests ---
+
+    #[test]
+    fn test_gemini_sse_chunk_parse() {
+        let json = r#"{"candidates":[{"content":{"parts":[{"text":"Hello"}]},"finishReason":null}]}"#;
+        let chunk: gemini::GeminiSseChunk = serde_json::from_str(json).unwrap();
+        assert_eq!(chunk.candidates.len(), 1);
+        let content = chunk.candidates[0].content.as_ref().unwrap();
+        assert_eq!(content.parts[0].text, "Hello");
+    }
+
+    #[test]
+    fn test_gemini_sse_chunk_finish_stop() {
+        let json = r#"{"candidates":[{"content":{"parts":[{"text":""}]},"finishReason":"STOP"}]}"#;
+        let chunk: gemini::GeminiSseChunk = serde_json::from_str(json).unwrap();
+        assert_eq!(chunk.candidates[0].finish_reason.as_deref(), Some("STOP"));
+    }
+
+    // --- Gemini models parsing tests ---
+
+    #[test]
+    fn test_gemini_models_response_parse() {
+        let json = r#"{"models":[{"name":"models/gemini-2.0-flash","displayName":"Gemini 2.0 Flash","supportedGenerationMethods":["generateContent","countTokens"]},{"name":"models/text-embedding-004","displayName":"Text Embedding","supportedGenerationMethods":["embedContent"]}]}"#;
+        let resp: gemini::GeminiModelsResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.models.len(), 2);
+        assert_eq!(resp.models[0].name, "models/gemini-2.0-flash");
+    }
+
     // --- Privacy mode tests ---
 
     #[test]
@@ -205,6 +248,18 @@ mod tests {
     }
 
     #[test]
+    fn test_privacy_blocks_gemini() {
+        let provider = "gemini";
+        let privacy_mode = true;
+        if privacy_mode && provider != "ollama" {
+            let err = LlmError::PrivacyBlocked(provider.to_string());
+            assert!(err.to_string().contains("gemini"));
+        } else {
+            panic!("Should have been blocked");
+        }
+    }
+
+    #[test]
     fn test_privacy_allows_ollama() {
         let provider = "ollama";
         let privacy_mode = true;
@@ -215,7 +270,7 @@ mod tests {
     #[test]
     fn test_privacy_off_allows_all() {
         let privacy_mode = false;
-        for provider in &["claude", "openai", "ollama"] {
+        for provider in &["claude", "openai", "ollama", "gemini"] {
             assert!(!(privacy_mode && *provider != "ollama"));
         }
     }
@@ -224,8 +279,8 @@ mod tests {
 
     #[test]
     fn test_unknown_provider_error() {
-        let err = LlmError::UnknownProvider("gemini".to_string());
-        assert!(err.to_string().contains("gemini"));
+        let err = LlmError::UnknownProvider("unknown".to_string());
+        assert!(err.to_string().contains("unknown"));
     }
 
     #[test]

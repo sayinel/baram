@@ -4,6 +4,7 @@ import { useLLMStream } from "../../hooks/use-llm-stream";
 import { extractSkillPrompt, runSkillTest } from "../../utils/skill-test-runner";
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
+import { formatAIError } from "../../utils/format-error";
 
 interface SkillTestDialogProps {
   open: boolean;
@@ -116,11 +117,15 @@ export function SkillTestDialog({ open, onClose }: SkillTestDialogProps) {
           </div>
         )}
 
-        {error && (
-          <div style={{ marginTop: 8, color: "#ef4444", fontSize: 13 }}>
-            {error}
-          </div>
-        )}
+        {error && (() => {
+          const formatted = formatAIError(error);
+          return (
+            <div className="ai-error-message">
+              <strong>{formatted.title}</strong>
+              <span>{formatted.detail}</span>
+            </div>
+          );
+        })()}
 
         <div style={{ marginTop: 12, textAlign: "right" }}>
           <button className="custom-ai-btn" onClick={onClose}>

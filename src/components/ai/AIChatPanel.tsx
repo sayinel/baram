@@ -6,6 +6,7 @@ import { useLLMStream } from "../../hooks/use-llm-stream";
 import { ChatMessage } from "./ChatMessage";
 import { parseReferences, resolveReference, buildContextPrompt } from "../../utils/chat-context";
 import type { ResolvedReference } from "../../utils/chat-context";
+import { formatAIError } from "../../utils/format-error";
 
 export function AIChatPanel() {
   const { rightPanelOpen } = useUIStore();
@@ -156,7 +157,15 @@ export function AIChatPanel() {
         <div ref={messagesEndRef} />
       </div>
 
-      {error && <div className="ai-chat-error">{error}</div>}
+      {error && (() => {
+        const formatted = formatAIError(error);
+        return (
+          <div className="ai-chat-error">
+            <strong>{formatted.title}</strong>
+            <span>{formatted.detail}</span>
+          </div>
+        );
+      })()}
 
       <div className="ai-chat-input-area">
         <textarea
