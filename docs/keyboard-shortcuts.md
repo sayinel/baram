@@ -15,7 +15,8 @@ Complete list of keyboard shortcuts available in Baram.
 | Save | `Cmd+S` | `Ctrl+S` |
 | Save As | `Cmd+Shift+S` | `Ctrl+Shift+S` |
 | Close Tab | `Cmd+W` | `Ctrl+W` |
-| Quick Switcher | `Cmd+P` | `Ctrl+P` |
+| Quick Switcher | `Cmd+K` | `Ctrl+K` |
+| Command Palette | `Cmd+P` | `Ctrl+P` |
 | Settings | `Cmd+,` | `Ctrl+,` |
 
 ## Editing
@@ -38,7 +39,6 @@ Complete list of keyboard shortcuts available in Baram.
 | Underline | `Cmd+U` | `Ctrl+U` |
 | Strikethrough | `Cmd+Shift+S` | `Ctrl+Shift+S` |
 | Inline Code | `Cmd+E` | `Ctrl+E` |
-| Link | `Cmd+K` (with selection) | `Ctrl+K` (with selection) |
 
 ## Block Formatting
 
@@ -74,7 +74,7 @@ Complete list of keyboard shortcuts available in Baram.
 
 | Action | macOS | Windows / Linux |
 |--------|-------|-----------------|
-| Quick Switcher | `Cmd+P` | `Ctrl+P` |
+| Quick Switcher | `Cmd+K` | `Ctrl+K` |
 | Navigate Back | `Ctrl+-` | `Alt+Left` |
 | Navigate Forward | `Ctrl+Shift+-` | `Alt+Right` |
 | Tab Switcher (MRU) | `Ctrl+Tab` | `Ctrl+Tab` |
@@ -86,15 +86,9 @@ Complete list of keyboard shortcuts available in Baram.
 
 | Action | macOS | Windows / Linux |
 |--------|-------|-----------------|
-| Command Palette | `Cmd+Shift+P` | `Ctrl+Shift+P` |
+| Command Palette | `Cmd+P` | `Ctrl+P` |
+| Command Palette (alternate) | `Cmd+Shift+P` | `Ctrl+Shift+P` |
 | Settings | `Cmd+,` | `Ctrl+,` |
-
-## AI
-
-| Action | macOS | Windows / Linux |
-|--------|-------|-----------------|
-| AI Inline Edit | `Cmd+K` (with text selected) | `Ctrl+K` (with text selected) |
-| Command Palette | `Cmd+K` (no selection) | `Ctrl+K` (no selection) |
 
 ## Table (inside tables)
 

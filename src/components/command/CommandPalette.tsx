@@ -1,4 +1,4 @@
-// §4.5 Command Palette — Cmd+K (no selection)
+// §4.5 Command Palette — Cmd+P
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useUIStore } from "../../stores/ui-store";
 import type { Editor } from "@tiptap/react";

@@ -1,4 +1,4 @@
-// §35 Quick Switcher — Cmd+P file/heading fuzzy search
+// §35 Quick Switcher — Cmd+K file/heading fuzzy search
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import type { Editor } from "@tiptap/react";
 import { useUIStore } from "../../stores/ui-store";

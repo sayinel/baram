@@ -46,6 +46,14 @@ pub fn run() {
                 .id("file_save")
                 .accelerator("CmdOrCtrl+S")
                 .build(app)?;
+            let file_save_as = MenuItemBuilder::new("Save As...")
+                .id("file_save_as")
+                .accelerator("CmdOrCtrl+Shift+S")
+                .build(app)?;
+            let file_close_tab = MenuItemBuilder::new("Close Tab")
+                .id("file_close_tab")
+                .accelerator("CmdOrCtrl+W")
+                .build(app)?;
             let export_html = MenuItemBuilder::new("Export as HTML")
                 .id("export_html")
                 .build(app)?;
@@ -59,6 +67,8 @@ pub fn run() {
                 .item(&file_open_folder)
                 .separator()
                 .item(&file_save)
+                .item(&file_save_as)
+                .item(&file_close_tab)
                 .separator()
                 .item(&export_html)
                 .item(&export_pdf)
@@ -86,6 +96,10 @@ pub fn run() {
                 .build(app)?;
             let view_palette = MenuItemBuilder::new("Command Palette")
                 .id("view_palette")
+                .accelerator("CmdOrCtrl+P")
+                .build(app)?;
+            let view_quick_switcher = MenuItemBuilder::new("Quick Switcher")
+                .id("go_quick_switcher")
                 .accelerator("CmdOrCtrl+K")
                 .build(app)?;
 
@@ -94,6 +108,7 @@ pub fn run() {
                 .item(&view_sidebar)
                 .separator()
                 .item(&view_palette)
+                .item(&view_quick_switcher)
                 .build()?;
 
             // --- Insert menu (§4.4) ---
@@ -196,7 +211,7 @@ pub fn run() {
             // --- Go menu (§4.4) ---
             let go_palette = MenuItemBuilder::new("Command Palette")
                 .id("go_palette")
-                .accelerator("CmdOrCtrl+K")
+                .accelerator("CmdOrCtrl+Shift+P")
                 .build(app)?;
             let go_back = MenuItemBuilder::new("Back")
                 .id("go_back")
@@ -221,8 +236,15 @@ pub fn run() {
                 .build()?;
 
             // --- App menu (macOS: first submenu = application menu with Quit) ---
+            let file_settings = MenuItemBuilder::new("Settings...")
+                .id("file_settings")
+                .accelerator("CmdOrCtrl+,")
+                .build(app)?;
+
             let app_menu = SubmenuBuilder::new(app, "Baram")
                 .about(None)
+                .separator()
+                .item(&file_settings)
                 .separator()
                 .services()
                 .separator()

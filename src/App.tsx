@@ -120,7 +120,7 @@ function App() {
   const sourceEditorRef = useRef<SourceCodeEditorRef>(null);
   // Ref mirrors sourceContent state — always has the latest value, immune to stale closures
   const sourceContentRef = useRef("");
-  const { toggleSidebar, toggleCommandPalette, toggleQuickSwitcher, setSidebarPanel, welcomeOpen } =
+  const { toggleSidebar, toggleCommandPalette, toggleQuickSwitcher, toggleSettings, setSidebarPanel, welcomeOpen } =
     useUIStore();
   const { activeTabId, tabs, openTab, markDirty } = useEditorStore();
   const { openFiles, setFileContent } = useFileStore();
@@ -484,6 +484,47 @@ function App() {
     }
   }, [editor, tabs, activeTabId, setFileContent, markDirty]);
 
+  const handleSaveAs = useCallback(async () => {
+    if (!editor) return;
+    const activeTab = tabs.find((t) => t.id === activeTabId);
+    if (!activeTab) return;
+
+    const md = prosemirrorToMarkdown(editor.state.doc);
+    const savePath = await save({
+      filters: [
+        { name: "Markdown", extensions: ["md"] },
+        { name: "All Files", extensions: ["*"] },
+      ],
+    });
+    if (!savePath) return;
+
+    try {
+      await writeFile(savePath, md);
+      updateFileIndex(savePath)
+        .then(() => useLinkStore.getState().invalidate())
+        .catch(() => {});
+      const fileName = savePath.split("/").pop() ?? "Unknown";
+      if (!activeTab.filePath) {
+        useFileStore.getState().removeFileContent(activeTab.id);
+      }
+      setFileContent(savePath, md);
+      useEditorStore.setState((state) => ({
+        tabs: state.tabs.map((t) =>
+          t.id === activeTab.id
+            ? { ...t, filePath: savePath, title: fileName, isDirty: false }
+            : t,
+        ),
+      }));
+    } catch (err) {
+      console.error("[App] Failed to save as:", err);
+    }
+  }, [editor, tabs, activeTabId, setFileContent]);
+
+  const handleCloseTab = useCallback(() => {
+    if (!activeTabId) return;
+    useEditorStore.getState().closeTab(activeTabId);
+  }, [activeTabId]);
+
   const handleOpenFolder = useCallback(async () => {
     const selected = await open({ directory: true });
     if (selected) {
@@ -775,17 +816,38 @@ function App() {
         return;
       }
 
-      // Cmd+K — command palette
+      // Cmd+K — quick switcher (file list)
       if (mod && e.key === "k") {
+        e.preventDefault();
+        toggleQuickSwitcher();
+        return;
+      }
+
+      // Cmd+Shift+P — command palette (alternate)
+      if (mod && e.shiftKey && e.key === "P") {
         e.preventDefault();
         toggleCommandPalette();
         return;
       }
 
-      // §35 Cmd+P — quick switcher
+      // Cmd+P — command palette
       if (mod && e.key === "p") {
         e.preventDefault();
-        toggleQuickSwitcher();
+        toggleCommandPalette();
+        return;
+      }
+
+      // Cmd+, — settings
+      if (mod && e.key === ",") {
+        e.preventDefault();
+        toggleSettings();
+        return;
+      }
+
+      // Cmd+W — close tab
+      if (mod && e.key === "w") {
+        e.preventDefault();
+        handleCloseTab();
         return;
       }
 
@@ -800,6 +862,13 @@ function App() {
       if (mod && e.key === "o") {
         e.preventDefault();
         handleOpenFile();
+        return;
+      }
+
+      // Cmd+Shift+S — save as
+      if (mod && e.shiftKey && (e.key === "S" || e.key === "s")) {
+        e.preventDefault();
+        handleSaveAs();
         return;
       }
 
@@ -818,10 +887,13 @@ function App() {
     toggleSidebar,
     toggleCommandPalette,
     toggleQuickSwitcher,
+    toggleSettings,
     setSidebarPanel,
     handleNewFile,
     handleOpenFile,
     handleSave,
+    handleSaveAs,
+    handleCloseTab,
     handleGoBack,
     handleGoForward,
     editor,
@@ -863,6 +935,15 @@ function App() {
         case "file_save":
           handleSave();
           break;
+        case "file_save_as":
+          handleSaveAs();
+          break;
+        case "file_close_tab":
+          handleCloseTab();
+          break;
+        case "file_settings":
+          toggleSettings();
+          break;
         case "export_html":
           useUIStore.getState().openExportDialog("html");
           break;
@@ -899,12 +980,15 @@ function App() {
     handleOpenFile,
     handleOpenFolder,
     handleSave,
+    handleSaveAs,
+    handleCloseTab,
     handleGoBack,
     handleGoForward,
     toggleSourceMode,
     toggleSidebar,
     toggleCommandPalette,
     toggleQuickSwitcher,
+    toggleSettings,
   ]);
 
   return (
