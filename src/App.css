@@ -3349,6 +3349,96 @@ body {
   color: white;
 }
 
+/* ─── About Modal ─── */
+
+.about-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 110;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.about-modal {
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 32px 40px;
+  width: 400px;
+  max-width: 90vw;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
+}
+
+.about-logo {
+  width: 240px;
+  height: auto;
+  margin-bottom: 16px;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.about-version {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-bottom: 4px;
+}
+
+.about-description {
+  font-size: 14px;
+  color: var(--color-text-primary);
+  margin-bottom: 20px;
+}
+
+.about-details {
+  width: 100%;
+  border-top: 1px solid var(--color-border);
+  padding-top: 16px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.about-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+}
+
+.about-label {
+  color: var(--color-text-muted);
+}
+
+.about-value {
+  color: var(--color-text-secondary);
+}
+
+.about-copyright {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-bottom: 20px;
+}
+
+.about-close {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 6px 24px;
+  font-size: 13px;
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+.about-close:hover {
+  background: var(--color-bg-tertiary, #e5e7eb);
+}
+
 /* ─── §30 Graph View ─── */
 
 .graph-view-container {

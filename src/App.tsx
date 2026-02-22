@@ -83,6 +83,11 @@ const SettingsModal = lazy(() =>
     default: m.SettingsModal,
   })),
 );
+const AboutModal = lazy(() =>
+  import("./components/settings/AboutModal").then((m) => ({
+    default: m.AboutModal,
+  })),
+);
 const GraphViewTab = lazy(() =>
   import("./components/sidebar/GraphView").then((m) => ({
     default: m.GraphView,
@@ -959,6 +964,9 @@ function App() {
         case "file_close_tab":
           handleCloseTab();
           break;
+        case "app_about":
+          useUIStore.getState().toggleAbout();
+          break;
         case "file_settings":
           toggleSettings();
           break;
@@ -1159,6 +1167,7 @@ function App() {
         <ExportDialog editor={editor} />
         <QuickSwitcher editor={editor} onNewFile={handleNewFile} />
         <SettingsModal />
+        <AboutModal />
         <HoverPreview />
       </Suspense>
       {tabSwitcherOpen && (

@@ -269,8 +269,12 @@ pub fn run() {
                 .accelerator("CmdOrCtrl+,")
                 .build(app)?;
 
+            let app_about = MenuItemBuilder::new("About Baram")
+                .id("app_about")
+                .build(app)?;
+
             let app_menu = SubmenuBuilder::new(app, "Baram")
-                .about(None)
+                .item(&app_about)
                 .separator()
                 .item(&file_settings)
                 .separator()

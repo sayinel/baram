@@ -13,6 +13,7 @@ interface UIState {
   commandPaletteOpen: boolean;
   quickSwitcherOpen: boolean;
   settingsOpen: boolean;
+  aboutOpen: boolean;
   exportDialogOpen: boolean;
   exportFormat: ExportFormat;
   welcomeOpen: boolean;
@@ -25,6 +26,7 @@ interface UIState {
   toggleCommandPalette: () => void;
   toggleQuickSwitcher: () => void;
   toggleSettings: () => void;
+  toggleAbout: () => void;
   openExportDialog: (format?: ExportFormat) => void;
   closeExportDialog: () => void;
   dismissWelcome: (permanent?: boolean) => void;
@@ -39,6 +41,7 @@ export const useUIStore = create<UIState>((set) => ({
   commandPaletteOpen: false,
   quickSwitcherOpen: false,
   settingsOpen: false,
+  aboutOpen: false,
   exportDialogOpen: false,
   exportFormat: "html" as ExportFormat,
   welcomeOpen: localStorage.getItem("baram:onboarding-complete") !== "true",
@@ -63,6 +66,9 @@ export const useUIStore = create<UIState>((set) => ({
 
   toggleSettings: () =>
     set((state) => ({ settingsOpen: !state.settingsOpen })),
+
+  toggleAbout: () =>
+    set((state) => ({ aboutOpen: !state.aboutOpen })),
 
   openExportDialog: (format) =>
     set({ exportDialogOpen: true, exportFormat: format ?? "html" }),
