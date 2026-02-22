@@ -13,6 +13,8 @@ export function CodeBlockView({ node, updateAttributes, extension }: NodeViewPro
   const cmViewRef = useRef<EditorView | null>(null);
   const language = (node.attrs.language as string) || "";
   const tabSize = useSettingsStore((s) => s.tabSize);
+  const showLineNumbers = useSettingsStore((s) => s.codeBlockLineNumbers);
+  const codeBlockStyle = useSettingsStore((s) => s.codeBlockStyle);
 
   const handleLanguageChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -32,9 +34,10 @@ export function CodeBlockView({ node, updateAttributes, extension }: NodeViewPro
       if (destroyed || !containerRef.current) return;
 
       const currentTabSize = useSettingsStore.getState().tabSize;
+      const currentShowLineNumbers = useSettingsStore.getState().codeBlockLineNumbers;
       const extensions = [
         keymap.of([...defaultKeymap, indentWithTab]),
-        lineNumbers(),
+        ...(currentShowLineNumbers ? [lineNumbers()] : []),
         drawSelection(),
         bracketMatching(),
         syntaxHighlighting(defaultHighlightStyle),
@@ -67,12 +70,12 @@ export function CodeBlockView({ node, updateAttributes, extension }: NodeViewPro
         cmViewRef.current = null;
       }
     };
-    // Recreate when language or tabSize changes
+    // Recreate when language, tabSize, or lineNumbers changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language, tabSize]);
+  }, [language, tabSize, showLineNumbers]);
 
   return (
-    <NodeViewWrapper className="code-block-wrapper" data-language={language}>
+    <NodeViewWrapper className="code-block-wrapper" data-language={language} data-style={codeBlockStyle}>
       <div className="code-block-header">
         <select
           className="code-block-lang-select"

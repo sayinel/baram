@@ -62,6 +62,7 @@ export const SourceCodeEditor = forwardRef<SourceCodeEditorRef, SourceCodeEditor
 
       const cursorPos = Math.min(initialCursorOffset ?? 0, content.length);
       const currentTabSize = useSettingsStore.getState().tabSize;
+      const showLineNumbers = useSettingsStore.getState().lineNumbers;
 
       const state = EditorState.create({
         doc: content,
@@ -71,7 +72,7 @@ export const SourceCodeEditor = forwardRef<SourceCodeEditorRef, SourceCodeEditor
             ...defaultKeymap,
             indentWithTab,
           ]),
-          lineNumbers(),
+          ...(showLineNumbers ? [lineNumbers()] : []),
           drawSelection(),
           bracketMatching(),
           markdown(),

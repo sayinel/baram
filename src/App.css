@@ -916,6 +916,54 @@ body {
   font-size: 0.875em;
 }
 
+/* Code Block Style: Minimal — no background/border, bottom divider only */
+.code-block-wrapper[data-style="minimal"] .code-block-header {
+  background: transparent;
+  border: none;
+  padding: 2px 4px;
+}
+
+.code-block-wrapper[data-style="minimal"] .code-block-editor .cm-editor {
+  border: none;
+  border-bottom: 1px solid var(--color-border-light);
+  border-radius: 0;
+}
+
+/* Code Block Style: Contrast — dark background */
+.code-block-wrapper[data-style="contrast"] .code-block-header {
+  background-color: #1e1e2e;
+  border-color: #1e1e2e;
+  color: #cdd6f4;
+}
+
+.code-block-wrapper[data-style="contrast"] .code-block-lang-select {
+  color: #a6adc8;
+}
+
+.code-block-wrapper[data-style="contrast"] .code-block-editor .cm-editor {
+  background-color: #1e1e2e;
+  border-color: #313244;
+}
+
+.code-block-wrapper[data-style="contrast"] .code-block-editor .cm-editor .cm-content {
+  color: #cdd6f4;
+  caret-color: #f5e0dc;
+}
+
+.code-block-wrapper[data-style="contrast"] .code-block-editor .cm-editor .cm-gutters {
+  background-color: #181825;
+  border-color: #313244;
+  color: #6c7086;
+}
+
+.code-block-wrapper[data-style="contrast"] .code-block-editor .cm-editor .cm-activeLine {
+  background-color: rgba(69, 71, 90, 0.3);
+}
+
+.code-block-wrapper[data-style="contrast"] .code-block-editor .cm-editor .cm-selectionBackground {
+  background-color: rgba(137, 180, 250, 0.2) !important;
+}
+
 /* §5.5 Mermaid Block — dual mode (SVG / source edit) */
 .tiptap .mermaid-block {
   margin: 0.5em 0;
@@ -3252,6 +3300,53 @@ body {
 .settings-key-toggle:hover {
   background-color: var(--color-bg-secondary);
   color: var(--color-text-primary);
+}
+
+/* Font Family Picker */
+.settings-font-picker {
+  position: relative;
+  width: 180px;
+}
+
+.settings-font-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  margin-top: 2px;
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.settings-font-option {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.settings-font-option:hover {
+  background-color: var(--color-bg-secondary);
+}
+
+.settings-font-option-active {
+  background-color: var(--color-accent);
+  color: white;
+}
+
+.settings-font-option-active:hover {
+  background-color: var(--color-accent);
+  color: white;
 }
 
 /* ─── §30 Graph View ─── */

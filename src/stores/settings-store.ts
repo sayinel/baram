@@ -4,6 +4,7 @@ import { create } from "zustand";
 type Theme = "light" | "dark" | "system";
 type OnLaunch = "newFile" | "restoreLastFolder" | "restoreLastFile";
 type WikilinkFormat = "wikilink" | "markdown";
+type CodeBlockStyle = "default" | "minimal" | "contrast";
 
 interface SettingsState {
   // General
@@ -35,6 +36,7 @@ interface SettingsState {
   strikethrough: boolean;
   diagrams: boolean;
   codeBlockLineNumbers: boolean;
+  codeBlockStyle: CodeBlockStyle;
   smartPunctuation: boolean;
 
   // General setters
@@ -66,6 +68,7 @@ interface SettingsState {
   setStrikethrough: (enabled: boolean) => void;
   setDiagrams: (enabled: boolean) => void;
   setCodeBlockLineNumbers: (enabled: boolean) => void;
+  setCodeBlockStyle: (style: CodeBlockStyle) => void;
   setSmartPunctuation: (enabled: boolean) => void;
 }
 
@@ -99,6 +102,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   strikethrough: true,
   diagrams: true,
   codeBlockLineNumbers: false,
+  codeBlockStyle: "default",
   smartPunctuation: false,
 
   // General setters
@@ -137,5 +141,6 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setStrikethrough: (strikethrough) => set({ strikethrough }),
   setDiagrams: (diagrams) => set({ diagrams }),
   setCodeBlockLineNumbers: (codeBlockLineNumbers) => set({ codeBlockLineNumbers }),
+  setCodeBlockStyle: (codeBlockStyle) => set({ codeBlockStyle }),
   setSmartPunctuation: (smartPunctuation) => set({ smartPunctuation }),
 }));

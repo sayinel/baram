@@ -1,6 +1,6 @@
 // Settings Modal — 6-tab settings (General, Editor, Appearance, Files, Markdown, AI)
 // Obsidian-style layout: label + description per row, section headers for grouping
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useUIStore } from "../../stores/ui-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useAIStore } from "../../stores/ai-store";
@@ -135,12 +135,7 @@ function EditorTab() {
       <SettingsSectionHeader title="Font" />
 
       <SettingsRow label="Font Family" description="Typeface used in the editor">
-        <input
-          type="text"
-          className="settings-input"
-          value={fontFamily}
-          onChange={(e) => setFontFamily(e.target.value)}
-        />
+        <FontFamilyPicker value={fontFamily} onChange={setFontFamily} />
       </SettingsRow>
 
       <SettingsRow label="Font Size" description={`Size of text in the editor (${fontSize}px)`}>
@@ -270,6 +265,7 @@ function MarkdownTab() {
     strikethrough, setStrikethrough,
     diagrams, setDiagrams,
     codeBlockLineNumbers, setCodeBlockLineNumbers,
+    codeBlockStyle, setCodeBlockStyle,
     smartPunctuation, setSmartPunctuation,
   } = useSettingsStore();
 
@@ -297,6 +293,18 @@ function MarkdownTab() {
 
       <SettingsRow label="Line Numbers" description="Show line numbers in code blocks">
         <ToggleSwitch checked={codeBlockLineNumbers} onChange={setCodeBlockLineNumbers} />
+      </SettingsRow>
+
+      <SettingsRow label="Code Block Style" description="Visual style for code blocks">
+        <select
+          className="settings-select"
+          value={codeBlockStyle}
+          onChange={(e) => setCodeBlockStyle(e.target.value as "default" | "minimal" | "contrast")}
+        >
+          <option value="default">Default</option>
+          <option value="minimal">Minimal</option>
+          <option value="contrast">Contrast</option>
+        </select>
       </SettingsRow>
 
       <SettingsSectionHeader title="Typography" />
@@ -393,6 +401,104 @@ function AITab() {
       <SettingsRow label="Privacy Mode" description="Do not send document content to AI providers">
         <ToggleSwitch checked={privacyMode} onChange={setPrivacyMode} />
       </SettingsRow>
+    </div>
+  );
+}
+
+// ─── Font Family Picker ─────────────────────────────────
+
+const FONT_OPTIONS = [
+  { value: "system-ui", label: "System Default" },
+  { value: "Pretendard", label: "Pretendard" },
+  { value: "Inter", label: "Inter" },
+  { value: "Noto Sans", label: "Noto Sans" },
+  { value: "Noto Sans KR", label: "Noto Sans KR" },
+  { value: "IBM Plex Sans", label: "IBM Plex Sans" },
+  { value: "Roboto", label: "Roboto" },
+  { value: "Lato", label: "Lato" },
+  { value: "Open Sans", label: "Open Sans" },
+  { value: "Source Sans 3", label: "Source Sans 3" },
+  { value: "Merriweather", label: "Merriweather" },
+  { value: "Georgia", label: "Georgia" },
+  { value: "Lora", label: "Lora" },
+  { value: "Nanum Gothic", label: "Nanum Gothic" },
+];
+
+function FontFamilyPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const filtered = search
+    ? FONT_OPTIONS.filter((f) => f.label.toLowerCase().includes(search.toLowerCase()))
+    : FONT_OPTIONS;
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!open) return;
+    const handleClick = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  const handleSelect = (fontValue: string) => {
+    onChange(fontValue);
+    setSearch("");
+    setOpen(false);
+  };
+
+  return (
+    <div className="settings-font-picker" ref={containerRef}>
+      <input
+        type="text"
+        className="settings-input"
+        value={open ? search : value}
+        onChange={(e) => {
+          setSearch(e.target.value);
+          if (!open) setOpen(true);
+        }}
+        onFocus={() => {
+          setSearch("");
+          setOpen(true);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && search) {
+            // Allow custom font name
+            onChange(search);
+            setSearch("");
+            setOpen(false);
+          } else if (e.key === "Escape") {
+            setOpen(false);
+          }
+        }}
+        placeholder="Type or select a font..."
+      />
+      {open && (
+        <div className="settings-font-dropdown">
+          {filtered.map((font) => (
+            <button
+              key={font.value}
+              className={`settings-font-option ${font.value === value ? "settings-font-option-active" : ""}`}
+              style={{ fontFamily: font.value }}
+              onClick={() => handleSelect(font.value)}
+            >
+              {font.label}
+            </button>
+          ))}
+          {filtered.length === 0 && search && (
+            <button
+              className="settings-font-option"
+              onClick={() => handleSelect(search)}
+            >
+              Use "{search}"
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

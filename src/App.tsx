@@ -155,7 +155,7 @@ function App() {
   useAutoSave(editor);
 
   // Apply settings to DOM
-  const { theme, fontSize, fontFamily, lineHeight, spellCheck } = useSettingsStore();
+  const { theme, fontSize, fontFamily, lineHeight, spellCheck, editorMaxWidth } = useSettingsStore();
 
   useEffect(() => {
     const root = document.documentElement;
@@ -174,7 +174,10 @@ function App() {
       ? `${fontFamily}, var(--font-editor)`
       : "";
     tiptap.style.lineHeight = String(lineHeight);
-  }, [fontSize, fontFamily, lineHeight, editor]);
+    tiptap.style.maxWidth = editorMaxWidth > 0 ? `${editorMaxWidth}px` : "";
+    tiptap.style.marginLeft = editorMaxWidth > 0 ? "auto" : "";
+    tiptap.style.marginRight = editorMaxWidth > 0 ? "auto" : "";
+  }, [fontSize, fontFamily, lineHeight, editorMaxWidth, editor]);
 
   useEffect(() => {
     const tiptap = document.querySelector<HTMLElement>(".tiptap");
