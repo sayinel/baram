@@ -45,6 +45,7 @@ import { useBookmarkStore } from "./stores/bookmark-store";
 import { logAppReady } from "./utils/perf";
 import { resolveWikilinkTarget } from "./utils/wikilink-nav";
 import { findBlockPosById } from "./utils/block-nav";
+import { showPrompt } from "./utils/ai-commands";
 import { forceCollapseSyntaxReveal } from "./extensions/plugins/syntax-reveal";
 import { FindReplaceBar } from "./components/editor/FindReplaceBar";
 import "./App.css";
@@ -1083,10 +1084,11 @@ function App() {
           if (!editor) break;
           const { from, to } = editor.state.selection;
           if (from === to) break; // Need selection for link
-          const url = window.prompt("Enter URL:");
-          if (url) {
-            editor.chain().focus().toggleLink({ href: url }).run();
-          }
+          showPrompt("Enter URL:").then((url) => {
+            if (url) {
+              editor.chain().focus().toggleLink({ href: url }).run();
+            }
+          });
           break;
         }
         case "insert_image": {

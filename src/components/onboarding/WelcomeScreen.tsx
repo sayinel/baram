@@ -51,7 +51,7 @@ export function WelcomeScreen({ onNewFile, onOpenFile, onOpenFolder }: WelcomeSc
           <p className="welcome-tips-title">빠른 시작</p>
           <ul className="welcome-tips-list">
             <li>
-              <kbd>⌘</kbd> + <kbd>K</kbd> 커맨드 팔레트 열기
+              <kbd>⌘</kbd> + <kbd>P</kbd> 커맨드 팔레트 열기
             </li>
             <li>
               <kbd>/</kbd> 슬래시 커맨드로 블록 추가

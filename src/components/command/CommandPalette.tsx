@@ -2,6 +2,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useUIStore } from "../../stores/ui-store";
 import { useEditorStore } from "../../stores/editor-store";
+import { executeAICommand, getSelectedText, getSelectionOrParagraph, showPrompt } from "../../utils/ai-commands";
 import type { Editor } from "@tiptap/react";
 
 export interface CommandItem {
@@ -209,6 +210,103 @@ function buildCommands(
       shortcut: "\u21E7\u2318T",
       action: () => {
         useUIStore.getState().toggleSkillTestDialog();
+      },
+    },
+    // §6.2 Selection-based AI commands
+    {
+      id: "ai:translate",
+      label: "Translate Selection",
+      category: "AI",
+      action: async (editor) => {
+        if (!editor) return;
+        const selection = getSelectedText(editor);
+        if (!selection) {
+          await showPrompt("Please select text to translate.");
+          return;
+        }
+        const lang = await showPrompt("Target language:", "", {
+          presets: ["English", "Korean"],
+        });
+        if (!lang) return;
+        executeAICommand(
+          editor,
+          `Translate to ${lang}:\n\n${selection}`,
+          "You are a translation assistant. Translate the text to the specified language. Output only the translated text, no explanations.",
+          { afterSelection: true },
+        );
+      },
+    },
+    {
+      id: "ai:summarize",
+      label: "Summarize Selection",
+      category: "AI",
+      action: async (editor) => {
+        if (!editor) return;
+        const selection = getSelectedText(editor);
+        if (!selection) {
+          await showPrompt("Please select text to summarize.");
+          return;
+        }
+        executeAICommand(
+          editor,
+          selection,
+          "You are a summarization assistant. Summarize the given text concisely in markdown. Output only the summary.",
+          { afterSelection: true },
+        );
+      },
+    },
+    {
+      id: "ai:expand",
+      label: "Expand Selection",
+      category: "AI",
+      action: async (editor) => {
+        if (!editor) return;
+        const selection = getSelectedText(editor);
+        if (!selection) {
+          await showPrompt("Please select text to expand.");
+          return;
+        }
+        executeAICommand(
+          editor,
+          selection,
+          "You are a writing assistant. Expand the given text with more details, examples, and explanations. Output in markdown.",
+          { afterSelection: true },
+        );
+      },
+    },
+    {
+      id: "ai:fix-grammar",
+      label: "Fix Grammar",
+      category: "AI",
+      action: (editor) => {
+        if (!editor) return;
+        const text = getSelectionOrParagraph(editor);
+        if (!text) return;
+        executeAICommand(
+          editor,
+          text,
+          "You are a grammar checker. Fix grammar and spelling errors in the given text. Return only the corrected text, no explanations.",
+          { afterSelection: true },
+        );
+      },
+    },
+    {
+      id: "ai:explain",
+      label: "Explain Selection",
+      category: "AI",
+      action: async (editor) => {
+        if (!editor) return;
+        const selection = getSelectedText(editor);
+        if (!selection) {
+          await showPrompt("Please select text to explain.");
+          return;
+        }
+        executeAICommand(
+          editor,
+          selection,
+          "You are an explanation assistant. Explain the given text clearly and concisely in markdown.",
+          { afterSelection: true },
+        );
       },
     },
   ];

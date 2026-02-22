@@ -1,5 +1,5 @@
 // §4.8 Context Menu — right-click with node-type detection
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import { copyMathToPNG } from "../../utils/katex-to-png";
 import {
@@ -426,13 +426,35 @@ export function ContextMenu({ editor }: ContextMenuProps) {
     };
   }, [editor, buildMenuItems, buildMathBlockMenu, buildMathInlineMenu, findMathNode, closeMenu]);
 
+  // Clamp menu position so it stays within the viewport
+  const [adjustedPos, setAdjustedPos] = useState<{ x: number; y: number } | null>(null);
+  useLayoutEffect(() => {
+    if (!position || !menuRef.current) {
+      setAdjustedPos(null);
+      return;
+    }
+    const rect = menuRef.current.getBoundingClientRect();
+    let { x, y } = position;
+    if (x + rect.width > window.innerWidth) {
+      x = window.innerWidth - rect.width - 4;
+    }
+    if (y + rect.height > window.innerHeight) {
+      y = window.innerHeight - rect.height - 4;
+    }
+    if (x < 0) x = 4;
+    if (y < 0) y = 4;
+    setAdjustedPos({ x, y });
+  }, [position, items]);
+
   if (!position) return null;
+
+  const displayPos = adjustedPos ?? position;
 
   return (
     <div
       ref={menuRef}
       className="context-menu"
-      style={{ left: position.x, top: position.y }}
+      style={{ left: displayPos.x, top: displayPos.y }}
     >
       {items.map((item, i) =>
         item.separator ? (

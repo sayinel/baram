@@ -15,8 +15,9 @@ import {
   resolveInputVariable,
   substituteInput,
 } from "../../utils/custom-ai-commands";
+import { executeAICommand, showPrompt } from "../../utils/ai-commands";
 
-function buildSlashItems(editor: Editor): SlashMenuItem[] {
+export function buildSlashItems(editor: Editor): SlashMenuItem[] {
   const items: SlashMenuItem[] = [
     // Headings
     {
@@ -211,6 +212,42 @@ function buildSlashItems(editor: Editor): SlashMenuItem[] {
     },
   ];
 
+  // §6.2 Built-in AI slash commands
+  items.push(
+    {
+      id: "ai-write",
+      label: "AI Write",
+      category: "AI",
+      description: "Generate a draft from a topic",
+      mdHint: "AI",
+      action: async () => {
+        const topic = await showPrompt("Topic or instructions:");
+        if (!topic) return;
+        executeAICommand(
+          editor,
+          topic,
+          "You are a writing assistant. Write a draft about the given topic in markdown. Output only the markdown content, no explanations.",
+        );
+      },
+    },
+    {
+      id: "ai-brainstorm",
+      label: "AI Brainstorm",
+      category: "AI",
+      description: "Generate a list of ideas",
+      mdHint: "AI",
+      action: async () => {
+        const topic = await showPrompt("Topic to brainstorm:");
+        if (!topic) return;
+        executeAICommand(
+          editor,
+          topic,
+          "You are a creative assistant. Generate a brainstormed list of ideas about the given topic. Output as a markdown bullet list.",
+        );
+      },
+    },
+  );
+
   // §48 Inject custom AI commands from store
   const customCommands = useAIStore.getState().customCommands;
   for (const cmd of customCommands) {
@@ -220,7 +257,7 @@ function buildSlashItems(editor: Editor): SlashMenuItem[] {
       category: "AI",
       description: cmd.prompt.length > 60 ? cmd.prompt.slice(0, 60) + "..." : cmd.prompt,
       mdHint: "AI",
-      action: () => {
+      action: async () => {
         // Get current context for variable substitution
         const { from, to } = editor.state.selection;
         const selection = from !== to ? editor.state.doc.textBetween(from, to) : "";
@@ -234,27 +271,13 @@ function buildSlashItems(editor: Editor): SlashMenuItem[] {
         });
 
         if (hasInput) {
-          const userInput = window.prompt(inputPrompt);
+          const userInput = await showPrompt(inputPrompt);
           if (userInput === null) return; // Cancelled
           finalPrompt = substituteInput(finalPrompt, userInput);
         }
 
-        // Trigger LLM — import dynamically to avoid circular dependency
-        import("../../ipc/invoke").then(({ llmComplete }) => {
-          const store = useAIStore.getState();
-          const requestId = `ai_cmd_${Date.now()}`;
-          llmComplete(
-            store.apiKey,
-            finalPrompt,
-            store.model,
-            requestId,
-            undefined,
-            undefined,
-            store.provider,
-            store.provider === "ollama" ? store.ollamaUrl : undefined,
-            store.privacyMode,
-          ).catch(console.error);
-        });
+        // Stream LLM response into editor
+        executeAICommand(editor, finalPrompt, "You are a helpful AI assistant. Follow the user's instructions carefully.");
       },
     });
   }
