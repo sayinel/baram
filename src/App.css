@@ -1305,13 +1305,17 @@ body {
   padding: 4px 0;
 }
 
-.file-tree-search {
-  padding: 4px 8px 4px;
+.file-tree-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
   border-bottom: 1px solid var(--color-border);
 }
 
-.file-tree-search input {
-  width: 100%;
+.file-tree-search-input {
+  flex: 1;
+  min-width: 0;
   padding: 4px 8px;
   font-size: 0.8rem;
   font-family: inherit;
@@ -1322,8 +1326,30 @@ body {
   outline: none;
 }
 
-.file-tree-search input:focus {
+.file-tree-search-input:focus {
   border-color: var(--color-accent);
+}
+
+.file-tree-action-btn {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 0.75rem;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.file-tree-action-btn:hover {
+  background: var(--color-bg-primary);
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
 }
 
 .file-tree-results {
@@ -1375,6 +1401,8 @@ body {
   color: var(--color-text-secondary);
   cursor: pointer;
   transition: background-color 0.1s;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .file-tree-item:hover {
@@ -1382,10 +1410,16 @@ body {
 }
 
 .file-tree-icon {
-  font-size: 0.7rem;
   flex-shrink: 0;
   width: 14px;
-  text-align: center;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.file-tree-icon svg {
+  display: block;
 }
 
 .file-tree-name {
@@ -1401,13 +1435,43 @@ body {
 }
 
 .file-tree-chevron {
-  display: inline-block;
   transition: transform 0.15s ease;
   font-size: 0.55rem;
 }
 
 .file-tree-chevron-open {
   transform: rotate(90deg);
+}
+
+/* Drag-and-drop */
+.file-tree-file {
+  cursor: grab;
+}
+
+.file-tree-dragging {
+  cursor: grabbing;
+}
+
+.file-tree-drag-source {
+  opacity: 0.4;
+}
+
+.file-tree-drag-ghost {
+  position: fixed;
+  z-index: 100;
+  pointer-events: none;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  font-family: inherit;
+  color: var(--color-text-primary);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* §33 File tree inline rename */
@@ -1423,6 +1487,49 @@ body {
   border-radius: 3px;
   outline: none;
 }
+
+/* File tree context menu */
+.file-tree-context-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 140px;
+  padding: 4px 0;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.file-tree-context-menu-item {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.file-tree-context-menu-item:hover {
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+}
+
+.file-tree-context-menu-item-danger:hover {
+  background: #e53e3e20;
+  color: #e53e3e;
+}
+
+.file-tree-context-menu-separator {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--color-border);
+}
+
+/* Drag and drop */
+.file-tree-drop-target {
+  background: var(--color-accent-light, rgba(59, 130, 246, 0.1));
+  outline: 1px dashed var(--color-accent);
+  border-radius: 3px;
+}
+
 
 /* §4.3 Outline */
 .outline {

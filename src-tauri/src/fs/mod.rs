@@ -107,6 +107,23 @@ pub async fn rename_file(from: &str, to: &str) -> Result<(), FsError> {
     tokio::fs::rename(from, to).await.map_err(FsError::ReadError)
 }
 
+/// 디렉토리 생성 (중간 디렉토리 포함)
+pub async fn create_dir(path: &str) -> Result<(), FsError> {
+    tokio::fs::create_dir_all(path)
+        .await
+        .map_err(FsError::ReadError)
+}
+
+/// 디렉토리 재귀 삭제
+pub async fn delete_dir(path: &str) -> Result<(), FsError> {
+    if !Path::new(path).exists() {
+        return Err(FsError::NotFound(path.to_string()));
+    }
+    tokio::fs::remove_dir_all(path)
+        .await
+        .map_err(FsError::ReadError)
+}
+
 /// 파일 삭제
 pub async fn delete_file(path: &str) -> Result<(), FsError> {
     if !Path::new(path).exists() {

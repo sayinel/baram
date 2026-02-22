@@ -47,6 +47,20 @@ pub async fn delete_file(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub async fn create_dir(path: String) -> Result<(), String> {
+    crate::fs::create_dir(&path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_dir(path: String) -> Result<(), String> {
+    crate::fs::delete_dir(&path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn watch_dir(path: String, app_handle: tauri::AppHandle) -> Result<(), String> {
     crate::fs::watch_dir(&path, app_handle).map_err(|e| e.to_string())
 }

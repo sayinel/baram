@@ -21,6 +21,12 @@ interface FileState {
   removeFileContent: (path: string) => void;
   /** §33 Rename a file entry in the tree and update openFiles cache key */
   renameFileEntry: (oldPath: string, newPath: string, newName: string) => void;
+  /** Add a file/folder entry under parentPath (sorted: dirs first, then name) */
+  addFileEntry: (parentPath: string, entry: FileEntry) => void;
+  /** Remove a file/folder entry by path */
+  removeFileEntry: (path: string) => void;
+  /** Move a file/folder entry to a new parent directory */
+  moveFileEntry: (oldPath: string, newParentPath: string) => void;
 }
 
 /**
@@ -125,5 +131,133 @@ export const useFileStore = create<FileState>((set) => ({
       }
 
       return { openFiles, fileTree: updateTree(state.fileTree) };
+    }),
+
+  addFileEntry: (parentPath, entry) =>
+    set((state) => {
+      function insertSorted(entries: FileEntry[], newEntry: FileEntry): FileEntry[] {
+        const result = [...entries, newEntry];
+        result.sort((a, b) => {
+          if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        });
+        return result;
+      }
+
+      // If parentPath is rootPath, insert at top level
+      if (parentPath === state.rootPath) {
+        return { fileTree: insertSorted(state.fileTree, entry) };
+      }
+
+      // Otherwise, find parent dir and insert there
+      function addToTree(entries: FileEntry[]): FileEntry[] {
+        return entries.map((e) => {
+          if (e.path === parentPath && e.isDir) {
+            return { ...e, children: insertSorted(e.children || [], entry) };
+          }
+          if (e.isDir && e.children) {
+            return { ...e, children: addToTree(e.children) };
+          }
+          return e;
+        });
+      }
+
+      return { fileTree: addToTree(state.fileTree) };
+    }),
+
+  removeFileEntry: (path) =>
+    set((state) => {
+      // Remove from openFiles (for files) and any children (for dirs)
+      const openFiles = new Map(state.openFiles);
+      for (const key of openFiles.keys()) {
+        if (key === path || key.startsWith(path + "/")) {
+          openFiles.delete(key);
+        }
+      }
+
+      function removeFromTree(entries: FileEntry[]): FileEntry[] {
+        return entries
+          .filter((e) => e.path !== path)
+          .map((e) => {
+            if (e.isDir && e.children) {
+              return { ...e, children: removeFromTree(e.children) };
+            }
+            return e;
+          });
+      }
+
+      return { openFiles, fileTree: removeFromTree(state.fileTree) };
+    }),
+
+  moveFileEntry: (oldPath, newParentPath) =>
+    set((state) => {
+      // Find the entry to move
+      function findEntry(entries: FileEntry[]): FileEntry | null {
+        for (const e of entries) {
+          if (e.path === oldPath) return e;
+          if (e.isDir && e.children) {
+            const found = findEntry(e.children);
+            if (found) return found;
+          }
+        }
+        return null;
+      }
+
+      const entry = findEntry(state.fileTree);
+      if (!entry) return state;
+
+      const newPath = newParentPath + "/" + entry.name;
+      const movedEntry: FileEntry = { ...entry, path: newPath };
+
+      // Update openFiles key
+      const openFiles = new Map(state.openFiles);
+      const content = openFiles.get(oldPath);
+      if (content !== undefined) {
+        openFiles.delete(oldPath);
+        openFiles.set(newPath, content);
+      }
+
+      // Remove from old location
+      function removeFromTree(entries: FileEntry[]): FileEntry[] {
+        return entries
+          .filter((e) => e.path !== oldPath)
+          .map((e) => {
+            if (e.isDir && e.children) {
+              return { ...e, children: removeFromTree(e.children) };
+            }
+            return e;
+          });
+      }
+
+      // Insert into new location (sorted)
+      function insertSorted(entries: FileEntry[], newEntry: FileEntry): FileEntry[] {
+        const result = [...entries, newEntry];
+        result.sort((a, b) => {
+          if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        });
+        return result;
+      }
+
+      let newTree = removeFromTree(state.fileTree);
+
+      if (newParentPath === state.rootPath) {
+        newTree = insertSorted(newTree, movedEntry);
+      } else {
+        function addToTree(entries: FileEntry[]): FileEntry[] {
+          return entries.map((e) => {
+            if (e.path === newParentPath && e.isDir) {
+              return { ...e, children: insertSorted(e.children || [], movedEntry) };
+            }
+            if (e.isDir && e.children) {
+              return { ...e, children: addToTree(e.children) };
+            }
+            return e;
+          });
+        }
+        newTree = addToTree(newTree);
+      }
+
+      return { openFiles, fileTree: newTree };
     }),
 }));
