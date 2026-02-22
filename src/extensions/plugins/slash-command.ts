@@ -9,9 +9,15 @@ import {
   type SlashMenuItem,
   type SlashMenuRef,
 } from "../../components/command/SlashMenu";
+import { useAIStore } from "../../stores/ai-store";
+import {
+  substituteVariables,
+  resolveInputVariable,
+  substituteInput,
+} from "../../utils/custom-ai-commands";
 
 function buildSlashItems(editor: Editor): SlashMenuItem[] {
-  return [
+  const items: SlashMenuItem[] = [
     // Headings
     {
       id: "h1",
@@ -204,6 +210,56 @@ function buildSlashItems(editor: Editor): SlashMenuItem[] {
       },
     },
   ];
+
+  // §48 Inject custom AI commands from store
+  const customCommands = useAIStore.getState().customCommands;
+  for (const cmd of customCommands) {
+    items.push({
+      id: `ai-custom-${cmd.id}`,
+      label: cmd.name,
+      category: "AI",
+      description: cmd.prompt.length > 60 ? cmd.prompt.slice(0, 60) + "..." : cmd.prompt,
+      mdHint: "AI",
+      action: () => {
+        // Get current context for variable substitution
+        const { from, to } = editor.state.selection;
+        const selection = from !== to ? editor.state.doc.textBetween(from, to) : "";
+        const document = editor.state.doc.textContent;
+
+        const { hasInput, prompt: inputPrompt } = resolveInputVariable(cmd.prompt);
+
+        let finalPrompt = substituteVariables(cmd.prompt, {
+          selection,
+          document,
+        });
+
+        if (hasInput) {
+          const userInput = window.prompt(inputPrompt);
+          if (userInput === null) return; // Cancelled
+          finalPrompt = substituteInput(finalPrompt, userInput);
+        }
+
+        // Trigger LLM — import dynamically to avoid circular dependency
+        import("../../ipc/invoke").then(({ llmComplete }) => {
+          const store = useAIStore.getState();
+          const requestId = `ai_cmd_${Date.now()}`;
+          llmComplete(
+            store.apiKey,
+            finalPrompt,
+            store.model,
+            requestId,
+            undefined,
+            undefined,
+            store.provider,
+            store.provider === "ollama" ? store.ollamaUrl : undefined,
+            store.privacyMode,
+          ).catch(console.error);
+        });
+      },
+    });
+  }
+
+  return items;
 }
 
 const SLASH_MENU_HEIGHT = 320; // approximate max popup height

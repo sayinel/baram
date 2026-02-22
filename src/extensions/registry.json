@@ -351,12 +351,12 @@
     },
     {
       "name": "search",
-      "file": "plugins/search.ts",
+      "file": "plugins/find-replace.ts",
       "spec": "§5.6",
       "phase": 2,
-      "milestone": "M7",
-      "status": "planned",
-      "shortcuts": { "Mod-f": "find", "Mod-Shift-f": "find and replace" }
+      "milestone": "M8",
+      "status": "implemented",
+      "shortcuts": { "Mod-f": "find", "Mod-h": "find and replace" }
     },
     {
       "name": "slashCommands",
@@ -414,13 +414,44 @@
       "_note": "Focus-reveal + hint dot for block IDs. Shows ⚓ hint when unfocused, ^blockId when focused, inline input on double-click."
     },
     {
+      "name": "ghostText",
+      "file": "plugins/ghost-text.ts",
+      "spec": "§43",
+      "phase": 2,
+      "milestone": "M8",
+      "status": "implemented",
+      "shortcuts": { "Tab": "accept full suggestion", "Mod-Right": "accept first word", "Escape": "dismiss" },
+      "_note": "ProseMirror Plugin that shows dimmed inline text completions via LLM streaming. Orchestrated by useGhostText hook."
+    },
+    {
       "name": "dragHandle",
-      "file": "plugins/drag-handle.ts",
+      "file": "component:BlockHandle.tsx",
       "spec": "§4.8",
       "phase": 1,
       "milestone": "M4",
-      "status": "planned",
-      "shortcuts": {}
+      "status": "implemented",
+      "shortcuts": {},
+      "_note": "Implemented as React component (BlockHandle.tsx), not ProseMirror plugin. Handles drag via mouse events due to WKWebView HTML5 DnD limitations."
+    },
+    {
+      "name": "promptHighlight",
+      "file": "plugins/prompt-highlight.ts",
+      "spec": "§41",
+      "phase": 2,
+      "milestone": "M8",
+      "status": "implemented",
+      "shortcuts": {},
+      "_note": "Decoration plugin for prompt syntax highlighting in Skills files. Highlights XML tags, mustache variables, and file paths."
+    },
+    {
+      "name": "promptLint",
+      "file": "plugins/prompt-lint.ts",
+      "spec": "§46",
+      "phase": 2,
+      "milestone": "M8",
+      "status": "implemented",
+      "shortcuts": {},
+      "_note": "Decoration plugin for static prompt analysis in Skills files. 6 rules: ambiguous, missing format, missing fields, excessive length, unused variables, conflicting instructions."
     }
   ]
 }

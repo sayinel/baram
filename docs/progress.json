@@ -1,9 +1,9 @@
 {
   "_comment": "Baram 개발 진행 상황 추적. 슬래시 커맨드가 자동으로 업데이트한다.",
   "project": "baram",
-  "lastUpdated": "2026-02-21",
+  "lastUpdated": "2026-02-22",
   "currentPhase": 2,
-  "currentMilestone": "M7",
+  "currentMilestone": "M8",
 
   "milestones": {
     "M1": {
@@ -140,9 +140,31 @@
     }
   },
 
+    "M8": {
+      "name": "AI 심화 + Skills 편집",
+      "status": "completed",
+      "completedAt": "2026-02-22",
+      "features": {
+        "§A1-llm-stream-hook": { "status": "completed", "tests": "tsc clean (useLLMStream hook)", "spec": "§6.3" },
+        "§A2-multi-provider": { "status": "completed", "tests": "30/30 cargo test (Claude+OpenAI+Ollama SSE)", "spec": "§6.3" },
+        "§A3-privacy-mode": { "status": "completed", "tests": "tsc clean (privacy-check util)", "spec": "§49" },
+        "§43-ghost-text": { "status": "completed", "tests": "2/2 vitest pass (ProseMirror plugin + hook)", "spec": "§43" },
+        "§40-frontmatter-visual": { "status": "completed", "tests": "tsc clean (FrontmatterEditor component)", "spec": "§40" },
+        "§41-prompt-highlight": { "status": "completed", "tests": "4/4 vitest pass (decoration plugin)", "spec": "§41" },
+        "§42-skill-templates": { "status": "completed", "tests": "tsc clean (5 templates + NewSkillDialog)", "spec": "§42" },
+        "§44-ai-chat-panel": { "status": "completed", "tests": "tsc clean (AIChatPanel + ChatMessage + chat-store)", "spec": "§44" },
+        "§48-custom-ai-commands": { "status": "completed", "tests": "20/20 vitest pass (substituteVariables + CRUD)", "spec": "§48" },
+        "§45-skill-auto-gen": { "status": "completed", "tests": "tsc clean (SkillGeneratorDialog + prompt builder)", "spec": "§45" },
+        "§46-prompt-optimization": { "status": "completed", "tests": "21/21 vitest pass (6 linter rules + decoration)", "spec": "§46" },
+        "§47-skill-inline-test": { "status": "completed", "tests": "included in custom-ai-commands tests (extractSkillPrompt + runSkillTest)", "spec": "§47" },
+        "§E1-find-replace": { "status": "completed", "tests": "21/21 vitest pass (ProseMirror plugin + FindReplaceBar)", "spec": "§5.6" }
+      }
+    }
+  },
+
   "testSummary": {
-    "vitest": "506/506 pass (38 test files)",
-    "cargoTest": "38/38 pass (1 ignored)",
+    "vitest": "581/581 pass (43 test files)",
+    "cargoTest": "68/68 pass (1 ignored)",
     "breakdown": {
       "stores": 6,
       "editor-store-mru": 12,
@@ -154,7 +176,7 @@
       "roundtrip-callout": 12,
       "roundtrip-toggle": 25,
       "roundtrip-block-ref": 15,
-      "block-id-decoration": 8,
+      "block-id-decoration": 25,
       "block-embed-edit": 6,
       "block-replace": 9,
       "heading-shortcuts": 15,
@@ -172,7 +194,12 @@
       "auto-rename": 11,
       "integration": 26,
       "cargo-sse-parser": 3,
-      "graph-view": 15
+      "graph-view": 22,
+      "ghost-text": 2,
+      "prompt-highlight": 4,
+      "find-replace": 21,
+      "custom-ai-commands": 20,
+      "prompt-lint": 21
     }
   },
 

@@ -1,7 +1,14 @@
 // §3.5 AI 상태 스토어 (§6.1)
 import { create } from "zustand";
 
-type AIProvider = "claude" | "openai" | "ollama";
+export type AIProvider = "claude" | "openai" | "ollama";
+
+export interface CustomAICommand {
+  id: string;
+  name: string;
+  prompt: string;
+  icon?: string;
+}
 
 interface AIState {
   provider: AIProvider;
@@ -12,6 +19,13 @@ interface AIState {
   isStreaming: boolean;
   ghostText: string | null;
 
+  // M8 additions
+  activeRequestId: string | null;
+  ghostTextEnabled: boolean;
+  ghostTextDebounceMs: number;
+  maxSuggestionLength: number;
+  customCommands: CustomAICommand[];
+
   setProvider: (provider: AIProvider) => void;
   setModel: (model: string) => void;
   setApiKey: (key: string) => void;
@@ -19,6 +33,14 @@ interface AIState {
   setPrivacyMode: (enabled: boolean) => void;
   setStreaming: (streaming: boolean) => void;
   setGhostText: (text: string | null) => void;
+  setActiveRequestId: (id: string | null) => void;
+  setGhostTextEnabled: (enabled: boolean) => void;
+  setGhostTextDebounceMs: (ms: number) => void;
+  setMaxSuggestionLength: (len: number) => void;
+  setCustomCommands: (cmds: CustomAICommand[]) => void;
+  addCustomCommand: (cmd: CustomAICommand) => void;
+  removeCustomCommand: (id: string) => void;
+  updateCustomCommand: (id: string, updates: Partial<CustomAICommand>) => void;
 }
 
 export const useAIStore = create<AIState>((set) => ({
@@ -29,6 +51,11 @@ export const useAIStore = create<AIState>((set) => ({
   privacyMode: false,
   isStreaming: false,
   ghostText: null,
+  activeRequestId: null,
+  ghostTextEnabled: false,
+  ghostTextDebounceMs: 500,
+  maxSuggestionLength: 100,
+  customCommands: [],
 
   setProvider: (provider) => set({ provider }),
   setModel: (model) => set({ model }),
@@ -37,4 +64,21 @@ export const useAIStore = create<AIState>((set) => ({
   setPrivacyMode: (privacyMode) => set({ privacyMode }),
   setStreaming: (isStreaming) => set({ isStreaming }),
   setGhostText: (ghostText) => set({ ghostText }),
+  setActiveRequestId: (activeRequestId) => set({ activeRequestId }),
+  setGhostTextEnabled: (ghostTextEnabled) => set({ ghostTextEnabled }),
+  setGhostTextDebounceMs: (ghostTextDebounceMs) => set({ ghostTextDebounceMs }),
+  setMaxSuggestionLength: (maxSuggestionLength) => set({ maxSuggestionLength }),
+  setCustomCommands: (customCommands) => set({ customCommands }),
+  addCustomCommand: (cmd) =>
+    set((state) => ({ customCommands: [...state.customCommands, cmd] })),
+  removeCustomCommand: (id) =>
+    set((state) => ({
+      customCommands: state.customCommands.filter((c) => c.id !== id),
+    })),
+  updateCustomCommand: (id, updates) =>
+    set((state) => ({
+      customCommands: state.customCommands.map((c) =>
+        c.id === id ? { ...c, ...updates } : c,
+      ),
+    })),
 }));

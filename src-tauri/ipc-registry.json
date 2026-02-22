@@ -169,14 +169,14 @@
     },
     {
       "name": "llm_complete",
-      "input": { "apiKey": "string", "prompt": "string", "model": "string", "requestId": "string", "systemPrompt": "string?", "maxTokens": "number?" },
+      "input": { "apiKey": "string", "prompt": "string", "model": "string", "requestId": "string", "systemPrompt": "string?", "maxTokens": "number?", "provider": "string?", "baseUrl": "string?", "privacyMode": "boolean?" },
       "output": "stream",
       "module": "llm",
       "spec": "§6.3",
       "phase": 1,
       "milestone": "M5",
       "status": "implemented",
-      "description": "LLM 호출 (스트리밍, 이벤트: llm:token, llm:done, llm:error)"
+      "description": "LLM 호출 (스트리밍, 이벤트: llm:token, llm:done, llm:error). M8: provider(claude/openai/ollama), baseUrl, privacyMode 파라미터 추가"
     },
     {
       "name": "create_dir",

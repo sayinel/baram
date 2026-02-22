@@ -10,6 +10,7 @@ interface UIState {
   sidebarWidth: number;
   rightPanelOpen: boolean;
   rightPanelWidth: number;
+  rightPanelMode: "chat" | "none";
   commandPaletteOpen: boolean;
   quickSwitcherOpen: boolean;
   settingsOpen: boolean;
@@ -17,12 +18,16 @@ interface UIState {
   exportDialogOpen: boolean;
   exportFormat: ExportFormat;
   welcomeOpen: boolean;
+  newSkillDialogOpen: boolean;
+  skillGeneratorDialogOpen: boolean;
+  skillTestDialogOpen: boolean;
 
   toggleSidebar: () => void;
   setSidebarPanel: (panel: SidebarPanel) => void;
   setSidebarWidth: (width: number) => void;
   toggleRightPanel: () => void;
   setRightPanelWidth: (width: number) => void;
+  setRightPanelMode: (mode: "chat" | "none") => void;
   toggleCommandPalette: () => void;
   toggleQuickSwitcher: () => void;
   toggleSettings: () => void;
@@ -30,6 +35,9 @@ interface UIState {
   openExportDialog: (format?: ExportFormat) => void;
   closeExportDialog: () => void;
   dismissWelcome: (permanent?: boolean) => void;
+  toggleNewSkillDialog: () => void;
+  toggleSkillGeneratorDialog: () => void;
+  toggleSkillTestDialog: () => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -38,6 +46,7 @@ export const useUIStore = create<UIState>((set) => ({
   sidebarWidth: 260,
   rightPanelOpen: false,
   rightPanelWidth: 300,
+  rightPanelMode: "chat" as const,
   commandPaletteOpen: false,
   quickSwitcherOpen: false,
   settingsOpen: false,
@@ -45,6 +54,9 @@ export const useUIStore = create<UIState>((set) => ({
   exportDialogOpen: false,
   exportFormat: "html" as ExportFormat,
   welcomeOpen: localStorage.getItem("baram:onboarding-complete") !== "true",
+  newSkillDialogOpen: false,
+  skillGeneratorDialogOpen: false,
+  skillTestDialogOpen: false,
 
   toggleSidebar: () =>
     set((state) => ({ sidebarOpen: !state.sidebarOpen })),
@@ -57,6 +69,8 @@ export const useUIStore = create<UIState>((set) => ({
     set((state) => ({ rightPanelOpen: !state.rightPanelOpen })),
 
   setRightPanelWidth: (width) => set({ rightPanelWidth: width }),
+
+  setRightPanelMode: (mode) => set({ rightPanelMode: mode }),
 
   toggleCommandPalette: () =>
     set((state) => ({ commandPaletteOpen: !state.commandPaletteOpen })),
@@ -81,4 +95,13 @@ export const useUIStore = create<UIState>((set) => ({
     }
     set({ welcomeOpen: false });
   },
+
+  toggleNewSkillDialog: () =>
+    set((state) => ({ newSkillDialogOpen: !state.newSkillDialogOpen })),
+
+  toggleSkillGeneratorDialog: () =>
+    set((state) => ({ skillGeneratorDialogOpen: !state.skillGeneratorDialogOpen })),
+
+  toggleSkillTestDialog: () =>
+    set((state) => ({ skillTestDialogOpen: !state.skillTestDialogOpen })),
 }));

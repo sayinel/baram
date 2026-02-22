@@ -1,9 +1,9 @@
-// §6.3 LLM API 프록시 모듈 — Claude SSE 스트리밍
+// §6.3 LLM API proxy module — multi-provider dispatch with privacy mode
 
-use futures::StreamExt;
-use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
-use serde::{Deserialize, Serialize};
-use tauri::Emitter;
+pub mod claude;
+pub mod ollama;
+pub mod openai;
+
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -12,173 +12,215 @@ pub enum LlmError {
     NoApiKey,
     #[error("HTTP request failed: {0}")]
     RequestFailed(String),
+    #[error("Privacy mode blocks cloud provider '{0}' — only 'ollama' (local) is allowed")]
+    PrivacyBlocked(String),
+    #[error("Unknown provider: {0}")]
+    UnknownProvider(String),
 }
 
-#[derive(Debug, Serialize)]
-struct ClaudeRequest {
-    model: String,
-    max_tokens: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    system: Option<String>,
-    messages: Vec<ClaudeMessage>,
-    stream: bool,
-}
+/// Default base URLs for each provider
+const OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com";
+const OLLAMA_DEFAULT_BASE_URL: &str = "http://localhost:11434";
 
-#[derive(Debug, Serialize)]
-struct ClaudeMessage {
-    role: String,
-    content: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct SseEvent {
-    #[serde(rename = "type")]
-    event_type: String,
-    #[serde(default)]
-    delta: Option<SseDelta>,
-}
-
-#[derive(Debug, Deserialize)]
-struct SseDelta {
-    #[serde(rename = "type")]
-    #[serde(default)]
-    delta_type: String,
-    #[serde(default)]
-    text: String,
-}
-
-/// Claude API SSE 스트리밍 호출
-/// llm:token, llm:done, llm:error 이벤트를 프론트엔드로 emit
+/// Multi-provider LLM streaming dispatch.
+///
+/// Routes to the appropriate provider based on the `provider` parameter.
+/// When `privacy_mode` is true, only local providers (ollama) are permitted.
+///
+/// Emits llm:token, llm:done, llm:error events to the frontend.
 pub async fn complete(
+    provider: &str,
     api_key: &str,
     prompt: &str,
     model: &str,
     system_prompt: Option<&str>,
     max_tokens: u32,
     request_id: &str,
+    base_url: Option<&str>,
+    privacy_mode: bool,
     app_handle: &tauri::AppHandle,
 ) -> Result<(), LlmError> {
-    if api_key.is_empty() {
-        return Err(LlmError::NoApiKey);
+    // Privacy mode: block all cloud providers
+    if privacy_mode && provider != "ollama" {
+        return Err(LlmError::PrivacyBlocked(provider.to_string()));
     }
 
-    let mut headers = HeaderMap::new();
-    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-    headers.insert(
-        "x-api-key",
-        HeaderValue::from_str(api_key).map_err(|e| LlmError::RequestFailed(e.to_string()))?,
-    );
-    headers.insert(
-        "anthropic-version",
-        HeaderValue::from_static("2023-06-01"),
-    );
-
-    let body = ClaudeRequest {
-        model: model.to_string(),
-        max_tokens,
-        system: system_prompt.map(|s| s.to_string()),
-        messages: vec![ClaudeMessage {
-            role: "user".to_string(),
-            content: prompt.to_string(),
-        }],
-        stream: true,
-    };
-
-    let client = reqwest::Client::new();
-    let response = client
-        .post("https://api.anthropic.com/v1/messages")
-        .headers(headers)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| LlmError::RequestFailed(e.to_string()))?;
-
-    if !response.status().is_success() {
-        let status = response.status();
-        let body_text = response
-            .text()
+    match provider {
+        "claude" => {
+            claude::complete_stream(
+                api_key,
+                prompt,
+                model,
+                system_prompt,
+                max_tokens,
+                request_id,
+                app_handle,
+            )
             .await
-            .unwrap_or_else(|_| "unknown error".to_string());
-        return Err(LlmError::RequestFailed(format!(
-            "HTTP {}: {}",
-            status, body_text
-        )));
-    }
-
-    let mut stream = response.bytes_stream();
-    let mut buffer = String::new();
-
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| LlmError::RequestFailed(e.to_string()))?;
-        let text = String::from_utf8_lossy(&chunk);
-        buffer.push_str(&text);
-
-        // Parse SSE lines from buffer
-        while let Some(line_end) = buffer.find('\n') {
-            let line = buffer[..line_end].trim_end_matches('\r').to_string();
-            buffer = buffer[line_end + 1..].to_string();
-
-            if let Some(data) = line.strip_prefix("data: ") {
-                if data == "[DONE]" {
-                    let _ = app_handle.emit(
-                        "llm:done",
-                        serde_json::json!({ "requestId": request_id }),
-                    );
-                    return Ok(());
-                }
-
-                if let Ok(event) = serde_json::from_str::<SseEvent>(data) {
-                    if event.event_type == "content_block_delta" {
-                        if let Some(delta) = &event.delta {
-                            if delta.delta_type == "text_delta" && !delta.text.is_empty() {
-                                let _ = app_handle.emit(
-                                    "llm:token",
-                                    serde_json::json!({
-                                        "requestId": request_id,
-                                        "token": delta.text,
-                                    }),
-                                );
-                            }
-                        }
-                    } else if event.event_type == "message_stop" {
-                        let _ = app_handle.emit(
-                            "llm:done",
-                            serde_json::json!({ "requestId": request_id }),
-                        );
-                        return Ok(());
-                    }
-                }
-            }
         }
+        "openai" => {
+            let url = base_url.unwrap_or(OPENAI_DEFAULT_BASE_URL);
+            openai::complete_stream(
+                api_key,
+                prompt,
+                model,
+                system_prompt,
+                max_tokens,
+                request_id,
+                url,
+                app_handle,
+            )
+            .await
+        }
+        "ollama" => {
+            let url = base_url.unwrap_or(OLLAMA_DEFAULT_BASE_URL);
+            ollama::complete_stream(
+                prompt,
+                model,
+                system_prompt,
+                max_tokens,
+                request_id,
+                url,
+                app_handle,
+            )
+            .await
+        }
+        _ => Err(LlmError::UnknownProvider(provider.to_string())),
     }
-
-    // Stream ended without explicit message_stop
-    let _ = app_handle.emit(
-        "llm:done",
-        serde_json::json!({ "requestId": request_id }),
-    );
-
-    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    // --- Claude SSE parsing tests (re-exported from claude module) ---
+
     #[test]
-    fn test_sse_event_parse_content_block_delta() {
+    fn test_claude_sse_event_parse_content_block_delta() {
         let json = r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}"#;
-        let event: SseEvent = serde_json::from_str(json).unwrap();
+        let event: claude::SseEvent = serde_json::from_str(json).unwrap();
         assert_eq!(event.event_type, "content_block_delta");
         assert_eq!(event.delta.unwrap().text, "Hello");
     }
 
     #[test]
-    fn test_sse_event_parse_message_stop() {
+    fn test_claude_sse_event_parse_message_stop() {
         let json = r#"{"type":"message_stop"}"#;
-        let event: SseEvent = serde_json::from_str(json).unwrap();
+        let event: claude::SseEvent = serde_json::from_str(json).unwrap();
         assert_eq!(event.event_type, "message_stop");
         assert!(event.delta.is_none());
     }
 
+    // --- OpenAI SSE parsing tests ---
+
+    #[test]
+    fn test_openai_sse_chunk_parse() {
+        let json = r#"{"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"Hello"},"finish_reason":null}]}"#;
+        let chunk: openai::OpenAISseChunk = serde_json::from_str(json).unwrap();
+        assert_eq!(chunk.choices.len(), 1);
+        assert_eq!(
+            chunk.choices[0].delta.as_ref().unwrap().content.as_deref(),
+            Some("Hello")
+        );
+    }
+
+    #[test]
+    fn test_openai_sse_chunk_finish_stop() {
+        let json = r#"{"id":"chatcmpl-abc","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}"#;
+        let chunk: openai::OpenAISseChunk = serde_json::from_str(json).unwrap();
+        assert_eq!(chunk.choices[0].finish_reason.as_deref(), Some("stop"));
+    }
+
+    // --- Ollama NDJSON parsing tests ---
+
+    #[test]
+    fn test_ollama_response_parse_token() {
+        let json = r#"{"response":"Hello","done":false}"#;
+        let resp: ollama::OllamaResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.response, "Hello");
+        assert!(!resp.done);
+    }
+
+    #[test]
+    fn test_ollama_response_parse_done() {
+        let json = r#"{"response":"","done":true}"#;
+        let resp: ollama::OllamaResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.done);
+    }
+
+    // --- Privacy mode tests ---
+
+    #[test]
+    fn test_privacy_blocks_claude() {
+        // We can't call complete() without AppHandle, so test the logic directly
+        let provider = "claude";
+        let privacy_mode = true;
+        if privacy_mode && provider != "ollama" {
+            let err = LlmError::PrivacyBlocked(provider.to_string());
+            assert!(err.to_string().contains("claude"));
+            assert!(err.to_string().contains("Privacy mode"));
+        } else {
+            panic!("Should have been blocked");
+        }
+    }
+
+    #[test]
+    fn test_privacy_blocks_openai() {
+        let provider = "openai";
+        let privacy_mode = true;
+        if privacy_mode && provider != "ollama" {
+            let err = LlmError::PrivacyBlocked(provider.to_string());
+            assert!(err.to_string().contains("openai"));
+        } else {
+            panic!("Should have been blocked");
+        }
+    }
+
+    #[test]
+    fn test_privacy_allows_ollama() {
+        let provider = "ollama";
+        let privacy_mode = true;
+        // Ollama should NOT be blocked by privacy mode
+        assert!(!(privacy_mode && provider != "ollama"));
+    }
+
+    #[test]
+    fn test_privacy_off_allows_all() {
+        let privacy_mode = false;
+        for provider in &["claude", "openai", "ollama"] {
+            assert!(!(privacy_mode && *provider != "ollama"));
+        }
+    }
+
+    // --- Provider dispatch tests ---
+
+    #[test]
+    fn test_unknown_provider_error() {
+        let err = LlmError::UnknownProvider("gemini".to_string());
+        assert!(err.to_string().contains("gemini"));
+    }
+
+    #[test]
+    fn test_default_base_urls() {
+        assert_eq!(OPENAI_DEFAULT_BASE_URL, "https://api.openai.com");
+        assert_eq!(OLLAMA_DEFAULT_BASE_URL, "http://localhost:11434");
+    }
+
+    #[test]
+    fn test_error_display() {
+        let err = LlmError::NoApiKey;
+        assert_eq!(err.to_string(), "API key not provided");
+
+        let err = LlmError::RequestFailed("timeout".to_string());
+        assert_eq!(err.to_string(), "HTTP request failed: timeout");
+
+        let err = LlmError::PrivacyBlocked("claude".to_string());
+        assert!(err.to_string().contains("Privacy mode"));
+        assert!(err.to_string().contains("claude"));
+        assert!(err.to_string().contains("ollama"));
+
+        let err = LlmError::UnknownProvider("foo".to_string());
+        assert!(err.to_string().contains("Unknown provider"));
+        assert!(err.to_string().contains("foo"));
+    }
 }

@@ -185,6 +185,32 @@ function buildCommands(
       shortcut: "\u2318E",
       action: (editor) => editor?.chain().focus().toggleCode().run(),
     },
+    // Skills
+    {
+      id: "skill:new",
+      label: "New Skill from Template",
+      category: "Skills",
+      action: () => {
+        useUIStore.getState().toggleNewSkillDialog();
+      },
+    },
+    {
+      id: "skill:generate",
+      label: "AI: Generate Skill",
+      category: "Skills",
+      action: () => {
+        useUIStore.getState().toggleSkillGeneratorDialog();
+      },
+    },
+    {
+      id: "skill:test",
+      label: "AI: Test Skill",
+      category: "Skills",
+      shortcut: "\u21E7\u2318T",
+      action: () => {
+        useUIStore.getState().toggleSkillTestDialog();
+      },
+    },
   ];
 }
 

@@ -69,6 +69,15 @@ export interface LLMCompleteInput {
   requestId: string;
   systemPrompt?: string;
   maxTokens?: number;
+  provider?: string;
+  baseUrl?: string;
+  privacyMode?: boolean;
+}
+
+// §6.3 Multi-turn message type
+export interface LLMMessage {
+  role: "user" | "assistant" | "system";
+  content: string;
 }
 
 // §3.2 Export types

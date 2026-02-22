@@ -117,6 +117,9 @@ export async function llmComplete(
   requestId: string,
   systemPrompt?: string,
   maxTokens?: number,
+  provider?: string,
+  baseUrl?: string,
+  privacyMode?: boolean,
 ): Promise<void> {
   return invoke<void>("llm_complete", {
     apiKey,
@@ -125,6 +128,9 @@ export async function llmComplete(
     requestId,
     systemPrompt,
     maxTokens,
+    provider,
+    baseUrl,
+    privacyMode,
   });
 }
 

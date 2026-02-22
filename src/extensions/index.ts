@@ -44,6 +44,10 @@ import { SyntaxReveal } from "./plugins/syntax-reveal";
 import { DropHandler } from "./plugins/drop-handler";
 import { WikilinkSuggest } from "./plugins/wikilink-suggest";
 import { BlockIdDecoration } from "./plugins/block-id-decoration";
+import { GhostText } from "./plugins/ghost-text";
+import { PromptHighlight } from "./plugins/prompt-highlight";
+import { FindReplace } from "./plugins/find-replace";
+import { PromptLint } from "./plugins/prompt-lint";
 
 // Mark Extensions
 import { Bold } from "./marks/bold";
@@ -144,6 +148,18 @@ export function createBaramExtensions(options?: BaramExtensionOptions): Extensio
 
     // Plugins — §30a Block ID Decoration (Focus-Reveal + Hint)
     BlockIdDecoration,
+
+    // Plugins — §43 Ghost Text (inline completion)
+    GhostText,
+
+    // Plugins — §41 Prompt Highlight (Skills files)
+    PromptHighlight,
+
+    // Plugins — §5.6 Find/Replace (Cmd+F / Cmd+H)
+    FindReplace,
+
+    // Plugins — §46 Prompt Lint (Skills files)
+    PromptLint,
 
     // UI
     Placeholder.configure({

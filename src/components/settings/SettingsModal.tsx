@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { useUIStore } from "../../stores/ui-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useAIStore } from "../../stores/ai-store";
+import { CustomAICommandEditor } from "./CustomAICommandEditor";
 
 type SettingsTab = "general" | "editor" | "appearance" | "files" | "markdown" | "ai";
 
@@ -325,6 +326,9 @@ function AITab() {
     apiKey, setApiKey,
     ollamaUrl, setOllamaUrl,
     privacyMode, setPrivacyMode,
+    ghostTextEnabled, setGhostTextEnabled,
+    ghostTextDebounceMs, setGhostTextDebounceMs,
+    maxSuggestionLength, setMaxSuggestionLength,
   } = useAIStore();
   const [showKey, setShowKey] = useState(false);
 
@@ -401,6 +405,43 @@ function AITab() {
       <SettingsRow label="Privacy Mode" description="Do not send document content to AI providers">
         <ToggleSwitch checked={privacyMode} onChange={setPrivacyMode} />
       </SettingsRow>
+
+      <SettingsSectionHeader title="Ghost Text" />
+
+      <SettingsRow label="Enable Ghost Text" description="Show inline text completion suggestions while typing">
+        <ToggleSwitch checked={ghostTextEnabled} onChange={setGhostTextEnabled} />
+      </SettingsRow>
+
+      {ghostTextEnabled && (
+        <>
+          <SettingsRow label="Debounce" description={`Wait before requesting suggestion (${ghostTextDebounceMs}ms)`}>
+            <input
+              type="range"
+              className="settings-range"
+              min={200}
+              max={2000}
+              step={100}
+              value={ghostTextDebounceMs}
+              onChange={(e) => setGhostTextDebounceMs(Number(e.target.value))}
+            />
+          </SettingsRow>
+
+          <SettingsRow label="Max Length" description={`Maximum suggestion length (${maxSuggestionLength} tokens)`}>
+            <input
+              type="range"
+              className="settings-range"
+              min={20}
+              max={500}
+              step={10}
+              value={maxSuggestionLength}
+              onChange={(e) => setMaxSuggestionLength(Number(e.target.value))}
+            />
+          </SettingsRow>
+        </>
+      )}
+
+      <SettingsSectionHeader title="Custom Commands" />
+      <CustomAICommandEditor />
     </div>
   );
 }

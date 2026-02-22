@@ -1,4 +1,4 @@
-// §6.3 LLM IPC 커맨드 — Claude SSE 스트리밍
+// §6.3 LLM IPC command — multi-provider streaming dispatch
 
 use tauri::Emitter;
 
@@ -10,17 +10,25 @@ pub async fn llm_complete(
     system_prompt: Option<String>,
     max_tokens: Option<u32>,
     request_id: String,
+    provider: Option<String>,
+    base_url: Option<String>,
+    privacy_mode: Option<bool>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
     let tokens = max_tokens.unwrap_or(4096);
+    let prov = provider.as_deref().unwrap_or("claude");
+    let privacy = privacy_mode.unwrap_or(false);
 
     crate::llm::complete(
+        prov,
         &api_key,
         &prompt,
         &model,
         system_prompt.as_deref(),
         tokens,
         &request_id,
+        base_url.as_deref(),
+        privacy,
         &app_handle,
     )
     .await

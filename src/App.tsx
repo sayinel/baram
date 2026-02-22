@@ -38,6 +38,7 @@ import { useUIStore } from "./stores/ui-store";
 import { useSettingsStore } from "./stores/settings-store";
 import { useNavigationStore } from "./stores/navigation-store";
 import { useAutoSave } from "./hooks/use-auto-save";
+import { useGhostText } from "./hooks/use-ghost-text";
 import { readFile, writeFile, getOpenedUrls, updateFileIndex } from "./ipc/invoke";
 import { useLinkStore } from "./stores/link-store";
 import { useBookmarkStore } from "./stores/bookmark-store";
@@ -45,6 +46,7 @@ import { logAppReady } from "./utils/perf";
 import { resolveWikilinkTarget } from "./utils/wikilink-nav";
 import { findBlockPosById } from "./utils/block-nav";
 import { forceCollapseSyntaxReveal } from "./extensions/plugins/syntax-reveal";
+import { FindReplaceBar } from "./components/editor/FindReplaceBar";
 import "./App.css";
 
 // §8.4 Lazy-loaded components — split into separate chunks, loaded on first use
@@ -91,6 +93,21 @@ const AboutModal = lazy(() =>
 const GraphViewTab = lazy(() =>
   import("./components/sidebar/GraphView").then((m) => ({
     default: m.GraphView,
+  })),
+);
+const AIChatPanel = lazy(() =>
+  import("./components/ai/AIChatPanel").then((m) => ({
+    default: m.AIChatPanel,
+  })),
+);
+const SkillGeneratorDialog = lazy(() =>
+  import("./components/ai/SkillGeneratorDialog").then((m) => ({
+    default: m.SkillGeneratorDialog,
+  })),
+);
+const SkillTestDialog = lazy(() =>
+  import("./components/ai/SkillTestDialog").then((m) => ({
+    default: m.SkillTestDialog,
   })),
 );
 
@@ -148,6 +165,10 @@ function App() {
   const editorStateCache = useRef(new Map<string, EditorState>());
   // §37 Ref-based flag for back/forward navigation (avoids _navigating timing bug)
   const isNavBackForwardRef = useRef(false);
+  // §5.6 Find/Replace state
+  const [findReplaceOpen, setFindReplaceOpen] = useState(false);
+  const [findReplaceMode, setFindReplaceMode] = useState<"find" | "replace">("find");
+
   // §39 Tab switcher state
   const [tabSwitcherOpen, setTabSwitcherOpen] = useState(false);
   const [tabSwitcherIndex, setTabSwitcherIndex] = useState(0);
@@ -165,6 +186,9 @@ function App() {
 
   // Auto-save hook
   useAutoSave(editor);
+
+  // §43 Ghost Text — inline AI completion
+  useGhostText(editor);
 
   // Apply settings to DOM
   const { theme, fontSize, fontFamily, lineHeight, spellCheck, editorMaxWidth } = useSettingsStore();
@@ -796,6 +820,36 @@ function App() {
         return;
       }
 
+      // §47 Cmd+Shift+T — open skill test dialog
+      if (mod && e.shiftKey && e.key === "T") {
+        e.preventDefault();
+        useUIStore.getState().toggleSkillTestDialog();
+        return;
+      }
+
+      // §44 Cmd+Shift+A — toggle AI chat panel
+      if (mod && e.shiftKey && e.key === "A") {
+        e.preventDefault();
+        useUIStore.getState().toggleRightPanel();
+        return;
+      }
+
+      // §5.6 Cmd+F — find
+      if (mod && !e.shiftKey && e.key === "f") {
+        e.preventDefault();
+        setFindReplaceMode("find");
+        setFindReplaceOpen(true);
+        return;
+      }
+
+      // §5.6 Cmd+H — find and replace
+      if (mod && !e.shiftKey && e.key === "h") {
+        e.preventDefault();
+        setFindReplaceMode("replace");
+        setFindReplaceOpen(true);
+        return;
+      }
+
       // Cmd+/ — toggle source mode
       if (mod && e.key === "/") {
         e.preventDefault();
@@ -922,6 +976,7 @@ function App() {
     editor,
     isSourceMode,
     tabSwitcherOpen,
+    findReplaceOpen,
   ]);
 
   // §39 Ctrl keyup — commit tab switcher selection
@@ -1121,36 +1176,52 @@ function App() {
         <TabBar />
         <div className="editor-area">
           {welcomeOpen && !activeTabId ? (
-            <Suspense fallback={null}>
-              <WelcomeScreen
-                onNewFile={handleNewFile}
-                onOpenFile={handleOpenFile}
-                onOpenFolder={handleOpenFolder}
-              />
-            </Suspense>
+            <div className="editor-area-scroll">
+              <Suspense fallback={null}>
+                <WelcomeScreen
+                  onNewFile={handleNewFile}
+                  onOpenFile={handleOpenFile}
+                  onOpenFolder={handleOpenFolder}
+                />
+              </Suspense>
+            </div>
           ) : isGraphTabActive ? (
-            <Suspense fallback={null}>
-              <GraphViewTab />
-            </Suspense>
+            <div className="editor-area-scroll">
+              <Suspense fallback={null}>
+                <GraphViewTab />
+              </Suspense>
+            </div>
           ) : isSourceMode ? (
-            <Suspense fallback={null}>
-              <SourceCodeEditor
-                ref={sourceEditorRef}
-                content={sourceContent}
-                onChange={handleSourceChange}
-                initialCursorOffset={sourceCursorOffset}
-              />
-            </Suspense>
+            <div className="editor-area-scroll">
+              <Suspense fallback={null}>
+                <SourceCodeEditor
+                  ref={sourceEditorRef}
+                  content={sourceContent}
+                  onChange={handleSourceChange}
+                  initialCursorOffset={sourceCursorOffset}
+                />
+              </Suspense>
+            </div>
           ) : (
             <>
-              <EditorContent editor={editor} />
-              {editor && (
-              <>
-                <FloatingToolbar editor={editor} />
-                <BlockHandle editor={editor} />
-                <ContextMenu editor={editor} />
-              </>
-            )}
+              {findReplaceOpen && editor && (
+                <FindReplaceBar
+                  editor={editor}
+                  mode={findReplaceMode}
+                  onClose={() => setFindReplaceOpen(false)}
+                  onSetMode={setFindReplaceMode}
+                />
+              )}
+              <div className="editor-area-scroll">
+                <EditorContent editor={editor} />
+                {editor && (
+                  <>
+                    <FloatingToolbar editor={editor} />
+                    <BlockHandle editor={editor} />
+                    <ContextMenu editor={editor} />
+                  </>
+                )}
+              </div>
             </>
           )}
         </div>
@@ -1168,7 +1239,10 @@ function App() {
         <QuickSwitcher editor={editor} onNewFile={handleNewFile} />
         <SettingsModal />
         <AboutModal />
+        <AIChatPanel />
         <HoverPreview />
+        <SkillGeneratorDialogWrapper />
+        <SkillTestDialogWrapper />
       </Suspense>
       {tabSwitcherOpen && (
         <TabSwitcher
@@ -1177,6 +1251,26 @@ function App() {
         />
       )}
     </>
+  );
+}
+
+function SkillGeneratorDialogWrapper() {
+  const { skillGeneratorDialogOpen, toggleSkillGeneratorDialog } = useUIStore();
+  return (
+    <SkillGeneratorDialog
+      open={skillGeneratorDialogOpen}
+      onClose={toggleSkillGeneratorDialog}
+    />
+  );
+}
+
+function SkillTestDialogWrapper() {
+  const { skillTestDialogOpen, toggleSkillTestDialog } = useUIStore();
+  return (
+    <SkillTestDialog
+      open={skillTestDialogOpen}
+      onClose={toggleSkillTestDialog}
+    />
   );
 }
 
