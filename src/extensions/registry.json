@@ -301,7 +301,8 @@
       "milestone": "M2",
       "status": "implemented",
       "inputRules": [],
-      "shortcuts": { "Mod-u": "toggle underline" }
+      "shortcuts": { "Mod-u": "toggle underline" },
+      "_note": "Transformer handled inline in md-to-pm.ts/pm-to-md.ts via HTML <u> tags (no separate transformer file)."
     },
     {
       "name": "inlineMath",
@@ -340,12 +341,13 @@
   "plugins": [
     {
       "name": "history",
-      "file": "plugins/history.ts",
+      "file": "@tiptap/extension-history",
       "spec": "§5.2",
       "phase": 1,
       "milestone": "M2",
       "status": "implemented",
-      "shortcuts": { "Mod-z": "undo", "Mod-Shift-z": "redo" }
+      "shortcuts": { "Mod-z": "undo", "Mod-Shift-z": "redo" },
+      "_note": "Uses @tiptap/extension-history directly (configured in index.ts). No custom wrapper file."
     },
     {
       "name": "search",

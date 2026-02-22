@@ -179,9 +179,31 @@
       "description": "LLM 호출 (스트리밍, 이벤트: llm:token, llm:done, llm:error)"
     },
     {
+      "name": "create_dir",
+      "input": { "path": "string" },
+      "output": "void",
+      "module": "fs",
+      "spec": "§3.2",
+      "phase": 1,
+      "milestone": "M4",
+      "status": "implemented",
+      "description": "디렉토리 생성 (recursive)"
+    },
+    {
+      "name": "delete_dir",
+      "input": { "path": "string" },
+      "output": "void",
+      "module": "fs",
+      "spec": "§3.2",
+      "phase": 1,
+      "milestone": "M4",
+      "status": "implemented",
+      "description": "디렉토리 삭제"
+    },
+    {
       "name": "export_document",
-      "input": { "path": "string", "format": "pdf|html", "options": "ExportOptions?" },
-      "output": "string",
+      "input": { "html_content": "string", "output_path": "string", "format": "string", "options": "JsonValue?" },
+      "output": "void",
       "module": "export",
       "spec": "§5.10",
       "phase": 1,
@@ -210,6 +232,17 @@
       "milestone": "M6",
       "status": "implemented",
       "description": "macOS 파일 연결: 콜드 스타트 시 대기 중인 파일 경로 조회"
+    },
+    {
+      "name": "rename_block_id",
+      "input": { "file_path": "string", "old_id": "string", "new_id": "string" },
+      "output": "RenameResult",
+      "module": "index",
+      "spec": "§30a",
+      "phase": 2,
+      "milestone": "M7",
+      "status": "implemented",
+      "description": "블록 ID 이름 변경 + 모든 참조 자동 갱신"
     },
     {
       "name": "git_status",
