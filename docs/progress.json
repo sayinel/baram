@@ -137,9 +137,7 @@
         "macos-file-association": { "status": "completed", "tests": "cargo check pass + tsc clean", "spec": "macOS" },
         "§30-graph-view": { "status": "completed", "tests": "15/15 vitest pass (displayName + toGraphElements + nodeSize)", "spec": "§30" }
       }
-    }
-  },
-
+    },
     "M8": {
       "name": "AI 심화 + Skills 편집",
       "status": "completed",
@@ -157,14 +155,16 @@
         "§45-skill-auto-gen": { "status": "completed", "tests": "tsc clean (SkillGeneratorDialog + prompt builder)", "spec": "§45" },
         "§46-prompt-optimization": { "status": "completed", "tests": "21/21 vitest pass (6 linter rules + decoration)", "spec": "§46" },
         "§47-skill-inline-test": { "status": "completed", "tests": "included in custom-ai-commands tests (extractSkillPrompt + runSkillTest)", "spec": "§47" },
-        "§E1-find-replace": { "status": "completed", "tests": "21/21 vitest pass (ProseMirror plugin + FindReplaceBar)", "spec": "§5.6" }
+        "§E1-find-replace": { "status": "completed", "tests": "21/21 vitest pass (ProseMirror plugin + FindReplaceBar)", "spec": "§5.6" },
+        "§B4-gemini-provider": { "status": "completed", "tests": "8/8 cargo test (SSE + models + request)", "spec": "§6.3" },
+        "§B5-error-ui": { "status": "completed", "tests": "10/10 vitest pass (format-error)", "spec": "§6.3" }
       }
     }
   },
 
   "testSummary": {
-    "vitest": "581/581 pass (43 test files)",
-    "cargoTest": "68/68 pass (1 ignored)",
+    "vitest": "615/615 pass (46 test files)",
+    "cargoTest": "88/88 pass (1 ignored)",
     "breakdown": {
       "stores": 6,
       "editor-store-mru": 12,
@@ -199,7 +199,9 @@
       "prompt-highlight": 4,
       "find-replace": 21,
       "custom-ai-commands": 20,
-      "prompt-lint": 21
+      "prompt-lint": 21,
+      "format-error": 10,
+      "ai-commands": 5
     }
   },
 

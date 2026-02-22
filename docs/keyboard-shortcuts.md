@@ -29,6 +29,8 @@ Complete list of keyboard shortcuts available in Baram.
 | Copy | `Cmd+C` | `Ctrl+C` |
 | Paste | `Cmd+V` | `Ctrl+V` |
 | Select All | `Cmd+A` | `Ctrl+A` |
+| Find | `Cmd+F` | `Ctrl+F` |
+| Replace | `Cmd+H` | `Ctrl+H` |
 
 ## Inline Formatting
 
@@ -39,6 +41,7 @@ Complete list of keyboard shortcuts available in Baram.
 | Underline | `Cmd+U` | `Ctrl+U` |
 | Strikethrough | `Cmd+Shift+X` | `Ctrl+Shift+X` |
 | Inline Code | `Cmd+E` | `Ctrl+E` |
+| Link | `Cmd+K` | `Ctrl+K` |
 
 ## Block Formatting
 
@@ -90,6 +93,21 @@ Complete list of keyboard shortcuts available in Baram.
 | Command Palette (alternate) | `Cmd+Shift+P` | `Ctrl+Shift+P` |
 | Settings | `Cmd+,` | `Ctrl+,` |
 
+## AI & Skills
+
+| Action | macOS | Windows / Linux |
+|--------|-------|-----------------|
+| AI Chat Panel | `Cmd+Shift+A` | `Ctrl+Shift+A` |
+| Skill Test | `Cmd+Shift+T` | `Ctrl+Shift+T` |
+
+## Ghost Text (AI Autocomplete)
+
+| Action | macOS | Windows / Linux |
+|--------|-------|-----------------|
+| Accept Full Suggestion | `Tab` | `Tab` |
+| Accept First Word | `Cmd+Right` | `Ctrl+Right` |
+| Dismiss | `Escape` | `Escape` |
+
 ## Table (inside tables)
 
 | Action | macOS | Windows / Linux |
@@ -121,6 +139,8 @@ Complete list of keyboard shortcuts available in Baram.
 - **Markdown Shortcuts**: You can always type raw markdown syntax (e.g., `**bold**`, `# Heading`) — Baram converts it automatically
 - **Floating Toolbar**: Select text to see a floating toolbar with formatting options
 - **Tab Switcher**: Hold `Ctrl` while pressing `Tab` to cycle through recently used tabs; release `Ctrl` to select
+- **Ghost Text**: AI autocomplete appears as faded text — press `Tab` to accept, `Cmd+Right` for just the first word, `Escape` to dismiss
+- **Find & Replace**: Use `Cmd+F` to find text, `Cmd+H` to find and replace. Press `Enter`/`Shift+Enter` to navigate between matches
 
 ---
 

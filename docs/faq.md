@@ -118,7 +118,7 @@ Press `Cmd+D` (macOS) or `Ctrl+D` (Windows/Linux) to bookmark the current file. 
 
 ### How do I quickly switch between files?
 
-Press `Cmd+P` to open the Quick Switcher. Type to search files by name. Type `#` to search by heading. The switcher also supports `Ctrl+Tab` for MRU (Most Recently Used) tab switching.
+Press `Cmd+K` (macOS) or `Ctrl+K` (Windows/Linux) to open the Quick Switcher. Type to search files by name. Type `#` to search by heading. The switcher also supports `Ctrl+Tab` for MRU (Most Recently Used) tab switching.
 
 ---
 
@@ -126,38 +126,68 @@ Press `Cmd+P` to open the Quick Switcher. Type to search files by name. Type `#`
 
 ### Where do I get an API key?
 
-Baram supports the Claude API by Anthropic. Get your API key at [console.anthropic.com](https://console.anthropic.com/).
+Baram supports multiple AI providers. Get your API key from the respective provider:
+
+| Provider | Where to Get Key |
+|----------|-----------------|
+| **Claude** (Anthropic) | [console.anthropic.com](https://console.anthropic.com/) |
+| **OpenAI** | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
+| **Google Gemini** | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+| **Ollama** (local) | No API key required — runs locally on your machine |
+
+Each provider has its own API key field in **Settings > AI**.
 
 ### What AI models are supported?
 
-Baram supports Claude models from Anthropic. You can select your preferred model in **Settings > AI**.
+Baram dynamically loads available models from your selected provider. Go to **Settings > AI**, select a provider, and the model dropdown shows the available models for that provider.
 
 ### How much does AI usage cost?
 
-AI usage is billed by your API provider (Anthropic). Baram itself does not charge for AI features — you pay only for the API calls based on your provider's pricing.
+AI usage is billed by your API provider. Baram itself does not charge for AI features — you pay only for the API calls based on your provider's pricing. **Ollama** is free as it runs models locally on your machine.
 
 ### How do I use the AI inline editing?
 
 1. Select text in the editor
-2. Press `Cmd+K` (macOS) or `Ctrl+K` (Windows/Linux)
+2. Click the **AI button** in the Floating Toolbar, or use a slash AI command
 3. Type a natural language instruction (e.g., "translate to English", "fix grammar")
 4. Review the diff: green = added text, red = removed text
 5. Accept or reject the changes
 
+### What is Ghost Text?
+
+Ghost Text is AI-powered autocomplete that shows suggestions as faded text ahead of your cursor as you type. Press `Tab` to accept the full suggestion, `Cmd+Right` (macOS) / `Ctrl+Right` (Windows/Linux) for just the first word, or `Escape` to dismiss. Enable or disable it in **Settings > AI**.
+
+### What is the AI Chat Panel?
+
+Press `Cmd+Shift+A` (macOS) or `Ctrl+Shift+A` (Windows/Linux) to open a chat panel where you can converse with AI about your documents. Use `@references` to provide context: `@selection` (selected text), `@current` (current file), `@file` (any file), `@clipboard` (clipboard contents).
+
+### What are Custom AI Commands?
+
+Create your own reusable AI commands in **Settings > AI > Custom Commands**. Each command has a name, description, and prompt template with variable substitution (`{selection}`, `{document}`, `{clipboard}`). Custom commands appear in the slash menu alongside built-in AI commands.
+
 ### What are Slash AI commands?
 
-Type `/` to open the slash menu and scroll to the AI section, or type `/ai-` to filter. Available commands: summarize, expand, grammar fix, translate, tone change, simplify, and continue writing.
+Type `/` to open the slash menu and scroll to the AI section, or type `/ai-` to filter. Available commands: summarize, expand, grammar fix, translate, tone change, simplify, and continue writing. Custom AI commands also appear here.
+
+### Can I use AI without sending data to the cloud?
+
+Yes. Select **Ollama** as your provider and enable **Privacy Mode** in **Settings > AI**. Ollama runs models locally on your machine — no data leaves your computer. When Privacy Mode is enabled, only Ollama is allowed.
 
 ### What is Privacy Mode?
 
-When enabled, Privacy Mode prevents your document content from being sent to the AI provider. Enable it globally in **Settings > AI**, or per-file by adding `privacy: true` to the YAML frontmatter.
+When enabled, Privacy Mode prevents your document content from being sent to cloud AI providers. Only Ollama (local) is allowed. Enable it globally in **Settings > AI**, or per-file by adding `privacy: true` to the YAML frontmatter.
+
+### How do I search and replace text?
+
+Press `Cmd+F` (macOS) / `Ctrl+F` (Windows/Linux) to open Find. Press `Cmd+H` / `Ctrl+H` for Find & Replace. Use `Enter` / `Shift+Enter` to navigate matches. Replace one or all matches.
 
 ### The AI features don't work. What should I check?
 
-1. **API key** — Make sure you've entered a valid API key in **Settings > AI**
-2. **Network** — Baram needs internet access to reach the AI provider
-3. **Model selection** — Ensure a valid model is selected
-4. **Privacy Mode** — Check that Privacy Mode is not enabled for the file you're editing
+1. **API key** — Make sure you've entered a valid API key for your selected provider in **Settings > AI**
+2. **Provider** — Verify the correct provider is selected
+3. **Network** — Cloud providers (Claude, OpenAI, Gemini) need internet access; Ollama needs to be running locally
+4. **Model selection** — Ensure a valid model is selected
+5. **Privacy Mode** — When Privacy Mode is enabled, only Ollama works. Check that it is not enabled unintentionally
 
 ---
 
@@ -197,7 +227,7 @@ Images referenced by URL are included in HTML exports as links. For PDF exports,
 
 - Make sure you're focused on the editor area (click in the editor first)
 - On macOS, check that the system hasn't assigned the same shortcut to another action in **System Preferences > Keyboard > Shortcuts**
-- Some shortcuts change behavior based on context: `Cmd+K` opens AI inline editing when text is selected, and the Command Palette when nothing is selected
+- Some shortcuts change behavior based on context: `Cmd+K` opens the Quick Switcher, and AI inline editing is accessed via the Floating Toolbar when text is selected
 
 ### My markdown file looks different after editing
 

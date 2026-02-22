@@ -12,6 +12,7 @@ Welcome to Baram — a lightweight, beautiful WYSIWYG markdown editor with AI in
 - [Rich Content](#rich-content)
 - [Linking & Navigation](#linking--navigation)
 - [Source Mode](#source-mode)
+- [Find & Replace](#find--replace)
 - [AI Features](#ai-features)
 - [Export](#export)
 - [Customization](#customization)
@@ -77,9 +78,9 @@ Baram uses a 3-column layout:
 | Save | `Cmd+S` | `Ctrl+S` |
 | Save As | `Cmd+Shift+S` | `Ctrl+Shift+S` |
 | Close Tab | `Cmd+W` | `Ctrl+W` |
-| Quick Switcher | `Cmd+P` | `Ctrl+P` |
+| Quick Switcher | `Cmd+K` | `Ctrl+K` |
 
-You can also open files from the file tree in the left sidebar, or use the **Quick Switcher** (`Cmd+P`) for fast file and heading navigation.
+You can also open files from the file tree in the left sidebar, or use the **Quick Switcher** (`Cmd+K`) for fast file and heading navigation.
 
 ### Tabs
 
@@ -92,7 +93,7 @@ Baram supports multiple open files via tabs at the top of the editor.
 
 ### Quick Switcher
 
-Press `Cmd+P` (macOS) or `Ctrl+P` (Windows/Linux) to open the Quick Switcher. Type to search for:
+Press `Cmd+K` (macOS) or `Ctrl+K` (Windows/Linux) to open the Quick Switcher. Type to search for:
 
 - **Files** — Quickly open any file in your workspace
 - **Headings** — Type `#` to filter by heading, then jump directly to a heading in any file
@@ -121,7 +122,7 @@ Baram hides markdown syntax while you write. The delimiters appear when your cur
 | **Bold** | `**text**` | `Cmd+B` | `Ctrl+B` |
 | *Italic* | `*text*` | `Cmd+I` | `Ctrl+I` |
 | <u>Underline</u> | `<u>text</u>` | `Cmd+U` | `Ctrl+U` |
-| ~~Strikethrough~~ | `~~text~~` | `Cmd+Shift+S` | `Ctrl+Shift+S` |
+| ~~Strikethrough~~ | `~~text~~` | `Cmd+Shift+X` | `Ctrl+Shift+X` |
 | `Inline Code` | `` `text` `` | `Cmd+E` | `Ctrl+E` |
 | [Link](url) | `[text](url)` | `Cmd+K` | `Ctrl+K` |
 | Inline Math | `$formula$` | Type `$...$` | Type `$...$` |
@@ -409,6 +410,10 @@ Bookmark frequently accessed files for quick access:
 2. Bookmarked files appear in the Bookmarks section of the left sidebar
 3. Press again to remove the bookmark
 
+### Graph View
+
+A visual map of your note connections. Nodes represent files, edges represent wikilinks between them. Use the Graph View to explore the structure of your workspace and discover clusters of related notes.
+
 ---
 
 ## Source Mode
@@ -424,22 +429,43 @@ This is useful for precise markdown editing or debugging formatting issues.
 
 ---
 
+## Find & Replace
+
+### Find (`Cmd+F`)
+
+Press `Cmd+F` (macOS) or `Ctrl+F` (Windows/Linux) to open the Find bar:
+
+- Type to search — matching text is highlighted in the editor
+- **Enter** — Jump to next match
+- **Shift+Enter** — Jump to previous match
+- **Escape** — Close the Find bar
+
+### Replace (`Cmd+H`)
+
+Press `Cmd+H` (macOS) or `Ctrl+H` (Windows/Linux) to open Find & Replace:
+
+- Enter search text and replacement text
+- **Replace** — Replace the current match
+- **Replace All** — Replace all matches at once
+
+---
+
 ## AI Features
 
-Baram has built-in AI writing assistance powered by the Claude API.
+Baram has built-in AI writing assistance powered by Claude, OpenAI, Google Gemini, and Ollama (local).
 
 ### Setup
 
 1. Open Settings with `Cmd+,` (macOS) or `Ctrl+,` (Windows/Linux)
 2. Go to the **AI** tab
-3. Select your provider (Claude is the default)
-4. Enter your API key
-5. Choose your preferred model
+3. Select your AI provider (Claude, OpenAI, Gemini, or Ollama)
+4. Enter your API key (each provider has its own key field; Ollama requires no key)
+5. Choose your preferred model (models are loaded dynamically from the provider)
 
-### Inline AI Editing (Cmd+K)
+### Inline AI Editing
 
 1. **Select text** in the editor
-2. Press `Cmd+K` (macOS) or `Ctrl+K` (Windows/Linux)
+2. Click the **AI button** in the Floating Toolbar, or use a slash AI command
 3. Type your instruction (e.g., "make this more concise", "translate to Korean")
 4. The AI processes your request with real-time streaming
 5. Review the suggestion with **character-level diff** highlighting:
@@ -447,7 +473,32 @@ Baram has built-in AI writing assistance powered by the Claude API.
    - Red text = deletions
 6. Click **Accept** to apply or **Reject** to discard
 
-> **Tip:** Without text selected, `Cmd+K` opens the Command Palette instead.
+### Ghost Text (AI Autocomplete)
+
+AI-powered autocomplete suggestions appear as faded text ahead of your cursor as you type:
+
+| Action | macOS | Windows/Linux |
+|--------|-------|---------------|
+| Accept Full Suggestion | `Tab` | `Tab` |
+| Accept First Word | `Cmd+Right` | `Ctrl+Right` |
+| Dismiss | `Escape` | `Escape` |
+
+Ghost Text can be enabled or disabled in **Settings > AI**.
+
+### AI Chat Panel
+
+Press `Cmd+Shift+A` (macOS) or `Ctrl+Shift+A` (Windows/Linux) to open the AI Chat Panel.
+
+Chat with AI about your documents using **@references** for context:
+
+| Reference | Description |
+|-----------|-------------|
+| `@selection` | Currently selected text in the editor |
+| `@current` | Full content of the current file |
+| `@file` | Content of any file in your workspace |
+| `@clipboard` | Current clipboard contents |
+
+The chat panel supports streaming responses with markdown rendering.
 
 ### Slash AI Commands
 
@@ -463,9 +514,28 @@ Type `/` in the editor to access AI commands:
 | `/ai-simplify` | Simplify complex text |
 | `/ai-continue` | Continue writing from cursor position |
 
+### Custom AI Commands
+
+Create your own slash commands in **Settings > AI > Custom Commands**:
+
+- Define a name, description, and prompt template
+- Use variable substitution: `{selection}`, `{document}`, `{clipboard}`
+- Custom commands appear in the slash menu alongside built-in AI commands
+
+### Skills Editing
+
+Baram includes tools for editing AI prompt files (Skills):
+
+- **Prompt Lint** — 6 static rules check your prompts for common issues (shown as wavy underlines)
+- **Skill Templates** — Start from pre-built templates for common prompt patterns
+- **Skill Auto-Generation** — Describe what you want and let AI generate the skill file
+- **Skill Test** (`Cmd+Shift+T` / `Ctrl+Shift+T`) — Test a skill inline by running it against the AI provider
+
 ### Privacy Mode
 
-Enable Privacy Mode in **Settings > AI** to prevent document content from being sent to the AI provider. This can be set globally or per-file using frontmatter:
+Enable Privacy Mode in **Settings > AI** to prevent document content from being sent to cloud AI providers. When Privacy Mode is on, only Ollama (local) is allowed.
+
+Privacy can be set globally or per-file using frontmatter:
 
 ```yaml
 ---
@@ -502,7 +572,7 @@ Available settings tabs:
 | **General** | Startup behavior, language |
 | **Editor** | Indentation, line endings, editor max width |
 | **Markdown** | Extended syntax toggles, strict mode |
-| **AI** | Provider, model, API key, privacy mode |
+| **AI** | Provider, model, API key (per-provider), privacy mode, Ghost Text settings, custom AI commands |
 | **Export** | PDF/HTML export options |
 
 ### Command Palette
@@ -517,8 +587,8 @@ See the full [Keyboard Shortcuts Reference](keyboard-shortcuts.md) for all avail
 
 ## Getting Help
 
-- **Command Palette** (`Cmd+Shift+P`) — Search for any feature
-- **Quick Switcher** (`Cmd+P`) — Quickly open files and jump to headings
+- **Command Palette** (`Cmd+P` or `Cmd+Shift+P`) — Search for any feature
+- **Quick Switcher** (`Cmd+K`) — Quickly open files and jump to headings
 - **Slash Commands** (`/`) — Quick block insertion
 - **[FAQ](faq.md)** — Frequently asked questions
 - **[GitHub Issues](https://github.com/sayinel/baram/issues)** — Report bugs or request features

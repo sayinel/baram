@@ -94,7 +94,7 @@ Baram hides markdown syntax while you write and reveals it only when your cursor
 | **Bold** | `**text**` | `Cmd+B` |
 | *Italic* | `*text*` | `Cmd+I` |
 | `Code` | `` `text` `` | `Cmd+E` |
-| ~~Strikethrough~~ | `~~text~~` | `Cmd+Shift+S` |
+| ~~Strikethrough~~ | `~~text~~` | `Cmd+Shift+X` |
 | <u>Underline</u> | `<u>text</u>` | `Cmd+U` |
 | Link | `[text](url)` | `Cmd+K` |
 | Inline Math | `$formula$` | Type `$` |
@@ -195,6 +195,15 @@ GFM (GitHub Flavored Markdown) pipe table support:
 - Hover toolbar: resize (25% / 50% / 75% / 100%), edit alt text
 - Click to reveal and edit `![alt](url)` syntax
 
+### Find & Replace
+
+- **Find** (`Cmd+F`) — Search for text with match highlighting, navigate matches with Enter / Shift+Enter
+- **Replace** (`Cmd+H`) — Replace one or all matches
+
+### Graph View
+
+Visual map of your note connections. See how your documents are linked through wikilinks — nodes represent files, edges represent links.
+
 ### Export
 
 Export your documents to share or publish:
@@ -204,22 +213,41 @@ Export your documents to share or publish:
 
 ## AI Integration
 
-Baram has built-in AI writing assistance powered by Claude API.
+Baram has built-in AI writing assistance powered by Claude, OpenAI, Google Gemini, and Ollama (local).
 
 ### Setup
 
 1. Open Settings with `Cmd+,`
 2. Go to the **AI** tab
-3. Enter your Claude API key
-4. Choose your preferred model
+3. Select your AI provider (Claude, OpenAI, Gemini, or Ollama)
+4. Enter your API key (per-provider — each provider has its own key field; Ollama requires no key)
+5. Choose your preferred model (models are loaded dynamically from the provider)
 
-### Inline AI Editing (`Cmd+K`)
+### Inline AI Editing
 
 1. Select text in the editor
-2. Press `Cmd+K`
+2. Click the AI button in the **Floating Toolbar** or type a custom prompt
 3. Type your instruction (e.g., "make this more concise", "translate to Korean")
 4. Review the AI suggestion with **character-level diff** highlighting
 5. **Accept** or **Reject** the changes
+
+### Ghost Text (AI Autocomplete)
+
+AI-powered autocomplete suggestions appear as you type:
+
+- **Tab** — Accept the full suggestion
+- **Cmd+Right** — Accept only the first word
+- **Escape** — Dismiss the suggestion
+
+Enable or disable Ghost Text in **Settings > AI**.
+
+### AI Chat Panel (`Cmd+Shift+A`)
+
+A dedicated chat panel for conversing with AI about your documents:
+
+- **@references** — Mention context: `@selection`, `@current` (current file), `@file` (any file), `@clipboard`
+- Streaming responses with markdown rendering
+- Conversation history per session
 
 ### Slash AI Commands
 
@@ -235,6 +263,10 @@ Type `/` to open the slash menu. AI-powered commands include:
 | `/ai-simplify` | Simplify complex text |
 | `/ai-continue` | Continue writing from cursor position |
 
+### Custom AI Commands
+
+Create your own slash commands in **Settings > AI > Custom Commands**. Use variable substitution (`{selection}`, `{document}`, `{clipboard}`) to build reusable AI workflows.
+
 ## Keyboard Shortcuts
 
 > On Windows/Linux, replace `Cmd` with `Ctrl`.
@@ -247,7 +279,7 @@ Type `/` to open the slash menu. AI-powered commands include:
 | Italic | `Cmd+I` |
 | Underline | `Cmd+U` |
 | Inline Code | `Cmd+E` |
-| Strikethrough | `Cmd+Shift+S` |
+| Strikethrough | `Cmd+Shift+X` |
 | Link | `Cmd+K` |
 
 ### Headings
@@ -276,9 +308,11 @@ Type `/` to open the slash menu. AI-powered commands include:
 | Action | Shortcut |
 |--------|----------|
 | Source Mode Toggle | `Cmd+/` |
-| Quick Switcher | `Cmd+P` |
-| Command Palette | `Cmd+Shift+P` |
-| AI Inline Edit | `Cmd+K` (with text selected) |
+| Quick Switcher | `Cmd+K` |
+| Command Palette | `Cmd+P` / `Cmd+Shift+P` |
+| Find | `Cmd+F` |
+| Replace | `Cmd+H` |
+| AI Chat Panel | `Cmd+Shift+A` |
 | Backlink Panel | `Cmd+Shift+B` |
 | Bookmark | `Cmd+D` |
 | Navigate Back | `Ctrl+-` |
@@ -301,8 +335,8 @@ Type `/` to open the slash menu. AI-powered commands include:
 - **Floating Toolbar** — Appears on text selection with formatting buttons
 - **Block Handle** — Drag handle on the left side of each block for reordering
 - **Slash Commands** — Type `/` at the start of a line for quick block insertion
-- **Command Palette** — `Cmd+Shift+P` for searching and running any command
-- **Quick Switcher** — `Cmd+P` for quickly opening files and jumping to headings
+- **Command Palette** — `Cmd+P` or `Cmd+Shift+P` for searching and running any command
+- **Quick Switcher** — `Cmd+K` for quickly opening files and jumping to headings
 - **Context Menu** — Right-click for context-aware options (copy, paste, block type, pin tab, etc.)
 
 ### Tabs
@@ -393,18 +427,18 @@ Reverse:  ProseMirror Document → mdast → remark-stringify
 | M5 AI Level 2 | ✅ Done | Claude SSE streaming, inline editing, AI diff, settings |
 | M6 MVP Release | ✅ Done | PDF/HTML export, performance optimization, release build |
 
-**Phase 2 — Connection System & Navigation** (current)
+**Phase 2 — Connection System & AI** (completed)
 
 | Milestone | Status | Description |
 |-----------|--------|-------------|
-| M7 Connection & Navigation | 🚧 In Progress | Wikilinks, backlinks, block references, callouts, toggles, mermaid, quick switcher, bookmarks, tab features |
+| M7 Connection & Navigation | ✅ Done | Wikilinks, backlinks, block references, callouts, toggles, mermaid, graph view, quick switcher, bookmarks, tab features |
+| M8 AI & Skills | ✅ Done | Multi-provider AI (Claude/OpenAI/Gemini/Ollama), Ghost Text, AI Chat, Find/Replace, Custom AI Commands, Skills editing |
 
 **Upcoming**
 
-- Find & replace
 - Highlight, subscript, superscript marks
 - Table of contents
-- Graph view
+- Graph view improvements
 - Plugin marketplace
 
 ## License
