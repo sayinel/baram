@@ -1,6 +1,6 @@
 [package]
 name = "baram"
-version = "0.1.0"
+version = "0.2.0"
 description = "Lightweight WYSIWYG Markdown Editor"
 authors = ["Baram Team"]
 license = "AGPL-3.0"
