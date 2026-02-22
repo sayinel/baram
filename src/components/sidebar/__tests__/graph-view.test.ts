@@ -4,6 +4,7 @@ import {
   displayName,
   toGraphElements,
   nodeSize,
+  matchesFilter,
 } from "../graph-utils";
 import type { LinkGraph } from "../../../ipc/types";
 
@@ -28,6 +29,26 @@ describe("displayName", () => {
 
   it("is case-insensitive for .md removal", () => {
     expect(displayName("FILE.MD")).toBe("FILE");
+  });
+});
+
+// ─── matchesFilter ───────────────────────────────────
+
+describe("matchesFilter", () => {
+  it("empty query matches everything", () => {
+    expect(matchesFilter("anything", "")).toBe(true);
+    expect(matchesFilter("", "")).toBe(true);
+  });
+
+  it("case-insensitive substring match", () => {
+    expect(matchesFilter("My Note", "my")).toBe(true);
+    expect(matchesFilter("My Note", "NOTE")).toBe(true);
+    expect(matchesFilter("README", "read")).toBe(true);
+  });
+
+  it("no match returns false", () => {
+    expect(matchesFilter("My Note", "xyz")).toBe(false);
+    expect(matchesFilter("README", "write")).toBe(false);
   });
 });
 
@@ -114,6 +135,65 @@ describe("toGraphElements", () => {
     const result = toGraphElements(graph);
     const ids = result.edges.map((e) => e.data.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  // Ghost node tests
+  it("creates ghost node when edge target is not in nodes", () => {
+    const graph: LinkGraph = {
+      nodes: ["/vault/a.md"],
+      edges: [{ from: "/vault/a.md", to: "/vault/missing.md" }],
+    };
+    const result = toGraphElements(graph);
+
+    expect(result.nodes).toHaveLength(2);
+    expect(result.edges).toHaveLength(1);
+
+    const ghost = result.nodes.find((n) => n.data.id === "/vault/missing.md");
+    expect(ghost).toBeDefined();
+    expect(ghost!.data.isGhost).toBe(true);
+    expect(ghost!.data.label).toBe("missing");
+    expect(ghost!.data.degree).toBe(1);
+  });
+
+  it("existing nodes do not have isGhost", () => {
+    const graph: LinkGraph = {
+      nodes: ["/vault/a.md", "/vault/b.md"],
+      edges: [{ from: "/vault/a.md", to: "/vault/b.md" }],
+    };
+    const result = toGraphElements(graph);
+
+    const a = result.nodes.find((n) => n.data.id === "/vault/a.md");
+    const b = result.nodes.find((n) => n.data.id === "/vault/b.md");
+    expect(a!.data.isGhost).toBeUndefined();
+    expect(b!.data.isGhost).toBeUndefined();
+  });
+
+  it("creates ghost node for missing edge source", () => {
+    const graph: LinkGraph = {
+      nodes: ["/vault/b.md"],
+      edges: [{ from: "/vault/orphan.md", to: "/vault/b.md" }],
+    };
+    const result = toGraphElements(graph);
+
+    const ghost = result.nodes.find((n) => n.data.id === "/vault/orphan.md");
+    expect(ghost).toBeDefined();
+    expect(ghost!.data.isGhost).toBe(true);
+  });
+
+  it("does not duplicate ghost nodes for multiple edges to same target", () => {
+    const graph: LinkGraph = {
+      nodes: ["/vault/a.md", "/vault/b.md"],
+      edges: [
+        { from: "/vault/a.md", to: "/vault/missing.md" },
+        { from: "/vault/b.md", to: "/vault/missing.md" },
+      ],
+    };
+    const result = toGraphElements(graph);
+
+    const ghosts = result.nodes.filter((n) => n.data.id === "/vault/missing.md");
+    expect(ghosts).toHaveLength(1);
+    expect(ghosts[0].data.isGhost).toBe(true);
+    expect(ghosts[0].data.degree).toBe(2);
   });
 });
 

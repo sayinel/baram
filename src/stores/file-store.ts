@@ -1,6 +1,7 @@
 // §3.5 파일 시스템 스토어
 import { create } from "zustand";
-import { listDir } from "../ipc/invoke";
+import { listDir, refreshIndex } from "../ipc/invoke";
+import { useLinkStore } from "./link-store";
 import type { FileEntry as IpcFileEntry } from "../ipc/types";
 
 export interface FileEntry {
@@ -82,6 +83,11 @@ export async function openFolder(path: string): Promise<void> {
   const tree = buildFileTree(entries, path);
   useFileStore.getState().setRootPath(path);
   useFileStore.getState().setFileTree(tree);
+
+  // Build link index in background so Graph View / Backlinks have data immediately
+  refreshIndex(path)
+    .then(() => useLinkStore.getState().invalidate())
+    .catch((err) => console.warn("§30 openFolder: index build failed", err));
 }
 
 export const useFileStore = create<FileState>((set) => ({

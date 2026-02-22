@@ -9,6 +9,8 @@ export interface GraphNode {
     label: string;
     /** Number of connections (in + out) */
     degree: number;
+    /** True if the file does not exist (wikilink target only) */
+    isGhost?: boolean;
   };
 }
 
@@ -36,15 +38,30 @@ export function displayName(filePath: string): string {
 }
 
 /**
+ * Case-insensitive substring match for graph node filtering.
+ * Empty query matches everything.
+ */
+export function matchesFilter(label: string, query: string): boolean {
+  if (!query) return true;
+  return label.toLowerCase().includes(query.toLowerCase());
+}
+
+/**
  * Transform a LinkGraph (from Rust IPC) into cytoscape-compatible elements.
  * Deduplicates edges and computes node degrees.
+ * Creates ghost nodes for edge targets that are not in graph.nodes.
  */
 export function toGraphElements(graph: LinkGraph): GraphElements {
+  const nodeSet = new Set(graph.nodes);
+
   // Build degree map
   const degreeMap = new Map<string, number>();
   for (const node of graph.nodes) {
     degreeMap.set(node, 0);
   }
+
+  // Collect ghost node IDs (edge targets not in graph.nodes)
+  const ghostIds = new Set<string>();
 
   // Deduplicate edges (same source→target pair)
   const edgeSet = new Set<string>();
@@ -54,6 +71,16 @@ export function toGraphElements(graph: LinkGraph): GraphElements {
     const key = `${edge.from}\0${edge.to}`;
     if (edgeSet.has(key)) continue;
     edgeSet.add(key);
+
+    // Create ghost node for missing targets
+    if (!nodeSet.has(edge.to)) {
+      ghostIds.add(edge.to);
+      if (!degreeMap.has(edge.to)) degreeMap.set(edge.to, 0);
+    }
+    if (!nodeSet.has(edge.from)) {
+      ghostIds.add(edge.from);
+      if (!degreeMap.has(edge.from)) degreeMap.set(edge.from, 0);
+    }
 
     edges.push({
       data: {
@@ -74,6 +101,18 @@ export function toGraphElements(graph: LinkGraph): GraphElements {
       degree: degreeMap.get(filePath) ?? 0,
     },
   }));
+
+  // Add ghost nodes
+  for (const ghostId of ghostIds) {
+    nodes.push({
+      data: {
+        id: ghostId,
+        label: displayName(ghostId),
+        degree: degreeMap.get(ghostId) ?? 0,
+        isGhost: true,
+      },
+    });
+  }
 
   return { nodes, edges };
 }
