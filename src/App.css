@@ -2945,6 +2945,8 @@ body {
    Settings Modal
    ============================================ */
 
+/* ─── Settings Modal ─── */
+
 .settings-overlay {
   position: fixed;
   inset: 0;
@@ -2956,7 +2958,7 @@ body {
 }
 
 .settings-modal {
-  width: 560px;
+  width: 640px;
   max-height: 80vh;
   background-color: var(--color-bg-primary);
   border: 1px solid var(--color-border);
@@ -3008,9 +3010,10 @@ body {
   min-height: 0;
 }
 
+/* Sidebar nav */
 .settings-nav {
   flex-shrink: 0;
-  width: 140px;
+  width: 160px;
   padding: 8px 0;
   border-right: 1px solid var(--color-border-light);
   display: flex;
@@ -3019,7 +3022,7 @@ body {
 }
 
 .settings-nav-item {
-  padding: 6px 16px;
+  padding: 7px 16px;
   font-size: 0.85rem;
   text-align: left;
   border: none;
@@ -3042,56 +3045,81 @@ body {
   box-shadow: inset 2px 0 0 var(--color-accent);
 }
 
+/* Content area */
 .settings-content {
   flex: 1;
-  padding: 16px 20px;
+  padding: 4px 24px 24px;
   overflow-y: auto;
-  min-height: 300px;
+  min-height: 360px;
 }
 
 .settings-section {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 0;
 }
 
+/* Section header */
+.settings-section-header {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  padding: 16px 0 8px;
+  margin-top: 4px;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.settings-section-header:first-child {
+  padding-top: 12px;
+  margin-top: 0;
+}
+
+/* Setting row — Obsidian-style: label + description left, control right */
 .settings-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  min-height: 32px;
+  min-height: 44px;
+  padding: 10px 0;
+}
+
+.settings-row-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
 }
 
 .settings-row-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   font-size: 0.85rem;
+  font-weight: 500;
   color: var(--color-text-primary);
-  flex-shrink: 0;
 }
 
-.settings-row-hint {
+.settings-row-description {
   font-size: 0.75rem;
-  font-family: var(--font-mono);
   color: var(--color-text-muted);
+  line-height: 1.3;
 }
 
 .settings-row-control {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  flex: 1;
-  min-width: 0;
+  flex-shrink: 0;
 }
 
+/* Form controls */
 .settings-select {
-  padding: 4px 8px;
-  font-size: 0.85rem;
+  padding: 5px 10px;
+  font-size: 0.8rem;
   font-family: var(--font-sans);
   border: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: 5px;
   background: var(--color-bg-primary);
   color: var(--color-text-primary);
   outline: none;
@@ -3103,11 +3131,11 @@ body {
 }
 
 .settings-input {
-  padding: 4px 8px;
-  font-size: 0.85rem;
+  padding: 5px 10px;
+  font-size: 0.8rem;
   font-family: var(--font-sans);
   border: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: 5px;
   background: var(--color-bg-primary);
   color: var(--color-text-primary);
   outline: none;
@@ -3119,7 +3147,7 @@ body {
 }
 
 .settings-range {
-  width: 180px;
+  width: 160px;
   accent-color: var(--color-accent);
   cursor: pointer;
 }
@@ -3135,6 +3163,7 @@ body {
   cursor: pointer;
   padding: 0;
   transition: background-color 0.2s;
+  flex-shrink: 0;
 }
 
 .settings-toggle-on {
@@ -3157,6 +3186,44 @@ body {
   transform: translateX(16px);
 }
 
+/* Color scheme segmented control (Appearance tab) */
+.settings-scheme-group {
+  display: flex;
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.settings-scheme-btn {
+  padding: 5px 14px;
+  font-size: 0.8rem;
+  font-family: var(--font-sans);
+  border: none;
+  background: var(--color-bg-primary);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.settings-scheme-btn:not(:last-child) {
+  border-right: 1px solid var(--color-border);
+}
+
+.settings-scheme-btn:hover {
+  background-color: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+}
+
+.settings-scheme-btn-active {
+  background-color: var(--color-accent);
+  color: white;
+}
+
+.settings-scheme-btn-active:hover {
+  background-color: var(--color-accent);
+  color: white;
+}
+
 /* API key row */
 .settings-key-row {
   display: flex;
@@ -3171,11 +3238,11 @@ body {
 }
 
 .settings-key-toggle {
-  padding: 4px 8px;
+  padding: 5px 8px;
   font-size: 0.75rem;
   font-family: var(--font-sans);
   border: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: 5px;
   background: var(--color-bg-primary);
   color: var(--color-text-secondary);
   cursor: pointer;
