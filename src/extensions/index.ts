@@ -67,6 +67,7 @@ import type { Extensions } from "@tiptap/core";
 interface BaramExtensionOptions {
   onNavigate?: (target: string, heading?: string | null) => void;
   onNavigateBlockRef?: (target: string, blockId: string) => void;
+  onNavigateLocal?: (href: string) => void;
 }
 
 /** M2 기본 편집 Extension 세트 */
@@ -136,7 +137,9 @@ export function createBaramExtensions(options?: BaramExtensionOptions): Extensio
     Italic,
     Code,
     Strike,
-    Link,
+    Link.configure({
+      onNavigateLocal: options?.onNavigateLocal ?? (() => {}),
+    }),
     Underline,
     Highlight,
     Subscript,

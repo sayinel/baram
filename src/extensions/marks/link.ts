@@ -8,6 +8,14 @@ export interface LinkOptions {
   HTMLAttributes: Record<string, string>;
   openOnClick: boolean;
   autolink: boolean;
+  /** Callback for navigating to local .md file links (relative paths). */
+  onNavigateLocal: (href: string) => void;
+}
+
+/** Check if href points to a local markdown file (not an external URL). */
+function isLocalFileLink(href: string): boolean {
+  if (/^[a-z][a-z0-9+.-]*:/i.test(href)) return false; // scheme: http, mailto, etc.
+  return /\.(?:md|markdown)(?:#.*)?$/i.test(href) || href.startsWith("#");
 }
 
 declare module "@tiptap/core" {
@@ -37,6 +45,7 @@ export const Link = Mark.create<LinkOptions>({
       HTMLAttributes: { target: "_blank", rel: "noopener noreferrer nofollow" },
       openOnClick: true,
       autolink: true,
+      onNavigateLocal: () => {},
     };
   },
 
@@ -119,6 +128,16 @@ export const Link = Mark.create<LinkOptions>({
   },
 
   addProseMirrorPlugins() {
+    const { onNavigateLocal } = this.options;
+
+    const navigateHref = (href: string) => {
+      if (isLocalFileLink(href)) {
+        onNavigateLocal(href);
+      } else {
+        openUrl(href).catch(console.error);
+      }
+    };
+
     return [
       new Plugin({
         key: new PluginKey("linkClick"),
@@ -137,7 +156,7 @@ export const Link = Mark.create<LinkOptions>({
                 const href = anchor.getAttribute("href");
                 if (href) {
                   event.preventDefault();
-                  openUrl(href).catch(console.error);
+                  navigateHref(href);
                   return true;
                 }
               }
@@ -164,7 +183,7 @@ export const Link = Mark.create<LinkOptions>({
                   const href = linkMark.attrs.href as string;
                   if (href) {
                     event.preventDefault();
-                    openUrl(href).catch(console.error);
+                    navigateHref(href);
                     return true;
                   }
                 }
@@ -178,7 +197,7 @@ export const Link = Mark.create<LinkOptions>({
                 const m = expandedText.match(/\[.*?\]\(([^)\s]+)(?:\s+"[^"]*")?\)/);
                 if (m?.[1]) {
                   event.preventDefault();
-                  openUrl(m[1]).catch(console.error);
+                  navigateHref(m[1]);
                   return true;
                 }
               }

@@ -163,6 +163,8 @@ function App() {
   const navigateRef = useRef<(target: string, heading?: string | null) => void>(() => {});
   // §30c Block reference navigation ref
   const blockRefNavigateRef = useRef<(target: string, blockId: string) => void>(() => {});
+  // §5.1 Local .md link navigation ref (e.g. [text](sub/doc.md))
+  const localLinkNavigateRef = useRef<(href: string) => void>(() => {});
 
   // Track previously active tab to save its content on switch
   const prevTabRef = useRef<string | null>(null);
@@ -183,6 +185,7 @@ function App() {
     extensions: createBaramExtensions({
       onNavigate: (target, heading) => navigateRef.current(target, heading),
       onNavigateBlockRef: (target, blockId) => blockRefNavigateRef.current(target, blockId),
+      onNavigateLocal: (href) => localLinkNavigateRef.current(href),
     }),
     autofocus: true,
     immediatelyRender: false,
@@ -751,6 +754,81 @@ function App() {
     [handleOpenFilePath, editor],
   );
 
+  // §5.1 Local .md link Cmd+Click navigation (e.g. [text](sub/doc.md#heading))
+  const handleLocalLinkNavigate = useCallback(
+    (href: string) => {
+      // Same-doc heading link: #heading
+      if (href.startsWith("#")) {
+        if (!editor) return;
+        const headingLower = href.slice(1).replace(/-/g, " ").toLowerCase();
+        let targetPos: number | null = null;
+        editor.state.doc.descendants((node, pos) => {
+          if (targetPos !== null) return false;
+          if (
+            node.type.name === "heading" &&
+            node.textContent.toLowerCase() === headingLower
+          ) {
+            targetPos = pos;
+            return false;
+          }
+          return true;
+        });
+        if (targetPos !== null) {
+          editor.commands.setTextSelection(targetPos + 1);
+          editor.commands.scrollIntoView();
+        }
+        return;
+      }
+
+      // Split href into file path and optional heading fragment
+      const [filePart, headingFragment] = href.split("#", 2);
+      const heading = headingFragment
+        ? headingFragment.replace(/-/g, " ")
+        : null;
+
+      // Resolve relative path against the current file's directory
+      const { activeTabId: currentTabId, tabs: currentTabs } =
+        useEditorStore.getState();
+      const activeTab = currentTabs.find((t) => t.id === currentTabId);
+      if (!activeTab?.filePath) return;
+
+      const currentDir = activeTab.filePath.substring(
+        0,
+        activeTab.filePath.lastIndexOf("/"),
+      );
+      // Normalize simple relative path (handles ../ and ./)
+      const resolvedPath = `${currentDir}/${filePart}`;
+
+      handleOpenFilePath(resolvedPath).then(() => {
+        if (!heading || !editor) return;
+
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            if (!editor) return;
+            const headingLower = heading.toLowerCase();
+            let targetPos: number | null = null;
+            editor.state.doc.descendants((node, pos) => {
+              if (targetPos !== null) return false;
+              if (
+                node.type.name === "heading" &&
+                node.textContent.toLowerCase() === headingLower
+              ) {
+                targetPos = pos;
+                return false;
+              }
+              return true;
+            });
+            if (targetPos !== null) {
+              editor.commands.setTextSelection(targetPos + 1);
+              editor.commands.scrollIntoView();
+            }
+          });
+        });
+      });
+    },
+    [handleOpenFilePath, editor],
+  );
+
   // Keep navigateRef in sync
   useEffect(() => {
     navigateRef.current = handleWikilinkNavigate;
@@ -760,6 +838,11 @@ function App() {
   useEffect(() => {
     blockRefNavigateRef.current = handleBlockRefNavigate;
   }, [handleBlockRefNavigate]);
+
+  // Keep localLinkNavigateRef in sync
+  useEffect(() => {
+    localLinkNavigateRef.current = handleLocalLinkNavigate;
+  }, [handleLocalLinkNavigate]);
 
   // Listen for file open events from macOS (Finder "Open With" / double-click)
   useEffect(() => {
