@@ -26,6 +26,9 @@ import { italicTransformer } from "./italic-transformer";
 import { codeTransformer } from "./code-transformer";
 import { strikeTransformer } from "./strike-transformer";
 import { linkTransformer } from "./link-transformer";
+import { highlightTransformer } from "./highlight-transformer";
+import { subscriptTransformer } from "./subscript-transformer";
+import { superscriptTransformer } from "./superscript-transformer";
 
 /** Node transformers — mdast type → transformer */
 export const nodeTransformers: Map<string, NodeTransformerEntry> = new Map();
@@ -74,6 +77,9 @@ const markEntries: MarkTransformerEntry[] = [
   codeTransformer,
   strikeTransformer,
   linkTransformer,
+  highlightTransformer,
+  subscriptTransformer,
+  superscriptTransformer,
 ];
 
 for (const entry of markEntries) {

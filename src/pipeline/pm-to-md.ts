@@ -21,7 +21,7 @@ import { pmNodeTransformers, pmMarkTransformers } from "./transformers";
 import { serializeWikilink } from "./transformers/wikilink-transformer";
 import { appendBlockId, serializeBlockRef, serializeBlockEmbed } from "./block-id";
 
-/** §28 Remark plugin: serialize wikiLink + §30b blockReference mdast nodes verbatim */
+/** §28 Remark plugin: serialize wikiLink + §30b blockReference + custom inline marks */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function remarkWikiLink(this: any) {
   const data = this.data();
@@ -36,6 +36,22 @@ function remarkWikiLink(this: any) {
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       blockReference(node: { value: string }, _parent: any, state: any, info: any) {
+        const tracker = state.createTracker(info);
+        return tracker.move(node.value);
+      },
+      // Custom inline marks — return pre-serialized value verbatim
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      highlight(node: { value: string }, _parent: any, state: any, info: any) {
+        const tracker = state.createTracker(info);
+        return tracker.move(node.value);
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      subscript(node: { value: string }, _parent: any, state: any, info: any) {
+        const tracker = state.createTracker(info);
+        return tracker.move(node.value);
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      superscript(node: { value: string }, _parent: any, state: any, info: any) {
         const tracker = state.createTracker(info);
         return tracker.move(node.value);
       },
@@ -63,7 +79,7 @@ const serializer = unified()
       },
     }],
   } as Parameters<typeof remarkStringify>[0])
-  .use(remarkGfm)
+  .use(remarkGfm, { singleTilde: false })
   .use(remarkMath)
   .use(remarkFrontmatter, ["yaml"])
   .use(remarkWikiLink);
@@ -215,6 +231,11 @@ function convertPmNode(node: PmNode): Content | null {
       type: "paragraph",
       children: [{ type: "text", value: text } as PhrasingContent],
     } as Content;
+  }
+
+  // [TOC] → html flow node to prevent remark escaping [ → \[
+  if (typeName === "tableOfContents") {
+    return { type: "html", value: "[TOC]" } as Content;
   }
 
   // Image → wrap in paragraph for mdast (mdast image is inline)
@@ -370,8 +391,8 @@ function convertPmInlineChildren(node: PmNode): PhrasingContent[] {
     }
   });
 
-  // Coalesce adjacent </u><u> pairs
-  return coalesceUnderlineTags(result);
+  // Coalesce adjacent </u><u> pairs, then adjacent custom mark nodes
+  return coalesceCustomMarkNodes(coalesceUnderlineTags(result));
 }
 
 /** Remove adjacent </u><u> pairs (from consecutive underlined text nodes) */
@@ -399,6 +420,60 @@ function coalesceUnderlineTags(nodes: PhrasingContent[]): PhrasingContent[] {
   return result;
 }
 
+/** Coalesce adjacent custom mark nodes of the same type (highlight, subscript, superscript).
+ *  Merges e.g. ==part1== + ==part2== → ==part1part2== */
+function coalesceCustomMarkNodes(nodes: PhrasingContent[]): PhrasingContent[] {
+  const DELIMS: Record<string, { open: string; close: string }> = {
+    highlight: { open: "==", close: "==" },
+    subscript: { open: "~", close: "~" },
+    superscript: { open: "^", close: "^" },
+  };
+  const result: PhrasingContent[] = [];
+
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    const delim = DELIMS[node.type];
+
+    if (delim) {
+      // Collect adjacent nodes of the same type
+      let merged = (node as unknown as { value: string }).value;
+      while (i + 1 < nodes.length && nodes[i + 1].type === node.type) {
+        i++;
+        const next = (nodes[i] as unknown as { value: string }).value;
+        // Strip close+open delimiters at boundary: ==a== + ==b== → ==ab==
+        merged = merged.slice(0, -delim.close.length) + next.slice(delim.open.length);
+      }
+      result.push({ type: node.type, value: merged } as unknown as PhrasingContent);
+    } else {
+      result.push(node);
+    }
+  }
+
+  return result;
+}
+
+/** Extract plain text from a phrasing content array (for wrapping in custom mark delimiters).
+ *  Serializes nested standard marks (bold → **, italic → *, etc.) to markdown. */
+function extractTextFromPhrasing(nodes: PhrasingContent[]): string {
+  return nodes.map((node) => {
+    if (node.type === "text") return (node as Text).value;
+    if (node.type === "strong") {
+      const inner = extractTextFromPhrasing((node as unknown as { children: PhrasingContent[] }).children);
+      return `**${inner}**`;
+    }
+    if (node.type === "emphasis") {
+      const inner = extractTextFromPhrasing((node as unknown as { children: PhrasingContent[] }).children);
+      return `*${inner}*`;
+    }
+    if (node.type === "delete") {
+      const inner = extractTextFromPhrasing((node as unknown as { children: PhrasingContent[] }).children);
+      return `~~${inner}~~`;
+    }
+    if (node.type === "inlineCode") return `\`${(node as { value: string }).value}\``;
+    return "";
+  }).join("");
+}
+
 /** Convert text with marks to mdast inline structure */
 function convertTextWithMarks(
   text: string,
@@ -417,9 +492,13 @@ function convertTextWithMarks(
     return [{ type: "inlineCode", value: text } as PhrasingContent];
   }
 
-  // Separate underline mark — handled as raw HTML <u></u>
+  // Separate special marks that use custom mdast types or raw HTML
+  const specialMarkNames = ["underline", "highlight", "subscript", "superscript"];
   const underlineMark = marks.find((m) => m.type.name === "underline");
-  const otherMarks = marks.filter((m) => m.type.name !== "underline");
+  const highlightMark = marks.find((m) => m.type.name === "highlight");
+  const subscriptMark = marks.find((m) => m.type.name === "subscript");
+  const superscriptMark = marks.find((m) => m.type.name === "superscript");
+  const otherMarks = marks.filter((m) => !specialMarkNames.includes(m.type.name));
 
   // Build nested mark structure from innermost to outermost
   let current: PhrasingContent[] = [{ type: "text", value: text } as Text];
@@ -435,6 +514,21 @@ function convertTextWithMarks(
       const wrapped = transformer.markToMdast(mark, current);
       current = [wrapped as PhrasingContent];
     }
+  }
+
+  // Wrap with custom mdast types for highlight/subscript/superscript
+  // Uses value-based approach (like wikiLink) to avoid remark-gfm escaping ~ chars
+  if (highlightMark) {
+    const inner = extractTextFromPhrasing(current);
+    current = [{ type: "highlight", value: `==${inner}==` } as unknown as PhrasingContent];
+  }
+  if (subscriptMark) {
+    const inner = extractTextFromPhrasing(current);
+    current = [{ type: "subscript", value: `~${inner}~` } as unknown as PhrasingContent];
+  }
+  if (superscriptMark) {
+    const inner = extractTextFromPhrasing(current);
+    current = [{ type: "superscript", value: `^${inner}^` } as unknown as PhrasingContent];
   }
 
   // Wrap with <u></u> HTML nodes if underline is active

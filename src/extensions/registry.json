@@ -223,6 +223,19 @@
       "_note": "Block atom node with NodeView. Shows read-only preview of referenced block."
     },
     {
+      "name": "tableOfContents",
+      "file": "nodes/table-of-contents.ts",
+      "markdown": "[TOC]",
+      "spec": "§5.1",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "implemented",
+      "hasNodeView": true,
+      "inputRules": [],
+      "shortcuts": {},
+      "_note": "Auto-generated heading list. Slash command /toc."
+    },
+    {
       "name": "toggle",
       "file": "nodes/toggle.ts",
       "markdown": "<details><summary>title</summary>body</details>",
@@ -322,9 +335,31 @@
       "spec": "§5.1",
       "phase": 2,
       "milestone": "M9",
-      "status": "planned",
+      "status": "implemented",
       "inputRules": ["=="],
       "shortcuts": { "Mod-Shift-h": "toggle highlight" }
+    },
+    {
+      "name": "subscript",
+      "file": "marks/subscript.ts",
+      "markdown": "~text~",
+      "spec": "§5.1",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "implemented",
+      "inputRules": [],
+      "shortcuts": {}
+    },
+    {
+      "name": "superscript",
+      "file": "marks/superscript.ts",
+      "markdown": "^text^",
+      "spec": "§5.1",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "implemented",
+      "inputRules": [],
+      "shortcuts": {}
     },
     {
       "name": "wikilink",

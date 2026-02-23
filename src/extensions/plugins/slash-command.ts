@@ -129,6 +129,14 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       action: () =>
         editor.commands.setToggle({ summaryType: "heading", level: 3 }),
     },
+    {
+      id: "toc",
+      label: "Table of Contents",
+      category: "Basic",
+      description: "Auto-generated heading list",
+      mdHint: "[TOC]",
+      action: () => editor.commands.insertTableOfContents(),
+    },
     // Rich content
     {
       id: "code-block",
@@ -327,9 +335,11 @@ export const SlashCommands = Extension.create({
           const q = query.toLowerCase();
           return items.filter(
             (item) =>
+              item.id.toLowerCase().includes(q) ||
               item.label.toLowerCase().includes(q) ||
               item.category.toLowerCase().includes(q) ||
-              item.description.toLowerCase().includes(q),
+              item.description.toLowerCase().includes(q) ||
+              (item.mdHint ?? "").toLowerCase().includes(q),
           );
         },
         render: () => {

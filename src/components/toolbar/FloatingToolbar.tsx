@@ -180,6 +180,24 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         onClick={() => editor.chain().focus().toggleStrike().run()}
       />
       <ToolbarButton
+        label="H"
+        title="Highlight (Cmd+Shift+H)"
+        isActive={editor.isActive("highlight")}
+        onClick={() => editor.chain().focus().toggleHighlight().run()}
+      />
+      <ToolbarButton
+        label="X²"
+        title="Superscript"
+        isActive={editor.isActive("superscript")}
+        onClick={() => editor.chain().focus().toggleSuperscript().run()}
+      />
+      <ToolbarButton
+        label="X₂"
+        title="Subscript"
+        isActive={editor.isActive("subscript")}
+        onClick={() => editor.chain().focus().toggleSubscript().run()}
+      />
+      <ToolbarButton
         label="<>"
         title="Inline Code (Cmd+E)"
         isActive={editor.isActive("code")}

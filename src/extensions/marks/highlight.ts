@@ -1,0 +1,55 @@
+// §5.1 Highlight Mark Extension — ==text==
+import { Mark, mergeAttributes, markInputRule, markPasteRule } from "@tiptap/core";
+
+export interface HighlightOptions {
+  HTMLAttributes: Record<string, string>;
+}
+
+declare module "@tiptap/core" {
+  interface Commands<ReturnType> {
+    highlight: {
+      setHighlight: () => ReturnType;
+      toggleHighlight: () => ReturnType;
+      unsetHighlight: () => ReturnType;
+    };
+  }
+}
+
+const inputRegex = /(?:^|\s)(==(?!\s+==)((?:[^=]+))==)$/;
+const pasteRegex = /(?:^|\s)(==(?!\s+==)((?:[^=]+))==)/g;
+
+export const Highlight = Mark.create<HighlightOptions>({
+  name: "highlight",
+
+  addOptions() {
+    return { HTMLAttributes: {} };
+  },
+
+  parseHTML() {
+    return [{ tag: "mark" }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return ["mark", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
+  },
+
+  addCommands() {
+    return {
+      setHighlight: () => ({ commands }) => commands.setMark(this.name),
+      toggleHighlight: () => ({ commands }) => commands.toggleMark(this.name),
+      unsetHighlight: () => ({ commands }) => commands.unsetMark(this.name),
+    };
+  },
+
+  addKeyboardShortcuts() {
+    return { "Mod-Shift-h": () => this.editor.commands.toggleHighlight() };
+  },
+
+  addInputRules() {
+    return [markInputRule({ find: inputRegex, type: this.type })];
+  },
+
+  addPasteRules() {
+    return [markPasteRule({ find: pasteRegex, type: this.type })];
+  },
+});

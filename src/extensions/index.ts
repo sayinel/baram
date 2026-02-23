@@ -36,6 +36,7 @@ import { BlockReference } from "./nodes/block-reference";
 import { BlockEmbed } from "./nodes/block-embed";
 import { Callout } from "./nodes/callout";
 import { Toggle } from "./nodes/toggle";
+import { TableOfContents } from "./nodes/table-of-contents";
 
 // Plugin Extensions — M3/M4
 import { MathInlineEdit } from "./plugins/math-inline-edit";
@@ -56,6 +57,9 @@ import { Code } from "./marks/code";
 import { Strike } from "./marks/strike";
 import { Link } from "./marks/link";
 import { Underline } from "./marks/underline";
+import { Highlight } from "./marks/highlight";
+import { Subscript } from "./marks/subscript";
+import { Superscript } from "./marks/superscript";
 
 import type { Extensions } from "@tiptap/core";
 
@@ -115,6 +119,9 @@ export function createBaramExtensions(options?: BaramExtensionOptions): Extensio
     // Nodes — §5.1 Toggle
     Toggle,
 
+    // Nodes — Table of Contents
+    TableOfContents,
+
     // Nodes — §30c Block Reference & Embed
     BlockReference.configure({
       onNavigate: options?.onNavigateBlockRef ?? (() => {}),
@@ -130,6 +137,9 @@ export function createBaramExtensions(options?: BaramExtensionOptions): Extensio
     Strike,
     Link,
     Underline,
+    Highlight,
+    Subscript,
+    Superscript,
 
     // Plugins — §5.2
     History.configure({ depth: 100 }),
@@ -200,4 +210,8 @@ export {
   Strike,
   Link,
   Underline,
+  Highlight,
+  Subscript,
+  Superscript,
+  TableOfContents,
 };

@@ -4,3 +4,6 @@ export { Italic } from "./italic";
 export { Code } from "./code";
 export { Strike } from "./strike";
 export { Link } from "./link";
+export { Highlight } from "./highlight";
+export { Subscript } from "./subscript";
+export { Superscript } from "./superscript";

@@ -1,9 +1,9 @@
 {
   "_comment": "Baram 개발 진행 상황 추적. 슬래시 커맨드가 자동으로 업데이트한다.",
   "project": "baram",
-  "lastUpdated": "2026-02-22",
+  "lastUpdated": "2026-02-23",
   "currentPhase": 2,
-  "currentMilestone": "M8",
+  "currentMilestone": "M9",
 
   "milestones": {
     "M1": {
@@ -159,11 +159,22 @@
         "§B4-gemini-provider": { "status": "completed", "tests": "8/8 cargo test (SSE + models + request)", "spec": "§6.3" },
         "§B5-error-ui": { "status": "completed", "tests": "10/10 vitest pass (format-error)", "spec": "§6.3" }
       }
+    },
+    "M9-partial": {
+      "name": "Inline Marks + TOC",
+      "status": "completed",
+      "completedAt": "2026-02-23",
+      "features": {
+        "highlight-mark": { "status": "completed", "tests": "21/21 roundtrip vitest pass", "spec": "§5.1" },
+        "subscript-mark": { "status": "completed", "tests": "21/21 roundtrip vitest pass", "spec": "§5.1" },
+        "superscript-mark": { "status": "completed", "tests": "21/21 roundtrip vitest pass", "spec": "§5.1" },
+        "table-of-contents": { "status": "completed", "tests": "8/8 vitest pass (roundtrip + parsing)", "spec": "§5.1" }
+      }
     }
   },
 
   "testSummary": {
-    "vitest": "615/615 pass (46 test files)",
+    "vitest": "644/644 pass (48 test files)",
     "cargoTest": "88/88 pass (1 ignored)",
     "breakdown": {
       "stores": 6,
@@ -201,14 +212,16 @@
       "custom-ai-commands": 20,
       "prompt-lint": 21,
       "format-error": 10,
-      "ai-commands": 5
+      "ai-commands": 5,
+      "roundtrip-inline-marks": 21,
+      "table-of-contents": 8
     }
   },
 
   "roundtrip": {
     "commonmark": "0/651",
     "gfm": "0/120",
-    "baram-extensions": "41/41"
+    "baram-extensions": "45/45"
   },
 
   "performance": {

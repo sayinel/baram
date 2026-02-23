@@ -4795,3 +4795,57 @@ body {
   display: block;
   margin-bottom: 4px;
 }
+
+/* ── Table of Contents NodeView ────────────────────────────────── */
+.tiptap .table-of-contents {
+  border: 1px solid var(--color-border, #e0e0e0);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin: 8px 0;
+  background: var(--color-bg-secondary, #f8f9fa);
+}
+.tiptap .table-of-contents-selected {
+  outline: 2px solid var(--color-primary, #3b82f6);
+  outline-offset: 2px;
+}
+.tiptap .table-of-contents-header {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary, #6b7280);
+  margin-bottom: 8px;
+}
+.tiptap .table-of-contents-empty {
+  font-size: 13px;
+  color: var(--color-text-tertiary, #9ca3af);
+  font-style: italic;
+}
+.tiptap .table-of-contents-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.tiptap .table-of-contents-item {
+  margin: 2px 0;
+}
+.tiptap .table-of-contents-link {
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-primary, #3b82f6);
+  cursor: pointer;
+  text-align: left;
+  border-radius: 3px;
+  width: 100%;
+}
+.tiptap .table-of-contents-link:hover {
+  background: var(--color-bg-hover, rgba(0, 0, 0, 0.05));
+  text-decoration: underline;
+}
+[data-theme="dark"] .tiptap .table-of-contents {
+  background: var(--color-bg-secondary, #1e293b);
+  border-color: var(--color-border, #334155);
+}

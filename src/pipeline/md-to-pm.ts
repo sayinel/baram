@@ -26,7 +26,7 @@ import { extractBlockId, BLOCK_REF_RE, parseBlockRefMatch, BLOCK_EMBED_RE, parse
 /** remark parser — markdown string → mdast */
 const parser = unified()
   .use(remarkParse)
-  .use(remarkGfm)
+  .use(remarkGfm, { singleTilde: false })
   .use(remarkMath)
   .use(remarkFrontmatter, ["yaml"]);
 
@@ -273,6 +273,17 @@ function convertBlockNode(
     }
   }
 
+  // [TOC]: Detect table of contents — paragraph with single text child "[TOC]" or "[toc]"
+  if (node.type === "paragraph" && schema.nodes.tableOfContents) {
+    const children = (node as { children?: Content[] }).children;
+    if (children?.length === 1 && children[0].type === "text") {
+      const text = (children[0] as Text).value.trim();
+      if (text === "[TOC]" || text === "[toc]") {
+        return schema.nodes.tableOfContents.create();
+      }
+    }
+  }
+
   // §5.9: Detect callout — blockquote whose first paragraph starts with [!type]
   if (node.type === "blockquote" && schema.nodes.callout) {
     const bqChildren = (node as { children: Content[] }).children;
@@ -463,26 +474,34 @@ function convertInlineChildren(
 ): PmNode[] {
   const result: PmNode[] = [];
 
-  // Track <u>/<\/u> HTML nodes for underline mark
+  // Track HTML tag-based marks: <u>, <mark>, <sub>, <sup>
   let underlineActive = false;
+  let highlightActive = false;
+  let subscriptActive = false;
+  let superscriptActive = false;
 
   for (const child of children) {
     if (child.type === "html") {
       const val = (child as { value: string }).value.trim().toLowerCase();
-      if (val === "<u>") {
-        underlineActive = true;
-        continue;
-      }
-      if (val === "</u>") {
-        underlineActive = false;
-        continue;
-      }
+      if (val === "<u>") { underlineActive = true; continue; }
+      if (val === "</u>") { underlineActive = false; continue; }
+      if (val === "<mark>") { highlightActive = true; continue; }
+      if (val === "</mark>") { highlightActive = false; continue; }
+      if (val === "<sub>") { subscriptActive = true; continue; }
+      if (val === "</sub>") { subscriptActive = false; continue; }
+      if (val === "<sup>") { superscriptActive = true; continue; }
+      if (val === "</sup>") { superscriptActive = false; continue; }
     }
 
-    const marks =
-      underlineActive && schema.marks.underline
-        ? [...parentMarks, schema.marks.underline.create()]
-        : parentMarks;
+    let marks = parentMarks;
+    if (underlineActive && schema.marks.underline)
+      marks = [...marks, schema.marks.underline.create()];
+    if (highlightActive && schema.marks.highlight)
+      marks = [...marks, schema.marks.highlight.create()];
+    if (subscriptActive && schema.marks.subscript)
+      marks = [...marks, schema.marks.subscript.create()];
+    if (superscriptActive && schema.marks.superscript)
+      marks = [...marks, schema.marks.superscript.create()];
     const nodes = convertInlineNode(child, schema, marks);
     result.push(...nodes);
   }
@@ -512,6 +531,10 @@ function convertInlineNode(
       const nodes = splitTextWithBlockRefs(text.value, schema, parentMarks);
       if (nodes.length > 0) return nodes;
     }
+
+    // Custom inline marks: ==highlight==, ^superscript^, ~subscript~
+    const customMarkNodes = splitTextWithCustomInlineMarks(text.value, schema, parentMarks);
+    if (customMarkNodes.length > 0) return customMarkNodes;
 
     return [schema.text(text.value, parentMarks)];
   }
@@ -681,6 +704,84 @@ function splitTextWithBlockRefs(
   // Text after the last block reference
   if (lastIndex < text.length) {
     result.push(schema.text(text.slice(lastIndex), parentMarks));
+  }
+
+  return result;
+}
+
+/** Custom inline mark patterns: ==highlight==, ^superscript^, ~subscript~ */
+const CUSTOM_MARK_PATTERNS: { markName: string; re: RegExp; fastCheck: string }[] = [
+  { markName: "highlight",   re: /==((?:[^=]|=[^=])+)==/g, fastCheck: "==" },
+  { markName: "superscript", re: /\^([^^]+)\^/g,           fastCheck: "^" },
+  { markName: "subscript",   re: /(?<![~])~([^~]+)~(?!~)/g, fastCheck: "~" },
+];
+
+/**
+ * Split text at custom inline mark boundaries (==highlight==, ^super^, ~sub~).
+ * Processes each mark pattern in order; returns empty array if no matches.
+ */
+function splitTextWithCustomInlineMarks(
+  text: string,
+  schema: Schema,
+  parentMarks: Mark[],
+): PmNode[] {
+  // Try each pattern; first match wins
+  for (const { markName, re, fastCheck } of CUSTOM_MARK_PATTERNS) {
+    if (!schema.marks[markName]) continue;
+    if (!text.includes(fastCheck)) continue;
+
+    const nodes = splitTextWithSingleCustomMark(text, schema, parentMarks, markName, re);
+    if (nodes.length > 0) return nodes;
+  }
+  return [];
+}
+
+/** Split text on a single custom mark regex, returning PM nodes with the mark applied */
+function splitTextWithSingleCustomMark(
+  text: string,
+  schema: Schema,
+  parentMarks: Mark[],
+  markName: string,
+  regex: RegExp,
+): PmNode[] {
+  const result: PmNode[] = [];
+  const re = new RegExp(regex.source, regex.flags);
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = re.exec(text)) !== null) {
+    // Text before the match
+    if (match.index > lastIndex) {
+      const before = text.slice(lastIndex, match.index);
+      // Recursively check remaining patterns on the "before" text
+      const beforeNodes = splitTextWithCustomInlineMarks(before, schema, parentMarks);
+      if (beforeNodes.length > 0) {
+        result.push(...beforeNodes);
+      } else {
+        result.push(schema.text(before, parentMarks));
+      }
+    }
+
+    // The matched content with the mark applied
+    const mark = schema.marks[markName]?.create();
+    if (mark) {
+      result.push(schema.text(match[1], [...parentMarks, mark]));
+    }
+
+    lastIndex = re.lastIndex;
+  }
+
+  if (result.length === 0) return [];
+
+  // Text after the last match
+  if (lastIndex < text.length) {
+    const after = text.slice(lastIndex);
+    const afterNodes = splitTextWithCustomInlineMarks(after, schema, parentMarks);
+    if (afterNodes.length > 0) {
+      result.push(...afterNodes);
+    } else {
+      result.push(schema.text(after, parentMarks));
+    }
   }
 
   return result;

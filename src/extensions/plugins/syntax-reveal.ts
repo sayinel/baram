@@ -40,6 +40,9 @@ const MARK_DELIMITERS: Record<string, { open: string; close: string }> = {
   strike: { open: "~~", close: "~~" },
   code: { open: "`", close: "`" },
   underline: { open: "<u>", close: "</u>" },
+  highlight: { open: "==", close: "==" },
+  subscript: { open: "~", close: "~" },
+  superscript: { open: "^", close: "^" },
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────

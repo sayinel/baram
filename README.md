@@ -63,7 +63,7 @@ The built application will be in `src-tauri/target/release/bundle/`.
 
 Baram hides markdown syntax while you write and reveals it only when your cursor enters the formatted range. What you see is what you get — without losing access to the underlying markdown.
 
-- **Syntax Reveal** — Delimiters (`**`, `*`, `` ` ``, `~~`, `[](url)`, `<u></u>`) appear on focus, vanish on exit
+- **Syntax Reveal** — Delimiters (`**`, `*`, `` ` ``, `~~`, `==`, `~`, `^`, `[](url)`, `<u></u>`) appear on focus, vanish on exit
 - **Source Mode** — Instantly switch to raw markdown editing with `Cmd+/` (CodeMirror 6 powered)
 - **Roundtrip Fidelity** — MD → Editor → MD preserves your document exactly
 
@@ -85,6 +85,7 @@ Baram hides markdown syntax while you write and reveals it only when your cursor
 | Toggle | Slash command `/toggle` — collapsible details block |
 | Toggle Heading | Slash command `/toggle heading 1` – `/toggle heading 3` |
 | Mermaid Diagram | Slash command `/mermaid` or `Cmd+Shift+D` |
+| Table of Contents | Type `[TOC]` or slash command `/toc` |
 | YAML Frontmatter | Auto-detected at document start |
 
 ### Inline Formatting
@@ -96,6 +97,9 @@ Baram hides markdown syntax while you write and reveals it only when your cursor
 | `Code` | `` `text` `` | `Cmd+E` |
 | ~~Strikethrough~~ | `~~text~~` | `Cmd+Shift+X` |
 | <u>Underline</u> | `<u>text</u>` | `Cmd+U` |
+| ==Highlight== | `==text==` | `Cmd+Shift+H` |
+| Superscript | `^text^` | — |
+| Subscript | `~text~` | — |
 | Link | `[text](url)` | `Cmd+K` |
 | Inline Math | `$formula$` | Type `$` |
 
@@ -280,6 +284,7 @@ Create your own slash commands in **Settings > AI > Custom Commands**. Use varia
 | Underline | `Cmd+U` |
 | Inline Code | `Cmd+E` |
 | Strikethrough | `Cmd+Shift+X` |
+| Highlight | `Cmd+Shift+H` |
 | Link | `Cmd+K` |
 
 ### Headings
@@ -436,9 +441,9 @@ Reverse:  ProseMirror Document → mdast → remark-stringify
 
 **Upcoming**
 
-- Highlight, subscript, superscript marks
-- Table of contents
-- Graph view improvements
+- Global search (Cmd+Shift+F)
+- Git integration
+- Theme system
 - Plugin marketplace
 
 ## License

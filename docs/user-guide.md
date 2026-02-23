@@ -123,11 +123,14 @@ Baram hides markdown syntax while you write. The delimiters appear when your cur
 | *Italic* | `*text*` | `Cmd+I` | `Ctrl+I` |
 | <u>Underline</u> | `<u>text</u>` | `Cmd+U` | `Ctrl+U` |
 | ~~Strikethrough~~ | `~~text~~` | `Cmd+Shift+X` | `Ctrl+Shift+X` |
+| ==Highlight== | `==text==` | `Cmd+Shift+H` | `Ctrl+Shift+H` |
+| Superscript | `^text^` | — | — |
+| Subscript | `~text~` | — | — |
 | `Inline Code` | `` `text` `` | `Cmd+E` | `Ctrl+E` |
 | [Link](url) | `[text](url)` | `Cmd+K` | `Ctrl+K` |
 | Inline Math | `$formula$` | Type `$...$` | Type `$...$` |
 
-You can also apply formatting by selecting text and using the **Floating Toolbar** that appears above the selection.
+You can also apply formatting by selecting text and using the **Floating Toolbar** that appears above the selection. The toolbar includes buttons for Bold, Italic, Strikethrough, Highlight, Superscript, Subscript, Code, and more.
 
 ### Block Formatting
 
@@ -163,6 +166,7 @@ Use `Tab` to indent and `Shift+Tab` to outdent list items.
 | Code Block | Type ` ``` ` and press Enter | `Cmd+Alt+C` | `Ctrl+Alt+C` |
 | Math Block | Type `$$` and press Enter | `Cmd+Shift+M` | `Ctrl+Shift+M` |
 | Mermaid Diagram | Slash command `/mermaid` | `Cmd+Shift+D` | `Ctrl+Shift+D` |
+| Table of Contents | Type `[TOC]` or `/toc` | — | — |
 
 ### Slash Commands
 
@@ -178,6 +182,7 @@ Type `/` at the beginning of an empty line to open the slash command menu. This 
 - `/callout` — Insert a callout block
 - `/toggle` — Insert a toggle (collapsible) block
 - `/toggle heading 1` – `/toggle heading 3` — Insert a toggle with heading summary
+- `/toc` — Insert a Table of Contents
 
 **Rich Content:**
 - `/code` — Insert a code block
@@ -191,7 +196,7 @@ Type to filter the menu items. AI commands are also available from the slash men
 
 ### Floating Toolbar
 
-When you select text, a floating toolbar appears above the selection with formatting buttons: **Bold**, **Italic**, **Underline**, **Strikethrough**, **Code**, **Link**, and more.
+When you select text, a floating toolbar appears above the selection with formatting buttons: **Bold**, **Italic**, **Strikethrough**, **Highlight**, **Superscript**, **Subscript**, **Code**, and more.
 
 ### Block Handle
 
@@ -333,6 +338,15 @@ Insert images in multiple ways:
 4. Use the slash command `/image`
 
 Hover over an image to access the toolbar for resizing (25% / 50% / 75% / 100%) and editing alt text.
+
+### Table of Contents
+
+Insert a table of contents that automatically lists all headings in the document:
+
+- Type `[TOC]` in a paragraph, or use the slash command `/toc`
+- The TOC updates in real-time as you add, remove, or edit headings
+- Click any entry to jump to that heading
+- Serialized as `[TOC]` in markdown (compatible with Typora)
 
 ### YAML Frontmatter
 
