@@ -230,10 +230,16 @@ describe("cursor-mapper: serialize round-trip (real toggle path)", () => {
     // Compound blocks: cursor must be inside text, not at wrapper boundary
     ["blockquote start", "> quoted text", 2],
     ["blockquote middle", "> quoted text", 6],
+    ["blockquote Korean", "> 인용문을 작성할 수 있습니다.", 5],
     ["bullet list start", "- list item", 3],
     ["bullet list middle", "- list item", 7],
     ["ordered list start", "1. ordered item", 3],
     ["ordered list middle", "1. ordered item", 8],
+    // Nested lists: sub-bullet text must round-trip correctly
+    ["nested bullet parent", "- parent\n  - child", 4],
+    ["nested bullet child start", "- parent\n  - child", 13],
+    ["nested bullet child middle", "- parent\n  - child", 15],
+    ["nested ordered", "1. first\n   1. second", 14],
   ])("serialize round-trip preserves: %s", (_, md, pmPos) => {
     const { roundTripPos } = serializeRoundTrip(md, pmPos);
     expect(roundTripPos).toBe(pmPos);

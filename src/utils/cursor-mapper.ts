@@ -194,14 +194,25 @@ function matchMdPosInPm(
 /**
  * Convert a text-level position (index into textBetween output) back to a
  * PM content offset within a compound block (lists, blockquotes, tables).
+ *
+ * Must account for the "\n" separator that textBetween inserts between
+ * leaf blocks (paragraphs in different list items, etc.).
  */
 function textPosToPmOffset(block: PMNode, targetTextPos: number): number {
   let textCount = 0;
   let result = block.content.size;
   let found = false;
+  let seenText = false;
+  let lastTextEnd = 0;
   block.descendants((node, pos) => {
     if (found) return false;
     if (node.isText) {
+      // When crossing a block boundary (gap between text regions),
+      // textBetween inserts a "\n" separator — count it.
+      if (seenText && pos > lastTextEnd) {
+        textCount++; // "\n" separator
+      }
+      seenText = true;
       const remaining = targetTextPos - textCount;
       if (remaining <= node.text!.length) {
         result = pos + remaining;
@@ -209,6 +220,7 @@ function textPosToPmOffset(block: PMNode, targetTextPos: number): number {
         return false;
       }
       textCount += node.text!.length;
+      lastTextEnd = pos + node.nodeSize;
     }
     return true;
   });
