@@ -248,20 +248,37 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
     editor.commands.focus();
   }, [editor, cleanupListeners]);
 
+  const autoApplyIfAllDecided = useCallback(() => {
+    if (!editor) return;
+    const ps = aiDiffPluginKey.getState(editor.state) as AIDiffState | undefined;
+    if (!ps || ps.phase !== "completed" || ps.hunks.length === 0) return;
+    const allDecided = ps.hunks.every((h) => h.accepted || h.rejected);
+    if (!allDecided) return;
+    // All hunks resolved — auto-apply and close
+    dispatchAIDiffAccept(editor.view);
+    setIsActive(false);
+    setPhase("idle");
+    setHunks([]);
+    cleanupListeners();
+    editor.commands.focus();
+  }, [editor, cleanupListeners]);
+
   const acceptHunk = useCallback(
     (index: number) => {
       if (!editor) return;
       dispatchAIDiffAcceptHunk(editor.view, index);
+      autoApplyIfAllDecided();
     },
-    [editor],
+    [editor, autoApplyIfAllDecided],
   );
 
   const rejectHunk = useCallback(
     (index: number) => {
       if (!editor) return;
       dispatchAIDiffRejectHunk(editor.view, index);
+      autoApplyIfAllDecided();
     },
-    [editor],
+    [editor, autoApplyIfAllDecided],
   );
 
   const regenerate = useCallback(() => {

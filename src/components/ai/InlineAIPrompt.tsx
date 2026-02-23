@@ -133,15 +133,15 @@ export function InlineAIPrompt({
         </div>
       )}
 
-      {phase === "completed" && (
-        <div className="ai-diff-action-bar">
-          {hunks.length > 1 && (() => {
-            const pendingIndex = hunks.findIndex((h) => !h.accepted && !h.rejected);
-            const pendingCount = hunks.filter((h) => !h.accepted && !h.rejected).length;
-            const acceptedCount = hunks.filter((h) => h.accepted).length;
-            const rejectedCount = hunks.filter((h) => h.rejected).length;
-            return (
-              <>
+      {phase === "completed" && (() => {
+        const pendingIndex = hunks.findIndex((h) => !h.accepted && !h.rejected);
+        const pendingCount = hunks.filter((h) => !h.accepted && !h.rejected).length;
+        const acceptedCount = hunks.filter((h) => h.accepted).length;
+        const rejectedCount = hunks.filter((h) => h.rejected).length;
+        return (
+          <div className="ai-diff-completed-panel">
+            {hunks.length > 1 && (
+              <div className="ai-diff-action-bar">
                 <span className="ai-diff-hunk-status">
                   {pendingCount > 0
                     ? `${pendingCount} pending`
@@ -149,6 +149,7 @@ export function InlineAIPrompt({
                   {acceptedCount > 0 && ` / ${acceptedCount} accepted`}
                   {rejectedCount > 0 && ` / ${rejectedCount} rejected`}
                 </span>
+                <span style={{ flex: 1 }} />
                 <button
                   className="ai-diff-action-btn ai-diff-action-btn-hunk-accept"
                   onClick={() => pendingIndex >= 0 && onAcceptHunk(pendingIndex)}
@@ -165,27 +166,28 @@ export function InlineAIPrompt({
                 >
                   Reject Hunk
                 </button>
-                <span className="ai-diff-action-separator" />
-              </>
-            );
-          })()}
-          <button
-            className="ai-diff-action-btn ai-diff-action-btn-accept"
-            onClick={onAccept}
-          >
-            Accept All
-          </button>
-          <button
-            className="ai-diff-action-btn ai-diff-action-btn-reject"
-            onClick={onReject}
-          >
-            Reject All
-          </button>
-          <button className="ai-diff-action-btn" onClick={onRegenerate}>
-            Regenerate
-          </button>
-        </div>
-      )}
+              </div>
+            )}
+            <div className="ai-diff-action-bar">
+              <button
+                className="ai-diff-action-btn ai-diff-action-btn-accept"
+                onClick={onAccept}
+              >
+                Accept All
+              </button>
+              <button
+                className="ai-diff-action-btn ai-diff-action-btn-reject"
+                onClick={onReject}
+              >
+                Reject All
+              </button>
+              <button className="ai-diff-action-btn" onClick={onRegenerate}>
+                Regenerate
+              </button>
+            </div>
+          </div>
+        );
+      })()}
     </div>,
     document.body,
   );

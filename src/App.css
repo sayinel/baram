@@ -5143,9 +5143,18 @@ body {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+.ai-diff-completed-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
 .ai-diff-action-bar {
   display: flex;
+  align-items: center;
   gap: 6px;
+}
+.inline-ai-prompt > .ai-diff-action-bar {
   margin-top: 6px;
 }
 .ai-diff-action-btn {
