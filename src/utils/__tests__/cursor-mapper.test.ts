@@ -195,3 +195,66 @@ describe("cursor-mapper: round-trip", () => {
     expect(pmPos).toBe(15);
   });
 });
+
+describe("cursor-mapper: serialize round-trip (real toggle path)", () => {
+  const editor = createEditor();
+
+  // Simulate the exact WYSIWYG → Source → WYSIWYG toggle path
+  function serializeRoundTrip(md: string, pmPos: number): { mdOffset: number; roundTripPos: number; serialized: string } {
+    const doc = loadDoc(editor, md);
+    const serialized = prosemirrorToMarkdown(doc);
+    const mdOffset = pmPosToMdOffset(doc, pmPos, serialized);
+    const newDoc = loadDoc(editor, serialized);
+    const roundTripPos = mdOffsetToPmPos(newDoc, mdOffset, serialized);
+    return { mdOffset, roundTripPos, serialized };
+  }
+
+  test.each([
+    ["plain paragraph start", "Hello World", 1],
+    ["plain paragraph middle", "Hello World", 6],
+    ["plain paragraph end", "Hello World", 12],
+    ["heading start", "## Hello World", 1],
+    ["heading middle", "## Hello World", 6],
+    ["bold start", "This is **bold** text", 9],
+    ["bold end", "This is **bold** text", 13],
+    ["italic", "An *italic* word", 4],
+    ["link text", "Click [here](https://x.com) now", 7],
+    ["code span", "Use `code` here", 5],
+    ["multi-para first", "First line\n\nSecond line", 1],
+    ["multi-para second", "First line\n\nSecond line", 14],
+    ["Korean text", "안녕하세요 세계", 4],
+    ["mixed Korean-English", "Hello 안녕 World", 7],
+    ["heading with bold", "## Hello **World**", 1],
+    ["heading with bold end", "## Hello **World**", 12],
+    ["strikethrough", "Some ~~deleted~~ text", 6],
+    // Compound blocks: cursor must be inside text, not at wrapper boundary
+    ["blockquote start", "> quoted text", 2],
+    ["blockquote middle", "> quoted text", 6],
+    ["bullet list start", "- list item", 3],
+    ["bullet list middle", "- list item", 7],
+    ["ordered list start", "1. ordered item", 3],
+    ["ordered list middle", "1. ordered item", 8],
+  ])("serialize round-trip preserves: %s", (_, md, pmPos) => {
+    const { roundTripPos } = serializeRoundTrip(md, pmPos);
+    expect(roundTripPos).toBe(pmPos);
+  });
+
+  test("pmPosToMdOffset places cursor correctly in serialized output", () => {
+    const md = "Hello World";
+    const doc = loadDoc(editor, md);
+    const serialized = prosemirrorToMarkdown(doc);
+    // PM pos 6 = after "Hello" → MD offset should point between "Hello" and " World"
+    const mdOffset = pmPosToMdOffset(doc, 6, serialized);
+    expect(serialized[mdOffset]).toBe(" ");
+    expect(serialized.substring(0, mdOffset)).toBe("Hello");
+  });
+
+  test("pmPosToMdOffset for heading in serialized output", () => {
+    const md = "## Title";
+    const doc = loadDoc(editor, md);
+    const serialized = prosemirrorToMarkdown(doc);
+    // PM pos 1 = start of heading content → after "## "
+    const mdOffset = pmPosToMdOffset(doc, 1, serialized);
+    expect(serialized[mdOffset]).toBe("T");
+  });
+});
