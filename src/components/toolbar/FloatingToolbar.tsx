@@ -3,6 +3,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { BubbleMenu } from "@tiptap/react/menus";
 import type { Editor } from "@tiptap/react";
 import { executeAICommand, getSelectedText, showPrompt } from "../../utils/ai-commands";
+import { showFieldDialog } from "../../utils/field-dialog";
 import {
   AI_TRANSLATE,
   AI_SUMMARIZE,
@@ -225,6 +226,28 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         title="Inline Code (Cmd+E)"
         isActive={editor.isActive("code")}
         onClick={() => editor.chain().focus().toggleCode().run()}
+      />
+      <ToolbarButton
+        label="🔗"
+        title="Link"
+        isActive={editor.isActive("link")}
+        onClick={async () => {
+          if (editor.isActive("link")) {
+            editor.chain().focus().unsetLink().run();
+            return;
+          }
+          const result = await showFieldDialog({
+            title: "Insert Link",
+            fields: [
+              { key: "url", label: "URL", placeholder: "https://..." },
+            ],
+          });
+          if (!result?.url) {
+            editor.commands.focus();
+            return;
+          }
+          editor.chain().focus().setLink({ href: result.url }).run();
+        }}
       />
       <div className="floating-toolbar-separator" />
       <ToolbarButton
