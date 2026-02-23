@@ -3,7 +3,9 @@ import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { llmComplete } from "../ipc/invoke";
 import { useAIStore } from "../stores/ai-store";
+import type { AITask } from "../stores/ai-store";
 import { isLLMAllowed } from "../utils/privacy-check";
+import { getModelForTask } from "../utils/model-selection";
 import type { LLMTokenPayload, LLMDonePayload, LLMErrorPayload } from "../ipc/types";
 
 interface UseLLMStreamOptions {
@@ -11,6 +13,7 @@ interface UseLLMStreamOptions {
   maxTokens?: number;
   provider?: string;
   baseUrl?: string;
+  task?: AITask;
 }
 
 interface UseLLMStreamReturn {
@@ -48,7 +51,8 @@ export function useLLMStream(): UseLLMStreamReturn {
 
       const store = useAIStore.getState();
       const provider = opts?.provider ?? store.provider;
-      const model = opts?.model ?? store.model;
+      const task = opts?.task ?? "chat";
+      const model = opts?.model ?? getModelForTask(task);
       const apiKey = store.apiKey;
       const baseUrl = opts?.baseUrl ?? (provider === "ollama" ? store.ollamaUrl : undefined);
       const privacyMode = store.privacyMode;

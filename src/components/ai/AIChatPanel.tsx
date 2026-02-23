@@ -7,6 +7,7 @@ import { ChatMessage } from "./ChatMessage";
 import { parseReferences, resolveReference, buildContextPrompt } from "../../utils/chat-context";
 import type { ResolvedReference } from "../../utils/chat-context";
 import { formatAIError } from "../../utils/format-error";
+import { ReferenceAutocomplete } from "./ReferenceAutocomplete";
 
 const ChevronIcon = ({ rotated }: { rotated: boolean }) => (
   <svg
@@ -39,8 +40,11 @@ export function AIChatPanel() {
   const { send, cancel, isStreaming, text, error } = useLLMStream();
   const [input, setInput] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [refQuery, setRefQuery] = useState<string | null>(null);
+  const [refPosition, setRefPosition] = useState({ top: 0, left: 0 });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const inputAreaRef = useRef<HTMLDivElement>(null);
   const streamSessionRef = useRef<string | null>(null);
 
   // Close dropdown on outside click
@@ -73,6 +77,64 @@ export function AIChatPanel() {
       streamSessionRef.current = null;
     }
   }, [isStreaming, text, updateLastMessage]);
+
+  // § @ reference autocomplete detection
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    setInput(value);
+
+    const cursorPos = e.target.selectionStart;
+    const textBeforeCursor = value.slice(0, cursorPos);
+
+    // Find the last @ that's either at start or preceded by whitespace
+    const atMatch = textBeforeCursor.match(/(?:^|\s)@([^\s]*)$/);
+    if (atMatch) {
+      const query = atMatch[1]; // text after @
+      setRefQuery(query);
+
+      // Position the dropdown above the textarea
+      if (inputAreaRef.current) {
+        const rect = inputAreaRef.current.getBoundingClientRect();
+        setRefPosition({ top: rect.height + 4, left: 8 });
+      }
+    } else {
+      setRefQuery(null);
+    }
+  }, []);
+
+  const handleRefSelect = useCallback((ref: string) => {
+    const textarea = inputRef.current;
+    if (!textarea) {
+      setInput((prev) => prev + ref + " ");
+      setRefQuery(null);
+      return;
+    }
+
+    const cursorPos = textarea.selectionStart;
+    const textBeforeCursor = input.slice(0, cursorPos);
+    const textAfterCursor = input.slice(cursorPos);
+
+    // Find and replace the @query part
+    const atMatch = textBeforeCursor.match(/(?:^|\s)@([^\s]*)$/);
+    if (atMatch) {
+      const atStart = textBeforeCursor.lastIndexOf("@");
+      const newInput = input.slice(0, atStart) + ref + " " + textAfterCursor;
+      setInput(newInput);
+
+      // Set cursor after inserted reference
+      requestAnimationFrame(() => {
+        const newPos = atStart + ref.length + 1;
+        textarea.setSelectionRange(newPos, newPos);
+        textarea.focus();
+      });
+    }
+
+    setRefQuery(null);
+  }, [input]);
+
+  const handleApplyToEditor = useCallback((content: string) => {
+    useUIStore.getState().setPendingApplyContent(content);
+  }, []);
 
   const handleSend = useCallback(() => {
     const trimmed = input.trim();
@@ -125,12 +187,19 @@ export function AIChatPanel() {
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      // When autocomplete is open, let it handle navigation keys
+      if (refQuery !== null && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Tab" || e.key === "Escape")) {
+        return; // handled by ReferenceAutocomplete's keydown listener
+      }
+      if (refQuery !== null && e.key === "Enter") {
+        return; // autocomplete handles Enter to select
+      }
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         handleSend();
       }
     },
-    [handleSend],
+    [handleSend, refQuery],
   );
 
   if (!rightPanelOpen) return null;
@@ -201,6 +270,7 @@ export function AIChatPanel() {
               msg.id === messages[messages.length - 1]?.id &&
               msg.role === "assistant"
             }
+            onApplyToEditor={msg.role === "assistant" ? handleApplyToEditor : undefined}
           />
         ))}
         <div ref={messagesEndRef} />
@@ -216,12 +286,20 @@ export function AIChatPanel() {
         );
       })()}
 
-      <div className="ai-chat-input-area">
+      <div className="ai-chat-input-area" ref={inputAreaRef}>
+        {refQuery !== null && (
+          <ReferenceAutocomplete
+            query={refQuery}
+            position={refPosition}
+            onSelect={handleRefSelect}
+            onClose={() => setRefQuery(null)}
+          />
+        )}
         <textarea
           ref={inputRef}
           className="ai-chat-input"
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           placeholder="Ask AI... (@current for context)"
           rows={2}

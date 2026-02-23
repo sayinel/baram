@@ -16,6 +16,7 @@ import type {
   LLMErrorPayload,
 } from "../ipc/types";
 import { isLLMAllowed } from "../utils/privacy-check";
+import { getModelForTask } from "../utils/model-selection";
 
 // Simple prefix cache (last 5 suggestions)
 const prefixCache = new Map<string, string>();
@@ -172,7 +173,7 @@ export function useGhostText(editor: Editor | null) {
           await llmComplete(
             storeSnapshot.apiKey,
             prompt,
-            storeSnapshot.model,
+            getModelForTask("ghost-text"),
             requestId,
             "You are an inline text completion assistant. Output ONLY the continuation text. No explanations, no markdown formatting, no quotes. Just the raw text that should follow.",
             storeSnapshot.maxSuggestionLength,

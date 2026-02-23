@@ -5,6 +5,7 @@ import { tauriStorage } from "./tauri-storage";
 import { keyringStore, keyringGet } from "../ipc/invoke";
 
 export type AIProvider = "claude" | "openai" | "ollama" | "gemini";
+export type AITask = "ghost-text" | "inline-edit" | "chat" | "agent";
 
 const KEYRING_PROVIDERS: AIProvider[] = ["claude", "openai", "gemini"];
 
@@ -39,6 +40,13 @@ interface AIState {
   maxSuggestionLength: number;
   customCommands: CustomAICommand[];
 
+  // Auto model selection
+  autoModelEnabled: boolean;
+  modelForGhostText: string;
+  modelForInlineEdit: string;
+  modelForChat: string;
+  modelForAgent: string;
+
   setProvider: (provider: AIProvider) => void;
   setModel: (model: string) => void;
   setApiKey: (key: string) => void;
@@ -54,6 +62,8 @@ interface AIState {
   addCustomCommand: (cmd: CustomAICommand) => void;
   removeCustomCommand: (id: string) => void;
   updateCustomCommand: (id: string, updates: Partial<CustomAICommand>) => void;
+  setAutoModelEnabled: (enabled: boolean) => void;
+  setModelForTask: (task: AITask, model: string) => void;
   loadApiKeysFromKeyring: () => Promise<void>;
 }
 
@@ -72,6 +82,11 @@ export const useAIStore = create<AIState>()(persist((set) => ({
   ghostTextDebounceMs: 500,
   maxSuggestionLength: 100,
   customCommands: [],
+  autoModelEnabled: false,
+  modelForGhostText: "",
+  modelForInlineEdit: "",
+  modelForChat: "",
+  modelForAgent: "",
 
   setProvider: (provider) =>
     set((state) => ({
@@ -114,6 +129,15 @@ export const useAIStore = create<AIState>()(persist((set) => ({
         c.id === id ? { ...c, ...updates } : c,
       ),
     })),
+  setAutoModelEnabled: (autoModelEnabled) => set({ autoModelEnabled }),
+  setModelForTask: (task, model) => {
+    switch (task) {
+      case "ghost-text": set({ modelForGhostText: model }); break;
+      case "inline-edit": set({ modelForInlineEdit: model }); break;
+      case "chat": set({ modelForChat: model }); break;
+      case "agent": set({ modelForAgent: model }); break;
+    }
+  },
   loadApiKeysFromKeyring: async () => {
     const loadedKeys: Record<string, string> = {};
     for (const provider of KEYRING_PROVIDERS) {
@@ -150,6 +174,11 @@ export const useAIStore = create<AIState>()(persist((set) => ({
     ghostTextDebounceMs: state.ghostTextDebounceMs,
     maxSuggestionLength: state.maxSuggestionLength,
     customCommands: state.customCommands,
+    autoModelEnabled: state.autoModelEnabled,
+    modelForGhostText: state.modelForGhostText,
+    modelForInlineEdit: state.modelForInlineEdit,
+    modelForChat: state.modelForChat,
+    modelForAgent: state.modelForAgent,
   }),
   migrate: (persisted: unknown, version: number) => {
     const state = persisted as Record<string, unknown>;

@@ -1,5 +1,7 @@
 // §44 AI Chat Session Store
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
+import { tauriStorage } from "./tauri-storage";
 
 export interface ChatMessage {
   id: string;
@@ -29,7 +31,7 @@ interface ChatState {
   getActiveSession: () => ChatSession | undefined;
 }
 
-export const useChatStore = create<ChatState>((set, get) => ({
+export const useChatStore = create<ChatState>()(persist((set, get) => ({
   sessions: [],
   activeSessionId: null,
 
@@ -105,4 +107,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const { sessions, activeSessionId } = get();
     return sessions.find((s) => s.id === activeSessionId);
   },
+}), {
+  name: "baram:chat-sessions",
+  storage: createJSONStorage(() => tauriStorage),
+  partialize: (state) => ({
+    sessions: state.sessions,
+    activeSessionId: state.activeSessionId,
+  }),
 }));

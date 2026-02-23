@@ -1,6 +1,7 @@
 // §6.2 Shared AI command utilities — used by slash menu, FloatingToolbar, CommandPalette
 import type { Editor } from "@tiptap/core";
 import { useAIStore } from "../stores/ai-store";
+import { getModelForTask } from "./model-selection";
 
 export interface AICommandOptions {
   // When true, insert response on a new line after the block containing the selection end
@@ -77,7 +78,7 @@ export async function executeAICommand(
   await llmComplete(
     store.apiKey,
     prompt,
-    store.model,
+    getModelForTask("inline-edit"),
     requestId,
     systemPrompt,
     undefined,

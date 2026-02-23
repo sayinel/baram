@@ -21,6 +21,7 @@ import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import type { LLMTokenPayload, LLMDonePayload, LLMErrorPayload } from "../ipc/types";
 import { isLLMAllowed } from "../utils/privacy-check";
+import { getModelForTask } from "../utils/model-selection";
 
 export interface UseInlineAIReturn {
   isActive: boolean;
@@ -162,7 +163,7 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
         await llmComplete(
           store.apiKey,
           prompt,
-          store.model,
+          getModelForTask("inline-edit"),
           requestId,
           systemPrompt,
           1024,

@@ -197,6 +197,24 @@ function App() {
   // §6.2 Inline AI — Cmd+J editing
   const inlineAI = useInlineAI(editor);
 
+  // §44 Apply AI chat content to editor
+  useEffect(() => {
+    const unsub = useUIStore.subscribe((state) => {
+      const content = state.pendingApplyContent;
+      if (!content || !editor) return;
+      const { from, to } = editor.state.selection;
+      if (from === to) {
+        // No selection — insert at cursor
+        editor.chain().focus().insertContentAt(from, content).run();
+      } else {
+        // Selection exists — replace with content
+        editor.chain().focus().insertContentAt({ from, to }, content).run();
+      }
+      useUIStore.getState().setPendingApplyContent(null);
+    });
+    return unsub;
+  }, [editor]);
+
   // §3.2 One-time migration: localStorage → Tauri app_data_dir
   useEffect(() => {
     migrateFromLocalStorage().catch(() => {});

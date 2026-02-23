@@ -22,6 +22,7 @@ interface UIState {
   newSkillDialogOpen: boolean;
   skillGeneratorDialogOpen: boolean;
   skillTestDialogOpen: boolean;
+  pendingApplyContent: string | null;
 
   toggleSidebar: () => void;
   setSidebarPanel: (panel: SidebarPanel) => void;
@@ -39,6 +40,7 @@ interface UIState {
   toggleNewSkillDialog: () => void;
   toggleSkillGeneratorDialog: () => void;
   toggleSkillTestDialog: () => void;
+  setPendingApplyContent: (content: string | null) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -58,6 +60,7 @@ export const useUIStore = create<UIState>((set) => ({
   newSkillDialogOpen: false,
   skillGeneratorDialogOpen: false,
   skillTestDialogOpen: false,
+  pendingApplyContent: null,
 
   toggleSidebar: () =>
     set((state) => ({ sidebarOpen: !state.sidebarOpen })),
@@ -105,4 +108,6 @@ export const useUIStore = create<UIState>((set) => ({
 
   toggleSkillTestDialog: () =>
     set((state) => ({ skillTestDialogOpen: !state.skillTestDialogOpen })),
+
+  setPendingApplyContent: (pendingApplyContent) => set({ pendingApplyContent }),
 }));

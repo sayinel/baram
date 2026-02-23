@@ -4,9 +4,10 @@ interface ChatMessageProps {
   role: "user" | "assistant";
   content: string;
   isStreaming?: boolean;
+  onApplyToEditor?: (content: string) => void;
 }
 
-export function ChatMessage({ role, content, isStreaming }: ChatMessageProps) {
+export function ChatMessage({ role, content, isStreaming, onApplyToEditor }: ChatMessageProps) {
   return (
     <div className={`chat-message chat-message-${role}`}>
       <div className="chat-message-avatar">
@@ -16,6 +17,17 @@ export function ChatMessage({ role, content, isStreaming }: ChatMessageProps) {
         <div className="chat-message-text">
           {content || (isStreaming ? "..." : "")}
         </div>
+        {role === "assistant" && content && !isStreaming && onApplyToEditor && (
+          <div className="chat-message-actions">
+            <button
+              className="chat-message-apply-btn"
+              onClick={() => onApplyToEditor(content)}
+              title="Insert AI response into editor"
+            >
+              Apply to Editor
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -333,6 +333,9 @@ function AITab() {
     ghostTextDebounceMs, setGhostTextDebounceMs,
     maxSuggestionLength, setMaxSuggestionLength,
     keychainReady,
+    autoModelEnabled, setAutoModelEnabled,
+    modelForGhostText, modelForInlineEdit, modelForChat, modelForAgent,
+    setModelForTask,
   } = useAIStore();
   const [showKey, setShowKey] = useState(false);
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -482,6 +485,53 @@ function AITab() {
           </div>
         );
       })()}
+
+      <SettingsSectionHeader title="Model Selection" />
+
+      <SettingsRow label="Auto Model Selection" description="Use different models for different AI tasks">
+        <ToggleSwitch checked={autoModelEnabled} onChange={setAutoModelEnabled} />
+      </SettingsRow>
+
+      {autoModelEnabled && (
+        <>
+          <SettingsRow label="Ghost Text Model" description="Fast model for inline completions">
+            <input
+              type="text"
+              className="settings-input"
+              value={modelForGhostText}
+              onChange={(e) => setModelForTask("ghost-text", e.target.value)}
+              placeholder={model}
+            />
+          </SettingsRow>
+          <SettingsRow label="Inline Edit Model" description="Model for Cmd+J rewriting">
+            <input
+              type="text"
+              className="settings-input"
+              value={modelForInlineEdit}
+              onChange={(e) => setModelForTask("inline-edit", e.target.value)}
+              placeholder={model}
+            />
+          </SettingsRow>
+          <SettingsRow label="Chat Model" description="Model for AI chat conversations">
+            <input
+              type="text"
+              className="settings-input"
+              value={modelForChat}
+              onChange={(e) => setModelForTask("chat", e.target.value)}
+              placeholder={model}
+            />
+          </SettingsRow>
+          <SettingsRow label="Agent Model" description="Model for autonomous AI tasks">
+            <input
+              type="text"
+              className="settings-input"
+              value={modelForAgent}
+              onChange={(e) => setModelForTask("agent", e.target.value)}
+              placeholder={model}
+            />
+          </SettingsRow>
+        </>
+      )}
 
       <SettingsSectionHeader title="Privacy" />
 
