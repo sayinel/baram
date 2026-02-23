@@ -11,7 +11,7 @@ mod search;
 
 use std::sync::Mutex;
 
-use commands::{config_cmd, export_cmd, fs_cmd, index_cmd, llm_cmd};
+use commands::{config_cmd, export_cmd, fs_cmd, index_cmd, keyring_cmd, llm_cmd};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 
@@ -333,6 +333,9 @@ pub fn run() {
             index_cmd::rename_file_with_links,
             index_cmd::get_unlinked_mentions,
             index_cmd::rename_block_id,
+            keyring_cmd::keyring_store,
+            keyring_cmd::keyring_get,
+            keyring_cmd::keyring_delete,
             get_opened_urls,
         ])
         .build(tauri::generate_context!())

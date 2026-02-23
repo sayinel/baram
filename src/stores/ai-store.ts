@@ -2,8 +2,15 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { tauriStorage } from "./tauri-storage";
+import { keyringStore, keyringGet } from "../ipc/invoke";
 
 export type AIProvider = "claude" | "openai" | "ollama" | "gemini";
+
+const KEYRING_PROVIDERS: AIProvider[] = ["claude", "openai", "gemini"];
+
+function keyringKeyFor(provider: string): string {
+  return `baram-${provider}-api-key`;
+}
 
 export interface CustomAICommand {
   id: string;
@@ -15,7 +22,7 @@ export interface CustomAICommand {
 interface AIState {
   provider: AIProvider;
   model: string;
-  /** Per-provider API keys */
+  /** Per-provider API keys (in-memory only — persisted in OS keyring) */
   apiKeys: Record<string, string>;
   /** Computed getter: API key for the current provider */
   apiKey: string;
@@ -23,6 +30,7 @@ interface AIState {
   privacyMode: boolean;
   isStreaming: boolean;
   ghostText: string | null;
+  keychainReady: boolean;
 
   // M8 additions
   activeRequestId: string | null;
@@ -46,6 +54,7 @@ interface AIState {
   addCustomCommand: (cmd: CustomAICommand) => void;
   removeCustomCommand: (id: string) => void;
   updateCustomCommand: (id: string, updates: Partial<CustomAICommand>) => void;
+  loadApiKeysFromKeyring: () => Promise<void>;
 }
 
 export const useAIStore = create<AIState>()(persist((set) => ({
@@ -57,6 +66,7 @@ export const useAIStore = create<AIState>()(persist((set) => ({
   privacyMode: false,
   isStreaming: false,
   ghostText: null,
+  keychainReady: false,
   activeRequestId: null,
   ghostTextEnabled: false,
   ghostTextDebounceMs: 500,
@@ -69,11 +79,20 @@ export const useAIStore = create<AIState>()(persist((set) => ({
       apiKey: state.apiKeys[provider] ?? "",
     })),
   setModel: (model) => set({ model }),
-  setApiKey: (key) =>
+  setApiKey: (key) => {
+    // Update in-memory state immediately
     set((state) => ({
       apiKey: key,
       apiKeys: { ...state.apiKeys, [state.provider]: key },
-    })),
+    }));
+    // Persist to OS keyring asynchronously
+    const { provider } = useAIStore.getState();
+    if (KEYRING_PROVIDERS.includes(provider)) {
+      keyringStore(keyringKeyFor(provider), key).catch((err) => {
+        console.warn("[AI Store] Failed to save API key to keyring:", err);
+      });
+    }
+  },
   setOllamaUrl: (ollamaUrl) => set({ ollamaUrl }),
   setPrivacyMode: (privacyMode) => set({ privacyMode }),
   setStreaming: (isStreaming) => set({ isStreaming }),
@@ -95,14 +114,36 @@ export const useAIStore = create<AIState>()(persist((set) => ({
         c.id === id ? { ...c, ...updates } : c,
       ),
     })),
+  loadApiKeysFromKeyring: async () => {
+    const loadedKeys: Record<string, string> = {};
+    for (const provider of KEYRING_PROVIDERS) {
+      try {
+        const key = await keyringGet(keyringKeyFor(provider));
+        if (key) {
+          loadedKeys[provider] = key;
+        }
+      } catch {
+        // Keyring access failed — skip this provider
+      }
+    }
+
+    set((state) => {
+      const mergedKeys = { ...state.apiKeys, ...loadedKeys };
+      return {
+        apiKeys: mergedKeys,
+        apiKey: mergedKeys[state.provider] ?? state.apiKey,
+        keychainReady: true,
+      };
+    });
+  },
 }), {
   name: "baram:ai-settings",
-  version: 1,
+  version: 2,
   storage: createJSONStorage(() => tauriStorage),
   partialize: (state) => ({
     provider: state.provider,
     model: state.model,
-    apiKeys: state.apiKeys,
+    // apiKeys NO LONGER persisted to config.json — stored in OS keyring
     ollamaUrl: state.ollamaUrl,
     privacyMode: state.privacyMode,
     ghostTextEnabled: state.ghostTextEnabled,
@@ -121,15 +162,40 @@ export const useAIStore = create<AIState>()(persist((set) => ({
       }
       delete state.apiKey;
     }
+    if (version <= 1) {
+      // v1 → v2: migrate apiKeys from config.json → OS keyring
+      // Keys found in persisted state will be migrated to keyring on rehydrate
+      const apiKeys = state.apiKeys as Record<string, string> | undefined;
+      if (apiKeys) {
+        // Schedule migration after rehydration
+        state._pendingKeyringMigration = apiKeys;
+      }
+      delete state.apiKeys;
+    }
     return state as unknown as AIState;
   },
   onRehydrateStorage: () => (state) => {
-    // After rehydration, sync apiKey from apiKeys[provider]
-    if (state) {
-      const key = state.apiKeys[state.provider] ?? "";
-      if (state.apiKey !== key) {
-        useAIStore.setState({ apiKey: key });
+    if (!state) return;
+
+    // Run keyring migration if pending (v1 → v2)
+    const pendingMigration = (state as unknown as Record<string, unknown>)._pendingKeyringMigration as Record<string, string> | undefined;
+    if (pendingMigration) {
+      // Migrate plaintext keys to keyring
+      for (const [provider, key] of Object.entries(pendingMigration)) {
+        if (key && KEYRING_PROVIDERS.includes(provider as AIProvider)) {
+          keyringStore(keyringKeyFor(provider), key).catch(() => {});
+        }
       }
+      // Set in-memory while keyring loads
+      useAIStore.setState((s) => ({
+        apiKeys: { ...s.apiKeys, ...pendingMigration },
+        apiKey: pendingMigration[s.provider] ?? s.apiKey,
+      }));
+      // Clean up migration flag
+      delete (state as unknown as Record<string, unknown>)._pendingKeyringMigration;
     }
+
+    // Load keys from keyring
+    useAIStore.getState().loadApiKeysFromKeyring();
   },
 }));

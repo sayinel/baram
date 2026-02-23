@@ -332,6 +332,7 @@ function AITab() {
     ghostTextEnabled, setGhostTextEnabled,
     ghostTextDebounceMs, setGhostTextDebounceMs,
     maxSuggestionLength, setMaxSuggestionLength,
+    keychainReady,
   } = useAIStore();
   const [showKey, setShowKey] = useState(false);
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -391,14 +392,18 @@ function AITab() {
       </SettingsRow>
 
       {showApiKey && (
-        <SettingsRow label="API Key" description="Your API key for the selected provider">
+        <SettingsRow
+          label="API Key"
+          description={keychainReady ? "Stored securely in OS Keychain" : "Loading from Keychain..."}
+        >
           <div className="settings-key-row">
             <input
               type={showKey ? "text" : "password"}
               className="settings-input settings-input-key"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder="Enter API key..."
+              placeholder={keychainReady ? "Enter API key..." : "Loading..."}
+              disabled={!keychainReady}
             />
             <button
               className="settings-key-toggle"

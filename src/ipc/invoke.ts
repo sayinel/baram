@@ -188,6 +188,19 @@ export async function getOpenedUrls(): Promise<string[]> {
   return invoke<string[]>("get_opened_urls");
 }
 
+// §6.3 Keyring commands — OS Keychain 암호화 저장
+export async function keyringStore(key: string, value: string): Promise<void> {
+  return invoke<void>("keyring_store", { key, value });
+}
+
+export async function keyringGet(key: string): Promise<string | null> {
+  return invoke<string | null>("keyring_get", { key });
+}
+
+export async function keyringDelete(key: string): Promise<void> {
+  return invoke<void>("keyring_delete", { key });
+}
+
 // §3.2 Config commands — app_data_dir/config.json 기반 영속화
 export async function getConfig(key: string): Promise<string | null> {
   return invoke<string | null>("get_config", { key });

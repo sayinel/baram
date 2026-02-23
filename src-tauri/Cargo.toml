@@ -28,6 +28,7 @@ headless_chrome = "1"
 tempfile = "3"
 notify = "7"
 regex = "1"
+keyring = { version = "3", features = ["apple-native"] }
 
 [features]
 default = ["custom-protocol"]

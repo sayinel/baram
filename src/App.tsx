@@ -39,6 +39,7 @@ import { useSettingsStore } from "./stores/settings-store";
 import { useNavigationStore } from "./stores/navigation-store";
 import { useAutoSave } from "./hooks/use-auto-save";
 import { useGhostText } from "./hooks/use-ghost-text";
+import { useInlineAI } from "./hooks/use-inline-ai";
 import { readFile, writeFile, getOpenedUrls, updateFileIndex } from "./ipc/invoke";
 import { useLinkStore } from "./stores/link-store";
 import { migrateFromLocalStorage } from "./stores/tauri-storage";
@@ -49,6 +50,7 @@ import { findBlockPosById } from "./utils/block-nav";
 import { showPrompt } from "./utils/ai-commands";
 import { forceCollapseSyntaxReveal } from "./extensions/plugins/syntax-reveal";
 import { FindReplaceBar } from "./components/editor/FindReplaceBar";
+import { InlineAIPrompt } from "./components/ai/InlineAIPrompt";
 import "./App.css";
 
 // §8.4 Lazy-loaded components — split into separate chunks, loaded on first use
@@ -191,6 +193,9 @@ function App() {
 
   // §43 Ghost Text — inline AI completion
   useGhostText(editor);
+
+  // §6.2 Inline AI — Cmd+J editing
+  const inlineAI = useInlineAI(editor);
 
   // §3.2 One-time migration: localStorage → Tauri app_data_dir
   useEffect(() => {
@@ -857,6 +862,13 @@ function App() {
         return;
       }
 
+      // §6.2 Cmd+J — inline AI prompt
+      if (mod && !e.shiftKey && e.key === "j") {
+        e.preventDefault();
+        inlineAI.activate();
+        return;
+      }
+
       // Cmd+/ — toggle source mode
       if (mod && e.key === "/") {
         e.preventDefault();
@@ -980,6 +992,7 @@ function App() {
     handleCloseTab,
     handleGoBack,
     handleGoForward,
+    inlineAI,
     editor,
     isSourceMode,
     tabSwitcherOpen,
@@ -1227,6 +1240,20 @@ function App() {
                     <FloatingToolbar editor={editor} />
                     <BlockHandle editor={editor} />
                     <ContextMenu editor={editor} />
+                    {inlineAI.isActive && inlineAI.phase !== "idle" && (
+                      <InlineAIPrompt
+                        editor={editor}
+                        selectionFrom={inlineAI.selectionFrom}
+                        selectionTo={inlineAI.selectionTo}
+                        hasSelection={inlineAI.hasSelection}
+                        phase={inlineAI.phase as "input" | "streaming" | "completed"}
+                        onSubmit={inlineAI.submitPrompt}
+                        onAccept={inlineAI.accept}
+                        onReject={inlineAI.reject}
+                        onRegenerate={inlineAI.regenerate}
+                        onClose={inlineAI.cancel}
+                      />
+                    )}
                   </>
                 )}
               </div>
