@@ -2057,6 +2057,18 @@ body {
   background: #b91c1c;
 }
 
+.field-dialog-label {
+  display: block;
+  margin-bottom: 12px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.field-dialog-label .ai-prompt-input {
+  margin-top: 4px;
+}
+
 /* ============================================
    §4.8 Block Handle
    ============================================ */

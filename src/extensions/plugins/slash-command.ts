@@ -16,6 +16,7 @@ import {
   substituteInput,
 } from "../../utils/custom-ai-commands";
 import { executeAICommand, getSelectionOrParagraph, showPrompt } from "../../utils/ai-commands";
+import { showFieldDialog } from "../../utils/field-dialog";
 import {
   AI_TRANSLATE,
   AI_SUMMARIZE,
@@ -194,15 +195,24 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       category: "Media",
       description: "Insert an image",
       mdHint: "![](url)",
-      action: () =>
+      action: async () => {
+        const result = await showFieldDialog({
+          title: "Insert Image",
+          fields: [
+            { key: "alt", label: "Alt text", placeholder: "Image description" },
+            { key: "src", label: "Image URL", placeholder: "https://... or ./path.png" },
+          ],
+        });
+        if (!result?.src) return;
         editor
           .chain()
           .focus()
           .insertContent({
             type: "image",
-            attrs: { src: "", alt: "", title: "" },
+            attrs: { src: result.src, alt: result.alt || "", title: "" },
           })
-          .run(),
+          .run();
+      },
     },
     {
       id: "link",
@@ -210,19 +220,25 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       category: "Media",
       description: "Insert a hyperlink",
       mdHint: "[text](url)",
-      action: () => {
+      action: async () => {
+        const result = await showFieldDialog({
+          title: "Insert Link",
+          fields: [
+            { key: "text", label: "Text", placeholder: "Display text" },
+            { key: "url", label: "URL", placeholder: "https://..." },
+          ],
+        });
+        if (!result?.url) return;
+        const text = result.text || result.url;
         editor
           .chain()
           .focus()
           .insertContent({
             type: "text",
-            text: "link",
-            marks: [{ type: "link", attrs: { href: "" } }],
+            text,
+            marks: [{ type: "link", attrs: { href: result.url } }],
           })
           .run();
-        // Select the inserted "link" text for easy replacement
-        const { to } = editor.state.selection;
-        editor.chain().setTextSelection({ from: to - 4, to }).run();
       },
     },
   ];
