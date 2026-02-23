@@ -467,10 +467,11 @@ function App() {
 
       setIsSourceMode(false);
 
-      // Focus after EditorContent mounts
+      // Focus and scroll to cursor after EditorContent mounts
       requestAnimationFrame(() => {
         try {
           editor.commands.focus();
+          editor.commands.scrollIntoView();
         } catch {
           // ignore focus errors
         }

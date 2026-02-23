@@ -51,7 +51,7 @@ export function showFieldDialog(
       input.dataset.key = field.key;
       input.autocomplete = "off";
       input.autocapitalize = "off";
-      input.autocorrect = "off";
+      input.setAttribute("autocorrect", "off");
       input.spellcheck = false;
 
       fieldLabel.appendChild(input);
