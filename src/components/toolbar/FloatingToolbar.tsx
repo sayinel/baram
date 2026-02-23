@@ -30,6 +30,7 @@ function ToolbarButton({ label, title, isActive, onClick }: ToolbarButtonProps) 
   return (
     <button
       className={`floating-toolbar-btn ${isActive ? "floating-toolbar-btn-active" : ""}`}
+      onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       title={title}
     >
