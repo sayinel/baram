@@ -2047,6 +2047,16 @@ body {
   background: var(--color-accent-hover);
 }
 
+.confirm-dialog-btn-danger {
+  background: #dc2626;
+  color: white;
+  border-color: #dc2626;
+}
+
+.confirm-dialog-btn-danger:hover {
+  background: #b91c1c;
+}
+
 /* ============================================
    §4.8 Block Handle
    ============================================ */

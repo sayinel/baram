@@ -342,6 +342,8 @@ function App() {
       const cachedState = editorStateCache.current.get(activeTabId!);
       if (cachedState) {
         editor.view.updateState(cachedState);
+        // Restore scroll position so cursor is visible after tab switch
+        editor.commands.scrollIntoView();
       } else {
         // No cache — create fresh state from markdown (first open)
         const newDoc = markdownToProsemirror(content, editor.schema);
@@ -956,7 +958,7 @@ function App() {
       }
 
       // §44 Cmd+Shift+A — toggle AI chat panel
-      if (mod && e.shiftKey && e.key === "A") {
+      if (mod && e.shiftKey && e.code === "KeyA") {
         e.preventDefault();
         useUIStore.getState().toggleRightPanel();
         return;

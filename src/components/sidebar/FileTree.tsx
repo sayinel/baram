@@ -8,6 +8,7 @@ import { useEditorStore } from "../../stores/editor-store";
 import { useLinkStore } from "../../stores/link-store";
 import { readFile, writeFile, deleteFile, createDir, deleteDir, renameFile, renameFileWithLinks } from "../../ipc/invoke";
 import { flattenFileTree, fuzzyMatch, fuzzyScore, isGlobPattern, globMatch } from "../../utils/file-search";
+import { showConfirm } from "../../utils/confirm-dialog";
 
 // --- Mono-style SVG Icons (Lucide-based, 24x24 viewBox) ---
 const S = { width: 14, height: 14, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinejoin: "round" as const, strokeLinecap: "round" as const };
@@ -474,7 +475,7 @@ export function FileTree() {
     }
     const entry = findEntry(useFileStore.getState().fileTree);
     if (!entry) return;
-    const confirmed = window.confirm(
+    const confirmed = await showConfirm(
       entry.isDir ? `Delete folder "${entry.name}" and all its contents?` : `Delete file "${entry.name}"?`
     );
     if (!confirmed) return;
@@ -638,6 +639,9 @@ export function FileTree() {
   // Start drag from file items via mousedown on root (event delegation)
   const handleTreeMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
+    // Don't start drag when clicking inside rename input
+    const tag = (e.target as HTMLElement).tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA") return;
     const fileEl = (e.target as HTMLElement).closest<HTMLElement>("[data-file-path]");
     if (!fileEl?.dataset.filePath) return;
     const parts = fileEl.dataset.filePath.split("/");

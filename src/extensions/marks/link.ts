@@ -30,7 +30,8 @@ declare module "@tiptap/core" {
 
 // [text](url) or [text](url "title") — typed inline → auto-convert to link
 // Negative lookbehind for ! to exclude image syntax
-const linkInputRegex = /(?<!!)\[([^\]]+)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)$/;
+// Supports: [text](url), [text](url "title"), [text](<url with spaces>), [text](url with spaces)
+const linkInputRegex = /(?<!!)\[([^\]]+)\]\((<[^>]+>|[^)]+?)(?:\s+"([^"]*)")?\)$/;
 
 // Auto-detect URLs on paste
 const pasteRegex = /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_+.~#?&//=]*)/g;
@@ -104,7 +105,11 @@ export const Link = Mark.create<LinkOptions>({
       new InputRule({
         find: linkInputRegex,
         handler: ({ state, range, match }) => {
-          const [, text, href, title] = match;
+          const [, text, rawHref, title] = match;
+          // Strip angle brackets from <url with spaces> syntax
+          const href = rawHref.startsWith("<") && rawHref.endsWith(">")
+            ? rawHref.slice(1, -1)
+            : rawHref;
           const { tr } = state;
           const mark = this.type.create({ href, title: title || null });
           tr.replaceWith(
@@ -194,10 +199,11 @@ export const Link = Mark.create<LinkOptions>({
               if (srState?.expanded?.kind === "link") {
                 const { from, to } = srState.expanded;
                 const expandedText = view.state.doc.textBetween(from, to);
-                const m = expandedText.match(/\[.*?\]\(([^)\s]+)(?:\s+"[^"]*")?\)/);
-                if (m?.[1]) {
+                const m = expandedText.match(/\[.*?\]\((?:<([^>]+)>|([^)]+?))(?:\s+"[^"]*")?\)/);
+                const href = m?.[1] || m?.[2];
+                if (href) {
                   event.preventDefault();
-                  navigateHref(m[1]);
+                  navigateHref(href.trim());
                   return true;
                 }
               }
