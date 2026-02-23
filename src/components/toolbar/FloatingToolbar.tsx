@@ -228,7 +228,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         onClick={() => editor.chain().focus().toggleCode().run()}
       />
       <ToolbarButton
-        label="🔗"
+        label="Lk"
         title="Link"
         isActive={editor.isActive("link")}
         onClick={async () => {
