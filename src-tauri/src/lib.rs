@@ -310,6 +310,7 @@ pub fn run() {
         .manage(index_cmd::LinkIndexState(Mutex::new(
             index::LinkIndex::new(),
         )))
+        .manage(llm::cancel::CancelRegistry::new())
         .invoke_handler(tauri::generate_handler![
             fs_cmd::read_file,
             fs_cmd::write_file,
@@ -326,6 +327,7 @@ pub fn run() {
             export_cmd::export_document,
             llm_cmd::llm_complete,
             llm_cmd::llm_list_models,
+            llm_cmd::llm_cancel,
             index_cmd::get_backlinks,
             index_cmd::get_link_index,
             index_cmd::refresh_index,

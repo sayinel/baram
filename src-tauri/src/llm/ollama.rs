@@ -4,6 +4,7 @@ use futures::StreamExt;
 use reqwest::header::{HeaderValue, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
 use tauri::Emitter;
+use tokio::sync::oneshot;
 
 use super::{LlmError, ModelInfo};
 
@@ -90,6 +91,7 @@ pub async fn complete_stream(
     max_tokens: u32,
     request_id: &str,
     base_url: &str,
+    mut cancel_rx: oneshot::Receiver<()>,
     app_handle: &tauri::AppHandle,
 ) -> Result<(), LlmError> {
     let body = OllamaRequest {
@@ -127,38 +129,50 @@ pub async fn complete_stream(
 
     let mut stream = response.bytes_stream();
     let mut buffer = String::new();
+    let mut token_count: u32 = 0;
 
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| LlmError::RequestFailed(e.to_string()))?;
-        let text = String::from_utf8_lossy(&chunk);
-        buffer.push_str(&text);
-
-        // Parse NDJSON lines from buffer
-        while let Some(line_end) = buffer.find('\n') {
-            let line = buffer[..line_end].trim_end_matches('\r').to_string();
-            buffer = buffer[line_end + 1..].to_string();
-
-            if line.is_empty() {
-                continue;
+    loop {
+        tokio::select! {
+            _ = &mut cancel_rx => {
+                return Err(LlmError::Cancelled);
             }
+            chunk = stream.next() => {
+                let Some(chunk) = chunk else {
+                    break;
+                };
+                let chunk = chunk.map_err(|e| LlmError::RequestFailed(e.to_string()))?;
+                let text = String::from_utf8_lossy(&chunk);
+                buffer.push_str(&text);
 
-            if let Ok(resp) = serde_json::from_str::<OllamaResponse>(&line) {
-                if resp.done {
-                    let _ = app_handle.emit(
-                        "llm:done",
-                        serde_json::json!({ "requestId": request_id }),
-                    );
-                    return Ok(());
-                }
+                // Parse NDJSON lines from buffer
+                while let Some(line_end) = buffer.find('\n') {
+                    let line = buffer[..line_end].trim_end_matches('\r').to_string();
+                    buffer = buffer[line_end + 1..].to_string();
 
-                if !resp.response.is_empty() {
-                    let _ = app_handle.emit(
-                        "llm:token",
-                        serde_json::json!({
-                            "requestId": request_id,
-                            "token": resp.response,
-                        }),
-                    );
+                    if line.is_empty() {
+                        continue;
+                    }
+
+                    if let Ok(resp) = serde_json::from_str::<OllamaResponse>(&line) {
+                        if resp.done {
+                            let _ = app_handle.emit(
+                                "llm:done",
+                                serde_json::json!({ "requestId": request_id, "totalTokens": token_count }),
+                            );
+                            return Ok(());
+                        }
+
+                        if !resp.response.is_empty() {
+                            token_count += 1;
+                            let _ = app_handle.emit(
+                                "llm:token",
+                                serde_json::json!({
+                                    "requestId": request_id,
+                                    "token": resp.response,
+                                }),
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -167,7 +181,7 @@ pub async fn complete_stream(
     // Stream ended without explicit done:true
     let _ = app_handle.emit(
         "llm:done",
-        serde_json::json!({ "requestId": request_id }),
+        serde_json::json!({ "requestId": request_id, "totalTokens": token_count }),
     );
 
     Ok(())

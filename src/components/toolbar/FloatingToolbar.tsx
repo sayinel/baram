@@ -3,6 +3,16 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { BubbleMenu } from "@tiptap/react/menus";
 import type { Editor } from "@tiptap/react";
 import { executeAICommand, getSelectedText, showPrompt } from "../../utils/ai-commands";
+import {
+  AI_TRANSLATE,
+  AI_SUMMARIZE,
+  AI_EXPAND,
+  AI_FIX_GRAMMAR,
+  AI_EXPLAIN,
+  AI_IMPROVE,
+  AI_SHORTEN,
+  AI_TONE_CHANGE,
+} from "../../utils/ai-command-prompts";
 
 interface FloatingToolbarProps {
   editor: Editor;
@@ -42,8 +52,8 @@ const AI_COMMANDS = [
       if (!lang) return;
       executeAICommand(
         editor,
-        `Translate to ${lang}:\n\n${selection}`,
-        "You are a translation assistant. Translate the text to the specified language. Output only the translated text, no explanations.",
+        selection,
+        AI_TRANSLATE.replace("{language}", lang),
         AFTER_SEL,
       );
     },
@@ -53,12 +63,7 @@ const AI_COMMANDS = [
     label: "Summarize",
     needsSelection: true,
     execute: (editor: Editor, selection: string) => {
-      executeAICommand(
-        editor,
-        selection,
-        "You are a summarization assistant. Summarize the given text concisely in markdown. Output only the summary.",
-        AFTER_SEL,
-      );
+      executeAICommand(editor, selection, AI_SUMMARIZE, AFTER_SEL);
     },
   },
   {
@@ -66,12 +71,7 @@ const AI_COMMANDS = [
     label: "Expand",
     needsSelection: true,
     execute: (editor: Editor, selection: string) => {
-      executeAICommand(
-        editor,
-        selection,
-        "You are a writing assistant. Expand the given text with more details, examples, and explanations. Output in markdown.",
-        AFTER_SEL,
-      );
+      executeAICommand(editor, selection, AI_EXPAND, AFTER_SEL);
     },
   },
   {
@@ -79,12 +79,7 @@ const AI_COMMANDS = [
     label: "Fix Grammar",
     needsSelection: true,
     execute: (editor: Editor, selection: string) => {
-      executeAICommand(
-        editor,
-        selection,
-        "You are a grammar checker. Fix grammar and spelling errors in the given text. Return only the corrected text, no explanations.",
-        AFTER_SEL,
-      );
+      executeAICommand(editor, selection, AI_FIX_GRAMMAR, AFTER_SEL);
     },
   },
   {
@@ -92,10 +87,38 @@ const AI_COMMANDS = [
     label: "Explain",
     needsSelection: true,
     execute: (editor: Editor, selection: string) => {
+      executeAICommand(editor, selection, AI_EXPLAIN, AFTER_SEL);
+    },
+  },
+  {
+    id: "ai-improve",
+    label: "Improve",
+    needsSelection: true,
+    execute: (editor: Editor, selection: string) => {
+      executeAICommand(editor, selection, AI_IMPROVE, AFTER_SEL);
+    },
+  },
+  {
+    id: "ai-shorten",
+    label: "Shorten",
+    needsSelection: true,
+    execute: (editor: Editor, selection: string) => {
+      executeAICommand(editor, selection, AI_SHORTEN, AFTER_SEL);
+    },
+  },
+  {
+    id: "ai-tone-change",
+    label: "Tone Change",
+    needsSelection: true,
+    execute: async (editor: Editor, selection: string) => {
+      const tone = await showPrompt("Select tone:", "", {
+        presets: ["Formal", "Casual", "Professional", "Friendly"],
+      });
+      if (!tone) return;
       executeAICommand(
         editor,
         selection,
-        "You are an explanation assistant. Explain the given text clearly and concisely in markdown.",
+        AI_TONE_CHANGE.replace("{tone}", tone),
         AFTER_SEL,
       );
     },

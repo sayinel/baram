@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
-import { llmComplete } from "../ipc/invoke";
+import { llmComplete, llmCancel } from "../ipc/invoke";
 import { useAIStore } from "../stores/ai-store";
 import type { AITask } from "../stores/ai-store";
 import { isLLMAllowed } from "../utils/privacy-check";
@@ -22,12 +22,14 @@ interface UseLLMStreamReturn {
   isStreaming: boolean;
   text: string;
   error: string | null;
+  totalTokens: number;
 }
 
 export function useLLMStream(): UseLLMStreamReturn {
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [totalTokens, setTotalTokens] = useState(0);
   const unlistenRefs = useRef<UnlistenFn[]>([]);
   const requestIdRef = useRef<string | null>(null);
 
@@ -40,6 +42,9 @@ export function useLLMStream(): UseLLMStreamReturn {
   }, []);
 
   const cancel = useCallback(() => {
+    if (requestIdRef.current) {
+      llmCancel(requestIdRef.current).catch(() => {});
+    }
     cleanup();
     setIsStreaming(false);
   }, [cleanup]);
@@ -68,6 +73,7 @@ export function useLLMStream(): UseLLMStreamReturn {
 
       setText("");
       setError(null);
+      setTotalTokens(0);
       setIsStreaming(true);
 
       // Listen for events
@@ -79,6 +85,7 @@ export function useLLMStream(): UseLLMStreamReturn {
 
       const doneUn = await listen<LLMDonePayload>("llm:done", (event) => {
         if (event.payload.requestId === requestId) {
+          setTotalTokens(event.payload.totalTokens ?? 0);
           setIsStreaming(false);
           cleanup();
         }
@@ -116,5 +123,5 @@ export function useLLMStream(): UseLLMStreamReturn {
     [cleanup],
   );
 
-  return { send, cancel, isStreaming, text, error };
+  return { send, cancel, isStreaming, text, error, totalTokens };
 }

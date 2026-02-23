@@ -51,6 +51,7 @@ import { showPrompt } from "./utils/ai-commands";
 import { forceCollapseSyntaxReveal } from "./extensions/plugins/syntax-reveal";
 import { FindReplaceBar } from "./components/editor/FindReplaceBar";
 import { InlineAIPrompt } from "./components/ai/InlineAIPrompt";
+import { PromptLintPanel } from "./components/ai/PromptLintPanel";
 import "./App.css";
 
 // §8.4 Lazy-loaded components — split into separate chunks, loaded on first use
@@ -188,6 +189,20 @@ function App() {
     onCreate: () => logAppReady(),
   });
 
+  // §44 Track editor selection text for @selection reference
+  useEffect(() => {
+    if (!editor) return;
+    const handleSelectionUpdate = () => {
+      const { from, to } = editor.state.selection;
+      const text = from === to ? "" : editor.state.doc.textBetween(from, to, " ");
+      useEditorStore.getState().setCurrentSelection(text);
+    };
+    editor.on("selectionUpdate", handleSelectionUpdate);
+    return () => {
+      editor.off("selectionUpdate", handleSelectionUpdate);
+    };
+  }, [editor]);
+
   // Auto-save hook
   useAutoSave(editor);
 
@@ -197,23 +212,23 @@ function App() {
   // §6.2 Inline AI — Cmd+J editing
   const inlineAI = useInlineAI(editor);
 
-  // §44 Apply AI chat content to editor
+  // §44 Apply AI chat content to editor — with diff preview when selection exists
   useEffect(() => {
     const unsub = useUIStore.subscribe((state) => {
       const content = state.pendingApplyContent;
       if (!content || !editor) return;
       const { from, to } = editor.state.selection;
-      if (from === to) {
-        // No selection — insert at cursor
-        editor.chain().focus().insertContentAt(from, content).run();
+      if (from !== to) {
+        // Selection exists — show diff preview via AI Diff plugin
+        inlineAI.applyContent(content);
       } else {
-        // Selection exists — replace with content
-        editor.chain().focus().insertContentAt({ from, to }, content).run();
+        // No selection — insert at cursor directly
+        editor.chain().focus().insertContentAt(from, content).run();
       }
       useUIStore.getState().setPendingApplyContent(null);
     });
     return unsub;
-  }, [editor]);
+  }, [editor, inlineAI]);
 
   // §3.2 One-time migration: localStorage → Tauri app_data_dir
   useEffect(() => {
@@ -1265,10 +1280,13 @@ function App() {
                         selectionTo={inlineAI.selectionTo}
                         hasSelection={inlineAI.hasSelection}
                         phase={inlineAI.phase as "input" | "streaming" | "completed"}
+                        hunks={inlineAI.hunks}
                         onSubmit={inlineAI.submitPrompt}
                         onAccept={inlineAI.accept}
                         onReject={inlineAI.reject}
                         onRegenerate={inlineAI.regenerate}
+                        onAcceptHunk={inlineAI.acceptHunk}
+                        onRejectHunk={inlineAI.rejectHunk}
                         onClose={inlineAI.cancel}
                       />
                     )}
@@ -1278,6 +1296,7 @@ function App() {
             </>
           )}
         </div>
+        <PromptLintPanel editor={editor} />
       </AppLayout>
       <Suspense fallback={null}>
         <CommandPalette

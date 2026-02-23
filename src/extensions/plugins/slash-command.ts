@@ -15,7 +15,14 @@ import {
   resolveInputVariable,
   substituteInput,
 } from "../../utils/custom-ai-commands";
-import { executeAICommand, showPrompt } from "../../utils/ai-commands";
+import { executeAICommand, getSelectionOrParagraph, showPrompt } from "../../utils/ai-commands";
+import {
+  AI_TRANSLATE,
+  AI_SUMMARIZE,
+  AI_EXPAND,
+  AI_FIX_GRAMMAR,
+  AI_EXPLAIN,
+} from "../../utils/ai-command-prompts";
 
 export function buildSlashItems(editor: Editor): SlashMenuItem[] {
   const items: SlashMenuItem[] = [
@@ -252,6 +259,69 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
           topic,
           "You are a creative assistant. Generate a brainstormed list of ideas about the given topic. Output as a markdown bullet list.",
         );
+      },
+    },
+    {
+      id: "ai-translate",
+      label: "AI Translate",
+      category: "AI",
+      description: "Translate text",
+      mdHint: "AI",
+      action: async () => {
+        const text = getSelectionOrParagraph(editor);
+        const lang = await showPrompt("Target language:", "", {
+          presets: ["English", "Korean"],
+        });
+        if (!lang) return;
+        executeAICommand(
+          editor,
+          text,
+          AI_TRANSLATE.replace("{language}", lang),
+        );
+      },
+    },
+    {
+      id: "ai-summarize",
+      label: "AI Summarize",
+      category: "AI",
+      description: "Summarize text",
+      mdHint: "AI",
+      action: () => {
+        const text = getSelectionOrParagraph(editor);
+        executeAICommand(editor, text, AI_SUMMARIZE);
+      },
+    },
+    {
+      id: "ai-expand",
+      label: "AI Expand",
+      category: "AI",
+      description: "Expand with more detail",
+      mdHint: "AI",
+      action: () => {
+        const text = getSelectionOrParagraph(editor);
+        executeAICommand(editor, text, AI_EXPAND);
+      },
+    },
+    {
+      id: "ai-fix-grammar",
+      label: "AI Fix Grammar",
+      category: "AI",
+      description: "Fix grammar & spelling",
+      mdHint: "AI",
+      action: () => {
+        const text = getSelectionOrParagraph(editor);
+        executeAICommand(editor, text, AI_FIX_GRAMMAR);
+      },
+    },
+    {
+      id: "ai-explain",
+      label: "AI Explain",
+      category: "AI",
+      description: "Explain in simple terms",
+      mdHint: "AI",
+      action: () => {
+        const text = getSelectionOrParagraph(editor);
+        executeAICommand(editor, text, AI_EXPLAIN);
       },
     },
   );

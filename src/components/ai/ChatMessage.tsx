@@ -1,4 +1,5 @@
 // §44 Chat message bubble component
+import MarkdownRenderer from "./MarkdownRenderer";
 
 interface ChatMessageProps {
   role: "user" | "assistant";
@@ -15,7 +16,15 @@ export function ChatMessage({ role, content, isStreaming, onApplyToEditor }: Cha
       </div>
       <div className="chat-message-content">
         <div className="chat-message-text">
-          {content || (isStreaming ? "..." : "")}
+          {content ? (
+            role === "assistant" ? (
+              <MarkdownRenderer content={content} />
+            ) : (
+              content
+            )
+          ) : (
+            isStreaming ? "..." : ""
+          )}
         </div>
         {role === "assistant" && content && !isStreaming && onApplyToEditor && (
           <div className="chat-message-actions">

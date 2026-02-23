@@ -4,6 +4,7 @@ use futures::StreamExt;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
 use tauri::Emitter;
+use tokio::sync::oneshot;
 
 use super::{LlmError, ModelInfo};
 
@@ -120,6 +121,7 @@ pub async fn complete_stream(
     max_tokens: u32,
     request_id: &str,
     base_url: &str,
+    mut cancel_rx: oneshot::Receiver<()>,
     app_handle: &tauri::AppHandle,
 ) -> Result<(), LlmError> {
     if api_key.is_empty() {
@@ -179,53 +181,65 @@ pub async fn complete_stream(
 
     let mut stream = response.bytes_stream();
     let mut buffer = String::new();
+    let mut token_count: u32 = 0;
 
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| LlmError::RequestFailed(e.to_string()))?;
-        let text = String::from_utf8_lossy(&chunk);
-        buffer.push_str(&text);
-
-        // Parse SSE lines from buffer
-        while let Some(line_end) = buffer.find('\n') {
-            let line = buffer[..line_end].trim_end_matches('\r').to_string();
-            buffer = buffer[line_end + 1..].to_string();
-
-            if line.is_empty() {
-                continue;
+    loop {
+        tokio::select! {
+            _ = &mut cancel_rx => {
+                return Err(LlmError::Cancelled);
             }
+            chunk = stream.next() => {
+                let Some(chunk) = chunk else {
+                    break;
+                };
+                let chunk = chunk.map_err(|e| LlmError::RequestFailed(e.to_string()))?;
+                let text = String::from_utf8_lossy(&chunk);
+                buffer.push_str(&text);
 
-            if let Some(data) = line.strip_prefix("data: ") {
-                if data == "[DONE]" {
-                    let _ = app_handle.emit(
-                        "llm:done",
-                        serde_json::json!({ "requestId": request_id }),
-                    );
-                    return Ok(());
-                }
+                // Parse SSE lines from buffer
+                while let Some(line_end) = buffer.find('\n') {
+                    let line = buffer[..line_end].trim_end_matches('\r').to_string();
+                    buffer = buffer[line_end + 1..].to_string();
 
-                if let Ok(chunk) = serde_json::from_str::<OpenAISseChunk>(data) {
-                    for choice in &chunk.choices {
-                        // Check finish_reason first
-                        if let Some(reason) = &choice.finish_reason {
-                            if reason == "stop" || reason == "length" {
-                                let _ = app_handle.emit(
-                                    "llm:done",
-                                    serde_json::json!({ "requestId": request_id }),
-                                );
-                                return Ok(());
-                            }
+                    if line.is_empty() {
+                        continue;
+                    }
+
+                    if let Some(data) = line.strip_prefix("data: ") {
+                        if data == "[DONE]" {
+                            let _ = app_handle.emit(
+                                "llm:done",
+                                serde_json::json!({ "requestId": request_id, "totalTokens": token_count }),
+                            );
+                            return Ok(());
                         }
-                        // Extract token from delta
-                        if let Some(delta) = &choice.delta {
-                            if let Some(content) = &delta.content {
-                                if !content.is_empty() {
-                                    let _ = app_handle.emit(
-                                        "llm:token",
-                                        serde_json::json!({
-                                            "requestId": request_id,
-                                            "token": content,
-                                        }),
-                                    );
+
+                        if let Ok(chunk) = serde_json::from_str::<OpenAISseChunk>(data) {
+                            for choice in &chunk.choices {
+                                // Check finish_reason first
+                                if let Some(reason) = &choice.finish_reason {
+                                    if reason == "stop" || reason == "length" {
+                                        let _ = app_handle.emit(
+                                            "llm:done",
+                                            serde_json::json!({ "requestId": request_id, "totalTokens": token_count }),
+                                        );
+                                        return Ok(());
+                                    }
+                                }
+                                // Extract token from delta
+                                if let Some(delta) = &choice.delta {
+                                    if let Some(content) = &delta.content {
+                                        if !content.is_empty() {
+                                            token_count += 1;
+                                            let _ = app_handle.emit(
+                                                "llm:token",
+                                                serde_json::json!({
+                                                    "requestId": request_id,
+                                                    "token": content,
+                                                }),
+                                            );
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -238,7 +252,7 @@ pub async fn complete_stream(
     // Stream ended without explicit [DONE]
     let _ = app_handle.emit(
         "llm:done",
-        serde_json::json!({ "requestId": request_id }),
+        serde_json::json!({ "requestId": request_id, "totalTokens": token_count }),
     );
 
     Ok(())

@@ -1,5 +1,6 @@
 // §6.3 LLM API proxy module — multi-provider dispatch with privacy mode
 
+pub mod cancel;
 pub mod claude;
 pub mod gemini;
 pub mod ollama;
@@ -7,6 +8,7 @@ pub mod openai;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use tokio::sync::oneshot;
 
 /// Model information returned from provider APIs
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,6 +27,8 @@ pub enum LlmError {
     PrivacyBlocked(String),
     #[error("Unknown provider: {0}")]
     UnknownProvider(String),
+    #[error("Request cancelled")]
+    Cancelled,
 }
 
 /// Default base URLs for each provider
@@ -48,6 +52,7 @@ pub async fn complete(
     request_id: &str,
     base_url: Option<&str>,
     privacy_mode: bool,
+    cancel_rx: oneshot::Receiver<()>,
     app_handle: &tauri::AppHandle,
 ) -> Result<(), LlmError> {
     // Privacy mode: block all cloud providers
@@ -64,6 +69,7 @@ pub async fn complete(
                 system_prompt,
                 max_tokens,
                 request_id,
+                cancel_rx,
                 app_handle,
             )
             .await
@@ -78,6 +84,7 @@ pub async fn complete(
                 max_tokens,
                 request_id,
                 url,
+                cancel_rx,
                 app_handle,
             )
             .await
@@ -91,6 +98,7 @@ pub async fn complete(
                 max_tokens,
                 request_id,
                 url,
+                cancel_rx,
                 app_handle,
             )
             .await
@@ -103,6 +111,7 @@ pub async fn complete(
                 system_prompt,
                 max_tokens,
                 request_id,
+                cancel_rx,
                 app_handle,
             )
             .await

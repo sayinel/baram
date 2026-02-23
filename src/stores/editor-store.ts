@@ -27,6 +27,8 @@ interface EditorState {
   isSourceMode: boolean;
   /** §39 MRU tab order — index 0 is most recently used */
   mruOrder: string[];
+  /** §44 Current editor selection text (for @selection reference) */
+  currentSelection: string;
 
   setActiveTab: (tabId: string) => void;
   openTab: (tab: EditorTab) => void;
@@ -56,6 +58,8 @@ interface EditorState {
   closeTabsToRight: (tabId: string) => void;
   /** Open graph view as a singleton tab */
   openGraphTab: () => void;
+  /** §44 Update current editor selection text */
+  setCurrentSelection: (text: string) => void;
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -63,6 +67,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   tabs: [],
   isSourceMode: false,
   mruOrder: [],
+  currentSelection: "",
 
   setActiveTab: (tabId) => set({ activeTabId: tabId }),
 
@@ -238,6 +243,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       type: "graph",
     });
   },
+
+  setCurrentSelection: (text) => set({ currentSelection: text }),
 
   getNextMruTab: (currentId, direction) => {
     const { mruOrder } = get();

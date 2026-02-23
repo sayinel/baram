@@ -1,8 +1,41 @@
 // §44 AI Chat @reference resolver
 import { useEditorStore } from "../stores/editor-store";
 import { useFileStore } from "../stores/file-store";
+import type { FileEntry } from "../stores/file-store";
+import { useAIStore } from "../stores/ai-store";
 
-export type ReferenceType = "@selection" | "@current" | "@clipboard" | "@file";
+export type ReferenceType = "@selection" | "@current" | "@clipboard" | "@file" | "@folder";
+
+/** Collect all file paths under a directory from the file tree */
+function collectFilesInDir(entries: FileEntry[], dirPath: string): string[] {
+  const result: string[] = [];
+  for (const entry of entries) {
+    if (entry.isDir) {
+      if (entry.path === dirPath) {
+        // Found the target dir — collect all descendant files
+        collectAllFiles(entry.children ?? [], result);
+        return result;
+      }
+      if (entry.children) {
+        const found = collectFilesInDir(entry.children, dirPath);
+        if (found.length > 0) return found;
+      }
+    }
+  }
+  return result;
+}
+
+function collectAllFiles(entries: FileEntry[], result: string[]): void {
+  for (const entry of entries) {
+    if (entry.isDir) {
+      if (entry.children) {
+        collectAllFiles(entry.children, result);
+      }
+    } else {
+      result.push(entry.path);
+    }
+  }
+}
 
 export interface ResolvedReference {
   type: ReferenceType;
@@ -12,11 +45,11 @@ export interface ResolvedReference {
 
 export function resolveReference(ref: string): ResolvedReference | null {
   if (ref === "@selection") {
-    // Get current editor selection — not available without editor ref, return placeholder
+    const selectionText = useEditorStore.getState().currentSelection;
     return {
       type: "@selection",
       label: "Selection",
-      content: "[editor selection]",
+      content: selectionText || "[no text selected]",
     };
   }
 
@@ -33,10 +66,11 @@ export function resolveReference(ref: string): ResolvedReference | null {
   }
 
   if (ref === "@clipboard") {
+    const clipboardText = useAIStore.getState().clipboardContent;
     return {
       type: "@clipboard",
       label: "Clipboard",
-      content: "[clipboard content]",
+      content: clipboardText || "[empty clipboard]",
     };
   }
 
@@ -52,12 +86,46 @@ export function resolveReference(ref: string): ResolvedReference | null {
     };
   }
 
+  // @folder:path — collect all file paths in the folder
+  if (ref.startsWith("@folder:")) {
+    const dirPath = ref.slice(8);
+    const { fileTree, openFiles } = useFileStore.getState();
+    const filePaths = collectFilesInDir(fileTree, dirPath);
+    const dirName = dirPath.split("/").pop() ?? dirPath;
+
+    if (filePaths.length === 0) {
+      return {
+        type: "@folder",
+        label: `${dirName}/`,
+        content: `[empty folder: ${dirPath}]`,
+      };
+    }
+
+    // Build content from open files or list paths for files not yet loaded
+    const parts: string[] = [];
+    for (const fp of filePaths) {
+      const fileName = fp.split("/").pop() ?? fp;
+      const fileContent = openFiles.get(fp);
+      if (fileContent !== undefined) {
+        parts.push(`--- ${fileName} ---\n${fileContent}`);
+      } else {
+        parts.push(`--- ${fileName} ---\n[not loaded: ${fp}]`);
+      }
+    }
+
+    return {
+      type: "@folder",
+      label: `${dirName}/ (${filePaths.length} files)`,
+      content: parts.join("\n\n"),
+    };
+  }
+
   return null;
 }
 
 export function parseReferences(text: string): string[] {
   const refs: string[] = [];
-  const regex = /@(selection|current|clipboard|file:[^\s]+)/g;
+  const regex = /@(selection|current|clipboard|file:[^\s]+|folder:[^\s]+)/g;
   let match;
   while ((match = regex.exec(text)) !== null) {
     refs.push(`@${match[1]}`);

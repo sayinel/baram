@@ -1,11 +1,23 @@
 // §46 Prompt Lint — ProseMirror decoration plugin for Skill prompt analysis
 import { Extension } from "@tiptap/core";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Plugin, PluginKey, EditorState } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { Node as PmNode } from "@tiptap/pm/model";
 import { lintPrompt } from "../../utils/prompt-linter";
+import type { LintResult } from "../../utils/prompt-linter";
 
 export const promptLintKey = new PluginKey("promptLint");
+
+/** Lint result with positions mapped to ProseMirror document coordinates. */
+export interface PmLintResult extends LintResult {
+  pmFrom: number;
+  pmTo: number;
+}
+
+interface PromptLintState {
+  decorations: DecorationSet;
+  results: PmLintResult[];
+}
 
 /**
  * Check if the current document is a Skills file (frontmatter type: skill).
@@ -55,19 +67,20 @@ function extractDocText(doc: PmNode): { text: string; offsetMap: number[] } {
 }
 
 /**
- * Build decorations from lint results.
+ * Build decorations and mapped lint results from the document.
  */
-function buildLintDecorations(doc: PmNode): DecorationSet {
-  if (!isSkillsFile(doc)) return DecorationSet.empty;
+function buildLintState(doc: PmNode): PromptLintState {
+  if (!isSkillsFile(doc)) return { decorations: DecorationSet.empty, results: [] };
 
   const { text, offsetMap } = extractDocText(doc);
-  const results = lintPrompt(text);
+  const rawResults = lintPrompt(text);
 
-  if (results.length === 0) return DecorationSet.empty;
+  if (rawResults.length === 0) return { decorations: DecorationSet.empty, results: [] };
 
   const decorations: Decoration[] = [];
+  const results: PmLintResult[] = [];
 
-  for (const result of results) {
+  for (const result of rawResults) {
     // Map text offsets to PM positions
     const from = result.from < offsetMap.length ? offsetMap[result.from] : 0;
     const to = result.to < offsetMap.length ? offsetMap[Math.min(result.to - 1, offsetMap.length - 1)] + 1 : from + 1;
@@ -82,9 +95,26 @@ function buildLintDecorations(doc: PmNode): DecorationSet {
         title: result.message,
       }),
     );
+
+    results.push({
+      ...result,
+      pmFrom: from,
+      pmTo: to,
+    });
   }
 
-  return DecorationSet.create(doc, decorations);
+  return {
+    decorations: DecorationSet.create(doc, decorations),
+    results,
+  };
+}
+
+/**
+ * Get the current prompt lint results (with PM positions) from editor state.
+ */
+export function getPromptLintResults(state: EditorState): PmLintResult[] {
+  const pluginState = promptLintKey.getState(state) as PromptLintState | undefined;
+  return pluginState?.results ?? [];
 }
 
 export const PromptLint = Extension.create({
@@ -95,19 +125,20 @@ export const PromptLint = Extension.create({
       new Plugin({
         key: promptLintKey,
         state: {
-          init(_, { doc }) {
-            return buildLintDecorations(doc);
+          init(_, { doc }): PromptLintState {
+            return buildLintState(doc);
           },
-          apply(tr, old) {
+          apply(tr, old: PromptLintState): PromptLintState {
             if (tr.docChanged) {
-              return buildLintDecorations(tr.doc);
+              return buildLintState(tr.doc);
             }
             return old;
           },
         },
         props: {
           decorations(state) {
-            return promptLintKey.getState(state) as DecorationSet;
+            const pluginState = promptLintKey.getState(state) as PromptLintState | undefined;
+            return pluginState?.decorations ?? DecorationSet.empty;
           },
         },
       }),

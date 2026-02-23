@@ -5,9 +5,10 @@
 import { useEffect, useRef, useCallback } from "react";
 import type { Editor } from "@tiptap/core";
 import { useAIStore } from "../stores/ai-store";
+import { useEditorStore } from "../stores/editor-store";
 import { ghostTextPluginKey } from "../extensions/plugins/ghost-text";
-import { buildGhostTextPrompt } from "../utils/ghost-text-prompt";
-import { llmComplete } from "../ipc/invoke";
+import { buildGhostTextConfig } from "../utils/ghost-text-prompt";
+import { llmComplete, llmCancel } from "../ipc/invoke";
 import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import type {
@@ -15,7 +16,7 @@ import type {
   LLMDonePayload,
   LLMErrorPayload,
 } from "../ipc/types";
-import { isLLMAllowed } from "../utils/privacy-check";
+import { isLLMAllowed, getFilePrivacy } from "../utils/privacy-check";
 import { getModelForTask } from "../utils/model-selection";
 
 // Simple prefix cache (last 5 suggestions)
@@ -37,6 +38,9 @@ export function useGhostText(editor: Editor | null) {
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
+    if (activeRequestRef.current) {
+      llmCancel(activeRequestRef.current).catch(() => {});
+    }
     for (const unlisten of unlistenRefs.current) {
       unlisten();
     }
@@ -51,7 +55,8 @@ export function useGhostText(editor: Editor | null) {
     const handleUpdate = () => {
       const store = useAIStore.getState();
       if (!store.ghostTextEnabled) return;
-      if (!isLLMAllowed(store.privacyMode, store.provider)) return;
+      const filePrivacy = getFilePrivacy(editor);
+      if (!isLLMAllowed(store.privacyMode, store.provider, filePrivacy)) return;
 
       // Cancel previous request
       cleanup();
@@ -60,16 +65,13 @@ export function useGhostText(editor: Editor | null) {
       const { from } = state.selection;
       const $from = state.doc.resolve(from);
 
-      // Skip ghost text in certain node types
-      const parentType = $from.parent.type.name;
-      if (
-        ["codeBlock", "mathBlock", "frontmatter", "mathInline"].includes(
-          parentType,
-        )
-      )
-        return;
+      // Build context-aware config (D1: block-type modes, D3: cross-file)
+      const editorState = useEditorStore.getState();
+      const activeTab = editorState.tabs.find((t) => t.id === editorState.activeTabId);
+      const ghostConfig = buildGhostTextConfig(editor, from, activeTab?.filePath);
+      if (ghostConfig.skip) return;
 
-      // Get text before cursor
+      // Get text before cursor for cache key + min length check
       const textBefore = $from.parent.textBetween(
         0,
         $from.parentOffset,
@@ -99,7 +101,6 @@ export function useGhostText(editor: Editor | null) {
         activeRequestRef.current = requestId;
         accumulatedRef.current = "";
 
-        const prompt = buildGhostTextPrompt(editor, from);
         const storeSnapshot = useAIStore.getState();
 
         try {
@@ -172,10 +173,10 @@ export function useGhostText(editor: Editor | null) {
 
           await llmComplete(
             storeSnapshot.apiKey,
-            prompt,
+            ghostConfig.contextText,
             getModelForTask("ghost-text"),
             requestId,
-            "You are an inline text completion assistant. Output ONLY the continuation text. No explanations, no markdown formatting, no quotes. Just the raw text that should follow.",
+            ghostConfig.systemPrompt,
             storeSnapshot.maxSuggestionLength,
             storeSnapshot.provider,
             storeSnapshot.provider === "ollama"

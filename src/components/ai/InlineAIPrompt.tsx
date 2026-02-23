@@ -4,6 +4,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/core";
+import type { Hunk } from "../../extensions/plugins/ai-diff";
 
 export type InlineAIPhase = "input" | "streaming" | "completed";
 
@@ -13,10 +14,13 @@ interface InlineAIPromptProps {
   selectionTo: number;
   hasSelection: boolean;
   phase: InlineAIPhase;
+  hunks: Hunk[];
   onSubmit: (instruction: string) => void;
   onAccept: () => void;
   onReject: () => void;
   onRegenerate: () => void;
+  onAcceptHunk: (index: number) => void;
+  onRejectHunk: (index: number) => void;
   onClose: () => void;
 }
 
@@ -24,10 +28,13 @@ export function InlineAIPrompt({
   editor,
   selectionFrom,
   phase,
+  hunks,
   onSubmit,
   onAccept,
   onReject,
   onRegenerate,
+  onAcceptHunk,
+  onRejectHunk,
   onClose,
 }: InlineAIPromptProps) {
   const [instruction, setInstruction] = useState("");
@@ -128,17 +135,51 @@ export function InlineAIPrompt({
 
       {phase === "completed" && (
         <div className="ai-diff-action-bar">
+          {hunks.length > 1 && (() => {
+            const pendingIndex = hunks.findIndex((h) => !h.accepted && !h.rejected);
+            const pendingCount = hunks.filter((h) => !h.accepted && !h.rejected).length;
+            const acceptedCount = hunks.filter((h) => h.accepted).length;
+            const rejectedCount = hunks.filter((h) => h.rejected).length;
+            return (
+              <>
+                <span className="ai-diff-hunk-status">
+                  {pendingCount > 0
+                    ? `${pendingCount} pending`
+                    : "All decided"}
+                  {acceptedCount > 0 && ` / ${acceptedCount} accepted`}
+                  {rejectedCount > 0 && ` / ${rejectedCount} rejected`}
+                </span>
+                <button
+                  className="ai-diff-action-btn ai-diff-action-btn-hunk-accept"
+                  onClick={() => pendingIndex >= 0 && onAcceptHunk(pendingIndex)}
+                  disabled={pendingIndex < 0}
+                  title="Accept next pending hunk"
+                >
+                  Accept Hunk
+                </button>
+                <button
+                  className="ai-diff-action-btn ai-diff-action-btn-hunk-reject"
+                  onClick={() => pendingIndex >= 0 && onRejectHunk(pendingIndex)}
+                  disabled={pendingIndex < 0}
+                  title="Reject next pending hunk"
+                >
+                  Reject Hunk
+                </button>
+                <span className="ai-diff-action-separator" />
+              </>
+            );
+          })()}
           <button
             className="ai-diff-action-btn ai-diff-action-btn-accept"
             onClick={onAccept}
           >
-            Accept
+            Accept All
           </button>
           <button
             className="ai-diff-action-btn ai-diff-action-btn-reject"
             onClick={onReject}
           >
-            Reject
+            Reject All
           </button>
           <button className="ai-diff-action-btn" onClick={onRegenerate}>
             Regenerate

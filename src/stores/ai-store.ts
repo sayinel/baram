@@ -40,6 +40,11 @@ interface AIState {
   maxSuggestionLength: number;
   customCommands: CustomAICommand[];
 
+  /** §44 Clipboard content captured for @clipboard reference */
+  clipboardContent: string;
+  /** D3: Include open tab context in Ghost Text prompts */
+  ghostTextCrossFileEnabled: boolean;
+
   // Auto model selection
   autoModelEnabled: boolean;
   modelForGhostText: string;
@@ -65,6 +70,9 @@ interface AIState {
   setAutoModelEnabled: (enabled: boolean) => void;
   setModelForTask: (task: AITask, model: string) => void;
   loadApiKeysFromKeyring: () => Promise<void>;
+  /** §44 Set clipboard content for @clipboard reference */
+  setClipboardContent: (text: string) => void;
+  setGhostTextCrossFileEnabled: (enabled: boolean) => void;
 }
 
 export const useAIStore = create<AIState>()(persist((set) => ({
@@ -82,6 +90,8 @@ export const useAIStore = create<AIState>()(persist((set) => ({
   ghostTextDebounceMs: 500,
   maxSuggestionLength: 100,
   customCommands: [],
+  clipboardContent: "",
+  ghostTextCrossFileEnabled: true,
   autoModelEnabled: false,
   modelForGhostText: "",
   modelForInlineEdit: "",
@@ -138,6 +148,8 @@ export const useAIStore = create<AIState>()(persist((set) => ({
       case "agent": set({ modelForAgent: model }); break;
     }
   },
+  setClipboardContent: (clipboardContent) => set({ clipboardContent }),
+  setGhostTextCrossFileEnabled: (ghostTextCrossFileEnabled) => set({ ghostTextCrossFileEnabled }),
   loadApiKeysFromKeyring: async () => {
     const loadedKeys: Record<string, string> = {};
     for (const provider of KEYRING_PROVIDERS) {
@@ -173,6 +185,7 @@ export const useAIStore = create<AIState>()(persist((set) => ({
     ghostTextEnabled: state.ghostTextEnabled,
     ghostTextDebounceMs: state.ghostTextDebounceMs,
     maxSuggestionLength: state.maxSuggestionLength,
+    ghostTextCrossFileEnabled: state.ghostTextCrossFileEnabled,
     customCommands: state.customCommands,
     autoModelEnabled: state.autoModelEnabled,
     modelForGhostText: state.modelForGhostText,

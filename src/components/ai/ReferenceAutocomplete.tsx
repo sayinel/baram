@@ -1,6 +1,7 @@
 // §44 @ Reference autocomplete dropdown for AI Chat
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useFileStore } from "../../stores/file-store";
+import { useAIStore } from "../../stores/ai-store";
 import type { FileEntry } from "../../stores/file-store";
 
 interface ReferenceAutocompleteProps {
@@ -23,15 +24,29 @@ const BUILTIN_REFS: RefOption[] = [
 ];
 
 /** Flatten file tree into file paths */
-function flattenFiles(entries: FileEntry[], prefix = ""): { name: string; path: string }[] {
+function flattenFiles(entries: FileEntry[]): { name: string; path: string }[] {
   const result: { name: string; path: string }[] = [];
   for (const entry of entries) {
     if (entry.isDir) {
       if (entry.children) {
-        result.push(...flattenFiles(entry.children, prefix));
+        result.push(...flattenFiles(entry.children));
       }
     } else {
       result.push({ name: entry.name, path: entry.path });
+    }
+  }
+  return result;
+}
+
+/** Flatten file tree into directory paths */
+function flattenDirs(entries: FileEntry[]): { name: string; path: string }[] {
+  const result: { name: string; path: string }[] = [];
+  for (const entry of entries) {
+    if (entry.isDir) {
+      result.push({ name: entry.name, path: entry.path });
+      if (entry.children) {
+        result.push(...flattenDirs(entry.children));
+      }
     }
   }
   return result;
@@ -53,6 +68,19 @@ export function ReferenceAutocomplete({ query, position, onSelect, onClose }: Re
   const listRef = useRef<HTMLDivElement>(null);
   const fileTree = useFileStore((s) => s.fileTree);
 
+  // §44 Wrap onSelect to capture clipboard content when @clipboard is chosen
+  const handleSelect = useCallback((value: string) => {
+    if (value === "@clipboard") {
+      navigator.clipboard.readText().then((text) => {
+        useAIStore.getState().setClipboardContent(text);
+      }).catch(() => {
+        // Clipboard read failed — store empty string
+        useAIStore.getState().setClipboardContent("");
+      });
+    }
+    onSelect(value);
+  }, [onSelect]);
+
   const queryLower = query.toLowerCase();
 
   const options = useMemo(() => {
@@ -65,7 +93,7 @@ export function ReferenceAutocomplete({ query, position, onSelect, onClose }: Re
       }
     }
 
-    // @file: suggestions
+    // @file: suggestions — value uses full path for correct resolution
     const isFileQuery = queryLower.startsWith("file:");
     const fileQuery = isFileQuery ? query.slice(5) : "";
 
@@ -78,8 +106,27 @@ export function ReferenceAutocomplete({ query, position, onSelect, onClose }: Re
       for (const file of filtered.slice(0, 10)) {
         result.push({
           label: `@file:${file.name}`,
-          value: `@file:${file.name}`,
+          value: `@file:${file.path}`,
           description: file.path,
+        });
+      }
+    }
+
+    // @folder: suggestions
+    const isFolderQuery = queryLower.startsWith("folder:");
+    const folderQuery = isFolderQuery ? query.slice(7) : "";
+
+    if (isFolderQuery || queryLower === "" || "folder".startsWith(queryLower)) {
+      const dirs = flattenDirs(fileTree);
+      const filtered = folderQuery
+        ? dirs.filter((d) => fuzzyMatch(folderQuery, d.name))
+        : dirs.slice(0, 10);
+
+      for (const dir of filtered.slice(0, 10)) {
+        result.push({
+          label: `@folder:${dir.name}`,
+          value: `@folder:${dir.path}`,
+          description: dir.path,
         });
       }
     }
@@ -103,13 +150,13 @@ export function ReferenceAutocomplete({ query, position, onSelect, onClose }: Re
     } else if (e.key === "Enter" || e.key === "Tab") {
       e.preventDefault();
       if (options[selectedIndex]) {
-        onSelect(options[selectedIndex].value);
+        handleSelect(options[selectedIndex].value);
       }
     } else if (e.key === "Escape") {
       e.preventDefault();
       onClose();
     }
-  }, [options, selectedIndex, onSelect, onClose]);
+  }, [options, selectedIndex, handleSelect, onClose]);
 
   useEffect(() => {
     window.addEventListener("keydown", handleKeyDown, true);
@@ -138,7 +185,7 @@ export function ReferenceAutocomplete({ query, position, onSelect, onClose }: Re
           className={`ref-autocomplete-item ${i === selectedIndex ? "ref-autocomplete-item-active" : ""}`}
           onMouseDown={(e) => {
             e.preventDefault();
-            onSelect(opt.value);
+            handleSelect(opt.value);
           }}
           onMouseEnter={() => setSelectedIndex(i)}
         >

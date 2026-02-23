@@ -15,7 +15,7 @@ export function SkillTestDialog({ open, onClose }: SkillTestDialogProps) {
   const [variables, setVariables] = useState<Record<string, string>>({});
   const [requiredVars, setRequiredVars] = useState<string[]>([]);
   const [skillContent, setSkillContent] = useState("");
-  const { send, cancel, isStreaming, text, error } = useLLMStream();
+  const { send, cancel, isStreaming, text, error, totalTokens } = useLLMStream();
 
   // Load skill content from the current active tab
   useEffect(() => {
@@ -114,6 +114,15 @@ export function SkillTestDialog({ open, onClose }: SkillTestDialogProps) {
             >
               {text || "Waiting for response..."}
             </pre>
+            {totalTokens > 0 && !isStreaming && (
+              <div style={{
+                marginTop: 8,
+                fontSize: 12,
+                color: "var(--color-text-secondary)",
+              }}>
+                Tokens used: ~{totalTokens}
+              </div>
+            )}
           </div>
         )}
 

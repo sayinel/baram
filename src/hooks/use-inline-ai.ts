@@ -13,14 +13,16 @@ import {
   dispatchAIDiffAccept,
   dispatchAIDiffReject,
   dispatchAIDiffClear,
+  dispatchAIDiffAcceptHunk,
+  dispatchAIDiffRejectHunk,
 } from "../extensions/plugins/ai-diff";
-import type { AIDiffState } from "../extensions/plugins/ai-diff";
+import type { AIDiffState, Hunk } from "../extensions/plugins/ai-diff";
 import type { InlineAIPhase } from "../components/ai/InlineAIPrompt";
-import { llmComplete } from "../ipc/invoke";
+import { llmComplete, llmCancel } from "../ipc/invoke";
 import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import type { LLMTokenPayload, LLMDonePayload, LLMErrorPayload } from "../ipc/types";
-import { isLLMAllowed } from "../utils/privacy-check";
+import { isLLMAllowed, getFilePrivacy } from "../utils/privacy-check";
 import { getModelForTask } from "../utils/model-selection";
 
 export interface UseInlineAIReturn {
@@ -29,12 +31,16 @@ export interface UseInlineAIReturn {
   selectionFrom: number;
   selectionTo: number;
   hasSelection: boolean;
+  hunks: Hunk[];
   activate: () => void;
   submitPrompt: (instruction: string) => void;
+  applyContent: (content: string) => void;
   accept: () => void;
   reject: () => void;
   regenerate: () => void;
   cancel: () => void;
+  acceptHunk: (index: number) => void;
+  rejectHunk: (index: number) => void;
 }
 
 export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
@@ -43,12 +49,16 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
   const [selectionFrom, setSelectionFrom] = useState(0);
   const [selectionTo, setSelectionTo] = useState(0);
   const [hasSelection, setHasSelection] = useState(false);
+  const [hunks, setHunks] = useState<Hunk[]>([]);
 
   const unlistenRefs = useRef<UnlistenFn[]>([]);
   const activeRequestRef = useRef<string | null>(null);
   const lastInstructionRef = useRef("");
 
   const cleanupListeners = useCallback(async () => {
+    if (activeRequestRef.current) {
+      llmCancel(activeRequestRef.current).catch(() => {});
+    }
     for (const unlisten of unlistenRefs.current) {
       unlisten();
     }
@@ -64,10 +74,16 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
       const pluginState = aiDiffPluginKey.getState(editor.state) as AIDiffState | undefined;
       if (!pluginState) return;
 
+      // Sync hunks from plugin state
+      if (pluginState.phase === "completed" && pluginState.hunks.length > 0) {
+        setHunks(pluginState.hunks);
+      }
+
       // If plugin cleared externally (e.g. doc changed), close our UI
       if (pluginState.phase === "idle" && phase !== "idle" && phase !== "input") {
         setIsActive(false);
         setPhase("idle");
+        setHunks([]);
         cleanupListeners();
       }
     };
@@ -95,7 +111,8 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
       lastInstructionRef.current = instruction;
 
       const store = useAIStore.getState();
-      if (!isLLMAllowed(store.privacyMode, store.provider)) {
+      const filePrivacy = getFilePrivacy(editor);
+      if (!isLLMAllowed(store.privacyMode, store.provider, filePrivacy)) {
         return;
       }
 
@@ -183,6 +200,28 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
     [editor, selectionFrom, selectionTo],
   );
 
+  const applyContent = useCallback(
+    (content: string) => {
+      if (!editor) return;
+
+      const { from, to } = editor.state.selection;
+      const selectedText =
+        from !== to ? editor.state.doc.textBetween(from, to, "\n") : "";
+
+      setSelectionFrom(from);
+      setSelectionTo(to);
+      setHasSelection(from !== to);
+      setIsActive(true);
+
+      // Start diff with the provided content (no LLM call)
+      dispatchAIDiffStart(editor.view, from, to, selectedText);
+      dispatchAIDiffChunk(editor.view, content);
+      dispatchAIDiffDone(editor.view);
+      setPhase("completed");
+    },
+    [editor],
+  );
+
   const accept = useCallback(() => {
     if (!editor) return;
 
@@ -194,6 +233,7 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
     dispatchAIDiffAccept(editor.view);
     setIsActive(false);
     setPhase("idle");
+    setHunks([]);
     cleanupListeners();
     editor.commands.focus();
   }, [editor, cleanupListeners]);
@@ -203,9 +243,26 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
     dispatchAIDiffReject(editor.view);
     setIsActive(false);
     setPhase("idle");
+    setHunks([]);
     cleanupListeners();
     editor.commands.focus();
   }, [editor, cleanupListeners]);
+
+  const acceptHunk = useCallback(
+    (index: number) => {
+      if (!editor) return;
+      dispatchAIDiffAcceptHunk(editor.view, index);
+    },
+    [editor],
+  );
+
+  const rejectHunk = useCallback(
+    (index: number) => {
+      if (!editor) return;
+      dispatchAIDiffRejectHunk(editor.view, index);
+    },
+    [editor],
+  );
 
   const regenerate = useCallback(() => {
     if (!editor) return;
@@ -224,6 +281,7 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
     }
     setIsActive(false);
     setPhase("idle");
+    setHunks([]);
     cleanupListeners();
     editor.commands.focus();
   }, [editor, phase, cleanupListeners]);
@@ -234,11 +292,15 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
     selectionFrom,
     selectionTo,
     hasSelection,
+    hunks,
     activate,
     submitPrompt,
+    applyContent,
     accept,
     reject,
     regenerate,
     cancel,
+    acceptHunk,
+    rejectHunk,
   };
 }

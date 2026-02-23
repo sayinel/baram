@@ -59,11 +59,10 @@ function createMockEditor() {
 
 import { buildSlashItems } from "../plugins/slash-command";
 
-// After UX refactor: only input-based AI commands remain in slash menu
-const SLASH_AI_IDS = ["ai-write", "ai-brainstorm"];
-
-// These were moved to FloatingToolbar — should NOT be in slash menu
-const REMOVED_AI_IDS = [
+// All AI commands in slash menu (input-based + selection-based)
+const SLASH_AI_IDS = [
+  "ai-write",
+  "ai-brainstorm",
   "ai-translate",
   "ai-summarize",
   "ai-expand",
@@ -78,18 +77,10 @@ describe("§6.2 AI Slash Commands (post-UX refactor)", () => {
     items = buildSlashItems(createMockEditor());
   });
 
-  test("buildSlashItems includes only 2 input-based AI commands", () => {
+  test("buildSlashItems includes all 7 AI commands", () => {
     const aiIds = items.filter((i) => SLASH_AI_IDS.includes(i.id)).map((i) => i.id);
     expect(aiIds).toEqual(SLASH_AI_IDS);
   });
-
-  test.each(REMOVED_AI_IDS)(
-    "selection-based command '%s' is NOT in slash menu",
-    (id) => {
-      const item = items.find((i) => i.id === id);
-      expect(item).toBeUndefined();
-    },
-  );
 
   test.each(SLASH_AI_IDS)("AI command '%s' has category 'AI'", (id) => {
     const item = items.find((i) => i.id === id);
@@ -112,7 +103,7 @@ describe("§6.2 AI Slash Commands (post-UX refactor)", () => {
     expect(typeof item!.action).toBe("function");
   });
 
-  test("filtering by 'ai' returns input-based + custom + incidental matches", () => {
+  test("filtering by 'ai' returns all AI commands + custom + incidental matches", () => {
     const q = "ai";
     const filtered = items.filter(
       (item) =>
@@ -120,10 +111,10 @@ describe("§6.2 AI Slash Commands (post-UX refactor)", () => {
         item.category.toLowerCase().includes(q) ||
         item.description.toLowerCase().includes(q),
     );
-    // 2 built-in (ai-write, ai-brainstorm) + 1 custom (category "AI")
+    // 7 built-in AI + 1 custom (category "AI")
     // + "Mermaid Diagram" (label "mermaid" contains "ai")
     // + "Toggle" (description "Collapsible details block" — "details" contains "ai")
-    expect(filtered.length).toBe(5);
+    expect(filtered.length).toBe(10);
   });
 
   test("custom AI commands are still included", () => {

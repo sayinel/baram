@@ -142,6 +142,10 @@ export async function llmComplete(
   });
 }
 
+export async function llmCancel(requestId: string): Promise<boolean> {
+  return invoke<boolean>("llm_cancel", { requestId });
+}
+
 // §3.2 Export commands
 export async function exportDocument(
   path: string,
