@@ -1,5 +1,5 @@
 // §5.1 Cursor position mapping between ProseMirror and Markdown
-// Block-index based mapping with proportional intra-block offset
+// Character-level text matching for precise cursor mapping
 
 import type { Node as PMNode } from "@tiptap/pm/model";
 
@@ -151,8 +151,73 @@ function splitMarkdownBlocks(markdown: string): MarkdownBlock[] {
 }
 
 /**
+ * Walk MD block text matching against PM block text to find the MD offset
+ * for a given PM text position. Markdown syntax characters (## headings,
+ * **bold**, [link](url), list prefixes, etc.) are automatically skipped.
+ */
+function matchPmPosInMd(
+  mdBlockText: string,
+  pmBlockText: string,
+  pmTextPos: number,
+): number {
+  let pmIdx = 0;
+  for (let mdIdx = 0; mdIdx < mdBlockText.length; mdIdx++) {
+    if (pmIdx < pmBlockText.length && mdBlockText[mdIdx] === pmBlockText[pmIdx]) {
+      // Found the next content character — if we've already consumed enough,
+      // this is the target position (right before this character).
+      if (pmIdx >= pmTextPos) return mdIdx;
+      pmIdx++;
+    }
+  }
+  return mdBlockText.length;
+}
+
+/**
+ * Walk MD block text matching against PM block text to find the PM text position
+ * for a given MD offset.
+ */
+function matchMdPosInPm(
+  mdBlockText: string,
+  pmBlockText: string,
+  mdOffset: number,
+): number {
+  let pmIdx = 0;
+  const end = Math.min(mdOffset, mdBlockText.length);
+  for (let mdIdx = 0; mdIdx < end; mdIdx++) {
+    if (pmIdx < pmBlockText.length && mdBlockText[mdIdx] === pmBlockText[pmIdx]) {
+      pmIdx++;
+    }
+  }
+  return pmIdx;
+}
+
+/**
+ * Convert a text-level position (index into textBetween output) back to a
+ * PM content offset within a compound block (lists, blockquotes, tables).
+ */
+function textPosToPmOffset(block: PMNode, targetTextPos: number): number {
+  let textCount = 0;
+  let result = block.content.size;
+  let found = false;
+  block.descendants((node, pos) => {
+    if (found) return false;
+    if (node.isText) {
+      const remaining = targetTextPos - textCount;
+      if (remaining <= node.text!.length) {
+        result = pos + remaining;
+        found = true;
+        return false;
+      }
+      textCount += node.text!.length;
+    }
+    return true;
+  });
+  return result;
+}
+
+/**
  * PM cursor position → markdown character offset.
- * Maps via block index + proportional intra-block offset.
+ * Uses character-level text matching for precise mapping.
  */
 export function pmPosToMdOffset(
   doc: PMNode,
@@ -161,27 +226,34 @@ export function pmPosToMdOffset(
 ): number {
   if (doc.childCount === 0 || markdown.length === 0) return 0;
 
-  const { blockIndex, textOffset, blockTextSize } = getBlockIndexAndOffset(
-    doc,
-    pmPos,
-  );
+  const { blockIndex, textOffset } = getBlockIndexAndOffset(doc, pmPos);
   const mdBlocks = splitMarkdownBlocks(markdown);
-
-  // Clamp blockIndex to available markdown blocks
   const idx = Math.min(blockIndex, mdBlocks.length - 1);
-  const block = mdBlocks[idx];
+  const mdBlock = mdBlocks[idx];
 
-  if (blockTextSize === 0) return block.start;
+  if (mdBlock.length === 0) return mdBlock.start;
 
-  // Proportional offset within the block
-  const ratio = textOffset / blockTextSize;
-  const offsetInBlock = Math.round(ratio * block.length);
-  return Math.min(block.start + offsetInBlock, block.end);
+  const pmBlockIdx = Math.min(blockIndex, doc.childCount - 1);
+  const pmBlock = doc.child(pmBlockIdx);
+  const pmBlockText = pmBlock.textBetween(0, pmBlock.content.size, "\n");
+  const mdBlockText = markdown.substring(mdBlock.start, mdBlock.end);
+
+  if (pmBlockText.length === 0) return mdBlock.start;
+
+  // Convert PM content offset to text position
+  const clampedOffset = Math.min(textOffset, pmBlock.content.size);
+  const pmTextPos = pmBlock.isTextblock
+    ? Math.min(clampedOffset, pmBlockText.length)
+    : pmBlock.textBetween(0, clampedOffset, "\n").length;
+
+  // Match PM text position in MD text via character walking
+  const mdOffsetInBlock = matchPmPosInMd(mdBlockText, pmBlockText, pmTextPos);
+  return Math.min(mdBlock.start + mdOffsetInBlock, mdBlock.end);
 }
 
 /**
  * Markdown character offset → PM cursor position.
- * Maps via block index + proportional intra-block offset.
+ * Uses character-level text matching for precise mapping.
  */
 export function mdOffsetToPmPos(
   doc: PMNode,
@@ -195,7 +267,7 @@ export function mdOffsetToPmPos(
 
   // Find which markdown block the offset falls in
   let blockIndex = mdBlocks.length - 1;
-  let offsetInBlock = mdBlocks[blockIndex].length; // default: end of last block
+  let offsetInBlock = mdBlocks[blockIndex].length;
   for (let i = 0; i < mdBlocks.length; i++) {
     if (clampedOffset <= mdBlocks[i].end) {
       blockIndex = i;
@@ -204,7 +276,6 @@ export function mdOffsetToPmPos(
     }
   }
 
-  // Clamp blockIndex to PM doc children
   const idx = Math.min(blockIndex, doc.childCount - 1);
 
   // Compute PM position for the start of this block
@@ -214,16 +285,24 @@ export function mdOffsetToPmPos(
   }
   pmBlockStart += 1; // Opening token of target block
 
-  const blockNode = doc.child(idx);
-  const blockTextSize = blockNode.content.size;
-  const mdBlock = mdBlocks[Math.min(blockIndex, mdBlocks.length - 1)];
+  const pmBlock = doc.child(idx);
+  const pmBlockText = pmBlock.textBetween(0, pmBlock.content.size, "\n");
+  const mdBlockText = markdown.substring(
+    mdBlocks[Math.min(blockIndex, mdBlocks.length - 1)].start,
+    mdBlocks[Math.min(blockIndex, mdBlocks.length - 1)].end,
+  );
 
-  if (mdBlock.length === 0 || blockTextSize === 0) return pmBlockStart;
+  if (pmBlockText.length === 0 || mdBlockText.length === 0) return pmBlockStart;
 
-  // Proportional offset
-  const ratio = offsetInBlock / mdBlock.length;
-  const pmOffset = Math.round(ratio * blockTextSize);
-  return Math.min(pmBlockStart + pmOffset, pmBlockStart + blockTextSize);
+  // Match MD offset in PM text via character walking
+  const pmTextPos = matchMdPosInPm(mdBlockText, pmBlockText, offsetInBlock);
+
+  // Convert PM text position to PM content offset
+  const pmOffset = pmBlock.isTextblock
+    ? Math.min(pmTextPos, pmBlock.content.size)
+    : textPosToPmOffset(pmBlock, pmTextPos);
+
+  return Math.min(pmBlockStart + pmOffset, pmBlockStart + pmBlock.content.size);
 }
 
 /**
