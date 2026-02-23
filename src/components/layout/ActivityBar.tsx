@@ -72,8 +72,15 @@ const SettingsIcon = (
   </svg>
 );
 
+const AIChatIcon = (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    <text x="12" y="12" textAnchor="middle" dominantBaseline="central" fill="currentColor" stroke="none" fontSize="8" fontWeight="700" fontFamily="system-ui, sans-serif">AI</text>
+  </svg>
+);
+
 export function ActivityBar() {
-  const { sidebarOpen, sidebarPanel, toggleSidebar, setSidebarPanel, toggleSettings } = useUIStore();
+  const { sidebarOpen, sidebarPanel, toggleSidebar, setSidebarPanel, toggleSettings, rightPanelOpen, toggleRightPanel } = useUIStore();
 
   const handlePanelClick = (panelId: PanelId) => {
     if (!sidebarOpen) {
@@ -101,6 +108,13 @@ export function ActivityBar() {
         ))}
       </div>
       <div className="activity-bar-bottom">
+        <button
+          className={`activity-bar-btn ${rightPanelOpen ? "activity-bar-btn-active" : ""}`}
+          onClick={() => toggleRightPanel()}
+          title="AI Chat (⌘⇧A)"
+        >
+          {AIChatIcon}
+        </button>
         <button
           className="activity-bar-btn"
           onClick={() => toggleSettings()}

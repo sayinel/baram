@@ -4276,28 +4276,85 @@ body {
 .ai-chat-new-btn:hover {
   background: var(--color-bg-secondary);
 }
-.ai-chat-sessions {
-  display: flex;
-  gap: 4px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--color-border);
-  overflow-x: auto;
-  flex-shrink: 0;
+/* Session dropdown trigger */
+.ai-chat-session-dropdown {
+  position: relative;
 }
-.ai-chat-session-btn {
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
-  padding: 4px 10px;
-  font-size: 12px;
-  color: var(--color-text-secondary);
+.ai-chat-session-trigger {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--color-text-primary);
   cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.ai-chat-session-trigger:hover {
+  background: var(--color-bg-secondary);
+}
+/* Dropdown menu */
+.ai-chat-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  min-width: 220px;
+  max-height: 300px;
+  overflow-y: auto;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  z-index: 200;
+  padding: 4px;
+}
+/* Dropdown items */
+.ai-chat-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-radius: 4px;
+}
+.ai-chat-dropdown-item.active {
+  background: var(--color-bg-secondary);
+}
+.ai-chat-dropdown-item-label {
+  flex: 1;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 6px 8px;
+  font-size: 13px;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
-.ai-chat-session-btn.active {
-  background: var(--color-accent);
-  color: #fff;
-  border-color: var(--color-accent);
+.ai-chat-dropdown-item-label:hover {
+  color: var(--color-accent);
+}
+.ai-chat-dropdown-item-delete {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 4px 6px;
+  font-size: 14px;
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.ai-chat-dropdown-item:hover .ai-chat-dropdown-item-delete {
+  opacity: 1;
+}
+.ai-chat-dropdown-item-delete:hover {
+  color: var(--color-danger, #ef4444);
+  background: rgba(239, 68, 68, 0.1);
 }
 .ai-chat-messages {
   flex: 1;

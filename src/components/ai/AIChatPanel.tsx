@@ -8,21 +8,52 @@ import { parseReferences, resolveReference, buildContextPrompt } from "../../uti
 import type { ResolvedReference } from "../../utils/chat-context";
 import { formatAIError } from "../../utils/format-error";
 
+const ChevronIcon = ({ rotated }: { rotated: boolean }) => (
+  <svg
+    width="12"
+    height="12"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    style={{ transform: rotated ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}
+  >
+    <polyline points="6 9 12 15 18 9" />
+  </svg>
+);
+
 export function AIChatPanel() {
   const { rightPanelOpen } = useUIStore();
   const {
     sessions,
     activeSessionId,
     createSession,
+    setActiveSession,
+    deleteSession,
     addMessage,
     updateLastMessage,
     getActiveSession,
   } = useChatStore();
   const { send, cancel, isStreaming, text, error } = useLLMStream();
   const [input, setInput] = useState("");
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const streamSessionRef = useRef<string | null>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest(".ai-chat-session-dropdown")) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [dropdownOpen]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -110,7 +141,39 @@ export function AIChatPanel() {
   return (
     <div className="ai-chat-panel">
       <div className="ai-chat-header">
-        <span className="ai-chat-title">AI Chat</span>
+        <div className="ai-chat-session-dropdown">
+          <button
+            className="ai-chat-session-trigger"
+            onClick={() => setDropdownOpen(!dropdownOpen)}
+          >
+            <span>{activeSession?.title ?? "AI Chat"}</span>
+            <ChevronIcon rotated={dropdownOpen} />
+          </button>
+          {dropdownOpen && (
+            <div className="ai-chat-dropdown-menu">
+              {sessions.map((s) => (
+                <div
+                  key={s.id}
+                  className={`ai-chat-dropdown-item ${s.id === activeSessionId ? "active" : ""}`}
+                >
+                  <button
+                    className="ai-chat-dropdown-item-label"
+                    onClick={() => { setActiveSession(s.id); setDropdownOpen(false); }}
+                  >
+                    {s.title}
+                  </button>
+                  <button
+                    className="ai-chat-dropdown-item-delete"
+                    onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }}
+                    title="Delete conversation"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         <div className="ai-chat-header-actions">
           <button
             className="ai-chat-new-btn"
@@ -121,20 +184,6 @@ export function AIChatPanel() {
           </button>
         </div>
       </div>
-
-      {sessions.length > 1 && (
-        <div className="ai-chat-sessions">
-          {sessions.map((s) => (
-            <button
-              key={s.id}
-              className={`ai-chat-session-btn ${s.id === activeSessionId ? "active" : ""}`}
-              onClick={() => useChatStore.getState().setActiveSession(s.id)}
-            >
-              {s.title}
-            </button>
-          ))}
-        </div>
-      )}
 
       <div className="ai-chat-messages">
         {messages.length === 0 && (
