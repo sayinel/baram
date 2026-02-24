@@ -11,7 +11,7 @@ interface UIState {
   sidebarWidth: number;
   rightPanelOpen: boolean;
   rightPanelWidth: number;
-  rightPanelMode: "chat" | "none";
+  rightPanelMode: "chat" | "help" | "none";
   commandPaletteOpen: boolean;
   quickSwitcherOpen: boolean;
   settingsOpen: boolean;
@@ -29,7 +29,7 @@ interface UIState {
   setSidebarWidth: (width: number) => void;
   toggleRightPanel: () => void;
   setRightPanelWidth: (width: number) => void;
-  setRightPanelMode: (mode: "chat" | "none") => void;
+  setRightPanelMode: (mode: "chat" | "help" | "none") => void;
   toggleCommandPalette: () => void;
   toggleQuickSwitcher: () => void;
   toggleSettings: () => void;

@@ -26,7 +26,7 @@ const ChevronIcon = ({ rotated }: { rotated: boolean }) => (
 );
 
 export function AIChatPanel() {
-  const { rightPanelOpen } = useUIStore();
+  const { rightPanelOpen, rightPanelMode } = useUIStore();
   const {
     sessions,
     activeSessionId,
@@ -202,7 +202,7 @@ export function AIChatPanel() {
     [handleSend, refQuery],
   );
 
-  if (!rightPanelOpen) return null;
+  if (!rightPanelOpen || rightPanelMode !== "chat") return null;
 
   const activeSession = getActiveSession();
   const messages = activeSession?.messages ?? [];

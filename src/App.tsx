@@ -108,6 +108,11 @@ const AIChatPanel = lazy(() =>
     default: m.AIChatPanel,
   })),
 );
+const HelpPanel = lazy(() =>
+  import("./components/help/HelpPanel").then((m) => ({
+    default: m.HelpPanel,
+  })),
+);
 const SkillGeneratorDialog = lazy(() =>
   import("./components/ai/SkillGeneratorDialog").then((m) => ({
     default: m.SkillGeneratorDialog,
@@ -1326,14 +1331,27 @@ function App() {
           break;
 
         // --- Help menu handlers ---
-        case "help_shortcuts": {
-          const { rootPath } = useFileStore.getState();
-          if (rootPath) {
-            const shortcutsPath = `${rootPath}/docs/keyboard-shortcuts.md`;
-            handleOpenFilePath(shortcutsPath).catch(() => {});
+        case "help_user_guide":
+          useUIStore.getState().setRightPanelMode("help");
+          if (!useUIStore.getState().rightPanelOpen) {
+            useUIStore.getState().toggleRightPanel();
           }
+          window.dispatchEvent(new CustomEvent("help-tab", { detail: "guide" }));
           break;
-        }
+        case "help_shortcuts":
+          useUIStore.getState().setRightPanelMode("help");
+          if (!useUIStore.getState().rightPanelOpen) {
+            useUIStore.getState().toggleRightPanel();
+          }
+          window.dispatchEvent(new CustomEvent("help-tab", { detail: "shortcuts" }));
+          break;
+        case "help_faq":
+          useUIStore.getState().setRightPanelMode("help");
+          if (!useUIStore.getState().rightPanelOpen) {
+            useUIStore.getState().toggleRightPanel();
+          }
+          window.dispatchEvent(new CustomEvent("help-tab", { detail: "faq" }));
+          break;
         case "help_report":
           openUrl("https://github.com/anthropics/baram/issues").catch(() => {});
           break;
@@ -1456,6 +1474,7 @@ function App() {
         <SettingsModal />
         <AboutModal />
         <AIChatPanel />
+        <HelpPanel />
         <HoverPreview />
         <SkillGeneratorDialogWrapper />
         <SkillTestDialogWrapper />

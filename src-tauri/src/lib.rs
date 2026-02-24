@@ -251,15 +251,24 @@ pub fn run() {
                 .build()?;
 
             // --- Help menu ---
+            let help_user_guide = MenuItemBuilder::new("User Guide")
+                .id("help_user_guide")
+                .build(app)?;
             let help_shortcuts = MenuItemBuilder::new("Keyboard Shortcuts")
                 .id("help_shortcuts")
+                .build(app)?;
+            let help_faq = MenuItemBuilder::new("FAQ")
+                .id("help_faq")
                 .build(app)?;
             let help_report = MenuItemBuilder::new("Report Issue...")
                 .id("help_report")
                 .build(app)?;
 
             let help_menu = SubmenuBuilder::new(app, "Help")
+                .item(&help_user_guide)
                 .item(&help_shortcuts)
+                .item(&help_faq)
+                .separator()
                 .item(&help_report)
                 .build()?;
 

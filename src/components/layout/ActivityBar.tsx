@@ -73,14 +73,22 @@ const SettingsIcon = (
 );
 
 const AIChatIcon = (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+  <svg width="22" height="22" viewBox="1 1 22 22" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-    <text x="12" y="12" textAnchor="middle" dominantBaseline="central" fill="currentColor" stroke="none" fontSize="8" fontWeight="700" fontFamily="system-ui, sans-serif">AI</text>
+    <text x="12" y="10" textAnchor="middle" dominantBaseline="central" fill="currentColor" stroke="none" fontSize="8" fontWeight="700" fontFamily="system-ui, sans-serif">AI</text>
+  </svg>
+);
+
+const HelpIcon = (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10" />
+    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+    <line x1="12" y1="17" x2="12.01" y2="17" />
   </svg>
 );
 
 export function ActivityBar() {
-  const { sidebarOpen, sidebarPanel, toggleSidebar, setSidebarPanel, toggleSettings, rightPanelOpen, toggleRightPanel } = useUIStore();
+  const { sidebarOpen, sidebarPanel, toggleSidebar, setSidebarPanel, toggleSettings, rightPanelOpen, rightPanelMode, toggleRightPanel, setRightPanelMode } = useUIStore();
 
   const handlePanelClick = (panelId: PanelId) => {
     if (!sidebarOpen) {
@@ -109,11 +117,36 @@ export function ActivityBar() {
       </div>
       <div className="activity-bar-bottom">
         <button
-          className={`activity-bar-btn ${rightPanelOpen ? "activity-bar-btn-active" : ""}`}
-          onClick={() => toggleRightPanel()}
+          className={`activity-bar-btn ${rightPanelOpen && rightPanelMode === "chat" ? "activity-bar-btn-active" : ""}`}
+          onClick={() => {
+            if (!rightPanelOpen) {
+              setRightPanelMode("chat");
+              toggleRightPanel();
+            } else if (rightPanelMode === "chat") {
+              toggleRightPanel();
+            } else {
+              setRightPanelMode("chat");
+            }
+          }}
           title="AI Chat (⌘⇧A)"
         >
           {AIChatIcon}
+        </button>
+        <button
+          className={`activity-bar-btn ${rightPanelOpen && rightPanelMode === "help" ? "activity-bar-btn-active" : ""}`}
+          onClick={() => {
+            if (!rightPanelOpen) {
+              setRightPanelMode("help");
+              toggleRightPanel();
+            } else if (rightPanelMode === "help") {
+              toggleRightPanel();
+            } else {
+              setRightPanelMode("help");
+            }
+          }}
+          title="Help"
+        >
+          {HelpIcon}
         </button>
         <button
           className="activity-bar-btn"
