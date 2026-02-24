@@ -27,10 +27,10 @@ function getBlockIndexAndOffset(doc: PMNode, pmPos: number): BlockInfo {
   let pos = 0;
   for (let i = 0; i < childCount; i++) {
     const child = doc.child(i);
-    const start = pos + 1; // +1 for the opening token
+    // Leaf nodes (e.g. horizontalRule) have nodeSize=1 with no opening/closing tokens.
+    // Non-leaf nodes have nodeSize = content.size + 2 (opening + content + closing).
+    const start = pos + (child.isLeaf ? 0 : 1);
     const end = start + child.content.size;
-    // Next block starts after closing token
-    const nextPos = end + 1;
 
     if (pmPos <= end) {
       const textOffset = Math.max(0, pmPos - start);
@@ -40,7 +40,7 @@ function getBlockIndexAndOffset(doc: PMNode, pmPos: number): BlockInfo {
         blockTextSize: child.content.size,
       };
     }
-    pos = nextPos;
+    pos += child.nodeSize;
   }
 
   // Past the end — return last block
@@ -197,34 +197,43 @@ function matchMdPosInPm(
  *
  * Must account for the "\n" separator that textBetween inserts between
  * leaf blocks (paragraphs in different list items, etc.).
+ * For tables, separators are not used (countSeparators=false).
  */
-function textPosToPmOffset(block: PMNode, targetTextPos: number): number {
-  let textCount = 0;
-  let result = block.content.size;
-  let found = false;
-  let seenText = false;
-  let lastTextEnd = 0;
+function textPosToPmOffset(block: PMNode, targetTextPos: number, countSeparators: boolean = true): number {
+  // Collect text nodes — needed for tables where cell boundary handling
+  // depends on knowing whether a text node is the last one.
+  const textNodes: { pos: number; length: number; nodeSize: number }[] = [];
   block.descendants((node, pos) => {
-    if (found) return false;
     if (node.isText) {
-      // When crossing a block boundary (gap between text regions),
-      // textBetween inserts a "\n" separator — count it.
-      if (seenText && pos > lastTextEnd) {
-        textCount++; // "\n" separator
-      }
-      seenText = true;
-      const remaining = targetTextPos - textCount;
-      if (remaining <= node.text!.length) {
-        result = pos + remaining;
-        found = true;
-        return false;
-      }
-      textCount += node.text!.length;
-      lastTextEnd = pos + node.nodeSize;
+      textNodes.push({ pos, length: node.text!.length, nodeSize: node.nodeSize });
     }
     return true;
   });
-  return result;
+
+  let textCount = 0;
+  let lastEnd = 0;
+  for (let i = 0; i < textNodes.length; i++) {
+    const tn = textNodes[i];
+    // When crossing a block boundary (gap between text regions),
+    // textBetween inserts a "\n" separator — count it (unless skipped for tables).
+    if (countSeparators && i > 0 && tn.pos > lastEnd) {
+      textCount++; // "\n" separator
+    }
+    const remaining = targetTextPos - textCount;
+    // For tables (countSeparators=false), at intermediate cell boundaries prefer
+    // the start of the next cell over the end of the current one, matching the
+    // forward mapping. For the last text node, use <= to capture end-of-text.
+    const isLast = i === textNodes.length - 1;
+    const fits = (!countSeparators && !isLast)
+      ? remaining < tn.length
+      : remaining <= tn.length;
+    if (fits) {
+      return tn.pos + remaining;
+    }
+    textCount += tn.length;
+    lastEnd = tn.pos + tn.nodeSize;
+  }
+  return block.content.size;
 }
 
 /**
@@ -247,7 +256,11 @@ export function pmPosToMdOffset(
 
   const pmBlockIdx = Math.min(blockIndex, doc.childCount - 1);
   const pmBlock = doc.child(pmBlockIdx);
-  const pmBlockText = pmBlock.textBetween(0, pmBlock.content.size, "\n");
+  // Tables: use empty separator — "\n" in PM text doesn't correspond to
+  // any single MD character (cells on same row are separated by "|", not "\n").
+  const isTable = pmBlock.type.name === "table";
+  const sep = isTable ? "" : "\n";
+  const pmBlockText = pmBlock.textBetween(0, pmBlock.content.size, sep);
   const mdBlockText = markdown.substring(mdBlock.start, mdBlock.end);
 
   if (pmBlockText.length === 0) return mdBlock.start;
@@ -256,7 +269,7 @@ export function pmPosToMdOffset(
   const clampedOffset = Math.min(textOffset, pmBlock.content.size);
   const pmTextPos = pmBlock.isTextblock
     ? Math.min(clampedOffset, pmBlockText.length)
-    : pmBlock.textBetween(0, clampedOffset, "\n").length;
+    : pmBlock.textBetween(0, clampedOffset, sep).length;
 
   // Match PM text position in MD text via character walking
   const mdOffsetInBlock = matchPmPosInMd(mdBlockText, pmBlockText, pmTextPos);
@@ -290,15 +303,18 @@ export function mdOffsetToPmPos(
 
   const idx = Math.min(blockIndex, doc.childCount - 1);
 
-  // Compute PM position for the start of this block
+  // Compute PM position for the start of this block's content
   let pmBlockStart = 0;
   for (let i = 0; i < idx; i++) {
     pmBlockStart += doc.child(i).nodeSize;
   }
-  pmBlockStart += 1; // Opening token of target block
-
   const pmBlock = doc.child(idx);
-  const pmBlockText = pmBlock.textBetween(0, pmBlock.content.size, "\n");
+  // Leaf nodes (e.g. horizontalRule) have no opening token
+  pmBlockStart += pmBlock.isLeaf ? 0 : 1;
+
+  const isTable = pmBlock.type.name === "table";
+  const sep = isTable ? "" : "\n";
+  const pmBlockText = pmBlock.textBetween(0, pmBlock.content.size, sep);
   const mdBlockText = markdown.substring(
     mdBlocks[Math.min(blockIndex, mdBlocks.length - 1)].start,
     mdBlocks[Math.min(blockIndex, mdBlocks.length - 1)].end,
@@ -312,7 +328,7 @@ export function mdOffsetToPmPos(
   // Convert PM text position to PM content offset
   const pmOffset = pmBlock.isTextblock
     ? Math.min(pmTextPos, pmBlock.content.size)
-    : textPosToPmOffset(pmBlock, pmTextPos);
+    : textPosToPmOffset(pmBlock, pmTextPos, !isTable);
 
   return Math.min(pmBlockStart + pmOffset, pmBlockStart + pmBlock.content.size);
 }
