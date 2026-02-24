@@ -94,7 +94,7 @@ export function showTableGridPicker(
     gridContainer.addEventListener("click", (e) => {
       const target = e.target as HTMLElement;
       if (target.dataset.row !== undefined && target.dataset.col !== undefined) {
-        cleanup({ rows: hoverRows + 1, cols: hoverCols }); // +1 for header row
+        cleanup({ rows: hoverRows, cols: hoverCols });
       }
     });
 

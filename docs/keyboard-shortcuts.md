@@ -62,6 +62,7 @@ Complete list of keyboard shortcuts available in Baram.
 | Bullet List | `Cmd+Shift+8` | `Ctrl+Shift+8` |
 | Ordered List | `Cmd+Shift+7` | `Ctrl+Shift+7` |
 | Task List | `Cmd+Shift+9` | `Ctrl+Shift+9` |
+| Table | `Cmd+T` | `Ctrl+T` |
 | Mermaid Diagram | `Cmd+Shift+D` | `Ctrl+Shift+D` |
 | Toggle Open/Close | `Cmd+Enter` | `Ctrl+Enter` |
 | Indent | `Tab` | `Tab` |

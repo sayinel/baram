@@ -131,8 +131,9 @@
       "milestone": "M3",
       "status": "implemented",
       "hasNodeView": true,
-      "inputRules": [],
-      "shortcuts": {}
+      "inputRules": ["| H1 | H2 | + Enter"],
+      "shortcuts": { "Mod-t": "insert table (grid picker)" },
+      "notes": "Tier 3: resizable columns (session only), pipe-input auto creation, context menu, hover insert buttons, TSV paste, CellSelection toolbar"
     },
     {
       "name": "frontmatter",

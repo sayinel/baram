@@ -42,12 +42,13 @@ Baram works with standard markdown files (`.md`, `.markdown`). It supports Commo
 
 ### How do I insert a table?
 
-Three ways:
-1. Type `/table` and select from the slash menu
-2. Use the **Insert > Table** menu
-3. Write GFM pipe table syntax directly
+Four ways:
+1. **Pipe input** — Type `| Header 1 | Header 2 |` and press Enter — a table is created with the headers filled in
+2. **Grid Picker** — Type `/table` or press `Cmd+T` to select dimensions from a visual 10×10 grid
+3. **TSV Paste** — Copy cells from a spreadsheet and paste — Baram auto-creates a table
+4. Write GFM pipe table syntax directly
 
-Once created, navigate cells with `Tab` and `Shift+Tab`. Hover over the table to see buttons for adding rows and columns.
+Once created, navigate cells with `Tab` and `Shift+Tab`. Drag column borders to resize (session only). Hover over the table to see ⊕ buttons for adding rows and columns. Right-click for alignment, header toggle, and copy options.
 
 ### How do I insert math formulas?
 

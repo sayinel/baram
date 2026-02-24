@@ -323,10 +323,17 @@ graph TD
 
 Baram supports GFM (GitHub Flavored Markdown) pipe tables.
 
-- Create a table via the slash command `/table`
+**Creating a table:**
+- **Pipe input** — Type `| Header 1 | Header 2 |` and press Enter to auto-create a table with headers filled in
+- **Grid Picker** — Slash command `/table` or press `Cmd+T` to select dimensions from a 10×10 visual grid
+- **TSV Paste** — Paste tab-separated data (e.g. from a spreadsheet) to auto-create a table
+
+**Editing:**
 - **Tab** / **Shift+Tab** to navigate between cells
 - Column alignment (`:---`, `:---:`, `---:`) is preserved
-- Hover over the table to see buttons for adding rows and columns
+- **Column resize** — Drag column borders to adjust width (session only, not saved to markdown)
+- Hover over the table to see ⊕ buttons for adding rows and columns
+- **Right-click** for context menu: alignment, header toggle, copy as Markdown/HTML, delete
 
 ### Images
 

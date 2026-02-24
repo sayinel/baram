@@ -79,7 +79,7 @@ Baram hides markdown syntax while you write and reveals it only when your cursor
 | Horizontal Rule | Type `---` and press Enter |
 | Code Block | Type ` ``` ` and press Enter, or `Cmd+Alt+C` |
 | Math Block | Type `$$` and press Enter, or `Cmd+Shift+M` |
-| Table | Slash command `/table` |
+| Table | Type `| H1 | H2 |` + Enter, `/table`, or `Cmd+T` |
 | Image | Type `![alt](url)`, drag-and-drop, or paste from clipboard |
 | Callout | Type `> [!info]` (supports info, tip, warning, danger, note, etc.) |
 | Toggle | Slash command `/toggle` — collapsible details block |
@@ -188,9 +188,14 @@ Create flowcharts, sequence diagrams, and more with Mermaid.js:
 
 GFM (GitHub Flavored Markdown) pipe table support:
 
+- **Auto-create** — Type `| Header 1 | Header 2 |` and press Enter to instantly create a table
+- **Grid Picker** — Slash command `/table` or `Cmd+T` to select table dimensions visually
+- **TSV Paste** — Paste tab-separated data from spreadsheets to auto-create a table
 - **Tab** / **Shift+Tab** to navigate between cells
 - Column alignment (`:---`, `:---:`, `---:`) preserved on roundtrip
-- Add/remove rows and columns
+- **Column resize** — Drag column borders to adjust width (session only, not saved to markdown)
+- Add/remove rows and columns via hover buttons or right-click context menu
+- **Context menu** — Right-click for alignment, header toggle, copy as Markdown/HTML, delete
 
 ### Images
 
@@ -305,6 +310,7 @@ Create your own slash commands in **Settings > AI > Custom Commands**. Use varia
 | Bullet List | `Cmd+Shift+8` |
 | Ordered List | `Cmd+Shift+7` |
 | Task List | `Cmd+Shift+9` |
+| Table | `Cmd+T` |
 | Mermaid Diagram | `Cmd+Shift+D` |
 | Toggle Open/Close | `Cmd+Enter` |
 
@@ -439,11 +445,18 @@ Reverse:  ProseMirror Document → mdast → remark-stringify
 | M7 Connection & Navigation | ✅ Done | Wikilinks, backlinks, block references, callouts, toggles, mermaid, graph view, quick switcher, bookmarks, tab features |
 | M8 AI & Skills | ✅ Done | Multi-provider AI (Claude/OpenAI/Gemini/Ollama), Ghost Text, AI Chat, Find/Replace, Custom AI Commands, Skills editing |
 
+**Phase 2 — Productivity** (in progress)
+
+| Milestone | Status | Description |
+|-----------|--------|-------------|
+| M9 (partial) | ✅ Done | Highlight / subscript / superscript marks, Table of Contents, Table Tier 3 (column resize, pipe-input creation) |
+
 **Upcoming**
 
 - Global search (Cmd+Shift+F)
 - Git integration
 - Theme system
+- Table cell merge & virtual scroll (50+ rows)
 - Plugin marketplace
 
 ## License
