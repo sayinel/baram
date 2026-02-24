@@ -32,6 +32,7 @@ import { StatusBar } from "./components/layout/StatusBar";
 import { FloatingToolbar } from "./components/toolbar/FloatingToolbar";
 import { TableToolbar } from "./components/toolbar/TableToolbar";
 import { BlockHandle } from "./components/toolbar/BlockHandle";
+import { TableInsertButtons } from "./components/toolbar/TableInsertButtons";
 import { ContextMenu } from "./components/toolbar/ContextMenu";
 import { useEditorStore } from "./stores/editor-store";
 import { useFileStore, openFolder } from "./stores/file-store";
@@ -50,6 +51,7 @@ import { resolveWikilinkTarget } from "./utils/wikilink-nav";
 import { findBlockPosById } from "./utils/block-nav";
 import { showPrompt } from "./utils/ai-commands";
 import { forceCollapseSyntaxReveal } from "./extensions/plugins/syntax-reveal";
+import { showTableGridPicker } from "./utils/table-grid-picker";
 import { FindReplaceBar } from "./components/editor/FindReplaceBar";
 import { InlineAIPrompt } from "./components/ai/InlineAIPrompt";
 import { PromptLintPanel } from "./components/ai/PromptLintPanel";
@@ -1026,6 +1028,22 @@ function App() {
         return;
       }
 
+      // §5.5 Cmd+T — insert table via grid picker (disabled inside tables)
+      if (mod && !e.shiftKey && e.key === "t" && editor && !editor.isActive("table")) {
+        e.preventDefault();
+        const { from } = editor.state.selection;
+        const coords = editor.view.coordsAtPos(from);
+        showTableGridPicker(coords.left, coords.bottom + 4).then((result) => {
+          if (!result) return;
+          editor
+            .chain()
+            .focus()
+            .insertTable({ rows: result.rows, cols: result.cols, withHeaderRow: true })
+            .run();
+        });
+        return;
+      }
+
       // Cmd+/ — toggle source mode
       if (mod && e.key === "/") {
         e.preventDefault();
@@ -1397,6 +1415,7 @@ function App() {
                     <FloatingToolbar editor={editor} />
                     <TableToolbar editor={editor} />
                     <BlockHandle editor={editor} />
+                    <TableInsertButtons editor={editor} />
                     <ContextMenu editor={editor} />
                     {inlineAI.isActive && inlineAI.phase !== "idle" && (
                       <InlineAIPrompt

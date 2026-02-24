@@ -5274,6 +5274,10 @@ body {
   background-color: var(--color-bg-secondary);
   color: var(--color-text-primary);
 }
+.table-toolbar-btn-wide {
+  width: auto;
+  padding: 0 5px;
+}
 .table-toolbar-btn-active {
   background-color: var(--color-accent);
   color: white;
@@ -5327,7 +5331,7 @@ body {
 .table-grid-cell {
   width: 22px;
   height: 22px;
-  border: 1px solid var(--color-border-light);
+  border: 1px solid var(--color-border);
   border-radius: 3px;
   background: transparent;
   transition: background-color 0.1s, border-color 0.1s;
@@ -5339,4 +5343,30 @@ body {
 }
 [data-theme="dark"] .table-grid-picker {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+/* §5.5 Table Insert Buttons — hover ⊕ for row/column insertion */
+.table-insert-btn {
+  position: fixed;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-accent);
+  background: var(--color-bg);
+  color: var(--color-accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 50;
+  padding: 0;
+  opacity: 0.8;
+  transition: background 0.15s, color 0.15s, opacity 0.15s, transform 0.15s;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+.table-insert-btn:hover {
+  background: var(--color-accent);
+  color: #fff;
+  opacity: 1;
+  transform: scale(1.15);
 }

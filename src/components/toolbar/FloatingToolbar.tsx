@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { BubbleMenu } from "@tiptap/react/menus";
 import type { Editor } from "@tiptap/react";
+import { CellSelection } from "@tiptap/pm/tables";
 import { executeAICommand, getSelectedText, showPrompt } from "../../utils/ai-commands";
 import { showFieldDialog } from "../../utils/field-dialog";
 import {
@@ -181,10 +182,22 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
     [editor],
   );
 
+  const shouldShow = useCallback(
+    () => {
+      // Hide for CellSelection — TableToolbar handles table multi-cell selection
+      if (editor.state.selection instanceof CellSelection) return false;
+      // Default BubbleMenu behavior for text selections
+      const { from, to } = editor.state.selection;
+      return from !== to;
+    },
+    [editor],
+  );
+
   return (
     <BubbleMenu
       editor={editor}
       className="floating-toolbar"
+      shouldShow={shouldShow}
     >
       <ToolbarButton
         label="B"

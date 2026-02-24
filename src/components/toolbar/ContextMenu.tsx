@@ -2,6 +2,7 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import { copyMathToPNG } from "../../utils/katex-to-png";
+import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 import {
   addBlockId,
   editBlockId,
@@ -17,6 +18,18 @@ interface MenuItem {
   label: string;
   action: () => void;
   separator?: boolean;
+}
+
+/** Walk up from resolved position to find the enclosing table node */
+function findTableAtCursor(editor: Editor): { node: ReturnType<typeof editor.state.doc.nodeAt>; pos: number; depth: number } | null {
+  const { $from } = editor.state.selection;
+  for (let d = $from.depth; d >= 0; d--) {
+    const node = $from.node(d);
+    if (node.type.name === "table") {
+      return { node, pos: $from.before(d), depth: d };
+    }
+  }
+  return null;
 }
 
 export function ContextMenu({ editor }: ContextMenuProps) {
@@ -249,12 +262,17 @@ export function ContextMenu({ editor }: ContextMenuProps) {
         },
       ];
 
-      // Table-specific items
-      if (
-        node.type.name === "tableCell" ||
-        node.type.name === "tableHeader"
-      ) {
-        const currentAlign = (node.attrs.alignment as string | null) ?? null;
+      // Table-specific items — walk up from resolved pos to find cell
+      let tableCell = null;
+      for (let d = resolved.depth; d >= 0; d--) {
+        const n = resolved.node(d);
+        if (n.type.name === "tableCell" || n.type.name === "tableHeader") {
+          tableCell = n;
+          break;
+        }
+      }
+      if (tableCell) {
+        const currentAlign = (tableCell.attrs.alignment as string | null) ?? null;
         return [
           ...baseItems,
           { label: "", action: () => {}, separator: true },
@@ -303,6 +321,36 @@ export function ContextMenu({ editor }: ContextMenuProps) {
           {
             label: "Delete Table",
             action: () => editor.chain().focus().deleteTable().run(),
+          },
+          { label: "", action: () => {}, separator: true },
+          {
+            label: "Toggle Header Row",
+            action: () => editor.chain().focus().toggleHeaderRow().run(),
+          },
+          {
+            label: "Toggle Header Column",
+            action: () => editor.chain().focus().toggleHeaderColumn().run(),
+          },
+          {
+            label: "Copy as Markdown",
+            action: () => {
+              const table = findTableAtCursor(editor);
+              if (!table || !table.node) return;
+              const tempDoc = editor.schema.nodes.doc.create(null, [table.node]);
+              const md = prosemirrorToMarkdown(tempDoc);
+              navigator.clipboard.writeText(md.trim());
+            },
+          },
+          {
+            label: "Copy as HTML",
+            action: () => {
+              const table = findTableAtCursor(editor);
+              if (!table) return;
+              const dom = editor.view.nodeDOM(table.pos);
+              if (dom && dom instanceof HTMLElement) {
+                navigator.clipboard.writeText(dom.outerHTML);
+              }
+            },
           },
         ];
       }
