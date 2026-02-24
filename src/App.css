@@ -117,6 +117,14 @@ body {
   outline: none;
 }
 
+/* Override default ProseMirror gapcursor — vertical caret instead of '__' */
+.tiptap .ProseMirror-gapcursor::after {
+  width: 1px;
+  height: 1.2em;
+  border-top: none;
+  background-color: var(--color-editor-cursor);
+}
+
 /* Mode indicator */
 .mode-indicator {
   display: flex;

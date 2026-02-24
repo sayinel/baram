@@ -170,6 +170,8 @@ function App() {
   const prevTabRef = useRef<string | null>(null);
   // Per-tab EditorState cache — preserves undo/redo history across tab switches
   const editorStateCache = useRef(new Map<string, EditorState>());
+  // Per-tab scroll position cache — preserves view position across tab switches
+  const scrollTopCache = useRef(new Map<string, number>());
   // §37 Ref-based flag for back/forward navigation (avoids _navigating timing bug)
   const isNavBackForwardRef = useRef(false);
   // §5.6 Find/Replace state
@@ -293,6 +295,11 @@ function App() {
     // Save outgoing tab content + cache EditorState (preserves undo history)
     if (prevTabId && prevTabId !== activeTabId) {
       const prevTab = tabs.find((t) => t.id === prevTabId);
+      // Save scroll position of .editor-area-scroll for the outgoing tab
+      const scrollContainer = document.querySelector(".editor-area-scroll");
+      if (scrollContainer) {
+        scrollTopCache.current.set(prevTabId, scrollContainer.scrollTop);
+      }
       // Only save ProseMirror state for file tabs (graph tabs have no editor state)
       if (isFileTab(prevTab)) {
         // Cache EditorState before switching (keeps undo/redo stack intact)
@@ -340,10 +347,20 @@ function App() {
     if (content !== undefined) {
       // Try cached EditorState first (preserves undo/redo history)
       const cachedState = editorStateCache.current.get(activeTabId!);
+      const cachedScrollTop = scrollTopCache.current.get(activeTabId!);
       if (cachedState) {
         editor.view.updateState(cachedState);
-        // Restore scroll position so cursor is visible after tab switch
-        editor.commands.scrollIntoView();
+        // Restore exact scroll position (not just cursor visibility)
+        if (cachedScrollTop !== undefined) {
+          requestAnimationFrame(() => {
+            const scrollContainer = document.querySelector(".editor-area-scroll");
+            if (scrollContainer) {
+              scrollContainer.scrollTop = cachedScrollTop;
+            }
+          });
+        } else {
+          editor.commands.scrollIntoView();
+        }
       } else {
         // No cache — create fresh state from markdown (first open)
         const newDoc = markdownToProsemirror(content, editor.schema);
@@ -402,6 +419,7 @@ function App() {
       for (const cachedId of editorStateCache.current.keys()) {
         if (!openTabIds.has(cachedId)) {
           editorStateCache.current.delete(cachedId);
+          scrollTopCache.current.delete(cachedId);
         }
       }
     }
@@ -467,14 +485,26 @@ function App() {
 
       setIsSourceMode(false);
 
-      // Focus and scroll to cursor after EditorContent mounts
+      // Focus and scroll to cursor after EditorContent mounts.
+      // Double RAF: first waits for React render, second for layout.
       requestAnimationFrame(() => {
-        try {
-          editor.commands.focus();
-          editor.commands.scrollIntoView();
-        } catch {
-          // ignore focus errors
-        }
+        requestAnimationFrame(() => {
+          try {
+            editor.commands.focus();
+            // ProseMirror scrollIntoView + DOM fallback for .editor-area-scroll
+            const sel = editor.view.state.selection;
+            const tr = editor.view.state.tr.setSelection(sel).scrollIntoView();
+            editor.view.dispatch(tr);
+            const domInfo = editor.view.domAtPos(sel.from);
+            const el =
+              domInfo.node instanceof HTMLElement
+                ? domInfo.node
+                : domInfo.node.parentElement;
+            el?.scrollIntoView({ block: "center" });
+          } catch {
+            // ignore focus errors
+          }
+        });
       });
     }
   }, [editor, isSourceMode, tabs, activeTabId]);
