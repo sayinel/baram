@@ -1,5 +1,6 @@
 // §5.1 Task Item Extension
 import { Node, mergeAttributes } from "@tiptap/core";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
 
 export interface TaskItemOptions {
   HTMLAttributes: Record<string, string>;
@@ -72,6 +73,46 @@ export const TaskItem = Node.create<TaskItemOptions>({
           return false;
         },
     };
+  },
+
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: new PluginKey("taskItemClick"),
+        props: {
+          handleDOMEvents: {
+            mousedown: (view, event) => {
+              const target = event.target;
+              if (
+                !(target instanceof HTMLInputElement) ||
+                target.type !== "checkbox"
+              )
+                return false;
+              const li = target.closest('li[data-type="taskItem"]');
+              if (!li) return false;
+
+              event.preventDefault();
+
+              const pos = view.posAtDOM(li, 0);
+              const $pos = view.state.doc.resolve(pos);
+              for (let d = $pos.depth; d > 0; d--) {
+                const node = $pos.node(d);
+                if (node.type.name === "taskItem") {
+                  view.dispatch(
+                    view.state.tr.setNodeMarkup($pos.before(d), undefined, {
+                      ...node.attrs,
+                      checked: !node.attrs.checked,
+                    }),
+                  );
+                  return true;
+                }
+              }
+              return false;
+            },
+          },
+        },
+      }),
+    ];
   },
 
   addKeyboardShortcuts() {
