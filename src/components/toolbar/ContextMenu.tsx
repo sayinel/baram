@@ -254,6 +254,7 @@ export function ContextMenu({ editor }: ContextMenuProps) {
         node.type.name === "tableCell" ||
         node.type.name === "tableHeader"
       ) {
+        const currentAlign = (node.attrs.alignment as string | null) ?? null;
         return [
           ...baseItems,
           { label: "", action: () => {}, separator: true },
@@ -272,6 +273,23 @@ export function ContextMenu({ editor }: ContextMenuProps) {
           {
             label: "Add Column Right",
             action: () => editor.chain().focus().addColumnAfter().run(),
+          },
+          { label: "", action: () => {}, separator: true },
+          {
+            label: `Align Left${currentAlign === "left" ? " \u2713" : ""}`,
+            action: () => editor.chain().focus().setCellAttribute("alignment", "left").run(),
+          },
+          {
+            label: `Align Center${currentAlign === "center" ? " \u2713" : ""}`,
+            action: () => editor.chain().focus().setCellAttribute("alignment", "center").run(),
+          },
+          {
+            label: `Align Right${currentAlign === "right" ? " \u2713" : ""}`,
+            action: () => editor.chain().focus().setCellAttribute("alignment", "right").run(),
+          },
+          {
+            label: `No Alignment${currentAlign === null ? " \u2713" : ""}`,
+            action: () => editor.chain().focus().setCellAttribute("alignment", null).run(),
           },
           { label: "", action: () => {}, separator: true },
           {

@@ -17,6 +17,7 @@ import {
 } from "../../utils/custom-ai-commands";
 import { executeAICommand, getSelectionOrParagraph, showPrompt } from "../../utils/ai-commands";
 import { showFieldDialog } from "../../utils/field-dialog";
+import { showTableGridPicker } from "../../utils/table-grid-picker";
 import {
   AI_TRANSLATE,
   AI_SUMMARIZE,
@@ -179,14 +180,20 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       id: "table",
       label: "Table",
       category: "Rich Content",
-      description: "3x3 table with header",
+      description: "Insert a table (grid picker)",
       mdHint: "| | |",
-      action: () =>
+      action: async () => {
+        // Get cursor position for picker placement
+        const { from } = editor.state.selection;
+        const coords = editor.view.coordsAtPos(from);
+        const result = await showTableGridPicker(coords.left, coords.bottom + 4);
+        if (!result) return;
         editor
           .chain()
           .focus()
-          .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-          .run(),
+          .insertTable({ rows: result.rows, cols: result.cols, withHeaderRow: true })
+          .run();
+      },
     },
     // Media & Inline
     {

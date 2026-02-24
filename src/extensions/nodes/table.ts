@@ -1,5 +1,6 @@
 // §5.5 Table Extension — GFM pipe tables
 // Uses @tiptap/extension-table as base with custom configuration
+import { mergeAttributes } from "@tiptap/core";
 import { Table } from "@tiptap/extension-table";
 import { TableRow } from "@tiptap/extension-table-row";
 import { TableCell } from "@tiptap/extension-table-cell";
@@ -24,6 +25,15 @@ export const BaramTableCell = TableCell.extend({
       alignment: { default: null },
     };
   },
+
+  renderHTML({ node, HTMLAttributes }) {
+    const align = node.attrs.alignment as string | null;
+    return [
+      "td",
+      mergeAttributes(HTMLAttributes, align ? { style: `text-align: ${align}` } : {}),
+      0,
+    ];
+  },
 });
 
 export const BaramTableHeader = TableHeader.extend({
@@ -32,5 +42,14 @@ export const BaramTableHeader = TableHeader.extend({
       ...this.parent?.(),
       alignment: { default: null },
     };
+  },
+
+  renderHTML({ node, HTMLAttributes }) {
+    const align = node.attrs.alignment as string | null;
+    return [
+      "th",
+      mergeAttributes(HTMLAttributes, align ? { style: `text-align: ${align}` } : {}),
+      0,
+    ];
   },
 });

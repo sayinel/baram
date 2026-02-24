@@ -30,6 +30,7 @@ import { AppLayout } from "./components/layout/AppLayout";
 import { TabBar } from "./components/layout/TabBar";
 import { StatusBar } from "./components/layout/StatusBar";
 import { FloatingToolbar } from "./components/toolbar/FloatingToolbar";
+import { TableToolbar } from "./components/toolbar/TableToolbar";
 import { BlockHandle } from "./components/toolbar/BlockHandle";
 import { ContextMenu } from "./components/toolbar/ContextMenu";
 import { useEditorStore } from "./stores/editor-store";
@@ -1018,6 +1019,13 @@ function App() {
         return;
       }
 
+      // §5.5 Cmd+Enter — add row after in table
+      if (mod && e.key === "Enter" && editor && editor.isActive("table")) {
+        e.preventDefault();
+        editor.chain().focus().addRowAfter().run();
+        return;
+      }
+
       // Cmd+/ — toggle source mode
       if (mod && e.key === "/") {
         e.preventDefault();
@@ -1387,6 +1395,7 @@ function App() {
                 {editor && (
                   <>
                     <FloatingToolbar editor={editor} />
+                    <TableToolbar editor={editor} />
                     <BlockHandle editor={editor} />
                     <ContextMenu editor={editor} />
                     {inlineAI.isActive && inlineAI.phase !== "idle" && (
