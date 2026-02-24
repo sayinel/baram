@@ -839,11 +839,14 @@ body {
 }
 
 /* §5.5 Table */
+.tiptap .tableWrapper {
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+
 .tiptap table {
   border-collapse: collapse;
   width: 100%;
-  margin: 0.5em 0;
-  table-layout: auto;
 }
 
 .tiptap th,
@@ -866,6 +869,22 @@ body {
 
 .tiptap .selectedCell {
   background-color: var(--color-editor-selection);
+}
+
+/* §5.5 Tier 3: Column resize handle */
+.tiptap .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background-color: var(--color-accent, #3b82f6);
+  pointer-events: none;
+  z-index: 20;
+}
+
+.tiptap.resize-cursor {
+  cursor: col-resize;
 }
 
 /* §5.8 Frontmatter */
