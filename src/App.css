@@ -391,7 +391,9 @@ body {
   font-size: 0.85rem;
   font-weight: 400;
   color: var(--color-text-primary);
-  white-space: pre-wrap;
+  white-space: normal;
+  word-break: break-word;
+  width: max-content;
   max-width: 320px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
   z-index: 50;
