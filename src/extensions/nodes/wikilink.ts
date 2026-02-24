@@ -108,7 +108,7 @@ export const Wikilink = Node.create<WikilinkOptions>({
 
   // Cmd+click navigates to the wikilink target
   addProseMirrorPlugins() {
-    const extension = this;
+    const { onNavigate } = this.options;
     return [
       new Plugin({
         props: {
@@ -129,7 +129,7 @@ export const Wikilink = Node.create<WikilinkOptions>({
 
             if (!wikilinkNode) return false;
 
-            extension.options.onNavigate(
+            onNavigate(
               wikilinkNode.attrs.target as string,
               wikilinkNode.attrs.heading as string | null,
             );

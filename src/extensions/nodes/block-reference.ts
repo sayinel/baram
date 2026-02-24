@@ -81,7 +81,7 @@ export const BlockReference = Node.create<BlockReferenceOptions>({
 
   // Cmd+click navigates to the block reference target
   addProseMirrorPlugins() {
-    const extension = this;
+    const { onNavigate } = this.options;
     return [
       new Plugin({
         props: {
@@ -101,7 +101,7 @@ export const BlockReference = Node.create<BlockReferenceOptions>({
 
             if (!refNode) return false;
 
-            extension.options.onNavigate(
+            onNavigate(
               refNode.attrs.target as string,
               refNode.attrs.blockId as string,
             );

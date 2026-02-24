@@ -206,6 +206,10 @@ export function GraphView() {
   const showOrphans = useGraphSettingsStore((s) => s.showOrphans);
   const existingFilesOnly = useGraphSettingsStore((s) => s.existingFilesOnly);
 
+  const handleOpenInTab = useCallback(() => {
+    useEditorStore.getState().openGraphTab();
+  }, []);
+
   // Effect 1: Create Cytoscape instance
   useEffect(() => {
     if (!containerRef.current) return;
@@ -548,10 +552,6 @@ export function GraphView() {
       </div>
     );
   }
-
-  const handleOpenInTab = useCallback(() => {
-    useEditorStore.getState().openGraphTab();
-  }, []);
 
   return (
     <div className="graph-view-container">

@@ -72,7 +72,6 @@ const serializer = unified()
     extensions: [{
       handlers: {
         // §5.9: Callout title — output [!type] verbatim (prevent bracket escaping)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         calloutTitle(node: { value: string }) {
           return node.value;
         },
