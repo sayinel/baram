@@ -356,6 +356,110 @@ body {
   border-color: var(--color-border);
 }
 
+/* §footnote Footnote reference — inline superscript */
+.tiptap .footnote-ref {
+  color: var(--color-accent);
+  cursor: pointer;
+  font-size: 0.75em;
+  vertical-align: super;
+  line-height: 0;
+  position: relative;
+  font-weight: 600;
+  padding: 0 1px;
+}
+
+.tiptap .footnote-ref:hover {
+  color: var(--color-accent-hover);
+  text-decoration: underline;
+}
+
+.tiptap .footnote-ref-selected {
+  background: var(--color-editor-selection);
+  border-radius: 2px;
+}
+
+/* Footnote hover tooltip */
+.tiptap .footnote-ref-tooltip {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: var(--color-text-primary);
+  white-space: pre-wrap;
+  max-width: 320px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  z-index: 50;
+  pointer-events: none;
+  line-height: 1.4;
+  vertical-align: baseline;
+}
+
+/* §footnote Footnote definition — inline N. content ↩ layout */
+.tiptap .footnote-definition {
+  display: flex;
+  align-items: baseline;
+  border-top: 1px solid var(--color-border-light);
+  margin: 1em 0 0.5em;
+  padding: 0.5em 0 0.25em;
+  gap: 4px;
+}
+
+.tiptap .footnote-definition-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-accent);
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.tiptap .footnote-definition-label:hover {
+  text-decoration: underline;
+}
+
+.tiptap .footnote-definition-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.tiptap .footnote-definition-body p {
+  margin: 0;
+}
+
+.tiptap .footnote-definition-back {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  padding: 0 2px;
+  line-height: 1;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.tiptap .footnote-definition-back:hover {
+  color: var(--color-accent);
+}
+
+/* Dark mode footnote overrides */
+[data-theme="dark"] .tiptap .footnote-ref-tooltip {
+  background: var(--color-bg-secondary);
+  border-color: var(--color-border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .tiptap .footnote-definition-label {
+  color: var(--color-accent);
+}
+
 /* §5.1 Toggle (Details/Summary) — Notion-style minimal */
 .tiptap .toggle {
   display: flex;

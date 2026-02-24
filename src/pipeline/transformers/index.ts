@@ -20,6 +20,8 @@ import { blockReferenceTransformer } from "./block-reference-transformer";
 import { blockEmbedTransformer } from "./block-embed-transformer";
 import { calloutTransformer } from "./callout-transformer";
 import { toggleTransformer } from "./toggle-transformer";
+import { footnoteRefTransformer } from "./footnote-ref-transformer";
+import { footnoteDefinitionTransformer } from "./footnote-definition-transformer";
 
 import { boldTransformer } from "./bold-transformer";
 import { italicTransformer } from "./italic-transformer";
@@ -63,6 +65,8 @@ const nodeEntries: NodeTransformerEntry[] = [
   blockEmbedTransformer,
   calloutTransformer,
   toggleTransformer,
+  footnoteRefTransformer,
+  footnoteDefinitionTransformer,
 ];
 
 for (const entry of nodeEntries) {

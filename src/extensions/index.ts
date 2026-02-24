@@ -37,6 +37,8 @@ import { BlockEmbed } from "./nodes/block-embed";
 import { Callout } from "./nodes/callout";
 import { Toggle } from "./nodes/toggle";
 import { TableOfContents } from "./nodes/table-of-contents";
+import { FootnoteRef } from "./nodes/footnote-ref";
+import { FootnoteDefinition } from "./nodes/footnote-definition";
 
 // Plugin Extensions — M3/M4
 import { MathInlineEdit } from "./plugins/math-inline-edit";
@@ -123,6 +125,10 @@ export function createBaramExtensions(options?: BaramExtensionOptions): Extensio
 
     // Nodes — Table of Contents
     TableOfContents,
+
+    // Nodes — §footnote Footnotes
+    FootnoteRef,
+    FootnoteDefinition,
 
     // Nodes — §30c Block Reference & Embed
     BlockReference.configure({
@@ -221,4 +227,6 @@ export {
   Subscript,
   Superscript,
   TableOfContents,
+  FootnoteRef,
+  FootnoteDefinition,
 };

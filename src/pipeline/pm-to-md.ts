@@ -379,6 +379,13 @@ function convertPmInlineChildren(node: PmNode): PhrasingContent[] {
         blockId?: string | null;
       });
       result.push({ type: "wikiLink", value: text } as unknown as PhrasingContent);
+    } else if (child.type.name === "footnoteRef") {
+      // §footnote: footnoteReference mdast node — remark-gfm handles serialization
+      result.push({
+        type: "footnoteReference",
+        identifier: child.attrs.identifier as string,
+        label: child.attrs.identifier as string,
+      } as unknown as PhrasingContent);
     } else if (child.type.name === "blockReference") {
       // §30b: Custom blockReference mdast node — handler in serializer outputs verbatim
       const text = serializeBlockRef(child.attrs as {

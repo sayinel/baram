@@ -237,6 +237,30 @@
       "_note": "Auto-generated heading list. Slash command /toc."
     },
     {
+      "name": "footnoteRef",
+      "file": "nodes/footnote-ref.ts",
+      "markdown": "[^id]",
+      "spec": "§footnote",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "implemented",
+      "hasNodeView": true,
+      "inputRules": ["[^"],
+      "shortcuts": {}
+    },
+    {
+      "name": "footnoteDefinition",
+      "file": "nodes/footnote-definition.ts",
+      "markdown": "[^id]: content",
+      "spec": "§footnote",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "implemented",
+      "hasNodeView": true,
+      "inputRules": [],
+      "shortcuts": {}
+    },
+    {
       "name": "toggle",
       "file": "nodes/toggle.ts",
       "markdown": "<details><summary>title</summary>body</details>",

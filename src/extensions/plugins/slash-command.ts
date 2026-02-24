@@ -248,6 +248,26 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
           .run();
       },
     },
+    // §footnote Footnote
+    {
+      id: "footnote",
+      label: "Footnote",
+      category: "Advanced",
+      description: "Insert footnote reference",
+      mdHint: "[^1]",
+      action: () => {
+        // Calculate next available numeric footnote identifier
+        let maxId = 0;
+        editor.state.doc.descendants((node) => {
+          if (node.type.name === "footnoteRef") {
+            const id = parseInt(node.attrs.identifier as string, 10);
+            if (!isNaN(id) && id > maxId) maxId = id;
+          }
+        });
+        const nextId = String(maxId + 1);
+        editor.commands.insertFootnoteRef(nextId);
+      },
+    },
   ];
 
   // §6.2 Built-in AI slash commands

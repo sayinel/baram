@@ -574,6 +574,14 @@ function convertInlineNode(
     }
   }
 
+  // Footnote reference — §footnote
+  if (node.type === "footnoteReference") {
+    const fnRef = node as { identifier: string };
+    if (schema.nodes.footnoteRef) {
+      return [schema.nodes.footnoteRef.create({ identifier: fnRef.identifier })];
+    }
+  }
+
   // Image inline (rare, but possible)
   if (node.type === "image") {
     const transformer = nodeTransformers.get("image");
