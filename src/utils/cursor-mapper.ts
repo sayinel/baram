@@ -66,6 +66,7 @@ function splitMarkdownBlocks(markdown: string): MarkdownBlock[] {
   let blockStartLine = 0;
   let inFencedCode = false;
   let inFrontmatter = false;
+  let htmlBlockDepth = 0; // Tracks nested <details> blocks
   let lineOffset = 0;
   const lineOffsets: number[] = [];
 
@@ -82,6 +83,7 @@ function splitMarkdownBlocks(markdown: string): MarkdownBlock[] {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    const trimmed = line.trim();
 
     // Track fenced code blocks
     if (!inFrontmatter && /^(`{3,}|~{3,})/.test(line)) {
@@ -95,8 +97,18 @@ function splitMarkdownBlocks(markdown: string): MarkdownBlock[] {
       continue;
     }
 
-    // Skip blank-line splitting inside code blocks or frontmatter
-    if (inFencedCode || inFrontmatter) continue;
+    // Track <details> HTML blocks (supports nesting)
+    if (!inFencedCode && !inFrontmatter) {
+      if (/^<details[\s>]/i.test(trimmed)) {
+        htmlBlockDepth++;
+      }
+      if (/<\/details>/i.test(trimmed)) {
+        htmlBlockDepth = Math.max(0, htmlBlockDepth - 1);
+      }
+    }
+
+    // Skip blank-line splitting inside code blocks, frontmatter, or HTML blocks
+    if (inFencedCode || inFrontmatter || htmlBlockDepth > 0) continue;
 
     // Blank line — end current block, start new one
     if (line === "" && i > blockStartLine) {
@@ -358,6 +370,7 @@ export function mdLineToPmBlockStart(
   let blockStartLine = 0;
   let inFencedCode = false;
   let inFrontmatter = lines.length > 0 && lines[0] === "---";
+  let htmlBlockDepth = 0;
   let lineOffset = 0;
   const lineOffsets: number[] = [];
 
@@ -368,6 +381,7 @@ export function mdLineToPmBlockStart(
 
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
+    const trimmed = l.trim();
 
     if (!inFrontmatter && /^(`{3,}|~{3,})/.test(l)) {
       inFencedCode = !inFencedCode;
@@ -377,7 +391,15 @@ export function mdLineToPmBlockStart(
       inFrontmatter = false;
       continue;
     }
-    if (inFencedCode || inFrontmatter) continue;
+    if (!inFencedCode && !inFrontmatter) {
+      if (/^<details[\s>]/i.test(trimmed)) {
+        htmlBlockDepth++;
+      }
+      if (/<\/details>/i.test(trimmed)) {
+        htmlBlockDepth = Math.max(0, htmlBlockDepth - 1);
+      }
+    }
+    if (inFencedCode || inFrontmatter || htmlBlockDepth > 0) continue;
 
     if (l === "" && i > blockStartLine) {
       rawBlocks.push({
