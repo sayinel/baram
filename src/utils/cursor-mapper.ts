@@ -81,12 +81,15 @@ function splitMarkdownBlocks(markdown: string): MarkdownBlock[] {
     inFrontmatter = true;
   }
 
+  let listType: "ordered" | "bullet" | null = null;
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const trimmed = line.trim();
 
-    // Track fenced code blocks
-    if (!inFrontmatter && /^(`{3,}|~{3,})/.test(line)) {
+    // Track fenced code blocks (including indented fences inside lists/blockquotes)
+    const strippedForFence = line.replace(/^\s*(?:>\s*)*/,"");
+    if (!inFrontmatter && /^(`{3,}|~{3,})/.test(strippedForFence)) {
       inFencedCode = !inFencedCode;
       continue;
     }
@@ -110,8 +113,33 @@ function splitMarkdownBlocks(markdown: string): MarkdownBlock[] {
     // Skip blank-line splitting inside code blocks, frontmatter, or HTML blocks
     if (inFencedCode || inFrontmatter || htmlBlockDepth > 0) continue;
 
+    // Track list context — loose lists have blank lines between items
+    if (listType === null) {
+      if (/^\s*\d+[.)]\s/.test(line)) listType = "ordered";
+      else if (/^\s*[-*+]\s/.test(line)) listType = "bullet";
+    }
+
     // Blank line — end current block, start new one
     if (line === "" && i > blockStartLine) {
+      // Inside a list, check if the next non-blank line continues the SAME list
+      if (listType !== null) {
+        let nextNonBlank = "";
+        for (let j = i + 1; j < lines.length; j++) {
+          if (lines[j] !== "") { nextNonBlank = lines[j]; break; }
+        }
+        // List continues if next line is indented continuation
+        if (/^\s+\S/.test(nextNonBlank)) {
+          continue; // indented content, still in list
+        }
+        // List continues if next line is the same type of list item
+        const nextIsOrdered = /^\s*\d+[.)]\s/.test(nextNonBlank);
+        const nextIsBullet = /^\s*[-*+]\s/.test(nextNonBlank);
+        if ((listType === "ordered" && nextIsOrdered) || (listType === "bullet" && nextIsBullet)) {
+          continue; // same list type, loose list
+        }
+        listType = null;
+      }
+
       const blockStart = lineOffsets[blockStartLine];
       const blockEnd = lineOffsets[i - 1] + lines[i - 1].length;
       blocks.push({
@@ -379,11 +407,14 @@ export function mdLineToPmBlockStart(
     lineOffset += lines[i].length + 1;
   }
 
+  let listType: "ordered" | "bullet" | null = null;
+
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
     const trimmed = l.trim();
 
-    if (!inFrontmatter && /^(`{3,}|~{3,})/.test(l)) {
+    const strippedForFence = l.replace(/^\s*(?:>\s*)*/,"");
+    if (!inFrontmatter && /^(`{3,}|~{3,})/.test(strippedForFence)) {
       inFencedCode = !inFencedCode;
       continue;
     }
@@ -401,7 +432,27 @@ export function mdLineToPmBlockStart(
     }
     if (inFencedCode || inFrontmatter || htmlBlockDepth > 0) continue;
 
+    if (listType === null) {
+      if (/^\s*\d+[.)]\s/.test(l)) listType = "ordered";
+      else if (/^\s*[-*+]\s/.test(l)) listType = "bullet";
+    }
+
     if (l === "" && i > blockStartLine) {
+      if (listType !== null) {
+        let nextNonBlank = "";
+        for (let j = i + 1; j < lines.length; j++) {
+          if (lines[j] !== "") { nextNonBlank = lines[j]; break; }
+        }
+        if (/^\s+\S/.test(nextNonBlank)) {
+          continue;
+        }
+        const nextIsOrdered = /^\s*\d+[.)]\s/.test(nextNonBlank);
+        const nextIsBullet = /^\s*[-*+]\s/.test(nextNonBlank);
+        if ((listType === "ordered" && nextIsOrdered) || (listType === "bullet" && nextIsBullet)) {
+          continue;
+        }
+        listType = null;
+      }
       rawBlocks.push({
         start: lineOffsets[blockStartLine],
         end: lineOffsets[i - 1] + lines[i - 1].length,
