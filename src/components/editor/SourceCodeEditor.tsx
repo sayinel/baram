@@ -2,7 +2,7 @@
 import { useEffect, useRef, forwardRef, useImperativeHandle } from "react";
 import { EditorView, keymap, lineNumbers, drawSelection } from "@codemirror/view";
 import { EditorState, EditorSelection } from "@codemirror/state";
-import { defaultKeymap, indentWithTab } from "@codemirror/commands";
+import { defaultKeymap, historyKeymap, indentWithTab, history } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { bracketMatching, indentUnit } from "@codemirror/language";
 import { useSettingsStore } from "../../stores/settings-store";
@@ -70,8 +70,10 @@ export const SourceCodeEditor = forwardRef<SourceCodeEditorRef, SourceCodeEditor
           keymap.of([
             { key: "Mod-/", run: () => true }, // Swallow — handled by App's global shortcut
             ...defaultKeymap,
+            ...historyKeymap,
             indentWithTab,
           ]),
+          history(),
           ...(showLineNumbers ? [lineNumbers()] : []),
           drawSelection(),
           bracketMatching(),
