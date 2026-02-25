@@ -6,7 +6,7 @@ import { tauriStorage } from "./tauri-storage";
 type Theme = "light" | "dark" | "system";
 type OnLaunch = "newFile" | "restoreLastFolder" | "restoreLastFile";
 type WikilinkFormat = "wikilink" | "markdown";
-type CodeBlockStyle = "default" | "minimal" | "contrast";
+type CodeBlockStyle = "default" | "minimal" | "contrast" | "paper";
 
 interface SettingsState {
   // General

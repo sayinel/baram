@@ -303,11 +303,12 @@ function MarkdownTab() {
         <select
           className="settings-select"
           value={codeBlockStyle}
-          onChange={(e) => setCodeBlockStyle(e.target.value as "default" | "minimal" | "contrast")}
+          onChange={(e) => setCodeBlockStyle(e.target.value as "default" | "minimal" | "contrast" | "paper")}
         >
           <option value="default">Default</option>
           <option value="minimal">Minimal</option>
           <option value="contrast">Contrast</option>
+          <option value="paper">Paper</option>
         </select>
       </SettingsRow>
 
