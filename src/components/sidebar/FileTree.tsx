@@ -17,12 +17,13 @@ function IconFolder() {
   return <svg {...S}><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></svg>;
 }
 
-function IconFile({ label }: { label?: string }) {
+function IconFile({ label, color }: { label?: string; color?: string }) {
+  const props = color ? { ...S, stroke: color } : S;
   return (
-    <svg {...S}>
+    <svg {...props}>
       <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
       <polyline points="14 2 14 8 20 8" />
-      {label && <text x="12" y="19" textAnchor="middle" fontSize="8" fill="currentColor" stroke="none" fontFamily="system-ui,sans-serif" fontWeight="700">{label}</text>}
+      {label && <text x="12" y="19" textAnchor="middle" fontSize="8" fill={color ?? "currentColor"} stroke="none" fontFamily="system-ui,sans-serif" fontWeight="700">{label}</text>}
     </svg>
   );
 }
@@ -51,20 +52,20 @@ function IconNewFolder() {
 function getFileIcon(name: string) {
   const ext = name.includes(".") ? name.split(".").pop()?.toLowerCase() || "" : "";
   switch (ext) {
-    case "md": case "mdx": return <IconFile label="M" />;
-    case "ts": case "tsx": return <IconFile label="TS" />;
-    case "js": case "jsx": case "mjs": case "cjs": return <IconFile label="JS" />;
-    case "json": return <IconFile label="{}" />;
-    case "css": case "scss": case "less": return <IconFile label="#" />;
-    case "html": case "htm": return <IconFile label="&lt;&gt;" />;
-    case "rs": return <IconFile label="RS" />;
-    case "toml": return <IconFile label="T" />;
-    case "yaml": case "yml": return <IconFile label="Y" />;
-    case "py": return <IconFile label="PY" />;
-    case "go": return <IconFile label="GO" />;
-    case "sh": case "bash": case "zsh": return <IconFile label="$" />;
+    case "md": case "mdx": return <IconFile label="M" color="#519aba" />;
+    case "ts": case "tsx": return <IconFile label="TS" color="#3178c6" />;
+    case "js": case "jsx": case "mjs": case "cjs": return <IconFile label="JS" color="#e8d44d" />;
+    case "json": return <IconFile label="{}" color="#cbcb41" />;
+    case "css": case "scss": case "less": return <IconFile label="#" color="#56b6c2" />;
+    case "html": case "htm": return <IconFile label="&lt;&gt;" color="#e37933" />;
+    case "rs": return <IconFile label="RS" color="#dea584" />;
+    case "toml": return <IconFile label="T" color="#9c4221" />;
+    case "yaml": case "yml": return <IconFile label="Y" color="#cb171e" />;
+    case "py": return <IconFile label="PY" color="#3572a5" />;
+    case "go": return <IconFile label="GO" color="#00add8" />;
+    case "sh": case "bash": case "zsh": return <IconFile label="$" color="#89e051" />;
     case "svg": case "png": case "jpg": case "jpeg": case "gif": case "webp": case "ico":
-      return <IconFile label="img" />;
+      return <IconFile label="img" color="#a074c4" />;
     default: return <IconFile />;
   }
 }
