@@ -86,6 +86,7 @@ Baram hides markdown syntax while you write and reveals it only when your cursor
 | Toggle Heading | Slash command `/toggle heading 1` – `/toggle heading 3` |
 | Mermaid Diagram | Slash command `/mermaid` or `Cmd+Shift+D` |
 | Table of Contents | Type `[TOC]` or slash command `/toc` |
+| Definition List | Type `Term` then `: Definition` on next line, or slash command `/definition-list` |
 | Footnote Reference | Type `[^id]` inline |
 | Footnote Definition | Auto-created at document end when `[^id]` is typed |
 | YAML Frontmatter | Auto-detected at document start |
@@ -228,6 +229,11 @@ GFM (GitHub Flavored Markdown) pipe table support:
 - **Find** (`Cmd+F`) — Search for text with match highlighting, navigate matches with Enter / Shift+Enter
 - **Replace** (`Cmd+H`) — Replace one or all matches
 
+### Global Search
+
+- **`Cmd+Shift+F`** — Full-text search across all files in the workspace using tantivy
+- Supports regex, file/folder filters, and replace across files
+
 ### Graph View
 
 Visual map of your note connections. See how your documents are linked through wikilinks — nodes represent files, edges represent links.
@@ -347,6 +353,7 @@ Create your own slash commands in **Settings > AI > Custom Commands**. Use varia
 | Bookmark | `Cmd+D` |
 | Navigate Back | `Ctrl+-` |
 | Navigate Forward | `Ctrl+Shift+-` |
+| Global Search | `Cmd+Shift+F` |
 | Tab Switcher (MRU) | `Ctrl+Tab` |
 | Settings | `Cmd+,` |
 | Undo | `Cmd+Z` |
@@ -478,13 +485,12 @@ Reverse:  ProseMirror Document → mdast → remark-stringify
 
 | Milestone | Status | Description |
 |-----------|--------|-------------|
-| M9 Productivity | ✅ Done | Highlight / subscript / superscript marks, Table of Contents, Table Tier 3 (column resize, pipe-input creation), Footnotes, Help panel |
+| M9 Productivity | ✅ Done | Highlight / subscript / superscript marks, Table of Contents, Table Tier 3 (column resize, pipe-input creation), Footnotes, Help panel, Global Search (Cmd+Shift+F), Definition List |
 
 **Phase 3 — Advanced** (upcoming)
 
 | Feature | Description |
 |---------|-------------|
-| Global Search | `Cmd+Shift+F` — Full-text search across workspace |
 | Git Integration | Built-in version control |
 | Theme System | Custom themes and color schemes |
 | Table Cell Merge | Merge/split table cells, virtual scroll for 50+ rows |

@@ -136,6 +136,7 @@ describe('MathBlock Extension', () => {
 | image | `![alt](url)` | 1 | M2 | — |
 | callout | `> [!type] title` | 2 | M7 | `> [!` |
 | mermaid | ` ```mermaid ` | 2 | M9 | — |
+| definitionList | `Term\n: Definition` | 2 | M9 | `: ` |
 
 ## Mark Extension 목록
 
