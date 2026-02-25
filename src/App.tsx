@@ -42,6 +42,7 @@ import { useNavigationStore } from "./stores/navigation-store";
 import { useAutoSave } from "./hooks/use-auto-save";
 import { useGhostText } from "./hooks/use-ghost-text";
 import { useInlineAI } from "./hooks/use-inline-ai";
+import { useFileWatcher } from "./hooks/use-file-watcher";
 import { readFile, writeFile, getOpenedUrls, updateFileIndex } from "./ipc/invoke";
 import { useLinkStore } from "./stores/link-store";
 import { migrateFromLocalStorage } from "./stores/tauri-storage";
@@ -211,6 +212,9 @@ function App() {
 
   // Auto-save hook
   useAutoSave(editor);
+
+  // File system watcher — auto-refresh FileTree on external changes
+  useFileWatcher();
 
   // §43 Ghost Text — inline AI completion
   useGhostText(editor);
