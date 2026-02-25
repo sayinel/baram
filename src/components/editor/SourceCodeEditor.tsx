@@ -1,11 +1,13 @@
-// §5.1 Source Code Mode — CodeMirror 6 markdown editor
+// §5.1 Source Code Mode — CodeMirror 6 editor (markdown + non-MD languages)
 import { useEffect, useRef, forwardRef, useImperativeHandle } from "react";
 import { EditorView, keymap, lineNumbers, drawSelection } from "@codemirror/view";
-import { EditorState, EditorSelection } from "@codemirror/state";
+import { EditorState, EditorSelection, Compartment } from "@codemirror/state";
 import { defaultKeymap, historyKeymap, indentWithTab, history } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
-import { bracketMatching, indentUnit } from "@codemirror/language";
+import { bracketMatching, syntaxHighlighting, indentUnit } from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
+import { getLanguageExtension } from "../../extensions/nodes/code-block-languages";
+import { getHighlightStyle } from "../../extensions/nodes/code-block-highlight";
 import { useSettingsStore } from "../../stores/settings-store";
 
 export interface SourceCodeEditorRef {
@@ -18,10 +20,12 @@ interface SourceCodeEditorProps {
   content: string;
   onChange: (content: string) => void;
   initialCursorOffset?: number;
+  /** CodeMirror language name (e.g. "json", "python"). Omit or "markdown" for markdown. */
+  language?: string;
 }
 
 export const SourceCodeEditor = forwardRef<SourceCodeEditorRef, SourceCodeEditorProps>(
-  function SourceCodeEditor({ content, onChange, initialCursorOffset }, ref) {
+  function SourceCodeEditor({ content, onChange, initialCursorOffset, language }, ref) {
     const containerRef = useRef<HTMLDivElement>(null);
     const viewRef = useRef<EditorView | null>(null);
     // Guard: prevent onChange during destroy (React StrictMode double-invoke safety)
@@ -66,6 +70,11 @@ export const SourceCodeEditor = forwardRef<SourceCodeEditorRef, SourceCodeEditor
       const showLineNumbers = useSettingsStore.getState().lineNumbers;
       const autoPair = useSettingsStore.getState().autoPairBrackets;
 
+      // Dynamic language via Compartment — markdown (sync), others (async)
+      const langCompartment = new Compartment();
+      const isMarkdown = !language || language === "markdown";
+      const initialLang = isMarkdown ? markdown() : [];
+
       const state = EditorState.create({
         doc: content,
         extensions: [
@@ -80,8 +89,9 @@ export const SourceCodeEditor = forwardRef<SourceCodeEditorRef, SourceCodeEditor
           ...(showLineNumbers ? [lineNumbers()] : []),
           drawSelection(),
           bracketMatching(),
+          syntaxHighlighting(getHighlightStyle()),
           ...(autoPair ? [closeBrackets()] : []),
-          markdown(),
+          langCompartment.of(initialLang),
           updateListener,
           EditorView.lineWrapping,
           EditorState.tabSize.of(currentTabSize),
@@ -113,6 +123,14 @@ export const SourceCodeEditor = forwardRef<SourceCodeEditorRef, SourceCodeEditor
       });
 
       viewRef.current = view;
+
+      // Async language loading for non-markdown languages
+      if (!isMarkdown && language) {
+        getLanguageExtension(language).then((ext) => {
+          if (isDestroyingRef.current || !ext) return;
+          view.dispatch({ effects: langCompartment.reconfigure(ext) });
+        });
+      }
 
       // Two-phase init: focus first (triggers WebKit artifacts), then clean up
       requestAnimationFrame(() => {

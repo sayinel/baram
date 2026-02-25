@@ -59,6 +59,7 @@ import { InlineAIPrompt } from "./components/ai/InlineAIPrompt";
 import { PromptLintPanel } from "./components/ai/PromptLintPanel";
 import { findThemeById } from "./types/theme";
 import type { ThemeColors } from "./types/theme";
+import { isMarkdownFile, getLanguageForFile } from "./utils/file-type";
 import "./App.css";
 
 // §8.4 Lazy-loaded components — split into separate chunks, loaded on first use
@@ -161,6 +162,11 @@ function App() {
   const { activeTabId, tabs, openTab, markDirty } = useEditorStore();
   const { openFiles, setFileContent } = useFileStore();
 
+  // Derived: non-markdown code file detection for rendering branch
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+  const isCodeFile = !!activeTab && isFileTab(activeTab) && !isMarkdownFile(activeTab.filePath);
+  const codeLanguage = activeTab?.filePath ? getLanguageForFile(activeTab.filePath) : null;
+
   // §28 Wikilink navigation ref — breaks circular dependency (editor ↔ navigate)
   const navigateRef = useRef<(target: string, heading?: string | null) => void>(() => {});
   // §30c Block reference navigation ref
@@ -210,8 +216,33 @@ function App() {
     };
   }, [editor]);
 
-  // Auto-save hook
+  // Auto-save hook (markdown files — Tiptap editor.on("update") based)
   useAutoSave(editor);
+
+  // Auto-save for non-MD code files (debounced write when dirty)
+  const { autoSave, autoSaveDelay } = useSettingsStore();
+  const codeAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!isCodeFile || !autoSave) return;
+    const { activeTabId: tabId, tabs: currentTabs } = useEditorStore.getState();
+    const tab = currentTabs.find((t) => t.id === tabId);
+    if (!tab?.isDirty || !tab.filePath) return;
+
+    if (codeAutoSaveTimer.current) clearTimeout(codeAutoSaveTimer.current);
+    codeAutoSaveTimer.current = setTimeout(async () => {
+      try {
+        await writeFile(tab.filePath!, sourceContentRef.current);
+        setFileContent(tab.filePath!, sourceContentRef.current);
+        markDirty(tab.id, false);
+      } catch {
+        // Save failed — keep dirty state
+      }
+    }, autoSaveDelay);
+
+    return () => {
+      if (codeAutoSaveTimer.current) clearTimeout(codeAutoSaveTimer.current);
+    };
+  }, [isCodeFile, autoSave, autoSaveDelay, sourceContent, markDirty, setFileContent]);
 
   // File system watcher — auto-refresh FileTree on external changes
   useFileWatcher();
@@ -337,14 +368,15 @@ function App() {
       }
       // Only save ProseMirror state for file tabs (graph tabs have no editor state)
       if (isFileTab(prevTab)) {
+        const prevIsCode = !isMarkdownFile(prevTab?.filePath);
         // Cache EditorState before switching (keeps undo/redo stack intact)
-        if (!isSourceMode) {
+        // Non-MD files don't use ProseMirror — skip caching
+        if (!isSourceMode && !prevIsCode) {
           editorStateCache.current.set(prevTabId, editor.state);
         }
         if (prevTab?.filePath) {
           try {
-            // In source mode, save from CodeMirror (ProseMirror is stale)
-            const md = isSourceMode
+            const md = prevIsCode || isSourceMode
               ? sourceContentRef.current
               : prosemirrorToMarkdown(editor.state.doc);
             setFileContent(prevTab.filePath, md);
@@ -353,15 +385,15 @@ function App() {
           }
         }
       }
-      // Exit source mode when switching tabs
+      // Exit source mode when switching tabs (only applies to markdown)
       if (isSourceMode) {
         setIsSourceMode(false);
       }
     }
 
     // Load incoming tab content
-    const activeTab = tabs.find((t) => t.id === activeTabId);
-    if (!activeTab) {
+    const incomingTab = tabs.find((t) => t.id === activeTabId);
+    if (!incomingTab) {
       // No active tab — clear editor
       const emptyDoc = markdownToProsemirror("", editor.schema);
       const newState = EditorState.create({
@@ -373,13 +405,20 @@ function App() {
     }
 
     // Graph tab — no ProseMirror content to load
-    if (isGraphTab(activeTab)) return;
+    if (isGraphTab(incomingTab)) return;
 
-    const content = activeTab.filePath
-      ? openFiles.get(activeTab.filePath)
-      : openFiles.get(activeTab.id);
+    const content = incomingTab.filePath
+      ? openFiles.get(incomingTab.filePath)
+      : openFiles.get(incomingTab.id);
 
     if (content !== undefined) {
+      // Non-markdown file — load into source editor, skip ProseMirror entirely
+      if (!isMarkdownFile(incomingTab.filePath)) {
+        sourceContentRef.current = content;
+        setSourceContent(content);
+        return;
+      }
+
       // Try cached EditorState first (preserves undo/redo history)
       const cachedState = editorStateCache.current.get(activeTabId!);
       const cachedScrollTop = scrollTopCache.current.get(activeTabId!);
@@ -489,12 +528,21 @@ function App() {
     setSourceContent(content);
   }, []);
 
+  // onChange for non-MD code files — same as source but also marks dirty
+  const handleCodeFileChange = useCallback((content: string) => {
+    sourceContentRef.current = content;
+    setSourceContent(content);
+    const { activeTabId: tabId } = useEditorStore.getState();
+    if (tabId) markDirty(tabId, true);
+  }, [markDirty]);
+
   // Cmd+/ toggle between WYSIWYG and Source Code mode (§5.1 cursor preservation)
   const toggleSourceMode = useCallback(() => {
     if (!editor) return;
-    // Graph tab has no editor content — source mode not applicable
     const currentTab = tabs.find((t) => t.id === activeTabId);
+    // Graph tab / non-MD file — source mode not applicable
     if (isGraphTab(currentTab)) return;
+    if (currentTab && isFileTab(currentTab) && !isMarkdownFile(currentTab.filePath)) return;
 
     if (!isSourceMode) {
       // WYSIWYG → Source: collapse any active syntax reveal expansion first
@@ -609,21 +657,27 @@ function App() {
 
   const handleSave = useCallback(async () => {
     if (!editor) return;
-    const activeTab = tabs.find((t) => t.id === activeTabId);
-    if (!activeTab) return;
-    if (isGraphTab(activeTab)) return;
+    const saveTab = tabs.find((t) => t.id === activeTabId);
+    if (!saveTab) return;
+    if (isGraphTab(saveTab)) return;
 
-    const md = prosemirrorToMarkdown(editor.state.doc);
+    const isCode = saveTab.filePath && !isMarkdownFile(saveTab.filePath);
+    const md = isCode || isSourceMode
+      ? sourceContentRef.current
+      : prosemirrorToMarkdown(editor.state.doc);
 
-    if (activeTab.filePath) {
+    if (saveTab.filePath) {
       // Existing file — save directly
       try {
-        await writeFile(activeTab.filePath, md);
-        setFileContent(activeTab.filePath, md);
-        markDirty(activeTab.id, false);
-        updateFileIndex(activeTab.filePath)
-          .then(() => useLinkStore.getState().invalidate())
-          .catch(() => {});
+        await writeFile(saveTab.filePath, md);
+        setFileContent(saveTab.filePath, md);
+        markDirty(saveTab.id, false);
+        // Only index markdown files (link indexing not relevant for code files)
+        if (!isCode) {
+          updateFileIndex(saveTab.filePath)
+            .then(() => useLinkStore.getState().invalidate())
+            .catch(() => {});
+        }
       } catch (err) {
         console.error("[App] Failed to save:", err);
       }
@@ -639,18 +693,20 @@ function App() {
 
       try {
         await writeFile(savePath, md);
-        updateFileIndex(savePath)
-          .then(() => useLinkStore.getState().invalidate())
-          .catch(() => {});
+        if (!isCode) {
+          updateFileIndex(savePath)
+            .then(() => useLinkStore.getState().invalidate())
+            .catch(() => {});
+        }
         // Update tab with real path
         const fileName = savePath.split("/").pop() ?? "Unknown";
         // Remove old untitled content
-        useFileStore.getState().removeFileContent(activeTab.id);
+        useFileStore.getState().removeFileContent(saveTab.id);
         setFileContent(savePath, md);
         // Update the tab in store
         useEditorStore.setState((state) => ({
           tabs: state.tabs.map((t) =>
-            t.id === activeTab.id
+            t.id === saveTab.id
               ? { ...t, filePath: savePath, title: fileName, isDirty: false }
               : t,
           ),
@@ -659,15 +715,18 @@ function App() {
         console.error("[App] Failed to save as:", err);
       }
     }
-  }, [editor, tabs, activeTabId, setFileContent, markDirty]);
+  }, [editor, tabs, activeTabId, isSourceMode, setFileContent, markDirty]);
 
   const handleSaveAs = useCallback(async () => {
     if (!editor) return;
-    const activeTab = tabs.find((t) => t.id === activeTabId);
-    if (!activeTab) return;
-    if (isGraphTab(activeTab)) return;
+    const saveAsTab = tabs.find((t) => t.id === activeTabId);
+    if (!saveAsTab) return;
+    if (isGraphTab(saveAsTab)) return;
 
-    const md = prosemirrorToMarkdown(editor.state.doc);
+    const isCode = saveAsTab.filePath && !isMarkdownFile(saveAsTab.filePath);
+    const md = isCode || isSourceMode
+      ? sourceContentRef.current
+      : prosemirrorToMarkdown(editor.state.doc);
     const savePath = await save({
       filters: [
         { name: "Markdown", extensions: ["md"] },
@@ -678,17 +737,19 @@ function App() {
 
     try {
       await writeFile(savePath, md);
-      updateFileIndex(savePath)
-        .then(() => useLinkStore.getState().invalidate())
-        .catch(() => {});
+      if (!isCode) {
+        updateFileIndex(savePath)
+          .then(() => useLinkStore.getState().invalidate())
+          .catch(() => {});
+      }
       const fileName = savePath.split("/").pop() ?? "Unknown";
-      if (!activeTab.filePath) {
-        useFileStore.getState().removeFileContent(activeTab.id);
+      if (!saveAsTab.filePath) {
+        useFileStore.getState().removeFileContent(saveAsTab.id);
       }
       setFileContent(savePath, md);
       useEditorStore.setState((state) => ({
         tabs: state.tabs.map((t) =>
-          t.id === activeTab.id
+          t.id === saveAsTab.id
             ? { ...t, filePath: savePath, title: fileName, isDirty: false }
             : t,
         ),
@@ -696,7 +757,7 @@ function App() {
     } catch (err) {
       console.error("[App] Failed to save as:", err);
     }
-  }, [editor, tabs, activeTabId, setFileContent]);
+  }, [editor, tabs, activeTabId, isSourceMode, setFileContent]);
 
   const handleCloseTab = useCallback(() => {
     if (!activeTabId) return;
@@ -1454,6 +1515,18 @@ function App() {
             <div className="editor-area-scroll">
               <Suspense fallback={null}>
                 <GraphViewTab />
+              </Suspense>
+            </div>
+          ) : isCodeFile ? (
+            <div className="editor-area-scroll">
+              <Suspense fallback={null}>
+                <SourceCodeEditor
+                  key={`code-${activeTabId}`}
+                  ref={sourceEditorRef}
+                  content={sourceContent}
+                  onChange={handleCodeFileChange}
+                  language={codeLanguage ?? undefined}
+                />
               </Suspense>
             </div>
           ) : isSourceMode ? (

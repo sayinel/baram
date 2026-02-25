@@ -6,10 +6,12 @@ import { useSettingsStore } from "../stores/settings-store";
 import { prosemirrorToMarkdown } from "../pipeline";
 import { writeFile, updateFileIndex } from "../ipc/invoke";
 import { useLinkStore } from "../stores/link-store";
+import { isMarkdownFile } from "../utils/file-type";
 
 /**
  * Auto-save hook: 마지막 편집 후 설정된 딜레이(기본 2초) 뒤 자동 저장
  * §3.6: Debounced Write — 타이핑 중에는 저장하지 않음
+ * Note: Non-MD files are auto-saved by App.tsx directly; this hook only handles markdown.
  */
 export function useAutoSave(editor: Editor | null) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -21,6 +23,8 @@ export function useAutoSave(editor: Editor | null) {
     const { activeTabId, tabs, markDirty } = useEditorStore.getState();
     const tab = tabs.find((t) => t.id === activeTabId);
     if (!tab || !tab.filePath) return;
+    // Non-MD files don't use ProseMirror — skip (handled by App.tsx code auto-save)
+    if (!isMarkdownFile(tab.filePath)) return;
 
     try {
       const markdown = prosemirrorToMarkdown(editor.state.doc);
