@@ -9,6 +9,9 @@ import { llmListModels } from "../../ipc/invoke";
 import { formatAIError } from "../../utils/format-error";
 import type { ModelInfo } from "../../ipc/types";
 import { ExtensionsTab } from "./ExtensionsTab";
+import { BUILT_IN_THEMES } from "../../types/theme";
+import type { ThemeColors, ThemeDef } from "../../types/theme";
+import { THEME_COLOR_KEYS } from "../../types/theme";
 
 type SettingsTab = "general" | "editor" | "appearance" | "files" | "markdown" | "extensions" | "ai";
 
@@ -210,25 +213,158 @@ function EditorTab() {
 // ─── Appearance Tab ─────────────────────────────────────
 
 function AppearanceTab() {
-  const { theme, setTheme } = useSettingsStore();
+  const { activeThemeId, customThemes, setActiveTheme, saveCustomTheme, deleteCustomTheme } =
+    useSettingsStore();
+  const [editingTheme, setEditingTheme] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const allThemes = [...BUILT_IN_THEMES, ...customThemes];
+
+  /** The 5 swatch keys displayed on each card */
+  const SWATCH_KEYS: (keyof ThemeColors)[] = [
+    "--color-bg-primary",
+    "--color-text-primary",
+    "--color-accent",
+    "--color-bg-sidebar",
+    "--color-border",
+  ];
+
+  const handleImport = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const data = JSON.parse(reader.result as string);
+          // Validate required fields
+          if (typeof data.name !== "string" || !data.name) {
+            throw new Error("Missing or invalid 'name' field");
+          }
+          if (data.base !== "light" && data.base !== "dark") {
+            throw new Error("'base' must be 'light' or 'dark'");
+          }
+          if (!data.colors || typeof data.colors !== "object") {
+            throw new Error("Missing or invalid 'colors' object");
+          }
+          // Validate all 16 color keys are present
+          const requiredKeys = THEME_COLOR_KEYS.map((k) => k.key);
+          for (const key of requiredKeys) {
+            if (typeof data.colors[key] !== "string") {
+              throw new Error(`Missing color key: ${key}`);
+            }
+          }
+          const newTheme: ThemeDef = {
+            id: "custom-" + Date.now(),
+            name: data.name,
+            base: data.base,
+            colors: data.colors,
+            builtIn: false,
+          };
+          saveCustomTheme(newTheme);
+          setActiveTheme(newTheme.id);
+        } catch (err) {
+          console.error("Theme import failed:", err);
+          alert("Invalid theme file: " + (err instanceof Error ? err.message : String(err)));
+        }
+      };
+      reader.readAsText(file);
+      // Reset so re-importing the same file triggers onChange
+      e.target.value = "";
+    },
+    [saveCustomTheme, setActiveTheme],
+  );
+
+  if (editingTheme) {
+    return (
+      <div className="settings-section">
+        <SettingsSectionHeader title="Theme Editor" />
+        <div>Theme editor coming soon</div>
+        <div className="theme-actions">
+          <button className="theme-action-btn" onClick={() => setEditingTheme(false)}>
+            Back
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="settings-section">
       <SettingsSectionHeader title="Theme" />
 
-      <SettingsRow label="Color Scheme" description="Choose the application color scheme">
-        <div className="settings-scheme-group">
-          {(["light", "dark", "system"] as const).map((value) => (
-            <button
-              key={value}
-              className={`settings-scheme-btn ${theme === value ? "settings-scheme-btn-active" : ""}`}
-              onClick={() => setTheme(value)}
-            >
-              {value === "light" ? "Light" : value === "dark" ? "Dark" : "System"}
-            </button>
-          ))}
-        </div>
-      </SettingsRow>
+      <div className="theme-gallery">
+        {/* System (Auto) card */}
+        <button
+          className={`theme-card theme-system-card ${activeThemeId === "system" ? "theme-card-active" : ""}`}
+          onClick={() => setActiveTheme("system")}
+        >
+          <div className="theme-card-swatches">
+            <span
+              className="theme-card-swatch"
+              style={{
+                background: "linear-gradient(135deg, #ffffff 50%, #1a1a2e 50%)",
+              }}
+            />
+          </div>
+          <span className="theme-card-name">System (Auto)</span>
+        </button>
+
+        {/* All themes */}
+        {allThemes.map((theme) => (
+          <button
+            key={theme.id}
+            className={`theme-card ${activeThemeId === theme.id ? "theme-card-active" : ""}`}
+            onClick={() => setActiveTheme(theme.id)}
+            style={
+              activeThemeId === theme.id
+                ? { borderColor: theme.colors["--color-accent"] }
+                : undefined
+            }
+          >
+            <div className="theme-card-swatches">
+              {SWATCH_KEYS.map((key) => (
+                <span
+                  key={key}
+                  className="theme-card-swatch"
+                  style={{ backgroundColor: theme.colors[key] }}
+                  title={key}
+                />
+              ))}
+            </div>
+            <span className="theme-card-name">{theme.name}</span>
+            {!theme.builtIn && <span className="theme-card-badge">Custom</span>}
+            {!theme.builtIn && (
+              <button
+                className="theme-card-delete"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  deleteCustomTheme(theme.id);
+                }}
+                title="Delete theme"
+              >
+                {"\u00D7"}
+              </button>
+            )}
+          </button>
+        ))}
+      </div>
+
+      <div className="theme-actions">
+        <button className="theme-action-btn" onClick={() => setEditingTheme(true)}>
+          Customize...
+        </button>
+        <button className="theme-action-btn" onClick={() => fileInputRef.current?.click()}>
+          Import Theme...
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json"
+          style={{ display: "none" }}
+          onChange={handleImport}
+        />
+      </div>
     </div>
   );
 }
