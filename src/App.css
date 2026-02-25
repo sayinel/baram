@@ -2066,6 +2066,340 @@ body {
   cursor: default;
 }
 
+.status-git-branch {
+  padding: 1px 6px;
+  border-radius: 3px;
+  background-color: var(--color-bg-primary);
+  border: 1px solid var(--color-border-light);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.status-git-dirty {
+  color: var(--color-text-secondary);
+}
+
+.status-git-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent);
+}
+
+/* ============================================
+   §57b Git Source Control Panel
+   ============================================ */
+
+.git-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+  font-size: 0.8rem;
+}
+
+.git-panel-empty {
+  padding: 1.5em;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.git-branch-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.5em 0.75em;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.git-branch-icon {
+  font-size: 1em;
+}
+
+.git-branch-name {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.git-commit-area {
+  padding: 0.5em 0.75em;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.git-commit-input {
+  display: block;
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  padding: 0.4em;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-light);
+  border-radius: 4px;
+  resize: vertical;
+  outline: none;
+}
+
+.git-commit-input:focus {
+  border-color: var(--color-accent);
+}
+
+.git-commit-btn {
+  display: block;
+  width: 100%;
+  margin-top: 0.4em;
+  padding: 0.35em;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: #fff;
+  background: var(--color-accent);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.git-commit-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.git-commit-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.git-error {
+  padding: 0.4em 0.75em;
+  font-size: 0.75rem;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.git-section {
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.git-section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.35em 0.75em;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  background: var(--color-bg-secondary);
+}
+
+.git-section-count {
+  font-weight: 400;
+  padding: 0 0.3em;
+  border-radius: 3px;
+  background: var(--color-bg-primary);
+  font-size: 0.7rem;
+}
+
+.git-section-header .git-action-btn {
+  margin-left: auto;
+}
+
+.git-change-list {
+  padding: 0.15em 0;
+}
+
+.git-change-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.2em 0.75em;
+  cursor: pointer;
+  user-select: none;
+}
+
+.git-change-item:hover {
+  background: var(--color-bg-secondary);
+}
+
+.git-change-icon {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  width: 1.2em;
+  text-align: center;
+}
+
+.git-status-modified { color: #e69500; }
+.git-status-added { color: #22c55e; }
+.git-status-deleted { color: #ef4444; }
+.git-status-renamed { color: #3b82f6; }
+
+.git-change-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+}
+
+.git-change-dir {
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+}
+
+.git-change-actions {
+  display: none;
+  gap: 0.2em;
+}
+
+.git-change-item:hover .git-change-actions {
+  display: flex;
+}
+
+.git-action-btn {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  background: none;
+  border: 1px solid var(--color-border-light);
+  border-radius: 3px;
+  padding: 0 0.3em;
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.git-action-btn:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-accent);
+}
+
+/* Git Diff Viewer Modal */
+
+.git-diff-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.git-diff-modal {
+  width: 85vw;
+  height: 75vh;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border-light);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.git-diff-header {
+  display: flex;
+  align-items: center;
+  padding: 0.6em 1em;
+  border-bottom: 1px solid var(--color-border-light);
+  flex-shrink: 0;
+}
+
+.git-diff-filename {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.git-diff-close {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-light);
+  border-radius: 4px;
+  padding: 0.2em 0.6em;
+  cursor: pointer;
+}
+
+.git-diff-close:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-accent);
+}
+
+.git-diff-body {
+  flex: 1;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  min-width: 0;
+}
+
+.git-diff-hunk-header {
+  padding: 0.3em 1em;
+  color: var(--color-text-muted);
+  background: var(--color-bg-secondary);
+  border-top: 1px solid var(--color-border-light);
+  font-size: 0.75rem;
+}
+
+.git-diff-line {
+  display: flex;
+  padding: 0 1em;
+  white-space: pre;
+}
+
+.git-diff-add {
+  background: rgba(34, 197, 94, 0.1);
+  color: #22c55e;
+}
+
+.git-diff-del {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.git-diff-lineno {
+  display: inline-block;
+  width: 3.5em;
+  text-align: right;
+  padding-right: 0.5em;
+  color: var(--color-text-muted);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.git-diff-origin {
+  display: inline-block;
+  width: 1.5em;
+  text-align: center;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.git-diff-content {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.git-diff-loading,
+.git-diff-binary,
+.git-diff-empty {
+  padding: 2em;
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
 /* ============================================
    §4.5 Command Palette
    ============================================ */

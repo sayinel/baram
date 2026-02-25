@@ -1,6 +1,7 @@
-// §4.8 Status bar — word count, cursor position, mode indicator
+// §4.8 Status bar — word count, cursor position, mode indicator, git branch
 import { useMemo } from "react";
 import type { Editor } from "@tiptap/react";
+import { useGitStore } from "../../stores/git-store";
 
 interface StatusBarProps {
   editor: Editor | null;
@@ -52,12 +53,21 @@ export function StatusBar({ editor, isSourceMode, isGraphMode }: StatusBarProps)
     return { words, chars, line, col };
   }, [editor, editor?.state.selection, editor?.state.doc]);
 
+  const { isRepo, branch, changes } = useGitStore();
+  const hasChanges = changes.length > 0;
+
   return (
     <div className="status-bar">
       <div className="status-bar-left">
         <span className="status-mode">
           {isGraphMode ? "Graph" : isSourceMode ? "Source" : "WYSIWYG"}
         </span>
+        {isRepo && branch && (
+          <span className={`status-git-branch ${hasChanges ? "status-git-dirty" : ""}`} title={`Branch: ${branch}${hasChanges ? ` (${changes.length} changes)` : ""}`}>
+            ⎇ {branch}
+            {hasChanges && <span className="status-git-dot" />}
+          </span>
+        )}
       </div>
       {!isGraphMode && (
         <div className="status-bar-right">

@@ -2,7 +2,7 @@
 import type { ReactNode } from "react";
 import { useUIStore } from "../../stores/ui-store";
 
-type PanelId = "files" | "search" | "outline" | "backlinks" | "bookmarks" | "graph";
+type PanelId = "files" | "search" | "outline" | "backlinks" | "bookmarks" | "graph" | "git";
 
 const PANEL_ICONS: { id: PanelId; label: string; icon: ReactNode }[] = [
   {
@@ -70,6 +70,20 @@ const PANEL_ICONS: { id: PanelId; label: string; icon: ReactNode }[] = [
         <line x1="8.5" y1="7.5" x2="15.5" y2="16.5" />
         <line x1="15.5" y1="7.5" x2="8.5" y2="16.5" />
         <line x1="6" y1="9" x2="6" y2="15" />
+      </svg>
+    ),
+  },
+  {
+    id: "git",
+    label: "Source Control",
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="18" r="3" />
+        <circle cx="6" cy="6" r="3" />
+        <circle cx="18" cy="6" r="3" />
+        <line x1="12" y1="15" x2="12" y2="12" />
+        <path d="M12 12c0-3 -6-3 -6-6" />
+        <path d="M12 12c0-3 6-3 6-6" />
       </svg>
     ),
   },

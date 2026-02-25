@@ -53,12 +53,43 @@ export interface UnlinkedMention {
   matchText: string;
 }
 
-// §3.2 Git types
-export interface GitStatus {
+// §57b Git types
+export interface GitChange {
+  path: string;
+  /** "modified" | "added" | "deleted" | "renamed" | "untracked" */
+  status: string;
+  staged: boolean;
+}
+
+export interface GitStatusInfo {
   branch: string;
-  modified: string[];
-  staged: string[];
-  untracked: string[];
+  changes: GitChange[];
+  is_repo: boolean;
+}
+
+export interface GitDiffLine {
+  /** "+" | "-" | " " */
+  origin: string;
+  content: string;
+  old_lineno: number | null;
+  new_lineno: number | null;
+}
+
+export interface GitDiffHunk {
+  header: string;
+  lines: GitDiffLine[];
+}
+
+export interface GitFileDiff {
+  path: string;
+  hunks: GitDiffHunk[];
+  is_binary: boolean;
+}
+
+export interface GitBranchInfo {
+  name: string;
+  is_current: boolean;
+  is_remote: boolean;
 }
 
 // §6.3 LLM types

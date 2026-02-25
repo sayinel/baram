@@ -29,6 +29,7 @@ tempfile = "3"
 notify = "7"
 regex = "1"
 keyring = { version = "3", features = ["apple-native"] }
+git2 = "0.19"
 
 [features]
 default = ["custom-protocol"]

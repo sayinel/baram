@@ -6,6 +6,7 @@ import { GlobalSearch } from "../sidebar/GlobalSearch";
 import { Backlinks } from "../sidebar/Backlinks";
 import { BookmarkPanel } from "../sidebar/BookmarkPanel";
 import { GraphView } from "../sidebar/GraphView";
+import { GitPanel } from "../sidebar/GitPanel";
 import type { Editor } from "@tiptap/react";
 
 interface SidebarProps {
@@ -24,6 +25,7 @@ export function Sidebar({ editor }: SidebarProps) {
         {sidebarPanel === "backlinks" && <Backlinks />}
         {sidebarPanel === "bookmarks" && <BookmarkPanel />}
         {sidebarPanel === "graph" && <GraphView />}
+        {sidebarPanel === "git" && <GitPanel />}
       </div>
     </div>
   );

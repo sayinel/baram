@@ -2,6 +2,8 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useUIStore } from "../../stores/ui-store";
 import { useEditorStore } from "../../stores/editor-store";
+import { useGitStore } from "../../stores/git-store";
+import { useFileStore } from "../../stores/file-store";
 import { executeAICommand, getSelectedText, getSelectionOrParagraph, showPrompt } from "../../utils/ai-commands";
 import type { Editor } from "@tiptap/react";
 
@@ -210,6 +212,71 @@ function buildCommands(
       shortcut: "\u21E7\u2318T",
       action: () => {
         useUIStore.getState().toggleSkillTestDialog();
+      },
+    },
+    // §57b Git commands
+    {
+      id: "git:commit",
+      label: "Git: Commit",
+      category: "Git",
+      action: () => {
+        const rootPath = useFileStore.getState().rootPath;
+        if (!rootPath) return;
+        const { commitChanges } = useGitStore.getState();
+        commitChanges(rootPath);
+      },
+    },
+    {
+      id: "git:stage-all",
+      label: "Git: Stage All Changes",
+      category: "Git",
+      action: () => {
+        const rootPath = useFileStore.getState().rootPath;
+        if (!rootPath) return;
+        useGitStore.getState().stageAll(rootPath);
+      },
+    },
+    {
+      id: "git:unstage-all",
+      label: "Git: Unstage All",
+      category: "Git",
+      action: () => {
+        const rootPath = useFileStore.getState().rootPath;
+        if (!rootPath) return;
+        useGitStore.getState().unstageAll(rootPath);
+      },
+    },
+    {
+      id: "git:switch-branch",
+      label: "Git: Switch Branch",
+      category: "Git",
+      action: () => {
+        useUIStore.getState().setSidebarPanel("git");
+        if (!useUIStore.getState().sidebarOpen) {
+          useUIStore.getState().toggleSidebar();
+        }
+        useGitStore.getState().setShowBranchPicker(true);
+      },
+    },
+    {
+      id: "git:refresh",
+      label: "Git: Refresh Status",
+      category: "Git",
+      action: () => {
+        const rootPath = useFileStore.getState().rootPath;
+        if (!rootPath) return;
+        useGitStore.getState().refresh(rootPath);
+      },
+    },
+    {
+      id: "git:source-control",
+      label: "Git: Open Source Control Panel",
+      category: "Git",
+      action: () => {
+        useUIStore.getState().setSidebarPanel("git");
+        if (!useUIStore.getState().sidebarOpen) {
+          useUIStore.getState().toggleSidebar();
+        }
       },
     },
     // §6.2 Selection-based AI commands

@@ -11,7 +11,7 @@ mod search;
 
 use std::sync::Mutex;
 
-use commands::{config_cmd, export_cmd, fs_cmd, index_cmd, keyring_cmd, llm_cmd, search_cmd};
+use commands::{config_cmd, export_cmd, fs_cmd, git_cmd, index_cmd, keyring_cmd, llm_cmd, search_cmd};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 
@@ -348,6 +348,15 @@ pub fn run() {
             keyring_cmd::keyring_get,
             keyring_cmd::keyring_delete,
             search_cmd::search_files,
+            git_cmd::git_status,
+            git_cmd::git_stage,
+            git_cmd::git_unstage,
+            git_cmd::git_commit,
+            git_cmd::git_diff_file,
+            git_cmd::git_branches,
+            git_cmd::git_switch_branch,
+            git_cmd::git_discard,
+            git_cmd::git_create_branch,
             get_opened_urls,
         ])
         .build(tauri::generate_context!())

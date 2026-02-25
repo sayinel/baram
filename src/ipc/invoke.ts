@@ -8,7 +8,9 @@ import type {
   BacklinkEntry,
   LinkGraph,
   IndexStats,
-  GitStatus,
+  GitStatusInfo,
+  GitFileDiff,
+  GitBranchInfo,
   ExportFormat,
   ExportOptions,
   PdfOptions,
@@ -164,18 +166,41 @@ export async function exportPdf(
   return invoke<void>("export_pdf", { htmlContent, outputPath, options });
 }
 
-// §3.2 Git commands — TODO: Rust handler not yet implemented (M9)
-export async function gitStatus(_path: string): Promise<GitStatus> {
-  console.warn("[IPC] git_status not yet implemented");
-  return { branch: "", modified: [], staged: [], untracked: [] };
+// §57b Git commands
+export async function gitStatus(path: string): Promise<GitStatusInfo> {
+  return invoke<GitStatusInfo>("git_status", { path });
 }
 
-export async function gitCommit(
-  _path: string,
-  _message: string,
-): Promise<string> {
-  console.warn("[IPC] git_commit not yet implemented");
-  return "";
+export async function gitStage(path: string, files: string[]): Promise<void> {
+  return invoke<void>("git_stage", { path, files });
+}
+
+export async function gitUnstage(path: string, files: string[]): Promise<void> {
+  return invoke<void>("git_unstage", { path, files });
+}
+
+export async function gitCommit(path: string, message: string): Promise<string> {
+  return invoke<string>("git_commit", { path, message });
+}
+
+export async function gitDiffFile(path: string, filePath: string): Promise<GitFileDiff> {
+  return invoke<GitFileDiff>("git_diff_file", { path, filePath });
+}
+
+export async function gitBranches(path: string): Promise<GitBranchInfo[]> {
+  return invoke<GitBranchInfo[]>("git_branches", { path });
+}
+
+export async function gitSwitchBranch(path: string, branchName: string): Promise<void> {
+  return invoke<void>("git_switch_branch", { path, branchName });
+}
+
+export async function gitDiscard(path: string, files: string[]): Promise<void> {
+  return invoke<void>("git_discard", { path, files });
+}
+
+export async function gitCreateBranch(path: string, branchName: string): Promise<void> {
+  return invoke<void>("git_create_branch", { path, branchName });
 }
 
 // §3.2 Snapshot commands — TODO: Rust handler not yet implemented (M9)

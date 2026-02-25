@@ -3,6 +3,7 @@
 pub mod config_cmd;
 pub mod export_cmd;
 pub mod fs_cmd;
+pub mod git_cmd;
 pub mod index_cmd;
 pub mod keyring_cmd;
 pub mod llm_cmd;
