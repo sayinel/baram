@@ -41,6 +41,10 @@ interface SettingsState {
   codeBlockStyle: CodeBlockStyle;
   smartPunctuation: boolean;
 
+  // Extension settings (dynamic key-value)
+  extensionSettings: Record<string, unknown>;
+  setExtensionSetting: (key: string, value: unknown) => void;
+
   // General setters
   setOnLaunch: (onLaunch: OnLaunch) => void;
   setAutoSave: (enabled: boolean) => void;
@@ -68,10 +72,12 @@ interface SettingsState {
   setInlineMath: (enabled: boolean) => void;
   setHighlight: (enabled: boolean) => void;
   setStrikethrough: (enabled: boolean) => void;
+  setSmartPunctuation: (enabled: boolean) => void;
+
+  // Legacy setters (delegate to setExtensionSetting — will be removed after SettingsModal migration)
   setDiagrams: (enabled: boolean) => void;
   setCodeBlockLineNumbers: (enabled: boolean) => void;
   setCodeBlockStyle: (style: CodeBlockStyle) => void;
-  setSmartPunctuation: (enabled: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(persist((set) => ({
@@ -107,6 +113,9 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
   codeBlockStyle: "default",
   smartPunctuation: false,
 
+  // Extension settings (dynamic key-value)
+  extensionSettings: {},
+
   // General setters
   setOnLaunch: (onLaunch) => set({ onLaunch }),
   setAutoSave: (autoSave) => set({ autoSave }),
@@ -134,10 +143,36 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
   setInlineMath: (inlineMath) => set({ inlineMath }),
   setHighlight: (highlight) => set({ highlight }),
   setStrikethrough: (strikethrough) => set({ strikethrough }),
-  setDiagrams: (diagrams) => set({ diagrams }),
-  setCodeBlockLineNumbers: (codeBlockLineNumbers) => set({ codeBlockLineNumbers }),
-  setCodeBlockStyle: (codeBlockStyle) => set({ codeBlockStyle }),
   setSmartPunctuation: (smartPunctuation) => set({ smartPunctuation }),
+
+  // Extension settings setter (with backward-compat sync)
+  setExtensionSetting: (key, value) =>
+    set((state) => {
+      const newExt = { ...state.extensionSettings, [key]: value };
+      const patch: Record<string, unknown> = { extensionSettings: newExt };
+      // Backward compat: sync legacy fields
+      if (key === "codeBlockLineNumbers") patch.codeBlockLineNumbers = value as boolean;
+      if (key === "codeBlockStyle") patch.codeBlockStyle = value as string;
+      if (key === "diagrams") patch.diagrams = value as boolean;
+      return patch;
+    }),
+
+  // Legacy setters — delegate to extensionSettings (remove after SettingsModal migration)
+  setDiagrams: (diagrams) =>
+    set((state) => ({
+      diagrams,
+      extensionSettings: { ...state.extensionSettings, diagrams },
+    })),
+  setCodeBlockLineNumbers: (codeBlockLineNumbers) =>
+    set((state) => ({
+      codeBlockLineNumbers,
+      extensionSettings: { ...state.extensionSettings, codeBlockLineNumbers },
+    })),
+  setCodeBlockStyle: (codeBlockStyle) =>
+    set((state) => ({
+      codeBlockStyle,
+      extensionSettings: { ...state.extensionSettings, codeBlockStyle },
+    })),
 }), {
   name: "baram:settings",
   storage: createJSONStorage(() => tauriStorage),
@@ -164,5 +199,18 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
     codeBlockLineNumbers: state.codeBlockLineNumbers,
     codeBlockStyle: state.codeBlockStyle,
     smartPunctuation: state.smartPunctuation,
+    extensionSettings: state.extensionSettings,
   }),
+  version: 1,
+  migrate: (persisted: unknown) => {
+    const state = persisted as Record<string, unknown>;
+    const ext = (state.extensionSettings ?? {}) as Record<string, unknown>;
+    for (const key of ["codeBlockLineNumbers", "codeBlockStyle", "diagrams"]) {
+      if (key in state && !(key in ext)) {
+        ext[key] = state[key];
+      }
+    }
+    state.extensionSettings = ext;
+    return state;
+  },
 }));
