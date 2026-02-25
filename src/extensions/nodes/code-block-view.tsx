@@ -5,6 +5,7 @@ import { EditorView, ViewUpdate, keymap, lineNumbers, drawSelection } from "@cod
 import { EditorState } from "@codemirror/state";
 import { defaultKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, syntaxHighlighting, defaultHighlightStyle, indentUnit } from "@codemirror/language";
+import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { getLanguageExtension, LANGUAGE_OPTIONS } from "./code-block-languages";
 import { useSettingsStore } from "../../stores/settings-store";
 
@@ -15,6 +16,7 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
   const language = (node.attrs.language as string) || "";
   const tabSize = useSettingsStore((s) => s.tabSize);
   const showLineNumbers = useSettingsStore((s) => s.codeBlockLineNumbers);
+  const autoPair = useSettingsStore((s) => s.autoPairBrackets);
   const codeBlockStyle = useSettingsStore((s) => s.codeBlockStyle);
 
   const handleLanguageChange = useCallback(
@@ -44,6 +46,7 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
 
       const currentTabSize = useSettingsStore.getState().tabSize;
       const currentShowLineNumbers = useSettingsStore.getState().codeBlockLineNumbers;
+      const currentAutoPair = useSettingsStore.getState().autoPairBrackets;
 
       // Custom keymaps for PM ↔ CM navigation
       const customKeymap = keymap.of([
@@ -124,10 +127,11 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
 
       const extensions = [
         customKeymap,
-        keymap.of([...defaultKeymap, indentWithTab]),
+        keymap.of([...defaultKeymap, ...(currentAutoPair ? closeBracketsKeymap : []), indentWithTab]),
         ...(currentShowLineNumbers ? [lineNumbers()] : []),
         drawSelection(),
         bracketMatching(),
+        ...(currentAutoPair ? [closeBrackets()] : []),
         syntaxHighlighting(defaultHighlightStyle),
         EditorView.lineWrapping,
         EditorState.tabSize.of(currentTabSize),
@@ -191,7 +195,7 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
     };
     // Recreate when language, tabSize, or lineNumbers changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language, tabSize, showLineNumbers]);
+  }, [language, tabSize, showLineNumbers, autoPair]);
 
   // Focus CodeMirror when ProseMirror selects this code block (NodeSelection)
   useEffect(() => {

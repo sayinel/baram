@@ -168,7 +168,7 @@ function EditorTab() {
 
       <SettingsSectionHeader title="Behavior" />
 
-      <SettingsRow label="Tab Size" description="Number of spaces per tab">
+      <SettingsRow label="Tab Size" description="Spaces per tab in source mode and code blocks">
         <select
           className="settings-select"
           value={tabSize}
@@ -179,13 +179,13 @@ function EditorTab() {
         </select>
       </SettingsRow>
 
-      <SettingsRow label="Auto Pair Brackets" description="Automatically close brackets and quotes">
+      <SettingsRow label="Auto Pair Brackets" description="Auto-close brackets and quotes in source mode and code blocks">
         <ToggleSwitch checked={autoPairBrackets} onChange={setAutoPairBrackets} />
       </SettingsRow>
 
       <SettingsSectionHeader title="Display" />
 
-      <SettingsRow label="Line Numbers" description="Show line numbers in the gutter">
+      <SettingsRow label="Line Numbers" description="Show line numbers in source mode">
         <ToggleSwitch checked={lineNumbers} onChange={setLineNumbers} />
       </SettingsRow>
 
@@ -194,7 +194,7 @@ function EditorTab() {
           type="range"
           className="settings-range"
           min={0}
-          max={1200}
+          max={2048}
           step={50}
           value={editorMaxWidth}
           onChange={(e) => setEditorMaxWidth(Number(e.target.value))}

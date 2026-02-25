@@ -6,6 +6,7 @@ import { EditorView as CMView, ViewUpdate, keymap, lineNumbers, drawSelection } 
 import { EditorState as CMState } from "@codemirror/state";
 import { defaultKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, syntaxHighlighting, defaultHighlightStyle, indentUnit } from "@codemirror/language";
+import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { getLanguageExtension, LANGUAGE_OPTIONS } from "./code-block-languages";
 import { useSettingsStore } from "../../stores/settings-store";
 import type { Node as PMNode } from "@tiptap/pm/model";
@@ -91,6 +92,7 @@ export class CodeBlockNodeView implements NodeView {
       if (
         state.tabSize !== prev.tabSize ||
         state.codeBlockLineNumbers !== prev.codeBlockLineNumbers ||
+        state.autoPairBrackets !== prev.autoPairBrackets ||
         state.codeBlockStyle !== prev.codeBlockStyle
       ) {
         wrapper.dataset.style = state.codeBlockStyle;
@@ -110,7 +112,7 @@ export class CodeBlockNodeView implements NodeView {
     if (this.destroyed) return;
 
     const settings = useSettingsStore.getState();
-    const { tabSize, codeBlockLineNumbers } = settings;
+    const { tabSize, codeBlockLineNumbers, autoPairBrackets } = settings;
 
     // Helper to exit CodeMirror → ProseMirror with proper direction bias.
     // dir: -1 = up/backward, 1 = down/forward
@@ -219,10 +221,11 @@ export class CodeBlockNodeView implements NodeView {
 
     const extensions = [
       customKeys,
-      keymap.of([...defaultKeymap, indentWithTab]),
+      keymap.of([...defaultKeymap, ...(autoPairBrackets ? closeBracketsKeymap : []), indentWithTab]),
       ...(codeBlockLineNumbers ? [lineNumbers()] : []),
       drawSelection(),
       bracketMatching(),
+      ...(autoPairBrackets ? [closeBrackets()] : []),
       syntaxHighlighting(defaultHighlightStyle),
       CMView.lineWrapping,
       CMState.tabSize.of(tabSize),

@@ -5,6 +5,7 @@ import { EditorState, EditorSelection } from "@codemirror/state";
 import { defaultKeymap, historyKeymap, indentWithTab, history } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import { bracketMatching, indentUnit } from "@codemirror/language";
+import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { useSettingsStore } from "../../stores/settings-store";
 
 export interface SourceCodeEditorRef {
@@ -63,6 +64,7 @@ export const SourceCodeEditor = forwardRef<SourceCodeEditorRef, SourceCodeEditor
       const cursorPos = Math.min(initialCursorOffset ?? 0, content.length);
       const currentTabSize = useSettingsStore.getState().tabSize;
       const showLineNumbers = useSettingsStore.getState().lineNumbers;
+      const autoPair = useSettingsStore.getState().autoPairBrackets;
 
       const state = EditorState.create({
         doc: content,
@@ -71,12 +73,14 @@ export const SourceCodeEditor = forwardRef<SourceCodeEditorRef, SourceCodeEditor
             { key: "Mod-/", run: () => true }, // Swallow — handled by App's global shortcut
             ...defaultKeymap,
             ...historyKeymap,
+            ...(autoPair ? closeBracketsKeymap : []),
             indentWithTab,
           ]),
           history(),
           ...(showLineNumbers ? [lineNumbers()] : []),
           drawSelection(),
           bracketMatching(),
+          ...(autoPair ? [closeBrackets()] : []),
           markdown(),
           updateListener,
           EditorView.lineWrapping,
