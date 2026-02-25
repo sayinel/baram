@@ -54,6 +54,10 @@ export async function deleteDir(path: string): Promise<void> {
   return invoke<void>("delete_dir", { path });
 }
 
+export async function copyFile(from: string, to: string): Promise<void> {
+  return invoke<void>("copy_file", { from, to });
+}
+
 export async function watchDir(path: string): Promise<void> {
   return invoke<void>("watch_dir", { path });
 }

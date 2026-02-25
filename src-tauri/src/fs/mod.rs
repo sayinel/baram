@@ -124,6 +124,15 @@ pub async fn delete_dir(path: &str) -> Result<(), FsError> {
         .map_err(FsError::ReadError)
 }
 
+/// 바이너리 파일 복사
+pub async fn copy_file(from: &str, to: &str) -> Result<(), FsError> {
+    if !Path::new(from).exists() {
+        return Err(FsError::NotFound(from.to_string()));
+    }
+    tokio::fs::copy(from, to).await.map_err(FsError::ReadError)?;
+    Ok(())
+}
+
 /// 파일 삭제
 pub async fn delete_file(path: &str) -> Result<(), FsError> {
     if !Path::new(path).exists() {

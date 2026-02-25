@@ -328,6 +328,7 @@ pub fn run() {
             fs_cmd::delete_file,
             fs_cmd::create_dir,
             fs_cmd::delete_dir,
+            fs_cmd::copy_file,
             fs_cmd::watch_dir,
             config_cmd::get_config,
             config_cmd::set_config,

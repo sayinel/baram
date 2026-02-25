@@ -1980,6 +1980,34 @@ body {
   border-radius: 3px;
 }
 
+/* External file drop (Tauri onDragDropEvent) visual feedback */
+.file-tree-ext-drop-target {
+  background: var(--color-accent-light, rgba(59, 130, 246, 0.15));
+  outline: 2px dashed var(--color-accent);
+  border-radius: 3px;
+}
+
+/* Editor drop indicator bar — shows the exact insertion line */
+.drop-indicator-bar {
+  position: fixed;
+  z-index: 50;
+  height: 2px;
+  background: var(--color-accent);
+  pointer-events: none;
+  display: none;
+}
+
+.drop-indicator-bar::before {
+  content: "";
+  position: absolute;
+  left: -3px;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-accent);
+}
+
 
 /* §4.3 Outline */
 .outline {

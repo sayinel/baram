@@ -19,7 +19,7 @@ export function Sidebar({ editor }: SidebarProps) {
   return (
     <div className="sidebar">
       <div className="sidebar-content">
-        {sidebarPanel === "files" && <FileTree />}
+        {sidebarPanel === "files" && <FileTree editor={editor} />}
         {sidebarPanel === "search" && <GlobalSearch />}
         {sidebarPanel === "outline" && <Outline editor={editor} />}
         {sidebarPanel === "backlinks" && <Backlinks />}

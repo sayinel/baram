@@ -9,6 +9,9 @@ import { useLinkStore } from "../../stores/link-store";
 import { readFile, writeFile, deleteFile, createDir, deleteDir, renameFile, renameFileWithLinks } from "../../ipc/invoke";
 import { flattenFileTree, fuzzyMatch, fuzzyScore, isGlobPattern, globMatch } from "../../utils/file-search";
 import { showConfirm } from "../../utils/confirm-dialog";
+import { isImageFile, getRelativePath } from "../../utils/path-utils";
+import { showDropIndicator, hideDropIndicator, resolveInsertTarget } from "../../utils/drop-indicator";
+import type { Editor } from "@tiptap/react";
 
 // --- Mono-style SVG Icons (Lucide-based, 24x24 viewBox) ---
 const S = { width: 14, height: 14, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinejoin: "round" as const, strokeLinecap: "round" as const };
@@ -292,7 +295,7 @@ function FileTreeNode({
 }
 
 // --- FileTree (main component) ---
-export function FileTree() {
+export function FileTree({ editor }: { editor?: Editor | null }) {
   const { fileTree, rootPath, setFileContent, renameFileEntry, addFileEntry, removeFileEntry, moveFileEntry } = useFileStore();
   const { openTab, tabs, activeTabId, closeTab, renameTab } = useEditorStore();
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
@@ -576,6 +579,20 @@ export function FileTree() {
       const el = document.elementFromPoint(e.clientX, e.clientY);
       const folderEl = el?.closest<HTMLElement>("[data-drop-path]");
       setDragOverPath(folderEl?.dataset.dropPath ?? null);
+
+      // Feature 3: editor drop indicator bar for image files
+      if (editor && isImageFile(state.sourcePath)) {
+        const scrollEl = document.querySelector(".editor-area-scroll");
+        const scrollRect = scrollEl?.getBoundingClientRect();
+        if (scrollRect && e.clientX >= scrollRect.left && e.clientX <= scrollRect.right &&
+            e.clientY >= scrollRect.top && e.clientY <= scrollRect.bottom) {
+          const target = resolveInsertTarget(editor, e.clientX, e.clientY);
+          if (target) showDropIndicator(target);
+          else hideDropIndicator();
+        } else {
+          hideDropIndicator();
+        }
+      }
     };
 
     const handleMouseUp = async (e: MouseEvent) => {
@@ -583,6 +600,7 @@ export function FileTree() {
       if (!state) return;
       dragRef.current = null;
       removeDragGhost();
+      hideDropIndicator();
 
       if (!state.active) {
         setIsDragging(false);
@@ -601,8 +619,34 @@ export function FileTree() {
       if (!rootPath) return;
       const sourcePath = state.sourcePath;
 
-      // Determine drop target folder
+      // Feature 3: Drop image file onto editor — insert relative-path image
       const el = document.elementFromPoint(e.clientX, e.clientY);
+      const scrollEl = document.querySelector(".editor-area-scroll");
+      const scrollRect = scrollEl?.getBoundingClientRect();
+      const overEditor = scrollRect && e.clientX >= scrollRect.left && e.clientX <= scrollRect.right &&
+            e.clientY >= scrollRect.top && e.clientY <= scrollRect.bottom;
+      if (overEditor && editor && isImageFile(sourcePath)) {
+        const { activeTabId: tabId, tabs: currentTabs } = useEditorStore.getState();
+        const tab = currentTabs.find((t) => t.id === tabId);
+        if (tab?.filePath) {
+          const fileDir = tab.filePath.substring(0, tab.filePath.lastIndexOf("/"));
+          const relativeSrc = getRelativePath(fileDir, sourcePath);
+          const fileName = sourcePath.split("/").pop() ?? "";
+
+          const target = resolveInsertTarget(editor, e.clientX, e.clientY);
+          const insertPos = target?.pos ?? editor.state.doc.content.size;
+
+          const imageNode = editor.state.schema.nodes.image.create({
+            src: relativeSrc,
+            alt: fileName.replace(/\.[^.]+$/, ""),
+          });
+          const tr = editor.state.tr.insert(insertPos, imageNode);
+          editor.view.dispatch(tr);
+        }
+        return; // Skip folder move logic
+      }
+
+      // Determine drop target folder
       const folderEl = el?.closest<HTMLElement>("[data-drop-path]");
       const targetPath = folderEl?.dataset.dropPath || rootPath;
 
@@ -633,9 +677,10 @@ export function FileTree() {
     return () => {
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
+      hideDropIndicator();
       removeDragGhost(); // cleanup on unmount
     };
-  }, [rootPath, moveFileEntry, renameTab, createDragGhost, removeDragGhost]);
+  }, [rootPath, editor, moveFileEntry, renameTab, createDragGhost, removeDragGhost]);
 
   // Start drag from file items via mousedown on root (event delegation)
   const handleTreeMouseDown = useCallback((e: React.MouseEvent) => {
