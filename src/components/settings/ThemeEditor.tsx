@@ -24,14 +24,13 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
 
   // Local editing state
   const [name, setName] = useState(() =>
-    sourceTheme.builtIn ? "" : sourceTheme.name,
+    sourceTheme.builtIn ? `Custom ${sourceTheme.name}` : sourceTheme.name,
   );
   const [base, setBase] = useState<"light" | "dark">(sourceTheme.base);
   const [colors, setColors] = useState<ThemeColors>(() => ({ ...sourceTheme.colors }));
 
   // Keep a ref to the original colors so we can restore on cancel/unmount
   const originalColorsRef = useRef<ThemeColors>({ ...sourceTheme.colors });
-  const nameInputRef = useRef<HTMLInputElement>(null);
 
   // Group color keys by category
   const categories = useMemo(() => {
@@ -71,16 +70,12 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   );
 
   const handleSave = useCallback(() => {
-    if (!name.trim()) {
-      nameInputRef.current?.focus();
-      return;
-    }
     const isCustom = !sourceTheme.builtIn;
     const themeId = isCustom ? sourceTheme.id : `custom-${Date.now()}`;
 
     const themeDef: ThemeDef = {
       id: themeId,
-      name: name.trim(),
+      name,
       base,
       colors: { ...colors },
       builtIn: false,
@@ -101,17 +96,12 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   }, [onClose]);
 
   const handleExport = useCallback(async () => {
-    if (!name.trim()) {
-      nameInputRef.current?.focus();
-      return;
-    }
-    const themeName = name.trim();
     const path = await save({
       filters: [{ name: "JSON", extensions: ["json"] }],
-      defaultPath: `${themeName}.json`,
+      defaultPath: `${name}.json`,
     });
     if (!path) return;
-    const data = JSON.stringify({ name: themeName, base, colors }, null, 2);
+    const data = JSON.stringify({ name, base, colors }, null, 2);
     await writeFile(path, data);
   }, [name, base, colors]);
 
@@ -119,13 +109,11 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     <div className="theme-editor">
       <div className="theme-editor-header">
         <input
-          ref={nameInputRef}
           type="text"
           className="theme-editor-name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Enter theme name..."
-          autoFocus={sourceTheme.builtIn}
+          placeholder="Theme name..."
         />
         <div className="theme-editor-base-toggle">
           <button
