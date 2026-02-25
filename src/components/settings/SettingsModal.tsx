@@ -1,4 +1,4 @@
-// Settings Modal — 6-tab settings (General, Editor, Appearance, Files, Markdown, AI)
+// Settings Modal — 7-tab settings (General, Editor, Appearance, Files, Markdown, Extensions, AI)
 // Obsidian-style layout: label + description per row, section headers for grouping
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useUIStore } from "../../stores/ui-store";
@@ -8,8 +8,9 @@ import { CustomAICommandEditor } from "./CustomAICommandEditor";
 import { llmListModels } from "../../ipc/invoke";
 import { formatAIError } from "../../utils/format-error";
 import type { ModelInfo } from "../../ipc/types";
+import { ExtensionsTab } from "./ExtensionsTab";
 
-type SettingsTab = "general" | "editor" | "appearance" | "files" | "markdown" | "ai";
+type SettingsTab = "general" | "editor" | "appearance" | "files" | "markdown" | "extensions" | "ai";
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: "general", label: "General" },
@@ -17,6 +18,7 @@ const TABS: { id: SettingsTab; label: string }[] = [
   { id: "appearance", label: "Appearance" },
   { id: "files", label: "Files" },
   { id: "markdown", label: "Markdown" },
+  { id: "extensions", label: "Extensions" },
   { id: "ai", label: "AI" },
 ];
 
@@ -53,6 +55,7 @@ export function SettingsModal() {
             {activeTab === "appearance" && <AppearanceTab />}
             {activeTab === "files" && <FilesTab />}
             {activeTab === "markdown" && <MarkdownTab />}
+            {activeTab === "extensions" && <ExtensionsTab />}
             {activeTab === "ai" && <AITab />}
           </div>
         </div>
@@ -267,9 +270,6 @@ function MarkdownTab() {
     inlineMath, setInlineMath,
     highlight, setHighlight,
     strikethrough, setStrikethrough,
-    diagrams, setDiagrams,
-    codeBlockLineNumbers, setCodeBlockLineNumbers,
-    codeBlockStyle, setCodeBlockStyle,
     smartPunctuation, setSmartPunctuation,
   } = useSettingsStore();
 
@@ -287,29 +287,6 @@ function MarkdownTab() {
 
       <SettingsRow label="Strikethrough" description="Enable ~~strikethrough~~ syntax">
         <ToggleSwitch checked={strikethrough} onChange={setStrikethrough} />
-      </SettingsRow>
-
-      <SettingsRow label="Diagrams" description="Render Mermaid diagrams in code blocks">
-        <ToggleSwitch checked={diagrams} onChange={setDiagrams} />
-      </SettingsRow>
-
-      <SettingsSectionHeader title="Code Blocks" />
-
-      <SettingsRow label="Line Numbers" description="Show line numbers in code blocks">
-        <ToggleSwitch checked={codeBlockLineNumbers} onChange={setCodeBlockLineNumbers} />
-      </SettingsRow>
-
-      <SettingsRow label="Code Block Style" description="Visual style for code blocks">
-        <select
-          className="settings-select"
-          value={codeBlockStyle}
-          onChange={(e) => setCodeBlockStyle(e.target.value as "default" | "minimal" | "contrast" | "paper")}
-        >
-          <option value="default">Default</option>
-          <option value="minimal">Minimal</option>
-          <option value="contrast">Contrast</option>
-          <option value="paper">Paper</option>
-        </select>
       </SettingsRow>
 
       <SettingsSectionHeader title="Typography" />
