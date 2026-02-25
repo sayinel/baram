@@ -21,6 +21,11 @@ import {
   isDetailsClosing,
   isDetailsOpening,
 } from "./transformers/toggle-transformer";
+import {
+  DEFINITION_PREFIX_RE,
+  isDefinitionLine,
+  stripDefinitionPrefix,
+} from "./transformers/definition-list-transformer";
 import { extractBlockId, BLOCK_REF_RE, parseBlockRefMatch, BLOCK_EMBED_RE, parseBlockEmbedMatch } from "./block-id";
 
 /** remark parser — markdown string → mdast */
@@ -121,6 +126,16 @@ function convertBlockChildren(
       }
     }
 
+    // Detect definition list: paragraph(non-:) + paragraph(:) pattern
+    if (child.type === "paragraph" && schema.nodes.definitionList) {
+      const dlResult = tryConvertDefinitionList(children, i, schema);
+      if (dlResult) {
+        result.push(dlResult.node);
+        i = dlResult.endIndex + 1;
+        continue;
+      }
+    }
+
     const node = convertBlockNode(child, schema);
     if (node) {
       if (Array.isArray(node)) {
@@ -200,6 +215,184 @@ function tryConvertToggle(
   );
 
   return { node: toggleNode, endIndex };
+}
+
+/**
+ * Try to convert a sequence of paragraphs into a definition list.
+ *
+ * remark-parse does NOT create separate paragraphs for `Term\n: Def` (no blank line).
+ * Instead, it produces a SINGLE paragraph with text "Term\n: Def".
+ *
+ * Two patterns:
+ * 1. Single paragraph: text contains `\n: ` — term is text before first `\n: `, defs after.
+ * 2. Two paragraphs (blank line): paragraph(term) + paragraph(`: def`).
+ *
+ * Multiple consecutive definition groups are merged into one <dl>.
+ */
+function tryConvertDefinitionList(
+  children: Content[],
+  startIndex: number,
+  schema: Schema,
+): { node: PmNode; endIndex: number } | null {
+  const dlChildren: PmNode[] = [];
+  let i = startIndex;
+
+  while (i < children.length) {
+    const child = children[i];
+    if (child.type !== "paragraph") break;
+
+    const paraChildren = (child as { children: PhrasingContent[] }).children;
+
+    // Pattern 1: Single paragraph with inline definition (Term\n: Def)
+    const inlineResult = tryParseInlineDefinition(paraChildren, schema);
+    if (inlineResult) {
+      dlChildren.push(...inlineResult);
+      i++;
+      continue;
+    }
+
+    // Pattern 2: Two separate paragraphs — term paragraph + `: def` paragraph
+    // Only attempt if this paragraph is NOT a definition line itself
+    if (paraChildren.length > 0) {
+      const firstText = paraChildren[0];
+      if (firstText.type === "text" && isDefinitionLine((firstText as Text).value)) {
+        break; // Starts with `: ` — not a term
+      }
+    }
+
+    const nextChild = children[i + 1];
+    if (
+      nextChild?.type === "paragraph" &&
+      isDefinitionParagraph(nextChild as { children: PhrasingContent[] })
+    ) {
+      // This is a term paragraph
+      const termInlineNodes = convertInlineChildren(paraChildren, schema, []);
+      dlChildren.push(schema.nodes.definitionTerm.create(null, termInlineNodes));
+
+      // Consume consecutive definition paragraphs
+      let j = i + 1;
+      while (j < children.length) {
+        const dc = children[j];
+        if (dc.type !== "paragraph") break;
+        if (!isDefinitionParagraph(dc as { children: PhrasingContent[] })) break;
+
+        const dcChildren = (dc as { children: PhrasingContent[] }).children;
+        const strippedChildren = stripDefinitionPrefix(dcChildren);
+        const descInlineNodes = convertInlineChildren(strippedChildren, schema, []);
+        dlChildren.push(
+          schema.nodes.definitionDescription.create(null, descInlineNodes),
+        );
+        j++;
+      }
+
+      i = j;
+      continue;
+    }
+
+    break; // Not a definition pattern
+  }
+
+  if (dlChildren.length === 0) return null;
+
+  const dlNode = schema.nodes.definitionList.create(null, dlChildren);
+  return { node: dlNode, endIndex: i - 1 };
+}
+
+/** Check if a paragraph starts with `: ` (definition line) */
+function isDefinitionParagraph(
+  para: { children: PhrasingContent[] },
+): boolean {
+  if (para.children.length === 0) return false;
+  const first = para.children[0];
+  return first.type === "text" && isDefinitionLine((first as Text).value);
+}
+
+/**
+ * Parse a single paragraph that contains term + definitions inline.
+ * remark-parse combines `Term\n: Def` into one paragraph with text "Term\n: Def".
+ * Returns array of [definitionTerm, definitionDescription, ...] PM nodes, or null.
+ */
+function tryParseInlineDefinition(
+  paraChildren: PhrasingContent[],
+  schema: Schema,
+): PmNode[] | null {
+  // Find the first text node containing `\n` followed by a line starting with `: `
+  let splitChildIdx = -1;
+  let splitOffset = -1;
+
+  for (let ci = 0; ci < paraChildren.length; ci++) {
+    const child = paraChildren[ci];
+    if (child.type !== "text") continue;
+
+    const text = (child as Text).value;
+    // Search for \n followed by `: `
+    let searchFrom = 0;
+    while (searchFrom < text.length) {
+      const nlIdx = text.indexOf("\n", searchFrom);
+      if (nlIdx === -1) break;
+      const afterNl = text.substring(nlIdx + 1);
+      if (isDefinitionLine(afterNl.split("\n")[0])) {
+        splitChildIdx = ci;
+        splitOffset = nlIdx;
+        break;
+      }
+      searchFrom = nlIdx + 1;
+    }
+    if (splitChildIdx !== -1) break;
+  }
+
+  if (splitChildIdx === -1) return null;
+
+  // Verify the first line is not a definition line
+  const firstChild = paraChildren[0];
+  if (firstChild.type === "text") {
+    const firstLine = (firstChild as Text).value.split("\n")[0];
+    if (isDefinitionLine(firstLine)) return null;
+  }
+
+  // Build term children: everything before the split point
+  const termPhrasingChildren: PhrasingContent[] = [];
+  for (let ci = 0; ci < splitChildIdx; ci++) {
+    termPhrasingChildren.push(paraChildren[ci]);
+  }
+  const splitTextValue = (paraChildren[splitChildIdx] as Text).value;
+  const termTextPart = splitTextValue.substring(0, splitOffset);
+  if (termTextPart) {
+    termPhrasingChildren.push({ type: "text", value: termTextPart } as Text);
+  }
+
+  // Create term PM node
+  const termInlines = convertInlineChildren(termPhrasingChildren, schema, []);
+  const result: PmNode[] = [
+    schema.nodes.definitionTerm.create(null, termInlines),
+  ];
+
+  // Extract definition lines from the text after the split
+  const defText = splitTextValue.substring(splitOffset + 1);
+  const defLines = defText.split("\n");
+
+  for (let li = 0; li < defLines.length; li++) {
+    const line = defLines[li];
+    if (!isDefinitionLine(line)) continue;
+
+    const stripped = line.replace(DEFINITION_PREFIX_RE, "");
+    const defPhrasingChildren: PhrasingContent[] = stripped
+      ? [{ type: "text", value: stripped } as Text]
+      : [];
+
+    // For the last definition line, append any remaining inline children
+    // after the split text node (e.g. bold/italic marks following the def text)
+    if (li === defLines.length - 1 && splitChildIdx + 1 < paraChildren.length) {
+      defPhrasingChildren.push(...paraChildren.slice(splitChildIdx + 1));
+    }
+
+    const descInlines = convertInlineChildren(defPhrasingChildren, schema, []);
+    result.push(
+      schema.nodes.definitionDescription.create(null, descInlines),
+    );
+  }
+
+  return result.length > 1 ? result : null;
 }
 
 /** Convert a single block-level mdast node to PM node(s) */

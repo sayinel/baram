@@ -223,6 +223,54 @@ function convertPmNode(node: PmNode): Content | null {
     return { type: "html", value: lines.join("\n") } as Content;
   }
 
+  // Definition list → manual serialization (like callout pattern)
+  if (typeName === "definitionList") {
+    const groups: string[] = [];
+    let currentGroup: string[] = [];
+
+    node.forEach((child) => {
+      if (child.type.name === "definitionTerm") {
+        // If there's a previous group, flush it
+        if (currentGroup.length > 0) {
+          groups.push(currentGroup.join("\n"));
+          currentGroup = [];
+        }
+        // Convert term inline content to markdown
+        const termMdast: Root = {
+          type: "root",
+          children: [
+            {
+              type: "paragraph",
+              children: convertPmInlineChildren(child),
+            } as Content,
+          ],
+        };
+        const termMd = mdastToMarkdown(termMdast).trimEnd();
+        currentGroup.push(termMd);
+      } else if (child.type.name === "definitionDescription") {
+        // Convert description inline content to markdown
+        const descMdast: Root = {
+          type: "root",
+          children: [
+            {
+              type: "paragraph",
+              children: convertPmInlineChildren(child),
+            } as Content,
+          ],
+        };
+        const descMd = mdastToMarkdown(descMdast).trimEnd();
+        currentGroup.push(`: ${descMd}`);
+      }
+    });
+
+    // Flush last group
+    if (currentGroup.length > 0) {
+      groups.push(currentGroup.join("\n"));
+    }
+
+    return { type: "html", value: groups.join("\n\n") } as Content;
+  }
+
   // §30b: Block embed → paragraph with embed text
   if (typeName === "blockEmbed") {
     const text = serializeBlockEmbed(node.attrs as { target: string; blockId: string });

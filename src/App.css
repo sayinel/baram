@@ -465,6 +465,34 @@ body {
   color: var(--color-accent);
 }
 
+/* Definition List — <dl><dt><dd> */
+.tiptap dl.definition-list {
+  margin: 0.5em 0;
+  padding: 0;
+}
+
+.tiptap dl.definition-list dt {
+  font-weight: 600;
+  margin-top: 0.5em;
+  color: var(--color-text-primary);
+}
+
+.tiptap dl.definition-list dt:first-child {
+  margin-top: 0;
+}
+
+.tiptap dl.definition-list dd {
+  margin-left: 1.5em;
+  margin-top: 0.15em;
+  padding-left: 0.5em;
+  border-left: 2px solid var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .tiptap dl.definition-list dd {
+  border-left-color: var(--color-border);
+}
+
 /* §5.1 Toggle (Details/Summary) — Notion-style minimal */
 .tiptap .toggle {
   display: flex;

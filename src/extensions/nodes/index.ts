@@ -22,3 +22,8 @@ export {
 } from "./table";
 export { Frontmatter } from "./frontmatter";
 export { TableOfContents } from "./table-of-contents";
+export {
+  DefinitionList,
+  DefinitionTerm,
+  DefinitionDescription,
+} from "./definition-list";

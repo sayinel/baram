@@ -39,6 +39,11 @@ import { Toggle } from "./nodes/toggle";
 import { TableOfContents } from "./nodes/table-of-contents";
 import { FootnoteRef } from "./nodes/footnote-ref";
 import { FootnoteDefinition } from "./nodes/footnote-definition";
+import {
+  DefinitionList,
+  DefinitionTerm,
+  DefinitionDescription,
+} from "./nodes/definition-list";
 
 // Plugin Extensions — M3/M4
 import { MathInlineEdit } from "./plugins/math-inline-edit";
@@ -129,6 +134,11 @@ export function createBaramExtensions(options?: BaramExtensionOptions): Extensio
     // Nodes — §footnote Footnotes
     FootnoteRef,
     FootnoteDefinition,
+
+    // Nodes — Definition List
+    DefinitionList,
+    DefinitionTerm,
+    DefinitionDescription,
 
     // Nodes — §30c Block Reference & Embed
     BlockReference.configure({
@@ -229,4 +239,7 @@ export {
   TableOfContents,
   FootnoteRef,
   FootnoteDefinition,
+  DefinitionList,
+  DefinitionTerm,
+  DefinitionDescription,
 };

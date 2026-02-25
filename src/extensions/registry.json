@@ -261,6 +261,19 @@
       "shortcuts": {}
     },
     {
+      "name": "definitionList",
+      "file": "nodes/definition-list.ts",
+      "markdown": "Term\\n: Definition",
+      "spec": "§5.1",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "implemented",
+      "hasNodeView": false,
+      "inputRules": [": "],
+      "shortcuts": {},
+      "_note": "Definition list with term/description pairs. Slash command /definition-list. 3 nodes: definitionList, definitionTerm, definitionDescription."
+    },
+    {
       "name": "toggle",
       "file": "nodes/toggle.ts",
       "markdown": "<details><summary>title</summary>body</details>",

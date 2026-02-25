@@ -146,6 +146,14 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       mdHint: "[TOC]",
       action: () => editor.commands.insertTableOfContents(),
     },
+    {
+      id: "definition-list",
+      label: "Definition List",
+      category: "Basic",
+      description: "Term-definition list",
+      mdHint: ": ",
+      action: () => editor.commands.setDefinitionList(),
+    },
     // Rich content
     {
       id: "code-block",

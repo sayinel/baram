@@ -22,6 +22,7 @@ import { calloutTransformer } from "./callout-transformer";
 import { toggleTransformer } from "./toggle-transformer";
 import { footnoteRefTransformer } from "./footnote-ref-transformer";
 import { footnoteDefinitionTransformer } from "./footnote-definition-transformer";
+import { definitionListTransformer } from "./definition-list-transformer";
 
 import { boldTransformer } from "./bold-transformer";
 import { italicTransformer } from "./italic-transformer";
@@ -67,6 +68,7 @@ const nodeEntries: NodeTransformerEntry[] = [
   toggleTransformer,
   footnoteRefTransformer,
   footnoteDefinitionTransformer,
+  definitionListTransformer,
 ];
 
 for (const entry of nodeEntries) {
