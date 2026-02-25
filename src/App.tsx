@@ -53,6 +53,7 @@ import { showPrompt } from "./utils/ai-commands";
 import { forceCollapseSyntaxReveal } from "./extensions/plugins/syntax-reveal";
 import { showTableGridPicker } from "./utils/table-grid-picker";
 import { FindReplaceBar } from "./components/editor/FindReplaceBar";
+import { dispatchSetSearchTerm } from "./extensions/plugins/find-replace";
 import { InlineAIPrompt } from "./components/ai/InlineAIPrompt";
 import { PromptLintPanel } from "./components/ai/PromptLintPanel";
 import "./App.css";
@@ -422,6 +423,21 @@ function App() {
       }
     }
   }, [activeTabId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // §5.11 Activate Find highlights from Global Search result click
+  const pendingSearchHighlight = useUIStore((s) => s.pendingSearchHighlight);
+  useEffect(() => {
+    if (!pendingSearchHighlight || !editor?.view) return;
+    useUIStore.getState().setPendingSearchHighlight(null);
+    // Delay to ensure editor state is settled after tab switch
+    requestAnimationFrame(() => {
+      if (editor?.view) {
+        dispatchSetSearchTerm(editor.view, pendingSearchHighlight);
+        setFindReplaceOpen(true);
+        setFindReplaceMode("find");
+      }
+    });
+  }, [pendingSearchHighlight, editor]);
 
   // --- Window title update ---
   useEffect(() => {
@@ -980,7 +996,7 @@ function App() {
       }
 
       // §47 Cmd+Shift+T — open skill test dialog
-      if (mod && e.shiftKey && e.key === "T") {
+      if (mod && e.shiftKey && e.code === "KeyT") {
         e.preventDefault();
         useUIStore.getState().toggleSkillTestDialog();
         return;
@@ -1047,14 +1063,23 @@ function App() {
       }
 
       // Cmd+Shift+L — toggle left sidebar
-      if (mod && e.shiftKey && e.key === "L") {
+      if (mod && e.shiftKey && e.code === "KeyL") {
         e.preventDefault();
         toggleSidebar();
         return;
       }
 
+      // §5.11 Cmd+Shift+F — open global search panel
+      if (mod && e.shiftKey && e.code === "KeyF") {
+        e.preventDefault();
+        const ui = useUIStore.getState();
+        if (!ui.sidebarOpen) ui.toggleSidebar();
+        setSidebarPanel("search");
+        return;
+      }
+
       // §29 Cmd+Shift+B — open backlinks panel
-      if (mod && e.shiftKey && e.key === "B") {
+      if (mod && e.shiftKey && e.code === "KeyB") {
         e.preventDefault();
         const ui = useUIStore.getState();
         if (!ui.sidebarOpen) ui.toggleSidebar();
@@ -1090,7 +1115,7 @@ function App() {
       }
 
       // Cmd+Shift+P — command palette (alternate)
-      if (mod && e.shiftKey && e.key === "P") {
+      if (mod && e.shiftKey && e.code === "KeyP") {
         e.preventDefault();
         toggleCommandPalette();
         return;
@@ -1132,7 +1157,7 @@ function App() {
       }
 
       // Cmd+Shift+S — save as
-      if (mod && e.shiftKey && (e.key === "S" || e.key === "s")) {
+      if (mod && e.shiftKey && e.code === "KeyS") {
         e.preventDefault();
         handleSaveAs();
         return;

@@ -23,6 +23,7 @@ interface UIState {
   skillGeneratorDialogOpen: boolean;
   skillTestDialogOpen: boolean;
   pendingApplyContent: string | null;
+  pendingSearchHighlight: string | null;
 
   toggleSidebar: () => void;
   setSidebarPanel: (panel: SidebarPanel) => void;
@@ -41,6 +42,7 @@ interface UIState {
   toggleSkillGeneratorDialog: () => void;
   toggleSkillTestDialog: () => void;
   setPendingApplyContent: (content: string | null) => void;
+  setPendingSearchHighlight: (term: string | null) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -61,6 +63,7 @@ export const useUIStore = create<UIState>((set) => ({
   skillGeneratorDialogOpen: false,
   skillTestDialogOpen: false,
   pendingApplyContent: null,
+  pendingSearchHighlight: null,
 
   toggleSidebar: () =>
     set((state) => ({ sidebarOpen: !state.sidebarOpen })),
@@ -110,4 +113,6 @@ export const useUIStore = create<UIState>((set) => ({
     set((state) => ({ skillTestDialogOpen: !state.skillTestDialogOpen })),
 
   setPendingApplyContent: (pendingApplyContent) => set({ pendingApplyContent }),
+
+  setPendingSearchHighlight: (pendingSearchHighlight) => set({ pendingSearchHighlight }),
 }));

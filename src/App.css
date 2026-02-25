@@ -3149,6 +3149,167 @@ body {
 }
 
 /* ============================================
+   §5.11 Global Search
+   ============================================ */
+
+.global-search {
+  padding: 8px 0;
+  overflow-y: auto;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.global-search-header {
+  padding: 4px 12px 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+}
+
+.global-search-input-row {
+  padding: 0 8px 4px;
+}
+
+.global-search-input {
+  width: 100%;
+  padding: 5px 8px;
+  font-size: 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg-input, var(--color-bg));
+  color: var(--color-text);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.global-search-input:focus {
+  border-color: var(--color-accent);
+}
+
+.global-search-toggles {
+  display: flex;
+  gap: 2px;
+  padding: 0 8px 6px;
+}
+
+.global-search-toggle {
+  padding: 2px 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.global-search-toggle:hover {
+  background: var(--color-bg-hover);
+}
+
+.global-search-toggle-active {
+  background: var(--color-accent);
+  color: white;
+  border-color: var(--color-accent);
+}
+
+.global-search-status {
+  padding: 2px 12px 6px;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.global-search-error {
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  color: var(--color-danger, #ef4444);
+}
+
+.global-search-empty {
+  padding: 16px 12px;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.global-search-results {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.global-search-group {
+  margin-bottom: 2px;
+}
+
+.global-search-file {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.global-search-file:hover {
+  background-color: var(--color-bg-hover);
+}
+
+.global-search-chevron {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  width: 10px;
+  color: var(--color-text-secondary);
+}
+
+.global-search-file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.global-search-file-count {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+  color: var(--color-accent);
+}
+
+.global-search-match {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 12px 3px 28px;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.global-search-match:hover {
+  background-color: var(--color-bg-hover);
+}
+
+.global-search-line {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  color: var(--color-text-tertiary, var(--color-text-secondary));
+  min-width: 28px;
+}
+
+.global-search-snippet {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================
    §36 Bookmark Panel
    ============================================ */
 

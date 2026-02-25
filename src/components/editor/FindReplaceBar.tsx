@@ -40,7 +40,11 @@ export function FindReplaceBar({
   const replaceInputRef = useRef<HTMLInputElement>(null);
 
   // Local state for input values — immune to Tiptap v3 re-render optimization
-  const [localSearchTerm, setLocalSearchTerm] = useState("");
+  // Initialize from plugin state if already set (e.g. from Global Search)
+  const [localSearchTerm, setLocalSearchTerm] = useState(() => {
+    const ps = findReplacePluginKey.getState(editor.state) as FindReplaceState | undefined;
+    return ps?.searchTerm ?? "";
+  });
   const [localReplaceWith, setLocalReplaceWith] = useState("");
 
   // Force re-render on editor transactions to update match counts

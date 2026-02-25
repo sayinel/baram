@@ -56,13 +56,13 @@ export async function watchDir(path: string): Promise<void> {
   return invoke<void>("watch_dir", { path });
 }
 
-// §3.2 Search commands — TODO: Rust handler not yet implemented (M7 search)
+// §5.11 Global Search
 export async function searchFiles(
-  _query: string,
-  _options?: SearchOptions,
+  rootPath: string,
+  query: string,
+  options?: SearchOptions,
 ): Promise<SearchResult[]> {
-  console.warn("[IPC] search_files not yet implemented");
-  return [];
+  return invoke<SearchResult[]>("search_files", { rootPath, query, options });
 }
 
 // §3.2 Index commands

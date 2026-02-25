@@ -2,6 +2,7 @@
 import { useUIStore } from "../../stores/ui-store";
 import { FileTree } from "../sidebar/FileTree";
 import { Outline } from "../sidebar/Outline";
+import { GlobalSearch } from "../sidebar/GlobalSearch";
 import { Backlinks } from "../sidebar/Backlinks";
 import { BookmarkPanel } from "../sidebar/BookmarkPanel";
 import { GraphView } from "../sidebar/GraphView";
@@ -18,6 +19,7 @@ export function Sidebar({ editor }: SidebarProps) {
     <div className="sidebar">
       <div className="sidebar-content">
         {sidebarPanel === "files" && <FileTree />}
+        {sidebarPanel === "search" && <GlobalSearch />}
         {sidebarPanel === "outline" && <Outline editor={editor} />}
         {sidebarPanel === "backlinks" && <Backlinks />}
         {sidebarPanel === "bookmarks" && <BookmarkPanel />}
