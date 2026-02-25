@@ -2,6 +2,8 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { tauriStorage } from "./tauri-storage";
+import { findThemeById } from "../types/theme";
+import type { ThemeDef } from "../types/theme";
 
 type Theme = "light" | "dark" | "system";
 type OnLaunch = "newFile" | "restoreLastFolder" | "restoreLastFile";
@@ -27,6 +29,8 @@ interface SettingsState {
 
   // Appearance
   theme: Theme;
+  activeThemeId: string;      // "system" | "default-light" | "default-dark" | custom id
+  customThemes: ThemeDef[];
 
   // Files & Links
   wikilinkFormat: WikilinkFormat;
@@ -63,6 +67,9 @@ interface SettingsState {
 
   // Appearance setters
   setTheme: (theme: Theme) => void;
+  setActiveTheme: (id: string) => void;
+  saveCustomTheme: (theme: ThemeDef) => void;
+  deleteCustomTheme: (id: string) => void;
 
   // Files setters
   setWikilinkFormat: (format: WikilinkFormat) => void;
@@ -99,6 +106,8 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
 
   // Appearance
   theme: "system",
+  activeThemeId: "system",
+  customThemes: [],
 
   // Files & Links
   wikilinkFormat: "wikilink",
@@ -133,7 +142,33 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
   setEditorMaxWidth: (editorMaxWidth) => set({ editorMaxWidth }),
 
   // Appearance setters
-  setTheme: (theme) => set({ theme }),
+  setTheme: (theme) => {
+    const id = theme === "light" ? "default-light" : theme === "dark" ? "default-dark" : "system";
+    useSettingsStore.getState().setActiveTheme(id);
+  },
+  setActiveTheme: (id) =>
+    set((state) => {
+      let base: "light" | "dark" | "system" = "system";
+      if (id !== "system") {
+        const theme = findThemeById(id, state.customThemes);
+        base = theme?.base ?? "light";
+      }
+      return { activeThemeId: id, theme: base };
+    }),
+  saveCustomTheme: (theme) =>
+    set((state) => {
+      const idx = state.customThemes.findIndex((t) => t.id === theme.id);
+      const updated = [...state.customThemes];
+      if (idx >= 0) updated[idx] = theme;
+      else updated.push(theme);
+      return { customThemes: updated };
+    }),
+  deleteCustomTheme: (id) =>
+    set((state) => ({
+      customThemes: state.customThemes.filter((t) => t.id !== id),
+      activeThemeId: state.activeThemeId === id ? "system" : state.activeThemeId,
+      theme: state.activeThemeId === id ? "system" : state.theme,
+    })),
 
   // Files setters
   setWikilinkFormat: (wikilinkFormat) => set({ wikilinkFormat }),
@@ -190,6 +225,8 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
     autoPairBrackets: state.autoPairBrackets,
     editorMaxWidth: state.editorMaxWidth,
     theme: state.theme,
+    activeThemeId: state.activeThemeId,
+    customThemes: state.customThemes,
     wikilinkFormat: state.wikilinkFormat,
     autoUpdateLinks: state.autoUpdateLinks,
     inlineMath: state.inlineMath,
@@ -201,21 +238,38 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
     smartPunctuation: state.smartPunctuation,
     extensionSettings: state.extensionSettings,
   }),
-  version: 1,
-  migrate: (persisted: unknown, _version: number) => {
+  version: 2,
+  migrate: (persisted: unknown, version: number) => {
     const state = persisted as Record<string, unknown>;
-    const ext = (state.extensionSettings ?? {}) as Record<string, unknown>;
-    for (const key of ["codeBlockLineNumbers", "codeBlockStyle", "diagrams"]) {
-      if (key in state && !(key in ext)) {
-        ext[key] = state[key];
+
+    // v0/v1 → v2: extensionSettings migration (from v1)
+    if (version < 1) {
+      const ext = (state.extensionSettings ?? {}) as Record<string, unknown>;
+      for (const key of ["codeBlockLineNumbers", "codeBlockStyle", "diagrams"]) {
+        if (key in state && !(key in ext)) {
+          ext[key] = state[key];
+        }
       }
+      state.extensionSettings = ext;
     }
-    state.extensionSettings = ext;
+
+    // v0/v1 → v2: theme migration
+    if (version < 2) {
+      const oldTheme = state.theme as string | undefined;
+      if (!state.activeThemeId) {
+        if (oldTheme === "light") state.activeThemeId = "default-light";
+        else if (oldTheme === "dark") state.activeThemeId = "default-dark";
+        else state.activeThemeId = "system";
+      }
+      if (!state.customThemes) state.customThemes = [];
+    }
+
     return state;
   },
   // Fallback for unversioned → v1 upgrade (Zustand skips migrate when stored version is undefined)
   onRehydrateStorage: () => (state) => {
     if (!state) return;
+    // extensionSettings sync (existing)
     const ext = { ...state.extensionSettings };
     let dirty = false;
     for (const key of ["codeBlockLineNumbers", "codeBlockStyle", "diagrams"] as const) {
@@ -226,6 +280,13 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
     }
     if (dirty) {
       useSettingsStore.setState({ extensionSettings: ext });
+    }
+    // Theme sync: ensure theme field matches activeThemeId
+    if (state.activeThemeId && state.activeThemeId !== "system") {
+      const t = findThemeById(state.activeThemeId, state.customThemes);
+      if (t && state.theme !== t.base) {
+        useSettingsStore.setState({ theme: t.base });
+      }
     }
   },
 }));
