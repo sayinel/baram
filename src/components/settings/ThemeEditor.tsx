@@ -1,6 +1,8 @@
 // §54 Theme Editor — color picker editor for customizing themes
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { save } from "@tauri-apps/plugin-dialog";
 import { useSettingsStore } from "../../stores/settings-store";
+import { writeFile } from "../../ipc/invoke";
 import { findThemeById, BUILT_IN_THEMES, THEME_COLOR_KEYS } from "../../types/theme";
 import type { ThemeColors, ThemeDef } from "../../types/theme";
 
@@ -93,15 +95,14 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     onClose();
   }, [onClose]);
 
-  const handleExport = useCallback(() => {
+  const handleExport = useCallback(async () => {
+    const path = await save({
+      filters: [{ name: "JSON", extensions: ["json"] }],
+      defaultPath: `${name}.json`,
+    });
+    if (!path) return;
     const data = JSON.stringify({ name, base, colors }, null, 2);
-    const blob = new Blob([data], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${name}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    await writeFile(path, data);
   }, [name, base, colors]);
 
   return (
