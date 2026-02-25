@@ -56,6 +56,8 @@ import { FindReplaceBar } from "./components/editor/FindReplaceBar";
 import { dispatchSetSearchTerm } from "./extensions/plugins/find-replace";
 import { InlineAIPrompt } from "./components/ai/InlineAIPrompt";
 import { PromptLintPanel } from "./components/ai/PromptLintPanel";
+import { findThemeById } from "./types/theme";
+import type { ThemeColors } from "./types/theme";
 import "./App.css";
 
 // §8.4 Lazy-loaded components — split into separate chunks, loaded on first use
@@ -240,16 +242,46 @@ function App() {
   }, []);
 
   // Apply settings to DOM
-  const { theme, fontSize, fontFamily, lineHeight, spellCheck, editorMaxWidth } = useSettingsStore();
+  const { activeThemeId, customThemes, fontSize, fontFamily, lineHeight, spellCheck, editorMaxWidth } = useSettingsStore();
 
   useEffect(() => {
     const root = document.documentElement;
-    if (theme === "system") {
-      root.removeAttribute("data-theme");
-    } else {
-      root.dataset.theme = theme;
+    const cssKeys: (keyof ThemeColors)[] = [
+      "--color-bg-primary", "--color-bg-secondary", "--color-bg-sidebar", "--color-bg-tertiary",
+      "--color-text-primary", "--color-text-secondary", "--color-text-muted",
+      "--color-border", "--color-border-light",
+      "--color-accent", "--color-accent-hover",
+      "--color-editor-bg", "--color-editor-text", "--color-editor-selection",
+      "--color-editor-cursor", "--color-editor-line-highlight",
+    ];
+
+    // Clear previous CSS variable overrides
+    for (const key of cssKeys) {
+      root.style.removeProperty(key);
     }
-  }, [theme]);
+
+    if (activeThemeId === "system") {
+      root.removeAttribute("data-theme");
+      return;
+    }
+
+    const themeDef = findThemeById(activeThemeId, customThemes);
+    if (!themeDef) {
+      root.removeAttribute("data-theme");
+      return;
+    }
+
+    // Set base mode (light/dark) for CSS + CodeMirror/Mermaid
+    root.dataset.theme = themeDef.base;
+
+    // For non-default themes, apply CSS variable overrides
+    const isDefault = activeThemeId === "default-light" || activeThemeId === "default-dark";
+    if (!isDefault) {
+      for (const [key, value] of Object.entries(themeDef.colors)) {
+        root.style.setProperty(key, value);
+      }
+    }
+  }, [activeThemeId, customThemes]);
 
   useEffect(() => {
     const tiptap = document.querySelector<HTMLElement>(".tiptap");
