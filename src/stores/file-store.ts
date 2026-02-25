@@ -142,6 +142,8 @@ export const useFileStore = create<FileState>((set) => ({
   addFileEntry: (parentPath, entry) =>
     set((state) => {
       function insertSorted(entries: FileEntry[], newEntry: FileEntry): FileEntry[] {
+        // Skip if already exists (idempotent)
+        if (entries.some((e) => e.path === newEntry.path)) return entries;
         const result = [...entries, newEntry];
         result.sort((a, b) => {
           if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;

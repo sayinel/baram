@@ -1,7 +1,7 @@
 // §3.6 파일 시스템 모듈 — 읽기/쓰기/디렉토리 목록/이름변경/삭제/감시
 
 use crate::commands::fs_cmd::FileEntry;
-use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher, event::ModifyKind};
 use std::path::Path;
 use std::sync::mpsc;
 use tauri::Emitter;
@@ -161,13 +161,29 @@ pub fn watch_dir(path: &str, app_handle: tauri::AppHandle) -> Result<(), FsError
                         continue;
                     }
 
-                    let is_dir = event_path.is_dir();
                     match event.kind {
                         EventKind::Create(_) => {
+                            let is_dir = event_path.is_dir();
                             let _ = app_handle.emit(
                                 "file:created",
                                 serde_json::json!({ "path": path_str, "isDir": is_dir }),
                             );
+                        }
+                        // Rename: macOS FSEvents reports atomic-write rename
+                        // and external moves as Modify(Name), not Create/Remove
+                        EventKind::Modify(ModifyKind::Name(_)) => {
+                            if event_path.exists() {
+                                let is_dir = event_path.is_dir();
+                                let _ = app_handle.emit(
+                                    "file:created",
+                                    serde_json::json!({ "path": path_str, "isDir": is_dir }),
+                                );
+                            } else {
+                                let _ = app_handle.emit(
+                                    "file:deleted",
+                                    serde_json::json!({ "path": path_str }),
+                                );
+                            }
                         }
                         EventKind::Modify(_) => {
                             let _ = app_handle.emit(
