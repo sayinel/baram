@@ -5,9 +5,10 @@
 import { EditorView as CMView, ViewUpdate, keymap, lineNumbers, drawSelection } from "@codemirror/view";
 import { EditorState as CMState } from "@codemirror/state";
 import { defaultKeymap, indentWithTab } from "@codemirror/commands";
-import { bracketMatching, syntaxHighlighting, defaultHighlightStyle, indentUnit } from "@codemirror/language";
+import { bracketMatching, syntaxHighlighting, indentUnit } from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { getLanguageExtension, LANGUAGE_OPTIONS } from "./code-block-languages";
+import { getHighlightStyle } from "./code-block-highlight";
 import { useSettingsStore } from "../../stores/settings-store";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { TextSelection } from "@tiptap/pm/state";
@@ -93,7 +94,8 @@ export class CodeBlockNodeView implements NodeView {
         state.tabSize !== prev.tabSize ||
         state.codeBlockLineNumbers !== prev.codeBlockLineNumbers ||
         state.autoPairBrackets !== prev.autoPairBrackets ||
-        state.codeBlockStyle !== prev.codeBlockStyle
+        state.codeBlockStyle !== prev.codeBlockStyle ||
+        state.theme !== prev.theme
       ) {
         wrapper.dataset.style = state.codeBlockStyle;
         // Recreate CodeMirror with new settings
@@ -226,7 +228,7 @@ export class CodeBlockNodeView implements NodeView {
       drawSelection(),
       bracketMatching(),
       ...(autoPairBrackets ? [closeBrackets()] : []),
-      syntaxHighlighting(defaultHighlightStyle),
+      syntaxHighlighting(getHighlightStyle()),
       CMView.lineWrapping,
       CMState.tabSize.of(tabSize),
       indentUnit.of(" ".repeat(tabSize)),

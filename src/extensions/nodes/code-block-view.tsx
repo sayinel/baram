@@ -4,9 +4,10 @@ import { NodeViewWrapper, NodeViewProps } from "@tiptap/react";
 import { EditorView, ViewUpdate, keymap, lineNumbers, drawSelection } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { defaultKeymap, indentWithTab } from "@codemirror/commands";
-import { bracketMatching, syntaxHighlighting, defaultHighlightStyle, indentUnit } from "@codemirror/language";
+import { bracketMatching, syntaxHighlighting, indentUnit } from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { getLanguageExtension, LANGUAGE_OPTIONS } from "./code-block-languages";
+import { getHighlightStyle } from "./code-block-highlight";
 import { useSettingsStore } from "../../stores/settings-store";
 
 export function CodeBlockView({ node, updateAttributes, editor, getPos, selected }: NodeViewProps) {
@@ -17,6 +18,7 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
   const tabSize = useSettingsStore((s) => s.tabSize);
   const showLineNumbers = useSettingsStore((s) => s.codeBlockLineNumbers);
   const autoPair = useSettingsStore((s) => s.autoPairBrackets);
+  const appTheme = useSettingsStore((s) => s.theme);
   const codeBlockStyle = useSettingsStore((s) => s.codeBlockStyle);
 
   const handleLanguageChange = useCallback(
@@ -132,7 +134,7 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
         drawSelection(),
         bracketMatching(),
         ...(currentAutoPair ? [closeBrackets()] : []),
-        syntaxHighlighting(defaultHighlightStyle),
+        syntaxHighlighting(getHighlightStyle()),
         EditorView.lineWrapping,
         EditorState.tabSize.of(currentTabSize),
         indentUnit.of(" ".repeat(currentTabSize)),
@@ -195,7 +197,7 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
     };
     // Recreate when language, tabSize, or lineNumbers changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language, tabSize, showLineNumbers, autoPair]);
+  }, [language, tabSize, showLineNumbers, autoPair, appTheme]);
 
   // Focus CodeMirror when ProseMirror selects this code block (NodeSelection)
   useEffect(() => {
