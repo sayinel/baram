@@ -26,6 +26,36 @@ The editor core is licensed under MIT. The application is licensed under AGPL-3.
 
 ---
 
+## Themes & Appearance
+
+### How do I change the theme?
+
+Open **Settings > Appearance** (`Cmd+,`). You'll see a gallery of theme cards — click any card to apply it. Select **System (Auto)** to follow your OS light/dark mode setting.
+
+### What built-in themes are available?
+
+Baram includes 6 built-in themes: Default Light, Default Dark, Tokyo Night, Solarized Light, Solarized Dark, and Nord. Built-in themes cannot be deleted.
+
+### How do I create a custom theme?
+
+1. Go to **Settings > Appearance** and click **Customize...**
+2. Enter a name for your theme
+3. Choose a base mode (Light or Dark) — this determines how code blocks and diagrams render
+4. Adjust the 16 colors using the color pickers
+5. Click **Save**
+
+Your custom theme appears in the gallery with a "Custom" badge.
+
+### How do I share themes with others?
+
+In the theme editor, click **Export** to save your theme as a `.json` file. Others can import it by clicking **Import Theme...** in the Appearance tab.
+
+### How do I delete a custom theme?
+
+Hover over a custom theme card in the gallery and click the **x** button. Built-in themes cannot be deleted.
+
+---
+
 ## Editing
 
 ### How does the WYSIWYG mode work?
@@ -193,6 +223,22 @@ Press `Cmd+F` (macOS) / `Ctrl+F` (Windows/Linux) to open Find. Press `Cmd+H` / `
 3. **Network** — Cloud providers (Claude, OpenAI, Gemini) need internet access; Ollama needs to be running locally
 4. **Model selection** — Ensure a valid model is selected
 5. **Privacy Mode** — When Privacy Mode is enabled, only Ollama works. Check that it is not enabled unintentionally
+
+---
+
+## Git Integration
+
+### Does Baram support Git?
+
+Yes. When your workspace is a Git repository, Baram shows a **Source Control** section in the left sidebar. You can view changes, stage/unstage files, write commit messages, view diffs, and switch branches — all without leaving the editor.
+
+### How do I commit changes?
+
+Open the Source Control sidebar, stage the files you want to commit (click the `+` button), type a commit message, and click the commit button.
+
+### How do I switch branches?
+
+Click the branch name in the Status Bar at the bottom of the editor. A dropdown appears where you can switch to an existing branch or create a new one.
 
 ---
 

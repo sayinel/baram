@@ -14,6 +14,7 @@ Welcome to Baram — a lightweight, beautiful WYSIWYG markdown editor with AI in
 - [Source Mode](#source-mode)
 - [Find & Replace](#find--replace)
 - [AI Features](#ai-features)
+- [Git Integration](#git-integration)
 - [Export](#export)
 - [Customization](#customization)
 - [Help Panel](#help-panel)
@@ -606,6 +607,29 @@ privacy: true
 
 ---
 
+## Git Integration
+
+Baram includes built-in source control for Git repositories.
+
+### Source Control Sidebar
+
+When your workspace is a Git repository, the **Source Control** section appears in the left sidebar. It shows:
+
+- **Changed files** — Modified, added, and deleted files with status indicators
+- **Stage / Unstage** — Click the `+` or `-` button to stage or unstage individual files
+- **Commit** — Type a commit message and press the commit button
+- **Discard** — Revert uncommitted changes to a file
+
+### Diff Viewer
+
+Click a changed file in the Source Control sidebar to view a diff. Additions are highlighted in green, deletions in red.
+
+### Branch Management
+
+The current branch is shown in the **Status Bar** at the bottom of the editor. Click it to switch branches or create a new one.
+
+---
+
 ## Export
 
 Export your documents from the **File > Export** menu.
@@ -632,10 +656,45 @@ Available settings tabs:
 |-----|------------------------|
 | **General** | Startup behavior, language |
 | **Editor** | Indentation, tab size, line numbers, line endings, editor max width |
-| **Appearance** | Theme (light/dark), font family, font size |
+| **Appearance** | Theme gallery, custom theme editor (see below) |
 | **Files** | Auto-save, file sorting, default file location |
-| **Markdown** | Extended syntax toggles, strict mode |
+| **Markdown** | Extended syntax toggles (math, highlight, strikethrough), smart punctuation |
+| **Extensions** | Per-extension settings (code block style, line numbers, diagrams) |
 | **AI** | Provider, model, API key (per-provider), privacy mode, Ghost Text settings, custom AI commands |
+
+### Themes
+
+Baram comes with 6 built-in themes and supports custom theme creation.
+
+**Built-in themes:**
+
+| Theme | Style |
+|-------|-------|
+| Default Light | Clean light theme (default) |
+| Default Dark | Dark theme with blue tones |
+| Tokyo Night | Popular dark theme, cool blue palette |
+| Solarized Light | Ethan Schoonover's warm light palette |
+| Solarized Dark | Ethan Schoonover's dark palette |
+| Nord | Arctic-inspired dark theme |
+
+**Using themes:**
+
+1. Open **Settings > Appearance** to see the theme gallery
+2. Click any theme card to apply it immediately
+3. Select **System (Auto)** to follow your OS light/dark mode
+
+**Creating custom themes:**
+
+1. Click **Customize...** in the Appearance tab
+2. Edit the theme name and choose a base mode (Light or Dark)
+3. Adjust any of the 16 color values using the color pickers (grouped by Background, Text, Border, Accent, Editor)
+4. Colors update live as you pick — preview changes in real-time
+5. Click **Save** to keep the theme, or **Cancel** to discard
+
+**Import / Export:**
+
+- Click **Import Theme...** to load a `.json` theme file
+- Click **Export** in the theme editor to save the current theme as a `.json` file for sharing
 
 ### Command Palette
 

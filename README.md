@@ -245,6 +245,25 @@ Export your documents to share or publish:
 - **HTML** — Clean, self-contained HTML with inline styles
 - **PDF** — Print-ready PDF via system print dialog
 
+### Git Integration
+
+Built-in source control without leaving the editor:
+
+- **Source Control sidebar** — View changed files, stage/unstage, write commit messages
+- **Diff viewer** — Inline diff with additions and deletions highlighted
+- **Branch management** — Switch branches, create new branches
+- **Status bar** — Current branch displayed at the bottom
+
+### Themes
+
+Customize the look and feel of Baram with built-in themes or create your own:
+
+- **6 built-in themes** — Default Light, Default Dark, Tokyo Night, Solarized Light, Solarized Dark, Nord
+- **System (Auto)** — Automatically follows your OS light/dark mode preference
+- **Theme Gallery** — Visual card grid in **Settings > Appearance** — click to switch
+- **Color Editor** — Customize any theme with a full 16-color picker (backgrounds, text, borders, accent, editor)
+- **Import / Export** — Share themes as `.json` files
+
 ## AI Integration
 
 Baram has built-in AI writing assistance powered by Claude, OpenAI, Google Gemini, and Ollama (local).
@@ -485,14 +504,12 @@ Reverse:  ProseMirror Document → mdast → remark-stringify
 
 | Milestone | Status | Description |
 |-----------|--------|-------------|
-| M9 Productivity | ✅ Done | Highlight / subscript / superscript marks, Table of Contents, Table Tier 3 (column resize, pipe-input creation), Footnotes, Help panel, Global Search (Cmd+Shift+F), Definition List |
+| M9 Productivity | ✅ Done | Highlight / subscript / superscript marks, Table of Contents, Table Tier 3 (column resize, pipe-input creation), Footnotes, Help panel, Global Search (Cmd+Shift+F), Definition List, Mermaid enhanced (context menu, templates, fullscreen), Git Basic (status, commit, diff, branch), Theme System (6 built-in + custom themes), Extension Settings |
 
 **Phase 3 — Advanced** (upcoming)
 
 | Feature | Description |
 |---------|-------------|
-| Git Integration | Built-in version control |
-| Theme System | Custom themes and color schemes |
 | Table Cell Merge | Merge/split table cells, virtual scroll for 50+ rows |
 | Plugin Marketplace | Community extensions |
 
