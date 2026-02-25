@@ -202,7 +202,7 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
     extensionSettings: state.extensionSettings,
   }),
   version: 1,
-  migrate: (persisted: unknown) => {
+  migrate: (persisted: unknown, _version: number) => {
     const state = persisted as Record<string, unknown>;
     const ext = (state.extensionSettings ?? {}) as Record<string, unknown>;
     for (const key of ["codeBlockLineNumbers", "codeBlockStyle", "diagrams"]) {
@@ -212,5 +212,20 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
     }
     state.extensionSettings = ext;
     return state;
+  },
+  // Fallback for unversioned → v1 upgrade (Zustand skips migrate when stored version is undefined)
+  onRehydrateStorage: () => (state) => {
+    if (!state) return;
+    const ext = { ...state.extensionSettings };
+    let dirty = false;
+    for (const key of ["codeBlockLineNumbers", "codeBlockStyle", "diagrams"] as const) {
+      if (key in state && !(key in ext)) {
+        ext[key] = state[key];
+        dirty = true;
+      }
+    }
+    if (dirty) {
+      useSettingsStore.setState({ extensionSettings: ext });
+    }
   },
 }));
