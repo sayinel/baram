@@ -95,6 +95,9 @@ export const SourceCodeEditor = forwardRef<SourceCodeEditorRef, SourceCodeEditor
               fontFamily: "var(--font-mono)",
               padding: "1rem 2rem",
             },
+            ".cm-cursor, .cm-dropCursor": {
+              borderLeftColor: "var(--color-editor-cursor)",
+            },
             ".cm-gutters": {
               backgroundColor: "var(--color-bg-secondary)",
               borderRight: "1px solid var(--color-border-light)",
