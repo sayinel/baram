@@ -27,6 +27,20 @@ function fileName(path: string): string {
   return idx >= 0 ? path.substring(idx + 1) : path;
 }
 
+interface CreatedPayload {
+  path: string;
+  isDir: boolean;
+}
+
+interface DeletedPayload {
+  path: string;
+}
+
+interface PendingEntry {
+  kind: "created" | "deleted";
+  isDir?: boolean;
+}
+
 /**
  * Hook that starts the Rust file watcher when a folder is open
  * and updates the FileTree store on file:created / file:deleted events.
@@ -34,7 +48,7 @@ function fileName(path: string): string {
 export function useFileWatcher() {
   const rootPath = useFileStore((s) => s.rootPath);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingRef = useRef<Map<string, "created" | "deleted">>(new Map());
+  const pendingRef = useRef<Map<string, PendingEntry>>(new Map());
 
   useEffect(() => {
     if (!rootPath) return;
@@ -46,23 +60,20 @@ export function useFileWatcher() {
       const pending = new Map(pendingRef.current);
       pendingRef.current.clear();
 
-      for (const [path, kind] of pending) {
-        if (kind === "deleted") {
+      for (const [path, entry] of pending) {
+        if (entry.kind === "deleted") {
           store.removeFileEntry(path);
-        } else if (kind === "created") {
+        } else if (entry.kind === "created") {
           const name = fileName(path);
           const parent = parentDir(path);
-          // Determine isDir heuristic: no extension = likely dir
-          // But we can't know for sure from the event alone.
-          // Files typically have extensions; dirs don't.
-          const hasExt = name.includes(".");
-          const entry: FileEntry = {
+          const isDir = entry.isDir ?? false;
+          const fileEntry: FileEntry = {
             name,
             path,
-            isDir: !hasExt,
-            children: !hasExt ? [] : undefined,
+            isDir,
+            children: isDir ? [] : undefined,
           };
-          store.addFileEntry(parent, entry);
+          store.addFileEntry(parent, fileEntry);
         }
       }
     };
@@ -78,26 +89,28 @@ export function useFileWatcher() {
     );
 
     // Listen for events
-    listen<{ path: string }>("file:created", (event) => {
+    listen<CreatedPayload>("file:created", (event) => {
       const p = event.payload.path;
       if (shouldSkip(p)) return;
       // If there's a pending "deleted" for the same path, cancel it (rename = delete + create)
-      if (pendingRef.current.get(p) === "deleted") {
+      const existing = pendingRef.current.get(p);
+      if (existing?.kind === "deleted") {
         pendingRef.current.delete(p);
       } else {
-        pendingRef.current.set(p, "created");
+        pendingRef.current.set(p, { kind: "created", isDir: event.payload.isDir });
       }
       scheduleFlush();
     }).then((fn) => unlistenFns.push(fn));
 
-    listen<{ path: string }>("file:deleted", (event) => {
+    listen<DeletedPayload>("file:deleted", (event) => {
       const p = event.payload.path;
       if (shouldSkip(p)) return;
       // If there's a pending "created" for the same path, cancel it
-      if (pendingRef.current.get(p) === "created") {
+      const existing = pendingRef.current.get(p);
+      if (existing?.kind === "created") {
         pendingRef.current.delete(p);
       } else {
-        pendingRef.current.set(p, "deleted");
+        pendingRef.current.set(p, { kind: "deleted" });
       }
       scheduleFlush();
     }).then((fn) => unlistenFns.push(fn));

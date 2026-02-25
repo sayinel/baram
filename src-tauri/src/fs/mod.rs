@@ -155,11 +155,18 @@ pub fn watch_dir(path: &str, app_handle: tauri::AppHandle) -> Result<(), FsError
             if let Ok(event) = result {
                 for event_path in &event.paths {
                     let path_str = event_path.to_string_lossy().to_string();
+
+                    // Skip .tmp files (atomic write intermediates)
+                    if path_str.ends_with(".tmp") {
+                        continue;
+                    }
+
+                    let is_dir = event_path.is_dir();
                     match event.kind {
                         EventKind::Create(_) => {
                             let _ = app_handle.emit(
                                 "file:created",
-                                serde_json::json!({ "path": path_str }),
+                                serde_json::json!({ "path": path_str, "isDir": is_dir }),
                             );
                         }
                         EventKind::Modify(_) => {
