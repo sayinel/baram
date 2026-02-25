@@ -173,7 +173,8 @@
         "§5.11-global-search": { "status": "completed", "tests": "773/773 vitest pass (전체 테스트 통과)", "spec": "§5.11", "details": "Cmd+Shift+F, tantivy full-text search, regex, file/folder filter, replace" },
         "definition-list": { "status": "completed", "tests": "12/12 vitest pass (roundtrip + PM structure + false positive)", "spec": "§dl", "details": "Term\\n: Definition → <dl><dt><dd>, InputRule `: `, Backspace/Enter/Shift-Enter keyboard handling" },
         "§50-mermaid-enhanced": { "status": "completed", "tests": "15/15 vitest pass (templates + type detection)", "spec": "§50", "details": "context menu (SVG/PNG/Source copy), template dropdown, fullscreen edit, type badge" },
-        "§57b-git-basic": { "status": "completed", "tests": "16/16 vitest pass (git-store utils) + 105/105 cargo test", "spec": "§57b", "details": "git2 backend (status/stage/unstage/commit/diff/branch/discard), Source Control sidebar, StatusBar branch, Diff viewer, Command Palette Git commands" }
+        "§57b-git-basic": { "status": "completed", "tests": "16/16 vitest pass (git-store utils) + 105/105 cargo test", "spec": "§57b", "details": "git2 backend (status/stage/unstage/commit/diff/branch/discard), Source Control sidebar, StatusBar branch, Diff viewer, Command Palette Git commands" },
+        "§54-theme-system": { "status": "completed", "tests": "809/809 vitest pass (전체 테스트 통과)", "spec": "§54", "details": "6 built-in themes, CSS variable override, theme gallery, color picker editor, import/export JSON, custom themes" }
       }
     }
   },
@@ -181,6 +182,7 @@
   "testSummary": {
     "vitest": "809/809 pass (58 test files)",
     "cargoTest": "105/105 pass (4 ignored)",
+    "note": "§54 Theme System: UI-only feature, no new test files (TypeScript clean compilation verified)",
     "breakdown": {
       "stores": 6,
       "editor-store-mru": 12,
