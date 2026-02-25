@@ -108,7 +108,29 @@
       "status": "implemented",
       "hasNodeView": true,
       "inputRules": ["```"],
-      "shortcuts": { "Mod-Shift-c": "toggle code block" }
+      "shortcuts": { "Mod-Shift-c": "toggle code block" },
+      "settings": [
+        {
+          "key": "codeBlockLineNumbers",
+          "type": "boolean",
+          "label": "Line Numbers",
+          "description": "Show line numbers in code blocks",
+          "default": false
+        },
+        {
+          "key": "codeBlockStyle",
+          "type": "select",
+          "label": "Code Block Style",
+          "description": "Visual style for code blocks",
+          "default": "default",
+          "options": [
+            { "value": "default", "label": "Default" },
+            { "value": "minimal", "label": "Minimal" },
+            { "value": "contrast", "label": "Contrast" },
+            { "value": "paper", "label": "Paper" }
+          ]
+        }
+      ]
     },
     {
       "name": "mathBlock",
@@ -197,7 +219,16 @@
       "inputRules": [],
       "shortcuts": { "Mod-Shift-d": "insert mermaid diagram" },
       "contextMenu": ["Copy as SVG", "Copy as PNG", "Copy Source", "Edit Full-screen", "Delete"],
-      "templates": ["flowchart", "sequence", "class", "state", "er", "gantt", "pie"]
+      "templates": ["flowchart", "sequence", "class", "state", "er", "gantt", "pie"],
+      "settings": [
+        {
+          "key": "diagrams",
+          "type": "boolean",
+          "label": "Enable Diagrams",
+          "description": "Render Mermaid diagrams in code blocks",
+          "default": true
+        }
+      ]
     },
     {
       "name": "blockReference",
