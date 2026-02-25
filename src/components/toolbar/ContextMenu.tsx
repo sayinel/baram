@@ -2,6 +2,7 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import { copyMathToPNG } from "../../utils/katex-to-png";
+import { copyMermaidSvg, copyMermaidPng, copyMermaidSource } from "../../utils/mermaid-utils";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 import {
   addBlockId,
@@ -41,18 +42,19 @@ export function ContextMenu({ editor }: ContextMenuProps) {
 
   const closeMenu = useCallback(() => setPosition(null), []);
 
-  // Detect math node from DOM element at click position
-  const findMathNode = useCallback(
+  // Detect special node from DOM element at click position
+  // Uses Element (not HTMLElement) so SVG child elements inside NodeViews are handled
+  const findSpecialNode = useCallback(
     (target: EventTarget | null) => {
-      if (!target || !(target instanceof HTMLElement)) return null;
+      if (!target || !(target instanceof Element)) return null;
 
-      // Walk up from clicked element to find a math node view wrapper
-      let el: HTMLElement | null = target;
+      // Walk up from clicked element to find a node view wrapper
+      let el: Element | null = target;
       while (el && el !== editor.view.dom) {
         const dataType =
           el.getAttribute("data-type") ||
           el.closest("[data-type]")?.getAttribute("data-type");
-        if (dataType === "mathBlock" || dataType === "mathInline") {
+        if (dataType === "mathBlock" || dataType === "mathInline" || dataType === "mermaidBlock") {
           return dataType;
         }
         el = el.parentElement;
@@ -228,6 +230,65 @@ export function ContextMenu({ editor }: ContextMenuProps) {
           action: () => {
             const tr = editor.state.tr;
             tr.delete(nodePos, nodePos + mathNode.nodeSize);
+            editor.view.dispatch(tr);
+          },
+        },
+      ];
+    },
+    [editor],
+  );
+
+  // Build mermaid block context menu
+  const buildMermaidBlockMenu = useCallback(
+    (target: Element): MenuItem[] => {
+      // Find the mermaid NodeView wrapper (target may be SVGElement inside the diagram)
+      const wrapper = target.closest("[data-type='mermaidBlock']") as HTMLElement | null;
+      if (!wrapper) return [];
+
+      const pmPos = editor.view.posAtDOM(wrapper, 0);
+      const node = editor.state.doc.nodeAt(pmPos);
+      if (!node || node.type.name !== "mermaidBlock") return [];
+
+      const code = (node.attrs.code as string) || "";
+
+      // Extract rendered SVG from the NodeView DOM
+      const svgContainer = wrapper.querySelector(".mermaid-block-svg");
+      const svgHtml = svgContainer?.innerHTML || "";
+
+      return [
+        {
+          label: "Copy as SVG",
+          action: () => {
+            if (svgHtml) copyMermaidSvg(svgHtml);
+          },
+        },
+        {
+          label: "Copy as PNG",
+          action: () => {
+            if (svgHtml) copyMermaidPng(svgHtml);
+          },
+        },
+        {
+          label: "Copy Mermaid Source",
+          action: () => copyMermaidSource(code),
+        },
+        { label: "", action: () => {}, separator: true },
+        {
+          label: "Edit Full-screen",
+          action: () => {
+            editor.commands.setNodeSelection(pmPos);
+            // Dispatch custom event for full-screen editing
+            wrapper.dispatchEvent(
+              new CustomEvent("mermaid-fullscreen", { bubbles: true }),
+            );
+          },
+        },
+        { label: "", action: () => {}, separator: true },
+        {
+          label: "Delete Diagram",
+          action: () => {
+            const { tr } = editor.state;
+            tr.delete(pmPos, pmPos + node.nodeSize);
             editor.view.dispatch(tr);
           },
         },
@@ -448,11 +509,17 @@ export function ContextMenu({ editor }: ContextMenuProps) {
 
       e.preventDefault();
 
-      // Check for math nodes via DOM detection (needed for atom nodes like mathInline)
-      const mathType = findMathNode(e.target);
+      // Check for special nodes via DOM detection (needed for atom nodes)
+      const specialType = findSpecialNode(e.target);
 
-      if (mathType === "mathInline") {
+      if (specialType === "mathInline") {
         setItems(buildMathInlineMenu(e.target as HTMLElement));
+        setPosition({ x: e.clientX, y: e.clientY });
+        return;
+      }
+
+      if (specialType === "mermaidBlock") {
+        setItems(buildMermaidBlockMenu(e.target as Element));
         setPosition({ x: e.clientX, y: e.clientY });
         return;
       }
@@ -463,7 +530,7 @@ export function ContextMenu({ editor }: ContextMenuProps) {
       });
       if (!pos) return;
 
-      if (mathType === "mathBlock") {
+      if (specialType === "mathBlock") {
         setItems(buildMathBlockMenu(pos.pos));
       } else {
         setItems(buildMenuItems(pos.pos));
@@ -490,7 +557,7 @@ export function ContextMenu({ editor }: ContextMenuProps) {
       document.removeEventListener("mousedown", handleClick);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [editor, buildMenuItems, buildMathBlockMenu, buildMathInlineMenu, findMathNode, closeMenu]);
+  }, [editor, buildMenuItems, buildMathBlockMenu, buildMathInlineMenu, buildMermaidBlockMenu, findSpecialNode, closeMenu]);
 
   // Clamp menu position so it stays within the viewport
   const [adjustedPos, setAdjustedPos] = useState<{ x: number; y: number } | null>(null);

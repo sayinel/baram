@@ -192,10 +192,12 @@
       "spec": "§5.5",
       "phase": 2,
       "milestone": "M9",
-      "status": "implemented",
+      "status": "enhanced",
       "hasNodeView": true,
       "inputRules": [],
-      "shortcuts": { "Mod-Shift-d": "insert mermaid diagram" }
+      "shortcuts": { "Mod-Shift-d": "insert mermaid diagram" },
+      "contextMenu": ["Copy as SVG", "Copy as PNG", "Copy Source", "Edit Full-screen", "Delete"],
+      "templates": ["flowchart", "sequence", "class", "state", "er", "gantt", "pie"]
     },
     {
       "name": "blockReference",
