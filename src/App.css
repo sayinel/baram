@@ -1290,7 +1290,8 @@ body {
   height: 100%;
   overflow: hidden;
   background-color: var(--color-bg-sidebar);
-  border-left: 1px solid var(--color-border-light);
+  border-left: 1px solid var(--color-border);
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.08);
 }
 
 .right-panel-placeholder {
@@ -4386,17 +4387,11 @@ body {
 
 /* §44 AI Chat Panel */
 .ai-chat-panel {
-  position: fixed;
-  top: 0;
-  right: 0;
-  width: 360px;
-  height: 100vh;
+  height: 100%;
   background: var(--color-bg-primary);
-  border-left: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
-  z-index: 100;
-  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
 }
 .ai-chat-header {
   display: flex;
@@ -5498,17 +5493,11 @@ body {
 
 /* Help Panel */
 .help-panel {
-  position: fixed;
-  top: 0;
-  right: 0;
-  width: 360px;
-  height: 100vh;
+  height: 100%;
   background: var(--color-bg-primary);
-  border-left: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
-  z-index: 100;
-  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
 }
 .help-panel-header {
   flex-shrink: 0;

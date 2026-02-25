@@ -103,16 +103,6 @@ const GraphViewTab = lazy(() =>
     default: m.GraphView,
   })),
 );
-const AIChatPanel = lazy(() =>
-  import("./components/ai/AIChatPanel").then((m) => ({
-    default: m.AIChatPanel,
-  })),
-);
-const HelpPanel = lazy(() =>
-  import("./components/help/HelpPanel").then((m) => ({
-    default: m.HelpPanel,
-  })),
-);
 const SkillGeneratorDialog = lazy(() =>
   import("./components/ai/SkillGeneratorDialog").then((m) => ({
     default: m.SkillGeneratorDialog,
@@ -1473,8 +1463,6 @@ function App() {
         <QuickSwitcher editor={editor} onNewFile={handleNewFile} />
         <SettingsModal />
         <AboutModal />
-        <AIChatPanel />
-        <HelpPanel />
         <HoverPreview />
         <SkillGeneratorDialogWrapper />
         <SkillTestDialogWrapper />

@@ -48,7 +48,7 @@ export const useUIStore = create<UIState>((set) => ({
   sidebarPanel: "files",
   sidebarWidth: 260,
   rightPanelOpen: false,
-  rightPanelWidth: 300,
+  rightPanelWidth: 360,
   rightPanelMode: "chat" as const,
   commandPaletteOpen: false,
   quickSwitcherOpen: false,

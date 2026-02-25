@@ -1,10 +1,21 @@
 // §4.2 3-Column resizable layout
-import { useCallback } from "react";
+import { Suspense, lazy, useCallback } from "react";
 import { useUIStore } from "../../stores/ui-store";
 import { Splitter } from "./Splitter";
 import { Sidebar } from "./Sidebar";
 import { ActivityBar } from "./ActivityBar";
 import type { Editor } from "@tiptap/react";
+
+const AIChatPanel = lazy(() =>
+  import("../ai/AIChatPanel").then((m) => ({
+    default: m.AIChatPanel,
+  })),
+);
+const HelpPanel = lazy(() =>
+  import("../help/HelpPanel").then((m) => ({
+    default: m.HelpPanel,
+  })),
+);
 
 interface AppLayoutProps {
   editor: Editor | null;
@@ -84,7 +95,10 @@ export function AppLayout({ editor, children, statusBar }: AppLayoutProps) {
               className="app-right-panel"
               style={{ width: `${rightPanelWidth}px` }}
             >
-              <div className="right-panel-placeholder">Right Panel</div>
+              <Suspense fallback={null}>
+                <AIChatPanel />
+                <HelpPanel />
+              </Suspense>
             </aside>
           </>
         )}
