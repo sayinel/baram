@@ -9,6 +9,7 @@ import { llmListModels } from "../../ipc/invoke";
 import { formatAIError } from "../../utils/format-error";
 import type { ModelInfo } from "../../ipc/types";
 import { ExtensionsTab } from "./ExtensionsTab";
+import { ThemeEditor } from "./ThemeEditor";
 import { BUILT_IN_THEMES } from "../../types/theme";
 import type { ThemeColors, ThemeDef } from "../../types/theme";
 import { THEME_COLOR_KEYS } from "../../types/theme";
@@ -276,17 +277,7 @@ function AppearanceTab() {
   );
 
   if (editingTheme) {
-    return (
-      <div className="settings-section">
-        <SettingsSectionHeader title="Theme Editor" />
-        <div>Theme editor coming soon</div>
-        <div className="theme-actions">
-          <button className="theme-action-btn" onClick={() => setEditingTheme(false)}>
-            Back
-          </button>
-        </div>
-      </div>
-    );
+    return <ThemeEditor onClose={() => setEditingTheme(false)} />;
   }
 
   return (
