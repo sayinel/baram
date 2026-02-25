@@ -10,6 +10,8 @@ import { formatAIError } from "../../utils/format-error";
 import type { ModelInfo } from "../../ipc/types";
 import { ExtensionsTab } from "./ExtensionsTab";
 import { ThemeEditor } from "./ThemeEditor";
+import { open } from "@tauri-apps/plugin-dialog";
+import { readFile } from "../../ipc/invoke";
 import { BUILT_IN_THEMES } from "../../types/theme";
 import type { ThemeColors, ThemeDef } from "../../types/theme";
 import { THEME_COLOR_KEYS } from "../../types/theme";
@@ -217,7 +219,6 @@ function AppearanceTab() {
   const { activeThemeId, customThemes, setActiveTheme, saveCustomTheme, deleteCustomTheme } =
     useSettingsStore();
   const [editingTheme, setEditingTheme] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const allThemes = [...BUILT_IN_THEMES, ...customThemes];
 
@@ -230,51 +231,44 @@ function AppearanceTab() {
     "--color-border",
   ];
 
-  const handleImport = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          const data = JSON.parse(reader.result as string);
-          // Validate required fields
-          if (typeof data.name !== "string" || !data.name) {
-            throw new Error("Missing or invalid 'name' field");
-          }
-          if (data.base !== "light" && data.base !== "dark") {
-            throw new Error("'base' must be 'light' or 'dark'");
-          }
-          if (!data.colors || typeof data.colors !== "object") {
-            throw new Error("Missing or invalid 'colors' object");
-          }
-          // Validate all 16 color keys are present
-          const requiredKeys = THEME_COLOR_KEYS.map((k) => k.key);
-          for (const key of requiredKeys) {
-            if (typeof data.colors[key] !== "string") {
-              throw new Error(`Missing color key: ${key}`);
-            }
-          }
-          const newTheme: ThemeDef = {
-            id: "custom-" + Date.now(),
-            name: data.name,
-            base: data.base,
-            colors: data.colors,
-            builtIn: false,
-          };
-          saveCustomTheme(newTheme);
-          setActiveTheme(newTheme.id);
-        } catch (err) {
-          console.error("Theme import failed:", err);
-          alert("Invalid theme file: " + (err instanceof Error ? err.message : String(err)));
+  const handleImport = useCallback(async () => {
+    const selected = await open({
+      filters: [{ name: "JSON", extensions: ["json"] }],
+    });
+    if (!selected) return;
+    try {
+      const content = await readFile(selected);
+      const data = JSON.parse(content);
+      // Validate required fields
+      if (typeof data.name !== "string" || !data.name) {
+        throw new Error("Missing or invalid 'name' field");
+      }
+      if (data.base !== "light" && data.base !== "dark") {
+        throw new Error("'base' must be 'light' or 'dark'");
+      }
+      if (!data.colors || typeof data.colors !== "object") {
+        throw new Error("Missing or invalid 'colors' object");
+      }
+      // Validate all 16 color keys are present
+      const requiredKeys = THEME_COLOR_KEYS.map((k) => k.key);
+      for (const key of requiredKeys) {
+        if (typeof data.colors[key] !== "string") {
+          throw new Error(`Missing color key: ${key}`);
         }
+      }
+      const newTheme: ThemeDef = {
+        id: "custom-" + Date.now(),
+        name: data.name,
+        base: data.base,
+        colors: data.colors,
+        builtIn: false,
       };
-      reader.readAsText(file);
-      // Reset so re-importing the same file triggers onChange
-      e.target.value = "";
-    },
-    [saveCustomTheme, setActiveTheme],
-  );
+      saveCustomTheme(newTheme);
+      setActiveTheme(newTheme.id);
+    } catch (err) {
+      console.error("Theme import failed:", err);
+    }
+  }, [saveCustomTheme, setActiveTheme]);
 
   if (editingTheme) {
     return <ThemeEditor onClose={() => setEditingTheme(false)} />;
@@ -345,16 +339,9 @@ function AppearanceTab() {
         <button className="theme-action-btn" onClick={() => setEditingTheme(true)}>
           Customize...
         </button>
-        <button className="theme-action-btn" onClick={() => fileInputRef.current?.click()}>
+        <button className="theme-action-btn" onClick={handleImport}>
           Import Theme...
         </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".json"
-          style={{ display: "none" }}
-          onChange={handleImport}
-        />
       </div>
     </div>
   );
