@@ -1048,6 +1048,9 @@ body {
   border-radius: 0 0 6px 6px;
   font-size: 0.875em;
 }
+.code-block-editor .cm-editor .cm-scroller {
+  overflow: hidden !important;
+}
 
 /* Code Block Style: Minimal — no background/border, bottom divider only */
 .code-block-wrapper[data-style="minimal"] .code-block-header {
