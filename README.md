@@ -86,6 +86,8 @@ Baram hides markdown syntax while you write and reveals it only when your cursor
 | Toggle Heading | Slash command `/toggle heading 1` – `/toggle heading 3` |
 | Mermaid Diagram | Slash command `/mermaid` or `Cmd+Shift+D` |
 | Table of Contents | Type `[TOC]` or slash command `/toc` |
+| Footnote Reference | Type `[^id]` inline |
+| Footnote Definition | Auto-created at document end when `[^id]` is typed |
 | YAML Frontmatter | Auto-detected at document start |
 
 ### Inline Formatting
@@ -102,6 +104,23 @@ Baram hides markdown syntax while you write and reveals it only when your cursor
 | Subscript | `~text~` | — |
 | Link | `[text](url)` | `Cmd+K` |
 | Inline Math | `$formula$` | Type `$` |
+
+### Footnotes
+
+Add references and definitions using standard markdown footnote syntax:
+
+- **Type `[^id]`** in text to insert a footnote reference (displays as a superscript number)
+- A **footnote definition** block is automatically created at the end of the document
+- References are numbered by document order (1, 2, 3…) regardless of identifier name
+- **Hover** a reference to see a tooltip preview of the definition content
+- **Click** a reference to scroll to its definition; click the number or ↩ in the definition to scroll back
+
+```markdown
+Here is some text[^note] with a footnote[^2].
+
+[^note]: This is the footnote content.
+[^2]: Another footnote.
+```
 
 ### Bidirectional Links (Wikilinks)
 
@@ -339,7 +358,7 @@ Create your own slash commands in **Settings > AI > Custom Commands**. Use varia
 
 - **Left Sidebar** — File tree + Backlinks + Bookmarks (`Cmd+Shift+L` to toggle)
 - **Editor** — Main editing area with WYSIWYG or Source mode
-- **Right Sidebar** — Document outline with heading navigation
+- **Right Sidebar** — Document outline, AI Chat, or Help panel
 
 ### Toolbar & Menus
 
@@ -356,6 +375,16 @@ Create your own slash commands in **Settings > AI > Custom Commands**. Use varia
 - **Tab Pin** — Right-click a tab to pin it (pinned tabs show as icons, can't be accidentally closed)
 - **Tab Switcher** — `Ctrl+Tab` opens MRU (Most Recently Used) tab switcher
 - **Undo history preserved** — Switching tabs preserves your undo/redo history per tab
+
+### Help Panel
+
+Access built-in documentation from the **Help** menu:
+
+- **User Guide** — Feature overview and usage instructions
+- **Keyboard Shortcuts** — Complete shortcut reference
+- **FAQ** — Frequently asked questions
+
+The Help panel opens in the right sidebar.
 
 ### Status Bar
 
@@ -449,15 +478,17 @@ Reverse:  ProseMirror Document → mdast → remark-stringify
 
 | Milestone | Status | Description |
 |-----------|--------|-------------|
-| M9 (partial) | ✅ Done | Highlight / subscript / superscript marks, Table of Contents, Table Tier 3 (column resize, pipe-input creation) |
+| M9 Productivity | ✅ Done | Highlight / subscript / superscript marks, Table of Contents, Table Tier 3 (column resize, pipe-input creation), Footnotes, Help panel |
 
-**Upcoming**
+**Phase 3 — Advanced** (upcoming)
 
-- Global search (Cmd+Shift+F)
-- Git integration
-- Theme system
-- Table cell merge & virtual scroll (50+ rows)
-- Plugin marketplace
+| Feature | Description |
+|---------|-------------|
+| Global Search | `Cmd+Shift+F` — Full-text search across workspace |
+| Git Integration | Built-in version control |
+| Theme System | Custom themes and color schemes |
+| Table Cell Merge | Merge/split table cells, virtual scroll for 50+ rows |
+| Plugin Marketplace | Community extensions |
 
 ## License
 

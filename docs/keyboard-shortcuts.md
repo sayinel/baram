@@ -74,6 +74,7 @@ Complete list of keyboard shortcuts available in Baram.
 |--------|-------|-----------------|
 | Source Mode Toggle | `Cmd+/` | `Ctrl+/` |
 | Toggle Left Sidebar | `Cmd+Shift+L` | `Ctrl+Shift+L` |
+| Toggle Right Sidebar | `Cmd+Shift+R` | `Ctrl+Shift+R` |
 
 ## Navigation
 
@@ -138,6 +139,7 @@ Complete list of keyboard shortcuts available in Baram.
 
 - **Slash Commands**: Type `/` at the start of an empty line to open the block insertion menu
 - **Wikilinks**: Type `[[` to start a wikilink with autocomplete
+- **Footnotes**: Type `[^id]` to insert a footnote reference — the definition is auto-created at the end of the document
 - **Markdown Shortcuts**: You can always type raw markdown syntax (e.g., `**bold**`, `# Heading`) — Baram converts it automatically
 - **Floating Toolbar**: Select text to see a floating toolbar with formatting options
 - **Tab Switcher**: Hold `Ctrl` while pressing `Tab` to cycle through recently used tabs; release `Ctrl` to select

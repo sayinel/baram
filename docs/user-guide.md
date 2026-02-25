@@ -16,6 +16,7 @@ Welcome to Baram — a lightweight, beautiful WYSIWYG markdown editor with AI in
 - [AI Features](#ai-features)
 - [Export](#export)
 - [Customization](#customization)
+- [Help Panel](#help-panel)
 
 ---
 
@@ -60,7 +61,7 @@ Baram uses a 3-column layout:
 
 - **Left Sidebar** — File tree, backlinks panel, and bookmarks. Toggle with `Cmd+Shift+L` (macOS) / `Ctrl+Shift+L` (Windows/Linux).
 - **Main Editor** — The WYSIWYG editing area where you write.
-- **Right Sidebar** — Document outline showing heading structure.
+- **Right Sidebar** — Document outline showing heading structure, or AI Chat panel.
 - **Status Bar** — Shows word count, line count, and cursor position.
 
 > By default, both sidebars are hidden to maximize writing space. The editor follows the principle of **minimal interface** — only showing what you need, when you need it.
@@ -355,6 +356,43 @@ Insert a table of contents that automatically lists all headings in the document
 - Click any entry to jump to that heading
 - Serialized as `[TOC]` in markdown (compatible with Typora)
 
+### Footnotes
+
+Add footnote references and definitions using standard markdown syntax.
+
+**Creating a footnote:**
+
+1. Type `[^id]` anywhere in your text (e.g., `[^1]`, `[^note]`)
+2. A superscript number appears inline, and a footnote definition block is automatically appended at the end of the document
+3. Click the definition area to type the footnote content
+
+**Display:**
+
+- References display as sequential numbers (1, 2, 3…) based on the order they appear in the document, regardless of identifier name
+- Definitions display as `N. content ↩` — the number followed by the content and a back-arrow
+
+**Navigation:**
+
+- **Hover** a reference to see a tooltip preview of the definition
+- **Click** a reference to scroll to the definition
+- **Click** the number or ↩ in the definition to scroll back to the reference
+
+**Example:**
+
+```markdown
+Einstein proposed E=mc²[^einstein] which revolutionized physics[^physics].
+
+[^einstein]: Albert Einstein, 1905.
+[^physics]: See "On the Electrodynamics of Moving Bodies".
+```
+
+In the editor, `[^einstein]` displays as `1` and `[^physics]` as `2`.
+
+**Editing tips:**
+
+- Press **Enter** on an empty last line inside a definition to exit the block
+- Press **Backspace** at the start of the first line to lift the content out of the definition
+
 ### YAML Frontmatter
 
 YAML frontmatter at the top of a document is automatically detected and rendered as a structured block:
@@ -444,6 +482,8 @@ Press `Cmd+/` (macOS) or `Ctrl+/` (Windows/Linux) to toggle between WYSIWYG mode
 In Source Mode, you edit raw markdown text in a CodeMirror 6 editor with:
 - Syntax highlighting
 - Full markdown source visibility
+- Undo/Redo (`Cmd+Z` / `Cmd+Shift+Z`)
+- Line numbers (configurable in Settings > Editor)
 - All changes sync back to WYSIWYG mode when you switch
 
 This is useful for precise markdown editing or debugging formatting issues.
@@ -591,10 +631,11 @@ Available settings tabs:
 | Tab | What You Can Configure |
 |-----|------------------------|
 | **General** | Startup behavior, language |
-| **Editor** | Indentation, line endings, editor max width |
+| **Editor** | Indentation, tab size, line numbers, line endings, editor max width |
+| **Appearance** | Theme (light/dark), font family, font size |
+| **Files** | Auto-save, file sorting, default file location |
 | **Markdown** | Extended syntax toggles, strict mode |
 | **AI** | Provider, model, API key (per-provider), privacy mode, Ghost Text settings, custom AI commands |
-| **Export** | PDF/HTML export options |
 
 ### Command Palette
 
@@ -606,8 +647,21 @@ See the full [Keyboard Shortcuts Reference](keyboard-shortcuts.md) for all avail
 
 ---
 
+## Help Panel
+
+Access the built-in Help panel from the **Help** menu. It includes three tabs:
+
+| Tab | Content |
+|-----|---------|
+| **User Guide** | Quick-start overview of editor features |
+| **Shortcuts** | Complete keyboard shortcut reference |
+| **FAQ** | Frequently asked questions and answers |
+
+---
+
 ## Getting Help
 
+- **Help Panel** — Access from the Help menu for User Guide, Shortcuts, and FAQ
 - **Command Palette** (`Cmd+P` or `Cmd+Shift+P`) — Search for any feature
 - **Quick Switcher** (`Cmd+K`) — Quickly open files and jump to headings
 - **Slash Commands** (`/`) — Quick block insertion

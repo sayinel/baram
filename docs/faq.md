@@ -73,9 +73,13 @@ Use the slash command `/toggle` or `/toggle heading 1` for a toggle with heading
 
 Use the slash command `/mermaid` or press `Cmd+Shift+D`. Write Mermaid syntax and a live preview renders below. Supports flowcharts, sequence diagrams, class diagrams, and more.
 
+### How do I use footnotes?
+
+Type `[^id]` (e.g., `[^1]` or `[^note]`) anywhere in your text to insert a footnote reference. A footnote definition block is automatically created at the end of the document — click into it to type the footnote content. References display as sequential numbers (1, 2, 3…) based on document order. Hover a reference to see a tooltip preview, click to navigate between reference and definition.
+
 ### What is Source Mode?
 
-Press `Cmd+/` (macOS) or `Ctrl+/` (Windows/Linux) to toggle Source Mode. This shows the raw markdown in a CodeMirror editor, useful for precise editing or troubleshooting formatting.
+Press `Cmd+/` (macOS) or `Ctrl+/` (Windows/Linux) to toggle Source Mode. This shows the raw markdown in a CodeMirror editor with full undo/redo support, useful for precise editing or troubleshooting formatting.
 
 ---
 
@@ -207,6 +211,12 @@ Go to **File > Export** and select your desired format.
 ### Are images included in exports?
 
 Images referenced by URL are included in HTML exports as links. For PDF exports, images are rendered via the system print engine.
+
+---
+
+### Where is the Help panel?
+
+Open the **Help** menu and select **User Guide**, **Keyboard Shortcuts**, or **FAQ**. The Help panel opens in the right sidebar with three tabs for quick in-app reference.
 
 ---
 
