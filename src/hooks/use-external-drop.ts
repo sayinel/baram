@@ -24,6 +24,7 @@ import {
   hideDropIndicator,
   removeDropIndicator,
   resolveInsertTarget,
+  insertNodeAtPos,
 } from "../utils/drop-indicator";
 
 interface UseExternalDropOptions {
@@ -216,9 +217,7 @@ async function handleEditorDrop(
         src: relativeSrc,
         alt,
       });
-      const tr = editor.state.tr.insert(pos, imageNode);
-      editor.view.dispatch(tr);
-      pos += imageNode.nodeSize;
+      pos = insertNodeAtPos(editor, pos, imageNode);
     } catch (err) {
       console.error("[ExternalDrop] Image drop failed:", err);
     }

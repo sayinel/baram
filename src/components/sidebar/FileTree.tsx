@@ -10,7 +10,7 @@ import { readFile, writeFile, deleteFile, createDir, deleteDir, renameFile, rena
 import { flattenFileTree, fuzzyMatch, fuzzyScore, isGlobPattern, globMatch } from "../../utils/file-search";
 import { showConfirm } from "../../utils/confirm-dialog";
 import { isImageFile, getRelativePath } from "../../utils/path-utils";
-import { showDropIndicator, hideDropIndicator, resolveInsertTarget } from "../../utils/drop-indicator";
+import { showDropIndicator, hideDropIndicator, resolveInsertTarget, insertNodeAtPos } from "../../utils/drop-indicator";
 import type { Editor } from "@tiptap/react";
 
 // --- Mono-style SVG Icons (Lucide-based, 24x24 viewBox) ---
@@ -640,8 +640,7 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
             src: relativeSrc,
             alt: fileName.replace(/\.[^.]+$/, ""),
           });
-          const tr = editor.state.tr.insert(insertPos, imageNode);
-          editor.view.dispatch(tr);
+          insertNodeAtPos(editor, insertPos, imageNode);
         }
         return; // Skip folder move logic
       }
