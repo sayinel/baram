@@ -244,15 +244,15 @@ pub fn run() {
                 .build()?;
 
             // --- Workspace menu (§52) ---
-            let workspace_writing = MenuItemBuilder::new("글쓰기")
+            let workspace_writing = MenuItemBuilder::new("Writing")
                 .id("workspace_writing")
                 .accelerator("Alt+CmdOrCtrl+1")
                 .build(app)?;
-            let workspace_skills = MenuItemBuilder::new("Skills 편집")
+            let workspace_skills = MenuItemBuilder::new("Skills")
                 .id("workspace_skills")
                 .accelerator("Alt+CmdOrCtrl+2")
                 .build(app)?;
-            let workspace_research = MenuItemBuilder::new("리서치")
+            let workspace_research = MenuItemBuilder::new("Research")
                 .id("workspace_research")
                 .accelerator("Alt+CmdOrCtrl+3")
                 .build(app)?;
