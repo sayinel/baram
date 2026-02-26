@@ -66,12 +66,30 @@ export function insertNodeAtPos(editor: Editor, pos: number, node: PMNode): numb
   const tr = editor.state.tr;
 
   if ($pos.depth > 0 && isListNode($pos.parent)) {
-    // Between list items — split the list, then insert
+    const listNode = $pos.parent;
+    const indexInList = $pos.index($pos.depth); // how many items before the split
+
+    // split(pos, 1) inserts 2 tokens (close + open tag) at pos.
+    // mapping.map(pos) with forward bias = pos + 2 (inside second list).
+    // The position BETWEEN the two lists at parent level = pos + 1.
     tr.split(pos, 1);
-    const mapped = tr.mapping.map(pos);
-    tr.insert(mapped, node);
+    const betweenLists = tr.mapping.map(pos) - 1;
+    tr.insert(betweenLists, node);
+
+    // Fix orderedList numbering: set `start` on the second list so it continues
+    // e.g. split after item 2 of "1. 2. 3. 4." → first list "1. 2.", second "3. 4."
+    if (listNode.type.name === "orderedList") {
+      const origStart = (listNode.attrs.start as number) || 1;
+      const secondListPos = betweenLists + node.nodeSize;
+      try {
+        tr.setNodeMarkup(secondListPos, undefined, {
+          start: origStart + indexInList,
+        });
+      } catch { /* ignore */ }
+    }
+
     editor.view.dispatch(tr);
-    return mapped + node.nodeSize;
+    return betweenLists + node.nodeSize;
   }
 
   tr.insert(pos, node);
