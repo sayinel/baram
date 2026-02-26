@@ -3,8 +3,8 @@
 //
 // Supports:
 // - Inserting between top-level blocks (paragraphs, headings, etc.)
-// - Inserting between list items (splits the list on insertion)
-// - Fallback DOM rect scanning when posAtCoords fails (native OS drag in WKWebView)
+// - Inserting between list items at any nesting depth (splits the list on insertion)
+// - Reliable DOM rect scanning (no posAtCoords — avoids WKWebView native drag issues)
 import type { Editor } from "@tiptap/core";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorView } from "@tiptap/pm/view";
@@ -66,7 +66,7 @@ export function insertNodeAtPos(editor: Editor, pos: number, node: PMNode): numb
   const tr = editor.state.tr;
 
   if ($pos.depth > 0 && isListNode($pos.parent)) {
-    // Between list items — split the list, then insert at doc level
+    // Between list items — split the list, then insert
     tr.split(pos, 1);
     const mapped = tr.mapping.map(pos);
     tr.insert(mapped, node);
@@ -83,116 +83,25 @@ export function insertNodeAtPos(editor: Editor, pos: number, node: PMNode): numb
 
 /**
  * Resolve cursor coordinates to the nearest block boundary for image insertion.
- * Supports drilling into lists to find list-item boundaries.
- * Falls back to DOM rect scanning when posAtCoords fails (e.g. during native OS drag).
+ * Always uses DOM rect scanning for reliable behavior in all contexts
+ * (in-app mouse drag AND native OS drag via Tauri onDragDropEvent).
+ *
+ * posAtCoords is intentionally NOT used because during native OS drag in WKWebView
+ * it can return stale/wrong results, causing the indicator to not show.
  */
-export function resolveInsertTarget(editor: Editor, x: number, y: number): InsertTarget | null {
+export function resolveInsertTarget(editor: Editor, _x: number, y: number): InsertTarget | null {
   const view = editor.view;
   const doc = editor.state.doc;
   if (doc.childCount === 0) return null;
 
-  // Try ProseMirror's posAtCoords (fast, but may fail during native OS drag)
-  const posInfo = view.posAtCoords({ left: x, top: y });
-
-  if (posInfo) {
-    const $pos = doc.resolve(posInfo.pos);
-
-    if ($pos.depth >= 1) {
-      const blockStart = $pos.before(1);
-      const blockNode = doc.nodeAt(blockStart);
-
-      // Drill into list nodes to resolve between list items
-      if (blockNode && isListNode(blockNode)) {
-        const result = resolveInsideList(view, blockStart, blockNode, y);
-        if (result) return result;
-      }
-
-      return resolveBlockBoundary(view, blockStart, $pos.after(1), y);
-    }
-
-    // depth === 0: between blocks — fall through to block scan
-  }
-
-  // Fallback: scan all top-level blocks by DOM bounding rect.
-  // This is needed when posAtCoords returns null (native OS drag in WKWebView)
-  // or when the resolved position is at doc level (between blocks).
   return scanBlocksByRect(view, doc, y);
 }
 
 // --- Internal helpers ---
 
-function resolveBlockBoundary(
-  view: EditorView,
-  blockStart: number,
-  blockEnd: number,
-  y: number,
-): InsertTarget | null {
-  try {
-    const dom = view.nodeDOM(blockStart);
-    if (dom instanceof HTMLElement) {
-      const rect = dom.getBoundingClientRect();
-      if (y < rect.top + rect.height / 2) {
-        return { pos: blockStart, indicatorY: rect.top, indicatorLeft: rect.left, indicatorWidth: rect.width };
-      }
-      return { pos: blockEnd, indicatorY: rect.bottom, indicatorLeft: rect.left, indicatorWidth: rect.width };
-    }
-  } catch { /* ignore */ }
-  return null;
-}
-
-/**
- * Resolve inside a list node to find the nearest list-item boundary.
- * - Before first item → pos before the entire list (doc level)
- * - Between items → pos between items (inside list, needs split on insert)
- * - After last item → pos after the entire list (doc level)
- */
-function resolveInsideList(
-  view: EditorView,
-  listStart: number,
-  listNode: PMNode,
-  y: number,
-): InsertTarget | null {
-  const listEnd = listStart + listNode.nodeSize;
-  let offset = listStart + 1; // first position inside list content
-
-  for (let i = 0; i < listNode.childCount; i++) {
-    const item = listNode.child(i);
-    try {
-      const dom = view.nodeDOM(offset);
-      if (dom instanceof HTMLElement) {
-        const rect = dom.getBoundingClientRect();
-        if (y < rect.top + rect.height / 2) {
-          if (i === 0) {
-            // Before first item → before the entire list at doc level
-            return { pos: listStart, indicatorY: rect.top, indicatorLeft: rect.left, indicatorWidth: rect.width };
-          }
-          // Between items → will need list split on insertion
-          return { pos: offset, indicatorY: rect.top, indicatorLeft: rect.left, indicatorWidth: rect.width };
-        }
-      }
-    } catch { /* ignore */ }
-    offset += item.nodeSize;
-  }
-
-  // After last item → after the entire list at doc level
-  if (listNode.childCount > 0) {
-    const lastStart = offset - listNode.child(listNode.childCount - 1).nodeSize;
-    try {
-      const dom = view.nodeDOM(lastStart);
-      if (dom instanceof HTMLElement) {
-        const rect = dom.getBoundingClientRect();
-        return { pos: listEnd, indicatorY: rect.bottom, indicatorLeft: rect.left, indicatorWidth: rect.width };
-      }
-    } catch { /* ignore */ }
-  }
-
-  return null;
-}
-
 /**
  * Scan all top-level blocks by DOM rect to find the nearest boundary.
- * Used as fallback when posAtCoords fails or resolves to doc level.
- * Drills into list nodes for list-item granularity.
+ * Drills into list nodes recursively for list-item granularity.
  */
 function scanBlocksByRect(
   view: EditorView,
@@ -235,4 +144,95 @@ function scanBlocksByRect(
   }
 
   return best;
+}
+
+/**
+ * Resolve inside a list node to find the nearest list-item boundary.
+ * Recursively drills into nested lists.
+ *
+ * Position semantics:
+ * - Before first item → pos before the entire list (parent level, no split needed)
+ * - Between items → pos between items (inside list, needs split on insert)
+ * - After last item → pos after the entire list (parent level, no split needed)
+ */
+function resolveInsideList(
+  view: EditorView,
+  listStart: number,
+  listNode: PMNode,
+  y: number,
+): InsertTarget | null {
+  const listEnd = listStart + listNode.nodeSize;
+  let offset = listStart + 1; // first position inside list content
+  let best: InsertTarget | null = null;
+  let bestDist = Infinity;
+
+  for (let i = 0; i < listNode.childCount; i++) {
+    const item = listNode.child(i);
+    try {
+      const dom = view.nodeDOM(offset);
+      if (dom instanceof HTMLElement) {
+        const rect = dom.getBoundingClientRect();
+
+        // If y is within this item, check for nested lists first
+        if (y >= rect.top && y <= rect.bottom) {
+          const nestedResult = tryNestedLists(view, item, offset, y);
+          if (nestedResult) return nestedResult;
+        }
+
+        // Top boundary of this item
+        const topDist = Math.abs(y - rect.top);
+        if (topDist < bestDist) {
+          bestDist = topDist;
+          // First item's top → before the entire list (parent level)
+          // Other items' top → between items (inside list, needs split)
+          const pos = i === 0 ? listStart : offset;
+          best = { pos, indicatorY: rect.top, indicatorLeft: rect.left, indicatorWidth: rect.width };
+        }
+
+        // Bottom boundary (only last item → after the entire list)
+        if (i === listNode.childCount - 1) {
+          const botDist = Math.abs(y - rect.bottom);
+          if (botDist < bestDist) {
+            bestDist = botDist;
+            best = { pos: listEnd, indicatorY: rect.bottom, indicatorLeft: rect.left, indicatorWidth: rect.width };
+          }
+        }
+      }
+    } catch { /* ignore */ }
+    offset += item.nodeSize;
+  }
+
+  return best;
+}
+
+/**
+ * Check if a listItem contains nested lists and recurse into them.
+ * Handles items with multiple nested lists (e.g. paragraph + sublist + paragraph + sublist).
+ */
+function tryNestedLists(
+  view: EditorView,
+  listItem: PMNode,
+  itemStart: number,
+  y: number,
+): InsertTarget | null {
+  let contentOffset = itemStart + 1; // inside the listItem
+
+  for (let j = 0; j < listItem.childCount; j++) {
+    const child = listItem.child(j);
+    if (isListNode(child)) {
+      try {
+        const dom = view.nodeDOM(contentOffset);
+        if (dom instanceof HTMLElement) {
+          const rect = dom.getBoundingClientRect();
+          if (y >= rect.top && y <= rect.bottom) {
+            const result = resolveInsideList(view, contentOffset, child, y);
+            if (result) return result;
+          }
+        }
+      } catch { /* ignore */ }
+    }
+    contentOffset += child.nodeSize;
+  }
+
+  return null;
 }
