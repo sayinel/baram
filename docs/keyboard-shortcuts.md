@@ -12,6 +12,7 @@ Complete list of keyboard shortcuts available in Baram.
 |--------|-------|-----------------|
 | New File | `Cmd+N` | `Ctrl+N` |
 | Open File | `Cmd+O` | `Ctrl+O` |
+| Open Folder | `Cmd+Shift+O` | `Ctrl+Shift+O` |
 | Save | `Cmd+S` | `Ctrl+S` |
 | Save As | `Cmd+Shift+S` | `Ctrl+Shift+S` |
 | Close Tab | `Cmd+W` | `Ctrl+W` |

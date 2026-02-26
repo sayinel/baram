@@ -1250,6 +1250,13 @@ function App() {
         return;
       }
 
+      // Cmd+Shift+O — open folder
+      if (mod && e.shiftKey && e.code === "KeyO") {
+        e.preventDefault();
+        handleOpenFolder();
+        return;
+      }
+
       // Cmd+O — open file
       if (mod && e.key === "o") {
         e.preventDefault();

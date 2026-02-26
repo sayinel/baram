@@ -41,6 +41,7 @@ pub fn run() {
                 .build(app)?;
             let file_open_folder = MenuItemBuilder::new("Open Folder...")
                 .id("file_open_folder")
+                .accelerator("CmdOrCtrl+Shift+O")
                 .build(app)?;
             let file_save = MenuItemBuilder::new("Save")
                 .id("file_save")

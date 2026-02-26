@@ -50,6 +50,7 @@ function buildCommands(
       id: "file:open-folder",
       label: "Open Folder",
       category: "File",
+      shortcut: "⌘⇧O",
       action: () => onOpenFolder(),
     },
     {
