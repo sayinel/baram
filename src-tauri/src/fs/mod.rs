@@ -143,6 +143,68 @@ pub async fn delete_file(path: &str) -> Result<(), FsError> {
         .map_err(FsError::ReadError)
 }
 
+/// §53 ZIP 파일 추출 — Notion 내보내기 호환
+pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>, FsError> {
+    let zip_path = zip_path.to_string();
+    let output_dir = output_dir.to_string();
+
+    tokio::task::spawn_blocking(move || {
+        let file = std::fs::File::open(&zip_path).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                FsError::NotFound(zip_path.clone())
+            } else {
+                FsError::ReadError(e)
+            }
+        })?;
+        let mut archive = zip::ZipArchive::new(file).map_err(|e| {
+            FsError::ReadError(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                e.to_string(),
+            ))
+        })?;
+
+        let mut extracted_paths = Vec::new();
+
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i).map_err(|e| {
+                FsError::ReadError(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    e.to_string(),
+                ))
+            })?;
+
+            let outpath = std::path::Path::new(&output_dir).join(file.name());
+
+            // Skip __MACOSX and .DS_Store
+            if file.name().starts_with("__MACOSX") || file.name().ends_with(".DS_Store") {
+                continue;
+            }
+
+            if file.is_dir() {
+                std::fs::create_dir_all(&outpath).map_err(FsError::ReadError)?;
+            } else {
+                if let Some(parent) = outpath.parent() {
+                    std::fs::create_dir_all(parent).map_err(FsError::ReadError)?;
+                }
+                let mut outfile =
+                    std::fs::File::create(&outpath).map_err(FsError::ReadError)?;
+                std::io::copy(&mut file, &mut outfile).map_err(FsError::ReadError)?;
+
+                extracted_paths.push(outpath.to_string_lossy().into_owned());
+            }
+        }
+
+        Ok(extracted_paths)
+    })
+    .await
+    .map_err(|e| {
+        FsError::ReadError(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            e.to_string(),
+        ))
+    })?
+}
+
 /// 디렉토리 감시 시작 — notify crate 기반
 /// file:changed, file:created, file:deleted 이벤트를 프론트엔드로 emit
 pub fn watch_dir(path: &str, app_handle: tauri::AppHandle) -> Result<(), FsError> {

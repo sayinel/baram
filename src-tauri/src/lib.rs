@@ -61,6 +61,9 @@ pub fn run() {
             let export_pdf = MenuItemBuilder::new("Export as PDF")
                 .id("export_pdf")
                 .build(app)?;
+            let import_notion = MenuItemBuilder::new("Import from Notion...")
+                .id("import_notion")
+                .build(app)?;
 
             let file_menu = SubmenuBuilder::new(app, "File")
                 .item(&file_new)
@@ -70,6 +73,8 @@ pub fn run() {
                 .item(&file_save)
                 .item(&file_save_as)
                 .item(&file_close_tab)
+                .separator()
+                .item(&import_notion)
                 .separator()
                 .item(&export_html)
                 .item(&export_pdf)
@@ -352,6 +357,7 @@ pub fn run() {
             fs_cmd::delete_dir,
             fs_cmd::copy_file,
             fs_cmd::watch_dir,
+            fs_cmd::extract_zip,
             config_cmd::get_config,
             config_cmd::set_config,
             config_cmd::remove_config,

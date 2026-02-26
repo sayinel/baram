@@ -62,6 +62,14 @@ export async function watchDir(path: string): Promise<void> {
   return invoke<void>("watch_dir", { path });
 }
 
+/** §53 Extract a ZIP file to output directory, returns list of extracted file paths */
+export async function extractZip(
+  zipPath: string,
+  outputDir: string,
+): Promise<string[]> {
+  return invoke<string[]>("extract_zip", { zipPath, outputDir });
+}
+
 // §5.11 Global Search
 export async function searchFiles(
   rootPath: string,

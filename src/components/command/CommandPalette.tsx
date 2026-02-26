@@ -55,6 +55,12 @@ function buildCommands(
       action: () => onOpenFolder(),
     },
     {
+      id: "file:import-notion",
+      label: "Import from Notion",
+      category: "File",
+      action: () => useUIStore.getState().openNotionImport(),
+    },
+    {
       id: "file:export-html",
       label: "Export as HTML",
       category: "File",

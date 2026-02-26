@@ -71,3 +71,11 @@ pub async fn copy_file(from: String, to: String) -> Result<(), String> {
 pub async fn watch_dir(path: String, app_handle: tauri::AppHandle) -> Result<(), String> {
     crate::fs::watch_dir(&path, app_handle).map_err(|e| e.to_string())
 }
+
+/// §53 ZIP 파일 추출 — Notion 내보내기 호환
+#[tauri::command]
+pub async fn extract_zip(zip_path: String, output_dir: String) -> Result<Vec<String>, String> {
+    crate::fs::extract_zip(&zip_path, &output_dir)
+        .await
+        .map_err(|e| e.to_string())
+}

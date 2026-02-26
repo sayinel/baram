@@ -175,13 +175,14 @@
         "§50-mermaid-enhanced": { "status": "completed", "tests": "15/15 vitest pass (templates + type detection)", "spec": "§50", "details": "context menu (SVG/PNG/Source copy), template dropdown, fullscreen edit, type badge" },
         "§57b-git-basic": { "status": "completed", "tests": "16/16 vitest pass (git-store utils) + 105/105 cargo test", "spec": "§57b", "details": "git2 backend (status/stage/unstage/commit/diff/branch/discard), Source Control sidebar, StatusBar branch, Diff viewer, Command Palette Git commands" },
         "§54-theme-system": { "status": "completed", "tests": "809/809 vitest pass (전체 테스트 통과)", "spec": "§54", "details": "6 built-in themes, CSS variable override, theme gallery, color picker editor, import/export JSON, custom themes" },
-        "§52-workspace-preset": { "status": "completed", "tests": "836/836 vitest pass (전체 테스트 통과)", "spec": "§52", "details": "3 built-in presets (Writing/Skills/Research), custom preset save/delete/rename, Cmd+Alt+1/2/3 shortcuts, Command Palette, Workspace menu, Settings tab" }
+        "§52-workspace-preset": { "status": "completed", "tests": "836/836 vitest pass (전체 테스트 통과)", "spec": "§52", "details": "3 built-in presets (Writing/Skills/Research), custom preset save/delete/rename, Cmd+Alt+1/2/3 shortcuts, Command Palette, Workspace menu, Settings tab" },
+        "§53-notion-compat": { "status": "completed", "tests": "878/879 vitest pass (43 notion-converter tests) + 105/105 cargo test", "spec": "§53", "details": "Notion ZIP import (extract + convert callouts/links/images/CSV), notion-converter.ts (9 functions), Rust extract_zip IPC, NotionImportDialog UI, File menu + Command Palette" }
       }
     }
   },
 
   "testSummary": {
-    "vitest": "836/836 pass (60 test files)",
+    "vitest": "878/879 pass (61 test files)",
     "cargoTest": "105/105 pass (4 ignored)",
     "note": "§54 Theme System: UI-only feature, no new test files (TypeScript clean compilation verified)",
     "breakdown": {
