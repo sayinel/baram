@@ -16,6 +16,7 @@ Welcome to Baram — a lightweight, beautiful WYSIWYG markdown editor with AI in
 - [AI Features](#ai-features)
 - [Git Integration](#git-integration)
 - [Export](#export)
+- [Workspace Presets](#workspace-presets)
 - [Customization](#customization)
 - [Help Panel](#help-panel)
 
@@ -60,7 +61,7 @@ Baram uses a 3-column layout:
 └───────────────────────────────────────────────────────┘
 ```
 
-- **Left Sidebar** — File tree, backlinks panel, and bookmarks. Toggle with `Cmd+Shift+L` (macOS) / `Ctrl+Shift+L` (Windows/Linux).
+- **Left Sidebar** — File tree, backlinks panel, bookmarks, global search, and Git source control. Toggle with `Cmd+Shift+L` (macOS) / `Ctrl+Shift+L` (Windows/Linux).
 - **Main Editor** — The WYSIWYG editing area where you write.
 - **Right Sidebar** — Document outline showing heading structure, or AI Chat panel.
 - **Status Bar** — Shows word count, line count, and cursor position.
@@ -642,6 +643,54 @@ Generates clean, self-contained HTML with inline styles. The exported file inclu
 
 Creates a print-ready PDF via the system print dialog. Supports customization of paper size, margins, and layout.
 
+### Notion
+
+Exports a Notion-compatible Markdown file. Automatically converts Baram-specific syntax that Notion doesn't understand:
+
+| Baram Syntax | Notion Output |
+|---|---|
+| `[[page]]` wikilinks | `[page](page.md)` standard links |
+| `> [!type]` callouts | Emoji-prefixed blockquotes |
+| `$inline$` math | `$$inline$$` block math |
+| `==text==` highlight | `**text**` bold |
+| `~text~` subscript | Unicode subscript or `$_{text}$` |
+| `^text^` superscript | Unicode superscript or `$^{text}$` |
+| `[^id]` footnotes | Inline `(id)` with Notes section |
+| `((ref))` block references | Stripped |
+| Definition lists | `**Term**: Definition` format |
+
+To export: go to **File > Export for Notion**, or open the Export dialog (`File > Export as HTML/PDF`) and select the **Notion** tab.
+
+---
+
+## Workspace Presets
+
+Workspace Presets let you save and quickly restore your preferred layout — sidebar panel, right panel, and theme settings.
+
+### Built-in Presets
+
+| Preset | Shortcut (macOS) | Shortcut (Win/Linux) | Layout |
+|--------|-------------------|----------------------|--------|
+| Writing | `Cmd+Alt+1` | `Ctrl+Alt+1` | Sidebar closed, right panel closed — focused writing |
+| Skills | `Cmd+Alt+2` | `Ctrl+Alt+2` | File tree open, AI Chat panel open — prompt editing |
+| Research | `Cmd+Alt+3` | `Ctrl+Alt+3` | File tree + backlinks open, AI Chat panel open — knowledge exploration |
+
+### Custom Presets
+
+Create your own presets in **Settings > Workspace**:
+
+1. Arrange your workspace layout as desired (sidebar panel, right panel, theme)
+2. Go to **Settings > Workspace** and click **Save Current Layout**
+3. Enter a name for the preset
+
+Custom presets can be renamed, deleted, and applied from the same Settings tab.
+
+### Applying Presets
+
+- **Keyboard shortcuts** — `Cmd+Alt+1`/`2`/`3` for built-in presets
+- **Command Palette** — Search for "Workspace" commands
+- **Workspace menu** — Use the Workspace menu in the menu bar
+
 ---
 
 ## Customization
@@ -660,6 +709,7 @@ Available settings tabs:
 | **Files** | Auto-save, file sorting, default file location |
 | **Markdown** | Extended syntax toggles (math, highlight, strikethrough), smart punctuation |
 | **Extensions** | Per-extension settings (code block style, line numbers, diagrams) |
+| **Workspace** | Built-in and custom workspace presets (sidebar, panel, theme layout) |
 | **AI** | Provider, model, API key (per-provider), privacy mode, Ghost Text settings, custom AI commands |
 
 ### Themes

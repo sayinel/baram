@@ -95,6 +95,7 @@ Complete list of keyboard shortcuts available in Baram.
 |--------|-------|-----------------|
 | Command Palette | `Cmd+P` | `Ctrl+P` |
 | Command Palette (alternate) | `Cmd+Shift+P` | `Ctrl+Shift+P` |
+| Global Search | `Cmd+Shift+F` | `Ctrl+Shift+F` |
 | Settings | `Cmd+,` | `Ctrl+,` |
 
 ## AI & Skills
@@ -108,9 +109,9 @@ Complete list of keyboard shortcuts available in Baram.
 
 | Action | macOS | Windows / Linux |
 |--------|-------|-----------------|
-| Workspace: 글쓰기 | `Cmd+Option+1` | `Ctrl+Alt+1` |
-| Workspace: Skills 편집 | `Cmd+Option+2` | `Ctrl+Alt+2` |
-| Workspace: 리서치 | `Cmd+Option+3` | `Ctrl+Alt+3` |
+| Workspace: Writing | `Cmd+Option+1` | `Ctrl+Alt+1` |
+| Workspace: Skills | `Cmd+Option+2` | `Ctrl+Alt+2` |
+| Workspace: Research | `Cmd+Option+3` | `Ctrl+Alt+3` |
 
 ## Ghost Text (AI Autocomplete)
 

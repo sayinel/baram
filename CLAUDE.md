@@ -1,5 +1,11 @@
 # Baram — Lightweight WYSIWYG Markdown Editor
 
+## 에이전트 정책
+
+- 독립적인 하위 작업이 2개 이상이면 반드시 병렬 서브에이전트(Task tool)를 사용할 것
+- 코드베이스 탐색/리서치는 서브에이전트에 위임하여 메인 컨텍스트를 보존할 것
+- 구현 작업 시 superpowers:dispatching-parallel-agents 스킬을 활용할 것
+
 ## 프로젝트 개요
 
 Baram(바람)은 Tauri 2.0 + Tiptap/ProseMirror + React 기반의 경량 WYSIWYG 마크다운 에디터다.
@@ -163,6 +169,6 @@ Phase 1: MVP — ✅ 완료 (M1~M6)
 Phase 2: 확장 — 진행 중 (M7~M9)
 - M7: 연결 시스템 & 네비게이션 — ✅ 완료
 - M8: AI 심화 + Skills 편집 — ✅ 완료
-- M9: 생산성 도구 — 부분 완료 (인라인 마크, TOC, 테이블 Tier 3, 각주, 도움말 패널, 글로벌 검색, 정의 목록, Mermaid 고도화, Git Basic, 테마 시스템, Extension Settings)
+- M9: 생산성 도구 — 부분 완료 (인라인 마크, TOC, 테이블 Tier 3, 각주, 도움말 패널, 글로벌 검색, 정의 목록, Mermaid 고도화, Git Basic, 테마 시스템, Extension Settings, Workspace Presets, Export for Notion)
 Phase 3: 고급 기능 (M10)
 - 테이블 셀 병합 / 50+ 행 가상 스크롤 포함

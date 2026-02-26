@@ -107,6 +107,10 @@ Use the slash command `/mermaid` or press `Cmd+Shift+D`. Write Mermaid syntax an
 
 Type `[^id]` (e.g., `[^1]` or `[^note]`) anywhere in your text to insert a footnote reference. A footnote definition block is automatically created at the end of the document — click into it to type the footnote content. References display as sequential numbers (1, 2, 3…) based on document order. Hover a reference to see a tooltip preview, click to navigate between reference and definition.
 
+### How do I search across all files?
+
+Press `Cmd+Shift+F` (macOS) or `Ctrl+Shift+F` (Windows/Linux) to open Global Search. It searches all files in your workspace using full-text search. Supports regex, file/folder filters, and replace across files.
+
 ### What is Source Mode?
 
 Press `Cmd+/` (macOS) or `Ctrl+/` (Windows/Linux) to toggle Source Mode. This shows the raw markdown in a CodeMirror editor with full undo/redo support, useful for precise editing or troubleshooting formatting.
@@ -242,17 +246,41 @@ Click the branch name in the Status Bar at the bottom of the editor. A dropdown 
 
 ---
 
+## Workspace Presets
+
+### What are Workspace Presets?
+
+Workspace Presets save your current layout (sidebar panel, right panel, theme) as a named configuration that you can quickly apply later. Think of them as "workspace snapshots."
+
+### How do I switch workspace presets?
+
+Three ways:
+1. **Keyboard shortcuts** — `Cmd+Alt+1` (Writing), `Cmd+Alt+2` (Skills), `Cmd+Alt+3` (Research)
+2. **Command Palette** — `Cmd+Shift+P` then search for "Workspace"
+3. **Workspace menu** — Use the menu bar
+
+### Can I create custom presets?
+
+Yes. Go to **Settings > Workspace**, arrange your layout, and click **Save Current Layout**. Custom presets can be renamed or deleted.
+
+---
+
 ## Export
 
 ### What export formats are supported?
 
-Baram currently supports:
+Baram supports three export formats:
 - **HTML** — Self-contained HTML with inline styles, math rendering, and code highlighting
 - **PDF** — Print-ready PDF via the system print dialog
+- **Notion** — Notion-compatible Markdown that converts Baram-specific syntax (wikilinks, callouts, math, highlight, subscript/superscript, footnotes, block references, definition lists) to formats Notion understands
 
 ### How do I export a document?
 
-Go to **File > Export** and select your desired format.
+Go to **File > Export** and select your desired format (HTML, PDF, or Notion). You can also use the Command Palette (`Cmd+Shift+P`) and search for "Export".
+
+### What does "Export for Notion" convert?
+
+It automatically converts Baram-specific markdown syntax that Notion can't import directly: `[[wikilinks]]` become standard `[links](url)`, callouts become emoji-prefixed blockquotes, inline math `$...$` becomes block math `$$...$$`, highlight `==text==` becomes bold, subscript/superscript use Unicode characters or math fallback, and footnotes are converted to inline references with a Notes section.
 
 ### Are images included in exports?
 

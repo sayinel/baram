@@ -244,6 +244,7 @@ Export your documents to share or publish:
 
 - **HTML** — Clean, self-contained HTML with inline styles
 - **PDF** — Print-ready PDF via system print dialog
+- **Notion** — Notion-compatible Markdown with automatic conversion of wikilinks, callouts, math, highlight, subscript/superscript (Unicode), footnotes, and other Baram-specific syntax
 
 ### Git Integration
 
@@ -263,6 +264,14 @@ Customize the look and feel of Baram with built-in themes or create your own:
 - **Theme Gallery** — Visual card grid in **Settings > Appearance** — click to switch
 - **Color Editor** — Customize any theme with a full 16-color picker (backgrounds, text, borders, accent, editor)
 - **Import / Export** — Share themes as `.json` files
+
+### Workspace Presets
+
+Save and restore your workspace layout:
+
+- **3 built-in presets** — Writing (`Cmd+Alt+1`), Skills (`Cmd+Alt+2`), Research (`Cmd+Alt+3`)
+- **Custom presets** — Save your current sidebar, panel, and theme configuration as a named preset
+- **Quick switch** — Apply presets via keyboard shortcuts, Command Palette, or the Workspace menu
 
 ## AI Integration
 
@@ -374,6 +383,9 @@ Create your own slash commands in **Settings > AI > Custom Commands**. Use varia
 | Navigate Forward | `Ctrl+Shift+-` |
 | Global Search | `Cmd+Shift+F` |
 | Tab Switcher (MRU) | `Ctrl+Tab` |
+| Workspace: Writing | `Cmd+Alt+1` |
+| Workspace: Skills | `Cmd+Alt+2` |
+| Workspace: Research | `Cmd+Alt+3` |
 | Settings | `Cmd+,` |
 | Undo | `Cmd+Z` |
 | Redo | `Cmd+Shift+Z` |
@@ -414,7 +426,7 @@ The Help panel opens in the right sidebar.
 
 ### Status Bar
 
-Shows word count, line count, and cursor position at the bottom of the editor.
+Shows word count, line count, cursor position, and current Git branch at the bottom of the editor.
 
 ## Development
 
@@ -504,7 +516,7 @@ Reverse:  ProseMirror Document → mdast → remark-stringify
 
 | Milestone | Status | Description |
 |-----------|--------|-------------|
-| M9 Productivity | ✅ Done | Highlight / subscript / superscript marks, Table of Contents, Table Tier 3 (column resize, pipe-input creation), Footnotes, Help panel, Global Search (Cmd+Shift+F), Definition List, Mermaid enhanced (context menu, templates, fullscreen), Git Basic (status, commit, diff, branch), Theme System (6 built-in + custom themes), Extension Settings |
+| M9 Productivity | ✅ Done | Highlight / subscript / superscript marks, Table of Contents, Table Tier 3, Footnotes, Help panel, Global Search, Definition List, Mermaid enhanced, Git Basic, Theme System, Extension Settings, Workspace Presets, Export for Notion |
 
 **Phase 3 — Advanced** (upcoming)
 
