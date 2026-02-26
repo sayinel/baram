@@ -55,12 +55,6 @@ function buildCommands(
       action: () => onOpenFolder(),
     },
     {
-      id: "file:import-notion",
-      label: "Import from Notion",
-      category: "File",
-      action: () => useUIStore.getState().openNotionImport(),
-    },
-    {
       id: "file:export-html",
       label: "Export as HTML",
       category: "File",
@@ -71,6 +65,12 @@ function buildCommands(
       label: "Export as PDF (Print)",
       category: "File",
       action: () => useUIStore.getState().openExportDialog("pdf"),
+    },
+    {
+      id: "file:export-notion",
+      label: "Export for Notion",
+      category: "File",
+      action: () => useUIStore.getState().openExportDialog("notion"),
     },
     // View
     {

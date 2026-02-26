@@ -3,7 +3,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import { useUIStore } from "../../stores/ui-store";
 import { useEditorStore } from "../../stores/editor-store";
-import { exportAsHTML, exportAsPDF } from "../../utils/export";
+import { exportAsHTML, exportAsPDF, exportForNotion } from "../../utils/export";
 
 interface ExportDialogProps {
   editor: Editor | null;
@@ -45,8 +45,10 @@ export function ExportDialog({ editor }: ExportDialogProps) {
     try {
       if (exportFormat === "html") {
         await exportAsHTML(editor, title);
-      } else {
+      } else if (exportFormat === "pdf") {
         await exportAsPDF(editor, title, { paperSize });
+      } else if (exportFormat === "notion") {
+        await exportForNotion(editor, title);
       }
       closeExportDialog();
     } catch (err) {
@@ -108,6 +110,12 @@ export function ExportDialog({ editor }: ExportDialogProps) {
               >
                 PDF
               </button>
+              <button
+                className={`export-format-tab ${exportFormat === "notion" ? "export-format-tab-active" : ""}`}
+                onClick={() => openExportDialog("notion")}
+              >
+                Notion
+              </button>
             </div>
           </div>
 
@@ -143,6 +151,13 @@ export function ExportDialog({ editor }: ExportDialogProps) {
                 </button>
               </div>
             </div>
+          )}
+
+          {exportFormat === "notion" && (
+            <p className="export-dialog-notion-hint">
+              Converts wikilinks, callouts, highlights, and other Baram-specific
+              syntax to Notion-compatible Markdown.
+            </p>
           )}
 
           {errorMsg && (

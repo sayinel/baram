@@ -61,10 +61,9 @@ pub fn run() {
             let export_pdf = MenuItemBuilder::new("Export as PDF")
                 .id("export_pdf")
                 .build(app)?;
-            let import_notion = MenuItemBuilder::new("Import from Notion...")
-                .id("import_notion")
+            let export_notion = MenuItemBuilder::new("Export for Notion")
+                .id("export_notion")
                 .build(app)?;
-
             let file_menu = SubmenuBuilder::new(app, "File")
                 .item(&file_new)
                 .item(&file_open)
@@ -74,10 +73,9 @@ pub fn run() {
                 .item(&file_save_as)
                 .item(&file_close_tab)
                 .separator()
-                .item(&import_notion)
-                .separator()
                 .item(&export_html)
                 .item(&export_pdf)
+                .item(&export_notion)
                 .build()?;
 
             // --- Edit menu (predefined OS-native items) ---

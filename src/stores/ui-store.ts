@@ -3,7 +3,7 @@ import { create } from "zustand";
 import { useSettingsStore } from "./settings-store";
 
 type SidebarPanel = "files" | "outline" | "search" | "backlinks" | "bookmarks" | "graph" | "git";
-type ExportFormat = "html" | "pdf";
+type ExportFormat = "html" | "pdf" | "notion";
 
 interface UIState {
   sidebarOpen: boolean;
@@ -22,7 +22,6 @@ interface UIState {
   newSkillDialogOpen: boolean;
   skillGeneratorDialogOpen: boolean;
   skillTestDialogOpen: boolean;
-  notionImportOpen: boolean;
   pendingApplyContent: string | null;
   pendingSearchHighlight: string | null;
 
@@ -42,8 +41,6 @@ interface UIState {
   toggleNewSkillDialog: () => void;
   toggleSkillGeneratorDialog: () => void;
   toggleSkillTestDialog: () => void;
-  openNotionImport: () => void;
-  closeNotionImport: () => void;
   setPendingApplyContent: (content: string | null) => void;
   setPendingSearchHighlight: (term: string | null) => void;
 }
@@ -65,7 +62,6 @@ export const useUIStore = create<UIState>((set) => ({
   newSkillDialogOpen: false,
   skillGeneratorDialogOpen: false,
   skillTestDialogOpen: false,
-  notionImportOpen: false,
   pendingApplyContent: null,
   pendingSearchHighlight: null,
 
@@ -115,9 +111,6 @@ export const useUIStore = create<UIState>((set) => ({
 
   toggleSkillTestDialog: () =>
     set((state) => ({ skillTestDialogOpen: !state.skillTestDialogOpen })),
-
-  openNotionImport: () => set({ notionImportOpen: true }),
-  closeNotionImport: () => set({ notionImportOpen: false }),
 
   setPendingApplyContent: (pendingApplyContent) => set({ pendingApplyContent }),
 

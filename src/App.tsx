@@ -120,11 +120,6 @@ const SkillTestDialog = lazy(() =>
     default: m.SkillTestDialog,
   })),
 );
-const NotionImportDialog = lazy(() =>
-  import("./components/import/NotionImportDialog").then((m) => ({
-    default: m.NotionImportDialog,
-  })),
-);
 
 // Error boundary to catch and display runtime errors
 class ErrorBoundary extends Component<
@@ -1371,14 +1366,14 @@ function App() {
         case "file_settings":
           toggleSettings();
           break;
-        case "import_notion":
-          useUIStore.getState().openNotionImport();
-          break;
         case "export_html":
           useUIStore.getState().openExportDialog("html");
           break;
         case "export_pdf":
           useUIStore.getState().openExportDialog("pdf");
+          break;
+        case "export_notion":
+          useUIStore.getState().openExportDialog("notion");
           break;
         case "view_source":
           toggleSourceMode();
@@ -1648,7 +1643,6 @@ function App() {
         <HoverPreview />
         <SkillGeneratorDialogWrapper />
         <SkillTestDialogWrapper />
-        <NotionImportDialog />
       </Suspense>
       {tabSwitcherOpen && (
         <TabSwitcher
