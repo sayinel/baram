@@ -174,13 +174,14 @@
         "definition-list": { "status": "completed", "tests": "12/12 vitest pass (roundtrip + PM structure + false positive)", "spec": "§dl", "details": "Term\\n: Definition → <dl><dt><dd>, InputRule `: `, Backspace/Enter/Shift-Enter keyboard handling" },
         "§50-mermaid-enhanced": { "status": "completed", "tests": "15/15 vitest pass (templates + type detection)", "spec": "§50", "details": "context menu (SVG/PNG/Source copy), template dropdown, fullscreen edit, type badge" },
         "§57b-git-basic": { "status": "completed", "tests": "16/16 vitest pass (git-store utils) + 105/105 cargo test", "spec": "§57b", "details": "git2 backend (status/stage/unstage/commit/diff/branch/discard), Source Control sidebar, StatusBar branch, Diff viewer, Command Palette Git commands" },
-        "§54-theme-system": { "status": "completed", "tests": "809/809 vitest pass (전체 테스트 통과)", "spec": "§54", "details": "6 built-in themes, CSS variable override, theme gallery, color picker editor, import/export JSON, custom themes" }
+        "§54-theme-system": { "status": "completed", "tests": "809/809 vitest pass (전체 테스트 통과)", "spec": "§54", "details": "6 built-in themes, CSS variable override, theme gallery, color picker editor, import/export JSON, custom themes" },
+        "§52-workspace-preset": { "status": "completed", "tests": "836/836 vitest pass (전체 테스트 통과)", "spec": "§52", "details": "3 built-in presets (Writing/Skills/Research), custom preset save/delete/rename, Cmd+Alt+1/2/3 shortcuts, Command Palette, Workspace menu, Settings tab" }
       }
     }
   },
 
   "testSummary": {
-    "vitest": "809/809 pass (58 test files)",
+    "vitest": "836/836 pass (60 test files)",
     "cargoTest": "105/105 pass (4 ignored)",
     "note": "§54 Theme System: UI-only feature, no new test files (TypeScript clean compilation verified)",
     "breakdown": {
@@ -225,7 +226,8 @@
       "definition-list": 12,
       "ai-slash-commands": 5,
       "mermaid-enhanced": 15,
-      "git-store": 16
+      "git-store": 16,
+      "workspace-store": 14
     }
   },
 

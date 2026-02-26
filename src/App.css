@@ -6664,3 +6664,232 @@ body {
 .help-panel-content .markdown-rendered a {
   color: var(--color-accent);
 }
+
+/* ─── §52 Workspace Presets ─────────────────────────────── */
+
+.workspace-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.workspace-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 12px 12px;
+  border: 2px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-primary);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  position: relative;
+  font-family: var(--font-sans);
+}
+
+.workspace-card:hover {
+  border-color: var(--color-border-light);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.workspace-card-active {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-accent);
+}
+
+.workspace-card-check {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  font-size: 0.7rem;
+  color: var(--color-accent);
+  font-weight: 700;
+}
+
+.workspace-card-delete {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.workspace-card:hover .workspace-card-delete {
+  opacity: 1;
+}
+
+.workspace-card-delete:hover {
+  background: #e74c3c;
+  color: white;
+}
+
+.workspace-card-layout {
+  margin-bottom: 4px;
+}
+
+/* Mini layout diagram */
+.workspace-diagram {
+  display: flex;
+  gap: 2px;
+  width: 72px;
+  height: 36px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--color-bg-secondary);
+}
+
+.workspace-diagram-panel {
+  height: 100%;
+  border-radius: 2px;
+}
+
+.workspace-diagram-sidebar {
+  flex: 0 0 18px;
+  background: var(--color-bg-tertiary);
+}
+
+.workspace-diagram-editor {
+  flex: 1;
+  background: var(--color-bg-primary);
+}
+
+.workspace-diagram-right {
+  flex: 0 0 20px;
+  background: var(--color-bg-tertiary);
+}
+
+.workspace-card-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.workspace-card-desc {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  text-align: center;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.workspace-card-summary {
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+  text-align: center;
+  opacity: 0.7;
+}
+
+.workspace-card-badge {
+  font-size: 0.6rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-muted);
+}
+
+/* Actions row */
+.workspace-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.workspace-action-btn {
+  padding: 5px 14px;
+  font-size: 0.8rem;
+  font-family: var(--font-sans);
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  background: var(--color-bg-primary);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.workspace-action-btn:hover {
+  background-color: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+}
+
+/* Inline save form (replaces window.prompt) */
+.workspace-save-form {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.workspace-save-input {
+  flex: 1;
+  padding: 5px 10px;
+  font-size: 0.8rem;
+  font-family: var(--font-sans);
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.workspace-save-input:focus {
+  border-color: var(--color-accent);
+}
+
+.workspace-save-confirm {
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  font-family: var(--font-sans);
+  border: none;
+  border-radius: 5px;
+  background: var(--color-accent);
+  color: white;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.workspace-save-confirm:hover {
+  opacity: 0.85;
+}
+
+.workspace-save-confirm:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.workspace-save-cancel {
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  font-family: var(--font-sans);
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  background: var(--color-bg-primary);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.workspace-save-cancel:hover {
+  background-color: var(--color-bg-secondary);
+}

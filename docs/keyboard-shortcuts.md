@@ -104,6 +104,14 @@ Complete list of keyboard shortcuts available in Baram.
 | AI Chat Panel | `Cmd+Shift+A` | `Ctrl+Shift+A` |
 | Skill Test | `Cmd+Shift+T` | `Ctrl+Shift+T` |
 
+## Workspace
+
+| Action | macOS | Windows / Linux |
+|--------|-------|-----------------|
+| Workspace: 글쓰기 | `Cmd+Option+1` | `Ctrl+Alt+1` |
+| Workspace: Skills 편집 | `Cmd+Option+2` | `Ctrl+Alt+2` |
+| Workspace: 리서치 | `Cmd+Option+3` | `Ctrl+Alt+3` |
+
 ## Ghost Text (AI Autocomplete)
 
 | Action | macOS | Windows / Linux |

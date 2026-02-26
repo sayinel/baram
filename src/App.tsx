@@ -48,6 +48,7 @@ import { readFile, writeFile, getOpenedUrls, updateFileIndex } from "./ipc/invok
 import { useLinkStore } from "./stores/link-store";
 import { migrateFromLocalStorage } from "./stores/tauri-storage";
 import { useBookmarkStore } from "./stores/bookmark-store";
+import { useWorkspaceStore } from "./stores/workspace-store";
 import { logAppReady } from "./utils/perf";
 import { resolveWikilinkTarget } from "./utils/wikilink-nav";
 import { findBlockPosById } from "./utils/block-nav";
@@ -1096,6 +1097,23 @@ function App() {
         return;
       }
 
+      // §52 Cmd+Alt+1/2/3 — workspace presets
+      if (e.altKey && mod && e.code === "Digit1") {
+        e.preventDefault();
+        useWorkspaceStore.getState().applyPreset("writing");
+        return;
+      }
+      if (e.altKey && mod && e.code === "Digit2") {
+        e.preventDefault();
+        useWorkspaceStore.getState().applyPreset("skills");
+        return;
+      }
+      if (e.altKey && mod && e.code === "Digit3") {
+        e.preventDefault();
+        useWorkspaceStore.getState().applyPreset("research");
+        return;
+      }
+
       // §47 Cmd+Shift+T — open skill test dialog
       if (mod && e.shiftKey && e.code === "KeyT") {
         e.preventDefault();
@@ -1477,6 +1495,17 @@ function App() {
           break;
         case "help_report":
           openUrl("https://github.com/anthropics/baram/issues").catch(() => {});
+          break;
+
+        // --- Workspace menu handlers (§52) ---
+        case "workspace_writing":
+          useWorkspaceStore.getState().applyPreset("writing");
+          break;
+        case "workspace_skills":
+          useWorkspaceStore.getState().applyPreset("skills");
+          break;
+        case "workspace_research":
+          useWorkspaceStore.getState().applyPreset("research");
           break;
       }
     });

@@ -4,6 +4,7 @@ import { useUIStore } from "../../stores/ui-store";
 import { useEditorStore } from "../../stores/editor-store";
 import { useGitStore } from "../../stores/git-store";
 import { useFileStore } from "../../stores/file-store";
+import { useWorkspaceStore } from "../../stores/workspace-store";
 import { executeAICommand, getSelectedText, getSelectionOrParagraph, showPrompt } from "../../utils/ai-commands";
 import type { Editor } from "@tiptap/react";
 
@@ -376,6 +377,28 @@ function buildCommands(
           { afterSelection: true },
         );
       },
+    },
+    // §52 Workspace Presets
+    {
+      id: "workspace:writing",
+      label: "Workspace: 글쓰기",
+      category: "Workspace",
+      shortcut: "⌥⌘1",
+      action: () => useWorkspaceStore.getState().applyPreset("writing"),
+    },
+    {
+      id: "workspace:skills",
+      label: "Workspace: Skills 편집",
+      category: "Workspace",
+      shortcut: "⌥⌘2",
+      action: () => useWorkspaceStore.getState().applyPreset("skills"),
+    },
+    {
+      id: "workspace:research",
+      label: "Workspace: 리서치",
+      category: "Workspace",
+      shortcut: "⌥⌘3",
+      action: () => useWorkspaceStore.getState().applyPreset("research"),
     },
   ];
 }

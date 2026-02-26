@@ -1,4 +1,4 @@
-// Settings Modal — 7-tab settings (General, Editor, Appearance, Files, Markdown, Extensions, AI)
+// Settings Modal — 8-tab settings (General, Editor, Appearance, Files, Markdown, Extensions, Workspace, AI)
 // Obsidian-style layout: label + description per row, section headers for grouping
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useUIStore } from "../../stores/ui-store";
@@ -9,6 +9,7 @@ import { llmListModels } from "../../ipc/invoke";
 import { formatAIError } from "../../utils/format-error";
 import type { ModelInfo } from "../../ipc/types";
 import { ExtensionsTab } from "./ExtensionsTab";
+import { WorkspaceTab } from "./WorkspaceTab";
 import { ThemeEditor } from "./ThemeEditor";
 import { open } from "@tauri-apps/plugin-dialog";
 import { readFile } from "../../ipc/invoke";
@@ -16,7 +17,7 @@ import { BUILT_IN_THEMES } from "../../types/theme";
 import type { ThemeColors, ThemeDef } from "../../types/theme";
 import { THEME_COLOR_KEYS } from "../../types/theme";
 
-type SettingsTab = "general" | "editor" | "appearance" | "files" | "markdown" | "extensions" | "ai";
+type SettingsTab = "general" | "editor" | "appearance" | "files" | "markdown" | "extensions" | "ai" | "workspace";
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: "general", label: "General" },
@@ -25,6 +26,7 @@ const TABS: { id: SettingsTab; label: string }[] = [
   { id: "files", label: "Files" },
   { id: "markdown", label: "Markdown" },
   { id: "extensions", label: "Extensions" },
+  { id: "workspace", label: "Workspace" },
   { id: "ai", label: "AI" },
 ];
 
@@ -62,6 +64,7 @@ export function SettingsModal() {
             {activeTab === "files" && <FilesTab />}
             {activeTab === "markdown" && <MarkdownTab />}
             {activeTab === "extensions" && <ExtensionsTab />}
+            {activeTab === "workspace" && <WorkspaceTab />}
             {activeTab === "ai" && <AITab />}
           </div>
         </div>

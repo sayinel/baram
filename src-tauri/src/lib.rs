@@ -243,6 +243,26 @@ pub fn run() {
                 .item(&go_switch_doc)
                 .build()?;
 
+            // --- Workspace menu (§52) ---
+            let workspace_writing = MenuItemBuilder::new("글쓰기")
+                .id("workspace_writing")
+                .accelerator("Alt+CmdOrCtrl+1")
+                .build(app)?;
+            let workspace_skills = MenuItemBuilder::new("Skills 편집")
+                .id("workspace_skills")
+                .accelerator("Alt+CmdOrCtrl+2")
+                .build(app)?;
+            let workspace_research = MenuItemBuilder::new("리서치")
+                .id("workspace_research")
+                .accelerator("Alt+CmdOrCtrl+3")
+                .build(app)?;
+
+            let workspace_menu = SubmenuBuilder::new(app, "Workspace")
+                .item(&workspace_writing)
+                .item(&workspace_skills)
+                .item(&workspace_research)
+                .build()?;
+
             // --- Window menu (macOS standard) ---
             let window_menu = SubmenuBuilder::new(app, "Window")
                 .minimize()
@@ -304,6 +324,7 @@ pub fn run() {
                 .item(&view_menu)
                 .item(&insert_menu)
                 .item(&go_menu)
+                .item(&workspace_menu)
                 .item(&window_menu)
                 .item(&help_menu)
                 .build()?;
