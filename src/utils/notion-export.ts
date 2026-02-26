@@ -247,7 +247,7 @@ export function convertDefinitionListsForNotion(md: string): string {
       if (i > 0) terms.push("");
       terms.push(`**${dts[i]}**`);
       if (i < dds.length) {
-        terms.push(dds[i]);
+        terms.push(`: ${dds[i]}`);
       }
     }
 
@@ -270,7 +270,7 @@ export function convertDefinitionListsForNotion(md: string): string {
         // Collect all subsequent definition lines
         idx++;
         while (idx < lines.length && /^:\s/.test(lines[idx])) {
-          output.push(lines[idx].replace(/^:\s/, ""));
+          output.push(lines[idx]);
           idx++;
         }
         continue;

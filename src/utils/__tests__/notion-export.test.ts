@@ -375,27 +375,22 @@ describe("stripBlockRefsForNotion", () => {
 // 11. convertDefinitionListsForNotion
 // ---------------------------------------------------------------------------
 describe("convertDefinitionListsForNotion", () => {
-  it("converts HTML dl/dt/dd to bold term + definition", () => {
+  it("converts HTML dl/dt/dd to bold term + colon definition", () => {
     const input = "<dl>\n<dt>Term</dt>\n<dd>Definition</dd>\n</dl>";
     const result = convertDefinitionListsForNotion(input);
-    expect(result).toContain("**Term**");
-    expect(result).toContain("Definition");
+    expect(result).toBe("**Term**\n: Definition");
   });
 
   it("converts multiple dt/dd pairs", () => {
     const input = "<dl>\n<dt>Term 1</dt>\n<dd>Def 1</dd>\n<dt>Term 2</dt>\n<dd>Def 2</dd>\n</dl>";
     const result = convertDefinitionListsForNotion(input);
-    expect(result).toContain("**Term 1**");
-    expect(result).toContain("Def 1");
-    expect(result).toContain("**Term 2**");
-    expect(result).toContain("Def 2");
+    expect(result).toBe("**Term 1**\n: Def 1\n\n**Term 2**\n: Def 2");
   });
 
-  it("converts plain text definition format (Term / : Definition)", () => {
+  it("converts plain text definition format and keeps colon prefix", () => {
     const input = "API\n: Application Programming Interface";
     const result = convertDefinitionListsForNotion(input);
-    expect(result).toContain("**API**");
-    expect(result).toContain("Application Programming Interface");
+    expect(result).toBe("**API**\n: Application Programming Interface");
   });
 
   it("returns unchanged when no definition lists", () => {
@@ -560,11 +555,10 @@ describe("convertForNotion", () => {
     expect(result).toContain("\u00B2");
   });
 
-  it("converts definition list in full document", () => {
+  it("converts definition list in full document with colon", () => {
     const input = "# Glossary\n\n<dl>\n<dt>API</dt>\n<dd>Application Programming Interface</dd>\n</dl>\n\nMore text.";
     const result = convertForNotion(input);
-    expect(result).toContain("**API**");
-    expect(result).toContain("Application Programming Interface");
+    expect(result).toContain("**API**\n: Application Programming Interface");
   });
 
   it("strips block references in full document", () => {
