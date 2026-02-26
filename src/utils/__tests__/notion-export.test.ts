@@ -572,4 +572,23 @@ describe("convertForNotion", () => {
     const input = "Visit [Google](https://google.com) or [Docs](https://docs.example.com/api).";
     expect(convertForNotion(input)).toBe(input);
   });
+
+  it("preserves block math unchanged", () => {
+    const input = "$$\n\\int_{a}^{b} f(x) dx = F(b) - F(a)\n$$";
+    expect(convertForNotion(input)).toBe(input);
+  });
+
+  it("preserves block math with superscript and subscript in LaTeX", () => {
+    const input = "Text before\n\n$$\nx^2 + y^2 = z^2\n$$\n\nText after";
+    expect(convertForNotion(input)).toBe(input);
+  });
+
+  it("preserves block math while converting surrounding inline marks", () => {
+    const input = "==highlighted== and x^2^\n\n$$\n\\sum_{i=0}^{n} a_i x^i\n$$\n\nMore ~0~ text";
+    const result = convertForNotion(input);
+    expect(result).toContain("**highlighted**");
+    expect(result).toContain("\u00B2"); // superscript 2
+    expect(result).toContain("$$\n\\sum_{i=0}^{n} a_i x^i\n$$"); // math untouched
+    expect(result).toContain("\u2080"); // subscript 0
+  });
 });

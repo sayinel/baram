@@ -73,7 +73,7 @@ interface CodeRegion {
   end: number;
 }
 
-/** Collect all code regions (fenced blocks + inline code) in the markdown */
+/** Collect all protected regions (code blocks, inline code, math blocks) in the markdown */
 function collectCodeRegions(md: string): CodeRegion[] {
   const regions: CodeRegion[] = [];
 
@@ -81,6 +81,12 @@ function collectCodeRegions(md: string): CodeRegion[] {
   const fencedRe = /^(`{3,}|~{3,})[^\n]*\n[\s\S]*?\n\1\s*$/gm;
   let m: RegExpExecArray | null;
   while ((m = fencedRe.exec(md)) !== null) {
+    regions.push({ start: m.index, end: m.index + m[0].length });
+  }
+
+  // Block math: $$...$$ (multiline)
+  const blockMathRe = /\$\$[\s\S]*?\$\$/g;
+  while ((m = blockMathRe.exec(md)) !== null) {
     regions.push({ start: m.index, end: m.index + m[0].length });
   }
 
