@@ -53,8 +53,7 @@ const PANEL_ICONS: { id: PanelId; label: string; icon: ReactNode }[] = [
     label: "Bookmarks",
     icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
-        <line x1="4" y1="22" x2="4" y2="15" />
+        <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
       </svg>
     ),
   },
@@ -78,12 +77,11 @@ const PANEL_ICONS: { id: PanelId; label: string; icon: ReactNode }[] = [
     label: "Source Control",
     icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="18" r="3" />
-        <circle cx="6" cy="6" r="3" />
-        <circle cx="18" cy="6" r="3" />
-        <line x1="12" y1="15" x2="12" y2="12" />
-        <path d="M12 12c0-3 -6-3 -6-6" />
-        <path d="M12 12c0-3 6-3 6-6" />
+        <line x1="8" y1="5" x2="8" y2="19" />
+        <path d="M8 16c3 0 5-3 8-5" />
+        <circle cx="8" cy="5" r="2" />
+        <circle cx="16" cy="11" r="2" />
+        <circle cx="8" cy="19" r="2" />
       </svg>
     ),
   },
