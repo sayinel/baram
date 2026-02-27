@@ -219,7 +219,7 @@
       "inputRules": [],
       "shortcuts": { "Mod-Shift-d": "insert mermaid diagram" },
       "contextMenu": ["Copy as SVG", "Copy as PNG", "Copy Source", "Edit Full-screen", "Delete"],
-      "templates": ["flowchart", "sequence", "class", "state", "er", "gantt", "pie"],
+      "templates": ["flowchart", "sequence", "class", "state", "er", "gantt", "pie", "mindmap", "timeline", "journey", "gitgraph"],
       "settings": [
         {
           "key": "diagrams",
@@ -569,6 +569,16 @@
       "status": "implemented",
       "shortcuts": {},
       "_note": "Decoration plugin for static prompt analysis in Skills files. 6 rules: ambiguous, missing format, missing fields, excessive length, unused variables, conflicting instructions."
+    },
+    {
+      "name": "mentionSuggest",
+      "file": "plugins/mention-suggest.ts",
+      "spec": "§57",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "implemented",
+      "shortcuts": { "@": "mention autocomplete" },
+      "_note": "Tiptap Suggestion plugin for @date (Today/Yesterday/Tomorrow/YYYY-MM-DD) and @page mentions. Email-address false-positive guard."
     }
   ]
 }

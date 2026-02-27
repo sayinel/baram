@@ -57,18 +57,43 @@ app_handle.emit("file:changed", FileChangedPayload {
 | `list_dir` | fs | 1 (M2) | 디렉토리 목록 |
 | `rename_file` | fs | 1 (M4) | 파일 이름 변경 |
 | `delete_file` | fs | 1 (M4) | 파일 삭제 |
+| `create_dir` | fs | 1 (M4) | 디렉토리 생성 |
+| `delete_dir` | fs | 1 (M4) | 디렉토리 삭제 |
+| `copy_file` | fs | 1 (M4) | 파일 복사 |
+| `extract_zip` | fs | 2 (M9) | ZIP 파일 추출 |
 | `watch_dir` | fs | 1 (M2) | 디렉토리 감시 시작 |
-| `search_files` | search | 2 (M7) | 전역 텍스트 검색 |
-| `get_link_index` | index | 2 (M7) | 링크 그래프 조회 |
-| `get_backlinks` | index | 2 (M7) | 백링크 조회 |
-| `refresh_index` | index | 2 (M7) | 인덱스 재구축 |
-| `git_status` | git | 2 (M9) | Git 상태 |
-| `git_commit` | git | 2 (M9) | Git 커밋 |
-| `llm_complete` | llm | 1 (M5) | LLM 호출 (스트리밍) |
-| `export_document` | export | 1 (M6) | PDF/HTML 내보내기 |
-| `create_snapshot` | fs | 2 (M9) | 수동 스냅샷 |
 | `get_config` | config | 1 (M2) | 설정 조회 |
 | `set_config` | config | 1 (M2) | 설정 저장 |
+| `remove_config` | config | 1 (M2) | 설정 삭제 |
+| `search_files` | search | 2 (M9) | 전역 텍스트 검색 |
+| `get_backlinks` | index | 2 (M7) | 백링크 조회 |
+| `get_link_index` | index | 2 (M7) | 링크 그래프 조회 |
+| `refresh_index` | index | 2 (M7) | 인덱스 재구축 |
+| `update_file_index` | index | 2 (M7) | 단일 파일 인덱스 갱신 |
+| `rename_file_with_links` | index | 2 (M7) | 파일 이름 변경 + 링크 갱신 |
+| `get_unlinked_mentions` | index | 2 (M7) | 언링크드 멘션 검색 |
+| `rename_block_id` | index | 2 (M7) | 블록 ID 이름 변경 |
+| `llm_complete` | llm | 1 (M5) | LLM 호출 (스트리밍) |
+| `llm_list_models` | llm | 2 (M8) | AI 모델 목록 조회 |
+| `llm_cancel` | llm | 2 (M8) | LLM 스트리밍 취소 |
+| `export_document` | export | 1 (M6) | HTML 내보내기 |
+| `export_pdf` | export | 1 (M6) | PDF 내보내기 |
+| `detect_pandoc` | export | 2 (M9) | Pandoc 감지 |
+| `export_pandoc` | export | 2 (M9) | Pandoc 내보내기 |
+| `run_custom_export` | export | 2 (M9) | 커스텀 내보내기 |
+| `git_status` | git | 2 (M9) | Git 상태 |
+| `git_commit` | git | 2 (M9) | Git 커밋 |
+| `git_stage` | git | 2 (M9) | Git 스테이징 |
+| `git_unstage` | git | 2 (M9) | Git 언스테이징 |
+| `git_diff_file` | git | 2 (M9) | Git diff |
+| `git_branches` | git | 2 (M9) | Git 브랜치 목록 |
+| `git_switch_branch` | git | 2 (M9) | Git 브랜치 전환 |
+| `git_discard` | git | 2 (M9) | Git 변경 되돌리기 |
+| `git_create_branch` | git | 2 (M9) | Git 브랜치 생성 |
+| `keyring_store` | keyring | 2 (M8) | Keychain 저장 |
+| `keyring_get` | keyring | 2 (M8) | Keychain 조회 |
+| `keyring_delete` | keyring | 2 (M8) | Keychain 삭제 |
+| `get_opened_urls` | app | 1 (M6) | macOS 파일 연결 |
 
 ## 이벤트 목록
 

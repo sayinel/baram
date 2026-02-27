@@ -15,6 +15,8 @@ export interface SearchOptions {
   wholeWord?: boolean;
   regex?: boolean;
   maxResults?: number;
+  includeGlob?: string;
+  excludeGlob?: string;
 }
 
 export interface SearchResult {

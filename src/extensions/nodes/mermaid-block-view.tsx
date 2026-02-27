@@ -1,6 +1,6 @@
 // §5.5 Mermaid Block NodeView — selected: textarea + preview, unselected: SVG render
 // §50 Enhanced: template picker + full-screen edit
-import { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import { TextSelection } from "@tiptap/pm/state";
@@ -8,6 +8,9 @@ import { mermaidBlockEntryKey } from "./mermaid-block";
 import {
   MERMAID_TEMPLATES,
   detectMermaidType,
+  copyMermaidSource,
+  copyMermaidSvg,
+  copyMermaidPng,
 } from "../../utils/mermaid-utils";
 
 // Unique ID counter for mermaid rendering
@@ -58,6 +61,7 @@ export function MermaidBlockView({
   const [fullscreenCode, setFullscreenCode] = useState("");
   const [fullscreenSvg, setFullscreenSvg] = useState("");
   const [fullscreenError, setFullscreenError] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const fullscreenTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Render Mermaid SVG (async — dynamic import)
@@ -140,6 +144,19 @@ export function MermaidBlockView({
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [showTemplates]);
+
+  // Dismiss context menu on outside click or Escape
+  useEffect(() => {
+    if (!contextMenu) return;
+    const dismiss = () => setContextMenu(null);
+    const handleKey = (e: KeyboardEvent) => { if (e.key === "Escape") dismiss(); };
+    document.addEventListener("mousedown", dismiss);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", dismiss);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [contextMenu]);
 
   // Listen for fullscreen custom event from context menu
   useEffect(() => {
@@ -385,6 +402,11 @@ export function MermaidBlockView({
         data-type="mermaidBlock"
         contentEditable={false}
         onClick={handlePreviewClick}
+        onContextMenu={(e: React.MouseEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setContextMenu({ x: e.clientX, y: e.clientY });
+        }}
       >
         {svgHtml ? (
           <div
@@ -396,6 +418,56 @@ export function MermaidBlockView({
           <div className="mermaid-block-error">{error}</div>
         ) : (
           <div className="mermaid-block-empty">Empty diagram</div>
+        )}
+        {contextMenu && createPortal(
+          <div
+            className="mermaid-context-menu"
+            style={{ position: "fixed", left: contextMenu.x, top: contextMenu.y, zIndex: 9999 }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {svgHtml && (
+              <>
+                <button
+                  className="mermaid-context-menu-item"
+                  onClick={() => { copyMermaidSvg(svgHtml); setContextMenu(null); }}
+                >
+                  Copy as SVG
+                </button>
+                <button
+                  className="mermaid-context-menu-item"
+                  onClick={() => { copyMermaidPng(svgHtml); setContextMenu(null); }}
+                >
+                  Copy as PNG
+                </button>
+              </>
+            )}
+            <button
+              className="mermaid-context-menu-item"
+              onClick={() => { copyMermaidSource(code); setContextMenu(null); }}
+            >
+              Copy Source
+            </button>
+            <div className="mermaid-context-menu-divider" />
+            <button
+              className="mermaid-context-menu-item"
+              onClick={() => {
+                setFullscreenCode(code);
+                setFullscreenSvg(svgHtml);
+                setFullscreenError(error);
+                setFullscreen(true);
+                setContextMenu(null);
+              }}
+            >
+              Edit Fullscreen
+            </button>
+            <button
+              className="mermaid-context-menu-item mermaid-context-menu-danger"
+              onClick={() => { deleteBlock(); setContextMenu(null); }}
+            >
+              Delete
+            </button>
+          </div>,
+          document.body,
         )}
         {fullscreenModal}
       </NodeViewWrapper>

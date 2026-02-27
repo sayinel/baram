@@ -1453,6 +1453,48 @@ body {
   height: auto;
 }
 
+/* §50 Mermaid Context Menu */
+
+.mermaid-context-menu {
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border-primary, #e0e0e0);
+  border-radius: 6px;
+  padding: 4px 0;
+  min-width: 160px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  font-size: 13px;
+}
+
+.mermaid-context-menu-item {
+  display: block;
+  width: 100%;
+  padding: 6px 12px;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-primary, #333);
+  font-size: 13px;
+}
+
+.mermaid-context-menu-item:hover {
+  background: var(--bg-hover, #f0f0f0);
+}
+
+.mermaid-context-menu-danger {
+  color: #e53e3e;
+}
+
+.mermaid-context-menu-danger:hover {
+  background: #fff5f5;
+}
+
+.mermaid-context-menu-divider {
+  height: 1px;
+  background: var(--border-primary, #e0e0e0);
+  margin: 4px 0;
+}
+
 /* ============================================
    §4.2 App Layout — 3-Column Resizable
    ============================================ */
@@ -4121,6 +4163,82 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.global-search-replace-row {
+  padding: 0 8px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.global-search-replace-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.global-search-replace-btn {
+  flex: 1;
+  padding: 3px 8px;
+  font-size: 12px;
+  background: var(--color-bg-secondary, var(--color-bg));
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--color-text);
+}
+
+.global-search-replace-btn:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+}
+
+.global-search-replace-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.global-search-replace-one {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  font-size: 11px;
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.global-search-replace-one:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+}
+
+.global-search-filters {
+  padding: 0 8px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.global-search-filter-input {
+  width: 100%;
+  padding: 4px 8px;
+  font-size: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg-input, var(--color-bg));
+  color: var(--color-text);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.global-search-filter-input:focus {
+  border-color: var(--color-accent);
 }
 
 /* ============================================

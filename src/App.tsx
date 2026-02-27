@@ -514,15 +514,68 @@ function App() {
   useEffect(() => {
     if (!pendingSearchHighlight || !editor?.view) return;
     useUIStore.getState().setPendingSearchHighlight(null);
+    // Also consume pending scroll line for same-tab navigation
+    const pendingLine = useLinkStore.getState().pendingScrollLine;
+    if (pendingLine !== null) {
+      useLinkStore.getState().setPendingScrollLine(null);
+    }
     // Delay to ensure editor state is settled after tab switch
     requestAnimationFrame(() => {
-      if (editor?.view) {
-        dispatchSetSearchTerm(editor.view, pendingSearchHighlight);
-        setFindReplaceOpen(true);
-        setFindReplaceMode("find");
+      if (!editor?.view) return;
+      // Scroll to specific line if pending (same-tab search result click)
+      if (pendingLine !== null) {
+        const { activeTabId: tabId, tabs: currentTabs } = useEditorStore.getState();
+        const incomingTab = currentTabs.find((t) => t.id === tabId);
+        const content = incomingTab?.filePath
+          ? useFileStore.getState().openFiles.get(incomingTab.filePath)
+          : useFileStore.getState().openFiles.get(incomingTab?.id ?? "");
+        if (content !== undefined) {
+          const doc = editor.view.state.doc;
+          const pmPos = mdLineToPmBlockStart(doc, content, pendingLine);
+          const scrollPos = Math.min(Math.max(pmPos, 0), doc.content.size);
+          try {
+            const resolvedPos = editor.view.state.doc.resolve(scrollPos);
+            const tr = editor.view.state.tr
+              .setSelection(TextSelection.near(resolvedPos))
+              .scrollIntoView();
+            editor.view.dispatch(tr);
+            editor.view.focus();
+            const domInfo = editor.view.domAtPos(scrollPos);
+            const el =
+              domInfo.node instanceof HTMLElement
+                ? domInfo.node
+                : domInfo.node.parentElement;
+            el?.scrollIntoView({ block: "center" });
+          } catch {
+            // ignore invalid position
+          }
+        }
       }
+      dispatchSetSearchTerm(editor.view, pendingSearchHighlight);
+      setFindReplaceOpen(true);
+      setFindReplaceMode("find");
     });
   }, [pendingSearchHighlight, editor]);
+
+  // §5.11 Reload editor content after Global Search Replace
+  const contentReloadVersion = useUIStore((s) => s.contentReloadVersion);
+  useEffect(() => {
+    if (!contentReloadVersion || !editor?.view) return;
+    const { activeTabId: tabId, tabs: currentTabs } = useEditorStore.getState();
+    const incomingTab = currentTabs.find((t) => t.id === tabId);
+    if (!incomingTab?.filePath) return;
+    const content = useFileStore.getState().openFiles.get(incomingTab.filePath);
+    if (content === undefined) return;
+    // Invalidate stale EditorState caches for replaced files
+    editorStateCache.current.clear();
+    // Re-parse and update editor from file-store
+    const newDoc = markdownToProsemirror(content, editor.schema);
+    const newState = EditorState.create({
+      doc: newDoc,
+      plugins: editor.state.plugins,
+    });
+    editor.view.updateState(newState);
+  }, [contentReloadVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Window title update ---
   useEffect(() => {

@@ -3,17 +3,19 @@ import { describe, it, expect } from "vitest";
 import { MERMAID_TEMPLATES, detectMermaidType } from "../../utils/mermaid-utils";
 
 describe("Mermaid Templates", () => {
-  it("has 7 Phase 2 diagram types", () => {
+  it("has 7 Phase 2 diagram types (original)", () => {
     const keys = Object.keys(MERMAID_TEMPLATES);
-    expect(keys).toEqual([
-      "flowchart",
-      "sequence",
-      "class",
-      "state",
-      "er",
-      "gantt",
-      "pie",
-    ]);
+    expect(keys).toContain("flowchart");
+    expect(keys).toContain("sequence");
+    expect(keys).toContain("class");
+    expect(keys).toContain("state");
+    expect(keys).toContain("er");
+    expect(keys).toContain("gantt");
+    expect(keys).toContain("pie");
+  });
+
+  it("has 11 templates (7 original + 4 new)", () => {
+    expect(Object.keys(MERMAID_TEMPLATES)).toHaveLength(11);
   });
 
   it("each template has label and non-empty code", () => {
@@ -23,6 +25,23 @@ describe("Mermaid Templates", () => {
       // Template code should start with a valid mermaid keyword
       expect(detectMermaidType(value.code)).toBe(key);
     }
+  });
+
+  it("mindmap template exists", () => {
+    expect(MERMAID_TEMPLATES.mindmap).toBeDefined();
+    expect(MERMAID_TEMPLATES.mindmap.label).toBe("Mind Map");
+  });
+
+  it("timeline template exists", () => {
+    expect(MERMAID_TEMPLATES.timeline).toBeDefined();
+  });
+
+  it("journey template exists", () => {
+    expect(MERMAID_TEMPLATES.journey).toBeDefined();
+  });
+
+  it("gitgraph template exists", () => {
+    expect(MERMAID_TEMPLATES.gitgraph).toBeDefined();
   });
 });
 
@@ -67,6 +86,14 @@ describe("detectMermaidType", () => {
 
   it("detects timeline", () => {
     expect(detectMermaidType("timeline\n  title My Day")).toBe("timeline");
+  });
+
+  it("detects journey type", () => {
+    expect(detectMermaidType("journey\n  title User Journey")).toBe("journey");
+  });
+
+  it("detects gitgraph type", () => {
+    expect(detectMermaidType("gitGraph\n  commit")).toBe("gitgraph");
   });
 
   it("returns null for unknown", () => {

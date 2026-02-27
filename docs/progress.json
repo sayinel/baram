@@ -1,7 +1,7 @@
 {
   "_comment": "Baram 개발 진행 상황 추적. 슬래시 커맨드가 자동으로 업데이트한다.",
   "project": "baram",
-  "lastUpdated": "2026-02-27",
+  "lastUpdated": "2026-02-28",
   "currentPhase": 2,
   "currentMilestone": "M9",
 
@@ -184,9 +184,9 @@
   },
 
   "testSummary": {
-    "vitest": "972/972 pass (63 test files)",
-    "cargoTest": "105/105 pass (4 ignored)",
-    "note": "§56 Journal / Daily Notes: CalendarPanel + useJournal + @today InputRule + workspace preset",
+    "vitest": "1003/1003 pass (64 test files)",
+    "cargoTest": "112/112 pass (4 ignored)",
+    "note": "M9 spec-check gaps resolved: registry sync, global search replace+filter, mermaid context menu+templates",
     "breakdown": {
       "stores": 6,
       "editor-store-mru": 12,
@@ -228,7 +228,7 @@
       "table-of-contents": 8,
       "definition-list": 12,
       "ai-slash-commands": 5,
-      "mermaid-enhanced": 15,
+      "mermaid-enhanced": 22,
       "git-store": 16,
       "workspace-store": 14,
       "pandoc-export": 30,

@@ -13,6 +13,10 @@ pub struct SearchOptionsInput {
     pub regex: bool,
     #[serde(default)]
     pub max_results: Option<usize>,
+    #[serde(default)]
+    pub include_glob: Option<String>,
+    #[serde(default)]
+    pub exclude_glob: Option<String>,
 }
 
 #[tauri::command]
@@ -27,6 +31,8 @@ pub async fn search_files(
             whole_word: input.whole_word,
             regex: input.regex,
             max_results: input.max_results.unwrap_or(1000),
+            include_glob: input.include_glob,
+            exclude_glob: input.exclude_glob,
         },
         None => SearchOptions::default(),
     };

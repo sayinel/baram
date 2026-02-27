@@ -28,6 +28,10 @@ pub struct SearchOptions {
     pub regex: bool,
     #[serde(default = "default_max_results")]
     pub max_results: usize,
+    #[serde(default)]
+    pub include_glob: Option<String>,
+    #[serde(default)]
+    pub exclude_glob: Option<String>,
 }
 
 fn default_max_results() -> usize {
@@ -41,6 +45,8 @@ impl Default for SearchOptions {
             whole_word: false,
             regex: false,
             max_results: default_max_results(),
+            include_glob: None,
+            exclude_glob: None,
         }
     }
 }
@@ -105,8 +111,68 @@ fn build_snippet(line_text: &str, match_start: usize, match_end: usize) -> Strin
     snippet
 }
 
-/// Recursively collect all .md files under root, skipping SKIP_DIRS.
-async fn collect_md_files(root: &Path) -> Vec<String> {
+/// Check whether a filename matches a `*.ext` glob pattern.
+fn matches_extension(name: &str, pattern: &str) -> bool {
+    if let Some(ext) = pattern.strip_prefix("*.") {
+        name.ends_with(&format!(".{}", ext))
+    } else {
+        false
+    }
+}
+
+/// Check whether a relative path starts with a directory prefix pattern
+/// (e.g. `docs/**` or `drafts/`).
+fn matches_path_prefix(rel_path: &str, pattern: &str) -> bool {
+    let p = pattern.trim_end_matches('/').trim_end_matches("/**");
+    rel_path.starts_with(p)
+}
+
+/// Returns true if the file (by name + rel_path) is accepted by the include patterns.
+/// None / empty include_glob means "accept .md files" (default behaviour).
+fn include_matches(name: &str, rel_path: &str, include_glob: Option<&str>) -> bool {
+    match include_glob {
+        None => name.ends_with(".md"),
+        Some(glob) if glob.trim().is_empty() => name.ends_with(".md"),
+        Some(glob) => glob
+            .split(',')
+            .map(|p| p.trim())
+            .filter(|p| !p.is_empty())
+            .any(|p| {
+                if p.starts_with("*.") {
+                    matches_extension(name, p)
+                } else {
+                    matches_path_prefix(rel_path, p)
+                }
+            }),
+    }
+}
+
+/// Returns true if the file should be excluded by the exclude patterns.
+fn exclude_matches(name: &str, rel_path: &str, exclude_glob: Option<&str>) -> bool {
+    match exclude_glob {
+        None => false,
+        Some(glob) if glob.trim().is_empty() => false,
+        Some(glob) => glob
+            .split(',')
+            .map(|p| p.trim())
+            .filter(|p| !p.is_empty())
+            .any(|p| {
+                if p.starts_with("*.") {
+                    matches_extension(name, p)
+                } else {
+                    matches_path_prefix(rel_path, p)
+                }
+            }),
+    }
+}
+
+/// Recursively collect files under root, filtered by include/exclude glob patterns.
+/// Default (no patterns): collects only `.md` files.
+async fn collect_files(
+    root: &Path,
+    include_glob: Option<&str>,
+    exclude_glob: Option<&str>,
+) -> Vec<String> {
     let mut result = Vec::new();
     let mut stack = vec![root.to_path_buf()];
 
@@ -128,8 +194,17 @@ async fn collect_md_files(root: &Path) -> Vec<String> {
                     if !SKIP_DIRS.contains(&name.as_str()) && !name.starts_with('.') {
                         stack.push(path);
                     }
-                } else if metadata.is_file() && name.ends_with(".md") {
-                    result.push(path.to_string_lossy().into_owned());
+                } else if metadata.is_file() {
+                    // Build a root-relative path for prefix matching
+                    let rel_path = path
+                        .strip_prefix(root)
+                        .map(|p| p.to_string_lossy().into_owned())
+                        .unwrap_or_else(|_| name.clone());
+                    if include_matches(&name, &rel_path, include_glob)
+                        && !exclude_matches(&name, &rel_path, exclude_glob)
+                    {
+                        result.push(path.to_string_lossy().into_owned());
+                    }
                 }
             }
         }
@@ -156,7 +231,12 @@ pub async fn search_files(
         return Err(format!("Root path is not a directory: {}", root));
     }
 
-    let files = collect_md_files(root_path).await;
+    let files = collect_files(
+        root_path,
+        opts.include_glob.as_deref(),
+        opts.exclude_glob.as_deref(),
+    )
+    .await;
     let mut results = Vec::new();
 
     for file_path in files {
@@ -299,7 +379,7 @@ mod tests {
         std_fs::create_dir(root.join("node_modules")).unwrap();
         std_fs::write(root.join("node_modules/skip.md"), "skip").unwrap();
 
-        let files = collect_md_files(root).await;
+        let files = collect_files(root, None, None).await;
         assert_eq!(files.len(), 3);
         assert!(files.iter().any(|f| f.ends_with("file1.md")));
         assert!(files.iter().any(|f| f.ends_with("file2.md")));

@@ -109,8 +109,8 @@
       "spec": "§3.2",
       "phase": 2,
       "milestone": "M7",
-      "status": "stub",
-      "description": "전역 텍스트 검색 (tantivy) — Rust stub만 존재, TS는 빈 배열 반환"
+      "status": "implemented",
+      "description": "전역 텍스트 검색 (regex 기반 파일 워킹)"
     },
     {
       "name": "get_backlinks",
@@ -274,8 +274,8 @@
       "spec": "§3.2",
       "phase": 2,
       "milestone": "M9",
-      "status": "stub",
-      "description": "Git 상태 조회 — Rust stub만 존재"
+      "status": "implemented",
+      "description": "Git 상태 조회 (git2)"
     },
     {
       "name": "git_commit",
@@ -285,19 +285,184 @@
       "spec": "§3.2",
       "phase": 2,
       "milestone": "M9",
-      "status": "stub",
-      "description": "Git 커밋 (커밋 해시 반환) — Rust stub만 존재"
+      "status": "implemented",
+      "description": "Git 커밋 (커밋 해시 반환)"
     },
     {
-      "name": "create_snapshot",
-      "input": { "path": "string", "label": "string?" },
-      "output": "SnapshotInfo",
+      "name": "copy_file",
+      "input": { "from": "string", "to": "string" },
+      "output": "void",
       "module": "fs",
       "spec": "§3.2",
+      "phase": 1,
+      "milestone": "M4",
+      "status": "implemented",
+      "description": "파일 복사"
+    },
+    {
+      "name": "extract_zip",
+      "input": { "zipPath": "string", "outputDir": "string" },
+      "output": "string[]",
+      "module": "fs",
+      "spec": "§53",
       "phase": 2,
       "milestone": "M9",
-      "status": "stub",
-      "description": "수동 파일 스냅샷 — 미구현"
+      "status": "implemented",
+      "description": "ZIP 파일 추출 (Notion import 등)"
+    },
+    {
+      "name": "detect_pandoc",
+      "input": { "pandocPath": "string?" },
+      "output": "PandocInfo",
+      "module": "export",
+      "spec": "§55",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "implemented",
+      "description": "Pandoc 설치 여부 및 버전 감지"
+    },
+    {
+      "name": "export_pandoc",
+      "input": { "markdownContent": "string", "outputPath": "string", "format": "string", "pandocPath": "string?", "referenceDoc": "string?", "extraArgs": "string[]?" },
+      "output": "void",
+      "module": "export",
+      "spec": "§55",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "implemented",
+      "description": "Pandoc 확장 내보내기 (Word, LaTeX, EPUB, RST)"
+    },
+    {
+      "name": "run_custom_export",
+      "input": { "command": "string", "filePath": "string", "outputPath": "string", "vaultDir": "string?" },
+      "output": "void",
+      "module": "export",
+      "spec": "§55",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "implemented",
+      "description": "커스텀 내보내기 명령 실행 ({file}, {basename}, {output_dir}, {vault_dir} 변수 치환)"
+    },
+    {
+      "name": "git_stage",
+      "input": { "path": "string", "files": "string[]" },
+      "output": "void",
+      "module": "git",
+      "spec": "§57b",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "implemented",
+      "description": "Git 파일 스테이징 (add)"
+    },
+    {
+      "name": "git_unstage",
+      "input": { "path": "string", "files": "string[]" },
+      "output": "void",
+      "module": "git",
+      "spec": "§57b",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "implemented",
+      "description": "Git 파일 언스테이징 (reset)"
+    },
+    {
+      "name": "git_diff_file",
+      "input": { "path": "string", "filePath": "string" },
+      "output": "GitFileDiff",
+      "module": "git",
+      "spec": "§57b",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "implemented",
+      "description": "Git 파일 diff 조회"
+    },
+    {
+      "name": "git_branches",
+      "input": { "path": "string" },
+      "output": "GitBranchInfo[]",
+      "module": "git",
+      "spec": "§57b",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "implemented",
+      "description": "Git 브랜치 목록 조회"
+    },
+    {
+      "name": "git_switch_branch",
+      "input": { "path": "string", "branchName": "string" },
+      "output": "void",
+      "module": "git",
+      "spec": "§57b",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "implemented",
+      "description": "Git 브랜치 전환"
+    },
+    {
+      "name": "git_discard",
+      "input": { "path": "string", "files": "string[]" },
+      "output": "void",
+      "module": "git",
+      "spec": "§57b",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "implemented",
+      "description": "Git 변경사항 되돌리기 (checkout)"
+    },
+    {
+      "name": "git_create_branch",
+      "input": { "path": "string", "branchName": "string" },
+      "output": "void",
+      "module": "git",
+      "spec": "§57b",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "implemented",
+      "description": "Git 새 브랜치 생성"
+    },
+    {
+      "name": "keyring_store",
+      "input": { "key": "string", "value": "string" },
+      "output": "void",
+      "module": "keyring",
+      "spec": "§6.3",
+      "phase": 2,
+      "milestone": "M8",
+      "status": "implemented",
+      "description": "OS Keychain에 암호화 저장 (API key 등)"
+    },
+    {
+      "name": "keyring_get",
+      "input": { "key": "string" },
+      "output": "string | null",
+      "module": "keyring",
+      "spec": "§6.3",
+      "phase": 2,
+      "milestone": "M8",
+      "status": "implemented",
+      "description": "OS Keychain에서 값 조회"
+    },
+    {
+      "name": "keyring_delete",
+      "input": { "key": "string" },
+      "output": "void",
+      "module": "keyring",
+      "spec": "§6.3",
+      "phase": 2,
+      "milestone": "M8",
+      "status": "implemented",
+      "description": "OS Keychain에서 값 삭제"
+    },
+    {
+      "name": "llm_cancel",
+      "input": { "requestId": "string" },
+      "output": "boolean",
+      "module": "llm",
+      "spec": "§6.3",
+      "phase": 2,
+      "milestone": "M8",
+      "status": "implemented",
+      "description": "LLM 스트리밍 요청 취소"
     }
   ],
   "events": [

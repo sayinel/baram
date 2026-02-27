@@ -30,6 +30,22 @@ export const MERMAID_TEMPLATES: Record<string, { label: string; code: string }> 
     label: "Pie Chart",
     code: 'pie title Distribution\n  "Category A" : 40\n  "Category B" : 30\n  "Category C" : 20\n  "Category D" : 10',
   },
+  mindmap: {
+    label: "Mind Map",
+    code: "mindmap\n  root((Topic))\n    Branch A\n      Leaf 1\n      Leaf 2\n    Branch B\n      Leaf 3",
+  },
+  timeline: {
+    label: "Timeline",
+    code: "timeline\n  title History\n  2024 : Event A\n  2025 : Event B\n  2026 : Event C",
+  },
+  journey: {
+    label: "User Journey",
+    code: "journey\n  title User Journey\n  section Sign Up\n    Visit page: 5: User\n    Fill form: 3: User\n    Submit: 5: User",
+  },
+  gitgraph: {
+    label: "Git Graph",
+    code: "gitGraph\n  commit\n  branch develop\n  commit\n  checkout main\n  merge develop\n  commit",
+  },
 };
 
 /** Detect diagram type from mermaid source code */
@@ -44,6 +60,8 @@ export function detectMermaidType(code: string): string | null {
   if (/^pie\b/i.test(trimmed)) return "pie";
   if (/^mindmap\b/i.test(trimmed)) return "mindmap";
   if (/^timeline\b/i.test(trimmed)) return "timeline";
+  if (/^journey\b/i.test(trimmed)) return "journey";
+  if (/^gitGraph\b/i.test(trimmed) || /^gitgraph\b/i.test(trimmed)) return "gitgraph";
   return null;
 }
 
