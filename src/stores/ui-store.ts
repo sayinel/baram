@@ -3,7 +3,7 @@ import { create } from "zustand";
 import { useSettingsStore } from "./settings-store";
 
 type SidebarPanel = "files" | "outline" | "search" | "backlinks" | "bookmarks" | "graph" | "git";
-type ExportFormat = "html" | "pdf" | "notion";
+type ExportFormat = "html" | "pdf" | "notion" | "docx" | "latex" | "epub" | "rst";
 
 interface UIState {
   sidebarOpen: boolean;

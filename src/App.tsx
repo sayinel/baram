@@ -1366,14 +1366,8 @@ function App() {
         case "file_settings":
           toggleSettings();
           break;
-        case "export_html":
+        case "export_doc":
           useUIStore.getState().openExportDialog("html");
-          break;
-        case "export_pdf":
-          useUIStore.getState().openExportDialog("pdf");
-          break;
-        case "export_notion":
-          useUIStore.getState().openExportDialog("notion");
           break;
         case "view_source":
           toggleSourceMode();

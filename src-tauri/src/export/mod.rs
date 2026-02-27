@@ -1,4 +1,7 @@
 // §5.10 PDF/HTML 내보내기 모듈 — headless Chrome 기반 PDF 생성
+// §55 Pandoc Extended Export — Pandoc 기반 다중 포맷 내보내기
+
+pub mod pandoc;
 
 use headless_chrome::{Browser, LaunchOptions};
 use serde::Deserialize;
@@ -26,6 +29,15 @@ pub enum ExportError {
 
     #[error("Failed to save PDF: {0}")]
     SaveError(String),
+
+    #[error("Pandoc not found: {0}")]
+    PandocNotFound(String),
+
+    #[error("Pandoc export failed: {0}")]
+    PandocFailed(String),
+
+    #[error("Custom export failed: {0}")]
+    CustomExportFailed(String),
 }
 
 /// PDF export options matching frontend PdfOptions interface.

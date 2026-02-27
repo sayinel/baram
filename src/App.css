@@ -2948,7 +2948,7 @@ body {
 }
 
 .export-dialog {
-  width: 400px;
+  width: 440px;
   background-color: var(--color-bg-primary);
   border: 1px solid var(--color-border);
   border-radius: 8px;
@@ -3010,7 +3010,107 @@ body {
   color: var(--color-text-secondary);
 }
 
-.export-format-tabs {
+/* §55 Export format card list */
+.export-format-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.export-format-card {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  cursor: pointer;
+  background: transparent;
+  transition: background-color 0.1s;
+  text-align: left;
+  font-family: var(--font-sans);
+  color: var(--color-text-primary);
+}
+
+.export-format-card:hover {
+  background-color: var(--color-bg-secondary);
+}
+
+.export-format-card-selected {
+  box-shadow: inset 3px 0 0 var(--color-accent);
+  background-color: var(--color-bg-secondary);
+}
+
+.export-format-card-disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.export-format-card-disabled:hover {
+  background: transparent;
+}
+
+.export-ext-badge {
+  font-size: 0.7rem;
+  font-family: var(--font-mono, monospace);
+  background-color: var(--color-bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.export-format-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.export-format-card-name {
+  font-weight: 500;
+  font-size: 0.85rem;
+  color: var(--color-text-primary);
+}
+
+.export-format-card-desc {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.export-pandoc-badge {
+  font-size: 0.65rem;
+  font-family: var(--font-mono, monospace);
+  background-color: var(--color-bg-tertiary);
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.export-pandoc-warning {
+  font-size: 0.8rem;
+  color: #b45309;
+  margin: 4px 0 0;
+  line-height: 1.4;
+}
+
+[data-theme="dark"] .export-pandoc-warning {
+  color: #fbbf24;
+}
+
+.export-dialog-template-row {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+}
+
+/* PDF Paper Size tabs */
+.export-paper-tabs {
   display: flex;
   gap: 0;
   border: 1px solid var(--color-border);
@@ -3018,7 +3118,7 @@ body {
   overflow: hidden;
 }
 
-.export-format-tab {
+.export-paper-tab {
   flex: 1;
   padding: 6px 0;
   font-size: 0.85rem;
@@ -3031,20 +3131,20 @@ body {
   transition: all 0.1s;
 }
 
-.export-format-tab:not(:last-child) {
+.export-paper-tab:not(:last-child) {
   border-right: 1px solid var(--color-border);
 }
 
-.export-format-tab:hover {
+.export-paper-tab:hover {
   background-color: var(--color-bg-secondary);
 }
 
-.export-format-tab-active {
+.export-paper-tab-active {
   background-color: var(--color-accent);
   color: white;
 }
 
-.export-format-tab-active:hover {
+.export-paper-tab-active:hover {
   background-color: var(--color-accent-hover);
 }
 

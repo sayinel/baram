@@ -124,6 +124,22 @@ export interface ExportOptions {
   theme?: string;
 }
 
+// §55 Pandoc Extended Export types
+export type PandocFormat = "docx" | "latex" | "epub" | "rst";
+
+export interface PandocInfo {
+  path: string;
+  version: string;
+  available: boolean;
+}
+
+export interface CustomExportItem {
+  name: string;
+  command: string;
+  extension: string;
+  showInMenu: boolean;
+}
+
 // §5.10 PDF export options (headless Chrome backend)
 export interface PdfOptions {
   paperSize?: "a4" | "letter";

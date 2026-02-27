@@ -55,14 +55,9 @@ pub fn run() {
                 .id("file_close_tab")
                 .accelerator("CmdOrCtrl+W")
                 .build(app)?;
-            let export_html = MenuItemBuilder::new("Export as HTML")
-                .id("export_html")
-                .build(app)?;
-            let export_pdf = MenuItemBuilder::new("Export as PDF")
-                .id("export_pdf")
-                .build(app)?;
-            let export_notion = MenuItemBuilder::new("Export for Notion")
-                .id("export_notion")
+            let export_doc = MenuItemBuilder::new("Export...")
+                .id("export_doc")
+                .accelerator("CmdOrCtrl+Shift+E")
                 .build(app)?;
             let file_menu = SubmenuBuilder::new(app, "File")
                 .item(&file_new)
@@ -73,9 +68,7 @@ pub fn run() {
                 .item(&file_save_as)
                 .item(&file_close_tab)
                 .separator()
-                .item(&export_html)
-                .item(&export_pdf)
-                .item(&export_notion)
+                .item(&export_doc)
                 .build()?;
 
             // --- Edit menu (predefined OS-native items) ---
@@ -361,6 +354,9 @@ pub fn run() {
             config_cmd::remove_config,
             export_cmd::export_pdf,
             export_cmd::export_document,
+            export_cmd::detect_pandoc,
+            export_cmd::export_pandoc,
+            export_cmd::run_custom_export,
             llm_cmd::llm_complete,
             llm_cmd::llm_list_models,
             llm_cmd::llm_cancel,

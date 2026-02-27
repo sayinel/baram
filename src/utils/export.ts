@@ -1,11 +1,12 @@
-// §5.12 Export — HTML file save + PDF via headless Chrome backend + §53 Notion
+// §5.12 Export — HTML file save + PDF via headless Chrome backend + §53 Notion + §55 Pandoc
 import type { Editor } from "@tiptap/core";
 import { save } from "@tauri-apps/plugin-dialog";
-import { writeFile, exportPdf } from "../ipc/invoke";
-import type { PdfOptions } from "../ipc/types";
+import { writeFile, exportPdf, exportPandoc } from "../ipc/invoke";
+import type { PdfOptions, PandocFormat } from "../ipc/types";
 import { generateStandaloneHTML } from "./export-html";
 import { prosemirrorToMarkdown } from "../pipeline/pm-to-md";
 import { convertForNotion } from "./notion-export";
+import { convertForPandoc } from "./pandoc-export";
 
 /**
  * Export editor content as a standalone HTML file.
@@ -68,4 +69,42 @@ export async function exportForNotion(
   if (!path) return; // user cancelled
 
   await writeFile(path, notionMd);
+}
+
+/**
+ * §55 Export editor content via Pandoc to docx/latex/epub/rst.
+ * Converts Baram-specific syntax to standard markdown first,
+ * then invokes Pandoc through the Rust backend.
+ */
+export async function exportWithPandoc(
+  editor: Editor,
+  title: string,
+  format: PandocFormat,
+  options?: { pandocPath?: string; referenceDoc?: string },
+): Promise<void> {
+  const md = prosemirrorToMarkdown(editor.state.doc);
+  const pandocMd = convertForPandoc(md);
+
+  const extensionMap: Record<PandocFormat, string> = {
+    docx: "docx",
+    latex: "tex",
+    epub: "epub",
+    rst: "rst",
+  };
+  const ext = extensionMap[format];
+  const filterName = format.toUpperCase();
+
+  const path = await save({
+    filters: [{ name: filterName, extensions: [ext] }],
+    defaultPath: `${title}.${ext}`,
+  });
+  if (!path) return; // user cancelled
+
+  await exportPandoc(
+    pandocMd,
+    path,
+    format,
+    options?.pandocPath,
+    options?.referenceDoc,
+  );
 }

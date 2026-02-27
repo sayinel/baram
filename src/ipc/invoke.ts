@@ -14,6 +14,7 @@ import type {
   ExportFormat,
   ExportOptions,
   PdfOptions,
+  PandocInfo,
   SnapshotInfo,
   RenameResult,
   ModelInfo,
@@ -176,6 +177,43 @@ export async function exportPdf(
   options?: PdfOptions,
 ): Promise<void> {
   return invoke<void>("export_pdf", { htmlContent, outputPath, options });
+}
+
+// §55 Pandoc Extended Export commands
+export async function detectPandoc(pandocPath?: string): Promise<PandocInfo> {
+  return invoke<PandocInfo>("detect_pandoc", { pandocPath });
+}
+
+export async function exportPandoc(
+  markdownContent: string,
+  outputPath: string,
+  format: string,
+  pandocPath?: string,
+  referenceDoc?: string,
+  extraArgs?: string[],
+): Promise<void> {
+  return invoke<void>("export_pandoc", {
+    markdownContent,
+    outputPath,
+    format,
+    pandocPath,
+    referenceDoc,
+    extraArgs,
+  });
+}
+
+export async function runCustomExport(
+  command: string,
+  filePath: string,
+  outputPath: string,
+  vaultDir?: string,
+): Promise<void> {
+  return invoke<void>("run_custom_export", {
+    command,
+    filePath,
+    outputPath,
+    vaultDir,
+  });
 }
 
 // §57b Git commands

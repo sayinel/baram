@@ -4,6 +4,7 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import { tauriStorage } from "./tauri-storage";
 import { findThemeById } from "../types/theme";
 import type { ThemeDef } from "../types/theme";
+import type { CustomExportItem } from "../ipc/types";
 
 type Theme = "light" | "dark" | "system";
 type OnLaunch = "newFile" | "restoreLastFolder" | "restoreLastFile";
@@ -44,6 +45,14 @@ interface SettingsState {
   codeBlockLineNumbers: boolean;
   codeBlockStyle: CodeBlockStyle;
   smartPunctuation: boolean;
+
+  // §55 Pandoc Extended Export
+  pandocPath: string;
+  wordTemplatePath: string;
+  customExports: CustomExportItem[];
+  setPandocPath: (path: string) => void;
+  setWordTemplatePath: (path: string) => void;
+  setCustomExports: (items: CustomExportItem[]) => void;
 
   // Extension settings (dynamic key-value)
   extensionSettings: Record<string, unknown>;
@@ -121,6 +130,14 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
   codeBlockLineNumbers: false,
   codeBlockStyle: "default",
   smartPunctuation: false,
+
+  // §55 Pandoc Extended Export
+  pandocPath: "pandoc",
+  wordTemplatePath: "",
+  customExports: [],
+  setPandocPath: (pandocPath) => set({ pandocPath }),
+  setWordTemplatePath: (wordTemplatePath) => set({ wordTemplatePath }),
+  setCustomExports: (customExports) => set({ customExports }),
 
   // Extension settings (dynamic key-value)
   extensionSettings: {},
@@ -237,8 +254,11 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
     codeBlockStyle: state.codeBlockStyle,
     smartPunctuation: state.smartPunctuation,
     extensionSettings: state.extensionSettings,
+    pandocPath: state.pandocPath,
+    wordTemplatePath: state.wordTemplatePath,
+    customExports: state.customExports,
   }),
-  version: 2,
+  version: 3,
   migrate: (persisted: unknown, version: number) => {
     const state = persisted as Record<string, unknown>;
 
@@ -251,6 +271,13 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
         }
       }
       state.extensionSettings = ext;
+    }
+
+    // v0/v1/v2 → v3: §55 Pandoc export settings
+    if (version < 3) {
+      if (!state.pandocPath) state.pandocPath = "pandoc";
+      if (!state.wordTemplatePath) state.wordTemplatePath = "";
+      if (!state.customExports) state.customExports = [];
     }
 
     // v0/v1 → v2: theme migration

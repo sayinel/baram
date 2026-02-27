@@ -55,22 +55,11 @@ function buildCommands(
       action: () => onOpenFolder(),
     },
     {
-      id: "file:export-html",
-      label: "Export as HTML",
+      id: "file:export",
+      label: "Export...",
       category: "File",
+      shortcut: "⇧⌘E",
       action: () => useUIStore.getState().openExportDialog("html"),
-    },
-    {
-      id: "file:export-pdf",
-      label: "Export as PDF (Print)",
-      category: "File",
-      action: () => useUIStore.getState().openExportDialog("pdf"),
-    },
-    {
-      id: "file:export-notion",
-      label: "Export for Notion",
-      category: "File",
-      action: () => useUIStore.getState().openExportDialog("notion"),
     },
     // View
     {
