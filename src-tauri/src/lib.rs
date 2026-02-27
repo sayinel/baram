@@ -252,11 +252,16 @@ pub fn run() {
                 .id("workspace_research")
                 .accelerator("Alt+CmdOrCtrl+3")
                 .build(app)?;
+            let workspace_journal = MenuItemBuilder::new("Journal")
+                .id("workspace_journal")
+                .accelerator("Alt+CmdOrCtrl+4")
+                .build(app)?;
 
             let workspace_menu = SubmenuBuilder::new(app, "Workspace")
                 .item(&workspace_writing)
                 .item(&workspace_skills)
                 .item(&workspace_research)
+                .item(&workspace_journal)
                 .build()?;
 
             // --- Window menu (macOS standard) ---

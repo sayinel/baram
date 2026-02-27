@@ -2,7 +2,7 @@
 import { create } from "zustand";
 import { useSettingsStore } from "./settings-store";
 
-type SidebarPanel = "files" | "outline" | "search" | "backlinks" | "bookmarks" | "graph" | "git";
+type SidebarPanel = "files" | "outline" | "search" | "backlinks" | "bookmarks" | "graph" | "git" | "calendar";
 type ExportFormat = "html" | "pdf" | "notion" | "docx" | "latex" | "epub" | "rst";
 
 interface UIState {

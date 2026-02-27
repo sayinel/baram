@@ -1,0 +1,159 @@
+import { describe, it, expect } from "vitest";
+import {
+  formatJournalDate,
+  formatJournalFilename,
+  isDateString,
+  resolveDateAlias,
+  generateDefaultJournal,
+  applyJournalTemplate,
+  getJournalFilePath,
+  getMonthDays,
+  getFirstDayOfWeek,
+} from "../journal";
+
+describe("journal utilities", () => {
+  const date = new Date(2026, 1, 27); // 2026-02-27 Friday
+
+  describe("formatJournalDate", () => {
+    it("formats date as YYYY-MM-DD", () => {
+      expect(formatJournalDate(date)).toBe("2026-02-27");
+    });
+
+    it("pads single-digit month and day", () => {
+      expect(formatJournalDate(new Date(2026, 0, 5))).toBe("2026-01-05");
+    });
+  });
+
+  describe("formatJournalFilename", () => {
+    it("replaces YYYY-MM-DD format", () => {
+      expect(formatJournalFilename(date, "YYYY-MM-DD.md")).toBe(
+        "2026-02-27.md",
+      );
+    });
+
+    it("replaces YYYYMMDD format", () => {
+      expect(formatJournalFilename(date, "YYYYMMDD.md")).toBe("20260227.md");
+    });
+  });
+
+  describe("isDateString", () => {
+    it("returns true for valid date strings", () => {
+      expect(isDateString("2026-02-27")).toBe(true);
+      expect(isDateString("2000-01-01")).toBe(true);
+    });
+
+    it("returns false for invalid strings", () => {
+      expect(isDateString("today")).toBe(false);
+      expect(isDateString("2026-2-27")).toBe(false);
+      expect(isDateString("26-02-27")).toBe(false);
+      expect(isDateString("")).toBe(false);
+    });
+  });
+
+  describe("resolveDateAlias", () => {
+    it("resolves today", () => {
+      const result = resolveDateAlias("today");
+      expect(result).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+
+    it("resolves yesterday", () => {
+      const result = resolveDateAlias("yesterday");
+      expect(result).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      // yesterday should be different from today
+      expect(result).not.toBe(resolveDateAlias("today"));
+    });
+
+    it("resolves tomorrow", () => {
+      const result = resolveDateAlias("tomorrow");
+      expect(result).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(result).not.toBe(resolveDateAlias("today"));
+    });
+
+    it("is case-insensitive", () => {
+      expect(resolveDateAlias("Today")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(resolveDateAlias("TODAY")).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+
+    it("returns null for unknown aliases", () => {
+      expect(resolveDateAlias("next week")).toBeNull();
+      expect(resolveDateAlias("foo")).toBeNull();
+    });
+  });
+
+  describe("generateDefaultJournal", () => {
+    it("generates frontmatter with date", () => {
+      const result = generateDefaultJournal(date);
+      expect(result).toContain("date: 2026-02-27");
+    });
+
+    it("includes day name in heading", () => {
+      const result = generateDefaultJournal(date);
+      expect(result).toContain("# 2026-02-27 Friday");
+    });
+
+    it("includes Notes section", () => {
+      const result = generateDefaultJournal(date);
+      expect(result).toContain("## Notes");
+    });
+  });
+
+  describe("applyJournalTemplate", () => {
+    it("replaces {{date}}", () => {
+      expect(applyJournalTemplate("# {{date}}", date)).toBe("# 2026-02-27");
+    });
+
+    it("replaces {{year}}, {{month}}, {{day}}", () => {
+      const tpl = "{{year}}/{{month}}/{{day}}";
+      expect(applyJournalTemplate(tpl, date)).toBe("2026/02/27");
+    });
+
+    it("replaces {{dayName}} and {{monthName}}", () => {
+      expect(applyJournalTemplate("{{dayName}}", date)).toBe("Friday");
+      expect(applyJournalTemplate("{{monthName}}", date)).toBe("February");
+    });
+
+    it("handles multiple occurrences", () => {
+      expect(applyJournalTemplate("{{date}} {{date}}", date)).toBe(
+        "2026-02-27 2026-02-27",
+      );
+    });
+  });
+
+  describe("getJournalFilePath", () => {
+    it("builds absolute path", () => {
+      expect(
+        getJournalFilePath("/root", "journals", date, "YYYY-MM-DD.md"),
+      ).toBe("/root/journals/2026-02-27.md");
+    });
+
+    it("strips leading/trailing slashes from dir", () => {
+      expect(
+        getJournalFilePath("/root", "/journals/", date, "YYYY-MM-DD.md"),
+      ).toBe("/root/journals/2026-02-27.md");
+    });
+  });
+
+  describe("getMonthDays", () => {
+    it("returns correct number of days for February 2026", () => {
+      const days = getMonthDays(2026, 1); // month 0-indexed
+      expect(days).toHaveLength(28);
+    });
+
+    it("returns correct number of days for January", () => {
+      const days = getMonthDays(2026, 0);
+      expect(days).toHaveLength(31);
+    });
+
+    it("handles leap year February", () => {
+      const days = getMonthDays(2024, 1);
+      expect(days).toHaveLength(29);
+    });
+  });
+
+  describe("getFirstDayOfWeek", () => {
+    it("returns 0-6 for day of week", () => {
+      const dow = getFirstDayOfWeek(2026, 1); // Feb 2026 starts on Sunday
+      expect(dow).toBe(0);
+    });
+  });
+});

@@ -82,6 +82,11 @@ function GeneralTab() {
     autoSaveDelay, setAutoSaveDelay,
     spellCheck, setSpellCheck,
     showWelcome, setShowWelcome,
+    journalEnabled, setJournalEnabled,
+    journalDirectory, setJournalDirectory,
+    journalFilenameFormat, setJournalFilenameFormat,
+    journalTemplatePath, setJournalTemplatePath,
+    journalStartupBehavior, setJournalStartupBehavior,
   } = useSettingsStore();
 
   return (
@@ -129,6 +134,79 @@ function GeneralTab() {
       <SettingsRow label="Spell Check" description="Check spelling while typing">
         <ToggleSwitch checked={spellCheck} onChange={setSpellCheck} />
       </SettingsRow>
+
+      <SettingsSectionHeader title="Journal" />
+
+      <SettingsRow label="Enable Journal" description="Create daily notes in a journal folder">
+        <ToggleSwitch checked={journalEnabled} onChange={setJournalEnabled} />
+      </SettingsRow>
+
+      {journalEnabled && (
+        <>
+          <SettingsRow label="Journal Directory" description="Relative path within the workspace">
+            <input
+              type="text"
+              className="settings-input"
+              value={journalDirectory}
+              onChange={(e) => setJournalDirectory(e.target.value)}
+              placeholder="journals"
+            />
+          </SettingsRow>
+
+          <SettingsRow label="Filename Format" description="Date format for journal filenames">
+            <select
+              className="settings-select"
+              value={journalFilenameFormat}
+              onChange={(e) => setJournalFilenameFormat(e.target.value)}
+            >
+              <option value="YYYY-MM-DD.md">YYYY-MM-DD.md</option>
+              <option value="YYYYMMDD.md">YYYYMMDD.md</option>
+            </select>
+          </SettingsRow>
+
+          <SettingsRow label="Template" description="Custom template file for new journal entries">
+            <div className="settings-key-row">
+              <input
+                type="text"
+                className="settings-input settings-input-key"
+                value={journalTemplatePath}
+                readOnly
+                placeholder="None (use default)"
+              />
+              <button
+                className="settings-key-toggle"
+                onClick={async () => {
+                  const selected = await open({
+                    filters: [{ name: "Markdown", extensions: ["md"] }],
+                  });
+                  if (selected) setJournalTemplatePath(selected);
+                }}
+              >
+                Browse
+              </button>
+              {journalTemplatePath && (
+                <button
+                  className="settings-key-toggle"
+                  onClick={() => setJournalTemplatePath("")}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </SettingsRow>
+
+          <SettingsRow label="On Startup" description="Action when opening a workspace with journal enabled">
+            <select
+              className="settings-select"
+              value={journalStartupBehavior}
+              onChange={(e) => setJournalStartupBehavior(e.target.value as "openJournal" | "nothing")}
+            >
+              <option value="openJournal">Open today's journal</option>
+              <option value="nothing">Do nothing</option>
+            </select>
+          </SettingsRow>
+        </>
+      )}
     </div>
   );
 }

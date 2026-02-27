@@ -44,6 +44,8 @@ import { useGhostText } from "./hooks/use-ghost-text";
 import { useInlineAI } from "./hooks/use-inline-ai";
 import { useFileWatcher } from "./hooks/use-file-watcher";
 import { useExternalDrop } from "./hooks/use-external-drop";
+import { useJournal } from "./hooks/use-journal";
+import { isDateString, getJournalFilePath, generateDefaultJournal, applyJournalTemplate } from "./utils/journal";
 import { readFile, writeFile, getOpenedUrls, updateFileIndex } from "./ipc/invoke";
 import { useLinkStore } from "./stores/link-store";
 import { migrateFromLocalStorage } from "./stores/tauri-storage";
@@ -801,9 +803,55 @@ function App() {
     }
   }, []);
 
+  // §56 Journal — auto-create today's journal on startup
+  useJournal(handleOpenFilePath);
+
   // §28 Wikilink Cmd+Click navigation
   const handleWikilinkNavigate = useCallback(
     (target: string, heading?: string | null) => {
+      // §56 Date wikilink → open/create journal file
+      if (isDateString(target)) {
+        const { journalEnabled, journalDirectory, journalFilenameFormat, journalTemplatePath } =
+          useSettingsStore.getState();
+        if (!journalEnabled) return;
+        const { rootPath } = useFileStore.getState();
+        if (!rootPath) return;
+        const date = new Date(target + "T00:00:00");
+        const journalPath = getJournalFilePath(rootPath, journalDirectory, date, journalFilenameFormat);
+        (async () => {
+          try {
+            // Check if file exists
+            let exists = true;
+            try {
+              await readFile(journalPath);
+            } catch {
+              exists = false;
+            }
+            if (!exists) {
+              const dir = journalDirectory.replace(/^\/+|\/+$/g, "");
+              const { createDir } = await import("./ipc/invoke");
+              await createDir(`${rootPath}/${dir}`);
+              let content: string;
+              if (journalTemplatePath) {
+                try {
+                  const tpl = await readFile(journalTemplatePath);
+                  content = applyJournalTemplate(tpl, date);
+                } catch {
+                  content = generateDefaultJournal(date);
+                }
+              } else {
+                content = generateDefaultJournal(date);
+              }
+              await writeFile(journalPath, content);
+            }
+            await handleOpenFilePath(journalPath);
+          } catch (err) {
+            console.error("[App] Failed to open journal:", err);
+          }
+        })();
+        return;
+      }
+
       const resolved = resolveWikilinkTarget(target);
 
       // File doesn't exist → create it, refresh tree, then open
@@ -1111,6 +1159,12 @@ function App() {
       if (e.altKey && mod && e.code === "Digit3") {
         e.preventDefault();
         useWorkspaceStore.getState().applyPreset("research");
+        return;
+      }
+      // §56 Alt+Cmd+4 — journal workspace preset
+      if (e.altKey && mod && e.code === "Digit4") {
+        e.preventDefault();
+        useWorkspaceStore.getState().applyPreset("journal");
         return;
       }
 
@@ -1503,6 +1557,9 @@ function App() {
           break;
         case "workspace_research":
           useWorkspaceStore.getState().applyPreset("research");
+          break;
+        case "workspace_journal":
+          useWorkspaceStore.getState().applyPreset("journal");
           break;
       }
     });

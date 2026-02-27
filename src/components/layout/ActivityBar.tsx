@@ -2,7 +2,7 @@
 import type { ReactNode } from "react";
 import { useUIStore } from "../../stores/ui-store";
 
-type PanelId = "files" | "search" | "outline" | "backlinks" | "bookmarks" | "graph" | "git";
+type PanelId = "files" | "search" | "outline" | "backlinks" | "bookmarks" | "graph" | "git" | "calendar";
 
 const PANEL_ICONS: { id: PanelId; label: string; icon: ReactNode }[] = [
   {
@@ -82,6 +82,18 @@ const PANEL_ICONS: { id: PanelId; label: string; icon: ReactNode }[] = [
         <circle cx="8" cy="5" r="2" />
         <circle cx="16" cy="11" r="2" />
         <circle cx="8" cy="19" r="2" />
+      </svg>
+    ),
+  },
+  {
+    id: "calendar",
+    label: "Calendar",
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+        <line x1="16" y1="2" x2="16" y2="6" />
+        <line x1="8" y1="2" x2="8" y2="6" />
+        <line x1="3" y1="10" x2="21" y2="10" />
       </svg>
     ),
   },

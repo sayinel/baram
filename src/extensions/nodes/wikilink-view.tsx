@@ -3,6 +3,7 @@ import { useCallback } from "react";
 import { NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/react";
 import type { WikilinkOptions } from "./wikilink";
+import { isDateString } from "../../utils/journal";
 
 export function WikilinkView({ node, selected, extension }: NodeViewProps) {
   const { target, display, heading } = node.attrs as {
@@ -14,26 +15,30 @@ export function WikilinkView({ node, selected, extension }: NodeViewProps) {
   // Display text priority: display > heading > target
   const text = display || (heading ? `${target} > ${heading}` : target);
 
+  const isDate = isDateString(target);
+
   // §28 Cmd+Click navigates to target document
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
-      if (e.metaKey || e.ctrlKey) {
+      // §56 Date wikilinks navigate on single click
+      if (isDate || e.metaKey || e.ctrlKey) {
         e.preventDefault();
         e.stopPropagation();
         const onNavigate = (extension.options as WikilinkOptions).onNavigate;
         onNavigate(target, heading);
       }
     },
-    [extension, target, heading],
+    [extension, target, heading, isDate],
   );
 
   return (
     <NodeViewWrapper
       as="span"
-      className={`wikilink ${selected ? "wikilink-selected" : ""}`}
+      className={`wikilink ${selected ? "wikilink-selected" : ""}${isDate ? " wikilink-date" : ""}`}
       data-target={target}
       onClick={handleClick}
     >
+      {isDate && <span className="wikilink-date-icon">📅</span>}
       {text}
     </NodeViewWrapper>
   );

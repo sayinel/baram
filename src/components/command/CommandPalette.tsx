@@ -395,6 +395,19 @@ function buildCommands(
       shortcut: "⌥⌘3",
       action: () => useWorkspaceStore.getState().applyPreset("research"),
     },
+    {
+      id: "workspace:journal",
+      label: "Workspace: 저널",
+      category: "Workspace",
+      shortcut: "⌥⌘4",
+      action: () => useWorkspaceStore.getState().applyPreset("journal"),
+    },
+    {
+      id: "journal:open-today",
+      label: "Open Today's Journal",
+      category: "Journal",
+      action: () => useWorkspaceStore.getState().applyPreset("journal"),
+    },
   ];
 }
 

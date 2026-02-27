@@ -22,9 +22,9 @@ describe("§52 Workspace Store", () => {
 
   // --- Built-in Presets ---
 
-  it("has 3 built-in presets", () => {
-    expect(BUILTIN_PRESETS).toHaveLength(3);
-    expect(BUILTIN_PRESETS.map((p) => p.id)).toEqual(["writing", "skills", "research"]);
+  it("has 4 built-in presets", () => {
+    expect(BUILTIN_PRESETS).toHaveLength(4);
+    expect(BUILTIN_PRESETS.map((p) => p.id)).toEqual(["writing", "skills", "research", "journal"]);
   });
 
   it("all built-in presets are marked as builtIn", () => {
@@ -35,7 +35,7 @@ describe("§52 Workspace Store", () => {
 
   it("getAllPresets returns built-in + custom presets", () => {
     const store = useWorkspaceStore.getState();
-    expect(store.getAllPresets()).toHaveLength(3);
+    expect(store.getAllPresets()).toHaveLength(4);
   });
 
   it("getPreset finds built-in preset by id", () => {
@@ -121,10 +121,10 @@ describe("§52 Workspace Store", () => {
     useWorkspaceStore.getState().saveCustomPreset("Custom 2");
 
     const all = useWorkspaceStore.getState().getAllPresets();
-    expect(all).toHaveLength(5);
+    expect(all).toHaveLength(6);
     expect(all[0].builtIn).toBe(true);
-    expect(all[3].builtIn).toBe(false);
-    expect(all[3].name).toBe("Custom 1");
+    expect(all[4].builtIn).toBe(false);
+    expect(all[4].name).toBe("Custom 1");
   });
 
   it("deleteCustomPreset removes preset and clears activePresetId when active", () => {

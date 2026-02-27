@@ -10,6 +10,7 @@ type Theme = "light" | "dark" | "system";
 type OnLaunch = "newFile" | "restoreLastFolder" | "restoreLastFile";
 type WikilinkFormat = "wikilink" | "markdown";
 type CodeBlockStyle = "default" | "minimal" | "contrast" | "paper";
+type JournalStartupBehavior = "openJournal" | "nothing";
 
 interface SettingsState {
   // General
@@ -45,6 +46,13 @@ interface SettingsState {
   codeBlockLineNumbers: boolean;
   codeBlockStyle: CodeBlockStyle;
   smartPunctuation: boolean;
+
+  // §56 Journal / Daily Notes
+  journalEnabled: boolean;
+  journalDirectory: string;
+  journalFilenameFormat: string;
+  journalTemplatePath: string;
+  journalStartupBehavior: JournalStartupBehavior;
 
   // §55 Pandoc Extended Export
   pandocPath: string;
@@ -90,6 +98,13 @@ interface SettingsState {
   setStrikethrough: (enabled: boolean) => void;
   setSmartPunctuation: (enabled: boolean) => void;
 
+  // §56 Journal setters
+  setJournalEnabled: (enabled: boolean) => void;
+  setJournalDirectory: (dir: string) => void;
+  setJournalFilenameFormat: (fmt: string) => void;
+  setJournalTemplatePath: (path: string) => void;
+  setJournalStartupBehavior: (behavior: JournalStartupBehavior) => void;
+
   // Legacy setters (delegate to setExtensionSetting — will be removed after SettingsModal migration)
   setDiagrams: (enabled: boolean) => void;
   setCodeBlockLineNumbers: (enabled: boolean) => void;
@@ -130,6 +145,13 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
   codeBlockLineNumbers: false,
   codeBlockStyle: "default",
   smartPunctuation: false,
+
+  // §56 Journal / Daily Notes
+  journalEnabled: false,
+  journalDirectory: "journals",
+  journalFilenameFormat: "YYYY-MM-DD.md",
+  journalTemplatePath: "",
+  journalStartupBehavior: "openJournal",
 
   // §55 Pandoc Extended Export
   pandocPath: "pandoc",
@@ -209,6 +231,13 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
       return patch;
     }),
 
+  // §56 Journal setters
+  setJournalEnabled: (journalEnabled) => set({ journalEnabled }),
+  setJournalDirectory: (journalDirectory) => set({ journalDirectory }),
+  setJournalFilenameFormat: (journalFilenameFormat) => set({ journalFilenameFormat }),
+  setJournalTemplatePath: (journalTemplatePath) => set({ journalTemplatePath }),
+  setJournalStartupBehavior: (journalStartupBehavior) => set({ journalStartupBehavior }),
+
   // Legacy setters — delegate to extensionSettings (remove after SettingsModal migration)
   setDiagrams: (diagrams) =>
     set((state) => ({
@@ -254,11 +283,16 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
     codeBlockStyle: state.codeBlockStyle,
     smartPunctuation: state.smartPunctuation,
     extensionSettings: state.extensionSettings,
+    journalEnabled: state.journalEnabled,
+    journalDirectory: state.journalDirectory,
+    journalFilenameFormat: state.journalFilenameFormat,
+    journalTemplatePath: state.journalTemplatePath,
+    journalStartupBehavior: state.journalStartupBehavior,
     pandocPath: state.pandocPath,
     wordTemplatePath: state.wordTemplatePath,
     customExports: state.customExports,
   }),
-  version: 3,
+  version: 4,
   migrate: (persisted: unknown, version: number) => {
     const state = persisted as Record<string, unknown>;
 
@@ -278,6 +312,15 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
       if (!state.pandocPath) state.pandocPath = "pandoc";
       if (!state.wordTemplatePath) state.wordTemplatePath = "";
       if (!state.customExports) state.customExports = [];
+    }
+
+    // v3 → v4: §56 Journal settings
+    if (version < 4) {
+      if (state.journalEnabled === undefined) state.journalEnabled = false;
+      if (!state.journalDirectory) state.journalDirectory = "journals";
+      if (!state.journalFilenameFormat) state.journalFilenameFormat = "YYYY-MM-DD.md";
+      if (state.journalTemplatePath === undefined) state.journalTemplatePath = "";
+      if (!state.journalStartupBehavior) state.journalStartupBehavior = "openJournal";
     }
 
     // v0/v1 → v2: theme migration

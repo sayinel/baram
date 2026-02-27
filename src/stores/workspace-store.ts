@@ -3,12 +3,17 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { tauriStorage } from "./tauri-storage";
 import { useUIStore } from "./ui-store";
+import { useSettingsStore } from "./settings-store";
+import { useFileStore } from "./file-store";
+import { useEditorStore } from "./editor-store";
+import { readFile, writeFile, createDir } from "../ipc/invoke";
+import { getJournalFilePath, generateDefaultJournal, applyJournalTemplate } from "../utils/journal";
 
 // --- Types ---
 
 export interface WorkspaceLayout {
   sidebarOpen: boolean;
-  sidebarPanel: "files" | "outline" | "search" | "backlinks" | "bookmarks" | "graph" | "git";
+  sidebarPanel: "files" | "outline" | "search" | "backlinks" | "bookmarks" | "graph" | "git" | "calendar";
   rightPanelOpen: boolean;
   rightPanelMode: "chat" | "help" | "none";
 }
@@ -60,6 +65,18 @@ export const BUILTIN_PRESETS: WorkspacePreset[] = [
       rightPanelMode: "chat",
     },
   },
+  {
+    id: "journal",
+    name: "저널",
+    description: "캘린더와 오늘의 저널을 함께 엽니다.",
+    builtIn: true,
+    layout: {
+      sidebarOpen: true,
+      sidebarPanel: "calendar",
+      rightPanelOpen: false,
+      rightPanelMode: "none",
+    },
+  },
 ];
 
 // --- Store ---
@@ -94,6 +111,62 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set, get) => 
     ui.setRightPanelMode(layout.rightPanelMode);
 
     set({ activePresetId: id });
+
+    // §56 Journal preset: auto-open today's journal
+    if (id === "journal") {
+      const { journalEnabled, journalDirectory, journalFilenameFormat, journalTemplatePath } =
+        useSettingsStore.getState();
+      const { rootPath } = useFileStore.getState();
+      if (journalEnabled && rootPath) {
+        const date = new Date();
+        const journalPath = getJournalFilePath(rootPath, journalDirectory, date, journalFilenameFormat);
+        (async () => {
+          try {
+            let exists = true;
+            try {
+              await readFile(journalPath);
+            } catch {
+              exists = false;
+            }
+            if (!exists) {
+              const dir = journalDirectory.replace(/^\/+|\/+$/g, "");
+              await createDir(`${rootPath}/${dir}`);
+              let content: string;
+              if (journalTemplatePath) {
+                try {
+                  const tpl = await readFile(journalTemplatePath);
+                  content = applyJournalTemplate(tpl, date);
+                } catch {
+                  content = generateDefaultJournal(date);
+                }
+              } else {
+                content = generateDefaultJournal(date);
+              }
+              await writeFile(journalPath, content);
+            }
+            // Open the journal file
+            const { tabs } = useEditorStore.getState();
+            const existing = tabs.find((t: { filePath?: string }) => t.filePath === journalPath);
+            if (existing) {
+              useEditorStore.getState().setActiveTab(existing.id);
+            } else {
+              const content = await readFile(journalPath);
+              const fileName = journalPath.split("/").pop() ?? "Unknown";
+              useFileStore.getState().setFileContent(journalPath, content);
+              useEditorStore.getState().openTab({
+                id: crypto.randomUUID(),
+                filePath: journalPath,
+                title: fileName,
+                isDirty: false,
+                isPinned: false,
+              });
+            }
+          } catch (err) {
+            console.error("[Workspace] Failed to open journal:", err);
+          }
+        })();
+      }
+    }
   },
 
   saveCustomPreset: (name, description) => {

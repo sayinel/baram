@@ -16,6 +16,7 @@ pub struct PandocInfo {
 }
 
 /// Options for Pandoc export
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PandocExportOptions {
