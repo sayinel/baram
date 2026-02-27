@@ -255,7 +255,7 @@ Workspace Presets save your current layout (sidebar panel, right panel, theme) a
 ### How do I switch workspace presets?
 
 Three ways:
-1. **Keyboard shortcuts** — `Cmd+Alt+1` (Writing), `Cmd+Alt+2` (Skills), `Cmd+Alt+3` (Research)
+1. **Keyboard shortcuts** — `Cmd+Alt+1` (Writing), `Cmd+Alt+2` (Skills), `Cmd+Alt+3` (Research), `Cmd+Alt+4` (Journal)
 2. **Command Palette** — `Cmd+Shift+P` then search for "Workspace"
 3. **Workspace menu** — Use the menu bar
 
@@ -265,18 +265,63 @@ Yes. Go to **Settings > Workspace**, arrange your layout, and click **Save Curre
 
 ---
 
+## Journal / Daily Notes
+
+### What is the Journal feature?
+
+Baram includes a built-in journal system that automatically creates daily notes, provides a calendar sidebar for browsing, and supports date aliases (`@today`, `@yesterday`, `@tomorrow`) for quick linking.
+
+### How do I enable the Journal?
+
+Open **Settings > General > Journal**, enable the toggle, and select a folder for your journal files. The journal directory must be an absolute path (e.g., `/Users/me/journals`).
+
+### How do I create a daily note?
+
+Three ways:
+1. **Calendar** — Open the Calendar sidebar (`Cmd+Alt+4`) and click any date
+2. **Date alias** — Type `@today` (or `@yesterday`, `@tomorrow`, `@YYYY-MM-DD`) followed by Space in the editor, then click the resulting wikilink
+3. **Auto-create** — Set "On Startup" to "Open today's journal" in Settings — today's entry auto-opens when you launch Baram
+
+### Can I use a custom template for daily notes?
+
+Yes. In **Settings > General > Journal**, select a `.md` template file. Templates support variables: `{{date}}`, `{{year}}`, `{{month}}`, `{{day}}`, `{{dayName}}`, `{{monthName}}`. If no template is set, Baram generates a default entry with frontmatter and a date heading.
+
+### How do I navigate between journal entries?
+
+Use the Calendar sidebar. Days with existing entries are marked with a dot. Click any date to open or create that day's journal.
+
+---
+
 ## Export
 
 ### What export formats are supported?
 
-Baram supports three export formats:
+Baram supports seven export formats:
 - **HTML** — Self-contained HTML with inline styles, math rendering, and code highlighting
 - **PDF** — Print-ready PDF via the system print dialog
-- **Notion** — Notion-compatible Markdown that converts Baram-specific syntax (wikilinks, callouts, math, highlight, subscript/superscript, footnotes, block references, definition lists) to formats Notion understands
+- **Notion** — Notion-compatible Markdown that converts Baram-specific syntax
+- **Word (DOCX)** — Editable Word document via Pandoc, with optional template
+- **LaTeX** — Typesetting format for academic/scientific documents via Pandoc
+- **EPUB** — E-book format via Pandoc
+- **RST** — reStructuredText for Sphinx documentation via Pandoc
+
+The last four formats require [Pandoc](https://pandoc.org/) to be installed.
 
 ### How do I export a document?
 
-Go to **File > Export** and select your desired format (HTML, PDF, or Notion). You can also use the Command Palette (`Cmd+Shift+P`) and search for "Export".
+Go to **File > Export** to open the Export dialog. Select your desired format, enter a title, and click Export. You can also use the Command Palette (`Cmd+Shift+P`) and search for "Export".
+
+### What is Pandoc and do I need it?
+
+[Pandoc](https://pandoc.org/) is a free document converter. You only need it if you want to export to Word, LaTeX, EPUB, or RST. Baram auto-detects Pandoc — if it's installed, the Pandoc formats become available in the Export dialog. If not, those formats are grayed out.
+
+### How do I install Pandoc?
+
+Visit [pandoc.org/installing.html](https://pandoc.org/installing.html) for your platform. On macOS: `brew install pandoc`. On Windows: download the installer. On Linux: `apt install pandoc` or equivalent.
+
+### Can I use a Word template for DOCX export?
+
+Yes. When you select the Word format in the Export dialog, a template browser appears. Select a `.docx` reference template and Pandoc will apply its styles (headings, fonts, colors, headers/footers) to the exported document.
 
 ### What does "Export for Notion" convert?
 

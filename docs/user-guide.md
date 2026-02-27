@@ -16,6 +16,7 @@ Welcome to Baram — a lightweight, beautiful WYSIWYG markdown editor with AI in
 - [AI Features](#ai-features)
 - [Git Integration](#git-integration)
 - [Export](#export)
+- [Journal / Daily Notes](#journal--daily-notes)
 - [Workspace Presets](#workspace-presets)
 - [Customization](#customization)
 - [Help Panel](#help-panel)
@@ -428,6 +429,8 @@ Connect your notes using `[[wikilinks]]`:
 | `[[page#heading]]` | Link to a specific heading |
 | `[[page#^block-id]]` | Link to a specific block |
 
+**Date Aliases:** Type `@today`, `@yesterday`, `@tomorrow`, or `@YYYY-MM-DD` followed by Space to quickly insert a wikilink to that date's journal entry. Date wikilinks navigate on single-click (no Cmd/Ctrl required).
+
 **Hover Preview:** Hover over any wikilink to see a preview of the target document's content without navigating away.
 
 ### Backlinks
@@ -633,7 +636,7 @@ The current branch is shown in the **Status Bar** at the bottom of the editor. C
 
 ## Export
 
-Export your documents from the **File > Export** menu.
+Export your documents from the **File > Export** menu or the Export dialog.
 
 ### HTML
 
@@ -641,7 +644,7 @@ Generates clean, self-contained HTML with inline styles. The exported file inclu
 
 ### PDF
 
-Creates a print-ready PDF via the system print dialog. Supports customization of paper size, margins, and layout.
+Creates a print-ready PDF via the system print dialog. Supports customization of paper size (A4 / Letter), margins, and layout.
 
 ### Notion
 
@@ -659,7 +662,77 @@ Exports a Notion-compatible Markdown file. Automatically converts Baram-specific
 | `((ref))` block references | Stripped |
 | Definition lists | `**Term**: Definition` format |
 
-To export: go to **File > Export for Notion**, or open the Export dialog (`File > Export as HTML/PDF`) and select the **Notion** tab.
+### Pandoc Formats (Word, LaTeX, EPUB, RST)
+
+With [Pandoc](https://pandoc.org/) installed, Baram supports additional export formats:
+
+| Format | Extension | Description |
+|--------|-----------|-------------|
+| **Word** | `.docx` | Editable Word document, with optional reference template for styling |
+| **LaTeX** | `.tex` | Typesetting format for academic/scientific documents |
+| **EPUB** | `.epub` | E-book format for Kindle, Apple Books, etc. |
+| **RST** | `.rst` | reStructuredText for Sphinx documentation |
+
+**Setup:**
+
+1. Install [Pandoc](https://pandoc.org/installing.html) on your system
+2. Baram auto-detects Pandoc — the Export dialog shows Pandoc formats when available
+3. (Optional) Set a custom Pandoc path in **Settings > Extensions** if Pandoc is not in your system PATH
+
+**Word Templates:**
+
+When exporting to Word (DOCX), you can select a reference template (`.docx` file). Pandoc applies the template's styles — headings, fonts, colors, headers/footers — to the exported document.
+
+**Markdown preprocessing:**
+
+Baram automatically converts its extended syntax to Pandoc-compatible format before export: wikilinks become standard links, callouts become bold-prefixed blockquotes, highlight becomes bold, and subscript/superscript use HTML tags.
+
+---
+
+## Journal / Daily Notes
+
+Baram includes a built-in journal system for maintaining daily notes with automatic creation and calendar navigation.
+
+### Setup
+
+1. Open **Settings** (`Cmd+,` / `Ctrl+,`) and go to the **General** tab
+2. Enable the **Journal** toggle
+3. Click **Browse** and select a folder for your journal files (must be an absolute path)
+4. (Optional) Choose a filename format: `YYYY-MM-DD.md` (default) or `YYYYMMDD.md`
+5. (Optional) Select a custom template file (`.md`)
+6. Choose startup behavior: **Open today's journal** (auto-open on launch) or **Do nothing**
+
+### Creating Daily Notes
+
+There are three ways to create or open a daily note:
+
+**Calendar sidebar:**
+1. Switch to the Journal workspace preset (`Cmd+Alt+4` / `Ctrl+Alt+4`) or select the Calendar panel in the sidebar
+2. Click any date in the mini calendar — if a journal entry doesn't exist, it is created from your template
+3. Dates with existing entries are marked with a dot
+
+**Date aliases:**
+1. Type `@today`, `@yesterday`, `@tomorrow`, or `@YYYY-MM-DD` (e.g., `@2026-02-27`) in the editor
+2. Press Space — the text converts to a `[[YYYY-MM-DD]]` wikilink
+3. Click the wikilink to open/create that day's journal (single-click, no Cmd/Ctrl needed)
+
+**Auto-creation on startup:**
+When "Open today's journal" is enabled in settings, Baram automatically creates and opens today's entry every time you launch the app.
+
+### Templates
+
+Custom templates support the following variables:
+
+| Variable | Replaced With | Example |
+|----------|---------------|---------|
+| `{{date}}` | Full date | `2026-02-27` |
+| `{{year}}` | Year | `2026` |
+| `{{month}}` | Month (zero-padded) | `02` |
+| `{{day}}` | Day (zero-padded) | `27` |
+| `{{dayName}}` | Day of the week | `Friday` |
+| `{{monthName}}` | Month name | `February` |
+
+If no custom template is set, Baram uses a default template with YAML frontmatter, a date heading, and a Notes section.
 
 ---
 
@@ -674,6 +747,7 @@ Workspace Presets let you save and quickly restore your preferred layout — sid
 | Writing | `Cmd+Alt+1` | `Ctrl+Alt+1` | Sidebar closed, right panel closed — focused writing |
 | Skills | `Cmd+Alt+2` | `Ctrl+Alt+2` | File tree open, AI Chat panel open — prompt editing |
 | Research | `Cmd+Alt+3` | `Ctrl+Alt+3` | File tree + backlinks open, AI Chat panel open — knowledge exploration |
+| Journal | `Cmd+Alt+4` | `Ctrl+Alt+4` | Calendar sidebar open — daily note writing |
 
 ### Custom Presets
 

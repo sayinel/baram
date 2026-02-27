@@ -112,6 +112,7 @@ Complete list of keyboard shortcuts available in Baram.
 | Workspace: Writing | `Cmd+Option+1` | `Ctrl+Alt+1` |
 | Workspace: Skills | `Cmd+Option+2` | `Ctrl+Alt+2` |
 | Workspace: Research | `Cmd+Option+3` | `Ctrl+Alt+3` |
+| Workspace: Journal | `Cmd+Option+4` | `Ctrl+Alt+4` |
 
 ## Ghost Text (AI Autocomplete)
 
@@ -155,6 +156,7 @@ Complete list of keyboard shortcuts available in Baram.
 - **Tab Switcher**: Hold `Ctrl` while pressing `Tab` to cycle through recently used tabs; release `Ctrl` to select
 - **Ghost Text**: AI autocomplete appears as faded text — press `Tab` to accept, `Cmd+Right` for just the first word, `Escape` to dismiss
 - **Find & Replace**: Use `Cmd+F` to find text, `Cmd+H` to find and replace. Press `Enter`/`Shift+Enter` to navigate between matches
+- **Date Aliases**: Type `@today`, `@yesterday`, `@tomorrow`, or `@YYYY-MM-DD` then Space to create a wikilink to that date's journal entry
 
 ---
 

@@ -245,6 +245,12 @@ Export your documents to share or publish:
 - **HTML** — Clean, self-contained HTML with inline styles
 - **PDF** — Print-ready PDF via system print dialog
 - **Notion** — Notion-compatible Markdown with automatic conversion of wikilinks, callouts, math, highlight, subscript/superscript (Unicode), footnotes, and other Baram-specific syntax
+- **Word (DOCX)** — Editable Word document via Pandoc, with optional reference template
+- **LaTeX** — Typesetting format for academic/scientific documents via Pandoc
+- **EPUB** — E-book format for Kindle, Apple Books via Pandoc
+- **RST** — reStructuredText for Sphinx documentation via Pandoc
+
+Pandoc-based formats require [Pandoc](https://pandoc.org/) installed on your system. Baram auto-detects Pandoc and shows available formats in the Export dialog.
 
 ### Git Integration
 
@@ -265,11 +271,21 @@ Customize the look and feel of Baram with built-in themes or create your own:
 - **Color Editor** — Customize any theme with a full 16-color picker (backgrounds, text, borders, accent, editor)
 - **Import / Export** — Share themes as `.json` files
 
+### Journal / Daily Notes
+
+Maintain a daily log with automatic note creation and a calendar sidebar:
+
+- **Auto-create** — Today's journal entry is automatically created on startup (configurable)
+- **Calendar sidebar** — Interactive mini calendar showing which days have journal entries; click a date to open/create
+- **Date aliases** — Type `@today`, `@yesterday`, `@tomorrow`, or `@YYYY-MM-DD` followed by Space to insert a wikilink to that date
+- **Templates** — Use a custom `.md` template with variables (`{{date}}`, `{{year}}`, `{{dayName}}`, etc.)
+- **Settings** — Enable in **Settings > General > Journal** — configure directory, filename format, template, and startup behavior
+
 ### Workspace Presets
 
 Save and restore your workspace layout:
 
-- **3 built-in presets** — Writing (`Cmd+Alt+1`), Skills (`Cmd+Alt+2`), Research (`Cmd+Alt+3`)
+- **4 built-in presets** — Writing (`Cmd+Alt+1`), Skills (`Cmd+Alt+2`), Research (`Cmd+Alt+3`), Journal (`Cmd+Alt+4`)
 - **Custom presets** — Save your current sidebar, panel, and theme configuration as a named preset
 - **Quick switch** — Apply presets via keyboard shortcuts, Command Palette, or the Workspace menu
 
@@ -386,6 +402,7 @@ Create your own slash commands in **Settings > AI > Custom Commands**. Use varia
 | Workspace: Writing | `Cmd+Alt+1` |
 | Workspace: Skills | `Cmd+Alt+2` |
 | Workspace: Research | `Cmd+Alt+3` |
+| Workspace: Journal | `Cmd+Alt+4` |
 | Settings | `Cmd+,` |
 | Undo | `Cmd+Z` |
 | Redo | `Cmd+Shift+Z` |
@@ -512,11 +529,11 @@ Reverse:  ProseMirror Document → mdast → remark-stringify
 | M7 Connection & Navigation | ✅ Done | Wikilinks, backlinks, block references, callouts, toggles, mermaid, graph view, quick switcher, bookmarks, tab features |
 | M8 AI & Skills | ✅ Done | Multi-provider AI (Claude/OpenAI/Gemini/Ollama), Ghost Text, AI Chat, Find/Replace, Custom AI Commands, Skills editing |
 
-**Phase 2 — Productivity** (in progress)
+**Phase 2 — Productivity** (completed)
 
 | Milestone | Status | Description |
 |-----------|--------|-------------|
-| M9 Productivity | ✅ Done | Highlight / subscript / superscript marks, Table of Contents, Table Tier 3, Footnotes, Help panel, Global Search, Definition List, Mermaid enhanced, Git Basic, Theme System, Extension Settings, Workspace Presets, Export for Notion |
+| M9 Productivity | ✅ Done | Highlight / subscript / superscript marks, Table of Contents, Table Tier 3, Footnotes, Help panel, Global Search, Definition List, Mermaid enhanced, Git Basic, Theme System, Extension Settings, Workspace Presets, Export for Notion, Pandoc Extended Export (Word/LaTeX/EPUB/RST), Journal / Daily Notes |
 
 **Phase 3 — Advanced** (upcoming)
 

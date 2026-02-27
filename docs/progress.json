@@ -161,9 +161,9 @@
       }
     },
     "M9-partial": {
-      "name": "Inline Marks + TOC + Table Tier 3 + Global Search + Definition List",
+      "name": "Inline Marks + TOC + Table Tier 3 + Global Search + Definition List + Pandoc Export + Journal",
       "status": "completed",
-      "completedAt": "2026-02-25",
+      "completedAt": "2026-02-27",
       "features": {
         "highlight-mark": { "status": "completed", "tests": "21/21 roundtrip vitest pass", "spec": "§5.1" },
         "subscript-mark": { "status": "completed", "tests": "21/21 roundtrip vitest pass", "spec": "§5.1" },
@@ -177,15 +177,16 @@
         "§54-theme-system": { "status": "completed", "tests": "809/809 vitest pass (전체 테스트 통과)", "spec": "§54", "details": "6 built-in themes, CSS variable override, theme gallery, color picker editor, import/export JSON, custom themes" },
         "§52-workspace-preset": { "status": "completed", "tests": "836/836 vitest pass (전체 테스트 통과)", "spec": "§52", "details": "3 built-in presets (Writing/Skills/Research), custom preset save/delete/rename, Cmd+Alt+1/2/3 shortcuts, Command Palette, Workspace menu, Settings tab" },
         "§53-notion-export": { "status": "completed", "tests": "909/909 vitest pass (73 notion-export tests) + 105/105 cargo test", "spec": "§53", "details": "Export for Notion — convertForNotion() with 12 converters (wikilinks, callouts, inline math, highlight, subscript/superscript Unicode+math fallback, footnotes, block refs, definition lists, TOC, toggle, underline), ExportDialog Notion tab, File menu + Command Palette" },
-        "§55-pandoc-export": { "status": "completed", "tests": "942/942 vitest pass (30 pandoc-export tests) + 119/119 cargo test (7 pandoc)", "spec": "§55", "details": "Pandoc detect/run (Rust), 3 IPC commands (detect_pandoc, export_pandoc, run_custom_export), convertForPandoc() with 8 converters (wikilinks, callouts, toggles, TOC/blockRef strip, highlight→bold, sub→<sub>, sup→<sup>), ExportDialog Pandoc tabs (Word/LaTeX/EPUB/RST), Word template selector, settings (pandocPath, wordTemplatePath, customExports)" }
+        "§55-pandoc-export": { "status": "completed", "tests": "942/942 vitest pass (30 pandoc-export tests) + 119/119 cargo test (7 pandoc)", "spec": "§55", "details": "Pandoc detect/run (Rust), 3 IPC commands (detect_pandoc, export_pandoc, run_custom_export), convertForPandoc() with 8 converters (wikilinks, callouts, toggles, TOC/blockRef strip, highlight→bold, sub→<sub>, sup→<sup>), ExportDialog Pandoc tabs (Word/LaTeX/EPUB/RST), Word template selector, settings (pandocPath, wordTemplatePath, customExports)" },
+        "§56-journal": { "status": "completed", "tests": "972/972 vitest pass (journal tests) + 105/105 cargo test", "spec": "§56", "details": "CalendarPanel sidebar, useJournal hook (auto-create on startup), @today/@yesterday/@tomorrow InputRules, custom template with {{date}}/{{dayName}} variables, journal settings (directory/filename format/template/startup), Journal workspace preset (Cmd+Alt+4), date wikilink single-click navigation" }
       }
     }
   },
 
   "testSummary": {
-    "vitest": "942/942 pass (62 test files)",
-    "cargoTest": "119/119 pass (4 ignored)",
-    "note": "§55 Pandoc Extended Export: Rust pandoc module + 30 vitest + 7 cargo tests",
+    "vitest": "972/972 pass (63 test files)",
+    "cargoTest": "105/105 pass (4 ignored)",
+    "note": "§56 Journal / Daily Notes: CalendarPanel + useJournal + @today InputRule + workspace preset",
     "breakdown": {
       "stores": 6,
       "editor-store-mru": 12,
@@ -230,7 +231,8 @@
       "mermaid-enhanced": 15,
       "git-store": 16,
       "workspace-store": 14,
-      "pandoc-export": 30
+      "pandoc-export": 30,
+      "journal": 16
     }
   },
 
