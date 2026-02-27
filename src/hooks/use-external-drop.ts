@@ -31,6 +31,9 @@ interface UseExternalDropOptions {
   editor: Editor | null;
 }
 
+/** True while a native OS file drag is active (Tauri onDragDropEvent). */
+export let isExternalFileDrag = false;
+
 // --- Zone detection via bounding rects ---
 
 type DropZone = "filetree" | "editor" | null;
@@ -62,9 +65,44 @@ export function useExternalDrop({ editor }: UseExternalDropOptions) {
   useEffect(() => {
     let unlisten: (() => void) | null = null;
 
+    // Browser dragover listener — shows drop indicator using continuous
+    // browser events (Tauri "over" events alone can be too infrequent).
+    const handleBrowserDragOver = (e: DragEvent) => {
+      if (!isExternalFileDrag || !editor) return;
+      e.preventDefault(); // Required to allow drop
+      const zone = detectZone(e.clientX, e.clientY);
+      clearAllHighlights();
+      if (zone === "editor") {
+        const target = resolveInsertTarget(editor, e.clientX, e.clientY);
+        if (target) showDropIndicator(target);
+      } else if (zone === "filetree") {
+        const el = document.elementFromPoint(e.clientX, e.clientY);
+        const folderEl = el?.closest<HTMLElement>("[data-drop-path]");
+        if (folderEl) {
+          folderEl.classList.add("file-tree-ext-drop-target");
+        } else {
+          document.querySelector(".file-tree")?.classList.add("file-tree-ext-drop-target");
+        }
+      }
+    };
+
+    // Browser drop listener — prevent browser from opening the file.
+    const handleBrowserDrop = (e: DragEvent) => {
+      if (isExternalFileDrag) {
+        e.preventDefault();
+      }
+    };
+
+    document.addEventListener("dragover", handleBrowserDragOver);
+    document.addEventListener("drop", handleBrowserDrop);
+
     getCurrentWebview()
       .onDragDropEvent((event) => {
         const { type } = event.payload;
+
+        if (type === "enter") {
+          isExternalFileDrag = true;
+        }
 
         if (type === "enter" || type === "over") {
           // position is already in CSS logical pixels (see header comment)
@@ -92,12 +130,14 @@ export function useExternalDrop({ editor }: UseExternalDropOptions) {
         }
 
         if (type === "leave") {
+          isExternalFileDrag = false;
           clearAllHighlights();
         }
 
         if (type === "drop") {
           clearAllHighlights();
           const paths = event.payload.paths;
+          isExternalFileDrag = false;
           if (!paths.length) return;
 
           const x = event.payload.position.x;
@@ -120,7 +160,10 @@ export function useExternalDrop({ editor }: UseExternalDropOptions) {
       });
 
     return () => {
+      document.removeEventListener("dragover", handleBrowserDragOver);
+      document.removeEventListener("drop", handleBrowserDrop);
       unlisten?.();
+      isExternalFileDrag = false;
       clearAllHighlights();
       removeDropIndicator();
     };

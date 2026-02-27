@@ -207,13 +207,16 @@ function resolveInsideList(
           best = { pos, indicatorY: rect.top, indicatorLeft: rect.left, indicatorWidth: rect.width };
         }
 
-        // Bottom boundary (only last item → after the entire list)
-        if (i === listNode.childCount - 1) {
-          const botDist = Math.abs(y - rect.bottom);
-          if (botDist < bestDist) {
-            bestDist = botDist;
-            best = { pos: listEnd, indicatorY: rect.bottom, indicatorLeft: rect.left, indicatorWidth: rect.width };
-          }
+        // Bottom boundary of every item
+        const botDist = Math.abs(y - rect.bottom);
+        if (botDist < bestDist) {
+          bestDist = botDist;
+          // Last item's bottom → after the entire list (parent level)
+          // Other items' bottom → same as next item's top (between items, inside list)
+          const pos = i === listNode.childCount - 1
+            ? listEnd
+            : offset + item.nodeSize; // next item start
+          best = { pos, indicatorY: rect.bottom, indicatorLeft: rect.left, indicatorWidth: rect.width };
         }
       }
     } catch { /* ignore */ }

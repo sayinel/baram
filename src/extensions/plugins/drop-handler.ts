@@ -3,6 +3,7 @@
 // converting them to data URLs and inserting as image blocks.
 import { Extension } from "@tiptap/core";
 import { Plugin } from "@tiptap/pm/state";
+import { isExternalFileDrag } from "../../hooks/use-external-drop";
 
 /**
  * Detect tab-separated data in clipboard text.
@@ -97,6 +98,9 @@ function createDropHandlerPlugin(): Plugin {
   return new Plugin({
     props: {
       handleDrop(view, event) {
+        // Skip when Tauri is handling an external OS file drag
+        if (isExternalFileDrag) return false;
+
         if (!event.dataTransfer) return false;
         const files = getImageFiles(event.dataTransfer);
         if (files.length === 0) return false;
