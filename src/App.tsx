@@ -177,6 +177,8 @@ function App() {
   const blockRefNavigateRef = useRef<(target: string, blockId: string) => void>(() => {});
   // §5.1 Local .md link navigation ref (e.g. [text](sub/doc.md))
   const localLinkNavigateRef = useRef<(href: string) => void>(() => {});
+  // §57 Mention navigation ref
+  const mentionNavigateRef = useRef<(type: string, value: string) => void>(() => {});
 
   // Track previously active tab to save its content on switch
   const prevTabRef = useRef<string | null>(null);
@@ -200,6 +202,7 @@ function App() {
       onNavigate: (target, heading) => navigateRef.current(target, heading),
       onNavigateBlockRef: (target, blockId) => blockRefNavigateRef.current(target, blockId),
       onNavigateLocal: (href) => localLinkNavigateRef.current(href),
+      onMentionNavigate: (type, value) => mentionNavigateRef.current(type, value),
     }),
     autofocus: true,
     immediatelyRender: false,
@@ -1041,6 +1044,13 @@ function App() {
   useEffect(() => {
     localLinkNavigateRef.current = handleLocalLinkNavigate;
   }, [handleLocalLinkNavigate]);
+
+  // §57 Keep mentionNavigateRef in sync — delegates to wikilink navigate
+  useEffect(() => {
+    mentionNavigateRef.current = (_type: string, value: string) => {
+      handleWikilinkNavigate(value);
+    };
+  }, [handleWikilinkNavigate]);
 
   // Listen for file open events from macOS (Finder "Open With" / double-click)
   useEffect(() => {

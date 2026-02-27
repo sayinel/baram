@@ -442,6 +442,17 @@
       "status": "completed",
       "inputRules": ["[["],
       "shortcuts": {}
+    },
+    {
+      "name": "mention",
+      "file": "nodes/mention.ts",
+      "markdown": "@[[page]]",
+      "spec": "§57",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "completed",
+      "inputRules": ["@"],
+      "shortcuts": {}
     }
   ],
   "plugins": [

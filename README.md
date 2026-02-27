@@ -134,6 +134,17 @@ Connect your notes with `[[wikilinks]]`:
 - **Cmd+click** to navigate to the linked page
 - **Hover preview** — hover over a wikilink to see a preview of the target
 
+### @Mentions
+
+Mention pages and dates with inline chip badges using `@[[...]]` syntax:
+
+- **Type `@`** to open the mention autocomplete popup
+- **Quick Dates** — Today, Yesterday, Tomorrow appear at the top for instant date insertion
+- **Page search** — Type to fuzzy-filter workspace pages
+- **Date mention** — `@[[2026-02-27]]` inserts a 📅 date chip (navigates to journal on click)
+- **Page mention** — `@[[My Note]]` inserts a 📄 page chip (navigates on Cmd+click)
+- Mentions are visually distinct from wikilinks — styled as inline chips with icons
+
 ### Backlinks
 
 See which documents link to the current one:
@@ -277,7 +288,7 @@ Maintain a daily log with automatic note creation and a calendar sidebar:
 
 - **Auto-create** — Today's journal entry is automatically created on startup (configurable)
 - **Calendar sidebar** — Interactive mini calendar showing which days have journal entries; click a date to open/create
-- **Date aliases** — Type `@today`, `@yesterday`, `@tomorrow`, or `@YYYY-MM-DD` followed by Space to insert a wikilink to that date
+- **@Mentions for dates** — Type `@` and select Today / Yesterday / Tomorrow from the popup, or type `@[[YYYY-MM-DD]]` to insert a date mention chip that links to that day's journal
 - **Templates** — Use a custom `.md` template with variables (`{{date}}`, `{{year}}`, `{{dayName}}`, etc.)
 - **Settings** — Enable in **Settings > General > Journal** — configure directory, filename format, template, and startup behavior
 

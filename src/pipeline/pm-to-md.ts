@@ -19,6 +19,7 @@ import type { Root, Content, PhrasingContent, Text } from "mdast";
 import type { Node as PmNode, Mark } from "@tiptap/pm/model";
 import { pmNodeTransformers, pmMarkTransformers } from "./transformers";
 import { serializeWikilink } from "./transformers/wikilink-transformer";
+import { serializeMention } from "./transformers/mention-transformer";
 import { appendBlockId, serializeBlockRef, serializeBlockEmbed } from "./block-id";
 
 /** §28 Remark plugin: serialize wikiLink + §30b blockReference + custom inline marks */
@@ -31,6 +32,11 @@ function remarkWikiLink(this: any) {
     handlers: {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       wikiLink(node: { value: string }, _parent: any, state: any, info: any) {
+        const tracker = state.createTracker(info);
+        return tracker.move(node.value);
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mention(node: { value: string }, _parent: any, state: any, info: any) {
         const tracker = state.createTracker(info);
         return tracker.move(node.value);
       },
@@ -442,6 +448,10 @@ function convertPmInlineChildren(node: PmNode): PhrasingContent[] {
         display?: string | null;
       });
       result.push({ type: "blockReference", value: text } as unknown as PhrasingContent);
+    } else if (child.type.name === "mention") {
+      // §57: Custom mention mdast node — handler in serializer outputs verbatim
+      const text = serializeMention(child.attrs as { type: string; value: string });
+      result.push({ type: "mention", value: text } as unknown as PhrasingContent);
     }
   });
 

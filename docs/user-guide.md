@@ -429,9 +429,31 @@ Connect your notes using `[[wikilinks]]`:
 | `[[page#heading]]` | Link to a specific heading |
 | `[[page#^block-id]]` | Link to a specific block |
 
-**Date Aliases:** Type `@today`, `@yesterday`, `@tomorrow`, or `@YYYY-MM-DD` followed by Space to quickly insert a wikilink to that date's journal entry. Date wikilinks navigate on single-click (no Cmd/Ctrl required).
-
 **Hover Preview:** Hover over any wikilink to see a preview of the target document's content without navigating away.
+
+### @Mentions (Pages & Dates)
+
+Mention pages and dates using the `@` trigger, which inserts styled inline chips:
+
+1. **Type `@`** — A suggestion popup appears with Quick Dates and workspace pages
+2. **Quick Dates** — Today, Yesterday, Tomorrow are always at the top (with resolved dates shown)
+3. **Type to filter** — Fuzzy matching narrows the page list as you type
+4. **Select an item** — A mention chip is inserted: 📅 for dates, 📄 for pages
+
+**Mention syntax in markdown:**
+
+| Syntax | Type | Description |
+|--------|------|-------------|
+| `@[[My Note]]` | Page | Mention a workspace page |
+| `@[[2026-02-27]]` | Date | Mention a specific date (links to journal) |
+
+**Navigation:**
+- **Date mentions** — Click to open/create that day's journal entry (single-click)
+- **Page mentions** — Cmd+click (macOS) / Ctrl+click (Windows/Linux) to navigate to the page
+
+**Difference from wikilinks:**
+- Wikilinks (`[[page]]`) render as styled inline text links
+- Mentions (`@[[page]]`) render as chip badges with icons — visually distinct for quick scanning
 
 ### Backlinks
 
@@ -711,10 +733,11 @@ There are three ways to create or open a daily note:
 2. Click any date in the mini calendar — if a journal entry doesn't exist, it is created from your template
 3. Dates with existing entries are marked with a dot
 
-**Date aliases:**
-1. Type `@today`, `@yesterday`, `@tomorrow`, or `@YYYY-MM-DD` (e.g., `@2026-02-27`) in the editor
-2. Press Space — the text converts to a `[[YYYY-MM-DD]]` wikilink
-3. Click the wikilink to open/create that day's journal (single-click, no Cmd/Ctrl needed)
+**@Mentions for dates:**
+1. Type `@` in the editor — the mention autocomplete popup appears
+2. Select **Today**, **Yesterday**, or **Tomorrow** from the Quick Dates section
+3. A 📅 date mention chip is inserted (e.g., `@[[2026-02-27]]`)
+4. Click the chip to open/create that day's journal (single-click, no Cmd/Ctrl needed)
 
 **Auto-creation on startup:**
 When "Open today's journal" is enabled in settings, Baram automatically creates and opens today's entry every time you launch the app.

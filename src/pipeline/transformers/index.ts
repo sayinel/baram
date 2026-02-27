@@ -23,6 +23,7 @@ import { toggleTransformer } from "./toggle-transformer";
 import { footnoteRefTransformer } from "./footnote-ref-transformer";
 import { footnoteDefinitionTransformer } from "./footnote-definition-transformer";
 import { definitionListTransformer } from "./definition-list-transformer";
+import { mentionTransformer } from "./mention-transformer";
 
 import { boldTransformer } from "./bold-transformer";
 import { italicTransformer } from "./italic-transformer";
@@ -69,6 +70,7 @@ const nodeEntries: NodeTransformerEntry[] = [
   footnoteRefTransformer,
   footnoteDefinitionTransformer,
   definitionListTransformer,
+  mentionTransformer,
 ];
 
 for (const entry of nodeEntries) {

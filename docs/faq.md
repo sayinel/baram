@@ -143,6 +143,17 @@ Unlinked mentions show files that contain the current file's name in their text,
 
 To create a referenceable block, add `^my-id` at the end of a paragraph or heading.
 
+### What are @mentions and how are they different from wikilinks?
+
+@Mentions (`@[[page]]`) and wikilinks (`[[page]]`) both link to pages in your workspace, but they serve different purposes:
+
+- **Wikilinks** (`[[page]]`) render as styled inline text links — ideal for flowing prose
+- **Mentions** (`@[[page]]`) render as chip badges with icons (📅 for dates, 📄 for pages) — visually distinct for quick scanning
+
+Type `@` to open the mention popup with Quick Dates (Today, Yesterday, Tomorrow) at the top and workspace pages below. Mentions are especially useful for referencing dates (journal entries) and for cases where you want a more prominent visual indicator.
+
+In markdown, mentions serialize as `@[[value]]` — the `@` prefix distinguishes them from regular wikilinks.
+
 ### What happens when I rename a file?
 
 When you rename a file in the file tree (press `F2`), all wikilinks pointing to that file are automatically updated across your workspace. No broken links.
@@ -269,7 +280,7 @@ Yes. Go to **Settings > Workspace**, arrange your layout, and click **Save Curre
 
 ### What is the Journal feature?
 
-Baram includes a built-in journal system that automatically creates daily notes, provides a calendar sidebar for browsing, and supports date aliases (`@today`, `@yesterday`, `@tomorrow`) for quick linking.
+Baram includes a built-in journal system that automatically creates daily notes, provides a calendar sidebar for browsing, and supports @mentions for quick date linking.
 
 ### How do I enable the Journal?
 
@@ -279,7 +290,7 @@ Open **Settings > General > Journal**, enable the toggle, and select a folder fo
 
 Three ways:
 1. **Calendar** — Open the Calendar sidebar (`Cmd+Alt+4`) and click any date
-2. **Date alias** — Type `@today` (or `@yesterday`, `@tomorrow`, `@YYYY-MM-DD`) followed by Space in the editor, then click the resulting wikilink
+2. **@Mention** — Type `@` in the editor and select Today/Yesterday/Tomorrow from the popup, then click the resulting 📅 date chip
 3. **Auto-create** — Set "On Startup" to "Open today's journal" in Settings — today's entry auto-opens when you launch Baram
 
 ### Can I use a custom template for daily notes?

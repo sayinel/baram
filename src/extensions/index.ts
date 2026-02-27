@@ -32,6 +32,7 @@ import {
 } from "./nodes/table";
 import { Frontmatter } from "./nodes/frontmatter";
 import { Wikilink } from "./nodes/wikilink";
+import { Mention } from "./nodes/mention";
 import { BlockReference } from "./nodes/block-reference";
 import { BlockEmbed } from "./nodes/block-embed";
 import { Callout } from "./nodes/callout";
@@ -51,6 +52,7 @@ import { SlashCommands } from "./plugins/slash-command";
 import { SyntaxReveal } from "./plugins/syntax-reveal";
 import { DropHandler } from "./plugins/drop-handler";
 import { WikilinkSuggest } from "./plugins/wikilink-suggest";
+import { MentionSuggest } from "./plugins/mention-suggest";
 import { BlockIdDecoration } from "./plugins/block-id-decoration";
 import { GhostText } from "./plugins/ghost-text";
 import { PromptHighlight } from "./plugins/prompt-highlight";
@@ -75,6 +77,7 @@ interface BaramExtensionOptions {
   onNavigate?: (target: string, heading?: string | null) => void;
   onNavigateBlockRef?: (target: string, blockId: string) => void;
   onNavigateLocal?: (href: string) => void;
+  onMentionNavigate?: (type: string, value: string) => void;
 }
 
 /** M2 기본 편집 Extension 세트 */
@@ -120,6 +123,11 @@ export function createBaramExtensions(options?: BaramExtensionOptions): Extensio
     // Nodes — §28 Wikilink
     Wikilink.configure({
       onNavigate: options?.onNavigate ?? (() => {}),
+    }),
+
+    // Nodes — §57 Mention (@[[page]], @[[date]])
+    Mention.configure({
+      onNavigate: options?.onMentionNavigate ?? (() => {}),
     }),
 
     // Nodes — §5.9 Callout
@@ -176,6 +184,9 @@ export function createBaramExtensions(options?: BaramExtensionOptions): Extensio
     // Plugins — §31 Wikilink Autocomplete ([[)
     WikilinkSuggest,
 
+    // Plugins — §57 Mention Autocomplete (@)
+    MentionSuggest,
+
     // Plugins — §30a Block ID Decoration (Focus-Reveal + Hint)
     BlockIdDecoration,
 
@@ -223,6 +234,7 @@ export {
   BaramTableHeader,
   Frontmatter,
   Wikilink,
+  Mention,
   BlockReference,
   BlockEmbed,
   Callout,

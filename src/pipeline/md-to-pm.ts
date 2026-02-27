@@ -17,6 +17,10 @@ import {
   parseWikilinkMatch,
 } from "./transformers/wikilink-transformer";
 import {
+  MENTION_RE,
+  parseMentionMatch,
+} from "./transformers/mention-transformer";
+import {
   parseDetailsOpening,
   isDetailsClosing,
   isDetailsOpening,
@@ -708,10 +712,16 @@ function convertInlineNode(
   schema: Schema,
   parentMarks: Mark[],
 ): PmNode[] {
-  // Text node — split on [[wikilink]] patterns
+  // Text node — split on @[[mention]] and [[wikilink]] patterns
   if (node.type === "text") {
     const text = node as Text;
     if (!text.value) return [];
+
+    // §57: Check for mention patterns @[[...]] BEFORE wikilinks (superset of [[]])
+    if (schema.nodes.mention && text.value.includes("@[[")) {
+      const nodes = splitTextWithMentions(text.value, schema, parentMarks);
+      if (nodes.length > 0) return nodes;
+    }
 
     // Check for wikilink patterns and split if schema supports it
     if (schema.nodes.wikilink && text.value.includes("[[")) {
@@ -905,6 +915,66 @@ function splitTextWithBlockRefs(
   // Text after the last block reference
   if (lastIndex < text.length) {
     result.push(schema.text(text.slice(lastIndex), parentMarks));
+  }
+
+  return result;
+}
+
+/** §57: Split text at @[[mention]] boundaries into mixed text + mention PM nodes.
+ *  Remaining text segments are recursively processed for wikilinks. */
+function splitTextWithMentions(
+  text: string,
+  schema: Schema,
+  parentMarks: Mark[],
+): PmNode[] {
+  const result: PmNode[] = [];
+  const re = new RegExp(MENTION_RE.source, "g");
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = re.exec(text)) !== null) {
+    // Text before the mention — may contain wikilinks
+    if (match.index > lastIndex) {
+      const before = text.slice(lastIndex, match.index);
+      if (schema.nodes.wikilink && before.includes("[[")) {
+        const wlNodes = splitTextWithWikilinks(before, schema, parentMarks);
+        if (wlNodes.length > 0) {
+          result.push(...wlNodes);
+        } else {
+          result.push(schema.text(before, parentMarks));
+        }
+      } else {
+        result.push(schema.text(before, parentMarks));
+      }
+    }
+
+    // Mention node
+    const parsed = parseMentionMatch(match);
+    result.push(
+      schema.nodes.mention.create({
+        type: parsed.type,
+        value: parsed.value,
+      }),
+    );
+
+    lastIndex = re.lastIndex;
+  }
+
+  if (result.length === 0) return [];
+
+  // Text after the last mention — may contain wikilinks
+  if (lastIndex < text.length) {
+    const after = text.slice(lastIndex);
+    if (schema.nodes.wikilink && after.includes("[[")) {
+      const wlNodes = splitTextWithWikilinks(after, schema, parentMarks);
+      if (wlNodes.length > 0) {
+        result.push(...wlNodes);
+      } else {
+        result.push(schema.text(after, parentMarks));
+      }
+    } else {
+      result.push(schema.text(after, parentMarks));
+    }
   }
 
   return result;

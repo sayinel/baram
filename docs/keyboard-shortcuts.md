@@ -150,13 +150,14 @@ Complete list of keyboard shortcuts available in Baram.
 
 - **Slash Commands**: Type `/` at the start of an empty line to open the block insertion menu
 - **Wikilinks**: Type `[[` to start a wikilink with autocomplete
+- **@Mentions**: Type `@` to mention a page or date — select from Quick Dates (Today/Yesterday/Tomorrow) or workspace pages
 - **Footnotes**: Type `[^id]` to insert a footnote reference — the definition is auto-created at the end of the document
 - **Markdown Shortcuts**: You can always type raw markdown syntax (e.g., `**bold**`, `# Heading`) — Baram converts it automatically
 - **Floating Toolbar**: Select text to see a floating toolbar with formatting options
 - **Tab Switcher**: Hold `Ctrl` while pressing `Tab` to cycle through recently used tabs; release `Ctrl` to select
 - **Ghost Text**: AI autocomplete appears as faded text — press `Tab` to accept, `Cmd+Right` for just the first word, `Escape` to dismiss
 - **Find & Replace**: Use `Cmd+F` to find text, `Cmd+H` to find and replace. Press `Enter`/`Shift+Enter` to navigate between matches
-- **Date Aliases**: Type `@today`, `@yesterday`, `@tomorrow`, or `@YYYY-MM-DD` then Space to create a wikilink to that date's journal entry
+- **Date Mentions**: Type `@` and select Today/Yesterday/Tomorrow to insert a date mention chip linked to that day's journal entry
 
 ---
 
