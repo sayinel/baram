@@ -45,7 +45,7 @@ import { useInlineAI } from "./hooks/use-inline-ai";
 import { useFileWatcher } from "./hooks/use-file-watcher";
 import { useExternalDrop } from "./hooks/use-external-drop";
 import { useJournal } from "./hooks/use-journal";
-import { isDateString, getJournalFilePath, generateDefaultJournal, applyJournalTemplate } from "./utils/journal";
+import { isDateString, getJournalFilePath, resolveJournalDir, generateDefaultJournal, applyJournalTemplate } from "./utils/journal";
 import { readFile, writeFile, getOpenedUrls, updateFileIndex } from "./ipc/invoke";
 import { useLinkStore } from "./stores/link-store";
 import { migrateFromLocalStorage } from "./stores/tauri-storage";
@@ -815,9 +815,11 @@ function App() {
           useSettingsStore.getState();
         if (!journalEnabled) return;
         const { rootPath } = useFileStore.getState();
-        if (!rootPath) return;
+        const resolvedDir = resolveJournalDir(rootPath, journalDirectory);
+        if (!resolvedDir) return;
         const date = new Date(target + "T00:00:00");
         const journalPath = getJournalFilePath(rootPath, journalDirectory, date, journalFilenameFormat);
+        if (!journalPath) return;
         (async () => {
           try {
             // Check if file exists
@@ -828,9 +830,8 @@ function App() {
               exists = false;
             }
             if (!exists) {
-              const dir = journalDirectory.replace(/^\/+|\/+$/g, "");
               const { createDir } = await import("./ipc/invoke");
-              await createDir(`${rootPath}/${dir}`);
+              await createDir(resolvedDir);
               let content: string;
               if (journalTemplatePath) {
                 try {

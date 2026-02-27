@@ -1,5 +1,5 @@
 // §56 Calendar sidebar panel — mini calendar for journal navigation
-import { useState, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useFileStore } from "../../stores/file-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import {
@@ -7,10 +7,11 @@ import {
   getMonthDays,
   getFirstDayOfWeek,
   getJournalFilePath,
+  resolveJournalDir,
   generateDefaultJournal,
   applyJournalTemplate,
 } from "../../utils/journal";
-import { readFile, writeFile, createDir } from "../../ipc/invoke";
+import { readFile, writeFile, createDir, listDir } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor-store";
 import type { FileEntry } from "../../stores/file-store";
 
@@ -34,10 +35,50 @@ export function CalendarPanel() {
     journalTemplatePath,
   } = useSettingsStore();
 
+  const resolvedDir = useMemo(
+    () => resolveJournalDir(rootPath, journalDirectory),
+    [rootPath, journalDirectory],
+  );
+  const isAbsoluteJournalDir = journalDirectory.startsWith("/") || /^[A-Z]:\\/.test(journalDirectory);
+
+  // For absolute journal dirs (no rootPath needed), fetch files via IPC
+  const [absoluteDirFiles, setAbsoluteDirFiles] = useState<string[]>([]);
+  useEffect(() => {
+    if (!journalEnabled || !isAbsoluteJournalDir || !resolvedDir) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const entries = await listDir(resolvedDir, false);
+        if (!cancelled) {
+          setAbsoluteDirFiles(entries.filter((e) => !e.isDir).map((e) => e.name));
+        }
+      } catch {
+        // Directory may not exist yet
+        if (!cancelled) setAbsoluteDirFiles([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [journalEnabled, isAbsoluteJournalDir, resolvedDir, viewYear, viewMonth]);
+
   // Scan fileTree for existing journal files → Set of "YYYY-MM-DD" strings
   const journalDates = useMemo(() => {
     const dates = new Set<string>();
-    if (!fileTree || !journalEnabled) return dates;
+    if (!journalEnabled) return dates;
+
+    // For absolute path: use IPC-fetched file list
+    if (isAbsoluteJournalDir) {
+      for (const filename of absoluteDirFiles) {
+        const match = filename.match(/^(\d{4})-(\d{2})-(\d{2})\.md$/) ||
+                      filename.match(/^(\d{4})(\d{2})(\d{2})\.md$/);
+        if (match) {
+          dates.add(`${match[1]}-${match[2]}-${match[3]}`);
+        }
+      }
+      return dates;
+    }
+
+    // For relative path: scan fileTree
+    if (!fileTree) return dates;
     const dir = journalDirectory.replace(/^\/+|\/+$/g, "");
 
     const scanEntries = (entries: FileEntry[]) => {
@@ -61,7 +102,7 @@ export function CalendarPanel() {
     };
     scanEntries(fileTree);
     return dates;
-  }, [fileTree, journalEnabled, journalDirectory, rootPath]);
+  }, [fileTree, journalEnabled, journalDirectory, rootPath, isAbsoluteJournalDir, absoluteDirFiles]);
 
   const days = useMemo(() => getMonthDays(viewYear, viewMonth), [viewYear, viewMonth]);
   const firstDow = useMemo(() => getFirstDayOfWeek(viewYear, viewMonth), [viewYear, viewMonth]);
@@ -91,13 +132,14 @@ export function CalendarPanel() {
   }, [today]);
 
   const openOrCreateJournal = useCallback(async (date: Date) => {
-    if (!rootPath || !journalEnabled) return;
+    if (!journalEnabled || !resolvedDir) return;
     const journalPath = getJournalFilePath(
       rootPath,
       journalDirectory,
       date,
       journalFilenameFormat,
     );
+    if (!journalPath) return;
 
     // Check if file exists
     let exists = true;
@@ -109,8 +151,7 @@ export function CalendarPanel() {
 
     if (!exists) {
       // Create the journal file
-      const dir = journalDirectory.replace(/^\/+|\/+$/g, "");
-      await createDir(`${rootPath}/${dir}`);
+      await createDir(resolvedDir);
 
       let content: string;
       if (journalTemplatePath) {
@@ -147,7 +188,7 @@ export function CalendarPanel() {
         console.error("[CalendarPanel] Failed to open journal:", err);
       }
     }
-  }, [rootPath, journalEnabled, journalDirectory, journalFilenameFormat, journalTemplatePath]);
+  }, [rootPath, resolvedDir, journalEnabled, journalDirectory, journalFilenameFormat, journalTemplatePath]);
 
   if (!journalEnabled) {
     return (

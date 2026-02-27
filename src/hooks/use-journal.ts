@@ -7,6 +7,7 @@ import {
   generateDefaultJournal,
   applyJournalTemplate,
   getJournalFilePath,
+  resolveJournalDir,
 } from "../utils/journal";
 
 /**
@@ -20,11 +21,6 @@ export function useJournal(
   const didRunRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!rootPath) return;
-    // Only run once per rootPath
-    if (didRunRef.current === rootPath) return;
-    didRunRef.current = rootPath;
-
     const {
       journalEnabled,
       journalDirectory,
@@ -35,6 +31,13 @@ export function useJournal(
 
     if (!journalEnabled) return;
 
+    const resolvedDir = resolveJournalDir(rootPath, journalDirectory);
+    if (!resolvedDir) return;
+
+    // Only run once per resolved directory
+    if (didRunRef.current === resolvedDir) return;
+    didRunRef.current = resolvedDir;
+
     const today = new Date();
     const journalPath = getJournalFilePath(
       rootPath,
@@ -42,12 +45,12 @@ export function useJournal(
       today,
       journalFilenameFormat,
     );
+    if (!journalPath) return;
 
     (async () => {
       try {
         // Ensure journal directory exists
-        const dir = journalDirectory.replace(/^\/+|\/+$/g, "");
-        await createDir(`${rootPath}/${dir}`);
+        await createDir(resolvedDir);
 
         // Check if today's journal already exists
         let exists = true;

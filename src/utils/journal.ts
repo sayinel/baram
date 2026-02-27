@@ -107,17 +107,34 @@ export function applyJournalTemplate(template: string, date: Date): string {
     .replace(/\{\{dayName\}\}/g, dayNames[date.getDay()]);
 }
 
+/**
+ * Resolve journal directory to an absolute path.
+ * - Absolute path → return as-is (rootPath not required)
+ * - Relative path + rootPath → rootPath/journalDir
+ * - Relative path + no rootPath → null (cannot resolve)
+ */
+export function resolveJournalDir(
+  rootPath: string | null,
+  journalDir: string,
+): string | null {
+  if (journalDir.startsWith("/") || /^[A-Z]:\\/.test(journalDir)) {
+    return journalDir; // absolute path
+  }
+  if (!rootPath) return null; // relative path but no rootPath
+  const dir = journalDir.replace(/^\/+|\/+$/g, "");
+  return `${rootPath}/${dir}`;
+}
+
 /** Build the full path for a journal file */
 export function getJournalFilePath(
-  rootPath: string,
+  rootPath: string | null,
   journalDir: string,
   date: Date,
   filenameFormat: string,
-): string {
-  const filename = formatJournalFilename(date, filenameFormat);
-  // Normalize: no leading/trailing slashes on journalDir
-  const dir = journalDir.replace(/^\/+|\/+$/g, "");
-  return `${rootPath}/${dir}/${filename}`;
+): string | null {
+  const dir = resolveJournalDir(rootPath, journalDir);
+  if (!dir) return null;
+  return `${dir}/${formatJournalFilename(date, filenameFormat)}`;
 }
 
 /** Get all days in a month (for calendar grid) */

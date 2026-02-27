@@ -7,7 +7,7 @@ import { useSettingsStore } from "./settings-store";
 import { useFileStore } from "./file-store";
 import { useEditorStore } from "./editor-store";
 import { readFile, writeFile, createDir } from "../ipc/invoke";
-import { getJournalFilePath, generateDefaultJournal, applyJournalTemplate } from "../utils/journal";
+import { getJournalFilePath, resolveJournalDir, generateDefaultJournal, applyJournalTemplate } from "../utils/journal";
 
 // --- Types ---
 
@@ -117,9 +117,11 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set, get) => 
       const { journalEnabled, journalDirectory, journalFilenameFormat, journalTemplatePath } =
         useSettingsStore.getState();
       const { rootPath } = useFileStore.getState();
-      if (journalEnabled && rootPath) {
+      const resolvedDir = resolveJournalDir(rootPath, journalDirectory);
+      if (journalEnabled && resolvedDir) {
         const date = new Date();
         const journalPath = getJournalFilePath(rootPath, journalDirectory, date, journalFilenameFormat);
+        if (!journalPath) return;
         (async () => {
           try {
             let exists = true;
@@ -129,8 +131,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set, get) => 
               exists = false;
             }
             if (!exists) {
-              const dir = journalDirectory.replace(/^\/+|\/+$/g, "");
-              await createDir(`${rootPath}/${dir}`);
+              await createDir(resolvedDir);
               let content: string;
               if (journalTemplatePath) {
                 try {
