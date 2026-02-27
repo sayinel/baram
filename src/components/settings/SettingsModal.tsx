@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { useUIStore } from "../../stores/ui-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useAIStore } from "../../stores/ai-store";
+import { useFileStore } from "../../stores/file-store";
 import { CustomAICommandEditor } from "./CustomAICommandEditor";
 import { llmListModels } from "../../ipc/invoke";
 import { formatAIError } from "../../utils/format-error";
@@ -143,14 +144,32 @@ function GeneralTab() {
 
       {journalEnabled && (
         <>
-          <SettingsRow label="Journal Directory" description="Relative path within the workspace">
-            <input
-              type="text"
-              className="settings-input"
-              value={journalDirectory}
-              onChange={(e) => setJournalDirectory(e.target.value)}
-              placeholder="journals"
-            />
+          <SettingsRow label="Journal Directory" description="Folder for daily notes within the workspace">
+            <div className="settings-key-row">
+              <input
+                type="text"
+                className="settings-input settings-input-key"
+                value={journalDirectory}
+                readOnly
+                placeholder="journals"
+              />
+              <button
+                className="settings-key-toggle"
+                onClick={async () => {
+                  const selected = await open({ directory: true });
+                  if (!selected) return;
+                  // Convert absolute path to relative path within workspace
+                  const root = useFileStore.getState().rootPath;
+                  if (root && selected.startsWith(root + "/")) {
+                    setJournalDirectory(selected.slice(root.length + 1));
+                  } else {
+                    setJournalDirectory(selected);
+                  }
+                }}
+              >
+                Browse
+              </button>
+            </div>
           </SettingsRow>
 
           <SettingsRow label="Filename Format" description="Date format for journal filenames">
