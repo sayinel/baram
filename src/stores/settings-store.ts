@@ -148,7 +148,7 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
 
   // §56 Journal / Daily Notes
   journalEnabled: false,
-  journalDirectory: "journals",
+  journalDirectory: "",
   journalFilenameFormat: "YYYY-MM-DD.md",
   journalTemplatePath: "",
   journalStartupBehavior: "openJournal",
@@ -317,7 +317,11 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
     // v3 → v4: §56 Journal settings
     if (version < 4) {
       if (state.journalEnabled === undefined) state.journalEnabled = false;
-      if (!state.journalDirectory) state.journalDirectory = "journals";
+      // Clear old relative paths — only absolute paths are valid now
+      const jd = state.journalDirectory as string | undefined;
+      if (jd && !jd.startsWith("/") && !/^[A-Z]:\\/.test(jd)) {
+        state.journalDirectory = "";
+      }
       if (!state.journalFilenameFormat) state.journalFilenameFormat = "YYYY-MM-DD.md";
       if (state.journalTemplatePath === undefined) state.journalTemplatePath = "";
       if (!state.journalStartupBehavior) state.journalStartupBehavior = "openJournal";

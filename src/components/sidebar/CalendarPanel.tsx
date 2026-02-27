@@ -1,6 +1,5 @@
 // §56 Calendar sidebar panel — mini calendar for journal navigation
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { useFileStore } from "../../stores/file-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import {
   formatJournalDate,
@@ -13,7 +12,7 @@ import {
 } from "../../utils/journal";
 import { readFile, writeFile, createDir, listDir } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor-store";
-import type { FileEntry } from "../../stores/file-store";
+import { useFileStore } from "../../stores/file-store";
 
 const DAY_NAMES = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const MONTH_NAMES = [
@@ -25,8 +24,6 @@ export function CalendarPanel() {
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
-  const rootPath = useFileStore((s) => s.rootPath);
-  const fileTree = useFileStore((s) => s.fileTree);
 
   const {
     journalEnabled,
@@ -36,73 +33,42 @@ export function CalendarPanel() {
   } = useSettingsStore();
 
   const resolvedDir = useMemo(
-    () => resolveJournalDir(rootPath, journalDirectory),
-    [rootPath, journalDirectory],
+    () => resolveJournalDir(null, journalDirectory),
+    [journalDirectory],
   );
-  const isAbsoluteJournalDir = journalDirectory.startsWith("/") || /^[A-Z]:\\/.test(journalDirectory);
 
-  // For absolute journal dirs (no rootPath needed), fetch files via IPC
-  const [absoluteDirFiles, setAbsoluteDirFiles] = useState<string[]>([]);
+  // Fetch journal files via IPC
+  const [dirFiles, setDirFiles] = useState<string[]>([]);
   useEffect(() => {
-    if (!journalEnabled || !isAbsoluteJournalDir || !resolvedDir) return;
+    if (!journalEnabled || !resolvedDir) return;
     let cancelled = false;
     (async () => {
       try {
         const entries = await listDir(resolvedDir, false);
         if (!cancelled) {
-          setAbsoluteDirFiles(entries.filter((e) => !e.isDir).map((e) => e.name));
+          setDirFiles(entries.filter((e) => !e.isDir).map((e) => e.name));
         }
       } catch {
         // Directory may not exist yet
-        if (!cancelled) setAbsoluteDirFiles([]);
+        if (!cancelled) setDirFiles([]);
       }
     })();
     return () => { cancelled = true; };
-  }, [journalEnabled, isAbsoluteJournalDir, resolvedDir, viewYear, viewMonth]);
+  }, [journalEnabled, resolvedDir, viewYear, viewMonth]);
 
-  // Scan fileTree for existing journal files → Set of "YYYY-MM-DD" strings
+  // Extract "YYYY-MM-DD" date strings from filenames
   const journalDates = useMemo(() => {
     const dates = new Set<string>();
     if (!journalEnabled) return dates;
-
-    // For absolute path: use IPC-fetched file list
-    if (isAbsoluteJournalDir) {
-      for (const filename of absoluteDirFiles) {
-        const match = filename.match(/^(\d{4})-(\d{2})-(\d{2})\.md$/) ||
-                      filename.match(/^(\d{4})(\d{2})(\d{2})\.md$/);
-        if (match) {
-          dates.add(`${match[1]}-${match[2]}-${match[3]}`);
-        }
+    for (const filename of dirFiles) {
+      const match = filename.match(/^(\d{4})-(\d{2})-(\d{2})\.md$/) ||
+                    filename.match(/^(\d{4})(\d{2})(\d{2})\.md$/);
+      if (match) {
+        dates.add(`${match[1]}-${match[2]}-${match[3]}`);
       }
-      return dates;
     }
-
-    // For relative path: scan fileTree
-    if (!fileTree) return dates;
-    const dir = journalDirectory.replace(/^\/+|\/+$/g, "");
-
-    const scanEntries = (entries: FileEntry[]) => {
-      for (const entry of entries) {
-        if (entry.children) {
-          scanEntries(entry.children);
-        } else if (entry.path) {
-          // Check if this file is in the journal directory
-          const rel = rootPath ? entry.path.replace(rootPath + "/", "") : entry.path;
-          if (rel.startsWith(dir + "/")) {
-            const filename = rel.slice(dir.length + 1);
-            // Extract date from filename (try both formats)
-            const match = filename.match(/^(\d{4})-(\d{2})-(\d{2})\.md$/) ||
-                          filename.match(/^(\d{4})(\d{2})(\d{2})\.md$/);
-            if (match) {
-              dates.add(`${match[1]}-${match[2]}-${match[3]}`);
-            }
-          }
-        }
-      }
-    };
-    scanEntries(fileTree);
     return dates;
-  }, [fileTree, journalEnabled, journalDirectory, rootPath, isAbsoluteJournalDir, absoluteDirFiles]);
+  }, [journalEnabled, dirFiles]);
 
   const days = useMemo(() => getMonthDays(viewYear, viewMonth), [viewYear, viewMonth]);
   const firstDow = useMemo(() => getFirstDayOfWeek(viewYear, viewMonth), [viewYear, viewMonth]);
@@ -134,7 +100,7 @@ export function CalendarPanel() {
   const openOrCreateJournal = useCallback(async (date: Date) => {
     if (!journalEnabled || !resolvedDir) return;
     const journalPath = getJournalFilePath(
-      rootPath,
+      null,
       journalDirectory,
       date,
       journalFilenameFormat,
@@ -188,13 +154,23 @@ export function CalendarPanel() {
         console.error("[CalendarPanel] Failed to open journal:", err);
       }
     }
-  }, [rootPath, resolvedDir, journalEnabled, journalDirectory, journalFilenameFormat, journalTemplatePath]);
+  }, [resolvedDir, journalEnabled, journalDirectory, journalFilenameFormat, journalTemplatePath]);
 
   if (!journalEnabled) {
     return (
       <div className="calendar-panel">
         <div className="calendar-empty">
           Journal is disabled. Enable it in Settings &gt; General &gt; Journal.
+        </div>
+      </div>
+    );
+  }
+
+  if (!resolvedDir) {
+    return (
+      <div className="calendar-panel">
+        <div className="calendar-empty">
+          Set the journal directory in Settings &gt; General &gt; Journal.
         </div>
       </div>
     );

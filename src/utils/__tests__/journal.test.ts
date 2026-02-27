@@ -121,7 +121,7 @@ describe("journal utilities", () => {
   });
 
   describe("resolveJournalDir", () => {
-    it("returns absolute path as-is even when rootPath is null", () => {
+    it("returns absolute path as-is when rootPath is null", () => {
       expect(resolveJournalDir(null, "/Users/xxx/journals")).toBe("/Users/xxx/journals");
     });
 
@@ -129,16 +129,14 @@ describe("journal utilities", () => {
       expect(resolveJournalDir("/root", "/Users/xxx/journals")).toBe("/Users/xxx/journals");
     });
 
-    it("returns null for relative path when rootPath is null", () => {
+    it("returns null for relative path", () => {
       expect(resolveJournalDir(null, "journals")).toBeNull();
+      expect(resolveJournalDir("/root", "journals")).toBeNull();
     });
 
-    it("combines rootPath + relative path", () => {
-      expect(resolveJournalDir("/root", "journals")).toBe("/root/journals");
-    });
-
-    it("strips trailing slash from relative dir", () => {
-      expect(resolveJournalDir("/root", "journals/")).toBe("/root/journals");
+    it("returns null for empty string", () => {
+      expect(resolveJournalDir(null, "")).toBeNull();
+      expect(resolveJournalDir("/root", "")).toBeNull();
     });
 
     it("detects Windows absolute path", () => {
@@ -147,28 +145,22 @@ describe("journal utilities", () => {
   });
 
   describe("getJournalFilePath", () => {
-    it("builds absolute path with rootPath", () => {
-      expect(
-        getJournalFilePath("/root", "journals", date, "YYYY-MM-DD.md"),
-      ).toBe("/root/journals/2026-02-27.md");
-    });
-
-    it("builds path from absolute journalDir without rootPath", () => {
+    it("builds path from absolute journalDir", () => {
       expect(
         getJournalFilePath(null, "/Users/xxx/journals", date, "YYYY-MM-DD.md"),
       ).toBe("/Users/xxx/journals/2026-02-27.md");
     });
 
-    it("returns null for relative path without rootPath", () => {
+    it("returns null for relative path", () => {
       expect(
-        getJournalFilePath(null, "journals", date, "YYYY-MM-DD.md"),
+        getJournalFilePath("/root", "journals", date, "YYYY-MM-DD.md"),
       ).toBeNull();
     });
 
-    it("strips trailing slash from relative dir", () => {
+    it("returns null for empty directory", () => {
       expect(
-        getJournalFilePath("/root", "journals/", date, "YYYY-MM-DD.md"),
-      ).toBe("/root/journals/2026-02-27.md");
+        getJournalFilePath(null, "", date, "YYYY-MM-DD.md"),
+      ).toBeNull();
     });
   });
 

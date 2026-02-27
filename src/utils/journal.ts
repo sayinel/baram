@@ -109,20 +109,17 @@ export function applyJournalTemplate(template: string, date: Date): string {
 
 /**
  * Resolve journal directory to an absolute path.
- * - Absolute path → return as-is (rootPath not required)
- * - Relative path + rootPath → rootPath/journalDir
- * - Relative path + no rootPath → null (cannot resolve)
+ * Only absolute paths are accepted — relative paths return null.
  */
 export function resolveJournalDir(
-  rootPath: string | null,
+  _rootPath: string | null,
   journalDir: string,
 ): string | null {
+  if (!journalDir) return null;
   if (journalDir.startsWith("/") || /^[A-Z]:\\/.test(journalDir)) {
-    return journalDir; // absolute path
+    return journalDir;
   }
-  if (!rootPath) return null; // relative path but no rootPath
-  const dir = journalDir.replace(/^\/+|\/+$/g, "");
-  return `${rootPath}/${dir}`;
+  return null; // relative path not supported
 }
 
 /** Build the full path for a journal file */
