@@ -10,6 +10,7 @@ import {
   type SlashMenuRef,
 } from "../../components/command/SlashMenu";
 import { useAIStore } from "../../stores/ai-store";
+import { useUIStore } from "../../stores/ui-store";
 import {
   substituteVariables,
   resolveInputVariable,
@@ -374,6 +375,42 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
         const text = getSelectionOrParagraph(editor);
         executeAICommand(editor, text, AI_EXPLAIN);
       },
+    },
+  );
+
+  // §56l Journal capture commands
+  items.push(
+    {
+      id: "capture-idea",
+      label: "Capture Idea",
+      category: "Journal",
+      description: "Quick capture an idea",
+      mdHint: "/idea",
+      action: () => useUIStore.getState().openQuickCapture("idea"),
+    },
+    {
+      id: "capture-link",
+      label: "Capture Link",
+      category: "Journal",
+      description: "Quick capture a link",
+      mdHint: "/link",
+      action: () => useUIStore.getState().openQuickCapture("link"),
+    },
+    {
+      id: "capture-quote",
+      label: "Capture Quote",
+      category: "Journal",
+      description: "Quick capture a quote",
+      mdHint: "/quote",
+      action: () => useUIStore.getState().openQuickCapture("quote"),
+    },
+    {
+      id: "capture-note",
+      label: "Capture Note",
+      category: "Journal",
+      description: "Quick capture a note",
+      mdHint: "/note",
+      action: () => useUIStore.getState().openQuickCapture("note"),
     },
   );
 

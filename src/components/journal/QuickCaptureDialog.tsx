@@ -10,11 +10,11 @@ import {
   type CaptureItem,
   insertCaptureIntoContent,
 } from "../../utils/journal-capture";
-import { getJournalFilePath, generateDefaultJournal, applyJournalTemplate } from "../../utils/journal";
+import { getJournalFilePath, getHierarchicalJournalPath, resolveJournalDir, generateDefaultJournal, applyJournalTemplate } from "../../utils/journal";
 import { readFile, writeFile, createDir } from "../../ipc/invoke";
 
 export function QuickCaptureDialog() {
-  const { quickCaptureOpen, toggleQuickCapture } = useUIStore();
+  const { quickCaptureOpen, quickCaptureType, toggleQuickCapture } = useUIStore();
   const [captureType, setCaptureType] = useState<CaptureType>("note");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -24,13 +24,14 @@ export function QuickCaptureDialog() {
 
   useEffect(() => {
     if (quickCaptureOpen) {
+      setCaptureType(quickCaptureType);
       setTitle("");
       setBody("");
       setUrl("");
       setTags("");
       setTimeout(() => inputRef.current?.focus(), 50);
     }
-  }, [quickCaptureOpen]);
+  }, [quickCaptureOpen, quickCaptureType]);
 
   const handleSave = useCallback(async () => {
     if (!body.trim() && !title.trim()) return;
@@ -47,13 +48,17 @@ export function QuickCaptureDialog() {
 
     try {
       const { rootPath } = useFileStore.getState();
-      const { journalDirectory, journalFilenameFormat, journalTemplatePath } =
+      const { journalDirectory, journalFilenameFormat, journalTemplatePath, journalUseHierarchy } =
         useSettingsStore.getState();
 
       if (!rootPath || !journalDirectory) return;
 
       const date = new Date();
-      const journalPath = getJournalFilePath(rootPath, journalDirectory, date, journalFilenameFormat);
+      const resolvedDir = resolveJournalDir(rootPath, journalDirectory);
+      if (!resolvedDir) return;
+      const journalPath = journalUseHierarchy
+        ? getHierarchicalJournalPath(resolvedDir, date, journalFilenameFormat)
+        : getJournalFilePath(rootPath, journalDirectory, date, journalFilenameFormat);
       if (!journalPath) return;
 
       // Ensure daily directory exists

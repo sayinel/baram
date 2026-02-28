@@ -24,6 +24,7 @@ interface UIState {
   skillTestDialogOpen: boolean;
   pendingApplyContent: string | null;
   quickCaptureOpen: boolean;
+  quickCaptureType: "idea" | "link" | "quote" | "note";
   pendingSearchHighlight: string | null;
   /** Monotonic counter — incremented after Global Search Replace to signal editor reload */
   contentReloadVersion: number;
@@ -45,6 +46,7 @@ interface UIState {
   toggleSkillGeneratorDialog: () => void;
   toggleSkillTestDialog: () => void;
   toggleQuickCapture: () => void;
+  openQuickCapture: (type?: "idea" | "link" | "quote" | "note") => void;
   setPendingApplyContent: (content: string | null) => void;
   setPendingSearchHighlight: (term: string | null) => void;
   triggerContentReload: () => void;
@@ -69,6 +71,7 @@ export const useUIStore = create<UIState>((set) => ({
   skillTestDialogOpen: false,
   pendingApplyContent: null,
   quickCaptureOpen: false,
+  quickCaptureType: "note" as const,
   pendingSearchHighlight: null,
   contentReloadVersion: 0,
 
@@ -121,6 +124,9 @@ export const useUIStore = create<UIState>((set) => ({
 
   toggleQuickCapture: () =>
     set((state) => ({ quickCaptureOpen: !state.quickCaptureOpen })),
+
+  openQuickCapture: (type) =>
+    set({ quickCaptureOpen: true, quickCaptureType: type ?? "note" }),
 
   setPendingApplyContent: (pendingApplyContent) => set({ pendingApplyContent }),
 

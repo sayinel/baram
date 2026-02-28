@@ -6,6 +6,7 @@ import {
   getMonthDays,
   getFirstDayOfWeek,
   getJournalFilePath,
+  getHierarchicalJournalPath,
   resolveJournalDir,
   generateDefaultJournal,
   applyJournalTemplate,
@@ -30,6 +31,7 @@ export function CalendarPanel() {
     journalDirectory,
     journalFilenameFormat,
     journalTemplatePath,
+    journalUseHierarchy,
   } = useSettingsStore();
 
   const resolvedDir = useMemo(
@@ -37,16 +39,25 @@ export function CalendarPanel() {
     [journalDirectory],
   );
 
-  // Fetch journal files via IPC
+  // Fetch journal files via IPC — supports both flat and hierarchical layouts
   const [dirFiles, setDirFiles] = useState<string[]>([]);
   useEffect(() => {
     if (!journalEnabled || !resolvedDir) return;
     let cancelled = false;
     (async () => {
       try {
-        const entries = await listDir(resolvedDir, false);
-        if (!cancelled) {
-          setDirFiles(entries.filter((e) => !e.isDir).map((e) => e.name));
+        if (journalUseHierarchy) {
+          // §56a Hierarchical: scan daily/ recursively for *.md files
+          const dailyDir = `${resolvedDir}/daily`;
+          const entries = await listDir(dailyDir, true);
+          if (!cancelled) {
+            setDirFiles(entries.filter((e) => !e.isDir).map((e) => e.name));
+          }
+        } else {
+          const entries = await listDir(resolvedDir, false);
+          if (!cancelled) {
+            setDirFiles(entries.filter((e) => !e.isDir).map((e) => e.name));
+          }
         }
       } catch {
         // Directory may not exist yet
@@ -54,7 +65,7 @@ export function CalendarPanel() {
       }
     })();
     return () => { cancelled = true; };
-  }, [journalEnabled, resolvedDir, viewYear, viewMonth]);
+  }, [journalEnabled, resolvedDir, journalUseHierarchy, viewYear, viewMonth]);
 
   // Extract "YYYY-MM-DD" date strings from filenames
   const journalDates = useMemo(() => {
@@ -99,12 +110,9 @@ export function CalendarPanel() {
 
   const openOrCreateJournal = useCallback(async (date: Date) => {
     if (!journalEnabled || !resolvedDir) return;
-    const journalPath = getJournalFilePath(
-      null,
-      journalDirectory,
-      date,
-      journalFilenameFormat,
-    );
+    const journalPath = journalUseHierarchy
+      ? getHierarchicalJournalPath(resolvedDir, date, journalFilenameFormat)
+      : getJournalFilePath(null, journalDirectory, date, journalFilenameFormat);
     if (!journalPath) return;
 
     // Check if file exists
@@ -116,8 +124,9 @@ export function CalendarPanel() {
     }
 
     if (!exists) {
-      // Create the journal file
-      await createDir(resolvedDir);
+      // Create the journal file (and parent dirs for hierarchical layout)
+      const parentDir = journalPath.substring(0, journalPath.lastIndexOf("/"));
+      await createDir(parentDir);
 
       let content: string;
       if (journalTemplatePath) {
@@ -154,7 +163,7 @@ export function CalendarPanel() {
         console.error("[CalendarPanel] Failed to open journal:", err);
       }
     }
-  }, [resolvedDir, journalEnabled, journalDirectory, journalFilenameFormat, journalTemplatePath]);
+  }, [resolvedDir, journalEnabled, journalDirectory, journalFilenameFormat, journalTemplatePath, journalUseHierarchy]);
 
   if (!journalEnabled) {
     return (

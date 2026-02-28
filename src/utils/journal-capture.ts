@@ -176,3 +176,51 @@ export function insertCaptureIntoContent(content: string, item: CaptureItem): st
     return trimmedContent + "\n\n## Captures\n\n" + serialized;
   }
 }
+
+/**
+ * §56l Build a standalone note from a capture item.
+ * Returns { filename, content } for the promoted note.
+ */
+export function buildNoteFromCapture(
+  item: CaptureItem,
+): { filename: string; content: string } {
+  const title = item.title || item.body?.split("\n")[0]?.slice(0, 60) || "Untitled";
+  // Sanitize filename
+  const safeName = title
+    .replace(/[/\\:*?"<>|#]/g, "")
+    .replace(/\s+/g, "-")
+    .toLowerCase()
+    .slice(0, 80);
+  const filename = `${safeName}.md`;
+
+  const lines: string[] = [];
+  lines.push(`# ${title}`);
+  lines.push("");
+  if (item.body) {
+    lines.push(item.body);
+    lines.push("");
+  }
+  if (item.url) {
+    lines.push(`Source: ${item.url}`);
+    lines.push("");
+  }
+  if (item.tags && item.tags.length > 0) {
+    lines.push(item.tags.map((t) => `#${t}`).join(" "));
+    lines.push("");
+  }
+
+  return { filename, content: lines.join("\n") };
+}
+
+/**
+ * §56l Build a wikilink replacement for a promoted capture.
+ * Returns a markdown bullet with wikilink instead of the original capture content.
+ */
+export function buildPromotedCaptureLink(
+  item: CaptureItem,
+  noteName: string,
+): string {
+  const icon = CAPTURE_ICONS[item.type];
+  const title = item.title || item.body?.split("\n")[0]?.slice(0, 60) || "Untitled";
+  return `- ${icon} [[${noteName}|${title}]]`;
+}

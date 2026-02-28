@@ -46,7 +46,8 @@ import { useFileWatcher } from "./hooks/use-file-watcher";
 import { useExternalDrop } from "./hooks/use-external-drop";
 import { useJournal } from "./hooks/use-journal";
 import { isDateString, getJournalFilePath, resolveJournalDir, generateDefaultJournal, applyJournalTemplate } from "./utils/journal";
-import { readFile, writeFile, getOpenedUrls, updateFileIndex } from "./ipc/invoke";
+import { parseCapturesFromMarkdown, buildNoteFromCapture, buildPromotedCaptureLink } from "./utils/journal-capture";
+import { readFile, writeFile, createDir, getOpenedUrls, updateFileIndex } from "./ipc/invoke";
 import { useLinkStore } from "./stores/link-store";
 import { migrateFromLocalStorage } from "./stores/tauri-storage";
 import { useBookmarkStore } from "./stores/bookmark-store";
@@ -1243,6 +1244,67 @@ function App() {
       if (mod && e.shiftKey && e.code === "KeyN") {
         e.preventDefault();
         useUIStore.getState().toggleQuickCapture();
+        return;
+      }
+
+      // §56l Cmd+Shift+E — promote capture to standalone note
+      if (mod && e.shiftKey && e.code === "KeyE") {
+        e.preventDefault();
+        (async () => {
+          try {
+            const store = useEditorStore.getState();
+            const tab = store.tabs.find((t) => t.id === store.activeTabId);
+            if (!tab || !tab.filePath) return;
+            const content = useFileStore.getState().openFiles.get(tab.filePath);
+            if (!content) return;
+
+            // Parse captures from the current file
+            const captures = parseCapturesFromMarkdown(content);
+            if (captures.length === 0) return;
+
+            // Use the last capture for promotion (most recent)
+            const capture = captures[captures.length - 1];
+            const { filename, content: noteContent } = buildNoteFromCapture(capture);
+
+            // Determine notes directory
+            const { rootPath } = useFileStore.getState();
+            const { journalDirectory } = useSettingsStore.getState();
+            if (!rootPath || !journalDirectory) return;
+            const resolvedJournalDir = resolveJournalDir(rootPath, journalDirectory);
+            if (!resolvedJournalDir) return;
+            const notesDir = `${resolvedJournalDir}/notes`;
+            const notePath = `${notesDir}/${filename}`;
+
+            // Create notes dir and write note file
+            await createDir(notesDir);
+            await writeFile(notePath, noteContent);
+
+            // Replace the capture line in journal with a wikilink
+            const noteName = filename.replace(/\.md$/, "");
+            const linkLine = buildPromotedCaptureLink(capture, noteName);
+            const originalLine = content.split("\n").find((line) => {
+              const icon = capture.type === "idea" ? "✦" : capture.type === "link" ? "↗" : capture.type === "quote" ? "❝" : "☰";
+              return line.startsWith(`- ${icon}`) && (capture.title ? line.includes(capture.title) : true);
+            });
+            if (originalLine) {
+              const updated = content.replace(originalLine, linkLine);
+              await writeFile(tab.filePath, updated);
+              useFileStore.getState().setFileContent(tab.filePath, updated);
+            }
+
+            // Open the promoted note
+            useFileStore.getState().setFileContent(notePath, noteContent);
+            useEditorStore.getState().openTab({
+              id: crypto.randomUUID(),
+              filePath: notePath,
+              title: filename,
+              isDirty: false,
+              isPinned: false,
+            });
+          } catch (err) {
+            console.error("[PromoteCapture] Failed:", err);
+          }
+        })();
         return;
       }
 

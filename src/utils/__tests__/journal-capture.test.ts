@@ -11,6 +11,8 @@ import {
   serializeCaptureToMarkdown,
   insertCaptureIntoContent,
   extractCapturesSection,
+  buildNoteFromCapture,
+  buildPromotedCaptureLink,
 } from "../journal-capture";
 
 describe("§56l Capture types and constants", () => {
@@ -244,5 +246,88 @@ date: 2026-02-28
     const result = insertCaptureIntoContent(content, item);
     expect(result).toContain("## Captures");
     expect(result).toContain("- ☰ 메모");
+  });
+});
+
+describe("§56l buildNoteFromCapture", () => {
+  it("builds note from idea capture with title", () => {
+    const item: CaptureItem = {
+      type: "idea",
+      title: "CLI 기반 저널 도구",
+      body: "터미널에서 바로 저널을 쓸 수 있으면 좋겠다",
+      tags: ["아이디어", "CLI"],
+    };
+    const { filename, content } = buildNoteFromCapture(item);
+    expect(filename).toBe("cli-기반-저널-도구.md");
+    expect(content).toContain("# CLI 기반 저널 도구");
+    expect(content).toContain("터미널에서 바로 저널을 쓸 수 있으면 좋겠다");
+    expect(content).toContain("#아이디어 #CLI");
+  });
+
+  it("builds note from link capture with URL", () => {
+    const item: CaptureItem = {
+      type: "link",
+      title: "Tauri Guide",
+      url: "https://tauri.app/guide",
+      body: "Good reference",
+    };
+    const { filename, content } = buildNoteFromCapture(item);
+    expect(filename).toBe("tauri-guide.md");
+    expect(content).toContain("# Tauri Guide");
+    expect(content).toContain("Source: https://tauri.app/guide");
+    expect(content).toContain("Good reference");
+  });
+
+  it("uses body first line as title when no title", () => {
+    const item: CaptureItem = {
+      type: "note",
+      body: "Quick thought about architecture\nMore details here",
+    };
+    const { filename, content } = buildNoteFromCapture(item);
+    expect(filename).toBe("quick-thought-about-architecture.md");
+    expect(content).toContain("# Quick thought about architecture");
+  });
+
+  it("sanitizes special characters in filename", () => {
+    const item: CaptureItem = {
+      type: "idea",
+      title: 'File: "test" <dir>/path',
+    };
+    const { filename } = buildNoteFromCapture(item);
+    expect(filename).not.toMatch(/[/\\:*?"<>|#]/);
+    expect(filename).toMatch(/\.md$/);
+  });
+
+  it("returns Untitled for empty capture", () => {
+    const item: CaptureItem = { type: "note" };
+    const { filename, content } = buildNoteFromCapture(item);
+    expect(filename).toBe("untitled.md");
+    expect(content).toContain("# Untitled");
+  });
+});
+
+describe("§56l buildPromotedCaptureLink", () => {
+  it("builds wikilink with idea icon", () => {
+    const item: CaptureItem = { type: "idea", title: "My Idea" };
+    const result = buildPromotedCaptureLink(item, "my-idea");
+    expect(result).toBe("- ✦ [[my-idea|My Idea]]");
+  });
+
+  it("builds wikilink with link icon", () => {
+    const item: CaptureItem = { type: "link", title: "Tauri" };
+    const result = buildPromotedCaptureLink(item, "tauri");
+    expect(result).toBe("- ↗ [[tauri|Tauri]]");
+  });
+
+  it("builds wikilink with quote icon", () => {
+    const item: CaptureItem = { type: "quote", body: "Some wisdom" };
+    const result = buildPromotedCaptureLink(item, "some-wisdom");
+    expect(result).toBe("- ❝ [[some-wisdom|Some wisdom]]");
+  });
+
+  it("builds wikilink with note icon", () => {
+    const item: CaptureItem = { type: "note", body: "A note" };
+    const result = buildPromotedCaptureLink(item, "a-note");
+    expect(result).toBe("- ☰ [[a-note|A note]]");
   });
 });
