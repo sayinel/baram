@@ -188,19 +188,19 @@
       "features": {
         "§56a-folder-structure": {
           "status": "partial",
-          "tests": "21/21 vitest pass (hierarchy tests)",
+          "tests": "33/33 vitest pass (hierarchy + periodic path tests)",
           "spec": "§56a",
-          "details": "daily/YYYY/MM/ hierarchical paths, flatToHierarchy migration utils, journalUseHierarchy setting. Missing: weekly/monthly/yearly path functions, migration dialog UI",
-          "implemented": ["getHierarchicalJournalPath", "flatToHierarchicalPath", "buildMigrationPlan", "JOURNAL_HIDDEN_ENTRIES", "journalUseHierarchy setting"],
-          "missing": ["weekly/monthly/yearly path functions", "migration dialog UI", "templates/ folder management"]
+          "details": "daily/weekly/monthly/yearly hierarchical paths, ISO week helpers, migration utils. Missing: migration dialog UI",
+          "implemented": ["getHierarchicalJournalPath", "flatToHierarchicalPath", "buildMigrationPlan", "JOURNAL_HIDDEN_ENTRIES", "journalUseHierarchy setting", "getISOWeekNumber", "getWeekStartDate", "getWeeklyJournalPath", "getMonthlyJournalPath", "getYearlyJournalPath"],
+          "missing": ["migration dialog UI", "templates/ folder management"]
         },
         "§56b-workspace-mode": {
           "status": "partial",
           "tests": "11/11 vitest pass (scope tests)",
           "spec": "§56b",
-          "details": "enterJournalScope/exitJournalScope, isJournalScoped flag, journal workspace preset (Alt+Cmd+4). Missing: Graph View scoping, memoriesTab persistence",
-          "implemented": ["enterJournalScope", "exitJournalScope", "isJournalScoped", "originalRootPath", "journal preset Alt+Cmd+4"],
-          "missing": ["Graph View journal scoping", "memoriesTab/memoriesMode workspace state persistence"]
+          "details": "enterJournalScope/exitJournalScope, isJournalScoped flag, journal workspace preset (Alt+Cmd+4), Graph View scoping. Missing: memoriesTab persistence",
+          "implemented": ["enterJournalScope", "exitJournalScope", "isJournalScoped", "originalRootPath", "journal preset Alt+Cmd+4", "GraphView journal scoping filter"],
+          "missing": ["memoriesTab/memoriesMode workspace state persistence"]
         },
         "§56c-memories-view": {
           "status": "partial",
@@ -219,9 +219,9 @@
           "status": "partial",
           "tests": "20/20 vitest pass (mood tests)",
           "spec": "§56e",
-          "details": "MoodBar with 5 mood dots + 5 energy dots, frontmatter helpers, PM transaction update, calendar mood color dots. Missing: Year in Pixels, 30-day Trend",
-          "implemented": ["MoodValue/EnergyValue types", "parseMood/parseEnergy", "updateFrontmatterMood/Energy", "MoodBar component", "PM transaction update", "visibility guard", "calendar mood color dots (frontmatter batch read + MOOD_COLORS style)"],
-          "missing": ["Year in Pixels", "30-day Mood Trend", "theme-specific mood palettes"]
+          "details": "MoodBar, calendar mood dots, YearInPixels (365-dot grid), MoodTrend30 (SVG chart). Missing: theme-specific mood palettes",
+          "implemented": ["MoodValue/EnergyValue types", "parseMood/parseEnergy", "updateFrontmatterMood/Energy", "MoodBar component", "PM transaction update", "visibility guard", "calendar mood color dots", "YearInPixels component (collapsible 365-dot grid)", "MoodTrend30 component (SVG 30-day dot chart)"],
+          "missing": ["theme-specific mood palettes"]
         },
         "§56f-periodic-notes": { "status": "not-started", "spec": "§56f" },
         "§56g-streaks-stats": { "status": "not-started", "spec": "§56g" },
@@ -235,7 +235,7 @@
           "spec": "§56l",
           "details": "4 capture types, slash commands, QuickCaptureDialog (Cmd+Shift+N), cursor-position promote (Cmd+Shift+E). Missing: tag autocomplete, wikilink-to-notes resolution",
           "implemented": ["CaptureType/CaptureItem types", "4 icons (✦↗❝☰)", "parseCapturesFromMarkdown", "serializeCaptureToMarkdown", "insertCaptureIntoContent", "buildNoteFromCapture", "buildPromotedCaptureLink", "/idea /link /quote /note slash commands", "QuickCaptureDialog", "openQuickCapture(type)", "Cmd+Shift+N shortcut", "Cmd+Shift+E cursor-position promote", "hierarchical path support in QuickCapture"],
-          "missing": ["[[name]]→notes/ wikilink resolution", "#tag autocomplete", "Quick Switcher n: prefix filter", "tagIndex in .journal.json"]
+          "missing": ["#tag autocomplete", "Quick Switcher n: prefix filter", "tagIndex in .journal.json"]
         }
       },
       "shortcuts": {
@@ -251,20 +251,20 @@
       },
       "specCheckSummary": {
         "date": "2026-02-28",
-        "implemented": 49,
-        "partial": 25,
-        "missing": 68,
+        "implemented": 53,
+        "partial": 23,
+        "missing": 66,
         "total": 142,
-        "journalTests": 107,
-        "note": "Phase B remaining: +4 implemented (mood dots, Notes tab, cursor promote, 3 shortcuts)"
+        "journalTests": 119,
+        "note": "Partial fill: +4 (periodic paths, graph scoping, Year in Pixels + MoodTrend30, wikilink notes/ resolve)"
       }
     }
   },
 
   "testSummary": {
-    "vitest": "1164/1164 pass (72 test files)",
+    "vitest": "1176/1176 pass (72 test files)",
     "cargoTest": "112/112 pass (4 ignored)",
-    "note": "M9-journal Phase A+B: folder hierarchy, workspace scoping, memories, mood, capture, slash commands, calendar hierarchical paths, promotion, mood dots, Notes tab, cursor promote, journal shortcuts",
+    "note": "M9-journal: folder hierarchy, workspace scoping, memories, mood, capture, promotion, periodic paths, graph scoping, Year in Pixels, MoodTrend30, wikilink notes/ resolve",
     "breakdown": {
       "stores": 6,
       "editor-store-mru": 12,
@@ -311,7 +311,7 @@
       "workspace-store": 14,
       "pandoc-export": 30,
       "journal": 16,
-      "journal-hierarchy": 21,
+      "journal-hierarchy": 33,
       "journal-scope": 11,
       "journal-memories": 14,
       "journal-mood": 20,
