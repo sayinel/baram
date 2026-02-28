@@ -1,6 +1,7 @@
 /**
  * §56 Journal / Daily Notes — utility functions
  */
+import { getDailyPrompt } from "./journal-prompts";
 
 /** Format a Date as "YYYY-MM-DD" */
 export function formatJournalDate(date: Date): string {
@@ -61,11 +62,16 @@ export function generateDefaultJournal(date: Date): string {
     "Saturday",
   ];
   const dayName = dayNames[date.getDay()];
+  const prompt = getDailyPrompt(date);
   return `---
 date: ${dateStr}
 ---
 
 # ${dateStr} ${dayName}
+
+## Diary
+
+> 💡 ${prompt}
 
 ## Notes
 
@@ -104,7 +110,8 @@ export function applyJournalTemplate(template: string, date: Date): string {
     .replace(/\{\{month\}\}/g, String(date.getMonth() + 1).padStart(2, "0"))
     .replace(/\{\{monthName\}\}/g, monthNames[date.getMonth()])
     .replace(/\{\{day\}\}/g, String(date.getDate()).padStart(2, "0"))
-    .replace(/\{\{dayName\}\}/g, dayNames[date.getDay()]);
+    .replace(/\{\{dayName\}\}/g, dayNames[date.getDay()])
+    .replace(/\{\{daily_prompt\}\}/g, getDailyPrompt(date));
 }
 
 /**

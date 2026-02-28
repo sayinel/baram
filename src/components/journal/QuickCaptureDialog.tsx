@@ -11,7 +11,16 @@ import {
   insertCaptureIntoContent,
 } from "../../utils/journal-capture";
 import { getJournalFilePath, getHierarchicalJournalPath, resolveJournalDir, generateDefaultJournal, applyJournalTemplate } from "../../utils/journal";
-import { readFile, writeFile, createDir } from "../../ipc/invoke";
+import { readFile, writeFile, createDir, listDir } from "../../ipc/invoke";
+import { buildTagIndex, filterTags } from "../../utils/journal-tags";
+import { TagSuggest } from "./TagSuggest";
+
+/** Extract the current #tag prefix being typed at the cursor position */
+function getCurrentTagQuery(value: string, cursorPos: number): string | null {
+  const textBefore = value.slice(0, cursorPos);
+  const match = textBefore.match(/#([\w가-힣]*)$/);
+  return match ? match[1] : null;
+}
 
 export function QuickCaptureDialog() {
   const { quickCaptureOpen, quickCaptureType, toggleQuickCapture } = useUIStore();
@@ -22,15 +31,61 @@ export function QuickCaptureDialog() {
   const [tags, setTags] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  // Tag autocomplete state
+  const [tagIndex, setTagIndex] = useState<Map<string, number>>(new Map());
+  const [tagQuery, setTagQuery] = useState<string | null>(null);
+  const [tagSuggestVisible, setTagSuggestVisible] = useState(false);
+  const [tagActiveIndex, setTagActiveIndex] = useState(0);
+  const tagsInputRef = useRef<HTMLInputElement>(null);
+
+  // Build tag index when dialog opens
   useEffect(() => {
-    if (quickCaptureOpen) {
-      setCaptureType(quickCaptureType);
-      setTitle("");
-      setBody("");
-      setUrl("");
-      setTags("");
-      setTimeout(() => inputRef.current?.focus(), 50);
-    }
+    if (!quickCaptureOpen) return;
+
+    setCaptureType(quickCaptureType);
+    setTitle("");
+    setBody("");
+    setUrl("");
+    setTags("");
+    setTagSuggestVisible(false);
+    setTagQuery(null);
+    setTagActiveIndex(0);
+    setTimeout(() => inputRef.current?.focus(), 50);
+
+    // Scan journal files for tag index
+    (async () => {
+      try {
+        const { rootPath } = useFileStore.getState();
+        const { journalDirectory } = useSettingsStore.getState();
+        if (!rootPath || !journalDirectory) return;
+
+        const resolvedDir = resolveJournalDir(rootPath, journalDirectory);
+        if (!resolvedDir) return;
+
+        const entries = await listDir(resolvedDir, true).catch(() => []);
+        const mdFiles = entries
+          .filter((e) => !e.isDir && e.name.endsWith(".md"))
+          .slice(0, 100); // Limit to 100 most recent files
+
+        const fileContents = await Promise.all(
+          mdFiles.map(async (e) => {
+            try {
+              const content = await readFile(e.path);
+              return { path: e.path, content };
+            } catch {
+              return null;
+            }
+          }),
+        );
+
+        const validFiles = fileContents.filter(
+          (f): f is { path: string; content: string } => f !== null,
+        );
+        setTagIndex(buildTagIndex(validFiles));
+      } catch (err) {
+        console.error("[QuickCapture] Tag index build failed:", err);
+      }
+    })();
   }, [quickCaptureOpen, quickCaptureType]);
 
   const handleSave = useCallback(async () => {
@@ -95,6 +150,84 @@ export function QuickCaptureDialog() {
       console.error("[QuickCapture] Save failed:", err);
     }
   }, [captureType, title, body, url, tags, toggleQuickCapture]);
+
+  // Handle tag input changes — detect #prefix for autocomplete
+  const handleTagsChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value;
+      setTags(value);
+
+      const cursor = e.target.selectionStart ?? value.length;
+      const query = getCurrentTagQuery(value, cursor);
+      if (query !== null) {
+        const suggestions = filterTags(query, tagIndex);
+        setTagQuery(query);
+        setTagSuggestVisible(suggestions.length > 0);
+        setTagActiveIndex(0);
+      } else {
+        setTagSuggestVisible(false);
+        setTagQuery(null);
+      }
+    },
+    [tagIndex],
+  );
+
+  // Insert selected tag into input, replacing the current #prefix
+  const handleTagSelect = useCallback(
+    (tag: string) => {
+      const input = tagsInputRef.current;
+      if (!input) return;
+
+      const cursor = input.selectionStart ?? tags.length;
+      const before = tags.slice(0, cursor);
+      const after = tags.slice(cursor);
+
+      // Replace the partial #prefix with the full tag
+      const prefixMatch = before.match(/#[\w가-힣]*$/);
+      const newBefore = prefixMatch
+        ? before.slice(0, before.length - prefixMatch[0].length) + `#${tag}`
+        : before + `#${tag}`;
+
+      const newValue = newBefore + (after.startsWith(" ") ? after : " " + after);
+      setTags(newValue.trimEnd() + " ");
+      setTagSuggestVisible(false);
+      setTagQuery(null);
+      setTagActiveIndex(0);
+
+      setTimeout(() => {
+        if (tagsInputRef.current) {
+          const pos = newBefore.length + 1;
+          tagsInputRef.current.setSelectionRange(pos, pos);
+          tagsInputRef.current.focus();
+        }
+      }, 0);
+    },
+    [tags],
+  );
+
+  const handleTagsKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (!tagSuggestVisible) return;
+
+      const suggestions = filterTags(tagQuery ?? "", tagIndex);
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setTagActiveIndex((i) => Math.min(i + 1, suggestions.length - 1));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setTagActiveIndex((i) => Math.max(i - 1, 0));
+      } else if (e.key === "Enter" || e.key === "Tab") {
+        if (suggestions[tagActiveIndex]) {
+          e.preventDefault();
+          handleTagSelect(suggestions[tagActiveIndex]);
+        }
+      } else if (e.key === "Escape") {
+        setTagSuggestVisible(false);
+      }
+    },
+    [tagSuggestVisible, tagQuery, tagIndex, tagActiveIndex, handleTagSelect],
+  );
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -173,14 +306,29 @@ export function QuickCaptureDialog() {
           rows={3}
         />
 
-        {/* Tags */}
-        <input
-          type="text"
-          className="quick-capture-input"
-          placeholder="#태그1 #태그2"
-          value={tags}
-          onChange={(e) => setTags(e.target.value)}
-        />
+        {/* Tags with autocomplete */}
+        <div className="quick-capture-tags-wrap">
+          <input
+            ref={tagsInputRef}
+            type="text"
+            className="quick-capture-input"
+            placeholder="#태그1 #태그2"
+            value={tags}
+            onChange={handleTagsChange}
+            onKeyDown={handleTagsKeyDown}
+            onBlur={() => {
+              // Delay hide so onMouseDown on suggestion fires first
+              setTimeout(() => setTagSuggestVisible(false), 150);
+            }}
+          />
+          <TagSuggest
+            query={tagQuery ?? ""}
+            tags={tagIndex}
+            onSelect={handleTagSelect}
+            visible={tagSuggestVisible}
+            activeIndex={tagActiveIndex}
+          />
+        </div>
 
         {/* Actions */}
         <div className="quick-capture-actions">

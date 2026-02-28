@@ -1,0 +1,64 @@
+// §56l — Tag autocomplete dropdown for journal captures
+import { useEffect, useRef } from "react";
+import { filterTags } from "../../utils/journal-tags";
+
+interface TagSuggestProps {
+  query: string;
+  tags: Map<string, number>;
+  onSelect: (tag: string) => void;
+  visible: boolean;
+  activeIndex: number;
+  position?: { top: number; left: number };
+}
+
+export function TagSuggest({
+  query,
+  tags,
+  onSelect,
+  visible,
+  activeIndex,
+  position,
+}: TagSuggestProps) {
+  const listRef = useRef<HTMLUListElement>(null);
+
+  const suggestions = filterTags(query, tags);
+
+  // Scroll active item into view
+  useEffect(() => {
+    if (!listRef.current) return;
+    const items = listRef.current.querySelectorAll<HTMLLIElement>(".tag-suggest-item");
+    items[activeIndex]?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex]);
+
+  if (!visible || suggestions.length === 0) return null;
+
+  const style: React.CSSProperties = position
+    ? { top: position.top, left: position.left }
+    : {};
+
+  return (
+    <ul
+      className="tag-suggest"
+      style={style}
+      role="listbox"
+      aria-label="Tag suggestions"
+    >
+      {suggestions.map((tag, i) => (
+        <li
+          key={tag}
+          className={`tag-suggest-item${i === activeIndex ? " tag-suggest-item-active" : ""}`}
+          role="option"
+          aria-selected={i === activeIndex}
+          onMouseDown={(e) => {
+            // Prevent input blur before selection
+            e.preventDefault();
+            onSelect(tag);
+          }}
+        >
+          <span className="tag-suggest-name">#{tag}</span>
+          <span className="tag-suggest-count">{tags.get(tag) ?? 0}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
