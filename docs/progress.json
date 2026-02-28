@@ -223,7 +223,13 @@
           "implemented": ["MoodValue/EnergyValue types", "parseMood/parseEnergy", "updateFrontmatterMood/Energy", "MoodBar component", "PM transaction update", "visibility guard", "calendar mood color dots", "YearInPixels component (collapsible 365-dot grid)", "MoodTrend30 component (SVG 30-day dot chart)"],
           "missing": ["theme-specific mood palettes"]
         },
-        "§56f-periodic-notes": { "status": "not-started", "spec": "§56f" },
+        "§56f-periodic-notes": {
+          "status": "completed",
+          "tests": "14/14 vitest pass (periodic template + path tests)",
+          "spec": "§56f",
+          "details": "Weekly/monthly/yearly note generation with default templates, applyPeriodicTemplate(), CalendarPanel integration (clickable month→monthly, year→yearly, week num column→weekly), settings (weeklyEnabled/monthlyEnabled/yearlyEnabled/weekStartDay), migration v5→v6",
+          "implemented": ["getWeekEndDate", "generateDefaultWeekly", "generateDefaultMonthly", "generateDefaultYearly", "applyPeriodicTemplate", "CalendarPanel week number column", "CalendarPanel clickable month/year", "openPeriodicNote generic callback", "openWeeklyNote/openMonthlyNote/openYearlyNote", "journalWeeklyEnabled/monthlyEnabled/yearlyEnabled settings", "journalWeekStartDay setting", "settings migration v5→v6"]
+        },
         "§56g-streaks-stats": { "status": "not-started", "spec": "§56g" },
         "§56h-journal-themes": { "status": "not-started", "spec": "§56h" },
         "§56i-daily-prompts": { "status": "not-started", "spec": "§56i" },
@@ -251,20 +257,20 @@
       },
       "specCheckSummary": {
         "date": "2026-02-28",
-        "implemented": 53,
+        "implemented": 65,
         "partial": 23,
-        "missing": 66,
+        "missing": 54,
         "total": 142,
-        "journalTests": 119,
-        "note": "Partial fill: +4 (periodic paths, graph scoping, Year in Pixels + MoodTrend30, wikilink notes/ resolve)"
+        "journalTests": 133,
+        "note": "§56f periodic notes completed (+12 items). Partial fill: periodic paths, graph scoping, Year in Pixels + MoodTrend30, wikilink notes/ resolve"
       }
     }
   },
 
   "testSummary": {
-    "vitest": "1176/1176 pass (72 test files)",
+    "vitest": "1190/1190 pass (73 test files)",
     "cargoTest": "112/112 pass (4 ignored)",
-    "note": "M9-journal: folder hierarchy, workspace scoping, memories, mood, capture, promotion, periodic paths, graph scoping, Year in Pixels, MoodTrend30, wikilink notes/ resolve",
+    "note": "M9-journal: folder hierarchy, workspace scoping, memories, mood, capture, promotion, periodic paths+templates, graph scoping, Year in Pixels, MoodTrend30, wikilink notes/ resolve",
     "breakdown": {
       "stores": 6,
       "editor-store-mru": 12,
@@ -315,7 +321,8 @@
       "journal-scope": 11,
       "journal-memories": 14,
       "journal-mood": 20,
-      "journal-capture": 37
+      "journal-capture": 37,
+      "journal-periodic": 14
     }
   },
 
