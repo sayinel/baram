@@ -58,6 +58,7 @@ import { findBlockPosById } from "./utils/block-nav";
 import { showPrompt } from "./utils/ai-commands";
 import { forceCollapseSyntaxReveal } from "./extensions/plugins/syntax-reveal";
 import { showTableGridPicker } from "./utils/table-grid-picker";
+import { MoodBar } from "./components/journal/MoodBar";
 import { FindReplaceBar } from "./components/editor/FindReplaceBar";
 import { dispatchSetSearchTerm } from "./extensions/plugins/find-replace";
 import { InlineAIPrompt } from "./components/ai/InlineAIPrompt";
@@ -121,6 +122,11 @@ const SkillGeneratorDialog = lazy(() =>
 const SkillTestDialog = lazy(() =>
   import("./components/ai/SkillTestDialog").then((m) => ({
     default: m.SkillTestDialog,
+  })),
+);
+const QuickCaptureDialog = lazy(() =>
+  import("./components/journal/QuickCaptureDialog").then((m) => ({
+    default: m.QuickCaptureDialog,
   })),
 );
 
@@ -1233,6 +1239,13 @@ function App() {
         return;
       }
 
+      // §56l Cmd+Shift+N — quick capture dialog
+      if (mod && e.shiftKey && e.code === "KeyN") {
+        e.preventDefault();
+        useUIStore.getState().toggleQuickCapture();
+        return;
+      }
+
       // §47 Cmd+Shift+T — open skill test dialog
       if (mod && e.shiftKey && e.code === "KeyT") {
         e.preventDefault();
@@ -1717,6 +1730,7 @@ function App() {
                   onSetMode={setFindReplaceMode}
                 />
               )}
+              <MoodBar editor={editor} />
               <div className="editor-area-scroll">
                 <EditorContent editor={editor} />
                 {editor && (
@@ -1767,6 +1781,7 @@ function App() {
         <HoverPreview />
         <SkillGeneratorDialogWrapper />
         <SkillTestDialogWrapper />
+        <QuickCaptureDialog />
       </Suspense>
       {tabSwitcherOpen && (
         <TabSwitcher

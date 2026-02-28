@@ -1,0 +1,185 @@
+// §56e Mood/Energy Bar — editor header component
+import { useState, useEffect, useCallback } from "react";
+import type { Editor } from "@tiptap/react";
+import type { Node as PMNode } from "@tiptap/pm/model";
+import {
+  MOOD_VALUES,
+  MOOD_LABELS,
+  type MoodValue,
+  type EnergyValue,
+} from "../../utils/journal-mood";
+import { useFileStore } from "../../stores/file-store";
+import { useEditorStore } from "../../stores/editor-store";
+
+interface MoodBarProps {
+  editor: Editor | null;
+}
+
+// CSS variable mood colors (§56e §6.4 기본/시스템 팔레트)
+const MOOD_COLORS: Record<MoodValue, string> = {
+  deep: "#64748B",
+  calm: "#94A3B8",
+  neutral: "#CBD5E1",
+  warm: "#F59E0B",
+  bright: "#FBBF24",
+};
+
+/** Check if the active file is a journal daily note */
+function isJournalDailyNote(): boolean {
+  const { isJournalScoped } = useFileStore.getState();
+  if (!isJournalScoped) return false;
+
+  const { tabs, activeTabId } = useEditorStore.getState();
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+  if (!activeTab?.filePath) return false;
+
+  return activeTab.filePath.includes("/daily/") && activeTab.filePath.endsWith(".md");
+}
+
+/** Find frontmatter node and its position in the PM document */
+function findFrontmatter(editor: Editor): { node: PMNode; pos: number } | null {
+  let result: { node: PMNode; pos: number } | null = null;
+  editor.state.doc.descendants((node, pos) => {
+    if (node.type.name === "frontmatter" && !result) {
+      result = { node, pos };
+      return false;
+    }
+  });
+  return result;
+}
+
+/** Parse a field value from YAML text */
+function parseYamlField(yaml: string, field: string): string | undefined {
+  const match = yaml.match(new RegExp(`^${field}:\\s*(.+)$`, "m"));
+  return match ? match[1].trim() : undefined;
+}
+
+/** Update a field in YAML text */
+function updateYamlField(yaml: string, field: string, value: string | undefined): string {
+  const fieldRegex = new RegExp(`^${field}:\\s*.*$`, "m");
+  const hasField = fieldRegex.test(yaml);
+
+  if (value === undefined) {
+    return yaml.replace(fieldRegex, "").replace(/\n{2,}/g, "\n").trim();
+  } else if (hasField) {
+    return yaml.replace(fieldRegex, `${field}: ${value}`);
+  } else {
+    return yaml.trim() + `\n${field}: ${value}`;
+  }
+}
+
+/** Update frontmatter in the ProseMirror document */
+function updateFrontmatterField(editor: Editor, field: string, value: string | undefined): boolean {
+  const fm = findFrontmatter(editor);
+  if (!fm) return false;
+
+  const yaml = fm.node.textContent;
+  const newYaml = updateYamlField(yaml, field, value);
+  if (yaml === newYaml) return false;
+
+  const tr = editor.state.tr;
+  const from = fm.pos + 1; // content start (inside node)
+  const to = fm.pos + 1 + fm.node.content.size; // content end
+
+  if (fm.node.content.size > 0) {
+    tr.replaceWith(from, to, editor.schema.text(newYaml));
+  } else {
+    tr.insertText(newYaml, from);
+  }
+
+  editor.view.dispatch(tr);
+  return true;
+}
+
+export function MoodBar({ editor }: MoodBarProps) {
+  const [mood, setMood] = useState<MoodValue | undefined>(undefined);
+  const [energy, setEnergy] = useState<EnergyValue | undefined>(undefined);
+  const [visible, setVisible] = useState(false);
+  const activeTabId = useEditorStore((s) => s.activeTabId);
+
+  // Read mood/energy from frontmatter when editor or tab changes
+  useEffect(() => {
+    if (!editor || !isJournalDailyNote()) {
+      setVisible(false);
+      return;
+    }
+
+    setVisible(true);
+    const fm = findFrontmatter(editor);
+    if (!fm) return;
+
+    const yaml = fm.node.textContent;
+    const moodVal = parseYamlField(yaml, "mood");
+    const energyVal = parseYamlField(yaml, "energy");
+
+    if (moodVal && MOOD_VALUES.includes(moodVal as MoodValue)) {
+      setMood(moodVal as MoodValue);
+    } else {
+      setMood(undefined);
+    }
+
+    const eNum = energyVal ? parseInt(energyVal, 10) : NaN;
+    if (!isNaN(eNum) && eNum >= 1 && eNum <= 5) {
+      setEnergy(eNum as EnergyValue);
+    } else {
+      setEnergy(undefined);
+    }
+  }, [editor, activeTabId]);
+
+  const handleMoodClick = useCallback(
+    (value: MoodValue) => {
+      if (!editor) return;
+      const newMood = mood === value ? undefined : value;
+      setMood(newMood);
+      updateFrontmatterField(editor, "mood", newMood);
+    },
+    [editor, mood],
+  );
+
+  const handleEnergyClick = useCallback(
+    (value: EnergyValue) => {
+      if (!editor) return;
+      const newEnergy = energy === value ? undefined : value;
+      setEnergy(newEnergy);
+      updateFrontmatterField(editor, "energy", newEnergy !== undefined ? String(newEnergy) : undefined);
+    },
+    [editor, energy],
+  );
+
+  if (!visible) return null;
+
+  return (
+    <div className="mood-bar">
+      <div className="mood-bar-row">
+        <span className="mood-bar-label">기분</span>
+        <div className="mood-dots">
+          {MOOD_VALUES.map((v) => (
+            <button
+              key={v}
+              className={`mood-dot ${mood === v ? "mood-dot-active" : ""}`}
+              style={{
+                backgroundColor: mood === v ? MOOD_COLORS[v] : "transparent",
+                borderColor: MOOD_COLORS[v],
+              }}
+              onClick={() => handleMoodClick(v)}
+              title={MOOD_LABELS[v]}
+            />
+          ))}
+        </div>
+      </div>
+      <div className="mood-bar-row">
+        <span className="mood-bar-label">에너지</span>
+        <div className="energy-dots">
+          {([1, 2, 3, 4, 5] as EnergyValue[]).map((v) => (
+            <button
+              key={v}
+              className={`energy-dot ${energy !== undefined && v <= energy ? "energy-dot-filled" : ""}`}
+              onClick={() => handleEnergyClick(v)}
+              title={`Energy ${v}`}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
