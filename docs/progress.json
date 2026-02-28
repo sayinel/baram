@@ -206,9 +206,9 @@
           "status": "partial",
           "tests": "14/14 vitest pass (memories tests)",
           "spec": "§56c",
-          "details": "MemoriesPanel 3 tabs (Journal/Photos/Notes), extractOneLine (Diary section only), One Line/Full mode. Missing: Photos/Notes tab implementation, inline editing",
-          "implemented": ["MemoriesPanel component", "3-tab UI", "Journal tab data loading", "extractOneLine", "groupMemoriesByYear", "One Line/Full mode"],
-          "missing": ["Photos tab", "Notes tab", "current-year inline editing"]
+          "details": "MemoriesPanel 3 tabs (Journal/Photos/Notes), extractOneLine (Diary section only), One Line/Full mode, Notes tab with notes/ dir listing. Missing: Photos tab, inline editing",
+          "implemented": ["MemoriesPanel component", "3-tab UI", "Journal tab data loading", "extractOneLine", "groupMemoriesByYear", "One Line/Full mode", "Notes tab (notes/ directory listing + open-on-click)"],
+          "missing": ["Photos tab", "current-year inline editing"]
         },
         "§56d-photo-journal": {
           "status": "not-started",
@@ -219,9 +219,9 @@
           "status": "partial",
           "tests": "20/20 vitest pass (mood tests)",
           "spec": "§56e",
-          "details": "MoodBar with 5 mood dots + 5 energy dots, frontmatter helpers, PM transaction update. Missing: Year in Pixels, 30-day Trend, calendar mood dots",
-          "implemented": ["MoodValue/EnergyValue types", "parseMood/parseEnergy", "updateFrontmatterMood/Energy", "MoodBar component", "PM transaction update", "visibility guard"],
-          "missing": ["Year in Pixels", "30-day Mood Trend", "calendar mood color dots", "theme-specific mood palettes"]
+          "details": "MoodBar with 5 mood dots + 5 energy dots, frontmatter helpers, PM transaction update, calendar mood color dots. Missing: Year in Pixels, 30-day Trend",
+          "implemented": ["MoodValue/EnergyValue types", "parseMood/parseEnergy", "updateFrontmatterMood/Energy", "MoodBar component", "PM transaction update", "visibility guard", "calendar mood color dots (frontmatter batch read + MOOD_COLORS style)"],
+          "missing": ["Year in Pixels", "30-day Mood Trend", "theme-specific mood palettes"]
         },
         "§56f-periodic-notes": { "status": "not-started", "spec": "§56f" },
         "§56g-streaks-stats": { "status": "not-started", "spec": "§56g" },
@@ -233,28 +233,30 @@
           "status": "partial",
           "tests": "37/37 vitest pass (capture tests)",
           "spec": "§56l",
-          "details": "4 capture types, slash commands, QuickCaptureDialog (Cmd+Shift+N), promotion (Cmd+Shift+E). Missing: cursor-position promote, tag autocomplete, wikilink-to-notes resolution",
-          "implemented": ["CaptureType/CaptureItem types", "4 icons (✦↗❝☰)", "parseCapturesFromMarkdown", "serializeCaptureToMarkdown", "insertCaptureIntoContent", "buildNoteFromCapture", "buildPromotedCaptureLink", "/idea /link /quote /note slash commands", "QuickCaptureDialog", "openQuickCapture(type)", "Cmd+Shift+N shortcut", "Cmd+Shift+E promote shortcut", "hierarchical path support in QuickCapture"],
-          "missing": ["cursor-position promote (uses last capture)", "[[name]]→notes/ wikilink resolution", "#tag autocomplete", "Quick Switcher n: prefix filter", "tagIndex in .journal.json"]
+          "details": "4 capture types, slash commands, QuickCaptureDialog (Cmd+Shift+N), cursor-position promote (Cmd+Shift+E). Missing: tag autocomplete, wikilink-to-notes resolution",
+          "implemented": ["CaptureType/CaptureItem types", "4 icons (✦↗❝☰)", "parseCapturesFromMarkdown", "serializeCaptureToMarkdown", "insertCaptureIntoContent", "buildNoteFromCapture", "buildPromotedCaptureLink", "/idea /link /quote /note slash commands", "QuickCaptureDialog", "openQuickCapture(type)", "Cmd+Shift+N shortcut", "Cmd+Shift+E cursor-position promote", "hierarchical path support in QuickCapture"],
+          "missing": ["[[name]]→notes/ wikilink resolution", "#tag autocomplete", "Quick Switcher n: prefix filter", "tagIndex in .journal.json"]
         }
       },
       "shortcuts": {
         "Alt+Cmd+4": { "status": "implemented", "action": "Journal workspace" },
         "Cmd+Shift+N": { "status": "implemented", "action": "Quick Capture dialog" },
-        "Cmd+Shift+E": { "status": "implemented", "action": "Promote capture to note" },
+        "Cmd+Shift+E": { "status": "implemented", "action": "Promote capture to note (cursor-position aware)" },
+        "Cmd+Shift+J": { "status": "implemented", "action": "Open/create today's journal" },
+        "Cmd+Shift+D": { "status": "implemented", "action": "Jump to Diary section" },
+        "Cmd+Shift+C": { "status": "implemented", "action": "Jump to Captures section" },
         "Cmd+J": { "status": "conflict", "action": "Diary jump — conflicts with Inline AI" },
-        "Cmd+Shift+C": { "status": "not-implemented", "action": "Captures section jump" },
-        "Cmd+Shift+T-journal": { "status": "conflict", "action": "Today journal — conflicts with Skill Test" },
         "Cmd+Shift+M": { "status": "not-implemented", "action": "Memories View toggle" },
         "Alt+Left/Right": { "status": "not-implemented", "action": "Previous/Next day journal" }
       },
       "specCheckSummary": {
         "date": "2026-02-28",
-        "implemented": 45,
-        "partial": 27,
-        "missing": 70,
+        "implemented": 49,
+        "partial": 25,
+        "missing": 68,
         "total": 142,
-        "journalTests": 107
+        "journalTests": 107,
+        "note": "Phase B remaining: +4 implemented (mood dots, Notes tab, cursor promote, 3 shortcuts)"
       }
     }
   },
@@ -262,7 +264,7 @@
   "testSummary": {
     "vitest": "1164/1164 pass (72 test files)",
     "cargoTest": "112/112 pass (4 ignored)",
-    "note": "M9-journal Phase A+B: folder hierarchy, workspace scoping, memories, mood, capture, slash commands, calendar hierarchical paths, promotion",
+    "note": "M9-journal Phase A+B: folder hierarchy, workspace scoping, memories, mood, capture, slash commands, calendar hierarchical paths, promotion, mood dots, Notes tab, cursor promote, journal shortcuts",
     "breakdown": {
       "stores": 6,
       "editor-store-mru": 12,
