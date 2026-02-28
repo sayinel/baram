@@ -53,6 +53,7 @@ interface SettingsState {
   journalFilenameFormat: string;
   journalTemplatePath: string;
   journalStartupBehavior: JournalStartupBehavior;
+  journalUseHierarchy: boolean;  // §56a: daily/YYYY/MM/ 구조 사용 여부
 
   // §55 Pandoc Extended Export
   pandocPath: string;
@@ -104,6 +105,7 @@ interface SettingsState {
   setJournalFilenameFormat: (fmt: string) => void;
   setJournalTemplatePath: (path: string) => void;
   setJournalStartupBehavior: (behavior: JournalStartupBehavior) => void;
+  setJournalUseHierarchy: (enabled: boolean) => void;
 
   // Legacy setters (delegate to setExtensionSetting — will be removed after SettingsModal migration)
   setDiagrams: (enabled: boolean) => void;
@@ -152,6 +154,7 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
   journalFilenameFormat: "YYYY-MM-DD.md",
   journalTemplatePath: "",
   journalStartupBehavior: "openJournal",
+  journalUseHierarchy: true,  // §56a: default to hierarchical
 
   // §55 Pandoc Extended Export
   pandocPath: "pandoc",
@@ -237,6 +240,7 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
   setJournalFilenameFormat: (journalFilenameFormat) => set({ journalFilenameFormat }),
   setJournalTemplatePath: (journalTemplatePath) => set({ journalTemplatePath }),
   setJournalStartupBehavior: (journalStartupBehavior) => set({ journalStartupBehavior }),
+  setJournalUseHierarchy: (journalUseHierarchy) => set({ journalUseHierarchy }),
 
   // Legacy setters — delegate to extensionSettings (remove after SettingsModal migration)
   setDiagrams: (diagrams) =>
@@ -288,11 +292,12 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
     journalFilenameFormat: state.journalFilenameFormat,
     journalTemplatePath: state.journalTemplatePath,
     journalStartupBehavior: state.journalStartupBehavior,
+    journalUseHierarchy: state.journalUseHierarchy,
     pandocPath: state.pandocPath,
     wordTemplatePath: state.wordTemplatePath,
     customExports: state.customExports,
   }),
-  version: 4,
+  version: 5,
   migrate: (persisted: unknown, version: number) => {
     const state = persisted as Record<string, unknown>;
 
@@ -325,6 +330,11 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
       if (!state.journalFilenameFormat) state.journalFilenameFormat = "YYYY-MM-DD.md";
       if (state.journalTemplatePath === undefined) state.journalTemplatePath = "";
       if (!state.journalStartupBehavior) state.journalStartupBehavior = "openJournal";
+    }
+
+    // v4 → v5: §56a Journal hierarchical folder structure
+    if (version < 5) {
+      if (state.journalUseHierarchy === undefined) state.journalUseHierarchy = true;
     }
 
     // v0/v1 → v2: theme migration

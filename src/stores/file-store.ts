@@ -16,6 +16,10 @@ interface FileState {
   fileTree: FileEntry[];
   openFiles: Map<string, string>; // path → content
 
+  // §56b Journal workspace scoping
+  originalRootPath: string | null;  // rootPath backup before journal scope
+  isJournalScoped: boolean;
+
   setRootPath: (path: string) => void;
   setFileTree: (tree: FileEntry[]) => void;
   setFileContent: (path: string, content: string) => void;
@@ -28,6 +32,10 @@ interface FileState {
   removeFileEntry: (path: string) => void;
   /** Move a file/folder entry to a new parent directory */
   moveFileEntry: (oldPath: string, newParentPath: string) => void;
+  /** §56b Enter journal scope: save rootPath, switch to journal directory */
+  enterJournalScope: (journalDir: string) => void;
+  /** §56b Exit journal scope: restore original rootPath */
+  exitJournalScope: () => void;
 }
 
 /**
@@ -90,10 +98,14 @@ export async function openFolder(path: string): Promise<void> {
     .catch((err) => console.warn("§30 openFolder: index build failed", err));
 }
 
-export const useFileStore = create<FileState>((set) => ({
+export const useFileStore = create<FileState>((set, get) => ({
   rootPath: null,
   fileTree: [],
   openFiles: new Map(),
+
+  // §56b Journal scoping
+  originalRootPath: null,
+  isJournalScoped: false,
 
   setRootPath: (path) => set({ rootPath: path }),
 
@@ -268,4 +280,27 @@ export const useFileStore = create<FileState>((set) => ({
 
       return { openFiles, fileTree: newTree };
     }),
+
+  enterJournalScope: (journalDir) => {
+    const state = get();
+    // Only save original if not already scoped
+    const originalRootPath = state.isJournalScoped
+      ? state.originalRootPath
+      : state.rootPath;
+    set({
+      originalRootPath,
+      rootPath: journalDir,
+      isJournalScoped: true,
+    });
+  },
+
+  exitJournalScope: () => {
+    const state = get();
+    if (!state.isJournalScoped) return;
+    set({
+      rootPath: state.originalRootPath,
+      originalRootPath: null,
+      isJournalScoped: false,
+    });
+  },
 }));

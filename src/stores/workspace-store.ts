@@ -15,7 +15,7 @@ export interface WorkspaceLayout {
   sidebarOpen: boolean;
   sidebarPanel: "files" | "outline" | "search" | "backlinks" | "bookmarks" | "graph" | "git" | "calendar";
   rightPanelOpen: boolean;
-  rightPanelMode: "chat" | "help" | "none";
+  rightPanelMode: "chat" | "help" | "memories" | "none";
 }
 
 export interface WorkspacePreset {
@@ -68,13 +68,13 @@ export const BUILTIN_PRESETS: WorkspacePreset[] = [
   {
     id: "journal",
     name: "저널",
-    description: "캘린더와 오늘의 저널을 함께 엽니다.",
+    description: "캘린더와 오늘의 저널, Memories View를 함께 엽니다.",
     builtIn: true,
     layout: {
       sidebarOpen: true,
       sidebarPanel: "calendar",
-      rightPanelOpen: false,
-      rightPanelMode: "none",
+      rightPanelOpen: true,
+      rightPanelMode: "memories",
     },
   },
 ];

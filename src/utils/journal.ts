@@ -148,3 +148,84 @@ export function getMonthDays(year: number, month: number): Date[] {
 export function getFirstDayOfWeek(year: number, month: number): number {
   return new Date(year, month, 1).getDay();
 }
+
+// --- §56a Hierarchical Journal Paths ---
+
+/**
+ * Build a hierarchical journal file path: daily/YYYY/MM/YYYY-MM-DD.md
+ */
+export function getHierarchicalJournalPath(
+  journalDir: string,
+  date: Date,
+  filenameFormat: string,
+): string {
+  const y = String(date.getFullYear());
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const filename = formatJournalFilename(date, filenameFormat);
+  return `${journalDir}/daily/${y}/${m}/${filename}`;
+}
+
+/**
+ * Convert a flat journal path (root/YYYY-MM-DD.md) to hierarchical (root/daily/YYYY/MM/YYYY-MM-DD.md).
+ * Returns null if the filename isn't a date or is already in daily/ structure.
+ */
+export function flatToHierarchicalPath(
+  journalDir: string,
+  flatPath: string,
+): string | null {
+  // Skip files already in subdirectories
+  const relative = flatPath.slice(journalDir.length + 1);
+  if (relative.includes("/")) return null;
+
+  const basename = relative.replace(/\.md$/, "");
+  if (!isDateString(basename)) return null;
+
+  const [y, m] = basename.split("-");
+  return `${journalDir}/daily/${y}/${m}/${relative}`;
+}
+
+/** Simple FileEntry-like type for migration functions */
+interface MigrationEntry {
+  name: string;
+  path: string;
+  isDir: boolean;
+}
+
+/**
+ * Detect flat YYYY-MM-DD.md journal files in the root of journalDir.
+ * These are candidates for migration to hierarchical structure.
+ */
+export function detectFlatJournalFiles(entries: MigrationEntry[]): MigrationEntry[] {
+  return entries.filter((e) => {
+    if (e.isDir) return false;
+    const basename = e.name.replace(/\.md$/, "");
+    return isDateString(basename);
+  });
+}
+
+/**
+ * Build a migration plan: list of { from, to } path pairs.
+ */
+export function buildMigrationPlan(
+  journalDir: string,
+  flatFiles: MigrationEntry[],
+): { from: string; to: string }[] {
+  const plan: { from: string; to: string }[] = [];
+  for (const file of flatFiles) {
+    const to = flatToHierarchicalPath(journalDir, file.path);
+    if (to) {
+      plan.push({ from: file.path, to });
+    }
+  }
+  return plan;
+}
+
+// --- §56a Journal Hidden Entries ---
+
+/** Entries hidden from FileTree when journal-scoped */
+export const JOURNAL_HIDDEN_ENTRIES = [".journal.json", "assets", "prompts"];
+
+/** Check if a file/folder name should be hidden in journal FileTree */
+export function isJournalHiddenEntry(name: string): boolean {
+  return JOURNAL_HIDDEN_ENTRIES.includes(name);
+}
