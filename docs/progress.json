@@ -190,17 +190,16 @@
           "status": "partial",
           "tests": "33/33 vitest pass (hierarchy + periodic path tests)",
           "spec": "§56a",
-          "details": "daily/weekly/monthly/yearly hierarchical paths, ISO week helpers, migration utils. Missing: migration dialog UI",
-          "implemented": ["getHierarchicalJournalPath", "flatToHierarchicalPath", "buildMigrationPlan", "JOURNAL_HIDDEN_ENTRIES", "journalUseHierarchy setting", "getISOWeekNumber", "getWeekStartDate", "getWeeklyJournalPath", "getMonthlyJournalPath", "getYearlyJournalPath"],
-          "missing": ["migration dialog UI", "templates/ folder management"]
+          "details": "daily/weekly/monthly/yearly hierarchical paths, ISO week helpers, migration utils, MigrationDialog UI in Settings. Missing: templates/ folder management",
+          "implemented": ["getHierarchicalJournalPath", "flatToHierarchicalPath", "buildMigrationPlan", "JOURNAL_HIDDEN_ENTRIES", "journalUseHierarchy setting", "getISOWeekNumber", "getWeekStartDate", "getWeeklyJournalPath", "getMonthlyJournalPath", "getYearlyJournalPath", "MigrationDialog UI", "Settings hierarchical toggle + migrate button"],
+          "missing": ["templates/ folder management"]
         },
         "§56b-workspace-mode": {
-          "status": "partial",
+          "status": "completed",
           "tests": "11/11 vitest pass (scope tests)",
           "spec": "§56b",
-          "details": "enterJournalScope/exitJournalScope, isJournalScoped flag, journal workspace preset (Alt+Cmd+4), Graph View scoping. Missing: memoriesTab persistence",
-          "implemented": ["enterJournalScope", "exitJournalScope", "isJournalScoped", "originalRootPath", "journal preset Alt+Cmd+4", "GraphView journal scoping filter"],
-          "missing": ["memoriesTab/memoriesMode workspace state persistence"]
+          "details": "enterJournalScope/exitJournalScope, isJournalScoped flag, journal workspace preset (Alt+Cmd+4), Graph View scoping, memoriesTab/memoriesMode persisted in settings store",
+          "implemented": ["enterJournalScope", "exitJournalScope", "isJournalScoped", "originalRootPath", "journal preset Alt+Cmd+4", "GraphView journal scoping filter", "memoriesTab persistence in settings-store", "memoriesMode persistence in settings-store"]
         },
         "§56c-memories-view": {
           "status": "partial",
@@ -216,12 +215,11 @@
           "details": "Photo drag & drop, clipboard paste, assets/ storage, caption editing, Photo Gallery view — entirely future work"
         },
         "§56e-mood-tracker": {
-          "status": "partial",
-          "tests": "20/20 vitest pass (mood tests)",
+          "status": "completed",
+          "tests": "23/23 vitest pass (mood tests incl. palette tests)",
           "spec": "§56e",
-          "details": "MoodBar, calendar mood dots, YearInPixels (365-dot grid), MoodTrend30 (SVG chart). Missing: theme-specific mood palettes",
-          "implemented": ["MoodValue/EnergyValue types", "parseMood/parseEnergy", "updateFrontmatterMood/Energy", "MoodBar component", "PM transaction update", "visibility guard", "calendar mood color dots", "YearInPixels component (collapsible 365-dot grid)", "MoodTrend30 component (SVG 30-day dot chart)"],
-          "missing": ["theme-specific mood palettes"]
+          "details": "MoodBar, calendar mood dots, YearInPixels (365-dot grid), MoodTrend30 (SVG chart), theme-aware mood palettes (light/dark)",
+          "implemented": ["MoodValue/EnergyValue types", "parseMood/parseEnergy", "updateFrontmatterMood/Energy", "MoodBar component", "PM transaction update", "visibility guard", "calendar mood color dots", "YearInPixels component (collapsible 365-dot grid)", "MoodTrend30 component (SVG 30-day dot chart)", "getMoodColors(themeBase)", "MOOD_PALETTE light/dark", "CalendarPanel + YearInPixels theme-aware colors"]
         },
         "§56f-periodic-notes": {
           "status": "completed",
@@ -257,20 +255,20 @@
       },
       "specCheckSummary": {
         "date": "2026-02-28",
-        "implemented": 65,
-        "partial": 23,
-        "missing": 54,
+        "implemented": 71,
+        "partial": 20,
+        "missing": 51,
         "total": 142,
-        "journalTests": 133,
-        "note": "§56f periodic notes completed (+12 items). Partial fill: periodic paths, graph scoping, Year in Pixels + MoodTrend30, wikilink notes/ resolve"
+        "journalTests": 137,
+        "note": "§56b workspace completed, §56e mood completed, §56a migration dialog added. Remaining partials: §56a (templates), §56c (photos/inline), §56l (tag autocomplete)"
       }
     }
   },
 
   "testSummary": {
-    "vitest": "1190/1190 pass (73 test files)",
+    "vitest": "1194/1194 pass (73 test files)",
     "cargoTest": "112/112 pass (4 ignored)",
-    "note": "M9-journal: folder hierarchy, workspace scoping, memories, mood, capture, promotion, periodic paths+templates, graph scoping, Year in Pixels, MoodTrend30, wikilink notes/ resolve",
+    "note": "M9-journal: folder hierarchy, workspace scoping, memories persistence, mood (theme palettes), capture, promotion, periodic notes, graph scoping, Year in Pixels, MoodTrend30, wikilink notes/ resolve, migration dialog",
     "breakdown": {
       "stores": 6,
       "editor-store-mru": 12,
@@ -320,7 +318,7 @@
       "journal-hierarchy": 33,
       "journal-scope": 11,
       "journal-memories": 14,
-      "journal-mood": 20,
+      "journal-mood": 23,
       "journal-capture": 37,
       "journal-periodic": 14
     }
