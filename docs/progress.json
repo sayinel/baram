@@ -181,13 +181,88 @@
         "§56-journal": { "status": "completed", "tests": "972/972 vitest pass (journal tests) + 105/105 cargo test", "spec": "§56", "details": "CalendarPanel sidebar, useJournal hook (auto-create on startup), @today/@yesterday/@tomorrow InputRules, custom template with {{date}}/{{dayName}} variables, journal settings (directory/filename format/template/startup), Journal workspace preset (Cmd+Alt+4), date wikilink single-click navigation" },
         "§57-mention": { "status": "completed", "tests": "24/24 vitest pass (roundtrip + PM structure)", "spec": "§57", "details": "@mention system — date/page inline chips, MentionSuggest autocomplete, @[[value]] serialization, date navigation, Cmd/Ctrl+click for pages" }
       }
+    },
+    "M9-journal": {
+      "name": "Journal Workspace §56a-§56l",
+      "status": "in-progress",
+      "features": {
+        "§56a-folder-structure": {
+          "status": "partial",
+          "tests": "21/21 vitest pass (hierarchy tests)",
+          "spec": "§56a",
+          "details": "daily/YYYY/MM/ hierarchical paths, flatToHierarchy migration utils, journalUseHierarchy setting. Missing: weekly/monthly/yearly path functions, migration dialog UI",
+          "implemented": ["getHierarchicalJournalPath", "flatToHierarchicalPath", "buildMigrationPlan", "JOURNAL_HIDDEN_ENTRIES", "journalUseHierarchy setting"],
+          "missing": ["weekly/monthly/yearly path functions", "migration dialog UI", "templates/ folder management"]
+        },
+        "§56b-workspace-mode": {
+          "status": "partial",
+          "tests": "11/11 vitest pass (scope tests)",
+          "spec": "§56b",
+          "details": "enterJournalScope/exitJournalScope, isJournalScoped flag, journal workspace preset (Alt+Cmd+4). Missing: Graph View scoping, memoriesTab persistence",
+          "implemented": ["enterJournalScope", "exitJournalScope", "isJournalScoped", "originalRootPath", "journal preset Alt+Cmd+4"],
+          "missing": ["Graph View journal scoping", "memoriesTab/memoriesMode workspace state persistence"]
+        },
+        "§56c-memories-view": {
+          "status": "partial",
+          "tests": "14/14 vitest pass (memories tests)",
+          "spec": "§56c",
+          "details": "MemoriesPanel 3 tabs (Journal/Photos/Notes), extractOneLine (Diary section only), One Line/Full mode. Missing: Photos/Notes tab implementation, inline editing",
+          "implemented": ["MemoriesPanel component", "3-tab UI", "Journal tab data loading", "extractOneLine", "groupMemoriesByYear", "One Line/Full mode"],
+          "missing": ["Photos tab", "Notes tab", "current-year inline editing"]
+        },
+        "§56d-photo-journal": {
+          "status": "not-started",
+          "spec": "§56d",
+          "details": "Photo drag & drop, clipboard paste, assets/ storage, caption editing, Photo Gallery view — entirely future work"
+        },
+        "§56e-mood-tracker": {
+          "status": "partial",
+          "tests": "20/20 vitest pass (mood tests)",
+          "spec": "§56e",
+          "details": "MoodBar with 5 mood dots + 5 energy dots, frontmatter helpers, PM transaction update. Missing: Year in Pixels, 30-day Trend, calendar mood dots",
+          "implemented": ["MoodValue/EnergyValue types", "parseMood/parseEnergy", "updateFrontmatterMood/Energy", "MoodBar component", "PM transaction update", "visibility guard"],
+          "missing": ["Year in Pixels", "30-day Mood Trend", "calendar mood color dots", "theme-specific mood palettes"]
+        },
+        "§56f-periodic-notes": { "status": "not-started", "spec": "§56f" },
+        "§56g-streaks-stats": { "status": "not-started", "spec": "§56g" },
+        "§56h-journal-themes": { "status": "not-started", "spec": "§56h" },
+        "§56i-daily-prompts": { "status": "not-started", "spec": "§56i" },
+        "§56j-ai-reflection": { "status": "not-started", "spec": "§56j" },
+        "§56k-journal-search": { "status": "not-started", "spec": "§56k" },
+        "§56l-daily-capture": {
+          "status": "partial",
+          "tests": "37/37 vitest pass (capture tests)",
+          "spec": "§56l",
+          "details": "4 capture types, slash commands, QuickCaptureDialog (Cmd+Shift+N), promotion (Cmd+Shift+E). Missing: cursor-position promote, tag autocomplete, wikilink-to-notes resolution",
+          "implemented": ["CaptureType/CaptureItem types", "4 icons (✦↗❝☰)", "parseCapturesFromMarkdown", "serializeCaptureToMarkdown", "insertCaptureIntoContent", "buildNoteFromCapture", "buildPromotedCaptureLink", "/idea /link /quote /note slash commands", "QuickCaptureDialog", "openQuickCapture(type)", "Cmd+Shift+N shortcut", "Cmd+Shift+E promote shortcut", "hierarchical path support in QuickCapture"],
+          "missing": ["cursor-position promote (uses last capture)", "[[name]]→notes/ wikilink resolution", "#tag autocomplete", "Quick Switcher n: prefix filter", "tagIndex in .journal.json"]
+        }
+      },
+      "shortcuts": {
+        "Alt+Cmd+4": { "status": "implemented", "action": "Journal workspace" },
+        "Cmd+Shift+N": { "status": "implemented", "action": "Quick Capture dialog" },
+        "Cmd+Shift+E": { "status": "implemented", "action": "Promote capture to note" },
+        "Cmd+J": { "status": "conflict", "action": "Diary jump — conflicts with Inline AI" },
+        "Cmd+Shift+C": { "status": "not-implemented", "action": "Captures section jump" },
+        "Cmd+Shift+T-journal": { "status": "conflict", "action": "Today journal — conflicts with Skill Test" },
+        "Cmd+Shift+M": { "status": "not-implemented", "action": "Memories View toggle" },
+        "Alt+Left/Right": { "status": "not-implemented", "action": "Previous/Next day journal" }
+      },
+      "specCheckSummary": {
+        "date": "2026-02-28",
+        "implemented": 45,
+        "partial": 27,
+        "missing": 70,
+        "total": 142,
+        "journalTests": 107
+      }
     }
   },
 
   "testSummary": {
-    "vitest": "1003/1003 pass (64 test files)",
+    "vitest": "1164/1164 pass (72 test files)",
     "cargoTest": "112/112 pass (4 ignored)",
-    "note": "M9 spec-check gaps resolved: registry sync, global search replace+filter, mermaid context menu+templates",
+    "note": "M9-journal Phase A+B: folder hierarchy, workspace scoping, memories, mood, capture, slash commands, calendar hierarchical paths, promotion",
     "breakdown": {
       "stores": 6,
       "editor-store-mru": 12,
@@ -233,7 +308,12 @@
       "git-store": 16,
       "workspace-store": 14,
       "pandoc-export": 30,
-      "journal": 16
+      "journal": 16,
+      "journal-hierarchy": 21,
+      "journal-scope": 11,
+      "journal-memories": 14,
+      "journal-mood": 20,
+      "journal-capture": 37
     }
   },
 
