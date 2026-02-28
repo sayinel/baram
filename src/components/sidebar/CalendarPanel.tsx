@@ -1,5 +1,5 @@
 // §56 Calendar sidebar panel — mini calendar for journal navigation
-import { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useSettingsStore } from "../../stores/settings-store";
 import {
   formatJournalDate,
@@ -7,10 +7,19 @@ import {
   getFirstDayOfWeek,
   getJournalFilePath,
   getHierarchicalJournalPath,
+  getWeeklyJournalPath,
+  getMonthlyJournalPath,
+  getYearlyJournalPath,
+  getISOWeekNumber,
   resolveJournalDir,
   generateDefaultJournal,
   applyJournalTemplate,
 } from "../../utils/journal";
+import {
+  generateDefaultWeekly,
+  generateDefaultMonthly,
+  generateDefaultYearly,
+} from "../../utils/journal-periodic";
 import { parseMoodFromFrontmatter } from "../../utils/journal-mood";
 import type { MoodValue } from "../../utils/journal-mood";
 import { readFile, writeFile, createDir, listDir } from "../../ipc/invoke";
@@ -36,6 +45,9 @@ export function CalendarPanel() {
     journalFilenameFormat,
     journalTemplatePath,
     journalUseHierarchy,
+    journalWeeklyEnabled,
+    journalMonthlyEnabled,
+    journalYearlyEnabled,
   } = useSettingsStore();
 
   const resolvedDir = useMemo(
@@ -188,6 +200,55 @@ export function CalendarPanel() {
     }
   }, [resolvedDir, journalEnabled, journalDirectory, journalFilenameFormat, journalTemplatePath, journalUseHierarchy]);
 
+  // §56f Open or create periodic notes
+  const openPeriodicNote = useCallback(async (
+    getPath: (dir: string, date: Date) => string,
+    generate: (date: Date) => string,
+    date: Date,
+  ) => {
+    if (!journalEnabled || !resolvedDir) return;
+    const notePath = getPath(resolvedDir, date);
+    const parentDir = notePath.substring(0, notePath.lastIndexOf("/"));
+    await createDir(parentDir).catch(() => {});
+
+    let content: string;
+    try {
+      content = await readFile(notePath);
+    } catch {
+      content = generate(date);
+      await writeFile(notePath, content);
+    }
+
+    const { tabs } = useEditorStore.getState();
+    const existing = tabs.find((t) => t.filePath === notePath);
+    if (existing) {
+      useEditorStore.getState().setActiveTab(existing.id);
+    } else {
+      useFileStore.getState().setFileContent(notePath, content);
+      useEditorStore.getState().openTab({
+        id: crypto.randomUUID(),
+        filePath: notePath,
+        title: notePath.split("/").pop() ?? "Note",
+        isDirty: false,
+        isPinned: false,
+      });
+    }
+  }, [resolvedDir, journalEnabled]);
+
+  const openWeeklyNote = useCallback((date: Date) => {
+    openPeriodicNote(getWeeklyJournalPath, generateDefaultWeekly, date);
+  }, [openPeriodicNote]);
+
+  const openMonthlyNote = useCallback(() => {
+    const date = new Date(viewYear, viewMonth, 1);
+    openPeriodicNote(getMonthlyJournalPath, generateDefaultMonthly, date);
+  }, [openPeriodicNote, viewYear, viewMonth]);
+
+  const openYearlyNote = useCallback(() => {
+    const date = new Date(viewYear, 0, 1);
+    openPeriodicNote(getYearlyJournalPath, generateDefaultYearly, date);
+  }, [openPeriodicNote, viewYear]);
+
   if (!journalEnabled) {
     return (
       <div className="calendar-panel">
@@ -217,45 +278,97 @@ export function CalendarPanel() {
     cells.push(d);
   }
 
+  // §56f Build rows with optional week numbers
+  const rows: (Date | null)[][] = [];
+  for (let i = 0; i < cells.length; i += 7) {
+    rows.push(cells.slice(i, i + 7));
+  }
+
   return (
     <div className="calendar-panel">
       <div className="calendar-header">
         <button className="calendar-nav-btn" onClick={prevMonth} title="Previous month">
           &lt;
         </button>
-        <button className="calendar-title" onClick={goToday} title="Go to today">
-          {MONTH_NAMES[viewMonth]} {viewYear}
-        </button>
+        <span className="calendar-title-group">
+          {journalMonthlyEnabled ? (
+            <button
+              className="calendar-title calendar-title-month"
+              onClick={openMonthlyNote}
+              title={`Open ${MONTH_NAMES[viewMonth]} note`}
+            >
+              {MONTH_NAMES[viewMonth]}
+            </button>
+          ) : (
+            <button className="calendar-title" onClick={goToday} title="Go to today">
+              {MONTH_NAMES[viewMonth]}
+            </button>
+          )}
+          {" "}
+          {journalYearlyEnabled ? (
+            <button
+              className="calendar-title calendar-title-year"
+              onClick={openYearlyNote}
+              title={`Open ${viewYear} yearly note`}
+            >
+              {viewYear}
+            </button>
+          ) : (
+            <button className="calendar-title" onClick={goToday} title="Go to today">
+              {viewYear}
+            </button>
+          )}
+        </span>
         <button className="calendar-nav-btn" onClick={nextMonth} title="Next month">
           &gt;
         </button>
       </div>
-      <div className="calendar-grid">
+      <div className={`calendar-grid${journalWeeklyEnabled ? " calendar-grid-with-weeks" : ""}`}>
+        {journalWeeklyEnabled && <div className="calendar-week-header">W</div>}
         {DAY_NAMES.map((d) => (
           <div key={d} className="calendar-day-name">{d}</div>
         ))}
-        {cells.map((date, i) => {
-          if (!date) {
-            return <div key={`empty-${i}`} className="calendar-cell calendar-cell-empty" />;
-          }
-          const dateStr = formatJournalDate(date);
-          const isToday = dateStr === todayStr;
-          const hasJournal = journalDates.has(dateStr);
+        {rows.map((row, rowIdx) => {
+          // Find the first real date in this row for week number
+          const firstDate = row.find((d) => d !== null);
+          const weekNum = firstDate ? getISOWeekNumber(firstDate) : null;
           return (
-            <button
-              key={dateStr}
-              className={`calendar-cell${isToday ? " calendar-cell-today" : ""}${hasJournal ? " calendar-cell-has-journal" : ""}`}
-              onClick={() => openOrCreateJournal(date)}
-              title={dateStr}
-            >
-              {date.getDate()}
-              {hasJournal && (
-                <span
-                  className="calendar-dot"
-                  style={moodMap.has(dateStr) ? { background: MOOD_COLORS[moodMap.get(dateStr)!] } : undefined}
-                />
+            <React.Fragment key={`row-${rowIdx}`}>
+              {journalWeeklyEnabled && (
+                <button
+                  className="calendar-week-num"
+                  onClick={() => firstDate && openWeeklyNote(firstDate)}
+                  title={weekNum !== null ? `Open W${String(weekNum).padStart(2, "0")} note` : undefined}
+                  disabled={!firstDate}
+                >
+                  {weekNum !== null ? weekNum : ""}
+                </button>
               )}
-            </button>
+              {row.map((date, cellIdx) => {
+                if (!date) {
+                  return <div key={`empty-${rowIdx}-${cellIdx}`} className="calendar-cell calendar-cell-empty" />;
+                }
+                const dateStr = formatJournalDate(date);
+                const isToday = dateStr === todayStr;
+                const hasJournal = journalDates.has(dateStr);
+                return (
+                  <button
+                    key={dateStr}
+                    className={`calendar-cell${isToday ? " calendar-cell-today" : ""}${hasJournal ? " calendar-cell-has-journal" : ""}`}
+                    onClick={() => openOrCreateJournal(date)}
+                    title={dateStr}
+                  >
+                    {date.getDate()}
+                    {hasJournal && (
+                      <span
+                        className="calendar-dot"
+                        style={moodMap.has(dateStr) ? { background: MOOD_COLORS[moodMap.get(dateStr)!] } : undefined}
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </React.Fragment>
           );
         })}
       </div>

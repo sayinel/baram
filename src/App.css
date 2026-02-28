@@ -2518,10 +2518,51 @@ body {
   color: var(--color-accent);
 }
 
+.calendar-title-group {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.calendar-title-month:hover,
+.calendar-title-year:hover {
+  text-decoration: underline;
+}
+
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 2px;
+}
+
+.calendar-grid-with-weeks {
+  grid-template-columns: 24px repeat(7, 1fr);
+}
+
+.calendar-week-header {
+  text-align: center;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  padding: 4px 0;
+}
+
+.calendar-week-num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 10px;
+  color: var(--color-text-muted);
+  padding: 0;
+}
+
+.calendar-week-num:hover:not(:disabled) {
+  background: var(--color-bg-tertiary);
+  color: var(--color-accent);
 }
 
 .calendar-day-name {

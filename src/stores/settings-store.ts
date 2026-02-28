@@ -54,6 +54,10 @@ interface SettingsState {
   journalTemplatePath: string;
   journalStartupBehavior: JournalStartupBehavior;
   journalUseHierarchy: boolean;  // §56a: daily/YYYY/MM/ 구조 사용 여부
+  journalWeeklyEnabled: boolean;  // §56f: weekly notes
+  journalMonthlyEnabled: boolean;  // §56f: monthly notes
+  journalYearlyEnabled: boolean;  // §56f: yearly notes
+  journalWeekStartDay: "monday" | "sunday";  // §56f: week start day
 
   // §55 Pandoc Extended Export
   pandocPath: string;
@@ -155,6 +159,10 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
   journalTemplatePath: "",
   journalStartupBehavior: "openJournal",
   journalUseHierarchy: true,  // §56a: default to hierarchical
+  journalWeeklyEnabled: false,
+  journalMonthlyEnabled: false,
+  journalYearlyEnabled: false,
+  journalWeekStartDay: "monday" as const,
 
   // §55 Pandoc Extended Export
   pandocPath: "pandoc",
@@ -241,6 +249,10 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
   setJournalTemplatePath: (journalTemplatePath) => set({ journalTemplatePath }),
   setJournalStartupBehavior: (journalStartupBehavior) => set({ journalStartupBehavior }),
   setJournalUseHierarchy: (journalUseHierarchy) => set({ journalUseHierarchy }),
+  setJournalWeeklyEnabled: (journalWeeklyEnabled: boolean) => set({ journalWeeklyEnabled }),
+  setJournalMonthlyEnabled: (journalMonthlyEnabled: boolean) => set({ journalMonthlyEnabled }),
+  setJournalYearlyEnabled: (journalYearlyEnabled: boolean) => set({ journalYearlyEnabled }),
+  setJournalWeekStartDay: (journalWeekStartDay: "monday" | "sunday") => set({ journalWeekStartDay }),
 
   // Legacy setters — delegate to extensionSettings (remove after SettingsModal migration)
   setDiagrams: (diagrams) =>
@@ -293,11 +305,15 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
     journalTemplatePath: state.journalTemplatePath,
     journalStartupBehavior: state.journalStartupBehavior,
     journalUseHierarchy: state.journalUseHierarchy,
+    journalWeeklyEnabled: state.journalWeeklyEnabled,
+    journalMonthlyEnabled: state.journalMonthlyEnabled,
+    journalYearlyEnabled: state.journalYearlyEnabled,
+    journalWeekStartDay: state.journalWeekStartDay,
     pandocPath: state.pandocPath,
     wordTemplatePath: state.wordTemplatePath,
     customExports: state.customExports,
   }),
-  version: 5,
+  version: 6,
   migrate: (persisted: unknown, version: number) => {
     const state = persisted as Record<string, unknown>;
 
@@ -335,6 +351,14 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
     // v4 → v5: §56a Journal hierarchical folder structure
     if (version < 5) {
       if (state.journalUseHierarchy === undefined) state.journalUseHierarchy = true;
+    }
+
+    // v5 → v6: §56f Periodic notes settings
+    if (version < 6) {
+      if (state.journalWeeklyEnabled === undefined) state.journalWeeklyEnabled = false;
+      if (state.journalMonthlyEnabled === undefined) state.journalMonthlyEnabled = false;
+      if (state.journalYearlyEnabled === undefined) state.journalYearlyEnabled = false;
+      if (state.journalWeekStartDay === undefined) state.journalWeekStartDay = "monday";
     }
 
     // v0/v1 → v2: theme migration
