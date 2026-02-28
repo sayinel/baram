@@ -2,7 +2,7 @@
 
 > **상위 참조**: Part 5(§5.14 저널/데일리 노트), Part 4(§4.2 레이아웃), Part 8(§8.2 로드맵)
 > **기존 구현**: §56(저널 기본), §57(멘션 시스템)
-> **신규 섹션**: §56a–§56k
+> **신규 섹션**: §56a–§56l
 
 ---
 
@@ -20,10 +20,11 @@
 10. [Daily Prompts (§56i)](#10-daily-prompts-56i)
 11. [AI 회고 (§56j)](#11-ai-회고-56j)
 12. [저널 검색 (§56k)](#12-저널-검색-56k)
-13. [데이터 모델](#13-데이터-모델)
-14. [단축키](#14-단축키)
-15. [구현 우선순위](#15-구현-우선순위)
-16. [마이그레이션](#16-마이그레이션)
+13. [Daily Capture (§56l)](#13-daily-capture-56l)
+14. [데이터 모델](#14-데이터-모델)
+15. [단축키](#15-단축키)
+16. [구현 우선순위](#16-구현-우선순위)
+17. [마이그레이션](#17-마이그레이션)
 
 ---
 
@@ -55,6 +56,7 @@
 | 사진 | 없음 | 드래그&드롭 + 갤러리 |
 | 무드 | 없음 | 컬러 도트 5단계 |
 | 회고 | 없음 | Memories View (On This Day + One Line A Day) |
+| 캡처/메모 | 없음 | Daily Capture 4종 (Idea/Link/Quote/Note) + Notes 폴더 |
 
 ---
 
@@ -86,6 +88,12 @@
 ├── yearly/                       # 연간 회고 (선택)
 │   └── 2025.md
 │
+├── notes/                        # 독립 노트 (캡처 승격, 자유 메모)
+│   ├── my-project-idea.md
+│   ├── reading-list.md
+│   └── recipes/                  # 사용자 서브폴더 (자유 생성)
+│       └── pasta-recipe.md
+│
 ├── templates/                    # 저널 전용 템플릿
 │   ├── daily-default.md
 │   ├── weekly-review.md
@@ -116,6 +124,7 @@
 | 월간 노트 | `monthly/YYYY/YYYY-MM.md` | `monthly/2026/2026-02.md` |
 | 연간 노트 | `yearly/YYYY.md` | `yearly/2026.md` |
 | 사진 | `assets/YYYY-MM/YYYYMMDD-HHmmss-name.ext` | `assets/2026-02/20260228-143022-cafe.jpg` |
+| 노트 | `notes/{name}.md` 또는 `notes/{folder}/{name}.md` | `notes/my-project-idea.md` |
 
 ### 2.3 자동 디렉토리 생성
 
@@ -151,11 +160,15 @@
 │ 캘린더    │  [무드 바]           │ Memories     │
 │ FileTree │  [프롬프트 카드]      │  View        │
 │ (저널)   │                     │              │
-│ 통계     │  일기 본문 편집       │ [Journal]    │
-│          │  (사진 드래그&드롭)   │ [Photos]     │
+│  daily   │  ## Diary            │ [Journal]    │
+│  weekly  │  일기 본문 편집       │ [Photos]     │
+│  monthly │  (사진 드래그&드롭)   │ [Notes]      │
+│  yearly  │                     │              │
+│  notes   │  ## Captures         │ One Line     │
+│ 통계     │  [캡처 아이템 목록]   │ / Full 토글   │
 │          │                     │              │
-│ 검색     │  [AI 회고 제안]      │ One Line     │
-│ (저널)   │                     │ / Full 토글   │
+│ 검색     │  [AI 회고 제안]      │              │
+│ (저널)   │                     │              │
 └──────────┴─────────────────────┴──────────────┘
 ```
 
@@ -164,7 +177,7 @@
 저널 워크스페이스 진입 시:
 
 1. `useFileStore`의 `rootPath`를 `journalDirectory`로 임시 전환
-2. FileTree가 저널 폴더만 표시 (daily, weekly, monthly, yearly, templates)
+2. FileTree가 저널 폴더만 표시 (daily, weekly, monthly, yearly, notes, templates)
 3. 퇴장 시 원래 vault `rootPath`로 복원
 4. `.journal.json`, `assets/` 등은 FileTree에서 숨김 처리
 
@@ -199,7 +212,7 @@ interface JournalWorkspaceState {
   sidebarPanel: "calendar";
   rightPanelOpen: true;
   rightPanelMode: "memories";    // 신규 모드
-  memoriesTab: "journal" | "photos";
+  memoriesTab: "journal" | "photos" | "notes";
   memoriesMode: "oneline" | "full";
   journalScoped: true;
 }
@@ -216,8 +229,8 @@ interface JournalWorkspaceState {
 ### 4.2 UI 구조
 
 ```
-┌─ Memories: 2월 28일 ──── [Journal] [Photos] ─┐
-│                                    [One Line ▾] │
+┌─ Memories: 2월 28일 ── [Journal] [Photos] [Notes] ─┐
+│                                        [One Line ▾] │
 │                                                  │
 │ ── 2026 (오늘) ──────────────────────────        │
 │ ▌ (편집 중 — 인라인 편집 가능)                    │
@@ -244,7 +257,10 @@ interface JournalWorkspaceState {
 ### 4.4 One Line 추출 규칙
 
 1. frontmatter에 `oneline` 필드가 있으면 해당 값 사용
-2. 없으면 본문의 첫 번째 비어있지 않은 텍스트 단락의 첫 문장 추출
+2. 없으면 **Diary 섹션**의 첫 번째 비어있지 않은 텍스트 단락의 첫 문장 추출
+   - Diary 섹션: `## Diary` 헤딩부터 다음 `##` 헤딩 직전까지의 영역
+   - `## Captures` 섹션의 내용은 One Line 추출 대상에서 제외
+   - `## Diary` 헤딩이 없으면 본문 전체에서 추출 (하위 호환)
 3. heading(`#`), frontmatter(`---`), 빈 줄은 건너뜀
 4. 최대 100자까지 표시, 초과 시 `…`으로 절단
 
@@ -301,9 +317,9 @@ daily/ 하위 모든 YYYY/ 스캔
 Memories View의 두 번째 탭. 같은 날짜의 과거 사진을 연도별로 모아 보여준다.
 
 ```
-┌─ Memories: 2월 28일 ──── [Journal] [Photos] ─┐
-│                                                │
-│ ── 2026 ──────────────────────────────         │
+┌─ Memories: 2월 28일 ── [Journal] [Photos] [Notes] ─┐
+│                                                      │
+│ ── 2026 ──────────────────────────────               │
 │ ┌─────┐ ┌─────┐ ┌─────┐                       │
 │ │     │ │     │ │     │                       │
 │ └─────┘ └─────┘ └─────┘                       │
@@ -322,6 +338,34 @@ Memories View의 두 번째 탭. 같은 날짜의 과거 사진을 연도별로 
 ```
 
 사진 추출: 해당 날짜 일기의 마크다운에서 `![caption](path)` 이미지 참조를 파싱한다.
+
+### 4.8 Notes 탭
+
+Memories View의 세 번째 탭. `notes/` 폴더의 독립 노트를 탐색한다.
+
+```
+┌─ Memories: 2월 28일 ── [Journal] [Photos] [Notes] ─┐
+│                                                      │
+│ ── 최근 수정 ─────────────────────────────           │
+│ 📝 my-project-idea.md          2시간 전              │
+│ 📝 reading-list.md             어제                  │
+│ 📝 recipes/pasta-recipe.md     3일 전                │
+│                                                      │
+│ ── 태그 클라우드 ─────────────────────────           │
+│ #프로젝트(5) #독서(3) #아이디어(8) #레시피(2)        │
+│ #여행(4) #운동(2)                                    │
+│                                                      │
+│ ── 폴더 ──────────────────────────────────           │
+│ 📁 recipes/ (3)                                      │
+│                                                      │
+└──────────────────────────────────────────────────────┘
+```
+
+- **최근 수정**: `notes/` 내 파일을 수정 시간 역순으로 표시 (최대 20개)
+- **태그 클라우드**: `notes/` 파일들의 frontmatter `tags` 필드를 집계하여 빈도순 표시
+- **폴더**: 사용자가 생성한 서브폴더 목록 (파일 개수 포함)
+- 노트 클릭 시 에디터에서 열기
+- 태그 클릭 시 해당 태그로 전체 저널 검색 (§12)
 
 ---
 
@@ -719,6 +763,7 @@ GitHub 스타일 격자:
 
 - `daily/` 폴더의 파일 존재 여부로 판단
 - 빈 파일(frontmatter만 있는 경우)은 streak에 포함하지 않음 (최소 10자 이상 본문)
+- **캡처만 작성한 날도 streak에 포함** — Captures 섹션에 1개 이상의 캡처 아이템이 있으면 해당 날짜를 활동일로 인정
 - 연속은 자연일(calendar day) 기준
 - 타임존: 시스템 로컬 타임존
 
@@ -992,6 +1037,12 @@ Baram의 LLM 스트리밍(§6.3)을 저널에 특화한다. 기존 `llmComplete`
 
 Global Search(§5.11)에 저널 모드를 추가한다. 저널 워크스페이스에서 `Cmd+Shift+F`를 누르면 자동으로 저널 검색 모드로 진입.
 
+**검색 범위**: `daily/` + `notes/` + `weekly/` + `monthly/` + `yearly/` 전체를 대상으로 검색한다. 태그 클릭 시에도 동일한 전체 범위를 검색하며, 결과를 소스 타입별로 그룹핑한다:
+
+1. **Standalone Notes** (notes/ 폴더) — 우선 표시
+2. **Daily Entries** (daily/ 폴더)
+3. **Periodic Notes** (weekly/, monthly/, yearly/ 폴더)
+
 ### 12.2 저널 전용 필터
 
 ```
@@ -1033,9 +1084,205 @@ Rust 측에 `search_journal` 커맨드를 추가하거나, 기존 `search_files`
 
 ---
 
-## 13. 데이터 모델
+## 13. Daily Capture (§56l)
 
-### 13.1 `.journal.json` 스키마
+### 13.1 개요
+
+데일리 노트는 **Diary + Captures** 2개 섹션으로 구성된다.
+
+- **Diary**: 자유 형식 일기 본문 (기존과 동일)
+- **Captures**: 하루 동안 빠르게 기록한 아이디어, 링크, 인용, 메모의 시간순 목록
+
+```markdown
+---
+date: 2026-02-28
+tags: [journal]
+mood: warm
+energy: 4
+---
+
+# 2026-02-28 Friday
+
+## Diary
+
+오늘은 봄이 시작되는 느낌의 하루였다...
+
+## Captures
+
+- ✦ **새 사이드 프로젝트 아이디어**: CLI 기반 저널 도구 #아이디어
+- ↗ [Tiptap 2.0 릴리즈 노트](https://tiptap.dev/blog) — 에디터 업그레이드 참고
+- ❝ "The best way to predict the future is to invent it." — Alan Kay
+- ☰ 내일 회의 전에 디자인 문서 검토 필요
+```
+
+### 13.2 캡처 타입 4종
+
+| 타입 | 아이콘 | 접두사 | 슬래시 커맨드 | 용도 |
+|------|--------|--------|-------------|------|
+| **Idea** | ✦ | `✦` | `/idea` | 아이디어, 영감, 떠오른 생각 |
+| **Link** | ↗ | `↗` | `/link` | URL 북마크 + 간단 메모 |
+| **Quote** | ❝ | `❝` | `/quote` | 인용구, 명언, 발췌 |
+| **Note** | ☰ | `☰` | `/note` | 간단 메모, TODO, 리마인더 |
+
+**SVG 아이콘 스펙**:
+- 크기: 16×16px (인라인), 20×20px (다이얼로그)
+- 스트로크: 1.5px, `currentColor`
+- 스타일: Lucide 아이콘 톤과 일관
+
+### 13.3 캡처 입력 방식
+
+#### 슬래시 커맨드
+
+에디터 내에서 `/idea`, `/link`, `/quote`, `/note` 입력 시 해당 타입의 캡처 아이템을 현재 커서 위치에 삽입한다.
+
+- Captures 섹션이 없으면 자동 생성 (`## Captures` 헤딩 + 리스트)
+- 커서가 Diary 영역에 있으면 Captures 섹션 끝에 추가
+- 커서가 Captures 영역에 있으면 현재 위치에 삽입
+
+#### Quick Capture 다이얼로그 (§13.10)
+
+`Cmd+Shift+N`으로 에디터 밖에서도 빠르게 캡처할 수 있는 모달 다이얼로그.
+
+### 13.4 캡처 마크다운 구조
+
+각 캡처 아이템은 불릿 리스트 아이템으로 저장된다:
+
+```markdown
+## Captures
+
+- ✦ **제목**: 본문 내용 #태그1 #태그2
+- ↗ [링크 제목](URL) — 부가 설명
+- ❝ "인용 텍스트" — 출처
+- ☰ 메모 내용
+```
+
+**frontmatter 확장** (캡처 메타데이터):
+
+```yaml
+---
+date: 2026-02-28
+captures:
+  - type: idea
+    time: "14:30"
+    text: "CLI 기반 저널 도구"
+    tags: [아이디어]
+  - type: link
+    time: "15:10"
+    url: "https://tiptap.dev/blog"
+    text: "Tiptap 2.0 릴리즈 노트"
+---
+```
+
+- `captures` 배열은 선택적 — frontmatter 없이 마크다운 본문만으로도 동작
+- frontmatter가 있으면 검색/필터링 성능 향상에 활용
+
+### 13.5 승격 워크플로우
+
+캡처 아이템을 독립 노트로 승격(promote)하는 워크플로우:
+
+**트리거**: 캡처 아이템에 커서를 놓고 `Cmd+Shift+E` 또는 컨텍스트 메뉴 "Promote to Note"
+
+**동작**:
+
+1. `notes/` 폴더에 새 마크다운 파일 생성
+   - 파일명: 캡처 제목의 kebab-case 변환 (예: `cli-based-journal-tool.md`)
+   - 이미 존재하면 `-2`, `-3` 등 접미사 추가
+2. 생성된 노트에 캡처 내용을 초기 본문으로 채움
+3. 원래 캡처 아이템에 위키링크 추가: `✦ **CLI 기반 저널 도구**: [[cli-based-journal-tool]] #아이디어`
+4. 생성된 노트를 새 탭에서 열기
+
+```
+[캡처 아이템]  ──Cmd+Shift+E──▶  [notes/cli-based-journal-tool.md]
+   원본에 [[link]] 자동 추가         캡처 내용이 초기 본문
+```
+
+### 13.6 Notes 폴더 관리
+
+`notes/` 폴더는 **플랫 구조**를 기본으로 하되, 사용자가 자유롭게 서브폴더를 생성할 수 있다.
+
+**서브폴더 생성 시나리오 5종**:
+
+| 시나리오 | 동작 |
+|---------|------|
+| FileTree 우클릭 "새 폴더" | `notes/` 하위에 서브폴더 생성 |
+| 승격 시 경로 지정 | `Cmd+Shift+E` 다이얼로그에서 `recipes/pasta-recipe` 입력 → `notes/recipes/` 자동 생성 |
+| 위키링크 경로 | `[[recipes/pasta-recipe]]` → `notes/recipes/pasta-recipe.md` 자동 생성 |
+| Quick Capture 다이얼로그 | 파일명에 `folder/name` 패턴 입력 시 자동 생성 |
+| 드래그&드롭 | FileTree에서 노트를 서브폴더로 드래그하여 이동 |
+
+### 13.7 Notes 네비게이션
+
+| 진입점 | 동작 |
+|--------|------|
+| **사이드바 FileTree** | `notes/` 폴더가 daily, weekly 등과 함께 트리에 표시 |
+| **Quick Switcher** (`Cmd+K`) | `notes/` 파일도 검색 결과에 포함, `n:` 접두사로 노트만 필터링 |
+| **Memories Notes 탭** | 최근 수정 노트 목록 + 태그 클라우드 (§4.8) |
+| **백링크 패널** | 노트에서 일기를, 일기에서 노트를 양방향 참조 |
+
+### 13.8 위키링크 자동 생성
+
+기존 위키링크 시스템(§28)을 확장하여 `notes/` 폴더와 연동한다:
+
+| 입력 | 해석 | 파일 경로 |
+|------|------|----------|
+| `[[name]]` | notes/ 내 파일 검색 → 없으면 생성 제안 | `notes/name.md` |
+| `[[folder/name]]` | notes/folder/ 자동 생성 + 파일 생성 | `notes/folder/name.md` |
+| `[[daily/2026-02-28]]` | daily 노트 참조 (기존 동작) | `daily/2026/02/2026-02-28.md` |
+
+- 위키링크 자동완성에서 `notes/` 파일 목록을 제안
+- 존재하지 않는 위키링크 클릭 시 "노트 생성하시겠습니까?" 다이얼로그
+
+### 13.9 태그 시스템
+
+캡처와 노트에 사용된 `#태그`를 전체 저널에서 검색하고 그룹핑한다.
+
+**태그 입력**:
+- 인라인 `#태그명` — 마크다운 본문에 직접 작성
+- frontmatter `tags: [태그1, 태그2]` — 구조화된 태그
+- 입력 시 `#` 이후 기존 태그 자동완성 제안
+
+**태그 클릭 동작**:
+1. 전체 저널 범위 검색 (daily + notes + weekly + monthly + yearly)
+2. 결과를 소스 타입별 그룹핑:
+   - **Standalone Notes** (notes/) — 우선 표시
+   - **Daily Captures** (daily/ 내 Captures 섹션)
+   - **Daily Diary** (daily/ 내 Diary 섹션)
+   - **Periodic Notes** (weekly/, monthly/, yearly/)
+
+**태그 통계**: `.journal.json`에 태그별 사용 빈도를 캐싱하여 태그 클라우드 렌더링에 활용.
+
+### 13.10 Quick Capture 다이얼로그
+
+`Cmd+Shift+N`으로 호출하는 경량 캡처 입력 모달:
+
+```
+┌─ Quick Capture ─────────────────────────────────────┐
+│                                                      │
+│  [✦ Idea] [↗ Link] [❝ Quote] [☰ Note]              │
+│                                                      │
+│  ┌──────────────────────────────────────────────┐   │
+│  │ 입력 영역 (자동 포커스)                       │   │
+│  │                                              │   │
+│  └──────────────────────────────────────────────┘   │
+│                                                      │
+│  태그: #아이디어 #프로젝트                   [저장]   │
+│                                                      │
+└──────────────────────────────────────────────────────┘
+```
+
+- 상단 타입 선택 탭 (기본: 마지막 사용 타입)
+- 입력 영역에 마크다운 지원 (볼드, 링크 등)
+- 태그 입력 시 자동완성
+- `Enter`로 즉시 저장, `Shift+Enter`로 줄바꿈
+- 저장 위치: 오늘 날짜의 데일리 노트 `## Captures` 섹션 끝에 추가
+  - 오늘 데일리 노트가 없으면 자동 생성 (템플릿 적용)
+- `Esc`로 닫기
+
+---
+
+## 14. 데이터 모델
+
+### 14.1 `.journal.json` 스키마
 
 ```json
 {
@@ -1054,7 +1301,23 @@ Rust 측에 `search_journal` 커맨드를 추가하거나, 기존 `search_files`
       "energy": 4,
       "hasPhotos": true,
       "photoCount": 3,
-      "tags": ["일상", "카페"]
+      "tags": ["일상", "카페"],
+      "captureCount": 3,
+      "captureTypes": ["idea", "link", "quote"]
+    }
+  },
+  "tagIndex": {
+    "아이디어": 8,
+    "프로젝트": 5,
+    "독서": 3,
+    "레시피": 2
+  },
+  "notesMetadata": {
+    "my-project-idea.md": {
+      "title": "CLI 기반 저널 도구",
+      "tags": ["아이디어", "프로젝트"],
+      "lastModified": "2026-02-28T14:30:00Z",
+      "promotedFrom": "2026-02-28"
     }
   },
   "promptHistory": {
@@ -1069,7 +1332,7 @@ Rust 측에 `search_journal` 커맨드를 추가하거나, 기존 `search_files`
   },
   "preferences": {
     "memoriesMode": "oneline",
-    "memoriesTab": "journal",
+    "memoriesTab": "journal",       // "journal" | "photos" | "notes"
     "promptCategory": "gratitude",
     "promptMode": "random",
     "weekStartDay": "monday",
@@ -1078,7 +1341,7 @@ Rust 측에 `search_journal` 커맨드를 추가하거나, 기존 `search_files`
 }
 ```
 
-### 13.2 frontmatter 확장
+### 14.2 frontmatter 확장
 
 기존 저널 frontmatter에 신규 필드 추가:
 
@@ -1100,7 +1363,7 @@ oneline: "봄이 시작되는 느낌의 하루"
 | `energy` | number | ❌ | 1~5 |
 | `oneline` | string | ❌ | One Line A Day 요약 (Memories View에서 사용) |
 
-### 13.3 설정 확장 (settings-store.ts)
+### 14.3 설정 확장 (settings-store.ts)
 
 ```typescript
 interface SettingsState {
@@ -1144,7 +1407,7 @@ interface SettingsState {
 
 ---
 
-## 14. 단축키
+## 15. 단축키
 
 | 단축키 | 동작 | 컨텍스트 |
 |--------|------|---------|
@@ -1154,31 +1417,43 @@ interface SettingsState {
 | `Alt+←` | 전날 일기로 이동 | 저널 워크스페이스 |
 | `Alt+→` | 다음날 일기로 이동 | 저널 워크스페이스 |
 | `Cmd+Shift+P` | Photo Gallery 열기 | 저널 워크스페이스 |
+| `Cmd+J` | Diary 섹션으로 점프 | 저널 에디터 |
+| `Cmd+Shift+C` | Captures 섹션으로 점프 | 저널 에디터 |
+| `Cmd+Shift+E` | 캡처 아이템을 노트로 승격 | 저널 에디터 (캡처 아이템 위) |
+| `Cmd+Shift+N` | Quick Capture 다이얼로그 열기 | 저널 워크스페이스 |
+| `#` | 태그 자동완성 트리거 | 저널 에디터 |
 
 ---
 
-## 15. 구현 우선순위
+## 16. 구현 우선순위
 
 ### Phase A: 기반 (§56a, §56b)
 
 | 순서 | 항목 | 예상 복잡도 |
 |------|------|-----------|
 | A1 | 폴더 구조 재설계 + 마이그레이션 | 중 |
+| A1.5 | `notes/` 폴더 생성 + FileTree 표시 | 소 |
 | A2 | FileTree 스코핑 (enterJournalScope/exitJournalScope) | 중 |
 | A3 | 워크스페이스 레이아웃 전환 (우측 패널 Memories 모드) | 중 |
 
-### Phase B: 핵심 기능 (§56c, §56d, §56e)
+### Phase B: 핵심 기능 (§56c, §56d, §56e, §56l)
 
 | 순서 | 항목 | 예상 복잡도 |
 |------|------|-----------|
 | B1 | Memories View — One Line / Full 모드 | 상 |
 | B2 | Memories View — Photos 탭 | 중 |
+| B2.5 | Memories View — Notes 탭 | 중 |
 | B3 | Photo Journal — 드래그&드롭 + assets 관리 | 중 |
 | B4 | Photo Journal — 캡션 편집 (ImageView 확장) | 중 |
 | B5 | Photo Gallery 별도 뷰 (Month/Year) | 상 |
 | B6 | 무드 트래커 — 입력 UI + frontmatter 저장 | 중 |
 | B7 | 무드 트래커 — 캘린더 색상 점 통합 | 소 |
 | B8 | Year in Pixels 시각화 | 중 |
+| B9 | Daily Capture — 캡처 타입 4종 + 슬래시 커맨드 | 중 |
+| B10 | Daily Capture — Quick Capture 다이얼로그 | 중 |
+| B11 | Daily Capture — 승격 워크플로우 (→ notes/) | 중 |
+| B12 | Notes 폴더 관리 + 위키링크 연동 | 중 |
+| B13 | 태그 시스템 + 태그 자동완성 | 중 |
 
 ### Phase C: 확장 기능 (§56f, §56g, §56h)
 
@@ -1204,9 +1479,9 @@ interface SettingsState {
 
 ---
 
-## 16. 마이그레이션
+## 17. 마이그레이션
 
-### 16.1 기존 사용자 호환
+### 17.1 기존 사용자 호환
 
 | 시나리오 | 동작 |
 |---------|------|
@@ -1215,7 +1490,7 @@ interface SettingsState {
 | 템플릿 사용 중 | `templates/` 폴더로 복사 권유 (강제 아님) |
 | frontmatter에 mood 없음 | 무드 바가 미선택 상태로 표시 (기존 일기 깨지지 않음) |
 
-### 16.2 설정 마이그레이션
+### 17.2 설정 마이그레이션
 
 기존 `journalDirectory` 설정을 그대로 사용. 신규 설정은 모두 기본값(OFF)으로 시작하여 기존 동작에 영향 없음.
 
