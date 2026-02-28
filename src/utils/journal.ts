@@ -220,6 +220,44 @@ export function buildMigrationPlan(
   return plan;
 }
 
+// --- §56a Periodic Note Paths (weekly / monthly / yearly) ---
+
+/** Get ISO 8601 week number (Monday-based) */
+export function getISOWeekNumber(date: Date): number {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+}
+
+/** Get the Monday of the ISO week containing the given date */
+export function getWeekStartDate(date: Date): Date {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday
+  return new Date(d.getFullYear(), d.getMonth(), diff);
+}
+
+/** Build weekly journal path: weekly/YYYY/YYYY-Www.md */
+export function getWeeklyJournalPath(journalDir: string, date: Date): string {
+  const y = String(date.getFullYear());
+  const w = String(getISOWeekNumber(date)).padStart(2, "0");
+  return `${journalDir}/weekly/${y}/${y}-W${w}.md`;
+}
+
+/** Build monthly journal path: monthly/YYYY/YYYY-MM.md */
+export function getMonthlyJournalPath(journalDir: string, date: Date): string {
+  const y = String(date.getFullYear());
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  return `${journalDir}/monthly/${y}/${y}-${m}.md`;
+}
+
+/** Build yearly journal path: yearly/YYYY.md */
+export function getYearlyJournalPath(journalDir: string, date: Date): string {
+  const y = String(date.getFullYear());
+  return `${journalDir}/yearly/${y}.md`;
+}
+
 // --- §56a Journal Hidden Entries ---
 
 /** Entries hidden from FileTree when journal-scoped */

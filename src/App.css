@@ -2578,6 +2578,118 @@ body {
 }
 
 /* ============================================
+   §56e Year in Pixels + 30-day Trend
+   ============================================ */
+
+.year-in-pixels {
+  padding: 4px 8px;
+  border-top: 1px solid var(--color-border);
+}
+
+.year-in-pixels-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 4px 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.year-in-pixels-toggle:hover {
+  color: var(--color-text-primary);
+}
+
+.year-in-pixels-count {
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+.year-in-pixels-arrow {
+  font-size: 10px;
+}
+
+.year-in-pixels-grid {
+  padding: 4px 0 8px;
+}
+
+.year-in-pixels-labels {
+  display: flex;
+  gap: 0;
+  margin-bottom: 2px;
+}
+
+.year-in-pixels-month-label {
+  flex: 1;
+  text-align: center;
+  font-size: 9px;
+  color: var(--color-text-tertiary);
+}
+
+.year-in-pixels-dots {
+  display: flex;
+  gap: 1px;
+}
+
+.year-in-pixels-month {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+}
+
+.year-in-pixels-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 1px;
+  background: var(--color-bg-tertiary);
+}
+
+.year-in-pixels-dot-filled {
+  opacity: 0.9;
+}
+
+.year-in-pixels-legend {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 6px;
+  font-size: 9px;
+  color: var(--color-text-tertiary);
+}
+
+.year-in-pixels-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.year-in-pixels-legend-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+}
+
+.mood-trend-30 {
+  padding: 4px 8px;
+  border-top: 1px solid var(--color-border);
+}
+
+.mood-trend-30-header {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  margin-bottom: 4px;
+}
+
+.mood-trend-30-chart {
+  width: 100%;
+  height: auto;
+}
+
+/* ============================================
    §56e Mood Bar
    ============================================ */
 

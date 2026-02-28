@@ -4,6 +4,8 @@ import cytoscape from "cytoscape";
 import type { Core, EventObject, StylesheetStyle } from "cytoscape";
 import fcose from "cytoscape-fcose";
 import { useFileStore } from "../../stores/file-store";
+import { useSettingsStore } from "../../stores/settings-store";
+import { resolveJournalDir } from "../../utils/journal";
 import { useEditorStore, isGraphTab } from "../../stores/editor-store";
 import { useLinkStore } from "../../stores/link-store";
 import { useGraphSettingsStore } from "../../stores/graph-settings-store";
@@ -172,6 +174,8 @@ export function GraphView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
   const rootPath = useFileStore((s) => s.rootPath);
+  const isJournalScoped = useFileStore((s) => s.isJournalScoped);
+  const journalDirectory = useSettingsStore((s) => s.journalDirectory);
   // Detect if rendered inside editor tab (vs sidebar)
   const isInEditorTab = useEditorStore((s) => {
     const tab = s.tabs.find((t) => t.id === s.activeTabId);
@@ -456,30 +460,39 @@ export function GraphView() {
     });
   }, [activeFilePath, nodeCount]);
 
-  // Effect 7: Filter logic (search, orphans, existingFilesOnly)
+  // Effect 7: Filter logic (search, orphans, existingFilesOnly, journal scoping)
+  const journalDirResolved = isJournalScoped && rootPath
+    ? resolveJournalDir(rootPath, journalDirectory) : null;
+
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy || cy.nodes().length === 0) return;
 
     cy.nodes().forEach((node) => {
       const label = node.data("label") as string;
+      const nodeId = node.data("id") as string;
       const isGhost = node.data("isGhost") as boolean | undefined;
       const isOrphan = node.degree() === 0;
 
       let visible = true;
 
+      // §56b Journal scoping: hide nodes outside journal directory
+      if (journalDirResolved && nodeId && !nodeId.startsWith(journalDirResolved)) {
+        visible = false;
+      }
+
       // Search filter
-      if (!matchesFilter(label, searchQuery)) {
+      if (visible && !matchesFilter(label, searchQuery)) {
         visible = false;
       }
 
       // Orphan filter
-      if (!showOrphans && isOrphan) {
+      if (visible && !showOrphans && isOrphan) {
         visible = false;
       }
 
       // Existing files only filter
-      if (existingFilesOnly && isGhost) {
+      if (visible && existingFilesOnly && isGhost) {
         visible = false;
       }
 
@@ -500,7 +513,7 @@ export function GraphView() {
         edge.style("display", "element");
       }
     });
-  }, [searchQuery, showOrphans, existingFilesOnly, nodeCount]);
+  }, [searchQuery, showOrphans, existingFilesOnly, nodeCount, journalDirResolved]);
 
   // Effect: Update styles when display settings change
   useEffect(() => {

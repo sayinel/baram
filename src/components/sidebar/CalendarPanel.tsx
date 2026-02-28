@@ -16,6 +16,8 @@ import type { MoodValue } from "../../utils/journal-mood";
 import { readFile, writeFile, createDir, listDir } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
+import { YearInPixels } from "../journal/YearInPixels";
+import { MoodTrend30 } from "../journal/MoodTrend30";
 
 const DAY_NAMES = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const MONTH_NAMES = [
@@ -257,6 +259,8 @@ export function CalendarPanel() {
           );
         })}
       </div>
+      <MoodTrend30 moodMap={moodMap} />
+      <YearInPixels journalDir={resolvedDir} year={viewYear} useHierarchy={journalUseHierarchy} />
     </div>
   );
 }

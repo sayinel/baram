@@ -10,6 +10,11 @@ import {
   buildMigrationPlan,
   JOURNAL_HIDDEN_ENTRIES,
   isJournalHiddenEntry,
+  getISOWeekNumber,
+  getWeekStartDate,
+  getWeeklyJournalPath,
+  getMonthlyJournalPath,
+  getYearlyJournalPath,
 } from "../journal";
 
 describe("§56a Hierarchical journal paths", () => {
@@ -125,6 +130,76 @@ describe("§56a Journal hidden entries filter", () => {
       expect(isJournalHiddenEntry("notes")).toBe(false);
       expect(isJournalHiddenEntry("weekly")).toBe(false);
       expect(isJournalHiddenEntry("templates")).toBe(false);
+    });
+  });
+});
+
+describe("§56a Periodic note paths", () => {
+  describe("getISOWeekNumber", () => {
+    it("returns week 1 for 2026-01-01 (Thursday)", () => {
+      expect(getISOWeekNumber(new Date(2026, 0, 1))).toBe(1);
+    });
+
+    it("returns week 9 for 2026-02-28 (Saturday)", () => {
+      expect(getISOWeekNumber(new Date(2026, 1, 28))).toBe(9);
+    });
+
+    it("returns week 53 for 2020-12-31 (Thursday)", () => {
+      expect(getISOWeekNumber(new Date(2020, 11, 31))).toBe(53);
+    });
+
+    it("returns week 1 for 2021-01-04 (Monday)", () => {
+      expect(getISOWeekNumber(new Date(2021, 0, 4))).toBe(1);
+    });
+  });
+
+  describe("getWeekStartDate", () => {
+    it("returns Monday for a Wednesday", () => {
+      // 2026-02-25 is Wednesday
+      const monday = getWeekStartDate(new Date(2026, 1, 25));
+      expect(monday.getDate()).toBe(23); // Monday Feb 23
+    });
+
+    it("returns same day for a Monday", () => {
+      const monday = getWeekStartDate(new Date(2026, 1, 23));
+      expect(monday.getDate()).toBe(23);
+    });
+
+    it("returns previous Monday for a Sunday", () => {
+      // 2026-03-01 is Sunday
+      const monday = getWeekStartDate(new Date(2026, 2, 1));
+      expect(monday.getDate()).toBe(23); // Feb 23
+    });
+  });
+
+  describe("getWeeklyJournalPath", () => {
+    it("builds correct weekly path", () => {
+      const date = new Date(2026, 1, 28); // Week 9
+      expect(getWeeklyJournalPath("/j", date)).toBe("/j/weekly/2026/2026-W09.md");
+    });
+
+    it("handles week 1", () => {
+      const date = new Date(2026, 0, 1);
+      expect(getWeeklyJournalPath("/j", date)).toBe("/j/weekly/2026/2026-W01.md");
+    });
+  });
+
+  describe("getMonthlyJournalPath", () => {
+    it("builds correct monthly path", () => {
+      const date = new Date(2026, 1, 28);
+      expect(getMonthlyJournalPath("/j", date)).toBe("/j/monthly/2026/2026-02.md");
+    });
+
+    it("pads single-digit month", () => {
+      const date = new Date(2026, 0, 15);
+      expect(getMonthlyJournalPath("/j", date)).toBe("/j/monthly/2026/2026-01.md");
+    });
+  });
+
+  describe("getYearlyJournalPath", () => {
+    it("builds correct yearly path", () => {
+      const date = new Date(2026, 5, 1);
+      expect(getYearlyJournalPath("/j", date)).toBe("/j/yearly/2026.md");
     });
   });
 });
