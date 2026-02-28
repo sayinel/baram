@@ -2,9 +2,15 @@
 
 ## 에이전트 정책
 
-- 독립적인 하위 작업이 2개 이상이면 반드시 병렬 서브에이전트(Task tool)를 사용할 것
-- 코드베이스 탐색/리서치는 서브에이전트에 위임하여 메인 컨텍스트를 보존할 것
-- 구현 작업 시 superpowers:dispatching-parallel-agents 스킬을 활용할 것
+- 멀티 에이전트 오케스트레이션은 **oh-my-claudecode(OMC)**를 활용할 것
+  - 대규모 구현: `/team N:executor "task"` 또는 `/ultrawork`로 병렬 실행
+  - 지속적 완수: `/ralph`로 완료될 때까지 반복 루프
+  - 계획 수립: `/plan` 또는 `/ralplan`으로 합의 기반 설계
+  - 코드 리뷰: `/code-review`, `/security-review`로 전문 에이전트 위임
+- 독립적인 하위 작업이 2개 이상이면 OMC의 `executor` / `deep-executor` 에이전트를 병렬 디스패치할 것
+- 코드베이스 탐색/리서치는 `explore` (haiku) 에이전트에 위임하여 메인 컨텍스트를 보존할 것
+- 소스 코드 편집은 `executor` (sonnet) 에이전트에 위임, 복잡한 작업은 `deep-executor` (opus) 사용
+- 검증은 `verifier` 에이전트로 증거 기반 확인 후 완료 선언할 것
 
 ## 프로젝트 개요
 
