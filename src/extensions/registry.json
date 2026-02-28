@@ -579,6 +579,16 @@
       "status": "implemented",
       "shortcuts": { "@": "mention autocomplete" },
       "_note": "Tiptap Suggestion plugin for @date (Today/Yesterday/Tomorrow/YYYY-MM-DD) and @page mentions. Email-address false-positive guard."
+    },
+    {
+      "name": "aiDiff",
+      "file": "plugins/ai-diff.ts",
+      "spec": "§6.2",
+      "phase": 2,
+      "milestone": "M8",
+      "status": "implemented",
+      "shortcuts": {},
+      "_note": "ProseMirror Plugin for AI inline diff preview — char-level insert/delete decorations via fast-diff. Accept/reject via Cmd+Enter/Escape."
     }
   ]
 }

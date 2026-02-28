@@ -163,14 +163,6 @@ export type JsonValue =
   | JsonValue[]
   | { [key: string]: JsonValue };
 
-// §3.2 Snapshot types
-export interface SnapshotInfo {
-  id: string;
-  path: string;
-  label: string;
-  createdAt: number;
-}
-
 // §33 Rename result
 export interface RenameResult {
   updatedFiles: string[];

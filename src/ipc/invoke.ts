@@ -15,7 +15,6 @@ import type {
   ExportOptions,
   PdfOptions,
   PandocInfo,
-  SnapshotInfo,
   RenameResult,
   ModelInfo,
 } from "./types";
@@ -163,11 +162,12 @@ export async function llmCancel(requestId: string): Promise<boolean> {
 
 // §3.2 Export commands
 export async function exportDocument(
-  path: string,
+  htmlContent: string,
+  outputPath: string,
   format: ExportFormat,
   options?: ExportOptions,
-): Promise<string> {
-  return invoke<string>("export_document", { path, format, options });
+): Promise<void> {
+  return invoke<void>("export_document", { htmlContent, outputPath, format, options });
 }
 
 // §5.10 PDF export via headless Chrome
@@ -251,15 +251,6 @@ export async function gitDiscard(path: string, files: string[]): Promise<void> {
 
 export async function gitCreateBranch(path: string, branchName: string): Promise<void> {
   return invoke<void>("git_create_branch", { path, branchName });
-}
-
-// §3.2 Snapshot commands — TODO: Rust handler not yet implemented (M9)
-export async function createSnapshot(
-  _path: string,
-  _label?: string,
-): Promise<SnapshotInfo> {
-  console.warn("[IPC] create_snapshot not yet implemented");
-  return { id: "", path: "", label: "", createdAt: 0 };
 }
 
 // macOS file association: get pending file paths from cold start

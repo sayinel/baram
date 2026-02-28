@@ -103,7 +103,7 @@
     },
     {
       "name": "search_files",
-      "input": { "query": "string", "options": "SearchOptions?" },
+      "input": { "root_path": "string", "query": "string", "options": "SearchOptions?" },
       "output": "SearchResult[]",
       "module": "search",
       "spec": "§3.2",

@@ -51,6 +51,7 @@ import { useLinkStore } from "./stores/link-store";
 import { migrateFromLocalStorage } from "./stores/tauri-storage";
 import { useBookmarkStore } from "./stores/bookmark-store";
 import { useWorkspaceStore } from "./stores/workspace-store";
+import { useAIStore } from "./stores/ai-store";
 import { logAppReady } from "./utils/perf";
 import { resolveWikilinkTarget } from "./utils/wikilink-nav";
 import { findBlockPosById } from "./utils/block-nav";
@@ -1312,6 +1313,14 @@ function App() {
         const ui = useUIStore.getState();
         if (!ui.sidebarOpen) ui.toggleSidebar();
         setSidebarPanel("search");
+        return;
+      }
+
+      // §6.2 Cmd+Shift+G — toggle ghost text
+      if (mod && e.shiftKey && e.code === "KeyG") {
+        e.preventDefault();
+        const ai = useAIStore.getState();
+        ai.setGhostTextEnabled(!ai.ghostTextEnabled);
         return;
       }
 
