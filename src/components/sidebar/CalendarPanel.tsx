@@ -20,7 +20,7 @@ import {
   generateDefaultMonthly,
   generateDefaultYearly,
 } from "../../utils/journal-periodic";
-import { parseMoodFromFrontmatter } from "../../utils/journal-mood";
+import { parseMoodFromFrontmatter, getMoodColors } from "../../utils/journal-mood";
 import type { MoodValue } from "../../utils/journal-mood";
 import { readFile, writeFile, createDir, listDir } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor-store";
@@ -48,6 +48,7 @@ export function CalendarPanel() {
     journalWeeklyEnabled,
     journalMonthlyEnabled,
     journalYearlyEnabled,
+    theme,
   } = useSettingsStore();
 
   const resolvedDir = useMemo(
@@ -55,10 +56,12 @@ export function CalendarPanel() {
     [journalDirectory],
   );
 
-  // §56e Mood colors for calendar dots
-  const MOOD_COLORS: Record<MoodValue, string> = {
-    deep: "#64748B", calm: "#94A3B8", neutral: "#CBD5E1", warm: "#F59E0B", bright: "#FBBF24",
-  };
+  // §56e Mood colors — theme-aware palette
+  const effectiveBase = useMemo<"light" | "dark">(() => {
+    if (theme === "light" || theme === "dark") return theme;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }, [theme]);
+  const MOOD_COLORS = useMemo(() => getMoodColors(effectiveBase), [effectiveBase]);
 
   // Fetch journal files via IPC — supports both flat and hierarchical layouts
   const [dirFiles, setDirFiles] = useState<string[]>([]);

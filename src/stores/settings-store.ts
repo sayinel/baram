@@ -11,6 +11,8 @@ type OnLaunch = "newFile" | "restoreLastFolder" | "restoreLastFile";
 type WikilinkFormat = "wikilink" | "markdown";
 type CodeBlockStyle = "default" | "minimal" | "contrast" | "paper";
 type JournalStartupBehavior = "openJournal" | "nothing";
+type MemoriesTab = "journal" | "photos" | "notes";
+type MemoriesMode = "oneline" | "full";
 
 interface SettingsState {
   // General
@@ -58,6 +60,10 @@ interface SettingsState {
   journalMonthlyEnabled: boolean;  // §56f: monthly notes
   journalYearlyEnabled: boolean;  // §56f: yearly notes
   journalWeekStartDay: "monday" | "sunday";  // §56f: week start day
+
+  // §56b Memories Panel UI state
+  memoriesTab: MemoriesTab;
+  memoriesMode: MemoriesMode;
 
   // §55 Pandoc Extended Export
   pandocPath: string;
@@ -111,6 +117,10 @@ interface SettingsState {
   setJournalStartupBehavior: (behavior: JournalStartupBehavior) => void;
   setJournalUseHierarchy: (enabled: boolean) => void;
 
+  // §56b Memories Panel UI state setters
+  setMemoriesTab: (tab: MemoriesTab) => void;
+  setMemoriesMode: (mode: MemoriesMode) => void;
+
   // Legacy setters (delegate to setExtensionSetting — will be removed after SettingsModal migration)
   setDiagrams: (enabled: boolean) => void;
   setCodeBlockLineNumbers: (enabled: boolean) => void;
@@ -163,6 +173,10 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
   journalMonthlyEnabled: false,
   journalYearlyEnabled: false,
   journalWeekStartDay: "monday" as const,
+
+  // §56b Memories Panel UI state
+  memoriesTab: "journal" as const,
+  memoriesMode: "oneline" as const,
 
   // §55 Pandoc Extended Export
   pandocPath: "pandoc",
@@ -254,6 +268,10 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
   setJournalYearlyEnabled: (journalYearlyEnabled: boolean) => set({ journalYearlyEnabled }),
   setJournalWeekStartDay: (journalWeekStartDay: "monday" | "sunday") => set({ journalWeekStartDay }),
 
+  // §56b Memories Panel UI state setters
+  setMemoriesTab: (memoriesTab) => set({ memoriesTab }),
+  setMemoriesMode: (memoriesMode) => set({ memoriesMode }),
+
   // Legacy setters — delegate to extensionSettings (remove after SettingsModal migration)
   setDiagrams: (diagrams) =>
     set((state) => ({
@@ -309,6 +327,8 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
     journalMonthlyEnabled: state.journalMonthlyEnabled,
     journalYearlyEnabled: state.journalYearlyEnabled,
     journalWeekStartDay: state.journalWeekStartDay,
+    memoriesTab: state.memoriesTab,
+    memoriesMode: state.memoriesMode,
     pandocPath: state.pandocPath,
     wordTemplatePath: state.wordTemplatePath,
     customExports: state.customExports,

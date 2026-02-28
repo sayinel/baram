@@ -1,16 +1,9 @@
 // §56e Year in Pixels — 365-dot grid showing mood per day
 import { useState, useEffect, useMemo } from "react";
-import { parseMoodFromFrontmatter, MOOD_VALUES } from "../../utils/journal-mood";
+import { parseMoodFromFrontmatter, getMoodColors, MOOD_VALUES } from "../../utils/journal-mood";
 import type { MoodValue } from "../../utils/journal-mood";
 import { listDir, readFile } from "../../ipc/invoke";
-
-const MOOD_COLORS: Record<MoodValue, string> = {
-  deep: "#64748B",
-  calm: "#94A3B8",
-  neutral: "#CBD5E1",
-  warm: "#F59E0B",
-  bright: "#FBBF24",
-};
+import { useSettingsStore } from "../../stores/settings-store";
 
 const MONTH_LABELS = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"];
 
@@ -23,6 +16,14 @@ interface Props {
 export function YearInPixels({ journalDir, year, useHierarchy }: Props) {
   const [moodMap, setMoodMap] = useState<Map<string, MoodValue>>(new Map());
   const [collapsed, setCollapsed] = useState(true);
+
+  // §56e Theme-aware mood colors
+  const theme = useSettingsStore((s) => s.theme);
+  const effectiveBase = useMemo<"light" | "dark">(() => {
+    if (theme === "light" || theme === "dark") return theme;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }, [theme]);
+  const MOOD_COLORS = useMemo(() => getMoodColors(effectiveBase), [effectiveBase]);
 
   useEffect(() => {
     let cancelled = false;

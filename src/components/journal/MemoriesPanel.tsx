@@ -20,8 +20,10 @@ interface MemoryEntry {
 
 export function MemoriesPanel() {
   const { rightPanelOpen, rightPanelMode } = useUIStore();
-  const [activeTab, setActiveTab] = useState<MemoriesTab>("journal");
-  const [mode, setMode] = useState<MemoriesMode>("oneline");
+  const activeTab = useSettingsStore((s) => s.memoriesTab);
+  const setActiveTab = useSettingsStore((s) => s.setMemoriesTab);
+  const mode = useSettingsStore((s) => s.memoriesMode);
+  const setMode = useSettingsStore((s) => s.setMemoriesMode);
   const [memories, setMemories] = useState<MemoryEntry[]>([]);
   const [loading, setLoading] = useState(false);
 

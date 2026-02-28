@@ -13,6 +13,7 @@ import { WorkspaceTab } from "./WorkspaceTab";
 import { ThemeEditor } from "./ThemeEditor";
 import { open } from "@tauri-apps/plugin-dialog";
 import { readFile } from "../../ipc/invoke";
+import { MigrationDialog } from "../journal/MigrationDialog";
 import { BUILT_IN_THEMES } from "../../types/theme";
 import type { ThemeColors, ThemeDef } from "../../types/theme";
 import { THEME_COLOR_KEYS } from "../../types/theme";
@@ -76,6 +77,7 @@ export function SettingsModal() {
 // ─── General Tab ────────────────────────────────────────
 
 function GeneralTab() {
+  const [migrationOpen, setMigrationOpen] = useState(false);
   const {
     onLaunch, setOnLaunch,
     autoSave, setAutoSave,
@@ -87,6 +89,7 @@ function GeneralTab() {
     journalFilenameFormat, setJournalFilenameFormat,
     journalTemplatePath, setJournalTemplatePath,
     journalStartupBehavior, setJournalStartupBehavior,
+    journalUseHierarchy, setJournalUseHierarchy,
   } = useSettingsStore();
 
   return (
@@ -216,8 +219,32 @@ function GeneralTab() {
               <option value="nothing">Do nothing</option>
             </select>
           </SettingsRow>
+
+          <SettingsRow label="Hierarchical Folders" description="Organize daily notes into daily/YYYY/MM/ subfolders">
+            <ToggleSwitch
+              checked={journalUseHierarchy}
+              onChange={setJournalUseHierarchy}
+            />
+          </SettingsRow>
+
+          {journalDirectory && (
+            <SettingsRow label="Migrate Existing Files" description="Move flat YYYY-MM-DD.md files into the hierarchical structure">
+              <button
+                className="settings-key-toggle"
+                onClick={() => setMigrationOpen(true)}
+              >
+                Migrate files...
+              </button>
+            </SettingsRow>
+          )}
         </>
       )}
+
+      <MigrationDialog
+        open={migrationOpen}
+        onClose={() => setMigrationOpen(false)}
+        journalDir={journalDirectory}
+      />
     </div>
   );
 }

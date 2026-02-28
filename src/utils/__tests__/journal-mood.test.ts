@@ -6,6 +6,8 @@ import { describe, it, expect } from "vitest";
 import {
   MOOD_VALUES,
   MOOD_LABELS,
+  MOOD_PALETTE,
+  getMoodColors,
   parseMoodFromFrontmatter,
   parseEnergyFromFrontmatter,
   updateFrontmatterMood,
@@ -146,5 +148,36 @@ energy: 3
 # Body`;
     const result = updateFrontmatterEnergy(content, undefined);
     expect(result).not.toContain("energy:");
+  });
+});
+
+describe("§56e getMoodColors", () => {
+  it("light palette has all 5 mood keys", () => {
+    const colors = getMoodColors("light");
+    for (const v of MOOD_VALUES) {
+      expect(colors).toHaveProperty(v);
+      expect(typeof colors[v]).toBe("string");
+    }
+  });
+
+  it("dark palette has all 5 mood keys", () => {
+    const colors = getMoodColors("dark");
+    for (const v of MOOD_VALUES) {
+      expect(colors).toHaveProperty(v);
+      expect(typeof colors[v]).toBe("string");
+    }
+  });
+
+  it("light and dark palettes return different colors", () => {
+    const light = getMoodColors("light");
+    const dark = getMoodColors("dark");
+    // At least one color differs between themes
+    const anyDiffers = MOOD_VALUES.some((v) => light[v] !== dark[v]);
+    expect(anyDiffers).toBe(true);
+  });
+
+  it("MOOD_PALETTE exposes both bases", () => {
+    expect(MOOD_PALETTE).toHaveProperty("light");
+    expect(MOOD_PALETTE).toHaveProperty("dark");
   });
 });

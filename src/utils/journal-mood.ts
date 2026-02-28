@@ -7,6 +7,17 @@ export type EnergyValue = 1 | 2 | 3 | 4 | 5;
 
 export const MOOD_VALUES: MoodValue[] = ["deep", "calm", "neutral", "warm", "bright"];
 
+/** §56e Theme-aware mood color palettes */
+export const MOOD_PALETTE: Record<"light" | "dark", Record<MoodValue, string>> = {
+  light: { deep: "#64748B", calm: "#94A3B8", neutral: "#CBD5E1", warm: "#F59E0B", bright: "#FBBF24" },
+  dark:  { deep: "#475569", calm: "#64748B", neutral: "#94A3B8", warm: "#D97706", bright: "#F59E0B" },
+};
+
+/** Returns mood colors for the given theme base (light or dark). */
+export function getMoodColors(themeBase: "light" | "dark"): Record<MoodValue, string> {
+  return MOOD_PALETTE[themeBase];
+}
+
 export const MOOD_LABELS: Record<MoodValue, string> = {
   deep: "Deep",
   calm: "Calm",

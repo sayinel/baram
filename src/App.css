@@ -3114,6 +3114,170 @@ body {
 }
 
 /* ============================================
+   §56a Journal Migration Dialog
+   ============================================ */
+
+.migration-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.migration-dialog {
+  width: 480px;
+  max-width: 92vw;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow: hidden;
+}
+
+.migration-dialog-header {
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.migration-dialog-header h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.migration-dialog-body {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.migration-dialog-description {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-primary);
+  line-height: 1.5;
+}
+
+.migration-dialog-description code {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  background: var(--color-bg-secondary, rgba(128,128,128,0.1));
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.migration-dialog-message {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.migration-dialog-error {
+  color: var(--color-error, #e85555);
+}
+
+.migration-dialog-success {
+  color: var(--color-success, #4caf50);
+}
+
+.migration-dialog-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.migration-dialog-list-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-family: var(--font-mono, monospace);
+  color: var(--color-text-secondary);
+  padding: 4px 8px;
+  background: var(--color-bg-secondary, rgba(128,128,128,0.05));
+  border-radius: 4px;
+  min-width: 0;
+}
+
+.migration-dialog-from {
+  flex-shrink: 0;
+  color: var(--color-text-primary);
+}
+
+.migration-dialog-arrow {
+  flex-shrink: 0;
+  color: var(--color-text-tertiary, var(--color-text-secondary));
+}
+
+.migration-dialog-to {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.migration-dialog-list-more {
+  font-size: 12px;
+  color: var(--color-text-tertiary, var(--color-text-secondary));
+  padding: 2px 8px;
+  font-style: italic;
+}
+
+.migration-dialog-actions {
+  padding: 12px 20px 16px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  border-top: 1px solid var(--color-border);
+}
+
+.migration-dialog-btn {
+  padding: 6px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.migration-dialog-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.migration-dialog-btn-secondary {
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-primary);
+  color: var(--color-text-secondary);
+}
+
+.migration-dialog-btn-secondary:not(:disabled):hover {
+  background: var(--color-bg-hover, rgba(128,128,128,0.08));
+}
+
+.migration-dialog-btn-primary {
+  border: none;
+  background: var(--color-accent);
+  color: white;
+}
+
+.migration-dialog-btn-primary:not(:disabled):hover {
+  filter: brightness(1.1);
+}
+
+/* ============================================
    §4.5 Command Palette
    ============================================ */
 
