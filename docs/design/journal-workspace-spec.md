@@ -1,0 +1,1224 @@
+# Journal Workspace 설계서
+
+> **상위 참조**: Part 5(§5.14 저널/데일리 노트), Part 4(§4.2 레이아웃), Part 8(§8.2 로드맵)
+> **기존 구현**: §56(저널 기본), §57(멘션 시스템)
+> **신규 섹션**: §56a–§56k
+
+---
+
+## 목차
+
+1. [개요](#1-개요)
+2. [폴더 구조 (§56a)](#2-폴더-구조-56a)
+3. [Journal Workspace 모드 (§56b)](#3-journal-workspace-모드-56b)
+4. [Memories View (§56c)](#4-memories-view-56c)
+5. [Photo Journal (§56d)](#5-photo-journal-56d)
+6. [무드 트래커 (§56e)](#6-무드-트래커-56e)
+7. [Periodic Notes (§56f)](#7-periodic-notes-56f)
+8. [Writing Streaks & 통계 (§56g)](#8-writing-streaks--통계-56g)
+9. [저널 테마 (§56h)](#9-저널-테마-56h)
+10. [Daily Prompts (§56i)](#10-daily-prompts-56i)
+11. [AI 회고 (§56j)](#11-ai-회고-56j)
+12. [저널 검색 (§56k)](#12-저널-검색-56k)
+13. [데이터 모델](#13-데이터-모델)
+14. [단축키](#14-단축키)
+15. [구현 우선순위](#15-구현-우선순위)
+16. [마이그레이션](#16-마이그레이션)
+
+---
+
+## 1. 개요
+
+### 1.1 목표
+
+현재 Baram의 저널은 "기능(feature)" 수준이다. 이를 **저널 작성에만 집중할 수 있는 독립된 workspace**로 격상한다.
+
+### 1.2 설계 원칙
+
+| 원칙 | 설명 |
+|------|------|
+| **독립된 공간** | 저널 폴더가 모든 관련 파일(일기, 사진, 템플릿, 설정)을 자체적으로 포함 |
+| **집중 모드** | FileTree, Graph View 등 모든 기능이 저널 컨텍스트로 스코핑 |
+| **감성적 UX** | 전용 테마, 미니멀 무드 트래커, 수채화 톤의 시각화 |
+| **마크다운 우선** | 모든 데이터가 마크다운 + frontmatter로 저장, 벤더 종속 없음 |
+| **점진적 확장** | 기본은 데일리 노트, 원하면 무드/사진/Periodic Notes로 확장 |
+
+### 1.3 기존 구현과의 관계
+
+| 영역 | 기존 (§56) | 신규 |
+|------|-----------|------|
+| 폴더 | 단일 디렉토리, 플랫 | 계층적 `YYYY/MM/` + 서브폴더 |
+| FileTree | vault 전체 | 저널 폴더만 스코핑 |
+| 사이드바 | 캘린더만 | 캘린더 + 통계 + 검색 |
+| 우측 패널 | 미사용 | Memories View |
+| 테마 | 일반 테마 공유 | 저널 전용 테마 |
+| 사진 | 없음 | 드래그&드롭 + 갤러리 |
+| 무드 | 없음 | 컬러 도트 5단계 |
+| 회고 | 없음 | Memories View (On This Day + One Line A Day) |
+
+---
+
+## 2. 폴더 구조 (§56a)
+
+### 2.1 디렉토리 레이아웃
+
+```
+{journalDirectory}/
+├── daily/                        # 데일리 노트
+│   ├── 2025/
+│   │   ├── 01/
+│   │   │   ├── 2025-01-01.md
+│   │   │   └── 2025-01-15.md
+│   │   └── 12/
+│   │       └── 2025-12-31.md
+│   └── 2026/
+│       └── 02/
+│           └── 2026-02-28.md
+│
+├── weekly/                       # 주간 회고 (선택)
+│   └── 2026/
+│       └── 2026-W09.md
+│
+├── monthly/                      # 월간 회고 (선택)
+│   └── 2026/
+│       └── 2026-02.md
+│
+├── yearly/                       # 연간 회고 (선택)
+│   └── 2025.md
+│
+├── templates/                    # 저널 전용 템플릿
+│   ├── daily-default.md
+│   ├── weekly-review.md
+│   ├── monthly-review.md
+│   └── custom/                   # 사용자 커스텀 템플릿
+│
+├── assets/                       # 첨부 이미지/파일
+│   ├── 2026-02/
+│   │   ├── 20260228-143022-cafe.jpg
+│   │   └── 20260228-150315-street.jpg
+│   └── 2025-02/
+│       └── 20250228-091000-first-day.jpg
+│
+├── prompts/                      # 저널 프롬프트 컬렉션
+│   ├── gratitude.md
+│   ├── reflection.md
+│   └── custom.md
+│
+└── .journal.json                 # 저널 메타데이터 (무드, 통계 캐시)
+```
+
+### 2.2 경로 규칙
+
+| 항목 | 규칙 | 예시 |
+|------|------|------|
+| 데일리 노트 | `daily/YYYY/MM/YYYY-MM-DD.md` | `daily/2026/02/2026-02-28.md` |
+| 주간 노트 | `weekly/YYYY/YYYY-Www.md` | `weekly/2026/2026-W09.md` |
+| 월간 노트 | `monthly/YYYY/YYYY-MM.md` | `monthly/2026/2026-02.md` |
+| 연간 노트 | `yearly/YYYY.md` | `yearly/2026.md` |
+| 사진 | `assets/YYYY-MM/YYYYMMDD-HHmmss-name.ext` | `assets/2026-02/20260228-143022-cafe.jpg` |
+
+### 2.3 자동 디렉토리 생성
+
+일기 생성 시 필요한 중간 디렉토리(`daily/2026/02/`)를 자동으로 생성한다. Rust `create_dir` IPC의 recursive 옵션을 활용한다.
+
+### 2.4 마이그레이션 (기존 §56 → §56a)
+
+기존에 flat 구조(`journals/2026-02-28.md`)를 사용하던 사용자를 위해:
+
+1. 저널 워크스페이스 최초 진입 시 flat 파일 감지
+2. "폴더 구조로 정리하시겠습니까?" 다이얼로그 표시
+3. 승인 시 `daily/YYYY/MM/` 구조로 자동 이동
+4. 거부 시 flat 구조 그대로 유지 (하위 호환)
+
+---
+
+## 3. Journal Workspace 모드 (§56b)
+
+### 3.1 진입/퇴장
+
+| 동작 | 트리거 |
+|------|--------|
+| 진입 | `Alt+Cmd+4` / 커맨드 팔레트 "Journal Workspace" / 사이드바 캘린더 아이콘 |
+| 퇴장 | 다른 워크스페이스 프리셋 선택 / `Alt+Cmd+1~3` / 커맨드 팔레트 |
+
+### 3.2 레이아웃 전환
+
+```
+진입 시:
+┌──────────┬─────────────────────┬──────────────┐
+│ 사이드바  │     에디터 영역      │  우측 패널    │
+│          │                     │              │
+│ 캘린더    │  [무드 바]           │ Memories     │
+│ FileTree │  [프롬프트 카드]      │  View        │
+│ (저널)   │                     │              │
+│ 통계     │  일기 본문 편집       │ [Journal]    │
+│          │  (사진 드래그&드롭)   │ [Photos]     │
+│          │                     │              │
+│ 검색     │  [AI 회고 제안]      │ One Line     │
+│ (저널)   │                     │ / Full 토글   │
+└──────────┴─────────────────────┴──────────────┘
+```
+
+### 3.3 FileTree 스코핑
+
+저널 워크스페이스 진입 시:
+
+1. `useFileStore`의 `rootPath`를 `journalDirectory`로 임시 전환
+2. FileTree가 저널 폴더만 표시 (daily, weekly, monthly, yearly, templates)
+3. 퇴장 시 원래 vault `rootPath`로 복원
+4. `.journal.json`, `assets/` 등은 FileTree에서 숨김 처리
+
+```typescript
+// file-store.ts 확장
+interface FileStore {
+  // ... 기존
+  originalRootPath: string | null;  // 저널 모드 진입 전 rootPath 백업
+  isJournalScoped: boolean;
+  enterJournalScope: (journalDir: string) => void;
+  exitJournalScope: () => void;
+}
+```
+
+### 3.4 Graph View 스코핑
+
+저널 워크스페이스에서 Graph View를 열면:
+
+- 노드: 저널 폴더 내 파일만 표시
+- 엣지: 저널 파일 간 위키링크, 날짜 멘션 연결
+- 클러스터: 월별 자동 그룹핑
+- 날짜 노드 크기: 해당 일기의 단어 수에 비례
+- 무드 색상: 노드 색상이 무드 값에 따라 변동
+
+### 3.5 상태 저장
+
+`workspace-store.ts`의 저널 프리셋을 확장:
+
+```typescript
+interface JournalWorkspaceState {
+  sidebarOpen: true;
+  sidebarPanel: "calendar";
+  rightPanelOpen: true;
+  rightPanelMode: "memories";    // 신규 모드
+  memoriesTab: "journal" | "photos";
+  memoriesMode: "oneline" | "full";
+  journalScoped: true;
+}
+```
+
+---
+
+## 4. Memories View (§56c)
+
+### 4.1 개요
+
+**On This Day + One Line A Day를 통합한 단일 뷰**. 같은 날짜의 과거 기록을 한 화면에 보여준다.
+
+### 4.2 UI 구조
+
+```
+┌─ Memories: 2월 28일 ──── [Journal] [Photos] ─┐
+│                                    [One Line ▾] │
+│                                                  │
+│ ── 2026 (오늘) ──────────────────────────        │
+│ ▌ (편집 중 — 인라인 편집 가능)                    │
+│                                                  │
+│ ── 2025 ─────────────────────────────────        │
+│ 첫 출근. 설렘과 긴장이 공존하는 하루.            │
+│                                                  │
+│ ── 2024 ─────────────────────────────────        │
+│ (기록 없음)                                      │
+│                                                  │
+│ ── 2023 ─────────────────────────────────        │
+│ 카페에서 책 읽으며 하루 보냄.                    │
+│                                                  │
+└──────────────────────────────────────────────────┘
+```
+
+### 4.3 모드 전환
+
+| 모드 | 표시 내용 | 용도 |
+|------|----------|------|
+| **One Line** | 각 연도의 첫 문장 또는 frontmatter `oneline` 필드 | 빠른 회고, 10년 일기 |
+| **Full** | 각 연도 일기 전문 (접기/펼치기) | 상세 회고 |
+
+### 4.4 One Line 추출 규칙
+
+1. frontmatter에 `oneline` 필드가 있으면 해당 값 사용
+2. 없으면 본문의 첫 번째 비어있지 않은 텍스트 단락의 첫 문장 추출
+3. heading(`#`), frontmatter(`---`), 빈 줄은 건너뜀
+4. 최대 100자까지 표시, 초과 시 `…`으로 절단
+
+```typescript
+function extractOneLine(content: string): string {
+  // 1. frontmatter oneline 필드 확인
+  const fmMatch = content.match(/^---\n[\s\S]*?oneline:\s*(.+)\n[\s\S]*?---/);
+  if (fmMatch) return fmMatch[1].trim();
+
+  // 2. 본문 첫 문장 추출
+  const lines = content.split("\n");
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (trimmed.startsWith("#") || trimmed === "---") continue;
+    // 첫 문장 (마침표, 느낌표, 물음표 기준)
+    const sentence = trimmed.match(/^[^.!?]*[.!?]/);
+    return (sentence ? sentence[0] : trimmed).slice(0, 100);
+  }
+  return "";
+}
+```
+
+### 4.5 현재 연도 인라인 편집
+
+- One Line 모드: 현재 연도 행에 텍스트 입력 필드 표시
+  - 입력 내용은 해당 일기의 frontmatter `oneline` 필드에 저장
+  - 아직 일기가 없으면 입력 시 자동 생성
+- Full 모드: "일기 열기" 링크 → 에디터 영역에서 편집
+
+### 4.6 데이터 로딩
+
+```
+Memories View 활성화
+  │
+  ▼
+현재 날짜의 MM-DD 추출
+  │
+  ▼
+daily/ 하위 모든 YYYY/ 스캔
+  │
+  ▼
+각 연도에서 YYYY-{MM}-{DD}.md 파일 존재 확인
+  │
+  ▼
+존재하는 파일의 content 로드 (One Line: 첫 줄만, Full: 전체)
+  │
+  ▼
+연도 역순 정렬하여 렌더링
+```
+
+### 4.7 Photos 탭
+
+Memories View의 두 번째 탭. 같은 날짜의 과거 사진을 연도별로 모아 보여준다.
+
+```
+┌─ Memories: 2월 28일 ──── [Journal] [Photos] ─┐
+│                                                │
+│ ── 2026 ──────────────────────────────         │
+│ ┌─────┐ ┌─────┐ ┌─────┐                       │
+│ │     │ │     │ │     │                       │
+│ └─────┘ └─────┘ └─────┘                       │
+│ 카페라떼  봄 거리  회사 앞                      │
+│                                                │
+│ ── 2025 ──────────────────────────────         │
+│ ┌─────┐                                        │
+│ │     │                                        │
+│ └─────┘                                        │
+│ 첫 출근 인증샷                                 │
+│                                                │
+│ ── 2023 ──────────────────────────────         │
+│ (사진 없음)                                    │
+│                                                │
+└────────────────────────────────────────────────┘
+```
+
+사진 추출: 해당 날짜 일기의 마크다운에서 `![caption](path)` 이미지 참조를 파싱한다.
+
+---
+
+## 5. Photo Journal (§56d)
+
+### 5.1 사진 추가 방식
+
+| 방법 | 동작 | 저장 위치 |
+|------|------|----------|
+| 드래그 & 드롭 | 에디터에 사진 끌어다 놓기 | `assets/YYYY-MM/` |
+| 클립보드 붙여넣기 | `Cmd+V`로 스크린샷/이미지 붙여넣기 | `assets/YYYY-MM/` |
+| 툴바 버튼 | 📷 버튼 → Tauri 파일 다이얼로그 (다중 선택) | `assets/YYYY-MM/` |
+| 슬래시 커맨드 | `/photo` → 파일 선택 다이얼로그 | `assets/YYYY-MM/` |
+
+### 5.2 사진 저장 규칙
+
+1. 원본을 `assets/YYYY-MM/` 폴더에 복사 (원본 경로 의존 제거)
+2. 파일명 정규화: `YYYYMMDD-HHmmss-{original}.{ext}`
+3. 마크다운 삽입: `![캡션](assets/2026-02/20260228-143022-cafe.jpg)`
+4. 상대 경로 사용 (저널 폴더 루트 기준)
+
+### 5.3 캡션 편집 UX
+
+기존 이미지 NodeView를 확장하여 캡션 영역을 추가한다.
+
+```
+┌──────────────────────────────┐
+│                              │
+│         [사진 이미지]         │
+│                              │
+├──────────────────────────────┤
+│ 봄 벚꽃이 피기 시작한 거리    │  ← 클릭 시 인라인 편집
+└──────────────────────────────┘
+```
+
+- 사진 아래 캡션 영역 기본 표시 (placeholder: "캡션 추가...")
+- 클릭하면 인라인 편집, 마크다운 `![캡션텍스트](path)`의 alt text로 저장
+- 캡션에 태그 입력 가능: `봄 벚꽃 #서울 #산책`
+
+### 5.4 Photo Gallery
+
+별도 탭으로 열리는 사진 갤러리 뷰. 가상 경로 `journal-photos://` 사용.
+
+```
+┌─ Photo Gallery ──── [Day] [Month ▾] [Year] ──┐
+│                                                │
+│ ═══ 2026년 2월 ═══                             │
+│                                                │
+│ 28일 (3)                                       │
+│ ┌─────┐ ┌─────┐ ┌─────┐                       │
+│ │     │ │     │ │     │                       │
+│ └─────┘ └─────┘ └─────┘                       │
+│ 카페라떼  봄 거리  회사 앞                      │
+│                                                │
+│ 15일 (1)                                       │
+│ ┌─────┐                                        │
+│ │     │                                        │
+│ └─────┘                                        │
+│ 발렌타인 케이크                                │
+│                                                │
+└────────────────────────────────────────────────┘
+```
+
+### 5.5 Gallery View 모드
+
+| 모드 | 그룹핑 | 사용 시나리오 |
+|------|--------|-------------|
+| **Day** | 특정 날짜 사진만 | Memories Photos 탭에서 날짜별 보기 |
+| **Month** | 해당 월의 사진을 날짜별 그룹핑 | "이번 달 사진 모아보기" |
+| **Year** | 해당 연도의 사진을 월별 그룹핑 | "올해 돌아보기" |
+
+### 5.6 사진 인터랙션
+
+| 동작 | 결과 |
+|------|------|
+| 썸네일 클릭 | 라이트박스로 확대 (좌우 화살표로 넘기기) |
+| 캡션 클릭 | 캡션 인라인 편집 |
+| "일기 보기" 버튼 | 라이트박스에서 해당 날짜 일기로 이동 |
+| 드래그 정렬 | 같은 날짜 내 사진 순서 변경 (마크다운 내 이미지 순서 변경) |
+
+### 5.7 사진 데이터 소스
+
+별도 DB 없이 **마크다운이 single source of truth**:
+
+1. `assets/` 폴더 스캔 → 파일명에서 날짜 추출
+2. 해당 날짜 일기의 마크다운에서 `![caption](path)` 파싱 → 캡션 획득
+3. 일기에 참조되지 않은 asset은 "미분류" 섹션에 표시
+
+---
+
+## 6. 무드 트래커 (§56e)
+
+### 6.1 디자인 원칙
+
+- 이모지를 사용하지 않는다
+- Baram의 미니멀 톤에 맞는 컬러 도트 방식
+- 저널 테마에 따라 색상 팔레트가 변동
+- 선택은 항상 선택적 (강제 아님)
+
+### 6.2 무드 입력 UI
+
+에디터 상단 무드 바:
+
+```
+┌─ 2026-02-28 Friday ─────────────────────────────────┐
+│                                                      │
+│  기분   ○       ○       ○       ●       ○           │
+│        Deep    Calm   Neutral  Warm   Bright         │
+│                                                      │
+│  에너지  ● ● ● ● ○                                  │
+│                                                      │
+└──────────────────────────────────────────────────────┘
+```
+
+**기분 (5단계 컬러 도트)**:
+
+| 단계 | 라벨 | 값 | 의미 |
+|------|------|-----|------|
+| 1 | Deep | `deep` | 가라앉은, 힘든 |
+| 2 | Calm | `calm` | 차분한, 조용한 |
+| 3 | Neutral | `neutral` | 평온한, 일상적 |
+| 4 | Warm | `warm` | 따뜻한, 기분 좋은 |
+| 5 | Bright | `bright` | 밝은, 에너지 넘치는 |
+
+**에너지 (5단계 도트 바)**:
+
+- 채워진 원(●)과 빈 원(○)으로 1~5 표시
+- 클릭으로 토글
+
+### 6.3 시각적 상태
+
+| 상태 | 표현 |
+|------|------|
+| 미선택 | 모든 도트가 연한 아웃라인만 (`opacity: 0.3`, `border: 1px`) |
+| 호버 | 해당 도트 + 라벨 표시, 도트 살짝 커짐 |
+| 선택됨 | 해당 도트 채워짐 + 미세한 glow 효과 (`box-shadow`) |
+| 라벨 | 기본 숨김, 호버 시에만 표시 (깔끔함 유지) |
+
+### 6.4 테마별 색상 팔레트
+
+| 테마 | Deep | Calm | Neutral | Warm | Bright |
+|------|------|------|---------|------|--------|
+| Classic Diary | `#4A5568` | `#718096` | `#A0AEC0` | `#D69E2E` | `#ECC94B` |
+| Moleskine | `#4A5568` | `#68768A` | `#90A4AE` | `#C9956B` | `#E8C07A` |
+| Muji | `#6B7280` | `#9CA3AF` | `#D1D5DB` | `#F59E0B` | `#FCD34D` |
+| Night Owl | `#2D3748` | `#4299E1` | `#63B3ED` | `#F6AD55` | `#FBD38D` |
+| Vintage | `#6B5B4F` | `#8B7D6B` | `#A89F91` | `#C4956A` | `#DEB887` |
+| Watercolor | `#5B6ABF` | `#7EB5A6` | `#A8D8C8` | `#F2B880` | `#F7D794` |
+| (기본/시스템) | `#64748B` | `#94A3B8` | `#CBD5E1` | `#F59E0B` | `#FBBF24` |
+
+CSS 변수로 정의:
+
+```css
+--mood-deep: #64748B;
+--mood-calm: #94A3B8;
+--mood-neutral: #CBD5E1;
+--mood-warm: #F59E0B;
+--mood-bright: #FBBF24;
+```
+
+### 6.5 frontmatter 저장
+
+```yaml
+---
+date: 2026-02-28
+tags: [journal]
+mood: warm
+energy: 4
+---
+```
+
+- `mood` 값: `deep` | `calm` | `neutral` | `warm` | `bright` | 미입력 시 필드 없음
+- `energy` 값: `1` ~ `5` | 미입력 시 필드 없음
+
+### 6.6 Year in Pixels
+
+1년치 무드를 한눈에 보는 격자 시각화:
+
+```
+┌─ 2026 Year in Pixels ────────────────────────────────┐
+│      Jan  Feb  Mar  Apr  May  Jun  Jul  Aug  Sep ... │
+│  1   ◉    ◉    ◉    ·   ...                          │
+│  2   ◉    ◉    ◉    ·   ...                          │
+│  3   ◉    ◉    ◉    ·   ...                          │
+│  ...                                                  │
+│ 31   ◉    ◉    -    ·   ...                          │
+│                                                       │
+│ ◉ Deep  ◉ Calm  ◉ Neutral  ◉ Warm  ◉ Bright  · 없음 │
+└───────────────────────────────────────────────────────┘
+```
+
+- 각 셀: 해당 테마의 무드 색상으로 채워진 작은 원
+- 셀 호버: 날짜 + 무드 라벨 + 일기 첫 줄 툴팁
+- 셀 클릭: 해당 날짜 일기로 이동
+- `-`: 해당 월에 존재하지 않는 날짜 (예: 2월 31일)
+- `·`: 기록 없음 (연한 회색 점)
+
+### 6.7 30일 무드 트렌드
+
+```
+┌─ Mood Trend (30 days) ────────────────────┐
+│ Bright ·  ·     ·  · ··                   │
+│ Warm   ·· · ··· ··· ··· ···               │
+│ Neutral   ··                ··             │
+│ Calm                          ·            │
+│ Deep                                       │
+│         ─────────────────────────▶         │
+│         2/1        2/15        2/28        │
+└────────────────────────────────────────────┘
+```
+
+- 사이드바 캘린더 하단에 축소 버전 표시
+- 도트는 해당 테마의 무드 색상 사용
+- 클릭하면 상세 통계 뷰로 확대
+
+### 6.8 캘린더 무드 통합
+
+기존 캘린더의 날짜 점 표시(존재 여부)를 무드 색상 점으로 확장:
+
+```
+┌─ 📅 2026년 2월 ────────────────┐
+│ 일  월  화  수  목  금  토      │
+│                      1         │
+│                      ◉         │  ← 무드 색상 점
+│  2   3   4   5   6   7   8     │
+│  ◉   ◉   ◉   ◉   ◉   ◉   ◉   │
+│  9  10  11  12  13  14  15     │
+│  ◉   ◉   ◉   ◉   ◉   ◉   ◉   │
+│ 16  17  18  19  20  21  22     │
+│  ◉   ◉   ·   ◉   ◉   ◉   ◉   │  ← ·는 무드 미입력
+│ 23  24  25  26  27 [28]        │
+│  ◉   ◉   ◉   ◉   ◉   ◉       │
+└─────────────────────────────────┘
+```
+
+- 무드 입력된 날짜: 해당 무드 색상의 작은 원
+- 일기는 있지만 무드 미입력: 회색 점 (`·`)
+- 일기 없는 날짜: 점 없음
+
+---
+
+## 7. Periodic Notes (§56f)
+
+### 7.1 설정
+
+| 설정 | 기본값 | 설명 |
+|------|--------|------|
+| 주간 노트 활성화 | OFF | weekly/ 폴더 사용 |
+| 월간 노트 활성화 | OFF | monthly/ 폴더 사용 |
+| 연간 노트 활성화 | OFF | yearly/ 폴더 사용 |
+| 주간 시작 요일 | 월요일 | 주간 노트 기준일 |
+
+### 7.2 템플릿 변수
+
+**Daily (기존 확장)**:
+
+| 변수 | 값 예시 |
+|------|---------|
+| `{{date}}` | 2026-02-28 |
+| `{{year}}` | 2026 |
+| `{{month}}` | 02 |
+| `{{day}}` | 28 |
+| `{{dayName}}` | Friday |
+| `{{monthName}}` | February |
+| `{{daily_prompt}}` | 오늘 감사한 세 가지는? |
+| `{{mood_bar}}` | (무드 선택 UI placeholder) |
+
+**Weekly**:
+
+| 변수 | 값 예시 |
+|------|---------|
+| `{{week_number}}` | W09 |
+| `{{week_start}}` | 2026-02-23 |
+| `{{week_end}}` | 2026-03-01 |
+| `{{week_entries}}` | 해당 주 일기 링크 목록 |
+| `{{week_mood_summary}}` | 주간 무드 요약 (텍스트) |
+
+**Monthly**:
+
+| 변수 | 값 예시 |
+|------|---------|
+| `{{month_name}}` | February |
+| `{{month_entries}}` | 해당 월 일기 링크 목록 |
+| `{{month_mood_avg}}` | 월간 평균 무드 |
+| `{{month_photos}}` | 해당 월 사진 갤러리 |
+| `{{month_stats}}` | 월간 통계 (작성일수, 단어수) |
+
+**Yearly**:
+
+| 변수 | 값 예시 |
+|------|---------|
+| `{{year}}` | 2026 |
+| `{{total_entries}}` | 365일 중 237일 작성 |
+| `{{total_words}}` | 총 45,230단어 |
+| `{{year_highlights}}` | 연간 하이라이트 (가장 긴 일기, 최장 streak 등) |
+| `{{year_in_pixels}}` | Year in Pixels 시각화 (코드블록) |
+
+### 7.3 자동 집계 코드블록
+
+Periodic Note 내에서 특수 코드블록으로 동적 데이터를 렌더링한다.
+
+````markdown
+```journal-list
+range: 2026-02-01..2026-02-28
+```
+````
+
+렌더링 결과: 해당 기간 일기 파일의 링크 목록 (날짜 + 첫 줄 미리보기)
+
+````markdown
+```journal-mood
+range: 2026-02-01..2026-02-28
+style: trend | pixels | summary
+```
+````
+
+렌더링 결과: 무드 시각화 (트렌드 그래프, Year in Pixels 부분, 또는 텍스트 요약)
+
+````markdown
+```journal-photos
+range: 2026-02-01..2026-02-28
+layout: grid | strip
+columns: 4
+```
+````
+
+렌더링 결과: 해당 기간 사진 갤러리 (그리드 또는 가로 스트립)
+
+**구현**: 각 코드블록을 Tiptap NodeView로 렌더링. 마크다운 원본은 코드블록 그대로 보존하여 라운드트립을 유지한다.
+
+### 7.4 캘린더 연동
+
+| 클릭 대상 | 동작 |
+|----------|------|
+| 날짜 숫자 | 해당 데일리 노트 열기/생성 |
+| 주 번호 (좌측 열) | 해당 주간 노트 열기/생성 |
+| 월 제목 ("2월") | 해당 월간 노트 열기/생성 |
+
+캘린더에 주 번호 열을 추가 (설정으로 토글):
+
+```
+┌─ 📅 2026년 2월 ─────────────────────┐
+│     일  월  화  수  목  금  토       │
+│ W05                      1          │
+│ W06  2   3   4   5   6   7   8      │
+│ W07  9  10  11  12  13  14  15      │
+│ W08 16  17  18  19  20  21  22      │
+│ W09 23  24  25  26  27 [28]         │
+└──────────────────────────────────────┘
+```
+
+---
+
+## 8. Writing Streaks & 통계 (§56g)
+
+### 8.1 통계 대시보드
+
+사이드바에 통계 섹션 또는 별도 탭:
+
+```
+┌─ Journal Stats ───────────────────────────────┐
+│                                                │
+│ 🔥 14일 연속 작성 중          최장: 42일       │
+│                                                │
+│ 이번 달        올해          전체              │
+│  25/28일       142일         523일             │
+│  8,340자       45,230자      182,400자         │
+│                                                │
+│ [기여 히트맵 — 12개월]                         │
+│ ░░█░██░░░█████░██████░████████░██░░░░█        │
+│ Mar  Apr  May  Jun  Jul  Aug  Sep  ...        │
+│                                                │
+│ 가장 많이 쓴 요일: 일요일 (평균 450자)         │
+│ 평균 작성 시간: 오후 10:23                     │
+└────────────────────────────────────────────────┘
+```
+
+### 8.2 기여 히트맵
+
+GitHub 스타일 격자:
+
+```
+     Mon ░██░░░██░░░█████░
+     Wed ░░█░██░░░█████░██
+     Fri ██████░████████░██
+         Mar  Apr  May  Jun
+```
+
+- 색상 농도: 단어 수에 비례 (0 = 빈칸, 1~100 = 연한, 100~300 = 중간, 300+ = 진한)
+- 색상은 현재 저널 테마의 accent 색상 사용
+- 셀 호버: 날짜 + 단어 수 표시
+- 셀 클릭: 해당 날짜 일기로 이동
+
+### 8.3 Streak 계산 규칙
+
+- `daily/` 폴더의 파일 존재 여부로 판단
+- 빈 파일(frontmatter만 있는 경우)은 streak에 포함하지 않음 (최소 10자 이상 본문)
+- 연속은 자연일(calendar day) 기준
+- 타임존: 시스템 로컬 타임존
+
+### 8.4 데이터 캐시
+
+`.journal.json` 내 `stats` 섹션:
+
+```json
+{
+  "stats": {
+    "currentStreak": 14,
+    "longestStreak": 42,
+    "totalEntries": 523,
+    "totalWords": 182400,
+    "entriesByDate": {
+      "2026-02-28": { "words": 342, "mood": "warm", "energy": 4 },
+      "2026-02-27": { "words": 128, "mood": "calm", "energy": 3 }
+    },
+    "lastFullScan": "2026-02-28T10:00:00Z"
+  }
+}
+```
+
+- 일기 저장 시 해당 날짜 항목만 증분 갱신
+- 저널 워크스페이스 진입 시 마지막 스캔 이후 변경분만 갱신
+- "전체 재계산" 버튼 제공 (통계 불일치 시)
+
+---
+
+## 9. 저널 테마 (§56h)
+
+### 9.1 기존 §54 테마 시스템 확장
+
+저널 전용 테마는 기존 `ThemeDef` 구조를 상속하되, 저널 전용 CSS 변수를 추가한다.
+
+```typescript
+interface JournalThemeDef extends ThemeDef {
+  journalColors: {
+    moodDeep: string;
+    moodCalm: string;
+    moodNeutral: string;
+    moodWarm: string;
+    moodBright: string;
+  };
+  journalTypography: {
+    fontFamily: string;         // 저널 전용 폰트
+    lineHeight: number;         // 줄 간격 (1.6~2.0)
+    maxWidth: string;           // 본문 최대 너비 (예: "680px")
+  };
+}
+```
+
+### 9.2 내장 저널 테마 (6종)
+
+| 테마 | 배경 | 폰트 | 분위기 | 최대 너비 |
+|------|------|------|--------|----------|
+| **Classic Diary** | 크림 `#FDF6E3` | Noto Serif KR | 전통 일기장 | 640px |
+| **Moleskine** | 아이보리 `#F5F1EB` | Pretendard | 몰스킨 노트 | 680px |
+| **Muji** | 순백 `#FFFFFF` | Pretendard Light | 미니멀 | 600px |
+| **Night Owl** | 남색 `#1B2838` | Noto Sans KR | 밤 일기 | 680px |
+| **Vintage** | 세피아 `#F0E6D3` | D2Coding | 타자기 편지 | 620px |
+| **Watercolor** | 파스텔 `#F8F4F0` | Nanum Pen Script | 감성 다이어리 | 640px |
+
+### 9.3 테마 전환 동작
+
+```
+저널 워크스페이스 진입
+  │
+  ▼
+journalThemeId 설정 확인
+  │
+  ├─ 설정 있음 → 해당 저널 테마 적용
+  │               (일반 테마 → 저널 테마)
+  │
+  └─ 설정 없음 → 일반 테마 유지
+  │
+  ...
+  │
+저널 워크스페이스 퇴장
+  │
+  ▼
+원래 activeThemeId 복원
+```
+
+### 9.4 CSS 변수
+
+기존 16개 CSS 변수에 저널 전용 변수 추가:
+
+```css
+/* 무드 트래커 색상 */
+--mood-deep: ...;
+--mood-calm: ...;
+--mood-neutral: ...;
+--mood-warm: ...;
+--mood-bright: ...;
+
+/* 저널 타이포그래피 */
+--journal-font-family: ...;
+--journal-line-height: ...;
+--journal-max-width: ...;
+
+/* 저널 UI */
+--journal-header-bg: ...;      /* 무드 바 배경 */
+--journal-prompt-bg: ...;      /* 프롬프트 카드 배경 */
+--journal-prompt-border: ...;  /* 프롬프트 카드 테두리 */
+```
+
+### 9.5 커스텀 저널 테마
+
+기존 ThemeEditor와 동일한 UX로 저널 전용 커스텀 테마를 생성/편집할 수 있다. 무드 색상 팔레트와 타이포그래피를 추가로 설정 가능.
+
+### 9.6 설정 UI
+
+Settings → Journal → 테마 섹션:
+
+```
+┌─ 저널 테마 ──────────────────────────────────┐
+│                                               │
+│ ┌─────────┐ ┌─────────┐ ┌─────────┐          │
+│ │ Classic │ │Moleskine│ │  Muji   │          │
+│ │ Diary   │ │         │ │         │          │
+│ │ ■■■■■   │ │ ■■■■■   │ │ ■■■■■   │          │
+│ └────✓────┘ └─────────┘ └─────────┘          │
+│                                               │
+│ ┌─────────┐ ┌─────────┐ ┌─────────┐          │
+│ │ Night   │ │ Vintage │ │Waterclr │          │
+│ │ Owl     │ │         │ │         │          │
+│ │ ■■■■■   │ │ ■■■■■   │ │ ■■■■■   │          │
+│ └─────────┘ └─────────┘ └─────────┘          │
+│                                               │
+│ [+ 커스텀 테마 만들기]                        │
+└───────────────────────────────────────────────┘
+```
+
+카드 하단 `■■■■■`는 해당 테마의 무드 색상 5종 스와치.
+
+---
+
+## 10. Daily Prompts (§56i)
+
+### 10.1 내장 프롬프트 카테고리
+
+| 카테고리 | 프롬프트 수 | 예시 |
+|---------|-----------|------|
+| 감사 (Gratitude) | 30개 | "오늘 감사한 세 가지는?" |
+| 성찰 (Reflection) | 30개 | "오늘 가장 도전적이었던 순간은?" |
+| 목표 (Goals) | 20개 | "내일 꼭 하고 싶은 한 가지는?" |
+| 창작 (Creative) | 20개 | "지금 창밖에 보이는 풍경을 묘사해보세요" |
+| 관계 (Relationships) | 20개 | "오늘 누군가에게 고마웠던 일은?" |
+
+### 10.2 프롬프트 카드 UI
+
+에디터 상단, 무드 바 아래에 표시:
+
+```
+┌─ 💡 오늘의 질문 ──────────────────────── [×] ─┐
+│                                                │
+│ "오늘 가장 기억에 남는 대화는                   │
+│  무엇이었나요?"                                │
+│                                                │
+│                               [다른 질문] [×]  │
+└────────────────────────────────────────────────┘
+```
+
+- 접기/닫기 가능 (× 버튼)
+- "다른 질문" 버튼: 같은 카테고리에서 다른 프롬프트 표시
+- 설정에서 카테고리 선택 및 표시 방식 설정 (랜덤/순차)
+
+### 10.3 템플릿 통합
+
+`{{daily_prompt}}` 변수로 템플릿에 자동 삽입:
+
+```markdown
+---
+date: {{date}}
+tags: [journal]
+---
+
+# {{date}} {{dayName}}
+
+> {{daily_prompt}}
+
+## 메모
+
+## 작업
+```
+
+### 10.4 사용자 커스텀 프롬프트
+
+`prompts/` 폴더에 마크다운 파일로 관리:
+
+```markdown
+# 나만의 프롬프트
+
+- 오늘 읽은 책에서 인상 깊었던 구절은?
+- 이번 주에 배운 새로운 것은?
+- 지금 가장 해결하고 싶은 문제는?
+```
+
+- 파일당 한 카테고리
+- 한 줄에 한 프롬프트 (`- ` 접두사)
+- 설정에서 내장/커스텀 프롬프트 혼합 비율 설정
+
+### 10.5 프롬프트 이력
+
+`.journal.json` 내 `promptHistory` 섹션에서 최근 사용된 프롬프트 ID를 추적하여 중복을 방지한다.
+
+---
+
+## 11. AI 회고 (§56j)
+
+### 11.1 기존 AI 인프라 활용
+
+Baram의 LLM 스트리밍(§6.3)을 저널에 특화한다. 기존 `llmComplete` IPC와 `useLLMStream` 훅을 그대로 사용.
+
+### 11.2 기능
+
+| 기능 | 트리거 | 동작 |
+|------|--------|------|
+| **후속 질문** | 일기 저장 후 자동 | 일기 내용 기반으로 심화 질문 1~2개 제안 |
+| **주간 패턴** | 주간 노트 열 때 | "이번 주 운동한 날에 기분이 좋은 경향이 있어요" |
+| **월간 요약** | 월간 노트 열 때 | 한 달 일기를 3줄로 요약 |
+| **감정 추론** | 무드 미입력 일기 | 텍스트에서 감정 추론하여 무드 제안 |
+
+### 11.3 UI
+
+에디터 하단에 접을 수 있는 제안 카드:
+
+```
+┌─ ✨ AI 회고 ──────────────────────────── [×] ─┐
+│                                                │
+│ 오늘 "새로운 팀원"에 대해 쓰셨네요.            │
+│ 첫인상은 어땠나요? 어떤 기대가 있으신가요?     │
+│                                                │
+│              [답변 작성하기]  [무시]            │
+└────────────────────────────────────────────────┘
+```
+
+- "답변 작성하기" → 일기 하단에 AI 질문 + 빈 답변 영역 추가
+- "무시" → 카드 닫기
+
+### 11.4 프라이버시
+
+| 설정 | 동작 |
+|------|------|
+| AI 회고 OFF | 기능 완전 비활성 |
+| Privacy Mode ON | AI 회고 자동 비활성 (Ollama 로컬만 허용) |
+| Provider = Ollama | 로컬에서만 처리, 외부 전송 없음 |
+
+- 일기 내용은 사용자가 명시적으로 AI 기능을 트리거했을 때만 LLM에 전달
+- 자동 트리거(저장 후 제안)는 설정에서 별도 토글
+
+### 11.5 시스템 프롬프트
+
+```
+당신은 저널 회고 도우미입니다. 사용자가 오늘 쓴 일기를 바탕으로
+더 깊이 생각해볼 수 있는 질문을 1~2개 제안합니다.
+
+규칙:
+- 판단하지 마세요. 호기심 어린 질문만 하세요.
+- 감정을 강요하지 마세요. 사용자가 스스로 탐구하도록 유도하세요.
+- 짧고 따뜻한 톤을 유지하세요.
+- 한국어로 답변하세요 (사용자 언어에 맞춰).
+```
+
+---
+
+## 12. 저널 검색 (§56k)
+
+### 12.1 기존 Global Search 확장
+
+Global Search(§5.11)에 저널 모드를 추가한다. 저널 워크스페이스에서 `Cmd+Shift+F`를 누르면 자동으로 저널 검색 모드로 진입.
+
+### 12.2 저널 전용 필터
+
+```
+┌─ Journal Search ─────────────────────────────┐
+│ 🔍 [검색어 입력]                              │
+│                                               │
+│ 필터:                                         │
+│ 📅 기간   [2025-01-01] ~ [2026-02-28]        │
+│ ● 기분    [○ Deep] [○ Calm] [● 전체]         │
+│ 🏷️ 태그   [여행, 운동]                       │
+│ 📷 사진   [□ 사진 있는 일기만]                │
+│ 📊 에너지 [○ 3 이상]                         │
+│                                               │
+│ 결과: 23건                                    │
+└───────────────────────────────────────────────┘
+```
+
+### 12.3 검색 구현
+
+1. 텍스트 검색: 기존 `searchFiles` IPC에 `rootPath`를 저널 폴더로 지정
+2. frontmatter 필터: Rust 측에서 frontmatter 파싱 후 mood/tags/energy 조건 매칭
+3. 사진 필터: 마크다운 내 `![` 패턴 존재 여부로 판단
+4. 날짜 범위: 파일명(`YYYY-MM-DD`)에서 날짜 추출하여 범위 필터링
+
+### 12.4 IPC 확장
+
+```typescript
+interface JournalSearchOptions extends SearchOptions {
+  dateFrom?: string;         // YYYY-MM-DD
+  dateTo?: string;           // YYYY-MM-DD
+  moodFilter?: string[];     // ["warm", "bright"]
+  energyMin?: number;        // 1-5
+  tagsFilter?: string[];     // ["여행", "운동"]
+  hasPhotos?: boolean;       // true = 사진 있는 일기만
+}
+```
+
+Rust 측에 `search_journal` 커맨드를 추가하거나, 기존 `search_files`에 frontmatter 필터 옵션을 확장한다.
+
+---
+
+## 13. 데이터 모델
+
+### 13.1 `.journal.json` 스키마
+
+```json
+{
+  "version": 1,
+  "stats": {
+    "currentStreak": 14,
+    "longestStreak": 42,
+    "totalEntries": 523,
+    "totalWords": 182400,
+    "lastFullScan": "2026-02-28T10:00:00Z"
+  },
+  "entriesByDate": {
+    "2026-02-28": {
+      "words": 342,
+      "mood": "warm",
+      "energy": 4,
+      "hasPhotos": true,
+      "photoCount": 3,
+      "tags": ["일상", "카페"]
+    }
+  },
+  "promptHistory": {
+    "lastUsed": {
+      "gratitude": 15,
+      "reflection": 12,
+      "goals": 8,
+      "creative": 5,
+      "relationships": 3
+    },
+    "usedPromptIds": ["g-001", "g-002", "r-005"]
+  },
+  "preferences": {
+    "memoriesMode": "oneline",
+    "memoriesTab": "journal",
+    "promptCategory": "gratitude",
+    "promptMode": "random",
+    "weekStartDay": "monday",
+    "showWeekNumbers": true
+  }
+}
+```
+
+### 13.2 frontmatter 확장
+
+기존 저널 frontmatter에 신규 필드 추가:
+
+```yaml
+---
+date: 2026-02-28
+tags: [journal, 일상, 카페]
+mood: warm
+energy: 4
+oneline: "봄이 시작되는 느낌의 하루"
+---
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|------|------|
+| `date` | string | ✅ | YYYY-MM-DD 형식 |
+| `tags` | string[] | ❌ | 태그 목록 |
+| `mood` | string | ❌ | `deep` \| `calm` \| `neutral` \| `warm` \| `bright` |
+| `energy` | number | ❌ | 1~5 |
+| `oneline` | string | ❌ | One Line A Day 요약 (Memories View에서 사용) |
+
+### 13.3 설정 확장 (settings-store.ts)
+
+```typescript
+interface SettingsState {
+  // ... 기존 저널 설정
+  journalEnabled: boolean;
+  journalDirectory: string;
+  journalFilenameFormat: string;
+  journalTemplatePath: string;
+  journalStartupBehavior: "openJournal" | "nothing";
+
+  // §56a 폴더 구조
+  journalUseHierarchy: boolean;        // YYYY/MM/ 구조 사용 여부
+
+  // §56e 무드
+  journalMoodEnabled: boolean;
+  journalEnergyEnabled: boolean;
+
+  // §56f Periodic Notes
+  journalWeeklyEnabled: boolean;
+  journalMonthlyEnabled: boolean;
+  journalYearlyEnabled: boolean;
+  journalWeekStartDay: "monday" | "sunday";
+
+  // §56g 통계
+  journalShowStreak: boolean;
+
+  // §56h 테마
+  journalThemeId: string | null;       // null = 일반 테마 사용
+  journalCustomThemes: JournalThemeDef[];
+
+  // §56i 프롬프트
+  journalPromptEnabled: boolean;
+  journalPromptCategory: string;
+  journalPromptMode: "random" | "sequential";
+
+  // §56j AI 회고
+  journalAIReflectionEnabled: boolean;
+  journalAIAutoSuggest: boolean;       // 저장 후 자동 제안
+}
+```
+
+---
+
+## 14. 단축키
+
+| 단축키 | 동작 | 컨텍스트 |
+|--------|------|---------|
+| `Alt+Cmd+4` | 저널 워크스페이스 진입/퇴장 | 전역 (기존) |
+| `Cmd+Shift+M` | Memories View 토글 | 저널 워크스페이스 |
+| `Cmd+Shift+T` | 오늘의 일기 열기 | 전역 |
+| `Alt+←` | 전날 일기로 이동 | 저널 워크스페이스 |
+| `Alt+→` | 다음날 일기로 이동 | 저널 워크스페이스 |
+| `Cmd+Shift+P` | Photo Gallery 열기 | 저널 워크스페이스 |
+
+---
+
+## 15. 구현 우선순위
+
+### Phase A: 기반 (§56a, §56b)
+
+| 순서 | 항목 | 예상 복잡도 |
+|------|------|-----------|
+| A1 | 폴더 구조 재설계 + 마이그레이션 | 중 |
+| A2 | FileTree 스코핑 (enterJournalScope/exitJournalScope) | 중 |
+| A3 | 워크스페이스 레이아웃 전환 (우측 패널 Memories 모드) | 중 |
+
+### Phase B: 핵심 기능 (§56c, §56d, §56e)
+
+| 순서 | 항목 | 예상 복잡도 |
+|------|------|-----------|
+| B1 | Memories View — One Line / Full 모드 | 상 |
+| B2 | Memories View — Photos 탭 | 중 |
+| B3 | Photo Journal — 드래그&드롭 + assets 관리 | 중 |
+| B4 | Photo Journal — 캡션 편집 (ImageView 확장) | 중 |
+| B5 | Photo Gallery 별도 뷰 (Month/Year) | 상 |
+| B6 | 무드 트래커 — 입력 UI + frontmatter 저장 | 중 |
+| B7 | 무드 트래커 — 캘린더 색상 점 통합 | 소 |
+| B8 | Year in Pixels 시각화 | 중 |
+
+### Phase C: 확장 기능 (§56f, §56g, §56h)
+
+| 순서 | 항목 | 예상 복잡도 |
+|------|------|-----------|
+| C1 | Periodic Notes — 주간/월간/연간 노트 생성 | 중 |
+| C2 | 자동 집계 코드블록 (journal-list, journal-mood, journal-photos) | 상 |
+| C3 | Writing Streaks + 기여 히트맵 | 중 |
+| C4 | .journal.json 통계 캐시 시스템 | 중 |
+| C5 | 저널 테마 (6종 내장) | 중 |
+| C6 | 테마 자동 전환 (진입/퇴장) | 소 |
+
+### Phase D: 부가 기능 (§56i, §56j, §56k)
+
+| 순서 | 항목 | 예상 복잡도 |
+|------|------|-----------|
+| D1 | Daily Prompts — 내장 프롬프트 + 카드 UI | 중 |
+| D2 | 커스텀 프롬프트 (prompts/ 폴더) | 소 |
+| D3 | AI 회고 — 후속 질문 제안 | 중 |
+| D4 | AI 회고 — 주간/월간 패턴 분석 | 상 |
+| D5 | 저널 검색 — frontmatter 필터 확장 | 중 |
+| D6 | Graph View 저널 스코핑 | 중 |
+
+---
+
+## 16. 마이그레이션
+
+### 16.1 기존 사용자 호환
+
+| 시나리오 | 동작 |
+|---------|------|
+| flat 구조 사용 중 | "폴더 구조로 정리하시겠습니까?" 다이얼로그 → 승인 시 자동 이동, 거부 시 그대로 |
+| 절대경로 저널 디렉토리 | 그대로 유지 (§56 기존 설정 호환) |
+| 템플릿 사용 중 | `templates/` 폴더로 복사 권유 (강제 아님) |
+| frontmatter에 mood 없음 | 무드 바가 미선택 상태로 표시 (기존 일기 깨지지 않음) |
+
+### 16.2 설정 마이그레이션
+
+기존 `journalDirectory` 설정을 그대로 사용. 신규 설정은 모두 기본값(OFF)으로 시작하여 기존 동작에 영향 없음.
+
+---
+
+*Journal Workspace 설계서 끝. 상위 참조: Part 5(§5.14), Part 4(§4.2), Part 8(§8.2)*
