@@ -45,7 +45,7 @@ import { useInlineAI } from "./hooks/use-inline-ai";
 import { useFileWatcher } from "./hooks/use-file-watcher";
 import { useExternalDrop } from "./hooks/use-external-drop";
 import { useJournal } from "./hooks/use-journal";
-import { isDateString, getJournalFilePath, resolveJournalDir, generateDefaultJournal, applyJournalTemplate } from "./utils/journal";
+import { isDateString, getJournalFilePath, getHierarchicalJournalPath, resolveJournalDir, generateDefaultJournal, applyJournalTemplate } from "./utils/journal";
 import { parseCapturesFromMarkdown, buildNoteFromCapture, buildPromotedCaptureLink } from "./utils/journal-capture";
 import { readFile, writeFile, createDir, getOpenedUrls, updateFileIndex } from "./ipc/invoke";
 import { useLinkStore } from "./stores/link-store";
@@ -1262,8 +1262,30 @@ function App() {
             const captures = parseCapturesFromMarkdown(content);
             if (captures.length === 0) return;
 
-            // Use the last capture for promotion (most recent)
-            const capture = captures[captures.length - 1];
+            // Find the capture at cursor position (fall back to last capture)
+            let capture = captures[captures.length - 1];
+            if (editor) {
+              const cursorPos = editor.state.selection.from;
+              const md = prosemirrorToMarkdown(editor.state.doc);
+              const lines = md.split("\n");
+              // Map PM cursor to markdown line
+              let charCount = 0;
+              let cursorLine = 0;
+              for (let li = 0; li < lines.length; li++) {
+                charCount += lines[li].length + 1;
+                if (charCount >= cursorPos) { cursorLine = li; break; }
+              }
+              const cursorLineText = lines[cursorLine] ?? "";
+              // Match cursor line against capture icons
+              const iconMap: Record<string, string> = { idea: "✦", link: "↗", quote: "❝", note: "☰" };
+              for (const c of captures) {
+                const icon = iconMap[c.type];
+                if (cursorLineText.startsWith(`- ${icon}`) && (c.title ? cursorLineText.includes(c.title) : true)) {
+                  capture = c;
+                  break;
+                }
+              }
+            }
             const { filename, content: noteContent } = buildNoteFromCapture(capture);
 
             // Determine notes directory
@@ -1305,6 +1327,100 @@ function App() {
             console.error("[PromoteCapture] Failed:", err);
           }
         })();
+        return;
+      }
+
+      // §56l Cmd+Shift+J — open/create today's journal
+      if (mod && e.shiftKey && e.code === "KeyJ") {
+        e.preventDefault();
+        (async () => {
+          try {
+            const { journalEnabled, journalDirectory, journalFilenameFormat, journalTemplatePath, journalUseHierarchy } = useSettingsStore.getState();
+            if (!journalEnabled || !journalDirectory) return;
+            const { rootPath } = useFileStore.getState();
+            const resolved = resolveJournalDir(rootPath, journalDirectory);
+            if (!resolved) return;
+            const today = new Date();
+            const journalPath = journalUseHierarchy
+              ? getHierarchicalJournalPath(resolved, today, journalFilenameFormat)
+              : getJournalFilePath(rootPath, journalDirectory, today, journalFilenameFormat);
+            if (!journalPath) return;
+
+            // Ensure file exists
+            let fileContent: string;
+            try {
+              fileContent = await readFile(journalPath);
+            } catch {
+              const parentDir = journalPath.substring(0, journalPath.lastIndexOf("/"));
+              await createDir(parentDir);
+              if (journalTemplatePath) {
+                try {
+                  const tpl = await readFile(journalTemplatePath);
+                  fileContent = applyJournalTemplate(tpl, today);
+                } catch {
+                  fileContent = generateDefaultJournal(today);
+                }
+              } else {
+                fileContent = generateDefaultJournal(today);
+              }
+              await writeFile(journalPath, fileContent);
+            }
+
+            // Open the file
+            const edStore = useEditorStore.getState();
+            const existing = edStore.tabs.find((t) => t.filePath === journalPath);
+            if (existing) {
+              edStore.setActiveTab(existing.id);
+            } else {
+              useFileStore.getState().setFileContent(journalPath, fileContent);
+              edStore.openTab({
+                id: crypto.randomUUID(),
+                filePath: journalPath,
+                title: journalPath.split("/").pop() ?? "Journal",
+                isDirty: false,
+                isPinned: false,
+              });
+            }
+          } catch (err) {
+            console.error("[JournalShortcut] Failed:", err);
+          }
+        })();
+        return;
+      }
+
+      // §56l Cmd+Shift+D — jump to Diary section in current journal
+      if (mod && e.shiftKey && e.code === "KeyD") {
+        e.preventDefault();
+        if (editor) {
+          const md = prosemirrorToMarkdown(editor.state.doc);
+          const lines = md.split("\n");
+          const diaryIdx = lines.findIndex((l) => /^## Diary/.test(l));
+          if (diaryIdx >= 0) {
+            const pos = mdLineToPmBlockStart(editor.state.doc, md, diaryIdx);
+            if (pos >= 0) {
+              editor.commands.focus();
+              editor.commands.setTextSelection(pos + 1);
+            }
+          }
+        }
+        return;
+      }
+
+      // §56l Cmd+Shift+C — jump to Captures section in current journal (no conflict: Cmd+C = copy uses no shift)
+      if (mod && e.shiftKey && e.code === "KeyC" && !e.altKey) {
+        e.preventDefault();
+        if (editor) {
+          const md = prosemirrorToMarkdown(editor.state.doc);
+          const lines = md.split("\n");
+          const capturesIdx = lines.findIndex((l) => /^## Captures/.test(l));
+          if (capturesIdx >= 0) {
+            const pos = mdLineToPmBlockStart(editor.state.doc, md, capturesIdx);
+            if (pos >= 0) {
+              editor.commands.focus();
+              editor.commands.setTextSelection(pos + 1);
+            }
+          }
+        }
         return;
       }
 

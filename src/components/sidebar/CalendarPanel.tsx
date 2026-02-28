@@ -11,6 +11,8 @@ import {
   generateDefaultJournal,
   applyJournalTemplate,
 } from "../../utils/journal";
+import { parseMoodFromFrontmatter } from "../../utils/journal-mood";
+import type { MoodValue } from "../../utils/journal-mood";
 import { readFile, writeFile, createDir, listDir } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
@@ -39,29 +41,48 @@ export function CalendarPanel() {
     [journalDirectory],
   );
 
+  // §56e Mood colors for calendar dots
+  const MOOD_COLORS: Record<MoodValue, string> = {
+    deep: "#64748B", calm: "#94A3B8", neutral: "#CBD5E1", warm: "#F59E0B", bright: "#FBBF24",
+  };
+
   // Fetch journal files via IPC — supports both flat and hierarchical layouts
   const [dirFiles, setDirFiles] = useState<string[]>([]);
+  const [moodMap, setMoodMap] = useState<Map<string, MoodValue>>(new Map());
   useEffect(() => {
     if (!journalEnabled || !resolvedDir) return;
     let cancelled = false;
     (async () => {
       try {
+        let fileEntries: { name: string; path: string }[];
         if (journalUseHierarchy) {
-          // §56a Hierarchical: scan daily/ recursively for *.md files
           const dailyDir = `${resolvedDir}/daily`;
           const entries = await listDir(dailyDir, true);
-          if (!cancelled) {
-            setDirFiles(entries.filter((e) => !e.isDir).map((e) => e.name));
-          }
+          fileEntries = entries.filter((e) => !e.isDir).map((e) => ({ name: e.name, path: e.path }));
         } else {
           const entries = await listDir(resolvedDir, false);
-          if (!cancelled) {
-            setDirFiles(entries.filter((e) => !e.isDir).map((e) => e.name));
-          }
+          fileEntries = entries.filter((e) => !e.isDir).map((e) => ({ name: e.name, path: e.path }));
         }
+        if (cancelled) return;
+        setDirFiles(fileEntries.map((e) => e.name));
+
+        // Read frontmatter for mood colors (batch, non-blocking)
+        const moods = new Map<string, MoodValue>();
+        const reads = fileEntries.slice(0, 62).map(async (entry) => {
+          const match = entry.name.match(/^(\d{4})-(\d{2})-(\d{2})\.md$/) ||
+                        entry.name.match(/^(\d{4})(\d{2})(\d{2})\.md$/);
+          if (!match) return;
+          const dateStr = `${match[1]}-${match[2]}-${match[3]}`;
+          try {
+            const content = await readFile(entry.path);
+            const mood = parseMoodFromFrontmatter(content);
+            if (mood) moods.set(dateStr, mood);
+          } catch { /* skip unreadable files */ }
+        });
+        await Promise.all(reads);
+        if (!cancelled) setMoodMap(moods);
       } catch {
-        // Directory may not exist yet
-        if (!cancelled) setDirFiles([]);
+        if (!cancelled) { setDirFiles([]); setMoodMap(new Map()); }
       }
     })();
     return () => { cancelled = true; };
@@ -226,7 +247,12 @@ export function CalendarPanel() {
               title={dateStr}
             >
               {date.getDate()}
-              {hasJournal && <span className="calendar-dot" />}
+              {hasJournal && (
+                <span
+                  className="calendar-dot"
+                  style={moodMap.has(dateStr) ? { background: MOOD_COLORS[moodMap.get(dateStr)!] } : undefined}
+                />
+              )}
             </button>
           );
         })}

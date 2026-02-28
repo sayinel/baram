@@ -2785,6 +2785,44 @@ body {
   font-size: 13px;
 }
 
+/* §56l Notes tab */
+.memories-notes-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+}
+
+.memories-note-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-text-primary);
+  text-align: left;
+  width: 100%;
+  border-radius: 4px;
+}
+
+.memories-note-item:hover {
+  background: var(--color-bg-hover);
+}
+
+.memories-note-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+.memories-note-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ============================================
    §56l Quick Capture Dialog
    ============================================ */

@@ -221,14 +221,88 @@ function PhotosTab() {
   );
 }
 
-// --- Notes Tab (placeholder) ---
+// --- Notes Tab ---
+
+interface NoteEntry {
+  name: string;
+  path: string;
+  modifiedLabel: string;
+}
 
 function NotesTab() {
+  const { rootPath } = useFileStore();
+  const { journalDirectory } = useSettingsStore();
+  const [notes, setNotes] = useState<NoteEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!rootPath || !journalDirectory) return;
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      try {
+        const notesDir = `${rootPath}/${journalDirectory}/notes`;
+        const entries = await listDir(notesDir, true);
+        if (cancelled) return;
+        const noteFiles: NoteEntry[] = entries
+          .filter((e) => !e.isDir && e.name.endsWith(".md"))
+          .map((e) => ({
+            name: e.name.replace(/\.md$/, ""),
+            path: e.path,
+            modifiedLabel: "",
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+        setNotes(noteFiles);
+      } catch {
+        if (!cancelled) setNotes([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [rootPath, journalDirectory]);
+
+  const handleOpenNote = (path: string) => {
+    const { tabs } = useEditorStore.getState();
+    const existing = tabs.find((t) => t.filePath === path);
+    if (existing) {
+      useEditorStore.getState().setActiveTab(existing.id);
+    } else {
+      readFile(path).then((content) => {
+        const fileName = path.split("/").pop() ?? "Unknown";
+        useFileStore.getState().setFileContent(path, content);
+        useEditorStore.getState().openTab({
+          id: crypto.randomUUID(),
+          filePath: path,
+          title: fileName,
+          isDirty: false,
+          isPinned: false,
+        });
+      }).catch(() => {});
+    }
+  };
+
   return (
     <div className="memories-notes-tab">
-      <div className="memories-empty">
-        노트 탐색 기능은 다음 업데이트에서 지원됩니다.
-      </div>
+      {loading && <div className="memories-loading">Loading...</div>}
+
+      {!loading && notes.length === 0 && (
+        <div className="memories-empty">
+          캡처를 승격하면 노트가 여기에 표시됩니다.
+        </div>
+      )}
+
+      {notes.map((note) => (
+        <button
+          key={note.path}
+          className="memories-note-item"
+          onClick={() => handleOpenNote(note.path)}
+          title={note.path}
+        >
+          <span className="memories-note-icon">📄</span>
+          <span className="memories-note-name">{note.name}</span>
+        </button>
+      ))}
     </div>
   );
 }
