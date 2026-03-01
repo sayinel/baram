@@ -53,6 +53,7 @@ import { SyntaxReveal } from "./plugins/syntax-reveal";
 import { DropHandler } from "./plugins/drop-handler";
 import { WikilinkSuggest } from "./plugins/wikilink-suggest";
 import { MentionSuggest } from "./plugins/mention-suggest";
+import { TagSuggest } from "./plugins/tag-suggest";
 import { BlockIdDecoration } from "./plugins/block-id-decoration";
 import { GhostText } from "./plugins/ghost-text";
 import { PromptHighlight } from "./plugins/prompt-highlight";
@@ -186,6 +187,9 @@ export function createBaramExtensions(options?: BaramExtensionOptions): Extensio
 
     // Plugins — §57 Mention Autocomplete (@)
     MentionSuggest,
+
+    // Plugins — §56l Tag Autocomplete (#)
+    TagSuggest,
 
     // Plugins — §30a Block ID Decoration (Focus-Reveal + Hint)
     BlockIdDecoration,

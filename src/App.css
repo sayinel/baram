@@ -8233,6 +8233,57 @@ body {
   text-align: center;
 }
 
+/* §56l — Editor inline #tag autocomplete popup */
+.tag-menu-popup {
+  position: fixed;
+  z-index: 1000;
+}
+
+.tag-menu {
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  max-height: 200px;
+  overflow-y: auto;
+  min-width: 160px;
+}
+
+.tag-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: var(--font-sans);
+  color: var(--color-text-primary);
+  transition: background-color 0.1s;
+}
+
+.tag-menu-item:hover {
+  background-color: var(--color-bg-secondary);
+}
+
+.tag-menu-item-selected {
+  background-color: var(--color-bg-secondary);
+  color: var(--color-accent);
+}
+
+.tag-menu-name {
+  font-weight: 500;
+}
+
+.tag-menu-count {
+  font-size: 0.75rem;
+  color: var(--color-text-tertiary, var(--color-text-secondary));
+  background: var(--color-bg-secondary);
+  border-radius: 10px;
+  padding: 1px 6px;
+  min-width: 20px;
+  text-align: center;
+}
+
 /* §56k Journal Search */
 .journal-search {
   display: flex;

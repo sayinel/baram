@@ -110,6 +110,7 @@ export function QuickCaptureDialog() {
         : {}),
     };
 
+
     try {
       const { rootPath } = useFileStore.getState();
       const { journalDirectory, journalFilenameFormat, journalTemplatePath, journalUseHierarchy } =
@@ -244,9 +245,11 @@ export function QuickCaptureDialog() {
       } else if (e.key === "Enter" || e.key === "Tab") {
         if (suggestions[tagActiveIndex]) {
           e.preventDefault();
+          e.stopPropagation(); // Prevent dialog-level Enter from triggering save
           handleTagSelect(suggestions[tagActiveIndex]);
         }
       } else if (e.key === "Escape") {
+        e.stopPropagation(); // Prevent dialog-level Escape from closing
         setTagSuggestVisible(false);
       }
     },
