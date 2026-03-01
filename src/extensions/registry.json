@@ -318,6 +318,19 @@
       "inputRules": [],
       "shortcuts": {},
       "_note": "Collapsible toggle block using HTML details/summary. Slash command /toggle."
+    },
+    {
+      "name": "inlineMath",
+      "file": "nodes/math-inline.ts",
+      "markdown": "$text$",
+      "spec": "§5.3",
+      "phase": 1,
+      "milestone": "M3",
+      "status": "implemented",
+      "hasNodeView": true,
+      "inputRules": ["$"],
+      "shortcuts": {},
+      "_note": "Inline math expression rendered with KaTeX. Atom node (not a mark despite inline appearance)."
     }
   ],
   "marks": [
@@ -387,17 +400,6 @@
       "inputRules": [],
       "shortcuts": { "Mod-u": "toggle underline" },
       "_note": "Transformer handled inline in md-to-pm.ts/pm-to-md.ts via HTML <u> tags (no separate transformer file)."
-    },
-    {
-      "name": "inlineMath",
-      "file": "nodes/math-inline.ts",
-      "markdown": "$text$",
-      "spec": "§5.3",
-      "phase": 1,
-      "milestone": "M3",
-      "status": "implemented",
-      "inputRules": ["$"],
-      "shortcuts": {}
     },
     {
       "name": "highlight",

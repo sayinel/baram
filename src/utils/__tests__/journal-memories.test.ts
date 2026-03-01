@@ -3,7 +3,7 @@
  * TDD Red Phase: all tests should FAIL before implementation
  */
 import { describe, it, expect } from "vitest";
-import { extractOneLine, groupMemoriesByYear } from "../journal-memories";
+import { extractOneLine, extractImages, updateOneLineFrontmatter, groupMemoriesByYear } from "../journal-memories";
 
 describe("§56c extractOneLine", () => {
   it("returns frontmatter oneline field if present", () => {
@@ -118,6 +118,89 @@ date: 2026-02-28
 date: 2026-02-28
 ---`;
     expect(extractOneLine(content)).toBe("");
+  });
+});
+
+describe("§56c extractImages", () => {
+  it("extracts markdown image references", () => {
+    const content = `# Journal
+
+![sunset](photos/sunset.jpg)
+
+Some text.
+
+![](https://example.com/img.png)`;
+    const result = extractImages(content);
+    expect(result).toEqual([
+      { alt: "sunset", src: "photos/sunset.jpg" },
+      { alt: "", src: "https://example.com/img.png" },
+    ]);
+  });
+
+  it("returns empty array for content without images", () => {
+    expect(extractImages("No images here.")).toEqual([]);
+  });
+
+  it("returns empty array for empty content", () => {
+    expect(extractImages("")).toEqual([]);
+  });
+
+  it("handles multiple images on same line", () => {
+    const content = "![a](1.png) ![b](2.png)";
+    expect(extractImages(content)).toEqual([
+      { alt: "a", src: "1.png" },
+      { alt: "b", src: "2.png" },
+    ]);
+  });
+});
+
+describe("§56c updateOneLineFrontmatter", () => {
+  it("updates existing oneline in frontmatter", () => {
+    const content = `---
+date: 2026-03-01
+oneline: "이전 한 줄"
+---
+
+# 2026-03-01`;
+    const result = updateOneLineFrontmatter(content, "새로운 한 줄");
+    expect(result).toContain('oneline: "새로운 한 줄"');
+    expect(result).not.toContain("이전 한 줄");
+    expect(result).toContain("date: 2026-03-01");
+  });
+
+  it("appends oneline to existing frontmatter without it", () => {
+    const content = `---
+date: 2026-03-01
+---
+
+# 2026-03-01`;
+    const result = updateOneLineFrontmatter(content, "새 요약");
+    expect(result).toContain('oneline: "새 요약"');
+    expect(result).toContain("date: 2026-03-01");
+    // Frontmatter should still be properly delimited
+    expect(result.startsWith("---\n")).toBe(true);
+    expect(result).toContain("\n---\n");
+  });
+
+  it("creates frontmatter if none exists", () => {
+    const content = "# 2026-03-01\n\nNo frontmatter here.";
+    const result = updateOneLineFrontmatter(content, "첫 요약");
+    expect(result).toBe(`---\noneline: "첫 요약"\n---\n# 2026-03-01\n\nNo frontmatter here.`);
+  });
+
+  it("preserves content after frontmatter", () => {
+    const content = `---
+date: 2026-03-01
+oneline: "old"
+---
+
+## Diary
+
+오늘의 내용.`;
+    const result = updateOneLineFrontmatter(content, "new");
+    expect(result).toContain('oneline: "new"');
+    expect(result).toContain("## Diary");
+    expect(result).toContain("오늘의 내용.");
   });
 });
 

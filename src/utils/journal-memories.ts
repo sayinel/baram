@@ -79,6 +79,40 @@ export function extractOneLine(content: string): string {
   return firstLine;
 }
 
+/** Extract image references from journal markdown content */
+export function extractImages(content: string): { alt: string; src: string }[] {
+  if (!content.trim()) return [];
+
+  const images: { alt: string; src: string }[] = [];
+  // Match ![alt](src) pattern
+  const imgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+  let match;
+  while ((match = imgRegex.exec(content)) !== null) {
+    images.push({ alt: match[1], src: match[2] });
+  }
+  return images;
+}
+
+/** Update or insert the `oneline` field in frontmatter */
+export function updateOneLineFrontmatter(content: string, newOneLine: string): string {
+  const fmMatch = content.match(/^(---\n)([\s\S]*?)(\n---)/);
+  if (fmMatch) {
+    const fmBody = fmMatch[2];
+    const onelineRegex = /^oneline:\s*.*$/m;
+    if (onelineRegex.test(fmBody)) {
+      // Replace existing oneline
+      const updatedBody = fmBody.replace(onelineRegex, `oneline: "${newOneLine}"`);
+      return fmMatch[1] + updatedBody + fmMatch[3] + content.slice(fmMatch[0].length);
+    } else {
+      // Append oneline to existing frontmatter
+      return fmMatch[1] + fmBody + `\noneline: "${newOneLine}"` + fmMatch[3] + content.slice(fmMatch[0].length);
+    }
+  } else {
+    // No frontmatter — prepend one
+    return `---\noneline: "${newOneLine}"\n---\n${content}`;
+  }
+}
+
 /** Memory entry for grouping */
 export interface MemoryEntry {
   year: number;

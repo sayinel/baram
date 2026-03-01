@@ -4,8 +4,8 @@ import { useUIStore } from "../../stores/ui-store";
 import { useFileStore } from "../../stores/file-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useEditorStore } from "../../stores/editor-store";
-import { extractOneLine } from "../../utils/journal-memories";
-import { listDir, readFile } from "../../ipc/invoke";
+import { extractOneLine, extractImages, updateOneLineFrontmatter } from "../../utils/journal-memories";
+import { listDir, readFile, writeFile } from "../../ipc/invoke";
 
 type MemoriesTab = "journal" | "photos" | "notes";
 type MemoriesMode = "oneline" | "full";
@@ -198,9 +198,20 @@ function JournalTab({ memories, setMemories, mode, setMode, loading, setLoading,
           </div>
           <div className="memories-year-content">
             {mode === "oneline" ? (
-              <p className="memories-oneline">
-                {entry.oneLine || "(내용 없음)"}
-              </p>
+              entry.isCurrentYear ? (
+                <OneLineEditor entry={entry} onSave={(newText) => {
+                  const updated = updateOneLineFrontmatter(entry.fullContent, newText);
+                  writeFile(entry.path, updated).then(() => {
+                    setMemories(memories.map((m) =>
+                      m.year === entry.year ? { ...m, oneLine: newText, fullContent: updated } : m
+                    ));
+                  }).catch(() => {});
+                }} />
+              ) : (
+                <p className="memories-oneline">
+                  {entry.oneLine || "(내용 없음)"}
+                </p>
+              )
             ) : (
               <pre className="memories-full">{entry.fullContent}</pre>
             )}
@@ -211,13 +222,137 @@ function JournalTab({ memories, setMemories, mode, setMode, loading, setLoading,
   );
 }
 
-// --- Photos Tab (placeholder) ---
+// --- OneLineEditor (inline editing for current year) ---
+
+function OneLineEditor({ entry, onSave }: { entry: MemoryEntry; onSave: (text: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(entry.oneLine);
+
+  useEffect(() => { setDraft(entry.oneLine); }, [entry.oneLine]);
+
+  if (!editing) {
+    return (
+      <p
+        className="memories-oneline memories-oneline-editable"
+        onClick={() => setEditing(true)}
+        title="클릭하여 편집"
+      >
+        {entry.oneLine || "(클릭하여 한 줄 요약 입력)"}
+      </p>
+    );
+  }
+
+  return (
+    <input
+      className="memories-oneline-input"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        setEditing(false);
+        if (draft !== entry.oneLine) onSave(draft);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          setEditing(false);
+          if (draft !== entry.oneLine) onSave(draft);
+        } else if (e.key === "Escape") {
+          setEditing(false);
+          setDraft(entry.oneLine);
+        }
+      }}
+      autoFocus
+      placeholder="한 줄 요약 입력..."
+    />
+  );
+}
+
+// --- Photos Tab ---
+
+interface PhotoEntry {
+  year: number;
+  alt: string;
+  src: string;
+  journalPath: string;
+}
 
 function PhotosTab() {
+  const { rootPath } = useFileStore();
+  const { journalDirectory } = useSettingsStore();
+  const [photos, setPhotos] = useState<PhotoEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const day = now.getDate();
+
+  useEffect(() => {
+    if (!rootPath || !journalDirectory) return;
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      try {
+        const dailyDir = `${rootPath}/${journalDirectory}/daily`;
+        const yearDirs = await listDir(dailyDir);
+        const mm = String(month).padStart(2, "0");
+        const dd = String(day).padStart(2, "0");
+        const allPhotos: PhotoEntry[] = [];
+
+        for (const yearDir of yearDirs) {
+          if (!yearDir.isDir) continue;
+          const year = parseInt(yearDir.name, 10);
+          if (isNaN(year)) continue;
+
+          const filePath = `${dailyDir}/${year}/${mm}/${year}-${mm}-${dd}.md`;
+          try {
+            const content = await readFile(filePath);
+            const images = extractImages(content);
+            for (const img of images) {
+              // Resolve relative paths against journal file directory
+              const resolvedSrc = img.src.startsWith("/") || img.src.startsWith("http")
+                ? img.src
+                : `${dailyDir}/${year}/${mm}/${img.src}`;
+              allPhotos.push({ year, alt: img.alt, src: resolvedSrc, journalPath: filePath });
+            }
+          } catch {
+            // File doesn't exist for this year
+          }
+        }
+
+        if (!cancelled) {
+          allPhotos.sort((a, b) => b.year - a.year);
+          setPhotos(allPhotos);
+        }
+      } catch {
+        if (!cancelled) setPhotos([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [rootPath, journalDirectory, month, day]);
+
   return (
     <div className="memories-photos-tab">
-      <div className="memories-empty">
-        사진 기능은 다음 업데이트에서 지원됩니다.
+      {loading && <div className="memories-loading">Loading...</div>}
+
+      {!loading && photos.length === 0 && (
+        <div className="memories-empty">
+          이 날짜의 사진이 없습니다.
+        </div>
+      )}
+
+      <div className="memories-photos-grid">
+        {photos.map((photo, i) => (
+          <div key={`${photo.year}-${i}`} className="memories-photo-item">
+            <img
+              src={photo.src}
+              alt={photo.alt || `${photo.year}년 사진`}
+              className="memories-photo-img"
+              loading="lazy"
+            />
+            <span className="memories-photo-year">{photo.year}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
