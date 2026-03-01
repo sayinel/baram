@@ -187,12 +187,11 @@
       "status": "in-progress",
       "features": {
         "§56a-folder-structure": {
-          "status": "partial",
-          "tests": "33/33 vitest pass (hierarchy + periodic path tests)",
+          "status": "completed",
+          "tests": "38/38 vitest pass (hierarchy + periodic path + template tests)",
           "spec": "§56a",
-          "details": "daily/weekly/monthly/yearly hierarchical paths, ISO week helpers, migration utils, MigrationDialog UI in Settings. Missing: templates/ folder management",
-          "implemented": ["getHierarchicalJournalPath", "flatToHierarchicalPath", "buildMigrationPlan", "JOURNAL_HIDDEN_ENTRIES", "journalUseHierarchy setting", "getISOWeekNumber", "getWeekStartDate", "getWeeklyJournalPath", "getMonthlyJournalPath", "getYearlyJournalPath", "MigrationDialog UI", "Settings hierarchical toggle + migrate button"],
-          "missing": ["templates/ folder management"]
+          "details": "daily/weekly/monthly/yearly hierarchical paths, ISO week helpers, migration utils+dialog, templates/ folder init with 4 starter templates, per-note-type template settings",
+          "implemented": ["getHierarchicalJournalPath", "flatToHierarchicalPath", "buildMigrationPlan", "JOURNAL_HIDDEN_ENTRIES", "journalUseHierarchy setting", "getISOWeekNumber", "getWeekStartDate", "getWeeklyJournalPath", "getMonthlyJournalPath", "getYearlyJournalPath", "MigrationDialog UI", "Settings hierarchical toggle + migrate button", "initJournalTemplatesDir", "journalWeeklyTemplate/monthlyTemplate/yearlyTemplate settings", "Settings template Browse/Clear UI", "CalendarPanel template-aware periodic note creation"]
         },
         "§56b-workspace-mode": {
           "status": "completed",
@@ -249,7 +248,13 @@
           "details": "63 Korean writing prompts, getDailyPrompt (deterministic by date), DailyPrompt component, {{daily_prompt}} template variable, prompt blockquote in generateDefaultJournal",
           "implemented": ["DAILY_PROMPTS (63 prompts)", "getDailyPrompt", "getRandomPrompt", "DailyPrompt component", "CalendarPanel integration", "{{daily_prompt}} template variable", "generateDefaultJournal prompt blockquote"]
         },
-        "§56j-ai-reflection": { "status": "not-started", "spec": "§56j" },
+        "§56j-ai-reflection": {
+          "status": "completed",
+          "tests": "18/18 vitest pass (prompt + date range + format)",
+          "spec": "§56j",
+          "details": "AI reflection panel with week/month period, LLM streaming, saves to notes/reflection-*.md, Korean prompts, ✨ button in CalendarPanel",
+          "implemented": ["buildReflectionPrompt", "extractReflectionEntries", "formatReflectionMarkdown", "ReflectionPanel component", "useLLMStream integration", "CalendarPanel ✨ button", "Save as Note functionality"]
+        },
         "§56k-journal-search": {
           "status": "completed",
           "tests": "12/12 vitest pass (categorize + group + highlight)",
@@ -278,20 +283,20 @@
       },
       "specCheckSummary": {
         "date": "2026-02-28",
-        "implemented": 105,
-        "partial": 8,
-        "missing": 29,
+        "implemented": 120,
+        "partial": 6,
+        "missing": 16,
         "total": 142,
-        "journalTests": 211,
-        "note": "§56h/§56k/§56l completed. Remaining: §56a (templates), §56c (photos/inline), §56j (AI reflection), §56d (photo journal)"
+        "journalTests": 247,
+        "note": "§56a/§56j completed. 10/12 sections done. Remaining partials: §56c (Photos tab, inline editing), §56d (Photo Journal — entirely future work)"
       }
     }
   },
 
   "testSummary": {
-    "vitest": "1278/1278 pass (78 test files)",
+    "vitest": "1300/1300 pass (79 test files)",
     "cargoTest": "112/112 pass (4 ignored)",
-    "note": "M9-journal: all §56 sections implemented — folder hierarchy, workspace scoping, memories, mood palettes, periodic notes, streaks, journal themes, daily prompts, AI reflection (pending), journal search, daily capture, tag autocomplete, Quick Switcher prefix",
+    "note": "M9-journal: §56a-§56l all implemented (§56c/§56d partial). Folder hierarchy, workspace, memories, mood, periodic notes, streaks, themes, prompts, AI reflection, search, capture, tags, templates",
     "breakdown": {
       "stores": 6,
       "editor-store-mru": 12,
@@ -343,12 +348,13 @@
       "journal-memories": 14,
       "journal-mood": 23,
       "journal-capture": 37,
-      "journal-periodic": 14,
+      "journal-periodic": 18,
       "journal-stats": 18,
       "journal-prompts": 11,
       "journal-tags": 17,
       "journal-themes": 16,
-      "journal-search": 12
+      "journal-search": 12,
+      "journal-reflection": 18
     }
   },
 
