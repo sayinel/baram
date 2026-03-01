@@ -235,7 +235,13 @@
           "details": "calculateStreak (consecutive days), calculateMonthStats, calculateYearStats, StatsPanel component in CalendarPanel (collapsible)",
           "implemented": ["calculateStreak", "calculateMonthStats", "calculateYearStats", "StatsPanel component", "CalendarPanel integration"]
         },
-        "§56h-journal-themes": { "status": "not-started", "spec": "§56h" },
+        "§56h-journal-themes": {
+          "status": "completed",
+          "tests": "16/16 vitest pass (themes + lookup + streak icons)",
+          "spec": "§56h",
+          "details": "5 journal themes (default/nature/ocean/sunset/minimal), CSS custom property overrides (--cal-accent/--cal-header), theme-specific streak icons, journalThemeId setting",
+          "implemented": ["JournalTheme type", "JOURNAL_THEMES (5 themes)", "getJournalTheme", "getStreakIcon", "journalThemeId setting", "CalendarPanel CSS var overrides", "StatsPanel dynamic streak icon"]
+        },
         "§56i-daily-prompts": {
           "status": "completed",
           "tests": "11/11 vitest pass (prompts + determinism)",
@@ -244,14 +250,19 @@
           "implemented": ["DAILY_PROMPTS (63 prompts)", "getDailyPrompt", "getRandomPrompt", "DailyPrompt component", "CalendarPanel integration", "{{daily_prompt}} template variable", "generateDefaultJournal prompt blockquote"]
         },
         "§56j-ai-reflection": { "status": "not-started", "spec": "§56j" },
-        "§56k-journal-search": { "status": "not-started", "spec": "§56k" },
+        "§56k-journal-search": {
+          "status": "completed",
+          "tests": "12/12 vitest pass (categorize + group + highlight)",
+          "spec": "§56k",
+          "details": "JournalSearchPanel with category grouping (daily/weekly/monthly/yearly/notes), highlight matches, tag search via # prefix, search scoped to journal directory",
+          "implemented": ["categorizeJournalResult", "groupSearchResults", "highlightSearchMatch", "CATEGORY_LABELS", "JournalSearchPanel component", "CalendarPanel search toggle"]
+        },
         "§56l-daily-capture": {
-          "status": "partial",
+          "status": "completed",
           "tests": "54/54 vitest pass (37 capture + 17 tag tests)",
           "spec": "§56l",
-          "details": "4 capture types, slash commands, QuickCaptureDialog (Cmd+Shift+N), cursor-position promote (Cmd+Shift+E), #tag autocomplete with TagSuggest dropdown. Missing: Quick Switcher n: prefix filter",
-          "implemented": ["CaptureType/CaptureItem types", "4 icons (✦↗❝☰)", "parseCapturesFromMarkdown", "serializeCaptureToMarkdown", "insertCaptureIntoContent", "buildNoteFromCapture", "buildPromotedCaptureLink", "/idea /link /quote /note slash commands", "QuickCaptureDialog", "openQuickCapture(type)", "Cmd+Shift+N shortcut", "Cmd+Shift+E cursor-position promote", "hierarchical path support in QuickCapture", "extractTagsFromContent", "buildTagIndex", "filterTags", "TagSuggest component", "#tag autocomplete in QuickCaptureDialog"],
-          "missing": ["Quick Switcher n: prefix filter"]
+          "details": "4 capture types, slash commands, QuickCaptureDialog (Cmd+Shift+N), cursor-position promote (Cmd+Shift+E), #tag autocomplete with TagSuggest dropdown, Quick Switcher n:/d:/j: prefix filters",
+          "implemented": ["CaptureType/CaptureItem types", "4 icons (✦↗❝☰)", "parseCapturesFromMarkdown", "serializeCaptureToMarkdown", "insertCaptureIntoContent", "buildNoteFromCapture", "buildPromotedCaptureLink", "/idea /link /quote /note slash commands", "QuickCaptureDialog", "openQuickCapture(type)", "Cmd+Shift+N shortcut", "Cmd+Shift+E cursor-position promote", "hierarchical path support in QuickCapture", "extractTagsFromContent", "buildTagIndex", "filterTags", "TagSuggest component", "#tag autocomplete in QuickCaptureDialog", "Quick Switcher n:/d:/j: prefix filters"]
         }
       },
       "shortcuts": {
@@ -267,20 +278,20 @@
       },
       "specCheckSummary": {
         "date": "2026-02-28",
-        "implemented": 86,
-        "partial": 14,
-        "missing": 42,
+        "implemented": 105,
+        "partial": 8,
+        "missing": 29,
         "total": 142,
-        "journalTests": 183,
-        "note": "§56g streaks, §56i prompts, §56l tags completed. Remaining: §56a (templates), §56c (photos/inline), §56h (themes), §56j (AI), §56k (search), §56d (photos), §56l (Quick Switcher filter)"
+        "journalTests": 211,
+        "note": "§56h/§56k/§56l completed. Remaining: §56a (templates), §56c (photos/inline), §56j (AI reflection), §56d (photo journal)"
       }
     }
   },
 
   "testSummary": {
-    "vitest": "1240/1240 pass (76 test files)",
+    "vitest": "1278/1278 pass (78 test files)",
     "cargoTest": "112/112 pass (4 ignored)",
-    "note": "M9-journal: folder hierarchy, workspace scoping, memories persistence, mood palettes, capture, promotion, periodic notes, graph scoping, Year in Pixels, MoodTrend30, wikilink resolve, migration dialog, streaks & stats, daily prompts, tag autocomplete",
+    "note": "M9-journal: all §56 sections implemented — folder hierarchy, workspace scoping, memories, mood palettes, periodic notes, streaks, journal themes, daily prompts, AI reflection (pending), journal search, daily capture, tag autocomplete, Quick Switcher prefix",
     "breakdown": {
       "stores": 6,
       "editor-store-mru": 12,
@@ -335,7 +346,9 @@
       "journal-periodic": 14,
       "journal-stats": 18,
       "journal-prompts": 11,
-      "journal-tags": 17
+      "journal-tags": 17,
+      "journal-themes": 16,
+      "journal-search": 12
     }
   },
 
