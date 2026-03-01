@@ -388,6 +388,8 @@ pub fn run() {
             git_cmd::git_create_branch,
             get_opened_urls,
             tag_cmd::get_vault_tags,
+            tag_cmd::rename_tag,
+            tag_cmd::get_files_by_tag,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

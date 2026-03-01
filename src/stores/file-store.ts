@@ -36,6 +36,10 @@ interface FileState {
   enterJournalScope: (journalDir: string) => void;
   /** §56b Exit journal scope: restore original rootPath */
   exitJournalScope: () => void;
+
+  // Tag filter for FileTree
+  tagFilter: string | null;
+  setTagFilter: (tag: string | null) => void;
 }
 
 /**
@@ -303,4 +307,7 @@ export const useFileStore = create<FileState>((set, get) => ({
       isJournalScoped: false,
     });
   },
+
+  tagFilter: null,
+  setTagFilter: (tagFilter) => set({ tagFilter }),
 }));

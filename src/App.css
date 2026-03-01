@@ -9105,3 +9105,145 @@ body {
 .tag-node-hash {
   opacity: 0.6;
 }
+
+/* §56m Tag context menu */
+.tag-context-menu {
+  position: fixed;
+  z-index: 1000;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 4px;
+  min-width: 160px;
+}
+
+.tag-context-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  color: var(--color-text-primary);
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.tag-context-menu button:hover {
+  background: var(--color-bg-hover);
+}
+
+/* §56m Tag rename inline input */
+.tag-rename-input {
+  flex: 1;
+  padding: 1px 4px;
+  font-size: 0.8rem;
+  border: 1px solid var(--color-accent);
+  border-radius: 3px;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  outline: none;
+  min-width: 0;
+}
+
+/* §56m Tag panel rename notification */
+.tag-panel-notification {
+  padding: 6px 10px;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* FileTree tag filter */
+.filetree-tag-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-bg-sidebar));
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.filetree-tag-filter-label {
+  color: var(--color-text-secondary);
+}
+
+.filetree-tag-filter-tag {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.filetree-tag-filter-clear {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  font-size: 1rem;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.filetree-tag-filter-clear:hover {
+  color: var(--color-accent);
+}
+
+/* Tag Cloud */
+.tag-cloud {
+  padding: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.tag-cloud-item {
+  color: var(--color-accent);
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+  line-height: 1.4;
+}
+
+.tag-cloud-item:hover {
+  opacity: 0.7;
+}
+
+/* Tag panel active button */
+.tag-panel-action-active {
+  color: var(--color-accent) !important;
+}
+
+/* Tag color dots in context menu */
+.tag-color-palette {
+  display: flex;
+  gap: 4px;
+  padding: 6px 12px;
+}
+
+.tag-color-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.tag-color-dot:hover {
+  transform: scale(1.2);
+}
+
+.tag-color-dot-active {
+  border-color: var(--color-text-primary);
+}
+
+.tag-color-dot-clear {
+  background: linear-gradient(135deg, var(--color-bg-primary) 45%, var(--color-text-muted) 45%, var(--color-text-muted) 55%, var(--color-bg-primary) 55%);
+  border: 1px solid var(--color-border);
+}

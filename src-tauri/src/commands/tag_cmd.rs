@@ -204,3 +204,170 @@ pub async fn get_vault_tags(root_path: String) -> Result<Vec<TagEntry>, String> 
 
     Ok(entries)
 }
+
+/// Returns relative paths of .md files that contain the given tag (inline or frontmatter).
+#[tauri::command]
+pub async fn get_files_by_tag(root_path: String, tag: String) -> Result<Vec<String>, String> {
+    let root = std::path::PathBuf::from(&root_path);
+    if !root.exists() {
+        return Err("Root path does not exist".into());
+    }
+    if tag.is_empty() {
+        return Err("Tag must not be empty".into());
+    }
+
+    let mut md_files: Vec<std::path::PathBuf> = Vec::new();
+    collect_md_files(&root, &mut md_files)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let normalized_tag = tag.to_lowercase();
+
+    let mut matching: Vec<String> = Vec::new();
+
+    for file_path in &md_files {
+        let content = match tokio::fs::read_to_string(file_path).await {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        let (frontmatter, body) = split_frontmatter(&content);
+
+        // Check frontmatter tags
+        let fm_tags: Vec<String> = extract_frontmatter_tags(&frontmatter)
+            .into_iter()
+            .map(|t| t.to_lowercase())
+            .collect();
+        let has_fm_tag = fm_tags.iter().any(|t| t == &normalized_tag);
+
+        // Check inline #tags in body (strip code blocks first)
+        let clean_body = strip_code_blocks(&body);
+        let inline_tags: Vec<String> = extract_inline_tags(&clean_body)
+            .into_iter()
+            .map(|t| t.to_lowercase())
+            .collect();
+        let has_inline_tag = inline_tags.iter().any(|t| t == &normalized_tag);
+
+        if has_fm_tag || has_inline_tag {
+            if let Ok(rel) = file_path.strip_prefix(&root) {
+                matching.push(rel.to_string_lossy().into_owned());
+            }
+        }
+    }
+
+    Ok(matching)
+}
+
+// §56m Vault-wide tag rename/merge
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameTagResult {
+    pub files_modified: usize,
+    pub occurrences_replaced: usize,
+}
+
+/// Rename (or merge) a tag across all .md files in the vault.
+/// Handles:
+///   - Inline #tags in body text
+///   - Frontmatter tags: inline array `tags: [tag1, tag2]`
+///   - Frontmatter tags: block list `tags:\n  - tag1`
+/// Prefix rename: renaming `project` also renames `project/baram` → `new/baram`.
+#[tauri::command]
+pub async fn rename_tag(
+    root_path: String,
+    old_tag: String,
+    new_tag: String,
+) -> Result<RenameTagResult, String> {
+    let root = std::path::PathBuf::from(&root_path);
+    if !root.exists() {
+        return Err("Root path does not exist".into());
+    }
+    if old_tag.is_empty() || new_tag.is_empty() {
+        return Err("Tag names must not be empty".into());
+    }
+    if old_tag == new_tag {
+        return Ok(RenameTagResult {
+            files_modified: 0,
+            occurrences_replaced: 0,
+        });
+    }
+
+    let mut md_files: Vec<std::path::PathBuf> = Vec::new();
+    collect_md_files(&root, &mut md_files)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Escape regex special characters in old_tag
+    let escaped_old = regex::escape(&old_tag);
+
+    // Inline body tag: #old_tag followed by / (child) or non-word char / end
+    // Match the leading whitespace/paren prefix as a capture group to preserve it
+    let inline_re = Regex::new(&format!(
+        r"((?:^|(?:[\s\(])))#({})(?=(?:/|[\s,.\]\)!?;:\n]|$))",
+        escaped_old
+    ))
+    .map_err(|e| e.to_string())?;
+
+    // Frontmatter inline array: tags: [..., old_tag, ...]
+    // Match old_tag as a whole word within the bracket
+    let fm_inline_re = Regex::new(&format!(
+        r"(tags\s*:\s*\[[^\]]*)(?<!\w)({})(?!\w)([^\]]*\])",
+        escaped_old
+    ))
+    .map_err(|e| e.to_string())?;
+
+    // Frontmatter block list item: `  - old_tag` (whole line)
+    let fm_block_re = Regex::new(&format!(
+        r"(?m)^([ \t]+-[ \t]+)({})$",
+        escaped_old
+    ))
+    .map_err(|e| e.to_string())?;
+
+    let mut files_modified = 0usize;
+    let mut occurrences_replaced = 0usize;
+
+    for file_path in &md_files {
+        let content = match tokio::fs::read_to_string(file_path).await {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        let mut count = 0usize;
+
+        // Replace inline #tags (body text)
+        // Replace #old_tag and #old_tag/suffix → #new_tag and #new_tag/suffix
+        let after_inline = inline_re.replace_all(&content, |caps: &regex::Captures| {
+            count += 1;
+            format!("{}#{}", &caps[1], new_tag)
+        });
+
+        // Replace frontmatter inline array items
+        let after_fm_inline = fm_inline_re.replace_all(&after_inline, |caps: &regex::Captures| {
+            count += 1;
+            format!("{}{}{}", &caps[1], new_tag, &caps[3])
+        });
+
+        // Replace frontmatter block list items
+        let after_fm_block = fm_block_re.replace_all(&after_fm_inline, |caps: &regex::Captures| {
+            count += 1;
+            format!("{}{}", &caps[1], new_tag)
+        });
+
+        let new_content = after_fm_block.into_owned();
+
+        if new_content != content {
+            if let Err(e) = tokio::fs::write(file_path, &new_content).await {
+                eprintln!("[rename_tag] Failed to write {}: {}", file_path.display(), e);
+                continue;
+            }
+            files_modified += 1;
+            occurrences_replaced += count;
+        }
+    }
+
+    Ok(RenameTagResult {
+        files_modified,
+        occurrences_replaced,
+    })
+}

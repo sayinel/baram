@@ -2,6 +2,7 @@
 import { useState, useRef, useCallback, KeyboardEvent } from "react";
 import { NodeViewWrapper, NodeViewContent } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/react";
+import { useSettingsStore } from "../../stores/settings-store";
 
 // --- YAML tag parsing helpers ---
 
@@ -72,6 +73,7 @@ export function updateFrontmatterTags(yaml: string, tags: string[]): string {
 export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
   const [inputValue, setInputValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const tagColors = useSettingsStore((s) => s.tagColors);
 
   const tags = parseFrontmatterTags(node.textContent);
   const isEditable = editor.isEditable;
@@ -141,12 +143,15 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
       {showTagBar && (
         <div className="fm-tag-bar" contentEditable={false}>
           <span className="fm-tag-label">Tags</span>
-          {tags.map((tag) => (
+          {tags.map((tag) => {
+            const pillColor = tagColors[tag];
+            return (
             <span
               key={tag}
               className="fm-tag-pill"
               onClick={() => handleTagClick(tag)}
               title={`Search for #${tag}`}
+              style={pillColor ? { color: pillColor, borderColor: pillColor } : undefined}
             >
               #{tag}
               {isEditable && (
@@ -163,7 +168,8 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
                 </button>
               )}
             </span>
-          ))}
+            );
+          })}
           {isEditable && (
             <input
               ref={inputRef}

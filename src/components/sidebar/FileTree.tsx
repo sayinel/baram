@@ -6,7 +6,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useFileStore, openFolder, type FileEntry } from "../../stores/file-store";
 import { useEditorStore } from "../../stores/editor-store";
 import { useLinkStore } from "../../stores/link-store";
-import { readFile, writeFile, deleteFile, createDir, deleteDir, renameFile, renameFileWithLinks } from "../../ipc/invoke";
+import { readFile, writeFile, deleteFile, createDir, deleteDir, renameFile, renameFileWithLinks, getFilesByTag } from "../../ipc/invoke";
 import { flattenFileTree, fuzzyMatch, fuzzyScore, isGlobPattern, globMatch } from "../../utils/file-search";
 import { showConfirm } from "../../utils/confirm-dialog";
 import { isImageFile, getRelativePath } from "../../utils/path-utils";
@@ -297,6 +297,8 @@ function FileTreeNode({
 // --- FileTree (main component) ---
 export function FileTree({ editor }: { editor?: Editor | null }) {
   const { fileTree, rootPath, setFileContent, renameFileEntry, addFileEntry, removeFileEntry, moveFileEntry } = useFileStore();
+  const tagFilter = useFileStore((s) => s.tagFilter);
+  const setTagFilter = useFileStore((s) => s.setTagFilter);
   const { openTab, tabs, activeTabId, closeTab, renameTab } = useEditorStore();
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
@@ -307,6 +309,7 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
   const [dragOverPath, setDragOverPath] = useState<string | null>(null);
   const [dragSourcePath, setDragSourcePath] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [filteredPaths, setFilteredPaths] = useState<Set<string> | null>(null);
   const treeRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const dragRef = useRef<{ sourcePath: string; sourceName: string; startX: number; startY: number; active: boolean } | null>(null);
@@ -324,6 +327,28 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
       .filter((f) => fuzzyMatch(q, f.name))
       .sort((a, b) => fuzzyScore(q, a.name) - fuzzyScore(q, b.name));
   }, [searchQuery, fileTree, rootPath]);
+
+  // Tag filter helper: check if an entry or any descendant is in filteredPaths
+  const entryMatchesTagFilter = useCallback((entry: FileEntry, paths: Set<string>): boolean => {
+    if (!entry.isDir) return paths.has(entry.path);
+    return (entry.children ?? []).some((child) => entryMatchesTagFilter(child, paths));
+  }, []);
+
+  // Tag filter: fetch matching file paths when tagFilter changes
+  useEffect(() => {
+    if (!tagFilter || !rootPath) {
+      setFilteredPaths(null);
+      return;
+    }
+    getFilesByTag(rootPath, tagFilter).then((paths) => {
+      // Normalize path separators and build a Set of absolute paths
+      const absSet = new Set(paths.map((p) => rootPath + "/" + p.replace(/\\/g, "/")));
+      setFilteredPaths(absSet);
+    }).catch((err) => {
+      console.error("[FileTree] getFilesByTag failed:", err);
+      setFilteredPaths(null);
+    });
+  }, [tagFilter, rootPath]);
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const activeFilePath = activeTab?.filePath ?? null;
@@ -754,6 +779,20 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
           <IconNewFolder />
         </button>
       </div>
+      {tagFilter && (
+        <div className="filetree-tag-filter">
+          <span className="filetree-tag-filter-label">
+            Filter: <span className="filetree-tag-filter-tag">#{tagFilter}</span>
+          </span>
+          <button
+            className="filetree-tag-filter-clear"
+            onClick={() => setTagFilter(null)}
+            title="Clear filter"
+          >
+            ×
+          </button>
+        </div>
+      )}
       {searchResults ? (
         <div className="file-tree-results">
           {searchResults.map((file) => (
@@ -795,7 +834,10 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
               />
             </div>
           )}
-          {fileTree.map((entry) => (
+          {(filteredPaths
+            ? fileTree.filter((entry) => entryMatchesTagFilter(entry, filteredPaths))
+            : fileTree
+          ).map((entry) => (
             <FileTreeNode
               key={entry.path}
               entry={entry}

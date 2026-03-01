@@ -83,6 +83,11 @@ interface SettingsState {
   extensionSettings: Record<string, unknown>;
   setExtensionSetting: (key: string, value: unknown) => void;
 
+  // Tag colors
+  tagColors: Record<string, string>;
+  setTagColor: (tag: string, color: string) => void;
+  removeTagColor: (tag: string) => void;
+
   // General setters
   setOnLaunch: (onLaunch: OnLaunch) => void;
   setAutoSave: (enabled: boolean) => void;
@@ -208,6 +213,16 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
 
   // Extension settings (dynamic key-value)
   extensionSettings: {},
+
+  // Tag colors
+  tagColors: {},
+  setTagColor: (tag, color) => set((state) => ({
+    tagColors: { ...state.tagColors, [tag]: color },
+  })),
+  removeTagColor: (tag) => set((state) => {
+    const { [tag]: _, ...rest } = state.tagColors;
+    return { tagColors: rest };
+  }),
 
   // General setters
   setOnLaunch: (onLaunch) => set({ onLaunch }),
@@ -362,6 +377,7 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
     pandocPath: state.pandocPath,
     wordTemplatePath: state.wordTemplatePath,
     customExports: state.customExports,
+    tagColors: state.tagColors,
   }),
   version: 6,
   migrate: (persisted: unknown, version: number) => {

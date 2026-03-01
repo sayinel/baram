@@ -286,6 +286,25 @@ export async function getVaultTags(rootPath: string): Promise<TagEntry[]> {
   return invoke<TagEntry[]>("get_vault_tags", { rootPath });
 }
 
+/** Tag-based file filtering — returns relative paths of files containing the tag */
+export async function getFilesByTag(rootPath: string, tag: string): Promise<string[]> {
+  return invoke<string[]>("get_files_by_tag", { rootPath, tag });
+}
+
+/** §56m Vault-wide tag rename/merge */
+export interface RenameTagResult {
+  filesModified: number;
+  occurrencesReplaced: number;
+}
+
+export async function renameTag(
+  rootPath: string,
+  oldTag: string,
+  newTag: string,
+): Promise<RenameTagResult> {
+  return invoke<RenameTagResult>("rename_tag", { rootPath, oldTag, newTag });
+}
+
 // §3.2 Config commands — app_data_dir/config.json 기반 영속화
 export async function getConfig(key: string): Promise<string | null> {
   return invoke<string | null>("get_config", { key });
