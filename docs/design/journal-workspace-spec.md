@@ -1409,19 +1409,21 @@ interface SettingsState {
 
 ## 15. 단축키
 
-| 단축키 | 동작 | 컨텍스트 |
-|--------|------|---------|
-| `Alt+Cmd+4` | 저널 워크스페이스 진입/퇴장 | 전역 (기존) |
-| `Cmd+Shift+M` | Memories View 토글 | 저널 워크스페이스 |
-| `Cmd+Shift+T` | 오늘의 일기 열기 | 전역 |
-| `Alt+←` | 전날 일기로 이동 | 저널 워크스페이스 |
-| `Alt+→` | 다음날 일기로 이동 | 저널 워크스페이스 |
-| `Cmd+Shift+P` | Photo Gallery 열기 | 저널 워크스페이스 |
-| `Cmd+J` | Diary 섹션으로 점프 | 저널 에디터 |
-| `Cmd+Shift+C` | Captures 섹션으로 점프 | 저널 에디터 |
-| `Cmd+Shift+E` | 캡처 아이템을 노트로 승격 | 저널 에디터 (캡처 아이템 위) |
-| `Cmd+Shift+N` | Quick Capture 다이얼로그 열기 | 저널 워크스페이스 |
-| `#` | 태그 자동완성 트리거 | 저널 에디터 |
+| 단축키 | 동작 | 컨텍스트 | 구현 상태 |
+|--------|------|---------|----------|
+| `Alt+Cmd+4` | 저널 워크스페이스 진입/퇴장 | 전역 (기존) | ✅ |
+| `Cmd+Shift+J` | 오늘의 일기 열기/생성 | 전역 | ✅ |
+| `Cmd+Shift+D` | Diary 섹션으로 점프 | 저널 에디터 | ✅ |
+| `Cmd+Shift+C` | Captures 섹션으로 점프 | 저널 에디터 | ✅ |
+| `Cmd+Shift+M` | Memories View 토글 (우측 패널) | 전역 | ✅ |
+| `Alt+←` | 전날 일기로 이동 | 저널 파일 열린 상태 | ✅ |
+| `Alt+→` | 다음날 일기로 이동 | 저널 파일 열린 상태 | ✅ |
+| `Cmd+Shift+E` | 캡처 아이템을 노트로 승격 | 저널 에디터 (캡처 아이템 위) | ✅ |
+| `Cmd+Shift+N` | Quick Capture 다이얼로그 열기 | 저널 워크스페이스 | ✅ |
+| `#` | 태그 자동완성 트리거 | Quick Capture 다이얼로그 | ✅ |
+| `Cmd+Shift+P` | Photo Gallery 열기 | 저널 워크스페이스 | 🔜 §56d |
+
+> **참고**: 초기 설계에서 `Cmd+J`를 Diary 점프로 할당했으나, 기존 Inline AI 편집(§6.2)과 충돌하여 `Cmd+Shift+D`로 변경. `Cmd+J`는 Inline AI 유지.
 
 ---
 
@@ -1476,6 +1478,25 @@ interface SettingsState {
 | D4 | AI 회고 — 주간/월간 패턴 분석 | 상 |
 | D5 | 저널 검색 — frontmatter 필터 확장 | 중 |
 | D6 | Graph View 저널 스코핑 | 중 |
+
+### 구현 현황 (2026-03-01 기준)
+
+| 섹션 | 상태 | 비고 |
+|------|------|------|
+| §56a 폴더 구조 | ✅ 완료 | 계층 경로, 마이그레이션 다이얼로그, 템플릿 폴더 |
+| §56b 워크스페이스 모드 | ✅ 완료 | 스코핑, Graph View 필터, 프리셋 |
+| §56c Memories View | ⚠️ 부분 | Journal/Notes 탭 완료, Photos 탭 미구현, 인라인 편집 미구현 |
+| §56d Photo Journal | 🔜 미착수 | 사진 드래그&드롭, 갤러리 — 향후 작업 |
+| §56e 무드 트래커 | ✅ 완료 | MoodBar, 캘린더 도트, YearInPixels, MoodTrend30, 테마별 팔레트 |
+| §56f Periodic Notes | ✅ 완료 | 주간/월간/연간 노트 생성, 캘린더 연동, 템플릿 |
+| §56g Streaks & 통계 | ✅ 완료 | StatsPanel, streak 계산 (캡처 포함) |
+| §56h 저널 테마 | ✅ 완료 | 5종 테마, CSS 변수 오버라이드, streak 아이콘 |
+| §56i Daily Prompts | ✅ 완료 | 63개 한국어 프롬프트, DailyPrompt 컴포넌트, 템플릿 변수 |
+| §56j AI 회고 | ✅ 완료 | ReflectionPanel, LLM 스트리밍, 노트 저장 |
+| §56k 저널 검색 | ✅ 완료 | JournalSearchPanel, 카테고리 그룹핑, 태그 검색 |
+| §56l Daily Capture | ✅ 완료 | 4종 캡처, Quick Capture, 승격, 태그 자동완성 |
+
+**테스트**: vitest 1300/1300 pass (79 파일), cargo test 112/112 pass
 
 ---
 
