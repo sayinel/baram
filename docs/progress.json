@@ -273,10 +273,10 @@
         },
         "§56m-tag-system": {
           "status": "completed",
-          "tests": "1366/1366 vitest pass (23 tag + 13 fm-tag + 10 tag-node tests) + cargo test pass",
+          "tests": "1366/1366 vitest pass (23 tag + 13 fm-tag + 10 tag-node tests) + cargo check pass",
           "spec": "§56m",
-          "details": "P0+P1 complete. P0: Vault-wide Rust tag index, nested tags, click→search, autocomplete. P1: Tag sidebar panel (tree view), Frontmatter tags editor (pill UI), Tag inline atom node (#tag → ProseMirror atom)",
-          "implemented": ["get_vault_tags Rust IPC (tag_cmd.rs)", "vault-wide .md file scan (500 file limit)", "frontmatter + inline tag extraction (Rust)", "nested tag regex (#parent/child)", "filterTags segment prefix matching", "TagClick Extension (Cmd/Ctrl+Click → search)", "baram:search-query custom event", "GlobalSearch event listener", "vault-wide autocomplete (getVaultTags IPC)", "TagEntry interface", "TagPanel sidebar (tree view, filter, collapse/expand)", "ActivityBar tags icon", "FrontmatterView NodeView (tag pill bar)", "parseFrontmatterTags/updateFrontmatterTags YAML helpers", "TagNode inline atom Extension (InputRule #tag→atom)", "TagNodeView (styled #tag pill, Cmd+Click→search)", "tag-transformer (TAG_NODE_RE, serializeTag)", "md-to-pm splitTextWithTags pipeline", "pm-to-md tagNode serialization"]
+          "details": "P0+P1+P2 complete. P0: Rust tag index, nested tags, click→search, autocomplete. P1: Tag sidebar, frontmatter editor, atom node. P2: Vault-wide rename, tag colors, cloud view, file filtering",
+          "implemented": ["get_vault_tags Rust IPC", "vault-wide .md file scan (500 limit)", "frontmatter + inline tag extraction (Rust)", "nested tag regex (#parent/child)", "filterTags segment prefix matching", "TagClick Extension (Cmd/Ctrl+Click → search)", "baram:search-query custom event", "GlobalSearch event listener", "vault-wide autocomplete (Rust IPC)", "TagPanel sidebar (tree + cloud views)", "ActivityBar tags icon", "FrontmatterView NodeView (tag pill bar)", "parseFrontmatterTags/updateFrontmatterTags", "TagNode inline atom Extension", "TagNodeView (styled pill)", "tag-transformer + pipeline roundtrip", "rename_tag Rust IPC (vault-wide)", "TagPanel context menu (rename/search/filter/color)", "tagColors settings (6 presets + persist)", "Tag cloud view (frequency-based sizing)", "get_files_by_tag Rust IPC", "FileTree tag filter bar", "tagFilter in file-store"]
         }
       },
       "shortcuts": {
