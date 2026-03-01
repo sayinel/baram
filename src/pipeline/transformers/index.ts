@@ -24,6 +24,7 @@ import { footnoteRefTransformer } from "./footnote-ref-transformer";
 import { footnoteDefinitionTransformer } from "./footnote-definition-transformer";
 import { definitionListTransformer } from "./definition-list-transformer";
 import { mentionTransformer } from "./mention-transformer";
+import { tagTransformer } from "./tag-transformer";
 
 import { boldTransformer } from "./bold-transformer";
 import { italicTransformer } from "./italic-transformer";
@@ -71,6 +72,7 @@ const nodeEntries: NodeTransformerEntry[] = [
   footnoteDefinitionTransformer,
   definitionListTransformer,
   mentionTransformer,
+  tagTransformer,
 ];
 
 for (const entry of nodeEntries) {

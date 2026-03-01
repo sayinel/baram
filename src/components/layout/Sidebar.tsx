@@ -8,6 +8,7 @@ import { BookmarkPanel } from "../sidebar/BookmarkPanel";
 import { GraphView } from "../sidebar/GraphView";
 import { GitPanel } from "../sidebar/GitPanel";
 import { CalendarPanel } from "../sidebar/CalendarPanel";
+import { TagPanel } from "../sidebar/TagPanel";
 import type { Editor } from "@tiptap/react";
 
 interface SidebarProps {
@@ -28,6 +29,7 @@ export function Sidebar({ editor }: SidebarProps) {
         {sidebarPanel === "graph" && <GraphView />}
         {sidebarPanel === "git" && <GitPanel />}
         {sidebarPanel === "calendar" && <CalendarPanel />}
+        {sidebarPanel === "tags" && <TagPanel />}
       </div>
     </div>
   );

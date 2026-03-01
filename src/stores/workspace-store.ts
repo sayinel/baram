@@ -14,7 +14,7 @@ import { buildFileTree } from "./file-store";
 
 export interface WorkspaceLayout {
   sidebarOpen: boolean;
-  sidebarPanel: "files" | "outline" | "search" | "backlinks" | "bookmarks" | "graph" | "git" | "calendar";
+  sidebarPanel: "files" | "outline" | "search" | "backlinks" | "bookmarks" | "graph" | "git" | "calendar" | "tags";
   rightPanelOpen: boolean;
   rightPanelMode: "chat" | "help" | "memories" | "photo-gallery" | "none";
 }

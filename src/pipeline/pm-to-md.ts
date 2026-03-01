@@ -20,6 +20,7 @@ import type { Node as PmNode, Mark } from "@tiptap/pm/model";
 import { pmNodeTransformers, pmMarkTransformers } from "./transformers";
 import { serializeWikilink } from "./transformers/wikilink-transformer";
 import { serializeMention } from "./transformers/mention-transformer";
+import { serializeTag } from "./transformers/tag-transformer";
 import { appendBlockId, serializeBlockRef, serializeBlockEmbed } from "./block-id";
 
 /** §28 Remark plugin: serialize wikiLink + §30b blockReference + custom inline marks */
@@ -58,6 +59,12 @@ function remarkWikiLink(this: any) {
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       superscript(node: { value: string }, _parent: any, state: any, info: any) {
+        const tracker = state.createTracker(info);
+        return tracker.move(node.value);
+      },
+      // §56m: Tag node — output verbatim #tag string
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tagNode(node: { value: string }, _parent: any, state: any, info: any) {
         const tracker = state.createTracker(info);
         return tracker.move(node.value);
       },
@@ -455,6 +462,10 @@ function convertPmInlineChildren(node: PmNode): PhrasingContent[] {
       // §57: Custom mention mdast node — handler in serializer outputs verbatim
       const text = serializeMention(child.attrs as { type: string; value: string });
       result.push({ type: "mention", value: text } as unknown as PhrasingContent);
+    } else if (child.type.name === "tagNode") {
+      // §56m: Custom tagNode mdast node — handler in serializer outputs verbatim
+      const text = serializeTag(child.attrs as { tag: string });
+      result.push({ type: "tagNode", value: text } as unknown as PhrasingContent);
     }
   });
 

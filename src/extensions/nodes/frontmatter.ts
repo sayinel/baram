@@ -1,5 +1,7 @@
 // §5.8 YAML Frontmatter Extension — ---\nyaml\n---
 import { Node, mergeAttributes } from "@tiptap/core";
+import { ReactNodeViewRenderer } from "@tiptap/react";
+import { FrontmatterView } from "./frontmatter-view";
 
 export interface FrontmatterOptions {
   HTMLAttributes: Record<string, string>;
@@ -43,5 +45,9 @@ export const Frontmatter = Node.create<FrontmatterOptions>({
       }),
       ["pre", ["code", 0]],
     ];
+  },
+
+  addNodeView() {
+    return ReactNodeViewRenderer(FrontmatterView);
   },
 });

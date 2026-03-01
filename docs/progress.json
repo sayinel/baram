@@ -272,10 +272,10 @@
         },
         "§56m-tag-system": {
           "status": "completed",
-          "tests": "1349/1349 vitest pass (23 tag tests) + 112/112 cargo test",
+          "tests": "1366/1366 vitest pass (23 tag + 13 fm-tag + 10 tag-node tests) + cargo test pass",
           "spec": "§56m",
-          "details": "P0: Vault-wide Rust tag index (get_vault_tags IPC), nested tags (#parent/child), Cmd/Ctrl+Click tag→global search, vault-wide autocomplete (Rust index, 30s TTL cache)",
-          "implemented": ["get_vault_tags Rust IPC (tag_cmd.rs)", "vault-wide .md file scan (500 file limit)", "frontmatter + inline tag extraction (Rust)", "nested tag regex (#parent/child)", "filterTags segment prefix matching", "TagClick Extension (Cmd/Ctrl+Click → search)", "baram:search-query custom event", "GlobalSearch event listener", "vault-wide autocomplete (getVaultTags IPC)", "TagEntry interface"]
+          "details": "P0+P1 complete. P0: Vault-wide Rust tag index, nested tags, click→search, autocomplete. P1: Tag sidebar panel (tree view), Frontmatter tags editor (pill UI), Tag inline atom node (#tag → ProseMirror atom)",
+          "implemented": ["get_vault_tags Rust IPC (tag_cmd.rs)", "vault-wide .md file scan (500 file limit)", "frontmatter + inline tag extraction (Rust)", "nested tag regex (#parent/child)", "filterTags segment prefix matching", "TagClick Extension (Cmd/Ctrl+Click → search)", "baram:search-query custom event", "GlobalSearch event listener", "vault-wide autocomplete (getVaultTags IPC)", "TagEntry interface", "TagPanel sidebar (tree view, filter, collapse/expand)", "ActivityBar tags icon", "FrontmatterView NodeView (tag pill bar)", "parseFrontmatterTags/updateFrontmatterTags YAML helpers", "TagNode inline atom Extension (InputRule #tag→atom)", "TagNodeView (styled #tag pill, Cmd+Click→search)", "tag-transformer (TAG_NODE_RE, serializeTag)", "md-to-pm splitTextWithTags pipeline", "pm-to-md tagNode serialization"]
         }
       },
       "shortcuts": {
@@ -290,13 +290,13 @@
         "Alt+Left/Right": { "status": "implemented", "action": "Previous/Next day journal navigation" }
       },
       "specCheckSummary": {
-        "date": "2026-03-01",
-        "implemented": 126,
+        "date": "2026-03-02",
+        "implemented": 129,
         "partial": 0,
-        "missing": 16,
+        "missing": 13,
         "total": 142,
-        "journalTests": 255,
-        "note": "§56a-§56m all sections implemented. §56m Tag System P0 complete (vault-wide index, nested tags, click→search, autocomplete)"
+        "journalTests": 268,
+        "note": "§56m Tag System P0+P1 complete (tag sidebar, frontmatter editor, tag atom node, pipeline roundtrip)"
       },
       "specCheckIssues": [
         { "severity": "resolved", "issue": "FocusMode/TypewriterMode — phantom issue, extensions never existed in registry", "spec": "§5.1" },
@@ -321,9 +321,9 @@
   },
 
   "testSummary": {
-    "vitest": "1349/1349 pass (83 test files)",
+    "vitest": "1366/1366 pass (85 test files)",
     "cargoTest": "112/112 pass (4 ignored)",
-    "note": "M10: table cell merge (colspan/rowspan grid decomposition) + virtual scroll (content-visibility: auto for 50+ rows)",
+    "note": "§56m P1: tag sidebar panel, frontmatter tags editor, tag inline atom node + pipeline roundtrip",
     "breakdown": {
       "_comment": "79 test files, 1300 tests total (2026-03-01 spec-check verified)",
       "integration/ai-edit-workflow": 5,

@@ -33,6 +33,7 @@ import {
 import { Frontmatter } from "./nodes/frontmatter";
 import { Wikilink } from "./nodes/wikilink";
 import { Mention } from "./nodes/mention";
+import { TagNode } from "./nodes/tag-node";
 import { BlockReference } from "./nodes/block-reference";
 import { BlockEmbed } from "./nodes/block-embed";
 import { Callout } from "./nodes/callout";
@@ -189,6 +190,9 @@ export function createBaramExtensions(options?: BaramExtensionOptions): Extensio
     // Plugins — §57 Mention Autocomplete (@)
     MentionSuggest,
 
+    // Nodes — §56m Tag Inline Atom
+    TagNode,
+
     // Plugins — §56l Tag Autocomplete (#)
     TagSuggest,
 
@@ -262,4 +266,5 @@ export {
   DefinitionList,
   DefinitionTerm,
   DefinitionDescription,
+  TagNode,
 };

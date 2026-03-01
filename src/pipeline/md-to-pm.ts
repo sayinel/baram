@@ -20,6 +20,7 @@ import {
   MENTION_RE,
   parseMentionMatch,
 } from "./transformers/mention-transformer";
+import { TAG_NODE_RE } from "./transformers/tag-transformer";
 import {
   parseDetailsOpening,
   isDetailsClosing,
@@ -735,6 +736,12 @@ function convertInlineNode(
       if (nodes.length > 0) return nodes;
     }
 
+    // §56m: Check for #tag patterns and split if schema supports it
+    if (schema.nodes.tagNode && text.value.includes("#")) {
+      const nodes = splitTextWithTags(text.value, schema, parentMarks);
+      if (nodes.length > 0) return nodes;
+    }
+
     // Custom inline marks: ==highlight==, ^superscript^, ~subscript~
     const customMarkNodes = splitTextWithCustomInlineMarks(text.value, schema, parentMarks);
     if (customMarkNodes.length > 0) return customMarkNodes;
@@ -975,6 +982,45 @@ function splitTextWithMentions(
     } else {
       result.push(schema.text(after, parentMarks));
     }
+  }
+
+  return result;
+}
+
+/** §56m: Split a text string at #tag boundaries into mixed text + tagNode PM nodes */
+function splitTextWithTags(
+  text: string,
+  schema: Schema,
+  parentMarks: Mark[],
+): PmNode[] {
+  const result: PmNode[] = [];
+  const re = new RegExp(TAG_NODE_RE.source, "g");
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = re.exec(text)) !== null) {
+    // Find where the # actually starts in the full match
+    // The match may start with a leading whitespace char (from the alternation)
+    const hashOffset = match[0].indexOf("#");
+    const hashIndex = match.index + hashOffset;
+
+    // Text before the # (including any leading whitespace in the match)
+    if (hashIndex > lastIndex) {
+      result.push(schema.text(text.slice(lastIndex, hashIndex), parentMarks));
+    }
+
+    // Tag node
+    const tag = match[1];
+    result.push(schema.nodes.tagNode.create({ tag }));
+
+    lastIndex = hashIndex + 1 + tag.length; // past the # and the tag text
+  }
+
+  if (result.length === 0) return [];
+
+  // Text after the last tag
+  if (lastIndex < text.length) {
+    result.push(schema.text(text.slice(lastIndex), parentMarks));
   }
 
   return result;
