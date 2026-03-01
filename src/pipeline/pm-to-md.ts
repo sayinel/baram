@@ -100,7 +100,10 @@ export function prosemirrorToMdast(doc: PmNode): Root {
 
 /** Serialize mdast tree to markdown string */
 export function mdastToMarkdown(root: Root): string {
-  const result = serializer.stringify(root);
+  let result = serializer.stringify(root);
+  // §56l: remark-stringify escapes # at line start (atBreak), but #tag (no space)
+  // is never heading syntax — unescape when followed by word characters.
+  result = result.replace(/\\#(?=[\w가-힣])/g, "#");
   return result;
 }
 

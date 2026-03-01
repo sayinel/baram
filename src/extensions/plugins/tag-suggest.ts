@@ -102,13 +102,6 @@ export const TagSuggest = Extension.create({
           ) {
             return false;
           }
-          // Don't trigger at start of line (heading syntax)
-          const textBefore = state.doc.textBetween(
-            $from.start(),
-            range.from,
-            "",
-          );
-          if (textBefore.trim() === "") return false;
           return true;
         },
         command: ({
