@@ -38,6 +38,22 @@ const HeaderColIcon = (): ReactNode => (
     <rect x="2" y="2" width="4" height="12" rx="1" fill="currentColor" opacity="0.25" stroke="none" />
   </svg>
 );
+// Merge cells icon: two cells becoming one
+const MergeCellsIcon = (): ReactNode => (
+  <svg {...S} strokeWidth={1.4}>
+    <rect x="2" y="3" width="5" height="10" rx="0.5" />
+    <rect x="9" y="3" width="5" height="10" rx="0.5" />
+    <line x1="7" y1="6" x2="9" y2="8" />
+    <line x1="7" y1="10" x2="9" y2="8" />
+  </svg>
+);
+// Split cell icon: one cell becoming two
+const SplitCellsIcon = (): ReactNode => (
+  <svg {...S} strokeWidth={1.4}>
+    <rect x="3" y="3" width="10" height="10" rx="0.5" />
+    <line x1="8" y1="3" x2="8" y2="13" strokeDasharray="2 1.5" />
+  </svg>
+);
 // Copy as Markdown icon: two overlapping rectangles with "MD" label
 const CopyMdIcon = (): ReactNode => (
   <svg xmlns="http://www.w3.org/2000/svg" width="22" height="16" viewBox="0 0 22 16" fill="none">
@@ -214,6 +230,23 @@ export function TableToolbar({ editor }: TableToolbarProps) {
         title="Toggle Header Column"
       >
         <HeaderColIcon />
+      </button>
+      <div className="table-toolbar-separator" />
+      <button
+        className="table-toolbar-btn"
+        onClick={() => editor.chain().focus().mergeCells().run()}
+        disabled={!editor.can().mergeCells()}
+        title="Merge Cells (⌘M)"
+      >
+        <MergeCellsIcon />
+      </button>
+      <button
+        className="table-toolbar-btn"
+        onClick={() => editor.chain().focus().splitCell().run()}
+        disabled={!editor.can().splitCell()}
+        title="Split Cell"
+      >
+        <SplitCellsIcon />
       </button>
       <div className="table-toolbar-separator" />
       <button

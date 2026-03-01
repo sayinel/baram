@@ -1024,6 +1024,12 @@ body {
   cursor: col-resize;
 }
 
+/* §5.5 M10: Virtual scroll for 50+ row tables */
+.tiptap table tr.baram-vscroll {
+  content-visibility: auto;
+  contain-intrinsic-height: 40px;
+}
+
 /* §5.8 Frontmatter */
 .tiptap .frontmatter {
   background-color: var(--color-bg-secondary);

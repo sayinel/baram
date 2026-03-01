@@ -2,8 +2,8 @@
   "_comment": "Baram 개발 진행 상황 추적. 슬래시 커맨드가 자동으로 업데이트한다.",
   "project": "baram",
   "lastUpdated": "2026-03-01",
-  "currentPhase": 2,
-  "currentMilestone": "M9",
+  "currentPhase": 3,
+  "currentMilestone": "M10",
 
   "milestones": {
     "M1": {
@@ -299,13 +299,22 @@
         { "severity": "resolved", "issue": "§56c Photos tab and inline editing — implemented (extractImages + OneLineEditor)", "spec": "§56c" },
         { "severity": "info", "issue": "§56d Photo Journal entirely not started (future work)", "spec": "§56d" }
       ]
+    },
+    "M10": {
+      "name": "테이블 고급 — 셀 병합 + 가상 스크롤",
+      "status": "completed",
+      "completedAt": "2026-03-01",
+      "features": {
+        "§5.5-cell-merge": { "status": "completed", "tests": "10/10 vitest pass (grid decomposition + roundtrip)", "spec": "§5.5", "details": "mergeCells/splitCell/mergeOrSplit commands, renderHTML colspan/rowspan attrs, 2D grid pmToMdast decomposition, Mod-M shortcut, TableToolbar + ContextMenu buttons" },
+        "§5.5-virtual-scroll": { "status": "completed", "tests": "4/4 vitest pass (threshold + utility)", "spec": "§5.5", "details": "content-visibility: auto on 50+ row tables, ProseMirror plugin, graceful degradation for unsupported browsers" }
+      }
     }
   },
 
   "testSummary": {
-    "vitest": "1308/1308 pass (79 test files)",
+    "vitest": "1322/1322 pass (81 test files)",
     "cargoTest": "112/112 pass (4 ignored)",
-    "note": "M9-journal: §56a-§56l all implemented (§56d deferred). Folder hierarchy, workspace, memories, mood, periodic notes, streaks, themes, prompts, AI reflection, search, capture, tags, templates",
+    "note": "M10: table cell merge (colspan/rowspan grid decomposition) + virtual scroll (content-visibility: auto for 50+ rows)",
     "breakdown": {
       "_comment": "79 test files, 1300 tests total (2026-03-01 spec-check verified)",
       "integration/ai-edit-workflow": 5,

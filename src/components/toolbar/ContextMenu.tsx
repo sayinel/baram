@@ -370,6 +370,17 @@ export function ContextMenu({ editor }: ContextMenuProps) {
             label: `No Alignment${currentAlign === null ? " \u2713" : ""}`,
             action: () => editor.chain().focus().setCellAttribute("alignment", null).run(),
           },
+          ...(editor.can().mergeCells() || editor.can().splitCell() ? [
+            { label: "", action: () => {}, separator: true },
+          ] : []),
+          ...(editor.can().mergeCells() ? [{
+            label: "Merge Cells",
+            action: () => editor.chain().focus().mergeCells().run(),
+          }] : []),
+          ...(editor.can().splitCell() ? [{
+            label: "Split Cell",
+            action: () => editor.chain().focus().splitCell().run(),
+          }] : []),
           { label: "", action: () => {}, separator: true },
           {
             label: "Delete Row",

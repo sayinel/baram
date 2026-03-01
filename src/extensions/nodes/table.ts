@@ -6,13 +6,23 @@ import { TableRow } from "@tiptap/extension-table-row";
 import { TableCell } from "@tiptap/extension-table-cell";
 import { TableHeader } from "@tiptap/extension-table-header";
 import { TextSelection } from "@tiptap/pm/state";
+import { createVirtualScrollPlugin } from "./table-virtual-scroll";
 
 // §5.5 Tier 3: Table.extend() with resizable columns + pipe-input auto creation
 export const BaramTable = Table.extend({
 
+  addProseMirrorPlugins() {
+    return [
+      ...(this.parent?.() || []),
+      createVirtualScrollPlugin(),
+    ];
+  },
+
   addKeyboardShortcuts() {
     return {
       ...this.parent?.(),
+      // §5.5 M10: Merge or split cells (Cmd+M)
+      "Mod-m": () => this.editor.commands.mergeOrSplit(),
       // §5.5 Tier 3: Markdown pipe input auto table creation
       // `| Header 1 | Header 2 |` + Enter → auto-create table
       Enter: () => {
@@ -92,11 +102,15 @@ export const BaramTableCell = TableCell.extend({
 
   renderHTML({ node, HTMLAttributes }) {
     const align = node.attrs.alignment as string | null;
+    const colspan = node.attrs.colspan as number;
+    const rowspan = node.attrs.rowspan as number;
     return [
       "td",
       mergeAttributes(
         HTMLAttributes,
         align ? { style: `text-align: ${align}` } : {},
+        colspan > 1 ? { colspan } : {},
+        rowspan > 1 ? { rowspan } : {},
       ),
       0,
     ];
@@ -113,11 +127,15 @@ export const BaramTableHeader = TableHeader.extend({
 
   renderHTML({ node, HTMLAttributes }) {
     const align = node.attrs.alignment as string | null;
+    const colspan = node.attrs.colspan as number;
+    const rowspan = node.attrs.rowspan as number;
     return [
       "th",
       mergeAttributes(
         HTMLAttributes,
         align ? { style: `text-align: ${align}` } : {},
+        colspan > 1 ? { colspan } : {},
+        rowspan > 1 ? { rowspan } : {},
       ),
       0,
     ];
