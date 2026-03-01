@@ -6,8 +6,9 @@ import { useUIStore } from "./ui-store";
 import { useSettingsStore } from "./settings-store";
 import { useFileStore } from "./file-store";
 import { useEditorStore } from "./editor-store";
-import { readFile, writeFile, createDir } from "../ipc/invoke";
+import { readFile, writeFile, createDir, listDir } from "../ipc/invoke";
 import { getJournalFilePath, resolveJournalDir, generateDefaultJournal, applyJournalTemplate } from "../utils/journal";
+import { buildFileTree } from "./file-store";
 
 // --- Types ---
 
@@ -110,9 +111,27 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set, get) => 
     if (ui.rightPanelOpen !== layout.rightPanelOpen) ui.toggleRightPanel();
     ui.setRightPanelMode(layout.rightPanelMode);
 
+    // §56 Exit journal scope when switching away from journal preset
+    const fileStore = useFileStore.getState();
+    if (id !== "journal" && fileStore.isJournalScoped) {
+      const originalRoot = fileStore.originalRootPath;
+      fileStore.exitJournalScope();
+      if (originalRoot) {
+        (async () => {
+          try {
+            const entries = await listDir(originalRoot, true);
+            const tree = buildFileTree(entries, originalRoot);
+            useFileStore.getState().setFileTree(tree);
+          } catch (err) {
+            console.error("[Workspace] Failed to restore file tree:", err);
+          }
+        })();
+      }
+    }
+
     set({ activePresetId: id });
 
-    // §56 Journal preset: auto-open today's journal
+    // §56 Journal preset: auto-open today's journal + scope FileTree
     if (id === "journal") {
       const { journalEnabled, journalDirectory, journalFilenameFormat, journalTemplatePath } =
         useSettingsStore.getState();
@@ -162,6 +181,12 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set, get) => 
                 isPinned: false,
               });
             }
+
+            // §56 Scope FileTree to journal directory
+            useFileStore.getState().enterJournalScope(resolvedDir);
+            const entries = await listDir(resolvedDir, true);
+            const tree = buildFileTree(entries, resolvedDir);
+            useFileStore.getState().setFileTree(tree);
           } catch (err) {
             console.error("[Workspace] Failed to open journal:", err);
           }
