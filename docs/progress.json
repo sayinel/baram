@@ -201,12 +201,11 @@
           "implemented": ["enterJournalScope", "exitJournalScope", "isJournalScoped", "originalRootPath", "journal preset Alt+Cmd+4", "GraphView journal scoping filter", "memoriesTab persistence in settings-store", "memoriesMode persistence in settings-store"]
         },
         "§56c-memories-view": {
-          "status": "partial",
-          "tests": "14/14 vitest pass (memories tests)",
+          "status": "completed",
+          "tests": "20/20 vitest pass (memories tests)",
           "spec": "§56c",
-          "details": "MemoriesPanel 3 tabs (Journal/Photos/Notes), extractOneLine (Diary section only), One Line/Full mode, Notes tab with notes/ dir listing. Missing: Photos tab, inline editing",
-          "implemented": ["MemoriesPanel component", "3-tab UI", "Journal tab data loading", "extractOneLine", "groupMemoriesByYear", "One Line/Full mode", "Notes tab (notes/ directory listing + open-on-click)"],
-          "missing": ["Photos tab", "current-year inline editing"]
+          "details": "MemoriesPanel 3 tabs (Journal/Photos/Notes), extractOneLine (Diary section only), One Line/Full mode, Notes tab with notes/ dir listing, Photos tab with image extraction, inline one-line editing for current year",
+          "implemented": ["MemoriesPanel component", "3-tab UI", "Journal tab data loading", "extractOneLine", "groupMemoriesByYear", "One Line/Full mode", "Notes tab (notes/ directory listing + open-on-click)", "PhotosTab (extractImages across years)", "OneLineEditor (click-to-edit current year)", "extractImages utility", "updateOneLineFrontmatter utility"]
         },
         "§56d-photo-journal": {
           "status": "not-started",
@@ -283,30 +282,30 @@
       },
       "specCheckSummary": {
         "date": "2026-03-01",
-        "implemented": 120,
-        "partial": 6,
+        "implemented": 126,
+        "partial": 0,
         "missing": 16,
         "total": 142,
-        "journalTests": 247,
-        "note": "§56a-§56l all sections implemented. Remaining partials: §56c (Photos tab, inline editing), §56d (Photo Journal — future work)"
+        "journalTests": 255,
+        "note": "§56a-§56l all sections implemented. §56c fully complete. §56d (Photo Journal) deferred to future work"
       },
       "specCheckIssues": [
         { "severity": "resolved", "issue": "FocusMode/TypewriterMode — phantom issue, extensions never existed in registry", "spec": "§5.1" },
         { "severity": "resolved", "issue": "Cmd+Shift+M (Memories View toggle) — implemented", "spec": "§56c" },
         { "severity": "resolved", "issue": "Alt+Left/Right (Previous/Next day journal) — implemented", "spec": "§56b" },
         { "severity": "resolved", "issue": "Cmd+J conflict — by design: kept as Inline AI, Diary uses Cmd+Shift+D", "spec": "§56b" },
-        { "severity": "info", "issue": "KaTeX inline registered as 'mark' in registry.json but implemented as Node extension", "spec": "§5.3" },
+        { "severity": "resolved", "issue": "KaTeX inline registered as 'mark' in registry.json — moved to nodes section", "spec": "§5.3" },
         { "severity": "info", "issue": "4 manual perf measurements pending: cold start, warm start, typing latency, idle memory", "spec": "§8.4" },
-        { "severity": "info", "issue": "§56c Photos tab and inline editing not implemented (deferred)", "spec": "§56c" },
+        { "severity": "resolved", "issue": "§56c Photos tab and inline editing — implemented (extractImages + OneLineEditor)", "spec": "§56c" },
         { "severity": "info", "issue": "§56d Photo Journal entirely not started (future work)", "spec": "§56d" }
       ]
     }
   },
 
   "testSummary": {
-    "vitest": "1300/1300 pass (79 test files)",
+    "vitest": "1308/1308 pass (79 test files)",
     "cargoTest": "112/112 pass (4 ignored)",
-    "note": "M9-journal: §56a-§56l all implemented (§56c/§56d partial). Folder hierarchy, workspace, memories, mood, periodic notes, streaks, themes, prompts, AI reflection, search, capture, tags, templates",
+    "note": "M9-journal: §56a-§56l all implemented (§56d deferred). Folder hierarchy, workspace, memories, mood, periodic notes, streaks, themes, prompts, AI reflection, search, capture, tags, templates",
     "breakdown": {
       "_comment": "79 test files, 1300 tests total (2026-03-01 spec-check verified)",
       "integration/ai-edit-workflow": 5,
@@ -374,7 +373,7 @@
       "utils/format-error": 10,
       "utils/journal-capture": 30,
       "utils/journal-hierarchy": 25,
-      "utils/journal-memories": 12,
+      "utils/journal-memories": 20,
       "utils/journal-mood": 19,
       "utils/journal-periodic": 18,
       "utils/journal-prompts": 11,
