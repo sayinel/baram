@@ -1,6 +1,7 @@
 // §56 Calendar sidebar panel — mini calendar for journal navigation
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useSettingsStore } from "../../stores/settings-store";
+import { getJournalTheme } from "../../utils/journal-themes";
 import {
   formatJournalDate,
   getMonthDays,
@@ -29,6 +30,7 @@ import { YearInPixels } from "../journal/YearInPixels";
 import { MoodTrend30 } from "../journal/MoodTrend30";
 import { StatsPanel } from "../journal/StatsPanel";
 import { DailyPrompt } from "../journal/DailyPrompt";
+import { JournalSearchPanel } from "../journal/JournalSearchPanel";
 
 const DAY_NAMES = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const MONTH_NAMES = [
@@ -40,6 +42,7 @@ export function CalendarPanel() {
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
+  const [showSearch, setShowSearch] = useState(false);
 
   const {
     journalEnabled,
@@ -50,8 +53,11 @@ export function CalendarPanel() {
     journalWeeklyEnabled,
     journalMonthlyEnabled,
     journalYearlyEnabled,
+    journalThemeId,
     theme,
   } = useSettingsStore();
+
+  const journalTheme = useMemo(() => getJournalTheme(journalThemeId), [journalThemeId]);
 
   const resolvedDir = useMemo(
     () => resolveJournalDir(null, journalDirectory),
@@ -254,9 +260,14 @@ export function CalendarPanel() {
     openPeriodicNote(getYearlyJournalPath, generateDefaultYearly, date);
   }, [openPeriodicNote, viewYear]);
 
+  const themeStyle: React.CSSProperties | undefined = journalTheme.id !== "default" ? {
+    "--cal-accent": journalTheme.accentColor,
+    "--cal-header": journalTheme.headerColor,
+  } as React.CSSProperties : undefined;
+
   if (!journalEnabled) {
     return (
-      <div className="calendar-panel">
+      <div className="calendar-panel" style={themeStyle}>
         <div className="calendar-empty">
           Journal is disabled. Enable it in Settings &gt; General &gt; Journal.
         </div>
@@ -266,7 +277,7 @@ export function CalendarPanel() {
 
   if (!resolvedDir) {
     return (
-      <div className="calendar-panel">
+      <div className="calendar-panel" style={themeStyle}>
         <div className="calendar-empty">
           Set the journal directory in Settings &gt; General &gt; Journal.
         </div>
@@ -290,7 +301,7 @@ export function CalendarPanel() {
   }
 
   return (
-    <div className="calendar-panel">
+    <div className="calendar-panel" style={themeStyle}>
       <div className="calendar-header">
         <button className="calendar-nav-btn" onClick={prevMonth} title="Previous month">
           &lt;
@@ -326,6 +337,14 @@ export function CalendarPanel() {
         </span>
         <button className="calendar-nav-btn" onClick={nextMonth} title="Next month">
           &gt;
+        </button>
+        <button
+          className={`calendar-nav-btn calendar-search-btn${showSearch ? " calendar-search-btn-active" : ""}`}
+          onClick={() => setShowSearch((v) => !v)}
+          title="Search journal"
+          aria-label="Toggle journal search"
+        >
+          &#128269;
         </button>
       </div>
       <div className={`calendar-grid${journalWeeklyEnabled ? " calendar-grid-with-weeks" : ""}`}>
@@ -377,6 +396,9 @@ export function CalendarPanel() {
           );
         })}
       </div>
+      {showSearch && (
+        <JournalSearchPanel onClose={() => setShowSearch(false)} />
+      )}
       <StatsPanel journalDates={journalDates} />
       <DailyPrompt />
       <MoodTrend30 moodMap={moodMap} />

@@ -61,6 +61,9 @@ interface SettingsState {
   journalYearlyEnabled: boolean;  // §56f: yearly notes
   journalWeekStartDay: "monday" | "sunday";  // §56f: week start day
 
+  // §56h Journal Theme
+  journalThemeId: string;
+
   // §56b Memories Panel UI state
   memoriesTab: MemoriesTab;
   memoriesMode: MemoriesMode;
@@ -116,6 +119,9 @@ interface SettingsState {
   setJournalTemplatePath: (path: string) => void;
   setJournalStartupBehavior: (behavior: JournalStartupBehavior) => void;
   setJournalUseHierarchy: (enabled: boolean) => void;
+
+  // §56h Journal Theme setter
+  setJournalThemeId: (id: string) => void;
 
   // §56b Memories Panel UI state setters
   setMemoriesTab: (tab: MemoriesTab) => void;
@@ -173,6 +179,9 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
   journalMonthlyEnabled: false,
   journalYearlyEnabled: false,
   journalWeekStartDay: "monday" as const,
+
+  // §56h Journal Theme
+  journalThemeId: "default",
 
   // §56b Memories Panel UI state
   memoriesTab: "journal" as const,
@@ -268,6 +277,9 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
   setJournalYearlyEnabled: (journalYearlyEnabled: boolean) => set({ journalYearlyEnabled }),
   setJournalWeekStartDay: (journalWeekStartDay: "monday" | "sunday") => set({ journalWeekStartDay }),
 
+  // §56h Journal Theme setter
+  setJournalThemeId: (journalThemeId) => set({ journalThemeId }),
+
   // §56b Memories Panel UI state setters
   setMemoriesTab: (memoriesTab) => set({ memoriesTab }),
   setMemoriesMode: (memoriesMode) => set({ memoriesMode }),
@@ -327,6 +339,7 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
     journalMonthlyEnabled: state.journalMonthlyEnabled,
     journalYearlyEnabled: state.journalYearlyEnabled,
     journalWeekStartDay: state.journalWeekStartDay,
+    journalThemeId: state.journalThemeId,
     memoriesTab: state.memoriesTab,
     memoriesMode: state.memoriesMode,
     pandocPath: state.pandocPath,

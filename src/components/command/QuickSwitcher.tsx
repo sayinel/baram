@@ -4,6 +4,7 @@ import type { Editor } from "@tiptap/react";
 import { useUIStore } from "../../stores/ui-store";
 import { useFileStore } from "../../stores/file-store";
 import { useEditorStore } from "../../stores/editor-store";
+import { useSettingsStore } from "../../stores/settings-store";
 import { readFile } from "../../ipc/invoke";
 import {
   flattenFileTree,
@@ -12,6 +13,53 @@ import {
   extractHeadings,
 } from "../../utils/file-search";
 import type { FlatFile } from "../../utils/file-search";
+import { resolveJournalDir } from "../../utils/journal";
+
+/** §56l Journal prefix filter prefixes */
+export type JournalPrefix = "n" | "d" | "j" | null;
+
+/** Parse a query for journal prefix (n:, d:, j:). Returns prefix and stripped query. */
+export function parseJournalPrefix(query: string): {
+  prefix: JournalPrefix;
+  strippedQuery: string;
+} {
+  if (/^n:/i.test(query)) {
+    return { prefix: "n", strippedQuery: query.slice(2) };
+  }
+  if (/^d:/i.test(query)) {
+    return { prefix: "d", strippedQuery: query.slice(2) };
+  }
+  if (/^j:/i.test(query)) {
+    return { prefix: "j", strippedQuery: query.slice(2) };
+  }
+  return { prefix: null, strippedQuery: query };
+}
+
+/** Filter a file list by journal prefix against resolvedDir. */
+export function filterByJournalPrefix(
+  files: FlatFile[],
+  prefix: JournalPrefix,
+  resolvedDir: string,
+): FlatFile[] {
+  if (!prefix || !resolvedDir) return files;
+  const base = resolvedDir.endsWith("/") ? resolvedDir : resolvedDir + "/";
+  if (prefix === "j") {
+    return files.filter((f) => f.path.startsWith(base));
+  }
+  if (prefix === "d") {
+    return files.filter((f) => f.path.startsWith(base + "daily/"));
+  }
+  if (prefix === "n") {
+    return files.filter((f) => f.path.startsWith(base + "notes/"));
+  }
+  return files;
+}
+
+const PREFIX_BADGE_LABELS: Record<NonNullable<JournalPrefix>, string> = {
+  n: "Notes",
+  d: "Daily",
+  j: "Journal",
+};
 
 interface QuickSwitcherProps {
   editor: Editor | null;
@@ -80,6 +128,7 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
   const { quickSwitcherOpen, toggleQuickSwitcher } = useUIStore();
   const { fileTree, rootPath, setFileContent } = useFileStore();
   const { tabs, openTab } = useEditorStore();
+  const { journalEnabled, journalDirectory } = useSettingsStore();
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [currentFileHeadings, setCurrentFileHeadings] = useState<
@@ -91,6 +140,13 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
   const [headingFile, setHeadingFile] = useState<FlatFile | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const selectedRef = useRef<HTMLDivElement>(null);
+
+  // §56l Journal prefix filter state
+  const resolvedJournalDir = useMemo(
+    () =>
+      journalEnabled ? resolveJournalDir(null, journalDirectory) ?? "" : "",
+    [journalEnabled, journalDirectory],
+  );
 
   // Flatten file tree once
   const flatFiles = useMemo(
@@ -114,13 +170,17 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
     [flatFiles, openTabFiles],
   );
 
-  // Parse query for heading mode: "filename#heading" or "#heading"
+  // §56l Parse journal prefix first, then heading mode
   const parsedQuery = useMemo(() => {
-    const hashIdx = query.indexOf("#");
-    if (hashIdx === -1) return { fileQuery: query, headingQuery: null };
+    const { prefix, strippedQuery } = parseJournalPrefix(query);
+    const hashIdx = strippedQuery.indexOf("#");
+    if (hashIdx === -1) {
+      return { prefix, fileQuery: strippedQuery, headingQuery: null };
+    }
     return {
-      fileQuery: query.slice(0, hashIdx),
-      headingQuery: query.slice(hashIdx + 1),
+      prefix,
+      fileQuery: strippedQuery.slice(0, hashIdx),
+      headingQuery: strippedQuery.slice(hashIdx + 1),
     };
   }, [query]);
 
@@ -206,10 +266,16 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
       }));
     }
 
-    // File mode
-    const q = query.trim();
+    // File mode — apply journal prefix filter first
+    const candidateFiles = filterByJournalPrefix(
+      allFiles,
+      parsedQuery.prefix,
+      resolvedJournalDir,
+    );
+
+    const q = parsedQuery.fileQuery.trim();
     if (!q) {
-      const items: ResultItem[] = allFiles
+      const items: ResultItem[] = candidateFiles
         .slice(0, 50)
         .map((f) => ({
           type: "file" as const,
@@ -220,7 +286,7 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
       return items;
     }
 
-    const matched = allFiles
+    const matched = candidateFiles
       .filter((f) => fuzzyMatch(q, f.relativePath) || fuzzyMatch(q, f.name))
       .sort((a, b) => fuzzyScore(q, a.name) - fuzzyScore(q, b.name));
 
@@ -231,7 +297,12 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
       detail: f.relativePath !== f.name ? f.relativePath : undefined,
     }));
 
-    if (q && !matched.some((f) => f.name.toLowerCase() === q.toLowerCase())) {
+    // Only offer "create" when no prefix filter active
+    if (
+      !parsedQuery.prefix &&
+      q &&
+      !matched.some((f) => f.name.toLowerCase() === q.toLowerCase())
+    ) {
       items.push({
         type: "create",
         label: `+ Create "${q}"`,
@@ -239,7 +310,7 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
     }
 
     return items;
-  }, [query, parsedQuery, allFiles, activeHeadings, headingFile]);
+  }, [query, parsedQuery, allFiles, activeHeadings, headingFile, resolvedJournalDir]);
 
   // Reset on open
   useEffect(() => {
@@ -389,17 +460,24 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
         onClick={(e) => e.stopPropagation()}
         onKeyDown={handleKeyDown}
       >
-        <input
-          ref={inputRef}
-          className="quick-switcher-input"
-          type="text"
-          placeholder="Type a file name, or # for headings..."
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setSelectedIndex(0);
-          }}
-        />
+        <div className="quick-switcher-input-row">
+          {parsedQuery.prefix && (
+            <span className="quick-switcher-prefix-badge">
+              {PREFIX_BADGE_LABELS[parsedQuery.prefix]}
+            </span>
+          )}
+          <input
+            ref={inputRef}
+            className="quick-switcher-input"
+            type="text"
+            placeholder="Type a file name, # for headings, n:/d:/j: for journal..."
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setSelectedIndex(0);
+            }}
+          />
+        </div>
         <div className="quick-switcher-list">
           {results.length === 0 && (
             <div className="quick-switcher-empty">No results found</div>

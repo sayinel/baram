@@ -1,6 +1,8 @@
 // §56g Journal Streaks & Stats panel
 import { useState, useMemo } from "react";
 import { calculateStreak, calculateMonthStats } from "../../utils/journal-stats";
+import { getStreakIcon } from "../../utils/journal-themes";
+import { useSettingsStore } from "../../stores/settings-store";
 
 interface StatsPanelProps {
   journalDates: Set<string>;
@@ -8,6 +10,7 @@ interface StatsPanelProps {
 
 export function StatsPanel({ journalDates }: StatsPanelProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const journalThemeId = useSettingsStore((s) => s.journalThemeId);
 
   const today = useMemo(() => {
     const d = new Date();
@@ -41,7 +44,7 @@ export function StatsPanel({ journalDates }: StatsPanelProps) {
       {!collapsed && (
         <div className="journal-stats-body">
           <div className="journal-stats-streak">
-            🔥 Current: <strong>{streak.current}</strong>d &nbsp;·&nbsp; Longest:{" "}
+            {getStreakIcon(journalThemeId)} Current: <strong>{streak.current}</strong>d &nbsp;·&nbsp; Longest:{" "}
             <strong>{streak.longest}</strong>d
           </div>
           <div className="journal-stats-month">
