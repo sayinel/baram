@@ -1388,6 +1388,70 @@ function App() {
         return;
       }
 
+      // §56b Alt+Left / Alt+Right — previous/next day journal
+      if (e.altKey && !mod && !e.shiftKey && (e.code === "ArrowLeft" || e.code === "ArrowRight")) {
+        const { journalEnabled, journalDirectory, journalFilenameFormat, journalTemplatePath, journalUseHierarchy } = useSettingsStore.getState();
+        const es = useEditorStore.getState();
+        const activeTab = es.tabs.find((t) => t.id === es.activeTabId);
+        const basename = activeTab?.filePath?.split("/").pop()?.replace(/\.md$/, "") ?? "";
+        if (journalEnabled && journalDirectory && activeTab?.filePath && isDateString(basename)) {
+          e.preventDefault();
+          const [y, m, d] = basename.split("-").map(Number);
+          const target = new Date(y, m - 1, d);
+          const delta = e.code === "ArrowLeft" ? -1 : 1;
+          target.setDate(target.getDate() + delta);
+
+          (async () => {
+            try {
+              const { rootPath } = useFileStore.getState();
+              const resolved = resolveJournalDir(rootPath, journalDirectory);
+              if (!resolved) return;
+              const journalPath = journalUseHierarchy
+                ? getHierarchicalJournalPath(resolved, target, journalFilenameFormat)
+                : getJournalFilePath(rootPath, journalDirectory, target, journalFilenameFormat);
+              if (!journalPath) return;
+
+              let fileContent: string;
+              try {
+                fileContent = await readFile(journalPath);
+              } catch {
+                const parentDir = journalPath.substring(0, journalPath.lastIndexOf("/"));
+                await createDir(parentDir);
+                if (journalTemplatePath) {
+                  try {
+                    const tpl = await readFile(journalTemplatePath);
+                    fileContent = applyJournalTemplate(tpl, target);
+                  } catch {
+                    fileContent = generateDefaultJournal(target);
+                  }
+                } else {
+                  fileContent = generateDefaultJournal(target);
+                }
+                await writeFile(journalPath, fileContent);
+              }
+
+              const edStore = useEditorStore.getState();
+              const existing = edStore.tabs.find((t) => t.filePath === journalPath);
+              if (existing) {
+                edStore.setActiveTab(existing.id);
+              } else {
+                useFileStore.getState().setFileContent(journalPath, fileContent);
+                edStore.openTab({
+                  id: crypto.randomUUID(),
+                  filePath: journalPath,
+                  title: journalPath.split("/").pop() ?? "Journal",
+                  isDirty: false,
+                  isPinned: false,
+                });
+              }
+            } catch (err) {
+              console.error("[JournalNav] Failed:", err);
+            }
+          })();
+          return;
+        }
+      }
+
       // §56l Cmd+Shift+D — jump to Diary section in current journal
       if (mod && e.shiftKey && e.code === "KeyD") {
         e.preventDefault();
@@ -1435,6 +1499,21 @@ function App() {
       if (mod && e.shiftKey && e.code === "KeyA") {
         e.preventDefault();
         useUIStore.getState().toggleRightPanel();
+        return;
+      }
+
+      // §56c Cmd+Shift+M — toggle Memories View
+      if (mod && e.shiftKey && e.code === "KeyM") {
+        e.preventDefault();
+        const ui = useUIStore.getState();
+        if (!ui.rightPanelOpen) {
+          ui.setRightPanelMode("memories");
+          ui.toggleRightPanel();
+        } else if (ui.rightPanelMode === "memories") {
+          ui.toggleRightPanel();
+        } else {
+          ui.setRightPanelMode("memories");
+        }
         return;
       }
 

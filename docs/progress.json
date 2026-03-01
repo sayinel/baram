@@ -277,9 +277,9 @@
         "Cmd+Shift+J": { "status": "implemented", "action": "Open/create today's journal" },
         "Cmd+Shift+D": { "status": "implemented", "action": "Jump to Diary section" },
         "Cmd+Shift+C": { "status": "implemented", "action": "Jump to Captures section" },
-        "Cmd+J": { "status": "conflict", "action": "Diary jump — conflicts with Inline AI" },
-        "Cmd+Shift+M": { "status": "not-implemented", "action": "Memories View toggle" },
-        "Alt+Left/Right": { "status": "not-implemented", "action": "Previous/Next day journal" }
+        "Cmd+J": { "status": "resolved", "action": "Kept as Inline AI (§6.2); Diary uses Cmd+Shift+D instead" },
+        "Cmd+Shift+M": { "status": "implemented", "action": "Memories View toggle (right panel)" },
+        "Alt+Left/Right": { "status": "implemented", "action": "Previous/Next day journal navigation" }
       },
       "specCheckSummary": {
         "date": "2026-03-01",
@@ -291,10 +291,10 @@
         "note": "§56a-§56l all sections implemented. Remaining partials: §56c (Photos tab, inline editing), §56d (Photo Journal — future work)"
       },
       "specCheckIssues": [
-        { "severity": "low", "issue": "FocusMode/TypewriterMode extensions in registry.json lack tests", "spec": "§5.1" },
-        { "severity": "low", "issue": "Cmd+Shift+M (Memories View toggle) not implemented", "spec": "§56c" },
-        { "severity": "low", "issue": "Alt+Left/Right (Previous/Next day journal) not implemented", "spec": "§56b" },
-        { "severity": "low", "issue": "Cmd+J (Diary jump) conflicts with Cmd+J (Inline AI edit)", "spec": "§56b" },
+        { "severity": "resolved", "issue": "FocusMode/TypewriterMode — phantom issue, extensions never existed in registry", "spec": "§5.1" },
+        { "severity": "resolved", "issue": "Cmd+Shift+M (Memories View toggle) — implemented", "spec": "§56c" },
+        { "severity": "resolved", "issue": "Alt+Left/Right (Previous/Next day journal) — implemented", "spec": "§56b" },
+        { "severity": "resolved", "issue": "Cmd+J conflict — by design: kept as Inline AI, Diary uses Cmd+Shift+D", "spec": "§56b" },
         { "severity": "info", "issue": "KaTeX inline registered as 'mark' in registry.json but implemented as Node extension", "spec": "§5.3" },
         { "severity": "info", "issue": "4 manual perf measurements pending: cold start, warm start, typing latency, idle memory", "spec": "§8.4" },
         { "severity": "info", "issue": "§56c Photos tab and inline editing not implemented (deferred)", "spec": "§56c" },
