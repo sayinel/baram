@@ -14,6 +14,7 @@ import { ThemeEditor } from "./ThemeEditor";
 import { open } from "@tauri-apps/plugin-dialog";
 import { readFile } from "../../ipc/invoke";
 import { MigrationDialog } from "../journal/MigrationDialog";
+import { initJournalTemplatesDir } from "../../utils/journal-templates";
 import { BUILT_IN_THEMES } from "../../types/theme";
 import type { ThemeColors, ThemeDef } from "../../types/theme";
 import { THEME_COLOR_KEYS } from "../../types/theme";
@@ -78,6 +79,7 @@ export function SettingsModal() {
 
 function GeneralTab() {
   const [migrationOpen, setMigrationOpen] = useState(false);
+  const [templatesInitMsg, setTemplatesInitMsg] = useState<string | null>(null);
   const {
     onLaunch, setOnLaunch,
     autoSave, setAutoSave,
@@ -90,6 +92,9 @@ function GeneralTab() {
     journalTemplatePath, setJournalTemplatePath,
     journalStartupBehavior, setJournalStartupBehavior,
     journalUseHierarchy, setJournalUseHierarchy,
+    journalWeeklyTemplate, setJournalWeeklyTemplate,
+    journalMonthlyTemplate, setJournalMonthlyTemplate,
+    journalYearlyTemplate, setJournalYearlyTemplate,
   } = useSettingsStore();
 
   return (
@@ -235,6 +240,130 @@ function GeneralTab() {
               >
                 Migrate files...
               </button>
+            </SettingsRow>
+          )}
+
+          <SettingsSectionHeader title="Periodic Note Templates" />
+
+          <SettingsRow label="Weekly Template" description="Custom template file for new weekly notes">
+            <div className="settings-key-row">
+              <input
+                type="text"
+                className="settings-input settings-input-key"
+                value={journalWeeklyTemplate}
+                readOnly
+                placeholder="None (use default)"
+              />
+              <button
+                className="settings-key-toggle"
+                onClick={async () => {
+                  const selected = await open({
+                    filters: [{ name: "Markdown", extensions: ["md"] }],
+                  });
+                  if (selected) setJournalWeeklyTemplate(selected);
+                }}
+              >
+                Browse
+              </button>
+              {journalWeeklyTemplate && (
+                <button
+                  className="settings-key-toggle"
+                  onClick={() => setJournalWeeklyTemplate("")}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </SettingsRow>
+
+          <SettingsRow label="Monthly Template" description="Custom template file for new monthly notes">
+            <div className="settings-key-row">
+              <input
+                type="text"
+                className="settings-input settings-input-key"
+                value={journalMonthlyTemplate}
+                readOnly
+                placeholder="None (use default)"
+              />
+              <button
+                className="settings-key-toggle"
+                onClick={async () => {
+                  const selected = await open({
+                    filters: [{ name: "Markdown", extensions: ["md"] }],
+                  });
+                  if (selected) setJournalMonthlyTemplate(selected);
+                }}
+              >
+                Browse
+              </button>
+              {journalMonthlyTemplate && (
+                <button
+                  className="settings-key-toggle"
+                  onClick={() => setJournalMonthlyTemplate("")}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </SettingsRow>
+
+          <SettingsRow label="Yearly Template" description="Custom template file for new yearly notes">
+            <div className="settings-key-row">
+              <input
+                type="text"
+                className="settings-input settings-input-key"
+                value={journalYearlyTemplate}
+                readOnly
+                placeholder="None (use default)"
+              />
+              <button
+                className="settings-key-toggle"
+                onClick={async () => {
+                  const selected = await open({
+                    filters: [{ name: "Markdown", extensions: ["md"] }],
+                  });
+                  if (selected) setJournalYearlyTemplate(selected);
+                }}
+              >
+                Browse
+              </button>
+              {journalYearlyTemplate && (
+                <button
+                  className="settings-key-toggle"
+                  onClick={() => setJournalYearlyTemplate("")}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </SettingsRow>
+
+          {journalDirectory && (
+            <SettingsRow
+              label="Create Template Files"
+              description={`Create starter templates in ${journalDirectory}/templates/`}
+            >
+              <div className="settings-key-row">
+                <button
+                  className="settings-key-toggle"
+                  onClick={async () => {
+                    try {
+                      await initJournalTemplatesDir(journalDirectory);
+                      setTemplatesInitMsg("Templates created successfully.");
+                    } catch {
+                      setTemplatesInitMsg("Failed to create templates.");
+                    }
+                    setTimeout(() => setTemplatesInitMsg(null), 3000);
+                  }}
+                >
+                  Create template files
+                </button>
+                {templatesInitMsg && (
+                  <span className="settings-row-description" style={{ marginLeft: 8 }}>
+                    {templatesInitMsg}
+                  </span>
+                )}
+              </div>
             </SettingsRow>
           )}
         </>

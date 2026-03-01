@@ -8360,3 +8360,190 @@ body {
 .calendar-search-btn-active {
   color: var(--color-accent);
 }
+
+/* §56j AI Reflection Panel */
+.reflection-panel {
+  border-top: 1px solid var(--color-border);
+  padding: 8px 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.reflection-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+}
+
+.reflection-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.reflection-close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.reflection-close-btn:hover {
+  color: var(--color-text);
+}
+
+.reflection-period-btns {
+  display: flex;
+  gap: 4px;
+  padding: 0 12px;
+}
+
+.reflection-period-btn {
+  flex: 1;
+  padding: 3px 6px;
+  font-size: 0.72rem;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.reflection-period-btn:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+}
+
+.reflection-period-btn-active {
+  background: var(--color-accent);
+  color: #fff;
+  border-color: var(--color-accent);
+}
+
+.reflection-period-btn-active:hover:not(:disabled) {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.reflection-period-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.reflection-output {
+  margin: 0 12px;
+  padding: 8px;
+  background: var(--color-bg-secondary, var(--color-bg));
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--color-text);
+  max-height: 220px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.reflection-cursor {
+  display: inline-block;
+  animation: reflection-blink 0.8s steps(1) infinite;
+  color: var(--color-accent);
+}
+
+@keyframes reflection-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.reflection-placeholder {
+  padding: 4px 12px;
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+.reflection-error {
+  margin: 0 12px;
+  padding: 4px 8px;
+  background: color-mix(in srgb, var(--color-danger, #ef4444) 10%, transparent);
+  border: 1px solid var(--color-danger, #ef4444);
+  border-radius: 4px;
+  font-size: 0.72rem;
+  color: var(--color-danger, #ef4444);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.reflection-empty {
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.reflection-actions {
+  display: flex;
+  gap: 4px;
+  padding: 0 12px 4px;
+}
+
+.reflection-btn {
+  flex: 1;
+  padding: 4px 8px;
+  font-size: 0.72rem;
+  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.reflection-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.reflection-btn-generate {
+  background: var(--color-accent);
+  color: #fff;
+  border-color: var(--color-accent);
+}
+
+.reflection-btn-generate:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.reflection-btn-stop {
+  background: var(--color-bg);
+  color: var(--color-danger, #ef4444);
+  border-color: var(--color-danger, #ef4444);
+}
+
+.reflection-btn-stop:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-danger, #ef4444) 10%, transparent);
+}
+
+.reflection-btn-save {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.reflection-btn-save:hover:not(:disabled) {
+  background: var(--color-bg-hover);
+}
+
+/* Calendar AI reflection button */
+.calendar-reflection-btn {
+  margin-left: 2px;
+  font-size: 0.8rem;
+}
+
+.calendar-reflection-btn-active {
+  color: var(--color-accent);
+}

@@ -106,4 +106,48 @@ describe("§56f applyPeriodicTemplate", () => {
     const result = applyPeriodicTemplate(tpl, new Date(2026, 5, 1));
     expect(result).toBe("2026 start — 2026 end");
   });
+
+  it("handles all variable types in one template", () => {
+    const tpl = `---
+week: {{week_number}}
+week_start: {{week_start}}
+week_end: {{week_end}}
+month: {{month_name}}
+date: {{date}}
+year: {{year}}
+month_num: {{month}}
+---`;
+    const result = applyPeriodicTemplate(tpl, new Date(2026, 1, 28));
+    expect(result).toContain("week: W09");
+    expect(result).toContain("week_start: 2026-02-23");
+    expect(result).toContain("week_end: 2026-03-01");
+    expect(result).toContain("month: February");
+    expect(result).toContain("date: 2026-02-28");
+    expect(result).toContain("year: 2026");
+    expect(result).toContain("month_num: 02");
+  });
+
+  it("returns empty string for empty template", () => {
+    const result = applyPeriodicTemplate("", new Date(2026, 0, 1));
+    expect(result).toBe("");
+  });
+
+  it("returns template unchanged when no variables present", () => {
+    const tpl = "# Static Heading\n\nNo variables here.";
+    const result = applyPeriodicTemplate(tpl, new Date(2026, 0, 1));
+    expect(result).toBe(tpl);
+  });
+
+  it("substitutes yearly template variables", () => {
+    const tpl = `---
+type: yearly
+year: {{year}}
+---
+
+# {{year}} Review
+`;
+    const result = applyPeriodicTemplate(tpl, new Date(2025, 11, 31));
+    expect(result).toContain("year: 2025");
+    expect(result).toContain("# 2025 Review");
+  });
 });

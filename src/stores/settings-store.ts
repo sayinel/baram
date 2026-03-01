@@ -60,6 +60,9 @@ interface SettingsState {
   journalMonthlyEnabled: boolean;  // §56f: monthly notes
   journalYearlyEnabled: boolean;  // §56f: yearly notes
   journalWeekStartDay: "monday" | "sunday";  // §56f: week start day
+  journalWeeklyTemplate: string;    // §56a: weekly note template path
+  journalMonthlyTemplate: string;   // §56a: monthly note template path
+  journalYearlyTemplate: string;    // §56a: yearly note template path
 
   // §56h Journal Theme
   journalThemeId: string;
@@ -120,6 +123,11 @@ interface SettingsState {
   setJournalStartupBehavior: (behavior: JournalStartupBehavior) => void;
   setJournalUseHierarchy: (enabled: boolean) => void;
 
+  // §56a Periodic template setters
+  setJournalWeeklyTemplate: (path: string) => void;
+  setJournalMonthlyTemplate: (path: string) => void;
+  setJournalYearlyTemplate: (path: string) => void;
+
   // §56h Journal Theme setter
   setJournalThemeId: (id: string) => void;
 
@@ -179,6 +187,9 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
   journalMonthlyEnabled: false,
   journalYearlyEnabled: false,
   journalWeekStartDay: "monday" as const,
+  journalWeeklyTemplate: "",
+  journalMonthlyTemplate: "",
+  journalYearlyTemplate: "",
 
   // §56h Journal Theme
   journalThemeId: "default",
@@ -276,6 +287,9 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
   setJournalMonthlyEnabled: (journalMonthlyEnabled: boolean) => set({ journalMonthlyEnabled }),
   setJournalYearlyEnabled: (journalYearlyEnabled: boolean) => set({ journalYearlyEnabled }),
   setJournalWeekStartDay: (journalWeekStartDay: "monday" | "sunday") => set({ journalWeekStartDay }),
+  setJournalWeeklyTemplate: (journalWeeklyTemplate) => set({ journalWeeklyTemplate }),
+  setJournalMonthlyTemplate: (journalMonthlyTemplate) => set({ journalMonthlyTemplate }),
+  setJournalYearlyTemplate: (journalYearlyTemplate) => set({ journalYearlyTemplate }),
 
   // §56h Journal Theme setter
   setJournalThemeId: (journalThemeId) => set({ journalThemeId }),
@@ -339,6 +353,9 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
     journalMonthlyEnabled: state.journalMonthlyEnabled,
     journalYearlyEnabled: state.journalYearlyEnabled,
     journalWeekStartDay: state.journalWeekStartDay,
+    journalWeeklyTemplate: state.journalWeeklyTemplate,
+    journalMonthlyTemplate: state.journalMonthlyTemplate,
+    journalYearlyTemplate: state.journalYearlyTemplate,
     journalThemeId: state.journalThemeId,
     memoriesTab: state.memoriesTab,
     memoriesMode: state.memoriesMode,

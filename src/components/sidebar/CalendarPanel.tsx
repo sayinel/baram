@@ -20,6 +20,7 @@ import {
   generateDefaultWeekly,
   generateDefaultMonthly,
   generateDefaultYearly,
+  applyPeriodicTemplate,
 } from "../../utils/journal-periodic";
 import { parseMoodFromFrontmatter, getMoodColors } from "../../utils/journal-mood";
 import type { MoodValue } from "../../utils/journal-mood";
@@ -31,6 +32,8 @@ import { MoodTrend30 } from "../journal/MoodTrend30";
 import { StatsPanel } from "../journal/StatsPanel";
 import { DailyPrompt } from "../journal/DailyPrompt";
 import { JournalSearchPanel } from "../journal/JournalSearchPanel";
+import { ReflectionPanel } from "../journal/ReflectionPanel";
+import { useAIStore } from "../../stores/ai-store";
 
 const DAY_NAMES = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const MONTH_NAMES = [
@@ -43,6 +46,9 @@ export function CalendarPanel() {
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
   const [showSearch, setShowSearch] = useState(false);
+  const [showReflection, setShowReflection] = useState(false);
+
+  const { provider, apiKey } = useAIStore();
 
   const {
     journalEnabled,
@@ -53,6 +59,9 @@ export function CalendarPanel() {
     journalWeeklyEnabled,
     journalMonthlyEnabled,
     journalYearlyEnabled,
+    journalWeeklyTemplate,
+    journalMonthlyTemplate,
+    journalYearlyTemplate,
     journalThemeId,
     theme,
   } = useSettingsStore();
@@ -211,11 +220,12 @@ export function CalendarPanel() {
     }
   }, [resolvedDir, journalEnabled, journalDirectory, journalFilenameFormat, journalTemplatePath, journalUseHierarchy]);
 
-  // §56f Open or create periodic notes
+  // §56f / §56a Open or create periodic notes
   const openPeriodicNote = useCallback(async (
     getPath: (dir: string, date: Date) => string,
     generate: (date: Date) => string,
     date: Date,
+    templatePath?: string,
   ) => {
     if (!journalEnabled || !resolvedDir) return;
     const notePath = getPath(resolvedDir, date);
@@ -226,7 +236,17 @@ export function CalendarPanel() {
     try {
       content = await readFile(notePath);
     } catch {
-      content = generate(date);
+      // New file — apply template or fallback to default generator
+      if (templatePath) {
+        try {
+          const tpl = await readFile(templatePath);
+          content = applyPeriodicTemplate(tpl, date);
+        } catch {
+          content = generate(date);
+        }
+      } else {
+        content = generate(date);
+      }
       await writeFile(notePath, content);
     }
 
@@ -247,18 +267,18 @@ export function CalendarPanel() {
   }, [resolvedDir, journalEnabled]);
 
   const openWeeklyNote = useCallback((date: Date) => {
-    openPeriodicNote(getWeeklyJournalPath, generateDefaultWeekly, date);
-  }, [openPeriodicNote]);
+    openPeriodicNote(getWeeklyJournalPath, generateDefaultWeekly, date, journalWeeklyTemplate || undefined);
+  }, [openPeriodicNote, journalWeeklyTemplate]);
 
   const openMonthlyNote = useCallback(() => {
     const date = new Date(viewYear, viewMonth, 1);
-    openPeriodicNote(getMonthlyJournalPath, generateDefaultMonthly, date);
-  }, [openPeriodicNote, viewYear, viewMonth]);
+    openPeriodicNote(getMonthlyJournalPath, generateDefaultMonthly, date, journalMonthlyTemplate || undefined);
+  }, [openPeriodicNote, viewYear, viewMonth, journalMonthlyTemplate]);
 
   const openYearlyNote = useCallback(() => {
     const date = new Date(viewYear, 0, 1);
-    openPeriodicNote(getYearlyJournalPath, generateDefaultYearly, date);
-  }, [openPeriodicNote, viewYear]);
+    openPeriodicNote(getYearlyJournalPath, generateDefaultYearly, date, journalYearlyTemplate || undefined);
+  }, [openPeriodicNote, viewYear, journalYearlyTemplate]);
 
   const themeStyle: React.CSSProperties | undefined = journalTheme.id !== "default" ? {
     "--cal-accent": journalTheme.accentColor,
@@ -346,6 +366,16 @@ export function CalendarPanel() {
         >
           &#128269;
         </button>
+        {(provider === "ollama" || (apiKey && apiKey.length > 0)) && (
+          <button
+            className={`calendar-nav-btn calendar-reflection-btn${showReflection ? " calendar-reflection-btn-active" : ""}`}
+            onClick={() => setShowReflection((v) => !v)}
+            title="AI Reflection"
+            aria-label="Toggle AI reflection"
+          >
+            ✨
+          </button>
+        )}
       </div>
       <div className={`calendar-grid${journalWeeklyEnabled ? " calendar-grid-with-weeks" : ""}`}>
         {journalWeeklyEnabled && <div className="calendar-week-header">W</div>}
@@ -398,6 +428,9 @@ export function CalendarPanel() {
       </div>
       {showSearch && (
         <JournalSearchPanel onClose={() => setShowSearch(false)} />
+      )}
+      {showReflection && (
+        <ReflectionPanel onClose={() => setShowReflection(false)} />
       )}
       <StatsPanel journalDates={journalDates} />
       <DailyPrompt />
