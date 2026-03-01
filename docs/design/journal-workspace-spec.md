@@ -1232,22 +1232,69 @@ captures:
 - 위키링크 자동완성에서 `notes/` 파일 목록을 제안
 - 존재하지 않는 위키링크 클릭 시 "노트 생성하시겠습니까?" 다이얼로그
 
-### 13.9 태그 시스템
+### 13.9 태그 시스템 (§56m)
 
-캡처와 노트에 사용된 `#태그`를 전체 저널에서 검색하고 그룹핑한다.
+캡처와 노트에 사용된 `#태그`를 전체 Vault에서 인덱싱하고, 검색·자동완성·네비게이션을 제공한다.
+
+#### 경쟁 에디터 분석
+
+| 에디터 | 태그 문법 | 중첩 태그 | 태그 패널 | 자동완성 | 클릭 동작 |
+|--------|-----------|-----------|-----------|----------|-----------|
+| **Obsidian** | `#tag`, `#parent/child` | ✅ (무제한) | Tag Pane (트리) | Vault 전체 | 검색 결과 |
+| **Logseq** | `#tag`, `[[tag]]` | ❌ | 페이지 = 태그 | 페이지 기반 | 페이지 열기 |
+| **Bear** | `#tag`, `#multi word#` | ✅ (`#parent/child`) | 사이드바 트리 | ✅ | 필터링 |
+| **Notion** | DB property | ❌ | 필터 UI | DB 내 | 필터 적용 |
+| **Craft** | `#tag` | ❌ | 태그 필터 | ✅ | 필터링 |
+| **Typora** | 없음 | — | — | — | — |
+
+**Baram 전략**: Obsidian 표준 모델 기반 — `#tag` 인라인 + 중첩 + Vault-wide 인덱스 + 검색 연동.
+
+#### P0 — 필수 (§56m 스코프)
 
 **태그 입력**:
 - 인라인 `#태그명` — 마크다운 본문에 직접 작성
+- 중첩 태그: `#프로젝트/baram`, `#상태/완료` (Obsidian 호환)
 - frontmatter `tags: [태그1, 태그2]` — 구조화된 태그
-- 입력 시 `#` 이후 기존 태그 자동완성 제안
+- 입력 시 `#` 이후 Vault 전체 태그 자동완성 제안
+
+**Vault-wide Rust 태그 인덱스**:
+- Rust 백엔드에서 전체 `.md` 파일 스캔
+- 인라인 `#tag` + frontmatter `tags:` 배열 추출
+- `get_vault_tags(root_path)` IPC → `Vec<TagEntry { tag, count }>` 반환
+- 프론트엔드 30초 TTL 캐시
 
 **태그 클릭 동작**:
-1. 전체 저널 범위 검색 (daily + notes + weekly + monthly + yearly)
-2. 결과를 소스 타입별 그룹핑:
+1. 에디터 내 `#tag` 텍스트 Cmd/Ctrl+Click → 글로벌 검색 실행
+2. 전체 Vault 범위 검색 (저널 한정이 아닌 rootPath 전체)
+3. 검색 결과를 소스 타입별 그룹핑:
    - **Standalone Notes** (notes/) — 우선 표시
    - **Daily Captures** (daily/ 내 Captures 섹션)
    - **Daily Diary** (daily/ 내 Diary 섹션)
    - **Periodic Notes** (weekly/, monthly/, yearly/)
+   - **일반 파일** (저널 외 마크다운)
+
+**Vault-wide 자동완성**:
+- Rust 인덱스 기반으로 전체 Vault 태그 자동완성
+- 기존 저널 폴더 한정 → Vault 전체로 확대
+- 중첩 태그 경로 부분 매칭 (`proj` → `프로젝트/baram` 제안)
+
+#### P1 — 향후 확장
+
+| 기능 | 설명 | 구현 난이도 |
+|------|------|-------------|
+| **태그 사이드바 패널** | 사이드바에 태그 트리 뷰 (중첩 태그 계층 표시) | 중 |
+| **태그 인라인 Atom 노드** | `#tag`를 텍스트가 아닌 ProseMirror atom node로 | 고 |
+| **Frontmatter `tags:` 편집** | YAML frontmatter에서 태그 편집 UI | 중 |
+
+#### P2 — 장기
+
+| 기능 | 설명 |
+|------|------|
+| 태그 rename/merge | Vault 전체에서 태그 이름 일괄 변경 |
+| 태그 색상 지정 | 사용자 정의 태그 색상 |
+| 파일 태그 필터링 | FileTree에서 태그로 파일 필터 |
+| 태그 클라우드 | 빈도 기반 시각화 |
+| AI 태그 제안 | 내용 기반 자동 태그 추천 |
 
 **태그 통계**: `.journal.json`에 태그별 사용 빈도를 캐싱하여 태그 클라우드 렌더링에 활용.
 
@@ -1420,7 +1467,8 @@ interface SettingsState {
 | `Alt+→` | 다음날 일기로 이동 | 저널 파일 열린 상태 | ✅ |
 | `Cmd+Shift+E` | 캡처 아이템을 노트로 승격 | 저널 에디터 (캡처 아이템 위) | ✅ |
 | `Cmd+Shift+N` | Quick Capture 다이얼로그 열기 | 저널 워크스페이스 | ✅ |
-| `#` | 태그 자동완성 트리거 | Quick Capture 다이얼로그 | ✅ |
+| `#` | 태그 자동완성 트리거 | Quick Capture + 에디터 | ✅ |
+| `Cmd/Ctrl+Click #tag` | 태그 클릭 → 글로벌 검색 | 에디터 | 🔧 §56m |
 | `Cmd+Shift+P` | Photo Gallery 열기 | 저널 워크스페이스 | 🔜 §56d |
 
 > **참고**: 초기 설계에서 `Cmd+J`를 Diary 점프로 할당했으나, 기존 Inline AI 편집(§6.2)과 충돌하여 `Cmd+Shift+D`로 변경. `Cmd+J`는 Inline AI 유지.
@@ -1456,6 +1504,18 @@ interface SettingsState {
 | B11 | Daily Capture — 승격 워크플로우 (→ notes/) | 중 |
 | B12 | Notes 폴더 관리 + 위키링크 연동 | 중 |
 | B13 | 태그 시스템 + 태그 자동완성 | 중 |
+
+### Phase E: 태그 시스템 (§56m)
+
+| 순서 | 항목 | 예상 복잡도 |
+|------|------|-----------|
+| E1 | Rust Vault-wide 태그 인덱스 (get_vault_tags IPC) | 중 |
+| E2 | 중첩 태그 지원 (#parent/child 문법) | 소 |
+| E3 | 태그 클릭 → 글로벌 검색 (Cmd/Ctrl+Click) | 소 |
+| E4 | Vault-wide 자동완성 (Rust 인덱스 기반) | 소 |
+| E5 | 태그 사이드바 패널 (P1) | 중 |
+| E6 | 태그 Atom 노드 (P1) | 고 |
+| E7 | Frontmatter 태그 편집 UI (P1) | 중 |
 
 ### Phase C: 확장 기능 (§56f, §56g, §56h)
 
@@ -1495,8 +1555,9 @@ interface SettingsState {
 | §56j AI 회고 | ✅ 완료 | ReflectionPanel, LLM 스트리밍, 노트 저장 |
 | §56k 저널 검색 | ✅ 완료 | JournalSearchPanel, 카테고리 그룹핑, 태그 검색 |
 | §56l Daily Capture | ✅ 완료 | 4종 캡처, Quick Capture, 승격, 태그 자동완성 |
+| §56m 태그 시스템 | 🔧 진행중 | P0: Rust 인덱스, 중첩 태그, 클릭→검색, Vault-wide 자동완성 |
 
-**테스트**: vitest 1300/1300 pass (79 파일), cargo test 112/112 pass
+**테스트**: vitest 1322/1322 pass (81 파일), cargo test 112/112 pass
 
 ---
 

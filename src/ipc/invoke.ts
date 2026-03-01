@@ -276,6 +276,16 @@ export async function keyringDelete(key: string): Promise<void> {
   return invoke<void>("keyring_delete", { key });
 }
 
+/** §56m Vault-wide tag index */
+export interface TagEntry {
+  tag: string;
+  count: number;
+}
+
+export async function getVaultTags(rootPath: string): Promise<TagEntry[]> {
+  return invoke<TagEntry[]>("get_vault_tags", { rootPath });
+}
+
 // §3.2 Config commands — app_data_dir/config.json 기반 영속화
 export async function getConfig(key: string): Promise<string | null> {
   return invoke<string | null>("get_config", { key });

@@ -8,3 +8,4 @@ pub mod index_cmd;
 pub mod keyring_cmd;
 pub mod llm_cmd;
 pub mod search_cmd;
+pub mod tag_cmd;

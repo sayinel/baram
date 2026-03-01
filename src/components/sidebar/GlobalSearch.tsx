@@ -88,6 +88,20 @@ export function GlobalSearch() {
     [rootPath, caseSensitive, wholeWord, useRegex, includeFilter, excludeFilter],
   );
 
+  // Listen for tag-click search requests from the editor (Cmd/Ctrl+Click on #tag)
+  useEffect(() => {
+    const handler = (e: CustomEvent<{ query: string }>) => {
+      const q = e.detail.query;
+      setQuery(q);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => doSearch(q), 0);
+      // Focus the input so the user can refine if needed
+      setTimeout(() => inputRef.current?.focus(), 50);
+    };
+    window.addEventListener("baram:search-query", handler as EventListener);
+    return () => window.removeEventListener("baram:search-query", handler as EventListener);
+  }, [doSearch]);
+
   // Debounced search on query change
   const handleQueryChange = useCallback(
     (value: string) => {

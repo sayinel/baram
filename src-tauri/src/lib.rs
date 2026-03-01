@@ -11,7 +11,7 @@ mod search;
 
 use std::sync::Mutex;
 
-use commands::{config_cmd, export_cmd, fs_cmd, git_cmd, index_cmd, keyring_cmd, llm_cmd, search_cmd};
+use commands::{config_cmd, export_cmd, fs_cmd, git_cmd, index_cmd, keyring_cmd, llm_cmd, search_cmd, tag_cmd};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 
@@ -387,6 +387,7 @@ pub fn run() {
             git_cmd::git_discard,
             git_cmd::git_create_branch,
             get_opened_urls,
+            tag_cmd::get_vault_tags,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

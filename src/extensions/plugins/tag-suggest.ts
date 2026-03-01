@@ -1,5 +1,5 @@
-// §56l Tag autocomplete — Tiptap Extension using Suggestion API
-// Triggers on # and shows tag suggestions from journal files
+// §56m Tag autocomplete — Tiptap Extension using Suggestion API
+// Triggers on # and shows tag suggestions from vault-wide Rust index
 import { Extension } from "@tiptap/core";
 import { Suggestion } from "@tiptap/suggestion";
 import { ReactRenderer } from "@tiptap/react";
@@ -13,10 +13,9 @@ import {
   type TagMenuRef,
   type TagSuggestionItem,
 } from "../../components/command/TagMenu";
-import { buildTagIndex, filterTags } from "../../utils/journal-tags";
+import { filterTags } from "../../utils/journal-tags";
 import { useFileStore } from "../../stores/file-store";
-import { useSettingsStore } from "../../stores/settings-store";
-import { readFile, listDir } from "../../ipc/invoke";
+import { getVaultTags } from "../../ipc/invoke";
 
 const MENU_HEIGHT = 200;
 
@@ -30,7 +29,7 @@ function positionPopup(popup: HTMLDivElement, coords: DOMRect) {
   }
 }
 
-/** Cached tag index — rebuilt lazily when stale */
+/** Cached tag index — rebuilt lazily via Rust IPC when stale */
 let cachedTagIndex: Map<string, number> = new Map();
 let cacheTimestamp = 0;
 const CACHE_TTL = 30_000; // 30 seconds
@@ -43,35 +42,15 @@ async function getTagIndex(): Promise<Map<string, number>> {
 
   try {
     const { rootPath } = useFileStore.getState();
-    const { journalDirectory } = useSettingsStore.getState();
-    if (!rootPath || !journalDirectory) return cachedTagIndex;
+    if (!rootPath) return cachedTagIndex;
 
-    const tagScanDir =
-      journalDirectory.startsWith("/") || /^[A-Z]:\\/.test(journalDirectory)
-        ? journalDirectory
-        : `${rootPath}/${journalDirectory}`;
+    const entries = await getVaultTags(rootPath);
+    const index = new Map<string, number>();
+    for (const entry of entries) {
+      index.set(entry.tag, entry.count);
+    }
 
-    const entries = await listDir(tagScanDir, true).catch(() => []);
-    const mdFiles = entries
-      .filter((e) => !e.isDir && e.name.endsWith(".md"))
-      .slice(0, 100);
-
-    const fileContents = await Promise.all(
-      mdFiles.map(async (e) => {
-        try {
-          const content = await readFile(e.path);
-          return { path: e.path, content };
-        } catch {
-          return null;
-        }
-      }),
-    );
-
-    const validFiles = fileContents.filter(
-      (f): f is { path: string; content: string } => f !== null,
-    );
-
-    cachedTagIndex = buildTagIndex(validFiles);
+    cachedTagIndex = index;
     cacheTimestamp = now;
   } catch (err) {
     console.error("[TagSuggest] Failed to build tag index:", err);

@@ -2,8 +2,8 @@
  * §56l — Tag index and autocomplete utilities for journal captures
  */
 
-/** Pattern matching #tag with word chars and Korean characters */
-const TAG_PATTERN = /#([\w가-힣]+)/g;
+/** Pattern matching #tag with word chars, Korean characters, and nested paths (#parent/child) */
+const TAG_PATTERN = /#([\w가-힣]+(?:\/[\w가-힣]+)*)/g;
 
 /**
  * Extract all unique tags from markdown content.
@@ -70,7 +70,10 @@ export function buildTagIndex(
 
 /**
  * Filter tags by prefix query, sorted by frequency (most used first).
- * Case-insensitive matching. Returns at most 10 results.
+ * Case-insensitive matching. Supports nested tag path matching:
+ * - "proj" matches "project", "project/baram"
+ * - "bar" matches "baram", "project/baram" (segment prefix)
+ * Returns at most 10 results, prefix matches first.
  */
 export function filterTags(
   query: string,
@@ -85,9 +88,23 @@ export function filterTags(
       .map(([tag]) => tag);
   }
 
-  return Array.from(tagIndex.entries())
-    .filter(([tag]) => tag.startsWith(q))
-    .sort((a, b) => b[1] - a[1])
+  // Split into prefix matches (tag starts with query) and segment matches
+  const prefixMatches: [string, number][] = [];
+  const segmentMatches: [string, number][] = [];
+
+  for (const [tag, count] of tagIndex) {
+    if (tag.startsWith(q)) {
+      prefixMatches.push([tag, count]);
+    } else if (tag.includes("/" + q) || tag.split("/").some(seg => seg.startsWith(q))) {
+      segmentMatches.push([tag, count]);
+    }
+  }
+
+  // Prefix matches first, then segment matches — both sorted by frequency
+  prefixMatches.sort((a, b) => b[1] - a[1]);
+  segmentMatches.sort((a, b) => b[1] - a[1]);
+
+  return [...prefixMatches, ...segmentMatches]
     .slice(0, 10)
     .map(([tag]) => tag);
 }

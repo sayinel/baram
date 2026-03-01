@@ -54,6 +54,7 @@ import { DropHandler } from "./plugins/drop-handler";
 import { WikilinkSuggest } from "./plugins/wikilink-suggest";
 import { MentionSuggest } from "./plugins/mention-suggest";
 import { TagSuggest } from "./plugins/tag-suggest";
+import { TagClick } from "./plugins/tag-click";
 import { BlockIdDecoration } from "./plugins/block-id-decoration";
 import { GhostText } from "./plugins/ghost-text";
 import { PromptHighlight } from "./plugins/prompt-highlight";
@@ -190,6 +191,9 @@ export function createBaramExtensions(options?: BaramExtensionOptions): Extensio
 
     // Plugins — §56l Tag Autocomplete (#)
     TagSuggest,
+
+    // Plugins — §56m Tag Click → Search (Cmd/Ctrl+Click on #tag)
+    TagClick,
 
     // Plugins — §30a Block ID Decoration (Focus-Reveal + Hint)
     BlockIdDecoration,

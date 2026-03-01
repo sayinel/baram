@@ -53,6 +53,21 @@ Body text.`;
     expect(extractTagsFromContent(content)).toEqual([]);
   });
 
+  it("extracts nested tags with / separator", () => {
+    const content = "Working on #project/baram and #status/done today";
+    expect(extractTagsFromContent(content)).toEqual(["project/baram", "status/done"]);
+  });
+
+  it("extracts deeply nested tags", () => {
+    const content = "#work/project/baram/v2 is progressing";
+    expect(extractTagsFromContent(content)).toEqual(["work/project/baram/v2"]);
+  });
+
+  it("extracts Korean nested tags", () => {
+    const content = "#프로젝트/바람 에디터 개발 중";
+    expect(extractTagsFromContent(content)).toEqual(["프로젝트/바람"]);
+  });
+
   it("combines frontmatter and inline tags deduped", () => {
     const content = `---
 tags: [shared, frontonly]
@@ -129,5 +144,38 @@ describe("filterTags", () => {
   it("is case-insensitive", () => {
     const result = filterTags("RUST", index);
     expect(result).toContain("rust");
+  });
+
+  it("matches nested tag prefix", () => {
+    const nestedIndex = new Map<string, number>([
+      ["project/baram", 5],
+      ["project/other", 3],
+      ["status/done", 2],
+      ["coding", 8],
+    ]);
+    const result = filterTags("project", nestedIndex);
+    expect(result).toEqual(["project/baram", "project/other"]);
+  });
+
+  it("matches nested tag segment prefix", () => {
+    const nestedIndex = new Map<string, number>([
+      ["project/baram", 5],
+      ["project/other", 3],
+      ["baram", 10],
+    ]);
+    // "baram" matches both the top-level tag (prefix) and nested segment
+    const result = filterTags("baram", nestedIndex);
+    expect(result[0]).toBe("baram"); // prefix match first
+    expect(result).toContain("project/baram"); // segment match
+  });
+
+  it("matches nested tag with / in query", () => {
+    const nestedIndex = new Map<string, number>([
+      ["project/baram", 5],
+      ["project/other", 3],
+      ["status/done", 2],
+    ]);
+    const result = filterTags("project/b", nestedIndex);
+    expect(result).toEqual(["project/baram"]);
   });
 });

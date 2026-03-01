@@ -269,6 +269,13 @@
           "spec": "§56l",
           "details": "4 capture types, slash commands, QuickCaptureDialog (Cmd+Shift+N), cursor-position promote (Cmd+Shift+E), #tag autocomplete with TagSuggest dropdown, Quick Switcher n:/d:/j: prefix filters",
           "implemented": ["CaptureType/CaptureItem types", "4 icons (✦↗❝☰)", "parseCapturesFromMarkdown", "serializeCaptureToMarkdown", "insertCaptureIntoContent", "buildNoteFromCapture", "buildPromotedCaptureLink", "/idea /link /quote /note slash commands", "QuickCaptureDialog", "openQuickCapture(type)", "Cmd+Shift+N shortcut", "Cmd+Shift+E cursor-position promote", "hierarchical path support in QuickCapture", "extractTagsFromContent", "buildTagIndex", "filterTags", "TagSuggest component", "#tag autocomplete in QuickCaptureDialog", "Quick Switcher n:/d:/j: prefix filters"]
+        },
+        "§56m-tag-system": {
+          "status": "completed",
+          "tests": "1349/1349 vitest pass (23 tag tests) + 112/112 cargo test",
+          "spec": "§56m",
+          "details": "P0: Vault-wide Rust tag index (get_vault_tags IPC), nested tags (#parent/child), Cmd/Ctrl+Click tag→global search, vault-wide autocomplete (Rust index, 30s TTL cache)",
+          "implemented": ["get_vault_tags Rust IPC (tag_cmd.rs)", "vault-wide .md file scan (500 file limit)", "frontmatter + inline tag extraction (Rust)", "nested tag regex (#parent/child)", "filterTags segment prefix matching", "TagClick Extension (Cmd/Ctrl+Click → search)", "baram:search-query custom event", "GlobalSearch event listener", "vault-wide autocomplete (getVaultTags IPC)", "TagEntry interface"]
         }
       },
       "shortcuts": {
@@ -289,7 +296,7 @@
         "missing": 16,
         "total": 142,
         "journalTests": 255,
-        "note": "§56a-§56l all sections implemented. §56c fully complete. §56d Photo Journal complete (1335 vitest + 112 cargo)"
+        "note": "§56a-§56m all sections implemented. §56m Tag System P0 complete (vault-wide index, nested tags, click→search, autocomplete)"
       },
       "specCheckIssues": [
         { "severity": "resolved", "issue": "FocusMode/TypewriterMode — phantom issue, extensions never existed in registry", "spec": "§5.1" },
@@ -314,7 +321,7 @@
   },
 
   "testSummary": {
-    "vitest": "1322/1322 pass (81 test files)",
+    "vitest": "1349/1349 pass (83 test files)",
     "cargoTest": "112/112 pass (4 ignored)",
     "note": "M10: table cell merge (colspan/rowspan grid decomposition) + virtual scroll (content-visibility: auto for 50+ rows)",
     "breakdown": {
