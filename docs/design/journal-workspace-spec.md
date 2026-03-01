@@ -1545,8 +1545,8 @@ interface SettingsState {
 |------|------|------|
 | §56a 폴더 구조 | ✅ 완료 | 계층 경로, 마이그레이션 다이얼로그, 템플릿 폴더 |
 | §56b 워크스페이스 모드 | ✅ 완료 | 스코핑, Graph View 필터, 프리셋 |
-| §56c Memories View | ⚠️ 부분 | Journal/Notes 탭 완료, Photos 탭 미구현, 인라인 편집 미구현 |
-| §56d Photo Journal | 🔜 미착수 | 사진 드래그&드롭, 갤러리 — 향후 작업 |
+| §56c Memories View | ✅ 완료 | Journal/Notes/Photos 탭, 인라인 편집, OneLineEditor |
+| §56d Photo Journal | ✅ 완료 | 사진 드래그&드롭→assets/, /photo 슬래시, 갤러리+라이트박스 |
 | §56e 무드 트래커 | ✅ 완료 | MoodBar, 캘린더 도트, YearInPixels, MoodTrend30, 테마별 팔레트 |
 | §56f Periodic Notes | ✅ 완료 | 주간/월간/연간 노트 생성, 캘린더 연동, 템플릿 |
 | §56g Streaks & 통계 | ✅ 완료 | StatsPanel, streak 계산 (캡처 포함) |
@@ -1555,9 +1555,9 @@ interface SettingsState {
 | §56j AI 회고 | ✅ 완료 | ReflectionPanel, LLM 스트리밍, 노트 저장 |
 | §56k 저널 검색 | ✅ 완료 | JournalSearchPanel, 카테고리 그룹핑, 태그 검색 |
 | §56l Daily Capture | ✅ 완료 | 4종 캡처, Quick Capture, 승격, 태그 자동완성 |
-| §56m 태그 시스템 | 🔧 진행중 | P0: Rust 인덱스, 중첩 태그, 클릭→검색, Vault-wide 자동완성 |
+| §56m 태그 시스템 | ✅ 완료 | P0+P1: Rust 인덱스, 중첩 태그, 클릭→검색, 자동완성, 사이드바, Atom 노드, Frontmatter 편집 |
 
-**테스트**: vitest 1322/1322 pass (81 파일), cargo test 112/112 pass
+**테스트**: vitest 1366/1366 pass (85 파일), cargo test 112/112 pass
 
 ---
 

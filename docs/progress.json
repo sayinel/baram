@@ -183,8 +183,9 @@
       }
     },
     "M9-journal": {
-      "name": "Journal Workspace §56a-§56l",
-      "status": "in-progress",
+      "name": "Journal Workspace §56a-§56m",
+      "status": "completed",
+      "completedAt": "2026-03-02",
       "features": {
         "§56a-folder-structure": {
           "status": "completed",
