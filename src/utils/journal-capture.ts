@@ -142,6 +142,14 @@ export function serializeCaptureToMarkdown(item: CaptureItem): string {
   }
 }
 
+/** Remove empty list items (lone `-` lines) that accumulate from editor Enter key */
+function stripEmptyListItems(text: string): string {
+  return text
+    .split("\n")
+    .filter((line) => line.trim() !== "-")
+    .join("\n");
+}
+
 /** Insert a capture item into journal content, appending to existing Captures section or creating one */
 export function insertCaptureIntoContent(content: string, item: CaptureItem): string {
   const serialized = serializeCaptureToMarkdown(item);
@@ -153,27 +161,34 @@ export function insertCaptureIntoContent(content: string, item: CaptureItem): st
     const afterCaptures = content.slice(insertPos);
     const nextSection = afterCaptures.match(/^## /m);
 
+    // Extract and clean the existing captures section (remove lone `-` lines)
+    const sectionEnd = nextSection ? nextSection.index! : afterCaptures.length;
+    const rawSection = afterCaptures.slice(0, sectionEnd);
+    const remainder = afterCaptures.slice(sectionEnd);
+    const cleanedItems = stripEmptyListItems(rawSection).trim();
+
     if (nextSection) {
       // Insert before next section
-      const sectionContent = afterCaptures.slice(0, nextSection.index!);
-      const trimmedSection = sectionContent.trimEnd();
       return (
         content.slice(0, insertPos) +
         "\n" +
-        (trimmedSection ? trimmedSection + "\n" : "") +
+        (cleanedItems ? cleanedItems + "\n" : "") +
         serialized +
         "\n\n" +
-        afterCaptures.slice(nextSection.index!)
+        remainder
       );
     } else {
       // Append at end
-      const trimmedContent = content.trimEnd();
-      return trimmedContent + "\n" + serialized;
+      return (
+        content.slice(0, insertPos) +
+        (cleanedItems ? "\n" + cleanedItems : "") +
+        "\n" + serialized
+      );
     }
   } else {
     // Create new Captures section at end
     const trimmedContent = content.trimEnd();
-    return trimmedContent + "\n\n## Captures\n\n" + serialized;
+    return trimmedContent + "\n\n## Captures\n" + serialized;
   }
 }
 

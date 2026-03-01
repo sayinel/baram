@@ -236,6 +236,51 @@ date: 2026-02-28
     expect(capturesIdx).toBeGreaterThan(diaryIdx);
   });
 
+  it("strips empty list items (lone `-`) from existing Captures", () => {
+    const content = `## Captures
+
+- ☰ Note #note
+-
+- ✦ **idea**: idea #tag1
+- sdfa
+- asdlfka
+-
+- ☰ note #note
+-`;
+    const item: CaptureItem = { type: "note", body: "새 메모" };
+    const result = insertCaptureIntoContent(content, item);
+    // Lone `-` lines should be removed
+    const lines = result.split("\n");
+    const loneDashes = lines.filter((l) => l.trim() === "-");
+    expect(loneDashes).toHaveLength(0);
+    // All real items should be preserved
+    expect(result).toContain("- ☰ Note #note");
+    expect(result).toContain("- ✦ **idea**: idea #tag1");
+    expect(result).toContain("- sdfa");
+    expect(result).toContain("- asdlfka");
+    expect(result).toContain("- ☰ note #note");
+    expect(result).toContain("- ☰ 새 메모");
+  });
+
+  it("strips empty list items when Captures is before next section", () => {
+    const content = `## Captures
+
+- ☰ existing
+-
+
+## Notes
+
+content`;
+    const item: CaptureItem = { type: "note", body: "새 메모" };
+    const result = insertCaptureIntoContent(content, item);
+    const lines = result.split("\n");
+    const loneDashes = lines.filter((l) => l.trim() === "-");
+    expect(loneDashes).toHaveLength(0);
+    expect(result).toContain("- ☰ existing");
+    expect(result).toContain("- ☰ 새 메모");
+    expect(result).toContain("## Notes");
+  });
+
   it("creates both Diary and Captures when content is minimal", () => {
     const content = `---
 date: 2026-02-28

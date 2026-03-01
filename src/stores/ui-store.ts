@@ -26,8 +26,10 @@ interface UIState {
   quickCaptureOpen: boolean;
   quickCaptureType: "idea" | "link" | "quote" | "note";
   pendingSearchHighlight: string | null;
-  /** Monotonic counter — incremented after Global Search Replace to signal editor reload */
+  /** Monotonic counter — incremented after Global Search Replace / Quick Capture to signal editor reload */
   contentReloadVersion: number;
+  /** When true, cursor moves to end of document after reload (e.g. Quick Capture append) */
+  contentReloadCursorEnd: boolean;
 
   toggleSidebar: () => void;
   setSidebarPanel: (panel: SidebarPanel) => void;
@@ -49,7 +51,7 @@ interface UIState {
   openQuickCapture: (type?: "idea" | "link" | "quote" | "note") => void;
   setPendingApplyContent: (content: string | null) => void;
   setPendingSearchHighlight: (term: string | null) => void;
-  triggerContentReload: () => void;
+  triggerContentReload: (cursorEnd?: boolean) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -74,6 +76,7 @@ export const useUIStore = create<UIState>((set) => ({
   quickCaptureType: "note" as const,
   pendingSearchHighlight: null,
   contentReloadVersion: 0,
+  contentReloadCursorEnd: false,
 
   toggleSidebar: () =>
     set((state) => ({ sidebarOpen: !state.sidebarOpen })),
@@ -132,6 +135,9 @@ export const useUIStore = create<UIState>((set) => ({
 
   setPendingSearchHighlight: (pendingSearchHighlight) => set({ pendingSearchHighlight }),
 
-  triggerContentReload: () =>
-    set((state) => ({ contentReloadVersion: state.contentReloadVersion + 1 })),
+  triggerContentReload: (cursorEnd?: boolean) =>
+    set((state) => ({
+      contentReloadVersion: state.contentReloadVersion + 1,
+      contentReloadCursorEnd: cursorEnd ?? false,
+    })),
 }));

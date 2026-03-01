@@ -217,6 +217,24 @@ body {
   margin-top: 0;
 }
 
+/* Tighten gap: heading → list (both sides needed to defeat margin collapsing) */
+.tiptap :is(h1, h2, h3, h4, h5, h6):has(+ ul),
+.tiptap :is(h1, h2, h3, h4, h5, h6):has(+ ol) {
+  margin-bottom: 0.1em;
+}
+.tiptap :is(h1, h2, h3, h4, h5, h6) + ul,
+.tiptap :is(h1, h2, h3, h4, h5, h6) + ol {
+  margin-top: 0;
+}
+
+/* Tighten gap: consecutive headings (empty sections like ## Notes → ## Captures) */
+.tiptap :is(h1, h2, h3, h4, h5, h6):has(+ :is(h1, h2, h3, h4, h5, h6)) {
+  margin-bottom: 0.1em;
+}
+.tiptap :is(h1, h2, h3, h4, h5, h6) + :is(h1, h2, h3, h4, h5, h6) {
+  margin-top: 0.15em;
+}
+
 /* Paragraph */
 .tiptap p {
   margin: 0.5em 0;
@@ -3167,6 +3185,12 @@ body {
 
 .quick-capture-textarea:focus {
   border-color: var(--color-accent);
+}
+
+.quick-capture-error {
+  color: #e53e3e;
+  font-size: 12px;
+  padding: 4px 0;
 }
 
 .quick-capture-actions {

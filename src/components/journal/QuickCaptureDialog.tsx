@@ -3,6 +3,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useUIStore } from "../../stores/ui-store";
 import { useFileStore } from "../../stores/file-store";
 import { useSettingsStore } from "../../stores/settings-store";
+import { useEditorStore } from "../../stores/editor-store";
 import {
   CAPTURE_TYPES,
   CAPTURE_ICONS,
@@ -10,7 +11,7 @@ import {
   type CaptureItem,
   insertCaptureIntoContent,
 } from "../../utils/journal-capture";
-import { getJournalFilePath, getHierarchicalJournalPath, resolveJournalDir, generateDefaultJournal, applyJournalTemplate } from "../../utils/journal";
+import { getHierarchicalJournalPath, formatJournalFilename, generateDefaultJournal, applyJournalTemplate } from "../../utils/journal";
 import { readFile, writeFile, createDir, listDir } from "../../ipc/invoke";
 import { buildTagIndex, filterTags } from "../../utils/journal-tags";
 import { TagSuggest } from "./TagSuggest";
@@ -29,6 +30,7 @@ export function QuickCaptureDialog() {
   const [body, setBody] = useState("");
   const [url, setUrl] = useState("");
   const [tags, setTags] = useState("");
+  const [saveError, setSaveError] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Tag autocomplete state
@@ -50,6 +52,7 @@ export function QuickCaptureDialog() {
     setTagSuggestVisible(false);
     setTagQuery(null);
     setTagActiveIndex(0);
+    setSaveError("");
     setTimeout(() => inputRef.current?.focus(), 50);
 
     // Scan journal files for tag index
@@ -59,10 +62,11 @@ export function QuickCaptureDialog() {
         const { journalDirectory } = useSettingsStore.getState();
         if (!rootPath || !journalDirectory) return;
 
-        const resolvedDir = resolveJournalDir(rootPath, journalDirectory);
-        if (!resolvedDir) return;
+        const tagScanDir = journalDirectory.startsWith("/") || /^[A-Z]:\\/.test(journalDirectory)
+          ? journalDirectory
+          : `${rootPath}/${journalDirectory}`;
 
-        const entries = await listDir(resolvedDir, true).catch(() => []);
+        const entries = await listDir(tagScanDir, true).catch(() => []);
         const mdFiles = entries
           .filter((e) => !e.isDir && e.name.endsWith(".md"))
           .slice(0, 100); // Limit to 100 most recent files
@@ -89,7 +93,12 @@ export function QuickCaptureDialog() {
   }, [quickCaptureOpen, quickCaptureType]);
 
   const handleSave = useCallback(async () => {
-    if (!body.trim() && !title.trim()) return;
+    setSaveError("");
+
+    if (!body.trim() && !title.trim()) {
+      setSaveError("내용을 입력해주세요.");
+      return;
+    }
 
     const item: CaptureItem = {
       type: captureType,
@@ -106,15 +115,23 @@ export function QuickCaptureDialog() {
       const { journalDirectory, journalFilenameFormat, journalTemplatePath, journalUseHierarchy } =
         useSettingsStore.getState();
 
-      if (!rootPath || !journalDirectory) return;
+      if (!rootPath) {
+        setSaveError("프로젝트 폴더를 먼저 열어주세요.");
+        return;
+      }
+      if (!journalDirectory) {
+        setSaveError("설정에서 저널 디렉토리를 지정해주세요.");
+        return;
+      }
 
       const date = new Date();
-      const resolvedDir = resolveJournalDir(rootPath, journalDirectory);
-      if (!resolvedDir) return;
+      // Resolve journal dir: absolute paths pass through, relative paths join with rootPath
+      const resolvedDir = journalDirectory.startsWith("/") || /^[A-Z]:\\/.test(journalDirectory)
+        ? journalDirectory
+        : `${rootPath}/${journalDirectory}`;
       const journalPath = journalUseHierarchy
         ? getHierarchicalJournalPath(resolvedDir, date, journalFilenameFormat)
-        : getJournalFilePath(rootPath, journalDirectory, date, journalFilenameFormat);
-      if (!journalPath) return;
+        : `${resolvedDir}/${formatJournalFilename(date, journalFilenameFormat)}`;
 
       // Ensure daily directory exists
       const dirPath = journalPath.substring(0, journalPath.lastIndexOf("/"));
@@ -142,12 +159,19 @@ export function QuickCaptureDialog() {
       const updated = insertCaptureIntoContent(content, item);
       await writeFile(journalPath, updated);
 
-      // Update file-store cache
+      // Update file-store cache + reload editor if journal is open
       useFileStore.getState().setFileContent(journalPath, updated);
+      const activeTab = useEditorStore.getState().tabs.find(
+        (t) => t.id === useEditorStore.getState().activeTabId,
+      );
+      if (activeTab?.filePath === journalPath) {
+        useUIStore.getState().triggerContentReload(true);
+      }
 
       toggleQuickCapture();
     } catch (err) {
       console.error("[QuickCapture] Save failed:", err);
+      setSaveError(`저장 실패: ${err instanceof Error ? err.message : String(err)}`);
     }
   }, [captureType, title, body, url, tags, toggleQuickCapture]);
 
@@ -232,6 +256,10 @@ export function QuickCaptureDialog() {
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === "Enter" && !e.shiftKey) {
+        // Korean IME: Enter during composition commits the syllable.
+        // Do NOT preventDefault or save — let the IME finish naturally.
+        // User presses Enter again (not composing) to save.
+        if (e.nativeEvent.isComposing) return;
         e.preventDefault();
         handleSave();
       }
@@ -329,6 +357,11 @@ export function QuickCaptureDialog() {
             activeIndex={tagActiveIndex}
           />
         </div>
+
+        {/* Error message */}
+        {saveError && (
+          <div className="quick-capture-error">{saveError}</div>
+        )}
 
         {/* Actions */}
         <div className="quick-capture-actions">

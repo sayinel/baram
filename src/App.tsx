@@ -565,7 +565,7 @@ function App() {
     });
   }, [pendingSearchHighlight, editor]);
 
-  // §5.11 Reload editor content after Global Search Replace
+  // §5.11 Reload editor content after Global Search Replace / Quick Capture
   const contentReloadVersion = useUIStore((s) => s.contentReloadVersion);
   useEffect(() => {
     if (!contentReloadVersion || !editor?.view) return;
@@ -576,13 +576,19 @@ function App() {
     if (content === undefined) return;
     // Invalidate stale EditorState caches for replaced files
     editorStateCache.current.clear();
+    const cursorEnd = useUIStore.getState().contentReloadCursorEnd;
     // Re-parse and update editor from file-store
     const newDoc = markdownToProsemirror(content, editor.schema);
+    const prevPos = editor.state.selection.anchor;
+    const selPos = cursorEnd ? newDoc.content.size : Math.min(prevPos, newDoc.content.size);
     const newState = EditorState.create({
       doc: newDoc,
+      selection: TextSelection.near(newDoc.resolve(selPos), -1),
       plugins: editor.state.plugins,
     });
     editor.view.updateState(newState);
+    // Restore focus (e.g. after Quick Capture dialog closes)
+    setTimeout(() => editor.view.focus(), 0);
   }, [contentReloadVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Window title update ---
