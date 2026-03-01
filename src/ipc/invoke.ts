@@ -62,6 +62,11 @@ export async function watchDir(path: string): Promise<void> {
   return invoke<void>("watch_dir", { path });
 }
 
+/** §56d Write binary data to a file (for images, etc.) */
+export async function writeBinaryFile(path: string, data: number[]): Promise<void> {
+  return invoke<void>("write_binary_file", { path, data });
+}
+
 /** §53 Extract a ZIP file to output directory, returns list of extracted file paths */
 export async function extractZip(
   zipPath: string,

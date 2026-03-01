@@ -4,6 +4,10 @@
 import { Extension } from "@tiptap/core";
 import { Plugin } from "@tiptap/pm/state";
 import { isExternalFileDrag } from "../../hooks/use-external-drop";
+import { useEditorStore } from "../../stores/editor-store";
+import { useFileStore } from "../../stores/file-store";
+import { useSettingsStore } from "../../stores/settings-store";
+import { savePhotoToAssets } from "../../utils/journal-photo";
 
 /**
  * Detect tab-separated data in clipboard text.
@@ -81,6 +85,53 @@ function readFileAsDataURL(file: File): Promise<string> {
   });
 }
 
+/** Check if the active file is inside a journal directory */
+function getJournalContext(): { isJournal: boolean; rootPath: string; journalDir: string } {
+  const activeTabId = useEditorStore.getState().activeTabId;
+  const tabs = useEditorStore.getState().tabs;
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+  const filePath = activeTab?.filePath ?? "";
+  const rootPath = useFileStore.getState().rootPath ?? "";
+  const journalDir = useSettingsStore.getState().journalDirectory ?? "";
+
+  if (!rootPath || !journalDir || !filePath) return { isJournal: false, rootPath: "", journalDir: "" };
+
+  const journalAbsPath = `${rootPath}/${journalDir}`;
+  const isJournal = filePath.startsWith(journalAbsPath);
+  return { isJournal, rootPath, journalDir };
+}
+
+/** Read a File as Uint8Array */
+function readFileAsBytes(file: File): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+/** Insert an image node into the editor at the given position or selection */
+function insertImageAtPos(
+  view: import("@tiptap/pm/view").EditorView,
+  src: string,
+  alt: string,
+  pos?: number,
+) {
+  const { tr } = view.state;
+  const imageNode = view.state.schema.nodes.image.create({
+    src,
+    alt,
+    title: null,
+  });
+  if (pos !== undefined) {
+    tr.insert(pos, imageNode);
+  } else {
+    tr.replaceSelectionWith(imageNode);
+  }
+  view.dispatch(tr);
+}
+
 /** Extract image files from a DataTransfer */
 function getImageFiles(dataTransfer: DataTransfer): File[] {
   const files: File[] = [];
@@ -110,20 +161,22 @@ function createDropHandlerPlugin(): Plugin {
         const coords = { left: event.clientX, top: event.clientY };
         const pos = view.posAtCoords(coords);
         if (!pos) return false;
-
         const insertPos = pos.pos;
 
+        const ctx = getJournalContext();
+
         for (const file of files) {
-          readFileAsDataURL(file).then((dataUrl) => {
-            const { tr } = view.state;
-            const imageNode = view.state.schema.nodes.image.create({
-              src: dataUrl,
-              alt: file.name,
-              title: null,
+          if (ctx.isJournal) {
+            readFileAsBytes(file).then((bytes) => {
+              savePhotoToAssets(bytes, file.name, ctx.rootPath, ctx.journalDir).then((relativePath) => {
+                insertImageAtPos(view, relativePath, file.name, insertPos);
+              });
             });
-            tr.insert(insertPos, imageNode);
-            view.dispatch(tr);
-          });
+          } else {
+            readFileAsDataURL(file).then((dataUrl) => {
+              insertImageAtPos(view, dataUrl, file.name, insertPos);
+            });
+          }
         }
 
         return true;
@@ -158,17 +211,20 @@ function createDropHandlerPlugin(): Plugin {
 
         event.preventDefault();
 
+        const ctx = getJournalContext();
+
         for (const file of files) {
-          readFileAsDataURL(file).then((dataUrl) => {
-            const { tr } = view.state;
-            const imageNode = view.state.schema.nodes.image.create({
-              src: dataUrl,
-              alt: file.name,
-              title: null,
+          if (ctx.isJournal) {
+            readFileAsBytes(file).then((bytes) => {
+              savePhotoToAssets(bytes, file.name, ctx.rootPath, ctx.journalDir).then((relativePath) => {
+                insertImageAtPos(view, relativePath, file.name);
+              });
             });
-            tr.replaceSelectionWith(imageNode);
-            view.dispatch(tr);
-          });
+          } else {
+            readFileAsDataURL(file).then((dataUrl) => {
+              insertImageAtPos(view, dataUrl, file.name);
+            });
+          }
         }
 
         return true;

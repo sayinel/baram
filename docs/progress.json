@@ -208,9 +208,11 @@
           "implemented": ["MemoriesPanel component", "3-tab UI", "Journal tab data loading", "extractOneLine", "groupMemoriesByYear", "One Line/Full mode", "Notes tab (notes/ directory listing + open-on-click)", "PhotosTab (extractImages across years)", "OneLineEditor (click-to-edit current year)", "extractImages utility", "updateOneLineFrontmatter utility"]
         },
         "§56d-photo-journal": {
-          "status": "not-started",
+          "status": "completed",
+          "tests": "1335/1335 vitest pass + 112/112 cargo test",
           "spec": "§56d",
-          "details": "Photo drag & drop, clipboard paste, assets/ storage, caption editing, Photo Gallery view — entirely future work"
+          "details": "Photo drag&drop/paste → assets/YYYY-MM/ auto-save (journal-aware pipeline), write_binary_file Rust IPC, /photo slash command (native file picker), caption placeholder for journal assets, PhotoGalleryPanel (day/month/year grouping, lightbox with keyboard nav, journal open), Cmd+Shift+G shortcut",
+          "implemented": ["generatePhotoFilename", "getAssetsDir", "savePhotoToAssets", "isJournalPhoto", "write_binary_file IPC", "writeBinaryFile wrapper", "drop-handler journal pipeline", "paste handler journal pipeline", "/photo slash command", "image-view caption placeholder", "scanJournalPhotos", "groupPhotosByDate", "PhotoGalleryPanel", "lightbox overlay", "Cmd+Shift+G shortcut", "photo-gallery right panel mode"]
         },
         "§56e-mood-tracker": {
           "status": "completed",
@@ -287,7 +289,7 @@
         "missing": 16,
         "total": 142,
         "journalTests": 255,
-        "note": "§56a-§56l all sections implemented. §56c fully complete. §56d (Photo Journal) deferred to future work"
+        "note": "§56a-§56l all sections implemented. §56c fully complete. §56d Photo Journal complete (1335 vitest + 112 cargo)"
       },
       "specCheckIssues": [
         { "severity": "resolved", "issue": "FocusMode/TypewriterMode — phantom issue, extensions never existed in registry", "spec": "§5.1" },
@@ -297,7 +299,7 @@
         { "severity": "resolved", "issue": "KaTeX inline registered as 'mark' in registry.json — moved to nodes section", "spec": "§5.3" },
         { "severity": "info", "issue": "4 manual perf measurements pending: cold start, warm start, typing latency, idle memory", "spec": "§8.4" },
         { "severity": "resolved", "issue": "§56c Photos tab and inline editing — implemented (extractImages + OneLineEditor)", "spec": "§56c" },
-        { "severity": "info", "issue": "§56d Photo Journal entirely not started (future work)", "spec": "§56d" }
+        { "severity": "resolved", "issue": "§56d Photo Journal — fully implemented (drag&drop, /photo, gallery, lightbox)", "spec": "§56d" }
       ]
     },
     "M10": {

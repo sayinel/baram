@@ -354,6 +354,7 @@ pub fn run() {
             fs_cmd::copy_file,
             fs_cmd::watch_dir,
             fs_cmd::extract_zip,
+            fs_cmd::write_binary_file,
             config_cmd::get_config,
             config_cmd::set_config,
             config_cmd::remove_config,

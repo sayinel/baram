@@ -1,6 +1,7 @@
 // §4.6 Slash Commands — Tiptap Extension using Suggestion API
 import { Extension } from "@tiptap/core";
 import { Suggestion } from "@tiptap/suggestion";
+import { open } from "@tauri-apps/plugin-dialog";
 import { ReactRenderer } from "@tiptap/react";
 import type { Editor } from "@tiptap/core";
 import type { SuggestionProps, SuggestionKeyDownProps } from "@tiptap/suggestion";
@@ -411,6 +412,80 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       description: "Quick capture a note",
       mdHint: "/note",
       action: () => useUIStore.getState().openQuickCapture("note"),
+    },
+    {
+      id: "photo",
+      label: "Insert Photo",
+      category: "Journal",
+      description: "Insert photo from file picker",
+      mdHint: "📷",
+      action: async () => {
+        try {
+          const selected = await open({
+            multiple: true,
+            filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"] }],
+          });
+          if (!selected) return;
+
+          const paths = Array.isArray(selected) ? selected : [selected];
+
+          // Check journal context
+          const { useEditorStore } = await import("../../stores/editor-store");
+          const { useFileStore } = await import("../../stores/file-store");
+          const { useSettingsStore } = await import("../../stores/settings-store");
+
+          const activeTabId = useEditorStore.getState().activeTabId;
+          const tabs = useEditorStore.getState().tabs;
+          const activeTab = tabs.find((t: { id: string }) => t.id === activeTabId);
+          const filePath = activeTab?.filePath ?? "";
+          const rootPath = useFileStore.getState().rootPath ?? "";
+          const journalDir = useSettingsStore.getState().journalDirectory ?? "";
+          const journalAbsPath = rootPath && journalDir ? `${rootPath}/${journalDir}` : "";
+          const isJournal = journalAbsPath && filePath.startsWith(journalAbsPath);
+
+          for (const p of paths) {
+            if (isJournal && rootPath && journalDir) {
+              // Copy file to assets directory using helpers + copyFile IPC
+              const { generatePhotoFilename, getAssetsDir } = await import("../../utils/journal-photo");
+              const { createDir, copyFile } = await import("../../ipc/invoke");
+
+              const now = new Date();
+              const fileName = p.split("/").pop() ?? "photo.jpg";
+              const assetsRelDir = getAssetsDir(journalDir, now);
+              const absoluteAssetsDir = `${rootPath}/${assetsRelDir}`;
+
+              try { await createDir(absoluteAssetsDir); } catch { /* already exists */ }
+
+              const destName = generatePhotoFilename(fileName, now);
+              const absoluteDest = `${absoluteAssetsDir}/${destName}`;
+              const relativePath = `${assetsRelDir}/${destName}`;
+
+              await copyFile(p, absoluteDest);
+
+              editor
+                .chain()
+                .focus()
+                .insertContent({
+                  type: "image",
+                  attrs: { src: relativePath, alt: fileName.replace(/\.[^.]+$/, ""), title: "" },
+                })
+                .run();
+            } else {
+              // Non-journal: insert with absolute path
+              editor
+                .chain()
+                .focus()
+                .insertContent({
+                  type: "image",
+                  attrs: { src: p, alt: p.split("/").pop() ?? "", title: "" },
+                })
+                .run();
+            }
+          }
+        } catch {
+          // Dialog cancelled or error
+        }
+      },
     },
   );
 

@@ -53,6 +53,9 @@ export function ImageView({
   const activeTabId = useEditorStore((s) => s.activeTabId);
   const src = useMemo(() => resolveImageSrc(rawSrc), [rawSrc, activeTabId]);
 
+  // §56d: Show caption placeholder for journal photo assets
+  const isJournalAsset = /assets\/\d{4}-\d{2}\//.test(rawSrc);
+
   const [hovered, setHovered] = useState(false);
   const [editingCaption, setEditingCaption] = useState(false);
   const [captionText, setCaptionText] = useState(alt);
@@ -165,6 +168,14 @@ export function ImageView({
             contentEditable={false}
           >
             {alt}
+          </figcaption>
+        ) : isJournalAsset ? (
+          <figcaption
+            className="image-caption image-caption-placeholder"
+            onClick={startCaptionEdit}
+            contentEditable={false}
+          >
+            캡션 추가...
           </figcaption>
         ) : null}
       </figure>

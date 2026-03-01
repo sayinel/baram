@@ -15,7 +15,7 @@ export interface WorkspaceLayout {
   sidebarOpen: boolean;
   sidebarPanel: "files" | "outline" | "search" | "backlinks" | "bookmarks" | "graph" | "git" | "calendar";
   rightPanelOpen: boolean;
-  rightPanelMode: "chat" | "help" | "memories" | "none";
+  rightPanelMode: "chat" | "help" | "memories" | "photo-gallery" | "none";
 }
 
 export interface WorkspacePreset {

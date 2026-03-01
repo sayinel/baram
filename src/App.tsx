@@ -1517,6 +1517,19 @@ function App() {
         return;
       }
 
+      // §56d Cmd+Shift+G — toggle Photo Gallery
+      if (mod && e.shiftKey && e.code === "KeyG") {
+        e.preventDefault();
+        const ui = useUIStore.getState();
+        if (ui.rightPanelMode === "photo-gallery" && ui.rightPanelOpen) {
+          ui.toggleRightPanel();
+        } else {
+          ui.setRightPanelMode("photo-gallery");
+          if (!ui.rightPanelOpen) ui.toggleRightPanel();
+        }
+        return;
+      }
+
       // §5.6 Cmd+F — find
       if (mod && !e.shiftKey && e.key === "f") {
         e.preventDefault();

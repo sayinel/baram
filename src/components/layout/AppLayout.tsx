@@ -21,6 +21,11 @@ const MemoriesPanel = lazy(() =>
     default: m.MemoriesPanel,
   })),
 );
+const PhotoGalleryPanel = lazy(() =>
+  import("../journal/PhotoGalleryPanel").then((m) => ({
+    default: m.PhotoGalleryPanel,
+  })),
+);
 
 interface AppLayoutProps {
   editor: Editor | null;
@@ -104,6 +109,7 @@ export function AppLayout({ editor, children, statusBar }: AppLayoutProps) {
                 <AIChatPanel />
                 <HelpPanel />
                 <MemoriesPanel />
+                <PhotoGalleryPanel />
               </Suspense>
             </aside>
           </>

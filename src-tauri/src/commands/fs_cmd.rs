@@ -79,3 +79,18 @@ pub async fn extract_zip(zip_path: String, output_dir: String) -> Result<Vec<Str
         .await
         .map_err(|e| e.to_string())
 }
+
+/// §56d 바이너리 파일 쓰기 — 이미지 등 비텍스트 파일용
+#[tauri::command]
+pub async fn write_binary_file(path: String, data: Vec<u8>) -> Result<(), String> {
+    let tmp_path = format!("{}.tmp", path);
+    tokio::fs::write(&tmp_path, &data)
+        .await
+        .map_err(|e| e.to_string())?;
+    tokio::fs::rename(&tmp_path, &path)
+        .await
+        .map_err(|e| {
+            let _ = std::fs::remove_file(&tmp_path);
+            e.to_string()
+        })
+}
