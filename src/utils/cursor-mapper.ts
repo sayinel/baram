@@ -60,7 +60,7 @@ function getBlockIndexAndOffset(doc: PMNode, pmPos: number): BlockInfo {
  * ALL leaf blocks (textblocks), including those containing only atom nodes.
  * For tables, separators are not used (countSeparators=false).
  */
-function textPosToPmOffset(block: PMNode, targetTextPos: number, countSeparators: boolean = true): number {
+function textPosToPmOffset(block: PMNode, targetTextPos: number, countSeparators: boolean = true, preferBeforeAtom: boolean = true): number {
   // Collect leaf blocks (textblocks like paragraphs within list items).
   // textBetween inserts separators between ALL leaf blocks, not just those
   // with text — atom-only paragraphs (e.g. tagNode list items) also get
@@ -103,7 +103,12 @@ function textPosToPmOffset(block: PMNode, targetTextPos: number, countSeparators
       const tn = textNodes[i];
       const remaining = targetTextPos - textCount;
       const isLast = i === textNodes.length - 1;
-      const fits = isLast ? remaining <= tn.length : remaining < tn.length;
+      // At text-node boundaries where remaining equals node length:
+      // - preferBeforeAtom=true (no gap): use <= to return end of current node
+      //   (before any atom gap that follows)
+      // - preferBeforeAtom=false (gap detected): use < to fall through to next
+      //   node (after the atom gap) — original behavior
+      const fits = (isLast || preferBeforeAtom) ? remaining <= tn.length : remaining < tn.length;
       if (fits) {
         return tn.pos + remaining;
       }
@@ -201,13 +206,39 @@ export function pmPosToMdOffset(
   const clampedOffset = Math.min(textOffset, block.content.size);
   const pmTextPos = block.textBetween(0, clampedOffset, sep).length;
 
+  // Detect if cursor is right before an inline atom node.
+  // Atom nodes occupy PM positions but contribute 0 text characters, so
+  // before-atom and after-atom positions produce the same pmTextPos.
+  // When before an atom, return lastMatchEnd (before atom's markdown syntax)
+  // instead of searching past it to the next matching character.
+  let isBeforeAtom = false;
+  if (block.isTextblock && clampedOffset < block.content.size) {
+    let childOffset = 0;
+    for (let ci = 0; ci < block.childCount; ci++) {
+      const child = block.child(ci);
+      if (childOffset === clampedOffset && !child.isText) {
+        isBeforeAtom = true;
+        break;
+      }
+      if (childOffset > clampedOffset) break;
+      childOffset += child.nodeSize;
+    }
+  }
+
   // Walk markdown matching pmTextPos characters of PM text
   let pmIdx = 0;
   let lastMatchEnd = mdCursor;
   for (let mdIdx = mdCursor; mdIdx < markdown.length; mdIdx++) {
     if (pmIdx < pmText.length && markdown[mdIdx] === pmText[pmIdx]) {
       // If we've already consumed enough text chars, this is the target position
-      if (pmIdx >= pmTextPos) return mdIdx;
+      if (pmIdx >= pmTextPos) {
+        // Before an atom: return position right after last matched text char
+        // (before the atom's markdown syntax like "#tag").
+        // Skip when pmTextPos=0 (block start) — lastMatchEnd equals mdCursor
+        // which is indistinguishable from previous block's boundary in reverse.
+        if (isBeforeAtom && pmTextPos > 0) return lastMatchEnd;
+        return mdIdx;
+      }
       pmIdx++;
       lastMatchEnd = mdIdx + 1;
     }
@@ -251,16 +282,27 @@ export function mdOffsetToPmPos(
     if (target <= mdCursor || bi === doc.childCount - 1) {
       // Re-walk from block's md start to target, counting PM text matches
       let pmCount = 0;
+      let lastMatchMdIdx = -1;
       for (let mdIdx = mdSaveStart; mdIdx < target && mdIdx < markdown.length; mdIdx++) {
         if (pmCount < pmText.length && markdown[mdIdx] === pmText[pmCount]) {
           pmCount++;
+          lastMatchMdIdx = mdIdx;
         }
       }
 
-      // Convert PM text count to PM content offset
+      // Detect if target is past a non-matching gap (atom's markdown region).
+      // Gap means cursor was positioned after the atom in markdown → prefer
+      // the "after atom" PM position. No gap → prefer "before atom" position.
+      const hasGapBeforeTarget = lastMatchMdIdx >= mdSaveStart && target > lastMatchMdIdx + 1;
+      const preferBeforeAtom = !hasGapBeforeTarget;
+
+      // Convert PM text count to PM content offset.
+      // preferBeforeAtom only applies to textblocks (paragraphs with inline atoms).
+      // For compound blocks (tables, lists), text-node boundaries represent structural
+      // boundaries (cell edges, list item separators), not atom gaps.
       const pmOffset = block.isTextblock
-        ? textPosToPmOffset(block, pmCount, false)
-        : textPosToPmOffset(block, pmCount, !isTable);
+        ? textPosToPmOffset(block, pmCount, false, preferBeforeAtom)
+        : textPosToPmOffset(block, pmCount, !isTable, false);
 
       return Math.min(contentStart + pmOffset, contentStart + block.content.size);
     }
