@@ -244,23 +244,13 @@ pub fn run() {
                 .id("workspace_writing")
                 .accelerator("Alt+CmdOrCtrl+1")
                 .build(app)?;
-            let workspace_skills = MenuItemBuilder::new("Skills")
-                .id("workspace_skills")
-                .accelerator("Alt+CmdOrCtrl+2")
-                .build(app)?;
-            let workspace_research = MenuItemBuilder::new("Research")
-                .id("workspace_research")
-                .accelerator("Alt+CmdOrCtrl+3")
-                .build(app)?;
             let workspace_journal = MenuItemBuilder::new("Journal")
                 .id("workspace_journal")
-                .accelerator("Alt+CmdOrCtrl+4")
+                .accelerator("Alt+CmdOrCtrl+2")
                 .build(app)?;
 
             let workspace_menu = SubmenuBuilder::new(app, "Workspace")
                 .item(&workspace_writing)
-                .item(&workspace_skills)
-                .item(&workspace_research)
                 .item(&workspace_journal)
                 .build()?;
 
