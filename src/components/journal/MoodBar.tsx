@@ -1,10 +1,9 @@
-// §56e Mood/Energy Bar — editor header component
+// §56e Mood/Energy Bar — segmented control design
 import { useState, useEffect, useCallback } from "react";
 import type { Editor } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import {
   MOOD_VALUES,
-  MOOD_LABELS,
   type MoodValue,
   type EnergyValue,
 } from "../../utils/journal-mood";
@@ -15,14 +14,41 @@ interface MoodBarProps {
   editor: Editor | null;
 }
 
-// CSS variable mood colors (§56e §6.4 기본/시스템 팔레트)
-const MOOD_COLORS: Record<MoodValue, string> = {
-  deep: "#64748B",
-  calm: "#94A3B8",
-  neutral: "#CBD5E1",
-  warm: "#F59E0B",
-  bright: "#FBBF24",
+// Segment labels (Korean)
+const MOOD_SEGMENT_LABELS: Record<MoodValue, string> = {
+  deep: "침울",
+  calm: "차분",
+  neutral: "평온",
+  warm: "따뜻",
+  bright: "밝은",
 };
+
+// Unified cool→warm palette for mood segment tints
+const MOOD_TINTS: Record<MoodValue, string> = {
+  deep: "rgba(100, 116, 139, 0.18)",
+  calm: "rgba(148, 163, 184, 0.18)",
+  neutral: "rgba(180, 190, 200, 0.18)",
+  warm: "rgba(245, 158, 11, 0.15)",
+  bright: "rgba(251, 191, 36, 0.15)",
+};
+
+// Mood text color when selected (darker version of tint)
+const MOOD_TEXT_COLORS: Record<MoodValue, string> = {
+  deep: "#475569",
+  calm: "#64748B",
+  neutral: "#78838E",
+  warm: "#B45309",
+  bright: "#A16207",
+};
+
+// Energy fill gradient (same tonal family, increasing intensity)
+const ENERGY_FILLS = [
+  "rgba(var(--mood-accent-rgb, 100, 116, 139), 0.12)",
+  "rgba(var(--mood-accent-rgb, 100, 116, 139), 0.18)",
+  "rgba(var(--mood-accent-rgb, 100, 116, 139), 0.24)",
+  "rgba(var(--mood-accent-rgb, 100, 116, 139), 0.32)",
+  "rgba(var(--mood-accent-rgb, 100, 116, 139), 0.42)",
+];
 
 /** Check if the active file is a journal daily note */
 function isJournalDailyNote(): boolean {
@@ -150,34 +176,45 @@ export function MoodBar({ editor }: MoodBarProps) {
 
   return (
     <div className="mood-bar">
-      <div className="mood-bar-row">
-        <span className="mood-bar-label">기분</span>
-        <div className="mood-dots">
-          {MOOD_VALUES.map((v) => (
-            <button
-              key={v}
-              className={`mood-dot ${mood === v ? "mood-dot-active" : ""}`}
-              style={{
-                backgroundColor: mood === v ? MOOD_COLORS[v] : "transparent",
-                borderColor: MOOD_COLORS[v],
-              }}
-              onClick={() => handleMoodClick(v)}
-              title={MOOD_LABELS[v]}
-            />
-          ))}
+      <div className="mood-bar-section">
+        <span className="mood-bar-section-label">기분</span>
+        <div className="mood-segment-group">
+          {MOOD_VALUES.map((v) => {
+            const isSelected = mood === v;
+            return (
+              <button
+                key={v}
+                className={`mood-segment ${isSelected ? "mood-segment-selected" : ""}`}
+                style={isSelected ? {
+                  backgroundColor: MOOD_TINTS[v],
+                  color: MOOD_TEXT_COLORS[v],
+                } : undefined}
+                onClick={() => handleMoodClick(v)}
+                title={MOOD_SEGMENT_LABELS[v]}
+              >
+                {MOOD_SEGMENT_LABELS[v]}
+              </button>
+            );
+          })}
         </div>
       </div>
-      <div className="mood-bar-row">
-        <span className="mood-bar-label">에너지</span>
-        <div className="energy-dots">
-          {([1, 2, 3, 4, 5] as EnergyValue[]).map((v) => (
-            <button
-              key={v}
-              className={`energy-dot ${energy !== undefined && v <= energy ? "energy-dot-filled" : ""}`}
-              onClick={() => handleEnergyClick(v)}
-              title={`Energy ${v}`}
-            />
-          ))}
+      <div className="mood-bar-section">
+        <span className="mood-bar-section-label">에너지</span>
+        <div className="mood-segment-group">
+          {([1, 2, 3, 4, 5] as EnergyValue[]).map((v) => {
+            const isFilled = energy !== undefined && v <= energy;
+            return (
+              <button
+                key={v}
+                className={`mood-segment energy-segment ${isFilled ? "energy-segment-filled" : ""}`}
+                style={isFilled ? { backgroundColor: ENERGY_FILLS[v - 1] } : undefined}
+                onClick={() => handleEnergyClick(v)}
+                title={`Energy ${v}`}
+              >
+                {v}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
