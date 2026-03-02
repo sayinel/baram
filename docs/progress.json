@@ -292,13 +292,13 @@
       },
       "specCheckSummary": {
         "date": "2026-03-02",
-        "implemented": 144,
-        "partial": 2,
-        "missing": 2,
+        "implemented": 147,
+        "partial": 0,
+        "missing": 1,
         "total": 148,
-        "journalTests": 370,
-        "coverage": "97%",
-        "note": "§56a-§56m 2nd spec-check. All medium+low resolved. 4 info-level deviations remain (theme count 5/6, shortcut variant, stats cache deferred, perf measurements). 1446 vitest pass."
+        "journalTests": 396,
+        "coverage": "99%",
+        "note": "§56a-§56m 3rd spec-check. All medium+low+info resolved. Only §8.4 manual perf measurements remain. 1474 vitest pass (88 files)."
       },
       "specCheckIssues": [
         { "severity": "resolved", "issue": "FocusMode/TypewriterMode — phantom issue, extensions never existed in registry", "spec": "§5.1" },
@@ -316,9 +316,9 @@
         { "severity": "resolved", "issue": "§56i: 120 structured prompts + custom prompts/ folder — implemented (5 categories, history avoidance, loadCustomPrompts)", "spec": "§56i" },
         { "severity": "resolved", "issue": "§56k: Frontmatter search filters — implemented (mood/energy/date/tags/hasPhotos filter UI)", "spec": "§56k" },
         { "severity": "resolved", "issue": "§14.3: 9 optional journal settings added to settings-store (mood/energy/streak/themes/prompt/reflection)", "spec": "§14.3" },
-        { "severity": "info", "issue": "§56h: 5 themes implemented (spec says 6); theme names differ from spec (default/nature/ocean/sunset/minimal vs Classic Diary/Moleskine/Muji/Night Owl/Vintage/Watercolor)", "spec": "§56h" },
-        { "severity": "info", "issue": "§56d: Photo Gallery shortcut is Cmd+Shift+G (spec says Cmd+Shift+P) — intentional to avoid Command Palette conflict", "spec": "§56d" },
-        { "severity": "info", "issue": "§56g: .journal.json stats cache not implemented — stats computed on-the-fly (acceptable at current scale)", "spec": "§56g" }
+        { "severity": "resolved", "issue": "§56h: 6 themes with spec names (classic-diary/moleskine/muji/night-owl/vintage/watercolor) + migration from old IDs", "spec": "§56h" },
+        { "severity": "resolved", "issue": "§56d: Photo Gallery shortcut changed to Cmd+Shift+P per spec", "spec": "§56d" },
+        { "severity": "resolved", "issue": "§56g: .journal.json stats cache implemented — readStatsCache/writeStatsCache/buildFullCache/updateCacheEntry + 26 tests", "spec": "§56g" }
       ]
     },
     "M10": {
@@ -333,9 +333,9 @@
   },
 
   "testSummary": {
-    "vitest": "1446/1446 pass (87 test files)",
+    "vitest": "1474/1474 pass (88 test files)",
     "cargoTest": "112/112 pass (4 ignored)",
-    "note": "All medium+low spec-check issues resolved. Coverage 97%. 1446 tests (87 files). 4 info-level deviations only.",
+    "note": "All medium+low+info spec-check issues resolved. Coverage 99%. 1474 tests (88 files). Only §8.4 manual perf measurements remain.",
     "breakdown": {
       "_comment": "79 test files, 1300 tests total (2026-03-01 spec-check verified)",
       "integration/ai-edit-workflow": 5,

@@ -280,7 +280,7 @@ export function CalendarPanel() {
     openPeriodicNote(getYearlyJournalPath, generateDefaultYearly, date, journalYearlyTemplate || undefined);
   }, [openPeriodicNote, viewYear, journalYearlyTemplate]);
 
-  const themeStyle: React.CSSProperties | undefined = journalTheme.id !== "default" ? {
+  const themeStyle: React.CSSProperties = {
     "--cal-accent": journalTheme.accentColor,
     "--cal-header": journalTheme.headerColor,
     "--journal-font-family": journalTheme.typography.fontFamily,
@@ -289,7 +289,7 @@ export function CalendarPanel() {
     "--journal-header-bg": journalTheme.headerBg,
     "--journal-prompt-bg": journalTheme.promptBg,
     "--journal-prompt-border": journalTheme.promptBorder,
-  } as React.CSSProperties : undefined;
+  } as React.CSSProperties;
 
   if (!journalEnabled) {
     return (

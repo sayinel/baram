@@ -239,7 +239,7 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
   journalShowStreak: true,
 
   // §56h Journal Theme
-  journalThemeId: "default",
+  journalThemeId: "classic-diary",
   journalCustomThemes: [],
 
   // §56i Prompts
@@ -505,7 +505,7 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
       if (state.journalWeekStartDay === undefined) state.journalWeekStartDay = "monday";
     }
 
-    // v6 → v7: §14.3 optional journal settings
+    // v6 → v7: §14.3 optional journal settings + §56h theme ID migration
     if (version < 7) {
       if (state.journalMoodEnabled === undefined) state.journalMoodEnabled = true;
       if (state.journalEnergyEnabled === undefined) state.journalEnergyEnabled = true;
@@ -516,6 +516,13 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
       if (state.journalPromptMode === undefined) state.journalPromptMode = "random";
       if (state.journalAIReflectionEnabled === undefined) state.journalAIReflectionEnabled = true;
       if (state.journalAIAutoSuggest === undefined) state.journalAIAutoSuggest = false;
+      // Migrate old theme IDs to spec names
+      const themeMap: Record<string, string> = {
+        default: "classic-diary", nature: "moleskine", ocean: "muji",
+        sunset: "night-owl", minimal: "vintage",
+      };
+      const oldId = state.journalThemeId as string | undefined;
+      if (oldId && themeMap[oldId]) state.journalThemeId = themeMap[oldId];
     }
 
     // v0/v1 → v2: theme migration

@@ -1523,8 +1523,8 @@ function App() {
         return;
       }
 
-      // §56d Cmd+Shift+G — toggle Photo Gallery
-      if (mod && e.shiftKey && e.code === "KeyG") {
+      // §56d Cmd+Shift+P — toggle Photo Gallery
+      if (mod && e.shiftKey && e.code === "KeyP") {
         e.preventDefault();
         const ui = useUIStore.getState();
         if (ui.rightPanelMode === "photo-gallery" && ui.rightPanelOpen) {
@@ -1646,13 +1646,6 @@ function App() {
       if (mod && e.key === "k") {
         e.preventDefault();
         toggleQuickSwitcher();
-        return;
-      }
-
-      // Cmd+Shift+P — command palette (alternate)
-      if (mod && e.shiftKey && e.code === "KeyP") {
-        e.preventDefault();
-        toggleCommandPalette();
         return;
       }
 
