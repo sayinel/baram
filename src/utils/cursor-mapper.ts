@@ -305,11 +305,11 @@ export function pmPosToMdOffset(
 
   if (pmBlockText.length === 0) return mdBlock.start;
 
-  // Convert PM content offset to text position
+  // Convert PM content offset to text position.
+  // Must use textBetween even for textblocks — inline atom nodes (e.g. tagNode)
+  // occupy 1 PM position but contribute 0 text characters, so offset ≠ textPos.
   const clampedOffset = Math.min(textOffset, pmBlock.content.size);
-  const pmTextPos = pmBlock.isTextblock
-    ? Math.min(clampedOffset, pmBlockText.length)
-    : pmBlock.textBetween(0, clampedOffset, sep).length;
+  const pmTextPos = pmBlock.textBetween(0, clampedOffset, sep).length;
 
   // Match PM text position in MD text via character walking
   const mdOffsetInBlock = matchPmPosInMd(mdBlockText, pmBlockText, pmTextPos);
@@ -365,9 +365,11 @@ export function mdOffsetToPmPos(
   // Match MD offset in PM text via character walking
   const pmTextPos = matchMdPosInPm(mdBlockText, pmBlockText, offsetInBlock);
 
-  // Convert PM text position to PM content offset
+  // Convert PM text position to PM content offset.
+  // Must use textPosToPmOffset even for textblocks — inline atom nodes (e.g. tagNode)
+  // occupy 1 PM position but contribute 0 text characters, so textPos ≠ offset.
   const pmOffset = pmBlock.isTextblock
-    ? Math.min(pmTextPos, pmBlock.content.size)
+    ? textPosToPmOffset(pmBlock, pmTextPos, false)
     : textPosToPmOffset(pmBlock, pmTextPos, !isTable);
 
   return Math.min(pmBlockStart + pmOffset, pmBlockStart + pmBlock.content.size);

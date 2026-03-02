@@ -240,6 +240,25 @@ describe("cursor-mapper: serialize round-trip (real toggle path)", () => {
     ["nested bullet child start", "- parent\n  - child", 13],
     ["nested bullet child middle", "- parent\n  - child", 15],
     ["nested ordered", "1. first\n   1. second", 14],
+    // Inline atom nodes (tagNode): cursor in TEXT near atoms must round-trip.
+    // Atom boundaries are inherently lossy (atom=1 PM pos but 0 text chars),
+    // so we test cursor positions within surrounding text nodes.
+    // "Hello #world tag" → text("Hello ",6) + tagNode(1) + text(" tag",4) → content.size=11
+    ["tag: in text before tag", "Hello #world tag", 4],
+    ["tag: text end before tag", "Hello #world tag", 6],
+    ["tag: text start after tag", "Hello #world tag", 8],
+    ["tag: in text after tag", "Hello #world tag", 10],
+    ["tag: content end after tag", "Hello #world tag", 12],
+    // "#hello and #world" → tagNode(1) + text(" and ",5) + tagNode(1) → content.size=7
+    ["tag: text between two tags start", "#hello and #world", 2],
+    ["tag: text between two tags mid", "#hello and #world", 4],
+    ["tag: text between two tags end", "#hello and #world", 6],
+    // "오늘 #일기 쓰기" → text("오늘 ",3) + tagNode(1) + text(" 쓰기",3) → content.size=7
+    ["tag: Korean before tag", "오늘 #일기 쓰기", 2],
+    ["tag: Korean after tag", "오늘 #일기 쓰기", 6],
+    // "text #project/baram end" → text("text ",5) + tagNode(1) + text(" end",4) → content.size=10
+    ["tag: nested tag before", "text #project/baram end", 3],
+    ["tag: nested tag after", "text #project/baram end", 9],
   ])("serialize round-trip preserves: %s", (_, md, pmPos) => {
     const { roundTripPos } = serializeRoundTrip(md, pmPos);
     expect(roundTripPos).toBe(pmPos);
@@ -262,5 +281,55 @@ describe("cursor-mapper: serialize round-trip (real toggle path)", () => {
     // PM pos 1 = start of heading content → after "## "
     const mdOffset = pmPosToMdOffset(doc, 1, serialized);
     expect(serialized[mdOffset]).toBe("T");
+  });
+
+  test("tagNode: forward mapping places cursor correctly in markdown", () => {
+    const md = "Hello #world tag";
+    const doc = loadDoc(editor, md);
+    const serialized = prosemirrorToMarkdown(doc);
+    // PM: text("Hello ") + tagNode + text(" tag")
+    // PM pos 1 = start of paragraph content
+    // tagNode is at offset 6 (after "Hello "), size 1
+    // text " tag" starts at offset 7
+
+    // Cursor right after tagNode (PM pos = 1 + 7 = 8) → MD should be after "#world"
+    const offset = pmPosToMdOffset(doc, 8, serialized);
+    expect(serialized.substring(0, offset)).toBe("Hello #world");
+  });
+
+  test("tagNode: multiple tags don't accumulate cursor drift", () => {
+    const md = "#hello and #world";
+    const doc = loadDoc(editor, md);
+    const serialized = prosemirrorToMarkdown(doc);
+
+    // Cursor in text between tags — should NOT drift by tag count
+    // PM: tagNode(hello) + text(" and ") + tagNode(world) → content.size=7
+    // Cursor in " and " (offset 3) → PM pos = 1 + 3 = 4
+    const offset = pmPosToMdOffset(doc, 4, serialized);
+    const mdText = serialized.replace(/\n$/, "");
+    // Should point within "#hello and #world", not beyond
+    expect(offset).toBeLessThanOrEqual(mdText.length);
+    expect(offset).toBeGreaterThan(0);
+  });
+
+  test("tagNode: cursor stays in same paragraph after multi-line round-trip", () => {
+    // REGRESSION: before fix, cursor drifted down by N (number of tags) lines
+    const md = "Hello #tag1 and #tag2 text\n\nSecond paragraph";
+    const doc = loadDoc(editor, md);
+    const serialized = prosemirrorToMarkdown(doc);
+
+    // Test multiple positions in the first paragraph (which has 2 tags)
+    // PM: text("Hello ",6) + tagNode(1) + text(" and ",5) + tagNode(1) + text(" text",5) → content.size=18
+    // Cursor in " text" after 2nd tag: offset 13 + 1 (para open) = pmPos 14
+    const mdOffset = pmPosToMdOffset(doc, 14, serialized);
+    const newDoc = loadDoc(editor, serialized);
+    const roundTripPos = mdOffsetToPmPos(newDoc, mdOffset, serialized);
+
+    // Must stay in first paragraph (pos 1..19), NOT jump to second paragraph
+    const firstParaEnd = 1 + doc.child(0).content.size;
+    expect(roundTripPos).toBeGreaterThanOrEqual(1);
+    expect(roundTripPos).toBeLessThanOrEqual(firstParaEnd);
+    // And round-trip should be exact for text positions
+    expect(roundTripPos).toBe(14);
   });
 });
