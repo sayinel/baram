@@ -22,6 +22,34 @@ describe("JOURNAL_THEMES", () => {
     }
   });
 
+  it("all themes have valid typography", () => {
+    for (const theme of JOURNAL_THEMES) {
+      expect(theme.typography).toBeDefined();
+      expect(typeof theme.typography.fontFamily).toBe("string");
+      expect(theme.typography.fontFamily.length).toBeGreaterThan(0);
+      expect(theme.typography.lineHeight).toBeGreaterThanOrEqual(1.0);
+      expect(theme.typography.lineHeight).toBeLessThanOrEqual(3.0);
+      expect(/^\d+px$/.test(theme.typography.maxWidth) || theme.typography.maxWidth === "inherit").toBe(true);
+    }
+  });
+
+  it("non-default themes have px maxWidth", () => {
+    for (const theme of JOURNAL_THEMES.filter((t) => t.id !== "default")) {
+      expect(/^\d+px$/.test(theme.typography.maxWidth)).toBe(true);
+    }
+  });
+
+  it("all themes have headerBg, promptBg, promptBorder", () => {
+    for (const theme of JOURNAL_THEMES) {
+      expect(typeof theme.headerBg).toBe("string");
+      expect(theme.headerBg.length).toBeGreaterThan(0);
+      expect(typeof theme.promptBg).toBe("string");
+      expect(theme.promptBg.length).toBeGreaterThan(0);
+      expect(typeof theme.promptBorder).toBe("string");
+      expect(theme.promptBorder.length).toBeGreaterThan(0);
+    }
+  });
+
   it("contains nature, ocean, sunset, minimal themes", () => {
     const ids = JOURNAL_THEMES.map((t) => t.id);
     expect(ids).toContain("nature");

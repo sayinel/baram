@@ -1,6 +1,7 @@
 // §5.1 Code Block Extension (fenced code blocks)
 import { Node, mergeAttributes, textblockTypeInputRule } from "@tiptap/core";
 import { CodeBlockNodeView } from "./code-block-node-view";
+import { JournalBlockNodeView } from "./journal-block-node-view";
 
 export interface CodeBlockOptions {
   HTMLAttributes: Record<string, string>;
@@ -81,6 +82,10 @@ export const CodeBlock = Node.create<CodeBlockOptions>({
 
   addNodeView() {
     return ({ node, view, getPos }) => {
+      const lang = (node.attrs.language as string) ?? "";
+      if (lang.startsWith("journal-")) {
+        return new JournalBlockNodeView(node, view, getPos as () => number | undefined);
+      }
       return new CodeBlockNodeView(node, view, getPos as () => number | undefined);
     };
   },

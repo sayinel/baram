@@ -90,6 +90,113 @@ export function groupSearchResults<T extends { path: string }>(
   return ordered;
 }
 
+// ── §56k Frontmatter filter types and utilities ────────────────────────────
+
+export interface JournalSearchFilters {
+  dateFrom?: string;       // YYYY-MM-DD
+  dateTo?: string;         // YYYY-MM-DD
+  moodFilter?: string[];   // ["warm", "bright"] — empty = all
+  energyMin?: number;      // 1-5, undefined = no filter
+  tagsFilter?: string[];   // ["여행", "운동"] — empty = no filter
+  hasPhotos?: boolean;     // true = only entries with photos
+}
+
+/** Returns true when at least one filter field is active. */
+export function hasActiveFilters(filters: JournalSearchFilters): boolean {
+  return !!(
+    filters.dateFrom ||
+    filters.dateTo ||
+    (filters.moodFilter && filters.moodFilter.length > 0) ||
+    filters.energyMin !== undefined ||
+    (filters.tagsFilter && filters.tagsFilter.length > 0) ||
+    filters.hasPhotos
+  );
+}
+
+/** Extract frontmatter scalar fields from raw markdown content. */
+export function extractFrontmatterFields(content: string): {
+  date?: string;
+  mood?: string;
+  energy?: number;
+  tags?: string[];
+  hasPhotos: boolean;
+} {
+  const hasPhotos = content.includes("![");
+  const fm = content.match(/^---\n([\s\S]*?)\n---/);
+  if (!fm) return { hasPhotos };
+
+  const yaml = fm[1];
+  const date = yaml.match(/^date:\s*(\d{4}-\d{2}-\d{2})/m)?.[1];
+  const mood = yaml.match(/^mood:\s*(\w+)/m)?.[1];
+  const energyStr = yaml.match(/^energy:\s*(\d)/m)?.[1];
+  const energy = energyStr !== undefined ? parseInt(energyStr) : undefined;
+
+  // Inline tags: tags: [tag1, tag2]
+  const tagsInline = yaml.match(/^tags:\s*\[([^\]]*)\]/m)?.[1];
+  const tags: string[] = tagsInline
+    ? tagsInline.split(",").map((t) => t.trim().replace(/['"]/g, "")).filter(Boolean)
+    : [];
+
+  // Block tags: tags:\n  - tag1
+  if (tags.length === 0) {
+    const blockTagMatch = yaml.match(/^tags:\s*\n((?:\s+-\s+.+\n?)*)/m);
+    if (blockTagMatch) {
+      for (const line of blockTagMatch[1].split("\n")) {
+        const m = line.match(/^\s+-\s+(.+)/);
+        if (m) tags.push(m[1].trim().replace(/['"]/g, ""));
+      }
+    }
+  }
+
+  return { date, mood, energy, tags, hasPhotos };
+}
+
+/** Extract YYYY-MM-DD from a file path (e.g. daily/2026/02/2026-02-28.md). */
+export function extractDateFromPath(path: string): string | null {
+  const m = path.match(/(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : null;
+}
+
+/** Filter an array of {path, content} results by frontmatter criteria. */
+export function filterByFrontmatter(
+  results: Array<{ path: string; content: string }>,
+  filters: JournalSearchFilters,
+): Array<{ path: string; content: string }> {
+  return results.filter((r) => {
+    const fields = extractFrontmatterFields(r.content);
+
+    // Date range (frontmatter date takes priority; fall back to filename)
+    if (filters.dateFrom || filters.dateTo) {
+      const date = fields.date ?? extractDateFromPath(r.path);
+      if (!date) return false;
+      if (filters.dateFrom && date < filters.dateFrom) return false;
+      if (filters.dateTo && date > filters.dateTo) return false;
+    }
+
+    // Mood — must match one of the selected moods
+    if (filters.moodFilter && filters.moodFilter.length > 0) {
+      if (!fields.mood || !filters.moodFilter.includes(fields.mood)) return false;
+    }
+
+    // Energy minimum
+    if (filters.energyMin !== undefined) {
+      if (fields.energy === undefined || fields.energy < filters.energyMin) return false;
+    }
+
+    // Tags — ANY match (OR logic)
+    if (filters.tagsFilter && filters.tagsFilter.length > 0) {
+      if (!fields.tags || !filters.tagsFilter.some((t) => fields.tags!.includes(t))) return false;
+    }
+
+    // Photos
+    if (filters.hasPhotos && !fields.hasPhotos) return false;
+
+    return true;
+  });
+}
+
+// ── Text highlight ───────────────────────────────────────────────────────────
+
 /**
  * Wrap all occurrences of `query` in the text with `<mark>` tags.
  * Returns the modified string. Case-insensitive match.

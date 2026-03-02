@@ -1,5 +1,11 @@
 // §56h Journal visual themes — calendar and journal component theming
 
+export interface JournalTypography {
+  fontFamily: string;
+  lineHeight: number;
+  maxWidth: string;
+}
+
 export interface JournalTheme {
   id: string;
   name: string;
@@ -8,6 +14,10 @@ export interface JournalTheme {
   accentColor: string;
   dotColor: string;
   streakIcon: string;
+  typography: JournalTypography;
+  headerBg: string;
+  promptBg: string;
+  promptBorder: string;
 }
 
 export const JOURNAL_THEMES: JournalTheme[] = [
@@ -19,6 +29,10 @@ export const JOURNAL_THEMES: JournalTheme[] = [
     accentColor: "",
     dotColor: "",
     streakIcon: "🔥",
+    typography: { fontFamily: "inherit", lineHeight: 1.6, maxWidth: "720px" },
+    headerBg: "transparent",
+    promptBg: "var(--color-bg-secondary, #f5f5f5)",
+    promptBorder: "var(--color-border, #e0e0e0)",
   },
   {
     id: "nature",
@@ -28,6 +42,10 @@ export const JOURNAL_THEMES: JournalTheme[] = [
     accentColor: "#4A7C2E",
     dotColor: "#6B9F45",
     streakIcon: "🌿",
+    typography: { fontFamily: '"Noto Serif KR", serif', lineHeight: 1.8, maxWidth: "640px" },
+    headerBg: "#E8F5E0",
+    promptBg: "#F0F7EA",
+    promptBorder: "#6B9F45",
   },
   {
     id: "ocean",
@@ -37,6 +55,10 @@ export const JOURNAL_THEMES: JournalTheme[] = [
     accentColor: "#2B6CB0",
     dotColor: "#4299E1",
     streakIcon: "🌊",
+    typography: { fontFamily: '"Pretendard", sans-serif', lineHeight: 1.7, maxWidth: "680px" },
+    headerBg: "#DBEAFE",
+    promptBg: "#EBF4FF",
+    promptBorder: "#4299E1",
   },
   {
     id: "sunset",
@@ -46,6 +68,10 @@ export const JOURNAL_THEMES: JournalTheme[] = [
     accentColor: "#DD6B20",
     dotColor: "#ED8936",
     streakIcon: "🌅",
+    typography: { fontFamily: '"Pretendard", sans-serif', lineHeight: 1.8, maxWidth: "600px" },
+    headerBg: "#FFEDD5",
+    promptBg: "#FFF5ED",
+    promptBorder: "#ED8936",
   },
   {
     id: "minimal",
@@ -55,6 +81,10 @@ export const JOURNAL_THEMES: JournalTheme[] = [
     accentColor: "#6B7280",
     dotColor: "#9CA3AF",
     streakIcon: "✦",
+    typography: { fontFamily: "monospace", lineHeight: 1.6, maxWidth: "620px" },
+    headerBg: "#F3F4F6",
+    promptBg: "#F9FAFB",
+    promptBorder: "#D1D5DB",
   },
 ];
 

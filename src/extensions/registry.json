@@ -331,6 +331,19 @@
       "inputRules": ["$"],
       "shortcuts": {},
       "_note": "Inline math expression rendered with KaTeX. Atom node (not a mark despite inline appearance)."
+    },
+    {
+      "name": "tagNode",
+      "file": "nodes/tag-node.ts",
+      "markdown": "#tag",
+      "spec": "§56m",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "implemented",
+      "hasNodeView": true,
+      "inputRules": ["#tag + space"],
+      "shortcuts": {},
+      "_note": "Inline atom node for #tag. Cmd/Ctrl+click triggers global search. Pipeline roundtrip via tag-transformer."
     }
   ],
   "marks": [
@@ -591,6 +604,16 @@
       "status": "implemented",
       "shortcuts": {},
       "_note": "ProseMirror Plugin for AI inline diff preview — char-level insert/delete decorations via fast-diff. Accept/reject via Cmd+Enter/Escape."
+    },
+    {
+      "name": "tagSuggest",
+      "file": "plugins/tag-suggest.ts",
+      "spec": "§56m",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "implemented",
+      "shortcuts": { "#": "tag autocomplete" },
+      "_note": "Tiptap Suggestion plugin for #tag autocomplete. Vault-wide tag index via Rust IPC. Nested tag segment matching."
     }
   ]
 }

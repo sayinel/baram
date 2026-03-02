@@ -9,8 +9,11 @@ import { searchFiles, readFile } from "../../ipc/invoke";
 import {
   groupSearchResults,
   highlightSearchMatch,
+  filterByFrontmatter,
+  hasActiveFilters,
   CATEGORY_LABELS,
   type JournalCategory,
+  type JournalSearchFilters,
 } from "../../utils/journal-search";
 import { resolveJournalDir } from "../../utils/journal";
 import type { SearchResult } from "../../ipc/types";
@@ -34,6 +37,10 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState<JournalSearchFilters>({});
+  // Cache file contents for frontmatter filtering
+  const contentCacheRef = useRef<Map<string, string>>(new Map());
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -43,8 +50,12 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
   }, []);
 
   const doSearch = useCallback(
-    async (q: string) => {
-      if (!resolvedDir || !q.trim()) {
+    async (q: string, activeFilters?: JournalSearchFilters) => {
+      const filtersToUse = activeFilters ?? filters;
+      const hasQuery = q.trim().length > 0;
+      const hasFilters = hasActiveFilters(filtersToUse);
+
+      if (!resolvedDir || (!hasQuery && !hasFilters)) {
         setResults([]);
         setError(null);
         return;
@@ -54,10 +65,35 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
       setError(null);
       try {
         // searchFiles takes rootPath as first arg — pass journal dir to scope results
-        const res = await searchFiles(resolvedDir, q, {
+        const res = await searchFiles(resolvedDir, hasQuery ? q : " ", {
           maxResults: 500,
         });
-        setResults(res);
+
+        // Apply frontmatter filters client-side if any are active
+        if (hasFilters) {
+          // Fetch content for each result (use cache to avoid re-reads)
+          const cache = contentCacheRef.current;
+          const withContent = await Promise.all(
+            res.map(async (r) => {
+              let content = cache.get(r.filePath);
+              if (content === undefined) {
+                try {
+                  content = await readFile(r.filePath);
+                  cache.set(r.filePath, content);
+                } catch {
+                  content = "";
+                }
+              }
+              return { path: r.filePath, content, original: r };
+            }),
+          );
+          const kept = new Set(
+            filterByFrontmatter(withContent, filtersToUse).map((r) => r.path),
+          );
+          setResults(res.filter((r) => kept.has(r.filePath)));
+        } else {
+          setResults(res);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
         setResults([]);
@@ -65,7 +101,7 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
         setLoading(false);
       }
     },
-    [resolvedDir],
+    [resolvedDir, filters],
   );
 
   const handleQueryChange = useCallback(
@@ -75,6 +111,15 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
       debounceRef.current = setTimeout(() => doSearch(value), 300);
     },
     [doSearch],
+  );
+
+  const handleFilterChange = useCallback(
+    (next: JournalSearchFilters) => {
+      setFilters(next);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => doSearch(query, next), 300);
+    },
+    [doSearch, query],
   );
 
   const handleKeyDown = useCallback(
@@ -142,6 +187,9 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
 
   const totalMatches = results.length;
   const isTagSearch = query.startsWith("#");
+  const filtersActive = hasActiveFilters(filters);
+
+  const MOODS = ["deep", "calm", "neutral", "warm", "bright"] as const;
 
   return (
     <div className="journal-search">
@@ -157,6 +205,14 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
           spellCheck={false}
           aria-label="Journal search"
         />
+        <button
+          className={`journal-search-filter-toggle ${showFilters ? "active" : ""} ${filtersActive ? "has-filters" : ""}`}
+          onClick={() => setShowFilters((v) => !v)}
+          title="필터"
+          aria-label="Toggle filters"
+        >
+          ⊟
+        </button>
         {onClose && (
           <button
             className="journal-search-close"
@@ -169,18 +225,120 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
         )}
       </div>
 
+      {showFilters && (
+        <div className="journal-search-filters">
+          {/* Date range */}
+          <div className="jsf-row">
+            <span className="jsf-label">기간</span>
+            <input
+              type="date"
+              value={filters.dateFrom ?? ""}
+              onChange={(e) =>
+                handleFilterChange({ ...filters, dateFrom: e.target.value || undefined })
+              }
+            />
+            <span>~</span>
+            <input
+              type="date"
+              value={filters.dateTo ?? ""}
+              onChange={(e) =>
+                handleFilterChange({ ...filters, dateTo: e.target.value || undefined })
+              }
+            />
+          </div>
+
+          {/* Mood filter — 5 clickable dots */}
+          <div className="jsf-row">
+            <span className="jsf-label">기분</span>
+            <div className="jsf-mood-dots">
+              {MOODS.map((mood) => (
+                <button
+                  key={mood}
+                  className={`jsf-mood-dot ${(filters.moodFilter ?? []).includes(mood) ? "active" : ""}`}
+                  data-mood={mood}
+                  title={mood}
+                  onClick={() => {
+                    const current = filters.moodFilter ?? [];
+                    const next = current.includes(mood)
+                      ? current.filter((m) => m !== mood)
+                      : [...current, mood];
+                    handleFilterChange({
+                      ...filters,
+                      moodFilter: next.length > 0 ? next : undefined,
+                    });
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Tags filter — comma separated */}
+          <div className="jsf-row">
+            <span className="jsf-label">태그</span>
+            <input
+              type="text"
+              placeholder="태그1, 태그2"
+              value={(filters.tagsFilter ?? []).join(", ")}
+              onChange={(e) => {
+                const tags = e.target.value
+                  .split(",")
+                  .map((t) => t.trim())
+                  .filter(Boolean);
+                handleFilterChange({ ...filters, tagsFilter: tags.length > 0 ? tags : undefined });
+              }}
+            />
+          </div>
+
+          {/* Energy minimum */}
+          <div className="jsf-row">
+            <span className="jsf-label">에너지</span>
+            <select
+              value={filters.energyMin ?? ""}
+              onChange={(e) =>
+                handleFilterChange({
+                  ...filters,
+                  energyMin: e.target.value ? parseInt(e.target.value) : undefined,
+                })
+              }
+            >
+              <option value="">전체</option>
+              <option value="1">1 이상</option>
+              <option value="2">2 이상</option>
+              <option value="3">3 이상</option>
+              <option value="4">4 이상</option>
+              <option value="5">5</option>
+            </select>
+          </div>
+
+          {/* Has photos */}
+          <div className="jsf-row">
+            <label className="jsf-checkbox-label">
+              <input
+                type="checkbox"
+                checked={filters.hasPhotos ?? false}
+                onChange={(e) =>
+                  handleFilterChange({ ...filters, hasPhotos: e.target.checked || undefined })
+                }
+              />
+              사진 있는 일기만
+            </label>
+          </div>
+        </div>
+      )}
+
       {error && <div className="journal-search-error">{error}</div>}
 
       {loading && <div className="journal-search-status">Searching…</div>}
 
-      {!loading && query.trim() && !error && (
+      {!loading && (query.trim() || filtersActive) && !error && (
         <div className="journal-search-status">
           {totalMatches} match{totalMatches !== 1 ? "es" : ""}
           {grouped.size > 0 ? ` across ${grouped.size} category${grouped.size !== 1 ? "ies" : ""}` : ""}
+          {filtersActive && <span className="jsf-active-badge"> (필터 적용 중)</span>}
         </div>
       )}
 
-      {!loading && query.trim() && totalMatches === 0 && !error && (
+      {!loading && (query.trim() || filtersActive) && totalMatches === 0 && !error && (
         <div className="journal-search-empty">No results in journal</div>
       )}
 

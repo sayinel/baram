@@ -3,6 +3,10 @@ import {
   categorizeJournalResult,
   groupSearchResults,
   highlightSearchMatch,
+  extractFrontmatterFields,
+  extractDateFromPath,
+  filterByFrontmatter,
+  hasActiveFilters,
 } from "../journal-search";
 
 const DIR = "/home/user/journal";
@@ -155,5 +159,184 @@ describe("highlightSearchMatch", () => {
 
   it("handles query longer than text gracefully", () => {
     expect(highlightSearchMatch("hi", "hello world")).toBe("hi");
+  });
+});
+
+// ── §56k Frontmatter utilities ───────────────────────────────────────────────
+
+describe("extractFrontmatterFields", () => {
+  const mkContent = (yaml: string, body = "") =>
+    `---\n${yaml}\n---\n${body}`;
+
+  it("extracts date, mood, energy from frontmatter", () => {
+    const content = mkContent(
+      "date: 2026-02-28\nmood: calm\nenergy: 4",
+    );
+    const fields = extractFrontmatterFields(content);
+    expect(fields.date).toBe("2026-02-28");
+    expect(fields.mood).toBe("calm");
+    expect(fields.energy).toBe(4);
+  });
+
+  it("extracts inline tags", () => {
+    const content = mkContent("tags: [여행, 운동, 독서]");
+    const { tags } = extractFrontmatterFields(content);
+    expect(tags).toEqual(["여행", "운동", "독서"]);
+  });
+
+  it("extracts block-style tags", () => {
+    const content = mkContent("tags:\n  - 여행\n  - 운동");
+    const { tags } = extractFrontmatterFields(content);
+    expect(tags).toEqual(["여행", "운동"]);
+  });
+
+  it("detects hasPhotos from body", () => {
+    const content = mkContent("date: 2026-01-01", "Some text\n![photo](img.jpg)");
+    expect(extractFrontmatterFields(content).hasPhotos).toBe(true);
+  });
+
+  it("hasPhotos false when no image syntax", () => {
+    const content = mkContent("date: 2026-01-01", "Just text");
+    expect(extractFrontmatterFields(content).hasPhotos).toBe(false);
+  });
+
+  it("returns defaults when no frontmatter", () => {
+    const content = "No frontmatter here\n![photo](img.jpg)";
+    const fields = extractFrontmatterFields(content);
+    expect(fields.date).toBeUndefined();
+    expect(fields.mood).toBeUndefined();
+    expect(fields.energy).toBeUndefined();
+    expect(fields.hasPhotos).toBe(true);
+  });
+
+  it("returns empty tags array when tags key absent", () => {
+    const content = mkContent("date: 2026-01-01");
+    expect(extractFrontmatterFields(content).tags).toEqual([]);
+  });
+
+  it("strips quotes from tag values", () => {
+    const content = mkContent('tags: ["여행", \'운동\']');
+    const { tags } = extractFrontmatterFields(content);
+    expect(tags).toEqual(["여행", "운동"]);
+  });
+});
+
+describe("extractDateFromPath", () => {
+  it("extracts YYYY-MM-DD from path", () => {
+    expect(extractDateFromPath("/journal/daily/2026/02/2026-02-28.md")).toBe("2026-02-28");
+  });
+
+  it("extracts date from flat filename", () => {
+    expect(extractDateFromPath("/journal/2026-01-01.md")).toBe("2026-01-01");
+  });
+
+  it("returns null when no date in path", () => {
+    expect(extractDateFromPath("/journal/notes/ideas.md")).toBeNull();
+  });
+});
+
+describe("filterByFrontmatter", () => {
+  const r = (path: string, yaml: string, body = "") => ({
+    path,
+    content: `---\n${yaml}\n---\n${body}`,
+  });
+
+  const items = [
+    r("/j/2026-01-10.md", "date: 2026-01-10\nmood: calm\nenergy: 3\ntags: [여행]"),
+    r("/j/2026-02-01.md", "date: 2026-02-01\nmood: warm\nenergy: 5\ntags: [운동]", "![img](x.jpg)"),
+    r("/j/2026-03-15.md", "date: 2026-03-15\nmood: bright\nenergy: 2\ntags: [독서, 여행]"),
+    r("/j/no-date.md", "mood: deep\nenergy: 4"),
+  ];
+
+  it("date range filter — from only", () => {
+    const res = filterByFrontmatter(items, { dateFrom: "2026-02-01" });
+    expect(res.map((r) => r.path)).toEqual(["/j/2026-02-01.md", "/j/2026-03-15.md"]);
+  });
+
+  it("date range filter — to only", () => {
+    const res = filterByFrontmatter(items, { dateTo: "2026-01-31" });
+    expect(res.map((r) => r.path)).toEqual(["/j/2026-01-10.md"]);
+  });
+
+  it("date range filter — from and to", () => {
+    const res = filterByFrontmatter(items, { dateFrom: "2026-01-10", dateTo: "2026-02-01" });
+    expect(res.map((r) => r.path)).toEqual(["/j/2026-01-10.md", "/j/2026-02-01.md"]);
+  });
+
+  it("date filter excludes entries with no date", () => {
+    const res = filterByFrontmatter(items, { dateFrom: "2026-01-01" });
+    expect(res.map((r) => r.path)).not.toContain("/j/no-date.md");
+  });
+
+  it("mood filter matches selected moods", () => {
+    const res = filterByFrontmatter(items, { moodFilter: ["calm", "bright"] });
+    expect(res.map((r) => r.path)).toEqual(["/j/2026-01-10.md", "/j/2026-03-15.md"]);
+  });
+
+  it("mood filter empty array = no filter", () => {
+    const res = filterByFrontmatter(items, { moodFilter: [] });
+    expect(res).toHaveLength(items.length);
+  });
+
+  it("energy min filter", () => {
+    const res = filterByFrontmatter(items, { energyMin: 4 });
+    expect(res.map((r) => r.path)).toEqual(["/j/2026-02-01.md", "/j/no-date.md"]);
+  });
+
+  it("tags filter — OR logic, any match passes", () => {
+    const res = filterByFrontmatter(items, { tagsFilter: ["운동", "독서"] });
+    expect(res.map((r) => r.path)).toEqual(["/j/2026-02-01.md", "/j/2026-03-15.md"]);
+  });
+
+  it("tags filter empty array = no filter", () => {
+    const res = filterByFrontmatter(items, { tagsFilter: [] });
+    expect(res).toHaveLength(items.length);
+  });
+
+  it("hasPhotos filter keeps only entries with images", () => {
+    const res = filterByFrontmatter(items, { hasPhotos: true });
+    expect(res.map((r) => r.path)).toEqual(["/j/2026-02-01.md"]);
+  });
+
+  it("combined filters — AND logic across fields", () => {
+    const res = filterByFrontmatter(items, {
+      dateFrom: "2026-01-01",
+      dateTo: "2026-02-28",
+      moodFilter: ["warm"],
+      energyMin: 4,
+      hasPhotos: true,
+    });
+    expect(res.map((r) => r.path)).toEqual(["/j/2026-02-01.md"]);
+  });
+
+  it("returns all when no filters active", () => {
+    const res = filterByFrontmatter(items, {});
+    expect(res).toHaveLength(items.length);
+  });
+});
+
+describe("hasActiveFilters", () => {
+  it("returns false for empty filters", () => {
+    expect(hasActiveFilters({})).toBe(false);
+  });
+
+  it("returns true when dateFrom set", () => {
+    expect(hasActiveFilters({ dateFrom: "2026-01-01" })).toBe(true);
+  });
+
+  it("returns true when moodFilter non-empty", () => {
+    expect(hasActiveFilters({ moodFilter: ["calm"] })).toBe(true);
+  });
+
+  it("returns false when moodFilter is empty array", () => {
+    expect(hasActiveFilters({ moodFilter: [] })).toBe(false);
+  });
+
+  it("returns true when energyMin set", () => {
+    expect(hasActiveFilters({ energyMin: 3 })).toBe(true);
+  });
+
+  it("returns true when hasPhotos true", () => {
+    expect(hasActiveFilters({ hasPhotos: true })).toBe(true);
   });
 });

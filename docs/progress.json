@@ -292,12 +292,13 @@
       },
       "specCheckSummary": {
         "date": "2026-03-02",
-        "implemented": 129,
-        "partial": 0,
-        "missing": 13,
-        "total": 142,
-        "journalTests": 268,
-        "note": "§56m Tag System P0+P1 complete (tag sidebar, frontmatter editor, tag atom node, pipeline roundtrip)"
+        "implemented": 140,
+        "partial": 3,
+        "missing": 5,
+        "total": 148,
+        "journalTests": 370,
+        "coverage": "96%",
+        "note": "§56a-§56m full spec-check. 5 medium issues resolved (§56f dynamic blocks, §56g heatmap, §56h typography, §56i prompts 120, §56k search filters). 1446 vitest pass."
       },
       "specCheckIssues": [
         { "severity": "resolved", "issue": "FocusMode/TypewriterMode — phantom issue, extensions never existed in registry", "spec": "§5.1" },
@@ -307,7 +308,14 @@
         { "severity": "resolved", "issue": "KaTeX inline registered as 'mark' in registry.json — moved to nodes section", "spec": "§5.3" },
         { "severity": "info", "issue": "4 manual perf measurements pending: cold start, warm start, typing latency, idle memory", "spec": "§8.4" },
         { "severity": "resolved", "issue": "§56c Photos tab and inline editing — implemented (extractImages + OneLineEditor)", "spec": "§56c" },
-        { "severity": "resolved", "issue": "§56d Photo Journal — fully implemented (drag&drop, /photo, gallery, lightbox)", "spec": "§56d" }
+        { "severity": "resolved", "issue": "§56d Photo Journal — fully implemented (drag&drop, /photo, gallery, lightbox)", "spec": "§56d" },
+        { "severity": "resolved", "issue": "tagNode and tagSuggest missing from registry.json — added", "spec": "§56m" },
+        { "severity": "resolved", "issue": "§56f: journal-list/journal-mood/journal-photos dynamic code blocks — implemented (JournalDynamicBlock + NodeView)", "spec": "§56f" },
+        { "severity": "resolved", "issue": "§56g: Contribution heatmap — implemented (53×7 grid, color-mix, tooltips, click nav)", "spec": "§56g" },
+        { "severity": "resolved", "issue": "§56h: JournalTypography CSS vars — implemented (fontFamily/lineHeight/maxWidth + headerBg/promptBg/promptBorder)", "spec": "§56h" },
+        { "severity": "resolved", "issue": "§56i: 120 structured prompts + custom prompts/ folder — implemented (5 categories, history avoidance, loadCustomPrompts)", "spec": "§56i" },
+        { "severity": "resolved", "issue": "§56k: Frontmatter search filters — implemented (mood/energy/date/tags/hasPhotos filter UI)", "spec": "§56k" },
+        { "severity": "low", "issue": "§14.3: 9 optional settings not in settings-store (journalMoodEnabled, journalEnergyEnabled, etc.)", "spec": "§14.3" }
       ]
     },
     "M10": {
@@ -322,9 +330,9 @@
   },
 
   "testSummary": {
-    "vitest": "1366/1366 pass (85 test files)",
+    "vitest": "1446/1446 pass (87 test files)",
     "cargoTest": "112/112 pass (4 ignored)",
-    "note": "§56m P1: tag sidebar panel, frontmatter tags editor, tag inline atom node + pipeline roundtrip",
+    "note": "5 medium spec-check issues resolved. Coverage 93%→96%. +80 tests (dynamic blocks, heatmap, typography, prompts, search filters).",
     "breakdown": {
       "_comment": "79 test files, 1300 tests total (2026-03-01 spec-check verified)",
       "integration/ai-edit-workflow": 5,

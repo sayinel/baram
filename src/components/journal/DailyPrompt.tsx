@@ -14,8 +14,8 @@ export function DailyPrompt({ date }: Props) {
     let next = getRandomPrompt();
     // Avoid showing the same prompt twice in a row
     if (next === prompt) {
-      const idx = DAILY_PROMPTS.indexOf(prompt);
-      next = DAILY_PROMPTS[(idx + 1) % DAILY_PROMPTS.length];
+      const idx = DAILY_PROMPTS.findIndex((p) => p.text === prompt);
+      next = DAILY_PROMPTS[(idx + 1) % DAILY_PROMPTS.length].text;
     }
     setPrompt(next);
   };

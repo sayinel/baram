@@ -2846,6 +2846,96 @@ body {
 }
 
 /* ============================================
+   §56g Contribution Heatmap
+   ============================================ */
+
+.contribution-heatmap-wrapper {
+  border-top: 1px solid var(--color-border);
+}
+
+.contribution-heatmap-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-align: left;
+}
+
+.contribution-heatmap-toggle:hover {
+  background: var(--color-bg-hover);
+}
+
+.contribution-heatmap-toggle-arrow {
+  font-size: 10px;
+}
+
+.contribution-heatmap {
+  overflow-x: auto;
+  padding: 4px 12px 8px;
+}
+
+.contribution-heatmap-month-labels {
+  margin-bottom: 2px;
+}
+
+.contribution-heatmap-grid {
+  display: inline-grid;
+  grid-template-rows: repeat(7, 10px);
+  grid-auto-flow: column;
+  gap: 2px;
+}
+
+.contribution-heatmap-cell {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.contribution-heatmap-cell:hover {
+  outline: 1px solid var(--color-text-primary);
+  outline-offset: 1px;
+}
+
+.contribution-heatmap-cell[data-level="0"] {
+  background: var(--color-bg-secondary);
+}
+
+.contribution-heatmap-cell[data-level="1"] {
+  background: color-mix(in srgb, var(--cal-accent, #22c55e) 25%, var(--color-bg-primary));
+}
+
+.contribution-heatmap-cell[data-level="2"] {
+  background: color-mix(in srgb, var(--cal-accent, #22c55e) 50%, var(--color-bg-primary));
+}
+
+.contribution-heatmap-cell[data-level="3"] {
+  background: color-mix(in srgb, var(--cal-accent, #22c55e) 75%, var(--color-bg-primary));
+}
+
+.contribution-heatmap-cell[data-level="4"] {
+  background: var(--cal-accent, #22c55e);
+}
+
+.contribution-heatmap-day-labels {
+  display: grid;
+  grid-template-rows: repeat(7, 10px);
+  gap: 2px;
+  margin-right: 4px;
+  font-size: 0.65em;
+  color: var(--color-text-secondary);
+  align-items: center;
+  min-width: 24px;
+}
+
+/* ============================================
    §56e Mood Bar
    ============================================ */
 
@@ -8433,6 +8523,145 @@ body {
   font-style: italic;
 }
 
+/* §56k Journal Search Filters */
+.journal-search-filter-toggle {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.journal-search-filter-toggle:hover,
+.journal-search-filter-toggle.active {
+  background: var(--color-bg-hover);
+  color: var(--color-text);
+}
+
+.journal-search-filter-toggle.has-filters {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.journal-search-filters {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.jsf-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82em;
+}
+
+.jsf-label {
+  min-width: 42px;
+  color: var(--color-text-secondary);
+  font-size: 0.82em;
+  flex-shrink: 0;
+}
+
+.jsf-row input[type="date"] {
+  width: 128px;
+  padding: 2px 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg-input, var(--color-bg));
+  color: var(--color-text);
+  font-size: 0.82em;
+}
+
+.jsf-row input[type="text"] {
+  flex: 1;
+  padding: 2px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg-input, var(--color-bg));
+  color: var(--color-text);
+  font-size: 0.82em;
+}
+
+.jsf-row select {
+  padding: 2px 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg-input, var(--color-bg));
+  color: var(--color-text);
+  font-size: 0.82em;
+}
+
+.jsf-mood-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.jsf-mood-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-border);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.jsf-mood-dot.active {
+  border-width: 2.5px;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.25);
+}
+
+.jsf-mood-dot[data-mood="deep"] {
+  background: var(--mood-deep, #64748b);
+}
+.jsf-mood-dot[data-mood="calm"] {
+  background: var(--mood-calm, #94a3b8);
+}
+.jsf-mood-dot[data-mood="neutral"] {
+  background: var(--mood-neutral, #cbd5e1);
+}
+.jsf-mood-dot[data-mood="warm"] {
+  background: var(--mood-warm, #f59e0b);
+}
+.jsf-mood-dot[data-mood="bright"] {
+  background: var(--mood-bright, #fbbf24);
+}
+
+.jsf-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font-size: 0.82em;
+}
+
+.jsf-active-badge {
+  color: var(--color-accent);
+  font-size: 0.9em;
+}
+
+/* §56h Journal typography — CSS variable overrides when a non-default theme is active */
+.ProseMirror {
+  font-family: var(--journal-font-family, inherit);
+  line-height: var(--journal-line-height, inherit);
+}
+
+.mood-bar {
+  background: var(--journal-header-bg, var(--color-bg-primary));
+}
+
+.daily-prompt {
+  background: var(--journal-prompt-bg, transparent);
+  border-color: var(--journal-prompt-border, var(--color-border));
+}
+
 /* Calendar search button */
 .calendar-search-btn {
   margin-left: auto;
@@ -9246,4 +9475,137 @@ body {
 .tag-color-dot-clear {
   background: linear-gradient(135deg, var(--color-bg-primary) 45%, var(--color-text-muted) 45%, var(--color-text-muted) 55%, var(--color-bg-primary) 55%);
   border: 1px solid var(--color-border);
+}
+
+/* §56f Journal Dynamic Code Block */
+.journal-block-nodeview {
+  margin: 8px 0;
+}
+
+.journal-dynamic-block {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 8px 0;
+  background: var(--color-bg-secondary, var(--color-bg-primary));
+}
+
+.journal-dynamic-block-header {
+  font-size: 0.85em;
+  color: var(--color-text-secondary);
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.journal-dynamic-block-title {
+  font-weight: 500;
+}
+
+.journal-dynamic-block-source-btn {
+  background: none;
+  border: 1px solid var(--color-border-light, var(--color-border));
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 0.8em;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  font-family: monospace;
+}
+
+.journal-dynamic-block-source-btn:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.journal-block-loading,
+.journal-block-empty {
+  font-size: 0.85em;
+  color: var(--color-text-muted);
+  padding: 4px 0;
+}
+
+/* journal-list */
+.journal-list-items {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.journal-list-item {
+  padding: 4px 6px;
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.journal-list-item:hover {
+  background: var(--color-bg-hover, color-mix(in srgb, var(--color-accent) 8%, transparent));
+}
+
+.journal-list-date {
+  color: var(--color-text-secondary);
+  min-width: 90px;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.journal-list-preview {
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* journal-mood */
+.journal-mood-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.journal-mood-chip {
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.85em;
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-bg-primary));
+  color: var(--color-text-primary);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
+}
+
+.journal-mood-pct {
+  color: var(--color-text-muted);
+  font-size: 0.9em;
+}
+
+/* journal-photos */
+.journal-photos-grid {
+  display: grid;
+  gap: 4px;
+  overflow-x: auto;
+}
+
+.journal-photos-thumb {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 4px;
+  display: block;
+}
+
+/* journal source edit textarea */
+.journal-block-source-edit {
+  width: 100%;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85em;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  resize: vertical;
+  box-sizing: border-box;
 }
