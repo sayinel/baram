@@ -22,9 +22,9 @@ describe("§52 Workspace Store", () => {
 
   // --- Built-in Presets ---
 
-  it("has 4 built-in presets", () => {
-    expect(BUILTIN_PRESETS).toHaveLength(4);
-    expect(BUILTIN_PRESETS.map((p) => p.id)).toEqual(["writing", "skills", "research", "journal"]);
+  it("has 2 built-in presets", () => {
+    expect(BUILTIN_PRESETS).toHaveLength(2);
+    expect(BUILTIN_PRESETS.map((p) => p.id)).toEqual(["writing", "journal"]);
   });
 
   it("all built-in presets are marked as builtIn", () => {
@@ -35,7 +35,7 @@ describe("§52 Workspace Store", () => {
 
   it("getAllPresets returns built-in + custom presets", () => {
     const store = useWorkspaceStore.getState();
-    expect(store.getAllPresets()).toHaveLength(4);
+    expect(store.getAllPresets()).toHaveLength(2);
   });
 
   it("getPreset finds built-in preset by id", () => {
@@ -54,31 +54,6 @@ describe("§52 Workspace Store", () => {
     expect(ui.sidebarOpen).toBe(false);
     expect(ui.rightPanelOpen).toBe(false);
     expect(useWorkspaceStore.getState().activePresetId).toBe("writing");
-  });
-
-  it("applyPreset('skills') opens left sidebar and right panel with chat", () => {
-    // Start with sidebar closed
-    useUIStore.setState({ sidebarOpen: false, rightPanelOpen: false });
-
-    useWorkspaceStore.getState().applyPreset("skills");
-
-    const ui = useUIStore.getState();
-    expect(ui.sidebarOpen).toBe(true);
-    expect(ui.sidebarPanel).toBe("files");
-    expect(ui.rightPanelOpen).toBe(true);
-    expect(ui.rightPanelMode).toBe("chat");
-  });
-
-  it("applyPreset('research') opens backlinks panel and AI chat", () => {
-    useUIStore.setState({ sidebarOpen: false, rightPanelOpen: false });
-
-    useWorkspaceStore.getState().applyPreset("research");
-
-    const ui = useUIStore.getState();
-    expect(ui.sidebarOpen).toBe(true);
-    expect(ui.sidebarPanel).toBe("backlinks");
-    expect(ui.rightPanelOpen).toBe(true);
-    expect(ui.rightPanelMode).toBe("chat");
   });
 
   it("applyPreset with unknown id does nothing", () => {
@@ -121,10 +96,10 @@ describe("§52 Workspace Store", () => {
     useWorkspaceStore.getState().saveCustomPreset("Custom 2");
 
     const all = useWorkspaceStore.getState().getAllPresets();
-    expect(all).toHaveLength(6);
+    expect(all).toHaveLength(4);
     expect(all[0].builtIn).toBe(true);
-    expect(all[4].builtIn).toBe(false);
-    expect(all[4].name).toBe("Custom 1");
+    expect(all[2].builtIn).toBe(false);
+    expect(all[2].name).toBe("Custom 1");
   });
 
   it("deleteCustomPreset removes preset and clears activePresetId when active", () => {

@@ -43,30 +43,6 @@ export const BUILTIN_PRESETS: WorkspacePreset[] = [
     },
   },
   {
-    id: "skills",
-    name: "Skills 편집",
-    description: "파일 트리와 AI 채팅을 함께 사용합니다.",
-    builtIn: true,
-    layout: {
-      sidebarOpen: true,
-      sidebarPanel: "files",
-      rightPanelOpen: true,
-      rightPanelMode: "chat",
-    },
-  },
-  {
-    id: "research",
-    name: "리서치",
-    description: "파일 트리, 에디터, AI 채팅으로 리서치합니다.",
-    builtIn: true,
-    layout: {
-      sidebarOpen: true,
-      sidebarPanel: "backlinks",
-      rightPanelOpen: true,
-      rightPanelMode: "chat",
-    },
-  },
-  {
     id: "journal",
     name: "저널",
     description: "캘린더와 오늘의 저널, Memories View를 함께 엽니다.",

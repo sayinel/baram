@@ -382,24 +382,10 @@ function buildCommands(
       action: () => useWorkspaceStore.getState().applyPreset("writing"),
     },
     {
-      id: "workspace:skills",
-      label: "Workspace: Skills 편집",
-      category: "Workspace",
-      shortcut: "⌥⌘2",
-      action: () => useWorkspaceStore.getState().applyPreset("skills"),
-    },
-    {
-      id: "workspace:research",
-      label: "Workspace: 리서치",
-      category: "Workspace",
-      shortcut: "⌥⌘3",
-      action: () => useWorkspaceStore.getState().applyPreset("research"),
-    },
-    {
       id: "workspace:journal",
       label: "Workspace: 저널",
       category: "Workspace",
-      shortcut: "⌥⌘4",
+      shortcut: "⌥⌘2",
       action: () => useWorkspaceStore.getState().applyPreset("journal"),
     },
     {

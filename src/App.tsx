@@ -1260,24 +1260,13 @@ function App() {
         return;
       }
 
-      // §52 Cmd+Alt+1/2/3 — workspace presets
+      // §52 Cmd+Alt+1/2 — workspace presets
       if (e.altKey && mod && e.code === "Digit1") {
         e.preventDefault();
         useWorkspaceStore.getState().applyPreset("writing");
         return;
       }
       if (e.altKey && mod && e.code === "Digit2") {
-        e.preventDefault();
-        useWorkspaceStore.getState().applyPreset("skills");
-        return;
-      }
-      if (e.altKey && mod && e.code === "Digit3") {
-        e.preventDefault();
-        useWorkspaceStore.getState().applyPreset("research");
-        return;
-      }
-      // §56 Alt+Cmd+4 — journal workspace preset
-      if (e.altKey && mod && e.code === "Digit4") {
         e.preventDefault();
         useWorkspaceStore.getState().applyPreset("journal");
         return;
@@ -1943,12 +1932,6 @@ function App() {
         // --- Workspace menu handlers (§52) ---
         case "workspace_writing":
           useWorkspaceStore.getState().applyPreset("writing");
-          break;
-        case "workspace_skills":
-          useWorkspaceStore.getState().applyPreset("skills");
-          break;
-        case "workspace_research":
-          useWorkspaceStore.getState().applyPreset("research");
           break;
         case "workspace_journal":
           useWorkspaceStore.getState().applyPreset("journal");
