@@ -292,9 +292,9 @@
       },
       "specCheckSummary": {
         "date": "2026-03-02",
-        "implemented": 140,
+        "implemented": 141,
         "partial": 3,
-        "missing": 5,
+        "missing": 4,
         "total": 148,
         "journalTests": 370,
         "coverage": "96%",
@@ -315,7 +315,7 @@
         { "severity": "resolved", "issue": "§56h: JournalTypography CSS vars — implemented (fontFamily/lineHeight/maxWidth + headerBg/promptBg/promptBorder)", "spec": "§56h" },
         { "severity": "resolved", "issue": "§56i: 120 structured prompts + custom prompts/ folder — implemented (5 categories, history avoidance, loadCustomPrompts)", "spec": "§56i" },
         { "severity": "resolved", "issue": "§56k: Frontmatter search filters — implemented (mood/energy/date/tags/hasPhotos filter UI)", "spec": "§56k" },
-        { "severity": "low", "issue": "§14.3: 9 optional settings not in settings-store (journalMoodEnabled, journalEnergyEnabled, etc.)", "spec": "§14.3" }
+        { "severity": "resolved", "issue": "§14.3: 9 optional journal settings added to settings-store (mood/energy/streak/themes/prompt/reflection)", "spec": "§14.3" }
       ]
     },
     "M10": {

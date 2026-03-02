@@ -5,6 +5,7 @@ import { tauriStorage } from "./tauri-storage";
 import { findThemeById } from "../types/theme";
 import type { ThemeDef } from "../types/theme";
 import type { CustomExportItem } from "../ipc/types";
+import type { JournalTheme } from "../utils/journal-themes";
 
 type Theme = "light" | "dark" | "system";
 type OnLaunch = "newFile" | "restoreLastFolder" | "restoreLastFile";
@@ -64,8 +65,25 @@ interface SettingsState {
   journalMonthlyTemplate: string;   // §56a: monthly note template path
   journalYearlyTemplate: string;    // §56a: yearly note template path
 
+  // §56e Mood/Energy
+  journalMoodEnabled: boolean;
+  journalEnergyEnabled: boolean;
+
+  // §56g Stats
+  journalShowStreak: boolean;
+
   // §56h Journal Theme
   journalThemeId: string;
+  journalCustomThemes: JournalTheme[];
+
+  // §56i Prompts
+  journalPromptEnabled: boolean;
+  journalPromptCategory: string;     // "" = all categories
+  journalPromptMode: "random" | "sequential";
+
+  // §56j AI Reflection
+  journalAIReflectionEnabled: boolean;
+  journalAIAutoSuggest: boolean;     // auto-suggest after save
 
   // §56b Memories Panel UI state
   memoriesTab: MemoriesTab;
@@ -133,8 +151,25 @@ interface SettingsState {
   setJournalMonthlyTemplate: (path: string) => void;
   setJournalYearlyTemplate: (path: string) => void;
 
-  // §56h Journal Theme setter
+  // §56e Mood/Energy setters
+  setJournalMoodEnabled: (enabled: boolean) => void;
+  setJournalEnergyEnabled: (enabled: boolean) => void;
+
+  // §56g Stats setter
+  setJournalShowStreak: (enabled: boolean) => void;
+
+  // §56h Journal Theme setters
   setJournalThemeId: (id: string) => void;
+  setJournalCustomThemes: (themes: JournalTheme[]) => void;
+
+  // §56i Prompt setters
+  setJournalPromptEnabled: (enabled: boolean) => void;
+  setJournalPromptCategory: (category: string) => void;
+  setJournalPromptMode: (mode: "random" | "sequential") => void;
+
+  // §56j AI Reflection setters
+  setJournalAIReflectionEnabled: (enabled: boolean) => void;
+  setJournalAIAutoSuggest: (enabled: boolean) => void;
 
   // §56b Memories Panel UI state setters
   setMemoriesTab: (tab: MemoriesTab) => void;
@@ -196,8 +231,25 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
   journalMonthlyTemplate: "",
   journalYearlyTemplate: "",
 
+  // §56e Mood/Energy
+  journalMoodEnabled: true,
+  journalEnergyEnabled: true,
+
+  // §56g Stats
+  journalShowStreak: true,
+
   // §56h Journal Theme
   journalThemeId: "default",
+  journalCustomThemes: [],
+
+  // §56i Prompts
+  journalPromptEnabled: true,
+  journalPromptCategory: "",
+  journalPromptMode: "random" as const,
+
+  // §56j AI Reflection
+  journalAIReflectionEnabled: true,
+  journalAIAutoSuggest: false,
 
   // §56b Memories Panel UI state
   memoriesTab: "journal" as const,
@@ -306,8 +358,25 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
   setJournalMonthlyTemplate: (journalMonthlyTemplate) => set({ journalMonthlyTemplate }),
   setJournalYearlyTemplate: (journalYearlyTemplate) => set({ journalYearlyTemplate }),
 
-  // §56h Journal Theme setter
+  // §56e Mood/Energy setters
+  setJournalMoodEnabled: (journalMoodEnabled) => set({ journalMoodEnabled }),
+  setJournalEnergyEnabled: (journalEnergyEnabled) => set({ journalEnergyEnabled }),
+
+  // §56g Stats setter
+  setJournalShowStreak: (journalShowStreak) => set({ journalShowStreak }),
+
+  // §56h Journal Theme setters
   setJournalThemeId: (journalThemeId) => set({ journalThemeId }),
+  setJournalCustomThemes: (journalCustomThemes) => set({ journalCustomThemes }),
+
+  // §56i Prompt setters
+  setJournalPromptEnabled: (journalPromptEnabled) => set({ journalPromptEnabled }),
+  setJournalPromptCategory: (journalPromptCategory) => set({ journalPromptCategory }),
+  setJournalPromptMode: (journalPromptMode) => set({ journalPromptMode }),
+
+  // §56j AI Reflection setters
+  setJournalAIReflectionEnabled: (journalAIReflectionEnabled) => set({ journalAIReflectionEnabled }),
+  setJournalAIAutoSuggest: (journalAIAutoSuggest) => set({ journalAIAutoSuggest }),
 
   // §56b Memories Panel UI state setters
   setMemoriesTab: (memoriesTab) => set({ memoriesTab }),
@@ -371,7 +440,16 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
     journalWeeklyTemplate: state.journalWeeklyTemplate,
     journalMonthlyTemplate: state.journalMonthlyTemplate,
     journalYearlyTemplate: state.journalYearlyTemplate,
+    journalMoodEnabled: state.journalMoodEnabled,
+    journalEnergyEnabled: state.journalEnergyEnabled,
+    journalShowStreak: state.journalShowStreak,
     journalThemeId: state.journalThemeId,
+    journalCustomThemes: state.journalCustomThemes,
+    journalPromptEnabled: state.journalPromptEnabled,
+    journalPromptCategory: state.journalPromptCategory,
+    journalPromptMode: state.journalPromptMode,
+    journalAIReflectionEnabled: state.journalAIReflectionEnabled,
+    journalAIAutoSuggest: state.journalAIAutoSuggest,
     memoriesTab: state.memoriesTab,
     memoriesMode: state.memoriesMode,
     pandocPath: state.pandocPath,
@@ -379,7 +457,7 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
     customExports: state.customExports,
     tagColors: state.tagColors,
   }),
-  version: 6,
+  version: 7,
   migrate: (persisted: unknown, version: number) => {
     const state = persisted as Record<string, unknown>;
 
@@ -425,6 +503,19 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
       if (state.journalMonthlyEnabled === undefined) state.journalMonthlyEnabled = false;
       if (state.journalYearlyEnabled === undefined) state.journalYearlyEnabled = false;
       if (state.journalWeekStartDay === undefined) state.journalWeekStartDay = "monday";
+    }
+
+    // v6 → v7: §14.3 optional journal settings
+    if (version < 7) {
+      if (state.journalMoodEnabled === undefined) state.journalMoodEnabled = true;
+      if (state.journalEnergyEnabled === undefined) state.journalEnergyEnabled = true;
+      if (state.journalShowStreak === undefined) state.journalShowStreak = true;
+      if (state.journalCustomThemes === undefined) state.journalCustomThemes = [];
+      if (state.journalPromptEnabled === undefined) state.journalPromptEnabled = true;
+      if (state.journalPromptCategory === undefined) state.journalPromptCategory = "";
+      if (state.journalPromptMode === undefined) state.journalPromptMode = "random";
+      if (state.journalAIReflectionEnabled === undefined) state.journalAIReflectionEnabled = true;
+      if (state.journalAIAutoSuggest === undefined) state.journalAIAutoSuggest = false;
     }
 
     // v0/v1 → v2: theme migration
