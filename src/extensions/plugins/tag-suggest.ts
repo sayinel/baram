@@ -92,11 +92,14 @@ export const TagSuggest = Extension.create({
           range: { from: number; to: number };
           props: TagSuggestionItem;
         }) => {
-          // Replace the #query with #tag (keep the # prefix, add tag text)
+          // Replace the #query with tagNode atom + trailing space
           ed.chain()
             .focus()
             .deleteRange(range)
-            .insertContent(`#${props.tag} `)
+            .insertContent([
+              { type: "tagNode", attrs: { tag: props.tag } },
+              { type: "text", text: " " },
+            ])
             .run();
         },
         items: async ({ query }: { query: string }) => {

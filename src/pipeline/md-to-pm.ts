@@ -646,7 +646,11 @@ function convertListItemChildren(
 
       if (item.checked != null) {
         // Task item
-        const innerChildren = convertBlockChildren(item.children, schema);
+        let innerChildren = convertBlockChildren(item.children, schema);
+        // Empty task items must have at least one paragraph for cursor placement
+        if (innerChildren.length === 0) {
+          innerChildren = [schema.nodes.paragraph.create()];
+        }
         result.push(
           schema.nodes.taskItem.create(
             { checked: item.checked ?? false },
@@ -655,7 +659,11 @@ function convertListItemChildren(
         );
       } else {
         // Regular list item
-        const innerChildren = convertBlockChildren(item.children, schema);
+        let innerChildren = convertBlockChildren(item.children, schema);
+        // Empty list items must have at least one paragraph for cursor placement
+        if (innerChildren.length === 0) {
+          innerChildren = [schema.nodes.paragraph.create()];
+        }
         result.push(schema.nodes.listItem.create(null, innerChildren));
       }
     }

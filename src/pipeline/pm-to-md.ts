@@ -111,6 +111,9 @@ export function mdastToMarkdown(root: Root): string {
   // §56l: remark-stringify escapes # at line start (atBreak), but #tag (no space)
   // is never heading syntax — unescape when followed by word characters.
   result = result.replace(/\\#(?=[\w가-힣])/g, "#");
+  // §56m: remark-stringify encodes trailing spaces as &#x20; when the last inline
+  // node is a tagNode followed by a whitespace-only text node.  Strip at end of lines.
+  result = result.replace(/&#x20;(?=\n|$)/g, "");
   return result;
 }
 
