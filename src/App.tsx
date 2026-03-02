@@ -648,13 +648,15 @@ function App() {
       const newDoc = markdownToProsemirror(currentSource, editor.schema);
       const pmPos = mdOffsetToPmPos(newDoc, mdOffset, currentSource);
 
+      const clampedPos = Math.min(Math.max(pmPos, 0), newDoc.content.size);
+      const sel = TextSelection.near(newDoc.resolve(clampedPos));
+
       // Replace the ProseMirror state directly (bypasses Tiptap setContent
       // which can conflict with EditorContent mount/unmount lifecycle)
-      const clampedPos = Math.min(Math.max(pmPos, 0), newDoc.content.size);
       const newState = EditorState.create({
         doc: newDoc,
         plugins: editor.state.plugins,
-        selection: TextSelection.near(newDoc.resolve(clampedPos)),
+        selection: sel,
       });
       editor.view.updateState(newState);
 
