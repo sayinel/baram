@@ -57,42 +57,84 @@ function getBlockIndexAndOffset(doc: PMNode, pmPos: number): BlockInfo {
  * PM content offset within a compound block (lists, blockquotes, tables).
  *
  * Must account for the "\n" separator that textBetween inserts between
- * leaf blocks (paragraphs in different list items, etc.).
+ * ALL leaf blocks (textblocks), including those containing only atom nodes.
  * For tables, separators are not used (countSeparators=false).
  */
 function textPosToPmOffset(block: PMNode, targetTextPos: number, countSeparators: boolean = true): number {
-  // Collect text nodes — needed for tables where cell boundary handling
-  // depends on knowing whether a text node is the last one.
-  const textNodes: { pos: number; length: number; nodeSize: number }[] = [];
+  // Collect leaf blocks (textblocks like paragraphs within list items).
+  // textBetween inserts separators between ALL leaf blocks, not just those
+  // with text — atom-only paragraphs (e.g. tagNode list items) also get
+  // separators. Walking only text nodes would miss these separators.
+  interface LeafBlock {
+    contentStart: number;  // PM offset of the textblock's content start
+    textNodes: { pos: number; length: number }[];
+    totalText: number;
+  }
+  const leaves: LeafBlock[] = [];
   block.descendants((node, pos) => {
-    if (node.isText) {
-      textNodes.push({ pos, length: node.text!.length, nodeSize: node.nodeSize });
+    if (node.isTextblock) {
+      const textNodes: { pos: number; length: number }[] = [];
+      let totalText = 0;
+      node.forEach((child, offset) => {
+        if (child.isText) {
+          textNodes.push({ pos: pos + 1 + offset, length: child.text!.length });
+          totalText += child.text!.length;
+        }
+      });
+      leaves.push({ contentStart: pos + 1, textNodes, totalText });
+      return false; // don't descend further into this textblock
     }
     return true;
   });
 
+  // For textblocks and tables (countSeparators=false), fall back to
+  // text-node walking. No separators are counted — atom gaps between
+  // text nodes within a single textblock are NOT textBetween separators.
+  if (!countSeparators) {
+    const textNodes: { pos: number; length: number; nodeSize: number }[] = [];
+    block.descendants((node, pos) => {
+      if (node.isText) {
+        textNodes.push({ pos, length: node.text!.length, nodeSize: node.nodeSize });
+      }
+      return true;
+    });
+    let textCount = 0;
+    for (let i = 0; i < textNodes.length; i++) {
+      const tn = textNodes[i];
+      const remaining = targetTextPos - textCount;
+      const isLast = i === textNodes.length - 1;
+      const fits = isLast ? remaining <= tn.length : remaining < tn.length;
+      if (fits) {
+        return tn.pos + remaining;
+      }
+      textCount += tn.length;
+    }
+    return block.content.size;
+  }
+
+  // Walk leaf blocks with separators between ALL of them
   let textCount = 0;
-  let lastEnd = 0;
-  for (let i = 0; i < textNodes.length; i++) {
-    const tn = textNodes[i];
-    // When crossing a block boundary (gap between text regions),
-    // textBetween inserts a "\n" separator — count it (unless skipped for tables).
-    if (countSeparators && i > 0 && tn.pos > lastEnd) {
-      textCount++; // "\n" separator
+  for (let i = 0; i < leaves.length; i++) {
+    if (i > 0) {
+      textCount++; // "\n" separator between leaf blocks
     }
+
+    const leaf = leaves[i];
     const remaining = targetTextPos - textCount;
-    // For tables (countSeparators=false), at intermediate cell boundaries prefer
-    // the start of the next cell over the end of the current one, matching the
-    // forward mapping. For the last text node, use <= to capture end-of-text.
-    const isLast = i === textNodes.length - 1;
-    const fits = (!countSeparators && !isLast)
-      ? remaining < tn.length
-      : remaining <= tn.length;
-    if (fits) {
-      return tn.pos + remaining;
+
+    if (remaining <= leaf.totalText || i === leaves.length - 1) {
+      // Target is within this leaf block's text
+      let innerCount = 0;
+      for (const tn of leaf.textNodes) {
+        if (remaining - innerCount <= tn.length) {
+          return tn.pos + (remaining - innerCount);
+        }
+        innerCount += tn.length;
+      }
+      // Past all text (or atom-only block) — return content start
+      return leaf.contentStart;
     }
-    textCount += tn.length;
-    lastEnd = tn.pos + tn.nodeSize;
+    textCount += leaf.totalText;
   }
   return block.content.size;
 }

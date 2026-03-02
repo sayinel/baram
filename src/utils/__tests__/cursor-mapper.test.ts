@@ -259,6 +259,13 @@ describe("cursor-mapper: serialize round-trip (real toggle path)", () => {
     // "text #project/baram end" → text("text ",5) + tagNode(1) + text(" end",4) → content.size=10
     ["tag: nested tag before", "text #project/baram end", 3],
     ["tag: nested tag after", "text #project/baram end", 9],
+    // Compound blocks: bulletList with tag-only items (atom-only leaf blocks)
+    // Must correctly count textBetween separators between ALL leaf blocks.
+    ["list: text in first item", "- hello\n- world", 3],
+    ["list: text in second item", "- hello\n- world", 12],
+    ["list: tag then text item", "- #note\n- hello", 10],
+    ["list: text then tag then text", "- first\n- #tag\n- last", 3],
+    ["list: text then tag then text end", "- first\n- #tag\n- last", 18],
   ])("serialize round-trip preserves: %s", (_, md, pmPos) => {
     const { roundTripPos } = serializeRoundTrip(md, pmPos);
     expect(roundTripPos).toBe(pmPos);
