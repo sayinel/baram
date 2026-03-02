@@ -649,30 +649,62 @@ function App() {
       const pmPos = mdOffsetToPmPos(newDoc, mdOffset, currentSource);
 
       const clampedPos = Math.min(Math.max(pmPos, 0), newDoc.content.size);
-      const sel = TextSelection.near(newDoc.resolve(clampedPos));
 
-      // Replace the ProseMirror state directly (bypasses Tiptap setContent
-      // which can conflict with EditorContent mount/unmount lifecycle)
-      const newState = EditorState.create({
+      // Update the document immediately so EditorContent renders correct
+      // content when it mounts. Use a temporary selection (atStart) because
+      // the DOM is detached — ProseMirror's selectionToDOM fails silently
+      // with detached DOM, and DOMObserver can overwrite our selection when
+      // the DOM re-attaches. The real cursor is set via dispatch in the RAF
+      // below, after EditorContent has mounted and DOM is attached.
+      const tempState = EditorState.create({
         doc: newDoc,
         plugins: editor.state.plugins,
-        selection: sel,
+        selection: TextSelection.atStart(newDoc),
       });
-      editor.view.updateState(newState);
+      editor.view.updateState(tempState);
+
+      // Cache state with correct selection for tab-switching safety
+      const targetPos = clampedPos;
+      if (activeTabId) {
+        const sel = TextSelection.near(newDoc.resolve(clampedPos));
+        const cachedState = EditorState.create({
+          doc: newDoc,
+          plugins: editor.state.plugins,
+          selection: sel,
+        });
+        editorStateCache.current.set(activeTabId, cachedState);
+      }
 
       setIsSourceMode(false);
 
-      // Focus and scroll to cursor after EditorContent mounts.
+      // Apply cursor AFTER EditorContent mounts (DOM attached).
       // Double RAF: first waits for React render, second for layout.
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           try {
-            editor.commands.focus();
-            // ProseMirror scrollIntoView + DOM fallback for .editor-area-scroll
-            const sel = editor.view.state.selection;
-            const tr = editor.view.state.tr.setSelection(sel).scrollIntoView();
-            editor.view.dispatch(tr);
-            const domInfo = editor.view.domAtPos(sel.from);
+            const doc = editor.view.state.doc;
+            const pos = Math.min(targetPos, doc.content.size);
+            const resolvedSel = TextSelection.near(doc.resolve(pos));
+
+            // Suppress DOMObserver during focus+dispatch to prevent it
+            // from reading a stale native selection (from the previous
+            // EditorState) and overwriting our target cursor position.
+            // ProseMirror's view.focus() triggers DOMObserver flush which
+            // dispatches a transaction based on native selection — this
+            // races with our setSelection dispatch.
+            const domObserver = (editor.view as any).domObserver;
+            domObserver?.stop();
+            try {
+              editor.view.dispatch(
+                editor.view.state.tr.setSelection(resolvedSel).scrollIntoView(),
+              );
+              editor.view.focus();
+            } finally {
+              domObserver?.start();
+            }
+
+            // DOM-level scroll fallback for .editor-area-scroll
+            const domInfo = editor.view.domAtPos(resolvedSel.from);
             const el =
               domInfo.node instanceof HTMLElement
                 ? domInfo.node
@@ -883,14 +915,16 @@ function App() {
     (target: string, heading?: string | null) => {
       // §56 Date wikilink → open/create journal file
       if (isDateString(target)) {
-        const { journalEnabled, journalDirectory, journalFilenameFormat, journalTemplatePath } =
+        const { journalEnabled, journalDirectory, journalFilenameFormat, journalTemplatePath, journalUseHierarchy } =
           useSettingsStore.getState();
         if (!journalEnabled) return;
         const { rootPath } = useFileStore.getState();
         const resolvedDir = resolveJournalDir(rootPath, journalDirectory);
         if (!resolvedDir) return;
         const date = new Date(target + "T00:00:00");
-        const journalPath = getJournalFilePath(rootPath, journalDirectory, date, journalFilenameFormat);
+        const journalPath = journalUseHierarchy
+          ? getHierarchicalJournalPath(resolvedDir, date, journalFilenameFormat)
+          : getJournalFilePath(rootPath, journalDirectory, date, journalFilenameFormat);
         if (!journalPath) return;
         (async () => {
           try {
@@ -903,7 +937,8 @@ function App() {
             }
             if (!exists) {
               const { createDir } = await import("./ipc/invoke");
-              await createDir(resolvedDir);
+              const parentDir = journalPath.substring(0, journalPath.lastIndexOf("/"));
+              await createDir(parentDir);
               let content: string;
               if (journalTemplatePath) {
                 try {

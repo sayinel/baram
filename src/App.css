@@ -629,6 +629,16 @@ body {
   margin: 0;
 }
 
+/* List atom fix widget — provides an editable first line box for WebKit
+   ::marker alignment without adding visible height or affecting selection.
+   The actual zero-width space is inserted by ListAtomFix ProseMirror plugin. */
+.list-atom-fix {
+  font-size: 0;
+  line-height: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
 /* Nested lists */
 .tiptap ul ul,
 .tiptap ol ul {
@@ -9314,7 +9324,8 @@ body {
 
 /* §56m Tag Inline Atom Node */
 .tag-node {
-  display: inline;
+  display: inline-block;
+  vertical-align: baseline;
   color: var(--color-accent);
   cursor: pointer;
   border-radius: 3px;
@@ -9333,6 +9344,21 @@ body {
 
 .tag-node-hash {
   opacity: 0.6;
+}
+
+.tag-node-editing {
+  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+  outline: 1px solid var(--color-accent);
+  outline-offset: -1px;
+}
+
+.tag-node-input {
+  all: unset;
+  font: inherit;
+  color: inherit;
+  min-width: 2em;
+  width: 6em;
+  max-width: 12em;
 }
 
 /* §56m Tag context menu */

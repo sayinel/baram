@@ -62,6 +62,7 @@ import { PromptHighlight } from "./plugins/prompt-highlight";
 import { FindReplace } from "./plugins/find-replace";
 import { PromptLint } from "./plugins/prompt-lint";
 import { AIDiff } from "./plugins/ai-diff";
+import { ListAtomFix } from "./plugins/list-atom-fix";
 
 // Mark Extensions
 import { Bold } from "./marks/bold";
@@ -216,6 +217,9 @@ export function createBaramExtensions(options?: BaramExtensionOptions): Extensio
 
     // Plugins — §6.2 AI Diff (Cmd+J inline editing)
     AIDiff,
+
+    // Plugins — §56m List atom fix (WebKit marker alignment)
+    ListAtomFix,
 
     // UI
     Placeholder.configure({

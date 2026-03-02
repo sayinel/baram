@@ -7,7 +7,7 @@ import { useSettingsStore } from "./settings-store";
 import { useFileStore } from "./file-store";
 import { useEditorStore } from "./editor-store";
 import { readFile, writeFile, createDir, listDir } from "../ipc/invoke";
-import { getJournalFilePath, resolveJournalDir, generateDefaultJournal, applyJournalTemplate } from "../utils/journal";
+import { getJournalFilePath, getHierarchicalJournalPath, resolveJournalDir, generateDefaultJournal, applyJournalTemplate } from "../utils/journal";
 import { buildFileTree } from "./file-store";
 
 // --- Types ---
@@ -133,13 +133,15 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set, get) => 
 
     // §56 Journal preset: auto-open today's journal + scope FileTree
     if (id === "journal") {
-      const { journalEnabled, journalDirectory, journalFilenameFormat, journalTemplatePath } =
+      const { journalEnabled, journalDirectory, journalFilenameFormat, journalTemplatePath, journalUseHierarchy } =
         useSettingsStore.getState();
       const { rootPath } = useFileStore.getState();
       const resolvedDir = resolveJournalDir(rootPath, journalDirectory);
       if (journalEnabled && resolvedDir) {
         const date = new Date();
-        const journalPath = getJournalFilePath(rootPath, journalDirectory, date, journalFilenameFormat);
+        const journalPath = journalUseHierarchy
+          ? getHierarchicalJournalPath(resolvedDir, date, journalFilenameFormat)
+          : getJournalFilePath(rootPath, journalDirectory, date, journalFilenameFormat);
         if (!journalPath) return;
         (async () => {
           try {
@@ -150,7 +152,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(persist((set, get) => 
               exists = false;
             }
             if (!exists) {
-              await createDir(resolvedDir);
+              const parentDir = journalPath.substring(0, journalPath.lastIndexOf("/"));
+              await createDir(parentDir);
               let content: string;
               if (journalTemplatePath) {
                 try {

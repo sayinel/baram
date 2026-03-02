@@ -198,8 +198,6 @@ export function pmPosToMdOffset(
   const sep = isTable ? "" : "\n";
   const pmText = block.textBetween(0, block.content.size, sep);
 
-  if (pmText.length === 0) return mdCursor;
-
   // Convert PM content offset to text position.
   // Must use textBetween — inline atom nodes (e.g. tagNode) occupy 1 PM position
   // but contribute 0 text characters, so offset ≠ textPos.
@@ -225,6 +223,33 @@ export function pmPosToMdOffset(
     }
   }
 
+  // Detect if cursor is right after a trailing atom node.
+  // When clampedOffset === block.content.size and the last child is an atom,
+  // pmTextPos equals the full text length, which is indistinguishable from
+  // "before the trailing atom" without this flag. We need to scan past the
+  // atom's markdown syntax in the output.
+  let isAfterTrailingAtom = false;
+  if (block.isTextblock && !isBeforeAtom && clampedOffset === block.content.size && block.childCount > 0) {
+    const lastChild = block.child(block.childCount - 1);
+    if (!lastChild.isText) {
+      isAfterTrailingAtom = true;
+    }
+  }
+
+  // Atom-only block (no text at all): distinguish before vs after.
+  if (pmText.length === 0) {
+    if (isAfterTrailingAtom) {
+      // Scan past the atom's markdown syntax in this block region.
+      // Find the end of the block's markdown line from mdCursor.
+      let mdEnd = mdCursor;
+      while (mdEnd < markdown.length && markdown[mdEnd] !== "\n") {
+        mdEnd++;
+      }
+      return mdEnd;
+    }
+    return mdCursor;
+  }
+
   // Walk markdown matching pmTextPos characters of PM text
   let pmIdx = 0;
   let lastMatchEnd = mdCursor;
@@ -232,11 +257,16 @@ export function pmPosToMdOffset(
     if (pmIdx < pmText.length && markdown[mdIdx] === pmText[pmIdx]) {
       // If we've already consumed enough text chars, this is the target position
       if (pmIdx >= pmTextPos) {
-        // Before an atom: return position right after last matched text char
-        // (before the atom's markdown syntax like "#tag").
-        // Skip when pmTextPos=0 (block start) — lastMatchEnd equals mdCursor
-        // which is indistinguishable from previous block's boundary in reverse.
-        if (isBeforeAtom && pmTextPos > 0) return lastMatchEnd;
+        if (isBeforeAtom) {
+          if (pmTextPos > 0) return lastMatchEnd;
+          // pmTextPos=0: cursor before a leading atom at block start.
+          // Return first non-newline position in block's markdown region,
+          // so the reverse mapper assigns target to THIS block (not the
+          // previous block whose boundary equals mdCursor).
+          for (let scan = mdCursor; scan < mdIdx; scan++) {
+            if (markdown[scan] !== "\n") return scan;
+          }
+        }
         return mdIdx;
       }
       pmIdx++;
@@ -244,7 +274,18 @@ export function pmPosToMdOffset(
     }
   }
   // All PM text was matched — cursor at or past end of block
-  if (pmIdx >= pmTextPos) return lastMatchEnd;
+  if (pmIdx >= pmTextPos) {
+    if (isAfterTrailingAtom) {
+      // Scan from lastMatchEnd past the trailing atom's markdown syntax.
+      // Stop at newline (block boundary) or end of string.
+      let mdEnd = lastMatchEnd;
+      while (mdEnd < markdown.length && markdown[mdEnd] !== "\n") {
+        mdEnd++;
+      }
+      return mdEnd;
+    }
+    return lastMatchEnd;
+  }
   return markdown.length;
 }
 
@@ -290,11 +331,44 @@ export function mdOffsetToPmPos(
         }
       }
 
+      // When no text was matched before target, the cursor is at the block's
+      // content start — before any leading atoms. Distinguish "before atom"
+      // (target at atom syntax like '#') from "after atom" (target at first
+      // matching text char) by checking whether non-separator characters
+      // (atom syntax) appear between block start and target.
+      if (pmCount === 0 && block.isTextblock && block.content.size > 0) {
+        let firstContentChar = mdSaveStart;
+        while (firstContentChar < markdown.length && markdown[firstContentChar] === "\n") {
+          firstContentChar++;
+        }
+        if (target <= firstContentChar) {
+          // Target is at or before atom syntax start → block content start
+          return contentStart;
+        }
+        // Target is past atom syntax → "after atom": skip leading atoms
+        // to find the first text node's offset within the block.
+        let atomOffset = 0;
+        for (let ci = 0; ci < block.childCount; ci++) {
+          const child = block.child(ci);
+          if (child.isText) break;
+          atomOffset += child.nodeSize;
+        }
+        return Math.min(contentStart + atomOffset, contentStart + block.content.size);
+      }
+
       // Detect if target is past a non-matching gap (atom's markdown region).
       // Gap means cursor was positioned after the atom in markdown → prefer
       // the "after atom" PM position. No gap → prefer "before atom" position.
       const hasGapBeforeTarget = lastMatchMdIdx >= mdSaveStart && target > lastMatchMdIdx + 1;
       const preferBeforeAtom = !hasGapBeforeTarget;
+
+      // When ALL text has been consumed and there's a trailing gap, the
+      // cursor is after trailing atom(s) at the end of the block content.
+      // textPosToPmOffset can't distinguish this because it only knows about
+      // text positions, not atoms. Return content end directly.
+      if (pmCount === pmText.length && hasGapBeforeTarget && block.isTextblock) {
+        return contentStart + block.content.size;
+      }
 
       // Convert PM text count to PM content offset.
       // preferBeforeAtom only applies to textblocks (paragraphs with inline atoms).

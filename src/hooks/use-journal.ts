@@ -2,11 +2,13 @@
 import { useEffect, useRef } from "react";
 import { useFileStore } from "../stores/file-store";
 import { useSettingsStore } from "../stores/settings-store";
+import { useUIStore } from "../stores/ui-store";
 import { readFile, writeFile, createDir } from "../ipc/invoke";
 import {
   generateDefaultJournal,
   applyJournalTemplate,
   getJournalFilePath,
+  getHierarchicalJournalPath,
   resolveJournalDir,
 } from "../utils/journal";
 
@@ -27,6 +29,7 @@ export function useJournal(
       journalFilenameFormat,
       journalTemplatePath,
       journalStartupBehavior,
+      journalUseHierarchy,
     } = useSettingsStore.getState();
 
     if (!journalEnabled) return;
@@ -39,18 +42,19 @@ export function useJournal(
     didRunRef.current = resolvedDir;
 
     const today = new Date();
-    const journalPath = getJournalFilePath(
-      rootPath,
-      journalDirectory,
-      today,
-      journalFilenameFormat,
-    );
+    const journalPath = journalUseHierarchy
+      ? getHierarchicalJournalPath(resolvedDir, today, journalFilenameFormat)
+      : getJournalFilePath(rootPath, journalDirectory, today, journalFilenameFormat);
     if (!journalPath) return;
 
     (async () => {
       try {
-        // Ensure journal directory exists
-        await createDir(resolvedDir);
+        // Ensure journal directory exists — for hierarchical paths,
+        // create the full parent directory (e.g. daily/YYYY/MM/)
+        const fileDir = journalUseHierarchy
+          ? journalPath.substring(0, journalPath.lastIndexOf("/"))
+          : resolvedDir;
+        await createDir(fileDir);
 
         // Check if today's journal already exists
         let exists = true;
@@ -79,6 +83,8 @@ export function useJournal(
 
         // Open journal if configured
         if (journalStartupBehavior === "openJournal") {
+          // Dismiss welcome screen — journal replaces it
+          useUIStore.getState().dismissWelcome(false);
           await handleOpenFilePath(journalPath);
         }
       } catch (err) {

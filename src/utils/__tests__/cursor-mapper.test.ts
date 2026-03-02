@@ -339,4 +339,40 @@ describe("cursor-mapper: serialize round-trip (real toggle path)", () => {
     // And round-trip should be exact for text positions
     expect(roundTripPos).toBe(14);
   });
+
+  test("tagNode: trailing atom — before vs after cursor roundtrips correctly", () => {
+    // "hello #tag" → text("hello ",6) + tagNode(1) → content.size=7
+    const md = "hello #tag";
+    const doc = loadDoc(editor, md);
+    const serialized = prosemirrorToMarkdown(doc);
+    // Cursor before trailing tag: PM pos = 1 + 6 = 7
+    const mdBefore = pmPosToMdOffset(doc, 7, serialized);
+    // Cursor after trailing tag: PM pos = 1 + 7 = 8 (content.size)
+    const mdAfter = pmPosToMdOffset(doc, 8, serialized);
+    // These MUST be different — before should be at '#', after should be past 'g'
+    expect(mdBefore).not.toBe(mdAfter);
+    expect(serialized[mdBefore]).toBe("#");
+    expect(mdAfter).toBe(serialized.trimEnd().length); // end of "hello #tag"
+    // Roundtrip both
+    const newDoc = loadDoc(editor, serialized);
+    expect(mdOffsetToPmPos(newDoc, mdBefore, serialized)).toBe(7);
+    expect(mdOffsetToPmPos(newDoc, mdAfter, serialized)).toBe(8);
+  });
+
+  test("tagNode: atom-only paragraph — before vs after cursor roundtrips", () => {
+    // "#tag" alone → tagNode(1) → content.size=1
+    const md = "#tag";
+    const doc = loadDoc(editor, md);
+    const serialized = prosemirrorToMarkdown(doc);
+    // Cursor before atom: PM pos = 1 (content start)
+    const mdBefore = pmPosToMdOffset(doc, 1, serialized);
+    // Cursor after atom: PM pos = 2 (content end)
+    const mdAfter = pmPosToMdOffset(doc, 2, serialized);
+    expect(mdBefore).not.toBe(mdAfter);
+    expect(mdBefore).toBeLessThan(mdAfter);
+    // Roundtrip
+    const newDoc = loadDoc(editor, serialized);
+    expect(mdOffsetToPmPos(newDoc, mdBefore, serialized)).toBe(1);
+    expect(mdOffsetToPmPos(newDoc, mdAfter, serialized)).toBe(2);
+  });
 });
