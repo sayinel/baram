@@ -60,6 +60,7 @@ import { showPrompt } from "./utils/ai-commands";
 import { forceCollapseSyntaxReveal } from "./extensions/plugins/syntax-reveal";
 import { showTableGridPicker } from "./utils/table-grid-picker";
 import { MoodBar } from "./components/journal/MoodBar";
+import { FollowUpCard } from "./components/journal/FollowUpCard";
 import { FindReplaceBar } from "./components/editor/FindReplaceBar";
 import { dispatchSetSearchTerm } from "./extensions/plugins/find-replace";
 import { InlineAIPrompt } from "./components/ai/InlineAIPrompt";
@@ -2048,6 +2049,7 @@ function App() {
                 />
               )}
               <MoodBar editor={editor} />
+              <FollowUpCard editor={editor} />
               <div className="editor-area-scroll">
                 <EditorContent editor={editor} />
                 {editor && (

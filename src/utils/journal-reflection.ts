@@ -109,6 +109,55 @@ export function formatReflectionMarkdown(
   return `${frontmatter}\n\n${title}\n\n${reflection.trim()}\n`;
 }
 
+/**
+ * §56j Auto Follow-Up — build prompt for follow-up questions after diary writing.
+ */
+export function buildFollowUpPrompt(diaryText: string): { systemPrompt: string; userPrompt: string } {
+  const systemPrompt =
+    "당신은 따뜻한 저널 동반자입니다. 일기 내용을 바탕으로 심화 질문 1~2개를 제안합니다. 한국어로 작성하세요. 질문만 출력하세요.";
+
+  const trimmed = diaryText.trim();
+  if (!trimmed) {
+    return { systemPrompt, userPrompt: "(일기 내용이 비어 있습니다.)" };
+  }
+
+  const userPrompt = `다음 일기를 읽고 더 깊이 생각해볼 수 있는 심화 질문 1~2개를 제안해주세요.\n\n${trimmed}`;
+  return { systemPrompt, userPrompt };
+}
+
+/**
+ * §56j Emotion Inference — build prompt for mood inference from diary text.
+ */
+export function buildEmotionInferencePrompt(diaryText: string): { systemPrompt: string; userPrompt: string } {
+  const systemPrompt =
+    "일기 텍스트에서 감정을 분석합니다. 반드시 deep, calm, neutral, warm, bright 중 하나만 답변하세요. 다른 말은 하지 마세요.";
+
+  const trimmed = diaryText.trim();
+  if (!trimmed) {
+    return { systemPrompt, userPrompt: "(일기 내용이 비어 있습니다.)" };
+  }
+
+  const userPrompt = `다음 일기의 전체적인 감정을 분석해주세요.\n\n${trimmed}`;
+  return { systemPrompt, userPrompt };
+}
+
+/** Valid mood values for emotion inference */
+const VALID_MOODS = ["deep", "calm", "neutral", "warm", "bright"] as const;
+
+/**
+ * §56j Emotion Inference — parse LLM response to extract a MoodValue.
+ * Handles noisy responses by scanning for the first valid mood keyword.
+ */
+export function parseEmotionResponse(text: string): "deep" | "calm" | "neutral" | "warm" | "bright" | null {
+  const lower = text.trim().toLowerCase();
+  for (const mood of VALID_MOODS) {
+    if (lower.includes(mood)) {
+      return mood;
+    }
+  }
+  return null;
+}
+
 /** Format Date as YYYY-MM-DD */
 function formatDate(date: Date): string {
   const yyyy = date.getFullYear();

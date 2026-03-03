@@ -6,6 +6,9 @@ import {
   buildReflectionPrompt,
   extractReflectionEntries,
   formatReflectionMarkdown,
+  buildFollowUpPrompt,
+  buildEmotionInferencePrompt,
+  parseEmotionResponse,
 } from "../journal-reflection";
 
 // ─── buildReflectionPrompt ──────────────────────────────────────────────────
@@ -157,5 +160,93 @@ describe("formatReflectionMarkdown", () => {
   it("output starts with frontmatter delimiter", () => {
     const md = formatReflectionMarkdown(reflection, "week", startDate, endDate);
     expect(md.startsWith("---")).toBe(true);
+  });
+});
+
+// ─── buildFollowUpPrompt ──────────────────────────────────────────────────
+
+describe("buildFollowUpPrompt", () => {
+  it("returns system prompt about journal companion", () => {
+    const { systemPrompt } = buildFollowUpPrompt("오늘 좋은 하루였다.");
+    expect(systemPrompt).toContain("저널 동반자");
+    expect(systemPrompt).toContain("심화 질문");
+  });
+
+  it("includes diary text in user prompt", () => {
+    const text = "오늘 친구를 만나서 즐거웠다.";
+    const { userPrompt } = buildFollowUpPrompt(text);
+    expect(userPrompt).toContain(text);
+    expect(userPrompt).toContain("심화 질문");
+  });
+
+  it("handles empty text gracefully", () => {
+    const { userPrompt } = buildFollowUpPrompt("");
+    expect(userPrompt).toContain("비어 있습니다");
+  });
+
+  it("handles whitespace-only text as empty", () => {
+    const { userPrompt } = buildFollowUpPrompt("   \n  ");
+    expect(userPrompt).toContain("비어 있습니다");
+  });
+});
+
+// ─── buildEmotionInferencePrompt ──────────────────────────────────────────
+
+describe("buildEmotionInferencePrompt", () => {
+  it("returns system prompt about emotion analysis", () => {
+    const { systemPrompt } = buildEmotionInferencePrompt("텍스트");
+    expect(systemPrompt).toContain("감정");
+    expect(systemPrompt).toContain("deep");
+    expect(systemPrompt).toContain("bright");
+  });
+
+  it("includes diary text in user prompt", () => {
+    const text = "오늘은 슬픈 하루였다.";
+    const { userPrompt } = buildEmotionInferencePrompt(text);
+    expect(userPrompt).toContain(text);
+  });
+
+  it("handles empty text gracefully", () => {
+    const { userPrompt } = buildEmotionInferencePrompt("");
+    expect(userPrompt).toContain("비어 있습니다");
+  });
+});
+
+// ─── parseEmotionResponse ─────────────────────────────────────────────────
+
+describe("parseEmotionResponse", () => {
+  it("parses exact mood values", () => {
+    expect(parseEmotionResponse("calm")).toBe("calm");
+    expect(parseEmotionResponse("warm")).toBe("warm");
+    expect(parseEmotionResponse("bright")).toBe("bright");
+    expect(parseEmotionResponse("deep")).toBe("deep");
+    expect(parseEmotionResponse("neutral")).toBe("neutral");
+  });
+
+  it("handles whitespace", () => {
+    expect(parseEmotionResponse("  calm  ")).toBe("calm");
+    expect(parseEmotionResponse("\nwarm\n")).toBe("warm");
+  });
+
+  it("is case-insensitive", () => {
+    expect(parseEmotionResponse("CALM")).toBe("calm");
+    expect(parseEmotionResponse("Warm")).toBe("warm");
+    expect(parseEmotionResponse("BRIGHT")).toBe("bright");
+  });
+
+  it("extracts mood from noisy response", () => {
+    expect(parseEmotionResponse("분석 결과: warm 입니다.")).toBe("warm");
+    expect(parseEmotionResponse("이 일기의 감정은 calm으로 판단됩니다.")).toBe("calm");
+  });
+
+  it("returns null for invalid response", () => {
+    expect(parseEmotionResponse("happy")).toBeNull();
+    expect(parseEmotionResponse("")).toBeNull();
+    expect(parseEmotionResponse("모르겠습니다")).toBeNull();
+  });
+
+  it("returns first matching mood when multiple present", () => {
+    // "deep" comes before "calm" in the check order
+    expect(parseEmotionResponse("deep and calm")).toBe("deep");
   });
 });

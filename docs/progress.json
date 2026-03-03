@@ -252,10 +252,10 @@
         },
         "§56j-ai-reflection": {
           "status": "completed",
-          "tests": "18/18 vitest pass (prompt + date range + format)",
+          "tests": "33/33 vitest pass (prompt + date range + format + follow-up + emotion inference)",
           "spec": "§56j",
-          "details": "AI reflection panel with week/month period, LLM streaming, saves to notes/reflection-*.md, Korean prompts, ✨ button in CalendarPanel",
-          "implemented": ["buildReflectionPrompt", "extractReflectionEntries", "formatReflectionMarkdown", "ReflectionPanel component", "useLLMStream integration", "CalendarPanel ✨ button", "Save as Note functionality"]
+          "details": "AI reflection panel with week/month period, LLM streaming, saves to notes/reflection-*.md, Korean prompts, ✨ button in CalendarPanel. Auto follow-up questions (FollowUpCard, 10s debounce, session-scoped). Emotion inference (MoodBar AI hint, auto-infer when mood unset, accept/dismiss).",
+          "implemented": ["buildReflectionPrompt", "extractReflectionEntries", "formatReflectionMarkdown", "ReflectionPanel component", "useLLMStream integration", "CalendarPanel ✨ button", "Save as Note functionality", "buildFollowUpPrompt", "buildEmotionInferencePrompt", "parseEmotionResponse", "FollowUpCard component", "MoodBar emotion inference UI"]
         },
         "§56k-journal-search": {
           "status": "completed",
@@ -273,10 +273,10 @@
         },
         "§56m-tag-system": {
           "status": "completed",
-          "tests": "1366/1366 vitest pass (23 tag + 13 fm-tag + 10 tag-node tests) + cargo check pass",
+          "tests": "1531/1531 vitest pass (33 tag + 13 fm-tag + 10 tag-node tests) + cargo check pass",
           "spec": "§56m",
-          "details": "P0+P1+P2 complete. P0: Rust tag index, nested tags, click→search, autocomplete. P1: Tag sidebar, frontmatter editor, atom node. P2: Vault-wide rename, tag colors, cloud view, file filtering",
-          "implemented": ["get_vault_tags Rust IPC", "vault-wide .md file scan (500 limit)", "frontmatter + inline tag extraction (Rust)", "nested tag regex (#parent/child)", "filterTags segment prefix matching", "TagClick Extension (Cmd/Ctrl+Click → search)", "baram:search-query custom event", "GlobalSearch event listener", "vault-wide autocomplete (Rust IPC)", "TagPanel sidebar (tree + cloud views)", "ActivityBar tags icon", "FrontmatterView NodeView (tag pill bar)", "parseFrontmatterTags/updateFrontmatterTags", "TagNode inline atom Extension", "TagNodeView (styled pill)", "tag-transformer + pipeline roundtrip", "rename_tag Rust IPC (vault-wide)", "TagPanel context menu (rename/search/filter/color)", "tagColors settings (6 presets + persist)", "Tag cloud view (frequency-based sizing)", "get_files_by_tag Rust IPC", "FileTree tag filter bar", "tagFilter in file-store"]
+          "details": "P0+P1+P2 complete. P0: Rust tag index, nested tags, click→search, autocomplete. P1: Tag sidebar, frontmatter editor, atom node. P2: Vault-wide rename, tag colors, cloud view, file filtering, AI tag suggestions (🏷️ button in MoodBar, LLM-powered, chip accept UI)",
+          "implemented": ["get_vault_tags Rust IPC", "vault-wide .md file scan (500 limit)", "frontmatter + inline tag extraction (Rust)", "nested tag regex (#parent/child)", "filterTags segment prefix matching", "TagClick Extension (Cmd/Ctrl+Click → search)", "baram:search-query custom event", "GlobalSearch event listener", "vault-wide autocomplete (Rust IPC)", "TagPanel sidebar (tree + cloud views)", "ActivityBar tags icon", "FrontmatterView NodeView (tag pill bar)", "parseFrontmatterTags/updateFrontmatterTags", "TagNode inline atom Extension", "TagNodeView (styled pill)", "tag-transformer + pipeline roundtrip", "rename_tag Rust IPC (vault-wide)", "TagPanel context menu (rename/search/filter/color)", "tagColors settings (6 presets + persist)", "Tag cloud view (frequency-based sizing)", "get_files_by_tag Rust IPC", "FileTree tag filter bar", "tagFilter in file-store", "buildTagSuggestionPrompt", "parseTagSuggestions", "MoodBar AI tag suggest button (🏷️)", "AI tag chip accept UI"]
         }
       },
       "shortcuts": {
@@ -298,7 +298,7 @@
         "total": 148,
         "journalTests": 396,
         "coverage": "99%",
-        "note": "§56a-§56m 3rd spec-check. All medium+low+info resolved. Only §8.4 manual perf measurements remain. 1474 vitest pass (88 files)."
+        "note": "§56a-§56m 3rd spec-check. All medium+low+info resolved. Only §8.4 manual perf measurements remain. 1531 vitest pass (87 files). §56j auto follow-up + emotion inference + §56m AI tag suggestions added."
       },
       "specCheckIssues": [
         { "severity": "resolved", "issue": "FocusMode/TypewriterMode — phantom issue, extensions never existed in registry", "spec": "§5.1" },

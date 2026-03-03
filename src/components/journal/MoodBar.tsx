@@ -1,5 +1,6 @@
 // §56e Mood/Energy Bar — segmented control design
-import { useState, useEffect, useCallback } from "react";
+// §56j Emotion Inference + §56m AI Tag Suggestions
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import {
@@ -9,6 +10,12 @@ import {
 } from "../../utils/journal-mood";
 import { useFileStore } from "../../stores/file-store";
 import { useEditorStore } from "../../stores/editor-store";
+import { useSettingsStore } from "../../stores/settings-store";
+import { useLLMStream } from "../../hooks/use-llm-stream";
+import { buildEmotionInferencePrompt, parseEmotionResponse } from "../../utils/journal-reflection";
+import { buildTagSuggestionPrompt, parseTagSuggestions } from "../../utils/journal-tags";
+import { parseFrontmatterTags, updateFrontmatterTags } from "../../extensions/nodes/frontmatter-view";
+import { getVaultTags } from "../../ipc/invoke";
 
 interface MoodBarProps {
   editor: Editor | null;
@@ -117,11 +124,33 @@ function updateFrontmatterField(editor: Editor, field: string, value: string | u
   return true;
 }
 
+/** Mood labels in Korean for AI suggestion display */
+const MOOD_LABEL_KO: Record<MoodValue, string> = {
+  deep: "침울",
+  calm: "차분",
+  neutral: "평온",
+  warm: "따뜻",
+  bright: "밝은",
+};
+
 export function MoodBar({ editor }: MoodBarProps) {
   const [mood, setMood] = useState<MoodValue | undefined>(undefined);
   const [energy, setEnergy] = useState<EnergyValue | undefined>(undefined);
   const [visible, setVisible] = useState(false);
   const activeTabId = useEditorStore((s) => s.activeTabId);
+
+  // §56j Emotion Inference state
+  const journalAIReflectionEnabled = useSettingsStore((s) => s.journalAIReflectionEnabled);
+  const [suggestedMood, setSuggestedMood] = useState<MoodValue | null>(null);
+  const [emotionDismissed, setEmotionDismissed] = useState(false);
+  const emotionInferredRef = useRef<Map<string, boolean>>(new Map());
+  const emotionLLM = useLLMStream();
+
+  // §56m AI Tag Suggestions state
+  const [suggestedTags, setSuggestedTags] = useState<string[]>([]);
+  const [tagsDismissed, setTagsDismissed] = useState(false);
+  const [tagsLoading, setTagsLoading] = useState(false);
+  const tagLLM = useLLMStream();
 
   // Read mood/energy from frontmatter when editor or tab changes
   useEffect(() => {
@@ -131,6 +160,13 @@ export function MoodBar({ editor }: MoodBarProps) {
     }
 
     setVisible(true);
+
+    // Reset AI suggestion states on tab change
+    setSuggestedMood(null);
+    setEmotionDismissed(false);
+    setSuggestedTags([]);
+    setTagsDismissed(false);
+
     const fm = findFrontmatter(editor);
     if (!fm) return;
 
@@ -151,6 +187,125 @@ export function MoodBar({ editor }: MoodBarProps) {
       setEnergy(undefined);
     }
   }, [editor, activeTabId]);
+
+  // §56j Emotion Inference — auto-infer mood when mood is unset
+  useEffect(() => {
+    if (!editor || !visible || mood !== undefined || !journalAIReflectionEnabled || emotionDismissed) return;
+
+    const filePath = useEditorStore.getState().tabs.find(
+      (t) => t.id === useEditorStore.getState().activeTabId,
+    )?.filePath;
+    if (!filePath || emotionInferredRef.current.get(filePath)) return;
+
+    // Check content length > 50 chars (excluding frontmatter)
+    const doc = editor.state.doc;
+    let textLen = 0;
+    doc.descendants((node) => {
+      if (node.type.name !== "frontmatter" && node.isTextblock) {
+        textLen += node.textContent.length;
+      }
+    });
+    if (textLen < 50) return;
+
+    // Mark as inferred for this file (session-scoped)
+    emotionInferredRef.current.set(filePath, true);
+
+    // Get body text for inference
+    let bodyText = "";
+    doc.descendants((node) => {
+      if (node.type.name !== "frontmatter" && node.isTextblock) {
+        bodyText += node.textContent + "\n";
+      }
+    });
+
+    const { systemPrompt, userPrompt } = buildEmotionInferencePrompt(bodyText);
+    emotionLLM.send(userPrompt, systemPrompt, { task: "chat", maxTokens: 50 });
+  }, [editor, visible, mood, journalAIReflectionEnabled, emotionDismissed, activeTabId]);
+
+  // Parse emotion LLM response when streaming completes
+  useEffect(() => {
+    if (!emotionLLM.isStreaming && emotionLLM.text && !suggestedMood) {
+      const parsed = parseEmotionResponse(emotionLLM.text);
+      if (parsed) {
+        setSuggestedMood(parsed);
+      }
+    }
+  }, [emotionLLM.isStreaming, emotionLLM.text, suggestedMood]);
+
+  // §56m AI Tag Suggestions handler
+  const handleTagSuggest = useCallback(async () => {
+    if (!editor || tagsLoading) return;
+    setTagsLoading(true);
+    setTagsDismissed(false);
+    setSuggestedTags([]);
+
+    // Get body text
+    let bodyText = "";
+    editor.state.doc.descendants((node) => {
+      if (node.type.name !== "frontmatter" && node.isTextblock) {
+        bodyText += node.textContent + "\n";
+      }
+    });
+
+    // Get existing tags from frontmatter
+    const fm = findFrontmatter(editor);
+    const existingTags = fm ? parseFrontmatterTags(fm.node.textContent) : [];
+
+    // Get vault tags
+    let vaultTagNames: string[] = [];
+    try {
+      const rootPath = useFileStore.getState().rootPath;
+      if (rootPath) {
+        const vaultEntries = await getVaultTags(rootPath);
+        vaultTagNames = vaultEntries
+          .sort((a, b) => b.count - a.count)
+          .map((e) => e.tag);
+      }
+    } catch {
+      // Vault tags are optional
+    }
+
+    const { systemPrompt, userPrompt } = buildTagSuggestionPrompt(bodyText, existingTags, vaultTagNames);
+    tagLLM.send(userPrompt, systemPrompt, { task: "chat", maxTokens: 200 });
+  }, [editor, tagsLoading, tagLLM]);
+
+  // Parse tag LLM response when streaming completes
+  useEffect(() => {
+    if (!tagLLM.isStreaming && tagLLM.text && tagsLoading) {
+      const fm = findFrontmatter(editor!);
+      const existingTags = fm ? parseFrontmatterTags(fm.node.textContent) : [];
+      const tags = parseTagSuggestions(tagLLM.text, existingTags);
+      setSuggestedTags(tags);
+      setTagsLoading(false);
+    }
+  }, [tagLLM.isStreaming, tagLLM.text, tagsLoading, editor]);
+
+  // Accept a suggested tag → add to frontmatter
+  const handleAcceptTag = useCallback(
+    (tag: string) => {
+      if (!editor) return;
+      const fm = findFrontmatter(editor);
+      if (!fm) return;
+
+      const currentTags = parseFrontmatterTags(fm.node.textContent);
+      if (currentTags.includes(tag)) return;
+
+      const newYaml = updateFrontmatterTags(fm.node.textContent, [...currentTags, tag]);
+      const tr = editor.state.tr;
+      const from = fm.pos + 1;
+      const to = fm.pos + 1 + fm.node.content.size;
+      if (fm.node.content.size > 0) {
+        tr.replaceWith(from, to, editor.schema.text(newYaml));
+      } else {
+        tr.insertText(newYaml, from);
+      }
+      editor.view.dispatch(tr);
+
+      // Remove from suggestions
+      setSuggestedTags((prev) => prev.filter((t) => t !== tag));
+    },
+    [editor],
+  );
 
   const handleMoodClick = useCallback(
     (value: MoodValue) => {
@@ -174,49 +329,115 @@ export function MoodBar({ editor }: MoodBarProps) {
 
   if (!visible) return null;
 
+  const showEmotionHint = suggestedMood && mood === undefined && !emotionDismissed;
+  const showTagChips = suggestedTags.length > 0 && !tagsDismissed;
+
   return (
-    <div className="mood-bar">
-      <div className="mood-bar-section">
-        <span className="mood-bar-section-label">기분</span>
-        <div className="mood-segment-group">
-          {MOOD_VALUES.map((v) => {
-            const isSelected = mood === v;
-            return (
-              <button
-                key={v}
-                className={`mood-segment ${isSelected ? "mood-segment-selected" : ""}`}
-                style={isSelected ? {
-                  backgroundColor: MOOD_TINTS[v],
-                  color: MOOD_TEXT_COLORS[v],
-                } : undefined}
-                onClick={() => handleMoodClick(v)}
-                title={MOOD_SEGMENT_LABELS[v]}
-              >
-                {MOOD_SEGMENT_LABELS[v]}
-              </button>
-            );
-          })}
+    <div className="mood-bar-wrapper">
+      <div className="mood-bar">
+        <div className="mood-bar-section">
+          <span className="mood-bar-section-label">기분</span>
+          <div className="mood-segment-group">
+            {MOOD_VALUES.map((v) => {
+              const isSelected = mood === v;
+              return (
+                <button
+                  key={v}
+                  className={`mood-segment ${isSelected ? "mood-segment-selected" : ""}`}
+                  style={isSelected ? {
+                    backgroundColor: MOOD_TINTS[v],
+                    color: MOOD_TEXT_COLORS[v],
+                  } : undefined}
+                  onClick={() => handleMoodClick(v)}
+                  title={MOOD_SEGMENT_LABELS[v]}
+                >
+                  {MOOD_SEGMENT_LABELS[v]}
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
-      <div className="mood-bar-section">
-        <span className="mood-bar-section-label">에너지</span>
-        <div className="mood-segment-group">
-          {([1, 2, 3, 4, 5] as EnergyValue[]).map((v) => {
-            const isFilled = energy !== undefined && v <= energy;
-            return (
-              <button
-                key={v}
-                className={`mood-segment energy-segment ${isFilled ? "energy-segment-filled" : ""}`}
-                style={isFilled ? { backgroundColor: ENERGY_FILLS[v - 1] } : undefined}
-                onClick={() => handleEnergyClick(v)}
-                title={`Energy ${v}`}
-              >
-                {v}
-              </button>
-            );
-          })}
+        <div className="mood-bar-section">
+          <span className="mood-bar-section-label">에너지</span>
+          <div className="mood-segment-group">
+            {([1, 2, 3, 4, 5] as EnergyValue[]).map((v) => {
+              const isFilled = energy !== undefined && v <= energy;
+              return (
+                <button
+                  key={v}
+                  className={`mood-segment energy-segment ${isFilled ? "energy-segment-filled" : ""}`}
+                  style={isFilled ? { backgroundColor: ENERGY_FILLS[v - 1] } : undefined}
+                  onClick={() => handleEnergyClick(v)}
+                  title={`Energy ${v}`}
+                >
+                  {v}
+                </button>
+              );
+            })}
+          </div>
         </div>
+        {/* §56m Tag Suggest Button */}
+        {journalAIReflectionEnabled && (
+          <button
+            className="mood-bar-tag-suggest-btn"
+            onClick={handleTagSuggest}
+            disabled={tagsLoading || tagLLM.isStreaming}
+            title="AI 태그 추천"
+          >
+            {tagsLoading || tagLLM.isStreaming ? "..." : "🏷️"}
+          </button>
+        )}
       </div>
+
+      {/* §56j AI Emotion Hint */}
+      {showEmotionHint && (
+        <div className="mood-bar-ai-hint">
+          <span className="mood-bar-ai-hint-text">
+            AI 제안: {MOOD_LABEL_KO[suggestedMood]}
+          </span>
+          <button
+            className="mood-bar-ai-hint-btn mood-bar-ai-hint-accept"
+            onClick={() => {
+              handleMoodClick(suggestedMood);
+              setSuggestedMood(null);
+            }}
+            title="수락"
+          >
+            ✓
+          </button>
+          <button
+            className="mood-bar-ai-hint-btn mood-bar-ai-hint-dismiss"
+            onClick={() => setEmotionDismissed(true)}
+            title="무시"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* §56m AI Tag Chips */}
+      {showTagChips && (
+        <div className="mood-bar-ai-tags">
+          <span className="mood-bar-ai-tags-label">AI 태그:</span>
+          {suggestedTags.map((tag) => (
+            <button
+              key={tag}
+              className="ai-tag-chip"
+              onClick={() => handleAcceptTag(tag)}
+              title={`"${tag}" 추가`}
+            >
+              #{tag}
+            </button>
+          ))}
+          <button
+            className="mood-bar-ai-hint-btn mood-bar-ai-hint-dismiss"
+            onClick={() => setTagsDismissed(true)}
+            title="닫기"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -3016,6 +3016,156 @@ body {
   color: var(--color-text-secondary);
 }
 
+/* §56e Mood Bar Wrapper (for AI hint/tag rows below) */
+.mood-bar-wrapper {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-primary);
+}
+
+.mood-bar-wrapper > .mood-bar {
+  border-bottom: none;
+}
+
+/* §56m Tag Suggest Button */
+.mood-bar-tag-suggest-btn {
+  all: unset;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  user-select: none;
+  margin-left: auto;
+  transition: background-color 0.15s;
+}
+
+.mood-bar-tag-suggest-btn:hover {
+  background-color: color-mix(in srgb, var(--color-text-tertiary) 10%, transparent);
+}
+
+.mood-bar-tag-suggest-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* §56j AI Emotion Hint */
+.mood-bar-ai-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 48px;
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
+}
+
+.mood-bar-ai-hint-text {
+  color: var(--color-accent, #6366f1);
+  font-weight: 500;
+}
+
+.mood-bar-ai-hint-btn {
+  all: unset;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: var(--color-text-tertiary);
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.mood-bar-ai-hint-accept:hover {
+  background-color: color-mix(in srgb, var(--color-accent, #6366f1) 15%, transparent);
+  color: var(--color-accent, #6366f1);
+}
+
+.mood-bar-ai-hint-dismiss:hover {
+  background-color: color-mix(in srgb, var(--color-text-tertiary) 12%, transparent);
+}
+
+/* §56m AI Tag Chips */
+.mood-bar-ai-tags {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 48px;
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
+  flex-wrap: wrap;
+}
+
+.mood-bar-ai-tags-label {
+  font-weight: 500;
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}
+
+.ai-tag-chip {
+  all: unset;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-accent, #6366f1) 10%, transparent);
+  color: var(--color-accent, #6366f1);
+  font-weight: 500;
+  transition: background-color 0.15s;
+  white-space: nowrap;
+}
+
+.ai-tag-chip:hover {
+  background: color-mix(in srgb, var(--color-accent, #6366f1) 20%, transparent);
+}
+
+/* §56j Follow-Up Question Card */
+.follow-up-card {
+  padding: 10px 48px;
+  background: color-mix(in srgb, var(--color-accent, #6366f1) 4%, var(--color-bg-primary));
+  border-bottom: 1px solid var(--color-border);
+  font-size: 12px;
+}
+
+.follow-up-card-text {
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+  margin-bottom: 8px;
+  white-space: pre-wrap;
+}
+
+.follow-up-card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.follow-up-card-btn {
+  all: unset;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-weight: 500;
+  transition: background-color 0.15s;
+}
+
+.follow-up-card-btn-insert {
+  background: var(--color-accent, #6366f1);
+  color: white;
+}
+
+.follow-up-card-btn-insert:hover {
+  opacity: 0.85;
+}
+
+.follow-up-card-btn-dismiss {
+  color: var(--color-text-tertiary);
+}
+
+.follow-up-card-btn-dismiss:hover {
+  background-color: color-mix(in srgb, var(--color-text-tertiary) 10%, transparent);
+}
+
 /* ============================================
    §56c Memories Panel
    ============================================ */
@@ -8669,7 +8819,8 @@ body {
   line-height: var(--journal-line-height, inherit);
 }
 
-.mood-bar {
+.mood-bar,
+.mood-bar-wrapper {
   background: var(--journal-header-bg, var(--color-bg-primary));
 }
 
