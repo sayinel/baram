@@ -140,6 +140,14 @@ const MemoriesIcon = (
   </svg>
 );
 
+const PhotoGalleryIcon = (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+    <circle cx="8.5" cy="8.5" r="1.5" />
+    <polyline points="21 15 16 10 5 21" />
+  </svg>
+);
+
 export function ActivityBar() {
   const { sidebarOpen, sidebarPanel, toggleSidebar, setSidebarPanel, toggleSettings, rightPanelOpen, rightPanelMode, toggleRightPanel, setRightPanelMode } = useUIStore();
 
@@ -200,6 +208,22 @@ export function ActivityBar() {
           title="Memories"
         >
           {MemoriesIcon}
+        </button>
+        <button
+          className={`activity-bar-btn ${rightPanelOpen && rightPanelMode === "photo-gallery" ? "activity-bar-btn-active" : ""}`}
+          onClick={() => {
+            if (!rightPanelOpen) {
+              setRightPanelMode("photo-gallery");
+              toggleRightPanel();
+            } else if (rightPanelMode === "photo-gallery") {
+              toggleRightPanel();
+            } else {
+              setRightPanelMode("photo-gallery");
+            }
+          }}
+          title="Photo Gallery (⌘⇧P)"
+        >
+          {PhotoGalleryIcon}
         </button>
         <button
           className={`activity-bar-btn ${rightPanelOpen && rightPanelMode === "help" ? "activity-bar-btn-active" : ""}`}

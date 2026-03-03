@@ -4,10 +4,10 @@ import { useUIStore } from "../../stores/ui-store";
 import { useFileStore } from "../../stores/file-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useEditorStore } from "../../stores/editor-store";
-import { extractOneLine, extractImages, updateOneLineFrontmatter } from "../../utils/journal-memories";
+import { extractOneLine, updateOneLineFrontmatter } from "../../utils/journal-memories";
 import { listDir, readFile, writeFile } from "../../ipc/invoke";
 
-type MemoriesTab = "journal" | "photos" | "notes";
+type MemoriesTab = "journal" | "notes";
 type MemoriesMode = "oneline" | "full";
 
 interface MemoryEntry {
@@ -18,9 +18,17 @@ interface MemoryEntry {
   isCurrentYear: boolean;
 }
 
+/** Resolve journal base path, handling absolute journalDirectory */
+function resolveJournalBase(rootPath: string, journalDir: string): string {
+  if (journalDir.startsWith("/") || /^[A-Z]:\\/i.test(journalDir)) {
+    return journalDir;
+  }
+  return `${rootPath}/${journalDir}`;
+}
+
 export function MemoriesPanel() {
   const { rightPanelOpen, rightPanelMode } = useUIStore();
-  const activeTab = useSettingsStore((s) => s.memoriesTab);
+  const activeTab = useSettingsStore((s) => s.memoriesTab) as MemoriesTab;
   const setActiveTab = useSettingsStore((s) => s.setMemoriesTab);
   const mode = useSettingsStore((s) => s.memoriesMode);
   const setMode = useSettingsStore((s) => s.setMemoriesMode);
@@ -33,33 +41,34 @@ export function MemoriesPanel() {
   const month = now.getMonth() + 1;
   const day = now.getDate();
 
+  // Ensure activeTab is valid after Photos tab removal
+  const safeTab: MemoriesTab = activeTab === "journal" || activeTab === "notes" ? activeTab : "journal";
+
   const TABS: { id: MemoriesTab; label: string }[] = [
     { id: "journal", label: "Journal" },
-    { id: "photos", label: "Photos" },
     { id: "notes", label: "Notes" },
   ];
 
   return (
     <div className="memories-panel">
-      <div className="memories-panel-header">
-        <h3 className="memories-panel-title">
-          Memories: {month}월 {day}일
-        </h3>
-        <div className="memories-panel-tabs">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              className={`memories-tab-btn ${activeTab === tab.id ? "memories-tab-btn-active" : ""}`}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+      <div className="memories-header">
+        <span className="memories-header-title">Memories</span>
+        <span className="memories-header-date">{month}월 {day}일</span>
+      </div>
+      <div className="memories-tabs">
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            className={`memories-tabs-btn ${safeTab === tab.id ? "memories-tabs-btn-active" : ""}`}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      <div className="memories-panel-content">
-        {activeTab === "journal" && (
+      <div className="memories-content">
+        {safeTab === "journal" && (
           <JournalTab
             memories={memories}
             setMemories={setMemories}
@@ -71,8 +80,7 @@ export function MemoriesPanel() {
             day={day}
           />
         )}
-        {activeTab === "photos" && <PhotosTab />}
-        {activeTab === "notes" && <NotesTab />}
+        {safeTab === "notes" && <NotesTab />}
       </div>
     </div>
   );
@@ -100,7 +108,8 @@ function JournalTab({ memories, setMemories, mode, setMode, loading, setLoading,
     setLoading(true);
 
     try {
-      const dailyDir = `${rootPath}/${journalDirectory}/daily`;
+      const base = resolveJournalBase(rootPath, journalDirectory);
+      const dailyDir = `${base}/daily`;
       const yearDirs = await listDir(dailyDir);
       const currentYear = new Date().getFullYear();
       const mm = String(month).padStart(2, "0");
@@ -163,14 +172,18 @@ function JournalTab({ memories, setMemories, mode, setMode, loading, setLoading,
   return (
     <div className="memories-journal-tab">
       <div className="memories-mode-toggle">
-        <select
-          value={mode}
-          onChange={(e) => setMode(e.target.value as MemoriesMode)}
-          className="memories-mode-select"
+        <button
+          className={`memories-mode-btn ${mode === "oneline" ? "memories-mode-btn-active" : ""}`}
+          onClick={() => setMode("oneline")}
         >
-          <option value="oneline">One Line</option>
-          <option value="full">Full</option>
-        </select>
+          One Line
+        </button>
+        <button
+          className={`memories-mode-btn ${mode === "full" ? "memories-mode-btn-active" : ""}`}
+          onClick={() => setMode("full")}
+        >
+          Full
+        </button>
       </div>
 
       {loading && <div className="memories-loading">Loading...</div>}
@@ -182,21 +195,28 @@ function JournalTab({ memories, setMemories, mode, setMode, loading, setLoading,
       )}
 
       {memories.map((entry) => (
-        <div key={entry.year} className="memories-year-entry">
-          <div className="memories-year-header">
-            <span className="memories-year-label">
+        <div
+          key={entry.year}
+          className={`memories-year-card ${entry.isCurrentYear ? "memories-year-card-current" : ""}`}
+        >
+          <div className="memories-year-card-header">
+            <span className="memories-year-card-year">
               {entry.year}
-              {entry.isCurrentYear && " (오늘)"}
+              {entry.isCurrentYear && <span className="memories-year-card-badge">오늘</span>}
             </span>
             <button
-              className="memories-open-btn"
+              className="memories-year-card-open"
               onClick={() => handleOpenEntry(entry.path)}
               title="일기 열기"
             >
-              →
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                <polyline points="15 3 21 3 21 9" />
+                <line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
             </button>
           </div>
-          <div className="memories-year-content">
+          <div className="memories-year-card-body">
             {mode === "oneline" ? (
               entry.isCurrentYear ? (
                 <OneLineEditor entry={entry} onSave={(newText) => {
@@ -266,104 +286,11 @@ function OneLineEditor({ entry, onSave }: { entry: MemoryEntry; onSave: (text: s
   );
 }
 
-// --- Photos Tab ---
-
-interface PhotoEntry {
-  year: number;
-  alt: string;
-  src: string;
-  journalPath: string;
-}
-
-function PhotosTab() {
-  const { rootPath } = useFileStore();
-  const { journalDirectory } = useSettingsStore();
-  const [photos, setPhotos] = useState<PhotoEntry[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const now = new Date();
-  const month = now.getMonth() + 1;
-  const day = now.getDate();
-
-  useEffect(() => {
-    if (!rootPath || !journalDirectory) return;
-    let cancelled = false;
-    setLoading(true);
-    (async () => {
-      try {
-        const dailyDir = `${rootPath}/${journalDirectory}/daily`;
-        const yearDirs = await listDir(dailyDir);
-        const mm = String(month).padStart(2, "0");
-        const dd = String(day).padStart(2, "0");
-        const allPhotos: PhotoEntry[] = [];
-
-        for (const yearDir of yearDirs) {
-          if (!yearDir.isDir) continue;
-          const year = parseInt(yearDir.name, 10);
-          if (isNaN(year)) continue;
-
-          const filePath = `${dailyDir}/${year}/${mm}/${year}-${mm}-${dd}.md`;
-          try {
-            const content = await readFile(filePath);
-            const images = extractImages(content);
-            for (const img of images) {
-              // Resolve relative paths against journal file directory
-              const resolvedSrc = img.src.startsWith("/") || img.src.startsWith("http")
-                ? img.src
-                : `${dailyDir}/${year}/${mm}/${img.src}`;
-              allPhotos.push({ year, alt: img.alt, src: resolvedSrc, journalPath: filePath });
-            }
-          } catch {
-            // File doesn't exist for this year
-          }
-        }
-
-        if (!cancelled) {
-          allPhotos.sort((a, b) => b.year - a.year);
-          setPhotos(allPhotos);
-        }
-      } catch {
-        if (!cancelled) setPhotos([]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [rootPath, journalDirectory, month, day]);
-
-  return (
-    <div className="memories-photos-tab">
-      {loading && <div className="memories-loading">Loading...</div>}
-
-      {!loading && photos.length === 0 && (
-        <div className="memories-empty">
-          이 날짜의 사진이 없습니다.
-        </div>
-      )}
-
-      <div className="memories-photos-grid">
-        {photos.map((photo, i) => (
-          <div key={`${photo.year}-${i}`} className="memories-photo-item">
-            <img
-              src={photo.src}
-              alt={photo.alt || `${photo.year}년 사진`}
-              className="memories-photo-img"
-              loading="lazy"
-            />
-            <span className="memories-photo-year">{photo.year}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // --- Notes Tab ---
 
 interface NoteEntry {
   name: string;
   path: string;
-  modifiedLabel: string;
 }
 
 function NotesTab() {
@@ -378,17 +305,17 @@ function NotesTab() {
     setLoading(true);
     (async () => {
       try {
-        const notesDir = `${rootPath}/${journalDirectory}/notes`;
-        const entries = await listDir(notesDir, true);
+        const base = resolveJournalBase(rootPath, journalDirectory);
+        const notesDir = `${base}/notes`;
+        const entries = await listDir(notesDir);
         if (cancelled) return;
         const noteFiles: NoteEntry[] = entries
-          .filter((e) => !e.isDir && e.name.endsWith(".md"))
-          .map((e) => ({
+          .filter((e: { isDir: boolean; name: string }) => !e.isDir && e.name.endsWith(".md"))
+          .map((e: { name: string }) => ({
             name: e.name.replace(/\.md$/, ""),
-            path: e.path,
-            modifiedLabel: "",
+            path: `${notesDir}/${e.name}`,
           }))
-          .sort((a, b) => a.name.localeCompare(b.name));
+          .sort((a: NoteEntry, b: NoteEntry) => a.name.localeCompare(b.name));
         setNotes(noteFiles);
       } catch {
         if (!cancelled) setNotes([]);
@@ -436,7 +363,12 @@ function NotesTab() {
           onClick={() => handleOpenNote(note.path)}
           title={note.path}
         >
-          <span className="memories-note-icon">📄</span>
+          <svg className="memories-note-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="16" y1="13" x2="8" y2="13" />
+            <line x1="16" y1="17" x2="8" y2="17" />
+          </svg>
           <span className="memories-note-name">{note.name}</span>
         </button>
       ))}

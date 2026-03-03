@@ -12,7 +12,7 @@ type OnLaunch = "newFile" | "restoreLastFolder" | "restoreLastFile";
 type WikilinkFormat = "wikilink" | "markdown";
 type CodeBlockStyle = "default" | "minimal" | "contrast" | "paper";
 type JournalStartupBehavior = "openJournal" | "nothing";
-type MemoriesTab = "journal" | "photos" | "notes";
+type MemoriesTab = "journal" | "notes";
 type MemoriesMode = "oneline" | "full";
 
 interface SettingsState {

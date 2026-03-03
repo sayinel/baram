@@ -3177,168 +3177,238 @@ body {
   overflow: hidden;
 }
 
-.memories-panel-header {
+.memories-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
   border-bottom: 1px solid var(--color-border);
+}
+
+.memories-header-title {
+  font-size: 0.9rem;
   font-weight: 600;
-  font-size: 13px;
+  color: var(--color-text);
 }
 
-.memories-panel-tabs {
+.memories-header-date {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--color-accent, #5b7bd7);
+  background: color-mix(in srgb, var(--color-accent, #5b7bd7) 12%, transparent);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+/* Segmented pill tabs */
+.memories-tabs {
   display: flex;
-  gap: 0;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.memories-panel-tab {
-  flex: 1;
-  padding: 8px 12px;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--color-text-secondary);
-  font-size: 12px;
-  cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
-}
-
-.memories-panel-tab:hover {
-  color: var(--color-text-primary);
-}
-
-.memories-panel-tab-active {
-  color: var(--color-accent);
-  border-bottom-color: var(--color-accent);
-  font-weight: 600;
-}
-
-.memories-panel-controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  gap: 2px;
   padding: 8px 16px;
   border-bottom: 1px solid var(--color-border);
 }
 
-.memories-panel-controls select,
-.memories-panel-controls button {
-  font-size: 11px;
-  padding: 3px 8px;
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
-  background: var(--color-bg-primary);
-  color: var(--color-text-primary);
+.memories-tabs-btn {
+  flex: 1;
+  padding: 5px 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: none;
+  background: var(--color-bg-secondary);
+  border-radius: 6px;
   cursor: pointer;
+  color: var(--color-text-secondary);
+  transition: all 0.15s;
 }
 
-.memories-panel-controls button.active {
-  background: var(--color-accent);
-  color: white;
-  border-color: var(--color-accent);
+.memories-tabs-btn:hover {
+  color: var(--color-text);
 }
 
-.memories-panel-body {
+.memories-tabs-btn-active {
+  background: var(--color-accent, #5b7bd7);
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.memories-content {
   flex: 1;
   overflow-y: auto;
   padding: 12px 16px;
 }
 
-.memories-panel-empty {
+.memories-loading,
+.memories-empty {
   text-align: center;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
   padding: 32px 16px;
-  font-size: 13px;
 }
 
-.memories-year-group {
-  margin-bottom: 16px;
+/* Journal tab — mode toggle */
+.memories-journal-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.memories-year-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--color-text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 8px;
+.memories-mode-toggle {
+  display: flex;
+  gap: 2px;
+  background: var(--color-bg-secondary);
+  border-radius: 6px;
+  padding: 2px;
+  align-self: flex-start;
 }
 
-.memories-entry {
-  padding: 8px 0;
-  border-bottom: 1px solid var(--color-border-light, rgba(128,128,128,0.1));
+.memories-mode-btn {
+  padding: 3px 10px;
+  font-size: 0.7rem;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
   cursor: pointer;
-  transition: background 0.1s;
+  color: var(--color-text-secondary);
+  transition: all 0.15s;
 }
 
-.memories-entry:hover {
-  background: var(--color-bg-hover, rgba(128,128,128,0.06));
+.memories-mode-btn-active {
+  background: var(--color-bg);
+  color: var(--color-text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
-.memories-entry-date {
-  font-size: 11px;
-  color: var(--color-text-tertiary);
-  margin-bottom: 2px;
+/* Year cards */
+.memories-year-card {
+  background: var(--color-bg-secondary);
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  overflow: hidden;
 }
 
-.memories-entry-mood {
-  margin-left: 6px;
+.memories-year-card-current {
+  border-left: 3px solid var(--color-accent, #5b7bd7);
 }
 
-.memories-entry-oneline {
-  font-size: 13px;
-  color: var(--color-text-primary);
+.memories-year-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.memories-year-card-year {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.memories-year-card-badge {
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--color-accent, #5b7bd7);
+  background: color-mix(in srgb, var(--color-accent, #5b7bd7) 12%, transparent);
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.memories-year-card-open {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  padding: 2px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  transition: all 0.15s;
+}
+
+.memories-year-card-open:hover {
+  color: var(--color-accent, #5b7bd7);
+  background: color-mix(in srgb, var(--color-accent, #5b7bd7) 8%, transparent);
+}
+
+.memories-year-card-body {
+  padding: 10px 12px;
+}
+
+.memories-oneline {
+  font-size: 0.8rem;
+  color: var(--color-text);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.memories-oneline-editable {
+  cursor: text;
+  border-radius: 4px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  transition: background 0.15s;
+}
+
+.memories-oneline-editable:hover {
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+}
+
+.memories-oneline-input {
+  width: 100%;
+  font-size: 0.8rem;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border: 1px solid var(--color-accent, #5b7bd7);
+  border-radius: 4px;
+  padding: 4px 6px;
+  outline: none;
   line-height: 1.5;
 }
 
-.memories-entry-full {
-  font-size: 13px;
-  color: var(--color-text-primary);
+.memories-full {
+  font-size: 0.78rem;
+  color: var(--color-text);
   line-height: 1.6;
   white-space: pre-wrap;
   max-height: 200px;
   overflow-y: auto;
+  margin: 0;
+  font-family: inherit;
 }
 
-.memories-panel-placeholder {
-  padding: 32px 16px;
-  text-align: center;
-  color: var(--color-text-tertiary);
-  font-size: 13px;
-}
-
-/* §56l Notes tab */
+/* Notes tab */
 .memories-notes-tab {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 4px 0;
 }
 
 .memories-note-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 12px;
+  padding: 7px 10px;
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 13px;
-  color: var(--color-text-primary);
+  font-size: 0.8rem;
+  color: var(--color-text);
   text-align: left;
   width: 100%;
-  border-radius: 4px;
+  border-radius: 6px;
+  transition: background 0.1s;
 }
 
 .memories-note-item:hover {
-  background: var(--color-bg-hover);
+  background: var(--color-bg-secondary);
 }
 
 .memories-note-icon {
   flex-shrink: 0;
-  font-size: 14px;
+  color: var(--color-text-secondary);
 }
 
 .memories-note-name {
