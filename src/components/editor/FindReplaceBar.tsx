@@ -82,6 +82,14 @@ export function FindReplaceBar({
   const { caseSensitive, useRegex, wholeWord, activeMatchIndex, matches } =
     pluginState;
 
+  // Sync localSearchTerm when changed externally (e.g. Global Search dispatch)
+  useEffect(() => {
+    if (pluginState.searchTerm && pluginState.searchTerm !== localSearchTerm) {
+      setLocalSearchTerm(pluginState.searchTerm);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pluginState.searchTerm]);
+
   // Track last selected match to avoid redundant dispatches
   const lastSelectedRef = useRef<{ from: number; to: number } | null>(null);
 

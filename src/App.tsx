@@ -506,6 +506,20 @@ function App() {
         });
       }
 
+      // §5.11 Handle pending search highlight after document load
+      // (must run here, not in pendingSearchHighlight effect, to avoid
+      //  race condition with async tab open via readFile)
+      const pendingHighlight = useUIStore.getState().pendingSearchHighlight;
+      if (pendingHighlight) {
+        useUIStore.getState().setPendingSearchHighlight(null);
+        setTimeout(() => {
+          if (!editor?.view) return;
+          dispatchSetSearchTerm(editor.view, pendingHighlight);
+          setFindReplaceOpen(true);
+          setFindReplaceMode("find");
+        }, 50);
+      }
+
       // Clean up cache for closed tabs
       const openTabIds = new Set(tabs.map((t) => t.id));
       for (const cachedId of editorStateCache.current.keys()) {
@@ -517,10 +531,12 @@ function App() {
     }
   }, [activeTabId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // §5.11 Activate Find highlights from Global Search result click
+  // §5.11 Activate Find highlights from Global Search result click (same-tab case)
   const pendingSearchHighlight = useUIStore((s) => s.pendingSearchHighlight);
   useEffect(() => {
     if (!pendingSearchHighlight || !editor?.view) return;
+    // If already consumed by activeTabId effect (tab-switch case), skip
+    if (!useUIStore.getState().pendingSearchHighlight) return;
     useUIStore.getState().setPendingSearchHighlight(null);
     // Also consume pending scroll line for same-tab navigation
     const pendingLine = useLinkStore.getState().pendingScrollLine;

@@ -32,7 +32,29 @@ export interface FindReplaceState {
 
 // ── Match computation ─────────────────────────────────────────────────
 
-/** Extract all text content from ProseMirror doc with position mapping */
+/** Get searchable text representation of an inline atom node */
+function getAtomText(node: PmNode): string {
+  switch (node.type.name) {
+    case "tagNode":
+      return `#${node.attrs.tag}`;
+    case "wikiLink":
+      return `[[${node.attrs.href}]]`;
+    case "mathInline":
+      return `$${node.attrs.latex}$`;
+    case "footnoteRef":
+      return `[^${node.attrs.id}]`;
+    case "mention":
+      return `@${node.attrs.id}`;
+    case "blockReference":
+      return `![[${node.attrs.href}]]`;
+    default:
+      return "";
+  }
+}
+
+/** Extract all text content from ProseMirror doc with position mapping.
+ *  Includes text representation of inline atom nodes (tag, wikilink, etc.)
+ *  so they are searchable via Find/Replace. */
 function extractTextWithPositions(doc: PmNode): { text: string; posMap: number[] } {
   let text = "";
   const posMap: number[] = [];
@@ -42,6 +64,14 @@ function extractTextWithPositions(doc: PmNode): { text: string; posMap: number[]
       for (let i = 0; i < node.text.length; i++) {
         posMap.push(pos + i);
         text += node.text[i];
+      }
+    } else if (node.isInline && node.isLeaf && !node.isText) {
+      // Inline atom node — include its text representation for searchability.
+      // All chars map to the atom's position so decoration spans the whole node.
+      const atomText = getAtomText(node);
+      for (let i = 0; i < atomText.length; i++) {
+        posMap.push(pos);
+        text += atomText[i];
       }
     } else if (node.isBlock && text.length > 0 && text[text.length - 1] !== "\n") {
       // Add separator between blocks to avoid matching across them

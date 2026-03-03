@@ -265,10 +265,12 @@ export function TagPanel() {
     if (store.sidebarPanel !== "search") {
       store.setSidebarPanel("search");
     }
-    // Dispatch search event
-    window.dispatchEvent(
-      new CustomEvent("baram:search-query", { detail: { query: `#${tag}` } }),
-    );
+    // Dispatch search event after React mounts the search panel and registers listeners
+    setTimeout(() => {
+      window.dispatchEvent(
+        new CustomEvent("baram:search-query", { detail: { query: `#${tag}` } }),
+      );
+    }, 50);
   }, []);
 
   const handleCollapseAll = useCallback(() => {
