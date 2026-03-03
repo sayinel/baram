@@ -10,7 +10,7 @@ import remarkFrontmatter from "remark-frontmatter";
 import type { Root, Content, PhrasingContent, Text } from "mdast";
 import type { Node as PmNode, Schema, Mark } from "@tiptap/pm/model";
 import { nodeTransformers, markTransformers, pmNodeTransformers } from "./transformers";
-import { isStandaloneImage } from "./transformers/image-transformer";
+import { isStandaloneImage, parseImgHtml } from "./transformers/image-transformer";
 import { parseCalloutHeader } from "./transformers/callout-transformer";
 import {
   WIKILINK_RE,
@@ -128,6 +128,16 @@ function convertBlockChildren(
           i = toggleResult.endIndex + 1;
           continue;
         }
+      }
+    }
+
+    // §5.1: Detect <img> html with width → image node with widthPercent
+    if (child.type === "html" && schema.nodes.image) {
+      const imgAttrs = parseImgHtml((child as { value: string }).value);
+      if (imgAttrs) {
+        result.push(schema.nodes.image.create(imgAttrs));
+        i++;
+        continue;
       }
     }
 

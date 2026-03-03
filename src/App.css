@@ -793,6 +793,41 @@ body {
   margin: 0 2px;
 }
 
+.tiptap .image-size-input-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.tiptap .image-size-input {
+  width: 40px;
+  padding: 1px 4px;
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  color: #fff;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+  outline: none;
+  text-align: right;
+  -moz-appearance: textfield;
+}
+
+.tiptap .image-size-input::-webkit-inner-spin-button,
+.tiptap .image-size-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.tiptap .image-size-input:focus {
+  border-color: var(--color-accent);
+}
+
+.tiptap .image-size-unit {
+  font-size: 0.65rem;
+  color: #ccc;
+}
+
 .tiptap .image-caption {
   text-align: center;
   font-size: 0.85em;

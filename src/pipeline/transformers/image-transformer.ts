@@ -3,6 +3,58 @@ import type { Node as PmNode, Schema } from "@tiptap/pm/model";
 import type { Node as MdastNode, Image, Paragraph } from "mdast";
 import type { NodeTransformerEntry } from "../types";
 
+/** Build an HTML <img> tag string from ProseMirror image attributes */
+function buildImgHtml(attrs: Record<string, unknown>): string {
+  const parts: string[] = [];
+  if (attrs.src) parts.push(`src="${escapeHtmlAttr(String(attrs.src))}"`);
+  if (attrs.alt) parts.push(`alt="${escapeHtmlAttr(String(attrs.alt))}"`);
+  if (attrs.title) parts.push(`title="${escapeHtmlAttr(String(attrs.title))}"`);
+  const w = attrs.widthPercent as number;
+  if (w && w !== 100) parts.push(`width="${w}%"`);
+  return `<img ${parts.join(" ")} />`;
+}
+
+function escapeHtmlAttr(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function unescapeHtmlAttr(s: string): string {
+  return s.replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+}
+
+/** Parse an <img .../> HTML tag into ProseMirror image attributes.
+ *  Returns null if the string is not an img tag. */
+export function parseImgHtml(
+  html: string,
+): { src: string; alt: string | null; title: string | null; widthPercent: number } | null {
+  const match = html.match(/^<img\s+([^>]*?)\s*\/?>$/i);
+  if (!match) return null;
+  const attrStr = match[1];
+
+  const getAttr = (name: string): string | null => {
+    const re = new RegExp(`${name}="([^"]*)"`, "i");
+    const m = attrStr.match(re);
+    return m ? unescapeHtmlAttr(m[1]) : null;
+  };
+
+  const src = getAttr("src");
+  if (!src) return null;
+
+  let widthPercent = 100;
+  const widthVal = getAttr("width");
+  if (widthVal) {
+    const pct = parseInt(widthVal.replace("%", ""), 10);
+    if (!isNaN(pct) && pct > 0 && pct <= 100) widthPercent = pct;
+  }
+
+  return {
+    src,
+    alt: getAttr("alt") || null,
+    title: getAttr("title") || null,
+    widthPercent,
+  };
+}
+
 export const imageTransformer: NodeTransformerEntry = {
   mdastType: "image",
   pmType: "image",
@@ -17,6 +69,16 @@ export const imageTransformer: NodeTransformerEntry = {
   },
 
   pmToMdast(node: PmNode): MdastNode {
+    const widthPercent = (node.attrs.widthPercent as number) || 100;
+
+    // When width is customized, serialize as HTML <img> to preserve size
+    if (widthPercent !== 100) {
+      return {
+        type: "html",
+        value: buildImgHtml(node.attrs),
+      } as unknown as MdastNode;
+    }
+
     return {
       type: "image",
       url: node.attrs.src as string,

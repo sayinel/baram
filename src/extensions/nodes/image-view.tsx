@@ -4,12 +4,7 @@ import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useEditorStore } from "../../stores/editor-store";
 
-const RESIZE_OPTIONS = [
-  { label: "25%", value: 25 },
-  { label: "50%", value: 50 },
-  { label: "75%", value: 75 },
-  { label: "100%", value: 100 },
-];
+const RESIZE_PRESETS = [25, 50, 75, 100];
 
 /** Check if src is a remote URL or data URI (no conversion needed) */
 function isRemoteOrData(src: string): boolean {
@@ -59,7 +54,10 @@ export function ImageView({
   const [hovered, setHovered] = useState(false);
   const [editingCaption, setEditingCaption] = useState(false);
   const [captionText, setCaptionText] = useState(alt);
+  const [editingSize, setEditingSize] = useState(false);
+  const [sizeInput, setSizeInput] = useState(String(widthPercent));
   const captionRef = useRef<HTMLInputElement>(null);
+  const sizeInputRef = useRef<HTMLInputElement>(null);
 
   // §5.1: Image click → NodeSelection is handled by the ProseMirror plugin
   // in image.ts (handleDOMEvents.mousedown). React handlers must NOT call
@@ -70,10 +68,29 @@ export function ImageView({
 
   const handleResize = useCallback(
     (percent: number) => {
-      updateAttributes({ widthPercent: percent });
+      const clamped = Math.max(10, Math.min(100, percent));
+      updateAttributes({ widthPercent: clamped });
+      setSizeInput(String(clamped));
+      setEditingSize(false);
     },
     [updateAttributes],
   );
+
+  const startSizeEdit = useCallback(() => {
+    setSizeInput(String(widthPercent));
+    setEditingSize(true);
+    setTimeout(() => sizeInputRef.current?.select(), 0);
+  }, [widthPercent]);
+
+  const commitSizeInput = useCallback(() => {
+    const val = parseInt(sizeInput, 10);
+    if (!isNaN(val) && val >= 10 && val <= 100) {
+      handleResize(val);
+    } else {
+      setSizeInput(String(widthPercent));
+    }
+    setEditingSize(false);
+  }, [sizeInput, widthPercent, handleResize]);
 
   const handleCaptionSave = useCallback(() => {
     setEditingCaption(false);
@@ -127,16 +144,45 @@ export function ImageView({
         {/* Hover toolbar */}
         {showToolbar && (
           <div className="image-toolbar" contentEditable={false}>
-            {RESIZE_OPTIONS.map((opt) => (
+            {RESIZE_PRESETS.map((pct) => (
               <button
-                key={opt.value}
-                className={`image-toolbar-btn ${widthPercent === opt.value ? "image-toolbar-btn-active" : ""}`}
-                onClick={() => handleResize(opt.value)}
+                key={pct}
+                className={`image-toolbar-btn ${widthPercent === pct ? "image-toolbar-btn-active" : ""}`}
+                onClick={() => handleResize(pct)}
                 type="button"
               >
-                {opt.label}
+                {pct}%
               </button>
             ))}
+            <span className="image-toolbar-sep" />
+            {editingSize ? (
+              <span className="image-size-input-wrap">
+                <input
+                  ref={sizeInputRef}
+                  className="image-size-input"
+                  type="number"
+                  min={10}
+                  max={100}
+                  value={sizeInput}
+                  onChange={(e) => setSizeInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") { e.preventDefault(); commitSizeInput(); }
+                    if (e.key === "Escape") { e.preventDefault(); setEditingSize(false); setSizeInput(String(widthPercent)); }
+                  }}
+                  onBlur={commitSizeInput}
+                />
+                <span className="image-size-unit">%</span>
+              </span>
+            ) : (
+              <button
+                className={`image-toolbar-btn ${!RESIZE_PRESETS.includes(widthPercent) ? "image-toolbar-btn-active" : ""}`}
+                onClick={startSizeEdit}
+                type="button"
+                title="커스텀 크기 입력"
+              >
+                {RESIZE_PRESETS.includes(widthPercent) ? "Custom" : `${widthPercent}%`}
+              </button>
+            )}
             <span className="image-toolbar-sep" />
             <button
               className="image-toolbar-btn"

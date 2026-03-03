@@ -305,11 +305,15 @@ function convertPmNode(node: PmNode): Content | null {
   }
 
   // Image → wrap in paragraph for mdast (mdast image is inline)
+  // When widthPercent !== 100, transformer returns html node → return directly
   if (typeName === "image") {
     const transformer = pmNodeTransformers.get("image");
     if (transformer) {
       const imgNode = transformer.pmToMdast(node, () => []);
       if (imgNode) {
+        if ((imgNode as { type: string }).type === "html") {
+          return imgNode as Content;
+        }
         return {
           type: "paragraph",
           children: [imgNode as PhrasingContent],
