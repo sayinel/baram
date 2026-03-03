@@ -344,6 +344,32 @@
       "inputRules": ["#tag + space"],
       "shortcuts": {},
       "_note": "Inline atom node for #tag. Cmd/Ctrl+click triggers global search. Pipeline roundtrip via tag-transformer."
+    },
+    {
+      "name": "wikilink",
+      "file": "nodes/wikilink.ts",
+      "markdown": "[[page]]",
+      "spec": "§28",
+      "phase": 2,
+      "milestone": "M7",
+      "status": "implemented",
+      "hasNodeView": true,
+      "inputRules": ["[["],
+      "shortcuts": {},
+      "_note": "Inline atom node (not a mark). Listed under nodes because implementation is nodes/wikilink.ts."
+    },
+    {
+      "name": "mention",
+      "file": "nodes/mention.ts",
+      "markdown": "@[[page]]",
+      "spec": "§57",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "implemented",
+      "hasNodeView": true,
+      "inputRules": ["@"],
+      "shortcuts": {},
+      "_note": "Inline atom node (not a mark). Listed under nodes because implementation is nodes/mention.ts."
     }
   ],
   "marks": [
@@ -445,28 +471,6 @@
       "milestone": "M9",
       "status": "implemented",
       "inputRules": [],
-      "shortcuts": {}
-    },
-    {
-      "name": "wikilink",
-      "file": "nodes/wikilink.ts",
-      "markdown": "[[page]]",
-      "spec": "§28",
-      "phase": 2,
-      "milestone": "M7",
-      "status": "completed",
-      "inputRules": ["[["],
-      "shortcuts": {}
-    },
-    {
-      "name": "mention",
-      "file": "nodes/mention.ts",
-      "markdown": "@[[page]]",
-      "spec": "§57",
-      "phase": 2,
-      "milestone": "M9",
-      "status": "completed",
-      "inputRules": ["@"],
       "shortcuts": {}
     }
   ],
@@ -614,6 +618,26 @@
       "status": "implemented",
       "shortcuts": { "#": "tag autocomplete" },
       "_note": "Tiptap Suggestion plugin for #tag autocomplete. Vault-wide tag index via Rust IPC. Nested tag segment matching."
+    },
+    {
+      "name": "tagClick",
+      "file": "plugins/tag-click.ts",
+      "spec": "§56m",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "implemented",
+      "shortcuts": { "Mod-Click": "search tag" },
+      "_note": "Cmd/Ctrl+Click on #tag triggers global search sidebar. ProseMirror click handler plugin."
+    },
+    {
+      "name": "listAtomFix",
+      "file": "plugins/list-atom-fix.ts",
+      "spec": "§56m",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "implemented",
+      "shortcuts": {},
+      "_note": "WebKit list marker alignment fix. Inserts zero-width space widget when list item starts with atom-only content (e.g. tagNode)."
     }
   ]
 }

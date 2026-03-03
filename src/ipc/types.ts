@@ -168,6 +168,17 @@ export interface RenameResult {
   updatedFiles: string[];
 }
 
+// §56m Tag types
+export interface TagEntry {
+  tag: string;
+  count: number;
+}
+
+export interface RenameTagResult {
+  filesModified: number;
+  occurrencesReplaced: number;
+}
+
 // Event payloads
 export interface FileChangedPayload {
   path: string;

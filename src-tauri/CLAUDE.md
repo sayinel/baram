@@ -94,6 +94,10 @@ app_handle.emit("file:changed", FileChangedPayload {
 | `keyring_get` | keyring | 2 (M8) | Keychain 조회 |
 | `keyring_delete` | keyring | 2 (M8) | Keychain 삭제 |
 | `get_opened_urls` | app | 1 (M6) | macOS 파일 연결 |
+| `get_vault_tags` | tag | 2 (M9) | Vault 태그 목록 조회 |
+| `get_files_by_tag` | tag | 2 (M9) | 태그별 파일 검색 |
+| `rename_tag` | tag | 2 (M9) | 태그 이름 변경/병합 |
+| `write_binary_file` | fs | 2 (M9) | 바이너리 파일 쓰기 |
 
 ## 이벤트 목록
 

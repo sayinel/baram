@@ -463,6 +463,50 @@
       "milestone": "M8",
       "status": "implemented",
       "description": "LLM 스트리밍 요청 취소"
+    },
+    {
+      "name": "get_vault_tags",
+      "input": { "root_path": "string" },
+      "output": "TagEntry[]",
+      "module": "tag",
+      "spec": "§56m",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "implemented",
+      "description": "Vault 전체 태그 목록 조회 (빈도순 정렬)"
+    },
+    {
+      "name": "get_files_by_tag",
+      "input": { "root_path": "string", "tag": "string" },
+      "output": "string[]",
+      "module": "tag",
+      "spec": "§56m",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "implemented",
+      "description": "특정 태그를 포함하는 .md 파일 경로 목록 조회"
+    },
+    {
+      "name": "rename_tag",
+      "input": { "root_path": "string", "old_tag": "string", "new_tag": "string" },
+      "output": "RenameTagResult",
+      "module": "tag",
+      "spec": "§56m",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "implemented",
+      "description": "태그 이름 변경/병합 (인라인 #tag + frontmatter, prefix rename 지원)"
+    },
+    {
+      "name": "write_binary_file",
+      "input": { "path": "string", "data": "Vec<u8>" },
+      "output": "void",
+      "module": "fs",
+      "spec": "§56d",
+      "phase": 2,
+      "milestone": "M9",
+      "status": "implemented",
+      "description": "바이너리 파일 쓰기 (이미지 등 비텍스트 파일, 원자적 쓰기)"
     }
   ],
   "events": [
