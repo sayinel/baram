@@ -993,11 +993,31 @@ function App() {
 
       // File doesn't exist → create it, refresh tree, then open
       if (!resolved) {
-        const { rootPath } = useFileStore.getState();
+        const { rootPath, isJournalScoped } = useFileStore.getState();
         if (!rootPath) return;
-        const newPath = `${rootPath}/${target}.md`;
-        writeFile(newPath, `# ${target}\n`)
-          .then(async () => {
+
+        // §56l Journal scope: create new notes in {journalDir}/notes/
+        let newPath: string;
+        if (isJournalScoped) {
+          const { journalDirectory } = useSettingsStore.getState();
+          const journalDir = resolveJournalDir(rootPath, journalDirectory);
+          if (journalDir) {
+            newPath = `${journalDir}/notes/${target}.md`;
+          } else {
+            newPath = `${rootPath}/${target}.md`;
+          }
+        } else {
+          newPath = `${rootPath}/${target}.md`;
+        }
+
+        (async () => {
+          try {
+            // Ensure parent directory exists
+            const parentDir = newPath.substring(0, newPath.lastIndexOf("/"));
+            const { createDir } = await import("./ipc/invoke");
+            await createDir(parentDir).catch(() => {});
+
+            await writeFile(newPath, `# ${target}\n`);
             const { refreshIndex, listDir } = await import("./ipc/invoke");
             const { buildFileTree } = await import("./stores/file-store");
             await refreshIndex(rootPath);
@@ -1005,8 +1025,10 @@ function App() {
             const tree = buildFileTree(entries, rootPath);
             useFileStore.getState().setFileTree(tree);
             await handleOpenFilePath(newPath);
-          })
-          .catch(console.error);
+          } catch (err) {
+            console.error("[App] Failed to create wikilink target:", err);
+          }
+        })();
         return;
       }
 
