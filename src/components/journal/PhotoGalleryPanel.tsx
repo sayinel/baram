@@ -250,15 +250,36 @@ export function PhotoGalleryPanel() {
       {/* Lightbox overlay */}
       {lightboxPhoto && (
         <div className="photo-lightbox-overlay" onClick={closeLightbox}>
+          {/* Nav buttons fixed to overlay edges */}
+          <button
+            className="photo-lightbox-nav photo-lightbox-prev"
+            onClick={(e) => { e.stopPropagation(); navigateLightbox("prev"); }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
+          <button
+            className="photo-lightbox-nav photo-lightbox-next"
+            onClick={(e) => { e.stopPropagation(); navigateLightbox("next"); }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </button>
+
+          <button className="photo-lightbox-close" onClick={(e) => { e.stopPropagation(); closeLightbox(); }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+
           <div className="photo-lightbox-content" onClick={(e) => e.stopPropagation()}>
-            <button className="photo-lightbox-close" onClick={closeLightbox}>✕</button>
-            <button className="photo-lightbox-nav photo-lightbox-prev" onClick={() => navigateLightbox("prev")}>‹</button>
             <img
               src={convertFileSrc(lightboxPhoto.absolutePath)}
               alt={lightboxPhoto.caption || lightboxPhoto.filename}
               className="photo-lightbox-img"
             />
-            <button className="photo-lightbox-nav photo-lightbox-next" onClick={() => navigateLightbox("next")}>›</button>
             <div className="photo-lightbox-info">
               <span className="photo-lightbox-caption">
                 {lightboxPhoto.caption || lightboxPhoto.filename}
