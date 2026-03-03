@@ -21,8 +21,13 @@ export function PhotoGalleryPanel() {
 
   const [photos, setPhotos] = useState<PhotoGalleryEntry[]>([]);
   const [loading, setLoading] = useState(false);
-  const [groupMode, setGroupMode] = useState<GroupMode>("month");
+  const [groupMode, setGroupMode] = useState<GroupMode>("day");
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+
+  // Date navigation state
+  const now = useMemo(() => new Date(), []);
+  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
 
   const isVisible = rightPanelOpen && rightPanelMode === "photo-gallery";
 
@@ -30,19 +35,60 @@ export function PhotoGalleryPanel() {
     if (!rootPath || !journalDirectory) return;
     setLoading(true);
     try {
-      const result = await scanJournalPhotos(rootPath, journalDirectory);
+      const options =
+        groupMode === "year"
+          ? undefined // year mode: load all
+          : groupMode === "month"
+            ? { year: selectedYear } // month mode: filter by year
+            : { year: selectedYear, month: selectedMonth }; // day mode: filter by year+month
+      const result = await scanJournalPhotos(rootPath, journalDirectory, options);
       setPhotos(result);
     } catch {
       setPhotos([]);
     } finally {
       setLoading(false);
     }
-  }, [rootPath, journalDirectory]);
+  }, [rootPath, journalDirectory, groupMode, selectedYear, selectedMonth]);
 
   useEffect(() => {
     if (!isVisible) return;
     loadPhotos();
   }, [isVisible, loadPhotos]);
+
+  // Navigate to previous/next period
+  const navigatePeriod = useCallback(
+    (direction: -1 | 1) => {
+      if (groupMode === "day") {
+        // Navigate by month
+        let newMonth = selectedMonth + direction;
+        let newYear = selectedYear;
+        if (newMonth < 1) {
+          newMonth = 12;
+          newYear--;
+        } else if (newMonth > 12) {
+          newMonth = 1;
+          newYear++;
+        }
+        setSelectedMonth(newMonth);
+        setSelectedYear(newYear);
+      } else if (groupMode === "month") {
+        // Navigate by year
+        setSelectedYear((y) => y + direction);
+      }
+      // year mode: no navigation needed
+    },
+    [groupMode, selectedMonth, selectedYear],
+  );
+
+  // Period label for the navigator
+  const periodLabel = useMemo(() => {
+    if (groupMode === "day") {
+      return `${selectedYear}년 ${selectedMonth}월`;
+    } else if (groupMode === "month") {
+      return `${selectedYear}년`;
+    }
+    return "전체";
+  }, [groupMode, selectedYear, selectedMonth]);
 
   const groups = useMemo(() => groupPhotosByDate(photos, groupMode), [photos, groupMode]);
 
@@ -149,6 +195,15 @@ export function PhotoGalleryPanel() {
           ))}
         </div>
       </div>
+
+      {/* Date navigator — Day: month picker, Month: year picker, Year: no nav */}
+      {groupMode !== "year" && (
+        <div className="photo-gallery-nav">
+          <button className="photo-gallery-nav-btn" onClick={() => navigatePeriod(-1)}>‹</button>
+          <span className="photo-gallery-nav-label">{periodLabel}</span>
+          <button className="photo-gallery-nav-btn" onClick={() => navigatePeriod(1)}>›</button>
+        </div>
+      )}
 
       <div className="photo-gallery-content">
         {loading && <div className="photo-gallery-loading">Loading...</div>}

@@ -7,6 +7,7 @@ function makeEntry(dateStr: string, caption = ""): PhotoGalleryEntry {
     relativePath: `journal/assets/2026-03/photo-${dateStr}.jpg`,
     absolutePath: `/root/journal/assets/2026-03/photo-${dateStr}.jpg`,
     date: new Date(dateStr),
+    dateFromFilename: true,
     caption,
     journalPath: null,
   };

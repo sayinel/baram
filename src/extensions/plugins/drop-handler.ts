@@ -86,7 +86,7 @@ function readFileAsDataURL(file: File): Promise<string> {
 }
 
 /** Check if the active file is inside a journal directory */
-function getJournalContext(): { isJournal: boolean; rootPath: string; journalDir: string } {
+function getJournalContext(): { isJournal: boolean; rootPath: string; journalDir: string; filePath: string } {
   const activeTabId = useEditorStore.getState().activeTabId;
   const tabs = useEditorStore.getState().tabs;
   const activeTab = tabs.find((t) => t.id === activeTabId);
@@ -94,11 +94,14 @@ function getJournalContext(): { isJournal: boolean; rootPath: string; journalDir
   const rootPath = useFileStore.getState().rootPath ?? "";
   const journalDir = useSettingsStore.getState().journalDirectory ?? "";
 
-  if (!rootPath || !journalDir || !filePath) return { isJournal: false, rootPath: "", journalDir: "" };
+  if (!rootPath || !journalDir || !filePath) return { isJournal: false, rootPath: "", journalDir: "", filePath: "" };
 
-  const journalAbsPath = `${rootPath}/${journalDir}`;
+  // journalDir is always absolute after migration
+  const journalAbsPath = journalDir.startsWith("/") || /^[A-Z]:\\/i.test(journalDir)
+    ? journalDir
+    : `${rootPath}/${journalDir}`;
   const isJournal = filePath.startsWith(journalAbsPath);
-  return { isJournal, rootPath, journalDir };
+  return { isJournal, rootPath, journalDir, filePath };
 }
 
 /** Read a File as Uint8Array */
@@ -168,7 +171,7 @@ function createDropHandlerPlugin(): Plugin {
         for (const file of files) {
           if (ctx.isJournal) {
             readFileAsBytes(file).then((bytes) => {
-              savePhotoToAssets(bytes, file.name, ctx.rootPath, ctx.journalDir).then((relativePath) => {
+              savePhotoToAssets(bytes, file.name, ctx.rootPath, ctx.journalDir, ctx.filePath).then((relativePath) => {
                 insertImageAtPos(view, relativePath, file.name, insertPos);
               });
             });
@@ -216,7 +219,7 @@ function createDropHandlerPlugin(): Plugin {
         for (const file of files) {
           if (ctx.isJournal) {
             readFileAsBytes(file).then((bytes) => {
-              savePhotoToAssets(bytes, file.name, ctx.rootPath, ctx.journalDir).then((relativePath) => {
+              savePhotoToAssets(bytes, file.name, ctx.rootPath, ctx.journalDir, ctx.filePath).then((relativePath) => {
                 insertImageAtPos(view, relativePath, file.name);
               });
             });
