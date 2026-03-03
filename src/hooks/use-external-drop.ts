@@ -63,6 +63,9 @@ function clearAllHighlights() {
 
 export function useExternalDrop({ editor }: UseExternalDropOptions) {
   useEffect(() => {
+    // Guard flag: set to false on cleanup so stale async Tauri listeners
+    // (registered before editor was ready) become no-ops.
+    let isCurrent = true;
     let unlisten: (() => void) | null = null;
 
     // Browser dragover listener — shows drop indicator using continuous
@@ -98,6 +101,9 @@ export function useExternalDrop({ editor }: UseExternalDropOptions) {
 
     getCurrentWebview()
       .onDragDropEvent((event) => {
+        // Skip events from stale listeners (editor was null when registered)
+        if (!isCurrent) return;
+
         const { type } = event.payload;
 
         if (type === "enter") {
@@ -156,10 +162,16 @@ export function useExternalDrop({ editor }: UseExternalDropOptions) {
         }
       })
       .then((fn) => {
-        unlisten = fn;
+        if (isCurrent) {
+          unlisten = fn;
+        } else {
+          // Effect already cleaned up — remove stale listener immediately
+          fn();
+        }
       });
 
     return () => {
+      isCurrent = false;
       document.removeEventListener("dragover", handleBrowserDragOver);
       document.removeEventListener("drop", handleBrowserDrop);
       unlisten?.();

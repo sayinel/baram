@@ -603,8 +603,20 @@ function App() {
       plugins: editor.state.plugins,
     });
     editor.view.updateState(newState);
-    // Restore focus (e.g. after Quick Capture dialog closes)
-    setTimeout(() => editor.view.focus(), 0);
+    // Focus and scroll to new cursor position after dialog closes.
+    // Use DOM scrollIntoView (not ProseMirror tr.scrollIntoView) because
+    // updateState bypasses the normal transaction pipeline.
+    setTimeout(() => {
+      try {
+        editor.view.focus();
+        const { from } = editor.view.state.selection;
+        const domInfo = editor.view.domAtPos(from);
+        const el = domInfo.node instanceof HTMLElement
+          ? domInfo.node
+          : domInfo.node.parentElement;
+        el?.scrollIntoView({ block: "center" });
+      } catch { /* ignore */ }
+    }, 50);
   }, [contentReloadVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Window title update ---
