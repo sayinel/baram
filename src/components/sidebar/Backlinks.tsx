@@ -1,6 +1,6 @@
 // §29 백링크 패널 — 현재 파일을 참조하는 다른 파일 목록
 // §34 언링크드 멘션 — [[]] 없이 파일명이 언급된 곳 표시
-import { useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { useLinkStore } from "../../stores/link-store";
@@ -186,6 +186,9 @@ export function Backlinks() {
     [filePath, rootPath],
   );
 
+  const [wrapBacklinks, setWrapBacklinks] = useState(false);
+  const [wrapUnlinked, setWrapUnlinked] = useState(false);
+
   if (!filePath) {
     return <div className="backlinks-empty">No file open</div>;
   }
@@ -206,6 +209,13 @@ export function Backlinks() {
       {/* §29 Linked backlinks */}
       <div className="backlinks-header">
         Backlinks ({backlinks.length})
+        <button
+          className="backlinks-wrap-toggle"
+          onClick={() => setWrapBacklinks((v) => !v)}
+          title={wrapBacklinks ? "Single line" : "Wrap text"}
+        >
+          {wrapBacklinks ? "⏤" : "≡"}
+        </button>
       </div>
       {groups.length === 0 ? (
         <div className="backlinks-empty-inline">
@@ -228,7 +238,7 @@ export function Backlinks() {
                 onClick={() => handleClick(group.sourcePath, entry.line, entry.blockId)}
               >
                 <span className="backlinks-line">L{entry.line}</span>
-                <span className="backlinks-text">{entry.context}</span>
+                <span className={`backlinks-text${wrapBacklinks ? " wrap" : ""}`}>{entry.context}</span>
                 {entry.blockId && (
                   <span
                     style={{
@@ -252,6 +262,13 @@ export function Backlinks() {
       {/* §34 Unlinked mentions */}
       <div className="backlinks-header backlinks-header-unlinked">
         Unlinked Mentions ({unlinkedMentions.length})
+        <button
+          className="backlinks-wrap-toggle"
+          onClick={() => setWrapUnlinked((v) => !v)}
+          title={wrapUnlinked ? "Single line" : "Wrap text"}
+        >
+          {wrapUnlinked ? "⏤" : "≡"}
+        </button>
       </div>
       {unlinkedGroups.length === 0 ? (
         <div className="backlinks-empty-inline">
@@ -269,7 +286,7 @@ export function Backlinks() {
             {group.entries.map((entry, i) => (
               <div key={i} className="backlinks-context">
                 <span
-                  className="backlinks-text"
+                  className={`backlinks-text${wrapUnlinked ? " wrap" : ""}`}
                   onClick={() => handleClick(group.sourcePath, entry.line)}
                 >
                   {entry.context}
