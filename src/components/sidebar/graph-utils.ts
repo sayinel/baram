@@ -11,6 +11,8 @@ export interface GraphNode {
     degree: number;
     /** True if the file does not exist (wikilink target only) */
     isGhost?: boolean;
+    /** True if this is a tag virtual node */
+    isTag?: boolean;
   };
 }
 
@@ -94,13 +96,27 @@ export function toGraphElements(graph: LinkGraph): GraphElements {
     degreeMap.set(edge.to, (degreeMap.get(edge.to) ?? 0) + 1);
   }
 
-  const nodes: GraphNode[] = graph.nodes.map((filePath) => ({
-    data: {
-      id: filePath,
-      label: displayName(filePath),
-      degree: degreeMap.get(filePath) ?? 0,
-    },
-  }));
+  const TAG_PREFIX = "tag:";
+  const nodes: GraphNode[] = graph.nodes.map((nodeId) => {
+    if (nodeId.startsWith(TAG_PREFIX)) {
+      const tagName = nodeId.slice(TAG_PREFIX.length);
+      return {
+        data: {
+          id: nodeId,
+          label: `#${tagName}`,
+          degree: degreeMap.get(nodeId) ?? 0,
+          isTag: true,
+        },
+      };
+    }
+    return {
+      data: {
+        id: nodeId,
+        label: displayName(nodeId),
+        degree: degreeMap.get(nodeId) ?? 0,
+      },
+    };
+  });
 
   // Add ghost nodes
   for (const ghostId of ghostIds) {

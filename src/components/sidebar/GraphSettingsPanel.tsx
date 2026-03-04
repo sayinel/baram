@@ -112,6 +112,11 @@ export function GraphSettingsPanel() {
           checked={s.existingFilesOnly}
           onChange={s.setExistingFilesOnly}
         />
+        <ToggleRow
+          label="Tags"
+          checked={s.showTags}
+          onChange={s.setShowTags}
+        />
       </SettingsSection>
 
       <SettingsSection title="Display">

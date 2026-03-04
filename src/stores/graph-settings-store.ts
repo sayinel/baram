@@ -6,6 +6,7 @@ export interface GraphSettingsState {
   searchQuery: string;
   showOrphans: boolean;
   existingFilesOnly: boolean;
+  showTags: boolean;
 
   // Display
   nodeSize: number;
@@ -23,6 +24,7 @@ export interface GraphSettingsState {
   setSearchQuery: (v: string) => void;
   setShowOrphans: (v: boolean) => void;
   setExistingFilesOnly: (v: boolean) => void;
+  setShowTags: (v: boolean) => void;
   setNodeSize: (v: number) => void;
   setLinkThickness: (v: number) => void;
   setTextFadeThreshold: (v: number) => void;
@@ -38,6 +40,7 @@ export const useGraphSettingsStore = create<GraphSettingsState>((set) => ({
   searchQuery: "",
   showOrphans: true,
   existingFilesOnly: false,
+  showTags: true,
 
   // Display
   nodeSize: 20,
@@ -55,6 +58,7 @@ export const useGraphSettingsStore = create<GraphSettingsState>((set) => ({
   setSearchQuery: (v) => set({ searchQuery: v }),
   setShowOrphans: (v) => set({ showOrphans: v }),
   setExistingFilesOnly: (v) => set({ existingFilesOnly: v }),
+  setShowTags: (v) => set({ showTags: v }),
   setNodeSize: (v) => set({ nodeSize: v }),
   setLinkThickness: (v) => set({ linkThickness: v }),
   setTextFadeThreshold: (v) => set({ textFadeThreshold: v }),

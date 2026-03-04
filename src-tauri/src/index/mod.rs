@@ -82,6 +82,8 @@ pub struct LinkIndex {
     /// Normalized relative path (lowercase, no extension) → absolute file path
     /// Used to resolve [[path/name]] style wikilinks (e.g., [[notes/architecture]])
     relative_map: HashMap<String, String>,
+    /// file_path → list of tags found in that file (for graph tag nodes)
+    file_tags: HashMap<String, Vec<String>>,
 }
 
 // Wikilink regex: [[target]], [[target|display]], [[target#heading]], etc.
@@ -99,6 +101,26 @@ static BLOCK_EMBED_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\{\{embed \(\(([^)#|]*?)#\^([a-zA-Z0-9][\w-]*)\)\)\}\}").unwrap()
 });
 
+// Inline #tag regex: #tag, #parent/child, #한국어태그
+static TAG_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?:^|[\s\(])#([\w\p{Script=Hangul}]+(?:/[\w\p{Script=Hangul}]+)*)").unwrap()
+});
+
+// Frontmatter tags: tags: [tag1, tag2]
+static FM_TAGS_INLINE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^tags\s*:\s*\[([^\]]*)\]").unwrap()
+});
+
+// Frontmatter tags block header: tags:
+static FM_TAGS_BLOCK_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)^tags\s*:\s*$").unwrap()
+});
+
+// Frontmatter tags block item:   - tag
+static FM_TAGS_ITEM_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^\s+-\s+(.+)$").unwrap()
+});
+
 impl LinkIndex {
     pub fn new() -> Self {
         Self::default()
@@ -112,6 +134,7 @@ impl LinkIndex {
         self.incoming.clear();
         self.file_map.clear();
         self.relative_map.clear();
+        self.file_tags.clear();
 
         let mut files_indexed: u32 = 0;
         let mut links_found: u32 = 0;
@@ -143,6 +166,13 @@ impl LinkIndex {
             }
 
             self.outgoing.insert(file_path.clone(), entries);
+
+            // Extract tags for graph tag nodes
+            let tags = extract_file_tags(&content);
+            if !tags.is_empty() {
+                self.file_tags.insert(file_path.clone(), tags);
+            }
+
             files_indexed += 1;
         }
 
@@ -173,6 +203,7 @@ impl LinkIndex {
             }
         }
         self.relative_map.retain(|_, v| v != file_path);
+        self.file_tags.remove(file_path);
     }
 
     /// Get backlinks for a given file path
@@ -268,6 +299,21 @@ impl LinkIndex {
             }
         }
 
+        // Add tag virtual nodes and file→tag edges
+        for (file_path, tags) in &self.file_tags {
+            if !nodes_set.contains(file_path) {
+                continue; // skip files not in graph
+            }
+            for tag in tags {
+                let tag_node_id = format!("tag:{}", tag);
+                nodes_set.insert(tag_node_id.clone());
+                edges.push(LinkEdge {
+                    from: file_path.clone(),
+                    to: tag_node_id,
+                });
+            }
+        }
+
         LinkGraph {
             nodes: nodes_set.into_iter().collect(),
             edges,
@@ -309,6 +355,12 @@ impl LinkIndex {
                 .push(entry.clone());
         }
         self.outgoing.insert(file_path.to_string(), entries);
+
+        // Extract tags for graph tag nodes
+        let tags = extract_file_tags(content);
+        if !tags.is_empty() {
+            self.file_tags.insert(file_path.to_string(), tags);
+        }
     }
 }
 
@@ -332,6 +384,92 @@ fn file_stem_from_path(path: &str) -> String {
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_default()
+}
+
+/// Strip fenced code blocks from content (for tag extraction)
+fn strip_code_blocks_for_tags(content: &str) -> String {
+    let mut result = String::with_capacity(content.len());
+    let mut in_fence = false;
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            in_fence = !in_fence;
+            result.push('\n');
+            continue;
+        }
+        if in_fence {
+            result.push('\n');
+        } else {
+            result.push_str(line);
+            result.push('\n');
+        }
+    }
+    result
+}
+
+/// Extract all tags (#tag, frontmatter tags) from file content, deduplicated.
+fn extract_file_tags(content: &str) -> Vec<String> {
+    let mut tags = std::collections::HashSet::new();
+
+    // Split frontmatter
+    let (frontmatter, body) = {
+        let mut lines = content.splitn(2, '\n');
+        let first = lines.next().unwrap_or("").trim();
+        if first == "---" {
+            let rest = lines.next().unwrap_or("");
+            if let Some(end) = rest.find("\n---") {
+                (rest[..end].to_string(), rest[end + 4..].to_string())
+            } else {
+                (String::new(), content.to_string())
+            }
+        } else {
+            (String::new(), content.to_string())
+        }
+    };
+
+    // Extract frontmatter tags
+    if !frontmatter.is_empty() {
+        let fm_lines: Vec<&str> = frontmatter.lines().collect();
+        let mut i = 0;
+        while i < fm_lines.len() {
+            let line = fm_lines[i];
+            if let Some(cap) = FM_TAGS_INLINE_RE.captures(line) {
+                let inner = cap.get(1).map(|m| m.as_str()).unwrap_or("");
+                for part in inner.split(',') {
+                    let t = part.trim().trim_matches('"').trim_matches('\'').to_string();
+                    if !t.is_empty() {
+                        tags.insert(t);
+                    }
+                }
+            } else if FM_TAGS_BLOCK_RE.is_match(line) {
+                i += 1;
+                while i < fm_lines.len() {
+                    if let Some(cap) = FM_TAGS_ITEM_RE.captures(fm_lines[i]) {
+                        let t = cap.get(1).map(|m| m.as_str()).unwrap_or("").trim()
+                            .trim_matches('"').trim_matches('\'').to_string();
+                        if !t.is_empty() {
+                            tags.insert(t);
+                        }
+                        i += 1;
+                    } else {
+                        break;
+                    }
+                }
+                continue;
+            }
+            i += 1;
+        }
+    }
+
+    // Extract inline #tags (outside code blocks)
+    let clean_body = strip_code_blocks_for_tags(&body);
+    for cap in TAG_RE.captures_iter(&clean_body) {
+        if let Some(m) = cap.get(1) {
+            tags.insert(m.as_str().to_string());
+        }
+    }
+
+    tags.into_iter().collect()
 }
 
 /// Extract all links (wikilinks, block refs, block embeds) from file content

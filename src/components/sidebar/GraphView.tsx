@@ -98,6 +98,16 @@ function buildGraphStyle(settings: {
       },
     },
     {
+      selector: "node[?isTag]",
+      style: {
+        shape: "diamond",
+        "background-color": "var(--graph-tag-color, #f59e0b)",
+        "font-size": 9,
+        "text-valign": "bottom",
+        "text-margin-y": 6,
+      } as cytoscape.Css.Node,
+    },
+    {
       selector: "edge",
       style: {
         width: settings.linkThickness,
@@ -205,6 +215,7 @@ export function GraphView() {
   const searchQuery = useGraphSettingsStore((s) => s.searchQuery);
   const showOrphans = useGraphSettingsStore((s) => s.showOrphans);
   const existingFilesOnly = useGraphSettingsStore((s) => s.existingFilesOnly);
+  const showTags = useGraphSettingsStore((s) => s.showTags);
 
   const handleOpenInTab = useCallback(() => {
     useEditorStore.getState().openGraphTab();
@@ -238,8 +249,8 @@ export function GraphView() {
       const filePath = evt.target.id();
       if (!filePath) return;
 
-      // Don't open ghost nodes
-      if (evt.target.data("isGhost")) return;
+      // Don't open ghost or tag nodes
+      if (evt.target.data("isGhost") || evt.target.data("isTag")) return;
 
       const { tabs, setActiveTab, openTab } = useEditorStore.getState();
 
@@ -525,6 +536,12 @@ export function GraphView() {
         visible = false;
       }
 
+      // Tag nodes filter
+      const isTag = node.data("isTag") as boolean | undefined;
+      if (visible && !showTags && isTag) {
+        visible = false;
+      }
+
       node.style("display", visible ? "element" : "none");
     });
 
@@ -538,7 +555,7 @@ export function GraphView() {
         edge.style("display", "element");
       }
     });
-  }, [rootPath, searchQuery, showOrphans, existingFilesOnly, nodeCount]);
+  }, [rootPath, searchQuery, showOrphans, existingFilesOnly, showTags, nodeCount]);
 
   // Effect: Update styles when display settings change
   useEffect(() => {
