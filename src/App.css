@@ -107,18 +107,6 @@ body {
   color: var(--color-editor-text);
 }
 
-/* §perf-large-file C1: Skip layout/paint for off-screen blocks */
-.tiptap > * {
-  content-visibility: auto;
-  contain-intrinsic-block-size: auto 3em;
-}
-
-@media print {
-  .tiptap > * {
-    content-visibility: visible;
-  }
-}
-
 /* §perf-large-file B2: Loading skeleton + progress bar */
 .editor-loading-skeleton {
   padding: 2rem 3rem;
