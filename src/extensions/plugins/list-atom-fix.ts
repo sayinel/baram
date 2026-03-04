@@ -14,6 +14,39 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
 const pluginKey = new PluginKey("listAtomFix");
 
+function buildListAtomDecos(doc: Parameters<typeof DecorationSet.create>[0]): DecorationSet {
+  const decorations: Decoration[] = [];
+
+  doc.descendants((node, pos, parent, index) => {
+    if (
+      node.isTextblock &&
+      index === 0 &&
+      parent &&
+      (parent.type.name === "listItem" ||
+        parent.type.name === "taskItem") &&
+      node.childCount > 0 &&
+      !node.child(0).isText
+    ) {
+      const paraContentStart = pos + 1;
+      decorations.push(
+        Decoration.widget(
+          paraContentStart,
+          () => {
+            const span = document.createElement("span");
+            span.textContent = "\u200B";
+            span.className = "list-atom-fix";
+            return span;
+          },
+          { side: -1, key: `laf-${pos}` },
+        ),
+      );
+    }
+    return true;
+  });
+
+  return DecorationSet.create(doc, decorations);
+}
+
 export const ListAtomFix = Extension.create({
   name: "listAtomFix",
 
@@ -21,42 +54,18 @@ export const ListAtomFix = Extension.create({
     return [
       new Plugin({
         key: pluginKey,
+        state: {
+          init(_, { doc }) {
+            return buildListAtomDecos(doc);
+          },
+          apply(tr, old) {
+            if (!tr.docChanged) return old.map(tr.mapping, tr.doc);
+            return buildListAtomDecos(tr.doc);
+          },
+        },
         props: {
           decorations(state) {
-            const { doc } = state;
-            const decorations: Decoration[] = [];
-
-            doc.descendants((node, pos, parent, index) => {
-              // Find paragraphs that are the first child of a list/task item
-              // and whose first content node is NOT text (i.e. an atom).
-              if (
-                node.isTextblock &&
-                index === 0 &&
-                parent &&
-                (parent.type.name === "listItem" ||
-                  parent.type.name === "taskItem") &&
-                node.childCount > 0 &&
-                !node.child(0).isText
-              ) {
-                // Insert zero-width space widget right after the <p> opening
-                const paraContentStart = pos + 1;
-                decorations.push(
-                  Decoration.widget(
-                    paraContentStart,
-                    () => {
-                      const span = document.createElement("span");
-                      span.textContent = "\u200B";
-                      span.className = "list-atom-fix";
-                      return span;
-                    },
-                    { side: -1, key: `laf-${pos}` },
-                  ),
-                );
-              }
-              return true;
-            });
-
-            return DecorationSet.create(doc, decorations);
+            return pluginKey.getState(state) as DecorationSet;
           },
         },
       }),

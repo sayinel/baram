@@ -107,6 +107,40 @@ body {
   color: var(--color-editor-text);
 }
 
+/* §perf-large-file C1: Skip layout/paint for off-screen blocks */
+.tiptap > * {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 3em;
+}
+
+@media print {
+  .tiptap > * {
+    content-visibility: visible;
+  }
+}
+
+/* §perf-large-file B2: Loading skeleton + progress bar */
+.editor-loading-skeleton {
+  padding: 2rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.skeleton-line {
+  height: 1.1em;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--color-bg-secondary) 25%, var(--color-bg-tertiary) 50%, var(--color-bg-secondary) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+
 /* §4.9 Empty document placeholder */
 .tiptap p.is-editor-empty:first-child::before {
   content: "/ 를 입력하여 블록을 추가하거나, 바로 타이핑을 시작하세요.";

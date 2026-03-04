@@ -16,7 +16,8 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { createBaramExtensions } from "./extensions";
 import { prosemirrorToMarkdown } from "./pipeline/pm-to-md";
-import { markdownToProsemirror } from "./pipeline/md-to-pm";
+import { markdownToProsemirror, mdastBlocksToPmNodes } from "./pipeline/md-to-pm";
+import { parseMdastAsync } from "./pipeline/parse-async";
 import type { SourceCodeEditorRef } from "./components/editor/SourceCodeEditor";
 import type { EditorTab } from "./stores/editor-store";
 import { isFileTab, isGraphTab } from "./stores/editor-store";
@@ -200,6 +201,9 @@ function App() {
   // §5.6 Find/Replace state
   const [findReplaceOpen, setFindReplaceOpen] = useState(false);
   const [findReplaceMode, setFindReplaceMode] = useState<"find" | "replace">("find");
+  // §perf-large-file B2/C2: Loading state for async parse + progressive loading
+  const [isParsing, setIsParsing] = useState(false);
+  const progressiveLoadRef = useRef<{ cancelled: boolean }>({ cancelled: false });
 
   // §39 Tab switcher state
   const [tabSwitcherOpen, setTabSwitcherOpen] = useState(false);
@@ -438,6 +442,63 @@ function App() {
         return;
       }
 
+      // §perf-large-file B1: Post-load handler (scroll + search highlight)
+      const afterDocLoad = () => {
+        // §29 Check if navigating from backlinks — compute scroll position
+        const pendingLine = useLinkStore.getState().pendingScrollLine;
+        const pendingBlockId = useLinkStore.getState().pendingScrollBlockId;
+        let scrollPos: number | null = null;
+        const doc = editor.view.state.doc;
+        if (pendingBlockId) {
+          useLinkStore.getState().setPendingScrollBlockId(null);
+          const blockPos = findBlockPosById(doc, pendingBlockId);
+          if (blockPos !== null) {
+            scrollPos = Math.min(Math.max(blockPos, 0), doc.content.size);
+          }
+        } else if (pendingLine) {
+          useLinkStore.getState().setPendingScrollLine(null);
+          const pmPos = mdLineToPmBlockStart(doc, content, pendingLine);
+          scrollPos = Math.min(Math.max(pmPos, 0), doc.content.size);
+        }
+
+        // Dispatch a proper transaction for selection + scroll, then
+        // use DOM scrollIntoView as fallback for the scroll container
+        if (scrollPos !== null) {
+          requestAnimationFrame(() => {
+            try {
+              const resolvedPos = editor.view.state.doc.resolve(scrollPos);
+              const tr = editor.view.state.tr
+                .setSelection(TextSelection.near(resolvedPos))
+                .scrollIntoView();
+              editor.view.dispatch(tr);
+              editor.view.focus();
+
+              // DOM-level scroll fallback — ensures .editor-area scrolls
+              const domInfo = editor.view.domAtPos(scrollPos);
+              const el =
+                domInfo.node instanceof HTMLElement
+                  ? domInfo.node
+                  : domInfo.node.parentElement;
+              el?.scrollIntoView({ block: "center" });
+            } catch {
+              // ignore invalid position
+            }
+          });
+        }
+
+        // §5.11 Handle pending search highlight after document load
+        const pendingHighlight = useUIStore.getState().pendingSearchHighlight;
+        if (pendingHighlight) {
+          useUIStore.getState().setPendingSearchHighlight(null);
+          setTimeout(() => {
+            if (!editor?.view) return;
+            dispatchSetSearchTerm(editor.view, pendingHighlight);
+            setFindReplaceOpen(true);
+            setFindReplaceMode("find");
+          }, 50);
+        }
+      };
+
       // Try cached EditorState first (preserves undo/redo history)
       const cachedState = editorStateCache.current.get(activeTabId!);
       const cachedScrollTop = scrollTopCache.current.get(activeTabId!);
@@ -454,71 +515,30 @@ function App() {
         } else {
           editor.commands.scrollIntoView();
         }
+        afterDocLoad();
       } else {
-        // No cache — create fresh state from markdown (first open)
-        const newDoc = markdownToProsemirror(content, editor.schema);
-        const newState = EditorState.create({
-          doc: newDoc,
-          plugins: editor.state.plugins,
-          selection: TextSelection.atStart(newDoc),
+        // §perf-large-file B1: Parse in Worker, load full doc at once
+        // Rendering perf is handled by content-visibility: auto (C1)
+        progressiveLoadRef.current.cancelled = true;
+        const loadToken = { cancelled: false };
+        progressiveLoadRef.current = loadToken;
+        setIsParsing(true);
+
+        parseMdastAsync(content).then((mdast) => {
+          if (loadToken.cancelled) return;
+          if (useEditorStore.getState().activeTabId !== activeTabId) return;
+
+          const allNodes = mdastBlocksToPmNodes(mdast, editor.schema);
+          const doc = editor.schema.nodes.doc.create(null, allNodes);
+          const newState = EditorState.create({
+            doc,
+            plugins: editor.state.plugins,
+            selection: TextSelection.atStart(doc),
+          });
+          editor.view.updateState(newState);
+          setIsParsing(false);
+          afterDocLoad();
         });
-        editor.view.updateState(newState);
-      }
-
-      // §29 Check if navigating from backlinks — compute scroll position
-      const pendingLine = useLinkStore.getState().pendingScrollLine;
-      const pendingBlockId = useLinkStore.getState().pendingScrollBlockId;
-      let scrollPos: number | null = null;
-      const doc = editor.view.state.doc;
-      if (pendingBlockId) {
-        useLinkStore.getState().setPendingScrollBlockId(null);
-        const blockPos = findBlockPosById(doc, pendingBlockId);
-        if (blockPos !== null) {
-          scrollPos = Math.min(Math.max(blockPos, 0), doc.content.size);
-        }
-      } else if (pendingLine) {
-        useLinkStore.getState().setPendingScrollLine(null);
-        const pmPos = mdLineToPmBlockStart(doc, content, pendingLine);
-        scrollPos = Math.min(Math.max(pmPos, 0), doc.content.size);
-      }
-
-      // Dispatch a proper transaction for selection + scroll, then
-      // use DOM scrollIntoView as fallback for the scroll container
-      if (scrollPos !== null) {
-        requestAnimationFrame(() => {
-          try {
-            const resolvedPos = editor.view.state.doc.resolve(scrollPos);
-            const tr = editor.view.state.tr
-              .setSelection(TextSelection.near(resolvedPos))
-              .scrollIntoView();
-            editor.view.dispatch(tr);
-            editor.view.focus();
-
-            // DOM-level scroll fallback — ensures .editor-area scrolls
-            const domInfo = editor.view.domAtPos(scrollPos);
-            const el =
-              domInfo.node instanceof HTMLElement
-                ? domInfo.node
-                : domInfo.node.parentElement;
-            el?.scrollIntoView({ block: "center" });
-          } catch {
-            // ignore invalid position
-          }
-        });
-      }
-
-      // §5.11 Handle pending search highlight after document load
-      // (must run here, not in pendingSearchHighlight effect, to avoid
-      //  race condition with async tab open via readFile)
-      const pendingHighlight = useUIStore.getState().pendingSearchHighlight;
-      if (pendingHighlight) {
-        useUIStore.getState().setPendingSearchHighlight(null);
-        setTimeout(() => {
-          if (!editor?.view) return;
-          dispatchSetSearchTerm(editor.view, pendingHighlight);
-          setFindReplaceOpen(true);
-          setFindReplaceMode("find");
-        }, 50);
       }
 
       // Clean up cache for closed tabs
@@ -2073,6 +2093,17 @@ function App() {
               <MoodBar editor={editor} />
               <FollowUpCard editor={editor} />
               <div className="editor-area-scroll">
+                {/* §perf-large-file B2: Loading skeleton while Worker parses */}
+                {isParsing && (
+                  <div className="editor-loading-skeleton">
+                    <div className="skeleton-line w-3/4" />
+                    <div className="skeleton-line w-full" />
+                    <div className="skeleton-line w-5/6" />
+                    <div className="skeleton-line w-2/3" />
+                    <div className="skeleton-line w-full" />
+                    <div className="skeleton-line w-1/2" />
+                  </div>
+                )}
                 <EditorContent editor={editor} />
                 {editor && (
                   <>

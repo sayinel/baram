@@ -2,12 +2,9 @@
 //
 // remark-parse → mdast → custom converter → ProseMirror Document
 //
-import { unified } from "unified";
-import remarkParse from "remark-parse";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import remarkFrontmatter from "remark-frontmatter";
 import type { Root, Content, PhrasingContent, Text } from "mdast";
+import { parseMdast, enrichWithEmptyParagraphs } from "./parse-mdast";
+import { parseMdastAsync } from "./parse-async";
 import type { Node as PmNode, Schema, Mark } from "@tiptap/pm/model";
 import { nodeTransformers, markTransformers, pmNodeTransformers } from "./transformers";
 import { isStandaloneImage, parseImgHtml } from "./transformers/image-transformer";
@@ -33,17 +30,9 @@ import {
 } from "./transformers/definition-list-transformer";
 import { extractBlockId, BLOCK_REF_RE, parseBlockRefMatch, BLOCK_EMBED_RE, parseBlockEmbedMatch } from "./block-id";
 
-/** remark parser — markdown string → mdast */
-const parser = unified()
-  .use(remarkParse)
-  .use(remarkGfm, { singleTilde: false })
-  .use(remarkMath)
-  .use(remarkFrontmatter, ["yaml"]);
-
-/** Parse markdown string to mdast tree */
-export function parseMdast(markdown: string): Root {
-  return parser.parse(markdown) as Root;
-}
+// parseMdast + enrichWithEmptyParagraphs are imported from ./parse-mdast
+// (pure module with no ProseMirror deps — safe for Web Worker import)
+export { parseMdast };
 
 /** Convert mdast tree to ProseMirror document */
 export function mdastToProsemirror(root: Root, schema: Schema): PmNode {
@@ -65,46 +54,22 @@ export function markdownToProsemirror(
   return mdastToProsemirror(enriched, schema);
 }
 
-/**
- * Detect extra blank lines between top-level blocks in the original markdown
- * and insert empty paragraph nodes into the mdast tree to preserve them.
- *
- * Markdown collapses multiple blank lines into one separator, but WYSIWYG
- * editors need to preserve empty paragraphs for the user's formatting.
- *
- * Formula: between two blocks, if the gap has N newlines,
- * empty paragraphs = floor((N - 2) / 2).
- * (2 newlines = standard separator, each additional pair = 1 empty paragraph)
- */
-function enrichWithEmptyParagraphs(root: Root, markdown: string): Root {
-  const children = root.children;
-  if (children.length === 0) return root;
+/** §perf-large-file B1: Async pipeline — parse in Web Worker, convert on main thread. */
+export async function markdownToProsemirrorAsync(
+  markdown: string,
+  schema: Schema,
+): Promise<PmNode> {
+  const enriched = await parseMdastAsync(markdown);
+  return mdastToProsemirror(enriched, schema);
+}
 
-  const enriched: Content[] = [];
-
-  for (let i = 0; i < children.length; i++) {
-    enriched.push(children[i]);
-
-    if (i < children.length - 1) {
-      const gapStart = children[i].position?.end?.offset;
-      const gapEnd = children[i + 1].position?.start?.offset;
-
-      if (gapStart != null && gapEnd != null && gapEnd > gapStart) {
-        const gap = markdown.substring(gapStart, gapEnd);
-        const newlineCount = (gap.match(/\n/g) || []).length;
-        const emptyParas = Math.max(0, Math.floor((newlineCount - 2) / 2));
-
-        for (let j = 0; j < emptyParas; j++) {
-          enriched.push({
-            type: "paragraph",
-            children: [],
-          } as Content);
-        }
-      }
-    }
+/** §perf-large-file C2: Convert mdast blocks to PM node array (for progressive loading). */
+export function mdastBlocksToPmNodes(root: Root, schema: Schema): PmNode[] {
+  const nodes = convertBlockChildren(root.children, schema);
+  if (nodes.length === 0) {
+    nodes.push(schema.nodes.paragraph.create());
   }
-
-  return { ...root, children: enriched };
+  return nodes;
 }
 
 /** Convert block-level mdast children to PM nodes */

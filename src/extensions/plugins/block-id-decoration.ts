@@ -15,15 +15,76 @@ import { useLinkStore } from "../../stores/link-store";
 
 // ── Plugin state ──────────────────────────────────────────────────────
 
+interface BlockIdEntry {
+  pos: number;
+  blockId: string;
+  endPos: number;
+}
+
 interface BlockIdDecoState {
   focusedBlockPos: number | null;
   editingBlockPos: number | null;
+  decorations: DecorationSet;
+  entries: BlockIdEntry[];
 }
 
-const INACTIVE: BlockIdDecoState = {
-  focusedBlockPos: null,
-  editingBlockPos: null,
-};
+/** Walk the doc once and collect all blocks that have a blockId attr. */
+function collectBlockIdEntries(doc: PmNode): BlockIdEntry[] {
+  const entries: BlockIdEntry[] = [];
+  doc.descendants((node: PmNode, pos: number) => {
+    if (
+      node.type.name !== "paragraph" &&
+      node.type.name !== "heading"
+    ) {
+      return true;
+    }
+    const blockId = node.attrs.blockId as string | null;
+    if (blockId) {
+      entries.push({ pos, blockId, endPos: pos + node.nodeSize - 1 });
+    }
+    return false; // Don't descend into paragraphs/headings
+  });
+  return entries;
+}
+
+/** Build DecorationSet from cached entries without walking the doc. */
+function buildDecosFromEntries(
+  doc: PmNode,
+  entries: BlockIdEntry[],
+  focusedBlockPos: number | null,
+  editingBlockPos: number | null,
+): DecorationSet {
+  if (entries.length === 0) return DecorationSet.empty;
+  const decos: Decoration[] = [];
+  for (const { pos, blockId, endPos } of entries) {
+    if (editingBlockPos === pos) {
+      decos.push(
+        Decoration.widget(
+          endPos,
+          (view: EditorView) => createEditWidget(blockId, view, pos),
+          { side: 1, key: `block-id-edit-${pos}` },
+        ),
+      );
+    } else if (focusedBlockPos === pos) {
+      decos.push(
+        Decoration.widget(
+          endPos,
+          () => createFocusedWidget(blockId),
+          { side: 1, key: `block-id-focus-${pos}` },
+        ),
+      );
+    } else {
+      decos.push(
+        Decoration.widget(
+          endPos,
+          () => createHintWidget(blockId),
+          { side: 1, key: `block-id-hint-${pos}` },
+        ),
+      );
+    }
+  }
+  return DecorationSet.create(doc, decos);
+}
 
 export const blockIdDecoKey = new PluginKey<BlockIdDecoState>(
   "blockIdDecoration",
@@ -277,8 +338,14 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
     key: blockIdDecoKey,
 
     state: {
-      init(): BlockIdDecoState {
-        return INACTIVE;
+      init(_, state: EditorState): BlockIdDecoState {
+        const entries = collectBlockIdEntries(state.doc);
+        return {
+          focusedBlockPos: null,
+          editingBlockPos: null,
+          decorations: buildDecosFromEntries(state.doc, entries, null, null),
+          entries,
+        };
       },
 
       apply(
@@ -287,17 +354,27 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
         _oldState: EditorState,
         newState: EditorState,
       ): BlockIdDecoState {
-        // Explicit meta overrides
+        // Explicit meta overrides (from commitBlockIdEdit, editBlockId, etc.)
         const meta = tr.getMeta(blockIdDecoKey) as
-          | BlockIdDecoState
+          | { focusedBlockPos: number | null; editingBlockPos: number | null }
           | undefined;
-        if (meta !== undefined) return meta;
+        if (meta !== undefined) {
+          const entries = tr.docChanged
+            ? collectBlockIdEntries(newState.doc)
+            : value.entries;
+          return {
+            ...meta,
+            entries,
+            decorations: buildDecosFromEntries(
+              newState.doc, entries, meta.focusedBlockPos, meta.editingBlockPos,
+            ),
+          };
+        }
 
         // Map editingBlockPos through transaction
         let editingBlockPos = value.editingBlockPos;
         if (editingBlockPos !== null) {
           editingBlockPos = tr.mapping.map(editingBlockPos);
-          // Verify node still exists and has blockId
           const node = newState.doc.nodeAt(editingBlockPos);
           if (
             !node ||
@@ -311,7 +388,6 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
         let focusedBlockPos: number | null = null;
         const { selection } = newState;
         const $from = selection.$from;
-        // Walk up to find paragraph/heading ancestor
         for (let d = $from.depth; d >= 1; d--) {
           const ancestor = $from.node(d);
           if (
@@ -324,7 +400,6 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
           }
         }
 
-        // If editing a different block than focused, cancel editing
         if (
           editingBlockPos !== null &&
           editingBlockPos !== focusedBlockPos
@@ -332,63 +407,35 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
           editingBlockPos = null;
         }
 
-        return { focusedBlockPos, editingBlockPos };
+        // Fast path: nothing changed → reuse cached state entirely
+        if (
+          !tr.docChanged &&
+          focusedBlockPos === value.focusedBlockPos &&
+          editingBlockPos === value.editingBlockPos
+        ) {
+          return value;
+        }
+
+        // Doc changed → rebuild entries from scratch; otherwise reuse
+        const entries = tr.docChanged
+          ? collectBlockIdEntries(newState.doc)
+          : value.entries;
+
+        return {
+          focusedBlockPos,
+          editingBlockPos,
+          entries,
+          decorations: buildDecosFromEntries(
+            newState.doc, entries, focusedBlockPos, editingBlockPos,
+          ),
+        };
       },
     },
 
     props: {
       decorations(state: EditorState): DecorationSet {
         const pluginState = blockIdDecoKey.getState(state);
-        if (!pluginState) return DecorationSet.empty;
-
-        const { focusedBlockPos, editingBlockPos } = pluginState;
-        const decos: Decoration[] = [];
-
-        state.doc.descendants((node: PmNode, pos: number) => {
-          if (
-            node.type.name !== "paragraph" &&
-            node.type.name !== "heading"
-          ) {
-            return true;
-          }
-
-          const blockId = node.attrs.blockId as string | null;
-          if (!blockId) return true;
-
-          // Widget position: end of node content (before closing tag)
-          const endPos = pos + node.nodeSize - 1;
-
-          if (editingBlockPos === pos) {
-            // Editing mode
-            const widget = Decoration.widget(
-              endPos,
-              (view: EditorView) => createEditWidget(blockId, view, pos),
-              { side: 1, key: `block-id-edit-${pos}` },
-            );
-            decos.push(widget);
-          } else if (focusedBlockPos === pos) {
-            // Focused mode — show full ^blockId
-            const widget = Decoration.widget(
-              endPos,
-              () => createFocusedWidget(blockId),
-              { side: 1, key: `block-id-focus-${pos}` },
-            );
-            decos.push(widget);
-          } else {
-            // Hint mode — show ⚓
-            const widget = Decoration.widget(
-              endPos,
-              () => createHintWidget(blockId),
-              { side: 1, key: `block-id-hint-${pos}` },
-            );
-            decos.push(widget);
-          }
-
-          return false; // Don't descend into paragraphs/headings
-        });
-
-        if (decos.length === 0) return DecorationSet.empty;
-        return DecorationSet.create(state.doc, decos);
+        return pluginState?.decorations ?? DecorationSet.empty;
       },
 
       handleDoubleClickOn(
