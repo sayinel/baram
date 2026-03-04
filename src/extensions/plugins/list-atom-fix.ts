@@ -55,10 +55,14 @@ export const ListAtomFix = Extension.create({
       new Plugin({
         key: pluginKey,
         state: {
-          init(_, { doc }) {
-            return buildListAtomDecos(doc);
+          init() {
+            // §perf-large-file: Defer initial build to first transaction
+            return DecorationSet.empty;
           },
-          apply(tr, old) {
+          apply(tr, old, _oldState, newState) {
+            if (old === DecorationSet.empty && newState.doc.content.size > 0) {
+              return buildListAtomDecos(newState.doc);
+            }
             if (!tr.docChanged) return old.map(tr.mapping, tr.doc);
             return buildListAtomDecos(tr.doc);
           },

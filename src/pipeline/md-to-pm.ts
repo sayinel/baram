@@ -30,6 +30,18 @@ import {
 } from "./transformers/definition-list-transformer";
 import { extractBlockId, BLOCK_REF_RE, parseBlockRefMatch, BLOCK_EMBED_RE, parseBlockEmbedMatch } from "./block-id";
 
+// §perf-large-file: Pre-compiled regex with 'g' flag — avoid per-call RegExp allocation
+const WIKILINK_RE_G = new RegExp(WIKILINK_RE.source, "g");
+const BLOCK_REF_RE_G = new RegExp(BLOCK_REF_RE.source, "g");
+const MENTION_RE_G = new RegExp(MENTION_RE.source, "g");
+const TAG_NODE_RE_G = new RegExp(TAG_NODE_RE.source, "g");
+
+// §perf-large-file: Set for O(1) inline type check (replaces per-call array allocation)
+const INLINE_TYPES = new Set([
+  "text", "emphasis", "strong", "inlineCode", "link",
+  "image", "break", "delete", "html", "inlineMath",
+]);
+
 // parseMdast + enrichWithEmptyParagraphs are imported from ./parse-mdast
 // (pure module with no ProseMirror deps — safe for Web Worker import)
 export { parseMdast };
@@ -107,12 +119,21 @@ function convertBlockChildren(
     }
 
     // Detect definition list: paragraph(non-:) + paragraph(:) pattern
+    // §perf-large-file: Pre-check avoids calling tryConvertDefinitionList on 99% of paragraphs
     if (child.type === "paragraph" && schema.nodes.definitionList) {
-      const dlResult = tryConvertDefinitionList(children, i, schema);
-      if (dlResult) {
-        result.push(dlResult.node);
-        i = dlResult.endIndex + 1;
-        continue;
+      const paraChildren = (child as { children: PhrasingContent[] }).children;
+      const nextIsDefPara = children[i + 1]?.type === "paragraph" &&
+        isDefinitionParagraph(children[i + 1] as { children: PhrasingContent[] });
+      const hasInlineDef = paraChildren.some(
+        (c) => c.type === "text" && (c as Text).value.includes("\n:"),
+      );
+      if (nextIsDefPara || hasInlineDef) {
+        const dlResult = tryConvertDefinitionList(children, i, schema);
+        if (dlResult) {
+          result.push(dlResult.node);
+          i = dlResult.endIndex + 1;
+          continue;
+        }
       }
     }
 
@@ -656,33 +677,39 @@ function convertInlineChildren(
   const result: PmNode[] = [];
 
   // Track HTML tag-based marks: <u>, <mark>, <sub>, <sup>
+  // §perf-large-file: Only rebuild marks array when HTML mark state changes
   let underlineActive = false;
   let highlightActive = false;
   let subscriptActive = false;
   let superscriptActive = false;
+  let marks = parentMarks;
+  let htmlMarksDirty = false;
 
   for (const child of children) {
     if (child.type === "html") {
       const val = (child as { value: string }).value.trim().toLowerCase();
-      if (val === "<u>") { underlineActive = true; continue; }
-      if (val === "</u>") { underlineActive = false; continue; }
-      if (val === "<mark>") { highlightActive = true; continue; }
-      if (val === "</mark>") { highlightActive = false; continue; }
-      if (val === "<sub>") { subscriptActive = true; continue; }
-      if (val === "</sub>") { subscriptActive = false; continue; }
-      if (val === "<sup>") { superscriptActive = true; continue; }
-      if (val === "</sup>") { superscriptActive = false; continue; }
+      if (val === "<u>") { underlineActive = true; htmlMarksDirty = true; continue; }
+      if (val === "</u>") { underlineActive = false; htmlMarksDirty = true; continue; }
+      if (val === "<mark>") { highlightActive = true; htmlMarksDirty = true; continue; }
+      if (val === "</mark>") { highlightActive = false; htmlMarksDirty = true; continue; }
+      if (val === "<sub>") { subscriptActive = true; htmlMarksDirty = true; continue; }
+      if (val === "</sub>") { subscriptActive = false; htmlMarksDirty = true; continue; }
+      if (val === "<sup>") { superscriptActive = true; htmlMarksDirty = true; continue; }
+      if (val === "</sup>") { superscriptActive = false; htmlMarksDirty = true; continue; }
     }
 
-    let marks = parentMarks;
-    if (underlineActive && schema.marks.underline)
-      marks = [...marks, schema.marks.underline.create()];
-    if (highlightActive && schema.marks.highlight)
-      marks = [...marks, schema.marks.highlight.create()];
-    if (subscriptActive && schema.marks.subscript)
-      marks = [...marks, schema.marks.subscript.create()];
-    if (superscriptActive && schema.marks.superscript)
-      marks = [...marks, schema.marks.superscript.create()];
+    if (htmlMarksDirty) {
+      marks = parentMarks;
+      if (underlineActive && schema.marks.underline)
+        marks = [...marks, schema.marks.underline.create()];
+      if (highlightActive && schema.marks.highlight)
+        marks = [...marks, schema.marks.highlight.create()];
+      if (subscriptActive && schema.marks.subscript)
+        marks = [...marks, schema.marks.subscript.create()];
+      if (superscriptActive && schema.marks.superscript)
+        marks = [...marks, schema.marks.superscript.create()];
+      htmlMarksDirty = false;
+    }
     const nodes = convertInlineNode(child, schema, marks);
     result.push(...nodes);
   }
@@ -817,18 +844,7 @@ function extractBlockIdFromMdast(node: Content): string | null {
 
 /** Check if an mdast node is inline-level */
 function isInlineNode(node: Content): boolean {
-  return [
-    "text",
-    "emphasis",
-    "strong",
-    "inlineCode",
-    "link",
-    "image",
-    "break",
-    "delete",
-    "html",
-    "inlineMath",
-  ].includes(node.type);
+  return INLINE_TYPES.has(node.type);
 }
 
 /** Split a text string at [[wikilink]] boundaries into mixed text + wikilink PM nodes */
@@ -838,11 +854,11 @@ function splitTextWithWikilinks(
   parentMarks: Mark[],
 ): PmNode[] {
   const result: PmNode[] = [];
-  const re = new RegExp(WIKILINK_RE.source, "g");
+  WIKILINK_RE_G.lastIndex = 0;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
-  while ((match = re.exec(text)) !== null) {
+  while ((match = WIKILINK_RE_G.exec(text)) !== null) {
     // Text before the wikilink
     if (match.index > lastIndex) {
       const before = text.slice(lastIndex, match.index);
@@ -860,7 +876,7 @@ function splitTextWithWikilinks(
       }),
     );
 
-    lastIndex = re.lastIndex;
+    lastIndex = WIKILINK_RE_G.lastIndex;
   }
 
   // Text after the last wikilink
@@ -878,11 +894,11 @@ function splitTextWithBlockRefs(
   parentMarks: Mark[],
 ): PmNode[] {
   const result: PmNode[] = [];
-  const re = new RegExp(BLOCK_REF_RE.source, "g");
+  BLOCK_REF_RE_G.lastIndex = 0;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
-  while ((match = re.exec(text)) !== null) {
+  while ((match = BLOCK_REF_RE_G.exec(text)) !== null) {
     // Text before the block reference
     if (match.index > lastIndex) {
       const before = text.slice(lastIndex, match.index);
@@ -899,7 +915,7 @@ function splitTextWithBlockRefs(
       }),
     );
 
-    lastIndex = re.lastIndex;
+    lastIndex = BLOCK_REF_RE_G.lastIndex;
   }
 
   // Text after the last block reference
@@ -918,11 +934,11 @@ function splitTextWithMentions(
   parentMarks: Mark[],
 ): PmNode[] {
   const result: PmNode[] = [];
-  const re = new RegExp(MENTION_RE.source, "g");
+  MENTION_RE_G.lastIndex = 0;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
-  while ((match = re.exec(text)) !== null) {
+  while ((match = MENTION_RE_G.exec(text)) !== null) {
     // Text before the mention — may contain wikilinks
     if (match.index > lastIndex) {
       const before = text.slice(lastIndex, match.index);
@@ -947,7 +963,7 @@ function splitTextWithMentions(
       }),
     );
 
-    lastIndex = re.lastIndex;
+    lastIndex = MENTION_RE_G.lastIndex;
   }
 
   if (result.length === 0) return [];
@@ -977,11 +993,11 @@ function splitTextWithTags(
   parentMarks: Mark[],
 ): PmNode[] {
   const result: PmNode[] = [];
-  const re = new RegExp(TAG_NODE_RE.source, "g");
+  TAG_NODE_RE_G.lastIndex = 0;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
-  while ((match = re.exec(text)) !== null) {
+  while ((match = TAG_NODE_RE_G.exec(text)) !== null) {
     // Find where the # actually starts in the full match
     // The match may start with a leading whitespace char (from the alternation)
     const hashOffset = match[0].indexOf("#");

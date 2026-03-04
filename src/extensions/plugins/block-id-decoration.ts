@@ -338,13 +338,13 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
     key: blockIdDecoKey,
 
     state: {
-      init(_, state: EditorState): BlockIdDecoState {
-        const entries = collectBlockIdEntries(state.doc);
+      init(): BlockIdDecoState {
+        // §perf-large-file: Defer initial build to first transaction
         return {
           focusedBlockPos: null,
           editingBlockPos: null,
-          decorations: buildDecosFromEntries(state.doc, entries, null, null),
-          entries,
+          decorations: DecorationSet.empty,
+          entries: [],
         };
       },
 
@@ -354,6 +354,17 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
         _oldState: EditorState,
         newState: EditorState,
       ): BlockIdDecoState {
+        // §perf-large-file: Deferred init — build on first transaction
+        if (value.entries.length === 0 && newState.doc.content.size > 0) {
+          const entries = collectBlockIdEntries(newState.doc);
+          return {
+            focusedBlockPos: null,
+            editingBlockPos: null,
+            entries,
+            decorations: buildDecosFromEntries(newState.doc, entries, null, null),
+          };
+        }
+
         // Explicit meta overrides (from commitBlockIdEdit, editBlockId, etc.)
         const meta = tr.getMeta(blockIdDecoKey) as
           | { focusedBlockPos: number | null; editingBlockPos: number | null }
