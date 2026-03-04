@@ -4,12 +4,10 @@ import cytoscape from "cytoscape";
 import type { Core, EventObject, StylesheetStyle } from "cytoscape";
 import fcose from "cytoscape-fcose";
 import { useFileStore } from "../../stores/file-store";
-import { useSettingsStore } from "../../stores/settings-store";
-import { resolveJournalDir } from "../../utils/journal";
 import { useEditorStore, isGraphTab } from "../../stores/editor-store";
 import { useLinkStore } from "../../stores/link-store";
 import { useGraphSettingsStore } from "../../stores/graph-settings-store";
-import { getLinkIndex, readFile } from "../../ipc/invoke";
+import { getLinkIndex, refreshIndex, readFile } from "../../ipc/invoke";
 import { toGraphElements, nodeSize, matchesFilter } from "./graph-utils";
 import { GraphSettingsPanel } from "./GraphSettingsPanel";
 
@@ -174,8 +172,6 @@ export function GraphView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
   const rootPath = useFileStore((s) => s.rootPath);
-  const isJournalScoped = useFileStore((s) => s.isJournalScoped);
-  const journalDirectory = useSettingsStore((s) => s.journalDirectory);
   // Detect if rendered inside editor tab (vs sidebar)
   const isInEditorTab = useEditorStore((s) => {
     const tab = s.tabs.find((t) => t.id === s.activeTabId);
@@ -281,6 +277,9 @@ export function GraphView() {
 
     (async () => {
       try {
+        // Ensure index matches current workspace before fetching graph
+        await refreshIndex(rootPath);
+        if (cancelled) return;
         const graph = await getLinkIndex();
         if (cancelled) return;
 
@@ -304,6 +303,9 @@ export function GraphView() {
             node.addClass("orphan");
           }
         });
+
+        // Ensure container dimensions are available before layout
+        cy.resize();
 
         // Run initial fcose layout
         cy.layout(
@@ -460,24 +462,51 @@ export function GraphView() {
     });
   }, [activeFilePath, nodeCount]);
 
-  // Effect 7: Filter logic (search, orphans, existingFilesOnly, journal scoping)
-  const journalDirResolved = isJournalScoped && rootPath
-    ? resolveJournalDir(rootPath, journalDirectory) : null;
-
+  // Effect 7: Filter logic (rootPath scope, search, orphans, existingFilesOnly)
+  // Scope filter: show nodes under current rootPath + their direct neighbors (1-hop),
+  // so journal workspace shows journal files and the notes they link to.
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy || cy.nodes().length === 0) return;
 
+    // Pass 1: find nodes under current workspace rootPath
+    const scopeNodes = new Set<string>();
+    if (rootPath) {
+      cy.nodes().forEach((node) => {
+        if (node.id().startsWith(rootPath)) {
+          scopeNodes.add(node.id());
+        }
+      });
+    }
+
+    // Pass 2: include 1-hop neighbors (link targets/sources outside rootPath)
+    const neighborNodes = new Set<string>();
+    if (rootPath && scopeNodes.size > 0) {
+      cy.edges().forEach((edge) => {
+        const srcId = edge.source().id();
+        const tgtId = edge.target().id();
+        if (scopeNodes.has(srcId) && !scopeNodes.has(tgtId)) {
+          neighborNodes.add(tgtId);
+        }
+        if (scopeNodes.has(tgtId) && !scopeNodes.has(srcId)) {
+          neighborNodes.add(srcId);
+        }
+      });
+    }
+
+    // If rootPath is set, always apply scope filter (even if no nodes match)
+    const hasScope = !!rootPath;
+
     cy.nodes().forEach((node) => {
+      const id = node.id();
       const label = node.data("label") as string;
-      const nodeId = node.data("id") as string;
       const isGhost = node.data("isGhost") as boolean | undefined;
       const isOrphan = node.degree() === 0;
 
       let visible = true;
 
-      // §56b Journal scoping: hide nodes outside journal directory
-      if (journalDirResolved && nodeId && !nodeId.startsWith(journalDirResolved)) {
+      // Workspace scope filter
+      if (hasScope && !scopeNodes.has(id) && !neighborNodes.has(id)) {
         visible = false;
       }
 
@@ -496,11 +525,7 @@ export function GraphView() {
         visible = false;
       }
 
-      if (visible) {
-        node.style("display", "element");
-      } else {
-        node.style("display", "none");
-      }
+      node.style("display", visible ? "element" : "none");
     });
 
     // Hide edges whose source or target is hidden
@@ -513,7 +538,7 @@ export function GraphView() {
         edge.style("display", "element");
       }
     });
-  }, [searchQuery, showOrphans, existingFilesOnly, nodeCount, journalDirResolved]);
+  }, [rootPath, searchQuery, showOrphans, existingFilesOnly, nodeCount]);
 
   // Effect: Update styles when display settings change
   useEffect(() => {

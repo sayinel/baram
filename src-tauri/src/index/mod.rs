@@ -76,6 +76,12 @@ pub struct LinkIndex {
     incoming: HashMap<String, Vec<LinkEntry>>,
     /// Root path of the vault
     root_path: Option<String>,
+    /// Normalized file stem (lowercase, no extension) → list of absolute file paths
+    /// Used to resolve [[name]] style wikilinks to actual file locations in subdirectories
+    file_map: HashMap<String, Vec<String>>,
+    /// Normalized relative path (lowercase, no extension) → absolute file path
+    /// Used to resolve [[path/name]] style wikilinks (e.g., [[notes/architecture]])
+    relative_map: HashMap<String, String>,
 }
 
 // Wikilink regex: [[target]], [[target|display]], [[target#heading]], etc.
@@ -104,12 +110,19 @@ impl LinkIndex {
         self.root_path = Some(root_path.to_string());
         self.outgoing.clear();
         self.incoming.clear();
+        self.file_map.clear();
+        self.relative_map.clear();
 
         let mut files_indexed: u32 = 0;
         let mut links_found: u32 = 0;
 
         // Collect all .md files
         let md_files = collect_md_files(root_path).await?;
+
+        // Build file maps for wikilink target resolution
+        for file_path in &md_files {
+            self.register_file_path(file_path, root_path);
+        }
 
         for file_path in &md_files {
             let content = match tokio::fs::read_to_string(file_path).await {
@@ -150,6 +163,16 @@ impl LinkIndex {
         }
         // Clean up empty keys
         self.incoming.retain(|_, v| !v.is_empty());
+
+        // Remove from file maps
+        let stem = normalize_file_path(file_path);
+        if let Some(paths) = self.file_map.get_mut(&stem) {
+            paths.retain(|p| p != file_path);
+            if paths.is_empty() {
+                self.file_map.remove(&stem);
+            }
+        }
+        self.relative_map.retain(|_, v| v != file_path);
     }
 
     /// Get backlinks for a given file path
@@ -174,6 +197,54 @@ impl LinkIndex {
             .unwrap_or_default()
     }
 
+    /// Register a file path in file_map and relative_map for target resolution
+    fn register_file_path(&mut self, file_path: &str, root_path: &str) {
+        let stem = normalize_file_path(file_path);
+        let paths = self.file_map.entry(stem).or_default();
+        if !paths.contains(&file_path.to_string()) {
+            paths.push(file_path.to_string());
+        }
+
+        // Build relative path mapping (e.g., "notes/architecture" → "/vault/notes/architecture.md")
+        if let Some(rel) = file_path.strip_prefix(root_path) {
+            let rel = rel
+                .strip_prefix('/')
+                .or_else(|| rel.strip_prefix('\\'))
+                .unwrap_or(rel);
+            let rel_normalized = rel
+                .strip_suffix(".md")
+                .or_else(|| rel.strip_suffix(".markdown"))
+                .unwrap_or(rel)
+                .to_lowercase();
+            self.relative_map
+                .insert(rel_normalized, file_path.to_string());
+        }
+    }
+
+    /// Resolve a wikilink target to an actual file path using file maps.
+    /// Falls back to None if no matching file is found.
+    fn resolve_target_from_map(&self, target_normalized: &str) -> Option<String> {
+        // 1) Try relative path match (for [[path/name]] style targets)
+        if let Some(path) = self.relative_map.get(target_normalized) {
+            return Some(path.clone());
+        }
+
+        // 2) Extract stem (last path component) for stem-only lookup
+        let stem = target_normalized
+            .rsplit('/')
+            .next()
+            .unwrap_or(target_normalized);
+
+        // 3) Look up in file_map
+        if let Some(paths) = self.file_map.get(stem) {
+            if !paths.is_empty() {
+                return Some(paths[0].clone());
+            }
+        }
+
+        None
+    }
+
     /// Get the full link graph
     pub fn get_link_graph(&self) -> LinkGraph {
         let mut nodes_set = std::collections::HashSet::new();
@@ -183,9 +254,11 @@ impl LinkIndex {
             nodes_set.insert(source.clone());
             for entry in entries {
                 let target_normalized = normalize_target(&entry.target);
-                // Try to find actual file path for target
                 if let Some(root) = &self.root_path {
-                    let target_path = resolve_target(root, &target_normalized);
+                    // Use file maps for accurate resolution, fall back to simple path construction
+                    let target_path = self
+                        .resolve_target_from_map(&target_normalized)
+                        .unwrap_or_else(|| resolve_target(root, &target_normalized));
                     nodes_set.insert(target_path.clone());
                     edges.push(LinkEdge {
                         from: source.clone(),
@@ -221,6 +294,12 @@ impl LinkIndex {
     /// Update index for a single file using already-read content (sync, no I/O)
     pub fn update_file_from_content(&mut self, file_path: &str, content: &str) {
         self.remove_file(file_path);
+
+        // Re-register in file maps for target resolution
+        if let Some(root) = self.root_path.clone() {
+            self.register_file_path(file_path, &root);
+        }
+
         let entries = extract_links(file_path, content);
         for entry in &entries {
             let normalized = normalize_target(&entry.target);
@@ -885,5 +964,154 @@ mod tests {
             result,
             "ref: ((notes#^xyz)) embed: {{embed ((notes#^xyz))}} other: ((notes#^def))"
         );
+    }
+
+    // --- File map target resolution tests ---
+
+    #[test]
+    fn test_resolve_target_stem_only() {
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/vault".to_string());
+        index.register_file_path("/vault/notes/architecture.md", "/vault");
+
+        let resolved = index.resolve_target_from_map("architecture");
+        assert_eq!(resolved, Some("/vault/notes/architecture.md".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_target_with_relative_path() {
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/vault".to_string());
+        index.register_file_path("/vault/notes/architecture.md", "/vault");
+
+        let resolved = index.resolve_target_from_map("notes/architecture");
+        assert_eq!(resolved, Some("/vault/notes/architecture.md".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_target_not_found() {
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/vault".to_string());
+        index.register_file_path("/vault/notes/architecture.md", "/vault");
+
+        let resolved = index.resolve_target_from_map("nonexistent");
+        assert_eq!(resolved, None);
+    }
+
+    #[test]
+    fn test_resolve_target_multiple_same_stem() {
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/vault".to_string());
+        index.register_file_path("/vault/a/readme.md", "/vault");
+        index.register_file_path("/vault/b/readme.md", "/vault");
+
+        // Stem-only: returns first registered
+        let resolved = index.resolve_target_from_map("readme");
+        assert!(resolved.is_some());
+
+        // With relative path: resolves to specific one
+        let resolved_a = index.resolve_target_from_map("a/readme");
+        assert_eq!(resolved_a, Some("/vault/a/readme.md".to_string()));
+
+        let resolved_b = index.resolve_target_from_map("b/readme");
+        assert_eq!(resolved_b, Some("/vault/b/readme.md".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_target_case_insensitive() {
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/vault".to_string());
+        index.register_file_path("/vault/Notes/My Note.md", "/vault");
+
+        // normalize_target lowercases, so lookup should match
+        let resolved = index.resolve_target_from_map("my note");
+        assert_eq!(resolved, Some("/vault/Notes/My Note.md".to_string()));
+    }
+
+    #[test]
+    fn test_link_graph_resolves_across_subdirs() {
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/vault".to_string());
+
+        // Register files in subdirectories
+        index.register_file_path("/vault/notes/architecture.md", "/vault");
+        index.register_file_path("/vault/daily/2024-01-15.md", "/vault");
+
+        // Daily file links to architecture note via wikilink
+        index.update_file_from_content(
+            "/vault/daily/2024-01-15.md",
+            "Today I worked on [[architecture]].",
+        );
+
+        let graph = index.get_link_graph();
+
+        // The edge should point to the actual file in notes/, not ghost at /vault/architecture.md
+        assert!(
+            graph.edges.iter().any(|e| e.from == "/vault/daily/2024-01-15.md"
+                && e.to == "/vault/notes/architecture.md"),
+            "Edge should resolve to actual file path: {:?}",
+            graph.edges
+        );
+
+        // No ghost node at /vault/architecture.md
+        assert!(
+            !graph.nodes.contains(&"/vault/architecture.md".to_string()),
+            "Should not create ghost node at root level"
+        );
+    }
+
+    #[test]
+    fn test_link_graph_chain_daily_note_subnote() {
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/vault".to_string());
+
+        // Register all files
+        index.register_file_path("/vault/daily/2024-01-15.md", "/vault");
+        index.register_file_path("/vault/notes/project-x.md", "/vault");
+        index.register_file_path("/vault/notes/sub/design.md", "/vault");
+
+        // daily → project-x → design chain
+        index.update_file_from_content(
+            "/vault/daily/2024-01-15.md",
+            "Started [[project-x]] today.",
+        );
+        index.update_file_from_content(
+            "/vault/notes/project-x.md",
+            "See [[design]] for details.",
+        );
+
+        let graph = index.get_link_graph();
+
+        // Both edges should resolve to actual files
+        assert!(graph.edges.iter().any(|e| e.from == "/vault/daily/2024-01-15.md"
+            && e.to == "/vault/notes/project-x.md"));
+        assert!(graph.edges.iter().any(|e| e.from == "/vault/notes/project-x.md"
+            && e.to == "/vault/notes/sub/design.md"));
+    }
+
+    #[test]
+    fn test_file_map_updated_on_remove() {
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/vault".to_string());
+        index.register_file_path("/vault/notes/architecture.md", "/vault");
+
+        assert!(index.resolve_target_from_map("architecture").is_some());
+
+        index.remove_file("/vault/notes/architecture.md");
+
+        assert_eq!(index.resolve_target_from_map("architecture"), None);
+    }
+
+    #[test]
+    fn test_file_map_updated_on_incremental_update() {
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/vault".to_string());
+
+        // Simulate adding a new file via incremental update
+        index.update_file_from_content("/vault/notes/new-note.md", "Some content with [[other]].");
+
+        // The new file should be in the file map
+        let resolved = index.resolve_target_from_map("new-note");
+        assert_eq!(resolved, Some("/vault/notes/new-note.md".to_string()));
     }
 }
