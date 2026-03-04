@@ -2,10 +2,30 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import { TextSelection } from "@tiptap/pm/state";
+import type { Node as PmNode } from "@tiptap/pm/model";
 import katex from "katex";
 import { parseKaTeXError } from "../../utils/katex-error";
 import { preprocessNotionFormula } from "../../utils/notion-katex-compat";
 import { mathBlockEntryKey } from "./math-block";
+
+// §perf-large-file: Shared cache — one doc walk per doc change, all instances read from it
+let _cachedDoc: PmNode | null = null;
+let _mathPositions: Map<number, number> = new Map(); // pos → 1-based eq number
+
+function getMathBlockNumber(doc: PmNode, pos: number): number {
+  if (doc !== _cachedDoc) {
+    _cachedDoc = doc;
+    _mathPositions = new Map();
+    let count = 0;
+    doc.descendants((n, nPos) => {
+      if (n.type.name === "mathBlock") {
+        count++;
+        _mathPositions.set(nPos, count);
+      }
+    });
+  }
+  return _mathPositions.get(pos) ?? 1;
+}
 
 export function MathBlockView({
   node,
@@ -22,16 +42,12 @@ export function MathBlockView({
   const [error, setError] = useState<string | null>(null);
   const [eqNumber, setEqNumber] = useState(1);
 
-  // Compute equation number (count mathBlock nodes before this one)
+  // §perf-large-file: Use shared cache — O(1) per instance, O(n) total per doc change
   useEffect(() => {
     const updateNumber = () => {
       const pos = getPos();
       if (typeof pos !== "number") return;
-      let count = 0;
-      editor.state.doc.descendants((n, nPos) => {
-        if (n.type.name === "mathBlock" && nPos < pos) count++;
-      });
-      setEqNumber(count + 1);
+      setEqNumber(getMathBlockNumber(editor.state.doc, pos));
     };
     updateNumber();
     editor.on("update", updateNumber);

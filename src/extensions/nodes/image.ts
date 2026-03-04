@@ -96,8 +96,9 @@ export const Image = Node.create<ImageOptions>({
       let imagePos = -1;
       let count = 0;
       view.state.doc.descendants((node, pos) => {
+        if (imagePos >= 0) return false; // §perf-large-file: early exit
         if (node.type.name === "image") {
-          if (count === wrapperIdx) imagePos = pos;
+          if (count === wrapperIdx) { imagePos = pos; return false; }
           count++;
         }
       });

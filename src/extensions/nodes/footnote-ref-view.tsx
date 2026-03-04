@@ -3,18 +3,29 @@ import { useCallback, useState, useRef, useEffect } from "react";
 import { NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/react";
 import type { Editor } from "@tiptap/core";
+import type { Node as PmNode } from "@tiptap/pm/model";
 
-/** Return display number (1-based) for a footnote identifier based on document order */
+// §perf-large-file: Shared cache — one doc walk per doc change, all instances read from it
+let _cachedDoc: PmNode | null = null;
+let _footnoteOrder: Map<string, number> = new Map(); // identifier → 1-based number
+
 function getFootnoteNumber(editor: Editor, identifier: string): number {
-  const order: string[] = [];
-  editor.state.doc.descendants((node) => {
-    if (node.type.name === "footnoteRef") {
-      const id = node.attrs.identifier as string;
-      if (!order.includes(id)) order.push(id);
-    }
-  });
-  const idx = order.indexOf(identifier);
-  return idx >= 0 ? idx + 1 : 0;
+  const doc = editor.state.doc;
+  if (doc !== _cachedDoc) {
+    _cachedDoc = doc;
+    _footnoteOrder = new Map();
+    let count = 0;
+    doc.descendants((node) => {
+      if (node.type.name === "footnoteRef") {
+        const id = node.attrs.identifier as string;
+        if (!_footnoteOrder.has(id)) {
+          count++;
+          _footnoteOrder.set(id, count);
+        }
+      }
+    });
+  }
+  return _footnoteOrder.get(identifier) ?? 0;
 }
 
 export function FootnoteRefView({ node, editor, selected }: NodeViewProps) {
