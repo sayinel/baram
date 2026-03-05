@@ -98,25 +98,22 @@ function collectCodeBlockInfo(wrapper: Element): CodeBlockInfo {
     "";
   const style = wrapper.getAttribute("data-style") || "default";
 
-  // Line numbers from gutter (if present)
-  const gutterEls = cmEditor.querySelectorAll(
-    ".cm-lineNumbers .cm-gutterElement",
-  );
-  let lineNumbers: string[] | null = null;
-  if (gutterEls.length > 0) {
-    lineNumbers = [];
-    for (const el of gutterEls) {
-      const text = el.textContent?.trim() || "";
-      // Skip spacer elements (empty or height: 0)
-      if (text && text !== "\u200B") lineNumbers.push(text);
-    }
-  }
-
   // Highlighted lines with computed inline styles
   const highlightedLines: string[] = [];
   for (const lineEl of cmEditor.querySelectorAll(".cm-content .cm-line")) {
     highlightedLines.push(extractHighlightedLineHTML(lineEl as HTMLElement));
   }
+
+  // Strip trailing empty lines added by CodeMirror
+  while (highlightedLines.length > 0 && highlightedLines[highlightedLines.length - 1] === "") {
+    highlightedLines.pop();
+  }
+
+  // Line numbers: check if gutter is present, then generate 1..N
+  const hasLineNumbers = !!cmEditor.querySelector(".cm-lineNumbers");
+  const lineNumbers = hasLineNumbers
+    ? highlightedLines.map((_, i) => String(i + 1))
+    : null;
 
   return { lang, style, lineNumbers, highlightedLines };
 }
