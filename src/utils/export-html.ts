@@ -11,6 +11,14 @@ function escapeHTML(str: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/** Escape HTML special characters in code text content */
+function escapeCodeHTML(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 /** Convert an image URL to a base64 data URI */
 async function imageToDataURI(src: string): Promise<string> {
   try {
@@ -25,6 +33,130 @@ async function imageToDataURI(src: string): Promise<string> {
   } catch {
     return src; // fallback to original URL
   }
+}
+
+/**
+ * Extract highlighted HTML from a CodeMirror .cm-line element,
+ * reading computed styles from the live DOM to produce inline styles.
+ */
+function extractHighlightedLineHTML(lineEl: HTMLElement): string {
+  let html = "";
+  for (const child of lineEl.childNodes) {
+    if (child.nodeType === Node.TEXT_NODE) {
+      html += escapeCodeHTML(child.textContent || "");
+    } else if (child instanceof HTMLElement) {
+      if (child.tagName === "BR") continue;
+      // Skip CM editing widgets
+      if (
+        child.classList.contains("cm-widgetBuffer") ||
+        child.classList.contains("cm-cursor") ||
+        child.classList.contains("cm-selectionLayer") ||
+        child.classList.contains("cm-placeholder")
+      ) continue;
+      const text = escapeCodeHTML(child.textContent || "");
+      if (!text) continue;
+
+      // Read computed style from live DOM
+      const computed = getComputedStyle(child);
+      const parts: string[] = [];
+      if (computed.color) parts.push(`color:${computed.color}`);
+      if (computed.fontWeight === "bold" || computed.fontWeight === "700") {
+        parts.push("font-weight:bold");
+      }
+      if (computed.fontStyle === "italic") parts.push("font-style:italic");
+      if (computed.textDecoration.includes("underline")) {
+        parts.push("text-decoration:underline");
+      }
+
+      if (parts.length > 0) {
+        html += `<span style="${parts.join(";")}">${text}</span>`;
+      } else {
+        html += text;
+      }
+    }
+  }
+  return html;
+}
+
+interface CodeBlockInfo {
+  lang: string;
+  style: string;
+  lineNumbers: string[] | null;
+  highlightedLines: string[];
+}
+
+/** Collect code block data from the live DOM (before cloning) */
+function collectCodeBlockInfo(wrapper: Element): CodeBlockInfo {
+  const cmEditor = wrapper.querySelector(".cm-editor");
+  if (!cmEditor)
+    return { lang: "", style: "default", lineNumbers: null, highlightedLines: [] };
+
+  const lang =
+    wrapper.getAttribute("data-language") ||
+    (wrapper.querySelector(".code-block-lang-select") as HTMLSelectElement)
+      ?.value ||
+    "";
+  const style = wrapper.getAttribute("data-style") || "default";
+
+  // Line numbers from gutter (if present)
+  const gutterEls = cmEditor.querySelectorAll(
+    ".cm-lineNumbers .cm-gutterElement",
+  );
+  let lineNumbers: string[] | null = null;
+  if (gutterEls.length > 0) {
+    lineNumbers = [];
+    for (const el of gutterEls) {
+      const text = el.textContent?.trim() || "";
+      // Skip spacer elements (empty or height: 0)
+      if (text && text !== "\u200B") lineNumbers.push(text);
+    }
+  }
+
+  // Highlighted lines with computed inline styles
+  const highlightedLines: string[] = [];
+  for (const lineEl of cmEditor.querySelectorAll(".cm-content .cm-line")) {
+    highlightedLines.push(extractHighlightedLineHTML(lineEl as HTMLElement));
+  }
+
+  return { lang, style, lineNumbers, highlightedLines };
+}
+
+/** Build export DOM for a code block */
+function buildCodeBlockExport(info: CodeBlockInfo): HTMLElement {
+  const exportDiv = document.createElement("div");
+  exportDiv.className = "code-block-export";
+  exportDiv.setAttribute("data-style", info.style);
+
+  // Language label
+  if (info.lang) {
+    const langLabel = document.createElement("div");
+    langLabel.className = "code-block-export-lang";
+    langLabel.textContent = info.lang;
+    exportDiv.appendChild(langLabel);
+  }
+
+  const body = document.createElement("div");
+  body.className = "code-block-body";
+
+  // Line numbers gutter (if present)
+  if (info.lineNumbers && info.lineNumbers.length > 0) {
+    const gutter = document.createElement("pre");
+    gutter.className = "code-block-gutter";
+    gutter.textContent = info.lineNumbers.join("\n");
+    body.appendChild(gutter);
+  }
+
+  // Code content with highlighted spans
+  const pre = document.createElement("pre");
+  pre.className = "code-block-code";
+  const code = document.createElement("code");
+  if (info.lang) code.className = `language-${info.lang}`;
+  code.innerHTML = info.highlightedLines.join("\n");
+  pre.appendChild(code);
+  body.appendChild(pre);
+
+  exportDiv.appendChild(body);
+  return exportDiv;
 }
 
 /** Editor typography CSS — extracted from App.css .tiptap rules */
@@ -42,9 +174,11 @@ body {
 }
 
 article.baram-export {
-  max-width: 800px;
+  max-width: 720px;
   margin: 0 auto;
-  padding: 2rem 3rem;
+  padding: 2rem 1.5rem;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
 }
 
 /* Headings */
@@ -106,7 +240,7 @@ code {
   padding: 0.1em 0.3em;
 }
 
-/* Code Block — basic pre/code (fallback) */
+/* Code Block — basic pre/code (fallback for blocks without CodeMirror) */
 pre {
   background-color: #f8f9fa;
   border: 1px solid #e5e7eb;
@@ -128,10 +262,9 @@ pre code {
 /* Code Block — styled export wrapper */
 .code-block-export {
   margin: 1em 0;
-  border-radius: 6px;
   overflow: hidden;
 }
-.code-block-export .code-block-export-lang {
+.code-block-export-lang {
   font-family: "JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, monospace;
   font-size: 0.7rem;
   padding: 2px 8px;
@@ -141,14 +274,57 @@ pre code {
   border-radius: 6px 6px 0 0;
   color: #6b7280;
 }
-.code-block-export pre {
-  margin: 0;
+.code-block-body {
+  display: flex;
+  font-family: "JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, monospace;
+  font-size: 0.875em;
+  line-height: 1.6;
+  background-color: #f8f9fa;
+  border: 1px solid #e5e7eb;
   border-radius: 0 0 6px 6px;
+  overflow-x: auto;
 }
-.code-block-export code {
+.code-block-export-lang + .code-block-body {
+  border-top: none;
+}
+.code-block-export:not(:has(.code-block-export-lang)) .code-block-body {
+  border-radius: 6px;
+}
+.code-block-gutter {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0.75em 0.75em 0.75em 0.75em;
+  color: #9ca3af;
+  text-align: right;
+  border-right: 1px solid #e5e7eb;
+  background: inherit;
+  user-select: none;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  border-radius: 0;
+  border: none;
+}
+.code-block-code {
+  flex: 1;
+  margin: 0;
+  padding: 0.75em 1em;
+  border: none;
+  border-radius: 0;
+  background: none;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  overflow-x: visible;
+}
+.code-block-code code {
   background: none;
   border: none;
   padding: 0;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
 }
 
 /* Code Block Style: Minimal */
@@ -157,11 +333,14 @@ pre code {
   border: none;
   padding: 2px 4px;
 }
-.code-block-export[data-style="minimal"] pre {
+.code-block-export[data-style="minimal"] .code-block-body {
+  background: transparent;
   border: none;
   border-bottom: 1px solid #e5e7eb;
   border-radius: 0;
-  background: transparent;
+}
+.code-block-export[data-style="minimal"] .code-block-gutter {
+  border-right-color: #e5e7eb;
 }
 
 /* Code Block Style: Contrast — dark background */
@@ -170,10 +349,14 @@ pre code {
   border-color: #313244;
   color: #a6adc8;
 }
-.code-block-export[data-style="contrast"] pre {
+.code-block-export[data-style="contrast"] .code-block-body {
   background-color: #1e1e2e;
   border-color: #313244;
   color: #cdd6f4;
+}
+.code-block-export[data-style="contrast"] .code-block-gutter {
+  color: #6c7086;
+  border-right-color: #313244;
 }
 
 /* Code Block Style: Paper */
@@ -183,17 +366,22 @@ pre code {
   border-radius: 4px 4px 0 0;
   font-size: 0.65rem;
 }
-.code-block-export[data-style="paper"] pre {
+.code-block-export[data-style="paper"] .code-block-body {
   background-color: #f0f1f3;
   border: none;
   border-radius: 6px;
 }
+.code-block-export[data-style="paper"] .code-block-gutter {
+  border-right: none;
+  color: #9ca3af;
+}
 
 /* Table */
 .tableWrapper { overflow-x: auto; margin: 1em 0; }
-table { border-collapse: collapse; width: 100%; }
-th, td { border: 1px solid #e5e7eb; padding: 0.4em 0.75em; min-width: 60px; vertical-align: top; }
-th { font-weight: 600; background-color: #f8f9fa; }
+table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+.tableWrapper table { margin: 0; }
+th, td { border: 1px solid #d1d5db; padding: 0.4em 0.75em; min-width: 60px; vertical-align: top; }
+th { font-weight: 600; background-color: #f3f4f6; }
 th p, td p { margin: 0; }
 
 /* Inline marks */
@@ -288,15 +476,63 @@ details summary { cursor: pointer; font-weight: 600; }
   font-size: 0.9rem;
   white-space: pre-wrap;
 }
+
+/* Footnote reference — inline superscript */
+.footnote-ref {
+  color: #3b82f6;
+  font-size: 0.75em;
+  vertical-align: super;
+  line-height: 0;
+  font-weight: 600;
+  padding: 0 1px;
+}
+
+/* Footnote definition — inline N. content ↩ layout */
+.footnote-definition {
+  display: flex;
+  align-items: baseline;
+  border-top: 1px solid #e5e7eb;
+  margin: 1em 0 0.5em;
+  padding: 0.5em 0 0.25em;
+  gap: 4px;
+}
+.footnote-definition-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #3b82f6;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.footnote-definition-body {
+  flex: 1;
+  min-width: 0;
+}
+.footnote-definition-body p {
+  margin: 0;
+}
+.footnote-definition-back {
+  background: none;
+  border: none;
+  font-size: 0.85rem;
+  color: #6b7280;
+  padding: 0 2px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
 `;
 
 /** Print-specific CSS */
 const PRINT_CSS = `
+@page {
+  margin: 15mm;
+}
 @media print {
   body { background: white; }
   article.baram-export { max-width: none; padding: 0; margin: 0; }
   h1, h2, h3, h4, h5, h6 { page-break-after: avoid; }
   pre, blockquote, table, img, .math-block, .mermaid-block, .code-block-export { page-break-inside: avoid; }
+  table { max-width: 100%; }
+  .tableWrapper { overflow: hidden; }
   a { color: #3b82f6; }
 }
 `;
@@ -312,9 +548,20 @@ export interface ExportHTMLOptions {
  * Unlike editor.getHTML() which uses renderHTML() (producing empty divs for
  * NodeView-based nodes), this captures the actual rendered content including
  * KaTeX math, Mermaid SVGs, and properly resolved images.
+ *
+ * For code blocks, reads computed styles from the live DOM BEFORE cloning
+ * to preserve syntax highlighting as inline styles.
  */
 export async function captureEditorHTML(editor: Editor): Promise<string> {
   const dom = editor.view.dom;
+
+  // ── Collect code block data from live DOM (before cloning) ────────
+  // getComputedStyle() only works on elements in the live DOM
+  const codeBlockInfos: CodeBlockInfo[] = [];
+  for (const wrapper of dom.querySelectorAll(".code-block-wrapper")) {
+    codeBlockInfos.push(collectCodeBlockInfo(wrapper));
+  }
+
   const clone = dom.cloneNode(true) as HTMLElement;
 
   // ── Math blocks: keep rendered KaTeX, remove editing UI ──────────
@@ -341,16 +588,13 @@ export async function captureEditorHTML(editor: Editor): Promise<string> {
   const imgPromises: Promise<void>[] = [];
   for (const img of clone.querySelectorAll("img")) {
     const src = img.getAttribute("src") || "";
-    // Only convert Tauri asset protocol URLs — remote URLs (http/https) are kept as-is
     if (
       src.startsWith("http://asset.localhost/") ||
       src.startsWith("https://asset.localhost/") ||
       src.startsWith("asset://localhost/")
     ) {
-      // Fetch from the original asset URL (works in Tauri webview)
-      // and find the matching original img to get the live src
       const originalImg = dom.querySelector(
-        `img[src="${src}"]`,
+        `img[src="${CSS.escape(src)}"]`,
       ) as HTMLImageElement | null;
       const fetchUrl = originalImg?.src || src;
       imgPromises.push(
@@ -366,7 +610,6 @@ export async function captureEditorHTML(editor: Editor): Promise<string> {
   for (const el of clone.querySelectorAll(".image-toolbar")) el.remove();
   for (const el of clone.querySelectorAll(".image-resize-handle")) el.remove();
   for (const el of clone.querySelectorAll(".image-caption input")) {
-    // Convert caption input to plain text
     const text = (el as HTMLInputElement).value;
     if (text) {
       const span = document.createElement("span");
@@ -376,61 +619,18 @@ export async function captureEditorHTML(editor: Editor): Promise<string> {
       el.remove();
     }
   }
-  // Remove placeholder captions
   for (const el of clone.querySelectorAll(".image-caption-placeholder")) {
     if (!(el as HTMLElement).textContent?.trim()) el.remove();
   }
 
-  // ── Code blocks: extract highlighted HTML from CodeMirror ─────────
-  for (const wrapper of clone.querySelectorAll(".code-block-wrapper")) {
-    const cmEditor = wrapper.querySelector(".cm-editor");
-    if (!cmEditor) continue;
-
-    // Get language and style from wrapper attributes
-    const lang =
-      wrapper.getAttribute("data-language") ||
-      (wrapper.querySelector(".code-block-lang-select") as HTMLSelectElement)
-        ?.value ||
-      "";
-    const style = wrapper.getAttribute("data-style") || "default";
-
-    // Extract highlighted HTML from each .cm-line
-    const lineHTMLs: string[] = [];
-    for (const line of cmEditor.querySelectorAll(
-      ".cm-content .cm-line",
-    )) {
-      // Get innerHTML which preserves <span style="color: ..."> tokens
-      let html = (line as HTMLElement).innerHTML;
-      // Strip CM editing artifacts from line HTML
-      html = html.replace(/<img[^>]*class="cm-[^"]*"[^>]*>/g, "");
-      html = html.replace(/<span[^>]*class="cm-widgetBuffer"[^>]*>[^<]*<\/span>/g, "");
-      // Handle empty lines: <br> → empty
-      if (html === "<br>" || html === "<br/>") html = "";
-      lineHTMLs.push(html);
-    }
-    if (lineHTMLs.length === 0) continue;
-
-    // Build clean export structure
-    const exportDiv = document.createElement("div");
-    exportDiv.className = "code-block-export";
-    exportDiv.setAttribute("data-style", style);
-
-    if (lang) {
-      const langLabel = document.createElement("div");
-      langLabel.className = "code-block-export-lang";
-      langLabel.textContent = lang;
-      exportDiv.appendChild(langLabel);
-    }
-
-    const pre = document.createElement("pre");
-    const code = document.createElement("code");
-    if (lang) code.className = `language-${lang}`;
-    code.innerHTML = lineHTMLs.join("\n");
-    pre.appendChild(code);
-    exportDiv.appendChild(pre);
-
-    wrapper.replaceWith(exportDiv);
-  }
+  // ── Code blocks: replace with pre-collected highlighted HTML ──────
+  const cloneCodeBlocks = clone.querySelectorAll(".code-block-wrapper");
+  cloneCodeBlocks.forEach((wrapper, i) => {
+    const info = codeBlockInfos[i];
+    if (!info || info.highlightedLines.length === 0) return;
+    const exportEl = buildCodeBlockExport(info);
+    wrapper.replaceWith(exportEl);
+  });
 
   // ── Block embeds: remove editing UI, keep preview ─────────────────
   for (const el of clone.querySelectorAll(".block-embed-textarea")) el.remove();
@@ -444,6 +644,12 @@ export async function captureEditorHTML(editor: Editor): Promise<string> {
   // ── Block references: remove selection state ──────────────────────
   for (const el of clone.querySelectorAll(".block-reference-selected")) {
     el.classList.remove("block-reference-selected");
+  }
+
+  // ── Footnotes: remove tooltip and clean up ────────────────────────
+  for (const el of clone.querySelectorAll(".footnote-ref-tooltip")) el.remove();
+  for (const el of clone.querySelectorAll(".footnote-ref-selected")) {
+    el.classList.remove("footnote-ref-selected");
   }
 
   // ── Block ID decorations ─────────────────────────────────────────
@@ -476,6 +682,14 @@ export async function captureEditorHTML(editor: Editor): Promise<string> {
   // ── List atom fix widget ─────────────────────────────────────────
   for (const el of clone.querySelectorAll(".list-atom-fix")) el.remove();
 
+  // ── Table: remove selection classes and resize handles ─────────────
+  for (const el of clone.querySelectorAll(".selectedCell")) {
+    el.classList.remove("selectedCell");
+  }
+  for (const el of clone.querySelectorAll(".column-resize-handle")) {
+    el.remove();
+  }
+
   // ── Remove contenteditable attributes ────────────────────────────
   clone.removeAttribute("contenteditable");
   for (const el of clone.querySelectorAll("[contenteditable]")) {
@@ -488,12 +702,10 @@ export async function captureEditorHTML(editor: Editor): Promise<string> {
   }
 
   // ── Remove data-node-view-wrapper wrappers ────────────────────────
-  // Keep recognized blocks with useful classes; strip wrapper attrs from all
   for (const wrapper of clone.querySelectorAll("[data-node-view-wrapper]")) {
     wrapper.removeAttribute("data-node-view-wrapper");
     wrapper.removeAttribute("data-node-view-content");
-    // Remove NodeViewWrapper inline styles (white-space: normal, etc.)
-    // but keep inline styles on specific elements that need them (e.g. image figure width)
+    // Keep inline styles on image-related elements (width %)
     if (
       !wrapper.classList.contains("image-figure") &&
       !wrapper.classList.contains("image-node-view")
