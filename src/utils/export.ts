@@ -3,7 +3,7 @@ import type { Editor } from "@tiptap/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeFile, exportPdf, exportPandoc } from "../ipc/invoke";
 import type { PdfOptions, PandocFormat } from "../ipc/types";
-import { generateStandaloneHTML } from "./export-html";
+import { captureEditorHTML, generateStandaloneHTML } from "./export-html";
 import { prosemirrorToMarkdown } from "../pipeline/pm-to-md";
 import { convertForNotion } from "./notion-export";
 import { convertForPandoc } from "./pandoc-export";
@@ -16,7 +16,7 @@ export async function exportAsHTML(
   editor: Editor,
   title: string,
 ): Promise<void> {
-  const html = generateStandaloneHTML(editor.getHTML(), title);
+  const html = generateStandaloneHTML(captureEditorHTML(editor), title);
 
   const path = await save({
     filters: [{ name: "HTML", extensions: ["html"] }],
@@ -37,7 +37,7 @@ export async function exportAsPDF(
   title: string,
   options?: PdfOptions,
 ): Promise<void> {
-  const html = generateStandaloneHTML(editor.getHTML(), title, {
+  const html = generateStandaloneHTML(captureEditorHTML(editor), title, {
     theme: "light",
   });
 
