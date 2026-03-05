@@ -16,7 +16,7 @@ export async function exportAsHTML(
   editor: Editor,
   title: string,
 ): Promise<void> {
-  const html = generateStandaloneHTML(captureEditorHTML(editor), title);
+  const html = generateStandaloneHTML(await captureEditorHTML(editor), title);
 
   const path = await save({
     filters: [{ name: "HTML", extensions: ["html"] }],
@@ -37,7 +37,7 @@ export async function exportAsPDF(
   title: string,
   options?: PdfOptions,
 ): Promise<void> {
-  const html = generateStandaloneHTML(captureEditorHTML(editor), title, {
+  const html = generateStandaloneHTML(await captureEditorHTML(editor), title, {
     theme: "light",
   });
 

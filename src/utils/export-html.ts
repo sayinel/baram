@@ -11,6 +11,22 @@ function escapeHTML(str: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/** Convert an image URL to a base64 data URI */
+async function imageToDataURI(src: string): Promise<string> {
+  try {
+    const response = await fetch(src);
+    const blob = await response.blob();
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return src; // fallback to original URL
+  }
+}
+
 /** Editor typography CSS — extracted from App.css .tiptap rules */
 const EDITOR_CSS = `
 /* Base */
@@ -80,10 +96,20 @@ ul[data-type="taskList"] li[data-type="taskItem"][data-checked="true"] > div {
 /* Horizontal Rule */
 hr { border: none; border-top: 2px solid #e5e7eb; margin: 1.5em 0; }
 
-/* Code Block */
-pre {
+/* Inline code */
+code {
+  font-family: "JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, monospace;
+  font-size: 0.875em;
   background-color: #f8f9fa;
   border: 1px solid #f3f4f6;
+  border-radius: 3px;
+  padding: 0.1em 0.3em;
+}
+
+/* Code Block — basic pre/code (fallback) */
+pre {
+  background-color: #f8f9fa;
+  border: 1px solid #e5e7eb;
   border-radius: 6px;
   padding: 0.75em 1em;
   margin: 1em 0;
@@ -99,18 +125,73 @@ pre code {
   color: inherit;
 }
 
-/* Inline code */
-code {
+/* Code Block — styled export wrapper */
+.code-block-export {
+  margin: 1em 0;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.code-block-export .code-block-export-lang {
   font-family: "JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, monospace;
-  font-size: 0.875em;
-  background-color: #f8f9fa;
-  border: 1px solid #f3f4f6;
-  border-radius: 3px;
-  padding: 0.1em 0.3em;
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  background-color: #f0f1f3;
+  border: 1px solid #e5e7eb;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  color: #6b7280;
+}
+.code-block-export pre {
+  margin: 0;
+  border-radius: 0 0 6px 6px;
+}
+.code-block-export code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+/* Code Block Style: Minimal */
+.code-block-export[data-style="minimal"] .code-block-export-lang {
+  background: transparent;
+  border: none;
+  padding: 2px 4px;
+}
+.code-block-export[data-style="minimal"] pre {
+  border: none;
+  border-bottom: 1px solid #e5e7eb;
+  border-radius: 0;
+  background: transparent;
+}
+
+/* Code Block Style: Contrast — dark background */
+.code-block-export[data-style="contrast"] .code-block-export-lang {
+  background-color: #1e1e2e;
+  border-color: #313244;
+  color: #a6adc8;
+}
+.code-block-export[data-style="contrast"] pre {
+  background-color: #1e1e2e;
+  border-color: #313244;
+  color: #cdd6f4;
+}
+
+/* Code Block Style: Paper */
+.code-block-export[data-style="paper"] .code-block-export-lang {
+  background-color: #f0f1f3;
+  border: none;
+  border-radius: 4px 4px 0 0;
+  font-size: 0.65rem;
+}
+.code-block-export[data-style="paper"] pre {
+  background-color: #f0f1f3;
+  border: none;
+  border-radius: 6px;
 }
 
 /* Table */
-table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+.tableWrapper { overflow-x: auto; margin: 1em 0; }
+table { border-collapse: collapse; width: 100%; }
 th, td { border: 1px solid #e5e7eb; padding: 0.4em 0.75em; min-width: 60px; vertical-align: top; }
 th { font-weight: 600; background-color: #f8f9fa; }
 th p, td p { margin: 0; }
@@ -120,6 +201,9 @@ strong { font-weight: 700; }
 em { font-style: italic; }
 del { text-decoration: line-through; }
 a { color: #3b82f6; text-decoration: underline; text-underline-offset: 2px; }
+mark { background-color: #fef08a; padding: 0 2px; border-radius: 2px; }
+sub { font-size: 0.75em; }
+sup { font-size: 0.75em; }
 
 /* Math blocks */
 .math-block { margin: 1em 0; }
@@ -150,8 +234,10 @@ a { color: #3b82f6; text-decoration: underline; text-underline-offset: 2px; }
 
 /* Image */
 img { max-width: 100%; height: auto; border-radius: 4px; }
+.image-node-view { margin: 0.5em 0; }
+.image-figure { display: inline-block; max-width: 100%; }
 figure { margin: 1em 0; text-align: center; }
-figcaption { font-size: 0.9em; color: #6b7280; margin-top: 0.25em; }
+figcaption { font-size: 0.85em; color: #6b7280; margin-top: 0.25em; text-align: center; }
 
 /* Callout */
 .callout { border-left: 3px solid #3b82f6; padding: 0.5em 1em; margin: 0.5em 0; background: #eff6ff; border-radius: 0 6px 6px 0; }
@@ -159,7 +245,8 @@ figcaption { font-size: 0.9em; color: #6b7280; margin-top: 0.25em; }
 /* Definition list */
 dl { margin: 0.5em 0; }
 dt { font-weight: 600; margin-top: 0.5em; }
-dd { margin-left: 1.5em; margin-top: 0.15em; }
+dt:first-child { margin-top: 0; }
+dd { margin-left: 1.5em; margin-top: 0.15em; padding-left: 0.5em; border-left: 2px solid #e5e7eb; color: #6b7280; }
 
 /* Toggle / Details */
 details { margin: 0.5em 0; }
@@ -170,6 +257,37 @@ details summary { cursor: pointer; font-weight: 600; }
 
 /* Wikilink */
 .wikilink-node { color: #3b82f6; }
+
+/* Block reference */
+.block-reference {
+  color: #7c3aed;
+  background-color: rgba(124, 58, 237, 0.08);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 0.9em;
+  border: 1px solid rgba(124, 58, 237, 0.25);
+}
+
+/* Block embed */
+.block-embed {
+  border: 1px solid #e5e7eb;
+  border-left: 3px solid #7c3aed;
+  border-radius: 6px;
+  margin: 8px 0;
+  overflow: hidden;
+}
+.block-embed-header {
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  color: #7c3aed;
+  background: rgba(124, 58, 237, 0.05);
+  border-bottom: 1px solid #e5e7eb;
+}
+.block-embed-content {
+  padding: 8px 12px;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+}
 `;
 
 /** Print-specific CSS */
@@ -178,9 +296,8 @@ const PRINT_CSS = `
   body { background: white; }
   article.baram-export { max-width: none; padding: 0; margin: 0; }
   h1, h2, h3, h4, h5, h6 { page-break-after: avoid; }
-  pre, blockquote, table, img, .math-block, .mermaid-block { page-break-inside: avoid; }
-  a { color: #1a1a1a; text-decoration: none; }
-  a[href]::after { content: " (" attr(href) ")"; font-size: 0.8em; color: #6b7280; }
+  pre, blockquote, table, img, .math-block, .mermaid-block, .code-block-export { page-break-inside: avoid; }
+  a { color: #3b82f6; }
 }
 `;
 
@@ -196,7 +313,7 @@ export interface ExportHTMLOptions {
  * NodeView-based nodes), this captures the actual rendered content including
  * KaTeX math, Mermaid SVGs, and properly resolved images.
  */
-export function captureEditorHTML(editor: Editor): string {
+export async function captureEditorHTML(editor: Editor): Promise<string> {
   const dom = editor.view.dom;
   const clone = dom.cloneNode(true) as HTMLElement;
 
@@ -220,18 +337,30 @@ export function captureEditorHTML(editor: Editor): string {
     el.classList.add("mermaid-block-preview");
   }
 
-  // ── Images: convert Tauri asset:// URLs to file:// for headless Chrome ──
+  // ── Images: convert Tauri asset URLs to base64 data URIs ──────────
+  const imgPromises: Promise<void>[] = [];
   for (const img of clone.querySelectorAll("img")) {
     const src = img.getAttribute("src") || "";
-    // Tauri 2.0 convertFileSrc() → http://asset.localhost/path or https://asset.localhost/path
-    if (src.startsWith("http://asset.localhost/")) {
-      img.setAttribute("src", "file://" + src.slice("http://asset.localhost".length));
-    } else if (src.startsWith("https://asset.localhost/")) {
-      img.setAttribute("src", "file://" + src.slice("https://asset.localhost".length));
-    } else if (src.startsWith("asset://localhost/")) {
-      img.setAttribute("src", "file://" + src.slice("asset://localhost".length));
+    // Only convert Tauri asset protocol URLs — remote URLs (http/https) are kept as-is
+    if (
+      src.startsWith("http://asset.localhost/") ||
+      src.startsWith("https://asset.localhost/") ||
+      src.startsWith("asset://localhost/")
+    ) {
+      // Fetch from the original asset URL (works in Tauri webview)
+      // and find the matching original img to get the live src
+      const originalImg = dom.querySelector(
+        `img[src="${src}"]`,
+      ) as HTMLImageElement | null;
+      const fetchUrl = originalImg?.src || src;
+      imgPromises.push(
+        imageToDataURI(fetchUrl).then((dataUri) => {
+          img.setAttribute("src", dataUri);
+        }),
+      );
     }
   }
+  await Promise.all(imgPromises);
 
   // ── Image toolbar / resize handles ───────────────────────────────
   for (const el of clone.querySelectorAll(".image-toolbar")) el.remove();
@@ -247,29 +376,74 @@ export function captureEditorHTML(editor: Editor): string {
       el.remove();
     }
   }
+  // Remove placeholder captions
+  for (const el of clone.querySelectorAll(".image-caption-placeholder")) {
+    if (!(el as HTMLElement).textContent?.trim()) el.remove();
+  }
 
-  // ── Code blocks: extract text from CodeMirror, replace with clean <pre><code> ──
-  for (const cmWrapper of clone.querySelectorAll("[data-node-view-wrapper]")) {
-    const cmEditor = cmWrapper.querySelector(".cm-editor");
+  // ── Code blocks: extract highlighted HTML from CodeMirror ─────────
+  for (const wrapper of clone.querySelectorAll(".code-block-wrapper")) {
+    const cmEditor = wrapper.querySelector(".cm-editor");
     if (!cmEditor) continue;
 
-    // Extract code text from CodeMirror line elements
-    const lines: string[] = [];
-    for (const line of cmEditor.querySelectorAll(".cm-line")) {
-      lines.push(line.textContent || "");
-    }
-    if (lines.length === 0) continue;
+    // Get language and style from wrapper attributes
+    const lang =
+      wrapper.getAttribute("data-language") ||
+      (wrapper.querySelector(".code-block-lang-select") as HTMLSelectElement)
+        ?.value ||
+      "";
+    const style = wrapper.getAttribute("data-style") || "default";
 
-    // Get language from data attribute
-    const lang = cmWrapper.getAttribute("data-language") ||
-                 cmWrapper.querySelector("[data-language]")?.getAttribute("data-language") || "";
+    // Extract highlighted HTML from each .cm-line
+    const lineHTMLs: string[] = [];
+    for (const line of cmEditor.querySelectorAll(
+      ".cm-content .cm-line",
+    )) {
+      // Get innerHTML which preserves <span style="color: ..."> tokens
+      let html = (line as HTMLElement).innerHTML;
+      // Strip CM editing artifacts from line HTML
+      html = html.replace(/<img[^>]*class="cm-[^"]*"[^>]*>/g, "");
+      html = html.replace(/<span[^>]*class="cm-widgetBuffer"[^>]*>[^<]*<\/span>/g, "");
+      // Handle empty lines: <br> → empty
+      if (html === "<br>" || html === "<br/>") html = "";
+      lineHTMLs.push(html);
+    }
+    if (lineHTMLs.length === 0) continue;
+
+    // Build clean export structure
+    const exportDiv = document.createElement("div");
+    exportDiv.className = "code-block-export";
+    exportDiv.setAttribute("data-style", style);
+
+    if (lang) {
+      const langLabel = document.createElement("div");
+      langLabel.className = "code-block-export-lang";
+      langLabel.textContent = lang;
+      exportDiv.appendChild(langLabel);
+    }
 
     const pre = document.createElement("pre");
     const code = document.createElement("code");
     if (lang) code.className = `language-${lang}`;
-    code.textContent = lines.join("\n");
+    code.innerHTML = lineHTMLs.join("\n");
     pre.appendChild(code);
-    cmWrapper.replaceWith(pre);
+    exportDiv.appendChild(pre);
+
+    wrapper.replaceWith(exportDiv);
+  }
+
+  // ── Block embeds: remove editing UI, keep preview ─────────────────
+  for (const el of clone.querySelectorAll(".block-embed-textarea")) el.remove();
+  for (const el of clone.querySelectorAll(".block-embed-editing")) {
+    el.classList.remove("block-embed-editing");
+  }
+  for (const el of clone.querySelectorAll(".block-embed-selected")) {
+    el.classList.remove("block-embed-selected");
+  }
+
+  // ── Block references: remove selection state ──────────────────────
+  for (const el of clone.querySelectorAll(".block-reference-selected")) {
+    el.classList.remove("block-reference-selected");
   }
 
   // ── Block ID decorations ─────────────────────────────────────────
@@ -313,22 +487,19 @@ export function captureEditorHTML(editor: Editor): string {
     el.removeAttribute("draggable");
   }
 
-  // ── Remove data-node-view-wrapper wrappers (unwrap content) ──────
-  // Skip for math/mermaid/image which need their wrapper classes
+  // ── Remove data-node-view-wrapper wrappers ────────────────────────
+  // Keep recognized blocks with useful classes; strip wrapper attrs from all
   for (const wrapper of clone.querySelectorAll("[data-node-view-wrapper]")) {
-    // If it's a recognized block with useful content, keep it
-    if (
-      wrapper.classList.contains("math-block") ||
-      wrapper.classList.contains("mermaid-block") ||
-      wrapper.classList.contains("image-node-view")
-    ) {
-      wrapper.removeAttribute("data-node-view-wrapper");
-      wrapper.removeAttribute("style"); // Remove inline styles from NodeViewWrapper
-      continue;
-    }
-    // For other NodeView wrappers, unwrap their children
     wrapper.removeAttribute("data-node-view-wrapper");
-    wrapper.removeAttribute("style");
+    wrapper.removeAttribute("data-node-view-content");
+    // Remove NodeViewWrapper inline styles (white-space: normal, etc.)
+    // but keep inline styles on specific elements that need them (e.g. image figure width)
+    if (
+      !wrapper.classList.contains("image-figure") &&
+      !wrapper.classList.contains("image-node-view")
+    ) {
+      wrapper.removeAttribute("style");
+    }
   }
 
   return clone.innerHTML;
