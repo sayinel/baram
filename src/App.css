@@ -191,42 +191,42 @@ body {
   font-size: 2em;
   font-weight: 700;
   line-height: 1.2;
-  margin: 1em 0 0.5em;
+  margin: 1.4em 0 0.6em;
 }
 
 .tiptap h2 {
   font-size: 1.5em;
   font-weight: 700;
   line-height: 1.3;
-  margin: 0.8em 0 0.4em;
+  margin: 1.2em 0 0.5em;
 }
 
 .tiptap h3 {
   font-size: 1.25em;
   font-weight: 600;
   line-height: 1.4;
-  margin: 0.6em 0 0.3em;
+  margin: 1em 0 0.4em;
 }
 
 .tiptap h4 {
   font-size: 1.1em;
   font-weight: 600;
   line-height: 1.4;
-  margin: 0.5em 0 0.25em;
+  margin: 0.8em 0 0.3em;
 }
 
 .tiptap h5 {
   font-size: 1em;
   font-weight: 600;
   line-height: 1.5;
-  margin: 0.4em 0 0.2em;
+  margin: 0.6em 0 0.25em;
 }
 
 .tiptap h6 {
   font-size: 0.9em;
   font-weight: 600;
   line-height: 1.5;
-  margin: 0.4em 0 0.2em;
+  margin: 0.5em 0 0.2em;
   color: var(--color-text-secondary);
 }
 
@@ -249,12 +249,12 @@ body {
   margin-top: 0;
 }
 
-/* Tighten gap: consecutive headings (empty sections like ## Notes → ## Captures) */
+/* Moderate gap: consecutive headings (empty sections like ## Notes → ## Captures) */
 .tiptap :is(h1, h2, h3, h4, h5, h6):has(+ :is(h1, h2, h3, h4, h5, h6)) {
-  margin-bottom: 0.1em;
+  margin-bottom: 0.2em;
 }
 .tiptap :is(h1, h2, h3, h4, h5, h6) + :is(h1, h2, h3, h4, h5, h6) {
-  margin-top: 0.15em;
+  margin-top: 0.4em;
 }
 
 /* Paragraph */
@@ -723,7 +723,7 @@ body {
   border: 1px solid var(--color-border-light);
   border-radius: 6px;
   padding: 0.75em 1em;
-  margin: 0.5em 0;
+  margin: 1em 0;
   overflow-x: auto;
 }
 
@@ -900,7 +900,7 @@ body {
 
 /* §5.3 Math Block — atom:true, selected=textarea+preview, unselected=KaTeX only */
 .tiptap .math-block {
-  margin: 0.5em 0;
+  margin: 1em 0;
 }
 
 .tiptap .math-block-preview {
@@ -1063,7 +1063,7 @@ body {
 /* §5.5 Table */
 .tiptap .tableWrapper {
   overflow-x: auto;
-  margin: 0.5em 0;
+  margin: 1em 0;
 }
 
 .tiptap table {
@@ -1258,7 +1258,7 @@ body {
 
 /* §5.5 Mermaid Block — dual mode (SVG / source edit) */
 .tiptap .mermaid-block {
-  margin: 0.5em 0;
+  margin: 1em 0;
 }
 
 .tiptap .mermaid-block-preview {
