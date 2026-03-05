@@ -31,6 +31,7 @@ interface SettingsState {
   lineNumbers: boolean;
   autoPairBrackets: boolean;
   editorMaxWidth: number; // px, 0 = no limit
+  zoomLevel: number; // 0.5 ~ 2.0 (1.0 = 100%)
 
   // Appearance
   theme: Theme;
@@ -121,6 +122,7 @@ interface SettingsState {
   setLineNumbers: (enabled: boolean) => void;
   setAutoPairBrackets: (enabled: boolean) => void;
   setEditorMaxWidth: (width: number) => void;
+  setZoomLevel: (level: number) => void;
 
   // Appearance setters
   setTheme: (theme: Theme) => void;
@@ -197,6 +199,7 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
   lineNumbers: false,
   autoPairBrackets: true,
   editorMaxWidth: 800,
+  zoomLevel: 1,
 
   // Appearance
   theme: "system",
@@ -291,6 +294,7 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
   setLineNumbers: (lineNumbers) => set({ lineNumbers }),
   setAutoPairBrackets: (autoPairBrackets) => set({ autoPairBrackets }),
   setEditorMaxWidth: (editorMaxWidth) => set({ editorMaxWidth }),
+  setZoomLevel: (zoomLevel) => set({ zoomLevel: Math.round(Math.max(0.5, Math.min(2, zoomLevel)) * 100) / 100 }),
 
   // Appearance setters
   setTheme: (theme) => {
@@ -414,6 +418,7 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
     lineNumbers: state.lineNumbers,
     autoPairBrackets: state.autoPairBrackets,
     editorMaxWidth: state.editorMaxWidth,
+    zoomLevel: state.zoomLevel,
     theme: state.theme,
     activeThemeId: state.activeThemeId,
     customThemes: state.customThemes,

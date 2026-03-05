@@ -46,6 +46,7 @@ import { useInlineAI } from "./hooks/use-inline-ai";
 import { useFileWatcher } from "./hooks/use-file-watcher";
 import { useExternalDrop } from "./hooks/use-external-drop";
 import { useJournal } from "./hooks/use-journal";
+import { useZoom } from "./hooks/use-zoom";
 import { isDateString, getJournalFilePath, getHierarchicalJournalPath, resolveJournalDir, generateDefaultJournal, applyJournalTemplate } from "./utils/journal";
 import { parseCapturesFromMarkdown, buildNoteFromCapture, buildPromotedCaptureLink } from "./utils/journal-capture";
 import { readFile, writeFile, createDir, getOpenedUrls, updateFileIndex } from "./ipc/invoke";
@@ -266,6 +267,9 @@ function App() {
 
   // File system watcher — auto-refresh FileTree on external changes
   useFileWatcher();
+
+  // Page zoom — trackpad pinch + Cmd+/Cmd-/Cmd+0
+  useZoom();
 
   // External file drag & drop — Tauri OS-level file drop (Feature 1 & 2)
   useExternalDrop({ editor });

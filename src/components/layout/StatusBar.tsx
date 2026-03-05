@@ -2,6 +2,7 @@
 import { useMemo } from "react";
 import type { Editor } from "@tiptap/react";
 import { useGitStore } from "../../stores/git-store";
+import { useSettingsStore } from "../../stores/settings-store";
 
 interface StatusBarProps {
   editor: Editor | null;
@@ -55,6 +56,8 @@ export function StatusBar({ editor, isSourceMode, isGraphMode }: StatusBarProps)
 
   const { isRepo, branch, changes } = useGitStore();
   const hasChanges = changes.length > 0;
+  const zoomLevel = useSettingsStore((s) => s.zoomLevel);
+  const zoomPercent = Math.round(zoomLevel * 100);
 
   return (
     <div className="status-bar">
@@ -78,6 +81,14 @@ export function StatusBar({ editor, isSourceMode, isGraphMode }: StatusBarProps)
           <span className="status-position">
             Ln {stats.line}, Col {stats.col}
           </span>
+          {zoomPercent !== 100 && (
+            <>
+              <span className="status-separator">|</span>
+              <span className="status-zoom" title="Cmd+0 to reset zoom">
+                {zoomPercent}%
+              </span>
+            </>
+          )}
         </div>
       )}
     </div>
