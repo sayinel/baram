@@ -118,36 +118,68 @@ function collectCodeBlockInfo(wrapper: Element): CodeBlockInfo {
   return { lang, style, lineNumbers, highlightedLines };
 }
 
-/** Build export DOM for a code block */
+/** Style presets per code block data-style variant */
+const CODE_STYLE_MAP: Record<string, {
+  langBg: string; langBorder: string; langColor: string;
+  bodyBg: string; bodyBorder: string; bodyColor: string;
+  gutterColor: string; gutterBorder: string;
+}> = {
+  default: {
+    langBg: "#f0f1f3", langBorder: "#e5e7eb", langColor: "#6b7280",
+    bodyBg: "#f8f9fa", bodyBorder: "#e5e7eb", bodyColor: "#1a1a1a",
+    gutterColor: "#9ca3af", gutterBorder: "#e5e7eb",
+  },
+  minimal: {
+    langBg: "transparent", langBorder: "transparent", langColor: "#6b7280",
+    bodyBg: "transparent", bodyBorder: "transparent", bodyColor: "#1a1a1a",
+    gutterColor: "#9ca3af", gutterBorder: "#e5e7eb",
+  },
+  contrast: {
+    langBg: "#1e1e2e", langBorder: "#313244", langColor: "#a6adc8",
+    bodyBg: "#1e1e2e", bodyBorder: "#313244", bodyColor: "#cdd6f4",
+    gutterColor: "#6c7086", gutterBorder: "#313244",
+  },
+  paper: {
+    langBg: "#f0f1f3", langBorder: "transparent", langColor: "#6b7280",
+    bodyBg: "#f0f1f3", bodyBorder: "transparent", bodyColor: "#1a1a1a",
+    gutterColor: "#9ca3af", gutterBorder: "transparent",
+  },
+};
+
+const MONO_FONT = '"JetBrains Mono","Fira Code","SF Mono",ui-monospace,monospace';
+
+/** Build export DOM for a code block — uses inline styles for reliable PDF rendering */
 function buildCodeBlockExport(info: CodeBlockInfo): HTMLElement {
+  const s = CODE_STYLE_MAP[info.style] || CODE_STYLE_MAP.default;
+
   const exportDiv = document.createElement("div");
-  exportDiv.className = "code-block-export";
-  exportDiv.setAttribute("data-style", info.style);
+  exportDiv.style.cssText = "margin:1em 0;overflow:hidden;";
 
   // Language label
   if (info.lang) {
     const langLabel = document.createElement("div");
-    langLabel.className = "code-block-export-lang";
+    langLabel.style.cssText = `font-family:${MONO_FONT};font-size:0.7rem;padding:2px 8px;background:${s.langBg};border:1px solid ${s.langBorder};border-bottom:none;border-radius:6px 6px 0 0;color:${s.langColor};`;
     langLabel.textContent = info.lang;
     exportDiv.appendChild(langLabel);
   }
 
   const body = document.createElement("div");
-  body.className = "code-block-body";
+  const hasLang = !!info.lang;
+  body.style.cssText = `display:flex;font-family:${MONO_FONT};font-size:0.875em;line-height:1.6;background:${s.bodyBg};border:1px solid ${s.bodyBorder};${hasLang ? "border-top:none;" : ""}border-radius:${hasLang ? "0 0 6px 6px" : "6px"};overflow-x:auto;color:${s.bodyColor};`;
 
-  // Line numbers gutter (if present)
+  // Line numbers gutter
   if (info.lineNumbers && info.lineNumbers.length > 0) {
     const gutter = document.createElement("pre");
-    gutter.className = "code-block-gutter";
+    gutter.style.cssText = `flex-shrink:0;margin:0;padding:0.75em;color:${s.gutterColor};text-align:right;border-right:1px solid ${s.gutterBorder};background:inherit;user-select:none;font:inherit;line-height:inherit;`;
     gutter.textContent = info.lineNumbers.join("\n");
     body.appendChild(gutter);
   }
 
   // Code content with highlighted spans
   const pre = document.createElement("pre");
-  pre.className = "code-block-code";
+  pre.style.cssText = "flex:1;margin:0;padding:0.75em 1em;border:none;border-radius:0;background:none;font:inherit;line-height:inherit;overflow-x:visible;";
   const code = document.createElement("code");
-  if (info.lang) code.className = `language-${info.lang}`;
+  code.style.cssText = "background:none;border:none;padding:0;font:inherit;line-height:inherit;color:inherit;";
   code.innerHTML = info.highlightedLines.join("\n");
   pre.appendChild(code);
   body.appendChild(pre);
@@ -679,12 +711,22 @@ export async function captureEditorHTML(editor: Editor): Promise<string> {
   // ── List atom fix widget ─────────────────────────────────────────
   for (const el of clone.querySelectorAll(".list-atom-fix")) el.remove();
 
-  // ── Table: remove selection classes and resize handles ─────────────
+  // ── Table: remove selection classes, resize handles, add inline styles ──
   for (const el of clone.querySelectorAll(".selectedCell")) {
     el.classList.remove("selectedCell");
   }
   for (const el of clone.querySelectorAll(".column-resize-handle")) {
     el.remove();
+  }
+  // Apply inline styles to th/td for reliable PDF rendering
+  for (const th of clone.querySelectorAll("th")) {
+    (th as HTMLElement).style.cssText += ";font-weight:600;background-color:#f3f4f6;border:1px solid #d1d5db;padding:0.4em 0.75em;";
+  }
+  for (const td of clone.querySelectorAll("td")) {
+    (td as HTMLElement).style.cssText += ";border:1px solid #d1d5db;padding:0.4em 0.75em;";
+  }
+  for (const table of clone.querySelectorAll("table")) {
+    (table as HTMLElement).style.cssText += ";border-collapse:collapse;width:100%;";
   }
 
   // ── Remove contenteditable attributes ────────────────────────────
