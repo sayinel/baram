@@ -451,6 +451,18 @@ function convertBlockNode(
     }
   }
 
+  // §5.13 Query: code block with lang="query" → queryBlock (if schema supports it)
+  if (
+    node.type === "code" &&
+    (node as { lang?: string }).lang === "query" &&
+    schema.nodes.queryBlock
+  ) {
+    const queryTransformer = nodeTransformers.get("query");
+    if (queryTransformer) {
+      return queryTransformer.mdastToPm(node, schema, () => []);
+    }
+  }
+
   // §30b: Detect block embed — paragraph with single text child matching {{embed ((...))}}
   if (node.type === "paragraph" && schema.nodes.blockEmbed) {
     const children = (node as { children?: Content[] }).children;

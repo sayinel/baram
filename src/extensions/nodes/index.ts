@@ -13,6 +13,7 @@ export { CodeBlock } from "./code-block";
 // M3
 export { MathBlock } from "./math-block";
 export { MermaidBlock } from "./mermaid-block";
+export { QueryBlock } from "./query-block";
 export { MathInline } from "./math-inline";
 export {
   BaramTable,
