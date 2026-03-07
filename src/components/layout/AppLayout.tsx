@@ -26,6 +26,11 @@ const PhotoGalleryPanel = lazy(() =>
     default: m.PhotoGalleryPanel,
   })),
 );
+const PropertiesPanel = lazy(() =>
+  import("../sidebar/PropertiesPanel").then((m) => ({
+    default: m.PropertiesPanel,
+  })),
+);
 
 interface AppLayoutProps {
   editor: Editor | null;
@@ -110,6 +115,7 @@ export function AppLayout({ editor, children, statusBar }: AppLayoutProps) {
                 <HelpPanel />
                 <MemoriesPanel />
                 <PhotoGalleryPanel />
+                <PropertiesPanel />
               </Suspense>
             </aside>
           </>

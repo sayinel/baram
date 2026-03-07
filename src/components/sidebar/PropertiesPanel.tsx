@@ -1,0 +1,385 @@
+// §72 Properties Panel — YAML frontmatter GUI editor
+import { useState, useCallback } from "react";
+import { useUIStore } from "../../stores/ui-store";
+import { useEditorStore } from "../../stores/editor-store";
+import { useFileStore } from "../../stores/file-store";
+import type { FileEntry } from "../../stores/file-store";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export type PropertyType = "string" | "array" | "enum";
+
+export interface PropertyEntry {
+  key: string;
+  value: string | string[];
+  type: PropertyType;
+}
+
+// Keys that are always treated as arrays
+const ARRAY_KEYS = new Set(["tags", "requires"]);
+
+// Keys that are treated as enums
+const ENUM_KEYS = new Set(["status"]);
+const ENUM_VALUES: Record<string, string[]> = {
+  status: ["draft", "active", "deprecated"],
+};
+
+// ─── Parse / Serialize ────────────────────────────────────────────────────────
+
+/**
+ * Parse a YAML frontmatter string (without --- delimiters) into PropertyEntry[].
+ * Exported for testing.
+ */
+export function parseYamlProperties(yaml: string): PropertyEntry[] {
+  if (!yaml || !yaml.trim()) return [];
+
+  const entries: PropertyEntry[] = [];
+  const lines = yaml.split("\n");
+
+  for (const line of lines) {
+    const colonIdx = line.indexOf(":");
+    if (colonIdx === -1) continue;
+
+    const key = line.slice(0, colonIdx).trim();
+    if (!key) continue;
+
+    const rawValue = line.slice(colonIdx + 1).trim();
+
+    if (ENUM_KEYS.has(key)) {
+      entries.push({ key, value: rawValue, type: "enum" });
+      continue;
+    }
+
+    if (ARRAY_KEYS.has(key)) {
+      // bracket syntax: [a, b] or []
+      const bracketMatch = rawValue.match(/^\[(.*)\]$/);
+      if (bracketMatch) {
+        const inner = bracketMatch[1].trim();
+        const items = inner === "" ? [] : inner.split(",").map((s) => s.trim()).filter(Boolean);
+        entries.push({ key, value: items, type: "array" });
+      } else {
+        // single value without brackets — still treat as array
+        const items = rawValue ? [rawValue] : [];
+        entries.push({ key, value: items, type: "array" });
+      }
+      continue;
+    }
+
+    // default: string
+    entries.push({ key, value: rawValue, type: "string" });
+  }
+
+  return entries;
+}
+
+/**
+ * Serialize PropertyEntry[] back to a YAML string (without --- delimiters).
+ * Exported for testing.
+ */
+export function serializeYamlProperties(entries: PropertyEntry[]): string {
+  return entries
+    .map((entry) => {
+      if (entry.type === "array") {
+        const arr = entry.value as string[];
+        const bracketList = arr.join(", ");
+        return `${entry.key}: [${bracketList}]`;
+      }
+      return `${entry.key}: ${entry.value as string}`;
+    })
+    .join("\n");
+}
+
+// ─── Frontmatter helpers ──────────────────────────────────────────────────────
+
+function extractFrontmatter(content: string): { yaml: string; rest: string } | null {
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!match) return null;
+  return { yaml: match[1], rest: content.slice(match[0].length) };
+}
+
+function rebuildContent(yaml: string, rest: string): string {
+  return `---\n${yaml}\n---${rest}`;
+}
+
+// ─── File tree search ─────────────────────────────────────────────────────────
+
+function findFileInTree(tree: FileEntry[], name: string): FileEntry | null {
+  for (const entry of tree) {
+    if (!entry.isDir && (entry.name === name || entry.name === `${name}.md`)) {
+      return entry;
+    }
+    if (entry.isDir && entry.children) {
+      const found = findFileInTree(entry.children, name);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+// ─── AddPropertyButton ────────────────────────────────────────────────────────
+
+function AddPropertyButton({ onAdd }: { onAdd: (key: string) => void }) {
+  const [adding, setAdding] = useState(false);
+  const [newKey, setNewKey] = useState("");
+
+  const commit = () => {
+    const trimmed = newKey.trim();
+    if (trimmed) onAdd(trimmed);
+    setAdding(false);
+    setNewKey("");
+  };
+
+  if (!adding) {
+    return (
+      <button className="properties-add-btn" onClick={() => setAdding(true)}>
+        + 속성 추가
+      </button>
+    );
+  }
+
+  return (
+    <input
+      className="properties-input"
+      autoFocus
+      placeholder="key 이름 입력 후 Enter"
+      value={newKey}
+      onChange={(e) => setNewKey(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") commit();
+        if (e.key === "Escape") {
+          setAdding(false);
+          setNewKey("");
+        }
+      }}
+      onBlur={commit}
+    />
+  );
+}
+
+// ─── PropertiesPanel ──────────────────────────────────────────────────────────
+
+export function PropertiesPanel() {
+  const { rightPanelOpen, rightPanelMode } = useUIStore();
+  const { activeTabId, tabs } = useEditorStore();
+  const { openFiles, fileTree } = useFileStore();
+
+  const [sourceMode, setSourceMode] = useState(false);
+  const [sourceText, setSourceText] = useState("");
+
+  if (!rightPanelOpen || rightPanelMode !== "properties") return null;
+
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+  const filePath = activeTab?.filePath ?? null;
+  const content = filePath ? (openFiles.get(filePath) ?? null) : null;
+
+  const parsed = content ? extractFrontmatter(content) : null;
+  const yaml = parsed?.yaml ?? null;
+  const entries: PropertyEntry[] = yaml !== null ? parseYamlProperties(yaml) : [];
+
+  // ── write-back helpers ───────────────────────────────────────────────────
+
+  function applyEntries(updated: PropertyEntry[]) {
+    if (!filePath || !parsed) return;
+    const newYaml = serializeYamlProperties(updated);
+    const newContent = rebuildContent(newYaml, parsed.rest);
+    useFileStore.getState().setFileContent(filePath, newContent);
+    if (activeTabId) useEditorStore.getState().markDirty(activeTabId, true);
+  }
+
+  function applySourceText(text: string) {
+    if (!filePath || !parsed) return;
+    const newContent = rebuildContent(text, parsed.rest);
+    useFileStore.getState().setFileContent(filePath, newContent);
+    if (activeTabId) useEditorStore.getState().markDirty(activeTabId, true);
+  }
+
+  // ── source mode toggle ───────────────────────────────────────────────────
+
+  const handleToggleSource = () => {
+    if (!sourceMode) {
+      setSourceText(yaml ?? "");
+    } else {
+      applySourceText(sourceText);
+    }
+    setSourceMode((v) => !v);
+  };
+
+  // ── field handlers ───────────────────────────────────────────────────────
+
+  const handleStringChange = useCallback(
+    (key: string, val: string) => {
+      const updated = entries.map((e) => (e.key === key ? { ...e, value: val } : e));
+      applyEntries(updated);
+    },
+    [entries, filePath, parsed],
+  );
+
+  const handleEnumChange = useCallback(
+    (key: string, val: string) => {
+      const updated = entries.map((e) => (e.key === key ? { ...e, value: val } : e));
+      applyEntries(updated);
+    },
+    [entries, filePath, parsed],
+  );
+
+  const handleChipRemove = useCallback(
+    (key: string, idx: number) => {
+      const updated = entries.map((e) => {
+        if (e.key !== key) return e;
+        const arr = (e.value as string[]).filter((_, i) => i !== idx);
+        return { ...e, value: arr };
+      });
+      applyEntries(updated);
+    },
+    [entries, filePath, parsed],
+  );
+
+  const handleChipAdd = useCallback(
+    (key: string) => {
+      // TODO: Replace with custom dialog (Tauri WKWebView issue — window.prompt returns null)
+      const item = window.prompt("Add item:");
+      if (!item) return;
+      const updated = entries.map((e) => {
+        if (e.key !== key) return e;
+        return { ...e, value: [...(e.value as string[]), item.trim()] };
+      });
+      applyEntries(updated);
+    },
+    [entries, filePath, parsed],
+  );
+
+  const handleOpenFile = useCallback(
+    async (name: string) => {
+      const found = findFileInTree(fileTree, name);
+      if (!found) return;
+      const { openTab, setActiveTab } = useEditorStore.getState();
+      const tabId = `tab-${found.path}`;
+      const { tabs: currentTabs } = useEditorStore.getState();
+      const existing = currentTabs.find((t) => t.filePath === found.path);
+      if (existing) {
+        setActiveTab(existing.id);
+        return;
+      }
+      try {
+        const { readFile } = await import("../../ipc/invoke");
+        const fileContent = await readFile(found.path);
+        useFileStore.getState().setFileContent(found.path, fileContent);
+        openTab({ id: tabId, filePath: found.path, title: found.name, isDirty: false, isPinned: false });
+        setActiveTab(tabId);
+      } catch (err) {
+        console.error("PropertiesPanel: failed to open file", err);
+      }
+    },
+    [fileTree],
+  );
+
+  const handleAddProperty = useCallback(
+    (key: string) => {
+      const type: PropertyType = ENUM_KEYS.has(key) ? "enum" : ARRAY_KEYS.has(key) ? "array" : "string";
+      const value: string | string[] = type === "array" ? [] : "";
+      const updated = [...entries, { key, value, type }];
+      applyEntries(updated);
+    },
+    [entries, filePath, parsed],
+  );
+
+  // ── render ───────────────────────────────────────────────────────────────
+
+  return (
+    <div className="properties-panel">
+      <div className="properties-header">
+        <span>Properties</span>
+        <button className="properties-source-toggle" onClick={handleToggleSource} title="Toggle source YAML">
+          {"</>"}
+        </button>
+      </div>
+
+      {content === null && (
+        <div className="properties-empty">파일이 열려 있지 않습니다.</div>
+      )}
+
+      {content !== null && yaml === null && (
+        <div className="properties-empty">No frontmatter</div>
+      )}
+
+      {content !== null && yaml !== null && sourceMode && (
+        <textarea
+          className="properties-source"
+          value={sourceText}
+          onChange={(e) => setSourceText(e.target.value)}
+          spellCheck={false}
+        />
+      )}
+
+      {content !== null && yaml !== null && !sourceMode && (
+        <>
+          <div className="properties-entries">
+            {entries.map((entry) => (
+              <div key={entry.key} className="properties-row">
+                <div className="properties-key">{entry.key}</div>
+
+                {entry.type === "string" && (
+                  <input
+                    className="properties-input"
+                    value={entry.value as string}
+                    onChange={(e) => handleStringChange(entry.key, e.target.value)}
+                  />
+                )}
+
+                {entry.type === "enum" && (
+                  <select
+                    className="properties-select"
+                    value={entry.value as string}
+                    onChange={(e) => handleEnumChange(entry.key, e.target.value)}
+                  >
+                    {(ENUM_VALUES[entry.key] ?? [entry.value as string]).map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                {entry.type === "array" && (
+                  <div className="properties-chips">
+                    {(entry.value as string[]).map((chip, idx) => {
+                      const isFileRef = entry.key === "requires";
+                      return (
+                        <span
+                          key={idx}
+                          className={`properties-chip${isFileRef ? " file-ref" : ""}`}
+                          onClick={isFileRef ? () => handleOpenFile(chip) : undefined}
+                        >
+                          {isFileRef && <span>📄</span>}
+                          {chip}
+                          <button
+                            className="properties-chip-remove"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleChipRemove(entry.key, idx);
+                            }}
+                            title="Remove"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      );
+                    })}
+                    <button
+                      className="properties-chip-add"
+                      onClick={() => handleChipAdd(entry.key)}
+                    >
+                      +
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <AddPropertyButton onAdd={handleAddProperty} />
+        </>
+      )}
+    </div>
+  );
+}
