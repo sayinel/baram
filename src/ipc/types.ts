@@ -195,6 +195,12 @@ export interface RenameResult {
   updatedFiles: string[];
 }
 
+// §61 Namespace rename result
+export interface NamespaceRenameResult {
+  updatedFiles: string[];
+  filesMoved: number;
+}
+
 // §56m Tag types
 export interface TagEntry {
   tag: string;

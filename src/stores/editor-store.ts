@@ -44,6 +44,8 @@ interface EditorState {
   ) => string | null;
   /** §33 Rename tab: update filePath and title for a renamed file */
   renameTab: (oldPath: string, newPath: string, newTitle: string) => void;
+  /** §61 Rename directory: update all tabs whose filePath starts with oldDir */
+  renameDirInTabs: (oldDir: string, newDir: string) => void;
   /** Reorder tab from one index to another */
   reorderTab: (fromIndex: number, toIndex: number) => void;
   /** §38 Pin a tab — moves to end of pinned group */
@@ -133,6 +135,18 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       tabs: state.tabs.map((t) =>
         t.filePath === oldPath ? { ...t, filePath: newPath, title: newTitle } : t,
       ),
+    })),
+
+  renameDirInTabs: (oldDir, newDir) =>
+    set((state) => ({
+      tabs: state.tabs.map((t) => {
+        if (t.filePath && (t.filePath === oldDir || t.filePath.startsWith(oldDir + "/"))) {
+          const newFilePath = newDir + t.filePath.slice(oldDir.length);
+          const newTitle = newFilePath.split("/").pop() ?? t.title;
+          return { ...t, filePath: newFilePath, title: newTitle };
+        }
+        return t;
+      }),
     })),
 
   reorderTab: (fromIndex, toIndex) =>

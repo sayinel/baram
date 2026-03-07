@@ -20,6 +20,7 @@ import type {
   PdfOptions,
   PandocInfo,
   RenameResult,
+  NamespaceRenameResult,
   ModelInfo,
   SnapshotEntry,
   DiffResult,
@@ -132,6 +133,15 @@ export async function renameBlockId(
   newId: string,
 ): Promise<RenameResult> {
   return invoke<RenameResult>("rename_block_id", { filePath, oldId, newId });
+}
+
+// §61 Rename namespace (directory) with relative wikilink auto-update
+export async function renameNamespace(
+  oldDir: string,
+  newDir: string,
+  rootPath: string,
+): Promise<NamespaceRenameResult> {
+  return invoke<NamespaceRenameResult>("rename_namespace", { oldDir, newDir, rootPath });
 }
 
 // §6.3 LLM commands

@@ -729,8 +729,104 @@ fn strip_wikilinks(line: &str) -> String {
     }).to_string()
 }
 
+/// §61 Resolve a relative path against a base directory to an absolute path (no .md extension)
+fn resolve_relative_path(base_dir: &str, relative: &str) -> String {
+    let combined = format!("{}/{}", base_dir, relative);
+    let parts: Vec<&str> = combined.split('/').collect();
+    let mut resolved: Vec<&str> = Vec::new();
+
+    for part in &parts {
+        match *part {
+            "." | "" => continue,
+            ".." => { resolved.pop(); },
+            _ => resolved.push(part),
+        }
+    }
+
+    let result = resolved.join("/");
+    if base_dir.starts_with('/') {
+        format!("/{}", result)
+    } else {
+        result
+    }
+}
+
+/// §61 Compute a relative path from source_dir to target_path (without .md extension)
+fn make_relative_path(source_dir: &str, target_path: &str) -> String {
+    let src_parts: Vec<&str> = source_dir.split('/').filter(|s| !s.is_empty()).collect();
+    let tgt_parts: Vec<&str> = target_path.split('/').filter(|s| !s.is_empty()).collect();
+
+    // Find common prefix length
+    let common = src_parts.iter().zip(tgt_parts.iter())
+        .take_while(|(a, b)| a == b)
+        .count();
+
+    let ups = src_parts.len() - common;
+    let mut result = String::new();
+
+    if ups == 0 {
+        result.push_str("./");
+    } else {
+        for _ in 0..ups {
+            result.push_str("../");
+        }
+    }
+
+    let remaining: Vec<&str> = tgt_parts[common..].to_vec();
+    result.push_str(&remaining.join("/"));
+
+    result
+}
+
+/// §61 Rewrite relative wikilinks in content that resolve into old_dir to point to new_dir instead.
+/// source_path is the file containing the content (used for relative path resolution).
+pub fn rewrite_relative_wikilinks(
+    content: &str,
+    source_path: &str,
+    old_dir: &str,
+    new_dir: &str,
+) -> String {
+    // Regex for relative wikilinks: [[./path...]] or [[../path...]] with optional #heading, ^block, |display
+    static RELATIVE_WIKILINK_RE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"\[\[(\.\.?/[^\]|#^]+)((?:#[^\]|^]+)?(?:\^[^\]|]+)?(?:\|[^\]]+)?)\]\]").unwrap()
+    });
+
+    let source_dir = Path::new(source_path)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    let old_dir_slash = if old_dir.ends_with('/') {
+        old_dir.to_string()
+    } else {
+        format!("{}/", old_dir)
+    };
+
+    RELATIVE_WIKILINK_RE
+        .replace_all(content, |caps: &regex::Captures| {
+            let rel_target = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+            let rest = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+
+            // Resolve the relative target to an absolute path (without .md)
+            let resolved = resolve_relative_path(&source_dir, rel_target);
+
+            // Check if this resolved path points into old_dir
+            if resolved.starts_with(&old_dir_slash) || resolved == old_dir {
+                // Compute the new absolute path
+                let suffix = &resolved[old_dir.len()..];
+                let new_resolved = format!("{}{}", new_dir, suffix);
+                // Convert back to relative path from source_dir
+                let new_rel = make_relative_path(&source_dir, &new_resolved);
+                format!("[[{new_rel}{rest}]]")
+            } else {
+                caps[0].to_string()
+            }
+        })
+        .to_string()
+}
+
 /// Recursively collect all .md files under a root path
-async fn collect_md_files(root: &str) -> Result<Vec<String>, IndexError> {
+pub(crate) async fn collect_md_files(root: &str) -> Result<Vec<String>, IndexError> {
     let mut files = Vec::new();
     collect_md_files_inner(Path::new(root), &mut files).await?;
     Ok(files)
@@ -1251,5 +1347,90 @@ mod tests {
         // The new file should be in the file map
         let resolved = index.resolve_target_from_map("new-note");
         assert_eq!(resolved, Some("/vault/notes/new-note.md".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_relative_path() {
+        assert_eq!(
+            resolve_relative_path("/vault/notes", "./ai/prompt"),
+            "/vault/notes/ai/prompt"
+        );
+        assert_eq!(
+            resolve_relative_path("/vault/notes/ai", "../meeting"),
+            "/vault/notes/meeting"
+        );
+        assert_eq!(
+            resolve_relative_path("/vault/notes/ai", "../../readme"),
+            "/vault/readme"
+        );
+    }
+
+    #[test]
+    fn test_make_relative_path() {
+        assert_eq!(
+            make_relative_path("/vault/notes", "/vault/notes/ml/prompt"),
+            "./ml/prompt"
+        );
+        assert_eq!(
+            make_relative_path("/vault/notes/sub", "/vault/notes/ml/prompt"),
+            "../ml/prompt"
+        );
+        assert_eq!(
+            make_relative_path("/vault", "/vault/notes/ml/prompt"),
+            "./notes/ml/prompt"
+        );
+    }
+
+    #[test]
+    fn test_rewrite_relative_wikilinks() {
+        // From notes/meeting.md: [[./ai/prompt]] → [[./ml/prompt]]
+        let content = "See [[./ai/prompt]] for details.";
+        let result = rewrite_relative_wikilinks(
+            content,
+            "/vault/notes/meeting.md",
+            "/vault/notes/ai",
+            "/vault/notes/ml",
+        );
+        assert_eq!(result, "See [[./ml/prompt]] for details.");
+
+        // With heading: [[./ai/prompt#intro]] → [[./ml/prompt#intro]]
+        let content = "See [[./ai/prompt#intro]] here.";
+        let result = rewrite_relative_wikilinks(
+            content,
+            "/vault/notes/meeting.md",
+            "/vault/notes/ai",
+            "/vault/notes/ml",
+        );
+        assert_eq!(result, "See [[./ml/prompt#intro]] here.");
+
+        // Non-matching relative link is unchanged
+        let content = "See [[./other/file]] here.";
+        let result = rewrite_relative_wikilinks(
+            content,
+            "/vault/notes/meeting.md",
+            "/vault/notes/ai",
+            "/vault/notes/ml",
+        );
+        assert_eq!(result, "See [[./other/file]] here.");
+
+        // Global wikilinks are unchanged
+        let content = "See [[prompt]] here.";
+        let result = rewrite_relative_wikilinks(
+            content,
+            "/vault/notes/meeting.md",
+            "/vault/notes/ai",
+            "/vault/notes/ml",
+        );
+        assert_eq!(result, "See [[prompt]] here.");
+
+        // From deeper path: [[../ai/models]] → [[../ml/models]]
+        let content = "Link [[../ai/models]] from sub.";
+        let result = rewrite_relative_wikilinks(
+            content,
+            "/vault/notes/sub/file.md",
+            "/vault/notes/ai",
+            "/vault/notes/ml",
+        );
+        assert_eq!(result, "Link [[../ml/models]] from sub.");
     }
 }

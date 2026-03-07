@@ -6,7 +6,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useFileStore, openFolder, type FileEntry } from "../../stores/file-store";
 import { useEditorStore } from "../../stores/editor-store";
 import { useLinkStore } from "../../stores/link-store";
-import { readFile, writeFile, deleteFile, createDir, deleteDir, renameFile, renameFileWithLinks, getFilesByTag } from "../../ipc/invoke";
+import { readFile, writeFile, deleteFile, createDir, deleteDir, renameFile, renameFileWithLinks, renameNamespace, getFilesByTag } from "../../ipc/invoke";
 import { flattenFileTree, fuzzyMatch, fuzzyScore, isGlobPattern, globMatch } from "../../utils/file-search";
 import { showConfirm } from "../../utils/confirm-dialog";
 import { isImageFile, getRelativePath } from "../../utils/path-utils";
@@ -448,31 +448,64 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
       const oldName = parts[parts.length - 1];
       if (newName === oldName || !newName.trim()) return;
       const newPath = oldPath.substring(0, oldPath.length - oldName.length) + newName;
-      try {
-        const result = await renameFileWithLinks(oldPath, newPath);
-        renameFileEntry(oldPath, newPath, newName);
-        renameTab(oldPath, newPath, newName);
-        setSelectedPath(newPath);
-        const { openFiles } = useFileStore.getState();
-        if (openFiles.has(oldPath)) {
-          const content = openFiles.get(oldPath)!;
-          useFileStore.getState().removeFileContent(oldPath);
-          useFileStore.getState().setFileContent(newPath, content);
-        }
-        for (const updatedFile of result.updatedFiles) {
-          if (openFiles.has(updatedFile)) {
-            try {
-              const newContent = await readFile(updatedFile);
-              useFileStore.getState().setFileContent(updatedFile, newContent);
-            } catch { /* ignore */ }
+
+      // Check if this is a directory rename
+      const isDir = (() => {
+        function find(entries: FileEntry[]): boolean {
+          for (const e of entries) {
+            if (e.path === oldPath) return e.isDir;
+            if (e.isDir && e.children && find(e.children)) return true;
           }
+          return false;
         }
-        useLinkStore.getState().invalidate();
+        return find(fileTree);
+      })();
+
+      try {
+        if (isDir && rootPath) {
+          // §61 Namespace rename: directory + relative wikilink updates
+          const result = await renameNamespace(oldPath, newPath, rootPath);
+          renameFileEntry(oldPath, newPath, newName);
+          useEditorStore.getState().renameDirInTabs(oldPath, newPath);
+          setSelectedPath(newPath);
+          // Reload content for files that had wikilinks updated
+          const { openFiles } = useFileStore.getState();
+          for (const updatedFile of result.updatedFiles) {
+            if (openFiles.has(updatedFile)) {
+              try {
+                const newContent = await readFile(updatedFile);
+                useFileStore.getState().setFileContent(updatedFile, newContent);
+              } catch { /* ignore */ }
+            }
+          }
+          useLinkStore.getState().invalidate();
+        } else {
+          // Single file rename (existing behavior)
+          const result = await renameFileWithLinks(oldPath, newPath);
+          renameFileEntry(oldPath, newPath, newName);
+          renameTab(oldPath, newPath, newName);
+          setSelectedPath(newPath);
+          const { openFiles } = useFileStore.getState();
+          if (openFiles.has(oldPath)) {
+            const content = openFiles.get(oldPath)!;
+            useFileStore.getState().removeFileContent(oldPath);
+            useFileStore.getState().setFileContent(newPath, content);
+          }
+          for (const updatedFile of result.updatedFiles) {
+            if (openFiles.has(updatedFile)) {
+              try {
+                const newContent = await readFile(updatedFile);
+                useFileStore.getState().setFileContent(updatedFile, newContent);
+              } catch { /* ignore */ }
+            }
+          }
+          useLinkStore.getState().invalidate();
+        }
       } catch (err) {
         console.error("[FileTree] Rename failed:", err);
       }
     },
-    [renameFileEntry, renameTab],
+    [renameFileEntry, renameTab, fileTree, rootPath],
   );
 
   // --- Context menu ---

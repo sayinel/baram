@@ -1,7 +1,7 @@
 // §29 인덱스 IPC 커맨드 — 백링크 조회, 인덱스 빌드/갱신
 // §33 파일 이름 변경 시 wikilink 자동 갱신
 
-use crate::index::{find_unlinked_mentions, replace_block_id_refs, replace_wikilink_target, BacklinkResult, IndexStats, LinkGraph, LinkIndex, UnlinkedMentionResult};
+use crate::index::{collect_md_files, find_unlinked_mentions, replace_block_id_refs, replace_wikilink_target, rewrite_relative_wikilinks, BacklinkResult, IndexStats, LinkGraph, LinkIndex, UnlinkedMentionResult};
 use serde::Serialize;
 use std::path::Path;
 use std::sync::Mutex;
@@ -214,4 +214,81 @@ pub async fn rename_block_id(
     }
 
     Ok(RenameResult { updated_files })
+}
+
+/// §61 Result of renaming a namespace (directory) with wikilink updates
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NamespaceRenameResult {
+    pub updated_files: Vec<String>,
+    pub files_moved: u32,
+}
+
+/// §61 Rename a directory (namespace) and update all relative wikilinks that reference it
+#[tauri::command]
+pub async fn rename_namespace(
+    old_dir: String,
+    new_dir: String,
+    root_path: String,
+    state: State<'_, LinkIndexState>,
+) -> Result<NamespaceRenameResult, String> {
+    // 1. Collect all .md files in the vault
+    let all_files = collect_md_files(&root_path)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let old_dir_slash = if old_dir.ends_with('/') {
+        old_dir.clone()
+    } else {
+        format!("{}/", old_dir)
+    };
+
+    // Count files that will be moved
+    let files_moved = all_files
+        .iter()
+        .filter(|f| f.starts_with(&old_dir_slash))
+        .count() as u32;
+
+    // 2. Find and update files outside old_dir that have relative wikilinks pointing into old_dir
+    let mut updated_files = Vec::new();
+
+    for file_path in &all_files {
+        // Skip files inside the directory being renamed (they move with it)
+        if file_path.starts_with(&old_dir_slash) {
+            continue;
+        }
+
+        let content = match tokio::fs::read_to_string(file_path).await {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        let new_content = rewrite_relative_wikilinks(&content, file_path, &old_dir, &new_dir);
+
+        if new_content != content {
+            crate::fs::write_file(file_path, &new_content)
+                .await
+                .map_err(|e| e.to_string())?;
+            updated_files.push(file_path.clone());
+        }
+    }
+
+    // 3. Rename the directory
+    crate::fs::rename_file(&old_dir, &new_dir)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // 4. Rebuild the index (full rebuild since many files moved)
+    let mut new_index = crate::index::LinkIndex::new();
+    new_index
+        .build(&root_path)
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut index = state.0.lock().map_err(|e| e.to_string())?;
+    *index = new_index;
+
+    Ok(NamespaceRenameResult {
+        updated_files,
+        files_moved,
+    })
 }

@@ -133,17 +133,35 @@ export const useFileStore = create<FileState>((set, get) => ({
     set((state) => {
       // Update openFiles cache: move content from old key to new key
       const openFiles = new Map(state.openFiles);
-      const content = openFiles.get(oldPath);
-      if (content !== undefined) {
-        openFiles.delete(oldPath);
-        openFiles.set(newPath, content);
+      // For directories, update all keys with the old prefix
+      for (const [key, value] of openFiles) {
+        if (key === oldPath || key.startsWith(oldPath + "/")) {
+          openFiles.delete(key);
+          const newKey = newPath + key.slice(oldPath.length);
+          openFiles.set(newKey, value);
+        }
       }
 
-      // Update file tree: recursively find and rename the entry
+      // Update file tree: recursively find and rename the entry + children
       function updateTree(entries: FileEntry[]): FileEntry[] {
         return entries.map((e) => {
           if (e.path === oldPath) {
-            return { ...e, name: newName, path: newPath };
+            // Rename this entry and recursively update children paths
+            function updateChildren(children: FileEntry[]): FileEntry[] {
+              return children.map((c) => {
+                const childNewPath = newPath + c.path.slice(oldPath.length);
+                const updated = { ...c, path: childNewPath };
+                if (c.isDir && c.children) {
+                  updated.children = updateChildren(c.children);
+                }
+                return updated;
+              });
+            }
+            const result: FileEntry = { ...e, name: newName, path: newPath };
+            if (e.isDir && e.children) {
+              result.children = updateChildren(e.children);
+            }
+            return result;
           }
           if (e.isDir && e.children) {
             return { ...e, children: updateTree(e.children) };

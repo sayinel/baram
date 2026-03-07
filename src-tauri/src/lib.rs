@@ -364,6 +364,7 @@ pub fn run() {
             index_cmd::rename_file_with_links,
             index_cmd::get_unlinked_mentions,
             index_cmd::rename_block_id,
+            index_cmd::rename_namespace,
             keyring_cmd::keyring_store,
             keyring_cmd::keyring_get,
             keyring_cmd::keyring_delete,
