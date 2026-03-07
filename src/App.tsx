@@ -1236,6 +1236,34 @@ function App() {
     };
   }, [handleWikilinkNavigate]);
 
+  // §72 참조 링크 네비게이션 — Cmd+click on file paths in Skills files
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ path: string }>).detail;
+      if (!detail?.path) return;
+      const filePath = detail.path;
+
+      // Resolve relative paths against current file's directory or rootPath
+      const resolveAbsolute = (p: string): string | null => {
+        if (p.startsWith("/")) return p;
+        const { activeTabId: curTabId, tabs: curTabs } = useEditorStore.getState();
+        const curTab = curTabs.find((t) => t.id === curTabId);
+        if (curTab?.filePath) {
+          const curDir = curTab.filePath.substring(0, curTab.filePath.lastIndexOf("/"));
+          return `${curDir}/${p}`;
+        }
+        const { rootPath } = useFileStore.getState();
+        if (rootPath) return `${rootPath}/${p}`;
+        return null;
+      };
+
+      const resolved = resolveAbsolute(filePath);
+      if (resolved) handleOpenFilePath(resolved);
+    };
+    window.addEventListener("baram:open-filepath", handler);
+    return () => window.removeEventListener("baram:open-filepath", handler);
+  }, [handleOpenFilePath]);
+
   // Listen for file open events from macOS (Finder "Open With" / double-click)
   useEffect(() => {
     // Cold start: check for files queued before frontend was ready

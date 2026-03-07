@@ -1,4 +1,5 @@
 // §41 Prompt Syntax Highlighting — decoration plugin for Skills files
+// §72 Cmd+click file path navigation
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
@@ -15,6 +16,29 @@ function isSkillsFile(doc: PmNode): boolean {
     if (/type\s*:\s*skill/i.test(yaml)) return true;
   }
   return false;
+}
+
+export interface FilePathMatch {
+  path: string;
+  start: number;
+  end: number;
+}
+
+/** Extract file path references from text (exported for testing) */
+export function extractFilePaths(text: string): FilePathMatch[] {
+  // Match: ./path, ../path, /path, or bare relative paths like agents/executor.md
+  // Bare paths must follow a colon, whitespace, or be at line start to avoid URL false positives
+  const regex = /(?:\.\.?\/[a-zA-Z0-9_\-./]+\.[a-zA-Z]+|\/[a-zA-Z0-9_\-]+(?:\/[a-zA-Z0-9_\-]+)*\.[a-zA-Z]+|(?:(?<=[:\s])|^)[a-zA-Z0-9_\-]+(?:\/[a-zA-Z0-9_\-]+)+\.[a-zA-Z]+)/gm;
+  const matches: FilePathMatch[] = [];
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    matches.push({
+      path: match[0].trim(),
+      start: match.index,
+      end: match.index + match[0].length,
+    });
+  }
+  return matches;
 }
 
 function buildDecorations(doc: PmNode): DecorationSet {
@@ -47,12 +71,14 @@ function buildDecorations(doc: PmNode): DecorationSet {
       );
     }
 
-    // File paths: /path/to/file or ./path
-    const pathRegex = /(?:\.\/|\/)[a-zA-Z0-9_\-./]+\.[a-zA-Z]+/g;
-    while ((match = pathRegex.exec(text)) !== null) {
+    // File paths: ./path, ../path, /path, or bare relative paths like agents/executor.md
+    const filePaths = extractFilePaths(text);
+    for (const fp of filePaths) {
       decorations.push(
-        Decoration.inline(pos + match.index, pos + match.index + match[0].length, {
+        Decoration.inline(pos + fp.start, pos + fp.end, {
           class: "prompt-filepath",
+          nodeName: "span",
+          "data-filepath": fp.path,
         }),
       );
     }
@@ -82,6 +108,18 @@ export const PromptHighlight = Extension.create({
         props: {
           decorations(state) {
             return promptHighlightKey.getState(state) as DecorationSet;
+          },
+          handleClick(_view, _pos, event) {
+            if (!(event.metaKey || event.ctrlKey)) return false;
+            const target = event.target as HTMLElement;
+            const el = target.closest("[data-filepath]");
+            const filepath = el?.getAttribute("data-filepath");
+            if (!filepath) return false;
+
+            window.dispatchEvent(
+              new CustomEvent("baram:open-filepath", { detail: { path: filepath } }),
+            );
+            return true;
           },
         },
       }),
