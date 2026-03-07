@@ -55,6 +55,14 @@ export function filterByJournalPrefix(
   return files;
 }
 
+/** §61 Extract namespace (directory path) from a relative file path.
+ *  e.g. "notes/ai/prompt.md" → "notes/ai", "readme.md" → undefined */
+function extractNamespace(relativePath: string): string | undefined {
+  const lastSlash = relativePath.lastIndexOf("/");
+  if (lastSlash <= 0) return undefined;
+  return relativePath.substring(0, lastSlash);
+}
+
 const PREFIX_BADGE_LABELS: Record<NonNullable<JournalPrefix>, string> = {
   n: "Notes",
   d: "Daily",
@@ -281,7 +289,7 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
           type: "file" as const,
           file: f,
           label: f.name,
-          detail: f.relativePath !== f.name ? f.relativePath : undefined,
+          detail: extractNamespace(f.relativePath),
         }));
       return items;
     }
@@ -294,7 +302,7 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
       type: "file" as const,
       file: f,
       label: f.name,
-      detail: f.relativePath !== f.name ? f.relativePath : undefined,
+      detail: extractNamespace(f.relativePath),
     }));
 
     // Only offer "create" when no prefix filter active

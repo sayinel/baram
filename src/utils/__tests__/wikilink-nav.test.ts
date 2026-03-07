@@ -1,6 +1,7 @@
 // §28 Wikilink navigation — resolveWikilinkTarget tests
+// §61 Namespace — relative path resolution tests
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { resolveWikilinkTarget } from "../wikilink-nav";
+import { resolveWikilinkTarget, resolveRelativeTarget } from "../wikilink-nav";
 
 // Mock file store
 vi.mock("../../stores/file-store", () => ({
@@ -9,7 +10,15 @@ vi.mock("../../stores/file-store", () => ({
   },
 }));
 
+// Mock editor store
+vi.mock("../../stores/editor-store", () => ({
+  useEditorStore: {
+    getState: vi.fn(),
+  },
+}));
+
 import { useFileStore } from "../../stores/file-store";
+import { useEditorStore } from "../../stores/editor-store";
 
 const mockFileTree = [
   {
@@ -32,6 +41,23 @@ const mockFileTree = [
         path: "/vault/notes/ideas.markdown",
         isDir: false,
       },
+      {
+        name: "ai",
+        path: "/vault/notes/ai",
+        isDir: true,
+        children: [
+          {
+            name: "prompt.md",
+            path: "/vault/notes/ai/prompt.md",
+            isDir: false,
+          },
+          {
+            name: "models.md",
+            path: "/vault/notes/ai/models.md",
+            isDir: false,
+          },
+        ],
+      },
     ],
   },
   {
@@ -45,7 +71,14 @@ beforeEach(() => {
   vi.mocked(useFileStore.getState).mockReturnValue({
     rootPath: "/vault",
     fileTree: mockFileTree,
+    isJournalScoped: false,
   } as ReturnType<typeof useFileStore.getState>);
+  vi.mocked(useEditorStore.getState).mockReturnValue({
+    activeTabId: "tab-1",
+    tabs: [
+      { id: "tab-1", filePath: "/vault/notes/ai/prompt.md", title: "prompt.md", isDirty: false, isPinned: false },
+    ],
+  } as unknown as ReturnType<typeof useEditorStore.getState>);
 });
 
 describe("resolveWikilinkTarget", () => {
@@ -98,5 +131,80 @@ describe("resolveWikilinkTarget", () => {
     } as unknown as ReturnType<typeof useFileStore.getState>);
     const result = resolveWikilinkTarget("architecture");
     expect(result).toBeNull();
+  });
+});
+
+describe("§61 resolveRelativeTarget", () => {
+  it("resolves ./sibling from same directory", () => {
+    const result = resolveRelativeTarget("./models", "/vault/notes/ai/prompt.md");
+    expect(result).toBe("/vault/notes/ai/models.md");
+  });
+
+  it("resolves ../sibling from parent directory", () => {
+    const result = resolveRelativeTarget("../meeting-notes", "/vault/notes/ai/prompt.md");
+    expect(result).toBe("/vault/notes/meeting-notes.md");
+  });
+
+  it("resolves ../ai/models with nested relative path", () => {
+    // From /vault/notes/meeting-notes.md: ../ goes to /vault, then ai/models
+    const result = resolveRelativeTarget("../ai/models", "/vault/notes/meeting-notes.md");
+    expect(result).toBe("/vault/ai/models.md");
+  });
+
+  it("resolves ./sub/file with subdirectory", () => {
+    const result = resolveRelativeTarget("./ai/prompt", "/vault/notes/meeting-notes.md");
+    expect(result).toBe("/vault/notes/ai/prompt.md");
+  });
+
+  it("handles multiple ../ levels", () => {
+    const result = resolveRelativeTarget("../../architecture", "/vault/notes/ai/prompt.md");
+    expect(result).toBe("/vault/architecture.md");
+  });
+});
+
+describe("§61 resolveWikilinkTarget with relative paths", () => {
+  it("resolves [[./models]] to same-directory file", () => {
+    const result = resolveWikilinkTarget("./models");
+    expect(result).toEqual({
+      path: "/vault/notes/ai/models.md",
+      name: "models.md",
+    });
+  });
+
+  it("resolves [[../meeting-notes]] to parent-directory file", () => {
+    const result = resolveWikilinkTarget("../meeting-notes");
+    expect(result).toEqual({
+      path: "/vault/notes/meeting-notes.md",
+      name: "meeting-notes.md",
+    });
+  });
+
+  it("returns null for non-existent relative target", () => {
+    const result = resolveWikilinkTarget("./nonexistent");
+    expect(result).toBeNull();
+  });
+
+  it("returns null for relative target when no active tab", () => {
+    vi.mocked(useEditorStore.getState).mockReturnValue({
+      activeTabId: null,
+      tabs: [],
+    } as unknown as ReturnType<typeof useEditorStore.getState>);
+    const result = resolveWikilinkTarget("./models");
+    expect(result).toBeNull();
+  });
+
+  it("does not fall back to global search for relative targets", () => {
+    // "architecture" exists globally, but "./architecture" should not resolve
+    // from /vault/notes/ai/ since there's no architecture.md in that directory
+    const result = resolveWikilinkTarget("./architecture");
+    expect(result).toBeNull();
+  });
+
+  it("global [[target]] still works unchanged", () => {
+    const result = resolveWikilinkTarget("architecture");
+    expect(result).toEqual({
+      path: "/vault/architecture.md",
+      name: "architecture.md",
+    });
   });
 });

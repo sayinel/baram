@@ -21,6 +21,7 @@ import {
   type WikilinkSuggestionItem,
 } from "./wikilink-suggest-utils";
 import { useFileStore } from "../../stores/file-store";
+import { useEditorStore } from "../../stores/editor-store";
 import { flattenFileTree, fuzzyScore } from "../../utils/file-search";
 import { writeFile, refreshIndex } from "../../ipc/invoke";
 import { getSyntaxRevealExpanded, syntaxRevealKey } from "./syntax-reveal";
@@ -135,6 +136,57 @@ export const WikilinkSuggest = Extension.create({
         },
         items: async ({ query }: { query: string }) => {
           const files = getFileItems();
+
+          // §61 Namespace: [[./  or [[../  → filter to relative directory
+          if (query.startsWith("./") || query.startsWith("../")) {
+            const activeTabId = useEditorStore.getState().activeTabId;
+            const activeTab = useEditorStore.getState().tabs.find(
+              (t) => t.id === activeTabId,
+            );
+            const sourcePath = activeTab?.filePath;
+            const { rootPath } = useFileStore.getState();
+
+            if (sourcePath && rootPath) {
+              const sourceDir = sourcePath.substring(
+                0,
+                sourcePath.lastIndexOf("/"),
+              );
+              // Find the last separator in the query to split dir prefix from file query
+              const lastSlash = query.lastIndexOf("/");
+              const dirPrefix = query.substring(0, lastSlash + 1); // e.g. "./" or "../sub/"
+              const fileQuery = query.substring(lastSlash + 1);
+
+              // Resolve the target directory
+              const targetParts = `${sourceDir}/${dirPrefix}`.split("/");
+              const resolved: string[] = [];
+              for (const p of targetParts) {
+                if (p === "." || p === "") continue;
+                if (p === "..") {
+                  resolved.pop();
+                } else {
+                  resolved.push(p);
+                }
+              }
+              const targetDir = resolved.join("/");
+
+              // Filter files in the target directory, prefix target with relative path
+              const dirFiles = files
+                .filter((f) => {
+                  const fileDir = f.path.substring(0, f.path.lastIndexOf("/"));
+                  return fileDir === targetDir;
+                })
+                .map((f) => ({
+                  ...f,
+                  target: `${dirPrefix}${f.target}`,
+                }));
+
+              if (!fileQuery) return dirFiles.slice(0, 20);
+
+              return filterFiles(dirFiles, fileQuery, 20);
+            }
+            return [];
+          }
+
           const hashIdx = query.indexOf("#");
 
           if (hashIdx >= 0) {
