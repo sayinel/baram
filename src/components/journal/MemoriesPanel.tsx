@@ -1,10 +1,11 @@
 // §56c Memories View — right panel component
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useUIStore } from "../../stores/ui-store";
 import { useFileStore } from "../../stores/file-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useEditorStore } from "../../stores/editor-store";
 import { extractOneLine, extractDiarySection, renderSimpleMarkdown, updateOneLineFrontmatter } from "../../utils/journal-memories";
+import { getMonthDays, getFirstDayOfWeek } from "../../utils/journal";
 import { listDir, readFile, writeFile } from "../../ipc/invoke";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
@@ -50,12 +51,26 @@ export function MemoriesPanel() {
   const setMode = useSettingsStore((s) => s.setMemoriesMode);
   const [memories, setMemories] = useState<MemoryEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(() => new Date());
+  const [showCalendar, setShowCalendar] = useState(false);
 
   if (!rightPanelOpen || rightPanelMode !== "memories") return null;
 
-  const now = new Date();
-  const month = now.getMonth() + 1;
-  const day = now.getDate();
+  const month = selectedDate.getMonth() + 1;
+  const day = selectedDate.getDate();
+
+  const isToday = (() => {
+    const now = new Date();
+    return selectedDate.getFullYear() === now.getFullYear() &&
+      selectedDate.getMonth() === now.getMonth() &&
+      selectedDate.getDate() === now.getDate();
+  })();
+
+  const navigateDay = (delta: number) => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() + delta);
+    setSelectedDate(d);
+  };
 
   // Ensure activeTab is valid after Photos tab removal
   const safeTab: MemoriesTab = activeTab === "journal" || activeTab === "notes" ? activeTab : "journal";
@@ -69,8 +84,36 @@ export function MemoriesPanel() {
     <div className="memories-panel">
       <div className="memories-header">
         <span className="memories-header-title">Memories</span>
-        <span className="memories-header-date">{month}월 {day}일</span>
+        <div className="memories-date-nav">
+          <button className="memories-date-nav-btn" onClick={() => navigateDay(-1)} title="이전 날">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
+          <button
+            className={`memories-date-nav-label ${showCalendar ? "memories-date-nav-label-active" : ""}`}
+            onClick={() => setShowCalendar(!showCalendar)}
+            title="캘린더 열기"
+          >
+            {month}월 {day}일
+            {isToday && <span className="memories-date-nav-today">오늘</span>}
+          </button>
+          <button className="memories-date-nav-btn" onClick={() => navigateDay(1)} title="다음 날">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </button>
+        </div>
       </div>
+
+      {showCalendar && (
+        <MiniCalendar
+          selectedDate={selectedDate}
+          onSelect={(d) => { setSelectedDate(d); setShowCalendar(false); }}
+          onClose={() => setShowCalendar(false)}
+        />
+      )}
+
       <div className="memories-tabs">
         {TABS.map((tab) => (
           <button
@@ -97,6 +140,91 @@ export function MemoriesPanel() {
           />
         )}
         {safeTab === "notes" && <NotesTab />}
+      </div>
+    </div>
+  );
+}
+
+// --- MiniCalendar ---
+
+const MINI_CAL_DAY_NAMES = ["일", "월", "화", "수", "목", "금", "토"];
+const MINI_CAL_MONTH_NAMES = [
+  "1월", "2월", "3월", "4월", "5월", "6월",
+  "7월", "8월", "9월", "10월", "11월", "12월",
+];
+
+interface MiniCalendarProps {
+  selectedDate: Date;
+  onSelect: (date: Date) => void;
+  onClose: () => void;
+}
+
+function MiniCalendar({ selectedDate, onSelect, onClose }: MiniCalendarProps) {
+  const [viewYear, setViewYear] = useState(selectedDate.getFullYear());
+  const [viewMonth, setViewMonth] = useState(selectedDate.getMonth());
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose]);
+
+  const days = getMonthDays(viewYear, viewMonth);
+  const firstDow = getFirstDayOfWeek(viewYear, viewMonth);
+  const today = new Date();
+
+  const prevMonth = () => {
+    if (viewMonth === 0) { setViewYear(viewYear - 1); setViewMonth(11); }
+    else setViewMonth(viewMonth - 1);
+  };
+
+  const nextMonth = () => {
+    if (viewMonth === 11) { setViewYear(viewYear + 1); setViewMonth(0); }
+    else setViewMonth(viewMonth + 1);
+  };
+
+  const isSameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+  return (
+    <div className="memories-mini-calendar" ref={ref}>
+      <div className="memories-mini-calendar-header">
+        <button className="memories-mini-calendar-nav" onClick={prevMonth}>‹</button>
+        <span className="memories-mini-calendar-title">
+          {viewYear}년 {MINI_CAL_MONTH_NAMES[viewMonth]}
+        </span>
+        <button className="memories-mini-calendar-nav" onClick={nextMonth}>›</button>
+      </div>
+      <div className="memories-mini-calendar-grid">
+        {MINI_CAL_DAY_NAMES.map((d) => (
+          <div key={d} className="memories-mini-calendar-dow">{d}</div>
+        ))}
+        {Array.from({ length: firstDow }).map((_, i) => (
+          <div key={`pad-${i}`} className="memories-mini-calendar-pad" />
+        ))}
+        {days.map((d) => {
+          const isSelected = isSameDay(d, selectedDate);
+          const isToday = isSameDay(d, today);
+          return (
+            <button
+              key={d.getDate()}
+              className={[
+                "memories-mini-calendar-day",
+                isSelected ? "memories-mini-calendar-day-selected" : "",
+                isToday ? "memories-mini-calendar-day-today" : "",
+              ].join(" ")}
+              onClick={() => onSelect(d)}
+            >
+              {d.getDate()}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

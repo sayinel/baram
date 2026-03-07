@@ -3248,6 +3248,159 @@ body {
   color: var(--color-text);
 }
 
+.memories-date-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.memories-date-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.memories-date-nav-btn:hover {
+  background: var(--color-bg-secondary);
+  color: var(--color-text);
+}
+
+.memories-date-nav-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  color: var(--color-accent, #5b7bd7);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.memories-date-nav-label:hover,
+.memories-date-nav-label-active {
+  background: var(--color-bg-secondary);
+}
+
+.memories-date-nav-today {
+  font-size: 0.6rem;
+  font-weight: 500;
+  color: var(--color-bg);
+  background: var(--color-accent, #5b7bd7);
+  padding: 0 4px;
+  border-radius: 3px;
+  line-height: 1.4;
+}
+
+/* Mini Calendar */
+.memories-mini-calendar {
+  position: relative;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 8px;
+  margin: 0 8px 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 10;
+}
+
+.memories-mini-calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.memories-mini-calendar-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.memories-mini-calendar-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 1rem;
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 0;
+}
+
+.memories-mini-calendar-nav:hover {
+  background: var(--color-bg-secondary);
+  color: var(--color-text);
+}
+
+.memories-mini-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+}
+
+.memories-mini-calendar-dow {
+  font-size: 0.6rem;
+  color: var(--color-text-secondary);
+  text-align: center;
+  padding: 2px 0;
+  font-weight: 500;
+}
+
+.memories-mini-calendar-pad {
+  /* empty cell */
+}
+
+.memories-mini-calendar-day {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 0.68rem;
+  cursor: pointer;
+  border-radius: 50%;
+  margin: 0 auto;
+  padding: 0;
+}
+
+.memories-mini-calendar-day:hover {
+  background: var(--color-bg-secondary);
+}
+
+.memories-mini-calendar-day-today {
+  font-weight: 700;
+  color: var(--color-accent, #5b7bd7);
+}
+
+.memories-mini-calendar-day-selected {
+  background: var(--color-accent, #5b7bd7);
+  color: #fff;
+  font-weight: 600;
+}
+
+.memories-mini-calendar-day-selected:hover {
+  background: var(--color-accent, #5b7bd7);
+  opacity: 0.9;
+}
+
 .memories-header-date {
   font-size: 0.7rem;
   font-weight: 500;
