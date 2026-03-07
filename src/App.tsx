@@ -47,6 +47,7 @@ import { useFileWatcher } from "./hooks/use-file-watcher";
 import { useExternalDrop } from "./hooks/use-external-drop";
 import { useJournal } from "./hooks/use-journal";
 import { useZoom } from "./hooks/use-zoom";
+import { useSkillsMode } from "./hooks/use-skills-mode";
 import { isDateString, getJournalFilePath, getHierarchicalJournalPath, resolveJournalDir, generateDefaultJournal, applyJournalTemplate } from "./utils/journal";
 import { parseCapturesFromMarkdown, buildNoteFromCapture, buildPromotedCaptureLink } from "./utils/journal-capture";
 import { readFile, writeFile, createDir, getOpenedUrls, updateFileIndex } from "./ipc/invoke";
@@ -237,6 +238,9 @@ function App() {
       editor.off("selectionUpdate", handleSelectionUpdate);
     };
   }, [editor]);
+
+  // §72 Skills mode — auto-detect skill files and switch right panel
+  const { isSkill } = useSkillsMode();
 
   // Auto-save hook (markdown files — Tiptap editor.on("update") based)
   useAutoSave(editor);
