@@ -3,7 +3,7 @@
  * TDD Red Phase: all tests should FAIL before implementation
  */
 import { describe, it, expect } from "vitest";
-import { extractOneLine, extractImages, updateOneLineFrontmatter, groupMemoriesByYear } from "../journal-memories";
+import { extractOneLine, extractDiarySection, renderSimpleMarkdown, extractImages, updateOneLineFrontmatter, groupMemoriesByYear } from "../journal-memories";
 
 describe("§56c extractOneLine", () => {
   it("returns frontmatter oneline field if present", () => {
@@ -118,6 +118,144 @@ date: 2026-02-28
 date: 2026-02-28
 ---`;
     expect(extractOneLine(content)).toBe("");
+  });
+});
+
+describe("§56c extractDiarySection", () => {
+  it("extracts content between ## Diary and next ## heading", () => {
+    const content = `---
+date: 2026-02-28
+---
+
+# February 28th (Saturday), 2026
+
+## Diary
+
+오늘 날씨가 좋았다.
+카페에서 코딩했다.
+
+## Notes
+
+메모 내용`;
+    expect(extractDiarySection(content)).toBe("오늘 날씨가 좋았다.\n카페에서 코딩했다.");
+  });
+
+  it("extracts to end if no next section", () => {
+    const content = `---
+date: 2026-02-28
+---
+
+# Title
+
+## Diary
+
+일기 내용만 있음.`;
+    expect(extractDiarySection(content)).toBe("일기 내용만 있음.");
+  });
+
+  it("returns empty string when no Diary section", () => {
+    const content = `---
+date: 2026-02-28
+---
+
+# Title
+
+그냥 내용.`;
+    expect(extractDiarySection(content)).toBe("");
+  });
+
+  it("returns empty string for empty content", () => {
+    expect(extractDiarySection("")).toBe("");
+  });
+});
+
+describe("§56c renderSimpleMarkdown", () => {
+  it("renders paragraphs", () => {
+    expect(renderSimpleMarkdown("Hello world")).toContain("<p>Hello world</p>");
+  });
+
+  it("renders bold and italic", () => {
+    const html = renderSimpleMarkdown("**bold** and *italic*");
+    expect(html).toContain("<strong>bold</strong>");
+    expect(html).toContain("<em>italic</em>");
+  });
+
+  it("renders inline code", () => {
+    expect(renderSimpleMarkdown("use `console.log`")).toContain("<code>console.log</code>");
+  });
+
+  it("renders links", () => {
+    expect(renderSimpleMarkdown("[click](https://example.com)"))
+      .toContain('<a href="https://example.com">click</a>');
+  });
+
+  it("renders headings", () => {
+    expect(renderSimpleMarkdown("### Title")).toContain("<h3>Title</h3>");
+  });
+
+  it("renders unordered lists", () => {
+    const html = renderSimpleMarkdown("- item 1\n- item 2");
+    expect(html).toContain("<ul>");
+    expect(html).toContain("<li>item 1</li>");
+    expect(html).toContain("<li>item 2</li>");
+  });
+
+  it("renders ordered lists", () => {
+    const html = renderSimpleMarkdown("1. first\n2. second");
+    expect(html).toContain("<ol>");
+    expect(html).toContain("<li>first</li>");
+  });
+
+  it("renders blockquotes", () => {
+    const html = renderSimpleMarkdown("> quoted text");
+    expect(html).toContain("<blockquote>");
+    expect(html).toContain("quoted text");
+  });
+
+  it("renders strikethrough", () => {
+    expect(renderSimpleMarkdown("~~deleted~~")).toContain("<del>deleted</del>");
+  });
+
+  it("escapes HTML entities", () => {
+    const html = renderSimpleMarkdown("a < b & c > d");
+    expect(html).toContain("&lt;");
+    expect(html).toContain("&amp;");
+    expect(html).toContain("&gt;");
+  });
+
+  it("returns empty string for empty input", () => {
+    expect(renderSimpleMarkdown("")).toBe("");
+  });
+
+  it("renders images with relative paths", () => {
+    const html = renderSimpleMarkdown("![sunset](assets/sunset.jpg)");
+    expect(html).toContain('<img alt="sunset" src="assets/sunset.jpg"/>');
+  });
+
+  it("renders images with underscores in filename", () => {
+    const html = renderSimpleMarkdown("![20260301\\_162051](./assets/20260301_162051.jpg)");
+    expect(html).toContain('src="./assets/20260301_162051.jpg"');
+    expect(html).not.toContain("<em>");
+  });
+
+  it("renders image in diary context", () => {
+    const diary = extractDiarySection(`---
+date: 2026-03-07
+---
+
+# March 7th (Saturday), 2026
+
+## Diary
+
+오늘의 사진:
+
+![카페](assets/cafe.jpg)
+
+## Notes
+`);
+    expect(diary).toContain("![카페](assets/cafe.jpg)");
+    const html = renderSimpleMarkdown(diary);
+    expect(html).toContain('<img alt="카페" src="assets/cafe.jpg"/>');
   });
 });
 

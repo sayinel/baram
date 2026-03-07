@@ -80,6 +80,209 @@ export function extractOneLine(content: string): string {
   return firstLine;
 }
 
+/** Extract the Diary section content (markdown) from journal content */
+export function extractDiarySection(content: string): string {
+  if (!content.trim()) return "";
+
+  // Strip frontmatter
+  const fmMatch = content.match(/^---\n[\s\S]*?\n---/);
+  const body = fmMatch ? content.slice(fmMatch[0].length).trim() : content.trim();
+  if (!body) return "";
+
+  const diaryMatch = body.match(/^## Diary\s*$/m);
+  if (!diaryMatch) return "";
+
+  const diaryStart = diaryMatch.index! + diaryMatch[0].length;
+  const nextSectionMatch = body.slice(diaryStart).match(/^## /m);
+  const diaryContent = nextSectionMatch
+    ? body.slice(diaryStart, diaryStart + nextSectionMatch.index!)
+    : body.slice(diaryStart);
+
+  return diaryContent.trim();
+}
+
+/**
+ * Render simple markdown to HTML for preview.
+ * Handles: paragraphs, bold, italic, inline code, links, images, headings, lists, blockquotes, hr.
+ */
+export function renderSimpleMarkdown(md: string): string {
+  if (!md.trim()) return "";
+
+  const escaped = md
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  const lines = escaped.split("\n");
+  const html: string[] = [];
+  let inList: "ul" | "ol" | null = null;
+  let inBlockquote = false;
+  let paragraphLines: string[] = [];
+
+  const flushParagraph = () => {
+    if (paragraphLines.length > 0) {
+      html.push(`<p>${inlineMarkdown(paragraphLines.join(" "))}</p>`);
+      paragraphLines = [];
+    }
+  };
+
+  const closeList = () => {
+    if (inList) {
+      html.push(`</${inList}>`);
+      inList = null;
+    }
+  };
+
+  const closeBlockquote = () => {
+    if (inBlockquote) {
+      html.push("</blockquote>");
+      inBlockquote = false;
+    }
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // Empty line
+    if (!trimmed) {
+      flushParagraph();
+      closeList();
+      closeBlockquote();
+      continue;
+    }
+
+    // Heading
+    const headingMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
+    if (headingMatch) {
+      flushParagraph();
+      closeList();
+      closeBlockquote();
+      const level = headingMatch[1].length;
+      html.push(`<h${level}>${inlineMarkdown(headingMatch[2])}</h${level}>`);
+      continue;
+    }
+
+    // Horizontal rule
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
+      flushParagraph();
+      closeList();
+      closeBlockquote();
+      html.push("<hr/>");
+      continue;
+    }
+
+    // Blockquote
+    const bqMatch = trimmed.match(/^&gt;\s?(.*)$/);
+    if (bqMatch) {
+      flushParagraph();
+      closeList();
+      if (!inBlockquote) {
+        html.push("<blockquote>");
+        inBlockquote = true;
+      }
+      html.push(`<p>${inlineMarkdown(bqMatch[1])}</p>`);
+      continue;
+    }
+
+    // Unordered list
+    const ulMatch = trimmed.match(/^[-*+]\s+(.+)$/);
+    if (ulMatch) {
+      flushParagraph();
+      closeBlockquote();
+      if (inList !== "ul") {
+        closeList();
+        html.push("<ul>");
+        inList = "ul";
+      }
+      html.push(`<li>${inlineMarkdown(ulMatch[1])}</li>`);
+      continue;
+    }
+
+    // Ordered list
+    const olMatch = trimmed.match(/^\d+\.\s+(.+)$/);
+    if (olMatch) {
+      flushParagraph();
+      closeBlockquote();
+      if (inList !== "ol") {
+        closeList();
+        html.push("<ol>");
+        inList = "ol";
+      }
+      html.push(`<li>${inlineMarkdown(olMatch[1])}</li>`);
+      continue;
+    }
+
+    // Task list item
+    const taskMatch = trimmed.match(/^[-*+]\s+\[([ xX])\]\s+(.+)$/);
+    if (taskMatch) {
+      flushParagraph();
+      closeBlockquote();
+      if (inList !== "ul") {
+        closeList();
+        html.push("<ul>");
+        inList = "ul";
+      }
+      const checked = taskMatch[1] !== " " ? " checked disabled" : " disabled";
+      html.push(`<li><input type="checkbox"${checked}/> ${inlineMarkdown(taskMatch[2])}</li>`);
+      continue;
+    }
+
+    // Regular text → paragraph
+    closeList();
+    closeBlockquote();
+    paragraphLines.push(trimmed);
+  }
+
+  flushParagraph();
+  closeList();
+  closeBlockquote();
+
+  return html.join("\n");
+}
+
+/** Convert inline markdown syntax to HTML */
+function inlineMarkdown(text: string): string {
+  // 1. Extract images and links first to protect them from inline formatting
+  const placeholders: string[] = [];
+  let processed = text
+    // Images: ![alt](src)
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_m, alt, src) => {
+      // Strip backslash escapes in alt text
+      const cleanAlt = alt.replace(/\\(.)/g, "$1");
+      const idx = placeholders.length;
+      placeholders.push(`<img alt="${cleanAlt}" src="${src}"/>`);
+      return `\x00PH${idx}\x00`;
+    })
+    // Links: [text](url)
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m: string, linkText: string, href: string) => {
+      const idx = placeholders.length;
+      placeholders.push(`<a href="${href}">${linkText}</a>`);
+      return `\x00PH${idx}\x00`;
+    });
+
+  // 2. Apply inline formatting (only * based — _ conflicts with filenames)
+  processed = processed
+    // Inline code: `text` (protect from further processing)
+    .replace(/`([^`]+)`/g, (_m, code) => {
+      const idx = placeholders.length;
+      placeholders.push(`<code>${code}</code>`);
+      return `\x00PH${idx}\x00`;
+    })
+    // Bold+Italic: ***text***
+    .replace(/\*{3}(.+?)\*{3}/g, "<strong><em>$1</em></strong>")
+    // Bold: **text**
+    .replace(/\*{2}(.+?)\*{2}/g, "<strong>$1</strong>")
+    // Italic: *text*
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    // Strikethrough: ~~text~~
+    .replace(/~~(.+?)~~/g, "<del>$1</del>");
+
+  // 3. Restore placeholders
+  processed = processed.replace(/\x00PH(\d+)\x00/g, (_m, idx) => placeholders[Number(idx)]);
+
+  return processed;
+}
+
 /** Extract image references from journal markdown content */
 export function extractImages(content: string): { alt: string; src: string }[] {
   if (!content.trim()) return [];

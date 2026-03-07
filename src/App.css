@@ -3429,11 +3429,64 @@ body {
   font-size: 0.78rem;
   color: var(--color-text);
   line-height: 1.6;
-  white-space: pre-wrap;
-  max-height: 200px;
+  max-height: 300px;
   overflow-y: auto;
   margin: 0;
   font-family: inherit;
+}
+
+.memories-md-render img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  margin: 4px 0;
+}
+
+.memories-md-render p {
+  margin: 4px 0;
+}
+
+.memories-md-render h1,
+.memories-md-render h2,
+.memories-md-render h3 {
+  margin: 6px 0 2px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.memories-md-render ul,
+.memories-md-render ol {
+  margin: 4px 0;
+  padding-left: 1.2em;
+}
+
+.memories-md-render blockquote {
+  margin: 4px 0;
+  padding-left: 8px;
+  border-left: 2px solid var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+.memories-md-render code {
+  background: var(--color-bg-secondary);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 0.85em;
+}
+
+.memories-md-render hr {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 6px 0;
+}
+
+.memories-md-render a {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+.memories-md-render a:hover {
+  text-decoration: underline;
 }
 
 /* Notes tab */

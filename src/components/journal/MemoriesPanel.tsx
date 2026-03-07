@@ -4,8 +4,9 @@ import { useUIStore } from "../../stores/ui-store";
 import { useFileStore } from "../../stores/file-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useEditorStore } from "../../stores/editor-store";
-import { extractOneLine, updateOneLineFrontmatter } from "../../utils/journal-memories";
+import { extractOneLine, extractDiarySection, renderSimpleMarkdown, updateOneLineFrontmatter } from "../../utils/journal-memories";
 import { listDir, readFile, writeFile } from "../../ipc/invoke";
+import { convertFileSrc } from "@tauri-apps/api/core";
 
 type MemoriesTab = "journal" | "notes";
 type MemoriesMode = "oneline" | "full";
@@ -14,8 +15,23 @@ interface MemoryEntry {
   year: number;
   path: string;
   oneLine: string;
+  diaryContent: string;
   fullContent: string;
   isCurrentYear: boolean;
+}
+
+/** Resolve relative image src attributes in rendered HTML to Tauri asset protocol URLs */
+function resolveImageSrcs(html: string, fileDir: string): string {
+  return html.replace(/<img([^>]*) src="([^"]+)"/g, (_match, before, src) => {
+    // Skip absolute URLs and data URIs
+    if (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("data:")) {
+      return `<img${before} src="${src}"`;
+    }
+    // Resolve relative path against journal file's directory
+    const cleanSrc = src.startsWith("./") ? src.slice(2) : src;
+    const absolutePath = cleanSrc.startsWith("/") ? cleanSrc : `${fileDir}/${cleanSrc}`;
+    return `<img${before} src="${convertFileSrc(absolutePath)}"`;
+  });
 }
 
 /** Resolve journal base path, handling absolute journalDirectory */
@@ -128,6 +144,7 @@ function JournalTab({ memories, setMemories, mode, setMode, loading, setLoading,
             year,
             path: filePath,
             oneLine: extractOneLine(content),
+            diaryContent: extractDiarySection(content),
             fullContent: content,
             isCurrentYear: year === currentYear,
           });
@@ -228,12 +245,21 @@ function JournalTab({ memories, setMemories, mode, setMode, loading, setLoading,
                   }).catch(() => {});
                 }} />
               ) : (
-                <p className="memories-oneline">
-                  {entry.oneLine || "(내용 없음)"}
-                </p>
+                <div
+                  className="memories-oneline memories-md-render"
+                  dangerouslySetInnerHTML={{ __html: renderSimpleMarkdown(entry.oneLine) || "<p>(내용 없음)</p>" }}
+                />
               )
             ) : (
-              <pre className="memories-full">{entry.fullContent}</pre>
+              <div
+                className="memories-full memories-md-render"
+                dangerouslySetInnerHTML={{
+                  __html: resolveImageSrcs(
+                    renderSimpleMarkdown(entry.diaryContent) || "<p>(내용 없음)</p>",
+                    entry.path.substring(0, entry.path.lastIndexOf("/")),
+                  ),
+                }}
+              />
             )}
           </div>
         </div>
