@@ -257,6 +257,44 @@ Click the branch name in the Status Bar at the bottom of the editor. A dropdown 
 
 ---
 
+## Version History (File Snapshots)
+
+### What is Version History?
+
+Baram automatically saves snapshots of your changed `.md` files at regular intervals (default: every 30 minutes). This provides a safety net independent of Git — you can browse past versions, view diffs, and restore files at any time.
+
+### How do I open Version History?
+
+Click the **clock icon** in the Activity Bar (left sidebar) to open the Version History panel. It shows a timeline of all snapshots.
+
+### How do I create a manual snapshot?
+
+Click the **+** button in the Version History panel header. You can optionally enter a label (e.g., "Before refactoring"). Manual snapshots with labels are never automatically deleted.
+
+### How do I restore a file from a snapshot?
+
+1. Click a snapshot in the timeline to see its file list
+2. Check the files you want to restore (or use "Restore All")
+3. Click **Restore** — Baram saves the current state first, so the restore itself is undoable
+
+### How do I view a diff between a snapshot and the current file?
+
+Click a snapshot in the timeline, then click any file name. A line-by-line diff appears showing additions (green) and deletions (red).
+
+### How long are snapshots kept?
+
+Snapshots are automatically thinned over time: all kept for the last 24 hours, then hourly for 1–7 days, daily for 7–30 days, and weekly beyond 30 days. The default limit is 50 snapshots and 500 MB total. Manual snapshots with labels are never auto-deleted.
+
+### Can I disable automatic snapshots?
+
+Yes. Go to **Settings > General** and set the **Snapshot Interval** to 0 minutes.
+
+### How is Version History different from Git?
+
+Version History is automatic and file-level — it silently saves changed files without requiring commits or messages. Git is intentional and semantic — you decide when and what to commit. Both systems work independently; Git users who prefer commits can disable snapshots.
+
+---
+
 ## Workspace Presets
 
 ### What are Workspace Presets?

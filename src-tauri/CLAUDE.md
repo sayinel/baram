@@ -14,6 +14,7 @@ fs/           ← 파일 읽기/쓰기/감시/이름변경 (notify crate)
 search/       ← tantivy 기반 전문 검색 + 한글 2-gram 토크나이저
 index/        ← SQLite 기반 링크 인덱스, 블록 인덱스, 태그 인덱스
 git/          ← git2 crate 기반 Git 연동
+snapshot/     ← 파일 스냅샷/버전 히스토리 (similar + sha2)
 llm/          ← LLM API 프록시 (Claude, OpenAI, Ollama 지원, 스트리밍)
 export/       ← PDF (wkhtmltopdf 또는 headless), HTML 내보내기
 config/       ← 설정 파일 관리 (.baram/config.json)
@@ -98,6 +99,12 @@ app_handle.emit("file:changed", FileChangedPayload {
 | `get_files_by_tag` | tag | 2 (M9) | 태그별 파일 검색 |
 | `rename_tag` | tag | 2 (M9) | 태그 이름 변경/병합 |
 | `write_binary_file` | fs | 2 (M9) | 바이너리 파일 쓰기 |
+| `create_snapshot` | snapshot | 3 (M10) | 스냅샷 생성 |
+| `list_snapshots` | snapshot | 3 (M10) | 스냅샷 목록 조회 |
+| `get_snapshot_diff` | snapshot | 3 (M10) | 스냅샷 vs 현재 파일 diff |
+| `restore_snapshot` | snapshot | 3 (M10) | 스냅샷에서 파일 복원 |
+| `delete_snapshot` | snapshot | 3 (M10) | 스냅샷 삭제 |
+| `get_file_history` | snapshot | 3 (M10) | 파일별 스냅샷 히스토리 |
 
 ## 이벤트 목록
 

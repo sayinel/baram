@@ -270,7 +270,25 @@ Built-in source control without leaving the editor:
 - **Source Control sidebar** — View changed files, stage/unstage, write commit messages
 - **Diff viewer** — Inline diff with additions and deletions highlighted
 - **Branch management** — Switch branches, create new branches
+- **History** — Browse commit log with author, date, and message
+- **Stash** — Save and restore work-in-progress changes
+- **Remote** — Push, pull, and fetch from remote repositories
 - **Status bar** — Current branch displayed at the bottom
+
+### Version History (File Snapshots)
+
+Automatic file versioning independent of Git — a safety net for your work:
+
+- **Automatic snapshots** — Baram periodically saves snapshots of changed `.md` files (default: every 30 minutes, configurable)
+- **Manual snapshots** — Create a labeled snapshot anytime from the Version History sidebar
+- **Timeline view** — Browse all snapshots in chronological order with file counts and sizes
+- **Diff viewer** — Click any file in a snapshot to see a line-by-line diff against the current version
+- **Selective restore** — Choose individual files to restore using checkboxes, or restore all files at once
+- **Safe restore** — Before restoring, Baram auto-saves the current state so you can always undo a restore
+- **Retention policy** — Old snapshots are automatically thinned (hourly → daily → weekly) to save space; manual snapshots with labels are never auto-deleted
+- **Settings** — Configure snapshot interval and max count in **Settings > General**
+
+Version History works alongside Git but is independent — Git users who prefer commits can disable snapshots by setting the interval to 0.
 
 ### Themes
 
@@ -422,7 +440,7 @@ Create your own slash commands in **Settings > AI > Custom Commands**. Use varia
 
 ### 3-Column Layout
 
-- **Left Sidebar** — File tree + Backlinks + Bookmarks (`Cmd+Shift+L` to toggle)
+- **Left Sidebar** — File tree + Backlinks + Bookmarks + Git + Version History (`Cmd+Shift+L` to toggle)
 - **Editor** — Main editing area with WYSIWYG or Source mode
 - **Right Sidebar** — Document outline, AI Chat, or Help panel
 
@@ -508,7 +526,8 @@ npm run format
 │  │ Zustand    │              │ Link Index     │  │
 │  │ CodeMirror │              │ Search (tantivy)│ │
 │  │ KaTeX      │              │ Git Integration│  │
-│  │ Mermaid    │              │ Export Engine  │  │
+│  │ Mermaid    │              │ Snapshots      │  │
+│  │            │              │ Export Engine  │  │
 │  └────────────┘              └────────────────┘  │
 └─────────────────────────────────────────────────┘
 ```
@@ -546,12 +565,17 @@ Reverse:  ProseMirror Document → mdast → remark-stringify
 |-----------|--------|-------------|
 | M9 Productivity | ✅ Done | Highlight / subscript / superscript marks, Table of Contents, Table Tier 3, Footnotes, Help panel, Global Search, Definition List, Mermaid enhanced, Git Basic, Theme System, Extension Settings, Workspace Presets, Export for Notion, Pandoc Extended Export (Word/LaTeX/EPUB/RST), Journal / Daily Notes |
 
-**Phase 3 — Advanced** (upcoming)
+**Phase 3 — Advanced** (in progress)
 
-| Feature | Description |
-|---------|-------------|
-| Table Cell Merge | Merge/split table cells, virtual scroll for 50+ rows |
-| Plugin Marketplace | Community extensions |
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Table Cell Merge & Virtual Scroll | ✅ Done | Merge/split table cells, virtual scroll for 50+ rows |
+| Query Block | ✅ Done | Visual query builder for dynamic content filtering |
+| Git Advanced | ✅ Done | Log, stash, remote push/pull/fetch, branch delete |
+| File Snapshots / Version History | ✅ Done | Automatic file versioning, timeline, diff viewer, selective restore |
+| Canvas | Planned | Infinite canvas with free-form layout |
+| Agent Mode | Planned | Multi-file autonomous AI editing |
+| Plugin Marketplace | Planned | Community extensions |
 
 ## License
 
