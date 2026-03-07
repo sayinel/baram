@@ -589,7 +589,7 @@ function NotesTab() {
       .map((e: { name: string; modifiedAt?: number }) => ({
         name: e.name.replace(/\.md$/, ""),
         path: `${notesDir}/${e.name}`,
-        modifiedAt: e.modifiedAt ?? 0,
+        modifiedAt: (e.modifiedAt ?? 0) * 1000,
       }));
 
     // Read content + backlinks in parallel
