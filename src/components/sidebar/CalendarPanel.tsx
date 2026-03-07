@@ -9,8 +9,6 @@ import {
   getJournalFilePath,
   getHierarchicalJournalPath,
   getWeeklyJournalPath,
-  getMonthlyJournalPath,
-  getYearlyJournalPath,
   getISOWeekNumber,
   resolveJournalDir,
   generateDefaultJournal,
@@ -18,8 +16,6 @@ import {
 } from "../../utils/journal";
 import {
   generateDefaultWeekly,
-  generateDefaultMonthly,
-  generateDefaultYearly,
   applyPeriodicTemplate,
 } from "../../utils/journal-periodic";
 import { parseMoodFromFrontmatter, getMoodColors } from "../../utils/journal-mood";
@@ -58,11 +54,7 @@ export function CalendarPanel() {
     journalTemplatePath,
     journalUseHierarchy,
     journalWeeklyEnabled,
-    journalMonthlyEnabled,
-    journalYearlyEnabled,
     journalWeeklyTemplate,
-    journalMonthlyTemplate,
-    journalYearlyTemplate,
     journalThemeId,
     theme,
   } = useSettingsStore();
@@ -164,11 +156,6 @@ export function CalendarPanel() {
       setViewYear((y) => y + 12);
     }
   }, [viewMonth, calView]);
-
-  const goToday = useCallback(() => {
-    setViewYear(today.getFullYear());
-    setViewMonth(today.getMonth());
-  }, [today]);
 
   const openOrCreateJournal = useCallback(async (date: Date) => {
     if (!journalEnabled || !resolvedDir) return;
@@ -277,15 +264,6 @@ export function CalendarPanel() {
     openPeriodicNote(getWeeklyJournalPath, generateDefaultWeekly, date, journalWeeklyTemplate || undefined);
   }, [openPeriodicNote, journalWeeklyTemplate]);
 
-  const openMonthlyNote = useCallback(() => {
-    const date = new Date(viewYear, viewMonth, 1);
-    openPeriodicNote(getMonthlyJournalPath, generateDefaultMonthly, date, journalMonthlyTemplate || undefined);
-  }, [openPeriodicNote, viewYear, viewMonth, journalMonthlyTemplate]);
-
-  const openYearlyNote = useCallback(() => {
-    const date = new Date(viewYear, 0, 1);
-    openPeriodicNote(getYearlyJournalPath, generateDefaultYearly, date, journalYearlyTemplate || undefined);
-  }, [openPeriodicNote, viewYear, journalYearlyTemplate]);
 
   const themeStyle: React.CSSProperties = {
     "--cal-accent": journalTheme.accentColor,
