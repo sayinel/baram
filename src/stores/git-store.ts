@@ -1,6 +1,6 @@
 // §57b Git 상태 관리 스토어
 import { create } from "zustand";
-import type { GitChange, GitStatusInfo, GitFileDiff, GitBranchInfo } from "../ipc/types";
+import type { GitChange, GitStatusInfo, GitFileDiff, GitBranchInfo, GitLogEntry, GitStashEntry, GitRemoteInfo, GitAheadBehind } from "../ipc/types";
 import {
   gitStatus,
   gitStage,
@@ -11,6 +11,17 @@ import {
   gitSwitchBranch,
   gitDiscard,
   gitCreateBranch,
+  gitLog,
+  gitStashSave,
+  gitStashList,
+  gitStashPop,
+  gitStashDrop,
+  gitRemotes,
+  gitFetch,
+  gitPull,
+  gitPush,
+  gitAheadBehind,
+  gitDeleteBranch,
 } from "../ipc/invoke";
 
 interface GitState {
@@ -33,6 +44,23 @@ interface GitState {
   commitMessage: string;
   committing: boolean;
 
+  // §67 Log
+  logEntries: GitLogEntry[];
+  logLoading: boolean;
+
+  // §67 Stash
+  stashEntries: GitStashEntry[];
+  stashLoading: boolean;
+
+  // §67 Remote
+  remotes: GitRemoteInfo[];
+  aheadBehind: GitAheadBehind | null;
+  pushing: boolean;
+  pulling: boolean;
+
+  // §67 Tab
+  activeTab: "changes" | "history" | "stash";
+
   // Actions
   refresh: (path: string) => Promise<void>;
   stageFiles: (path: string, files: string[]) => Promise<void>;
@@ -48,6 +76,20 @@ interface GitState {
   setShowBranchPicker: (show: boolean) => void;
   stageAll: (path: string) => Promise<void>;
   unstageAll: (path: string) => Promise<void>;
+
+  // §67 New actions
+  loadLog: (path: string, maxCount?: number) => Promise<void>;
+  loadStash: (path: string) => Promise<void>;
+  saveStash: (path: string, message: string, includeUntracked?: boolean) => Promise<void>;
+  popStash: (path: string, index?: number) => Promise<void>;
+  dropStash: (path: string, index?: number) => Promise<void>;
+  loadRemotes: (path: string) => Promise<void>;
+  loadAheadBehind: (path: string) => Promise<void>;
+  fetchRemote: (path: string, remote?: string) => Promise<void>;
+  pullRemote: (path: string, remote?: string, branch?: string) => Promise<string>;
+  pushRemote: (path: string, remote?: string, branch?: string) => Promise<void>;
+  deleteBranch: (path: string, branchName: string) => Promise<void>;
+  setActiveTab: (tab: "changes" | "history" | "stash") => void;
 }
 
 export const useGitStore = create<GitState>((set, get) => ({
@@ -62,6 +104,15 @@ export const useGitStore = create<GitState>((set, get) => ({
   diffLoading: false,
   commitMessage: "",
   committing: false,
+  logEntries: [],
+  logLoading: false,
+  stashEntries: [],
+  stashLoading: false,
+  remotes: [],
+  aheadBehind: null,
+  pushing: false,
+  pulling: false,
+  activeTab: "changes",
 
   refresh: async (path) => {
     set({ loading: true, error: null });
@@ -73,6 +124,10 @@ export const useGitStore = create<GitState>((set, get) => ({
         changes: info.changes,
         loading: false,
       });
+      // Also refresh ahead/behind after status
+      if (info.is_repo) {
+        await get().loadAheadBehind(path);
+      }
     } catch (e) {
       set({ loading: false, error: String(e) });
     }
@@ -179,6 +234,118 @@ export const useGitStore = create<GitState>((set, get) => ({
 
   setCommitMessage: (msg) => set({ commitMessage: msg }),
   setShowBranchPicker: (show) => set({ showBranchPicker: show }),
+
+  // §67 New actions
+  loadLog: async (path, maxCount) => {
+    set({ logLoading: true });
+    try {
+      const entries = await gitLog(path, maxCount);
+      set({ logEntries: entries, logLoading: false });
+    } catch (e) {
+      set({ logLoading: false, error: String(e) });
+    }
+  },
+
+  loadStash: async (path) => {
+    set({ stashLoading: true });
+    try {
+      const entries = await gitStashList(path);
+      set({ stashEntries: entries, stashLoading: false });
+    } catch (e) {
+      set({ stashLoading: false, error: String(e) });
+    }
+  },
+
+  saveStash: async (path, message, includeUntracked) => {
+    try {
+      await gitStashSave(path, message, includeUntracked);
+      await get().loadStash(path);
+      await get().refresh(path);
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  popStash: async (path, index) => {
+    try {
+      await gitStashPop(path, index);
+      await get().loadStash(path);
+      await get().refresh(path);
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  dropStash: async (path, index) => {
+    try {
+      await gitStashDrop(path, index);
+      await get().loadStash(path);
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  loadRemotes: async (path) => {
+    try {
+      const remotes = await gitRemotes(path);
+      set({ remotes });
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  loadAheadBehind: async (path) => {
+    try {
+      const ab = await gitAheadBehind(path);
+      set({ aheadBehind: ab });
+    } catch (_e) {
+      // Silently ignore — remote may not exist
+    }
+  },
+
+  fetchRemote: async (path, remote) => {
+    try {
+      await gitFetch(path, remote);
+      await get().loadAheadBehind(path);
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  pullRemote: async (path, remote, branch) => {
+    set({ pulling: true, error: null });
+    try {
+      const result = await gitPull(path, remote, branch);
+      set({ pulling: false });
+      await get().refresh(path);
+      return result;
+    } catch (e) {
+      set({ pulling: false, error: String(e) });
+      return "";
+    }
+  },
+
+  pushRemote: async (path, remote, branch) => {
+    set({ pushing: true, error: null });
+    try {
+      await gitPush(path, remote, branch);
+      set({ pushing: false });
+      await get().loadAheadBehind(path);
+    } catch (e) {
+      set({ pushing: false, error: String(e) });
+    }
+  },
+
+  deleteBranch: async (path, branchName) => {
+    try {
+      await gitDeleteBranch(path, branchName);
+      await get().loadBranches(path);
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  setActiveTab: (tab) => set({ activeTab: tab }),
 }));
 
 // Helper: get unique file paths with merged staged/unstaged status
