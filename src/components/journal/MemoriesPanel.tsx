@@ -511,6 +511,7 @@ interface NoteEntry {
   preview: string;
   tags: string[];
   backlinkCount: number;
+  modifiedAt: number; // epoch ms
 }
 
 interface NoteFolder {
@@ -535,6 +536,22 @@ function extractTags(content: string): string[] {
     }
   }
   return [...tags];
+}
+
+/** Format a timestamp as relative time (e.g. "2시간 전", "3일 전") */
+function formatRelativeTime(epochMs: number): string {
+  if (!epochMs) return "";
+  const diff = Date.now() - epochMs;
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return "방금";
+  if (minutes < 60) return `${minutes}분 전`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}시간 전`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}일 전`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}개월 전`;
+  return `${Math.floor(months / 12)}년 전`;
 }
 
 function NotesTab() {
@@ -569,14 +586,15 @@ function NotesTab() {
 
     const mdFiles = entries
       .filter((e: { isDir: boolean; name: string }) => !e.isDir && e.name.endsWith(".md"))
-      .map((e: { name: string }) => ({
+      .map((e: { name: string; modifiedAt?: number }) => ({
         name: e.name.replace(/\.md$/, ""),
         path: `${notesDir}/${e.name}`,
+        modifiedAt: e.modifiedAt ?? 0,
       }));
 
     // Read content + backlinks in parallel
     const enriched: NoteEntry[] = await Promise.all(
-      mdFiles.map(async (f: { name: string; path: string }) => {
+      mdFiles.map(async (f) => {
         let content = "";
         let backlinkCount = 0;
         try { content = await readFile(f.path); } catch { /* skip */ }
@@ -590,12 +608,14 @@ function NotesTab() {
           preview: extractOneLine(content),
           tags: extractTags(content),
           backlinkCount,
+          modifiedAt: f.modifiedAt,
         };
       }),
     );
 
     if (!cancelled.v) {
-      enriched.sort((a, b) => b.backlinkCount - a.backlinkCount || a.name.localeCompare(b.name));
+      // Sort by modification time desc (most recent first)
+      enriched.sort((a, b) => b.modifiedAt - a.modifiedAt);
       setNotes(enriched);
       setFolders(folderList.filter((f) => f.fileCount > 0).sort((a, b) => a.name.localeCompare(b.name)));
     }
@@ -619,11 +639,13 @@ function NotesTab() {
     return () => { cancelled.v = true; };
   }, [rootPath, journalDirectory, currentSubdir, loadNotes]);
 
-  // All unique tags across notes
+  // All tags with frequency counts, sorted by frequency desc
   const allTags = useMemo(() => {
-    const tags = new Set<string>();
-    for (const n of notes) for (const t of n.tags) tags.add(t);
-    return [...tags].sort();
+    const tagCount = new Map<string, number>();
+    for (const n of notes) for (const t of n.tags) tagCount.set(t, (tagCount.get(t) ?? 0) + 1);
+    return [...tagCount.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([tag, count]) => ({ tag, count }));
   }, [notes]);
 
   // Filtered notes
@@ -678,7 +700,7 @@ function NotesTab() {
         isPinned: false,
       });
       // Add to local list
-      setNotes((prev) => [{ name, path: notePath, preview: "", tags: [], backlinkCount: 0 }, ...prev]);
+      setNotes((prev) => [{ name, path: notePath, preview: "", tags: [], backlinkCount: 0, modifiedAt: Date.now() }, ...prev]);
     } catch (err) {
       console.error("[NotesTab] Failed to create note:", err);
     }
@@ -750,13 +772,13 @@ function NotesTab() {
               All
             </button>
           )}
-          {allTags.map((tag) => (
+          {allTags.map(({ tag, count }) => (
             <button
               key={tag}
               className={`notes-tag-chip${activeTag === tag ? " notes-tag-chip-active" : ""}`}
               onClick={() => setActiveTag(activeTag === tag ? null : tag)}
             >
-              #{tag}
+              #{tag}<span className="notes-tag-count">({count})</span>
             </button>
           ))}
         </div>
@@ -811,6 +833,9 @@ function NotesTab() {
         >
           <div className="notes-card-header">
             <span className="notes-card-name">{note.name}</span>
+            {note.modifiedAt > 0 && (
+              <span className="notes-card-time">{formatRelativeTime(note.modifiedAt)}</span>
+            )}
             {note.backlinkCount > 0 && (
               <span className="notes-card-backlinks" title={`${note.backlinkCount} backlink${note.backlinkCount > 1 ? "s" : ""}`}>
                 {note.backlinkCount}

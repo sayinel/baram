@@ -4020,6 +4020,18 @@ body {
   opacity: 0.8;
 }
 
+.notes-card-time {
+  flex-shrink: 0;
+  font-size: 0.6rem;
+  color: var(--color-text-tertiary);
+}
+
+.notes-tag-count {
+  font-size: 0.58rem;
+  opacity: 0.6;
+  margin-left: 1px;
+}
+
 /* Notes subfolder navigation */
 .notes-back-btn {
   display: flex;
