@@ -13,6 +13,8 @@ export interface GraphNode {
     isGhost?: boolean;
     /** True if this is a tag virtual node */
     isTag?: boolean;
+    /** §61 Namespace — directory path relative to rootPath (empty string = root) */
+    namespace?: string;
   };
 }
 
@@ -29,6 +31,30 @@ export type GraphElements = {
   nodes: GraphNode[];
   edges: GraphEdge[];
 };
+
+/** §61 Extract namespace (directory relative to rootPath) from a full file path */
+export function extractNamespace(filePath: string, rootPath: string): string {
+  let rel = filePath.startsWith(rootPath) ? filePath.slice(rootPath.length) : filePath;
+  if (rel.startsWith("/")) rel = rel.slice(1);
+  const lastSlash = rel.lastIndexOf("/");
+  if (lastSlash <= 0) return "";
+  return rel.substring(0, lastSlash);
+}
+
+const NS_PALETTE = [
+  "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6",
+  "#ec4899", "#06b6d4", "#f97316", "#14b8a6", "#6366f1",
+];
+
+/** §61 Assign colors to namespaces. Returns a Map from namespace string to hex color. */
+export function assignNamespaceColors(namespaces: string[]): Map<string, string> {
+  const unique = [...new Set(namespaces)].sort();
+  const map = new Map<string, string>();
+  unique.forEach((ns, i) => {
+    map.set(ns, NS_PALETTE[i % NS_PALETTE.length]);
+  });
+  return map;
+}
 
 /**
  * Extract display-friendly filename from a full path.
@@ -53,7 +79,7 @@ export function matchesFilter(label: string, query: string): boolean {
  * Deduplicates edges and computes node degrees.
  * Creates ghost nodes for edge targets that are not in graph.nodes.
  */
-export function toGraphElements(graph: LinkGraph): GraphElements {
+export function toGraphElements(graph: LinkGraph, rootPath?: string): GraphElements {
   const nodeSet = new Set(graph.nodes);
 
   // Build degree map
@@ -114,6 +140,7 @@ export function toGraphElements(graph: LinkGraph): GraphElements {
         id: nodeId,
         label: displayName(nodeId),
         degree: degreeMap.get(nodeId) ?? 0,
+        namespace: rootPath ? extractNamespace(nodeId, rootPath) : undefined,
       },
     };
   });
@@ -126,6 +153,7 @@ export function toGraphElements(graph: LinkGraph): GraphElements {
         label: displayName(ghostId),
         degree: degreeMap.get(ghostId) ?? 0,
         isGhost: true,
+        namespace: rootPath ? extractNamespace(ghostId, rootPath) : undefined,
       },
     });
   }

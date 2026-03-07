@@ -178,17 +178,28 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
     [flatFiles, openTabFiles],
   );
 
-  // §56l Parse journal prefix first, then heading mode
+  // §56l Parse journal prefix first, then §61 namespace filter, then heading mode
   const parsedQuery = useMemo(() => {
     const { prefix, strippedQuery } = parseJournalPrefix(query);
-    const hashIdx = strippedQuery.indexOf("#");
+
+    // §61 Namespace filter: ns:path/to/ns query
+    let nsFilter = "";
+    let remainingQuery = strippedQuery;
+    const nsMatch = strippedQuery.match(/^ns:(\S*)\s*(.*)/i);
+    if (nsMatch) {
+      nsFilter = nsMatch[1]; // e.g. "notes/ai"
+      remainingQuery = nsMatch[2]; // remaining file query
+    }
+
+    const hashIdx = remainingQuery.indexOf("#");
     if (hashIdx === -1) {
-      return { prefix, fileQuery: strippedQuery, headingQuery: null };
+      return { prefix, nsFilter, fileQuery: remainingQuery, headingQuery: null };
     }
     return {
       prefix,
-      fileQuery: strippedQuery.slice(0, hashIdx),
-      headingQuery: strippedQuery.slice(hashIdx + 1),
+      nsFilter,
+      fileQuery: remainingQuery.slice(0, hashIdx),
+      headingQuery: remainingQuery.slice(hashIdx + 1),
     };
   }, [query]);
 
@@ -275,11 +286,20 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
     }
 
     // File mode — apply journal prefix filter first
-    const candidateFiles = filterByJournalPrefix(
+    let candidateFiles = filterByJournalPrefix(
       allFiles,
       parsedQuery.prefix,
       resolvedJournalDir,
     );
+
+    // §61 Namespace filter
+    if (parsedQuery.nsFilter) {
+      const nsLower = parsedQuery.nsFilter.toLowerCase();
+      candidateFiles = candidateFiles.filter((f) => {
+        const ns = extractNamespace(f.relativePath);
+        return ns ? ns.toLowerCase().includes(nsLower) : nsLower === "";
+      });
+    }
 
     const q = parsedQuery.fileQuery.trim();
     if (!q) {
@@ -305,9 +325,10 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
       detail: extractNamespace(f.relativePath),
     }));
 
-    // Only offer "create" when no prefix filter active
+    // Only offer "create" when no prefix or namespace filter active
     if (
       !parsedQuery.prefix &&
+      !parsedQuery.nsFilter &&
       q &&
       !matched.some((f) => f.name.toLowerCase() === q.toLowerCase())
     ) {
@@ -474,11 +495,16 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
               {PREFIX_BADGE_LABELS[parsedQuery.prefix]}
             </span>
           )}
+          {parsedQuery.nsFilter && (
+            <span className="quick-switcher-prefix-badge">
+              ns:{parsedQuery.nsFilter}
+            </span>
+          )}
           <input
             ref={inputRef}
             className="quick-switcher-input"
             type="text"
-            placeholder="Type a file name, # for headings, n:/d:/j: for journal..."
+            placeholder="Type a file name, # for headings, n:/d:/j: for journal, ns: for namespace..."
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);

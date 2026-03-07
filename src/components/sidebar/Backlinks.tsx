@@ -7,6 +7,7 @@ import { useLinkStore } from "../../stores/link-store";
 import { getBacklinks, getUnlinkedMentions, refreshIndex, readFile, writeFile, updateFileIndex } from "../../ipc/invoke";
 import {
   groupBacklinksByFile,
+  groupBacklinksByNamespace,
   extractFileNameFromPath,
 } from "./backlink-utils";
 import type { UnlinkedMention } from "../../ipc/types";
@@ -201,7 +202,9 @@ export function Backlinks() {
     return <div className="backlinks-empty backlinks-error">{error}</div>;
   }
 
-  const groups = groupBacklinksByFile(backlinks);
+  const nsGroups = rootPath
+    ? groupBacklinksByNamespace(backlinks, rootPath)
+    : [{ namespace: "", fileGroups: groupBacklinksByFile(backlinks) }];
   const unlinkedGroups = groupUnlinkedByFile(unlinkedMentions);
 
   return (
@@ -217,42 +220,52 @@ export function Backlinks() {
           {wrapBacklinks ? "⏤" : "≡"}
         </button>
       </div>
-      {groups.length === 0 ? (
+      {nsGroups.every((g) => g.fileGroups.length === 0) ? (
         <div className="backlinks-empty-inline">
           No backlinks to{" "}
           <strong>{extractFileNameFromPath(filePath)}</strong>
         </div>
       ) : (
-        groups.map((group) => (
-          <div key={group.sourcePath} className="backlinks-group">
-            <div
-              className="backlinks-source"
-              onClick={() => handleClick(group.sourcePath, group.entries[0].line)}
-            >
-              {extractFileNameFromPath(group.sourcePath)}
-            </div>
-            {group.entries.map((entry, i) => (
-              <div
-                key={i}
-                className="backlinks-context"
-                onClick={() => handleClick(group.sourcePath, entry.line, entry.blockId)}
-              >
-                <span className="backlinks-line">L{entry.line}</span>
-                <span className={`backlinks-text${wrapBacklinks ? " wrap" : ""}`}>{entry.context}</span>
-                {entry.blockId && (
-                  <span
-                    style={{
-                      flexShrink: 0,
-                      fontSize: "0.65rem",
-                      padding: "0 4px",
-                      borderRadius: "3px",
-                      background: "color-mix(in srgb, var(--color-accent) 15%, transparent)",
-                      color: "var(--color-accent)",
-                    }}
+        nsGroups.map((nsGroup) => (
+          <div key={nsGroup.namespace || "__root__"} className="backlinks-ns-group">
+            {/* Only show namespace header when there are multiple namespaces */}
+            {nsGroups.length > 1 && (
+              <div className="backlinks-ns-header">
+                {nsGroup.namespace || "(root)"}
+              </div>
+            )}
+            {nsGroup.fileGroups.map((group) => (
+              <div key={group.sourcePath} className="backlinks-group">
+                <div
+                  className="backlinks-source"
+                  onClick={() => handleClick(group.sourcePath, group.entries[0].line)}
+                >
+                  {extractFileNameFromPath(group.sourcePath)}
+                </div>
+                {group.entries.map((entry, i) => (
+                  <div
+                    key={i}
+                    className="backlinks-context"
+                    onClick={() => handleClick(group.sourcePath, entry.line, entry.blockId)}
                   >
-                    ^{entry.blockId}
-                  </span>
-                )}
+                    <span className="backlinks-line">L{entry.line}</span>
+                    <span className={`backlinks-text${wrapBacklinks ? " wrap" : ""}`}>{entry.context}</span>
+                    {entry.blockId && (
+                      <span
+                        style={{
+                          flexShrink: 0,
+                          fontSize: "0.65rem",
+                          padding: "0 4px",
+                          borderRadius: "3px",
+                          background: "color-mix(in srgb, var(--color-accent) 15%, transparent)",
+                          color: "var(--color-accent)",
+                        }}
+                      >
+                        ^{entry.blockId}
+                      </span>
+                    )}
+                  </div>
+                ))}
               </div>
             ))}
           </div>

@@ -5908,6 +5908,19 @@ body {
   color: var(--color-danger, #ef4444);
 }
 
+.backlinks-ns-group {
+  /* Subtle left border to visually group */
+}
+
+.backlinks-ns-header {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted, #6b7280);
+  padding: 6px 12px 2px;
+  opacity: 0.7;
+}
+
 .backlinks-group {
   margin-bottom: 8px;
 }

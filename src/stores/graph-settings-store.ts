@@ -7,6 +7,8 @@ export interface GraphSettingsState {
   showOrphans: boolean;
   existingFilesOnly: boolean;
   showTags: boolean;
+  colorByNamespace: boolean;
+  namespaceFilter: string;
 
   // Display
   nodeSize: number;
@@ -25,6 +27,8 @@ export interface GraphSettingsState {
   setShowOrphans: (v: boolean) => void;
   setExistingFilesOnly: (v: boolean) => void;
   setShowTags: (v: boolean) => void;
+  setColorByNamespace: (v: boolean) => void;
+  setNamespaceFilter: (v: string) => void;
   setNodeSize: (v: number) => void;
   setLinkThickness: (v: number) => void;
   setTextFadeThreshold: (v: number) => void;
@@ -41,6 +45,8 @@ export const useGraphSettingsStore = create<GraphSettingsState>((set) => ({
   showOrphans: true,
   existingFilesOnly: false,
   showTags: true,
+  colorByNamespace: true,
+  namespaceFilter: "",
 
   // Display
   nodeSize: 20,
@@ -59,6 +65,8 @@ export const useGraphSettingsStore = create<GraphSettingsState>((set) => ({
   setShowOrphans: (v) => set({ showOrphans: v }),
   setExistingFilesOnly: (v) => set({ existingFilesOnly: v }),
   setShowTags: (v) => set({ showTags: v }),
+  setColorByNamespace: (v) => set({ colorByNamespace: v }),
+  setNamespaceFilter: (v) => set({ namespaceFilter: v }),
   setNodeSize: (v) => set({ nodeSize: v }),
   setLinkThickness: (v) => set({ linkThickness: v }),
   setTextFadeThreshold: (v) => set({ textFadeThreshold: v }),

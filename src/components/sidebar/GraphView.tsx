@@ -8,7 +8,7 @@ import { useEditorStore, isGraphTab } from "../../stores/editor-store";
 import { useLinkStore } from "../../stores/link-store";
 import { useGraphSettingsStore } from "../../stores/graph-settings-store";
 import { getLinkIndex, refreshIndex, readFile } from "../../ipc/invoke";
-import { toGraphElements, nodeSize, matchesFilter } from "./graph-utils";
+import { toGraphElements, nodeSize, matchesFilter, assignNamespaceColors } from "./graph-utils";
 import { GraphSettingsPanel } from "./GraphSettingsPanel";
 
 // Register fcose layout
@@ -39,6 +39,7 @@ function buildLayoutOptions(
 function buildGraphStyle(settings: {
   linkThickness: number;
   showArrows: boolean;
+  colorByNamespace: boolean;
 }): StylesheetStyle[] {
   return [
     {
@@ -58,6 +59,13 @@ function buildGraphStyle(settings: {
         "transition-duration": 150,
       } as cytoscape.Css.Node,
     },
+    // §61 Namespace coloring — uses data(nsColor) set per-node
+    ...(settings.colorByNamespace ? [{
+      selector: "node[nsColor]",
+      style: {
+        "background-color": "data(nsColor)",
+      } as cytoscape.Css.Node,
+    }] : []),
     {
       selector: "node:selected",
       style: {
@@ -216,6 +224,8 @@ export function GraphView() {
   const showOrphans = useGraphSettingsStore((s) => s.showOrphans);
   const existingFilesOnly = useGraphSettingsStore((s) => s.existingFilesOnly);
   const showTags = useGraphSettingsStore((s) => s.showTags);
+  const colorByNamespace = useGraphSettingsStore((s) => s.colorByNamespace);
+  const namespaceFilter = useGraphSettingsStore((s) => s.namespaceFilter);
 
   const handleOpenInTab = useCallback(() => {
     useEditorStore.getState().openGraphTab();
@@ -227,7 +237,7 @@ export function GraphView() {
 
     const cy = cytoscape({
       container: containerRef.current,
-      style: buildGraphStyle({ linkThickness, showArrows }),
+      style: buildGraphStyle({ linkThickness, showArrows, colorByNamespace }),
       layout: { name: "grid" },
       minZoom: 0.1,
       maxZoom: 5,
@@ -294,7 +304,7 @@ export function GraphView() {
         const graph = await getLinkIndex();
         if (cancelled) return;
 
-        const { nodes, edges } = toGraphElements(graph);
+        const { nodes, edges } = toGraphElements(graph, rootPath);
         const maxNodeSize = Math.min(settingsNodeSize * 3, 80);
 
         const nodesWithSize = nodes.map((n) => ({
@@ -304,6 +314,19 @@ export function GraphView() {
             size: nodeSize(n.data.degree, settingsNodeSize, maxNodeSize),
           },
         }));
+
+        // §61 Namespace colors
+        if (colorByNamespace) {
+          const namespaces = nodesWithSize
+            .filter((n) => !n.data.isTag)
+            .map((n) => n.data.namespace ?? "");
+          const nsColorMap = assignNamespaceColors(namespaces);
+          for (const n of nodesWithSize) {
+            if (!n.data.isTag && !n.data.isGhost) {
+              (n.data as Record<string, unknown>).nsColor = nsColorMap.get(n.data.namespace ?? "") ?? "";
+            }
+          }
+        }
 
         cy.elements().remove();
         cy.add([...nodesWithSize, ...edges] as cytoscape.ElementDefinition[]);
@@ -341,7 +364,7 @@ export function GraphView() {
       cancelled = true;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rootPath, indexVersion, handleNodeTap]);
+  }, [rootPath, indexVersion, handleNodeTap, colorByNamespace]);
 
   // Effect 3: Re-layout on force settings change
   useEffect(() => {
@@ -542,6 +565,14 @@ export function GraphView() {
         visible = false;
       }
 
+      // §61 Namespace filter
+      if (visible && namespaceFilter) {
+        const nodeNs = (node.data("namespace") as string) ?? "";
+        if (!nodeNs.toLowerCase().includes(namespaceFilter.toLowerCase())) {
+          visible = false;
+        }
+      }
+
       node.style("display", visible ? "element" : "none");
     });
 
@@ -555,15 +586,15 @@ export function GraphView() {
         edge.style("display", "element");
       }
     });
-  }, [rootPath, searchQuery, showOrphans, existingFilesOnly, showTags, nodeCount]);
+  }, [rootPath, searchQuery, showOrphans, existingFilesOnly, showTags, namespaceFilter, nodeCount]);
 
   // Effect: Update styles when display settings change
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
 
-    cy.style().fromJson(buildGraphStyle({ linkThickness, showArrows })).update();
-  }, [linkThickness, showArrows]);
+    cy.style().fromJson(buildGraphStyle({ linkThickness, showArrows, colorByNamespace })).update();
+  }, [linkThickness, showArrows, colorByNamespace]);
 
   // Effect: Update node sizes when nodeSize setting changes
   useEffect(() => {

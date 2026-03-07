@@ -117,6 +117,21 @@ export function GraphSettingsPanel() {
           checked={s.showTags}
           onChange={s.setShowTags}
         />
+        <ToggleRow
+          label="Color by namespace"
+          checked={s.colorByNamespace}
+          onChange={s.setColorByNamespace}
+        />
+        <div className="graph-settings-row">
+          <label className="graph-settings-label">Namespace</label>
+          <input
+            type="text"
+            className="graph-settings-search"
+            value={s.namespaceFilter}
+            onChange={(e) => s.setNamespaceFilter(e.target.value)}
+            placeholder="e.g. notes/ai"
+          />
+        </div>
       </SettingsSection>
 
       <SettingsSection title="Display">
