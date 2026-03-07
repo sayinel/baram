@@ -1,12 +1,12 @@
 // §56c Memories View — right panel component
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useUIStore } from "../../stores/ui-store";
 import { useFileStore } from "../../stores/file-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useEditorStore } from "../../stores/editor-store";
 import { extractOneLine, extractDiarySection, renderSimpleMarkdown, updateOneLineFrontmatter } from "../../utils/journal-memories";
 import { getMonthDays, getFirstDayOfWeek } from "../../utils/journal";
-import { listDir, readFile, writeFile } from "../../ipc/invoke";
+import { listDir, readFile, writeFile, getBacklinks } from "../../ipc/invoke";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
 type MemoriesTab = "journal" | "notes";
@@ -508,6 +508,27 @@ function OneLineEditor({ entry, onSave }: { entry: MemoryEntry; onSave: (text: s
 interface NoteEntry {
   name: string;
   path: string;
+  preview: string;
+  tags: string[];
+  backlinkCount: number;
+}
+
+/** Extract #tags from markdown content (skip headings and code blocks) */
+function extractTags(content: string): string[] {
+  const tags = new Set<string>();
+  // Match #tag patterns (word chars + hyphens), but not inside headings
+  const tagRegex = /(?:^|\s)#([a-zA-Z\uAC00-\uD7AF\u3131-\u3163\u1100-\u11FF][\w\u3131-\u3163\uAC00-\uD7AF-]*)/g;
+  // Strip frontmatter and code blocks first
+  const stripped = content.replace(/^---\n[\s\S]*?\n---/, "").replace(/```[\s\S]*?```/g, "");
+  // Skip heading lines
+  for (const line of stripped.split("\n")) {
+    if (line.trim().startsWith("#") && line.trim().match(/^#{1,6}\s/)) continue;
+    let m;
+    while ((m = tagRegex.exec(line)) !== null) {
+      tags.add(m[1]);
+    }
+  }
+  return [...tags];
 }
 
 function NotesTab() {
@@ -515,6 +536,11 @@ function NotesTab() {
   const { journalDirectory } = useSettingsStore();
   const [notes, setNotes] = useState<NoteEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const [filter, setFilter] = useState("");
+  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const newNameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!rootPath || !journalDirectory) return;
@@ -526,14 +552,38 @@ function NotesTab() {
         const notesDir = `${base}/notes`;
         const entries = await listDir(notesDir);
         if (cancelled) return;
-        const noteFiles: NoteEntry[] = entries
+        const mdFiles = entries
           .filter((e: { isDir: boolean; name: string }) => !e.isDir && e.name.endsWith(".md"))
           .map((e: { name: string }) => ({
             name: e.name.replace(/\.md$/, ""),
             path: `${notesDir}/${e.name}`,
-          }))
-          .sort((a: NoteEntry, b: NoteEntry) => a.name.localeCompare(b.name));
-        setNotes(noteFiles);
+          }));
+
+        // Read content + backlinks in parallel
+        const enriched: NoteEntry[] = await Promise.all(
+          mdFiles.map(async (f: { name: string; path: string }) => {
+            let content = "";
+            let backlinkCount = 0;
+            try { content = await readFile(f.path); } catch { /* skip */ }
+            try {
+              const bl = await getBacklinks(f.path);
+              backlinkCount = bl.length;
+            } catch { /* skip */ }
+            return {
+              name: f.name,
+              path: f.path,
+              preview: extractOneLine(content),
+              tags: extractTags(content),
+              backlinkCount,
+            };
+          }),
+        );
+
+        if (!cancelled) {
+          // Sort by backlink count desc, then name asc
+          enriched.sort((a, b) => b.backlinkCount - a.backlinkCount || a.name.localeCompare(b.name));
+          setNotes(enriched);
+        }
       } catch {
         if (!cancelled) setNotes([]);
       } finally {
@@ -542,6 +592,28 @@ function NotesTab() {
     })();
     return () => { cancelled = true; };
   }, [rootPath, journalDirectory]);
+
+  // All unique tags across notes
+  const allTags = useMemo(() => {
+    const tags = new Set<string>();
+    for (const n of notes) for (const t of n.tags) tags.add(t);
+    return [...tags].sort();
+  }, [notes]);
+
+  // Filtered notes
+  const filtered = useMemo(() => {
+    let result = notes;
+    if (activeTag) {
+      result = result.filter((n) => n.tags.includes(activeTag));
+    }
+    if (filter.trim()) {
+      const q = filter.trim().toLowerCase();
+      result = result.filter(
+        (n) => n.name.toLowerCase().includes(q) || n.preview.toLowerCase().includes(q),
+      );
+    }
+    return result;
+  }, [notes, filter, activeTag]);
 
   const handleOpenNote = (path: string) => {
     const { tabs } = useEditorStore.getState();
@@ -563,30 +635,143 @@ function NotesTab() {
     }
   };
 
+  const handleCreateNote = async () => {
+    const name = newName.trim();
+    if (!name || !rootPath || !journalDirectory) return;
+    const base = resolveJournalBase(rootPath, journalDirectory);
+    const notePath = `${base}/notes/${name}.md`;
+    const content = `# ${name}\n\n`;
+    try {
+      await writeFile(notePath, content);
+      useFileStore.getState().setFileContent(notePath, content);
+      useEditorStore.getState().openTab({
+        id: crypto.randomUUID(),
+        filePath: notePath,
+        title: `${name}.md`,
+        isDirty: false,
+        isPinned: false,
+      });
+      // Add to local list
+      setNotes((prev) => [{ name, path: notePath, preview: "", tags: [], backlinkCount: 0 }, ...prev]);
+    } catch (err) {
+      console.error("[NotesTab] Failed to create note:", err);
+    }
+    setCreating(false);
+    setNewName("");
+  };
+
+  useEffect(() => {
+    if (creating && newNameRef.current) newNameRef.current.focus();
+  }, [creating]);
+
   return (
     <div className="memories-notes-tab">
-      {loading && <div className="memories-loading">Loading...</div>}
+      {/* Toolbar: search + create */}
+      <div className="notes-toolbar">
+        <div className="notes-search-wrap">
+          <input
+            className="notes-search-input"
+            type="text"
+            placeholder="Search notes..."
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          />
+          {filter && (
+            <button className="notes-search-clear" onClick={() => setFilter("")}>
+              &times;
+            </button>
+          )}
+        </div>
+        <button
+          className="notes-create-btn"
+          onClick={() => setCreating(true)}
+          title="New note"
+        >
+          +
+        </button>
+      </div>
 
-      {!loading && notes.length === 0 && (
-        <div className="memories-empty">
-          캡처를 승격하면 노트가 여기에 표시됩니다.
+      {/* New note input */}
+      {creating && (
+        <div className="notes-create-row">
+          <input
+            ref={newNameRef}
+            className="notes-create-input"
+            type="text"
+            placeholder="Note name..."
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleCreateNote();
+              if (e.key === "Escape") { setCreating(false); setNewName(""); }
+            }}
+          />
+          <button className="notes-create-confirm" onClick={handleCreateNote}>Create</button>
+          <button className="notes-create-cancel" onClick={() => { setCreating(false); setNewName(""); }}>
+            &times;
+          </button>
         </div>
       )}
 
-      {notes.map((note) => (
+      {/* Tag filter chips */}
+      {allTags.length > 0 && (
+        <div className="notes-tag-bar">
+          {activeTag && (
+            <button
+              className="notes-tag-chip notes-tag-chip-clear"
+              onClick={() => setActiveTag(null)}
+            >
+              All
+            </button>
+          )}
+          {allTags.map((tag) => (
+            <button
+              key={tag}
+              className={`notes-tag-chip${activeTag === tag ? " notes-tag-chip-active" : ""}`}
+              onClick={() => setActiveTag(activeTag === tag ? null : tag)}
+            >
+              #{tag}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {loading && <div className="memories-loading">Loading...</div>}
+
+      {!loading && filtered.length === 0 && (
+        <div className="memories-empty">
+          {notes.length === 0
+            ? "캡처를 승격하면 노트가 여기에 표시됩니다."
+            : "검색 결과가 없습니다."}
+        </div>
+      )}
+
+      {/* Note cards */}
+      {filtered.map((note) => (
         <button
           key={note.path}
-          className="memories-note-item"
+          className="notes-card"
           onClick={() => handleOpenNote(note.path)}
           title={note.path}
         >
-          <svg className="memories-note-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <polyline points="14 2 14 8 20 8" />
-            <line x1="16" y1="13" x2="8" y2="13" />
-            <line x1="16" y1="17" x2="8" y2="17" />
-          </svg>
-          <span className="memories-note-name">{note.name}</span>
+          <div className="notes-card-header">
+            <span className="notes-card-name">{note.name}</span>
+            {note.backlinkCount > 0 && (
+              <span className="notes-card-backlinks" title={`${note.backlinkCount} backlink${note.backlinkCount > 1 ? "s" : ""}`}>
+                {note.backlinkCount}
+              </span>
+            )}
+          </div>
+          {note.preview && (
+            <div className="notes-card-preview">{note.preview}</div>
+          )}
+          {note.tags.length > 0 && (
+            <div className="notes-card-tags">
+              {note.tags.map((t) => (
+                <span key={t} className="notes-card-tag">#{t}</span>
+              ))}
+            </div>
+          )}
         </button>
       ))}
     </div>
