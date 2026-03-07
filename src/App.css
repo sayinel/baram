@@ -2620,6 +2620,46 @@ body {
   text-decoration: underline;
 }
 
+.calendar-picker {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding: 8px 4px;
+}
+
+.calendar-pick-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 8px 4px;
+  border-radius: 6px;
+}
+
+.calendar-pick-btn:hover {
+  background: var(--color-bg-secondary);
+}
+
+.calendar-pick-btn-today {
+  font-weight: 700;
+  color: var(--cal-accent, var(--color-accent));
+}
+
+.calendar-pick-btn-selected {
+  background: var(--cal-accent, var(--color-accent));
+  color: #fff;
+  font-weight: 600;
+}
+
+.calendar-pick-btn-selected:hover {
+  background: var(--cal-accent, var(--color-accent));
+  opacity: 0.9;
+}
+
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
@@ -3397,6 +3437,68 @@ body {
 }
 
 .memories-mini-calendar-day-selected:hover {
+  background: var(--color-accent, #5b7bd7);
+  opacity: 0.9;
+}
+
+.memories-mini-calendar-title-btn {
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.memories-mini-calendar-title-btn:hover {
+  background: var(--color-bg-secondary);
+  color: var(--color-accent, #5b7bd7);
+}
+
+.memories-mini-calendar-title-text {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.memories-mini-calendar-picker {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.memories-mini-calendar-pick-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 0.7rem;
+  cursor: pointer;
+  padding: 6px 4px;
+  border-radius: 6px;
+}
+
+.memories-mini-calendar-pick-btn:hover {
+  background: var(--color-bg-secondary);
+}
+
+.memories-mini-calendar-pick-btn-today {
+  font-weight: 700;
+  color: var(--color-accent, #5b7bd7);
+}
+
+.memories-mini-calendar-pick-btn-selected {
+  background: var(--color-accent, #5b7bd7);
+  color: #fff;
+  font-weight: 600;
+}
+
+.memories-mini-calendar-pick-btn-selected:hover {
   background: var(--color-accent, #5b7bd7);
   opacity: 0.9;
 }

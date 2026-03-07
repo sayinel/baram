@@ -159,9 +159,12 @@ interface MiniCalendarProps {
   onClose: () => void;
 }
 
+type CalendarView = "days" | "months" | "years";
+
 function MiniCalendar({ selectedDate, onSelect, onClose }: MiniCalendarProps) {
   const [viewYear, setViewYear] = useState(selectedDate.getFullYear());
   const [viewMonth, setViewMonth] = useState(selectedDate.getMonth());
+  const [view, setView] = useState<CalendarView>("days");
   const ref = useRef<HTMLDivElement>(null);
 
   // Close on outside click
@@ -179,53 +182,104 @@ function MiniCalendar({ selectedDate, onSelect, onClose }: MiniCalendarProps) {
   const firstDow = getFirstDayOfWeek(viewYear, viewMonth);
   const today = new Date();
 
-  const prevMonth = () => {
-    if (viewMonth === 0) { setViewYear(viewYear - 1); setViewMonth(11); }
-    else setViewMonth(viewMonth - 1);
-  };
-
-  const nextMonth = () => {
-    if (viewMonth === 11) { setViewYear(viewYear + 1); setViewMonth(0); }
-    else setViewMonth(viewMonth + 1);
-  };
-
   const isSameDay = (a: Date, b: Date) =>
     a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+  // Years view: 12-year range centered on current viewYear
+  const yearRangeStart = viewYear - (viewYear % 12);
+  const yearRange = Array.from({ length: 12 }, (_, i) => yearRangeStart + i);
+
+  const navPrev = () => {
+    if (view === "days") {
+      if (viewMonth === 0) { setViewYear(viewYear - 1); setViewMonth(11); }
+      else setViewMonth(viewMonth - 1);
+    } else if (view === "months") {
+      setViewYear(viewYear - 1);
+    } else {
+      setViewYear(yearRangeStart - 12);
+    }
+  };
+
+  const navNext = () => {
+    if (view === "days") {
+      if (viewMonth === 11) { setViewYear(viewYear + 1); setViewMonth(0); }
+      else setViewMonth(viewMonth + 1);
+    } else if (view === "months") {
+      setViewYear(viewYear + 1);
+    } else {
+      setViewYear(yearRangeStart + 12);
+    }
+  };
+
+  const headerLabel = view === "days"
+    ? <><button className="memories-mini-calendar-title-btn" onClick={() => setView("months")}>{MINI_CAL_MONTH_NAMES[viewMonth]}</button>{" "}<button className="memories-mini-calendar-title-btn" onClick={() => setView("years")}>{viewYear}</button></>
+    : view === "months"
+      ? <button className="memories-mini-calendar-title-btn" onClick={() => setView("years")}>{viewYear}년</button>
+      : <span className="memories-mini-calendar-title-text">{yearRangeStart}–{yearRangeStart + 11}</span>;
 
   return (
     <div className="memories-mini-calendar" ref={ref}>
       <div className="memories-mini-calendar-header">
-        <button className="memories-mini-calendar-nav" onClick={prevMonth}>‹</button>
-        <span className="memories-mini-calendar-title">
-          {viewYear}년 {MINI_CAL_MONTH_NAMES[viewMonth]}
-        </span>
-        <button className="memories-mini-calendar-nav" onClick={nextMonth}>›</button>
+        <button className="memories-mini-calendar-nav" onClick={navPrev}>‹</button>
+        <span className="memories-mini-calendar-title">{headerLabel}</span>
+        <button className="memories-mini-calendar-nav" onClick={navNext}>›</button>
       </div>
-      <div className="memories-mini-calendar-grid">
-        {MINI_CAL_DAY_NAMES.map((d) => (
-          <div key={d} className="memories-mini-calendar-dow">{d}</div>
-        ))}
-        {Array.from({ length: firstDow }).map((_, i) => (
-          <div key={`pad-${i}`} className="memories-mini-calendar-pad" />
-        ))}
-        {days.map((d) => {
-          const isSelected = isSameDay(d, selectedDate);
-          const isToday = isSameDay(d, today);
-          return (
+
+      {view === "days" && (
+        <div className="memories-mini-calendar-grid">
+          {MINI_CAL_DAY_NAMES.map((d) => (
+            <div key={d} className="memories-mini-calendar-dow">{d}</div>
+          ))}
+          {Array.from({ length: firstDow }).map((_, i) => (
+            <div key={`pad-${i}`} className="memories-mini-calendar-pad" />
+          ))}
+          {days.map((d) => {
+            const isSelected = isSameDay(d, selectedDate);
+            const isToday = isSameDay(d, today);
+            return (
+              <button
+                key={d.getDate()}
+                className={[
+                  "memories-mini-calendar-day",
+                  isSelected ? "memories-mini-calendar-day-selected" : "",
+                  isToday ? "memories-mini-calendar-day-today" : "",
+                ].join(" ")}
+                onClick={() => onSelect(d)}
+              >
+                {d.getDate()}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {view === "months" && (
+        <div className="memories-mini-calendar-picker">
+          {MINI_CAL_MONTH_NAMES.map((name, i) => (
             <button
-              key={d.getDate()}
-              className={[
-                "memories-mini-calendar-day",
-                isSelected ? "memories-mini-calendar-day-selected" : "",
-                isToday ? "memories-mini-calendar-day-today" : "",
-              ].join(" ")}
-              onClick={() => onSelect(d)}
+              key={i}
+              className={`memories-mini-calendar-pick-btn ${i === viewMonth && viewYear === selectedDate.getFullYear() ? "memories-mini-calendar-pick-btn-selected" : ""} ${i === today.getMonth() && viewYear === today.getFullYear() ? "memories-mini-calendar-pick-btn-today" : ""}`}
+              onClick={() => { setViewMonth(i); setView("days"); }}
             >
-              {d.getDate()}
+              {name}
             </button>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      )}
+
+      {view === "years" && (
+        <div className="memories-mini-calendar-picker">
+          {yearRange.map((y) => (
+            <button
+              key={y}
+              className={`memories-mini-calendar-pick-btn ${y === selectedDate.getFullYear() ? "memories-mini-calendar-pick-btn-selected" : ""} ${y === today.getFullYear() ? "memories-mini-calendar-pick-btn-today" : ""}`}
+              onClick={() => { setViewYear(y); setView("months"); }}
+            >
+              {y}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

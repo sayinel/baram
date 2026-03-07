@@ -45,6 +45,7 @@ export function CalendarPanel() {
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
+  const [calView, setCalView] = useState<"days" | "months" | "years">("days");
   const [showSearch, setShowSearch] = useState(false);
   const [showReflection, setShowReflection] = useState(false);
 
@@ -140,23 +141,29 @@ export function CalendarPanel() {
   const firstDow = useMemo(() => getFirstDayOfWeek(viewYear, viewMonth), [viewYear, viewMonth]);
   const todayStr = formatJournalDate(today);
 
-  const prevMonth = useCallback(() => {
-    if (viewMonth === 0) {
-      setViewYear((y) => y - 1);
-      setViewMonth(11);
-    } else {
-      setViewMonth((m) => m - 1);
-    }
-  }, [viewMonth]);
+  const yearRangeStart = viewYear - (viewYear % 12);
 
-  const nextMonth = useCallback(() => {
-    if (viewMonth === 11) {
-      setViewYear((y) => y + 1);
-      setViewMonth(0);
+  const navPrev = useCallback(() => {
+    if (calView === "days") {
+      if (viewMonth === 0) { setViewYear((y) => y - 1); setViewMonth(11); }
+      else setViewMonth((m) => m - 1);
+    } else if (calView === "months") {
+      setViewYear((y) => y - 1);
     } else {
-      setViewMonth((m) => m + 1);
+      setViewYear((y) => y - 12);
     }
-  }, [viewMonth]);
+  }, [viewMonth, calView]);
+
+  const navNext = useCallback(() => {
+    if (calView === "days") {
+      if (viewMonth === 11) { setViewYear((y) => y + 1); setViewMonth(0); }
+      else setViewMonth((m) => m + 1);
+    } else if (calView === "months") {
+      setViewYear((y) => y + 1);
+    } else {
+      setViewYear((y) => y + 12);
+    }
+  }, [viewMonth, calView]);
 
   const goToday = useCallback(() => {
     setViewYear(today.getFullYear());
@@ -329,39 +336,45 @@ export function CalendarPanel() {
   return (
     <div className="calendar-panel" style={themeStyle}>
       <div className="calendar-header">
-        <button className="calendar-nav-btn" onClick={prevMonth} title="Previous month">
+        <button className="calendar-nav-btn" onClick={navPrev} title="Previous">
           &lt;
         </button>
         <span className="calendar-title-group">
-          {journalMonthlyEnabled ? (
-            <button
-              className="calendar-title calendar-title-month"
-              onClick={openMonthlyNote}
-              title={`Open ${MONTH_NAMES[viewMonth]} note`}
-            >
-              {MONTH_NAMES[viewMonth]}
-            </button>
-          ) : (
-            <button className="calendar-title" onClick={goToday} title="Go to today">
-              {MONTH_NAMES[viewMonth]}
-            </button>
+          {calView === "days" && (
+            <>
+              <button
+                className="calendar-title calendar-title-month"
+                onClick={() => setCalView("months")}
+                title="Select month"
+              >
+                {MONTH_NAMES[viewMonth]}
+              </button>
+              {" "}
+              <button
+                className="calendar-title calendar-title-year"
+                onClick={() => setCalView("years")}
+                title="Select year"
+              >
+                {viewYear}
+              </button>
+            </>
           )}
-          {" "}
-          {journalYearlyEnabled ? (
+          {calView === "months" && (
             <button
               className="calendar-title calendar-title-year"
-              onClick={openYearlyNote}
-              title={`Open ${viewYear} yearly note`}
+              onClick={() => setCalView("years")}
+              title="Select year"
             >
               {viewYear}
             </button>
-          ) : (
-            <button className="calendar-title" onClick={goToday} title="Go to today">
-              {viewYear}
-            </button>
+          )}
+          {calView === "years" && (
+            <span className="calendar-title">
+              {yearRangeStart}–{yearRangeStart + 11}
+            </span>
           )}
         </span>
-        <button className="calendar-nav-btn" onClick={nextMonth} title="Next month">
+        <button className="calendar-nav-btn" onClick={navNext} title="Next">
           &gt;
         </button>
         <button
@@ -383,55 +396,83 @@ export function CalendarPanel() {
           </button>
         )}
       </div>
-      <div className={`calendar-grid${journalWeeklyEnabled ? " calendar-grid-with-weeks" : ""}`}>
-        {journalWeeklyEnabled && <div className="calendar-week-header">W</div>}
-        {DAY_NAMES.map((d) => (
-          <div key={d} className="calendar-day-name">{d}</div>
-        ))}
-        {rows.map((row, rowIdx) => {
-          // Find the first real date in this row for week number
-          const firstDate = row.find((d) => d !== null);
-          const weekNum = firstDate ? getISOWeekNumber(firstDate) : null;
-          return (
-            <React.Fragment key={`row-${rowIdx}`}>
-              {journalWeeklyEnabled && (
-                <button
-                  className="calendar-week-num"
-                  onClick={() => firstDate && openWeeklyNote(firstDate)}
-                  title={weekNum !== null ? `Open W${String(weekNum).padStart(2, "0")} note` : undefined}
-                  disabled={!firstDate}
-                >
-                  {weekNum !== null ? weekNum : ""}
-                </button>
-              )}
-              {row.map((date, cellIdx) => {
-                if (!date) {
-                  return <div key={`empty-${rowIdx}-${cellIdx}`} className="calendar-cell calendar-cell-empty" />;
-                }
-                const dateStr = formatJournalDate(date);
-                const isToday = dateStr === todayStr;
-                const hasJournal = journalDates.has(dateStr);
-                return (
+      {calView === "days" && (
+        <div className={`calendar-grid${journalWeeklyEnabled ? " calendar-grid-with-weeks" : ""}`}>
+          {journalWeeklyEnabled && <div className="calendar-week-header">W</div>}
+          {DAY_NAMES.map((d) => (
+            <div key={d} className="calendar-day-name">{d}</div>
+          ))}
+          {rows.map((row, rowIdx) => {
+            // Find the first real date in this row for week number
+            const firstDate = row.find((d) => d !== null);
+            const weekNum = firstDate ? getISOWeekNumber(firstDate) : null;
+            return (
+              <React.Fragment key={`row-${rowIdx}`}>
+                {journalWeeklyEnabled && (
                   <button
-                    key={dateStr}
-                    className={`calendar-cell${isToday ? " calendar-cell-today" : ""}${hasJournal ? " calendar-cell-has-journal" : ""}`}
-                    onClick={() => openOrCreateJournal(date)}
-                    title={dateStr}
+                    className="calendar-week-num"
+                    onClick={() => firstDate && openWeeklyNote(firstDate)}
+                    title={weekNum !== null ? `Open W${String(weekNum).padStart(2, "0")} note` : undefined}
+                    disabled={!firstDate}
                   >
-                    {date.getDate()}
-                    {hasJournal && (
-                      <span
-                        className="calendar-dot"
-                        style={moodMap.has(dateStr) ? { background: MOOD_COLORS[moodMap.get(dateStr)!] } : undefined}
-                      />
-                    )}
+                    {weekNum !== null ? weekNum : ""}
                   </button>
-                );
-              })}
-            </React.Fragment>
-          );
-        })}
-      </div>
+                )}
+                {row.map((date, cellIdx) => {
+                  if (!date) {
+                    return <div key={`empty-${rowIdx}-${cellIdx}`} className="calendar-cell calendar-cell-empty" />;
+                  }
+                  const dateStr = formatJournalDate(date);
+                  const isToday = dateStr === todayStr;
+                  const hasJournal = journalDates.has(dateStr);
+                  return (
+                    <button
+                      key={dateStr}
+                      className={`calendar-cell${isToday ? " calendar-cell-today" : ""}${hasJournal ? " calendar-cell-has-journal" : ""}`}
+                      onClick={() => openOrCreateJournal(date)}
+                      title={dateStr}
+                    >
+                      {date.getDate()}
+                      {hasJournal && (
+                        <span
+                          className="calendar-dot"
+                          style={moodMap.has(dateStr) ? { background: MOOD_COLORS[moodMap.get(dateStr)!] } : undefined}
+                        />
+                      )}
+                    </button>
+                  );
+                })}
+              </React.Fragment>
+            );
+          })}
+        </div>
+      )}
+      {calView === "months" && (
+        <div className="calendar-picker calendar-months-picker">
+          {MONTH_NAMES.map((name, idx) => (
+            <button
+              key={name}
+              className={`calendar-pick-btn${idx === viewMonth ? " calendar-pick-btn-selected" : ""}${idx === today.getMonth() && viewYear === today.getFullYear() ? " calendar-pick-btn-today" : ""}`}
+              onClick={() => { setViewMonth(idx); setCalView("days"); }}
+            >
+              {name.slice(0, 3)}
+            </button>
+          ))}
+        </div>
+      )}
+      {calView === "years" && (
+        <div className="calendar-picker calendar-years-picker">
+          {Array.from({ length: 12 }, (_, i) => yearRangeStart + i).map((yr) => (
+            <button
+              key={yr}
+              className={`calendar-pick-btn${yr === viewYear ? " calendar-pick-btn-selected" : ""}${yr === today.getFullYear() ? " calendar-pick-btn-today" : ""}`}
+              onClick={() => { setViewYear(yr); setCalView("months"); }}
+            >
+              {yr}
+            </button>
+          ))}
+        </div>
+      )}
       {showSearch && (
         <JournalSearchPanel onClose={() => setShowSearch(false)} />
       )}
