@@ -63,6 +63,7 @@ import { forceCollapseSyntaxReveal } from "./extensions/plugins/syntax-reveal";
 import { showTableGridPicker } from "./utils/table-grid-picker";
 import { MoodBar } from "./components/journal/MoodBar";
 import { FollowUpCard } from "./components/journal/FollowUpCard";
+import { PeriodicInsightBanner, detectPeriodicType } from "./components/journal/PeriodicInsightBanner";
 import { FindReplaceBar } from "./components/editor/FindReplaceBar";
 import { dispatchSetSearchTerm } from "./extensions/plugins/find-replace";
 import { InlineAIPrompt } from "./components/ai/InlineAIPrompt";
@@ -2096,6 +2097,12 @@ function App() {
               )}
               <MoodBar editor={editor} />
               <FollowUpCard editor={editor} />
+              {activeTab?.filePath && detectPeriodicType(activeTab.filePath) && (
+                <PeriodicInsightBanner
+                  filePath={activeTab.filePath}
+                  type={detectPeriodicType(activeTab.filePath)!}
+                />
+              )}
               <div className="editor-area-scroll">
                 {/* §perf-large-file B2: Loading skeleton while Worker parses */}
                 {isParsing && (

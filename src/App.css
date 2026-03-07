@@ -9778,6 +9778,61 @@ body {
   50% { opacity: 0; }
 }
 
+/* §56j Periodic Insight Banner */
+.periodic-insight-banner {
+  margin: 0 12px 6px;
+  padding: 6px 10px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.periodic-insight-label {
+  color: var(--color-text-secondary);
+  flex: 1;
+}
+.periodic-insight-btn {
+  padding: 2px 10px;
+  font-size: 0.7rem;
+  background: var(--color-accent);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.periodic-insight-btn:hover {
+  opacity: 0.85;
+}
+.periodic-insight-dismiss {
+  background: none;
+  border: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0 4px;
+  line-height: 1;
+}
+.periodic-insight-dismiss:hover {
+  color: var(--color-text-primary);
+}
+.periodic-insight-result {
+  width: 100%;
+  position: relative;
+}
+.periodic-insight-md {
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--color-text-primary);
+}
+.periodic-insight-loading {
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
 .reflection-placeholder {
   padding: 4px 12px;
   font-size: 0.72rem;

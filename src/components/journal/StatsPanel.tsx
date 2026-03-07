@@ -100,6 +100,31 @@ export function StatsPanel({ journalDates, lastSavedDate, lastSavedContent }: St
     }
     const mostActiveDay = dowCount[maxDow] > 0 ? dayNames[maxDow] : null;
 
+    // Average writing hour
+    const hoursWithData = dates
+      .map((d) => entries[d].modifiedHour)
+      .filter((h): h is number => h !== undefined);
+    let avgWritingTime: string | null = null;
+    if (hoursWithData.length > 0) {
+      // Average using circular mean to handle midnight wraparound correctly
+      const TWO_PI = 2 * Math.PI;
+      let sinSum = 0;
+      let cosSum = 0;
+      for (const h of hoursWithData) {
+        const angle = (h / 24) * TWO_PI;
+        sinSum += Math.sin(angle);
+        cosSum += Math.cos(angle);
+      }
+      const avgAngle = Math.atan2(sinSum / hoursWithData.length, cosSum / hoursWithData.length);
+      const avgHour = ((avgAngle / TWO_PI) * 24 + 24) % 24;
+      const h = Math.floor(avgHour);
+      const m = Math.round((avgHour - h) * 60);
+      const period = h < 12 ? "오전" : "오후";
+      const displayH = h % 12 === 0 ? 12 : h % 12;
+      const displayM = String(m).padStart(2, "0");
+      avgWritingTime = `${period} ${displayH}:${displayM}`;
+    }
+
     return {
       yearEntries,
       yearWords,
@@ -108,6 +133,7 @@ export function StatsPanel({ journalDates, lastSavedDate, lastSavedContent }: St
       monthWords,
       mostActiveDay,
       mostActiveDayCount: dowCount[maxDow],
+      avgWritingTime,
     };
   }, [cache, currentYear]);
 
@@ -300,6 +326,15 @@ export function StatsPanel({ journalDates, lastSavedDate, lastSavedContent }: St
                   <span className="journal-stats-label">Most active</span>
                   <span className="journal-stats-value"><strong>{extStats.mostActiveDay}</strong></span>
                   <span className="journal-stats-pct">{extStats.mostActiveDayCount} entries</span>
+                </div>
+              )}
+              {extStats.avgWritingTime && (
+                <div className="journal-stats-row">
+                  <svg className="journal-stats-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+                  </svg>
+                  <span className="journal-stats-label">평균 작성 시간</span>
+                  <span className="journal-stats-value"><strong>{extStats.avgWritingTime}</strong></span>
                 </div>
               )}
             </>

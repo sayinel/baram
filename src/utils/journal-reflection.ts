@@ -110,6 +110,48 @@ export function formatReflectionMarkdown(
 }
 
 /**
+ * §56j §11.2 Weekly Pattern Analysis — build prompt for auto pattern suggestion on weekly notes.
+ */
+export function buildWeeklyPatternPrompt(
+  entries: { date: string; content: string }[],
+): { systemPrompt: string; userPrompt: string } {
+  const systemPrompt =
+    "당신은 저널 분석 도우미입니다. 사용자의 이번 주 일기를 분석하여 발견되는 패턴, 반복되는 주제, 감정 변화를 3줄 이내로 요약하세요. 한국어로 답변하세요.";
+
+  if (entries.length === 0) {
+    return { systemPrompt, userPrompt: "이번 주 작성된 일기가 없습니다." };
+  }
+
+  const entriesText = entries
+    .map((e) => `### ${e.date}\n\n${e.content.trim()}`)
+    .join("\n\n---\n\n");
+
+  const userPrompt = `이번 주 일기를 분석하여 패턴, 반복 주제, 감정 변화를 3줄 이내로 요약해주세요.\n\n## 일기 목록\n\n${entriesText}`;
+  return { systemPrompt, userPrompt };
+}
+
+/**
+ * §56j §11.2 Monthly Summary — build prompt for auto summary suggestion on monthly notes.
+ */
+export function buildMonthlySummaryPrompt(
+  entries: { date: string; content: string }[],
+): { systemPrompt: string; userPrompt: string } {
+  const systemPrompt =
+    "당신은 저널 분석 도우미입니다. 사용자의 이번 달 일기를 3줄로 요약하세요. 주요 사건, 감정 흐름, 성장 포인트를 포함하세요. 한국어로 답변하세요.";
+
+  if (entries.length === 0) {
+    return { systemPrompt, userPrompt: "이번 달 작성된 일기가 없습니다." };
+  }
+
+  const entriesText = entries
+    .map((e) => `### ${e.date}\n\n${e.content.trim()}`)
+    .join("\n\n---\n\n");
+
+  const userPrompt = `이번 달 일기를 3줄로 요약해주세요. 주요 사건, 감정 흐름, 성장 포인트를 포함하세요.\n\n## 일기 목록\n\n${entriesText}`;
+  return { systemPrompt, userPrompt };
+}
+
+/**
  * §56j Auto Follow-Up — build prompt for follow-up questions after diary writing.
  */
 export function buildFollowUpPrompt(diaryText: string): { systemPrompt: string; userPrompt: string } {
