@@ -13,12 +13,12 @@ export function isSkillFrontmatter(yaml: string): boolean {
 export function useSkillsMode() {
   const activeTabId = useEditorStore((s) => s.activeTabId);
   const tabs = useEditorStore((s) => s.tabs);
-  const fileContents = useFileStore((s) => s.fileContents);
+  const openFiles = useFileStore((s) => s.openFiles);
   const prevModeRef = useRef<{ mode: string; open: boolean } | null>(null);
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const filePath = activeTab?.filePath ?? null;
-  const content = filePath ? fileContents.get(filePath) ?? "" : "";
+  const content = filePath ? openFiles.get(filePath) ?? "" : "";
 
   // Extract YAML from frontmatter
   const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);

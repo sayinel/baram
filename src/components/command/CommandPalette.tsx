@@ -23,6 +23,7 @@ function buildCommands(
   onOpenFile: () => void,
   onSave: () => void,
   onOpenFolder: () => void,
+  onSkillPreview: () => void,
 ): CommandItem[] {
   return [
     // File
@@ -210,6 +211,13 @@ function buildCommands(
       action: () => {
         useUIStore.getState().toggleSkillTestDialog();
       },
+    },
+    {
+      id: "skills-preview",
+      label: "Skills: Preview as LLM Input",
+      category: "Skills",
+      shortcut: "",
+      action: () => onSkillPreview(),
     },
     // §57b Git commands
     {
@@ -414,6 +422,7 @@ interface CommandPaletteProps {
   onOpenFile: () => void;
   onSave: () => void;
   onOpenFolder: () => void;
+  onSkillPreview?: () => void;
 }
 
 export function CommandPalette({
@@ -423,6 +432,7 @@ export function CommandPalette({
   onOpenFile,
   onSave,
   onOpenFolder,
+  onSkillPreview,
 }: CommandPaletteProps) {
   const { commandPaletteOpen, toggleCommandPalette, toggleSidebar } =
     useUIStore();
@@ -439,8 +449,9 @@ export function CommandPalette({
         onOpenFile,
         onSave,
         onOpenFolder,
+        onSkillPreview ?? (() => {}),
       ),
-    [toggleSidebar, onToggleSourceMode, onNewFile, onOpenFile, onSave, onOpenFolder],
+    [toggleSidebar, onToggleSourceMode, onNewFile, onOpenFile, onSave, onOpenFolder, onSkillPreview],
   );
 
   const filtered = useMemo(() => {

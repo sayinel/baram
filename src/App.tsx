@@ -130,6 +130,11 @@ const SkillTestDialog = lazy(() =>
     default: m.SkillTestDialog,
   })),
 );
+const SkillPreviewPanel = lazy(() =>
+  import("./components/ai/SkillPreviewPanel").then((m) => ({
+    default: m.SkillPreviewPanel,
+  })),
+);
 const QuickCaptureDialog = lazy(() =>
   import("./components/journal/QuickCaptureDialog").then((m) => ({
     default: m.QuickCaptureDialog,
@@ -211,6 +216,9 @@ function App() {
   // §39 Tab switcher state
   const [tabSwitcherOpen, setTabSwitcherOpen] = useState(false);
   const [tabSwitcherIndex, setTabSwitcherIndex] = useState(0);
+
+  // §72 Skill Preview Panel state
+  const [skillPreviewOpen, setSkillPreviewOpen] = useState(false);
   const tabSwitcherMruRef = useRef<EditorTab[]>([]);
 
   const editor = useEditor({
@@ -2179,6 +2187,14 @@ function App() {
           )}
         </div>
         <PromptLintPanel editor={editor} />
+        {isSkill && (
+          <Suspense fallback={null}>
+            <SkillPreviewPanel
+              visible={skillPreviewOpen}
+              onClose={() => setSkillPreviewOpen(false)}
+            />
+          </Suspense>
+        )}
       </AppLayout>
       <Suspense fallback={null}>
         <CommandPalette
@@ -2188,6 +2204,7 @@ function App() {
           onOpenFile={handleOpenFile}
           onSave={handleSave}
           onOpenFolder={handleOpenFolder}
+          onSkillPreview={() => setSkillPreviewOpen((v) => !v)}
         />
         <ExportDialog editor={editor} />
         <QuickSwitcher editor={editor} onNewFile={handleNewFile} />
