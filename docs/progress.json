@@ -1,7 +1,7 @@
 {
   "_comment": "Baram 개발 진행 상황 추적. 슬래시 커맨드가 자동으로 업데이트한다.",
   "project": "baram",
-  "lastUpdated": "2026-03-01",
+  "lastUpdated": "2026-03-07",
   "currentPhase": 3,
   "currentMilestone": "M10",
 
@@ -333,9 +333,9 @@
   },
 
   "testSummary": {
-    "vitest": "1474/1474 pass (88 test files)",
-    "cargoTest": "112/112 pass (4 ignored)",
-    "note": "All medium+low+info spec-check issues resolved. Coverage 99%. 1474 tests (88 files). Only §8.4 manual perf measurements remain.",
+    "vitest": "1567/1567 pass (88 test files)",
+    "cargoTest": "121/121 pass (4 ignored)",
+    "note": "All medium+low+info spec-check issues resolved. Coverage 99%. 1567 tests (88 files). Only §8.4 manual perf measurements remain.",
     "breakdown": {
       "_comment": "79 test files, 1300 tests total (2026-03-01 spec-check verified)",
       "integration/ai-edit-workflow": 5,

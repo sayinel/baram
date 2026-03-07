@@ -172,9 +172,10 @@ baram/
 ## 현재 Phase 및 마일스톤
 
 Phase 1: MVP — ✅ 완료 (M1~M6)
-Phase 2: 확장 — 진행 중 (M7~M9)
+Phase 2: 확장 — ✅ 완료 (M7~M9)
 - M7: 연결 시스템 & 네비게이션 — ✅ 완료
 - M8: AI 심화 + Skills 편집 — ✅ 완료
-- M9: 생산성 도구 — 부분 완료 (인라인 마크, TOC, 테이블 Tier 3, 각주, 도움말 패널, 글로벌 검색, 정의 목록, Mermaid 고도화, Git Basic, 테마 시스템, Extension Settings, Workspace Presets, Export for Notion)
-Phase 3: 고급 기능 (M10)
-- 테이블 셀 병합 / 50+ 행 가상 스크롤 포함
+- M9: 생산성 도구 — ✅ 완료 (인라인 마크, TOC, 테이블 Tier 3, 각주, 도움말 패널, 글로벌 검색, 정의 목록, Mermaid 고도화, Git Basic, 테마 시스템, Extension Settings, Workspace Presets, Export for Notion, Pandoc Export, Journal §56a~§56m, @멘션, 태그 시스템)
+Phase 3: 고급 기능 — 진행 중
+- M10 테이블 고급 (셀 병합 + 가상 스크롤) — ✅ 완료
+- 쿼리 블록, Canvas, Agent Mode, Knowledge Q&A, Git 고급, 실시간 협업 등 — 미착수
