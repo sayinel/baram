@@ -30,7 +30,7 @@ import { useFileStore } from "../../stores/file-store";
 import { YearInPixels } from "../journal/YearInPixels";
 import { MoodTrend30 } from "../journal/MoodTrend30";
 import { StatsPanel } from "../journal/StatsPanel";
-import { DailyPrompt } from "../journal/DailyPrompt";
+
 import { JournalSearchPanel } from "../journal/JournalSearchPanel";
 import { ReflectionPanel } from "../journal/ReflectionPanel";
 import { useAIStore } from "../../stores/ai-store";
@@ -480,7 +480,6 @@ export function CalendarPanel() {
         <ReflectionPanel onClose={() => setShowReflection(false)} />
       )}
       <StatsPanel journalDates={journalDates} />
-      <DailyPrompt />
       <MoodTrend30 moodMap={moodMap} />
       <YearInPixels journalDir={resolvedDir} year={viewYear} useHierarchy={journalUseHierarchy} />
     </div>
