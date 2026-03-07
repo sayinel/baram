@@ -2,7 +2,7 @@
 import type { ReactNode } from "react";
 import { useUIStore } from "../../stores/ui-store";
 
-type PanelId = "files" | "search" | "outline" | "backlinks" | "bookmarks" | "graph" | "git" | "calendar" | "tags";
+type PanelId = "files" | "search" | "outline" | "backlinks" | "bookmarks" | "graph" | "git" | "calendar" | "tags" | "snapshots";
 
 const PANEL_ICONS: { id: PanelId; label: string; icon: ReactNode }[] = [
   {
@@ -104,6 +104,16 @@ const PANEL_ICONS: { id: PanelId; label: string; icon: ReactNode }[] = [
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
         <line x1="7" y1="7" x2="7.01" y2="7" />
+      </svg>
+    ),
+  },
+  {
+    id: "snapshots",
+    label: "Version History",
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <polyline points="12 6 12 12 16 14" />
       </svg>
     ),
   },

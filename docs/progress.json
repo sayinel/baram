@@ -327,14 +327,15 @@
       "completedAt": "2026-03-01",
       "features": {
         "§5.5-cell-merge": { "status": "completed", "tests": "10/10 vitest pass (grid decomposition + roundtrip)", "spec": "§5.5", "details": "mergeCells/splitCell/mergeOrSplit commands, renderHTML colspan/rowspan attrs, 2D grid pmToMdast decomposition, Mod-M shortcut, TableToolbar + ContextMenu buttons" },
-        "§5.5-virtual-scroll": { "status": "completed", "tests": "4/4 vitest pass (threshold + utility)", "spec": "§5.5", "details": "content-visibility: auto on 50+ row tables, ProseMirror plugin, graceful degradation for unsupported browsers" }
+        "§5.5-virtual-scroll": { "status": "completed", "tests": "4/4 vitest pass (threshold + utility)", "spec": "§5.5", "details": "content-visibility: auto on 50+ row tables, ProseMirror plugin, graceful degradation for unsupported browsers" },
+        "§71-file-snapshots": { "status": "completed", "tests": "34 cargo tests pass (index 5, io 8, diff 10, policy 6, integration 5)", "spec": "§71", "details": "Rust snapshot module (index, io, diff, policy) + 6 IPC commands + Zustand store + VersionHistoryPanel sidebar + ActivityBar icon + settings (snapshotInterval, snapshotMaxCount)" }
       }
     }
   },
 
   "testSummary": {
-    "vitest": "1567/1567 pass (88 test files)",
-    "cargoTest": "121/121 pass (4 ignored)",
+    "vitest": "1620/1620 pass (90 test files)",
+    "cargoTest": "155/155 pass (4 ignored)",
     "note": "All medium+low+info spec-check issues resolved. Coverage 99%. 1567 tests (88 files). Only §8.4 manual perf measurements remain.",
     "breakdown": {
       "_comment": "79 test files, 1300 tests total (2026-03-01 spec-check verified)",

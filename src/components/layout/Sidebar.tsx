@@ -9,6 +9,7 @@ import { GraphView } from "../sidebar/GraphView";
 import { GitPanel } from "../sidebar/GitPanel";
 import { CalendarPanel } from "../sidebar/CalendarPanel";
 import { TagPanel } from "../sidebar/TagPanel";
+import { VersionHistoryPanel } from "../sidebar/VersionHistoryPanel";
 import type { Editor } from "@tiptap/react";
 
 interface SidebarProps {
@@ -30,6 +31,7 @@ export function Sidebar({ editor }: SidebarProps) {
         {sidebarPanel === "git" && <GitPanel />}
         {sidebarPanel === "calendar" && <CalendarPanel />}
         {sidebarPanel === "tags" && <TagPanel />}
+        {sidebarPanel === "snapshots" && <VersionHistoryPanel />}
       </div>
     </div>
   );

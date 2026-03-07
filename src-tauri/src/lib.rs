@@ -8,10 +8,11 @@ mod git;
 mod index;
 mod llm;
 mod search;
+mod snapshot;
 
 use std::sync::Mutex;
 
-use commands::{config_cmd, export_cmd, fs_cmd, git_cmd, index_cmd, keyring_cmd, llm_cmd, search_cmd, tag_cmd};
+use commands::{config_cmd, export_cmd, fs_cmd, git_cmd, index_cmd, keyring_cmd, llm_cmd, search_cmd, snapshot_cmd, tag_cmd};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 
@@ -391,6 +392,12 @@ pub fn run() {
             tag_cmd::get_vault_tags,
             tag_cmd::rename_tag,
             tag_cmd::get_files_by_tag,
+            snapshot_cmd::create_snapshot,
+            snapshot_cmd::list_snapshots,
+            snapshot_cmd::get_snapshot_diff,
+            snapshot_cmd::restore_snapshot,
+            snapshot_cmd::delete_snapshot,
+            snapshot_cmd::get_file_history,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

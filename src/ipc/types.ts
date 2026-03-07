@@ -206,6 +206,46 @@ export interface RenameTagResult {
   occurrencesReplaced: number;
 }
 
+// §71 Snapshot types
+export interface SnapshotFileEntry {
+  path: string;
+  checksum: string;
+  sizeBytes: number;
+}
+
+export interface SnapshotEntry {
+  id: string;
+  timestamp: string;        // ISO 8601
+  type: "auto" | "manual";
+  label: string | null;
+  files: SnapshotFileEntry[];
+  totalSizeBytes: number;
+}
+
+export interface DiffChange {
+  type: "equal" | "delete" | "insert";
+  content: string;
+}
+
+export interface DiffHunk {
+  oldStart: number;
+  oldCount: number;
+  newStart: number;
+  newCount: number;
+  changes: DiffChange[];
+}
+
+export interface DiffStats {
+  additions: number;
+  deletions: number;
+  unchanged: number;
+}
+
+export interface DiffResult {
+  hunks: DiffHunk[];
+  stats: DiffStats;
+}
+
 // Event payloads
 export interface FileChangedPayload {
   path: string;

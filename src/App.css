@@ -11145,3 +11145,450 @@ body {
   border-radius: 3px;
   color: var(--color-text-secondary, #666);
 }
+
+/* ============================================
+   §71 Version History / Snapshot Panel
+   ============================================ */
+
+.snapshot-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+  font-size: 0.8rem;
+}
+
+.snapshot-panel-header {
+  display: flex;
+  align-items: center;
+  padding: 0.5em 0.75em;
+  border-bottom: 1px solid var(--color-border-light);
+  flex-shrink: 0;
+}
+
+.snapshot-panel-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+}
+
+.snapshot-panel-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 0.3em;
+}
+
+.snapshot-action-btn {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  background: none;
+  border: 1px solid var(--color-border-light);
+  border-radius: 3px;
+  padding: 0 0.3em;
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.snapshot-action-btn:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-accent);
+}
+
+.snapshot-action-btn.danger:hover {
+  color: #ef4444;
+  border-color: #ef4444;
+}
+
+/* Snapshot create form */
+
+.snapshot-create-form {
+  display: flex;
+  gap: 0.4em;
+  padding: 0.5em 0.75em;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.snapshot-label-input {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  padding: 0.3em 0.4em;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-light);
+  border-radius: 4px;
+  outline: none;
+}
+
+.snapshot-label-input:focus {
+  border-color: var(--color-accent);
+}
+
+.snapshot-create-btn {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  padding: 0.3em 0.6em;
+  color: #fff;
+  background: var(--color-accent);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.snapshot-create-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.snapshot-create-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Snapshot list */
+
+.snapshot-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.snapshot-item {
+  padding: 0.5em 0.75em;
+  border-bottom: 1px solid var(--color-border-light);
+  cursor: pointer;
+  user-select: none;
+}
+
+.snapshot-item:hover {
+  background: var(--color-bg-secondary);
+}
+
+.snapshot-item.selected {
+  background: var(--color-bg-secondary);
+  border-left: 2px solid var(--color-accent);
+}
+
+.snapshot-item-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+}
+
+.snapshot-item-icon {
+  font-size: 0.7rem;
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+.snapshot-item-time {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.snapshot-item-type {
+  margin-left: auto;
+  font-size: 0.65rem;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-muted);
+  padding: 0 0.3em;
+  border: 1px solid var(--color-border-light);
+  border-radius: 3px;
+}
+
+.snapshot-item-label {
+  font-size: 0.8rem;
+  color: var(--color-text-primary);
+  margin-top: 0.2em;
+  padding-left: 1.1em;
+}
+
+.snapshot-item-meta {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  margin-top: 0.15em;
+  padding-left: 1.1em;
+}
+
+/* Snapshot detail */
+
+.snapshot-detail {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.snapshot-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.5em 0.75em;
+  border-bottom: 1px solid var(--color-border-light);
+  flex-shrink: 0;
+}
+
+.snapshot-back-btn {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  background: none;
+  border: 1px solid var(--color-border-light);
+  border-radius: 3px;
+  padding: 0.15em 0.4em;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.snapshot-back-btn:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-accent);
+}
+
+.snapshot-detail-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.snapshot-detail-time {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.snapshot-detail-type {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+}
+
+/* Snapshot files */
+
+.snapshot-files-header {
+  padding: 0.35em 0.75em;
+  background: var(--color-bg-secondary);
+  border-bottom: 1px solid var(--color-border-light);
+  flex-shrink: 0;
+}
+
+.snapshot-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.snapshot-files-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.snapshot-file-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.2em 0.75em;
+  font-size: 0.8rem;
+}
+
+.snapshot-file-item:hover {
+  background: var(--color-bg-secondary);
+}
+
+.snapshot-file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  color: var(--color-text-primary);
+}
+
+.snapshot-file-name:hover {
+  text-decoration: underline;
+  color: var(--color-accent);
+}
+
+.snapshot-file-dir {
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+}
+
+.snapshot-file-size {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+/* Snapshot diff */
+
+.snapshot-diff-view {
+  border-top: 1px solid var(--color-border-light);
+  display: flex;
+  flex-direction: column;
+  max-height: 50%;
+  overflow: hidden;
+}
+
+.snapshot-diff-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.4em 0.75em;
+  background: var(--color-bg-secondary);
+  border-bottom: 1px solid var(--color-border-light);
+  flex-shrink: 0;
+}
+
+.snapshot-diff-path {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.snapshot-diff-stats {
+  display: flex;
+  gap: 0.4em;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+.diff-additions {
+  color: #22c55e;
+}
+
+.diff-deletions {
+  color: #ef4444;
+}
+
+.snapshot-diff-content {
+  flex: 1;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.diff-hunk {
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.diff-hunk-header {
+  padding: 0.3em 0.75em;
+  color: var(--color-text-muted);
+  background: var(--color-bg-secondary);
+  font-size: 0.75rem;
+}
+
+.diff-line {
+  display: flex;
+  padding: 0 0.75em;
+  white-space: pre;
+}
+
+.diff-insert {
+  background: rgba(34, 197, 94, 0.1);
+  color: #22c55e;
+}
+
+.diff-delete {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.diff-equal {
+  color: var(--color-text-primary);
+}
+
+.diff-line-prefix {
+  display: inline-block;
+  width: 1.5em;
+  text-align: center;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.diff-line-content {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Snapshot restore bar */
+
+.snapshot-restore-bar {
+  display: flex;
+  gap: 0.4em;
+  padding: 0.5em 0.75em;
+  border-top: 1px solid var(--color-border-light);
+  background: var(--color-bg-secondary);
+  flex-shrink: 0;
+}
+
+.snapshot-restore-btn {
+  flex: 1;
+  padding: 0.35em;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: #fff;
+  background: var(--color-accent);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.snapshot-restore-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.snapshot-restore-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.snapshot-restore-btn.secondary {
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-light);
+}
+
+.snapshot-restore-btn.secondary:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  opacity: 1;
+}
+
+/* Snapshot states */
+
+.snapshot-error {
+  padding: 0.4em 0.75em;
+  font-size: 0.75rem;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.snapshot-loading {
+  padding: 1.5em;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.snapshot-empty {
+  padding: 1.5em;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}

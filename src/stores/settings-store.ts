@@ -98,6 +98,10 @@ interface SettingsState {
   setWordTemplatePath: (path: string) => void;
   setCustomExports: (items: CustomExportItem[]) => void;
 
+  // Snapshots (§71)
+  snapshotInterval: number;  // minutes, 0 = disabled
+  snapshotMaxCount: number;
+
   // Extension settings (dynamic key-value)
   extensionSettings: Record<string, unknown>;
   setExtensionSetting: (key: string, value: unknown) => void;
@@ -265,6 +269,10 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
   setPandocPath: (pandocPath) => set({ pandocPath }),
   setWordTemplatePath: (wordTemplatePath) => set({ wordTemplatePath }),
   setCustomExports: (customExports) => set({ customExports }),
+
+  // Snapshots (§71)
+  snapshotInterval: 30,
+  snapshotMaxCount: 50,
 
   // Extension settings (dynamic key-value)
   extensionSettings: {},
@@ -461,6 +469,8 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
     wordTemplatePath: state.wordTemplatePath,
     customExports: state.customExports,
     tagColors: state.tagColors,
+    snapshotInterval: state.snapshotInterval,
+    snapshotMaxCount: state.snapshotMaxCount,
   }),
   version: 7,
   migrate: (persisted: unknown, version: number) => {
