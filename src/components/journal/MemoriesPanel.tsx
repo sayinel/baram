@@ -247,7 +247,12 @@ function JournalTab({ memories, setMemories, mode, setMode, loading, setLoading,
               ) : (
                 <div
                   className="memories-oneline memories-md-render"
-                  dangerouslySetInnerHTML={{ __html: renderSimpleMarkdown(entry.oneLine) || "<p>(내용 없음)</p>" }}
+                  dangerouslySetInnerHTML={{
+                    __html: resolveImageSrcs(
+                      renderSimpleMarkdown(entry.oneLine) || "<p>(내용 없음)</p>",
+                      entry.path.substring(0, entry.path.lastIndexOf("/")),
+                    ),
+                  }}
                 />
               )
             ) : (
@@ -277,14 +282,18 @@ function OneLineEditor({ entry, onSave }: { entry: MemoryEntry; onSave: (text: s
   useEffect(() => { setDraft(entry.oneLine); }, [entry.oneLine]);
 
   if (!editing) {
+    const fileDir = entry.path.substring(0, entry.path.lastIndexOf("/"));
     return (
-      <p
-        className="memories-oneline memories-oneline-editable"
+      <div
+        className="memories-oneline memories-oneline-editable memories-md-render"
         onClick={() => setEditing(true)}
         title="클릭하여 편집"
-      >
-        {entry.oneLine || "(클릭하여 한 줄 요약 입력)"}
-      </p>
+        dangerouslySetInnerHTML={{
+          __html: entry.oneLine
+            ? resolveImageSrcs(renderSimpleMarkdown(entry.oneLine), fileDir)
+            : "<p>(클릭하여 한 줄 요약 입력)</p>",
+        }}
+      />
     );
   }
 
