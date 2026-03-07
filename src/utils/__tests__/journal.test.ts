@@ -10,6 +10,8 @@ import {
   getJournalFilePath,
   getMonthDays,
   getFirstDayOfWeek,
+  getOrdinalSuffix,
+  formatReadableDate,
 } from "../journal";
 
 describe("journal utilities", () => {
@@ -22,6 +24,44 @@ describe("journal utilities", () => {
 
     it("pads single-digit month and day", () => {
       expect(formatJournalDate(new Date(2026, 0, 5))).toBe("2026-01-05");
+    });
+  });
+
+  describe("getOrdinalSuffix", () => {
+    it("returns st for 1, 21, 31", () => {
+      expect(getOrdinalSuffix(1)).toBe("st");
+      expect(getOrdinalSuffix(21)).toBe("st");
+      expect(getOrdinalSuffix(31)).toBe("st");
+    });
+
+    it("returns nd for 2, 22", () => {
+      expect(getOrdinalSuffix(2)).toBe("nd");
+      expect(getOrdinalSuffix(22)).toBe("nd");
+    });
+
+    it("returns rd for 3, 23", () => {
+      expect(getOrdinalSuffix(3)).toBe("rd");
+      expect(getOrdinalSuffix(23)).toBe("rd");
+    });
+
+    it("returns th for 11, 12, 13 (special cases)", () => {
+      expect(getOrdinalSuffix(11)).toBe("th");
+      expect(getOrdinalSuffix(12)).toBe("th");
+      expect(getOrdinalSuffix(13)).toBe("th");
+    });
+
+    it("returns th for other numbers", () => {
+      expect(getOrdinalSuffix(4)).toBe("th");
+      expect(getOrdinalSuffix(15)).toBe("th");
+      expect(getOrdinalSuffix(30)).toBe("th");
+    });
+  });
+
+  describe("formatReadableDate", () => {
+    it("formats as 'Month Dayth (DayName), Year'", () => {
+      expect(formatReadableDate(new Date(2026, 0, 1))).toBe("January 1st (Thursday), 2026");
+      expect(formatReadableDate(new Date(2026, 1, 27))).toBe("February 27th (Friday), 2026");
+      expect(formatReadableDate(new Date(2026, 11, 25))).toBe("December 25th (Friday), 2026");
     });
   });
 
@@ -87,14 +127,28 @@ describe("journal utilities", () => {
       expect(result).toContain("date: 2026-02-27");
     });
 
-    it("includes day name in heading", () => {
+    it("includes readable date heading with day name", () => {
       const result = generateDefaultJournal(date);
-      expect(result).toContain("# 2026-02-27 Friday");
+      expect(result).toContain("# February 27th (Friday), 2026");
     });
 
-    it("includes Notes section", () => {
+    it("includes Diary and Notes sections", () => {
       const result = generateDefaultJournal(date);
+      expect(result).toContain("## Diary");
       expect(result).toContain("## Notes");
+    });
+
+    it("does not include daily prompt blockquote", () => {
+      const result = generateDefaultJournal(date);
+      expect(result).not.toContain("> 💡");
+    });
+
+    it("has two empty lines after Diary heading", () => {
+      const result = generateDefaultJournal(date);
+      const diaryIdx = result.indexOf("## Diary");
+      const afterDiary = result.slice(diaryIdx + "## Diary".length);
+      // Should be \n\n\n (heading newline + 2 empty lines) before ## Notes
+      expect(afterDiary).toMatch(/^\n\n\n\n## Notes/);
     });
   });
 

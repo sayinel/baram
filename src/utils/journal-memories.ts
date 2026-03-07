@@ -47,13 +47,14 @@ export function extractOneLine(content: string): string {
     }
   }
 
-  // 4. Find first meaningful text line (skip headings, empty lines, list items starting with icons)
+  // 4. Find first meaningful text line (skip headings, empty lines, blockquotes, list items starting with icons)
   const lines = textBlock.split("\n");
   const textLines: string[] = [];
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     if (trimmed.startsWith("#")) continue;
+    if (trimmed.startsWith(">")) continue;
     if (trimmed.startsWith("- ✦") || trimmed.startsWith("- ↗") || trimmed.startsWith("- ❝") || trimmed.startsWith("- ☰")) continue;
     textLines.push(trimmed);
   }

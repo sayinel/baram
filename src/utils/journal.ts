@@ -49,29 +49,42 @@ export function resolveDateAlias(alias: string): string | null {
   }
 }
 
+/** Get English ordinal suffix for a day number (1st, 2nd, 3rd, 4th...) */
+export function getOrdinalSuffix(day: number): string {
+  if (day >= 11 && day <= 13) return "th";
+  switch (day % 10) {
+    case 1: return "st";
+    case 2: return "nd";
+    case 3: return "rd";
+    default: return "th";
+  }
+}
+
+/** Format a date as "January 1st (Thursday), 2026" */
+export function formatReadableDate(date: Date): string {
+  const dayNames = [
+    "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
+  ];
+  const monthNames = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+  ];
+  const day = date.getDate();
+  return `${monthNames[date.getMonth()]} ${day}${getOrdinalSuffix(day)} (${dayNames[date.getDay()]}), ${date.getFullYear()}`;
+}
+
 /** Generate default journal content for a given date */
 export function generateDefaultJournal(date: Date): string {
   const dateStr = formatJournalDate(date);
-  const dayNames = [
-    "Sunday",
-    "Monday",
-    "Tuesday",
-    "Wednesday",
-    "Thursday",
-    "Friday",
-    "Saturday",
-  ];
-  const dayName = dayNames[date.getDay()];
-  const prompt = getDailyPrompt(date);
   return `---
 date: ${dateStr}
 ---
 
-# ${dateStr} ${dayName}
+# ${formatReadableDate(date)}
 
 ## Diary
 
-> 💡 ${prompt}
+
 
 ## Notes
 
