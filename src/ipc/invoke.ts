@@ -11,6 +11,10 @@ import type {
   GitStatusInfo,
   GitFileDiff,
   GitBranchInfo,
+  GitLogEntry,
+  GitStashEntry,
+  GitRemoteInfo,
+  GitAheadBehind,
   ExportFormat,
   ExportOptions,
   PdfOptions,
@@ -256,6 +260,51 @@ export async function gitDiscard(path: string, files: string[]): Promise<void> {
 
 export async function gitCreateBranch(path: string, branchName: string): Promise<void> {
   return invoke<void>("git_create_branch", { path, branchName });
+}
+
+// §67 Git Advanced commands
+export async function gitLog(path: string, maxCount?: number): Promise<GitLogEntry[]> {
+  return invoke<GitLogEntry[]>("git_log", { path, maxCount });
+}
+
+export async function gitStashSave(path: string, message: string, includeUntracked?: boolean): Promise<string> {
+  return invoke<string>("git_stash_save", { path, message, includeUntracked });
+}
+
+export async function gitStashList(path: string): Promise<GitStashEntry[]> {
+  return invoke<GitStashEntry[]>("git_stash_list", { path });
+}
+
+export async function gitStashPop(path: string, index?: number): Promise<void> {
+  return invoke<void>("git_stash_pop", { path, index });
+}
+
+export async function gitStashDrop(path: string, index?: number): Promise<void> {
+  return invoke<void>("git_stash_drop", { path, index });
+}
+
+export async function gitRemotes(path: string): Promise<GitRemoteInfo[]> {
+  return invoke<GitRemoteInfo[]>("git_remotes", { path });
+}
+
+export async function gitFetch(path: string, remote?: string): Promise<void> {
+  return invoke<void>("git_fetch", { path, remote });
+}
+
+export async function gitPull(path: string, remote?: string, branch?: string): Promise<string> {
+  return invoke<string>("git_pull", { path, remote, branch });
+}
+
+export async function gitPush(path: string, remote?: string, branch?: string): Promise<void> {
+  return invoke<void>("git_push", { path, remote, branch });
+}
+
+export async function gitAheadBehind(path: string, branch?: string, remote?: string): Promise<GitAheadBehind> {
+  return invoke<GitAheadBehind>("git_ahead_behind", { path, branch, remote });
+}
+
+export async function gitDeleteBranch(path: string, branchName: string): Promise<void> {
+  return invoke<void>("git_delete_branch", { path, branchName });
 }
 
 // macOS file association: get pending file paths from cold start

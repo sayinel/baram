@@ -94,6 +94,33 @@ export interface GitBranchInfo {
   is_remote: boolean;
 }
 
+// §67 Git Advanced types
+export interface GitLogEntry {
+  oid: string;
+  short_oid: string;
+  message: string;
+  author: string;
+  author_email: string;
+  timestamp: number;
+  parent_count: number;
+}
+
+export interface GitStashEntry {
+  index: number;
+  message: string;
+  oid: string;
+}
+
+export interface GitRemoteInfo {
+  name: string;
+  url: string;
+}
+
+export interface GitAheadBehind {
+  ahead: number;
+  behind: number;
+}
+
 // §6.3 LLM types
 export interface ModelInfo {
   id: string;
