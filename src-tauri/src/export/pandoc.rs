@@ -40,26 +40,59 @@ pub struct CustomExportItem {
     pub show_in_menu: bool,
 }
 
-/// Detect Pandoc installation by running `pandoc --version`.
-/// Returns PandocInfo with availability and version info.
-pub fn detect_pandoc(pandoc_path: &str) -> PandocInfo {
-    let result = Command::new(pandoc_path).arg("--version").output();
+/// Common Pandoc installation paths to probe when bare "pandoc" fails.
+/// Covers Homebrew (Apple Silicon + Intel), system paths, and common installers.
+const PANDOC_SEARCH_PATHS: &[&str] = &[
+    "/opt/homebrew/bin/pandoc",
+    "/usr/local/bin/pandoc",
+    "/usr/bin/pandoc",
+    "/opt/local/bin/pandoc",
+];
 
-    match result {
-        Ok(output) if output.status.success() => {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let version = parse_pandoc_version(&stdout);
-            PandocInfo {
-                path: pandoc_path.to_string(),
-                version,
-                available: true,
-            }
-        }
-        _ => PandocInfo {
+/// Try running `pandoc --version` at the given path.
+fn try_pandoc(path: &str) -> Option<PandocInfo> {
+    let output = Command::new(path).arg("--version").output().ok()?;
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        Some(PandocInfo {
+            path: path.to_string(),
+            version: parse_pandoc_version(&stdout),
+            available: true,
+        })
+    } else {
+        None
+    }
+}
+
+/// Detect Pandoc installation by running `pandoc --version`.
+/// When a bare name like "pandoc" fails (common in sandboxed .app bundles
+/// where PATH is limited to /usr/bin:/bin), probes well-known install paths.
+pub fn detect_pandoc(pandoc_path: &str) -> PandocInfo {
+    // 1. Try the user-supplied (or default) path first
+    if let Some(info) = try_pandoc(pandoc_path) {
+        return info;
+    }
+
+    // 2. If the caller passed an absolute path that failed, don't probe further
+    if pandoc_path.starts_with('/') {
+        return PandocInfo {
             path: pandoc_path.to_string(),
             version: String::new(),
             available: false,
-        },
+        };
+    }
+
+    // 3. Probe well-known paths (handles .app bundle limited PATH)
+    for candidate in PANDOC_SEARCH_PATHS {
+        if let Some(info) = try_pandoc(candidate) {
+            return info;
+        }
+    }
+
+    PandocInfo {
+        path: pandoc_path.to_string(),
+        version: String::new(),
+        available: false,
     }
 }
 

@@ -89,7 +89,7 @@ export function ExportDialog({ editor }: ExportDialogProps) {
         await exportForNotion(editor, title);
       } else if (isPandocFormat(exportFormat)) {
         await exportWithPandoc(editor, title, exportFormat, {
-          pandocPath: pandocPath || undefined,
+          pandocPath: pandocInfo?.path || pandocPath || undefined,
           referenceDoc: exportFormat === "docx" ? wordTemplatePath || undefined : undefined,
         });
       }
@@ -101,7 +101,7 @@ export function ExportDialog({ editor }: ExportDialogProps) {
       setErrorMsg(message);
       setExporting(false);
     }
-  }, [editor, exportFormat, title, paperSize, pandocPath, wordTemplatePath, exporting, closeExportDialog]);
+  }, [editor, exportFormat, title, paperSize, pandocPath, pandocInfo, wordTemplatePath, exporting, closeExportDialog]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
