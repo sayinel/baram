@@ -2976,6 +2976,11 @@ body {
   margin-left: auto;
 }
 
+.journal-stats-dim {
+  opacity: 0.5;
+  font-size: 10px;
+}
+
 .journal-stats-refresh {
   position: absolute;
   top: 2px;
@@ -4013,6 +4018,74 @@ body {
   font-size: 0.6rem;
   color: var(--color-accent, #5b7bd7);
   opacity: 0.8;
+}
+
+/* Notes subfolder navigation */
+.notes-back-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  margin-bottom: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.72rem;
+  color: var(--color-accent, #5b7bd7);
+  border-radius: 6px;
+}
+
+.notes-back-btn:hover {
+  background: var(--color-bg-secondary);
+}
+
+.notes-folders {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 4px;
+}
+
+.notes-folder-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.78rem;
+  color: var(--color-text);
+  text-align: left;
+  width: 100%;
+  transition: border-color 0.15s;
+}
+
+.notes-folder-item:hover {
+  border-color: var(--color-accent, #5b7bd7);
+}
+
+.notes-folder-icon {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+}
+
+.notes-folder-name {
+  flex: 1;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notes-folder-count {
+  flex-shrink: 0;
+  font-size: 0.65rem;
+  color: var(--color-text-tertiary);
+  background: var(--color-bg-secondary);
+  padding: 1px 6px;
+  border-radius: 8px;
 }
 
 /* ============================================

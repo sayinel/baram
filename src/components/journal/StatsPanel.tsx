@@ -61,6 +61,56 @@ export function StatsPanel({ journalDates, lastSavedDate, lastSavedContent }: St
     return calculateMonthStats(journalDates, now.getFullYear(), now.getMonth());
   }, [journalDates]);
 
+  // Extended stats from cache
+  const extStats = useMemo(() => {
+    if (!cache) return null;
+    const entries = cache.entriesByDate;
+    const dates = Object.keys(entries);
+    const yearStr = String(currentYear);
+
+    // Year entries & words
+    let yearEntries = 0;
+    let yearWords = 0;
+    // Day-of-week frequency (0=Sun..6=Sat)
+    const dowCount = new Array(7).fill(0);
+    let monthWords = 0;
+    const now = new Date();
+    const monthPrefix = `${yearStr}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+    for (const d of dates) {
+      const w = entries[d].words ?? 0;
+      if (d.startsWith(yearStr)) {
+        yearEntries++;
+        yearWords += w;
+      }
+      if (d.startsWith(monthPrefix)) {
+        monthWords += w;
+      }
+      // Day of week
+      const [y, m, day] = d.split("-").map(Number);
+      const dow = new Date(y, m - 1, day).getDay();
+      dowCount[dow]++;
+    }
+
+    // Most active day of week
+    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    let maxDow = 0;
+    for (let i = 1; i < 7; i++) {
+      if (dowCount[i] > dowCount[maxDow]) maxDow = i;
+    }
+    const mostActiveDay = dowCount[maxDow] > 0 ? dayNames[maxDow] : null;
+
+    return {
+      yearEntries,
+      yearWords,
+      totalEntries: cache.stats.totalEntries,
+      totalWords: cache.stats.totalWords,
+      monthWords,
+      mostActiveDay,
+      mostActiveDayCount: dowCount[maxDow],
+    };
+  }, [cache, currentYear]);
+
   /** Run a full cache rebuild and persist it. */
   const runFullScan = useCallback(async (resolvedDir: string) => {
     setRefreshing(true);
@@ -219,6 +269,41 @@ export function StatsPanel({ journalDates, lastSavedDate, lastSavedContent }: St
             </span>
             <span className="journal-stats-pct">{monthStats.percentage}%</span>
           </div>
+          {extStats && (
+            <>
+              <div className="journal-stats-row">
+                <svg className="journal-stats-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 20V10" /><path d="M18 20V4" /><path d="M6 20v-4" />
+                </svg>
+                <span className="journal-stats-label">Year</span>
+                <span className="journal-stats-value"><strong>{extStats.yearEntries}</strong>d</span>
+                <span className="journal-stats-sep" />
+                <span className="journal-stats-label">All</span>
+                <span className="journal-stats-value"><strong>{extStats.totalEntries}</strong>d</span>
+              </div>
+              <div className="journal-stats-row">
+                <svg className="journal-stats-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                </svg>
+                <span className="journal-stats-label">Words</span>
+                <span className="journal-stats-value"><strong>{extStats.monthWords.toLocaleString()}</strong></span>
+                <span className="journal-stats-sep" />
+                <span className="journal-stats-value"><strong>{extStats.yearWords.toLocaleString()}</strong></span>
+                <span className="journal-stats-sep" />
+                <span className="journal-stats-value journal-stats-dim">{extStats.totalWords.toLocaleString()}</span>
+              </div>
+              {extStats.mostActiveDay && (
+                <div className="journal-stats-row">
+                  <svg className="journal-stats-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+                  </svg>
+                  <span className="journal-stats-label">Most active</span>
+                  <span className="journal-stats-value"><strong>{extStats.mostActiveDay}</strong></span>
+                  <span className="journal-stats-pct">{extStats.mostActiveDayCount} entries</span>
+                </div>
+              )}
+            </>
+          )}
           <button
             className="journal-stats-refresh"
             onClick={handleRefresh}

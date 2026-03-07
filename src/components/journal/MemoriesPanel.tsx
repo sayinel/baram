@@ -513,6 +513,12 @@ interface NoteEntry {
   backlinkCount: number;
 }
 
+interface NoteFolder {
+  name: string;
+  path: string;
+  fileCount: number;
+}
+
 /** Extract #tags from markdown content (skip headings and code blocks) */
 function extractTags(content: string): string[] {
   const tags = new Set<string>();
@@ -535,6 +541,8 @@ function NotesTab() {
   const { rootPath } = useFileStore();
   const { journalDirectory } = useSettingsStore();
   const [notes, setNotes] = useState<NoteEntry[]>([]);
+  const [folders, setFolders] = useState<NoteFolder[]>([]);
+  const [currentSubdir, setCurrentSubdir] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
@@ -542,56 +550,74 @@ function NotesTab() {
   const [newName, setNewName] = useState("");
   const newNameRef = useRef<HTMLInputElement>(null);
 
+  const loadNotes = useCallback(async (notesDir: string, cancelled: { v: boolean }) => {
+    const entries = await listDir(notesDir);
+    if (cancelled.v) return;
+
+    // Collect subdirectories
+    const subDirs = entries.filter((e: { isDir: boolean }) => e.isDir);
+    const folderList: NoteFolder[] = await Promise.all(
+      subDirs.map(async (d: { name: string; path: string }) => {
+        let fileCount = 0;
+        try {
+          const sub = await listDir(d.path);
+          fileCount = sub.filter((s: { isDir: boolean; name: string }) => !s.isDir && s.name.endsWith(".md")).length;
+        } catch { /* skip */ }
+        return { name: d.name, path: d.path, fileCount };
+      }),
+    );
+
+    const mdFiles = entries
+      .filter((e: { isDir: boolean; name: string }) => !e.isDir && e.name.endsWith(".md"))
+      .map((e: { name: string }) => ({
+        name: e.name.replace(/\.md$/, ""),
+        path: `${notesDir}/${e.name}`,
+      }));
+
+    // Read content + backlinks in parallel
+    const enriched: NoteEntry[] = await Promise.all(
+      mdFiles.map(async (f: { name: string; path: string }) => {
+        let content = "";
+        let backlinkCount = 0;
+        try { content = await readFile(f.path); } catch { /* skip */ }
+        try {
+          const bl = await getBacklinks(f.path);
+          backlinkCount = bl.length;
+        } catch { /* skip */ }
+        return {
+          name: f.name,
+          path: f.path,
+          preview: extractOneLine(content),
+          tags: extractTags(content),
+          backlinkCount,
+        };
+      }),
+    );
+
+    if (!cancelled.v) {
+      enriched.sort((a, b) => b.backlinkCount - a.backlinkCount || a.name.localeCompare(b.name));
+      setNotes(enriched);
+      setFolders(folderList.filter((f) => f.fileCount > 0).sort((a, b) => a.name.localeCompare(b.name)));
+    }
+  }, []);
+
   useEffect(() => {
     if (!rootPath || !journalDirectory) return;
-    let cancelled = false;
+    const cancelled = { v: false };
     setLoading(true);
     (async () => {
       try {
         const base = resolveJournalBase(rootPath, journalDirectory);
-        const notesDir = `${base}/notes`;
-        const entries = await listDir(notesDir);
-        if (cancelled) return;
-        const mdFiles = entries
-          .filter((e: { isDir: boolean; name: string }) => !e.isDir && e.name.endsWith(".md"))
-          .map((e: { name: string }) => ({
-            name: e.name.replace(/\.md$/, ""),
-            path: `${notesDir}/${e.name}`,
-          }));
-
-        // Read content + backlinks in parallel
-        const enriched: NoteEntry[] = await Promise.all(
-          mdFiles.map(async (f: { name: string; path: string }) => {
-            let content = "";
-            let backlinkCount = 0;
-            try { content = await readFile(f.path); } catch { /* skip */ }
-            try {
-              const bl = await getBacklinks(f.path);
-              backlinkCount = bl.length;
-            } catch { /* skip */ }
-            return {
-              name: f.name,
-              path: f.path,
-              preview: extractOneLine(content),
-              tags: extractTags(content),
-              backlinkCount,
-            };
-          }),
-        );
-
-        if (!cancelled) {
-          // Sort by backlink count desc, then name asc
-          enriched.sort((a, b) => b.backlinkCount - a.backlinkCount || a.name.localeCompare(b.name));
-          setNotes(enriched);
-        }
+        const notesDir = currentSubdir ?? `${base}/notes`;
+        await loadNotes(notesDir, cancelled);
       } catch {
-        if (!cancelled) setNotes([]);
+        if (!cancelled.v) { setNotes([]); setFolders([]); }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled.v) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
-  }, [rootPath, journalDirectory]);
+    return () => { cancelled.v = true; };
+  }, [rootPath, journalDirectory, currentSubdir, loadNotes]);
 
   // All unique tags across notes
   const allTags = useMemo(() => {
@@ -731,6 +757,35 @@ function NotesTab() {
               onClick={() => setActiveTag(activeTag === tag ? null : tag)}
             >
               #{tag}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Subfolder breadcrumb */}
+      {currentSubdir && (
+        <button
+          className="notes-back-btn"
+          onClick={() => setCurrentSubdir(null)}
+        >
+          ← notes/
+        </button>
+      )}
+
+      {/* Subfolders */}
+      {!currentSubdir && folders.length > 0 && !filter && (
+        <div className="notes-folders">
+          {folders.map((f) => (
+            <button
+              key={f.path}
+              className="notes-folder-item"
+              onClick={() => setCurrentSubdir(f.path)}
+            >
+              <svg className="notes-folder-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+              </svg>
+              <span className="notes-folder-name">{f.name}/</span>
+              <span className="notes-folder-count">{f.fileCount}</span>
             </button>
           ))}
         </div>

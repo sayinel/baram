@@ -338,6 +338,15 @@ function GeneralTab() {
             </div>
           </SettingsRow>
 
+          <SettingsSectionHeader title="AI" />
+
+          <SettingsRow label="AI Follow-Up Questions" description="Automatically suggest deeper questions after writing (requires LLM)">
+            <ToggleSwitch
+              checked={useSettingsStore.getState().journalAIAutoSuggest}
+              onChange={(v) => useSettingsStore.getState().setJournalAIAutoSuggest(v)}
+            />
+          </SettingsRow>
+
           {journalDirectory && (
             <SettingsRow
               label="Create Template Files"
