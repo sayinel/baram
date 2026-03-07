@@ -187,6 +187,14 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       action: () => editor.commands.setMermaidBlock(),
     },
     {
+      id: "query",
+      label: "Query",
+      category: "Rich Content",
+      description: "Dynamic query block",
+      mdHint: "```query",
+      action: () => editor.commands.setQueryBlock(),
+    },
+    {
       id: "table",
       label: "Table",
       category: "Rich Content",

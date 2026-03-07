@@ -231,6 +231,18 @@
       ]
     },
     {
+      "name": "queryBlock",
+      "file": "nodes/query-block.ts",
+      "markdown": "```query...```",
+      "spec": "§5.13",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "hasNodeView": true,
+      "inputRules": [],
+      "shortcuts": {}
+    },
+    {
       "name": "blockReference",
       "file": "nodes/block-reference.ts",
       "markdown": "((target#^id))",
@@ -638,6 +650,16 @@
       "status": "implemented",
       "shortcuts": {},
       "_note": "WebKit list marker alignment fix. Inserts zero-width space widget when list item starts with atom-only content (e.g. tagNode)."
+    },
+    {
+      "name": "tableVirtualScroll",
+      "file": "nodes/table-virtual-scroll.ts",
+      "spec": "§5.5",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "shortcuts": {},
+      "_note": "CSS content-visibility: auto on 50+ row tables. ProseMirror Plugin applied via EditorView. Graceful degradation for unsupported browsers."
     }
   ]
 }
