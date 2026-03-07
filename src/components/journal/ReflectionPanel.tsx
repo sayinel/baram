@@ -8,6 +8,7 @@ import {
   extractReflectionEntries,
   formatReflectionMarkdown,
 } from "../../utils/journal-reflection";
+import { renderSimpleMarkdown } from "../../utils/journal-memories";
 import { readFile, writeFile, createDir, listDir } from "../../ipc/invoke";
 import { formatAIError } from "../../utils/format-error";
 import { resolveJournalDir } from "../../utils/journal";
@@ -229,8 +230,8 @@ export function ReflectionPanel({ onClose }: Props) {
       )}
 
       {text && (
-        <div className="reflection-output">
-          {text}
+        <div className="reflection-output reflection-md-render">
+          <div dangerouslySetInnerHTML={{ __html: renderSimpleMarkdown(text) }} />
           {isStreaming && <span className="reflection-cursor">▋</span>}
         </div>
       )}
