@@ -16,7 +16,7 @@ export interface WorkspaceLayout {
   sidebarOpen: boolean;
   sidebarPanel: "files" | "outline" | "search" | "backlinks" | "bookmarks" | "graph" | "git" | "calendar" | "tags" | "snapshots";
   rightPanelOpen: boolean;
-  rightPanelMode: "chat" | "help" | "memories" | "photo-gallery" | "none";
+  rightPanelMode: "chat" | "help" | "memories" | "photo-gallery" | "properties" | "none";
 }
 
 export interface WorkspacePreset {
@@ -52,6 +52,18 @@ export const BUILTIN_PRESETS: WorkspacePreset[] = [
       sidebarPanel: "calendar",
       rightPanelOpen: true,
       rightPanelMode: "memories",
+    },
+  },
+  {
+    id: "skills",
+    name: "Skills 편집",
+    description: "LLM Skills 파일 편집에 최적화된 레이아웃입니다.",
+    builtIn: true,
+    layout: {
+      sidebarOpen: true,
+      sidebarPanel: "files",
+      rightPanelOpen: true,
+      rightPanelMode: "properties",
     },
   },
 ];
