@@ -12077,3 +12077,48 @@ body {
 .skill-lint-message {
   color: var(--text-primary);
 }
+
+/* §72c — Skill Variable Suggestion ({{variable}} autocomplete) */
+.skill-var-popup {
+  position: fixed;
+  z-index: 1000;
+}
+
+.skill-var-list {
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 4px;
+  min-width: 200px;
+  max-width: 320px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.skill-var-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.skill-var-item:hover,
+.skill-var-item--selected {
+  background: var(--color-bg-secondary);
+}
+
+.skill-var-name {
+  font-weight: 600;
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.skill-var-desc {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}

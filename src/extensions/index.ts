@@ -61,6 +61,7 @@ import { GhostText } from "./plugins/ghost-text";
 import { PromptHighlight } from "./plugins/prompt-highlight";
 import { FindReplace } from "./plugins/find-replace";
 import { PromptLint } from "./plugins/prompt-lint";
+import { SkillVariableSuggest } from "./plugins/skill-variable-suggest";
 import { AIDiff } from "./plugins/ai-diff";
 import { ListAtomFix } from "./plugins/list-atom-fix";
 
@@ -214,6 +215,9 @@ export function createBaramExtensions(options?: BaramExtensionOptions): Extensio
 
     // Plugins — §46 Prompt Lint (Skills files)
     PromptLint,
+
+    // Plugins — §72c Skill Variable Autocomplete ({{}})
+    SkillVariableSuggest,
 
     // Plugins — §6.2 AI Diff (Cmd+J inline editing)
     AIDiff,
