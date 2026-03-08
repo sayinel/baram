@@ -10,6 +10,7 @@ import { getSkillSections } from "./skill-panel-registry";
 import "./SkillDependencySection";
 import "./SkillLintSection";
 import "./SkillLivePreview";
+import "./SkillOptimizeSection";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

@@ -12303,3 +12303,155 @@ body {
 .skill-gallery-scan-btn:hover {
   background: var(--hover);
 }
+
+/* ─── Skill Optimize Section ──────────────────────────────────── */
+.skill-optimize {
+  border-top: 1px solid var(--border);
+  padding: 8px 12px;
+}
+.skill-optimize-header-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 4px 0;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.skill-optimize-header-btn:hover {
+  color: var(--color-accent);
+}
+.skill-optimize-header {
+  font-weight: 600;
+  color: inherit;
+}
+.skill-optimize-badge {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--blue, #4299e1);
+  color: white;
+}
+.skill-optimize-body {
+  padding: 4px 0;
+}
+.skill-optimize-actions {
+  margin-bottom: 6px;
+}
+.skill-optimize-btn {
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 11px;
+}
+.skill-optimize-btn:hover {
+  background: var(--hover);
+}
+.skill-optimize-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.skill-optimize-loading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 8px 0;
+}
+.skill-optimize-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.skill-optimize-error {
+  font-size: 11px;
+  color: var(--red, #e53e3e);
+  padding: 4px 0;
+}
+.skill-optimize-empty {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 8px 0;
+}
+.skill-optimize-cards {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.skill-optimize-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+.skill-optimize-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.skill-optimize-category {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+.skill-optimize-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.skill-optimize-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+.skill-optimize-diff {
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  margin-bottom: 6px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.skill-optimize-before {
+  color: var(--red, #e53e3e);
+  text-decoration: line-through;
+}
+.skill-optimize-after {
+  color: var(--green, #38a169);
+}
+.skill-optimize-apply {
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: none;
+  color: var(--blue, #4299e1);
+  cursor: pointer;
+  font-size: 11px;
+}
+.skill-optimize-apply:hover {
+  background: var(--hover);
+}
