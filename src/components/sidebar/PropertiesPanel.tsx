@@ -9,6 +9,7 @@ import { getSkillSections } from "./skill-panel-registry";
 // §72c Side-effect imports: sections self-register into the registry
 import "./SkillDependencySection";
 import "./SkillLintSection";
+import "./SkillLivePreview";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

@@ -12122,3 +12122,66 @@ body {
   font-size: 11px;
   color: var(--color-text-secondary);
 }
+
+/* ─── Skill Live Preview ──────────────────────────────────────── */
+.skill-live-preview {
+  border-top: 1px solid var(--border);
+  padding: 8px 12px;
+}
+.skill-live-preview .slp-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  padding: 4px 0;
+}
+.skill-live-preview .slp-header:hover {
+  color: var(--text-primary);
+}
+.skill-live-preview .slp-token-badge {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-left: auto;
+}
+.skill-live-preview .slp-content {
+  margin-top: 6px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.skill-live-preview .slp-block {
+  margin-bottom: 8px;
+}
+.skill-live-preview .slp-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+.skill-live-preview .slp-text {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--bg-secondary);
+  padding: 8px;
+  border-radius: 4px;
+  font-family: var(--font-mono, monospace);
+}
+.skill-live-preview .slp-var {
+  color: var(--blue, #4299e1);
+  font-weight: 600;
+}
