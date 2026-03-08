@@ -23,8 +23,11 @@ import type { ActivityBarItemConfig } from "../../stores/settings-store";
 import { useTranslation } from "../../i18n/useTranslation";
 import { AVAILABLE_LOCALES, LOCALE_LABELS } from "../../i18n";
 import type { Locale } from "../../i18n";
+import { normalizeKeyEvent, formatKeyForDisplay } from "../../keybindings/key-utils";
+import { KEYBINDING_CATEGORIES, CATEGORY_LABELS } from "../../keybindings/keybinding-registry";
+import { getMergedKeybindings, findConflict, type MergedKeybinding } from "../../keybindings/use-keybindings";
 
-type SettingsTab = "general" | "editor" | "appearance" | "markdown" | "ai" | "activitybar" | "language";
+type SettingsTab = "general" | "editor" | "appearance" | "markdown" | "ai" | "activitybar" | "language" | "keybindings";
 
 const TABS: { id: SettingsTab; label: string; icon: string }[] = [
   { id: "general", label: "General", icon: "\u2699" },
@@ -34,6 +37,7 @@ const TABS: { id: SettingsTab; label: string; icon: string }[] = [
   { id: "ai", label: "AI", icon: "\u2726" },
   { id: "activitybar", label: "Activity Bar", icon: "\u25A4" },
   { id: "language", label: "Language", icon: "\uD83C\uDF10" },
+  { id: "keybindings", label: "Keybindings", icon: "\u2328" },
 ];
 
 interface SearchableSetting {
@@ -170,6 +174,7 @@ export function SettingsModal() {
                 {activeTab === "ai" && <AITab />}
                 {activeTab === "activitybar" && <ActivityBarTab />}
                 {activeTab === "language" && <LanguageTab />}
+                {activeTab === "keybindings" && <KeybindingsTab />}
               </>
             )}
           </div>
@@ -1642,6 +1647,191 @@ function LanguageTab() {
       <div className="settings-row-description" style={{ marginTop: 12, fontStyle: "italic" }}>
         {t("settings.language.reloadNotice")}
       </div>
+    </div>
+  );
+}
+
+function KeybindingsTab() {
+  const { t } = useTranslation();
+  const {
+    keybindingOverrides,
+    setKeybindingOverride,
+    removeKeybindingOverride,
+    resetAllKeybindings,
+  } = useSettingsStore();
+  const merged = getMergedKeybindings(keybindingOverrides);
+  const [filter, setFilter] = useState("");
+  const [capturingId, setCapturingId] = useState<string | null>(null);
+  const [capturedKey, setCapturedKey] = useState<string | null>(null);
+  const [conflict, setConflict] = useState<MergedKeybinding | null>(null);
+
+  const isMac = navigator.platform.includes("Mac");
+
+  const filtered = useMemo(() => {
+    if (!filter) return merged;
+    const q = filter.toLowerCase();
+    return merged.filter(
+      (e) =>
+        t(e.label).toLowerCase().includes(q) ||
+        e.category.toLowerCase().includes(q) ||
+        formatKeyForDisplay(e.activeKey, isMac).toLowerCase().includes(q),
+    );
+  }, [merged, filter, t, isMac]);
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, MergedKeybinding[]>();
+    for (const entry of filtered) {
+      const list = map.get(entry.category) ?? [];
+      list.push(entry);
+      map.set(entry.category, list);
+    }
+    return map;
+  }, [filtered]);
+
+  // Key capture handler
+  useEffect(() => {
+    if (!capturingId) return;
+
+    const handleCapture = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (e.key === "Escape") {
+        setCapturingId(null);
+        setCapturedKey(null);
+        setConflict(null);
+        return;
+      }
+
+      if (["Meta", "Control", "Shift", "Alt"].includes(e.key)) return;
+
+      const normalized = normalizeKeyEvent(e, isMac);
+      if (!normalized) return;
+
+      setCapturedKey(normalized);
+      const conflicting = findConflict(capturingId, normalized, keybindingOverrides);
+      setConflict(conflicting);
+    };
+
+    window.addEventListener("keydown", handleCapture, true);
+    return () => window.removeEventListener("keydown", handleCapture, true);
+  }, [capturingId, keybindingOverrides, isMac]);
+
+  const confirmCapture = () => {
+    if (!capturingId || !capturedKey) return;
+    if (conflict) {
+      removeKeybindingOverride(conflict.id);
+    }
+    setKeybindingOverride(capturingId, capturedKey);
+    setCapturingId(null);
+    setCapturedKey(null);
+    setConflict(null);
+  };
+
+  const startCapture = (id: string) => {
+    setCapturingId(id);
+    setCapturedKey(null);
+    setConflict(null);
+  };
+
+  return (
+    <div className="settings-section">
+      <div className="keybindings-filter">
+        <input
+          type="text"
+          placeholder={t("keybindings.search.placeholder")}
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          className="settings-search-input"
+        />
+      </div>
+
+      {filtered.length === 0 && filter && (
+        <div className="settings-empty">
+          {t("keybindings.search.empty").replace("{query}", filter)}
+        </div>
+      )}
+
+      {KEYBINDING_CATEGORIES.filter((cat) => grouped.has(cat)).map((cat) => (
+        <div key={cat}>
+          <SettingsSectionHeader title={t(CATEGORY_LABELS[cat])} />
+          {grouped.get(cat)!.map((entry) => (
+            <div
+              key={entry.id}
+              className={`keybinding-row${entry.isOverridden ? " keybinding-overridden" : ""}${!entry.customizable ? " keybinding-readonly-row" : ""}`}
+            >
+              <span className="keybinding-label">{t(entry.label)}</span>
+              <span className="keybinding-key">
+                {capturingId === entry.id ? (
+                  <span className="keybinding-capture">
+                    {capturedKey ? (
+                      <>
+                        <span className="keybinding-capture-key">
+                          {formatKeyForDisplay(capturedKey, isMac)}
+                        </span>
+                        {conflict && (
+                          <span className="keybinding-conflict">
+                            {t("keybindings.conflict").replace("{command}", t(conflict.label))}
+                          </span>
+                        )}
+                        <button className="keybinding-confirm-btn" onClick={confirmCapture}>
+                          {"\u21A9"}
+                        </button>
+                      </>
+                    ) : (
+                      <span className="keybinding-capture-prompt">
+                        {t("keybindings.capture.prompt")}
+                      </span>
+                    )}
+                  </span>
+                ) : (
+                  <kbd className="keybinding-kbd">
+                    {formatKeyForDisplay(entry.activeKey, isMac)}
+                  </kbd>
+                )}
+              </span>
+              <span className="keybinding-actions">
+                {entry.customizable ? (
+                  <>
+                    {entry.isOverridden && (
+                      <button
+                        className="keybinding-reset-btn"
+                        onClick={() => removeKeybindingOverride(entry.id)}
+                        title={t("keybindings.reset")}
+                      >
+                        {"\u21BA"}
+                      </button>
+                    )}
+                    <button
+                      className="keybinding-edit-btn"
+                      onClick={() => startCapture(entry.id)}
+                    >
+                      {t("keybindings.edit")}
+                    </button>
+                  </>
+                ) : (
+                  <span className="keybinding-readonly-badge" />
+                )}
+              </span>
+            </div>
+          ))}
+        </div>
+      ))}
+
+      {Object.keys(keybindingOverrides).length > 0 && (
+        <div className="keybinding-reset-all">
+          <button
+            className="settings-btn"
+            onClick={() => {
+              if (confirm(t("keybindings.resetAll.confirm"))) {
+                resetAllKeybindings();
+              }
+            }}
+          >
+            {t("keybindings.resetAll")}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
