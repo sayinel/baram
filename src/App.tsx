@@ -372,10 +372,16 @@ function App() {
   }, [fontSize, fontFamily, lineHeight, editorMaxWidth, editor]);
 
   useEffect(() => {
-    const tiptap = document.querySelector<HTMLElement>(".tiptap");
-    if (tiptap) {
-      tiptap.setAttribute("spellcheck", String(spellCheck));
-    }
+    if (!editor) return;
+    editor.setOptions({
+      editorProps: {
+        ...editor.options.editorProps,
+        attributes: {
+          ...(editor.options.editorProps?.attributes as Record<string, string> ?? {}),
+          spellcheck: String(spellCheck),
+        },
+      },
+    });
   }, [spellCheck, editor]);
 
   // --- Tab switching: swap editor content when activeTabId changes ---
@@ -2077,12 +2083,132 @@ function App() {
           openUrl("https://github.com/anthropics/baram/issues").catch(() => {});
           break;
 
+        // --- Edit menu handlers ---
+        case "edit_find_replace":
+          setFindReplaceOpen((prev) => !prev);
+          break;
+
+        // --- View menu: sidebar panel handlers ---
+        case "view_global_search": {
+          const uiGS = useUIStore.getState();
+          if (!uiGS.sidebarOpen) uiGS.toggleSidebar();
+          uiGS.setSidebarPanel("search");
+          break;
+        }
+        case "view_outline": {
+          const uiOL = useUIStore.getState();
+          if (!uiOL.sidebarOpen) uiOL.toggleSidebar();
+          uiOL.setSidebarPanel("outline");
+          break;
+        }
+        case "view_backlinks": {
+          const uiBL = useUIStore.getState();
+          if (!uiBL.sidebarOpen) uiBL.toggleSidebar();
+          uiBL.setSidebarPanel("backlinks");
+          break;
+        }
+        case "view_graph": {
+          const uiGR = useUIStore.getState();
+          if (!uiGR.sidebarOpen) uiGR.toggleSidebar();
+          uiGR.setSidebarPanel("graph");
+          break;
+        }
+        case "view_git": {
+          const uiGIT = useUIStore.getState();
+          if (!uiGIT.sidebarOpen) uiGIT.toggleSidebar();
+          uiGIT.setSidebarPanel("git");
+          break;
+        }
+        case "view_calendar": {
+          const uiCAL = useUIStore.getState();
+          if (!uiCAL.sidebarOpen) uiCAL.toggleSidebar();
+          uiCAL.setSidebarPanel("calendar");
+          break;
+        }
+        case "view_tags": {
+          const uiTAG = useUIStore.getState();
+          if (!uiTAG.sidebarOpen) uiTAG.toggleSidebar();
+          uiTAG.setSidebarPanel("tags");
+          break;
+        }
+        case "view_version_history": {
+          const uiVH = useUIStore.getState();
+          if (!uiVH.sidebarOpen) uiVH.toggleSidebar();
+          uiVH.setSidebarPanel("snapshots");
+          break;
+        }
+        case "view_skills_gallery": {
+          const uiSG = useUIStore.getState();
+          if (!uiSG.sidebarOpen) uiSG.toggleSidebar();
+          uiSG.setSidebarPanel("skills-gallery");
+          break;
+        }
+
+        // --- View menu: right panel handlers ---
+        case "view_ai_chat": {
+          const uiAI = useUIStore.getState();
+          if (!uiAI.rightPanelOpen) {
+            uiAI.setRightPanelMode("chat");
+            uiAI.toggleRightPanel();
+          } else if (uiAI.rightPanelMode === "chat") {
+            uiAI.toggleRightPanel();
+          } else {
+            uiAI.setRightPanelMode("chat");
+          }
+          break;
+        }
+
+        // --- Insert menu: new block handlers ---
+        case "insert_callout":
+          editor?.commands.setCallout({ type: "info" });
+          break;
+        case "insert_toggle":
+          editor?.commands.setToggle();
+          break;
+        case "insert_toc":
+          editor?.commands.insertTableOfContents();
+          break;
+        case "insert_definition_list":
+          editor?.commands.setDefinitionList();
+          break;
+        case "insert_mermaid":
+          editor?.commands.setMermaidBlock();
+          break;
+        case "insert_query_block":
+          editor?.commands.setQueryBlock();
+          break;
+
+        // --- Insert menu: new inline mark handlers ---
+        case "insert_highlight":
+          editor?.chain().focus().toggleHighlight().run();
+          break;
+        case "insert_superscript":
+          editor?.chain().focus().toggleSuperscript().run();
+          break;
+        case "insert_subscript":
+          editor?.chain().focus().toggleSubscript().run();
+          break;
+
+        // --- Insert menu: inline element handlers ---
+        case "insert_wikilink":
+          editor?.chain().focus().insertContent("[[]]").run();
+          break;
+        case "insert_footnote": {
+          if (!editor) break;
+          const fnId = `fn-${Date.now()}`;
+          editor.commands.insertFootnoteRef(fnId);
+          break;
+        }
+
         // --- Workspace menu handlers (§52) ---
         case "workspace_writing":
           useWorkspaceStore.getState().applyPreset("writing");
           break;
         case "workspace_journal":
           useWorkspaceStore.getState().applyPreset("journal");
+          break;
+        case "workspace_skills":
+          useWorkspaceStore.getState().applyPreset("skills");
           break;
       }
     });

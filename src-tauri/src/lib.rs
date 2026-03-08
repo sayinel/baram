@@ -72,7 +72,12 @@ pub fn run() {
                 .item(&export_doc)
                 .build()?;
 
-            // --- Edit menu (predefined OS-native items) ---
+            // --- Edit menu (predefined OS-native items + Find) ---
+            let edit_find_replace = MenuItemBuilder::new("Find & Replace")
+                .id("edit_find_replace")
+                .accelerator("CmdOrCtrl+H")
+                .build(app)?;
+
             let edit_menu = SubmenuBuilder::new(app, "Edit")
                 .undo()
                 .redo()
@@ -81,6 +86,8 @@ pub fn run() {
                 .copy()
                 .paste()
                 .select_all()
+                .separator()
+                .item(&edit_find_replace)
                 .build()?;
 
             // --- View menu ---
@@ -101,12 +108,61 @@ pub fn run() {
                 .accelerator("CmdOrCtrl+K")
                 .build(app)?;
 
+            // Sidebar panels
+            let view_global_search = MenuItemBuilder::new("Global Search")
+                .id("view_global_search")
+                .accelerator("CmdOrCtrl+Shift+F")
+                .build(app)?;
+            let view_outline = MenuItemBuilder::new("Outline")
+                .id("view_outline")
+                .build(app)?;
+            let view_backlinks = MenuItemBuilder::new("Backlinks")
+                .id("view_backlinks")
+                .accelerator("CmdOrCtrl+Shift+B")
+                .build(app)?;
+            let view_graph = MenuItemBuilder::new("Graph View")
+                .id("view_graph")
+                .build(app)?;
+            let view_git = MenuItemBuilder::new("Source Control")
+                .id("view_git")
+                .build(app)?;
+            let view_calendar = MenuItemBuilder::new("Calendar")
+                .id("view_calendar")
+                .build(app)?;
+            let view_tags = MenuItemBuilder::new("Tags")
+                .id("view_tags")
+                .build(app)?;
+            let view_version_history = MenuItemBuilder::new("Version History")
+                .id("view_version_history")
+                .build(app)?;
+            let view_skills_gallery = MenuItemBuilder::new("Skills Gallery")
+                .id("view_skills_gallery")
+                .build(app)?;
+
+            // Right panels
+            let view_ai_chat = MenuItemBuilder::new("AI Chat")
+                .id("view_ai_chat")
+                .accelerator("CmdOrCtrl+Shift+A")
+                .build(app)?;
+
             let view_menu = SubmenuBuilder::new(app, "View")
                 .item(&view_source)
                 .item(&view_sidebar)
                 .separator()
                 .item(&view_palette)
                 .item(&view_quick_switcher)
+                .separator()
+                .item(&view_global_search)
+                .item(&view_outline)
+                .item(&view_backlinks)
+                .item(&view_graph)
+                .item(&view_git)
+                .item(&view_calendar)
+                .item(&view_tags)
+                .item(&view_version_history)
+                .item(&view_skills_gallery)
+                .separator()
+                .item(&view_ai_chat)
                 .build()?;
 
             // --- Insert menu (§4.4) ---
@@ -185,6 +241,47 @@ pub fn run() {
                 .id("insert_frontmatter")
                 .build(app)?;
 
+            // Additional block elements
+            let insert_callout = MenuItemBuilder::new("Callout")
+                .id("insert_callout")
+                .build(app)?;
+            let insert_toggle = MenuItemBuilder::new("Toggle")
+                .id("insert_toggle")
+                .build(app)?;
+            let insert_toc = MenuItemBuilder::new("Table of Contents")
+                .id("insert_toc")
+                .build(app)?;
+            let insert_definition_list = MenuItemBuilder::new("Definition List")
+                .id("insert_definition_list")
+                .build(app)?;
+            let insert_mermaid = MenuItemBuilder::new("Mermaid Diagram")
+                .id("insert_mermaid")
+                .accelerator("CmdOrCtrl+Shift+D")
+                .build(app)?;
+            let insert_query_block = MenuItemBuilder::new("Query Block")
+                .id("insert_query_block")
+                .build(app)?;
+
+            // Additional inline marks
+            let insert_highlight = MenuItemBuilder::new("Highlight")
+                .id("insert_highlight")
+                .accelerator("CmdOrCtrl+Shift+H")
+                .build(app)?;
+            let insert_superscript = MenuItemBuilder::new("Superscript")
+                .id("insert_superscript")
+                .build(app)?;
+            let insert_subscript = MenuItemBuilder::new("Subscript")
+                .id("insert_subscript")
+                .build(app)?;
+
+            // Inline elements
+            let insert_wikilink = MenuItemBuilder::new("Wiki Link")
+                .id("insert_wikilink")
+                .build(app)?;
+            let insert_footnote = MenuItemBuilder::new("Footnote")
+                .id("insert_footnote")
+                .build(app)?;
+
             let insert_menu = SubmenuBuilder::new(app, "Insert")
                 .item(&insert_h1)
                 .item(&insert_h2)
@@ -196,21 +293,33 @@ pub fn run() {
                 .item(&insert_underline)
                 .item(&insert_strikethrough)
                 .item(&insert_inline_code)
+                .item(&insert_highlight)
+                .item(&insert_superscript)
+                .item(&insert_subscript)
                 .separator()
                 .item(&insert_link)
+                .item(&insert_wikilink)
                 .item(&insert_image)
                 .separator()
                 .item(&insert_table)
                 .item(&insert_code_block)
                 .item(&insert_math_block)
+                .item(&insert_mermaid)
+                .item(&insert_query_block)
                 .separator()
                 .item(&insert_blockquote)
+                .item(&insert_callout)
+                .item(&insert_toggle)
+                .item(&insert_definition_list)
+                .item(&insert_toc)
+                .separator()
                 .item(&insert_ordered_list)
                 .item(&insert_unordered_list)
                 .item(&insert_task_list)
                 .separator()
                 .item(&insert_hr)
                 .item(&insert_frontmatter)
+                .item(&insert_footnote)
                 .build()?;
 
             // --- Go menu (§4.4) ---
@@ -249,10 +358,15 @@ pub fn run() {
                 .id("workspace_journal")
                 .accelerator("Alt+CmdOrCtrl+2")
                 .build(app)?;
+            let workspace_skills = MenuItemBuilder::new("Skills Editing")
+                .id("workspace_skills")
+                .accelerator("Alt+CmdOrCtrl+3")
+                .build(app)?;
 
             let workspace_menu = SubmenuBuilder::new(app, "Workspace")
                 .item(&workspace_writing)
                 .item(&workspace_journal)
+                .item(&workspace_skills)
                 .build()?;
 
             // --- Window menu (macOS standard) ---
