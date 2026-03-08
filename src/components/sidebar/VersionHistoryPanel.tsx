@@ -5,9 +5,9 @@ import { useFileStore } from "../../stores/file-store";
 import type { SnapshotEntry, DiffResult } from "../../ipc/types";
 
 function parseTimestamp(timestamp: string): Date {
-  // Rust backend uses filesystem-safe format: "2026-03-07T10-00-00" (hyphens instead of colons)
-  // Convert to standard ISO 8601: "2026-03-07T10:00:00"
-  const iso = timestamp.replace(/T(\d{2})-(\d{2})-(\d{2})$/, "T$1:$2:$3");
+  // Rust backend uses filesystem-safe UTC format: "2026-03-07T10-00-00" (hyphens instead of colons)
+  // Convert to standard ISO 8601 with UTC indicator: "2026-03-07T10:00:00Z"
+  const iso = timestamp.replace(/T(\d{2})-(\d{2})-(\d{2})$/, "T$1:$2:$3Z");
   return new Date(iso);
 }
 
