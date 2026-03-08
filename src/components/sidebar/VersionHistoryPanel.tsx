@@ -277,7 +277,7 @@ export function VersionHistoryPanel() {
             onClick={refresh}
             title="Refresh"
           >
-            \u21BB
+            {"\u21BB"}
           </button>
           <button
             className="snapshot-action-btn"
