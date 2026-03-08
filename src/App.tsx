@@ -387,6 +387,14 @@ function App() {
     });
   }, [spellCheck, editor]);
 
+  // Sync OS menu labels when locale changes (and on mount)
+  const locale = useSettingsStore((s) => s.locale);
+  useEffect(() => {
+    import("./ipc/menu-locale").then(({ syncMenuLocale }) => {
+      syncMenuLocale(locale as "en" | "ko").catch(console.error);
+    });
+  }, [locale]);
+
   // --- Tab switching: swap editor content when activeTabId changes ---
   useEffect(() => {
     if (!editor) return;

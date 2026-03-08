@@ -10,10 +10,11 @@ mod llm;
 mod search;
 mod snapshot;
 
+use std::collections::HashMap;
 use std::sync::Mutex;
 
 use commands::{config_cmd, export_cmd, fs_cmd, git_cmd, index_cmd, keyring_cmd, llm_cmd, search_cmd, snapshot_cmd, tag_cmd};
-use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
+use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 
 /// Pending file paths from macOS file open events (cold start).
@@ -23,6 +24,32 @@ struct PendingOpenFiles(Mutex<Vec<String>>);
 fn get_opened_urls(state: tauri::State<'_, PendingOpenFiles>) -> Vec<String> {
     let mut pending = state.0.lock().unwrap();
     pending.drain(..).collect()
+}
+
+/// Stores references to custom menu items and submenus for locale updates.
+struct MenuState {
+    items: HashMap<String, tauri::menu::MenuItem<tauri::Wry>>,
+    submenus: HashMap<String, tauri::menu::Submenu<tauri::Wry>>,
+    predefined: HashMap<String, PredefinedMenuItem<tauri::Wry>>,
+}
+
+#[tauri::command]
+fn update_menu_locale(
+    state: tauri::State<'_, MenuState>,
+    labels: HashMap<String, String>,
+) -> Result<(), String> {
+    for (id, text) in &labels {
+        if let Some(item) = state.items.get(id.as_str()) {
+            item.set_text(text).map_err(|e| e.to_string())?;
+        }
+        if let Some(submenu) = state.submenus.get(id.as_str()) {
+            submenu.set_text(text).map_err(|e| e.to_string())?;
+        }
+        if let Some(predef) = state.predefined.get(id.as_str()) {
+            predef.set_text(text).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -78,14 +105,21 @@ pub fn run() {
                 .accelerator("CmdOrCtrl+H")
                 .build(app)?;
 
+            let edit_undo = PredefinedMenuItem::undo(app, None)?;
+            let edit_redo = PredefinedMenuItem::redo(app, None)?;
+            let edit_cut = PredefinedMenuItem::cut(app, None)?;
+            let edit_copy = PredefinedMenuItem::copy(app, None)?;
+            let edit_paste = PredefinedMenuItem::paste(app, None)?;
+            let edit_select_all = PredefinedMenuItem::select_all(app, None)?;
+
             let edit_menu = SubmenuBuilder::new(app, "Edit")
-                .undo()
-                .redo()
+                .item(&edit_undo)
+                .item(&edit_redo)
                 .separator()
-                .cut()
-                .copy()
-                .paste()
-                .select_all()
+                .item(&edit_cut)
+                .item(&edit_copy)
+                .item(&edit_paste)
+                .item(&edit_select_all)
                 .separator()
                 .item(&edit_find_replace)
                 .build()?;
@@ -145,6 +179,8 @@ pub fn run() {
                 .accelerator("CmdOrCtrl+Shift+A")
                 .build(app)?;
 
+            let view_fullscreen = PredefinedMenuItem::fullscreen(app, None)?;
+
             let view_menu = SubmenuBuilder::new(app, "View")
                 .item(&view_source)
                 .item(&view_sidebar)
@@ -163,6 +199,8 @@ pub fn run() {
                 .item(&view_skills_gallery)
                 .separator()
                 .item(&view_ai_chat)
+                .separator()
+                .item(&view_fullscreen)
                 .build()?;
 
             // --- Insert menu (§4.4) ---
@@ -370,11 +408,15 @@ pub fn run() {
                 .build()?;
 
             // --- Window menu (macOS standard) ---
+            let win_minimize = PredefinedMenuItem::minimize(app, None)?;
+            let win_maximize = PredefinedMenuItem::maximize(app, None)?;
+            let win_close = PredefinedMenuItem::close_window(app, None)?;
+
             let window_menu = SubmenuBuilder::new(app, "Window")
-                .minimize()
-                .maximize()
+                .item(&win_minimize)
+                .item(&win_maximize)
                 .separator()
-                .close_window()
+                .item(&win_close)
                 .build()?;
 
             // --- Help menu ---
@@ -436,6 +478,100 @@ pub fn run() {
                 .build()?;
 
             app.set_menu(menu)?;
+
+            // Store menu items/submenus for dynamic locale updates
+            let mut menu_items: HashMap<String, tauri::menu::MenuItem<tauri::Wry>> = HashMap::new();
+            menu_items.insert("file_new".into(), file_new);
+            menu_items.insert("file_open".into(), file_open);
+            menu_items.insert("file_open_folder".into(), file_open_folder);
+            menu_items.insert("file_save".into(), file_save);
+            menu_items.insert("file_save_as".into(), file_save_as);
+            menu_items.insert("file_close_tab".into(), file_close_tab);
+            menu_items.insert("export_doc".into(), export_doc);
+            menu_items.insert("edit_find_replace".into(), edit_find_replace);
+            menu_items.insert("view_source".into(), view_source);
+            menu_items.insert("view_sidebar".into(), view_sidebar);
+            menu_items.insert("view_palette".into(), view_palette);
+            menu_items.insert("go_quick_switcher".into(), view_quick_switcher);
+            menu_items.insert("view_global_search".into(), view_global_search);
+            menu_items.insert("view_outline".into(), view_outline);
+            menu_items.insert("view_backlinks".into(), view_backlinks);
+            menu_items.insert("view_graph".into(), view_graph);
+            menu_items.insert("view_git".into(), view_git);
+            menu_items.insert("view_calendar".into(), view_calendar);
+            menu_items.insert("view_tags".into(), view_tags);
+            menu_items.insert("view_version_history".into(), view_version_history);
+            menu_items.insert("view_skills_gallery".into(), view_skills_gallery);
+            menu_items.insert("view_ai_chat".into(), view_ai_chat);
+            menu_items.insert("insert_h1".into(), insert_h1);
+            menu_items.insert("insert_h2".into(), insert_h2);
+            menu_items.insert("insert_h3".into(), insert_h3);
+            menu_items.insert("insert_paragraph".into(), insert_paragraph);
+            menu_items.insert("insert_bold".into(), insert_bold);
+            menu_items.insert("insert_italic".into(), insert_italic);
+            menu_items.insert("insert_underline".into(), insert_underline);
+            menu_items.insert("insert_strikethrough".into(), insert_strikethrough);
+            menu_items.insert("insert_inline_code".into(), insert_inline_code);
+            menu_items.insert("insert_highlight".into(), insert_highlight);
+            menu_items.insert("insert_superscript".into(), insert_superscript);
+            menu_items.insert("insert_subscript".into(), insert_subscript);
+            menu_items.insert("insert_link".into(), insert_link);
+            menu_items.insert("insert_wikilink".into(), insert_wikilink);
+            menu_items.insert("insert_image".into(), insert_image);
+            menu_items.insert("insert_table".into(), insert_table);
+            menu_items.insert("insert_code_block".into(), insert_code_block);
+            menu_items.insert("insert_math_block".into(), insert_math_block);
+            menu_items.insert("insert_mermaid".into(), insert_mermaid);
+            menu_items.insert("insert_query_block".into(), insert_query_block);
+            menu_items.insert("insert_blockquote".into(), insert_blockquote);
+            menu_items.insert("insert_callout".into(), insert_callout);
+            menu_items.insert("insert_toggle".into(), insert_toggle);
+            menu_items.insert("insert_definition_list".into(), insert_definition_list);
+            menu_items.insert("insert_toc".into(), insert_toc);
+            menu_items.insert("insert_ordered_list".into(), insert_ordered_list);
+            menu_items.insert("insert_unordered_list".into(), insert_unordered_list);
+            menu_items.insert("insert_task_list".into(), insert_task_list);
+            menu_items.insert("insert_hr".into(), insert_hr);
+            menu_items.insert("insert_frontmatter".into(), insert_frontmatter);
+            menu_items.insert("insert_footnote".into(), insert_footnote);
+            menu_items.insert("go_palette".into(), go_palette);
+            menu_items.insert("go_back".into(), go_back);
+            menu_items.insert("go_forward".into(), go_forward);
+            menu_items.insert("go_switch_doc".into(), go_switch_doc);
+            menu_items.insert("workspace_writing".into(), workspace_writing);
+            menu_items.insert("workspace_journal".into(), workspace_journal);
+            menu_items.insert("workspace_skills".into(), workspace_skills);
+            menu_items.insert("help_user_guide".into(), help_user_guide);
+            menu_items.insert("help_shortcuts".into(), help_shortcuts);
+            menu_items.insert("help_faq".into(), help_faq);
+            menu_items.insert("help_report".into(), help_report);
+            menu_items.insert("app_about".into(), app_about);
+            menu_items.insert("file_settings".into(), file_settings);
+
+            let mut menu_subs: HashMap<String, tauri::menu::Submenu<tauri::Wry>> = HashMap::new();
+            menu_subs.insert("menu_file".into(), file_menu);
+            menu_subs.insert("menu_edit".into(), edit_menu);
+            menu_subs.insert("menu_view".into(), view_menu);
+            menu_subs.insert("menu_insert".into(), insert_menu);
+            menu_subs.insert("menu_go".into(), go_menu);
+            menu_subs.insert("menu_workspace".into(), workspace_menu);
+            menu_subs.insert("menu_window".into(), window_menu);
+            menu_subs.insert("menu_help".into(), help_menu);
+            menu_subs.insert("menu_app".into(), app_menu);
+
+            let mut menu_predef: HashMap<String, PredefinedMenuItem<tauri::Wry>> = HashMap::new();
+            menu_predef.insert("edit_undo".into(), edit_undo);
+            menu_predef.insert("edit_redo".into(), edit_redo);
+            menu_predef.insert("edit_cut".into(), edit_cut);
+            menu_predef.insert("edit_copy".into(), edit_copy);
+            menu_predef.insert("edit_paste".into(), edit_paste);
+            menu_predef.insert("edit_select_all".into(), edit_select_all);
+            menu_predef.insert("view_fullscreen".into(), view_fullscreen);
+            menu_predef.insert("win_minimize".into(), win_minimize);
+            menu_predef.insert("win_maximize".into(), win_maximize);
+            menu_predef.insert("win_close".into(), win_close);
+
+            app.manage(MenuState { items: menu_items, submenus: menu_subs, predefined: menu_predef });
 
             app.on_menu_event(move |app_handle, event| {
                 let _ = app_handle.emit("menu-event", event.id().as_ref());
@@ -504,6 +640,7 @@ pub fn run() {
             git_cmd::git_ahead_behind,
             git_cmd::git_delete_branch,
             get_opened_urls,
+            update_menu_locale,
             tag_cmd::get_vault_tags,
             tag_cmd::rename_tag,
             tag_cmd::get_files_by_tag,

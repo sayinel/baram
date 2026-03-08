@@ -329,7 +329,12 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
 
   // i18n
   locale: "en",
-  setLocale: (locale) => set({ locale }),
+  setLocale: (locale) => {
+    set({ locale });
+    import("../ipc/menu-locale").then(({ syncMenuLocale }) => {
+      syncMenuLocale(locale as "en" | "ko").catch(console.error);
+    });
+  },
 
   // Tag colors
   tagColors: {},

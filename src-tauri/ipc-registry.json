@@ -256,6 +256,17 @@
       "description": "macOS 파일 연결: 콜드 스타트 시 대기 중인 파일 경로 조회"
     },
     {
+      "name": "update_menu_locale",
+      "input": { "labels": "Record<string, string>" },
+      "output": "void",
+      "module": "app",
+      "spec": "i18n",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "OS 메뉴 항목 텍스트를 로케일에 맞게 업데이트"
+    },
+    {
       "name": "rename_block_id",
       "input": { "file_path": "string", "old_id": "string", "new_id": "string" },
       "output": "RenameResult",
