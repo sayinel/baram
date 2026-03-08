@@ -86,6 +86,15 @@ const SETTINGS_REGISTRY: SearchableSetting[] = [
   { id: "activityBarConfig", label: "Activity Bar", description: "Show, hide, and reorder Activity Bar icons", category: "activitybar", section: "Activity Bar", keywords: ["icon", "sidebar", "panel"] },
   // Language
   { id: "locale", label: "Language", description: "Interface language", category: "language", section: "Language", keywords: ["locale", "i18n", "korean", "english", "\uD55C\uAD6D\uC5B4"] },
+  // Keybindings
+  {
+    id: "keybindings",
+    label: "settings.tab.keybindings",
+    description: "",
+    category: "keybindings",
+    section: "keybindings",
+    keywords: ["shortcut", "key", "binding", "hotkey", "keyboard", "remap", "단축키", "키보드", "바인딩"],
+  },
 ];
 
 export function SettingsModal() {
@@ -2017,6 +2026,12 @@ function SearchSettingControl({ id, onNavigate }: { id: string; onNavigate: () =
     case "model":
       return (
         <button className="theme-action-btn" onClick={onNavigate}>
+          Open...
+        </button>
+      );
+    case "keybindings":
+      return (
+        <button className="settings-btn" onClick={onNavigate}>
           Open...
         </button>
       );
