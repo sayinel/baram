@@ -153,7 +153,14 @@ export function SettingsModal() {
           </nav>
           <div className="settings-content">
             {searchQuery.trim() ? (
-              <SettingsSearchResults grouped={groupedResults} query={searchQuery} />
+              <SettingsSearchResults
+                grouped={groupedResults}
+                query={searchQuery}
+                onNavigate={(tab) => {
+                  setActiveTab(tab);
+                  setSearchQuery("");
+                }}
+              />
             ) : (
               <>
                 {activeTab === "general" && <GeneralTab />}
@@ -1449,6 +1456,7 @@ function ThemeMiniPreview({ theme }: { theme: ThemeDef }) {
 
 function ActivityBarTab() {
   const { activityBarConfig, setActivityBarConfig, resetActivityBarConfig } = useSettingsStore();
+  const { t } = useTranslation();
 
   const topItems = activityBarConfig.filter((i) => i.section === "top");
   const bottomItems = activityBarConfig.filter((i) => i.section === "bottom");
@@ -1542,13 +1550,13 @@ function ActivityBarTab() {
   return (
     <div className="settings-section">
       <div className="settings-row-description" style={{ marginBottom: 12 }}>
-        Show, hide, and reorder Activity Bar icons. Use arrows to change order.
+        {t("settings.activitybar.desc")}
       </div>
-      {renderSection("Sidebar Panels", topItems)}
-      {renderSection("Right Panels", bottomItems)}
+      {renderSection(t("settings.activitybar.sidebarPanels"), topItems)}
+      {renderSection(t("settings.activitybar.rightPanels"), bottomItems)}
       <div style={{ marginTop: 16 }}>
         <button className="theme-action-btn" onClick={resetActivityBarConfig}>
-          Reset to Default
+          {t("settings.activitybar.resetDefault")}
         </button>
       </div>
     </div>
@@ -1596,10 +1604,14 @@ function SettingsSectionHeader({ title }: { title: string }) {
 function SettingsSearchResults({
   grouped,
   query,
+  onNavigate,
 }: {
   grouped: Map<SettingsTab, SearchableSetting[]> | null;
   query: string;
+  onNavigate: (tab: SettingsTab) => void;
 }) {
+  const { t } = useTranslation();
+
   if (!grouped || grouped.size === 0) {
     return (
       <div className="settings-search-empty">
@@ -1608,23 +1620,18 @@ function SettingsSearchResults({
     );
   }
 
-  const TAB_LABELS: Record<SettingsTab, string> = {
-    general: "General",
-    editor: "Editor",
-    appearance: "Appearance",
-    markdown: "Markdown",
-    ai: "AI",
-    activitybar: "Activity Bar",
-    language: "Language",
-  };
-
   return (
     <div className="settings-section">
       {Array.from(grouped.entries()).map(([category, items]) => (
         <div key={category}>
-          <SettingsSectionHeader title={TAB_LABELS[category]} />
+          <SettingsSectionHeader title={t(`settings.tab.${category}`)} />
           {items.map((item) => (
-            <div key={item.id} className="settings-search-result">
+            <div
+              key={item.id}
+              className="settings-search-result"
+              onClick={() => onNavigate(category)}
+              style={{ cursor: "pointer" }}
+            >
               <div className="settings-row-info">
                 <span className="settings-row-label">{item.label}</span>
                 <span className="settings-row-description">
@@ -1635,6 +1642,9 @@ function SettingsSearchResults({
           ))}
         </div>
       ))}
+      <div className="settings-search-navigate-hint">
+        {t("settings.search.navigateHint")}
+      </div>
     </div>
   );
 }

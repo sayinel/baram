@@ -96,7 +96,8 @@
   "settings.language.interface": "인터페이스 언어",
   "settings.language.interface.desc": "메뉴 및 인터페이스 요소의 언어",
   "settings.language.reloadNotice": "언어 변경은 즉시 적용됩니다.",
-  "settings.language.contribute": "Baram 번역에 참여하세요",
+
+  "settings.search.navigateHint": "클릭하면 해당 설정으로 이동합니다",
 
   "common.save": "저장",
   "common.cancel": "취소",

@@ -96,7 +96,8 @@
   "settings.language.interface": "Interface Language",
   "settings.language.interface.desc": "Language for menus and interface elements",
   "settings.language.reloadNotice": "Language changes will be applied immediately.",
-  "settings.language.contribute": "Help translate Baram into your language",
+
+  "settings.search.navigateHint": "Click to navigate to setting",
 
   "common.save": "Save",
   "common.cancel": "Cancel",
