@@ -29,6 +29,8 @@ interface EditorState {
   mruOrder: string[];
   /** §44 Current editor selection text (for @selection reference) */
   currentSelection: string;
+  /** §72 Bumped when external code (e.g. PropertiesPanel) updates file content in store */
+  contentRefreshKey: number;
 
   setActiveTab: (tabId: string) => void;
   openTab: (tab: EditorTab) => void;
@@ -62,6 +64,8 @@ interface EditorState {
   openGraphTab: () => void;
   /** §44 Update current editor selection text */
   setCurrentSelection: (text: string) => void;
+  /** §72 Signal editor to re-read content from fileStore */
+  requestContentRefresh: () => void;
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -70,6 +74,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   isSourceMode: false,
   mruOrder: [],
   currentSelection: "",
+  contentRefreshKey: 0,
 
   setActiveTab: (tabId) => set({ activeTabId: tabId }),
 
@@ -259,6 +264,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   setCurrentSelection: (text) => set({ currentSelection: text }),
+
+  requestContentRefresh: () => set((state) => ({ contentRefreshKey: state.contentRefreshKey + 1 })),
 
   getNextMruTab: (currentId, direction) => {
     const { mruOrder } = get();

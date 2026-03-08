@@ -1,5 +1,5 @@
 // §72 Properties Panel — YAML frontmatter GUI editor
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useUIStore } from "../../stores/ui-store";
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
@@ -167,6 +167,10 @@ export function PropertiesPanel() {
 
   const [sourceMode, setSourceMode] = useState(false);
   const [sourceText, setSourceText] = useState("");
+  const [lastAddedKey, setLastAddedKey] = useState<string | null>(null);
+  const undoStackRef = useRef<string[]>([]);
+  const redoStackRef = useRef<string[]>([]);
+  const [, forceRender] = useState(0);
 
   if (!rightPanelOpen || rightPanelMode !== "properties") return null;
 
@@ -180,19 +184,58 @@ export function PropertiesPanel() {
 
   // ── write-back helpers ───────────────────────────────────────────────────
 
-  function applyEntries(updated: PropertyEntry[]) {
+  function applyEntries(updated: PropertyEntry[], skipUndo = false) {
     if (!filePath || !parsed) return;
+    if (!skipUndo && yaml !== null) {
+      undoStackRef.current.push(yaml);
+      redoStackRef.current = [];
+    }
     const newYaml = serializeYamlProperties(updated);
     const newContent = rebuildContent(newYaml, parsed.rest);
     useFileStore.getState().setFileContent(filePath, newContent);
     if (activeTabId) useEditorStore.getState().markDirty(activeTabId, true);
+    useEditorStore.getState().requestContentRefresh();
+    forceRender((n) => n + 1);
+  }
+
+  function applyYamlDirectly(newYaml: string, skipUndo = false) {
+    if (!filePath || !parsed) return;
+    if (!skipUndo && yaml !== null) {
+      undoStackRef.current.push(yaml);
+      redoStackRef.current = [];
+    }
+    const newContent = rebuildContent(newYaml, parsed.rest);
+    useFileStore.getState().setFileContent(filePath, newContent);
+    if (activeTabId) useEditorStore.getState().markDirty(activeTabId, true);
+    useEditorStore.getState().requestContentRefresh();
+    forceRender((n) => n + 1);
   }
 
   function applySourceText(text: string) {
     if (!filePath || !parsed) return;
+    if (yaml !== null) {
+      undoStackRef.current.push(yaml);
+      redoStackRef.current = [];
+    }
     const newContent = rebuildContent(text, parsed.rest);
     useFileStore.getState().setFileContent(filePath, newContent);
     if (activeTabId) useEditorStore.getState().markDirty(activeTabId, true);
+    useEditorStore.getState().requestContentRefresh();
+    forceRender((n) => n + 1);
+  }
+
+  function handleUndo() {
+    if (undoStackRef.current.length === 0) return;
+    const prev = undoStackRef.current.pop()!;
+    if (yaml !== null) redoStackRef.current.push(yaml);
+    applyYamlDirectly(prev, true);
+  }
+
+  function handleRedo() {
+    if (redoStackRef.current.length === 0) return;
+    const next = redoStackRef.current.pop()!;
+    if (yaml !== null) undoStackRef.current.push(yaml);
+    applyYamlDirectly(next, true);
   }
 
   // ── source mode toggle ───────────────────────────────────────────────────
@@ -280,6 +323,7 @@ export function PropertiesPanel() {
       const type: PropertyType = ENUM_KEYS.has(key) ? "enum" : ARRAY_KEYS.has(key) ? "array" : "string";
       const value: string | string[] = type === "array" ? [] : "";
       const updated = [...entries, { key, value, type }];
+      setLastAddedKey(key);
       applyEntries(updated);
     },
     [entries, filePath, parsed],
@@ -299,9 +343,27 @@ export function PropertiesPanel() {
     <div className="properties-panel">
       <div className="properties-header">
         <span>Properties</span>
-        <button className="properties-source-toggle" onClick={handleToggleSource} title="Toggle source YAML">
-          {"</>"}
-        </button>
+        <div className="properties-header-actions">
+          <button
+            className="properties-undo-btn"
+            onClick={handleUndo}
+            disabled={undoStackRef.current.length === 0}
+            title="Undo (Ctrl+Z)"
+          >
+            ↩
+          </button>
+          <button
+            className="properties-undo-btn"
+            onClick={handleRedo}
+            disabled={redoStackRef.current.length === 0}
+            title="Redo (Ctrl+Shift+Z)"
+          >
+            ↪
+          </button>
+          <button className="properties-source-toggle" onClick={handleToggleSource} title="Toggle source YAML">
+            {"</>"}
+          </button>
+        </div>
       </div>
 
       {content === null && (
@@ -342,6 +404,8 @@ export function PropertiesPanel() {
                     className="properties-input"
                     value={entry.value as string}
                     onChange={(e) => handleStringChange(entry.key, e.target.value)}
+                    autoFocus={entry.key === lastAddedKey}
+                    onFocus={() => { if (entry.key === lastAddedKey) setLastAddedKey(null); }}
                   />
                 )}
 

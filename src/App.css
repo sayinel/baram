@@ -11625,6 +11625,22 @@ body {
   border-bottom: 1px solid var(--color-border);
   margin-bottom: 8px;
 }
+.properties-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.properties-undo-btn {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+}
+.properties-undo-btn:hover { background: var(--color-bg-hover); }
+.properties-undo-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 .properties-source-toggle {
   background: none;
   border: 1px solid var(--color-border);

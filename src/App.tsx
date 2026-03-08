@@ -657,6 +657,26 @@ function App() {
     }, 50);
   }, [contentReloadVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // §72 External content refresh (PropertiesPanel → editor sync)
+  const contentRefreshKey = useEditorStore((s) => s.contentRefreshKey);
+  useEffect(() => {
+    if (!contentRefreshKey || !editor?.view) return;
+    const { activeTabId: tabId, tabs: currentTabs } = useEditorStore.getState();
+    const tab = currentTabs.find((t) => t.id === tabId);
+    if (!tab?.filePath) return;
+    const content = useFileStore.getState().openFiles.get(tab.filePath);
+    if (content === undefined) return;
+    const newDoc = markdownToProsemirror(content, editor.schema);
+    const prevPos = editor.state.selection.anchor;
+    const selPos = Math.min(prevPos, newDoc.content.size);
+    const newState = EditorState.create({
+      doc: newDoc,
+      selection: TextSelection.near(newDoc.resolve(selPos), -1),
+      plugins: editor.state.plugins,
+    });
+    editor.view.updateState(newState);
+  }, [contentRefreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // --- Window title update ---
   useEffect(() => {
     const tab = tabs.find((t) => t.id === activeTabId);
