@@ -4,8 +4,15 @@ import { useSnapshotStore } from "../../stores/snapshot-store";
 import { useFileStore } from "../../stores/file-store";
 import type { SnapshotEntry, DiffResult } from "../../ipc/types";
 
+function parseTimestamp(timestamp: string): Date {
+  // Rust backend uses filesystem-safe format: "2026-03-07T10-00-00" (hyphens instead of colons)
+  // Convert to standard ISO 8601: "2026-03-07T10:00:00"
+  const iso = timestamp.replace(/T(\d{2})-(\d{2})-(\d{2})$/, "T$1:$2:$3");
+  return new Date(iso);
+}
+
 function formatSnapshotTime(timestamp: string): string {
-  const date = new Date(timestamp);
+  const date = parseTimestamp(timestamp);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMin = Math.floor(diffMs / 60000);
@@ -131,7 +138,7 @@ function SnapshotDetail({ vaultPath, onBack }: {
         </button>
         <div className="snapshot-detail-info">
           <div className="snapshot-detail-time">
-            {new Date(snapshot.timestamp).toLocaleString()}
+            {parseTimestamp(snapshot.timestamp).toLocaleString()}
           </div>
           <div className="snapshot-detail-type">
             {snapshot.type === "manual" ? "\u2605 Manual" : "Auto"}
