@@ -182,9 +182,6 @@ export function SkillDependencySection() {
 
   const currentSkill = useMemo(() => parseSkillFrontmatter(yaml, filePath), [yaml, filePath]);
 
-  // Early return if not a skill file
-  if (!isSkill || !filePath) return null;
-
   // Scan workspace for all skill files
   const scanSkills = useCallback(async () => {
     setLoading(true);
@@ -244,6 +241,9 @@ export function SkillDependencySection() {
     () => getImpactAnalysis(allSkills, currentSkill.name),
     [allSkills, currentSkill.name],
   );
+
+  // Early return if not a skill file (AFTER all hooks to satisfy Rules of Hooks)
+  if (!isSkill || !filePath) return null;
 
   const hasNoDeps = currentSkill.requires.length === 0 && reverseDeps.length === 0;
 
