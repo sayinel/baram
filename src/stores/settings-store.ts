@@ -15,6 +15,32 @@ type JournalStartupBehavior = "openJournal" | "nothing";
 type MemoriesTab = "journal" | "notes";
 type MemoriesMode = "oneline" | "full";
 
+export interface ActivityBarItemConfig {
+  id: string;
+  visible: boolean;
+  section: "top" | "bottom";
+}
+
+export const DEFAULT_ACTIVITY_BAR_CONFIG: ActivityBarItemConfig[] = [
+  // Top section — sidebar panels
+  { id: "files", visible: true, section: "top" },
+  { id: "search", visible: true, section: "top" },
+  { id: "outline", visible: true, section: "top" },
+  { id: "backlinks", visible: true, section: "top" },
+  { id: "bookmarks", visible: true, section: "top" },
+  { id: "graph", visible: true, section: "top" },
+  { id: "git", visible: true, section: "top" },
+  { id: "calendar", visible: true, section: "top" },
+  { id: "tags", visible: true, section: "top" },
+  { id: "skills-gallery", visible: true, section: "top" },
+  // Bottom section — right panels + utilities
+  { id: "chat", visible: true, section: "bottom" },
+  { id: "memories", visible: true, section: "bottom" },
+  { id: "photo-gallery", visible: true, section: "bottom" },
+  { id: "snapshots", visible: true, section: "bottom" },
+  { id: "help", visible: true, section: "bottom" },
+];
+
 interface SettingsState {
   // General
   onLaunch: OnLaunch;
@@ -107,6 +133,15 @@ interface SettingsState {
   // Extension settings (dynamic key-value)
   extensionSettings: Record<string, unknown>;
   setExtensionSetting: (key: string, value: unknown) => void;
+
+  // Activity Bar config
+  activityBarConfig: ActivityBarItemConfig[];
+  setActivityBarConfig: (config: ActivityBarItemConfig[]) => void;
+  resetActivityBarConfig: () => void;
+
+  // i18n
+  locale: string;
+  setLocale: (locale: string) => void;
 
   // Tag colors
   tagColors: Record<string, string>;
@@ -280,6 +315,15 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
 
   // Extension settings (dynamic key-value)
   extensionSettings: {},
+
+  // Activity Bar config
+  activityBarConfig: DEFAULT_ACTIVITY_BAR_CONFIG,
+  setActivityBarConfig: (activityBarConfig) => set({ activityBarConfig }),
+  resetActivityBarConfig: () => set({ activityBarConfig: DEFAULT_ACTIVITY_BAR_CONFIG }),
+
+  // i18n
+  locale: "en",
+  setLocale: (locale) => set({ locale }),
 
   // Tag colors
   tagColors: {},
@@ -475,6 +519,8 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
     tagColors: state.tagColors,
     snapshotInterval: state.snapshotInterval,
     snapshotMaxCount: state.snapshotMaxCount,
+    activityBarConfig: state.activityBarConfig,
+    locale: state.locale,
   }),
   version: 7,
   migrate: (persisted: unknown, version: number) => {

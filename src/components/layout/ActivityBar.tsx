@@ -1,6 +1,7 @@
 // Activity Bar — VS Code style vertical icon bar
 import type { ReactNode } from "react";
 import { useUIStore } from "../../stores/ui-store";
+import { useSettingsStore } from "../../stores/settings-store";
 
 type PanelId = "files" | "search" | "outline" | "backlinks" | "bookmarks" | "graph" | "git" | "calendar" | "tags" | "snapshots" | "skills-gallery";
 
@@ -108,16 +109,6 @@ const PANEL_ICONS: { id: PanelId; label: string; icon: ReactNode }[] = [
     ),
   },
   {
-    id: "snapshots",
-    label: "Version History",
-    icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="10" />
-        <polyline points="12 6 12 12 16 14" />
-      </svg>
-    ),
-  },
-  {
     id: "skills-gallery",
     label: "Skills Gallery",
     icon: (
@@ -167,8 +158,33 @@ const PhotoGalleryIcon = (
   </svg>
 );
 
+const SnapshotsIcon = (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10" />
+    <polyline points="12 6 12 12 16 14" />
+  </svg>
+);
+
+type RightPanelMode = "chat" | "help" | "memories" | "photo-gallery" | "properties" | "none";
+
+interface BottomItemDef {
+  icon: ReactNode;
+  title: string;
+  mode?: RightPanelMode;
+  panelId?: PanelId;
+}
+
+const BOTTOM_ITEMS: Record<string, BottomItemDef> = {
+  chat: { icon: AIChatIcon, title: "AI Chat (\u2318\u21E7A)", mode: "chat" },
+  memories: { icon: MemoriesIcon, title: "Memories", mode: "memories" },
+  "photo-gallery": { icon: PhotoGalleryIcon, title: "Photo Gallery (\u2318\u21E7P)", mode: "photo-gallery" },
+  snapshots: { icon: SnapshotsIcon, title: "Version History", panelId: "snapshots" },
+  help: { icon: HelpIcon, title: "Help", mode: "help" },
+};
+
 export function ActivityBar() {
   const { sidebarOpen, sidebarPanel, toggleSidebar, setSidebarPanel, toggleSettings, rightPanelOpen, rightPanelMode, toggleRightPanel, setRightPanelMode } = useUIStore();
+  const { activityBarConfig } = useSettingsStore();
 
   const handlePanelClick = (panelId: PanelId) => {
     if (!sidebarOpen) {
@@ -181,10 +197,31 @@ export function ActivityBar() {
     }
   };
 
+  const handleRightPanelClick = (mode: RightPanelMode) => {
+    if (!rightPanelOpen) {
+      setRightPanelMode(mode);
+      toggleRightPanel();
+    } else if (rightPanelMode === mode) {
+      toggleRightPanel();
+    } else {
+      setRightPanelMode(mode);
+    }
+  };
+
+  const visibleTopItems = activityBarConfig
+    .filter((c) => c.section === "top" && c.visible)
+    .map((c) => PANEL_ICONS.find((p) => p.id === c.id))
+    .filter(Boolean) as { id: PanelId; label: string; icon: ReactNode }[];
+
+  const visibleBottomItems = activityBarConfig
+    .filter((c) => c.section === "bottom" && c.visible)
+    .map((c) => ({ ...BOTTOM_ITEMS[c.id], id: c.id }))
+    .filter((item) => item.icon);
+
   return (
     <div className="activity-bar">
       <div className="activity-bar-top">
-        {PANEL_ICONS.map((item) => (
+        {visibleTopItems.map((item) => (
           <button
             key={item.id}
             className={`activity-bar-btn ${sidebarOpen && sidebarPanel === item.id ? "activity-bar-btn-active" : ""}`}
@@ -196,70 +233,26 @@ export function ActivityBar() {
         ))}
       </div>
       <div className="activity-bar-bottom">
-        <button
-          className={`activity-bar-btn ${rightPanelOpen && rightPanelMode === "chat" ? "activity-bar-btn-active" : ""}`}
-          onClick={() => {
-            if (!rightPanelOpen) {
-              setRightPanelMode("chat");
-              toggleRightPanel();
-            } else if (rightPanelMode === "chat") {
-              toggleRightPanel();
-            } else {
-              setRightPanelMode("chat");
-            }
-          }}
-          title="AI Chat (⌘⇧A)"
-        >
-          {AIChatIcon}
-        </button>
-        <button
-          className={`activity-bar-btn ${rightPanelOpen && rightPanelMode === "memories" ? "activity-bar-btn-active" : ""}`}
-          onClick={() => {
-            if (!rightPanelOpen) {
-              setRightPanelMode("memories");
-              toggleRightPanel();
-            } else if (rightPanelMode === "memories") {
-              toggleRightPanel();
-            } else {
-              setRightPanelMode("memories");
-            }
-          }}
-          title="Memories"
-        >
-          {MemoriesIcon}
-        </button>
-        <button
-          className={`activity-bar-btn ${rightPanelOpen && rightPanelMode === "photo-gallery" ? "activity-bar-btn-active" : ""}`}
-          onClick={() => {
-            if (!rightPanelOpen) {
-              setRightPanelMode("photo-gallery");
-              toggleRightPanel();
-            } else if (rightPanelMode === "photo-gallery") {
-              toggleRightPanel();
-            } else {
-              setRightPanelMode("photo-gallery");
-            }
-          }}
-          title="Photo Gallery (⌘⇧P)"
-        >
-          {PhotoGalleryIcon}
-        </button>
-        <button
-          className={`activity-bar-btn ${rightPanelOpen && rightPanelMode === "help" ? "activity-bar-btn-active" : ""}`}
-          onClick={() => {
-            if (!rightPanelOpen) {
-              setRightPanelMode("help");
-              toggleRightPanel();
-            } else if (rightPanelMode === "help") {
-              toggleRightPanel();
-            } else {
-              setRightPanelMode("help");
-            }
-          }}
-          title="Help"
-        >
-          {HelpIcon}
-        </button>
+        {visibleBottomItems.map((item) => (
+          <button
+            key={item.id}
+            className={`activity-bar-btn ${
+              item.panelId
+                ? sidebarOpen && sidebarPanel === item.panelId ? "activity-bar-btn-active" : ""
+                : rightPanelOpen && rightPanelMode === item.mode ? "activity-bar-btn-active" : ""
+            }`}
+            onClick={() => {
+              if (item.panelId) {
+                handlePanelClick(item.panelId);
+              } else if (item.mode) {
+                handleRightPanelClick(item.mode);
+              }
+            }}
+            title={item.title}
+          >
+            {item.icon}
+          </button>
+        ))}
         <button
           className="activity-bar-btn"
           onClick={() => toggleSettings()}

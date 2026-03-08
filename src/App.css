@@ -7116,6 +7116,56 @@ body {
   color: var(--color-text-primary);
 }
 
+/* Activity Bar config */
+.activity-bar-config-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0;
+}
+
+.activity-bar-config-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.activity-bar-config-arrows {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.activity-bar-config-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 14px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 8px;
+  cursor: pointer;
+  border-radius: 2px;
+  padding: 0;
+}
+
+.activity-bar-config-arrow:hover:not(:disabled) {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+}
+
+.activity-bar-config-arrow:disabled {
+  opacity: 0.2;
+  cursor: default;
+}
+
+.activity-bar-config-hidden {
+  opacity: 0.4;
+  text-decoration: line-through;
+}
+
 /* Theme Editor */
 .theme-editor {
   display: flex;

@@ -19,8 +19,12 @@ import { THEME_COLOR_KEYS } from "../../types/theme";
 import registry from "../../extensions/registry.json";
 import { useWorkspaceStore, BUILTIN_PRESETS } from "../../stores/workspace-store";
 import type { WorkspacePreset } from "../../stores/workspace-store";
+import type { ActivityBarItemConfig } from "../../stores/settings-store";
+import { useTranslation } from "../../i18n/useTranslation";
+import { AVAILABLE_LOCALES, LOCALE_LABELS } from "../../i18n";
+import type { Locale } from "../../i18n";
 
-type SettingsTab = "general" | "editor" | "appearance" | "markdown" | "ai";
+type SettingsTab = "general" | "editor" | "appearance" | "markdown" | "ai" | "activitybar" | "language";
 
 const TABS: { id: SettingsTab; label: string; icon: string }[] = [
   { id: "general", label: "General", icon: "\u2699" },
@@ -28,6 +32,8 @@ const TABS: { id: SettingsTab; label: string; icon: string }[] = [
   { id: "appearance", label: "Appearance", icon: "\u25D1" },
   { id: "markdown", label: "Markdown", icon: "M\u2193" },
   { id: "ai", label: "AI", icon: "\u2726" },
+  { id: "activitybar", label: "Activity Bar", icon: "\u25A4" },
+  { id: "language", label: "Language", icon: "\uD83C\uDF10" },
 ];
 
 interface SearchableSetting {
@@ -72,12 +78,17 @@ const SETTINGS_REGISTRY: SearchableSetting[] = [
   { id: "model", label: "Model", description: "Model name or ID to use for AI requests", category: "ai", section: "Provider" },
   { id: "ghostTextEnabled", label: "Ghost Text", description: "Show inline text completion suggestions while typing", category: "ai", section: "Ghost Text", keywords: ["autocomplete", "suggestion"] },
   { id: "privacyMode", label: "Privacy Mode", description: "Do not send document content to AI providers", category: "ai", section: "Privacy" },
+  // Activity Bar
+  { id: "activityBarConfig", label: "Activity Bar", description: "Show, hide, and reorder Activity Bar icons", category: "activitybar", section: "Activity Bar", keywords: ["icon", "sidebar", "panel"] },
+  // Language
+  { id: "locale", label: "Language", description: "Interface language", category: "language", section: "Language", keywords: ["locale", "i18n", "korean", "english", "\uD55C\uAD6D\uC5B4"] },
 ];
 
 export function SettingsModal() {
   const { settingsOpen, toggleSettings } = useUIStore();
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
   const [searchQuery, setSearchQuery] = useState("");
+  const { t } = useTranslation();
 
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return null;
@@ -108,12 +119,12 @@ export function SettingsModal() {
     <div className="settings-overlay" onClick={toggleSettings}>
       <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
         <div className="settings-header">
-          <h2 className="settings-title">Settings</h2>
+          <h2 className="settings-title">{t("settings.title")}</h2>
           <div className="settings-search-wrapper">
             <input
               type="text"
               className="settings-search"
-              placeholder="Search settings..."
+              placeholder={t("settings.search.placeholder")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -136,7 +147,7 @@ export function SettingsModal() {
                 onClick={() => setActiveTab(tab.id)}
               >
                 <span className="settings-nav-icon">{tab.icon}</span>
-                {tab.label}
+                {t(`settings.tab.${tab.id}`)}
               </button>
             ))}
           </nav>
@@ -150,6 +161,8 @@ export function SettingsModal() {
                 {activeTab === "appearance" && <AppearanceTab />}
                 {activeTab === "markdown" && <MarkdownTab />}
                 {activeTab === "ai" && <AITab />}
+                {activeTab === "activitybar" && <ActivityBarTab />}
+                {activeTab === "language" && <LanguageTab />}
               </>
             )}
           </div>
@@ -1434,6 +1447,148 @@ function ThemeMiniPreview({ theme }: { theme: ThemeDef }) {
   );
 }
 
+function ActivityBarTab() {
+  const { activityBarConfig, setActivityBarConfig, resetActivityBarConfig } = useSettingsStore();
+
+  const topItems = activityBarConfig.filter((i) => i.section === "top");
+  const bottomItems = activityBarConfig.filter((i) => i.section === "bottom");
+
+  const toggleItem = (id: string) => {
+    setActivityBarConfig(
+      activityBarConfig.map((item) =>
+        item.id === id ? { ...item, visible: !item.visible } : item
+      )
+    );
+  };
+
+  const moveItem = (id: string, direction: "up" | "down") => {
+    const newConfig = [...activityBarConfig];
+    const idx = newConfig.findIndex((item) => item.id === id);
+    if (idx === -1) return;
+    const item = newConfig[idx];
+
+    if (direction === "up") {
+      for (let i = idx - 1; i >= 0; i--) {
+        if (newConfig[i].section === item.section) {
+          [newConfig[idx], newConfig[i]] = [newConfig[i], newConfig[idx]];
+          break;
+        }
+      }
+    } else {
+      for (let i = idx + 1; i < newConfig.length; i++) {
+        if (newConfig[i].section === item.section) {
+          [newConfig[idx], newConfig[i]] = [newConfig[i], newConfig[idx]];
+          break;
+        }
+      }
+    }
+    setActivityBarConfig(newConfig);
+  };
+
+  const ITEM_LABELS: Record<string, string> = {
+    files: "Files",
+    search: "Search",
+    outline: "Outline",
+    backlinks: "Backlinks",
+    bookmarks: "Bookmarks",
+    graph: "Graph View",
+    git: "Source Control",
+    calendar: "Calendar",
+    tags: "Tags",
+    "skills-gallery": "Skills Gallery",
+    chat: "AI Chat",
+    memories: "Memories",
+    "photo-gallery": "Photo Gallery",
+    snapshots: "Version History",
+    help: "Help",
+  };
+
+  const renderSection = (title: string, items: ActivityBarItemConfig[]) => (
+    <>
+      <SettingsSectionHeader title={title} />
+      {items.map((item, idx) => (
+        <div key={item.id} className="settings-row activity-bar-config-row">
+          <div className="activity-bar-config-left">
+            <div className="activity-bar-config-arrows">
+              <button
+                className="activity-bar-config-arrow"
+                onClick={() => moveItem(item.id, "up")}
+                disabled={idx === 0}
+                title="Move up"
+              >
+                {"\u25B2"}
+              </button>
+              <button
+                className="activity-bar-config-arrow"
+                onClick={() => moveItem(item.id, "down")}
+                disabled={idx === items.length - 1}
+                title="Move down"
+              >
+                {"\u25BC"}
+              </button>
+            </div>
+            <span className={`settings-row-label ${!item.visible ? "activity-bar-config-hidden" : ""}`}>
+              {ITEM_LABELS[item.id] ?? item.id}
+            </span>
+          </div>
+          <div className="settings-row-control">
+            <ToggleSwitch checked={item.visible} onChange={() => toggleItem(item.id)} />
+          </div>
+        </div>
+      ))}
+    </>
+  );
+
+  return (
+    <div className="settings-section">
+      <div className="settings-row-description" style={{ marginBottom: 12 }}>
+        Show, hide, and reorder Activity Bar icons. Use arrows to change order.
+      </div>
+      {renderSection("Sidebar Panels", topItems)}
+      {renderSection("Right Panels", bottomItems)}
+      <div style={{ marginTop: 16 }}>
+        <button className="theme-action-btn" onClick={resetActivityBarConfig}>
+          Reset to Default
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Language Tab ──────────────────────────────────────
+
+function LanguageTab() {
+  const { locale, setLocale } = useSettingsStore();
+  const { t } = useTranslation();
+
+  return (
+    <div className="settings-section">
+      <SettingsSectionHeader title={t("settings.language.title")} />
+
+      <SettingsRow
+        label={t("settings.language.interface")}
+        description={t("settings.language.interface.desc")}
+      >
+        <select
+          className="settings-select"
+          value={locale}
+          onChange={(e) => setLocale(e.target.value)}
+        >
+          {AVAILABLE_LOCALES.map((loc: Locale) => (
+            <option key={loc} value={loc}>
+              {LOCALE_LABELS[loc]}
+            </option>
+          ))}
+        </select>
+      </SettingsRow>
+
+      <div className="settings-row-description" style={{ marginTop: 12, fontStyle: "italic" }}>
+        {t("settings.language.reloadNotice")}
+      </div>
+    </div>
+  );
+}
+
 function SettingsSectionHeader({ title }: { title: string }) {
   return <div className="settings-section-header">{title}</div>;
 }
@@ -1459,6 +1614,8 @@ function SettingsSearchResults({
     appearance: "Appearance",
     markdown: "Markdown",
     ai: "AI",
+    activitybar: "Activity Bar",
+    language: "Language",
   };
 
   return (
