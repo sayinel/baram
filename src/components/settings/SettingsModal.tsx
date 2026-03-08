@@ -140,6 +140,7 @@ export function SettingsModal() {
               placeholder={t("settings.search.placeholder")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              spellCheck={false}
             />
             {searchQuery && (
               <button className="settings-search-clear" onClick={() => setSearchQuery("")}>
