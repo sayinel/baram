@@ -7112,7 +7112,10 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 0;
+  padding: 6px 0;
+  border-top: 2px solid transparent;
+  border-bottom: 2px solid transparent;
+  transition: opacity 0.15s;
 }
 
 .activity-bar-config-left {
@@ -7121,35 +7124,39 @@ body {
   gap: 8px;
 }
 
-.activity-bar-config-arrows {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-.activity-bar-config-arrow {
+.activity-bar-config-drag-handle {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 14px;
-  border: none;
-  background: transparent;
+  width: 20px;
+  height: 24px;
+  cursor: grab;
   color: var(--color-text-muted);
-  font-size: 8px;
-  cursor: pointer;
-  border-radius: 2px;
-  padding: 0;
+  font-size: 16px;
+  border-radius: 3px;
+  user-select: none;
+  touch-action: none;
 }
 
-.activity-bar-config-arrow:hover:not(:disabled) {
+.activity-bar-config-drag-handle:hover {
   background: var(--color-bg-secondary);
   color: var(--color-text-primary);
 }
 
-.activity-bar-config-arrow:disabled {
-  opacity: 0.2;
-  cursor: default;
+.activity-bar-config-drag-handle:active {
+  cursor: grabbing;
+}
+
+.activity-bar-dragging {
+  opacity: 0.35;
+}
+
+.activity-bar-drop-before {
+  border-top-color: var(--color-accent);
+}
+
+.activity-bar-drop-after {
+  border-bottom-color: var(--color-accent);
 }
 
 .activity-bar-config-hidden {

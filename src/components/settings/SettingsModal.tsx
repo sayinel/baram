@@ -1458,6 +1458,14 @@ function ActivityBarTab() {
   const { activityBarConfig, setActivityBarConfig, resetActivityBarConfig } = useSettingsStore();
   const { t } = useTranslation();
 
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropIndicator, setDropIndicator] = useState<{ id: string; position: "before" | "after" } | null>(null);
+  const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const dragRef = useRef<{ id: string; section: string } | null>(null);
+  const dropRef = useRef<{ id: string; position: "before" | "after" } | null>(null);
+  const configRef = useRef(activityBarConfig);
+  configRef.current = activityBarConfig;
+
   const topItems = activityBarConfig.filter((i) => i.section === "top");
   const bottomItems = activityBarConfig.filter((i) => i.section === "bottom");
 
@@ -1469,29 +1477,72 @@ function ActivityBarTab() {
     );
   };
 
-  const moveItem = (id: string, direction: "up" | "down") => {
-    const newConfig = [...activityBarConfig];
-    const idx = newConfig.findIndex((item) => item.id === id);
-    if (idx === -1) return;
-    const item = newConfig[idx];
+  const onPointerDown = useCallback((id: string, section: string, e: React.PointerEvent) => {
+    e.preventDefault();
+    dragRef.current = { id, section };
+    setDraggingId(id);
 
-    if (direction === "up") {
-      for (let i = idx - 1; i >= 0; i--) {
-        if (newConfig[i].section === item.section) {
-          [newConfig[idx], newConfig[i]] = [newConfig[i], newConfig[idx]];
-          break;
+    const onMove = (moveE: PointerEvent) => {
+      const state = dragRef.current;
+      if (!state) return;
+
+      let closestId: string | null = null;
+      let closestPos: "before" | "after" = "before";
+      let closestDist = Infinity;
+
+      for (const [rowId, el] of rowRefs.current.entries()) {
+        const rowItem = configRef.current.find(i => i.id === rowId);
+        if (!rowItem || rowItem.section !== state.section || rowId === state.id) continue;
+
+        const rect = el.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        const dist = Math.abs(moveE.clientY - midY);
+
+        if (dist < closestDist) {
+          closestDist = dist;
+          closestId = rowId;
+          closestPos = moveE.clientY < midY ? "before" : "after";
         }
       }
-    } else {
-      for (let i = idx + 1; i < newConfig.length; i++) {
-        if (newConfig[i].section === item.section) {
-          [newConfig[idx], newConfig[i]] = [newConfig[i], newConfig[idx]];
-          break;
+
+      dropRef.current = closestId ? { id: closestId, position: closestPos } : null;
+      setDropIndicator(dropRef.current);
+    };
+
+    const onUp = () => {
+      const state = dragRef.current;
+      const drop = dropRef.current;
+
+      if (state && drop && state.id !== drop.id) {
+        const config = [...configRef.current];
+        const fromIdx = config.findIndex(i => i.id === state.id);
+        if (fromIdx !== -1) {
+          const [item] = config.splice(fromIdx, 1);
+          let toIdx = config.findIndex(i => i.id === drop.id);
+          if (toIdx !== -1) {
+            if (drop.position === "after") toIdx += 1;
+            config.splice(toIdx, 0, item);
+            setActivityBarConfig(config);
+          }
         }
       }
-    }
-    setActivityBarConfig(newConfig);
-  };
+
+      dragRef.current = null;
+      dropRef.current = null;
+      setDraggingId(null);
+      setDropIndicator(null);
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+    };
+
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+  }, [setActivityBarConfig]);
+
+  const setRowRef = useCallback((id: string, el: HTMLDivElement | null) => {
+    if (el) rowRefs.current.set(id, el);
+    else rowRefs.current.delete(id);
+  }, []);
 
   const ITEM_LABELS: Record<string, string> = {
     files: "Files",
@@ -1514,26 +1565,24 @@ function ActivityBarTab() {
   const renderSection = (title: string, items: ActivityBarItemConfig[]) => (
     <>
       <SettingsSectionHeader title={title} />
-      {items.map((item, idx) => (
-        <div key={item.id} className="settings-row activity-bar-config-row">
+      {items.map((item) => (
+        <div
+          key={item.id}
+          ref={(el) => setRowRef(item.id, el)}
+          className={`settings-row activity-bar-config-row${
+            draggingId === item.id ? " activity-bar-dragging" : ""
+          }${
+            dropIndicator?.id === item.id
+              ? ` activity-bar-drop-${dropIndicator.position}`
+              : ""
+          }`}
+        >
           <div className="activity-bar-config-left">
-            <div className="activity-bar-config-arrows">
-              <button
-                className="activity-bar-config-arrow"
-                onClick={() => moveItem(item.id, "up")}
-                disabled={idx === 0}
-                title="Move up"
-              >
-                {"\u25B2"}
-              </button>
-              <button
-                className="activity-bar-config-arrow"
-                onClick={() => moveItem(item.id, "down")}
-                disabled={idx === items.length - 1}
-                title="Move down"
-              >
-                {"\u25BC"}
-              </button>
+            <div
+              className="activity-bar-config-drag-handle"
+              onPointerDown={(e) => onPointerDown(item.id, item.section, e)}
+            >
+              {"\u2807"}
             </div>
             <span className={`settings-row-label ${!item.visible ? "activity-bar-config-hidden" : ""}`}>
               {ITEM_LABELS[item.id] ?? item.id}
