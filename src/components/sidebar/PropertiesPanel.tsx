@@ -1,11 +1,13 @@
 // §72 Properties Panel — YAML frontmatter GUI editor
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useUIStore } from "../../stores/ui-store";
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import type { FileEntry } from "../../stores/file-store";
-import { SkillDependencySection } from "./SkillDependencySection";
-import { isSkillFrontmatter } from "../../hooks/use-skills-mode";
+import { isSkillFrontmatter } from "../../utils/skill-frontmatter";
+import { getSkillSections } from "./skill-panel-registry";
+// §72c Side-effect import: SkillDependencySection self-registers into the registry
+import "./SkillDependencySection";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -462,9 +464,9 @@ export function PropertiesPanel() {
 
           <AddPropertyButton onAdd={handleAddProperty} />
 
-          {/* §72b Skill Dependency Analysis */}
-          {yaml !== null && isSkillFrontmatter(yaml) && filePath && (
-            <SkillDependencySection yaml={yaml} filePath={filePath} />
+          {/* §72c Skill sections via registry */}
+          {yaml !== null && isSkillFrontmatter(yaml) && (
+            getSkillSections().map((s) => <s.component key={s.id} />)
           )}
         </>
       )}

@@ -2,6 +2,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useFileStore } from "../../stores/file-store";
 import type { FileEntry } from "../../stores/file-store";
+import { useEditorStore } from "../../stores/editor-store";
+import { useSkillStore } from "../../stores/skill-store";
 import {
   parseSkillFrontmatter,
   analyzeSkillDependencies,
@@ -12,12 +14,8 @@ import {
   type DependencyWarning,
 } from "../../utils/skill-dependency-analyzer";
 import { dryRunChain, type ChainResult } from "../../utils/skill-chain-runner";
-import { isSkillFrontmatter } from "../../hooks/use-skills-mode";
-
-interface SkillDependencySectionProps {
-  yaml: string;
-  filePath: string;
-}
+import { isSkillFrontmatter } from "../../utils/skill-frontmatter";
+import { registerSkillSection } from "./skill-panel-registry";
 
 /** Recursively collect all .md files from the file tree */
 function collectMdFiles(tree: FileEntry[]): FileEntry[] {
@@ -163,8 +161,18 @@ function DependencyGraph({
 
 // ─── SkillDependencySection ───────────────────────────────────────────────────
 
-export function SkillDependencySection({ yaml, filePath }: SkillDependencySectionProps) {
+export function SkillDependencySection() {
   const fileTree = useFileStore((s) => s.fileTree);
+  const { activeTabId, tabs } = useEditorStore();
+  const isSkill = useSkillStore((s) => s.isSkill);
+
+  // Derive yaml and filePath from stores
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+  const filePath = activeTab?.filePath ?? "";
+  const openFiles = useFileStore((s) => s.openFiles);
+  const content = filePath ? (openFiles.get(filePath) ?? "") : "";
+  const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  const yaml = fmMatch ? fmMatch[1] : "";
 
   const [allSkills, setAllSkills] = useState<SkillMeta[]>([]);
   const [loading, setLoading] = useState(false);
@@ -173,6 +181,9 @@ export function SkillDependencySection({ yaml, filePath }: SkillDependencySectio
   const [chainResult, setChainResult] = useState<ChainResult | null>(null);
 
   const currentSkill = useMemo(() => parseSkillFrontmatter(yaml, filePath), [yaml, filePath]);
+
+  // Early return if not a skill file
+  if (!isSkill || !filePath) return null;
 
   // Scan workspace for all skill files
   const scanSkills = useCallback(async () => {
@@ -353,3 +364,11 @@ export function SkillDependencySection({ yaml, filePath }: SkillDependencySectio
     </div>
   );
 }
+
+// §72c Self-register into skill panel registry
+registerSkillSection({
+  id: "dependencies",
+  title: "Dependencies",
+  order: 50,
+  component: SkillDependencySection,
+});
