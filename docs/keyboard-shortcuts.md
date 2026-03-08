@@ -161,4 +161,10 @@ Complete list of keyboard shortcuts available in Baram.
 
 ---
 
+## Customization
+
+All keyboard shortcuts can be remapped in **Settings > Keybindings**. Search for a shortcut by name or key, click **Edit**, then press the new key combination. Conflicts are detected automatically. Use the ↺ button to reset individual shortcuts, or **Reset All Keybindings** to restore defaults.
+
+---
+
 See the full [User Guide](user-guide.md) for detailed feature descriptions.

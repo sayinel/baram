@@ -877,6 +877,8 @@ Available settings tabs:
 | **Extensions** | Per-extension settings (code block style, line numbers, diagrams) |
 | **Workspace** | Built-in and custom workspace presets (sidebar, panel, theme layout) |
 | **AI** | Provider, model, API key (per-provider), privacy mode, Ghost Text settings, custom AI commands |
+| **Language** | Interface language (English, Korean) |
+| **Keybindings** | Customize keyboard shortcuts — search, rebind, reset |
 
 ### Themes
 
@@ -916,7 +918,27 @@ Baram comes with 6 built-in themes and supports custom theme creation.
 
 Press `Cmd+Shift+P` (macOS) or `Ctrl+Shift+P` (Windows/Linux) to open the Command Palette. Type to search for any command, setting, or action. This is the fastest way to access any feature in Baram.
 
+### Language
+
+Baram supports English and Korean interface languages.
+
+1. Open **Settings > Language** (`Cmd+,` then select Language tab)
+2. Select your preferred language
+3. The entire UI updates immediately — menus, dialogs, settings, and the Welcome screen
+
+The app defaults to the system language if supported, otherwise English.
+
 ### Keyboard Shortcuts
+
+All keyboard shortcuts can be customized in **Settings > Keybindings**:
+
+1. Search for a shortcut by name or key combination
+2. Click **Edit** on any shortcut to start capturing a new key combination
+3. Press the desired keys — if there's a conflict, Baram shows which command already uses that combination
+4. Click **Apply** to confirm, or **Cancel** to keep the current binding
+5. Click the reset button to restore an individual shortcut to its default
+
+Use **Reset All** at the bottom to restore all shortcuts to defaults.
 
 See the full [Keyboard Shortcuts Reference](keyboard-shortcuts.md) for all available shortcuts.
 

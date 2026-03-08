@@ -6,16 +6,17 @@ import { useUIStore } from "../../stores/ui-store";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import MarkdownRenderer from "../ai/MarkdownRenderer";
 import { prepareHelpMarkdown } from "./prepare-help-markdown";
+import { useTranslation } from "../../i18n/useTranslation";
 import userGuideRaw from "../../../docs/user-guide.md?raw";
 import shortcutsRaw from "../../../docs/keyboard-shortcuts.md?raw";
 import faqRaw from "../../../docs/faq.md?raw";
 
 type HelpTab = "guide" | "shortcuts" | "faq";
 
-const TABS: { id: HelpTab; label: string }[] = [
-  { id: "guide", label: "User Guide" },
-  { id: "shortcuts", label: "Shortcuts" },
-  { id: "faq", label: "FAQ" },
+const TAB_IDS: { id: HelpTab; i18nKey: string }[] = [
+  { id: "guide", i18nKey: "help.tab.guide" },
+  { id: "shortcuts", i18nKey: "help.tab.shortcuts" },
+  { id: "faq", i18nKey: "help.tab.faq" },
 ];
 
 const TAB_CONTENT: Record<HelpTab, string> = {
@@ -120,19 +121,21 @@ export function HelpPanel() {
     [],
   );
 
+  const { t } = useTranslation();
+
   if (!rightPanelOpen || rightPanelMode !== "help") return null;
 
   return (
     <div className="help-panel">
       <div className="help-panel-header">
         <div className="help-panel-tabs">
-          {TABS.map((tab) => (
+          {TAB_IDS.map((tab) => (
             <button
               key={tab.id}
               className={`help-tab ${activeTab === tab.id ? "help-tab-active" : ""}`}
               onClick={() => setActiveTab(tab.id)}
             >
-              {tab.label}
+              {t(tab.i18nKey)}
             </button>
           ))}
         </div>

@@ -403,5 +403,9 @@
   "welcome.tip.commandPalette": "Open Command Palette",
   "welcome.tip.slashCommand": "Add blocks with slash commands",
   "welcome.tip.sourceMode": "Toggle source mode",
-  "welcome.dontShowAgain": "Don't show again"
+  "welcome.dontShowAgain": "Don't show again",
+
+  "help.tab.guide": "User Guide",
+  "help.tab.shortcuts": "Shortcuts",
+  "help.tab.faq": "FAQ"
 }

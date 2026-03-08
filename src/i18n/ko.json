@@ -403,5 +403,9 @@
   "welcome.tip.commandPalette": "커맨드 팔레트 열기",
   "welcome.tip.slashCommand": "슬래시 커맨드로 블록 추가",
   "welcome.tip.sourceMode": "소스 모드 전환",
-  "welcome.dontShowAgain": "다시 보지 않기"
+  "welcome.dontShowAgain": "다시 보지 않기",
+
+  "help.tab.guide": "사용 설명서",
+  "help.tab.shortcuts": "단축키",
+  "help.tab.faq": "FAQ"
 }

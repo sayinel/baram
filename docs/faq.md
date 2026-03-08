@@ -56,6 +56,38 @@ Hover over a custom theme card in the gallery and click the **x** button. Built-
 
 ---
 
+## Language
+
+### What languages does Baram support?
+
+Baram currently supports **English** and **Korean** for the entire user interface — menus, dialogs, settings, welcome screen, and all UI elements.
+
+### How do I change the language?
+
+Open **Settings > Language** (`Cmd+,` on macOS, `Ctrl+,` on Windows/Linux, then select the Language tab). Choose your preferred language — the UI updates immediately without restarting the app.
+
+### Does the language setting affect my documents?
+
+No. The language setting only changes the interface language. Your markdown documents are not affected.
+
+---
+
+## Keyboard Shortcuts
+
+### Can I customize keyboard shortcuts?
+
+Yes. Open **Settings > Keybindings** to see all shortcuts organized by category (File, Editing, Formatting, Blocks, View, Navigation, Tools, AI, Workspace). Click **Edit** on any shortcut, press the new key combination, and click **Apply**.
+
+### What happens if I assign a key that's already in use?
+
+Baram shows a conflict warning with the name of the command that already uses that key combination. You can choose to override (which removes the old binding) or cancel.
+
+### How do I reset a shortcut to its default?
+
+Click the reset button (↺) next to any customized shortcut to restore its default key combination. To reset all shortcuts at once, click **Reset All** at the bottom of the Keybindings tab.
+
+---
+
 ## Editing
 
 ### How does the WYSIWYG mode work?

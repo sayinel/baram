@@ -318,6 +318,22 @@ Save and restore your workspace layout:
 - **Custom presets** — Save your current sidebar, panel, and theme configuration as a named preset
 - **Quick switch** — Apply presets via keyboard shortcuts, Command Palette, or the Workspace menu
 
+### Internationalization
+
+Baram supports multiple interface languages:
+
+- **English** and **Korean** built-in
+- Switch languages in **Settings > Language** — the entire UI updates immediately including menus, dialogs, and the Welcome screen
+
+### Keyboard Shortcut Customization
+
+Remap any keyboard shortcut to your preference:
+
+- Open **Settings > Keybindings** to see all shortcuts organized by category
+- Click **Edit** on any shortcut, then press the new key combination to rebind
+- **Conflict detection** warns when a key combination is already in use
+- **Reset** individual shortcuts or reset all to defaults
+
 ## AI Integration
 
 Baram has built-in AI writing assistance powered by Claude, OpenAI, Google Gemini, and Ollama (local).
@@ -573,6 +589,8 @@ Reverse:  ProseMirror Document → mdast → remark-stringify
 | Query Block | ✅ Done | Visual query builder for dynamic content filtering |
 | Git Advanced | ✅ Done | Log, stash, remote push/pull/fetch, branch delete |
 | File Snapshots / Version History | ✅ Done | Automatic file versioning, timeline, diff viewer, selective restore |
+| Internationalization (i18n) | ✅ Done | English + Korean with full UI localization |
+| Keybinding Customization | ✅ Done | Remap shortcuts with conflict detection |
 | Canvas | Planned | Infinite canvas with free-form layout |
 | Agent Mode | Planned | Multi-file autonomous AI editing |
 | Plugin Marketplace | Planned | Community extensions |
