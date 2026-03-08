@@ -114,8 +114,8 @@ export function SkillOptimizeSection() {
         className="skill-optimize-header-btn"
         onClick={() => setExpanded((v) => !v)}
       >
-        <span>{expanded ? "\u25BE" : "\u25B8"}</span>
-        <span className="skill-optimize-header">Optimize</span>
+        <span className="skill-section-arrow">{expanded ? "\u25BE" : "\u25B8"}</span>
+        <span>Optimize</span>
         {displaySuggestions.length > 0 && (
           <span className="skill-optimize-badge">{displaySuggestions.length}</span>
         )}

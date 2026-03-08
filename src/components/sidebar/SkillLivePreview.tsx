@@ -63,7 +63,7 @@ export function SkillLivePreview() {
   return (
     <div className="skill-live-preview">
       <button className="slp-header" onClick={() => setExpanded((v) => !v)}>
-        <span>{expanded ? "\u25be" : "\u25b8"}</span>
+        <span className="skill-section-arrow">{expanded ? "\u25be" : "\u25b8"}</span>
         <span>Preview</span>
         {preview && (
           <span className="slp-token-badge">

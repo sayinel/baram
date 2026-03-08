@@ -250,7 +250,7 @@ export function SkillDependencySection() {
   return (
     <div className="dep-section">
       <button className="dep-section-header" onClick={() => setExpanded((v) => !v)}>
-        <span className="dep-section-arrow">{expanded ? "\u25be" : "\u25b8"}</span>
+        <span className="skill-section-arrow">{expanded ? "\u25be" : "\u25b8"}</span>
         <span>Dependencies</span>
         {currentWarnings.length > 0 && (
           <span className="dep-badge dep-badge--error">{currentWarnings.length}</span>

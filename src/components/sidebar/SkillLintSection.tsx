@@ -35,7 +35,7 @@ export function SkillLintSection() {
   return (
     <div className="skill-lint-section">
       <button className="skill-lint-header" onClick={() => setExpanded((v) => !v)}>
-        <span>{expanded ? "\u25be" : "\u25b8"}</span>
+        <span className="skill-section-arrow">{expanded ? "\u25be" : "\u25b8"}</span>
         <span>Lint</span>
         {errorCount > 0 && (
           <span className="skill-lint-badge skill-lint-badge--error">{errorCount}</span>

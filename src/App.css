@@ -11818,11 +11818,22 @@ body {
 }
 .properties-add-btn:hover { border-color: var(--color-accent); color: var(--color-accent); }
 
+/* ─── Shared Skill Panel Section ──────────────────────────────── */
+.skill-section-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  width: 16px;
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+  color: var(--text-secondary, var(--color-text));
+}
+
 /* §72b Skill Dependency Section */
 .dep-section {
-  margin-top: 12px;
-  border-top: 1px solid var(--color-border);
-  padding-top: 8px;
+  border-top: 1px solid var(--color-border, var(--border));
+  padding: 8px 12px;
 }
 .dep-section-header {
   display: flex;
@@ -11832,13 +11843,12 @@ body {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 0.82rem;
+  font-size: 12px;
   font-weight: 600;
-  color: var(--color-text);
+  color: var(--text-secondary, var(--color-text));
   padding: 4px 0;
 }
-.dep-section-header:hover { color: var(--color-accent); }
-.dep-section-arrow { font-size: 0.7rem; width: 12px; }
+.dep-section-header:hover { color: var(--text-primary, var(--color-accent)); }
 .dep-badge {
   font-size: 0.68rem;
   padding: 1px 6px;
@@ -12037,6 +12047,9 @@ body {
 .skill-lint-header:hover {
   color: var(--text-primary);
 }
+.skill-lint-header .skill-section-arrow {
+  color: inherit;
+}
 .skill-lint-badge {
   display: inline-flex;
   align-items: center;
@@ -12144,6 +12157,9 @@ body {
 }
 .skill-live-preview .slp-header:hover {
   color: var(--text-primary);
+}
+.skill-live-preview .slp-header .skill-section-arrow {
+  color: inherit;
 }
 .skill-live-preview .slp-token-badge {
   font-size: 10px;
@@ -12319,13 +12335,13 @@ body {
   padding: 4px 0;
   cursor: pointer;
   font-size: 12px;
+  font-weight: 600;
   color: var(--text-secondary);
 }
 .skill-optimize-header-btn:hover {
-  color: var(--color-accent);
+  color: var(--text-primary);
 }
-.skill-optimize-header {
-  font-weight: 600;
+.skill-optimize-header-btn .skill-section-arrow {
   color: inherit;
 }
 .skill-optimize-badge {
