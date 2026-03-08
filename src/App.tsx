@@ -72,6 +72,9 @@ import { PromptLintPanel } from "./components/ai/PromptLintPanel";
 import { findThemeById } from "./types/theme";
 import type { ThemeColors } from "./types/theme";
 import { isMarkdownFile, getLanguageForFile } from "./utils/file-type";
+import { normalizeKeyEvent } from "./keybindings/key-utils";
+import { findCommandByKey } from "./keybindings/use-keybindings";
+import { registerAction, getAction, clearActions } from "./keybindings/keybinding-actions";
 import "./App.css";
 
 // §8.4 Lazy-loaded components — split into separate chunks, loaded on first use
@@ -1356,6 +1359,298 @@ function App() {
     }
   }, []);
 
+  // §settings: Register keybinding actions — maps command IDs to handler functions
+  useEffect(() => {
+    clearActions();
+
+    // File
+    registerAction("file.new", () => handleNewFile());
+    registerAction("file.open", () => handleOpenFile());
+    registerAction("file.openFolder", () => handleOpenFolder());
+    registerAction("file.save", () => handleSave());
+    registerAction("file.saveAs", () => handleSaveAs());
+    registerAction("file.closeTab", () => handleCloseTab());
+
+    // Edit
+    registerAction("edit.find", () => {
+      setFindReplaceMode("find");
+      setFindReplaceOpen(true);
+    });
+    registerAction("edit.findReplace", () => {
+      setFindReplaceMode("replace");
+      setFindReplaceOpen(true);
+    });
+
+    // View
+    registerAction("view.sourceMode", () => toggleSourceMode());
+    registerAction("view.toggleSidebar", () => toggleSidebar());
+    registerAction("view.commandPalette", () => toggleCommandPalette());
+    registerAction("view.quickSwitcher", () => toggleQuickSwitcher());
+    registerAction("view.settings", () => toggleSettings());
+    registerAction("view.bookmark", () => {
+      const bs = useBookmarkStore.getState();
+      const es = useEditorStore.getState();
+      const fs = useFileStore.getState();
+      const activeTab = es.tabs.find((t) => t.id === es.activeTabId);
+      if (activeTab?.filePath && fs.rootPath) {
+        const fileName = activeTab.filePath.split("/").pop() ?? activeTab.filePath;
+        bs.addBookmark({
+          type: "file",
+          filePath: activeTab.filePath,
+          label: fileName,
+          group: "Default",
+        });
+        bs.saveBookmarks(fs.rootPath);
+      }
+    });
+
+    // Search
+    registerAction("search.globalSearch", () => {
+      const ui = useUIStore.getState();
+      if (!ui.sidebarOpen) ui.toggleSidebar();
+      setSidebarPanel("search");
+    });
+    registerAction("search.backlinks", () => {
+      const ui = useUIStore.getState();
+      if (!ui.sidebarOpen) ui.toggleSidebar();
+      setSidebarPanel("backlinks");
+    });
+
+    // Insert
+    registerAction("insert.table", () => {
+      if (editor && !editor.isActive("table")) {
+        const { from } = editor.state.selection;
+        const coords = editor.view.coordsAtPos(from);
+        showTableGridPicker(coords.left, coords.bottom + 4).then((result) => {
+          if (!result) return;
+          editor
+            .chain()
+            .focus()
+            .insertTable({ rows: result.rows, cols: result.cols, withHeaderRow: true })
+            .run();
+        });
+      }
+    });
+    registerAction("insert.inlineAI", () => inlineAI.activate());
+
+    // AI
+    registerAction("ai.chatPanel", () => useUIStore.getState().toggleRightPanel());
+    registerAction("ai.ghostText", () => {
+      const ai = useAIStore.getState();
+      ai.setGhostTextEnabled(!ai.ghostTextEnabled);
+    });
+    registerAction("ai.skillTest", () => useUIStore.getState().toggleSkillTestDialog());
+
+    // Workspace
+    registerAction("workspace.writing", () => useWorkspaceStore.getState().applyPreset("writing"));
+    registerAction("workspace.journal", () => useWorkspaceStore.getState().applyPreset("journal"));
+
+    // Journal
+    registerAction("journal.quickCapture", () => useUIStore.getState().toggleQuickCapture());
+
+    registerAction("journal.promoteCapture", () => {
+      (async () => {
+        try {
+          const store = useEditorStore.getState();
+          const tab = store.tabs.find((t) => t.id === store.activeTabId);
+          if (!tab || !tab.filePath) return;
+          const content = useFileStore.getState().openFiles.get(tab.filePath);
+          if (!content) return;
+
+          // Parse captures from the current file
+          const captures = parseCapturesFromMarkdown(content);
+          if (captures.length === 0) return;
+
+          // Find the capture at cursor position (fall back to last capture)
+          let capture = captures[captures.length - 1];
+          if (editor) {
+            const cursorPos = editor.state.selection.from;
+            const md = prosemirrorToMarkdown(editor.state.doc);
+            const lines = md.split("\n");
+            // Map PM cursor to markdown line
+            let charCount = 0;
+            let cursorLine = 0;
+            for (let li = 0; li < lines.length; li++) {
+              charCount += lines[li].length + 1;
+              if (charCount >= cursorPos) { cursorLine = li; break; }
+            }
+            const cursorLineText = lines[cursorLine] ?? "";
+            // Match cursor line against capture icons
+            const iconMap: Record<string, string> = { idea: "✦", link: "↗", quote: "❝", note: "☰" };
+            for (const c of captures) {
+              const icon = iconMap[c.type];
+              if (cursorLineText.startsWith(`- ${icon}`) && (c.title ? cursorLineText.includes(c.title) : true)) {
+                capture = c;
+                break;
+              }
+            }
+          }
+          const { filename, content: noteContent } = buildNoteFromCapture(capture);
+
+          // Determine notes directory
+          const { rootPath } = useFileStore.getState();
+          const { journalDirectory } = useSettingsStore.getState();
+          if (!rootPath || !journalDirectory) return;
+          const resolvedJournalDir = resolveJournalDir(rootPath, journalDirectory);
+          if (!resolvedJournalDir) return;
+          const notesDir = `${resolvedJournalDir}/notes`;
+          const notePath = `${notesDir}/${filename}`;
+
+          // Create notes dir and write note file
+          await createDir(notesDir);
+          await writeFile(notePath, noteContent);
+
+          // Replace the capture line in journal with a wikilink
+          const noteName = filename.replace(/\.md$/, "");
+          const linkLine = buildPromotedCaptureLink(capture, noteName);
+          const originalLine = content.split("\n").find((line) => {
+            const icon = capture.type === "idea" ? "✦" : capture.type === "link" ? "↗" : capture.type === "quote" ? "❝" : "☰";
+            return line.startsWith(`- ${icon}`) && (capture.title ? line.includes(capture.title) : true);
+          });
+          if (originalLine) {
+            const updated = content.replace(originalLine, linkLine);
+            await writeFile(tab.filePath, updated);
+            useFileStore.getState().setFileContent(tab.filePath, updated);
+          }
+
+          // Open the promoted note
+          useFileStore.getState().setFileContent(notePath, noteContent);
+          useEditorStore.getState().openTab({
+            id: crypto.randomUUID(),
+            filePath: notePath,
+            title: filename,
+            isDirty: false,
+            isPinned: false,
+          });
+        } catch (err) {
+          console.error("[PromoteCapture] Failed:", err);
+        }
+      })();
+    });
+
+    registerAction("journal.openToday", () => {
+      (async () => {
+        try {
+          const { journalEnabled, journalDirectory, journalFilenameFormat, journalTemplatePath, journalUseHierarchy } = useSettingsStore.getState();
+          if (!journalEnabled || !journalDirectory) return;
+          const { rootPath } = useFileStore.getState();
+          const resolved = resolveJournalDir(rootPath, journalDirectory);
+          if (!resolved) return;
+          const today = new Date();
+          const journalPath = journalUseHierarchy
+            ? getHierarchicalJournalPath(resolved, today, journalFilenameFormat)
+            : getJournalFilePath(rootPath, journalDirectory, today, journalFilenameFormat);
+          if (!journalPath) return;
+
+          // Ensure file exists
+          let fileContent: string;
+          try {
+            fileContent = await readFile(journalPath);
+          } catch {
+            const parentDir = journalPath.substring(0, journalPath.lastIndexOf("/"));
+            await createDir(parentDir);
+            if (journalTemplatePath) {
+              try {
+                const tpl = await readFile(journalTemplatePath);
+                fileContent = applyJournalTemplate(tpl, today);
+              } catch {
+                fileContent = generateDefaultJournal(today);
+              }
+            } else {
+              fileContent = generateDefaultJournal(today);
+            }
+            await writeFile(journalPath, fileContent);
+          }
+
+          // Open the file
+          const edStore = useEditorStore.getState();
+          const existing = edStore.tabs.find((t) => t.filePath === journalPath);
+          if (existing) {
+            edStore.setActiveTab(existing.id);
+          } else {
+            useFileStore.getState().setFileContent(journalPath, fileContent);
+            edStore.openTab({
+              id: crypto.randomUUID(),
+              filePath: journalPath,
+              title: journalPath.split("/").pop() ?? "Journal",
+              isDirty: false,
+              isPinned: false,
+            });
+          }
+        } catch (err) {
+          console.error("[JournalShortcut] Failed:", err);
+        }
+      })();
+    });
+
+    registerAction("journal.jumpToDiary", () => {
+      if (editor) {
+        const md = prosemirrorToMarkdown(editor.state.doc);
+        const lines = md.split("\n");
+        const diaryIdx = lines.findIndex((l) => /^## Diary/.test(l));
+        if (diaryIdx >= 0) {
+          const pos = mdLineToPmBlockStart(editor.state.doc, md, diaryIdx);
+          if (pos >= 0) {
+            editor.commands.focus();
+            editor.commands.setTextSelection(pos + 1);
+          }
+        }
+      }
+    });
+
+    registerAction("journal.jumpToCaptures", () => {
+      if (editor) {
+        const md = prosemirrorToMarkdown(editor.state.doc);
+        const lines = md.split("\n");
+        const capturesIdx = lines.findIndex((l) => /^## Captures/.test(l));
+        if (capturesIdx >= 0) {
+          const pos = mdLineToPmBlockStart(editor.state.doc, md, capturesIdx);
+          if (pos >= 0) {
+            editor.commands.focus();
+            editor.commands.setTextSelection(pos + 1);
+          }
+        }
+      }
+    });
+
+    registerAction("journal.memories", () => {
+      const ui = useUIStore.getState();
+      if (!ui.rightPanelOpen) {
+        ui.setRightPanelMode("memories");
+        ui.toggleRightPanel();
+      } else if (ui.rightPanelMode === "memories") {
+        ui.toggleRightPanel();
+      } else {
+        ui.setRightPanelMode("memories");
+      }
+    });
+
+    registerAction("journal.photoGallery", () => {
+      const ui = useUIStore.getState();
+      if (ui.rightPanelMode === "photo-gallery" && ui.rightPanelOpen) {
+        ui.toggleRightPanel();
+      } else {
+        ui.setRightPanelMode("photo-gallery");
+        if (!ui.rightPanelOpen) ui.toggleRightPanel();
+      }
+    });
+  }, [
+    toggleSourceMode,
+    toggleSidebar,
+    toggleCommandPalette,
+    toggleQuickSwitcher,
+    toggleSettings,
+    setSidebarPanel,
+    handleNewFile,
+    handleOpenFile,
+    handleOpenFolder,
+    handleSave,
+    handleSaveAs,
+    handleCloseTab,
+    inlineAI,
+    editor,
+  ]);
+
   // Global keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1411,166 +1706,6 @@ function App() {
       ) {
         e.preventDefault();
         handleGoForward();
-        return;
-      }
-
-      // §52 Cmd+Alt+1/2 — workspace presets
-      if (e.altKey && mod && e.code === "Digit1") {
-        e.preventDefault();
-        useWorkspaceStore.getState().applyPreset("writing");
-        return;
-      }
-      if (e.altKey && mod && e.code === "Digit2") {
-        e.preventDefault();
-        useWorkspaceStore.getState().applyPreset("journal");
-        return;
-      }
-
-      // §56l Cmd+Shift+N — quick capture dialog
-      if (mod && e.shiftKey && e.code === "KeyN") {
-        e.preventDefault();
-        useUIStore.getState().toggleQuickCapture();
-        return;
-      }
-
-      // §56l Cmd+Shift+E — promote capture to standalone note
-      if (mod && e.shiftKey && e.code === "KeyE") {
-        e.preventDefault();
-        (async () => {
-          try {
-            const store = useEditorStore.getState();
-            const tab = store.tabs.find((t) => t.id === store.activeTabId);
-            if (!tab || !tab.filePath) return;
-            const content = useFileStore.getState().openFiles.get(tab.filePath);
-            if (!content) return;
-
-            // Parse captures from the current file
-            const captures = parseCapturesFromMarkdown(content);
-            if (captures.length === 0) return;
-
-            // Find the capture at cursor position (fall back to last capture)
-            let capture = captures[captures.length - 1];
-            if (editor) {
-              const cursorPos = editor.state.selection.from;
-              const md = prosemirrorToMarkdown(editor.state.doc);
-              const lines = md.split("\n");
-              // Map PM cursor to markdown line
-              let charCount = 0;
-              let cursorLine = 0;
-              for (let li = 0; li < lines.length; li++) {
-                charCount += lines[li].length + 1;
-                if (charCount >= cursorPos) { cursorLine = li; break; }
-              }
-              const cursorLineText = lines[cursorLine] ?? "";
-              // Match cursor line against capture icons
-              const iconMap: Record<string, string> = { idea: "✦", link: "↗", quote: "❝", note: "☰" };
-              for (const c of captures) {
-                const icon = iconMap[c.type];
-                if (cursorLineText.startsWith(`- ${icon}`) && (c.title ? cursorLineText.includes(c.title) : true)) {
-                  capture = c;
-                  break;
-                }
-              }
-            }
-            const { filename, content: noteContent } = buildNoteFromCapture(capture);
-
-            // Determine notes directory
-            const { rootPath } = useFileStore.getState();
-            const { journalDirectory } = useSettingsStore.getState();
-            if (!rootPath || !journalDirectory) return;
-            const resolvedJournalDir = resolveJournalDir(rootPath, journalDirectory);
-            if (!resolvedJournalDir) return;
-            const notesDir = `${resolvedJournalDir}/notes`;
-            const notePath = `${notesDir}/${filename}`;
-
-            // Create notes dir and write note file
-            await createDir(notesDir);
-            await writeFile(notePath, noteContent);
-
-            // Replace the capture line in journal with a wikilink
-            const noteName = filename.replace(/\.md$/, "");
-            const linkLine = buildPromotedCaptureLink(capture, noteName);
-            const originalLine = content.split("\n").find((line) => {
-              const icon = capture.type === "idea" ? "✦" : capture.type === "link" ? "↗" : capture.type === "quote" ? "❝" : "☰";
-              return line.startsWith(`- ${icon}`) && (capture.title ? line.includes(capture.title) : true);
-            });
-            if (originalLine) {
-              const updated = content.replace(originalLine, linkLine);
-              await writeFile(tab.filePath, updated);
-              useFileStore.getState().setFileContent(tab.filePath, updated);
-            }
-
-            // Open the promoted note
-            useFileStore.getState().setFileContent(notePath, noteContent);
-            useEditorStore.getState().openTab({
-              id: crypto.randomUUID(),
-              filePath: notePath,
-              title: filename,
-              isDirty: false,
-              isPinned: false,
-            });
-          } catch (err) {
-            console.error("[PromoteCapture] Failed:", err);
-          }
-        })();
-        return;
-      }
-
-      // §56l Cmd+Shift+J — open/create today's journal
-      if (mod && e.shiftKey && e.code === "KeyJ") {
-        e.preventDefault();
-        (async () => {
-          try {
-            const { journalEnabled, journalDirectory, journalFilenameFormat, journalTemplatePath, journalUseHierarchy } = useSettingsStore.getState();
-            if (!journalEnabled || !journalDirectory) return;
-            const { rootPath } = useFileStore.getState();
-            const resolved = resolveJournalDir(rootPath, journalDirectory);
-            if (!resolved) return;
-            const today = new Date();
-            const journalPath = journalUseHierarchy
-              ? getHierarchicalJournalPath(resolved, today, journalFilenameFormat)
-              : getJournalFilePath(rootPath, journalDirectory, today, journalFilenameFormat);
-            if (!journalPath) return;
-
-            // Ensure file exists
-            let fileContent: string;
-            try {
-              fileContent = await readFile(journalPath);
-            } catch {
-              const parentDir = journalPath.substring(0, journalPath.lastIndexOf("/"));
-              await createDir(parentDir);
-              if (journalTemplatePath) {
-                try {
-                  const tpl = await readFile(journalTemplatePath);
-                  fileContent = applyJournalTemplate(tpl, today);
-                } catch {
-                  fileContent = generateDefaultJournal(today);
-                }
-              } else {
-                fileContent = generateDefaultJournal(today);
-              }
-              await writeFile(journalPath, fileContent);
-            }
-
-            // Open the file
-            const edStore = useEditorStore.getState();
-            const existing = edStore.tabs.find((t) => t.filePath === journalPath);
-            if (existing) {
-              edStore.setActiveTab(existing.id);
-            } else {
-              useFileStore.getState().setFileContent(journalPath, fileContent);
-              edStore.openTab({
-                id: crypto.randomUUID(),
-                filePath: journalPath,
-                title: journalPath.split("/").pop() ?? "Journal",
-                isDirty: false,
-                isPinned: false,
-              });
-            }
-          } catch (err) {
-            console.error("[JournalShortcut] Failed:", err);
-          }
-        })();
         return;
       }
 
@@ -1638,274 +1773,38 @@ function App() {
         }
       }
 
-      // §56l Cmd+Shift+D — jump to Diary section in current journal
-      if (mod && e.shiftKey && e.code === "KeyD") {
-        e.preventDefault();
-        if (editor) {
-          const md = prosemirrorToMarkdown(editor.state.doc);
-          const lines = md.split("\n");
-          const diaryIdx = lines.findIndex((l) => /^## Diary/.test(l));
-          if (diaryIdx >= 0) {
-            const pos = mdLineToPmBlockStart(editor.state.doc, md, diaryIdx);
-            if (pos >= 0) {
-              editor.commands.focus();
-              editor.commands.setTextSelection(pos + 1);
-            }
-          }
-        }
-        return;
-      }
-
-      // §56l Cmd+Shift+C — jump to Captures section in current journal (no conflict: Cmd+C = copy uses no shift)
-      if (mod && e.shiftKey && e.code === "KeyC" && !e.altKey) {
-        e.preventDefault();
-        if (editor) {
-          const md = prosemirrorToMarkdown(editor.state.doc);
-          const lines = md.split("\n");
-          const capturesIdx = lines.findIndex((l) => /^## Captures/.test(l));
-          if (capturesIdx >= 0) {
-            const pos = mdLineToPmBlockStart(editor.state.doc, md, capturesIdx);
-            if (pos >= 0) {
-              editor.commands.focus();
-              editor.commands.setTextSelection(pos + 1);
-            }
-          }
-        }
-        return;
-      }
-
-      // §47 Cmd+Shift+T — open skill test dialog
-      if (mod && e.shiftKey && e.code === "KeyT") {
-        e.preventDefault();
-        useUIStore.getState().toggleSkillTestDialog();
-        return;
-      }
-
-      // §44 Cmd+Shift+A — toggle AI chat panel
-      if (mod && e.shiftKey && e.code === "KeyA") {
-        e.preventDefault();
-        useUIStore.getState().toggleRightPanel();
-        return;
-      }
-
-      // §56c Cmd+Shift+M — toggle Memories View
-      if (mod && e.shiftKey && e.code === "KeyM") {
-        e.preventDefault();
-        const ui = useUIStore.getState();
-        if (!ui.rightPanelOpen) {
-          ui.setRightPanelMode("memories");
-          ui.toggleRightPanel();
-        } else if (ui.rightPanelMode === "memories") {
-          ui.toggleRightPanel();
-        } else {
-          ui.setRightPanelMode("memories");
-        }
-        return;
-      }
-
-      // §56d Cmd+Shift+P — toggle Photo Gallery
-      if (mod && e.shiftKey && e.code === "KeyP") {
-        e.preventDefault();
-        const ui = useUIStore.getState();
-        if (ui.rightPanelMode === "photo-gallery" && ui.rightPanelOpen) {
-          ui.toggleRightPanel();
-        } else {
-          ui.setRightPanelMode("photo-gallery");
-          if (!ui.rightPanelOpen) ui.toggleRightPanel();
-        }
-        return;
-      }
-
-      // §5.6 Cmd+F — find
-      if (mod && !e.shiftKey && e.key === "f") {
-        e.preventDefault();
-        setFindReplaceMode("find");
-        setFindReplaceOpen(true);
-        return;
-      }
-
-      // §5.6 Cmd+H — find and replace
-      if (mod && !e.shiftKey && e.key === "h") {
-        e.preventDefault();
-        setFindReplaceMode("replace");
-        setFindReplaceOpen(true);
-        return;
-      }
-
-      // §6.2 Cmd+J — inline AI prompt
-      if (mod && !e.shiftKey && e.key === "j") {
-        e.preventDefault();
-        inlineAI.activate();
-        return;
-      }
-
-      // §5.5 Cmd+Enter — add row after in table
+      // §5.5 Cmd+Enter — add row after in table (context-dependent)
       if (mod && e.key === "Enter" && editor && editor.isActive("table")) {
         e.preventDefault();
         editor.chain().focus().addRowAfter().run();
         return;
       }
 
-      // §5.5 Cmd+T — insert table via grid picker (disabled inside tables)
-      if (mod && !e.shiftKey && e.key === "t" && editor && !editor.isActive("table")) {
-        e.preventDefault();
-        const { from } = editor.state.selection;
-        const coords = editor.view.coordsAtPos(from);
-        showTableGridPicker(coords.left, coords.bottom + 4).then((result) => {
-          if (!result) return;
-          editor
-            .chain()
-            .focus()
-            .insertTable({ rows: result.rows, cols: result.cols, withHeaderRow: true })
-            .run();
-        });
-        return;
-      }
+      // --- Registry-based dispatch for all other shortcuts ---
+      const isMac = navigator.platform.includes("Mac");
+      const normalized = normalizeKeyEvent(e, isMac);
+      if (!normalized) return;
 
-      // Cmd+/ — toggle source mode
-      if (mod && e.key === "/") {
-        e.preventDefault();
-        toggleSourceMode();
-        return;
-      }
-
-      // Cmd+Shift+L — toggle left sidebar
-      if (mod && e.shiftKey && e.code === "KeyL") {
-        e.preventDefault();
-        toggleSidebar();
-        return;
-      }
-
-      // §5.11 Cmd+Shift+F — open global search panel
-      if (mod && e.shiftKey && e.code === "KeyF") {
-        e.preventDefault();
-        const ui = useUIStore.getState();
-        if (!ui.sidebarOpen) ui.toggleSidebar();
-        setSidebarPanel("search");
-        return;
-      }
-
-      // §6.2 Cmd+Shift+G — toggle ghost text
-      if (mod && e.shiftKey && e.code === "KeyG") {
-        e.preventDefault();
-        const ai = useAIStore.getState();
-        ai.setGhostTextEnabled(!ai.ghostTextEnabled);
-        return;
-      }
-
-      // §29 Cmd+Shift+B — open backlinks panel
-      if (mod && e.shiftKey && e.code === "KeyB") {
-        e.preventDefault();
-        const ui = useUIStore.getState();
-        if (!ui.sidebarOpen) ui.toggleSidebar();
-        setSidebarPanel("backlinks");
-        return;
-      }
-
-      // §36 Cmd+D — bookmark current file
-      if (mod && e.key === "d") {
-        e.preventDefault();
-        const bs = useBookmarkStore.getState();
-        const es = useEditorStore.getState();
-        const fs = useFileStore.getState();
-        const activeTab = es.tabs.find((t) => t.id === es.activeTabId);
-        if (activeTab?.filePath && fs.rootPath) {
-          const fileName = activeTab.filePath.split("/").pop() ?? activeTab.filePath;
-          bs.addBookmark({
-            type: "file",
-            filePath: activeTab.filePath,
-            label: fileName,
-            group: "Default",
-          });
-          bs.saveBookmarks(fs.rootPath);
+      const overrides = useSettingsStore.getState().keybindingOverrides;
+      const command = findCommandByKey(normalized, overrides);
+      if (command) {
+        const action = getAction(command.id);
+        if (action) {
+          e.preventDefault();
+          action();
+          return;
         }
-        return;
-      }
-
-      // Cmd+K — quick switcher (file list)
-      if (mod && e.key === "k") {
-        e.preventDefault();
-        toggleQuickSwitcher();
-        return;
-      }
-
-      // Cmd+P — command palette
-      if (mod && e.key === "p") {
-        e.preventDefault();
-        toggleCommandPalette();
-        return;
-      }
-
-      // Cmd+, — settings
-      if (mod && e.key === ",") {
-        e.preventDefault();
-        toggleSettings();
-        return;
-      }
-
-      // Cmd+W — close tab
-      if (mod && e.key === "w") {
-        e.preventDefault();
-        handleCloseTab();
-        return;
-      }
-
-      // Cmd+N — new file
-      if (mod && e.key === "n") {
-        e.preventDefault();
-        handleNewFile();
-        return;
-      }
-
-      // Cmd+Shift+O — open folder
-      if (mod && e.shiftKey && e.code === "KeyO") {
-        e.preventDefault();
-        handleOpenFolder();
-        return;
-      }
-
-      // Cmd+O — open file
-      if (mod && e.key === "o") {
-        e.preventDefault();
-        handleOpenFile();
-        return;
-      }
-
-      // Cmd+Shift+S — save as
-      if (mod && e.shiftKey && e.code === "KeyS") {
-        e.preventDefault();
-        handleSaveAs();
-        return;
-      }
-
-      // Cmd+S — save
-      if (mod && e.key === "s") {
-        e.preventDefault();
-        handleSave();
-        return;
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
-    toggleSourceMode,
-    toggleSidebar,
-    toggleCommandPalette,
-    toggleQuickSwitcher,
-    toggleSettings,
-    setSidebarPanel,
-    handleNewFile,
-    handleOpenFile,
-    handleSave,
-    handleSaveAs,
-    handleCloseTab,
     handleGoBack,
     handleGoForward,
-    inlineAI,
     editor,
-    isSourceMode,
     tabSwitcherOpen,
+    isSourceMode,
     findReplaceOpen,
   ]);
 
