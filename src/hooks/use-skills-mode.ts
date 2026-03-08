@@ -5,12 +5,9 @@ import { useFileStore } from "../stores/file-store";
 import { useUIStore } from "../stores/ui-store";
 import { useSkillStore } from "../stores/skill-store";
 
-/** Check if YAML frontmatter has both name and description (skill file convention) */
-export function isSkillFrontmatter(yaml: string): boolean {
-  const hasName = /^name\s*:/m.test(yaml);
-  const hasDescription = /^description\s*:/m.test(yaml);
-  return hasName && hasDescription;
-}
+import { isSkillFrontmatter } from "../utils/skill-frontmatter";
+// Re-export for backward compatibility
+export { isSkillFrontmatter };
 
 /** Auto-detect skill files and switch right panel to "properties" mode */
 export function useSkillsMode() {
@@ -32,6 +29,8 @@ export function useSkillsMode() {
   useEffect(() => {
     if (filePath) {
       useSkillStore.getState().updateCurrentFile(yaml, filePath);
+    } else {
+      useSkillStore.setState({ isSkill: false, currentSkill: null });
     }
   }, [yaml, filePath]);
 

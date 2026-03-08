@@ -6,7 +6,7 @@ import {
   parseSkillFrontmatter,
   analyzeSkillDependencies,
 } from "../utils/skill-dependency-analyzer";
-import { isSkillFrontmatter } from "../hooks/use-skills-mode";
+import { isSkillFrontmatter } from "../utils/skill-frontmatter";
 import type { FileEntry } from "./file-store";
 import { useFileStore } from "./file-store";
 
@@ -33,7 +33,7 @@ function collectMdFiles(entries: FileEntry[]): FileEntry[] {
   return result;
 }
 
-export const useSkillStore = create<SkillState>()((set, _get) => ({
+export const useSkillStore = create<SkillState>()((set, get) => ({
   isSkill: false,
   currentSkill: null,
   allSkills: [],
@@ -82,6 +82,7 @@ export const useSkillStore = create<SkillState>()((set, _get) => ({
   },
 
   setLintResults: (results: LintResult[]) => {
+    if (results.length === 0 && get().lintResults.length === 0) return;
     set({ lintResults: results });
   },
 }));
