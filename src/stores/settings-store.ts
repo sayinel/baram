@@ -148,6 +148,12 @@ interface SettingsState {
   setTagColor: (tag: string, color: string) => void;
   removeTagColor: (tag: string) => void;
 
+  // Keybinding overrides
+  keybindingOverrides: Record<string, string>;
+  setKeybindingOverride: (id: string, key: string) => void;
+  removeKeybindingOverride: (id: string) => void;
+  resetAllKeybindings: () => void;
+
   // General setters
   setOnLaunch: (onLaunch: OnLaunch) => void;
   setAutoSave: (enabled: boolean) => void;
@@ -335,6 +341,17 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
     return { tagColors: rest };
   }),
 
+  // Keybinding overrides
+  keybindingOverrides: {},
+  setKeybindingOverride: (id, key) =>
+    set((s) => ({ keybindingOverrides: { ...s.keybindingOverrides, [id]: key } })),
+  removeKeybindingOverride: (id) =>
+    set((s) => {
+      const { [id]: _, ...rest } = s.keybindingOverrides;
+      return { keybindingOverrides: rest };
+    }),
+  resetAllKeybindings: () => set({ keybindingOverrides: {} }),
+
   // General setters
   setOnLaunch: (onLaunch) => set({ onLaunch }),
   setAutoSave: (autoSave) => set({ autoSave }),
@@ -521,8 +538,9 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
     snapshotMaxCount: state.snapshotMaxCount,
     activityBarConfig: state.activityBarConfig,
     locale: state.locale,
+    keybindingOverrides: state.keybindingOverrides,
   }),
-  version: 7,
+  version: 8,
   migrate: (persisted: unknown, version: number) => {
     const state = persisted as Record<string, unknown>;
 
@@ -599,6 +617,11 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
         else state.activeThemeId = "system";
       }
       if (!state.customThemes) state.customThemes = [];
+    }
+
+    // v7 → v8: Keybinding overrides
+    if (version < 8) {
+      if (!state.keybindingOverrides) state.keybindingOverrides = {};
     }
 
     return state;
