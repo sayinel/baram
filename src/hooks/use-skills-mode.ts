@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { useEditorStore } from "../stores/editor-store";
 import { useFileStore } from "../stores/file-store";
 import { useUIStore } from "../stores/ui-store";
+import { useSkillStore } from "../stores/skill-store";
 
 /** Check if YAML frontmatter has both name and description (skill file convention) */
 export function isSkillFrontmatter(yaml: string): boolean {
@@ -26,6 +27,13 @@ export function useSkillsMode() {
   const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   const yaml = fmMatch ? fmMatch[1] : "";
   const isSkill = isSkillFrontmatter(yaml);
+
+  // §72c Update skill store when frontmatter or file changes
+  useEffect(() => {
+    if (filePath) {
+      useSkillStore.getState().updateCurrentFile(yaml, filePath);
+    }
+  }, [yaml, filePath]);
 
   useEffect(() => {
     const ui = useUIStore.getState();

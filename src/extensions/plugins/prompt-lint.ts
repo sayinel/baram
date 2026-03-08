@@ -5,6 +5,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import type { Node as PmNode } from "@tiptap/pm/model";
 import { lintPrompt } from "../../utils/prompt-linter";
 import type { LintResult } from "../../utils/prompt-linter";
+import { useSkillStore } from "../../stores/skill-store";
 
 export const promptLintKey = new PluginKey("promptLint");
 
@@ -70,12 +71,18 @@ function extractDocText(doc: PmNode): { text: string; offsetMap: number[] } {
  * Build decorations and mapped lint results from the document.
  */
 function buildLintState(doc: PmNode): PromptLintState {
-  if (!isSkillsFile(doc)) return { decorations: DecorationSet.empty, results: [] };
+  if (!isSkillsFile(doc)) {
+    useSkillStore.getState().setLintResults([]);
+    return { decorations: DecorationSet.empty, results: [] };
+  }
 
   const { text, offsetMap } = extractDocText(doc);
   const rawResults = lintPrompt(text);
 
-  if (rawResults.length === 0) return { decorations: DecorationSet.empty, results: [] };
+  if (rawResults.length === 0) {
+    useSkillStore.getState().setLintResults([]);
+    return { decorations: DecorationSet.empty, results: [] };
+  }
 
   const decorations: Decoration[] = [];
   const results: PmLintResult[] = [];
@@ -102,6 +109,17 @@ function buildLintState(doc: PmNode): PromptLintState {
       pmTo: to,
     });
   }
+
+  // §72c Push lint results to skill store for shared access
+  useSkillStore.getState().setLintResults(
+    results.map((r) => ({
+      rule: r.rule,
+      message: r.message,
+      from: r.pmFrom,
+      to: r.pmTo,
+      severity: r.severity,
+    })),
+  );
 
   return {
     decorations: DecorationSet.create(doc, decorations),
