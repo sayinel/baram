@@ -254,6 +254,7 @@ export function MathBlockView({
         className="math-block math-block-preview"
         data-math-size={mathSize}
         contentEditable={false}
+        spellCheck={false}
         onClick={handlePreviewClick}
       >
         <div className="math-block-row">
@@ -270,6 +271,7 @@ export function MathBlockView({
       className="math-block math-block-editing"
       data-math-size={mathSize}
       contentEditable={false}
+      spellCheck={false}
     >
       <textarea
         ref={textareaRef}

@@ -175,6 +175,7 @@ export function BlockEmbedView({
       <NodeViewWrapper
         className="block-embed block-embed-editing"
         contentEditable={false}
+        spellCheck={false}
       >
         <div className="block-embed-header" onClick={handleHeaderClick}>
           {headerText}
@@ -196,6 +197,7 @@ export function BlockEmbedView({
   return (
     <NodeViewWrapper
       className={`block-embed ${selected ? "block-embed-selected" : ""}`}
+      spellCheck={false}
     >
       <div className="block-embed-header" onClick={handleHeaderClick}>
         {headerText}

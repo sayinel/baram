@@ -11,6 +11,14 @@ import { createVirtualScrollPlugin } from "./table-virtual-scroll";
 // §5.5 Tier 3: Table.extend() with resizable columns + pipe-input auto creation
 export const BaramTable = Table.extend({
 
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "table",
+      mergeAttributes(HTMLAttributes, { spellcheck: "false" }),
+      ["tbody", 0],
+    ];
+  },
+
   addProseMirrorPlugins() {
     return [
       ...(this.parent?.() || []),

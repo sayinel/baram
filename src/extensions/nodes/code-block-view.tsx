@@ -253,7 +253,7 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
   }, [node.textContent]);
 
   return (
-    <NodeViewWrapper className="code-block-wrapper" data-language={language} data-style={codeBlockStyle}>
+    <NodeViewWrapper className="code-block-wrapper" data-language={language} data-style={codeBlockStyle} spellCheck={false}>
       <div className="code-block-header">
         <select
           className="code-block-lang-select"

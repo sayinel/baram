@@ -401,6 +401,7 @@ export function MermaidBlockView({
         className="mermaid-block mermaid-block-preview"
         data-type="mermaidBlock"
         contentEditable={false}
+        spellCheck={false}
         onClick={handlePreviewClick}
         onContextMenu={(e: React.MouseEvent) => {
           e.preventDefault();
@@ -481,6 +482,7 @@ export function MermaidBlockView({
       className="mermaid-block mermaid-block-editing"
       data-type="mermaidBlock"
       contentEditable={false}
+      spellCheck={false}
     >
       <div className="mermaid-block-header">
         <span className="mermaid-block-label">mermaid</span>

@@ -138,7 +138,7 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
   const showTagBar = isEditable || tags.length > 0;
 
   return (
-    <NodeViewWrapper data-type="frontmatter" className="frontmatter">
+    <NodeViewWrapper data-type="frontmatter" className="frontmatter" spellCheck={false}>
       <NodeViewContent className="frontmatter-code" />
       {showTagBar && (
         <div className="fm-tag-bar" contentEditable={false}>
