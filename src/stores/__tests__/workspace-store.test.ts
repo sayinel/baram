@@ -42,7 +42,7 @@ describe("§52 Workspace Store", () => {
     const store = useWorkspaceStore.getState();
     const writing = store.getPreset("writing");
     expect(writing).toBeDefined();
-    expect(writing!.name).toBe("글쓰기");
+    expect(writing!.name).toBe("Writing");
   });
 
   // --- Apply Preset ---

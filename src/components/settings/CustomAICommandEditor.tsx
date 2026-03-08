@@ -3,8 +3,10 @@ import { useState, useCallback } from "react";
 import { useAIStore } from "../../stores/ai-store";
 import { generateCommandId } from "../../utils/custom-ai-commands";
 import type { CustomAICommand } from "../../stores/ai-store";
+import { useTranslation } from "../../i18n/useTranslation";
 
 export function CustomAICommandEditor() {
+  const { t } = useTranslation();
   const { customCommands, addCustomCommand, removeCustomCommand, updateCustomCommand } =
     useAIStore();
   const [isAdding, setIsAdding] = useState(false);
@@ -44,7 +46,7 @@ export function CustomAICommandEditor() {
     <div className="custom-ai-commands">
       {customCommands.length === 0 && !isAdding && (
         <div className="custom-ai-empty">
-          No custom AI commands yet. Add one to extend the slash menu.
+          {t("settings.ai.customCommands.empty")}
         </div>
       )}
 
@@ -65,14 +67,14 @@ export function CustomAICommandEditor() {
           <input
             type="text"
             className="settings-input"
-            placeholder="Command name (e.g. Summarize)"
+            placeholder={t("settings.ai.customCommands.namePlaceholder")}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             autoFocus
           />
           <textarea
             className="custom-ai-prompt-input"
-            placeholder={"Prompt template...\nVariables: {{selection}}, {{document}}, {{input}}, {{clipboard}}"}
+            placeholder={t("settings.ai.customCommands.promptPlaceholder")}
             value={newPrompt}
             onChange={(e) => setNewPrompt(e.target.value)}
             rows={4}
@@ -83,7 +85,7 @@ export function CustomAICommandEditor() {
               onClick={handleAdd}
               disabled={!newName.trim() || !newPrompt.trim()}
             >
-              Add Command
+              {t("settings.ai.customCommands.add")}
             </button>
             <button
               className="custom-ai-btn"
@@ -93,7 +95,7 @@ export function CustomAICommandEditor() {
                 setNewPrompt("");
               }}
             >
-              Cancel
+              {t("common.cancel")}
             </button>
           </div>
         </div>
@@ -102,7 +104,7 @@ export function CustomAICommandEditor() {
           className="custom-ai-btn custom-ai-btn-add"
           onClick={() => setIsAdding(true)}
         >
-          + Add Custom Command
+          {t("settings.ai.customCommands.addNew")}
         </button>
       )}
     </div>
@@ -124,6 +126,7 @@ function CustomCommandRow({
   onCancel: () => void;
   onDelete: () => void;
 }) {
+  const { t } = useTranslation();
   const [name, setName] = useState(command.name);
   const [prompt, setPrompt] = useState(command.prompt);
 
@@ -149,10 +152,10 @@ function CustomCommandRow({
             onClick={() => onSave(name, prompt)}
             disabled={!name.trim() || !prompt.trim()}
           >
-            Save
+            {t("common.save")}
           </button>
           <button className="custom-ai-btn" onClick={onCancel}>
-            Cancel
+            {t("common.cancel")}
           </button>
         </div>
       </div>
@@ -170,11 +173,11 @@ function CustomCommandRow({
         </span>
       </div>
       <div className="custom-ai-row-actions">
-        <button className="custom-ai-btn-icon" onClick={onEdit} title="Edit">
-          Edit
+        <button className="custom-ai-btn-icon" onClick={onEdit} title={t("settings.ai.customCommands.edit")}>
+          {t("settings.ai.customCommands.edit")}
         </button>
-        <button className="custom-ai-btn-icon custom-ai-btn-danger" onClick={onDelete} title="Delete">
-          Del
+        <button className="custom-ai-btn-icon custom-ai-btn-danger" onClick={onDelete} title={t("common.delete")}>
+          {t("settings.ai.customCommands.del")}
         </button>
       </div>
     </div>

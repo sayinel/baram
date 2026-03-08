@@ -5,12 +5,14 @@ import { useSettingsStore } from "../../stores/settings-store";
 import { writeFile } from "../../ipc/invoke";
 import { findThemeById, BUILT_IN_THEMES, THEME_COLOR_KEYS } from "../../types/theme";
 import type { ThemeColors, ThemeDef } from "../../types/theme";
+import { useTranslation } from "../../i18n/useTranslation";
 
 interface ThemeEditorProps {
   onClose: () => void;
 }
 
 export function ThemeEditor({ onClose }: ThemeEditorProps) {
+  const { t } = useTranslation();
   const { activeThemeId, customThemes, saveCustomTheme, setActiveTheme } =
     useSettingsStore();
 
@@ -113,20 +115,20 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
           className="theme-editor-name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Theme name..."
+          placeholder={t("settings.theme.namePlaceholder")}
         />
         <div className="theme-editor-base-toggle">
           <button
             className={`theme-editor-base-btn ${base === "light" ? "theme-editor-base-btn-active" : ""}`}
             onClick={() => setBase("light")}
           >
-            Light
+            {t("settings.theme.light")}
           </button>
           <button
             className={`theme-editor-base-btn ${base === "dark" ? "theme-editor-base-btn-active" : ""}`}
             onClick={() => setBase("dark")}
           >
-            Dark
+            {t("settings.theme.dark")}
           </button>
         </div>
       </div>
@@ -151,13 +153,13 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
 
       <div className="theme-editor-actions">
         <button className="theme-action-btn" onClick={handleSave}>
-          Save
+          {t("common.save")}
         </button>
         <button className="theme-action-btn" onClick={handleCancel}>
-          Cancel
+          {t("common.cancel")}
         </button>
         <button className="theme-action-btn" onClick={handleExport}>
-          Export
+          {t("settings.theme.export")}
         </button>
       </div>
     </div>

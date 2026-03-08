@@ -32,8 +32,8 @@ export interface WorkspacePreset {
 export const BUILTIN_PRESETS: WorkspacePreset[] = [
   {
     id: "writing",
-    name: "글쓰기",
-    description: "사이드바를 숨기고 에디터에 집중합니다.",
+    name: "Writing",
+    description: "Hide sidebar and focus on the editor.",
     builtIn: true,
     layout: {
       sidebarOpen: false,
@@ -44,8 +44,8 @@ export const BUILTIN_PRESETS: WorkspacePreset[] = [
   },
   {
     id: "journal",
-    name: "저널",
-    description: "캘린더와 오늘의 저널, Memories View를 함께 엽니다.",
+    name: "Journal",
+    description: "Open calendar, today's journal, and Memories view together.",
     builtIn: true,
     layout: {
       sidebarOpen: true,
@@ -56,8 +56,8 @@ export const BUILTIN_PRESETS: WorkspacePreset[] = [
   },
   {
     id: "skills",
-    name: "Skills 편집",
-    description: "LLM Skills 파일 편집에 최적화된 레이아웃입니다.",
+    name: "Skills Editing",
+    description: "Layout optimized for editing LLM Skills files.",
     builtIn: true,
     layout: {
       sidebarOpen: true,
