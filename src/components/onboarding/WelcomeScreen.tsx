@@ -1,6 +1,7 @@
 // §4.9 Welcome Screen — 첫 실행 시 에디터 영역에 표시
 import { useState } from "react";
 import { useUIStore } from "../../stores/ui-store";
+import { useTranslation } from "../../i18n/useTranslation";
 
 interface WelcomeScreenProps {
   onNewFile: () => void;
@@ -10,6 +11,7 @@ interface WelcomeScreenProps {
 
 export function WelcomeScreen({ onNewFile, onOpenFile, onOpenFolder }: WelcomeScreenProps) {
   const { dismissWelcome } = useUIStore();
+  const { t } = useTranslation();
   const [dontShowAgain, setDontShowAgain] = useState(false);
 
   const handleNewFile = () => {
@@ -30,34 +32,34 @@ export function WelcomeScreen({ onNewFile, onOpenFile, onOpenFolder }: WelcomeSc
   return (
     <div className="welcome-screen">
       <div className="welcome-card">
-        <h1 className="welcome-title">Baram에 오신 것을 환영합니다</h1>
+        <h1 className="welcome-title">{t("welcome.title")}</h1>
         <p className="welcome-tagline">
-          가볍고, 아름답고, 연결되는 마크다운 에디터
+          {t("welcome.tagline")}
         </p>
 
         <div className="welcome-actions">
           <button className="welcome-btn welcome-btn-primary" onClick={handleOpenFolder}>
-            폴더 열기
+            {t("welcome.openFolder")}
           </button>
           <button className="welcome-btn welcome-btn-secondary" onClick={handleOpenFile}>
-            파일 열기
+            {t("welcome.openFile")}
           </button>
           <button className="welcome-btn welcome-btn-secondary" onClick={handleNewFile}>
-            새 파일
+            {t("welcome.newFile")}
           </button>
         </div>
 
         <div className="welcome-tips">
-          <p className="welcome-tips-title">빠른 시작</p>
+          <p className="welcome-tips-title">{t("welcome.quickStart")}</p>
           <ul className="welcome-tips-list">
             <li>
-              <kbd>⌘</kbd> + <kbd>P</kbd> 커맨드 팔레트 열기
+              <kbd>⌘</kbd> + <kbd>P</kbd> {t("welcome.tip.commandPalette")}
             </li>
             <li>
-              <kbd>/</kbd> 슬래시 커맨드로 블록 추가
+              <kbd>/</kbd> {t("welcome.tip.slashCommand")}
             </li>
             <li>
-              <kbd>⌘</kbd> + <kbd>/</kbd> 소스 모드 전환
+              <kbd>⌘</kbd> + <kbd>/</kbd> {t("welcome.tip.sourceMode")}
             </li>
           </ul>
         </div>
@@ -68,7 +70,7 @@ export function WelcomeScreen({ onNewFile, onOpenFile, onOpenFolder }: WelcomeSc
             checked={dontShowAgain}
             onChange={(e) => setDontShowAgain(e.target.checked)}
           />
-          <span>다시 보지 않기</span>
+          <span>{t("welcome.dontShowAgain")}</span>
         </label>
       </div>
     </div>

@@ -392,5 +392,16 @@
   "about.description": "가볍고 아름다운 WYSIWYG 마크다운 에디터",
   "about.license": "라이선스",
   "about.stack": "기술 스택",
-  "about.copyright": "Copyright © 2026 Baram Team"
+  "about.copyright": "Copyright © 2026 Baram Team",
+
+  "welcome.title": "Baram에 오신 것을 환영합니다",
+  "welcome.tagline": "가볍고, 아름답고, 연결되는 마크다운 에디터",
+  "welcome.openFolder": "폴더 열기",
+  "welcome.openFile": "파일 열기",
+  "welcome.newFile": "새 파일",
+  "welcome.quickStart": "빠른 시작",
+  "welcome.tip.commandPalette": "커맨드 팔레트 열기",
+  "welcome.tip.slashCommand": "슬래시 커맨드로 블록 추가",
+  "welcome.tip.sourceMode": "소스 모드 전환",
+  "welcome.dontShowAgain": "다시 보지 않기"
 }

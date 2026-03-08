@@ -392,5 +392,16 @@
   "about.description": "Lightweight WYSIWYG Markdown Editor",
   "about.license": "License",
   "about.stack": "Stack",
-  "about.copyright": "Copyright © 2026 Baram Team"
+  "about.copyright": "Copyright © 2026 Baram Team",
+
+  "welcome.title": "Welcome to Baram",
+  "welcome.tagline": "A lightweight, beautiful, and connected \n Markdown Editor",
+  "welcome.openFolder": "Open Folder",
+  "welcome.openFile": "Open File",
+  "welcome.newFile": "New File",
+  "welcome.quickStart": "Quick Start",
+  "welcome.tip.commandPalette": "Open Command Palette",
+  "welcome.tip.slashCommand": "Add blocks with slash commands",
+  "welcome.tip.sourceMode": "Toggle source mode",
+  "welcome.dontShowAgain": "Don't show again"
 }

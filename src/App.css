@@ -5460,6 +5460,7 @@ body {
   font-size: 0.95rem;
   color: var(--color-text-secondary);
   margin: 0 0 2rem;
+  white-space: pre-line;
 }
 
 .welcome-actions {
