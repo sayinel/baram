@@ -1,6 +1,6 @@
-// Settings Modal — 8-tab settings (General, Editor, Appearance, Files, Markdown, Extensions, Workspace, AI)
+// Settings Modal — 5-tab settings (General, Editor, Appearance, Markdown, AI)
 // Obsidian-style layout: label + description per row, section headers for grouping
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useUIStore } from "../../stores/ui-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useAIStore } from "../../stores/ai-store";
@@ -8,33 +8,99 @@ import { CustomAICommandEditor } from "./CustomAICommandEditor";
 import { llmListModels } from "../../ipc/invoke";
 import { formatAIError } from "../../utils/format-error";
 import type { ModelInfo } from "../../ipc/types";
-import { ExtensionsTab } from "./ExtensionsTab";
-import { WorkspaceTab } from "./WorkspaceTab";
 import { ThemeEditor } from "./ThemeEditor";
 import { open } from "@tauri-apps/plugin-dialog";
 import { readFile } from "../../ipc/invoke";
 import { MigrationDialog } from "../journal/MigrationDialog";
 import { initJournalTemplatesDir } from "../../utils/journal-templates";
 import { BUILT_IN_THEMES } from "../../types/theme";
-import type { ThemeColors, ThemeDef } from "../../types/theme";
+import type { ThemeDef } from "../../types/theme";
 import { THEME_COLOR_KEYS } from "../../types/theme";
+import registry from "../../extensions/registry.json";
+import { useWorkspaceStore, BUILTIN_PRESETS } from "../../stores/workspace-store";
+import type { WorkspacePreset } from "../../stores/workspace-store";
 
-type SettingsTab = "general" | "editor" | "appearance" | "files" | "markdown" | "extensions" | "ai" | "workspace";
+type SettingsTab = "general" | "editor" | "appearance" | "markdown" | "ai";
 
-const TABS: { id: SettingsTab; label: string }[] = [
-  { id: "general", label: "General" },
-  { id: "editor", label: "Editor" },
-  { id: "appearance", label: "Appearance" },
-  { id: "files", label: "Files" },
-  { id: "markdown", label: "Markdown" },
-  { id: "extensions", label: "Extensions" },
-  { id: "workspace", label: "Workspace" },
-  { id: "ai", label: "AI" },
+const TABS: { id: SettingsTab; label: string; icon: string }[] = [
+  { id: "general", label: "General", icon: "\u2699" },
+  { id: "editor", label: "Editor", icon: "\u270E" },
+  { id: "appearance", label: "Appearance", icon: "\u25D1" },
+  { id: "markdown", label: "Markdown", icon: "M\u2193" },
+  { id: "ai", label: "AI", icon: "\u2726" },
+];
+
+interface SearchableSetting {
+  id: string;
+  label: string;
+  description: string;
+  category: SettingsTab;
+  section: string;
+  keywords?: string[];
+}
+
+const SETTINGS_REGISTRY: SearchableSetting[] = [
+  // General
+  { id: "onLaunch", label: "On Launch", description: "What to do when Baram starts", category: "general", section: "Startup" },
+  { id: "showWelcome", label: "Show Welcome", description: "Show the welcome screen on startup", category: "general", section: "Startup" },
+  { id: "autoSave", label: "Auto Save", description: "Automatically save changes after editing", category: "general", section: "Saving" },
+  { id: "autoSaveDelay", label: "Save Delay", description: "Wait before saving", category: "general", section: "Saving" },
+  { id: "spellCheck", label: "Spell Check", description: "Check spelling while typing", category: "general", section: "System" },
+  { id: "wikilinkFormat", label: "Internal Link Format", description: "How internal links are written in Markdown", category: "general", section: "Links", keywords: ["wikilink", "markdown", "link"] },
+  { id: "autoUpdateLinks", label: "Auto-update Links", description: "Update internal links when a file is renamed", category: "general", section: "Links" },
+  { id: "snapshotInterval", label: "Snapshot Interval", description: "Auto-snapshot interval in minutes", category: "general", section: "Snapshots", keywords: ["version", "history", "backup"] },
+  { id: "snapshotMaxCount", label: "Max Snapshots", description: "Maximum snapshots per file", category: "general", section: "Snapshots" },
+  { id: "journalEnabled", label: "Enable Journal", description: "Create daily notes in a journal folder", category: "general", section: "Journal", keywords: ["daily", "note", "diary"] },
+  // Editor
+  { id: "fontFamily", label: "Font Family", description: "Typeface used in the editor", category: "editor", section: "Font", keywords: ["typeface", "font"] },
+  { id: "fontSize", label: "Font Size", description: "Size of text in the editor", category: "editor", section: "Font" },
+  { id: "lineHeight", label: "Line Height", description: "Spacing between lines", category: "editor", section: "Font" },
+  { id: "tabSize", label: "Tab Size", description: "Spaces per tab in source mode and code blocks", category: "editor", section: "Behavior", keywords: ["indent", "space"] },
+  { id: "autoPairBrackets", label: "Auto Pair Brackets", description: "Auto-close brackets and quotes", category: "editor", section: "Behavior" },
+  { id: "lineNumbers", label: "Line Numbers", description: "Show line numbers in source mode", category: "editor", section: "Display" },
+  { id: "editorMaxWidth", label: "Editor Max Width", description: "Maximum content width", category: "editor", section: "Display" },
+  // Appearance
+  { id: "activeThemeId", label: "Theme", description: "Color theme for the editor", category: "appearance", section: "Theme", keywords: ["dark", "light", "color", "theme"] },
+  // Markdown
+  { id: "inlineMath", label: "Inline Math", description: "Enable $...$ and $$...$$ math expressions", category: "markdown", section: "Extended Syntax", keywords: ["katex", "latex", "equation"] },
+  { id: "highlight", label: "Highlight", description: "Enable ==highlight== syntax", category: "markdown", section: "Extended Syntax" },
+  { id: "strikethrough", label: "Strikethrough", description: "Enable ~~strikethrough~~ syntax", category: "markdown", section: "Extended Syntax" },
+  { id: "smartPunctuation", label: "Smart Punctuation", description: "Convert straight quotes and dashes to typographic equivalents", category: "markdown", section: "Typography" },
+  // AI
+  { id: "provider", label: "AI Provider", description: "Choose the AI service for completions", category: "ai", section: "Provider", keywords: ["claude", "openai", "ollama", "gemini"] },
+  { id: "apiKey", label: "API Key", description: "API key for AI provider", category: "ai", section: "Provider" },
+  { id: "model", label: "Model", description: "Model name or ID to use for AI requests", category: "ai", section: "Provider" },
+  { id: "ghostTextEnabled", label: "Ghost Text", description: "Show inline text completion suggestions while typing", category: "ai", section: "Ghost Text", keywords: ["autocomplete", "suggestion"] },
+  { id: "privacyMode", label: "Privacy Mode", description: "Do not send document content to AI providers", category: "ai", section: "Privacy" },
 ];
 
 export function SettingsModal() {
   const { settingsOpen, toggleSettings } = useUIStore();
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const searchResults = useMemo(() => {
+    if (!searchQuery.trim()) return null;
+    const q = searchQuery.toLowerCase();
+    return SETTINGS_REGISTRY.filter(
+      (s) =>
+        s.label.toLowerCase().includes(q) ||
+        s.description.toLowerCase().includes(q) ||
+        s.section.toLowerCase().includes(q) ||
+        (s.keywords ?? []).some((k) => k.includes(q))
+    );
+  }, [searchQuery]);
+
+  const groupedResults = useMemo(() => {
+    if (!searchResults) return null;
+    const map = new Map<SettingsTab, SearchableSetting[]>();
+    for (const r of searchResults) {
+      const list = map.get(r.category) ?? [];
+      list.push(r);
+      map.set(r.category, list);
+    }
+    return map;
+  }, [searchResults]);
 
   if (!settingsOpen) return null;
 
@@ -43,6 +109,20 @@ export function SettingsModal() {
       <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
         <div className="settings-header">
           <h2 className="settings-title">Settings</h2>
+          <div className="settings-search-wrapper">
+            <input
+              type="text"
+              className="settings-search"
+              placeholder="Search settings..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button className="settings-search-clear" onClick={() => setSearchQuery("")}>
+                {"\u00D7"}
+              </button>
+            )}
+          </div>
           <button className="settings-close" onClick={toggleSettings} title="Close">
             {"\u00D7"}
           </button>
@@ -55,19 +135,23 @@ export function SettingsModal() {
                 className={`settings-nav-item ${activeTab === tab.id ? "settings-nav-active" : ""}`}
                 onClick={() => setActiveTab(tab.id)}
               >
+                <span className="settings-nav-icon">{tab.icon}</span>
                 {tab.label}
               </button>
             ))}
           </nav>
           <div className="settings-content">
-            {activeTab === "general" && <GeneralTab />}
-            {activeTab === "editor" && <EditorTab />}
-            {activeTab === "appearance" && <AppearanceTab />}
-            {activeTab === "files" && <FilesTab />}
-            {activeTab === "markdown" && <MarkdownTab />}
-            {activeTab === "extensions" && <ExtensionsTab />}
-            {activeTab === "workspace" && <WorkspaceTab />}
-            {activeTab === "ai" && <AITab />}
+            {searchQuery.trim() ? (
+              <SettingsSearchResults grouped={groupedResults} query={searchQuery} />
+            ) : (
+              <>
+                {activeTab === "general" && <GeneralTab />}
+                {activeTab === "editor" && <EditorTab />}
+                {activeTab === "appearance" && <AppearanceTab />}
+                {activeTab === "markdown" && <MarkdownTab />}
+                {activeTab === "ai" && <AITab />}
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -86,6 +170,10 @@ function GeneralTab() {
     autoSaveDelay, setAutoSaveDelay,
     spellCheck, setSpellCheck,
     showWelcome, setShowWelcome,
+    wikilinkFormat, setWikilinkFormat,
+    autoUpdateLinks, setAutoUpdateLinks,
+    snapshotInterval, setSnapshotInterval,
+    snapshotMaxCount, setSnapshotMaxCount,
     journalEnabled, setJournalEnabled,
     journalDirectory, setJournalDirectory,
     journalFilenameFormat, setJournalFilenameFormat,
@@ -141,6 +229,49 @@ function GeneralTab() {
 
       <SettingsRow label="Spell Check" description="Check spelling while typing">
         <ToggleSwitch checked={spellCheck} onChange={setSpellCheck} />
+      </SettingsRow>
+
+      <SettingsSectionHeader title="Links" />
+
+      <SettingsRow label="Internal Link Format" description="How internal links are written in Markdown">
+        <select
+          className="settings-select"
+          value={wikilinkFormat}
+          onChange={(e) => setWikilinkFormat(e.target.value as "wikilink" | "markdown")}
+        >
+          <option value="wikilink">[[Wikilink]]</option>
+          <option value="markdown">[Markdown](link)</option>
+        </select>
+      </SettingsRow>
+
+      <SettingsRow label="Auto-update Links" description="Update internal links when a file is renamed">
+        <ToggleSwitch checked={autoUpdateLinks} onChange={setAutoUpdateLinks} />
+      </SettingsRow>
+
+      <SettingsSectionHeader title="Snapshots" />
+
+      <SettingsRow label="Snapshot Interval" description={`Auto-snapshot every ${snapshotInterval} minutes (0 = disabled)`}>
+        <input
+          type="range"
+          className="settings-range"
+          min={0}
+          max={120}
+          step={5}
+          value={snapshotInterval}
+          onChange={(e) => setSnapshotInterval(Number(e.target.value))}
+        />
+      </SettingsRow>
+
+      <SettingsRow label="Max Snapshots" description={`Keep up to ${snapshotMaxCount} snapshots per file`}>
+        <input
+          type="range"
+          className="settings-range"
+          min={5}
+          max={200}
+          step={5}
+          value={snapshotMaxCount}
+          onChange={(e) => setSnapshotMaxCount(Number(e.target.value))}
+        />
       </SettingsRow>
 
       <SettingsSectionHeader title="Journal" />
@@ -479,15 +610,6 @@ function AppearanceTab() {
 
   const allThemes = [...BUILT_IN_THEMES, ...customThemes];
 
-  /** The 5 swatch keys displayed on each card */
-  const SWATCH_KEYS: (keyof ThemeColors)[] = [
-    "--color-bg-primary",
-    "--color-text-primary",
-    "--color-accent",
-    "--color-bg-sidebar",
-    "--color-border",
-  ];
-
   const handleImport = useCallback(async () => {
     const selected = await open({
       filters: [{ name: "JSON", extensions: ["json"] }],
@@ -541,13 +663,25 @@ function AppearanceTab() {
           className={`theme-card theme-system-card ${activeThemeId === "system" ? "theme-card-active" : ""}`}
           onClick={() => setActiveTheme("system")}
         >
-          <div className="theme-card-swatches">
-            <span
-              className="theme-card-swatch"
-              style={{
-                background: "linear-gradient(135deg, #ffffff 50%, #1a1a2e 50%)",
-              }}
-            />
+          <div className="theme-preview theme-preview-split">
+            <div className="theme-preview-half" style={{ background: "#ffffff" }}>
+              <div className="theme-preview-sidebar" style={{ background: "#f5f5f5", borderRight: "1px solid #e5e5e5" }}>
+                <div className="theme-preview-sidebar-item" style={{ background: "#e0e0e0" }} />
+                <div className="theme-preview-sidebar-item" style={{ background: "#e0e0e0" }} />
+              </div>
+              <div className="theme-preview-editor" style={{ background: "#ffffff" }}>
+                <div className="theme-preview-heading" style={{ color: "#1a1a1a", fontSize: 7 }}>Aa</div>
+              </div>
+            </div>
+            <div className="theme-preview-half" style={{ background: "#1a1a2e" }}>
+              <div className="theme-preview-sidebar" style={{ background: "#16213e", borderRight: "1px solid #2a2a4a" }}>
+                <div className="theme-preview-sidebar-item" style={{ background: "#2a2a4a" }} />
+                <div className="theme-preview-sidebar-item" style={{ background: "#2a2a4a" }} />
+              </div>
+              <div className="theme-preview-editor" style={{ background: "#1a1a2e" }}>
+                <div className="theme-preview-heading" style={{ color: "#e2e8f0", fontSize: 7 }}>Aa</div>
+              </div>
+            </div>
           </div>
           <span className="theme-card-name">System (Auto)</span>
         </button>
@@ -564,16 +698,7 @@ function AppearanceTab() {
                 : undefined
             }
           >
-            <div className="theme-card-swatches">
-              {SWATCH_KEYS.map((key) => (
-                <span
-                  key={key}
-                  className="theme-card-swatch"
-                  style={{ backgroundColor: theme.colors[key] }}
-                  title={key}
-                />
-              ))}
-            </div>
+            <ThemeMiniPreview theme={theme} />
             <span className="theme-card-name">{theme.name}</span>
             {!theme.builtIn && <span className="theme-card-badge">Custom</span>}
             {!theme.builtIn && (
@@ -600,36 +725,186 @@ function AppearanceTab() {
           Import Theme...
         </button>
       </div>
+
+      <SettingsSectionHeader title="Workspace Presets" />
+      <WorkspaceSection />
     </div>
   );
 }
 
-// ─── Files Tab ──────────────────────────────────────────
+// ─── Workspace Section (merged from WorkspaceTab) ────────
 
-function FilesTab() {
-  const {
-    wikilinkFormat, setWikilinkFormat,
-    autoUpdateLinks, setAutoUpdateLinks,
-  } = useSettingsStore();
+const SIDEBAR_PANEL_LABELS: Record<string, string> = {
+  files: "Files",
+  outline: "Outline",
+  search: "Search",
+  backlinks: "Backlinks",
+  bookmarks: "Bookmarks",
+  graph: "Graph",
+  git: "Git",
+};
+
+const RIGHT_PANEL_LABELS: Record<string, string> = {
+  chat: "AI Chat",
+  help: "Help",
+  none: "None",
+};
+
+function workspaceLayoutSummary(preset: WorkspacePreset): string {
+  const parts: string[] = [];
+  if (preset.layout.sidebarOpen) {
+    parts.push(SIDEBAR_PANEL_LABELS[preset.layout.sidebarPanel] ?? preset.layout.sidebarPanel);
+  }
+  parts.push("Editor");
+  if (preset.layout.rightPanelOpen && preset.layout.rightPanelMode !== "none") {
+    parts.push(RIGHT_PANEL_LABELS[preset.layout.rightPanelMode] ?? preset.layout.rightPanelMode);
+  }
+  return parts.join(" + ");
+}
+
+function WorkspaceSection() {
+  const { activePresetId, customPresets, applyPreset, saveCustomPreset, deleteCustomPreset } =
+    useWorkspaceStore();
+
+  const [savingNew, setSavingNew] = useState(false);
+  const [newName, setNewName] = useState("");
+
+  const allPresets = [...BUILTIN_PRESETS, ...customPresets];
+
+  const handleApply = useCallback(
+    (id: string) => {
+      applyPreset(id);
+    },
+    [applyPreset],
+  );
+
+  const handleSave = useCallback(() => {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    saveCustomPreset(trimmed);
+    setNewName("");
+    setSavingNew(false);
+  }, [newName, saveCustomPreset]);
+
+  const handleSaveKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter") {
+        handleSave();
+      } else if (e.key === "Escape") {
+        setNewName("");
+        setSavingNew(false);
+      }
+    },
+    [handleSave],
+  );
 
   return (
-    <div className="settings-section">
-      <SettingsSectionHeader title="Links" />
+    <>
+      <div className="workspace-gallery">
+        {allPresets.map((preset) => (
+          <PresetCard
+            key={preset.id}
+            preset={preset}
+            isActive={activePresetId === preset.id}
+            onApply={handleApply}
+            onDelete={!preset.builtIn ? deleteCustomPreset : undefined}
+          />
+        ))}
+      </div>
 
-      <SettingsRow label="Internal Link Format" description="How internal links are written in Markdown">
-        <select
-          className="settings-select"
-          value={wikilinkFormat}
-          onChange={(e) => setWikilinkFormat(e.target.value as "wikilink" | "markdown")}
+      <div className="workspace-actions">
+        {savingNew ? (
+          <div className="workspace-save-form">
+            <input
+              type="text"
+              className="workspace-save-input"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={handleSaveKeyDown}
+              placeholder="Preset name..."
+              autoFocus
+            />
+            <button
+              className="workspace-save-confirm"
+              onClick={handleSave}
+              disabled={!newName.trim()}
+            >
+              Save
+            </button>
+            <button
+              className="workspace-save-cancel"
+              onClick={() => {
+                setNewName("");
+                setSavingNew(false);
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button className="workspace-action-btn" onClick={() => setSavingNew(true)}>
+            Save Current Layout...
+          </button>
+        )}
+      </div>
+    </>
+  );
+}
+
+function PresetCard({
+  preset,
+  isActive,
+  onApply,
+  onDelete,
+}: {
+  preset: WorkspacePreset;
+  isActive: boolean;
+  onApply: (id: string) => void;
+  onDelete?: (id: string) => void;
+}) {
+  return (
+    <div
+      className={`workspace-card ${isActive ? "workspace-card-active" : ""}`}
+      onClick={() => onApply(preset.id)}
+    >
+      {isActive && <span className="workspace-card-check" aria-label="Active">&#10003;</span>}
+      {onDelete && (
+        <button
+          className="workspace-card-delete"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(preset.id);
+          }}
+          title="Delete preset"
         >
-          <option value="wikilink">[[Wikilink]]</option>
-          <option value="markdown">[Markdown](link)</option>
-        </select>
-      </SettingsRow>
+          {"\u00D7"}
+        </button>
+      )}
 
-      <SettingsRow label="Auto-update Links" description="Update internal links when a file is renamed">
-        <ToggleSwitch checked={autoUpdateLinks} onChange={setAutoUpdateLinks} />
-      </SettingsRow>
+      <div className="workspace-card-layout">
+        <LayoutDiagram preset={preset} />
+      </div>
+
+      <span className="workspace-card-name">{preset.name}</span>
+      {preset.description && (
+        <span className="workspace-card-desc">{preset.description}</span>
+      )}
+      <span className="workspace-card-summary">{workspaceLayoutSummary(preset)}</span>
+
+      {preset.builtIn && <span className="workspace-card-badge">Built-in</span>}
+    </div>
+  );
+}
+
+function LayoutDiagram({ preset }: { preset: WorkspacePreset }) {
+  const { layout } = preset;
+  return (
+    <div className="workspace-diagram">
+      {layout.sidebarOpen && <div className="workspace-diagram-panel workspace-diagram-sidebar" />}
+      <div className="workspace-diagram-panel workspace-diagram-editor" />
+      {layout.rightPanelOpen && layout.rightPanelMode !== "none" && (
+        <div className="workspace-diagram-panel workspace-diagram-right" />
+      )}
     </div>
   );
 }
@@ -665,6 +940,16 @@ function MarkdownTab() {
       <SettingsRow label="Smart Punctuation" description="Convert straight quotes and dashes to typographic equivalents">
         <ToggleSwitch checked={smartPunctuation} onChange={setSmartPunctuation} />
       </SettingsRow>
+
+      {/* Extension Settings (merged from ExtensionsTab) */}
+      {getExtensionsWithSettings().map((ext) => (
+        <div key={ext.name}>
+          <SettingsSectionHeader title={formatExtName(ext.name)} />
+          {ext.settings.map((s) => (
+            <ExtensionSettingRow key={s.key} setting={s} />
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
@@ -1026,10 +1311,175 @@ function FontFamilyPicker({ value, onChange }: { value: string; onChange: (v: st
   );
 }
 
+// ─── Extension Settings Helpers (merged from ExtensionsTab) ──
+
+interface SettingOption { value: string; label: string; }
+interface SettingDef {
+  key: string;
+  type: "boolean" | "select" | "number" | "string";
+  label: string;
+  description: string;
+  default: unknown;
+  options?: SettingOption[];
+  min?: number; max?: number; step?: number;
+  placeholder?: string;
+}
+interface RegistryEntry { name: string; settings?: SettingDef[]; }
+
+function getExtensionsWithSettings() {
+  const allEntries: RegistryEntry[] = [
+    ...(registry.nodes as RegistryEntry[]),
+    ...(registry.marks as RegistryEntry[]),
+    ...(registry.plugins as RegistryEntry[]),
+  ];
+  return allEntries
+    .filter((e): e is RegistryEntry & { settings: SettingDef[] } =>
+      Array.isArray(e.settings) && e.settings.length > 0)
+    .map((e) => ({ name: e.name, settings: e.settings }));
+}
+
+function formatExtName(name: string): string {
+  const spaced = name.replace(/([A-Z])/g, " $1");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+function ExtensionSettingRow({ setting }: { setting: SettingDef }) {
+  const { extensionSettings, setExtensionSetting } = useSettingsStore();
+  const value = extensionSettings[setting.key] ?? setting.default;
+  switch (setting.type) {
+    case "boolean":
+      return (
+        <SettingsRow label={setting.label} description={setting.description}>
+          <ToggleSwitch checked={!!value} onChange={(v) => setExtensionSetting(setting.key, v)} />
+        </SettingsRow>
+      );
+    case "select":
+      return (
+        <SettingsRow label={setting.label} description={setting.description}>
+          <select className="settings-select" value={value as string}
+            onChange={(e) => setExtensionSetting(setting.key, e.target.value)}>
+            {(setting.options ?? []).map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </SettingsRow>
+      );
+    case "number":
+      return (
+        <SettingsRow label={setting.label} description={`${setting.description} (${value})`}>
+          <input type="range" className="settings-range"
+            min={setting.min ?? 0} max={setting.max ?? 100} step={setting.step ?? 1}
+            value={value as number}
+            onChange={(e) => setExtensionSetting(setting.key, Number(e.target.value))} />
+        </SettingsRow>
+      );
+    case "string":
+      return (
+        <SettingsRow label={setting.label} description={setting.description}>
+          <input type="text" className="settings-input" value={value as string}
+            onChange={(e) => setExtensionSetting(setting.key, e.target.value)}
+            placeholder={setting.placeholder ?? ""} />
+        </SettingsRow>
+      );
+    default:
+      return null;
+  }
+}
+
 // ─── Shared Components ──────────────────────────────────
+
+function ThemeMiniPreview({ theme }: { theme: ThemeDef }) {
+  const c = theme.colors;
+  return (
+    <div className="theme-preview" style={{ background: c["--color-bg-primary"] }}>
+      <div
+        className="theme-preview-sidebar"
+        style={{
+          background: c["--color-bg-sidebar"],
+          borderRight: `1px solid ${c["--color-border"]}`,
+        }}
+      >
+        <div className="theme-preview-sidebar-item" style={{ background: c["--color-bg-tertiary"] }} />
+        <div className="theme-preview-sidebar-item" style={{ background: c["--color-bg-tertiary"] }} />
+        <div className="theme-preview-sidebar-item" style={{ background: c["--color-bg-tertiary"] }} />
+      </div>
+      <div className="theme-preview-editor" style={{ background: c["--color-editor-bg"] }}>
+        <div className="theme-preview-heading" style={{ color: c["--color-editor-text"] }}>
+          Heading
+        </div>
+        <div className="theme-preview-text" style={{ color: c["--color-editor-text"] }}>
+          Some <span style={{ color: c["--color-accent"], fontWeight: 600 }}>bold</span> text
+        </div>
+        <div
+          className="theme-preview-quote"
+          style={{
+            borderLeft: `2px solid ${c["--color-accent"]}`,
+            color: c["--color-text-secondary"],
+            paddingLeft: 6,
+          }}
+        >
+          blockquote
+        </div>
+        <div
+          className="theme-preview-code"
+          style={{
+            background: c["--color-bg-tertiary"],
+            color: c["--color-editor-text"],
+          }}
+        >
+          code
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function SettingsSectionHeader({ title }: { title: string }) {
   return <div className="settings-section-header">{title}</div>;
+}
+
+function SettingsSearchResults({
+  grouped,
+  query,
+}: {
+  grouped: Map<SettingsTab, SearchableSetting[]> | null;
+  query: string;
+}) {
+  if (!grouped || grouped.size === 0) {
+    return (
+      <div className="settings-search-empty">
+        No settings found for &ldquo;{query}&rdquo;
+      </div>
+    );
+  }
+
+  const TAB_LABELS: Record<SettingsTab, string> = {
+    general: "General",
+    editor: "Editor",
+    appearance: "Appearance",
+    markdown: "Markdown",
+    ai: "AI",
+  };
+
+  return (
+    <div className="settings-section">
+      {Array.from(grouped.entries()).map(([category, items]) => (
+        <div key={category}>
+          <SettingsSectionHeader title={TAB_LABELS[category]} />
+          {items.map((item) => (
+            <div key={item.id} className="settings-search-result">
+              <div className="settings-row-info">
+                <span className="settings-row-label">{item.label}</span>
+                <span className="settings-row-description">
+                  {item.section} &middot; {item.description}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function SettingsRow({

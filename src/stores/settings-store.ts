@@ -101,6 +101,8 @@ interface SettingsState {
   // Snapshots (§71)
   snapshotInterval: number;  // minutes, 0 = disabled
   snapshotMaxCount: number;
+  setSnapshotInterval: (minutes: number) => void;
+  setSnapshotMaxCount: (count: number) => void;
 
   // Extension settings (dynamic key-value)
   extensionSettings: Record<string, unknown>;
@@ -273,6 +275,8 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
   // Snapshots (§71)
   snapshotInterval: 30,
   snapshotMaxCount: 50,
+  setSnapshotInterval: (snapshotInterval) => set({ snapshotInterval }),
+  setSnapshotMaxCount: (snapshotMaxCount) => set({ snapshotMaxCount }),
 
   // Extension settings (dynamic key-value)
   extensionSettings: {},

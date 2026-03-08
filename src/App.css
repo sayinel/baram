@@ -6585,8 +6585,8 @@ body {
 }
 
 .settings-modal {
-  width: 640px;
-  max-height: 80vh;
+  width: 720px;
+  max-height: 85vh;
   background-color: var(--color-bg-primary);
   border: 1px solid var(--color-border);
   border-radius: 10px;
@@ -6672,6 +6672,14 @@ body {
   box-shadow: inset 2px 0 0 var(--color-accent);
 }
 
+.settings-nav-icon {
+  display: inline-block;
+  width: 20px;
+  text-align: center;
+  margin-right: 6px;
+  font-size: 0.8rem;
+}
+
 /* Content area */
 .settings-content {
   flex: 1;
@@ -6701,6 +6709,69 @@ body {
 .settings-section-header:first-child {
   padding-top: 12px;
   margin-top: 0;
+}
+
+/* Settings search */
+.settings-search-wrapper {
+  flex: 1;
+  max-width: 240px;
+  margin: 0 16px;
+  position: relative;
+}
+
+.settings-search {
+  width: 100%;
+  padding: 5px 28px 5px 10px;
+  font-size: 0.8rem;
+  font-family: var(--font-sans);
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  outline: none;
+}
+
+.settings-search:focus {
+  border-color: var(--color-accent);
+}
+
+.settings-search::placeholder {
+  color: var(--color-text-muted);
+}
+
+.settings-search-clear {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-search-clear:hover {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+}
+
+.settings-search-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.settings-search-result {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border-light);
 }
 
 /* Setting row — Obsidian-style: label + description left, control right */
@@ -6854,8 +6925,8 @@ body {
 /* Theme Gallery */
 .theme-gallery {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
   margin-bottom: 16px;
 }
 
@@ -6951,6 +7022,74 @@ body {
 .theme-card-delete:hover {
   background: #e74c3c;
   color: white;
+}
+
+/* Theme mini preview */
+.theme-preview {
+  width: 100%;
+  height: 80px;
+  border-radius: 4px;
+  display: flex;
+  overflow: hidden;
+  border: 1px solid rgba(128, 128, 128, 0.2);
+}
+
+.theme-preview-split {
+  display: flex;
+}
+
+.theme-preview-half {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.theme-preview-sidebar {
+  width: 28%;
+  padding: 6px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.theme-preview-sidebar-item {
+  height: 4px;
+  border-radius: 2px;
+  width: 80%;
+}
+
+.theme-preview-editor {
+  flex: 1;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+}
+
+.theme-preview-heading {
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.theme-preview-text {
+  font-size: 6px;
+  line-height: 1.3;
+}
+
+.theme-preview-quote {
+  font-size: 5.5px;
+  line-height: 1.3;
+  font-style: italic;
+}
+
+.theme-preview-code {
+  font-size: 5.5px;
+  padding: 2px 4px;
+  border-radius: 2px;
+  font-family: monospace;
+  width: fit-content;
 }
 
 /* Theme Actions */
@@ -11584,6 +11723,14 @@ body {
 }
 
 /* Snapshot states */
+
+.snapshot-restore-message {
+  padding: 0.4em 0.75em;
+  font-size: 0.75rem;
+  color: #22c55e;
+  background: rgba(34, 197, 94, 0.08);
+  text-align: center;
+}
 
 .snapshot-error {
   padding: 0.4em 0.75em;
