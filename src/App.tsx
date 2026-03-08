@@ -677,6 +677,18 @@ function App() {
     editor.view.updateState(newState);
   }, [contentRefreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // §72c Navigate to ProseMirror position from lint results / external panels
+  useEffect(() => {
+    const handler = (e: CustomEvent<{ from: number }>) => {
+      if (!editor) return;
+      editor.commands.setTextSelection(e.detail.from);
+      editor.commands.scrollIntoView();
+      editor.commands.focus();
+    };
+    window.addEventListener("baram:goto-position", handler as any);
+    return () => window.removeEventListener("baram:goto-position", handler as any);
+  }, [editor]);
+
   // --- Window title update ---
   useEffect(() => {
     const tab = tabs.find((t) => t.id === activeTabId);

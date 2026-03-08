@@ -12014,3 +12014,66 @@ body {
   color: var(--color-danger);
   margin-left: auto;
 }
+
+/* ─── Skill Lint Section ──────────────────────────────────────── */
+.skill-lint-section {
+  border-top: 1px solid var(--border);
+  padding: 8px 12px;
+}
+.skill-lint-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  padding: 4px 0;
+}
+.skill-lint-header:hover {
+  color: var(--text-primary);
+}
+.skill-lint-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 600;
+  color: white;
+}
+.skill-lint-badge--error {
+  background: var(--red, #e53e3e);
+}
+.skill-lint-badge--warning {
+  background: var(--yellow, #d69e2e);
+}
+.skill-lint-items {
+  margin-top: 4px;
+}
+.skill-lint-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+}
+.skill-lint-item:hover {
+  background: var(--hover);
+}
+.skill-lint-rule {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.skill-lint-message {
+  color: var(--text-primary);
+}

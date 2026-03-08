@@ -6,8 +6,9 @@ import { useFileStore } from "../../stores/file-store";
 import type { FileEntry } from "../../stores/file-store";
 import { isSkillFrontmatter } from "../../utils/skill-frontmatter";
 import { getSkillSections } from "./skill-panel-registry";
-// §72c Side-effect import: SkillDependencySection self-registers into the registry
+// §72c Side-effect imports: sections self-register into the registry
 import "./SkillDependencySection";
+import "./SkillLintSection";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
