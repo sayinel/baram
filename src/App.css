@@ -11823,7 +11823,7 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 14px;
   width: 16px;
   flex-shrink: 0;
   transition: transform 0.15s ease;
@@ -11832,7 +11832,7 @@ body {
 
 /* §72b Skill Dependency Section */
 .dep-section {
-  border-top: 1px solid var(--color-border, var(--border));
+  border-top: 2px solid var(--color-border, var(--border));
   padding: 8px 12px;
 }
 .dep-section-header {
@@ -12027,7 +12027,7 @@ body {
 
 /* ─── Skill Lint Section ──────────────────────────────────────── */
 .skill-lint-section {
-  border-top: 1px solid var(--border);
+  border-top: 2px solid var(--border);
   padding: 8px 12px;
 }
 .skill-lint-header {
@@ -12138,7 +12138,7 @@ body {
 
 /* ─── Skill Live Preview ──────────────────────────────────────── */
 .skill-live-preview {
-  border-top: 1px solid var(--border);
+  border-top: 2px solid var(--border);
   padding: 8px 12px;
 }
 .skill-live-preview .slp-header {
@@ -12322,7 +12322,7 @@ body {
 
 /* ─── Skill Optimize Section ──────────────────────────────────── */
 .skill-optimize {
-  border-top: 1px solid var(--border);
+  border-top: 2px solid var(--border);
   padding: 8px 12px;
 }
 .skill-optimize-header-btn {
