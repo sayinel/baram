@@ -1626,27 +1626,165 @@ function SettingsSearchResults({
         <div key={category}>
           <SettingsSectionHeader title={t(`settings.tab.${category}`)} />
           {items.map((item) => (
-            <div
-              key={item.id}
-              className="settings-search-result"
-              onClick={() => onNavigate(category)}
-              style={{ cursor: "pointer" }}
-            >
+            <div key={item.id} className="settings-search-result-row">
               <div className="settings-row-info">
                 <span className="settings-row-label">{item.label}</span>
                 <span className="settings-row-description">
                   {item.section} &middot; {item.description}
                 </span>
               </div>
+              <div className="settings-row-control">
+                <SearchSettingControl id={item.id} onNavigate={() => onNavigate(category)} />
+              </div>
             </div>
           ))}
         </div>
       ))}
-      <div className="settings-search-navigate-hint">
-        {t("settings.search.navigateHint")}
-      </div>
     </div>
   );
+}
+
+/** Renders the actual control for a setting in search results. */
+function SearchSettingControl({ id, onNavigate }: { id: string; onNavigate: () => void }) {
+  const settings = useSettingsStore();
+  const ai = useAIStore();
+
+  switch (id) {
+    // ── General toggles ──
+    case "autoSave":
+      return <ToggleSwitch checked={settings.autoSave} onChange={settings.setAutoSave} />;
+    case "showWelcome":
+      return <ToggleSwitch checked={settings.showWelcome} onChange={settings.setShowWelcome} />;
+    case "spellCheck":
+      return <ToggleSwitch checked={settings.spellCheck} onChange={settings.setSpellCheck} />;
+    case "autoUpdateLinks":
+      return <ToggleSwitch checked={settings.autoUpdateLinks} onChange={settings.setAutoUpdateLinks} />;
+    case "journalEnabled":
+      return <ToggleSwitch checked={settings.journalEnabled} onChange={settings.setJournalEnabled} />;
+
+    // ── General selects ──
+    case "onLaunch":
+      return (
+        <select className="settings-select" value={settings.onLaunch}
+          onChange={(e) => settings.setOnLaunch(e.target.value as "newFile" | "restoreLastFolder" | "restoreLastFile")}>
+          <option value="restoreLastFolder">Restore last folder</option>
+          <option value="restoreLastFile">Restore last file</option>
+          <option value="newFile">New file</option>
+        </select>
+      );
+    case "wikilinkFormat":
+      return (
+        <select className="settings-select" value={settings.wikilinkFormat}
+          onChange={(e) => settings.setWikilinkFormat(e.target.value as "wikilink" | "markdown")}>
+          <option value="wikilink">{"[[Wikilink]]"}</option>
+          <option value="markdown">[Markdown](link)</option>
+        </select>
+      );
+
+    // ── General ranges ──
+    case "autoSaveDelay":
+      return (
+        <input type="range" className="settings-range" min={500} max={10000} step={500}
+          value={settings.autoSaveDelay} onChange={(e) => settings.setAutoSaveDelay(Number(e.target.value))} />
+      );
+    case "snapshotInterval":
+      return (
+        <input type="range" className="settings-range" min={0} max={120} step={5}
+          value={settings.snapshotInterval} onChange={(e) => settings.setSnapshotInterval(Number(e.target.value))} />
+      );
+    case "snapshotMaxCount":
+      return (
+        <input type="range" className="settings-range" min={5} max={200} step={5}
+          value={settings.snapshotMaxCount} onChange={(e) => settings.setSnapshotMaxCount(Number(e.target.value))} />
+      );
+
+    // ── Editor ranges ──
+    case "fontSize":
+      return (
+        <input type="range" className="settings-range" min={8} max={32} step={1}
+          value={settings.fontSize} onChange={(e) => settings.setFontSize(Number(e.target.value))} />
+      );
+    case "lineHeight":
+      return (
+        <input type="range" className="settings-range" min={1.0} max={3.0} step={0.05}
+          value={settings.lineHeight} onChange={(e) => settings.setLineHeight(Number(e.target.value))} />
+      );
+    case "editorMaxWidth":
+      return (
+        <input type="range" className="settings-range" min={0} max={2048} step={50}
+          value={settings.editorMaxWidth} onChange={(e) => settings.setEditorMaxWidth(Number(e.target.value))} />
+      );
+
+    // ── Editor toggles ──
+    case "lineNumbers":
+      return <ToggleSwitch checked={settings.lineNumbers} onChange={settings.setLineNumbers} />;
+    case "autoPairBrackets":
+      return <ToggleSwitch checked={settings.autoPairBrackets} onChange={settings.setAutoPairBrackets} />;
+
+    // ── Editor selects ──
+    case "tabSize":
+      return (
+        <select className="settings-select" value={settings.tabSize}
+          onChange={(e) => settings.setTabSize(Number(e.target.value))}>
+          <option value={2}>2 spaces</option>
+          <option value={4}>4 spaces</option>
+        </select>
+      );
+
+    // ── Markdown toggles ──
+    case "inlineMath":
+      return <ToggleSwitch checked={settings.inlineMath} onChange={settings.setInlineMath} />;
+    case "highlight":
+      return <ToggleSwitch checked={settings.highlight} onChange={settings.setHighlight} />;
+    case "strikethrough":
+      return <ToggleSwitch checked={settings.strikethrough} onChange={settings.setStrikethrough} />;
+    case "smartPunctuation":
+      return <ToggleSwitch checked={settings.smartPunctuation} onChange={settings.setSmartPunctuation} />;
+
+    // ── AI toggles ──
+    case "ghostTextEnabled":
+      return <ToggleSwitch checked={ai.ghostTextEnabled} onChange={ai.setGhostTextEnabled} />;
+    case "privacyMode":
+      return <ToggleSwitch checked={ai.privacyMode} onChange={ai.setPrivacyMode} />;
+
+    // ── AI selects ──
+    case "provider":
+      return (
+        <select className="settings-select" value={ai.provider}
+          onChange={(e) => ai.setProvider(e.target.value as "claude" | "openai" | "ollama" | "gemini")}>
+          <option value="claude">Claude</option>
+          <option value="openai">OpenAI</option>
+          <option value="gemini">Google Gemini</option>
+          <option value="ollama">Ollama (Local)</option>
+        </select>
+      );
+
+    // ── Language ──
+    case "locale":
+      return (
+        <select className="settings-select" value={settings.locale}
+          onChange={(e) => settings.setLocale(e.target.value)}>
+          {AVAILABLE_LOCALES.map((loc) => (
+            <option key={loc} value={loc}>{LOCALE_LABELS[loc]}</option>
+          ))}
+        </select>
+      );
+
+    // ── Complex settings: navigate to tab ──
+    case "fontFamily":
+    case "activeThemeId":
+    case "activityBarConfig":
+    case "apiKey":
+    case "model":
+      return (
+        <button className="theme-action-btn" onClick={onNavigate}>
+          Open...
+        </button>
+      );
+
+    default:
+      return null;
+  }
 }
 
 function SettingsRow({
