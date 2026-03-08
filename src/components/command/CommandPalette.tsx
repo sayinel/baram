@@ -219,6 +219,17 @@ function buildCommands(
       shortcut: "",
       action: () => onSkillPreview(),
     },
+    {
+      id: "skill:gallery",
+      label: "Skills: Open Gallery",
+      category: "Skills",
+      action: () => {
+        useUIStore.getState().setSidebarPanel("skills-gallery");
+        if (!useUIStore.getState().sidebarOpen) {
+          useUIStore.getState().toggleSidebar();
+        }
+      },
+    },
     // §57b Git commands
     {
       id: "git:commit",

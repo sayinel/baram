@@ -12185,3 +12185,121 @@ body {
   color: var(--blue, #4299e1);
   font-weight: 600;
 }
+
+/* ─── Skill Gallery ───────────────────────────────────────────── */
+.skill-gallery {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+.skill-gallery-toolbar {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.skill-gallery-search {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 12px;
+  outline: none;
+}
+.skill-gallery-search:focus {
+  border-color: var(--blue, #4299e1);
+}
+.skill-gallery-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.skill-gallery-tag {
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+.skill-gallery-tag--active {
+  background: var(--blue, #4299e1);
+  color: white;
+  border-color: var(--blue, #4299e1);
+}
+.skill-gallery-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+.skill-gallery-card {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 6px;
+  transition: background 0.15s;
+}
+.skill-gallery-card:hover {
+  background: var(--hover);
+}
+.skill-gallery-card-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+.skill-gallery-card-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.skill-gallery-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.skill-gallery-chip {
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+.skill-gallery-badge {
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--blue, #4299e1);
+  color: white;
+}
+.skill-gallery-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.skill-gallery-scan-btn {
+  margin-top: 8px;
+  padding: 6px 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 12px;
+}
+.skill-gallery-scan-btn:hover {
+  background: var(--hover);
+}
