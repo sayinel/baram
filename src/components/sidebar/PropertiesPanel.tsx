@@ -4,6 +4,8 @@ import { useUIStore } from "../../stores/ui-store";
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import type { FileEntry } from "../../stores/file-store";
+import { SkillDependencySection } from "./SkillDependencySection";
+import { isSkillFrontmatter } from "../../hooks/use-skills-mode";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -378,6 +380,11 @@ export function PropertiesPanel() {
           </div>
 
           <AddPropertyButton onAdd={handleAddProperty} />
+
+          {/* §72b Skill Dependency Analysis */}
+          {yaml !== null && isSkillFrontmatter(yaml) && filePath && (
+            <SkillDependencySection yaml={yaml} filePath={filePath} />
+          )}
         </>
       )}
     </div>

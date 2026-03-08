@@ -215,7 +215,69 @@ function checkConflictingInstructions(text: string): LintResult[] {
 }
 
 /**
- * Run all 6 lint rules on a Skill prompt.
+ * Rule: emptyRequires
+ * requires array contains empty or whitespace-only entries.
+ */
+function checkEmptyRequires(text: string): LintResult[] {
+  const { frontmatter } = parseFrontmatter(text);
+  if (!frontmatter) return [];
+
+  const requiresMatch = frontmatter.match(/^requires\s*:\s*\[([^\]]*)\]/m);
+  if (!requiresMatch) return [];
+
+  const items = requiresMatch[1].split(",").map((s) => s.trim());
+  const hasEmpty = items.some((item) => item === "" || item === '""' || item === "''");
+
+  if (hasEmpty) {
+    const reqIdx = text.indexOf(requiresMatch[0]);
+    return [{
+      rule: "emptyRequires",
+      message: "requires array contains empty entries",
+      from: reqIdx >= 0 ? reqIdx : 0,
+      to: reqIdx >= 0 ? reqIdx + requiresMatch[0].length : 3,
+      severity: "warning",
+    }];
+  }
+  return [];
+}
+
+/**
+ * Rule: duplicateRequires
+ * requires array contains duplicate entries.
+ */
+function checkDuplicateRequires(text: string): LintResult[] {
+  const { frontmatter } = parseFrontmatter(text);
+  if (!frontmatter) return [];
+
+  const requiresMatch = frontmatter.match(/^requires\s*:\s*\[([^\]]*)\]/m);
+  if (!requiresMatch) return [];
+
+  const items = requiresMatch[1].split(",").map((s) => s.trim()).filter(Boolean);
+  const seen = new Set<string>();
+  const duplicates: string[] = [];
+
+  for (const item of items) {
+    if (seen.has(item)) {
+      duplicates.push(item);
+    }
+    seen.add(item);
+  }
+
+  if (duplicates.length > 0) {
+    const reqIdx = text.indexOf(requiresMatch[0]);
+    return [{
+      rule: "duplicateRequires",
+      message: `Duplicate requires: ${duplicates.join(", ")}`,
+      from: reqIdx >= 0 ? reqIdx : 0,
+      to: reqIdx >= 0 ? reqIdx + requiresMatch[0].length : 3,
+      severity: "warning",
+    }];
+  }
+  return [];
+}
+
+/**
+ * Run all 8 lint rules on a Skill prompt.
  */
 export function lintPrompt(text: string): LintResult[] {
   return [
@@ -225,6 +287,8 @@ export function lintPrompt(text: string): LintResult[] {
     ...checkExcessiveLength(text),
     ...checkUnusedVariable(text),
     ...checkConflictingInstructions(text),
+    ...checkEmptyRequires(text),
+    ...checkDuplicateRequires(text),
   ];
 }
 
@@ -236,4 +300,6 @@ export const rules = {
   checkExcessiveLength,
   checkUnusedVariable,
   checkConflictingInstructions,
+  checkEmptyRequires,
+  checkDuplicateRequires,
 };
