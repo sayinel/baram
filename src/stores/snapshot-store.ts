@@ -8,7 +8,10 @@ import {
   restoreSnapshot,
   deleteSnapshot,
   getFileHistory,
+  readFile,
 } from "../ipc/invoke";
+import { useFileStore } from "./file-store";
+import { useEditorStore } from "./editor-store";
 
 interface SnapshotState {
   // List
@@ -30,6 +33,7 @@ interface SnapshotState {
 
   // Restore
   restoring: boolean;
+  restoreMessage: string | null;
 
   // Creating
   creating: boolean;
@@ -60,6 +64,7 @@ export const useSnapshotStore = create<SnapshotState>((set, get) => ({
   fileHistoryPath: null,
   fileHistory: [],
   restoring: false,
+  restoreMessage: null,
   creating: false,
 
   loadSnapshots: async (vaultPath) => {
@@ -73,7 +78,7 @@ export const useSnapshotStore = create<SnapshotState>((set, get) => ({
   },
 
   selectSnapshot: (id) => {
-    set({ selectedSnapshotId: id, selectedFiles: [], activeDiff: null });
+    set({ selectedSnapshotId: id, selectedFiles: [], activeDiff: null, restoreMessage: null });
   },
 
   toggleFileSelection: (filePath) => {
@@ -108,12 +113,44 @@ export const useSnapshotStore = create<SnapshotState>((set, get) => ({
   closeDiff: () => set({ activeDiff: null }),
 
   performRestore: async (vaultPath, snapshotId, files) => {
-    set({ restoring: true, error: null });
+    set({ restoring: true, error: null, restoreMessage: null });
     try {
       await restoreSnapshot(vaultPath, snapshotId, files);
+
+      // §71 Re-read restored files that are currently open in the editor
+      const restoredPaths = files ?? get().snapshots
+        .find((s) => s.id === snapshotId)?.files.map((f) => f.path) ?? [];
+      const { openFiles } = useFileStore.getState();
+      const { tabs, markDirty } = useEditorStore.getState();
+
+      let reloadedCount = 0;
+      for (const relPath of restoredPaths) {
+        const fullPath = vaultPath + "/" + relPath;
+        if (openFiles.has(fullPath)) {
+          try {
+            const content = await readFile(fullPath);
+            useFileStore.getState().setFileContent(fullPath, content);
+            // Clear dirty flag so auto-save doesn't overwrite the restored file
+            const tab = tabs.find((t) => t.filePath === fullPath);
+            if (tab) markDirty(tab.id, false);
+            reloadedCount++;
+          } catch {
+            // file may have been deleted in snapshot; ignore
+          }
+        }
+      }
+
+      // Signal editor to re-render with updated content
+      if (reloadedCount > 0) {
+        useEditorStore.getState().requestContentRefresh();
+      }
+
       // Reload snapshots after restore (a new auto-snapshot was created)
       await get().loadSnapshots(vaultPath);
-      set({ restoring: false, selectedSnapshotId: null, selectedFiles: [] });
+
+      const fileCount = restoredPaths.length;
+      const msg = `Restored ${fileCount} file${fileCount !== 1 ? "s" : ""}`;
+      set({ restoring: false, selectedFiles: [], restoreMessage: msg });
     } catch (e) {
       set({ restoring: false, error: String(e) });
     }

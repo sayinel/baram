@@ -77,7 +77,7 @@ function DiffView({ diff, filePath, onClose }: {
           <span className="diff-deletions">-{diff.stats.deletions}</span>
         </span>
         <button className="snapshot-action-btn" onClick={onClose} title="Close diff">
-          \u2715
+          {"\u2715"}
         </button>
       </div>
       <div className="snapshot-diff-content">
@@ -116,6 +116,8 @@ function SnapshotDetail({ vaultPath, onBack }: {
     activeDiff,
     diffLoading,
     restoring,
+    restoreMessage,
+    error,
     toggleFileSelection,
     selectAllFiles,
     deselectAllFiles,
@@ -199,6 +201,14 @@ function SnapshotDetail({ vaultPath, onBack }: {
       {diffLoading && <div className="snapshot-loading">Loading diff...</div>}
       {activeDiff && !diffLoading && (
         <DiffView diff={activeDiff.diff} filePath={activeDiff.filePath} onClose={closeDiff} />
+      )}
+
+      {/* Restore feedback */}
+      {restoreMessage && (
+        <div className="snapshot-restore-message">{restoreMessage}</div>
+      )}
+      {error && (
+        <div className="snapshot-error">{error}</div>
       )}
 
       {/* Restore buttons */}
