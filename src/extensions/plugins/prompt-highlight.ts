@@ -9,11 +9,11 @@ export const promptHighlightKey = new PluginKey("promptHighlight");
 
 // Detect if current document is a Skills file
 function isSkillsFile(doc: PmNode): boolean {
-  // Check first node for frontmatter with type: skill
+  // Check first node for frontmatter with name + description
   const firstChild = doc.firstChild;
   if (firstChild?.type.name === "frontmatter") {
     const yaml = (firstChild.attrs?.yaml as string) || firstChild.textContent || "";
-    if (/type\s*:\s*skill/i.test(yaml)) return true;
+    if (/^name\s*:/m.test(yaml) && /^description\s*:/m.test(yaml)) return true;
   }
   return false;
 }

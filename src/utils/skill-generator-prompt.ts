@@ -22,7 +22,7 @@ export function buildSkillGenPrompts(options: SkillGenOptions): {
 A Skill file is a markdown document with YAML frontmatter and XML-tagged prompt blocks.
 
 Structure:
-1. YAML frontmatter with: name, type: skill, description, and optionally output_format
+1. YAML frontmatter with: name, description, and optionally output_format
 2. <system> block with the system prompt
 3. <user> block with the user prompt, using template variables
 

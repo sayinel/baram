@@ -14,7 +14,6 @@ export const SKILL_TEMPLATES: SkillTemplate[] = [
     description: "Simple prompt template with input/output",
     content: `---
 name: my-prompt
-type: skill
 description: A simple prompt skill
 ---
 
@@ -33,7 +32,6 @@ You are a helpful assistant.
     description: "Multi-step prompt chain with intermediate processing",
     content: `---
 name: my-chain
-type: skill
 description: A multi-step chain skill
 steps: 2
 ---
@@ -66,7 +64,6 @@ Generate a detailed response.
     description: "Content analysis with structured output format",
     content: `---
 name: my-analyzer
-type: skill
 description: Analyzes content and produces structured output
 output_format: json
 ---
@@ -96,7 +93,6 @@ Analyze this content:
     description: "Content generation from specifications",
     content: `---
 name: my-generator
-type: skill
 description: Generates content based on specifications
 ---
 
@@ -120,7 +116,6 @@ Generate the following:
     description: "Transform selected text according to rules",
     content: `---
 name: my-transformer
-type: skill
 description: Transforms selected text
 ---
 

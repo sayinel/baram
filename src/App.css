@@ -11654,10 +11654,26 @@ body {
 .properties-entries { display: flex; flex-direction: column; gap: 6px; }
 .properties-row { display: flex; flex-direction: column; gap: 2px; }
 .properties-key {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-size: 0.75rem;
   color: var(--color-text-secondary);
   font-weight: 500;
 }
+.properties-key-delete {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  opacity: 0;
+  padding: 0 2px;
+  line-height: 1;
+  transition: opacity 0.15s;
+}
+.properties-row:hover .properties-key-delete { opacity: 1; }
+.properties-key-delete:hover { color: var(--color-danger); }
 .properties-input {
   background: var(--color-bg-secondary);
   border: 1px solid var(--color-border);

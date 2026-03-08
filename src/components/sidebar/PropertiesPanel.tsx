@@ -285,6 +285,14 @@ export function PropertiesPanel() {
     [entries, filePath, parsed],
   );
 
+  const handleDeleteProperty = useCallback(
+    (key: string) => {
+      const updated = entries.filter((e) => e.key !== key);
+      applyEntries(updated);
+    },
+    [entries, filePath, parsed],
+  );
+
   // ── render ───────────────────────────────────────────────────────────────
 
   return (
@@ -318,7 +326,16 @@ export function PropertiesPanel() {
           <div className="properties-entries">
             {entries.map((entry) => (
               <div key={entry.key} className="properties-row">
-                <div className="properties-key">{entry.key}</div>
+                <div className="properties-key">
+                  <span>{entry.key}</span>
+                  <button
+                    className="properties-key-delete"
+                    onClick={() => handleDeleteProperty(entry.key)}
+                    title={`Delete "${entry.key}"`}
+                  >
+                    ×
+                  </button>
+                </div>
 
                 {entry.type === "string" && (
                   <input

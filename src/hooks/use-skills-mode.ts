@@ -4,9 +4,11 @@ import { useEditorStore } from "../stores/editor-store";
 import { useFileStore } from "../stores/file-store";
 import { useUIStore } from "../stores/ui-store";
 
-/** Check if YAML frontmatter contains type: skill at key position */
+/** Check if YAML frontmatter has both name and description (skill file convention) */
 export function isSkillFrontmatter(yaml: string): boolean {
-  return /^type\s*:\s*skill\s*$/im.test(yaml);
+  const hasName = /^name\s*:/m.test(yaml);
+  const hasDescription = /^description\s*:/m.test(yaml);
+  return hasName && hasDescription;
 }
 
 /** Auto-detect skill files and switch right panel to "properties" mode */

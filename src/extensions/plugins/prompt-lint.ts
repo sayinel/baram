@@ -20,13 +20,13 @@ interface PromptLintState {
 }
 
 /**
- * Check if the current document is a Skills file (frontmatter type: skill).
+ * Check if the current document is a Skills file (frontmatter with name + description).
  */
 function isSkillsFile(doc: PmNode): boolean {
   const firstChild = doc.firstChild;
   if (firstChild?.type.name === "frontmatter") {
     const yaml = (firstChild.attrs?.yaml as string) || firstChild.textContent || "";
-    if (/type\s*:\s*skill/i.test(yaml)) return true;
+    if (/^name\s*:/m.test(yaml) && /^description\s*:/m.test(yaml)) return true;
   }
   return false;
 }
