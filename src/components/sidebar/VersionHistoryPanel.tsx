@@ -127,7 +127,7 @@ function SnapshotDetail({ vaultPath, onBack }: {
     <div className="snapshot-detail">
       <div className="snapshot-detail-header">
         <button className="snapshot-back-btn" onClick={onBack}>
-          \u2190 Back
+          {"\u2190"} Back
         </button>
         <div className="snapshot-detail-info">
           <div className="snapshot-detail-time">
