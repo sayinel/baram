@@ -12156,7 +12156,7 @@ body {
   padding: 4px 0;
 }
 .skill-live-preview .slp-header:hover {
-  color: var(--text-primary);
+  color: var(--text-primary, var(--color-accent));
 }
 .skill-live-preview .slp-header .skill-section-arrow {
   color: inherit;
@@ -12339,7 +12339,7 @@ body {
   color: var(--text-secondary);
 }
 .skill-optimize-header-btn:hover {
-  color: var(--text-primary);
+  color: var(--text-primary, var(--color-accent));
 }
 .skill-optimize-header-btn .skill-section-arrow {
   color: inherit;
