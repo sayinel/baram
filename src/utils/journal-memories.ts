@@ -278,6 +278,7 @@ function inlineMarkdown(text: string): string {
     .replace(/~~(.+?)~~/g, "<del>$1</del>");
 
   // 3. Restore placeholders
+  // eslint-disable-next-line no-control-regex
   processed = processed.replace(/\x00PH(\d+)\x00/g, (_m, idx) => placeholders[Number(idx)]);
 
   return processed;

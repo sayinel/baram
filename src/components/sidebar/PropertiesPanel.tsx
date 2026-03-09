@@ -259,6 +259,7 @@ export function PropertiesPanel() {
       const updated = entries.map((e) => (e.key === key ? { ...e, value: val } : e));
       applyEntries(updated);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [entries, filePath, parsed],
   );
 
@@ -267,6 +268,7 @@ export function PropertiesPanel() {
       const updated = entries.map((e) => (e.key === key ? { ...e, value: val } : e));
       applyEntries(updated);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [entries, filePath, parsed],
   );
 
@@ -279,6 +281,7 @@ export function PropertiesPanel() {
       });
       applyEntries(updated);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [entries, filePath, parsed],
   );
 
@@ -293,6 +296,7 @@ export function PropertiesPanel() {
       });
       applyEntries(updated);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [entries, filePath, parsed],
   );
 
@@ -329,6 +333,7 @@ export function PropertiesPanel() {
       setLastAddedKey(key);
       applyEntries(updated);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [entries, filePath, parsed],
   );
 
@@ -337,6 +342,7 @@ export function PropertiesPanel() {
       const updated = entries.filter((e) => e.key !== key);
       applyEntries(updated);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [entries, filePath, parsed],
   );
 

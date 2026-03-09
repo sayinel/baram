@@ -45,8 +45,7 @@ export function ImageView({
   const widthPercent = (node.attrs.widthPercent as number) || 100;
 
   // Resolve src for Tauri webview (memoize to avoid repeated conversion)
-  const activeTabId = useEditorStore((s) => s.activeTabId);
-  const src = useMemo(() => resolveImageSrc(rawSrc), [rawSrc, activeTabId]);
+  const src = useMemo(() => resolveImageSrc(rawSrc), [rawSrc]);
 
   // §56d: Show caption placeholder for journal photo assets
   const isJournalAsset = /assets\/\d{4}-\d{2}\//.test(rawSrc);

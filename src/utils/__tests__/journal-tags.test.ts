@@ -40,7 +40,7 @@ Body text.`;
   });
 
   it("skips #tags inside inline code", () => {
-    const content = "Use \`#notATag\` in code but #realTag outside";
+    const content = "Use `#notATag` in code but #realTag outside";
     expect(extractTagsFromContent(content)).toEqual(["realtag"]);
   });
 

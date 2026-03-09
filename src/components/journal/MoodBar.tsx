@@ -220,6 +220,7 @@ export function MoodBar({ editor }: MoodBarProps) {
 
     const { systemPrompt, userPrompt } = buildEmotionInferencePrompt(bodyText);
     emotionLLM.send(userPrompt, systemPrompt, { task: "chat", maxTokens: 50 });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, visible, mood, journalAIReflectionEnabled, emotionDismissed, activeTabId]);
 
   // Parse emotion LLM response when streaming completes

@@ -238,7 +238,7 @@ export function convertToggleForNotion(md: string): string {
  *  Convert to: `**Term**\nDefinition` */
 export function convertDefinitionListsForNotion(md: string): string {
   // Pattern 1: HTML <dl>...</dl> blocks
-  let result = md.replace(/<dl>\n?([\s\S]*?)\n?<\/dl>/g, (_match, inner: string) => {
+  const result = md.replace(/<dl>\n?([\s\S]*?)\n?<\/dl>/g, (_match, inner: string) => {
     const terms: string[] = [];
     // Extract dt/dd pairs
     const dtRe = /<dt>([\s\S]*?)<\/dt>/g;

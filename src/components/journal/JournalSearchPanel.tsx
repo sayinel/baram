@@ -375,7 +375,6 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
                     <div className="journal-search-result-filename">{fileName}</div>
                     <div
                       className="journal-search-result-snippet"
-                      // eslint-disable-next-line react/no-danger
                       dangerouslySetInnerHTML={{ __html: highlighted }}
                     />
                   </div>

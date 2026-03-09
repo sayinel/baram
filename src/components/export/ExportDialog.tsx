@@ -64,6 +64,7 @@ export function ExportDialog({ editor }: ExportDialogProps) {
           setPandocInfo({ path: pandocPath, version: "", available: false }),
         );
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exportDialogOpen]);
 
   const handleSelectTemplate = useCallback(async () => {

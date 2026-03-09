@@ -702,8 +702,8 @@ function App() {
       editor.commands.scrollIntoView();
       editor.commands.focus();
     };
-    window.addEventListener("baram:goto-position", handler as any);
-    return () => window.removeEventListener("baram:goto-position", handler as any);
+    window.addEventListener("baram:goto-position", handler as EventListener);
+    return () => window.removeEventListener("baram:goto-position", handler as EventListener);
   }, [editor]);
 
   // --- Window title update ---
@@ -807,7 +807,7 @@ function App() {
             // ProseMirror's view.focus() triggers DOMObserver flush which
             // dispatches a transaction based on native selection — this
             // races with our setSelection dispatch.
-            const domObserver = (editor.view as any).domObserver;
+            const domObserver = (editor.view as { domObserver?: { stop(): void; start(): void } }).domObserver;
             domObserver?.stop();
             try {
               editor.view.dispatch(

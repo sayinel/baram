@@ -52,7 +52,7 @@ export function StatusBar({ editor, isSourceMode, isGraphMode }: StatusBarProps)
     if (line === 0) line = 1;
 
     return { words, chars, line, col };
-  }, [editor, editor?.state.selection, editor?.state.doc]);
+  }, [editor]);
 
   const { isRepo, branch, changes } = useGitStore();
   const hasChanges = changes.length > 0;

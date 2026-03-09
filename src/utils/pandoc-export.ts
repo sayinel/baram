@@ -205,7 +205,7 @@ export function convertSubscriptForPandoc(md: string): string {
 export function convertSuperscriptForPandoc(md: string): string {
   return replaceOutsideCode(
     md,
-    /(?<!\^)(?<!\[)\^(?!\^)([^^\n\[\]]+)\^(?!\^)/g,
+    /(?<!\^)(?<!\[)\^(?!\^)([^^\\n[\]]+)\^(?!\^)/g,
     (_match, content: string) => {
       return `<sup>${content}</sup>`;
     },

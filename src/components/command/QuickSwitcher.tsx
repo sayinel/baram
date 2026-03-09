@@ -332,7 +332,7 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
     }
 
     return items;
-  }, [query, parsedQuery, allFiles, activeHeadings, headingFile, resolvedJournalDir]);
+  }, [parsedQuery, allFiles, activeHeadings, headingFile, resolvedJournalDir]);
 
   // Reset on open
   useEffect(() => {

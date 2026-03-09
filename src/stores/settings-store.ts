@@ -342,7 +342,8 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
     tagColors: { ...state.tagColors, [tag]: color },
   })),
   removeTagColor: (tag) => set((state) => {
-    const { [tag]: _, ...rest } = state.tagColors;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { [tag]: _removed, ...rest } = state.tagColors;
     return { tagColors: rest };
   }),
 
@@ -352,7 +353,8 @@ export const useSettingsStore = create<SettingsState>()(persist((set) => ({
     set((s) => ({ keybindingOverrides: { ...s.keybindingOverrides, [id]: key } })),
   removeKeybindingOverride: (id) =>
     set((s) => {
-      const { [id]: _, ...rest } = s.keybindingOverrides;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { [id]: _removed, ...rest } = s.keybindingOverrides;
       return { keybindingOverrides: rest };
     }),
   resetAllKeybindings: () => set({ keybindingOverrides: {} }),

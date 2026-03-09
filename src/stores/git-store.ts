@@ -298,7 +298,7 @@ export const useGitStore = create<GitState>((set, get) => ({
     try {
       const ab = await gitAheadBehind(path);
       set({ aheadBehind: ab });
-    } catch (_e) {
+    } catch {
       // Silently ignore — remote may not exist
     }
   },

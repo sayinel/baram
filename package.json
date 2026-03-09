@@ -103,7 +103,7 @@
   },
   "lint-staged": {
     "src/**/*.{ts,tsx}": [
-      "eslint"
+      "eslint --max-warnings=0"
     ]
   }
 }

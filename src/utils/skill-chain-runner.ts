@@ -64,9 +64,9 @@ export function dryRunChain(
   let executionOrder: string[];
   try {
     executionOrder = resolveExecutionOrder(skills, targetName);
-  } catch (err: any) {
+  } catch (err: unknown) {
     return {
-      steps: [{ skillName: targetName, status: "failed", error: err.message }],
+      steps: [{ skillName: targetName, status: "failed", error: err instanceof Error ? err.message : String(err) }],
       success: false,
       totalDurationMs: Date.now() - start,
     };

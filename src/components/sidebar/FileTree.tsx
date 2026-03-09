@@ -393,6 +393,7 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
         handleDelete(selectedPath);
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [selectedPath, renamingPath],
   );
 

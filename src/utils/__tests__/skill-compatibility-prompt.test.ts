@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   buildCompatibilityPrompt,
   parseCompatibilityResponse,
-  type CompatibilityCheckRequest,
 } from "../skill-compatibility-prompt";
 import type { SkillMeta } from "../skill-dependency-analyzer";
 

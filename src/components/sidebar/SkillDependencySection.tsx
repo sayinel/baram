@@ -55,7 +55,7 @@ function DependencyGraph({
   graph: Map<string, string[]>;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const cyRef = useRef<any>(null);
+  const cyRef = useRef<{ destroy(): void } | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -116,7 +116,7 @@ function DependencyGraph({
               color: textColor,
               "text-valign": "bottom",
               "text-margin-y": 4,
-            } as any,
+            } as Record<string, unknown>,
           },
           {
             selector: "node.current",
@@ -126,7 +126,7 @@ function DependencyGraph({
               "border-color": accent,
               color: accent,
               "font-weight": "bold",
-            } as any,
+            } as Record<string, unknown>,
           },
           {
             selector: "edge",
@@ -137,7 +137,7 @@ function DependencyGraph({
               "target-arrow-shape": "triangle",
               "curve-style": "bezier",
               "arrow-scale": 0.8,
-            } as any,
+            } as Record<string, unknown>,
           },
         ],
         layout: { name: "breadthfirst", directed: true, padding: 10 },

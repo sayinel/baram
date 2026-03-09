@@ -50,7 +50,7 @@ export function useSkillsMode() {
     } else if (prevModeRef.current) {
       // Restore previous state
       const prev = prevModeRef.current;
-      ui.setRightPanelMode(prev.mode as any);
+      ui.setRightPanelMode(prev.mode as "chat" | "help" | "memories" | "photo-gallery" | "properties" | "none");
       if (ui.rightPanelOpen !== prev.open) {
         ui.toggleRightPanel();
       }

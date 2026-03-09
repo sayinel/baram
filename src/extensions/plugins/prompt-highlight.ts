@@ -28,7 +28,7 @@ export interface FilePathMatch {
 export function extractFilePaths(text: string): FilePathMatch[] {
   // Match: ./path, ../path, /path, or bare relative paths like agents/executor.md
   // Bare paths must follow a colon, whitespace, or be at line start to avoid URL false positives
-  const regex = /(?:\.\.?\/[a-zA-Z0-9_\-./]+\.[a-zA-Z]+|\/[a-zA-Z0-9_\-]+(?:\/[a-zA-Z0-9_\-]+)*\.[a-zA-Z]+|(?:(?<=[:\s])|^)[a-zA-Z0-9_\-]+(?:\/[a-zA-Z0-9_\-]+)+\.[a-zA-Z]+)/gm;
+  const regex = /(?:\.\.?\/[a-zA-Z0-9_./-]+\.[a-zA-Z]+|\/[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)*\.[a-zA-Z]+|(?:(?<=[:\s])|^)[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)+\.[a-zA-Z]+)/gm;
   const matches: FilePathMatch[] = [];
   let match;
   while ((match = regex.exec(text)) !== null) {
