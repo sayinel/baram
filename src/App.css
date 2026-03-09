@@ -6582,7 +6582,8 @@ body {
   z-index: 1000;
   display: flex;
   justify-content: center;
-  align-items: center;
+  align-items: flex-start;
+  padding-top: 8vh;
 }
 
 .settings-modal {
