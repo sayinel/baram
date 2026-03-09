@@ -299,6 +299,55 @@ describe("Roundtrip: Wikilink (§28)", () => {
   });
 });
 
+// --- §61 Namespace: Roundtrip tests for relative wikilinks ---
+
+describe("Roundtrip: §61 Namespace (relative wikilinks)", () => {
+  it("same-directory [[./file]]", () => {
+    const input = "See [[./prompt]] for details\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  it("parent-directory [[../file]]", () => {
+    const input = "See [[../meeting-notes]] for details\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  it("subdirectory [[./sub/file]]", () => {
+    const input = "See [[./ai/prompt]] for details\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  it("multi-level parent [[../../file]]", () => {
+    const input = "See [[../../readme]] for details\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  it("relative link with display text", () => {
+    const input = "See [[./prompt|My Prompt]] for details\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  it("relative link with heading anchor", () => {
+    const input = "See [[./prompt#Introduction]] for details\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  it("relative link with heading and display", () => {
+    const input = "See [[./prompt#Intro|Introduction]] for details\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  it("standalone relative wikilink", () => {
+    const input = "[[./sibling]]\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  it("multiple relative wikilinks in one paragraph", () => {
+    const input = "Link [[./file1]] and [[../file2]] here\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+});
+
 // --- PM document structure tests ---
 
 describe("Wikilink PM structure", () => {

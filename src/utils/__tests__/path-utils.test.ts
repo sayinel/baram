@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { isImageFile, getRelativePath, resolveNameConflict } from "../path-utils";
+import { isImageFile, getRelativePath, resolveNameConflict, extractNamespace } from "../path-utils";
 
 describe("isImageFile", () => {
   test("returns true for image extensions", () => {
@@ -51,6 +51,35 @@ describe("getRelativePath", () => {
 
   test("unrelated paths", () => {
     expect(getRelativePath("/x/y/z", "/a/b/c")).toBe("../../../a/b/c");
+  });
+});
+
+// --- §61 Namespace: extractNamespace ---
+
+describe("§61 extractNamespace", () => {
+  test("extracts directory path from nested file", () => {
+    expect(extractNamespace("notes/ai/prompt.md")).toBe("notes/ai");
+  });
+
+  test("extracts single directory", () => {
+    expect(extractNamespace("notes/readme.md")).toBe("notes");
+  });
+
+  test("returns undefined for root-level file", () => {
+    expect(extractNamespace("readme.md")).toBeUndefined();
+  });
+
+  test("returns undefined for file with no slash", () => {
+    expect(extractNamespace("architecture")).toBeUndefined();
+  });
+
+  test("handles deeply nested paths", () => {
+    expect(extractNamespace("docs/design/part3/section.md")).toBe("docs/design/part3");
+  });
+
+  test("returns undefined when slash is at index 0", () => {
+    // e.g. "/readme.md" — lastIndexOf('/') === 0, should return undefined
+    expect(extractNamespace("/readme.md")).toBeUndefined();
   });
 });
 

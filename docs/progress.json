@@ -328,13 +328,14 @@
       "features": {
         "§5.5-cell-merge": { "status": "completed", "tests": "10/10 vitest pass (grid decomposition + roundtrip)", "spec": "§5.5", "details": "mergeCells/splitCell/mergeOrSplit commands, renderHTML colspan/rowspan attrs, 2D grid pmToMdast decomposition, Mod-M shortcut, TableToolbar + ContextMenu buttons" },
         "§5.5-virtual-scroll": { "status": "completed", "tests": "4/4 vitest pass (threshold + utility)", "spec": "§5.5", "details": "content-visibility: auto on 50+ row tables, ProseMirror plugin, graceful degradation for unsupported browsers" },
-        "§71-file-snapshots": { "status": "completed", "tests": "34 cargo tests pass (index 5, io 8, diff 10, policy 6, integration 5)", "spec": "§71", "details": "Rust snapshot module (index, io, diff, policy) + 6 IPC commands + Zustand store + VersionHistoryPanel sidebar + ActivityBar icon + settings (snapshotInterval, snapshotMaxCount)" }
+        "§71-file-snapshots": { "status": "completed", "tests": "34 cargo tests pass (index 5, io 8, diff 10, policy 6, integration 5)", "spec": "§71", "details": "Rust snapshot module (index, io, diff, policy) + 6 IPC commands + Zustand store + VersionHistoryPanel sidebar + ActivityBar icon + settings (snapshotInterval, snapshotMaxCount)" },
+        "§61-namespace": { "status": "completed", "tests": "20 vitest pass (9 roundtrip + 5 suggest + 6 extractNamespace) + 5 cargo test (resolve + make_relative + rewrite)", "spec": "§61", "details": "P0: relative wikilink resolve (./  ../), wikilink-suggest namespace filter, Quick Switcher ns: filter + namespace detail, Rust resolve_relative_path + make_relative_path + rewrite_relative_wikilinks + rename_namespace IPC. P1: Graph View colorByNamespace + namespaceFilter, Backlinks groupByNamespace. P2 자동 prefix 삽입은 YAGNI — 필요 시 구현 예정" }
       }
     }
   },
 
   "testSummary": {
-    "vitest": "1620/1620 pass (90 test files)",
+    "vitest": "1640/1640 pass (90 test files)",
     "cargoTest": "155/155 pass (4 ignored)",
     "note": "All medium+low+info spec-check issues resolved. Coverage 99%. 1567 tests (88 files). Only §8.4 manual perf measurements remain.",
     "breakdown": {
@@ -371,8 +372,8 @@
       "extensions/syntax-reveal": 9,
       "extensions/table-of-contents": 8,
       "extensions/toggle": 25,
-      "extensions/wikilink-suggest": 18,
-      "extensions/wikilink": 31,
+      "extensions/wikilink-suggest": 23,
+      "extensions/wikilink": 40,
       "pipeline/block-id": 33,
       "pipeline/perf-benchmark": 5,
       "pipeline/roundtrip-block-id": 18,
@@ -416,7 +417,7 @@
       "utils/journal": 30,
       "utils/notion-export": 76,
       "utils/pandoc-export": 30,
-      "utils/path-utils": 13,
+      "utils/path-utils": 19,
       "utils/wikilink-nav": 7
     }
   },

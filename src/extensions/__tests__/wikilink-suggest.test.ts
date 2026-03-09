@@ -74,6 +74,45 @@ describe("fileNameWithoutExtension", () => {
   });
 });
 
+// --- §61 Namespace: filterFiles with relative-prefix items ---
+
+describe("§61 Namespace: filterFiles with relative-prefix items", () => {
+  const namespacedFiles: WikilinkSuggestionItem[] = [
+    { id: "1", target: "./prompt", label: "prompt.md", path: "/vault/notes/ai/prompt.md" },
+    { id: "2", target: "./models", label: "models.md", path: "/vault/notes/ai/models.md" },
+    { id: "3", target: "./training", label: "training.md", path: "/vault/notes/ai/training.md" },
+    { id: "4", target: "../meeting-notes", label: "meeting-notes.md", path: "/vault/notes/meeting-notes.md" },
+  ];
+
+  it("returns all relative-prefixed items for empty query", () => {
+    const result = filterFiles(namespacedFiles, "");
+    expect(result).toHaveLength(4);
+  });
+
+  it("filters ./ prefixed items by file query", () => {
+    const result = filterFiles(namespacedFiles, "pro");
+    expect(result.length).toBeGreaterThanOrEqual(1);
+    expect(result[0].target).toBe("./prompt");
+  });
+
+  it("filters ../ prefixed items by file query", () => {
+    const result = filterFiles(namespacedFiles, "meet");
+    expect(result.length).toBeGreaterThanOrEqual(1);
+    expect(result[0].target).toBe("../meeting-notes");
+  });
+
+  it("returns empty for no match in namespace scope", () => {
+    const result = filterFiles(namespacedFiles, "zzzzxyz");
+    expect(result).toHaveLength(0);
+  });
+
+  it("preserves relative prefix in results", () => {
+    const result = filterFiles(namespacedFiles, "mod");
+    expect(result.length).toBeGreaterThanOrEqual(1);
+    expect(result[0].target).toMatch(/^\.\//);
+  });
+});
+
 describe("longestCommonPrefix", () => {
   it("returns empty string for empty array", () => {
     expect(longestCommonPrefix([])).toBe("");

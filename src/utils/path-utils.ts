@@ -34,6 +34,14 @@ export function getRelativePath(fromDir: string, toPath: string): string {
   return "../".repeat(ups) + remainder.join("/");
 }
 
+/** §61 Extract namespace (directory path) from a vault-relative file path.
+ *  e.g. "notes/ai/prompt.md" → "notes/ai", "readme.md" → undefined */
+export function extractNamespace(relativePath: string): string | undefined {
+  const lastSlash = relativePath.lastIndexOf("/");
+  if (lastSlash <= 0) return undefined;
+  return relativePath.substring(0, lastSlash);
+}
+
 /** Resolve name conflict by appending -1, -2, etc. */
 export function resolveNameConflict(
   fileName: string,

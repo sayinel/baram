@@ -14,6 +14,7 @@ import {
 } from "../../utils/file-search";
 import type { FlatFile } from "../../utils/file-search";
 import { resolveJournalDir } from "../../utils/journal";
+import { extractNamespace } from "../../utils/path-utils";
 
 /** §56l Journal prefix filter prefixes */
 export type JournalPrefix = "n" | "d" | "j" | null;
@@ -53,14 +54,6 @@ export function filterByJournalPrefix(
     return files.filter((f) => f.path.startsWith(base + "notes/"));
   }
   return files;
-}
-
-/** §61 Extract namespace (directory path) from a relative file path.
- *  e.g. "notes/ai/prompt.md" → "notes/ai", "readme.md" → undefined */
-function extractNamespace(relativePath: string): string | undefined {
-  const lastSlash = relativePath.lastIndexOf("/");
-  if (lastSlash <= 0) return undefined;
-  return relativePath.substring(0, lastSlash);
 }
 
 const PREFIX_BADGE_LABELS: Record<NonNullable<JournalPrefix>, string> = {

@@ -181,4 +181,5 @@ Phase 3: 고급 기능 — 진행 중
 - 쿼리 블록 (§5.13) — ✅ 완료
 - Git 고급 (§67: log, stash, remote, delete branch) — ✅ 완료
 - 파일 스냅샷 / 버전 히스토리 (§71) — ✅ 완료
+- 네임스페이스 (§61) — ✅ 완료 (P0+P1, P2 자동 prefix는 YAGNI 보류)
 - Canvas, Agent Mode, Knowledge Q&A, 실시간 협업 등 — 미착수
