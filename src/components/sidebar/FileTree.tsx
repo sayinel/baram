@@ -299,8 +299,10 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
   const { fileTree, rootPath, setFileContent, renameFileEntry, addFileEntry, removeFileEntry, moveFileEntry } = useFileStore();
   const tagFilter = useFileStore((s) => s.tagFilter);
   const setTagFilter = useFileStore((s) => s.setTagFilter);
+  const expandedDirs = useFileStore((s) => s.expandedDirs);
+  const toggleExpandedDir = useFileStore((s) => s.toggleExpandedDir);
+  const expandDir = useFileStore((s) => s.expandDir);
   const { openTab, tabs, activeTabId, closeTab, renameTab } = useEditorStore();
-  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -375,14 +377,10 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
   useEffect(() => {
     if (!dragOverPath) return;
     const timer = setTimeout(() => {
-      setExpandedDirs((prev) => {
-        const next = new Set(prev);
-        next.add(dragOverPath);
-        return next;
-      });
+      expandDir(dragOverPath);
     }, 600);
     return () => clearTimeout(timer);
-  }, [dragOverPath]);
+  }, [dragOverPath, expandDir]);
 
   const handleTreeKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -404,13 +402,8 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
   }, []);
 
   const handleToggleDir = useCallback((path: string) => {
-    setExpandedDirs((prev) => {
-      const next = new Set(prev);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return next;
-    });
-  }, []);
+    toggleExpandedDir(path);
+  }, [toggleExpandedDir]);
 
   const handleFileClick = useCallback(
     async (entry: FileEntry) => {
@@ -558,10 +551,10 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
   // --- Inline create ---
   const handleStartCreate = useCallback((parentPath: string, isDir: boolean) => {
     if (parentPath !== rootPath) {
-      setExpandedDirs((prev) => { const next = new Set(prev); next.add(parentPath); return next; });
+      expandDir(parentPath);
     }
     setCreatingEntry({ parentPath, isDir });
-  }, [rootPath]);
+  }, [rootPath, expandDir]);
 
   const handleConfirmCreate = useCallback(async (name: string) => {
     if (!creatingEntry || !name.trim()) { setCreatingEntry(null); return; }

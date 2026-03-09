@@ -40,6 +40,11 @@ interface FileState {
   // Tag filter for FileTree
   tagFilter: string | null;
   setTagFilter: (tag: string | null) => void;
+
+  // FileTree expanded directories (persisted across sidebar tab switches)
+  expandedDirs: Set<string>;
+  toggleExpandedDir: (path: string) => void;
+  expandDir: (path: string) => void;
 }
 
 /**
@@ -328,4 +333,20 @@ export const useFileStore = create<FileState>((set, get) => ({
 
   tagFilter: null,
   setTagFilter: (tagFilter) => set({ tagFilter }),
+
+  expandedDirs: new Set(),
+  toggleExpandedDir: (path) =>
+    set((state) => {
+      const next = new Set(state.expandedDirs);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return { expandedDirs: next };
+    }),
+  expandDir: (path) =>
+    set((state) => {
+      if (state.expandedDirs.has(path)) return state;
+      const next = new Set(state.expandedDirs);
+      next.add(path);
+      return { expandedDirs: next };
+    }),
 }));
