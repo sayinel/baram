@@ -660,22 +660,23 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app_handle, event| {
+        .run(|_app_handle, _event| {
             // macOS file association: handle files opened from Finder / "Open With"
-            if let tauri::RunEvent::Opened { urls } = event {
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            if let tauri::RunEvent::Opened { urls } = &_event {
                 let paths: Vec<String> = urls
                     .iter()
-                    .filter_map(|u| u.to_file_path().ok())
-                    .map(|p| p.to_string_lossy().into_owned())
+                    .filter_map(|u: &tauri::Url| u.to_file_path().ok())
+                    .map(|p: std::path::PathBuf| p.to_string_lossy().into_owned())
                     .collect();
 
                 // Emit to frontend (works when webview is already loaded)
                 for path in &paths {
-                    let _ = app_handle.emit("file:open-request", path.clone());
+                    let _ = _app_handle.emit("file:open-request", path.clone());
                 }
 
                 // Also queue for cold-start (frontend calls get_opened_urls on mount)
-                if let Some(state) = app_handle.try_state::<PendingOpenFiles>() {
+                if let Some(state) = _app_handle.try_state::<PendingOpenFiles>() {
                     if let Ok(mut pending) = state.0.lock() {
                         for p in paths {
                             pending.push(p);
