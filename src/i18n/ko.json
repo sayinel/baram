@@ -11,6 +11,7 @@
   "settings.tab.activitybar": "Activity Bar",
   "settings.tab.language": "언어",
   "settings.tab.keybindings": "단축키",
+  "settings.tab.plugins": "플러그인",
 
   "settings.general.startup": "시작",
   "settings.general.onLaunch": "시작 시 동작",

@@ -12,6 +12,7 @@
   "settings.tab.activitybar": "Activity Bar",
   "settings.tab.language": "Language",
   "settings.tab.keybindings": "Keybindings",
+  "settings.tab.plugins": "Plugins",
 
   "settings.general.startup": "Startup",
   "settings.general.onLaunch": "On Launch",

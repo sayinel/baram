@@ -9,11 +9,12 @@ mod index;
 mod llm;
 mod search;
 mod snapshot;
+mod plugin;
 
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use commands::{config_cmd, export_cmd, fs_cmd, git_cmd, index_cmd, keyring_cmd, llm_cmd, search_cmd, snapshot_cmd, tag_cmd};
+use commands::{config_cmd, export_cmd, fs_cmd, git_cmd, index_cmd, keyring_cmd, llm_cmd, plugin_cmd, search_cmd, snapshot_cmd, tag_cmd};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 
@@ -650,6 +651,12 @@ pub fn run() {
             snapshot_cmd::restore_snapshot,
             snapshot_cmd::delete_snapshot,
             snapshot_cmd::get_file_history,
+            plugin_cmd::plugin_install,
+            plugin_cmd::plugin_uninstall,
+            plugin_cmd::plugin_list_installed,
+            plugin_cmd::plugin_read_manifest,
+            plugin_cmd::plugin_fetch_registry,
+            plugin_cmd::plugin_get_dir,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

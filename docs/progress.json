@@ -1,7 +1,7 @@
 {
   "_comment": "Baram 개발 진행 상황 추적. 슬래시 커맨드가 자동으로 업데이트한다.",
   "project": "baram",
-  "lastUpdated": "2026-03-07",
+  "lastUpdated": "2026-03-09",
   "currentPhase": 3,
   "currentMilestone": "M10",
 
@@ -329,15 +329,47 @@
         "§5.5-cell-merge": { "status": "completed", "tests": "10/10 vitest pass (grid decomposition + roundtrip)", "spec": "§5.5", "details": "mergeCells/splitCell/mergeOrSplit commands, renderHTML colspan/rowspan attrs, 2D grid pmToMdast decomposition, Mod-M shortcut, TableToolbar + ContextMenu buttons" },
         "§5.5-virtual-scroll": { "status": "completed", "tests": "4/4 vitest pass (threshold + utility)", "spec": "§5.5", "details": "content-visibility: auto on 50+ row tables, ProseMirror plugin, graceful degradation for unsupported browsers" },
         "§71-file-snapshots": { "status": "completed", "tests": "34 cargo tests pass (index 5, io 8, diff 10, policy 6, integration 5)", "spec": "§71", "details": "Rust snapshot module (index, io, diff, policy) + 6 IPC commands + Zustand store + VersionHistoryPanel sidebar + ActivityBar icon + settings (snapshotInterval, snapshotMaxCount)" },
-        "§61-namespace": { "status": "completed", "tests": "20 vitest pass (9 roundtrip + 5 suggest + 6 extractNamespace) + 5 cargo test (resolve + make_relative + rewrite)", "spec": "§61", "details": "P0: relative wikilink resolve (./  ../), wikilink-suggest namespace filter, Quick Switcher ns: filter + namespace detail, Rust resolve_relative_path + make_relative_path + rewrite_relative_wikilinks + rename_namespace IPC. P1: Graph View colorByNamespace + namespaceFilter, Backlinks groupByNamespace. P2 자동 prefix 삽입은 YAGNI — 필요 시 구현 예정" }
+        "§61-namespace": { "status": "completed", "tests": "20 vitest pass (9 roundtrip + 5 suggest + 6 extractNamespace) + 5 cargo test (resolve + make_relative + rewrite)", "spec": "§61", "details": "P0: relative wikilink resolve (./  ../), wikilink-suggest namespace filter, Quick Switcher ns: filter + namespace detail, Rust resolve_relative_path + make_relative_path + rewrite_relative_wikilinks + rename_namespace IPC. P1: Graph View colorByNamespace + namespaceFilter, Backlinks groupByNamespace. P2 자동 prefix 삽입은 YAGNI — 필요 시 구현 예정" },
+        "§72-skills-mode": { "status": "completed", "tests": "existing vitest pass", "spec": "§72", "details": "Skills auto-switch, Properties Panel (YAML GUI), LLM Preview, Variable Autocomplete, Live Lint, Live Preview, Skills Gallery, Prompt Optimize, WKWebView showPrompt() fix" },
+        "§settings-redesign": { "status": "completed", "tests": "1791/1791 vitest pass", "spec": "§settings", "details": "P0+P1: 8-tab restructure (General/Editor/Appearance/Markdown/AI/ActivityBar/Language/Keybindings), settings search, theme mini preview, activity bar customization, i18n, dead code cleanup (ExtensionsTab.tsx/WorkspaceTab.tsx removed)" },
+        "§settings-keybindings": { "status": "completed", "tests": "3 test files (key-utils, registry, use-keybindings)", "spec": "§settings", "details": "54-entry registry (40 customizable + 14 read-only), key capture/conflict detection UI, registerAction() runtime dispatch, persist v8 migration, 5 context-dependent shortcuts remain hardcoded by design" }
+      }
+    },
+    "§69-plugin-marketplace": {
+      "name": "플러그인 마켓플레이스",
+      "status": "completed",
+      "completedAt": "2026-03-09",
+      "features": {
+        "§69-types": { "status": "completed", "tests": "16/16 vitest (manifest validation)", "spec": "§69", "details": "PluginCapability (11 values), PluginManifest, InstalledPlugin, RegistryEntry, RegistryIndex, Disposable, ExtensionContext APIs, CAPABILITY_DESCRIPTIONS" },
+        "§69-plugin-store": { "status": "completed", "tests": "17/17 vitest (store state transitions)", "spec": "§69", "details": "Zustand persisted store: installedPlugins, pluginErrors, pluginSettings, registryCache, updateAvailable, installing" },
+        "§69-rust-backend": { "status": "completed", "tests": "163/163 cargo test (4 ignored)", "spec": "§69", "details": "install_plugin (download→checksum→extract→validate), uninstall_plugin, list_installed, read_manifest, fetch_registry, get_plugin_dir, 6 IPC commands" },
+        "§69-extension-context": { "status": "completed", "tests": "20/20 vitest (capability gating)", "spec": "§69", "details": "Capability-gated API proxy (commands, editor, files, events, ui), createDeniedProxy, setEditorInstance, emitPluginEvent, executePluginCommand" },
+        "§69-plugin-loader": { "status": "completed", "tests": "tsc clean", "spec": "§69", "details": "PluginLoader class, dynamic import() + convertFileSrc(), 5s activate timeout, singleton export" },
+        "§69-lifecycle": { "status": "completed", "tests": "tsc clean", "spec": "§69", "details": "initializePlugins (200ms budget, parallel), notifyFileOpen/FileSave/EditorReady, shutdownPlugins, sortByDependencies" },
+        "§69-registry-client": { "status": "completed", "tests": "tsc clean", "spec": "§69", "details": "fetchRegistryIndex (24h cache), searchRegistry, checkForUpdates" },
+        "§69-marketplace-ui": { "status": "completed", "tests": "tsc clean", "spec": "§69", "details": "PluginMarketplace (3 tabs: Browse/Installed/Updates), PluginCard, PluginDetail (+ README), PluginCapabilityBadge, capability review dialog" },
+        "§69-update-checker": { "status": "completed", "tests": "tsc clean", "spec": "§69", "details": "startUpdateChecker (10s initial, 24h periodic), stopUpdateChecker" },
+        "§69-error-boundary": { "status": "completed", "tests": "tsc clean", "spec": "§69", "details": "React ErrorBoundary for plugin crash isolation" },
+        "§69-integration": { "status": "completed", "tests": "tsc clean", "spec": "§69", "details": "App.tsx lifecycle hooks, Settings plugins tab, ActivityBar icon, Sidebar panel, mergePluginExtensions, i18n (en+ko)" },
+        "§69-docs": { "status": "completed", "tests": "n/a", "spec": "§69", "details": "docs/plugin-development.md — manifest format, ExtensionContext API, Tiptap extensions, bundling, publishing" }
+      },
+      "specCheckSummary": {
+        "date": "2026-03-09",
+        "implemented": 28,
+        "partial": 0,
+        "missing": 0,
+        "total": 28,
+        "pluginTests": 53,
+        "coverage": "100%",
+        "note": "All 28 spec items verified. 53 plugin-specific vitest pass (3 files). Rust backend 163 cargo tests pass."
       }
     }
   },
 
   "testSummary": {
-    "vitest": "1640/1640 pass (90 test files)",
-    "cargoTest": "155/155 pass (4 ignored)",
-    "note": "All medium+low+info spec-check issues resolved. Coverage 99%. 1567 tests (88 files). Only §8.4 manual perf measurements remain.",
+    "vitest": "1844/1844 pass (107 test files)",
+    "cargoTest": "163/163 pass (4 ignored)",
+    "note": "All medium+low+info spec-check issues resolved. Coverage 99%. Only §8.4 manual perf measurements remain.",
     "breakdown": {
       "_comment": "79 test files, 1300 tests total (2026-03-01 spec-check verified)",
       "integration/ai-edit-workflow": 5,

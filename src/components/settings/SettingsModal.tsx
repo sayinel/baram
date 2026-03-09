@@ -26,8 +26,9 @@ import type { Locale } from "../../i18n";
 import { normalizeKeyEvent, formatKeyForDisplay } from "../../keybindings/key-utils";
 import { KEYBINDING_CATEGORIES, CATEGORY_LABELS } from "../../keybindings/keybinding-registry";
 import { getMergedKeybindings, findConflict, type MergedKeybinding } from "../../keybindings/use-keybindings";
+import { PluginMarketplace } from "../plugins/PluginMarketplace";
 
-type SettingsTab = "general" | "editor" | "appearance" | "markdown" | "ai" | "activitybar" | "language" | "keybindings";
+type SettingsTab = "general" | "editor" | "appearance" | "markdown" | "ai" | "activitybar" | "language" | "keybindings" | "plugins";
 
 const TABS: { id: SettingsTab; label: string; icon: string }[] = [
   { id: "general", label: "General", icon: "\u2699" },
@@ -38,6 +39,7 @@ const TABS: { id: SettingsTab; label: string; icon: string }[] = [
   { id: "activitybar", label: "Activity Bar", icon: "\u25A4" },
   { id: "language", label: "Language", icon: "\uD83C\uDF10" },
   { id: "keybindings", label: "Keybindings", icon: "\u2328" },
+  { id: "plugins", label: "Plugins", icon: "\uD83E\uDDE9" },
 ];
 
 interface SearchableSetting {
@@ -185,6 +187,11 @@ export function SettingsModal() {
                 {activeTab === "activitybar" && <ActivityBarTab />}
                 {activeTab === "language" && <LanguageTab />}
                 {activeTab === "keybindings" && <KeybindingsTab />}
+                {activeTab === "plugins" && (
+                  <div className="settings-section">
+                    <PluginMarketplace />
+                  </div>
+                )}
               </>
             )}
           </div>

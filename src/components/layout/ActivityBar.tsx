@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { useUIStore } from "../../stores/ui-store";
 import { useSettingsStore } from "../../stores/settings-store";
 
-type PanelId = "files" | "search" | "outline" | "backlinks" | "bookmarks" | "graph" | "git" | "calendar" | "tags" | "snapshots" | "skills-gallery";
+type PanelId = "files" | "search" | "outline" | "backlinks" | "bookmarks" | "graph" | "git" | "calendar" | "tags" | "snapshots" | "skills-gallery" | "plugins";
 
 const PANEL_ICONS: { id: PanelId; label: string; icon: ReactNode }[] = [
   {
@@ -114,6 +114,15 @@ const PANEL_ICONS: { id: PanelId; label: string; icon: ReactNode }[] = [
     icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+      </svg>
+    ),
+  },
+  {
+    id: "plugins",
+    label: "Plugins",
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M20 16V8a2 2 0 0 0-2-2h-3.5a1 1 0 0 1-1-1v0a2.5 2.5 0 0 0-5 0v0a1 1 0 0 1-1 1H4a2 2 0 0 0-2 2v3.5a1 1 0 0 0 1 1h0a2.5 2.5 0 0 1 0 5h0a1 1 0 0 0-1 1V20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-1.5a1 1 0 0 0-1-1h0a2.5 2.5 0 0 1 0-5h0a1 1 0 0 0 1-1z" />
       </svg>
     ),
   },

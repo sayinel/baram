@@ -182,4 +182,7 @@ Phase 3: 고급 기능 — 진행 중
 - Git 고급 (§67: log, stash, remote, delete branch) — ✅ 완료
 - 파일 스냅샷 / 버전 히스토리 (§71) — ✅ 완료
 - 네임스페이스 (§61) — ✅ 완료 (P0+P1, P2 자동 prefix는 YAGNI 보류)
+- Skills 전용 모드 (§72) — ✅ 완료
+- Settings UI 리디자인 (P0+P1) — ✅ 완료
+- 키보드 단축키 커스터마이징 — ✅ 완료
 - Canvas, Agent Mode, Knowledge Q&A, 실시간 협업 등 — 미착수

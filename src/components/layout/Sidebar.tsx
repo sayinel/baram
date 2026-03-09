@@ -11,6 +11,7 @@ import { CalendarPanel } from "../sidebar/CalendarPanel";
 import { TagPanel } from "../sidebar/TagPanel";
 import { VersionHistoryPanel } from "../sidebar/VersionHistoryPanel";
 import { SkillGalleryPanel } from "../sidebar/SkillGalleryPanel";
+import { PluginMarketplace } from "../plugins/PluginMarketplace";
 import type { Editor } from "@tiptap/react";
 
 interface SidebarProps {
@@ -34,6 +35,7 @@ export function Sidebar({ editor }: SidebarProps) {
         {sidebarPanel === "tags" && <TagPanel />}
         {sidebarPanel === "snapshots" && <VersionHistoryPanel />}
         {sidebarPanel === "skills-gallery" && <SkillGalleryPanel />}
+        {sidebarPanel === "plugins" && <PluginMarketplace />}
       </div>
     </div>
   );

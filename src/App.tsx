@@ -75,6 +75,9 @@ import { isMarkdownFile, getLanguageForFile } from "./utils/file-type";
 import { normalizeKeyEvent } from "./keybindings/key-utils";
 import { findCommandByKey } from "./keybindings/use-keybindings";
 import { registerAction, getAction, clearActions } from "./keybindings/keybinding-actions";
+import { initializePlugins, shutdownPlugins, notifyEditorReady, notifyFileOpen, notifyFileSave } from "./plugins/plugin-lifecycle";
+import { pluginLoader } from "./plugins/plugin-loader";
+import { startUpdateChecker, stopUpdateChecker } from "./plugins/update-checker";
 import "./App.css";
 
 // §8.4 Lazy-loaded components — split into separate chunks, loaded on first use
@@ -233,8 +236,28 @@ function App() {
     }),
     autofocus: true,
     immediatelyRender: false,
-    onCreate: () => logAppReady(),
+    onCreate: () => {
+      logAppReady();
+      notifyEditorReady();
+    },
   });
+
+  // §69 Plugin system — initialize plugins and update checker on mount
+  useEffect(() => {
+    initializePlugins().catch((err) =>
+      console.error("[App] Plugin initialization failed:", err),
+    );
+    startUpdateChecker();
+    return () => {
+      stopUpdateChecker();
+      shutdownPlugins().catch(console.error);
+    };
+  }, []);
+
+  // §69 Plugin system — provide editor instance to plugin loader
+  useEffect(() => {
+    if (editor) pluginLoader.setEditor(editor);
+  }, [editor]);
 
   // §44 Track editor selection text for @selection reference
   useEffect(() => {
@@ -898,6 +921,7 @@ function App() {
         await writeFile(saveTab.filePath, md);
         setFileContent(saveTab.filePath, md);
         markDirty(saveTab.id, false);
+        notifyFileSave(saveTab.filePath);
         // Only index markdown files (link indexing not relevant for code files)
         if (!isCode) {
           updateFileIndex(saveTab.filePath)
@@ -1017,6 +1041,7 @@ function App() {
         isDirty: false,
         isPinned: false,
       });
+      notifyFileOpen(filePath);
     } catch (err) {
       console.error("[App] Failed to open file from OS:", err);
     }

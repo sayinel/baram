@@ -232,6 +232,28 @@ export function createBaramExtensions(options?: BaramExtensionOptions): Extensio
   ];
 }
 
+/** Merge core extensions with plugin-provided Tiptap extensions */
+export function mergePluginExtensions(
+  coreExtensions: Extensions,
+  pluginExtensions: Extensions,
+): Extensions {
+  // Detect name conflicts
+  const coreNames = new Set(
+    coreExtensions
+      .map((ext) => (ext as { name?: string }).name)
+      .filter(Boolean),
+  );
+  const filtered = pluginExtensions.filter((ext) => {
+    const name = (ext as { name?: string }).name;
+    if (name && coreNames.has(name)) {
+      console.warn(`[Plugin] Extension "${name}" conflicts with core extension, skipping`);
+      return false;
+    }
+    return true;
+  });
+  return [...coreExtensions, ...filtered];
+}
+
 // Re-export all extensions
 export {
   Heading,
