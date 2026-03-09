@@ -28,7 +28,10 @@ export const OrderedList = Node.create<OrderedListOptions>({
 
   addAttributes() {
     return {
-      start: { default: 1, parseHTML: (el) => parseInt(el.getAttribute("start") || "1", 10) },
+      start: {
+        default: 1,
+        parseHTML: (el) => parseInt(el.getAttribute("start") || "1", 10),
+      },
     };
   },
 
@@ -37,9 +40,10 @@ export const OrderedList = Node.create<OrderedListOptions>({
   },
 
   renderHTML({ node, HTMLAttributes }) {
-    const attrs = node.attrs.start === 1
-      ? HTMLAttributes
-      : { ...HTMLAttributes, start: node.attrs.start };
+    const attrs =
+      node.attrs.start === 1
+        ? HTMLAttributes
+        : { ...HTMLAttributes, start: node.attrs.start };
     return ["ol", mergeAttributes(this.options.HTMLAttributes, attrs), 0];
   },
 

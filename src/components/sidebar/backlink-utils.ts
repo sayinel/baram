@@ -39,7 +39,9 @@ export function extractNamespaceFromPath(
   filePath: string,
   rootPath: string,
 ): string {
-  let rel = filePath.startsWith(rootPath) ? filePath.slice(rootPath.length) : filePath;
+  let rel = filePath.startsWith(rootPath)
+    ? filePath.slice(rootPath.length)
+    : filePath;
   if (rel.startsWith("/")) rel = rel.slice(1);
   const lastSlash = rel.lastIndexOf("/");
   if (lastSlash <= 0) return "";

@@ -83,9 +83,7 @@ export function SkillGalleryPanel() {
               <span
                 key={fmt}
                 className={`skill-gallery-tag ${searchQuery === fmt ? "skill-gallery-tag--active" : ""}`}
-                onClick={() =>
-                  setSearchQuery(searchQuery === fmt ? "" : fmt)
-                }
+                onClick={() => setSearchQuery(searchQuery === fmt ? "" : fmt)}
               >
                 {fmt}
               </span>
@@ -117,20 +115,17 @@ export function SkillGalleryPanel() {
           >
             <div className="skill-gallery-card-name">{skill.name}</div>
             {skill.description && (
-              <div className="skill-gallery-card-desc">
-                {skill.description}
-              </div>
+              <div className="skill-gallery-card-desc">{skill.description}</div>
             )}
             <div className="skill-gallery-card-meta">
               {skill.requires.length > 0 && (
                 <span className="skill-gallery-badge">
-                  {skill.requires.length} dep{skill.requires.length > 1 ? "s" : ""}
+                  {skill.requires.length} dep
+                  {skill.requires.length > 1 ? "s" : ""}
                 </span>
               )}
               {skill.outputFormat && (
-                <span className="skill-gallery-chip">
-                  {skill.outputFormat}
-                </span>
+                <span className="skill-gallery-chip">{skill.outputFormat}</span>
               )}
               {skill.version && (
                 <span className="skill-gallery-chip">v{skill.version}</span>

@@ -87,11 +87,17 @@ describe("toGraphElements", () => {
 
     expect(result.edges).toHaveLength(3);
     // a: out=2 → degree=2
-    expect(result.nodes.find((n) => n.data.id === "/vault/a.md")!.data.degree).toBe(2);
+    expect(
+      result.nodes.find((n) => n.data.id === "/vault/a.md")!.data.degree,
+    ).toBe(2);
     // b: in=1 + out=1 → degree=2
-    expect(result.nodes.find((n) => n.data.id === "/vault/b.md")!.data.degree).toBe(2);
+    expect(
+      result.nodes.find((n) => n.data.id === "/vault/b.md")!.data.degree,
+    ).toBe(2);
     // c: in=2 → degree=2
-    expect(result.nodes.find((n) => n.data.id === "/vault/c.md")!.data.degree).toBe(2);
+    expect(
+      result.nodes.find((n) => n.data.id === "/vault/c.md")!.data.degree,
+    ).toBe(2);
   });
 
   it("deduplicates same source→target edges", () => {
@@ -190,7 +196,9 @@ describe("toGraphElements", () => {
     };
     const result = toGraphElements(graph);
 
-    const ghosts = result.nodes.filter((n) => n.data.id === "/vault/missing.md");
+    const ghosts = result.nodes.filter(
+      (n) => n.data.id === "/vault/missing.md",
+    );
     expect(ghosts).toHaveLength(1);
     expect(ghosts[0].data.isGhost).toBe(true);
     expect(ghosts[0].data.degree).toBe(2);

@@ -18,7 +18,13 @@ interface MigrationDialogProps {
   journalDir: string;
 }
 
-type MigrationStatus = "idle" | "loading" | "ready" | "migrating" | "done" | "error";
+type MigrationStatus =
+  | "idle"
+  | "loading"
+  | "ready"
+  | "migrating"
+  | "done"
+  | "error";
 
 interface MigrationPair {
   from: string;
@@ -27,7 +33,11 @@ interface MigrationPair {
 
 const PREVIEW_MAX = 10;
 
-export function MigrationDialog({ open, onClose, journalDir }: MigrationDialogProps) {
+export function MigrationDialog({
+  open,
+  onClose,
+  journalDir,
+}: MigrationDialogProps) {
   const [status, setStatus] = useState<MigrationStatus>("idle");
   const [plan, setPlan] = useState<MigrationPair[]>([]);
   const [migratedCount, setMigratedCount] = useState(0);
@@ -93,17 +103,16 @@ export function MigrationDialog({ open, onClose, journalDir }: MigrationDialogPr
 
   return (
     <div className="migration-dialog-overlay" onClick={handleClose}>
-      <div
-        className="migration-dialog"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="migration-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="migration-dialog-header">
           <h3>Migrate Journal Files</h3>
         </div>
 
         <div className="migration-dialog-body">
           {status === "loading" && (
-            <p className="migration-dialog-message">Scanning journal directory...</p>
+            <p className="migration-dialog-message">
+              Scanning journal directory...
+            </p>
           )}
 
           {status === "error" && (
@@ -112,49 +121,60 @@ export function MigrationDialog({ open, onClose, journalDir }: MigrationDialogPr
             </p>
           )}
 
-          {(status === "ready" || status === "migrating") && plan.length === 0 && (
-            <p className="migration-dialog-message">
-              No flat journal files found to migrate.
-            </p>
-          )}
-
-          {(status === "ready" || status === "migrating") && plan.length > 0 && (
-            <>
-              <p className="migration-dialog-description">
-                Found {plan.length} journal file{plan.length !== 1 ? "s" : ""} that can be
-                organized into <code>daily/YYYY/MM/</code> structure.
+          {(status === "ready" || status === "migrating") &&
+            plan.length === 0 && (
+              <p className="migration-dialog-message">
+                No flat journal files found to migrate.
               </p>
-              <ul className="migration-dialog-list">
-                {previewItems.map(({ from, to }) => {
-                  const fromName = from.substring(from.lastIndexOf("/") + 1);
-                  const toRelative = to.substring(journalDir.length + 1);
-                  return (
-                    <li key={from} className="migration-dialog-list-item">
-                      <span className="migration-dialog-from">{fromName}</span>
-                      <span className="migration-dialog-arrow">→</span>
-                      <span className="migration-dialog-to">{toRelative}</span>
+            )}
+
+          {(status === "ready" || status === "migrating") &&
+            plan.length > 0 && (
+              <>
+                <p className="migration-dialog-description">
+                  Found {plan.length} journal file{plan.length !== 1 ? "s" : ""}{" "}
+                  that can be organized into <code>daily/YYYY/MM/</code>{" "}
+                  structure.
+                </p>
+                <ul className="migration-dialog-list">
+                  {previewItems.map(({ from, to }) => {
+                    const fromName = from.substring(from.lastIndexOf("/") + 1);
+                    const toRelative = to.substring(journalDir.length + 1);
+                    return (
+                      <li key={from} className="migration-dialog-list-item">
+                        <span className="migration-dialog-from">
+                          {fromName}
+                        </span>
+                        <span className="migration-dialog-arrow">→</span>
+                        <span className="migration-dialog-to">
+                          {toRelative}
+                        </span>
+                      </li>
+                    );
+                  })}
+                  {remaining > 0 && (
+                    <li className="migration-dialog-list-more">
+                      ...and {remaining} more
                     </li>
-                  );
-                })}
-                {remaining > 0 && (
-                  <li className="migration-dialog-list-more">
-                    ...and {remaining} more
-                  </li>
-                )}
-              </ul>
-            </>
-          )}
+                  )}
+                </ul>
+              </>
+            )}
 
           {status === "done" && (
             <p className="migration-dialog-message migration-dialog-success">
-              {migratedCount} file{migratedCount !== 1 ? "s" : ""} migrated successfully.
+              {migratedCount} file{migratedCount !== 1 ? "s" : ""} migrated
+              successfully.
             </p>
           )}
         </div>
 
         <div className="migration-dialog-actions">
           {status === "done" || (status === "ready" && plan.length === 0) ? (
-            <button className="migration-dialog-btn migration-dialog-btn-primary" onClick={handleClose}>
+            <button
+              className="migration-dialog-btn migration-dialog-btn-primary"
+              onClick={handleClose}
+            >
               Close
             </button>
           ) : (
@@ -171,7 +191,9 @@ export function MigrationDialog({ open, onClose, journalDir }: MigrationDialogPr
                 onClick={handleMigrate}
                 disabled={status !== "ready" || plan.length === 0}
               >
-                {status === "migrating" ? "Migrating..." : `Migrate ${plan.length} file${plan.length !== 1 ? "s" : ""}`}
+                {status === "migrating"
+                  ? "Migrating..."
+                  : `Migrate ${plan.length} file${plan.length !== 1 ? "s" : ""}`}
               </button>
             </>
           )}

@@ -1,9 +1,17 @@
 // §69 Plugin Marketplace — Core Types
 
 export type PluginCapability =
-  | "editor" | "editor:readonly" | "files" | "files:readonly"
-  | "commands" | "sidebar" | "statusbar" | "settings"
-  | "events" | "ai" | "network";
+  | "editor"
+  | "editor:readonly"
+  | "files"
+  | "files:readonly"
+  | "commands"
+  | "sidebar"
+  | "statusbar"
+  | "settings"
+  | "events"
+  | "ai"
+  | "network";
 
 export interface PluginManifest {
   id: string;

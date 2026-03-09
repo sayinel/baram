@@ -61,7 +61,11 @@ function isListNode(node: PMNode): boolean {
  * Insert a node at the given position, splitting lists if the position
  * is between list items. Returns the position after the inserted node.
  */
-export function insertNodeAtPos(editor: Editor, pos: number, node: PMNode): number {
+export function insertNodeAtPos(
+  editor: Editor,
+  pos: number,
+  node: PMNode,
+): number {
   const $pos = editor.state.doc.resolve(pos);
   const tr = editor.state.tr;
 
@@ -85,7 +89,9 @@ export function insertNodeAtPos(editor: Editor, pos: number, node: PMNode): numb
         tr.setNodeMarkup(secondListPos, undefined, {
           start: origStart + indexInList,
         });
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
 
     editor.view.dispatch(tr);
@@ -107,7 +113,11 @@ export function insertNodeAtPos(editor: Editor, pos: number, node: PMNode): numb
  * posAtCoords is intentionally NOT used because during native OS drag in WKWebView
  * it can return stale/wrong results, causing the indicator to not show.
  */
-export function resolveInsertTarget(editor: Editor, _x: number, y: number): InsertTarget | null {
+export function resolveInsertTarget(
+  editor: Editor,
+  _x: number,
+  y: number,
+): InsertTarget | null {
   const view = editor.view;
   const doc = editor.state.doc;
   if (doc.childCount === 0) return null;
@@ -147,17 +157,29 @@ function scanBlocksByRect(
         const topDist = Math.abs(y - rect.top);
         if (topDist < bestDist) {
           bestDist = topDist;
-          best = { pos: offset, indicatorY: rect.top, indicatorLeft: rect.left, indicatorWidth: rect.width };
+          best = {
+            pos: offset,
+            indicatorY: rect.top,
+            indicatorLeft: rect.left,
+            indicatorWidth: rect.width,
+          };
         }
 
         // Bottom boundary
         const botDist = Math.abs(y - rect.bottom);
         if (botDist < bestDist) {
           bestDist = botDist;
-          best = { pos: offset + child.nodeSize, indicatorY: rect.bottom, indicatorLeft: rect.left, indicatorWidth: rect.width };
+          best = {
+            pos: offset + child.nodeSize,
+            indicatorY: rect.bottom,
+            indicatorLeft: rect.left,
+            indicatorWidth: rect.width,
+          };
         }
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     offset += child.nodeSize;
   }
 
@@ -204,7 +226,12 @@ function resolveInsideList(
           // First item's top → before the entire list (parent level)
           // Other items' top → between items (inside list, needs split)
           const pos = i === 0 ? listStart : offset;
-          best = { pos, indicatorY: rect.top, indicatorLeft: rect.left, indicatorWidth: rect.width };
+          best = {
+            pos,
+            indicatorY: rect.top,
+            indicatorLeft: rect.left,
+            indicatorWidth: rect.width,
+          };
         }
 
         // Bottom boundary of every item
@@ -213,13 +240,19 @@ function resolveInsideList(
           bestDist = botDist;
           // Last item's bottom → after the entire list (parent level)
           // Other items' bottom → same as next item's top (between items, inside list)
-          const pos = i === listNode.childCount - 1
-            ? listEnd
-            : offset + item.nodeSize; // next item start
-          best = { pos, indicatorY: rect.bottom, indicatorLeft: rect.left, indicatorWidth: rect.width };
+          const pos =
+            i === listNode.childCount - 1 ? listEnd : offset + item.nodeSize; // next item start
+          best = {
+            pos,
+            indicatorY: rect.bottom,
+            indicatorLeft: rect.left,
+            indicatorWidth: rect.width,
+          };
         }
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     offset += item.nodeSize;
   }
 
@@ -250,7 +283,9 @@ function tryNestedLists(
             if (result) return result;
           }
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
     contentOffset += child.nodeSize;
   }

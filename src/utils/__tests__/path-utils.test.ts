@@ -1,5 +1,10 @@
 import { describe, test, expect } from "vitest";
-import { isImageFile, getRelativePath, resolveNameConflict, extractNamespace } from "../path-utils";
+import {
+  isImageFile,
+  getRelativePath,
+  resolveNameConflict,
+  extractNamespace,
+} from "../path-utils";
 
 describe("isImageFile", () => {
   test("returns true for image extensions", () => {
@@ -38,7 +43,9 @@ describe("getRelativePath", () => {
   });
 
   test("child directory", () => {
-    expect(getRelativePath("/a/b", "/a/b/assets/img.png")).toBe("./assets/img.png");
+    expect(getRelativePath("/a/b", "/a/b/assets/img.png")).toBe(
+      "./assets/img.png",
+    );
   });
 
   test("sibling directory", () => {
@@ -74,7 +81,9 @@ describe("§61 extractNamespace", () => {
   });
 
   test("handles deeply nested paths", () => {
-    expect(extractNamespace("docs/design/part3/section.md")).toBe("docs/design/part3");
+    expect(extractNamespace("docs/design/part3/section.md")).toBe(
+      "docs/design/part3",
+    );
   });
 
   test("returns undefined when slash is at index 0", () => {
@@ -89,12 +98,17 @@ describe("resolveNameConflict", () => {
   });
 
   test("appends -1 on first conflict", () => {
-    expect(resolveNameConflict("photo.png", new Set(["photo.png"]))).toBe("photo-1.png");
+    expect(resolveNameConflict("photo.png", new Set(["photo.png"]))).toBe(
+      "photo-1.png",
+    );
   });
 
   test("increments counter on multiple conflicts", () => {
     expect(
-      resolveNameConflict("photo.png", new Set(["photo.png", "photo-1.png", "photo-2.png"])),
+      resolveNameConflict(
+        "photo.png",
+        new Set(["photo.png", "photo-1.png", "photo-2.png"]),
+      ),
     ).toBe("photo-3.png");
   });
 

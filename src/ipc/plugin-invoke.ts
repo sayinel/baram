@@ -8,19 +8,29 @@ export interface RustInstalledPluginInfo {
   checksum: string;
 }
 
-export async function pluginInstall(url: string, checksum?: string): Promise<RustInstalledPluginInfo> {
-  return invoke<RustInstalledPluginInfo>("plugin_install", { url, checksum: checksum ?? null });
+export async function pluginInstall(
+  url: string,
+  checksum?: string,
+): Promise<RustInstalledPluginInfo> {
+  return invoke<RustInstalledPluginInfo>("plugin_install", {
+    url,
+    checksum: checksum ?? null,
+  });
 }
 
 export async function pluginUninstall(pluginId: string): Promise<void> {
   return invoke<void>("plugin_uninstall", { pluginId });
 }
 
-export async function pluginListInstalled(): Promise<RustInstalledPluginInfo[]> {
+export async function pluginListInstalled(): Promise<
+  RustInstalledPluginInfo[]
+> {
   return invoke<RustInstalledPluginInfo[]>("plugin_list_installed");
 }
 
-export async function pluginReadManifest(pluginId: string): Promise<PluginManifest> {
+export async function pluginReadManifest(
+  pluginId: string,
+): Promise<PluginManifest> {
   return invoke<PluginManifest>("plugin_read_manifest", { pluginId });
 }
 

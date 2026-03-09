@@ -71,17 +71,17 @@ describe("Table Advanced — cell merge (§5.5 M10)", () => {
       // Build a PM table: 1 header row with 1 merged cell (colspan=2), 1 body row with 2 cells
       const mergedHeader = schema.nodes.tableHeader.create(
         { colspan: 2, rowspan: 1, alignment: null },
-        [schema.nodes.paragraph.create(null, [schema.text("Merged")])]
+        [schema.nodes.paragraph.create(null, [schema.text("Merged")])],
       );
       const headerRow = schema.nodes.tableRow.create(null, [mergedHeader]);
 
       const cell1 = schema.nodes.tableCell.create(
         { colspan: 1, rowspan: 1, alignment: null },
-        [schema.nodes.paragraph.create(null, [schema.text("A")])]
+        [schema.nodes.paragraph.create(null, [schema.text("A")])],
       );
       const cell2 = schema.nodes.tableCell.create(
         { colspan: 1, rowspan: 1, alignment: null },
-        [schema.nodes.paragraph.create(null, [schema.text("B")])]
+        [schema.nodes.paragraph.create(null, [schema.text("B")])],
       );
       const bodyRow = schema.nodes.tableRow.create(null, [cell1, cell2]);
 
@@ -99,15 +99,15 @@ describe("Table Advanced — cell merge (§5.5 M10)", () => {
     it("colspan=3 header expands to 3 separate cells", () => {
       const mergedHeader = schema.nodes.tableHeader.create(
         { colspan: 3, rowspan: 1, alignment: null },
-        [schema.nodes.paragraph.create(null, [schema.text("Wide")])]
+        [schema.nodes.paragraph.create(null, [schema.text("Wide")])],
       );
       const headerRow = schema.nodes.tableRow.create(null, [mergedHeader]);
 
       const bodyCells = [1, 2, 3].map((n) =>
         schema.nodes.tableCell.create(
           { colspan: 1, rowspan: 1, alignment: null },
-          [schema.nodes.paragraph.create(null, [schema.text(String(n))])]
-        )
+          [schema.nodes.paragraph.create(null, [schema.text(String(n))])],
+        ),
       );
       const bodyRow = schema.nodes.tableRow.create(null, bodyCells);
 
@@ -124,18 +124,18 @@ describe("Table Advanced — cell merge (§5.5 M10)", () => {
       // Header row: 2 normal headers
       const h1 = schema.nodes.tableHeader.create(
         { colspan: 1, rowspan: 1, alignment: null },
-        [schema.nodes.paragraph.create(null, [schema.text("H1")])]
+        [schema.nodes.paragraph.create(null, [schema.text("H1")])],
       );
       const h2 = schema.nodes.tableHeader.create(
         { colspan: 1, rowspan: 1, alignment: null },
-        [schema.nodes.paragraph.create(null, [schema.text("H2")])]
+        [schema.nodes.paragraph.create(null, [schema.text("H2")])],
       );
       const headerRow = schema.nodes.tableRow.create(null, [h1, h2]);
 
       // Body row: 1 merged cell spanning 2 columns
       const mergedCell = schema.nodes.tableCell.create(
         { colspan: 2, rowspan: 1, alignment: null },
-        [schema.nodes.paragraph.create(null, [schema.text("Span")])]
+        [schema.nodes.paragraph.create(null, [schema.text("Span")])],
       );
       const bodyRow = schema.nodes.tableRow.create(null, [mergedCell]);
 
@@ -160,18 +160,18 @@ describe("Table Advanced — cell merge (§5.5 M10)", () => {
       // 2 header cells: first with rowspan=2, second normal
       const h1 = schema.nodes.tableHeader.create(
         { colspan: 1, rowspan: 2, alignment: null },
-        [schema.nodes.paragraph.create(null, [schema.text("TallHeader")])]
+        [schema.nodes.paragraph.create(null, [schema.text("TallHeader")])],
       );
       const h2 = schema.nodes.tableHeader.create(
         { colspan: 1, rowspan: 1, alignment: null },
-        [schema.nodes.paragraph.create(null, [schema.text("H2")])]
+        [schema.nodes.paragraph.create(null, [schema.text("H2")])],
       );
       const headerRow = schema.nodes.tableRow.create(null, [h1, h2]);
 
       // Body row: only 1 cell (the rowspan from h1 fills col 0)
       const bodyCell = schema.nodes.tableCell.create(
         { colspan: 1, rowspan: 1, alignment: null },
-        [schema.nodes.paragraph.create(null, [schema.text("B2")])]
+        [schema.nodes.paragraph.create(null, [schema.text("B2")])],
       );
       const bodyRow = schema.nodes.tableRow.create(null, [bodyCell]);
 
@@ -211,12 +211,13 @@ describe("Table Advanced — cell merge (§5.5 M10)", () => {
     });
 
     it("table with alignment preserves left/center/right alignment markers", () => {
-      const input = "| Left | Center | Right |\n| :--- | :---: | ---: |\n| a | b | c |";
+      const input =
+        "| Left | Center | Right |\n| :--- | :---: | ---: |\n| a | b | c |";
       const out = roundtrip(input);
       // Alignment markers must be present (remark-stringify may normalize dashes count)
-      expect(out).toMatch(/:-+/);   // left-aligned: :---
-      expect(out).toMatch(/:-+:/);  // center-aligned: :---:
-      expect(out).toMatch(/-+:/);   // right-aligned: ---:
+      expect(out).toMatch(/:-+/); // left-aligned: :---
+      expect(out).toMatch(/:-+:/); // center-aligned: :---:
+      expect(out).toMatch(/-+:/); // right-aligned: ---:
     });
 
     it("simple 3-column table preserves cell count per row", () => {
@@ -233,7 +234,7 @@ describe("Table Advanced — cell merge (§5.5 M10)", () => {
     it("tableCell node retains colspan attr", () => {
       const cell = schema.nodes.tableCell.create(
         { colspan: 3, rowspan: 1, alignment: null },
-        [schema.nodes.paragraph.create()]
+        [schema.nodes.paragraph.create()],
       );
       expect(cell.attrs.colspan).toBe(3);
       expect(cell.attrs.rowspan).toBe(1);
@@ -242,7 +243,7 @@ describe("Table Advanced — cell merge (§5.5 M10)", () => {
     it("tableHeader node retains rowspan attr", () => {
       const header = schema.nodes.tableHeader.create(
         { colspan: 1, rowspan: 2, alignment: null },
-        [schema.nodes.paragraph.create()]
+        [schema.nodes.paragraph.create()],
       );
       expect(header.attrs.rowspan).toBe(2);
     });
@@ -251,25 +252,25 @@ describe("Table Advanced — cell merge (§5.5 M10)", () => {
       // Row 0: [merged(colspan=2), normal] → 3 logical columns
       const merged = schema.nodes.tableHeader.create(
         { colspan: 2, rowspan: 1, alignment: null },
-        [schema.nodes.paragraph.create(null, [schema.text("M")])]
+        [schema.nodes.paragraph.create(null, [schema.text("M")])],
       );
       const normal = schema.nodes.tableHeader.create(
         { colspan: 1, rowspan: 1, alignment: null },
-        [schema.nodes.paragraph.create(null, [schema.text("N")])]
+        [schema.nodes.paragraph.create(null, [schema.text("N")])],
       );
       const headerRow = schema.nodes.tableRow.create(null, [merged, normal]);
 
       const c1 = schema.nodes.tableCell.create(
         { colspan: 1, rowspan: 1, alignment: null },
-        [schema.nodes.paragraph.create(null, [schema.text("a")])]
+        [schema.nodes.paragraph.create(null, [schema.text("a")])],
       );
       const c2 = schema.nodes.tableCell.create(
         { colspan: 1, rowspan: 1, alignment: null },
-        [schema.nodes.paragraph.create(null, [schema.text("b")])]
+        [schema.nodes.paragraph.create(null, [schema.text("b")])],
       );
       const c3 = schema.nodes.tableCell.create(
         { colspan: 1, rowspan: 1, alignment: null },
-        [schema.nodes.paragraph.create(null, [schema.text("c")])]
+        [schema.nodes.paragraph.create(null, [schema.text("c")])],
       );
       const bodyRow = schema.nodes.tableRow.create(null, [c1, c2, c3]);
 

@@ -14,10 +14,10 @@ import { registerSkillSection } from "./skill-panel-registry";
 // ─── Category icons ──────────────────────────────────────────────────────────
 
 const CATEGORY_ICONS: Record<string, string> = {
-  clarity: "\u{1F50D}",    // magnifying glass
-  efficiency: "\u26A1",    // lightning
-  missing: "\u2795",       // plus
-  variables: "\u{1F4DD}",  // memo
+  clarity: "\u{1F50D}", // magnifying glass
+  efficiency: "\u26A1", // lightning
+  missing: "\u2795", // plus
+  variables: "\u{1F4DD}", // memo
 };
 
 // ─── SuggestionCard ──────────────────────────────────────────────────────────
@@ -25,7 +25,8 @@ const CATEGORY_ICONS: Record<string, string> = {
 function SuggestionCard({ suggestion }: { suggestion: OptimizeSuggestion }) {
   const handleApply = useCallback(() => {
     if (!suggestion.before || !suggestion.after) return;
-    const { activeTabId, tabs, markDirty, requestContentRefresh } = useEditorStore.getState();
+    const { activeTabId, tabs, markDirty, requestContentRefresh } =
+      useEditorStore.getState();
     const activeTab = tabs.find((t) => t.id === activeTabId);
     if (!activeTab?.filePath) return;
     const content = useFileStore.getState().openFiles.get(activeTab.filePath);
@@ -114,10 +115,14 @@ export function SkillOptimizeSection() {
         className="skill-optimize-header-btn"
         onClick={() => setExpanded((v) => !v)}
       >
-        <span className="skill-section-arrow">{expanded ? "\u25BE" : "\u25B8"}</span>
+        <span className="skill-section-arrow">
+          {expanded ? "\u25BE" : "\u25B8"}
+        </span>
         <span>Optimize</span>
         {displaySuggestions.length > 0 && (
-          <span className="skill-optimize-badge">{displaySuggestions.length}</span>
+          <span className="skill-optimize-badge">
+            {displaySuggestions.length}
+          </span>
         )}
       </button>
 
@@ -146,9 +151,7 @@ export function SkillOptimizeSection() {
             </div>
           )}
 
-          {error && (
-            <div className="skill-optimize-error">{error}</div>
-          )}
+          {error && <div className="skill-optimize-error">{error}</div>}
 
           {displaySuggestions.length > 0 && (
             <div className="skill-optimize-cards">
@@ -158,11 +161,14 @@ export function SkillOptimizeSection() {
             </div>
           )}
 
-          {!isStreaming && hasRun && displaySuggestions.length === 0 && !error && (
-            <div className="skill-optimize-empty">
-              No suggestions found. The prompt looks good!
-            </div>
-          )}
+          {!isStreaming &&
+            hasRun &&
+            displaySuggestions.length === 0 &&
+            !error && (
+              <div className="skill-optimize-empty">
+                No suggestions found. The prompt looks good!
+              </div>
+            )}
         </div>
       )}
     </div>

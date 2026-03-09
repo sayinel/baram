@@ -14,8 +14,17 @@ describe("§56b FileStore journal scoping", () => {
     useFileStore.setState({
       rootPath: "/Users/test/vault",
       fileTree: [
-        { name: "docs", path: "/Users/test/vault/docs", isDir: true, children: [] },
-        { name: "readme.md", path: "/Users/test/vault/readme.md", isDir: false },
+        {
+          name: "docs",
+          path: "/Users/test/vault/docs",
+          isDir: true,
+          children: [],
+        },
+        {
+          name: "readme.md",
+          path: "/Users/test/vault/readme.md",
+          isDir: false,
+        },
       ],
       openFiles: new Map(),
       originalRootPath: null,

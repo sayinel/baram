@@ -1,7 +1,13 @@
 // §56i Daily Writing Prompt — compact display with refresh + history tracking (§10.5)
 import { useState, useEffect } from "react";
-import { DAILY_PROMPTS, getPromptAvoidingHistory } from "../../utils/journal-prompts";
-import { readPromptHistory, addPromptToHistory } from "../../utils/journal-stats-cache";
+import {
+  DAILY_PROMPTS,
+  getPromptAvoidingHistory,
+} from "../../utils/journal-prompts";
+import {
+  readPromptHistory,
+  addPromptToHistory,
+} from "../../utils/journal-stats-cache";
 import { useSettingsStore } from "../../stores/settings-store";
 import { resolveJournalDir } from "../../utils/journal";
 
@@ -40,10 +46,16 @@ export function DailyPrompt({ date }: Props) {
     }
 
     readPromptHistory(journalDir)
-      .then((ids) => { if (!cancelled) pick(ids); })
-      .catch(() => { if (!cancelled) pick([]); });
+      .then((ids) => {
+        if (!cancelled) pick(ids);
+      })
+      .catch(() => {
+        if (!cancelled) pick([]);
+      });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
     // effectiveDate.toDateString() gives a stable string dep for date changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [journalDir, effectiveDate.toDateString()]);

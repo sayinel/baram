@@ -31,7 +31,11 @@ export async function executeAICommand(
     const { to } = editor.state.selection;
     const $to = editor.state.doc.resolve(to);
     const afterBlock = $to.after(1); // position after the top-level block
-    editor.chain().focus().insertContentAt(afterBlock, { type: "paragraph" }).run();
+    editor
+      .chain()
+      .focus()
+      .insertContentAt(afterBlock, { type: "paragraph" })
+      .run();
     currentPos = afterBlock + 1; // inside the new paragraph
   } else {
     // Original behavior: insert at cursor position
@@ -52,15 +56,12 @@ export async function executeAICommand(
     },
   );
 
-  const doneUn = await listen<{ requestId: string }>(
-    "llm:done",
-    (event) => {
-      if (event.payload.requestId !== requestId) return;
-      tokenUn();
-      doneUn();
-      errorUn();
-    },
-  );
+  const doneUn = await listen<{ requestId: string }>("llm:done", (event) => {
+    if (event.payload.requestId !== requestId) return;
+    tokenUn();
+    doneUn();
+    errorUn();
+  });
 
   const errorUn = await listen<{ requestId: string; error: string }>(
     "llm:error",
@@ -115,7 +116,11 @@ export interface PromptOptions {
   presets?: string[];
 }
 
-export function showPrompt(message: string, defaultValue = "", options?: PromptOptions): Promise<string | null> {
+export function showPrompt(
+  message: string,
+  defaultValue = "",
+  options?: PromptOptions,
+): Promise<string | null> {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
     overlay.className = "ai-prompt-overlay";
@@ -178,8 +183,14 @@ export function showPrompt(message: string, defaultValue = "", options?: PromptO
       if (e.target === overlay) cleanup(null);
     });
     input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") { e.preventDefault(); cleanup(input.value || null); }
-      if (e.key === "Escape") { e.preventDefault(); cleanup(null); }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        cleanup(input.value || null);
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        cleanup(null);
+      }
     });
 
     requestAnimationFrame(() => input.focus());

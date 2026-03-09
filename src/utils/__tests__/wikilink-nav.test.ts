@@ -76,7 +76,13 @@ beforeEach(() => {
   vi.mocked(useEditorStore.getState).mockReturnValue({
     activeTabId: "tab-1",
     tabs: [
-      { id: "tab-1", filePath: "/vault/notes/ai/prompt.md", title: "prompt.md", isDirty: false, isPinned: false },
+      {
+        id: "tab-1",
+        filePath: "/vault/notes/ai/prompt.md",
+        title: "prompt.md",
+        isDirty: false,
+        isPinned: false,
+      },
     ],
   } as unknown as ReturnType<typeof useEditorStore.getState>);
 });
@@ -136,28 +142,43 @@ describe("resolveWikilinkTarget", () => {
 
 describe("§61 resolveRelativeTarget", () => {
   it("resolves ./sibling from same directory", () => {
-    const result = resolveRelativeTarget("./models", "/vault/notes/ai/prompt.md");
+    const result = resolveRelativeTarget(
+      "./models",
+      "/vault/notes/ai/prompt.md",
+    );
     expect(result).toBe("/vault/notes/ai/models.md");
   });
 
   it("resolves ../sibling from parent directory", () => {
-    const result = resolveRelativeTarget("../meeting-notes", "/vault/notes/ai/prompt.md");
+    const result = resolveRelativeTarget(
+      "../meeting-notes",
+      "/vault/notes/ai/prompt.md",
+    );
     expect(result).toBe("/vault/notes/meeting-notes.md");
   });
 
   it("resolves ../ai/models with nested relative path", () => {
     // From /vault/notes/meeting-notes.md: ../ goes to /vault, then ai/models
-    const result = resolveRelativeTarget("../ai/models", "/vault/notes/meeting-notes.md");
+    const result = resolveRelativeTarget(
+      "../ai/models",
+      "/vault/notes/meeting-notes.md",
+    );
     expect(result).toBe("/vault/ai/models.md");
   });
 
   it("resolves ./sub/file with subdirectory", () => {
-    const result = resolveRelativeTarget("./ai/prompt", "/vault/notes/meeting-notes.md");
+    const result = resolveRelativeTarget(
+      "./ai/prompt",
+      "/vault/notes/meeting-notes.md",
+    );
     expect(result).toBe("/vault/notes/ai/prompt.md");
   });
 
   it("handles multiple ../ levels", () => {
-    const result = resolveRelativeTarget("../../architecture", "/vault/notes/ai/prompt.md");
+    const result = resolveRelativeTarget(
+      "../../architecture",
+      "/vault/notes/ai/prompt.md",
+    );
     expect(result).toBe("/vault/architecture.md");
   });
 });

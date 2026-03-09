@@ -3,7 +3,11 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { BubbleMenu } from "@tiptap/react/menus";
 import type { Editor } from "@tiptap/react";
 import { CellSelection } from "@tiptap/pm/tables";
-import { executeAICommand, getSelectedText, showPrompt } from "../../utils/ai-commands";
+import {
+  executeAICommand,
+  getSelectedText,
+  showPrompt,
+} from "../../utils/ai-commands";
 import { showFieldDialog } from "../../utils/field-dialog";
 import {
   AI_TRANSLATE,
@@ -27,7 +31,12 @@ interface ToolbarButtonProps {
   onClick: () => void;
 }
 
-function ToolbarButton({ label, title, isActive, onClick }: ToolbarButtonProps) {
+function ToolbarButton({
+  label,
+  title,
+  isActive,
+  onClick,
+}: ToolbarButtonProps) {
   return (
     <button
       className={`floating-toolbar-btn ${isActive ? "floating-toolbar-btn-active" : ""}`}
@@ -182,16 +191,13 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
     [editor],
   );
 
-  const shouldShow = useCallback(
-    () => {
-      // Hide for CellSelection — TableToolbar handles table multi-cell selection
-      if (editor.state.selection instanceof CellSelection) return false;
-      // Default BubbleMenu behavior for text selections
-      const { from, to } = editor.state.selection;
-      return from !== to;
-    },
-    [editor],
-  );
+  const shouldShow = useCallback(() => {
+    // Hide for CellSelection — TableToolbar handles table multi-cell selection
+    if (editor.state.selection instanceof CellSelection) return false;
+    // Default BubbleMenu behavior for text selections
+    const { from, to } = editor.state.selection;
+    return from !== to;
+  }, [editor]);
 
   return (
     <BubbleMenu
@@ -252,9 +258,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
           }
           const result = await showFieldDialog({
             title: "Insert Link",
-            fields: [
-              { key: "url", label: "URL", placeholder: "https://..." },
-            ],
+            fields: [{ key: "url", label: "URL", placeholder: "https://..." }],
           });
           if (!result?.url) {
             editor.commands.focus();

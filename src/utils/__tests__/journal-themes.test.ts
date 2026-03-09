@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { JOURNAL_THEMES, getJournalTheme, getStreakIcon } from "../journal-themes";
+import {
+  JOURNAL_THEMES,
+  getJournalTheme,
+  getStreakIcon,
+} from "../journal-themes";
 
 describe("JOURNAL_THEMES", () => {
   it("has exactly 6 themes", () => {
@@ -29,12 +33,17 @@ describe("JOURNAL_THEMES", () => {
       expect(theme.typography.fontFamily.length).toBeGreaterThan(0);
       expect(theme.typography.lineHeight).toBeGreaterThanOrEqual(1.0);
       expect(theme.typography.lineHeight).toBeLessThanOrEqual(3.0);
-      expect(/^\d+px$/.test(theme.typography.maxWidth) || theme.typography.maxWidth === "inherit").toBe(true);
+      expect(
+        /^\d+px$/.test(theme.typography.maxWidth) ||
+          theme.typography.maxWidth === "inherit",
+      ).toBe(true);
     }
   });
 
   it("non-classic-diary themes have px maxWidth", () => {
-    for (const theme of JOURNAL_THEMES.filter((t) => t.id !== "classic-diary")) {
+    for (const theme of JOURNAL_THEMES.filter(
+      (t) => t.id !== "classic-diary",
+    )) {
       expect(/^\d+px$/.test(theme.typography.maxWidth)).toBe(true);
     }
   });

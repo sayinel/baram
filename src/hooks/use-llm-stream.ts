@@ -6,7 +6,11 @@ import { useAIStore } from "../stores/ai-store";
 import type { AITask } from "../stores/ai-store";
 import { isLLMAllowed } from "../utils/privacy-check";
 import { getModelForTask } from "../utils/model-selection";
-import type { LLMTokenPayload, LLMDonePayload, LLMErrorPayload } from "../ipc/types";
+import type {
+  LLMTokenPayload,
+  LLMDonePayload,
+  LLMErrorPayload,
+} from "../ipc/types";
 
 interface UseLLMStreamOptions {
   model?: string;
@@ -17,7 +21,11 @@ interface UseLLMStreamOptions {
 }
 
 interface UseLLMStreamReturn {
-  send: (prompt: string, systemPrompt?: string, opts?: UseLLMStreamOptions) => void;
+  send: (
+    prompt: string,
+    systemPrompt?: string,
+    opts?: UseLLMStreamOptions,
+  ) => void;
   cancel: () => void;
   isStreaming: boolean;
   text: string;
@@ -50,7 +58,11 @@ export function useLLMStream(): UseLLMStreamReturn {
   }, [cleanup]);
 
   const send = useCallback(
-    async (prompt: string, systemPrompt?: string, opts?: UseLLMStreamOptions) => {
+    async (
+      prompt: string,
+      systemPrompt?: string,
+      opts?: UseLLMStreamOptions,
+    ) => {
       // Cancel any existing stream
       await cleanup();
 
@@ -59,12 +71,15 @@ export function useLLMStream(): UseLLMStreamReturn {
       const task = opts?.task ?? "chat";
       const model = opts?.model ?? getModelForTask(task);
       const apiKey = store.apiKey;
-      const baseUrl = opts?.baseUrl ?? (provider === "ollama" ? store.ollamaUrl : undefined);
+      const baseUrl =
+        opts?.baseUrl ?? (provider === "ollama" ? store.ollamaUrl : undefined);
       const privacyMode = store.privacyMode;
 
       // Privacy check
       if (!isLLMAllowed(privacyMode, provider)) {
-        setError("Privacy mode is active. Only local models (Ollama) are allowed.");
+        setError(
+          "Privacy mode is active. Only local models (Ollama) are allowed.",
+        );
         return;
       }
 

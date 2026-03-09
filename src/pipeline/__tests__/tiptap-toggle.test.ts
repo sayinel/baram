@@ -51,8 +51,18 @@ describe("Real Tiptap editor toggle cycle", () => {
 
     console.log("Input:      ", JSON.stringify(input));
     console.log("After cycle:", JSON.stringify(md1After));
-    console.log("Input lines:", input.split("\n").length, "After lines:", md1After.split("\n").length);
-    console.log("Input childCount:", doc0.childCount, "After childCount:", editor.state.doc.childCount);
+    console.log(
+      "Input lines:",
+      input.split("\n").length,
+      "After lines:",
+      md1After.split("\n").length,
+    );
+    console.log(
+      "Input childCount:",
+      doc0.childCount,
+      "After childCount:",
+      editor.state.doc.childCount,
+    );
 
     expect(md1After).toBe(input);
 
@@ -75,7 +85,9 @@ describe("Real Tiptap editor toggle cycle", () => {
       editor.commands.setContent(newDoc.toJSON());
 
       const mdAfter = prosemirrorToMarkdown(editor.state.doc);
-      console.log(`Cycle ${cycle + 1}: childCount=${editor.state.doc.childCount}, lines=${mdAfter.split("\\n").length}, length=${mdAfter.length}`);
+      console.log(
+        `Cycle ${cycle + 1}: childCount=${editor.state.doc.childCount}, lines=${mdAfter.split("\\n").length}, length=${mdAfter.length}`,
+      );
 
       if (mdAfter !== input) {
         console.log("  CONTENT CHANGED!");

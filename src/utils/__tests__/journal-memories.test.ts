@@ -3,7 +3,14 @@
  * TDD Red Phase: all tests should FAIL before implementation
  */
 import { describe, it, expect } from "vitest";
-import { extractOneLine, extractDiarySection, renderSimpleMarkdown, extractImages, updateOneLineFrontmatter, groupMemoriesByYear } from "../journal-memories";
+import {
+  extractOneLine,
+  extractDiarySection,
+  renderSimpleMarkdown,
+  extractImages,
+  updateOneLineFrontmatter,
+  groupMemoriesByYear,
+} from "../journal-memories";
 
 describe("§56c extractOneLine", () => {
   it("returns frontmatter oneline field if present", () => {
@@ -36,7 +43,9 @@ date: 2026-02-28
 ## Captures
 
 - ✦ 아이디어 메모`;
-    expect(extractOneLine(content)).toBe("첫 출근. 설렘과 긴장이 공존하는 하루.");
+    expect(extractOneLine(content)).toBe(
+      "첫 출근. 설렘과 긴장이 공존하는 하루.",
+    );
   });
 
   it("skips Captures section content", () => {
@@ -137,7 +146,9 @@ date: 2026-02-28
 ## Notes
 
 메모 내용`;
-    expect(extractDiarySection(content)).toBe("오늘 날씨가 좋았다.\n카페에서 코딩했다.");
+    expect(extractDiarySection(content)).toBe(
+      "오늘 날씨가 좋았다.\n카페에서 코딩했다.",
+    );
   });
 
   it("extracts to end if no next section", () => {
@@ -181,12 +192,15 @@ describe("§56c renderSimpleMarkdown", () => {
   });
 
   it("renders inline code", () => {
-    expect(renderSimpleMarkdown("use `console.log`")).toContain("<code>console.log</code>");
+    expect(renderSimpleMarkdown("use `console.log`")).toContain(
+      "<code>console.log</code>",
+    );
   });
 
   it("renders links", () => {
-    expect(renderSimpleMarkdown("[click](https://example.com)"))
-      .toContain('<a href="https://example.com">click</a>');
+    expect(renderSimpleMarkdown("[click](https://example.com)")).toContain(
+      '<a href="https://example.com">click</a>',
+    );
   });
 
   it("renders headings", () => {
@@ -233,7 +247,9 @@ describe("§56c renderSimpleMarkdown", () => {
   });
 
   it("renders images with underscores in filename", () => {
-    const html = renderSimpleMarkdown("![20260301\\_162051](./assets/20260301_162051.jpg)");
+    const html = renderSimpleMarkdown(
+      "![20260301\\_162051](./assets/20260301_162051.jpg)",
+    );
     expect(html).toContain('src="./assets/20260301_162051.jpg"');
     expect(html).not.toContain("<em>");
   });
@@ -323,7 +339,9 @@ date: 2026-03-01
   it("creates frontmatter if none exists", () => {
     const content = "# 2026-03-01\n\nNo frontmatter here.";
     const result = updateOneLineFrontmatter(content, "첫 요약");
-    expect(result).toBe(`---\noneline: "첫 요약"\n---\n# 2026-03-01\n\nNo frontmatter here.`);
+    expect(result).toBe(
+      `---\noneline: "첫 요약"\n---\n# 2026-03-01\n\nNo frontmatter here.`,
+    );
   });
 
   it("preserves content after frontmatter", () => {
@@ -358,10 +376,12 @@ describe("§56c groupMemoriesByYear", () => {
   });
 
   it("includes path and content in each group", () => {
-    const entries = [
-      { year: 2025, path: "/j/2025.md", content: "테스트" },
-    ];
+    const entries = [{ year: 2025, path: "/j/2025.md", content: "테스트" }];
     const result = groupMemoriesByYear(entries);
-    expect(result[0]).toEqual({ year: 2025, path: "/j/2025.md", content: "테스트" });
+    expect(result[0]).toEqual({
+      year: 2025,
+      path: "/j/2025.md",
+      content: "테스트",
+    });
   });
 });

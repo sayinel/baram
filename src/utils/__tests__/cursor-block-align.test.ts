@@ -49,7 +49,11 @@ function debugSplitMarkdownBlocks(markdown: string) {
       const blockStart = lineOffsets[blockStartLine];
       const blockEnd = lineOffsets[i - 1] + lines[i - 1].length;
       const text = markdown.substring(blockStart, blockEnd);
-      blocks.push({ start: blockStart, end: blockEnd, text: text.substring(0, 50) });
+      blocks.push({
+        start: blockStart,
+        end: blockEnd,
+        text: text.substring(0, 50),
+      });
       blockStartLine = i + 1;
     } else if (line === "" && i === blockStartLine) {
       blockStartLine = i + 1;
@@ -61,7 +65,11 @@ function debugSplitMarkdownBlocks(markdown: string) {
     const lastLine = lines.length - 1;
     const blockEnd = lineOffsets[lastLine] + lines[lastLine].length;
     const text = markdown.substring(blockStart, blockEnd);
-    blocks.push({ start: blockStart, end: blockEnd, text: text.substring(0, 50) });
+    blocks.push({
+      start: blockStart,
+      end: blockEnd,
+      text: text.substring(0, 50),
+    });
   }
 
   // Enrich with empty paragraphs
@@ -131,7 +139,9 @@ describe("block alignment debug", () => {
     const mdBlocks = debugSplitMarkdownBlocks(serialized);
     console.log(`\n=== MD BLOCKS (${mdBlocks.length}) ===`);
     for (let i = 0; i < mdBlocks.length; i++) {
-      console.log(`  MD block ${i}: [${mdBlocks[i].start}..${mdBlocks[i].end}] "${mdBlocks[i].text}"`);
+      console.log(
+        `  MD block ${i}: [${mdBlocks[i].start}..${mdBlocks[i].end}] "${mdBlocks[i].text}"`,
+      );
     }
 
     console.log(`\n=== PM BLOCKS (${doc.childCount}) ===`);
@@ -142,8 +152,12 @@ describe("block alignment debug", () => {
       const start = pos + (isLeaf ? 0 : 1);
       const end = start + child.content.size;
       const text = child.textContent.substring(0, 50);
-      console.log(`  PM block ${i}: ${child.type.name} isLeaf=${isLeaf} nodeSize=${child.nodeSize} content.size=${child.content.size} [${start}..${end}] "${text}"`);
-      console.log(`    old_nextPos=${pos + child.content.size + 2}, correct_nextPos=${pos + child.nodeSize}`);
+      console.log(
+        `  PM block ${i}: ${child.type.name} isLeaf=${isLeaf} nodeSize=${child.nodeSize} content.size=${child.content.size} [${start}..${end}] "${text}"`,
+      );
+      console.log(
+        `    old_nextPos=${pos + child.content.size + 2}, correct_nextPos=${pos + child.nodeSize}`,
+      );
       pos += child.nodeSize;
     }
 
@@ -160,17 +174,23 @@ describe("block alignment debug", () => {
       const child = newDoc.child(i);
       const start = npos + 1;
       const end = start + child.content.size;
-      console.log(`  newDoc block ${i}: ${child.type.name} [${start}..${end}] "${child.textContent.substring(0, 40)}"`);
+      console.log(
+        `  newDoc block ${i}: ${child.type.name} [${start}..${end}] "${child.textContent.substring(0, 40)}"`,
+      );
       npos = end + 1;
     }
-    console.log(`  doc.childCount === newDoc.childCount: ${doc.childCount === newDoc.childCount}`);
+    console.log(
+      `  doc.childCount === newDoc.childCount: ${doc.childCount === newDoc.childCount}`,
+    );
 
     // Check if each block's content size matches
     for (let i = 0; i < Math.min(doc.childCount, newDoc.childCount); i++) {
       const d = doc.child(i);
       const n = newDoc.child(i);
       if (d.type.name !== n.type.name || d.content.size !== n.content.size) {
-        console.log(`  *** Block ${i} DIFFERS: doc=${d.type.name}(${d.content.size}) vs newDoc=${n.type.name}(${n.content.size})`);
+        console.log(
+          `  *** Block ${i} DIFFERS: doc=${d.type.name}(${d.content.size}) vs newDoc=${n.type.name}(${n.content.size})`,
+        );
       }
     }
   });

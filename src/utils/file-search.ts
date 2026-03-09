@@ -99,7 +99,14 @@ export function fuzzyScore(query: string, text: string): number {
         score -= 5;
       } else {
         const prev = t[ti - 1];
-        if (prev === "/" || prev === "\\" || prev === "." || prev === "-" || prev === "_" || prev === " ") {
+        if (
+          prev === "/" ||
+          prev === "\\" ||
+          prev === "." ||
+          prev === "-" ||
+          prev === "_" ||
+          prev === " "
+        ) {
           score -= 3;
         }
       }

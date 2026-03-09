@@ -14,7 +14,9 @@ export function extractOneLine(content: string): string {
   }
 
   // 2. Strip frontmatter
-  const body = fmMatch ? content.slice(fmMatch[0].length).trim() : content.trim();
+  const body = fmMatch
+    ? content.slice(fmMatch[0].length).trim()
+    : content.trim();
   if (!body) return "";
 
   // 3. Try to extract from ## Diary section only (skip Captures)
@@ -32,7 +34,9 @@ export function extractOneLine(content: string): string {
     const capturesMatch = body.match(/^## Captures\s*$/m);
     if (capturesMatch) {
       // Find next section after Captures
-      const afterCaptures = body.slice(capturesMatch.index! + capturesMatch[0].length);
+      const afterCaptures = body.slice(
+        capturesMatch.index! + capturesMatch[0].length,
+      );
       const nextSection = afterCaptures.match(/^## /m);
       if (nextSection) {
         // Use content before Captures + content after Captures section
@@ -55,7 +59,13 @@ export function extractOneLine(content: string): string {
     if (!trimmed) continue;
     if (trimmed.startsWith("#")) continue;
     if (trimmed.startsWith(">")) continue;
-    if (trimmed.startsWith("- ✦") || trimmed.startsWith("- ↗") || trimmed.startsWith("- ❝") || trimmed.startsWith("- ☰")) continue;
+    if (
+      trimmed.startsWith("- ✦") ||
+      trimmed.startsWith("- ↗") ||
+      trimmed.startsWith("- ❝") ||
+      trimmed.startsWith("- ☰")
+    )
+      continue;
     textLines.push(trimmed);
   }
 
@@ -86,7 +96,9 @@ export function extractDiarySection(content: string): string {
 
   // Strip frontmatter
   const fmMatch = content.match(/^---\n[\s\S]*?\n---/);
-  const body = fmMatch ? content.slice(fmMatch[0].length).trim() : content.trim();
+  const body = fmMatch
+    ? content.slice(fmMatch[0].length).trim()
+    : content.trim();
   if (!body) return "";
 
   const diaryMatch = body.match(/^## Diary\s*$/m);
@@ -223,7 +235,9 @@ export function renderSimpleMarkdown(md: string): string {
         inList = "ul";
       }
       const checked = taskMatch[1] !== " " ? " checked disabled" : " disabled";
-      html.push(`<li><input type="checkbox"${checked}/> ${inlineMarkdown(taskMatch[2])}</li>`);
+      html.push(
+        `<li><input type="checkbox"${checked}/> ${inlineMarkdown(taskMatch[2])}</li>`,
+      );
       continue;
     }
 
@@ -254,11 +268,14 @@ function inlineMarkdown(text: string): string {
       return `\x00PH${idx}\x00`;
     })
     // Links: [text](url)
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m: string, linkText: string, href: string) => {
-      const idx = placeholders.length;
-      placeholders.push(`<a href="${href}">${linkText}</a>`);
-      return `\x00PH${idx}\x00`;
-    });
+    .replace(
+      /\[([^\]]+)\]\(([^)]+)\)/g,
+      (_m: string, linkText: string, href: string) => {
+        const idx = placeholders.length;
+        placeholders.push(`<a href="${href}">${linkText}</a>`);
+        return `\x00PH${idx}\x00`;
+      },
+    );
 
   // 2. Apply inline formatting (only * based — _ conflicts with filenames)
   processed = processed
@@ -278,8 +295,10 @@ function inlineMarkdown(text: string): string {
     .replace(/~~(.+?)~~/g, "<del>$1</del>");
 
   // 3. Restore placeholders
-  // eslint-disable-next-line no-control-regex
-  processed = processed.replace(/\x00PH(\d+)\x00/g, (_m, idx) => placeholders[Number(idx)]);
+  processed = processed.replace(
+    /\x00PH(\d+)\x00/g, // eslint-disable-line no-control-regex
+    (_m, idx) => placeholders[Number(idx)],
+  );
 
   return processed;
 }
@@ -299,18 +318,32 @@ export function extractImages(content: string): { alt: string; src: string }[] {
 }
 
 /** Update or insert the `oneline` field in frontmatter */
-export function updateOneLineFrontmatter(content: string, newOneLine: string): string {
+export function updateOneLineFrontmatter(
+  content: string,
+  newOneLine: string,
+): string {
   const fmMatch = content.match(/^(---\n)([\s\S]*?)(\n---)/);
   if (fmMatch) {
     const fmBody = fmMatch[2];
     const onelineRegex = /^oneline:\s*.*$/m;
     if (onelineRegex.test(fmBody)) {
       // Replace existing oneline
-      const updatedBody = fmBody.replace(onelineRegex, `oneline: "${newOneLine}"`);
-      return fmMatch[1] + updatedBody + fmMatch[3] + content.slice(fmMatch[0].length);
+      const updatedBody = fmBody.replace(
+        onelineRegex,
+        `oneline: "${newOneLine}"`,
+      );
+      return (
+        fmMatch[1] + updatedBody + fmMatch[3] + content.slice(fmMatch[0].length)
+      );
     } else {
       // Append oneline to existing frontmatter
-      return fmMatch[1] + fmBody + `\noneline: "${newOneLine}"` + fmMatch[3] + content.slice(fmMatch[0].length);
+      return (
+        fmMatch[1] +
+        fmBody +
+        `\noneline: "${newOneLine}"` +
+        fmMatch[3] +
+        content.slice(fmMatch[0].length)
+      );
     }
   } else {
     // No frontmatter — prepend one

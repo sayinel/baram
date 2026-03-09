@@ -31,7 +31,11 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function SnapshotItem({ snapshot, isSelected, onSelect }: {
+function SnapshotItem({
+  snapshot,
+  isSelected,
+  onSelect,
+}: {
   snapshot: SnapshotEntry;
   isSelected: boolean;
   onSelect: () => void;
@@ -56,14 +60,19 @@ function SnapshotItem({ snapshot, isSelected, onSelect }: {
         <div className="snapshot-item-label">{snapshot.label}</div>
       )}
       <div className="snapshot-item-meta">
-        {snapshot.files.length} file{snapshot.files.length !== 1 ? "s" : ""} · {formatBytes(snapshot.totalSizeBytes)}
+        {snapshot.files.length} file{snapshot.files.length !== 1 ? "s" : ""} ·{" "}
+        {formatBytes(snapshot.totalSizeBytes)}
       </div>
     </div>
   );
 }
 
 // DiffView component for showing file diffs
-function DiffView({ diff, filePath, onClose }: {
+function DiffView({
+  diff,
+  filePath,
+  onClose,
+}: {
   diff: DiffResult;
   filePath: string;
   onClose: () => void;
@@ -76,7 +85,11 @@ function DiffView({ diff, filePath, onClose }: {
           <span className="diff-additions">+{diff.stats.additions}</span>
           <span className="diff-deletions">-{diff.stats.deletions}</span>
         </span>
-        <button className="snapshot-action-btn" onClick={onClose} title="Close diff">
+        <button
+          className="snapshot-action-btn"
+          onClick={onClose}
+          title="Close diff"
+        >
           {"\u2715"}
         </button>
       </div>
@@ -84,12 +97,17 @@ function DiffView({ diff, filePath, onClose }: {
         {diff.hunks.map((hunk, i) => (
           <div key={i} className="diff-hunk">
             <div className="diff-hunk-header">
-              @@ -{hunk.oldStart},{hunk.oldCount} +{hunk.newStart},{hunk.newCount} @@
+              @@ -{hunk.oldStart},{hunk.oldCount} +{hunk.newStart},
+              {hunk.newCount} @@
             </div>
             {hunk.changes.map((change, j) => (
               <div key={j} className={`diff-line diff-${change.type}`}>
                 <span className="diff-line-prefix">
-                  {change.type === "insert" ? "+" : change.type === "delete" ? "-" : " "}
+                  {change.type === "insert"
+                    ? "+"
+                    : change.type === "delete"
+                      ? "-"
+                      : " "}
                 </span>
                 <span className="diff-line-content">{change.content}</span>
               </div>
@@ -105,7 +123,10 @@ function DiffView({ diff, filePath, onClose }: {
 }
 
 // SnapshotDetail -- shows files in selected snapshot
-function SnapshotDetail({ vaultPath, onBack }: {
+function SnapshotDetail({
+  vaultPath,
+  onBack,
+}: {
   vaultPath: string;
   onBack: () => void;
 }) {
@@ -162,7 +183,9 @@ function SnapshotDetail({ vaultPath, onBack }: {
           <input
             type="checkbox"
             checked={allSelected}
-            onChange={() => allSelected ? deselectAllFiles() : selectAllFiles()}
+            onChange={() =>
+              allSelected ? deselectAllFiles() : selectAllFiles()
+            }
           />
           <span>
             {snapshot.files.length} file{snapshot.files.length !== 1 ? "s" : ""}
@@ -189,9 +212,13 @@ function SnapshotDetail({ vaultPath, onBack }: {
                 title="Click to view diff"
               >
                 {fileName}
-                {dirPath && <span className="snapshot-file-dir"> {dirPath}</span>}
+                {dirPath && (
+                  <span className="snapshot-file-dir"> {dirPath}</span>
+                )}
               </span>
-              <span className="snapshot-file-size">{formatBytes(file.sizeBytes)}</span>
+              <span className="snapshot-file-size">
+                {formatBytes(file.sizeBytes)}
+              </span>
             </div>
           );
         })}
@@ -200,16 +227,18 @@ function SnapshotDetail({ vaultPath, onBack }: {
       {/* Diff view */}
       {diffLoading && <div className="snapshot-loading">Loading diff...</div>}
       {activeDiff && !diffLoading && (
-        <DiffView diff={activeDiff.diff} filePath={activeDiff.filePath} onClose={closeDiff} />
+        <DiffView
+          diff={activeDiff.diff}
+          filePath={activeDiff.filePath}
+          onClose={closeDiff}
+        />
       )}
 
       {/* Restore feedback */}
       {restoreMessage && (
         <div className="snapshot-restore-message">{restoreMessage}</div>
       )}
-      {error && (
-        <div className="snapshot-error">{error}</div>
-      )}
+      {error && <div className="snapshot-error">{error}</div>}
 
       {/* Restore buttons */}
       <div className="snapshot-restore-bar">
@@ -218,7 +247,9 @@ function SnapshotDetail({ vaultPath, onBack }: {
           disabled={restoring || selectedFiles.length === 0}
           onClick={() => performRestore(vaultPath, snapshot.id, selectedFiles)}
         >
-          {restoring ? "Restoring..." : `Restore ${selectedFiles.length} file${selectedFiles.length !== 1 ? "s" : ""}`}
+          {restoring
+            ? "Restoring..."
+            : `Restore ${selectedFiles.length} file${selectedFiles.length !== 1 ? "s" : ""}`}
         </button>
         <button
           className="snapshot-restore-btn secondary"
@@ -268,7 +299,10 @@ export function VersionHistoryPanel() {
   if (selectedSnapshotId) {
     return (
       <div className="sidebar-panel snapshot-panel">
-        <SnapshotDetail vaultPath={rootPath} onBack={() => selectSnapshot(null)} />
+        <SnapshotDetail
+          vaultPath={rootPath}
+          onBack={() => selectSnapshot(null)}
+        />
       </div>
     );
   }
@@ -317,7 +351,10 @@ export function VersionHistoryPanel() {
             onChange={(e) => setLabelInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") handleCreate();
-              if (e.key === "Escape") { setShowLabelInput(false); setLabelInput(""); }
+              if (e.key === "Escape") {
+                setShowLabelInput(false);
+                setLabelInput("");
+              }
             }}
             autoFocus
           />

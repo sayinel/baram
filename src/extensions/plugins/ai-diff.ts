@@ -173,7 +173,8 @@ function buildDiffDecorations(
   const { originalFrom, originalTo, originalText, aiText, hunks } = state;
 
   // Validate positions
-  if (originalFrom < 0 || originalTo > doc.content.size) return DecorationSet.empty;
+  if (originalFrom < 0 || originalTo > doc.content.size)
+    return DecorationSet.empty;
 
   const decorations: Decoration[] = [];
 
@@ -359,9 +360,12 @@ export const AIDiff = Extension.create({
                 case "acceptHunk": {
                   if (prev.phase !== "completed") return prev;
                   const acceptIdx = meta.index;
-                  if (acceptIdx < 0 || acceptIdx >= prev.hunks.length) return prev;
+                  if (acceptIdx < 0 || acceptIdx >= prev.hunks.length)
+                    return prev;
                   const acceptedHunks = prev.hunks.map((h, i) =>
-                    i === acceptIdx ? { ...h, accepted: true, rejected: false } : h,
+                    i === acceptIdx
+                      ? { ...h, accepted: true, rejected: false }
+                      : h,
                   );
                   return { ...prev, hunks: acceptedHunks };
                 }
@@ -369,9 +373,12 @@ export const AIDiff = Extension.create({
                 case "rejectHunk": {
                   if (prev.phase !== "completed") return prev;
                   const rejectIdx = meta.index;
-                  if (rejectIdx < 0 || rejectIdx >= prev.hunks.length) return prev;
+                  if (rejectIdx < 0 || rejectIdx >= prev.hunks.length)
+                    return prev;
                   const rejectedHunks = prev.hunks.map((h, i) =>
-                    i === rejectIdx ? { ...h, rejected: true, accepted: false } : h,
+                    i === rejectIdx
+                      ? { ...h, rejected: true, accepted: false }
+                      : h,
                   );
                   return { ...prev, hunks: rejectedHunks };
                 }
@@ -475,9 +482,7 @@ export function dispatchAIDiffAccept(view: Dispatchable) {
   // Build final text from hunks: accepted hunks use replacement, rejected use original,
   // undecided hunks default to accept (full accept behavior)
   const finalText =
-    hunks.length > 0
-      ? buildTextFromHunks(originalText, hunks, true)
-      : aiText;
+    hunks.length > 0 ? buildTextFromHunks(originalText, hunks, true) : aiText;
 
   // Replace original text with final text in a single transaction
   const tr = view.state.tr

@@ -37,9 +37,10 @@ function linkifyLine(
   const matched = lineContent.slice(matchIdx, matchIdx + matchText.length);
   const after = lineContent.slice(matchIdx + matchText.length);
 
-  const wikilink = matched === currentStem
-    ? `[[${currentStem}]]`
-    : `[[${currentStem}|${matched}]]`;
+  const wikilink =
+    matched === currentStem
+      ? `[[${currentStem}]]`
+      : `[[${currentStem}|${matched}]]`;
 
   return before + wikilink + after;
 }
@@ -65,9 +66,24 @@ describe("§34 Unlinked Mentions", () => {
   describe("groupUnlinkedByFile", () => {
     test("groups mentions by source file", () => {
       const mentions: UnlinkedMention[] = [
-        { sourcePath: "/vault/a.md", line: 1, context: "ctx1", matchText: "arch" },
-        { sourcePath: "/vault/b.md", line: 3, context: "ctx2", matchText: "arch" },
-        { sourcePath: "/vault/a.md", line: 7, context: "ctx3", matchText: "arch" },
+        {
+          sourcePath: "/vault/a.md",
+          line: 1,
+          context: "ctx1",
+          matchText: "arch",
+        },
+        {
+          sourcePath: "/vault/b.md",
+          line: 3,
+          context: "ctx2",
+          matchText: "arch",
+        },
+        {
+          sourcePath: "/vault/a.md",
+          line: 7,
+          context: "ctx3",
+          matchText: "arch",
+        },
       ];
 
       const groups = groupUnlinkedByFile(mentions);

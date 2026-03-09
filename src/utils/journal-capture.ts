@@ -48,7 +48,9 @@ export function parseCapturesFromMarkdown(md: string): CaptureItem[] {
   if (!section.trim()) return [];
 
   const lines = section.split("\n").filter((l) => l.trim().startsWith("- "));
-  return lines.map(parseSingleCaptureLine).filter((item): item is CaptureItem => item !== null);
+  return lines
+    .map(parseSingleCaptureLine)
+    .filter((item): item is CaptureItem => item !== null);
 }
 
 /** Parse a single capture bullet line */
@@ -114,11 +116,12 @@ function parseNoteCapture(text: string): CaptureItem {
   return { type: "note", body: text.trim() };
 }
 
-
 /** Serialize a CaptureItem to a markdown bullet string */
 export function serializeCaptureToMarkdown(item: CaptureItem): string {
   const icon = CAPTURE_ICONS[item.type];
-  const tagSuffix = item.tags?.length ? " " + item.tags.map((t) => `#${t}`).join(" ") : "";
+  const tagSuffix = item.tags?.length
+    ? " " + item.tags.map((t) => `#${t}`).join(" ")
+    : "";
 
   switch (item.type) {
     case "idea": {
@@ -128,7 +131,9 @@ export function serializeCaptureToMarkdown(item: CaptureItem): string {
       return `- ${icon} ${item.body ?? ""}${tagSuffix}`.trimEnd();
     }
     case "link": {
-      const link = item.url ? `[${item.title ?? ""}](${item.url})` : (item.title ?? "");
+      const link = item.url
+        ? `[${item.title ?? ""}](${item.url})`
+        : (item.title ?? "");
       const bodyPart = item.body ? ` — ${item.body}` : "";
       return `- ${icon} ${link}${bodyPart}${tagSuffix}`.trimEnd();
     }
@@ -151,7 +156,10 @@ function stripEmptyListItems(text: string): string {
 }
 
 /** Insert a capture item into journal content, appending to existing Captures section or creating one */
-export function insertCaptureIntoContent(content: string, item: CaptureItem): string {
+export function insertCaptureIntoContent(
+  content: string,
+  item: CaptureItem,
+): string {
   const serialized = serializeCaptureToMarkdown(item);
   const capturesMatch = content.match(/^## Captures\s*$/m);
 
@@ -182,7 +190,8 @@ export function insertCaptureIntoContent(content: string, item: CaptureItem): st
       return (
         content.slice(0, insertPos) +
         (cleanedItems ? "\n" + cleanedItems : "") +
-        "\n" + serialized
+        "\n" +
+        serialized
       );
     }
   } else {
@@ -196,10 +205,12 @@ export function insertCaptureIntoContent(content: string, item: CaptureItem): st
  * §56l Build a standalone note from a capture item.
  * Returns { filename, content } for the promoted note.
  */
-export function buildNoteFromCapture(
-  item: CaptureItem,
-): { filename: string; content: string } {
-  const title = item.title || item.body?.split("\n")[0]?.slice(0, 60) || "Untitled";
+export function buildNoteFromCapture(item: CaptureItem): {
+  filename: string;
+  content: string;
+} {
+  const title =
+    item.title || item.body?.split("\n")[0]?.slice(0, 60) || "Untitled";
   // Sanitize filename
   const safeName = title
     .replace(/[/\\:*?"<>|#]/g, "")
@@ -236,6 +247,7 @@ export function buildPromotedCaptureLink(
   noteName: string,
 ): string {
   const icon = CAPTURE_ICONS[item.type];
-  const title = item.title || item.body?.split("\n")[0]?.slice(0, 60) || "Untitled";
+  const title =
+    item.title || item.body?.split("\n")[0]?.slice(0, 60) || "Untitled";
   return `- ${icon} [[${noteName}|${title}]]`;
 }

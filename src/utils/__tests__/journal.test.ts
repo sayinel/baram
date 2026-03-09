@@ -59,9 +59,15 @@ describe("journal utilities", () => {
 
   describe("formatReadableDate", () => {
     it("formats as 'Month Dayth (DayName), Year'", () => {
-      expect(formatReadableDate(new Date(2026, 0, 1))).toBe("January 1st (Thursday), 2026");
-      expect(formatReadableDate(new Date(2026, 1, 27))).toBe("February 27th (Friday), 2026");
-      expect(formatReadableDate(new Date(2026, 11, 25))).toBe("December 25th (Friday), 2026");
+      expect(formatReadableDate(new Date(2026, 0, 1))).toBe(
+        "January 1st (Thursday), 2026",
+      );
+      expect(formatReadableDate(new Date(2026, 1, 27))).toBe(
+        "February 27th (Friday), 2026",
+      );
+      expect(formatReadableDate(new Date(2026, 11, 25))).toBe(
+        "December 25th (Friday), 2026",
+      );
     });
   });
 
@@ -176,11 +182,15 @@ describe("journal utilities", () => {
 
   describe("resolveJournalDir", () => {
     it("returns absolute path as-is when rootPath is null", () => {
-      expect(resolveJournalDir(null, "/Users/xxx/journals")).toBe("/Users/xxx/journals");
+      expect(resolveJournalDir(null, "/Users/xxx/journals")).toBe(
+        "/Users/xxx/journals",
+      );
     });
 
     it("returns absolute path as-is when rootPath is provided", () => {
-      expect(resolveJournalDir("/root", "/Users/xxx/journals")).toBe("/Users/xxx/journals");
+      expect(resolveJournalDir("/root", "/Users/xxx/journals")).toBe(
+        "/Users/xxx/journals",
+      );
     });
 
     it("returns null for relative path", () => {
@@ -194,7 +204,9 @@ describe("journal utilities", () => {
     });
 
     it("detects Windows absolute path", () => {
-      expect(resolveJournalDir(null, "C:\\Users\\xxx\\journals")).toBe("C:\\Users\\xxx\\journals");
+      expect(resolveJournalDir(null, "C:\\Users\\xxx\\journals")).toBe(
+        "C:\\Users\\xxx\\journals",
+      );
     });
   });
 
@@ -212,9 +224,7 @@ describe("journal utilities", () => {
     });
 
     it("returns null for empty directory", () => {
-      expect(
-        getJournalFilePath(null, "", date, "YYYY-MM-DD.md"),
-      ).toBeNull();
+      expect(getJournalFilePath(null, "", date, "YYYY-MM-DD.md")).toBeNull();
     });
   });
 

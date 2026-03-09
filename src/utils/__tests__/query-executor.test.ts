@@ -40,22 +40,42 @@ const files: VaultFile[] = [
 // 1. matchesFilter — tags contains (true/false)
 describe("matchesFilter — tags", () => {
   it("returns true when tag is in array", () => {
-    const filter: QueryFilter = { field: "tags", operator: "contains", value: "ai", combinator: "AND" };
+    const filter: QueryFilter = {
+      field: "tags",
+      operator: "contains",
+      value: "ai",
+      combinator: "AND",
+    };
     expect(matchesFilter(files[0], filter)).toBe(true);
   });
 
   it("returns false when tag is not in array", () => {
-    const filter: QueryFilter = { field: "tags", operator: "contains", value: "ai", combinator: "AND" };
+    const filter: QueryFilter = {
+      field: "tags",
+      operator: "contains",
+      value: "ai",
+      combinator: "AND",
+    };
     expect(matchesFilter(files[1], filter)).toBe(false);
   });
 
   it("not_contains returns true when tag is absent", () => {
-    const filter: QueryFilter = { field: "tags", operator: "not_contains", value: "ai", combinator: "AND" };
+    const filter: QueryFilter = {
+      field: "tags",
+      operator: "not_contains",
+      value: "ai",
+      combinator: "AND",
+    };
     expect(matchesFilter(files[1], filter)).toBe(true);
   });
 
   it("not_contains returns false when tag is present", () => {
-    const filter: QueryFilter = { field: "tags", operator: "not_contains", value: "ai", combinator: "AND" };
+    const filter: QueryFilter = {
+      field: "tags",
+      operator: "not_contains",
+      value: "ai",
+      combinator: "AND",
+    };
     expect(matchesFilter(files[0], filter)).toBe(false);
   });
 });
@@ -63,17 +83,32 @@ describe("matchesFilter — tags", () => {
 // 2. matchesFilter — frontmatter = (true/false)
 describe("matchesFilter — frontmatter =", () => {
   it("returns true when frontmatter value matches", () => {
-    const filter: QueryFilter = { field: "status", operator: "=", value: "draft", combinator: "AND" };
+    const filter: QueryFilter = {
+      field: "status",
+      operator: "=",
+      value: "draft",
+      combinator: "AND",
+    };
     expect(matchesFilter(files[0], filter)).toBe(true);
   });
 
   it("returns false when frontmatter value does not match", () => {
-    const filter: QueryFilter = { field: "status", operator: "=", value: "draft", combinator: "AND" };
+    const filter: QueryFilter = {
+      field: "status",
+      operator: "=",
+      value: "draft",
+      combinator: "AND",
+    };
     expect(matchesFilter(files[1], filter)).toBe(false);
   });
 
   it("!= returns true when frontmatter value differs", () => {
-    const filter: QueryFilter = { field: "status", operator: "!=", value: "draft", combinator: "AND" };
+    const filter: QueryFilter = {
+      field: "status",
+      operator: "!=",
+      value: "draft",
+      combinator: "AND",
+    };
     expect(matchesFilter(files[1], filter)).toBe(true);
   });
 });
@@ -81,22 +116,42 @@ describe("matchesFilter — frontmatter =", () => {
 // 3. matchesFilter — path starts (true/false)
 describe("matchesFilter — path starts", () => {
   it("returns true when path starts with value", () => {
-    const filter: QueryFilter = { field: "path", operator: "starts", value: "skills/", combinator: "AND" };
+    const filter: QueryFilter = {
+      field: "path",
+      operator: "starts",
+      value: "skills/",
+      combinator: "AND",
+    };
     expect(matchesFilter(files[0], filter)).toBe(true);
   });
 
   it("returns false when path does not start with value", () => {
-    const filter: QueryFilter = { field: "path", operator: "starts", value: "skills/", combinator: "AND" };
+    const filter: QueryFilter = {
+      field: "path",
+      operator: "starts",
+      value: "skills/",
+      combinator: "AND",
+    };
     expect(matchesFilter(files[2], filter)).toBe(false);
   });
 
   it("path contains", () => {
-    const filter: QueryFilter = { field: "path", operator: "contains", value: "notes", combinator: "AND" };
+    const filter: QueryFilter = {
+      field: "path",
+      operator: "contains",
+      value: "notes",
+      combinator: "AND",
+    };
     expect(matchesFilter(files[2], filter)).toBe(true);
   });
 
   it("path regex", () => {
-    const filter: QueryFilter = { field: "path", operator: "regex", value: "skills/[ab]\\.md", combinator: "AND" };
+    const filter: QueryFilter = {
+      field: "path",
+      operator: "regex",
+      value: "skills/[ab]\\.md",
+      combinator: "AND",
+    };
     expect(matchesFilter(files[0], filter)).toBe(true);
     expect(matchesFilter(files[2], filter)).toBe(false);
   });
@@ -105,18 +160,39 @@ describe("matchesFilter — path starts", () => {
 // 4. matchesFilter — body contains (case insensitive)
 describe("matchesFilter — body contains", () => {
   it("matches case-insensitively", () => {
-    const filter: QueryFilter = { field: "body", operator: "contains", value: "hello", combinator: "AND" };
+    const filter: QueryFilter = {
+      field: "body",
+      operator: "contains",
+      value: "hello",
+      combinator: "AND",
+    };
     expect(matchesFilter(files[0], filter)).toBe(true);
   });
 
   it("returns false when not in body", () => {
-    const filter: QueryFilter = { field: "body", operator: "contains", value: "hello", combinator: "AND" };
+    const filter: QueryFilter = {
+      field: "body",
+      operator: "contains",
+      value: "hello",
+      combinator: "AND",
+    };
     expect(matchesFilter(files[1], filter)).toBe(false);
   });
 
   it("returns false when content is undefined", () => {
-    const fileNoContent: VaultFile = { path: "x.md", name: "x.md", tags: [], frontmatter: {}, modifiedAt: 0 };
-    const filter: QueryFilter = { field: "body", operator: "contains", value: "hello", combinator: "AND" };
+    const fileNoContent: VaultFile = {
+      path: "x.md",
+      name: "x.md",
+      tags: [],
+      frontmatter: {},
+      modifiedAt: 0,
+    };
+    const filter: QueryFilter = {
+      field: "body",
+      operator: "contains",
+      value: "hello",
+      combinator: "AND",
+    };
     expect(matchesFilter(fileNoContent, filter)).toBe(false);
   });
 });
@@ -124,12 +200,22 @@ describe("matchesFilter — body contains", () => {
 // 5. matchesFilter — empty operator
 describe("matchesFilter — empty operator", () => {
   it("returns true when frontmatter key is missing", () => {
-    const filter: QueryFilter = { field: "status", operator: "empty", value: "", combinator: "AND" };
+    const filter: QueryFilter = {
+      field: "status",
+      operator: "empty",
+      value: "",
+      combinator: "AND",
+    };
     expect(matchesFilter(files[2], filter)).toBe(true);
   });
 
   it("returns false when frontmatter key has value", () => {
-    const filter: QueryFilter = { field: "status", operator: "empty", value: "", combinator: "AND" };
+    const filter: QueryFilter = {
+      field: "status",
+      operator: "empty",
+      value: "",
+      combinator: "AND",
+    };
     expect(matchesFilter(files[0], filter)).toBe(false);
   });
 });
@@ -138,7 +224,12 @@ describe("matchesFilter — empty operator", () => {
 describe("applyFilters — AND", () => {
   it("returns files matching all AND conditions", () => {
     const filters: QueryFilter[] = [
-      { field: "tags", operator: "contains", value: "skills", combinator: "AND" },
+      {
+        field: "tags",
+        operator: "contains",
+        value: "skills",
+        combinator: "AND",
+      },
       { field: "status", operator: "=", value: "draft", combinator: "AND" },
     ];
     const result = applyFilters(files, filters);
@@ -196,7 +287,14 @@ describe("applySort — null sort", () => {
 describe("executeQuery — full pipeline", () => {
   it("filters, sorts, and limits", () => {
     const query: QueryDef = {
-      filters: [{ field: "tags", operator: "contains", value: "skills", combinator: "AND" }],
+      filters: [
+        {
+          field: "tags",
+          operator: "contains",
+          value: "skills",
+          combinator: "AND",
+        },
+      ],
       sort: { field: "updated_at", direction: "desc" },
       display: "list",
       limit: 1,

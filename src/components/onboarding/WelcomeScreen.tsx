@@ -9,7 +9,11 @@ interface WelcomeScreenProps {
   onOpenFolder: () => void;
 }
 
-export function WelcomeScreen({ onNewFile, onOpenFile, onOpenFolder }: WelcomeScreenProps) {
+export function WelcomeScreen({
+  onNewFile,
+  onOpenFile,
+  onOpenFolder,
+}: WelcomeScreenProps) {
   const { dismissWelcome } = useUIStore();
   const { t } = useTranslation();
   const [dontShowAgain, setDontShowAgain] = useState(false);
@@ -33,18 +37,25 @@ export function WelcomeScreen({ onNewFile, onOpenFile, onOpenFolder }: WelcomeSc
     <div className="welcome-screen">
       <div className="welcome-card">
         <h1 className="welcome-title">{t("welcome.title")}</h1>
-        <p className="welcome-tagline">
-          {t("welcome.tagline")}
-        </p>
+        <p className="welcome-tagline">{t("welcome.tagline")}</p>
 
         <div className="welcome-actions">
-          <button className="welcome-btn welcome-btn-primary" onClick={handleOpenFolder}>
+          <button
+            className="welcome-btn welcome-btn-primary"
+            onClick={handleOpenFolder}
+          >
             {t("welcome.openFolder")}
           </button>
-          <button className="welcome-btn welcome-btn-secondary" onClick={handleOpenFile}>
+          <button
+            className="welcome-btn welcome-btn-secondary"
+            onClick={handleOpenFile}
+          >
             {t("welcome.openFile")}
           </button>
-          <button className="welcome-btn welcome-btn-secondary" onClick={handleNewFile}>
+          <button
+            className="welcome-btn welcome-btn-secondary"
+            onClick={handleNewFile}
+          >
             {t("welcome.newFile")}
           </button>
         </div>

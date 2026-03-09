@@ -2,11 +2,7 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { validateManifest } from "./manifest";
 import { createExtensionContext, setEditorInstance } from "./extension-context";
-import type {
-  PluginManifest,
-  PluginModule,
-  LoadedPlugin,
-} from "./types";
+import type { PluginManifest, PluginModule, LoadedPlugin } from "./types";
 import type { Extensions } from "@tiptap/core";
 
 const ACTIVATE_TIMEOUT = 5000; // 5 seconds
@@ -15,7 +11,10 @@ export class PluginLoader {
   private loaded = new Map<string, LoadedPlugin>();
 
   /** Load and activate a single plugin */
-  async loadPlugin(installPath: string, manifest: PluginManifest): Promise<void> {
+  async loadPlugin(
+    installPath: string,
+    manifest: PluginManifest,
+  ): Promise<void> {
     if (this.loaded.has(manifest.id)) {
       console.warn(`[PluginLoader] Plugin ${manifest.id} is already loaded`);
       return;
@@ -24,7 +23,9 @@ export class PluginLoader {
     // 1. Validate manifest
     const validation = validateManifest(manifest);
     if (!validation.valid) {
-      throw new Error(`Invalid manifest for ${manifest.id}: ${validation.errors.map((e) => e.message).join(", ")}`);
+      throw new Error(
+        `Invalid manifest for ${manifest.id}: ${validation.errors.map((e) => e.message).join(", ")}`,
+      );
     }
 
     // 2. Construct asset URL for the main entry
@@ -60,7 +61,9 @@ export class PluginLoader {
       disposables: context.subscriptions,
     });
 
-    console.info(`[PluginLoader] Loaded plugin: ${manifest.id} v${manifest.version}`);
+    console.info(
+      `[PluginLoader] Loaded plugin: ${manifest.id} v${manifest.version}`,
+    );
   }
 
   /** Unload and deactivate a plugin */
@@ -83,7 +86,11 @@ export class PluginLoader {
 
     // Dispose all disposables
     for (const disposable of plugin.disposables) {
-      try { disposable.dispose(); } catch (e) { console.error(`[PluginLoader] Dispose error:`, e); }
+      try {
+        disposable.dispose();
+      } catch (e) {
+        console.error(`[PluginLoader] Dispose error:`, e);
+      }
     }
 
     this.loaded.delete(id);
@@ -118,7 +125,9 @@ export class PluginLoader {
         if (ext) {
           extensions.push(ext as Extensions[number]);
         } else {
-          console.warn(`[PluginLoader] Plugin ${plugin.id}: export "${extDef.exportName}" not found`);
+          console.warn(
+            `[PluginLoader] Plugin ${plugin.id}: export "${extDef.exportName}" not found`,
+          );
         }
       }
     }
@@ -131,12 +140,22 @@ export class PluginLoader {
   }
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  message: string,
+): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(message)), ms);
     promise.then(
-      (val) => { clearTimeout(timer); resolve(val); },
-      (err) => { clearTimeout(timer); reject(err); },
+      (val) => {
+        clearTimeout(timer);
+        resolve(val);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
     );
   });
 }

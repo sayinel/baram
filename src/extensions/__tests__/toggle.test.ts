@@ -93,14 +93,12 @@ describe("Roundtrip: Toggle", () => {
   });
 
   it("toggle with summary only (no body)", () => {
-    const input =
-      "<details>\n<summary>Just a title</summary>\n\n</details>\n";
+    const input = "<details>\n<summary>Just a title</summary>\n\n</details>\n";
     expect(roundtrip(input)).toBe(input);
   });
 
   it("toggle without summary tag", () => {
-    const input =
-      "<details>\n\nContent without summary.\n\n</details>\n";
+    const input = "<details>\n\nContent without summary.\n\n</details>\n";
     expect(roundtrip(input)).toBe(input);
   });
 
@@ -164,8 +162,7 @@ describe("Toggle PM structure", () => {
   });
 
   it("summary only toggle has one child", () => {
-    const input =
-      "<details>\n<summary>Just title</summary>\n\n</details>\n";
+    const input = "<details>\n<summary>Just title</summary>\n\n</details>\n";
     const doc = markdownToProsemirror(input, schema);
     const toggle = doc.firstChild!;
     expect(toggle.childCount).toBe(1);

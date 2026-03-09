@@ -17,18 +17,40 @@ import { BUILT_IN_THEMES } from "../../types/theme";
 import type { ThemeDef } from "../../types/theme";
 import { THEME_COLOR_KEYS } from "../../types/theme";
 import registry from "../../extensions/registry.json";
-import { useWorkspaceStore, BUILTIN_PRESETS } from "../../stores/workspace-store";
+import {
+  useWorkspaceStore,
+  BUILTIN_PRESETS,
+} from "../../stores/workspace-store";
 import type { WorkspacePreset } from "../../stores/workspace-store";
 import type { ActivityBarItemConfig } from "../../stores/settings-store";
 import { useTranslation } from "../../i18n/useTranslation";
 import { AVAILABLE_LOCALES, LOCALE_LABELS } from "../../i18n";
 import type { Locale } from "../../i18n";
-import { normalizeKeyEvent, formatKeyForDisplay } from "../../keybindings/key-utils";
-import { KEYBINDING_CATEGORIES, CATEGORY_LABELS } from "../../keybindings/keybinding-registry";
-import { getMergedKeybindings, findConflict, type MergedKeybinding } from "../../keybindings/use-keybindings";
+import {
+  normalizeKeyEvent,
+  formatKeyForDisplay,
+} from "../../keybindings/key-utils";
+import {
+  KEYBINDING_CATEGORIES,
+  CATEGORY_LABELS,
+} from "../../keybindings/keybinding-registry";
+import {
+  getMergedKeybindings,
+  findConflict,
+  type MergedKeybinding,
+} from "../../keybindings/use-keybindings";
 import { PluginMarketplace } from "../plugins/PluginMarketplace";
 
-type SettingsTab = "general" | "editor" | "appearance" | "markdown" | "ai" | "activitybar" | "language" | "keybindings" | "plugins";
+type SettingsTab =
+  | "general"
+  | "editor"
+  | "appearance"
+  | "markdown"
+  | "ai"
+  | "activitybar"
+  | "language"
+  | "keybindings"
+  | "plugins";
 
 const TABS: { id: SettingsTab; label: string; icon: string }[] = [
   { id: "general", label: "General", icon: "\u2699" },
@@ -53,41 +75,226 @@ interface SearchableSetting {
 
 const SETTINGS_REGISTRY: SearchableSetting[] = [
   // General
-  { id: "onLaunch", label: "settings.general.onLaunch", description: "settings.general.onLaunch.desc", category: "general", section: "settings.general.startup" },
-  { id: "showWelcome", label: "settings.general.showWelcome", description: "settings.general.showWelcome.desc", category: "general", section: "settings.general.startup" },
-  { id: "autoSave", label: "settings.general.autoSave", description: "settings.general.autoSave.desc", category: "general", section: "settings.general.saving" },
-  { id: "autoSaveDelay", label: "settings.general.saveDelay", description: "settings.general.saveDelay.desc", category: "general", section: "settings.general.saving" },
-  { id: "spellCheck", label: "settings.general.spellCheck", description: "settings.general.spellCheck.desc", category: "general", section: "settings.general.system" },
-  { id: "wikilinkFormat", label: "settings.general.linkFormat", description: "settings.general.linkFormat.desc", category: "general", section: "settings.general.links", keywords: ["wikilink", "markdown", "link"] },
-  { id: "autoUpdateLinks", label: "settings.general.autoUpdateLinks", description: "settings.general.autoUpdateLinks.desc", category: "general", section: "settings.general.links" },
-  { id: "snapshotInterval", label: "settings.general.snapshotInterval", description: "settings.general.snapshotInterval.desc", category: "general", section: "settings.general.snapshots", keywords: ["version", "history", "backup"] },
-  { id: "snapshotMaxCount", label: "settings.general.snapshotMaxCount", description: "settings.general.snapshotMaxCount.desc", category: "general", section: "settings.general.snapshots" },
-  { id: "journalEnabled", label: "settings.general.journalEnabled", description: "settings.general.journalEnabled.desc", category: "general", section: "settings.general.journal", keywords: ["daily", "note", "diary"] },
+  {
+    id: "onLaunch",
+    label: "settings.general.onLaunch",
+    description: "settings.general.onLaunch.desc",
+    category: "general",
+    section: "settings.general.startup",
+  },
+  {
+    id: "showWelcome",
+    label: "settings.general.showWelcome",
+    description: "settings.general.showWelcome.desc",
+    category: "general",
+    section: "settings.general.startup",
+  },
+  {
+    id: "autoSave",
+    label: "settings.general.autoSave",
+    description: "settings.general.autoSave.desc",
+    category: "general",
+    section: "settings.general.saving",
+  },
+  {
+    id: "autoSaveDelay",
+    label: "settings.general.saveDelay",
+    description: "settings.general.saveDelay.desc",
+    category: "general",
+    section: "settings.general.saving",
+  },
+  {
+    id: "spellCheck",
+    label: "settings.general.spellCheck",
+    description: "settings.general.spellCheck.desc",
+    category: "general",
+    section: "settings.general.system",
+  },
+  {
+    id: "wikilinkFormat",
+    label: "settings.general.linkFormat",
+    description: "settings.general.linkFormat.desc",
+    category: "general",
+    section: "settings.general.links",
+    keywords: ["wikilink", "markdown", "link"],
+  },
+  {
+    id: "autoUpdateLinks",
+    label: "settings.general.autoUpdateLinks",
+    description: "settings.general.autoUpdateLinks.desc",
+    category: "general",
+    section: "settings.general.links",
+  },
+  {
+    id: "snapshotInterval",
+    label: "settings.general.snapshotInterval",
+    description: "settings.general.snapshotInterval.desc",
+    category: "general",
+    section: "settings.general.snapshots",
+    keywords: ["version", "history", "backup"],
+  },
+  {
+    id: "snapshotMaxCount",
+    label: "settings.general.snapshotMaxCount",
+    description: "settings.general.snapshotMaxCount.desc",
+    category: "general",
+    section: "settings.general.snapshots",
+  },
+  {
+    id: "journalEnabled",
+    label: "settings.general.journalEnabled",
+    description: "settings.general.journalEnabled.desc",
+    category: "general",
+    section: "settings.general.journal",
+    keywords: ["daily", "note", "diary"],
+  },
   // Editor
-  { id: "fontFamily", label: "settings.editor.fontFamily", description: "settings.editor.fontFamily.desc", category: "editor", section: "settings.editor.font", keywords: ["typeface", "font"] },
-  { id: "fontSize", label: "settings.editor.fontSize", description: "settings.editor.fontSize.desc", category: "editor", section: "settings.editor.font" },
-  { id: "lineHeight", label: "settings.editor.lineHeight", description: "settings.editor.lineHeight.desc", category: "editor", section: "settings.editor.font" },
-  { id: "tabSize", label: "settings.editor.tabSize", description: "settings.editor.tabSize.desc", category: "editor", section: "settings.editor.behavior", keywords: ["indent", "space"] },
-  { id: "autoPairBrackets", label: "settings.editor.autoPairBrackets", description: "settings.editor.autoPairBrackets.desc", category: "editor", section: "settings.editor.behavior" },
-  { id: "lineNumbers", label: "settings.editor.lineNumbers", description: "settings.editor.lineNumbers.desc", category: "editor", section: "settings.editor.display" },
-  { id: "editorMaxWidth", label: "settings.editor.maxWidth", description: "settings.editor.maxWidth.desc", category: "editor", section: "settings.editor.display" },
+  {
+    id: "fontFamily",
+    label: "settings.editor.fontFamily",
+    description: "settings.editor.fontFamily.desc",
+    category: "editor",
+    section: "settings.editor.font",
+    keywords: ["typeface", "font"],
+  },
+  {
+    id: "fontSize",
+    label: "settings.editor.fontSize",
+    description: "settings.editor.fontSize.desc",
+    category: "editor",
+    section: "settings.editor.font",
+  },
+  {
+    id: "lineHeight",
+    label: "settings.editor.lineHeight",
+    description: "settings.editor.lineHeight.desc",
+    category: "editor",
+    section: "settings.editor.font",
+  },
+  {
+    id: "tabSize",
+    label: "settings.editor.tabSize",
+    description: "settings.editor.tabSize.desc",
+    category: "editor",
+    section: "settings.editor.behavior",
+    keywords: ["indent", "space"],
+  },
+  {
+    id: "autoPairBrackets",
+    label: "settings.editor.autoPairBrackets",
+    description: "settings.editor.autoPairBrackets.desc",
+    category: "editor",
+    section: "settings.editor.behavior",
+  },
+  {
+    id: "lineNumbers",
+    label: "settings.editor.lineNumbers",
+    description: "settings.editor.lineNumbers.desc",
+    category: "editor",
+    section: "settings.editor.display",
+  },
+  {
+    id: "editorMaxWidth",
+    label: "settings.editor.maxWidth",
+    description: "settings.editor.maxWidth.desc",
+    category: "editor",
+    section: "settings.editor.display",
+  },
   // Appearance
-  { id: "activeThemeId", label: "settings.appearance.theme", description: "settings.appearance.theme", category: "appearance", section: "settings.appearance.theme", keywords: ["dark", "light", "color", "theme"] },
+  {
+    id: "activeThemeId",
+    label: "settings.appearance.theme",
+    description: "settings.appearance.theme",
+    category: "appearance",
+    section: "settings.appearance.theme",
+    keywords: ["dark", "light", "color", "theme"],
+  },
   // Markdown
-  { id: "inlineMath", label: "settings.markdown.inlineMath", description: "settings.markdown.inlineMath.desc", category: "markdown", section: "settings.markdown.extendedSyntax", keywords: ["katex", "latex", "equation"] },
-  { id: "highlight", label: "settings.markdown.highlight", description: "settings.markdown.highlight.desc", category: "markdown", section: "settings.markdown.extendedSyntax" },
-  { id: "strikethrough", label: "settings.markdown.strikethrough", description: "settings.markdown.strikethrough.desc", category: "markdown", section: "settings.markdown.extendedSyntax" },
-  { id: "smartPunctuation", label: "settings.markdown.smartPunctuation", description: "settings.markdown.smartPunctuation.desc", category: "markdown", section: "settings.markdown.typography" },
+  {
+    id: "inlineMath",
+    label: "settings.markdown.inlineMath",
+    description: "settings.markdown.inlineMath.desc",
+    category: "markdown",
+    section: "settings.markdown.extendedSyntax",
+    keywords: ["katex", "latex", "equation"],
+  },
+  {
+    id: "highlight",
+    label: "settings.markdown.highlight",
+    description: "settings.markdown.highlight.desc",
+    category: "markdown",
+    section: "settings.markdown.extendedSyntax",
+  },
+  {
+    id: "strikethrough",
+    label: "settings.markdown.strikethrough",
+    description: "settings.markdown.strikethrough.desc",
+    category: "markdown",
+    section: "settings.markdown.extendedSyntax",
+  },
+  {
+    id: "smartPunctuation",
+    label: "settings.markdown.smartPunctuation",
+    description: "settings.markdown.smartPunctuation.desc",
+    category: "markdown",
+    section: "settings.markdown.typography",
+  },
   // AI
-  { id: "provider", label: "settings.ai.aiProvider", description: "settings.ai.aiProvider.desc", category: "ai", section: "settings.ai.provider", keywords: ["claude", "openai", "ollama", "gemini"] },
-  { id: "apiKey", label: "settings.ai.apiKey", description: "settings.ai.apiKey", category: "ai", section: "settings.ai.provider" },
-  { id: "model", label: "settings.ai.model", description: "settings.ai.model.desc", category: "ai", section: "settings.ai.provider" },
-  { id: "ghostTextEnabled", label: "settings.ai.ghostTextEnabled", description: "settings.ai.ghostTextEnabled.desc", category: "ai", section: "settings.ai.ghostText", keywords: ["autocomplete", "suggestion"] },
-  { id: "privacyMode", label: "settings.ai.privacyMode", description: "settings.ai.privacyMode.desc", category: "ai", section: "settings.ai.privacy" },
+  {
+    id: "provider",
+    label: "settings.ai.aiProvider",
+    description: "settings.ai.aiProvider.desc",
+    category: "ai",
+    section: "settings.ai.provider",
+    keywords: ["claude", "openai", "ollama", "gemini"],
+  },
+  {
+    id: "apiKey",
+    label: "settings.ai.apiKey",
+    description: "settings.ai.apiKey",
+    category: "ai",
+    section: "settings.ai.provider",
+  },
+  {
+    id: "model",
+    label: "settings.ai.model",
+    description: "settings.ai.model.desc",
+    category: "ai",
+    section: "settings.ai.provider",
+  },
+  {
+    id: "ghostTextEnabled",
+    label: "settings.ai.ghostTextEnabled",
+    description: "settings.ai.ghostTextEnabled.desc",
+    category: "ai",
+    section: "settings.ai.ghostText",
+    keywords: ["autocomplete", "suggestion"],
+  },
+  {
+    id: "privacyMode",
+    label: "settings.ai.privacyMode",
+    description: "settings.ai.privacyMode.desc",
+    category: "ai",
+    section: "settings.ai.privacy",
+  },
   // Activity Bar
-  { id: "activityBarConfig", label: "settings.tab.activitybar", description: "settings.activitybar.desc", category: "activitybar", section: "settings.tab.activitybar", keywords: ["icon", "sidebar", "panel"] },
+  {
+    id: "activityBarConfig",
+    label: "settings.tab.activitybar",
+    description: "settings.activitybar.desc",
+    category: "activitybar",
+    section: "settings.tab.activitybar",
+    keywords: ["icon", "sidebar", "panel"],
+  },
   // Language
-  { id: "locale", label: "settings.language.title", description: "settings.language.interface.desc", category: "language", section: "settings.language.title", keywords: ["locale", "i18n", "korean", "english", "\uD55C\uAD6D\uC5B4"] },
+  {
+    id: "locale",
+    label: "settings.language.title",
+    description: "settings.language.interface.desc",
+    category: "language",
+    section: "settings.language.title",
+    keywords: ["locale", "i18n", "korean", "english", "\uD55C\uAD6D\uC5B4"],
+  },
   // Keybindings
   {
     id: "keybindings",
@@ -95,7 +302,17 @@ const SETTINGS_REGISTRY: SearchableSetting[] = [
     description: "",
     category: "keybindings",
     section: "settings.tab.keybindings",
-    keywords: ["shortcut", "key", "binding", "hotkey", "keyboard", "remap", "단축키", "키보드", "바인딩"],
+    keywords: [
+      "shortcut",
+      "key",
+      "binding",
+      "hotkey",
+      "keyboard",
+      "remap",
+      "단축키",
+      "키보드",
+      "바인딩",
+    ],
   },
 ];
 
@@ -113,7 +330,7 @@ export function SettingsModal() {
         t(s.label).toLowerCase().includes(q) ||
         t(s.description).toLowerCase().includes(q) ||
         t(s.section).toLowerCase().includes(q) ||
-        (s.keywords ?? []).some((k) => k.includes(q))
+        (s.keywords ?? []).some((k) => k.includes(q)),
     );
   }, [searchQuery, t]);
 
@@ -145,12 +362,19 @@ export function SettingsModal() {
               spellCheck={false}
             />
             {searchQuery && (
-              <button className="settings-search-clear" onClick={() => setSearchQuery("")}>
+              <button
+                className="settings-search-clear"
+                onClick={() => setSearchQuery("")}
+              >
                 {"\u00D7"}
               </button>
             )}
           </div>
-          <button className="settings-close" onClick={toggleSettings} title={t("common.close")}>
+          <button
+            className="settings-close"
+            onClick={toggleSettings}
+            title={t("common.close")}
+          >
             {"\u00D7"}
           </button>
         </div>
@@ -208,54 +432,100 @@ function GeneralTab() {
   const [migrationOpen, setMigrationOpen] = useState(false);
   const [templatesInitMsg, setTemplatesInitMsg] = useState<string | null>(null);
   const {
-    onLaunch, setOnLaunch,
-    autoSave, setAutoSave,
-    autoSaveDelay, setAutoSaveDelay,
-    spellCheck, setSpellCheck,
-    showWelcome, setShowWelcome,
-    wikilinkFormat, setWikilinkFormat,
-    autoUpdateLinks, setAutoUpdateLinks,
-    snapshotInterval, setSnapshotInterval,
-    snapshotMaxCount, setSnapshotMaxCount,
-    journalEnabled, setJournalEnabled,
-    journalDirectory, setJournalDirectory,
-    journalFilenameFormat, setJournalFilenameFormat,
-    journalTemplatePath, setJournalTemplatePath,
-    journalStartupBehavior, setJournalStartupBehavior,
-    journalUseHierarchy, setJournalUseHierarchy,
-    journalWeeklyTemplate, setJournalWeeklyTemplate,
-    journalMonthlyTemplate, setJournalMonthlyTemplate,
-    journalYearlyTemplate, setJournalYearlyTemplate,
+    onLaunch,
+    setOnLaunch,
+    autoSave,
+    setAutoSave,
+    autoSaveDelay,
+    setAutoSaveDelay,
+    spellCheck,
+    setSpellCheck,
+    showWelcome,
+    setShowWelcome,
+    wikilinkFormat,
+    setWikilinkFormat,
+    autoUpdateLinks,
+    setAutoUpdateLinks,
+    snapshotInterval,
+    setSnapshotInterval,
+    snapshotMaxCount,
+    setSnapshotMaxCount,
+    journalEnabled,
+    setJournalEnabled,
+    journalDirectory,
+    setJournalDirectory,
+    journalFilenameFormat,
+    setJournalFilenameFormat,
+    journalTemplatePath,
+    setJournalTemplatePath,
+    journalStartupBehavior,
+    setJournalStartupBehavior,
+    journalUseHierarchy,
+    setJournalUseHierarchy,
+    journalWeeklyTemplate,
+    setJournalWeeklyTemplate,
+    journalMonthlyTemplate,
+    setJournalMonthlyTemplate,
+    journalYearlyTemplate,
+    setJournalYearlyTemplate,
   } = useSettingsStore();
 
   return (
     <div className="settings-section">
       <SettingsSectionHeader title={t("settings.general.startup")} />
 
-      <SettingsRow label={t("settings.general.onLaunch")} description={t("settings.general.onLaunch.desc")}>
+      <SettingsRow
+        label={t("settings.general.onLaunch")}
+        description={t("settings.general.onLaunch.desc")}
+      >
         <select
           className="settings-select"
           value={onLaunch}
-          onChange={(e) => setOnLaunch(e.target.value as "newFile" | "restoreLastFolder" | "restoreLastFile")}
+          onChange={(e) =>
+            setOnLaunch(
+              e.target.value as
+                | "newFile"
+                | "restoreLastFolder"
+                | "restoreLastFile",
+            )
+          }
         >
-          <option value="restoreLastFolder">{t("settings.general.onLaunch.restoreLastFolder")}</option>
-          <option value="restoreLastFile">{t("settings.general.onLaunch.restoreLastFile")}</option>
-          <option value="newFile">{t("settings.general.onLaunch.newFile")}</option>
+          <option value="restoreLastFolder">
+            {t("settings.general.onLaunch.restoreLastFolder")}
+          </option>
+          <option value="restoreLastFile">
+            {t("settings.general.onLaunch.restoreLastFile")}
+          </option>
+          <option value="newFile">
+            {t("settings.general.onLaunch.newFile")}
+          </option>
         </select>
       </SettingsRow>
 
-      <SettingsRow label={t("settings.general.showWelcome")} description={t("settings.general.showWelcome.desc")}>
+      <SettingsRow
+        label={t("settings.general.showWelcome")}
+        description={t("settings.general.showWelcome.desc")}
+      >
         <ToggleSwitch checked={showWelcome} onChange={setShowWelcome} />
       </SettingsRow>
 
       <SettingsSectionHeader title={t("settings.general.saving")} />
 
-      <SettingsRow label={t("settings.general.autoSave")} description={t("settings.general.autoSave.desc")}>
+      <SettingsRow
+        label={t("settings.general.autoSave")}
+        description={t("settings.general.autoSave.desc")}
+      >
         <ToggleSwitch checked={autoSave} onChange={setAutoSave} />
       </SettingsRow>
 
       {autoSave && (
-        <SettingsRow label={t("settings.general.saveDelay")} description={t("settings.general.saveDelay.desc").replace("{value}", (autoSaveDelay / 1000).toFixed(1))}>
+        <SettingsRow
+          label={t("settings.general.saveDelay")}
+          description={t("settings.general.saveDelay.desc").replace(
+            "{value}",
+            (autoSaveDelay / 1000).toFixed(1),
+          )}
+        >
           <input
             type="range"
             className="settings-range"
@@ -270,30 +540,47 @@ function GeneralTab() {
 
       <SettingsSectionHeader title={t("settings.general.system")} />
 
-      <SettingsRow label={t("settings.general.spellCheck")} description={t("settings.general.spellCheck.desc")}>
+      <SettingsRow
+        label={t("settings.general.spellCheck")}
+        description={t("settings.general.spellCheck.desc")}
+      >
         <ToggleSwitch checked={spellCheck} onChange={setSpellCheck} />
       </SettingsRow>
 
       <SettingsSectionHeader title={t("settings.general.links")} />
 
-      <SettingsRow label={t("settings.general.linkFormat")} description={t("settings.general.linkFormat.desc")}>
+      <SettingsRow
+        label={t("settings.general.linkFormat")}
+        description={t("settings.general.linkFormat.desc")}
+      >
         <select
           className="settings-select"
           value={wikilinkFormat}
-          onChange={(e) => setWikilinkFormat(e.target.value as "wikilink" | "markdown")}
+          onChange={(e) =>
+            setWikilinkFormat(e.target.value as "wikilink" | "markdown")
+          }
         >
           <option value="wikilink">[[Wikilink]]</option>
           <option value="markdown">[Markdown](link)</option>
         </select>
       </SettingsRow>
 
-      <SettingsRow label={t("settings.general.autoUpdateLinks")} description={t("settings.general.autoUpdateLinks.desc")}>
+      <SettingsRow
+        label={t("settings.general.autoUpdateLinks")}
+        description={t("settings.general.autoUpdateLinks.desc")}
+      >
         <ToggleSwitch checked={autoUpdateLinks} onChange={setAutoUpdateLinks} />
       </SettingsRow>
 
       <SettingsSectionHeader title={t("settings.general.snapshots")} />
 
-      <SettingsRow label={t("settings.general.snapshotInterval")} description={t("settings.general.snapshotInterval.desc").replace("{value}", String(snapshotInterval))}>
+      <SettingsRow
+        label={t("settings.general.snapshotInterval")}
+        description={t("settings.general.snapshotInterval.desc").replace(
+          "{value}",
+          String(snapshotInterval),
+        )}
+      >
         <input
           type="range"
           className="settings-range"
@@ -305,7 +592,13 @@ function GeneralTab() {
         />
       </SettingsRow>
 
-      <SettingsRow label={t("settings.general.snapshotMaxCount")} description={t("settings.general.snapshotMaxCount.desc").replace("{value}", String(snapshotMaxCount))}>
+      <SettingsRow
+        label={t("settings.general.snapshotMaxCount")}
+        description={t("settings.general.snapshotMaxCount.desc").replace(
+          "{value}",
+          String(snapshotMaxCount),
+        )}
+      >
         <input
           type="range"
           className="settings-range"
@@ -319,13 +612,19 @@ function GeneralTab() {
 
       <SettingsSectionHeader title={t("settings.general.journal")} />
 
-      <SettingsRow label={t("settings.general.journalEnabled")} description={t("settings.general.journalEnabled.desc")}>
+      <SettingsRow
+        label={t("settings.general.journalEnabled")}
+        description={t("settings.general.journalEnabled.desc")}
+      >
         <ToggleSwitch checked={journalEnabled} onChange={setJournalEnabled} />
       </SettingsRow>
 
       {journalEnabled && (
         <>
-          <SettingsRow label={t("settings.general.journalDirectory")} description={t("settings.general.journalDirectory.desc")}>
+          <SettingsRow
+            label={t("settings.general.journalDirectory")}
+            description={t("settings.general.journalDirectory.desc")}
+          >
             <div className="settings-key-row">
               <input
                 type="text"
@@ -346,7 +645,10 @@ function GeneralTab() {
             </div>
           </SettingsRow>
 
-          <SettingsRow label={t("settings.general.journalFilenameFormat")} description={t("settings.general.journalFilenameFormat.desc")}>
+          <SettingsRow
+            label={t("settings.general.journalFilenameFormat")}
+            description={t("settings.general.journalFilenameFormat.desc")}
+          >
             <select
               className="settings-select"
               value={journalFilenameFormat}
@@ -357,7 +659,10 @@ function GeneralTab() {
             </select>
           </SettingsRow>
 
-          <SettingsRow label={t("settings.general.journalTemplate")} description={t("settings.general.journalTemplate.desc")}>
+          <SettingsRow
+            label={t("settings.general.journalTemplate")}
+            description={t("settings.general.journalTemplate.desc")}
+          >
             <div className="settings-key-row">
               <input
                 type="text"
@@ -388,18 +693,32 @@ function GeneralTab() {
             </div>
           </SettingsRow>
 
-          <SettingsRow label={t("settings.general.journalStartup")} description={t("settings.general.journalStartup.desc")}>
+          <SettingsRow
+            label={t("settings.general.journalStartup")}
+            description={t("settings.general.journalStartup.desc")}
+          >
             <select
               className="settings-select"
               value={journalStartupBehavior}
-              onChange={(e) => setJournalStartupBehavior(e.target.value as "openJournal" | "nothing")}
+              onChange={(e) =>
+                setJournalStartupBehavior(
+                  e.target.value as "openJournal" | "nothing",
+                )
+              }
             >
-              <option value="openJournal">{t("settings.general.journalStartup.openJournal")}</option>
-              <option value="nothing">{t("settings.general.journalStartup.nothing")}</option>
+              <option value="openJournal">
+                {t("settings.general.journalStartup.openJournal")}
+              </option>
+              <option value="nothing">
+                {t("settings.general.journalStartup.nothing")}
+              </option>
             </select>
           </SettingsRow>
 
-          <SettingsRow label={t("settings.general.journalHierarchy")} description={t("settings.general.journalHierarchy.desc")}>
+          <SettingsRow
+            label={t("settings.general.journalHierarchy")}
+            description={t("settings.general.journalHierarchy.desc")}
+          >
             <ToggleSwitch
               checked={journalUseHierarchy}
               onChange={setJournalUseHierarchy}
@@ -407,7 +726,10 @@ function GeneralTab() {
           </SettingsRow>
 
           {journalDirectory && (
-            <SettingsRow label={t("settings.general.journalMigrate")} description={t("settings.general.journalMigrate.desc")}>
+            <SettingsRow
+              label={t("settings.general.journalMigrate")}
+              description={t("settings.general.journalMigrate.desc")}
+            >
               <button
                 className="settings-key-toggle"
                 onClick={() => setMigrationOpen(true)}
@@ -417,9 +739,14 @@ function GeneralTab() {
             </SettingsRow>
           )}
 
-          <SettingsSectionHeader title={t("settings.general.periodicTemplates")} />
+          <SettingsSectionHeader
+            title={t("settings.general.periodicTemplates")}
+          />
 
-          <SettingsRow label={t("settings.general.weeklyTemplate")} description={t("settings.general.weeklyTemplate.desc")}>
+          <SettingsRow
+            label={t("settings.general.weeklyTemplate")}
+            description={t("settings.general.weeklyTemplate.desc")}
+          >
             <div className="settings-key-row">
               <input
                 type="text"
@@ -450,7 +777,10 @@ function GeneralTab() {
             </div>
           </SettingsRow>
 
-          <SettingsRow label={t("settings.general.monthlyTemplate")} description={t("settings.general.monthlyTemplate.desc")}>
+          <SettingsRow
+            label={t("settings.general.monthlyTemplate")}
+            description={t("settings.general.monthlyTemplate.desc")}
+          >
             <div className="settings-key-row">
               <input
                 type="text"
@@ -481,7 +811,10 @@ function GeneralTab() {
             </div>
           </SettingsRow>
 
-          <SettingsRow label={t("settings.general.yearlyTemplate")} description={t("settings.general.yearlyTemplate.desc")}>
+          <SettingsRow
+            label={t("settings.general.yearlyTemplate")}
+            description={t("settings.general.yearlyTemplate.desc")}
+          >
             <div className="settings-key-row">
               <input
                 type="text"
@@ -514,17 +847,24 @@ function GeneralTab() {
 
           <SettingsSectionHeader title={t("settings.general.journalAI")} />
 
-          <SettingsRow label={t("settings.general.journalAIAutoSuggest")} description={t("settings.general.journalAIAutoSuggest.desc")}>
+          <SettingsRow
+            label={t("settings.general.journalAIAutoSuggest")}
+            description={t("settings.general.journalAIAutoSuggest.desc")}
+          >
             <ToggleSwitch
               checked={useSettingsStore.getState().journalAIAutoSuggest}
-              onChange={(v) => useSettingsStore.getState().setJournalAIAutoSuggest(v)}
+              onChange={(v) =>
+                useSettingsStore.getState().setJournalAIAutoSuggest(v)
+              }
             />
           </SettingsRow>
 
           {journalDirectory && (
             <SettingsRow
               label={t("settings.general.createTemplateFiles")}
-              description={t("settings.general.createTemplateFiles.desc").replace("{dir}", journalDirectory)}
+              description={t(
+                "settings.general.createTemplateFiles.desc",
+              ).replace("{dir}", journalDirectory)}
             >
               <div className="settings-key-row">
                 <button
@@ -532,9 +872,13 @@ function GeneralTab() {
                   onClick={async () => {
                     try {
                       await initJournalTemplatesDir(journalDirectory);
-                      setTemplatesInitMsg(t("settings.general.createTemplateFiles.success"));
+                      setTemplatesInitMsg(
+                        t("settings.general.createTemplateFiles.success"),
+                      );
                     } catch {
-                      setTemplatesInitMsg(t("settings.general.createTemplateFiles.error"));
+                      setTemplatesInitMsg(
+                        t("settings.general.createTemplateFiles.error"),
+                      );
                     }
                     setTimeout(() => setTemplatesInitMsg(null), 3000);
                   }}
@@ -542,7 +886,10 @@ function GeneralTab() {
                   {t("settings.general.createTemplateFiles.button")}
                 </button>
                 {templatesInitMsg && (
-                  <span className="settings-row-description" style={{ marginLeft: 8 }}>
+                  <span
+                    className="settings-row-description"
+                    style={{ marginLeft: 8 }}
+                  >
                     {templatesInitMsg}
                   </span>
                 )}
@@ -566,24 +913,40 @@ function GeneralTab() {
 function EditorTab() {
   const { t } = useTranslation();
   const {
-    fontFamily, setFontFamily,
-    fontSize, setFontSize,
-    lineHeight, setLineHeight,
-    tabSize, setTabSize,
-    lineNumbers, setLineNumbers,
-    autoPairBrackets, setAutoPairBrackets,
-    editorMaxWidth, setEditorMaxWidth,
+    fontFamily,
+    setFontFamily,
+    fontSize,
+    setFontSize,
+    lineHeight,
+    setLineHeight,
+    tabSize,
+    setTabSize,
+    lineNumbers,
+    setLineNumbers,
+    autoPairBrackets,
+    setAutoPairBrackets,
+    editorMaxWidth,
+    setEditorMaxWidth,
   } = useSettingsStore();
 
   return (
     <div className="settings-section">
       <SettingsSectionHeader title={t("settings.editor.font")} />
 
-      <SettingsRow label={t("settings.editor.fontFamily")} description={t("settings.editor.fontFamily.desc")}>
+      <SettingsRow
+        label={t("settings.editor.fontFamily")}
+        description={t("settings.editor.fontFamily.desc")}
+      >
         <FontFamilyPicker value={fontFamily} onChange={setFontFamily} />
       </SettingsRow>
 
-      <SettingsRow label={t("settings.editor.fontSize")} description={t("settings.editor.fontSize.desc").replace("{value}", String(fontSize))}>
+      <SettingsRow
+        label={t("settings.editor.fontSize")}
+        description={t("settings.editor.fontSize.desc").replace(
+          "{value}",
+          String(fontSize),
+        )}
+      >
         <input
           type="range"
           className="settings-range"
@@ -595,7 +958,13 @@ function EditorTab() {
         />
       </SettingsRow>
 
-      <SettingsRow label={t("settings.editor.lineHeight")} description={t("settings.editor.lineHeight.desc").replace("{value}", lineHeight.toFixed(2))}>
+      <SettingsRow
+        label={t("settings.editor.lineHeight")}
+        description={t("settings.editor.lineHeight.desc").replace(
+          "{value}",
+          lineHeight.toFixed(2),
+        )}
+      >
         <input
           type="range"
           className="settings-range"
@@ -609,7 +978,10 @@ function EditorTab() {
 
       <SettingsSectionHeader title={t("settings.editor.behavior")} />
 
-      <SettingsRow label={t("settings.editor.tabSize")} description={t("settings.editor.tabSize.desc")}>
+      <SettingsRow
+        label={t("settings.editor.tabSize")}
+        description={t("settings.editor.tabSize.desc")}
+      >
         <select
           className="settings-select"
           value={tabSize}
@@ -620,17 +992,34 @@ function EditorTab() {
         </select>
       </SettingsRow>
 
-      <SettingsRow label={t("settings.editor.autoPairBrackets")} description={t("settings.editor.autoPairBrackets.desc")}>
-        <ToggleSwitch checked={autoPairBrackets} onChange={setAutoPairBrackets} />
+      <SettingsRow
+        label={t("settings.editor.autoPairBrackets")}
+        description={t("settings.editor.autoPairBrackets.desc")}
+      >
+        <ToggleSwitch
+          checked={autoPairBrackets}
+          onChange={setAutoPairBrackets}
+        />
       </SettingsRow>
 
       <SettingsSectionHeader title={t("settings.editor.display")} />
 
-      <SettingsRow label={t("settings.editor.lineNumbers")} description={t("settings.editor.lineNumbers.desc")}>
+      <SettingsRow
+        label={t("settings.editor.lineNumbers")}
+        description={t("settings.editor.lineNumbers.desc")}
+      >
         <ToggleSwitch checked={lineNumbers} onChange={setLineNumbers} />
       </SettingsRow>
 
-      <SettingsRow label={t("settings.editor.maxWidth")} description={t("settings.editor.maxWidth.desc").replace("{value}", editorMaxWidth === 0 ? t("settings.editor.maxWidth.noLimit") : editorMaxWidth + "px")}>
+      <SettingsRow
+        label={t("settings.editor.maxWidth")}
+        description={t("settings.editor.maxWidth.desc").replace(
+          "{value}",
+          editorMaxWidth === 0
+            ? t("settings.editor.maxWidth.noLimit")
+            : editorMaxWidth + "px",
+        )}
+      >
         <input
           type="range"
           className="settings-range"
@@ -649,8 +1038,13 @@ function EditorTab() {
 
 function AppearanceTab() {
   const { t } = useTranslation();
-  const { activeThemeId, customThemes, setActiveTheme, saveCustomTheme, deleteCustomTheme } =
-    useSettingsStore();
+  const {
+    activeThemeId,
+    customThemes,
+    setActiveTheme,
+    saveCustomTheme,
+    deleteCustomTheme,
+  } = useSettingsStore();
   const [editingTheme, setEditingTheme] = useState(false);
 
   const allThemes = [...BUILT_IN_THEMES, ...customThemes];
@@ -709,26 +1103,74 @@ function AppearanceTab() {
           onClick={() => setActiveTheme("system")}
         >
           <div className="theme-preview theme-preview-split">
-            <div className="theme-preview-half" style={{ background: "#ffffff" }}>
-              <div className="theme-preview-sidebar" style={{ background: "#f5f5f5", borderRight: "1px solid #e5e5e5" }}>
-                <div className="theme-preview-sidebar-item" style={{ background: "#e0e0e0" }} />
-                <div className="theme-preview-sidebar-item" style={{ background: "#e0e0e0" }} />
+            <div
+              className="theme-preview-half"
+              style={{ background: "#ffffff" }}
+            >
+              <div
+                className="theme-preview-sidebar"
+                style={{
+                  background: "#f5f5f5",
+                  borderRight: "1px solid #e5e5e5",
+                }}
+              >
+                <div
+                  className="theme-preview-sidebar-item"
+                  style={{ background: "#e0e0e0" }}
+                />
+                <div
+                  className="theme-preview-sidebar-item"
+                  style={{ background: "#e0e0e0" }}
+                />
               </div>
-              <div className="theme-preview-editor" style={{ background: "#ffffff" }}>
-                <div className="theme-preview-heading" style={{ color: "#1a1a1a", fontSize: 7 }}>Aa</div>
+              <div
+                className="theme-preview-editor"
+                style={{ background: "#ffffff" }}
+              >
+                <div
+                  className="theme-preview-heading"
+                  style={{ color: "#1a1a1a", fontSize: 7 }}
+                >
+                  Aa
+                </div>
               </div>
             </div>
-            <div className="theme-preview-half" style={{ background: "#1a1a2e" }}>
-              <div className="theme-preview-sidebar" style={{ background: "#16213e", borderRight: "1px solid #2a2a4a" }}>
-                <div className="theme-preview-sidebar-item" style={{ background: "#2a2a4a" }} />
-                <div className="theme-preview-sidebar-item" style={{ background: "#2a2a4a" }} />
+            <div
+              className="theme-preview-half"
+              style={{ background: "#1a1a2e" }}
+            >
+              <div
+                className="theme-preview-sidebar"
+                style={{
+                  background: "#16213e",
+                  borderRight: "1px solid #2a2a4a",
+                }}
+              >
+                <div
+                  className="theme-preview-sidebar-item"
+                  style={{ background: "#2a2a4a" }}
+                />
+                <div
+                  className="theme-preview-sidebar-item"
+                  style={{ background: "#2a2a4a" }}
+                />
               </div>
-              <div className="theme-preview-editor" style={{ background: "#1a1a2e" }}>
-                <div className="theme-preview-heading" style={{ color: "#e2e8f0", fontSize: 7 }}>Aa</div>
+              <div
+                className="theme-preview-editor"
+                style={{ background: "#1a1a2e" }}
+              >
+                <div
+                  className="theme-preview-heading"
+                  style={{ color: "#e2e8f0", fontSize: 7 }}
+                >
+                  Aa
+                </div>
               </div>
             </div>
           </div>
-          <span className="theme-card-name">{t("settings.appearance.systemAuto")}</span>
+          <span className="theme-card-name">
+            {t("settings.appearance.systemAuto")}
+          </span>
         </button>
 
         {/* All themes */}
@@ -745,7 +1187,11 @@ function AppearanceTab() {
           >
             <ThemeMiniPreview theme={theme} />
             <span className="theme-card-name">{theme.name}</span>
-            {!theme.builtIn && <span className="theme-card-badge">{t("settings.appearance.customBadge")}</span>}
+            {!theme.builtIn && (
+              <span className="theme-card-badge">
+                {t("settings.appearance.customBadge")}
+              </span>
+            )}
             {!theme.builtIn && (
               <button
                 className="theme-card-delete"
@@ -763,7 +1209,10 @@ function AppearanceTab() {
       </div>
 
       <div className="theme-actions">
-        <button className="theme-action-btn" onClick={() => setEditingTheme(true)}>
+        <button
+          className="theme-action-btn"
+          onClick={() => setEditingTheme(true)}
+        >
           {t("settings.appearance.customize")}
         </button>
         <button className="theme-action-btn" onClick={handleImport}>
@@ -771,7 +1220,9 @@ function AppearanceTab() {
         </button>
       </div>
 
-      <SettingsSectionHeader title={t("settings.appearance.workspacePresets")} />
+      <SettingsSectionHeader
+        title={t("settings.appearance.workspacePresets")}
+      />
       <WorkspaceSection />
     </div>
   );
@@ -779,7 +1230,10 @@ function AppearanceTab() {
 
 // ─── Workspace Section (merged from WorkspaceTab) ────────
 
-function workspaceLayoutSummary(preset: WorkspacePreset, t: (key: string) => string): string {
+function workspaceLayoutSummary(
+  preset: WorkspacePreset,
+  t: (key: string) => string,
+): string {
   const panelKey = `settings.panels.${preset.layout.sidebarPanel}`;
   const parts: string[] = [];
   if (preset.layout.sidebarOpen) {
@@ -794,8 +1248,13 @@ function workspaceLayoutSummary(preset: WorkspacePreset, t: (key: string) => str
 
 function WorkspaceSection() {
   const { t } = useTranslation();
-  const { activePresetId, customPresets, applyPreset, saveCustomPreset, deleteCustomPreset } =
-    useWorkspaceStore();
+  const {
+    activePresetId,
+    customPresets,
+    applyPreset,
+    saveCustomPreset,
+    deleteCustomPreset,
+  } = useWorkspaceStore();
 
   const [savingNew, setSavingNew] = useState(false);
   const [newName, setNewName] = useState("");
@@ -873,7 +1332,10 @@ function WorkspaceSection() {
             </button>
           </div>
         ) : (
-          <button className="workspace-action-btn" onClick={() => setSavingNew(true)}>
+          <button
+            className="workspace-action-btn"
+            onClick={() => setSavingNew(true)}
+          >
             {t("settings.appearance.saveCurrentLayout")}
           </button>
         )}
@@ -899,7 +1361,11 @@ function PresetCard({
       className={`workspace-card ${isActive ? "workspace-card-active" : ""}`}
       onClick={() => onApply(preset.id)}
     >
-      {isActive && <span className="workspace-card-check" aria-label="Active">&#10003;</span>}
+      {isActive && (
+        <span className="workspace-card-check" aria-label="Active">
+          &#10003;
+        </span>
+      )}
       {onDelete && (
         <button
           className="workspace-card-delete"
@@ -918,16 +1384,26 @@ function PresetCard({
       </div>
 
       <span className="workspace-card-name">
-        {preset.builtIn ? t(`settings.workspace.preset.${preset.id}`) : preset.name}
+        {preset.builtIn
+          ? t(`settings.workspace.preset.${preset.id}`)
+          : preset.name}
       </span>
       {preset.description && (
         <span className="workspace-card-desc">
-          {preset.builtIn ? t(`settings.workspace.preset.${preset.id}.desc`) : preset.description}
+          {preset.builtIn
+            ? t(`settings.workspace.preset.${preset.id}.desc`)
+            : preset.description}
         </span>
       )}
-      <span className="workspace-card-summary">{workspaceLayoutSummary(preset, t)}</span>
+      <span className="workspace-card-summary">
+        {workspaceLayoutSummary(preset, t)}
+      </span>
 
-      {preset.builtIn && <span className="workspace-card-badge">{t("settings.workspace.builtIn")}</span>}
+      {preset.builtIn && (
+        <span className="workspace-card-badge">
+          {t("settings.workspace.builtIn")}
+        </span>
+      )}
     </div>
   );
 }
@@ -936,7 +1412,9 @@ function LayoutDiagram({ preset }: { preset: WorkspacePreset }) {
   const { layout } = preset;
   return (
     <div className="workspace-diagram">
-      {layout.sidebarOpen && <div className="workspace-diagram-panel workspace-diagram-sidebar" />}
+      {layout.sidebarOpen && (
+        <div className="workspace-diagram-panel workspace-diagram-sidebar" />
+      )}
       <div className="workspace-diagram-panel workspace-diagram-editor" />
       {layout.rightPanelOpen && layout.rightPanelMode !== "none" && (
         <div className="workspace-diagram-panel workspace-diagram-right" />
@@ -950,32 +1428,51 @@ function LayoutDiagram({ preset }: { preset: WorkspacePreset }) {
 function MarkdownTab() {
   const { t } = useTranslation();
   const {
-    inlineMath, setInlineMath,
-    highlight, setHighlight,
-    strikethrough, setStrikethrough,
-    smartPunctuation, setSmartPunctuation,
+    inlineMath,
+    setInlineMath,
+    highlight,
+    setHighlight,
+    strikethrough,
+    setStrikethrough,
+    smartPunctuation,
+    setSmartPunctuation,
   } = useSettingsStore();
 
   return (
     <div className="settings-section">
       <SettingsSectionHeader title={t("settings.markdown.extendedSyntax")} />
 
-      <SettingsRow label={t("settings.markdown.inlineMath")} description={t("settings.markdown.inlineMath.desc")}>
+      <SettingsRow
+        label={t("settings.markdown.inlineMath")}
+        description={t("settings.markdown.inlineMath.desc")}
+      >
         <ToggleSwitch checked={inlineMath} onChange={setInlineMath} />
       </SettingsRow>
 
-      <SettingsRow label={t("settings.markdown.highlight")} description={t("settings.markdown.highlight.desc")}>
+      <SettingsRow
+        label={t("settings.markdown.highlight")}
+        description={t("settings.markdown.highlight.desc")}
+      >
         <ToggleSwitch checked={highlight} onChange={setHighlight} />
       </SettingsRow>
 
-      <SettingsRow label={t("settings.markdown.strikethrough")} description={t("settings.markdown.strikethrough.desc")}>
+      <SettingsRow
+        label={t("settings.markdown.strikethrough")}
+        description={t("settings.markdown.strikethrough.desc")}
+      >
         <ToggleSwitch checked={strikethrough} onChange={setStrikethrough} />
       </SettingsRow>
 
       <SettingsSectionHeader title={t("settings.markdown.typography")} />
 
-      <SettingsRow label={t("settings.markdown.smartPunctuation")} description={t("settings.markdown.smartPunctuation.desc")}>
-        <ToggleSwitch checked={smartPunctuation} onChange={setSmartPunctuation} />
+      <SettingsRow
+        label={t("settings.markdown.smartPunctuation")}
+        description={t("settings.markdown.smartPunctuation.desc")}
+      >
+        <ToggleSwitch
+          checked={smartPunctuation}
+          onChange={setSmartPunctuation}
+        />
       </SettingsRow>
 
       {/* Extension Settings (merged from ExtensionsTab) */}
@@ -996,17 +1493,29 @@ function MarkdownTab() {
 function AITab() {
   const { t } = useTranslation();
   const {
-    provider, setProvider,
-    model, setModel,
-    apiKey, setApiKey,
-    ollamaUrl, setOllamaUrl,
-    privacyMode, setPrivacyMode,
-    ghostTextEnabled, setGhostTextEnabled,
-    ghostTextDebounceMs, setGhostTextDebounceMs,
-    maxSuggestionLength, setMaxSuggestionLength,
+    provider,
+    setProvider,
+    model,
+    setModel,
+    apiKey,
+    setApiKey,
+    ollamaUrl,
+    setOllamaUrl,
+    privacyMode,
+    setPrivacyMode,
+    ghostTextEnabled,
+    setGhostTextEnabled,
+    ghostTextDebounceMs,
+    setGhostTextDebounceMs,
+    maxSuggestionLength,
+    setMaxSuggestionLength,
     keychainReady,
-    autoModelEnabled, setAutoModelEnabled,
-    modelForGhostText, modelForInlineEdit, modelForChat, modelForAgent,
+    autoModelEnabled,
+    setAutoModelEnabled,
+    modelForGhostText,
+    modelForInlineEdit,
+    modelForChat,
+    modelForAgent,
     setModelForTask,
   } = useAIStore();
   const [showKey, setShowKey] = useState(false);
@@ -1033,7 +1542,8 @@ function AITab() {
     setModelsLoading(true);
     setModelsError(null);
     try {
-      const baseUrl = provider === "ollama" ? ollamaUrl || undefined : undefined;
+      const baseUrl =
+        provider === "ollama" ? ollamaUrl || undefined : undefined;
       const key = provider === "ollama" ? undefined : apiKey;
       const result = await llmListModels(provider, key, baseUrl);
       setModels(result);
@@ -1053,11 +1563,18 @@ function AITab() {
     <div className="settings-section">
       <SettingsSectionHeader title={t("settings.ai.provider")} />
 
-      <SettingsRow label={t("settings.ai.aiProvider")} description={t("settings.ai.aiProvider.desc")}>
+      <SettingsRow
+        label={t("settings.ai.aiProvider")}
+        description={t("settings.ai.aiProvider.desc")}
+      >
         <select
           className="settings-select"
           value={provider}
-          onChange={(e) => handleProviderChange(e.target.value as "claude" | "openai" | "ollama" | "gemini")}
+          onChange={(e) =>
+            handleProviderChange(
+              e.target.value as "claude" | "openai" | "ollama" | "gemini",
+            )
+          }
         >
           <option value="claude">{t("settings.ai.provider.claude")}</option>
           <option value="openai">{t("settings.ai.provider.openai")}</option>
@@ -1069,7 +1586,11 @@ function AITab() {
       {showApiKey && (
         <SettingsRow
           label={t("settings.ai.apiKey")}
-          description={keychainReady ? t("settings.ai.apiKey.desc.ready") : t("settings.ai.apiKey.desc.loading")}
+          description={
+            keychainReady
+              ? t("settings.ai.apiKey.desc.ready")
+              : t("settings.ai.apiKey.desc.loading")
+          }
         >
           <div className="settings-key-row">
             <input
@@ -1077,22 +1598,35 @@ function AITab() {
               className="settings-input settings-input-key"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder={keychainReady ? t("settings.ai.apiKey.placeholder") : t("settings.ai.apiKey.loading")}
+              placeholder={
+                keychainReady
+                  ? t("settings.ai.apiKey.placeholder")
+                  : t("settings.ai.apiKey.loading")
+              }
               disabled={!keychainReady}
             />
             <button
               className="settings-key-toggle"
               onClick={() => setShowKey((v) => !v)}
-              title={showKey ? t("settings.ai.apiKey.hide") : t("settings.ai.apiKey.show")}
+              title={
+                showKey
+                  ? t("settings.ai.apiKey.hide")
+                  : t("settings.ai.apiKey.show")
+              }
             >
-              {showKey ? t("settings.ai.apiKey.hide") : t("settings.ai.apiKey.show")}
+              {showKey
+                ? t("settings.ai.apiKey.hide")
+                : t("settings.ai.apiKey.show")}
             </button>
           </div>
         </SettingsRow>
       )}
 
       {provider === "ollama" && (
-        <SettingsRow label={t("settings.ai.ollamaUrl")} description={t("settings.ai.ollamaUrl.desc")}>
+        <SettingsRow
+          label={t("settings.ai.ollamaUrl")}
+          description={t("settings.ai.ollamaUrl.desc")}
+        >
           <input
             type="text"
             className="settings-input"
@@ -1103,7 +1637,10 @@ function AITab() {
         </SettingsRow>
       )}
 
-      <SettingsRow label={t("settings.ai.model")} description={t("settings.ai.model.desc")}>
+      <SettingsRow
+        label={t("settings.ai.model")}
+        description={t("settings.ai.model.desc")}
+      >
         <div className="settings-model-row">
           {customMode || (models.length === 0 && !modelsLoading) ? (
             <input
@@ -1137,7 +1674,11 @@ function AITab() {
             className="settings-model-refresh"
             onClick={fetchModels}
             disabled={!canFetchModels || modelsLoading}
-            title={!canFetchModels ? t("settings.ai.model.keyFirst") : t("settings.ai.model.fetchTooltip")}
+            title={
+              !canFetchModels
+                ? t("settings.ai.model.keyFirst")
+                : t("settings.ai.model.fetchTooltip")
+            }
           >
             {modelsLoading ? (
               <span className="settings-model-spinner" />
@@ -1148,25 +1689,35 @@ function AITab() {
         </div>
       </SettingsRow>
 
-      {modelsError && (() => {
-        const formatted = formatAIError(modelsError);
-        return (
-          <div className="settings-model-error">
-            <strong>{formatted.title}</strong>
-            <span>{formatted.detail}</span>
-          </div>
-        );
-      })()}
+      {modelsError &&
+        (() => {
+          const formatted = formatAIError(modelsError);
+          return (
+            <div className="settings-model-error">
+              <strong>{formatted.title}</strong>
+              <span>{formatted.detail}</span>
+            </div>
+          );
+        })()}
 
       <SettingsSectionHeader title={t("settings.ai.modelSelection")} />
 
-      <SettingsRow label={t("settings.ai.autoModel")} description={t("settings.ai.autoModel.desc")}>
-        <ToggleSwitch checked={autoModelEnabled} onChange={setAutoModelEnabled} />
+      <SettingsRow
+        label={t("settings.ai.autoModel")}
+        description={t("settings.ai.autoModel.desc")}
+      >
+        <ToggleSwitch
+          checked={autoModelEnabled}
+          onChange={setAutoModelEnabled}
+        />
       </SettingsRow>
 
       {autoModelEnabled && (
         <>
-          <SettingsRow label={t("settings.ai.ghostTextModel")} description={t("settings.ai.ghostTextModel.desc")}>
+          <SettingsRow
+            label={t("settings.ai.ghostTextModel")}
+            description={t("settings.ai.ghostTextModel.desc")}
+          >
             <input
               type="text"
               className="settings-input"
@@ -1175,7 +1726,10 @@ function AITab() {
               placeholder={model}
             />
           </SettingsRow>
-          <SettingsRow label={t("settings.ai.inlineEditModel")} description={t("settings.ai.inlineEditModel.desc")}>
+          <SettingsRow
+            label={t("settings.ai.inlineEditModel")}
+            description={t("settings.ai.inlineEditModel.desc")}
+          >
             <input
               type="text"
               className="settings-input"
@@ -1184,7 +1738,10 @@ function AITab() {
               placeholder={model}
             />
           </SettingsRow>
-          <SettingsRow label={t("settings.ai.chatModel")} description={t("settings.ai.chatModel.desc")}>
+          <SettingsRow
+            label={t("settings.ai.chatModel")}
+            description={t("settings.ai.chatModel.desc")}
+          >
             <input
               type="text"
               className="settings-input"
@@ -1193,7 +1750,10 @@ function AITab() {
               placeholder={model}
             />
           </SettingsRow>
-          <SettingsRow label={t("settings.ai.agentModel")} description={t("settings.ai.agentModel.desc")}>
+          <SettingsRow
+            label={t("settings.ai.agentModel")}
+            description={t("settings.ai.agentModel.desc")}
+          >
             <input
               type="text"
               className="settings-input"
@@ -1207,19 +1767,34 @@ function AITab() {
 
       <SettingsSectionHeader title={t("settings.ai.privacy")} />
 
-      <SettingsRow label={t("settings.ai.privacyMode")} description={t("settings.ai.privacyMode.desc")}>
+      <SettingsRow
+        label={t("settings.ai.privacyMode")}
+        description={t("settings.ai.privacyMode.desc")}
+      >
         <ToggleSwitch checked={privacyMode} onChange={setPrivacyMode} />
       </SettingsRow>
 
       <SettingsSectionHeader title={t("settings.ai.ghostText")} />
 
-      <SettingsRow label={t("settings.ai.ghostTextEnabled")} description={t("settings.ai.ghostTextEnabled.desc")}>
-        <ToggleSwitch checked={ghostTextEnabled} onChange={setGhostTextEnabled} />
+      <SettingsRow
+        label={t("settings.ai.ghostTextEnabled")}
+        description={t("settings.ai.ghostTextEnabled.desc")}
+      >
+        <ToggleSwitch
+          checked={ghostTextEnabled}
+          onChange={setGhostTextEnabled}
+        />
       </SettingsRow>
 
       {ghostTextEnabled && (
         <>
-          <SettingsRow label={t("settings.ai.debounce")} description={t("settings.ai.debounce.desc").replace("{value}", String(ghostTextDebounceMs))}>
+          <SettingsRow
+            label={t("settings.ai.debounce")}
+            description={t("settings.ai.debounce.desc").replace(
+              "{value}",
+              String(ghostTextDebounceMs),
+            )}
+          >
             <input
               type="range"
               className="settings-range"
@@ -1231,7 +1806,13 @@ function AITab() {
             />
           </SettingsRow>
 
-          <SettingsRow label={t("settings.ai.maxLength")} description={t("settings.ai.maxLength.desc").replace("{value}", String(maxSuggestionLength))}>
+          <SettingsRow
+            label={t("settings.ai.maxLength")}
+            description={t("settings.ai.maxLength.desc").replace(
+              "{value}",
+              String(maxSuggestionLength),
+            )}
+          >
             <input
               type="range"
               className="settings-range"
@@ -1270,21 +1851,32 @@ const FONT_OPTIONS = [
   { value: "Nanum Gothic", label: "Nanum Gothic" },
 ];
 
-function FontFamilyPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function FontFamilyPicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
 
   const filtered = search
-    ? FONT_OPTIONS.filter((f) => f.label.toLowerCase().includes(search.toLowerCase()))
+    ? FONT_OPTIONS.filter((f) =>
+        f.label.toLowerCase().includes(search.toLowerCase()),
+      )
     : FONT_OPTIONS;
 
   // Close dropdown on outside click
   useEffect(() => {
     if (!open) return;
     const handleClick = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
         setOpen(false);
       }
     };
@@ -1333,7 +1925,9 @@ function FontFamilyPicker({ value, onChange }: { value: string; onChange: (v: st
               style={{ fontFamily: font.value }}
               onClick={() => handleSelect(font.value)}
             >
-              {font.value === "system-ui" ? t("settings.editor.fontPicker.systemDefault") : font.label}
+              {font.value === "system-ui"
+                ? t("settings.editor.fontPicker.systemDefault")
+                : font.label}
             </button>
           ))}
           {filtered.length === 0 && search && (
@@ -1341,7 +1935,10 @@ function FontFamilyPicker({ value, onChange }: { value: string; onChange: (v: st
               className="settings-font-option"
               onClick={() => handleSelect(search)}
             >
-              {t("settings.editor.fontPicker.useCustom").replace("{font}", search)}
+              {t("settings.editor.fontPicker.useCustom").replace(
+                "{font}",
+                search,
+              )}
             </button>
           )}
         </div>
@@ -1352,7 +1949,10 @@ function FontFamilyPicker({ value, onChange }: { value: string; onChange: (v: st
 
 // ─── Extension Settings Helpers (merged from ExtensionsTab) ──
 
-interface SettingOption { value: string; label: string; }
+interface SettingOption {
+  value: string;
+  label: string;
+}
 interface SettingDef {
   key: string;
   type: "boolean" | "select" | "number" | "string";
@@ -1360,10 +1960,15 @@ interface SettingDef {
   description: string;
   default: unknown;
   options?: SettingOption[];
-  min?: number; max?: number; step?: number;
+  min?: number;
+  max?: number;
+  step?: number;
   placeholder?: string;
 }
-interface RegistryEntry { name: string; settings?: SettingDef[]; }
+interface RegistryEntry {
+  name: string;
+  settings?: SettingDef[];
+}
 
 function getExtensionsWithSettings() {
   const allEntries: RegistryEntry[] = [
@@ -1372,8 +1977,10 @@ function getExtensionsWithSettings() {
     ...(registry.plugins as RegistryEntry[]),
   ];
   return allEntries
-    .filter((e): e is RegistryEntry & { settings: SettingDef[] } =>
-      Array.isArray(e.settings) && e.settings.length > 0)
+    .filter(
+      (e): e is RegistryEntry & { settings: SettingDef[] } =>
+        Array.isArray(e.settings) && e.settings.length > 0,
+    )
     .map((e) => ({ name: e.name, settings: e.settings }));
 }
 
@@ -1389,35 +1996,57 @@ function ExtensionSettingRow({ setting }: { setting: SettingDef }) {
     case "boolean":
       return (
         <SettingsRow label={setting.label} description={setting.description}>
-          <ToggleSwitch checked={!!value} onChange={(v) => setExtensionSetting(setting.key, v)} />
+          <ToggleSwitch
+            checked={!!value}
+            onChange={(v) => setExtensionSetting(setting.key, v)}
+          />
         </SettingsRow>
       );
     case "select":
       return (
         <SettingsRow label={setting.label} description={setting.description}>
-          <select className="settings-select" value={value as string}
-            onChange={(e) => setExtensionSetting(setting.key, e.target.value)}>
+          <select
+            className="settings-select"
+            value={value as string}
+            onChange={(e) => setExtensionSetting(setting.key, e.target.value)}
+          >
             {(setting.options ?? []).map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
             ))}
           </select>
         </SettingsRow>
       );
     case "number":
       return (
-        <SettingsRow label={setting.label} description={`${setting.description} (${value})`}>
-          <input type="range" className="settings-range"
-            min={setting.min ?? 0} max={setting.max ?? 100} step={setting.step ?? 1}
+        <SettingsRow
+          label={setting.label}
+          description={`${setting.description} (${value})`}
+        >
+          <input
+            type="range"
+            className="settings-range"
+            min={setting.min ?? 0}
+            max={setting.max ?? 100}
+            step={setting.step ?? 1}
             value={value as number}
-            onChange={(e) => setExtensionSetting(setting.key, Number(e.target.value))} />
+            onChange={(e) =>
+              setExtensionSetting(setting.key, Number(e.target.value))
+            }
+          />
         </SettingsRow>
       );
     case "string":
       return (
         <SettingsRow label={setting.label} description={setting.description}>
-          <input type="text" className="settings-input" value={value as string}
+          <input
+            type="text"
+            className="settings-input"
+            value={value as string}
             onChange={(e) => setExtensionSetting(setting.key, e.target.value)}
-            placeholder={setting.placeholder ?? ""} />
+            placeholder={setting.placeholder ?? ""}
+          />
         </SettingsRow>
       );
     default:
@@ -1430,7 +2059,10 @@ function ExtensionSettingRow({ setting }: { setting: SettingDef }) {
 function ThemeMiniPreview({ theme }: { theme: ThemeDef }) {
   const c = theme.colors;
   return (
-    <div className="theme-preview" style={{ background: c["--color-bg-primary"] }}>
+    <div
+      className="theme-preview"
+      style={{ background: c["--color-bg-primary"] }}
+    >
       <div
         className="theme-preview-sidebar"
         style={{
@@ -1438,16 +2070,38 @@ function ThemeMiniPreview({ theme }: { theme: ThemeDef }) {
           borderRight: `1px solid ${c["--color-border"]}`,
         }}
       >
-        <div className="theme-preview-sidebar-item" style={{ background: c["--color-bg-tertiary"] }} />
-        <div className="theme-preview-sidebar-item" style={{ background: c["--color-bg-tertiary"] }} />
-        <div className="theme-preview-sidebar-item" style={{ background: c["--color-bg-tertiary"] }} />
+        <div
+          className="theme-preview-sidebar-item"
+          style={{ background: c["--color-bg-tertiary"] }}
+        />
+        <div
+          className="theme-preview-sidebar-item"
+          style={{ background: c["--color-bg-tertiary"] }}
+        />
+        <div
+          className="theme-preview-sidebar-item"
+          style={{ background: c["--color-bg-tertiary"] }}
+        />
       </div>
-      <div className="theme-preview-editor" style={{ background: c["--color-editor-bg"] }}>
-        <div className="theme-preview-heading" style={{ color: c["--color-editor-text"] }}>
+      <div
+        className="theme-preview-editor"
+        style={{ background: c["--color-editor-bg"] }}
+      >
+        <div
+          className="theme-preview-heading"
+          style={{ color: c["--color-editor-text"] }}
+        >
           Heading
         </div>
-        <div className="theme-preview-text" style={{ color: c["--color-editor-text"] }}>
-          Some <span style={{ color: c["--color-accent"], fontWeight: 600 }}>bold</span> text
+        <div
+          className="theme-preview-text"
+          style={{ color: c["--color-editor-text"] }}
+        >
+          Some{" "}
+          <span style={{ color: c["--color-accent"], fontWeight: 600 }}>
+            bold
+          </span>{" "}
+          text
         </div>
         <div
           className="theme-preview-quote"
@@ -1474,14 +2128,20 @@ function ThemeMiniPreview({ theme }: { theme: ThemeDef }) {
 }
 
 function ActivityBarTab() {
-  const { activityBarConfig, setActivityBarConfig, resetActivityBarConfig } = useSettingsStore();
+  const { activityBarConfig, setActivityBarConfig, resetActivityBarConfig } =
+    useSettingsStore();
   const { t } = useTranslation();
 
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [dropIndicator, setDropIndicator] = useState<{ id: string; position: "before" | "after" } | null>(null);
+  const [dropIndicator, setDropIndicator] = useState<{
+    id: string;
+    position: "before" | "after";
+  } | null>(null);
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const dragRef = useRef<{ id: string; section: string } | null>(null);
-  const dropRef = useRef<{ id: string; position: "before" | "after" } | null>(null);
+  const dropRef = useRef<{ id: string; position: "before" | "after" } | null>(
+    null,
+  );
   const configRef = useRef(activityBarConfig);
   configRef.current = activityBarConfig;
 
@@ -1491,72 +2151,82 @@ function ActivityBarTab() {
   const toggleItem = (id: string) => {
     setActivityBarConfig(
       activityBarConfig.map((item) =>
-        item.id === id ? { ...item, visible: !item.visible } : item
-      )
+        item.id === id ? { ...item, visible: !item.visible } : item,
+      ),
     );
   };
 
-  const onPointerDown = useCallback((id: string, section: string, e: React.PointerEvent) => {
-    e.preventDefault();
-    dragRef.current = { id, section };
-    setDraggingId(id);
+  const onPointerDown = useCallback(
+    (id: string, section: string, e: React.PointerEvent) => {
+      e.preventDefault();
+      dragRef.current = { id, section };
+      setDraggingId(id);
 
-    const onMove = (moveE: PointerEvent) => {
-      const state = dragRef.current;
-      if (!state) return;
+      const onMove = (moveE: PointerEvent) => {
+        const state = dragRef.current;
+        if (!state) return;
 
-      let closestId: string | null = null;
-      let closestPos: "before" | "after" = "before";
-      let closestDist = Infinity;
+        let closestId: string | null = null;
+        let closestPos: "before" | "after" = "before";
+        let closestDist = Infinity;
 
-      for (const [rowId, el] of rowRefs.current.entries()) {
-        const rowItem = configRef.current.find(i => i.id === rowId);
-        if (!rowItem || rowItem.section !== state.section || rowId === state.id) continue;
+        for (const [rowId, el] of rowRefs.current.entries()) {
+          const rowItem = configRef.current.find((i) => i.id === rowId);
+          if (
+            !rowItem ||
+            rowItem.section !== state.section ||
+            rowId === state.id
+          )
+            continue;
 
-        const rect = el.getBoundingClientRect();
-        const midY = rect.top + rect.height / 2;
-        const dist = Math.abs(moveE.clientY - midY);
+          const rect = el.getBoundingClientRect();
+          const midY = rect.top + rect.height / 2;
+          const dist = Math.abs(moveE.clientY - midY);
 
-        if (dist < closestDist) {
-          closestDist = dist;
-          closestId = rowId;
-          closestPos = moveE.clientY < midY ? "before" : "after";
-        }
-      }
-
-      dropRef.current = closestId ? { id: closestId, position: closestPos } : null;
-      setDropIndicator(dropRef.current);
-    };
-
-    const onUp = () => {
-      const state = dragRef.current;
-      const drop = dropRef.current;
-
-      if (state && drop && state.id !== drop.id) {
-        const config = [...configRef.current];
-        const fromIdx = config.findIndex(i => i.id === state.id);
-        if (fromIdx !== -1) {
-          const [item] = config.splice(fromIdx, 1);
-          let toIdx = config.findIndex(i => i.id === drop.id);
-          if (toIdx !== -1) {
-            if (drop.position === "after") toIdx += 1;
-            config.splice(toIdx, 0, item);
-            setActivityBarConfig(config);
+          if (dist < closestDist) {
+            closestDist = dist;
+            closestId = rowId;
+            closestPos = moveE.clientY < midY ? "before" : "after";
           }
         }
-      }
 
-      dragRef.current = null;
-      dropRef.current = null;
-      setDraggingId(null);
-      setDropIndicator(null);
-      document.removeEventListener("pointermove", onMove);
-      document.removeEventListener("pointerup", onUp);
-    };
+        dropRef.current = closestId
+          ? { id: closestId, position: closestPos }
+          : null;
+        setDropIndicator(dropRef.current);
+      };
 
-    document.addEventListener("pointermove", onMove);
-    document.addEventListener("pointerup", onUp);
-  }, [setActivityBarConfig]);
+      const onUp = () => {
+        const state = dragRef.current;
+        const drop = dropRef.current;
+
+        if (state && drop && state.id !== drop.id) {
+          const config = [...configRef.current];
+          const fromIdx = config.findIndex((i) => i.id === state.id);
+          if (fromIdx !== -1) {
+            const [item] = config.splice(fromIdx, 1);
+            let toIdx = config.findIndex((i) => i.id === drop.id);
+            if (toIdx !== -1) {
+              if (drop.position === "after") toIdx += 1;
+              config.splice(toIdx, 0, item);
+              setActivityBarConfig(config);
+            }
+          }
+        }
+
+        dragRef.current = null;
+        dropRef.current = null;
+        setDraggingId(null);
+        setDropIndicator(null);
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+      };
+
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+    },
+    [setActivityBarConfig],
+  );
 
   const setRowRef = useCallback((id: string, el: HTMLDivElement | null) => {
     if (el) rowRefs.current.set(id, el);
@@ -1585,12 +2255,17 @@ function ActivityBarTab() {
             >
               {"\u2807"}
             </div>
-            <span className={`settings-row-label ${!item.visible ? "activity-bar-config-hidden" : ""}`}>
+            <span
+              className={`settings-row-label ${!item.visible ? "activity-bar-config-hidden" : ""}`}
+            >
               {t(`settings.activitybar.item.${item.id}`)}
             </span>
           </div>
           <div className="settings-row-control">
-            <ToggleSwitch checked={item.visible} onChange={() => toggleItem(item.id)} />
+            <ToggleSwitch
+              checked={item.visible}
+              onChange={() => toggleItem(item.id)}
+            />
           </div>
         </div>
       ))}
@@ -1640,7 +2315,10 @@ function LanguageTab() {
         </select>
       </SettingsRow>
 
-      <div className="settings-row-description" style={{ marginTop: 12, fontStyle: "italic" }}>
+      <div
+        className="settings-row-description"
+        style={{ marginTop: 12, fontStyle: "italic" }}
+      >
         {t("settings.language.reloadNotice")}
       </div>
     </div>
@@ -1705,7 +2383,11 @@ function KeybindingsTab() {
       if (!normalized) return;
 
       setCapturedKey(normalized);
-      const conflicting = findConflict(capturingId, normalized, keybindingOverrides);
+      const conflicting = findConflict(
+        capturingId,
+        normalized,
+        keybindingOverrides,
+      );
       setConflict(conflicting);
     };
 
@@ -1767,10 +2449,16 @@ function KeybindingsTab() {
                         </span>
                         {conflict && (
                           <span className="keybinding-conflict">
-                            {t("keybindings.conflict").replace("{command}", t(conflict.label))}
+                            {t("keybindings.conflict").replace(
+                              "{command}",
+                              t(conflict.label),
+                            )}
                           </span>
                         )}
-                        <button className="keybinding-confirm-btn" onClick={confirmCapture}>
+                        <button
+                          className="keybinding-confirm-btn"
+                          onClick={confirmCapture}
+                        >
                           {"\u21A9"}
                         </button>
                       </>
@@ -1869,7 +2557,10 @@ function SettingsSearchResults({
                 </span>
               </div>
               <div className="settings-row-control">
-                <SearchSettingControl id={item.id} onNavigate={() => onNavigate(category)} />
+                <SearchSettingControl
+                  id={item.id}
+                  onNavigate={() => onNavigate(category)}
+                />
               </div>
             </div>
           ))}
@@ -1880,7 +2571,13 @@ function SettingsSearchResults({
 }
 
 /** Renders the actual control for a setting in search results. */
-function SearchSettingControl({ id, onNavigate }: { id: string; onNavigate: () => void }) {
+function SearchSettingControl({
+  id,
+  onNavigate,
+}: {
+  id: string;
+  onNavigate: () => void;
+}) {
   const { t } = useTranslation();
   const settings = useSettingsStore();
   const ai = useAIStore();
@@ -1888,30 +2585,78 @@ function SearchSettingControl({ id, onNavigate }: { id: string; onNavigate: () =
   switch (id) {
     // ── General toggles ──
     case "autoSave":
-      return <ToggleSwitch checked={settings.autoSave} onChange={settings.setAutoSave} />;
+      return (
+        <ToggleSwitch
+          checked={settings.autoSave}
+          onChange={settings.setAutoSave}
+        />
+      );
     case "showWelcome":
-      return <ToggleSwitch checked={settings.showWelcome} onChange={settings.setShowWelcome} />;
+      return (
+        <ToggleSwitch
+          checked={settings.showWelcome}
+          onChange={settings.setShowWelcome}
+        />
+      );
     case "spellCheck":
-      return <ToggleSwitch checked={settings.spellCheck} onChange={settings.setSpellCheck} />;
+      return (
+        <ToggleSwitch
+          checked={settings.spellCheck}
+          onChange={settings.setSpellCheck}
+        />
+      );
     case "autoUpdateLinks":
-      return <ToggleSwitch checked={settings.autoUpdateLinks} onChange={settings.setAutoUpdateLinks} />;
+      return (
+        <ToggleSwitch
+          checked={settings.autoUpdateLinks}
+          onChange={settings.setAutoUpdateLinks}
+        />
+      );
     case "journalEnabled":
-      return <ToggleSwitch checked={settings.journalEnabled} onChange={settings.setJournalEnabled} />;
+      return (
+        <ToggleSwitch
+          checked={settings.journalEnabled}
+          onChange={settings.setJournalEnabled}
+        />
+      );
 
     // ── General selects ──
     case "onLaunch":
       return (
-        <select className="settings-select" value={settings.onLaunch}
-          onChange={(e) => settings.setOnLaunch(e.target.value as "newFile" | "restoreLastFolder" | "restoreLastFile")}>
-          <option value="restoreLastFolder">{t("settings.general.onLaunch.restoreLastFolder")}</option>
-          <option value="restoreLastFile">{t("settings.general.onLaunch.restoreLastFile")}</option>
-          <option value="newFile">{t("settings.general.onLaunch.newFile")}</option>
+        <select
+          className="settings-select"
+          value={settings.onLaunch}
+          onChange={(e) =>
+            settings.setOnLaunch(
+              e.target.value as
+                | "newFile"
+                | "restoreLastFolder"
+                | "restoreLastFile",
+            )
+          }
+        >
+          <option value="restoreLastFolder">
+            {t("settings.general.onLaunch.restoreLastFolder")}
+          </option>
+          <option value="restoreLastFile">
+            {t("settings.general.onLaunch.restoreLastFile")}
+          </option>
+          <option value="newFile">
+            {t("settings.general.onLaunch.newFile")}
+          </option>
         </select>
       );
     case "wikilinkFormat":
       return (
-        <select className="settings-select" value={settings.wikilinkFormat}
-          onChange={(e) => settings.setWikilinkFormat(e.target.value as "wikilink" | "markdown")}>
+        <select
+          className="settings-select"
+          value={settings.wikilinkFormat}
+          onChange={(e) =>
+            settings.setWikilinkFormat(
+              e.target.value as "wikilink" | "markdown",
+            )
+          }
+        >
           <option value="wikilink">{"[[Wikilink]]"}</option>
           <option value="markdown">[Markdown](link)</option>
         </select>
@@ -1920,48 +2665,103 @@ function SearchSettingControl({ id, onNavigate }: { id: string; onNavigate: () =
     // ── General ranges ──
     case "autoSaveDelay":
       return (
-        <input type="range" className="settings-range" min={500} max={10000} step={500}
-          value={settings.autoSaveDelay} onChange={(e) => settings.setAutoSaveDelay(Number(e.target.value))} />
+        <input
+          type="range"
+          className="settings-range"
+          min={500}
+          max={10000}
+          step={500}
+          value={settings.autoSaveDelay}
+          onChange={(e) => settings.setAutoSaveDelay(Number(e.target.value))}
+        />
       );
     case "snapshotInterval":
       return (
-        <input type="range" className="settings-range" min={0} max={120} step={5}
-          value={settings.snapshotInterval} onChange={(e) => settings.setSnapshotInterval(Number(e.target.value))} />
+        <input
+          type="range"
+          className="settings-range"
+          min={0}
+          max={120}
+          step={5}
+          value={settings.snapshotInterval}
+          onChange={(e) => settings.setSnapshotInterval(Number(e.target.value))}
+        />
       );
     case "snapshotMaxCount":
       return (
-        <input type="range" className="settings-range" min={5} max={200} step={5}
-          value={settings.snapshotMaxCount} onChange={(e) => settings.setSnapshotMaxCount(Number(e.target.value))} />
+        <input
+          type="range"
+          className="settings-range"
+          min={5}
+          max={200}
+          step={5}
+          value={settings.snapshotMaxCount}
+          onChange={(e) => settings.setSnapshotMaxCount(Number(e.target.value))}
+        />
       );
 
     // ── Editor ranges ──
     case "fontSize":
       return (
-        <input type="range" className="settings-range" min={8} max={32} step={1}
-          value={settings.fontSize} onChange={(e) => settings.setFontSize(Number(e.target.value))} />
+        <input
+          type="range"
+          className="settings-range"
+          min={8}
+          max={32}
+          step={1}
+          value={settings.fontSize}
+          onChange={(e) => settings.setFontSize(Number(e.target.value))}
+        />
       );
     case "lineHeight":
       return (
-        <input type="range" className="settings-range" min={1.0} max={3.0} step={0.05}
-          value={settings.lineHeight} onChange={(e) => settings.setLineHeight(Number(e.target.value))} />
+        <input
+          type="range"
+          className="settings-range"
+          min={1.0}
+          max={3.0}
+          step={0.05}
+          value={settings.lineHeight}
+          onChange={(e) => settings.setLineHeight(Number(e.target.value))}
+        />
       );
     case "editorMaxWidth":
       return (
-        <input type="range" className="settings-range" min={0} max={2048} step={50}
-          value={settings.editorMaxWidth} onChange={(e) => settings.setEditorMaxWidth(Number(e.target.value))} />
+        <input
+          type="range"
+          className="settings-range"
+          min={0}
+          max={2048}
+          step={50}
+          value={settings.editorMaxWidth}
+          onChange={(e) => settings.setEditorMaxWidth(Number(e.target.value))}
+        />
       );
 
     // ── Editor toggles ──
     case "lineNumbers":
-      return <ToggleSwitch checked={settings.lineNumbers} onChange={settings.setLineNumbers} />;
+      return (
+        <ToggleSwitch
+          checked={settings.lineNumbers}
+          onChange={settings.setLineNumbers}
+        />
+      );
     case "autoPairBrackets":
-      return <ToggleSwitch checked={settings.autoPairBrackets} onChange={settings.setAutoPairBrackets} />;
+      return (
+        <ToggleSwitch
+          checked={settings.autoPairBrackets}
+          onChange={settings.setAutoPairBrackets}
+        />
+      );
 
     // ── Editor selects ──
     case "tabSize":
       return (
-        <select className="settings-select" value={settings.tabSize}
-          onChange={(e) => settings.setTabSize(Number(e.target.value))}>
+        <select
+          className="settings-select"
+          value={settings.tabSize}
+          onChange={(e) => settings.setTabSize(Number(e.target.value))}
+        >
           <option value={2}>{t("settings.editor.tabSize.2spaces")}</option>
           <option value={4}>{t("settings.editor.tabSize.4spaces")}</option>
         </select>
@@ -1969,25 +2769,59 @@ function SearchSettingControl({ id, onNavigate }: { id: string; onNavigate: () =
 
     // ── Markdown toggles ──
     case "inlineMath":
-      return <ToggleSwitch checked={settings.inlineMath} onChange={settings.setInlineMath} />;
+      return (
+        <ToggleSwitch
+          checked={settings.inlineMath}
+          onChange={settings.setInlineMath}
+        />
+      );
     case "highlight":
-      return <ToggleSwitch checked={settings.highlight} onChange={settings.setHighlight} />;
+      return (
+        <ToggleSwitch
+          checked={settings.highlight}
+          onChange={settings.setHighlight}
+        />
+      );
     case "strikethrough":
-      return <ToggleSwitch checked={settings.strikethrough} onChange={settings.setStrikethrough} />;
+      return (
+        <ToggleSwitch
+          checked={settings.strikethrough}
+          onChange={settings.setStrikethrough}
+        />
+      );
     case "smartPunctuation":
-      return <ToggleSwitch checked={settings.smartPunctuation} onChange={settings.setSmartPunctuation} />;
+      return (
+        <ToggleSwitch
+          checked={settings.smartPunctuation}
+          onChange={settings.setSmartPunctuation}
+        />
+      );
 
     // ── AI toggles ──
     case "ghostTextEnabled":
-      return <ToggleSwitch checked={ai.ghostTextEnabled} onChange={ai.setGhostTextEnabled} />;
+      return (
+        <ToggleSwitch
+          checked={ai.ghostTextEnabled}
+          onChange={ai.setGhostTextEnabled}
+        />
+      );
     case "privacyMode":
-      return <ToggleSwitch checked={ai.privacyMode} onChange={ai.setPrivacyMode} />;
+      return (
+        <ToggleSwitch checked={ai.privacyMode} onChange={ai.setPrivacyMode} />
+      );
 
     // ── AI selects ──
     case "provider":
       return (
-        <select className="settings-select" value={ai.provider}
-          onChange={(e) => ai.setProvider(e.target.value as "claude" | "openai" | "ollama" | "gemini")}>
+        <select
+          className="settings-select"
+          value={ai.provider}
+          onChange={(e) =>
+            ai.setProvider(
+              e.target.value as "claude" | "openai" | "ollama" | "gemini",
+            )
+          }
+        >
           <option value="claude">{t("settings.ai.provider.claude")}</option>
           <option value="openai">{t("settings.ai.provider.openai")}</option>
           <option value="gemini">{t("settings.ai.provider.gemini")}</option>
@@ -1998,10 +2832,15 @@ function SearchSettingControl({ id, onNavigate }: { id: string; onNavigate: () =
     // ── Language ──
     case "locale":
       return (
-        <select className="settings-select" value={settings.locale}
-          onChange={(e) => settings.setLocale(e.target.value)}>
+        <select
+          className="settings-select"
+          value={settings.locale}
+          onChange={(e) => settings.setLocale(e.target.value)}
+        >
           {AVAILABLE_LOCALES.map((loc) => (
-            <option key={loc} value={loc}>{LOCALE_LABELS[loc]}</option>
+            <option key={loc} value={loc}>
+              {LOCALE_LABELS[loc]}
+            </option>
           ))}
         </select>
       );
@@ -2042,7 +2881,9 @@ function SettingsRow({
     <div className="settings-row">
       <div className="settings-row-info">
         <span className="settings-row-label">{label}</span>
-        {description && <span className="settings-row-description">{description}</span>}
+        {description && (
+          <span className="settings-row-description">{description}</span>
+        )}
       </div>
       <div className="settings-row-control">{children}</div>
     </div>

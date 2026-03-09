@@ -12,10 +12,14 @@ export interface ParsedKey {
 
 /** e.code values that are bare modifiers — produce no binding notation */
 const MODIFIER_CODES = new Set([
-  "MetaLeft", "MetaRight",
-  "ControlLeft", "ControlRight",
-  "ShiftLeft", "ShiftRight",
-  "AltLeft", "AltRight",
+  "MetaLeft",
+  "MetaRight",
+  "ControlLeft",
+  "ControlRight",
+  "ShiftLeft",
+  "ShiftRight",
+  "AltLeft",
+  "AltRight",
 ]);
 
 /** Map e.code → display key string for non-letter/digit keys */
@@ -46,9 +50,18 @@ const CODE_TO_KEY: Record<string, string> = {
   ArrowDown: "ArrowDown",
   ArrowLeft: "ArrowLeft",
   ArrowRight: "ArrowRight",
-  F1: "F1", F2: "F2", F3: "F3", F4: "F4",
-  F5: "F5", F6: "F6", F7: "F7", F8: "F8",
-  F9: "F9", F10: "F10", F11: "F11", F12: "F12",
+  F1: "F1",
+  F2: "F2",
+  F3: "F3",
+  F4: "F4",
+  F5: "F5",
+  F6: "F6",
+  F7: "F7",
+  F8: "F8",
+  F9: "F9",
+  F10: "F10",
+  F11: "F11",
+  F12: "F12",
 };
 
 /**
@@ -132,9 +145,9 @@ export function formatKeyForDisplay(notation: string, isMac: boolean): string {
   if (isMac) {
     const keyDisplay = MAC_SPECIAL_DISPLAY[key] ?? key;
     return (
-      (mod ? "\u2318" : "") +   // ⌘
+      (mod ? "\u2318" : "") + // ⌘
       (shift ? "\u21E7" : "") + // ⇧
-      (alt ? "\u2325" : "") +   // ⌥
+      (alt ? "\u2325" : "") + // ⌥
       keyDisplay
     );
   } else {

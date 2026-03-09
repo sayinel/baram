@@ -38,7 +38,9 @@ export function filterFiles(
 /**
  * Load headings from a file. Uses in-memory cache if available, falls back to readFile IPC.
  */
-export async function loadFileHeadings(filePath: string): Promise<HeadingEntry[]> {
+export async function loadFileHeadings(
+  filePath: string,
+): Promise<HeadingEntry[]> {
   // Check if file content is already cached in openFiles
   const cached = useFileStore.getState().openFiles.get(filePath);
   if (cached !== undefined) {

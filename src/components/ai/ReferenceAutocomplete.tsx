@@ -18,9 +18,17 @@ interface RefOption {
 }
 
 const BUILTIN_REFS: RefOption[] = [
-  { label: "@selection", value: "@selection", description: "Current editor selection" },
+  {
+    label: "@selection",
+    value: "@selection",
+    description: "Current editor selection",
+  },
   { label: "@current", value: "@current", description: "Current file content" },
-  { label: "@clipboard", value: "@clipboard", description: "Clipboard content" },
+  {
+    label: "@clipboard",
+    value: "@clipboard",
+    description: "Clipboard content",
+  },
 ];
 
 /** Flatten file tree into file paths */
@@ -63,23 +71,34 @@ function fuzzyMatch(query: string, target: string): boolean {
   return qi === q.length;
 }
 
-export function ReferenceAutocomplete({ query, position, onSelect, onClose }: ReferenceAutocompleteProps) {
+export function ReferenceAutocomplete({
+  query,
+  position,
+  onSelect,
+  onClose,
+}: ReferenceAutocompleteProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
   const fileTree = useFileStore((s) => s.fileTree);
 
   // §44 Wrap onSelect to capture clipboard content when @clipboard is chosen
-  const handleSelect = useCallback((value: string) => {
-    if (value === "@clipboard") {
-      navigator.clipboard.readText().then((text) => {
-        useAIStore.getState().setClipboardContent(text);
-      }).catch(() => {
-        // Clipboard read failed — store empty string
-        useAIStore.getState().setClipboardContent("");
-      });
-    }
-    onSelect(value);
-  }, [onSelect]);
+  const handleSelect = useCallback(
+    (value: string) => {
+      if (value === "@clipboard") {
+        navigator.clipboard
+          .readText()
+          .then((text) => {
+            useAIStore.getState().setClipboardContent(text);
+          })
+          .catch(() => {
+            // Clipboard read failed — store empty string
+            useAIStore.getState().setClipboardContent("");
+          });
+      }
+      onSelect(value);
+    },
+    [onSelect],
+  );
 
   const queryLower = query.toLowerCase();
 
@@ -140,23 +159,28 @@ export function ReferenceAutocomplete({ query, position, onSelect, onClose }: Re
   }, [options.length]);
 
   // Keyboard navigation
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setSelectedIndex((prev) => (prev + 1) % options.length);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setSelectedIndex((prev) => (prev - 1 + options.length) % options.length);
-    } else if (e.key === "Enter" || e.key === "Tab") {
-      e.preventDefault();
-      if (options[selectedIndex]) {
-        handleSelect(options[selectedIndex].value);
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedIndex((prev) => (prev + 1) % options.length);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedIndex(
+          (prev) => (prev - 1 + options.length) % options.length,
+        );
+      } else if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        if (options[selectedIndex]) {
+          handleSelect(options[selectedIndex].value);
+        }
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
       }
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      onClose();
-    }
-  }, [options, selectedIndex, handleSelect, onClose]);
+    },
+    [options, selectedIndex, handleSelect, onClose],
+  );
 
   useEffect(() => {
     window.addEventListener("keydown", handleKeyDown, true);

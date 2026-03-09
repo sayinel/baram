@@ -65,7 +65,8 @@ export function calculateMonthStats(
     const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
     if (dates.has(dateStr)) total++;
   }
-  const percentage = daysInMonth > 0 ? Math.round((total / daysInMonth) * 100) : 0;
+  const percentage =
+    daysInMonth > 0 ? Math.round((total / daysInMonth) * 100) : 0;
   return { total, daysInMonth, percentage };
 }
 

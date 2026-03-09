@@ -200,7 +200,10 @@ describe("cursor-mapper: serialize round-trip (real toggle path)", () => {
   const editor = createEditor();
 
   // Simulate the exact WYSIWYG → Source → WYSIWYG toggle path
-  function serializeRoundTrip(md: string, pmPos: number): { mdOffset: number; roundTripPos: number; serialized: string } {
+  function serializeRoundTrip(
+    md: string,
+    pmPos: number,
+  ): { mdOffset: number; roundTripPos: number; serialized: string } {
     const doc = loadDoc(editor, md);
     const serialized = prosemirrorToMarkdown(doc);
     const mdOffset = pmPosToMdOffset(doc, pmPos, serialized);

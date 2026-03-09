@@ -15,11 +15,15 @@ describe("DAILY_PROMPTS", () => {
   });
 
   it("gratitude category has 30 prompts", () => {
-    expect(DAILY_PROMPTS.filter((p) => p.category === "gratitude").length).toBe(30);
+    expect(DAILY_PROMPTS.filter((p) => p.category === "gratitude").length).toBe(
+      30,
+    );
   });
 
   it("reflection category has 30 prompts", () => {
-    expect(DAILY_PROMPTS.filter((p) => p.category === "reflection").length).toBe(30);
+    expect(
+      DAILY_PROMPTS.filter((p) => p.category === "reflection").length,
+    ).toBe(30);
   });
 
   it("goals category has 20 prompts", () => {
@@ -27,11 +31,15 @@ describe("DAILY_PROMPTS", () => {
   });
 
   it("creative category has 20 prompts", () => {
-    expect(DAILY_PROMPTS.filter((p) => p.category === "creative").length).toBe(20);
+    expect(DAILY_PROMPTS.filter((p) => p.category === "creative").length).toBe(
+      20,
+    );
   });
 
   it("relationships category has 20 prompts", () => {
-    expect(DAILY_PROMPTS.filter((p) => p.category === "relationships").length).toBe(20);
+    expect(
+      DAILY_PROMPTS.filter((p) => p.category === "relationships").length,
+    ).toBe(20);
   });
 
   it("all prompts have a valid non-empty id", () => {
@@ -116,7 +124,9 @@ describe("getRandomPrompt", () => {
   });
 
   it("produces varied results over multiple calls", () => {
-    const results = new Set(Array.from({ length: 20 }, () => getRandomPrompt()));
+    const results = new Set(
+      Array.from({ length: 20 }, () => getRandomPrompt()),
+    );
     expect(results.size).toBeGreaterThanOrEqual(5);
   });
 });
@@ -152,9 +162,9 @@ describe("getDailyPromptWithHistory", () => {
   });
 
   it("resets pool when all prompts in category are used", () => {
-    const gratitudeIds = DAILY_PROMPTS
-      .filter((p) => p.category === "gratitude")
-      .map((p) => p.id);
+    const gratitudeIds = DAILY_PROMPTS.filter(
+      (p) => p.category === "gratitude",
+    ).map((p) => p.id);
     // Pass all IDs as history — should still return a prompt (pool reset)
     const p = getDailyPromptWithHistory(date, gratitudeIds, "gratitude");
     expect(p.category).toBe("gratitude");

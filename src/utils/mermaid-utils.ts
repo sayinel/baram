@@ -1,7 +1,10 @@
 // §50 Mermaid diagram utilities — copy, templates, type detection
 
 /** Diagram type templates for Phase 2 supported types */
-export const MERMAID_TEMPLATES: Record<string, { label: string; code: string }> = {
+export const MERMAID_TEMPLATES: Record<
+  string,
+  { label: string; code: string }
+> = {
   flowchart: {
     label: "Flowchart",
     code: "flowchart LR\n  A[Start] --> B{Decision}\n  B -->|Yes| C[OK]\n  B -->|No| D[End]",
@@ -20,7 +23,7 @@ export const MERMAID_TEMPLATES: Record<string, { label: string; code: string }> 
   },
   er: {
     label: "ER Diagram",
-    code: 'erDiagram\n  CUSTOMER ||--o{ ORDER : places\n  ORDER ||--|{ LINE_ITEM : contains\n  CUSTOMER {\n    string name\n    string email\n  }',
+    code: "erDiagram\n  CUSTOMER ||--o{ ORDER : places\n  ORDER ||--|{ LINE_ITEM : contains\n  CUSTOMER {\n    string name\n    string email\n  }",
   },
   gantt: {
     label: "Gantt Chart",
@@ -51,7 +54,8 @@ export const MERMAID_TEMPLATES: Record<string, { label: string; code: string }> 
 /** Detect diagram type from mermaid source code */
 export function detectMermaidType(code: string): string | null {
   const trimmed = code.trim();
-  if (/^flowchart\b/i.test(trimmed) || /^graph\b/i.test(trimmed)) return "flowchart";
+  if (/^flowchart\b/i.test(trimmed) || /^graph\b/i.test(trimmed))
+    return "flowchart";
   if (/^sequenceDiagram\b/i.test(trimmed)) return "sequence";
   if (/^classDiagram\b/i.test(trimmed)) return "class";
   if (/^stateDiagram/i.test(trimmed)) return "state";
@@ -61,7 +65,8 @@ export function detectMermaidType(code: string): string | null {
   if (/^mindmap\b/i.test(trimmed)) return "mindmap";
   if (/^timeline\b/i.test(trimmed)) return "timeline";
   if (/^journey\b/i.test(trimmed)) return "journey";
-  if (/^gitGraph\b/i.test(trimmed) || /^gitgraph\b/i.test(trimmed)) return "gitgraph";
+  if (/^gitGraph\b/i.test(trimmed) || /^gitgraph\b/i.test(trimmed))
+    return "gitgraph";
   return null;
 }
 

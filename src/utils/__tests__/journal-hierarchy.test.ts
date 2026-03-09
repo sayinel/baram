@@ -22,9 +22,9 @@ describe("§56a Hierarchical journal paths", () => {
 
   describe("getHierarchicalJournalPath", () => {
     it("returns daily/YYYY/MM/YYYY-MM-DD.md for a date", () => {
-      expect(getHierarchicalJournalPath("/journals", date, "YYYY-MM-DD.md")).toBe(
-        "/journals/daily/2026/02/2026-02-28.md",
-      );
+      expect(
+        getHierarchicalJournalPath("/journals", date, "YYYY-MM-DD.md"),
+      ).toBe("/journals/daily/2026/02/2026-02-28.md");
     });
 
     it("pads single-digit month and day", () => {
@@ -43,18 +43,23 @@ describe("§56a Hierarchical journal paths", () => {
 
   describe("flatToHierarchicalPath", () => {
     it("converts flat path to hierarchical path", () => {
-      expect(flatToHierarchicalPath("/journals", "/journals/2026-02-28.md")).toBe(
-        "/journals/daily/2026/02/2026-02-28.md",
-      );
+      expect(
+        flatToHierarchicalPath("/journals", "/journals/2026-02-28.md"),
+      ).toBe("/journals/daily/2026/02/2026-02-28.md");
     });
 
     it("returns null for non-date filenames", () => {
-      expect(flatToHierarchicalPath("/journals", "/journals/notes.md")).toBeNull();
+      expect(
+        flatToHierarchicalPath("/journals", "/journals/notes.md"),
+      ).toBeNull();
     });
 
     it("returns null for files already in daily/ structure", () => {
       expect(
-        flatToHierarchicalPath("/journals", "/journals/daily/2026/02/2026-02-28.md"),
+        flatToHierarchicalPath(
+          "/journals",
+          "/journals/daily/2026/02/2026-02-28.md",
+        ),
       ).toBeNull();
     });
   });
@@ -175,24 +180,32 @@ describe("§56a Periodic note paths", () => {
   describe("getWeeklyJournalPath", () => {
     it("builds correct weekly path", () => {
       const date = new Date(2026, 1, 28); // Week 9
-      expect(getWeeklyJournalPath("/j", date)).toBe("/j/weekly/2026/2026-W09.md");
+      expect(getWeeklyJournalPath("/j", date)).toBe(
+        "/j/weekly/2026/2026-W09.md",
+      );
     });
 
     it("handles week 1", () => {
       const date = new Date(2026, 0, 1);
-      expect(getWeeklyJournalPath("/j", date)).toBe("/j/weekly/2026/2026-W01.md");
+      expect(getWeeklyJournalPath("/j", date)).toBe(
+        "/j/weekly/2026/2026-W01.md",
+      );
     });
   });
 
   describe("getMonthlyJournalPath", () => {
     it("builds correct monthly path", () => {
       const date = new Date(2026, 1, 28);
-      expect(getMonthlyJournalPath("/j", date)).toBe("/j/monthly/2026/2026-02.md");
+      expect(getMonthlyJournalPath("/j", date)).toBe(
+        "/j/monthly/2026/2026-02.md",
+      );
     });
 
     it("pads single-digit month", () => {
       const date = new Date(2026, 0, 15);
-      expect(getMonthlyJournalPath("/j", date)).toBe("/j/monthly/2026/2026-01.md");
+      expect(getMonthlyJournalPath("/j", date)).toBe(
+        "/j/monthly/2026/2026-01.md",
+      );
     });
   });
 

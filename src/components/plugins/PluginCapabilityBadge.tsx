@@ -21,7 +21,10 @@ interface PluginCapabilityBadgeProps {
   showDescription?: boolean;
 }
 
-export function PluginCapabilityBadge({ capability, showDescription }: PluginCapabilityBadgeProps) {
+export function PluginCapabilityBadge({
+  capability,
+  showDescription,
+}: PluginCapabilityBadgeProps) {
   const color = CAPABILITY_COLORS[capability] ?? "#6b7280";
   return (
     <span

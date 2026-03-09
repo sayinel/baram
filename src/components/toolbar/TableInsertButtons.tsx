@@ -27,7 +27,10 @@ function findTablePos(
     if (found !== null) return false;
     if (node.type.name === "table") {
       const dom = editor.view.nodeDOM(pos);
-      if (dom === tableEl || (dom instanceof HTMLElement && dom.contains(tableEl))) {
+      if (
+        dom === tableEl ||
+        (dom instanceof HTMLElement && dom.contains(tableEl))
+      ) {
         found = pos;
         return false;
       }
@@ -107,8 +110,12 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
 
           // Check if we're in the outer zone of this nearby table
           const rect = nearTable.getBoundingClientRect();
-          const inTopZone = e.clientY >= rect.top - DETECT_OUTER && e.clientY <= rect.top + DETECT_INNER;
-          const inLeftZone = e.clientX >= rect.left - DETECT_OUTER && e.clientX <= rect.left + DETECT_INNER;
+          const inTopZone =
+            e.clientY >= rect.top - DETECT_OUTER &&
+            e.clientY <= rect.top + DETECT_INNER;
+          const inLeftZone =
+            e.clientX >= rect.left - DETECT_OUTER &&
+            e.clientX <= rect.left + DETECT_INNER;
 
           if (!inTopZone && !inLeftZone) {
             scheduleHide();
@@ -120,8 +127,12 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
         }
 
         const tableRect = tableEl.getBoundingClientRect();
-        const nearTop = e.clientY >= tableRect.top - DETECT_OUTER && e.clientY <= tableRect.top + DETECT_INNER;
-        const nearLeft = e.clientX >= tableRect.left - DETECT_OUTER && e.clientX <= tableRect.left + DETECT_INNER;
+        const nearTop =
+          e.clientY >= tableRect.top - DETECT_OUTER &&
+          e.clientY <= tableRect.top + DETECT_INNER;
+        const nearLeft =
+          e.clientX >= tableRect.left - DETECT_OUTER &&
+          e.clientX <= tableRect.left + DETECT_INNER;
 
         if (!nearTop && !nearLeft) {
           scheduleHide();
@@ -163,7 +174,9 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
       }
 
       const tableRect = tableEl.getBoundingClientRect();
-      const nearTop = e.clientY >= tableRect.top - DETECT_OUTER && e.clientY <= tableRect.top + DETECT_INNER;
+      const nearTop =
+        e.clientY >= tableRect.top - DETECT_OUTER &&
+        e.clientY <= tableRect.top + DETECT_INNER;
 
       if (nearTop) {
         // Column insert mode: find nearest column boundary
@@ -176,7 +189,9 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
         let bestDist = Infinity;
 
         if (cells.length > 0) {
-          const dist = Math.abs(e.clientX - cells[0].getBoundingClientRect().left);
+          const dist = Math.abs(
+            e.clientX - cells[0].getBoundingClientRect().left,
+          );
           if (dist < bestDist) {
             bestDist = dist;
             bestX = cells[0].getBoundingClientRect().left;
@@ -185,7 +200,9 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
         }
 
         for (let i = 0; i < cells.length; i++) {
-          const dist = Math.abs(e.clientX - cells[i].getBoundingClientRect().right);
+          const dist = Math.abs(
+            e.clientX - cells[i].getBoundingClientRect().right,
+          );
           if (dist < bestDist) {
             bestDist = dist;
             bestX = cells[i].getBoundingClientRect().right;
@@ -208,7 +225,9 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
       } else {
         // Row insert mode: find nearest row boundary
         const rows = Array.from(
-          tableEl.querySelectorAll(":scope > thead > tr, :scope > tbody > tr, :scope > tr"),
+          tableEl.querySelectorAll(
+            ":scope > thead > tr, :scope > tbody > tr, :scope > tr",
+          ),
         ) as HTMLElement[];
 
         let bestRowIdx = 0;
@@ -216,7 +235,9 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
         let bestDist = Infinity;
 
         if (rows.length > 0) {
-          const dist = Math.abs(e.clientY - rows[0].getBoundingClientRect().top);
+          const dist = Math.abs(
+            e.clientY - rows[0].getBoundingClientRect().top,
+          );
           if (dist < bestDist) {
             bestDist = dist;
             bestY = rows[0].getBoundingClientRect().top;
@@ -225,7 +246,9 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
         }
 
         for (let i = 0; i < rows.length; i++) {
-          const dist = Math.abs(e.clientY - rows[i].getBoundingClientRect().bottom);
+          const dist = Math.abs(
+            e.clientY - rows[i].getBoundingClientRect().bottom,
+          );
           if (dist < bestDist) {
             bestDist = dist;
             bestY = rows[i].getBoundingClientRect().bottom;
@@ -254,7 +277,10 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
     const scrollContainer = document.querySelector(".editor-area-scroll");
     if (!scrollContainer) return;
 
-    scrollContainer.addEventListener("mousemove", handleMouseMove as EventListener);
+    scrollContainer.addEventListener(
+      "mousemove",
+      handleMouseMove as EventListener,
+    );
 
     const handleLeave = () => {
       if (!hoveringBtnRef.current) scheduleHide();
@@ -262,7 +288,10 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
     scrollContainer.addEventListener("mouseleave", handleLeave);
 
     return () => {
-      scrollContainer.removeEventListener("mousemove", handleMouseMove as EventListener);
+      scrollContainer.removeEventListener(
+        "mousemove",
+        handleMouseMove as EventListener,
+      );
       scrollContainer.removeEventListener("mouseleave", handleLeave);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
@@ -276,7 +305,9 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
       setButton(null);
     };
     editor.on("update", handler);
-    return () => { editor.off("update", handler); };
+    return () => {
+      editor.off("update", handler);
+    };
   }, [editor]);
 
   const handleClick = useCallback(() => {

@@ -76,7 +76,12 @@ function parseFilterLine(body: string): QueryFilter[] {
     i++;
 
     if (NO_VALUE_OPERATORS.has(op)) {
-      filters.push({ field, operator: op, value: "", combinator: pendingCombinator });
+      filters.push({
+        field,
+        operator: op,
+        value: "",
+        combinator: pendingCombinator,
+      });
       pendingCombinator = "AND";
       continue;
     }
@@ -152,7 +157,9 @@ function serializeFilters(filters: QueryFilter[]): string {
   return filters
     .map((f, idx) => {
       const prefix = idx === 0 ? "" : ` ${f.combinator} `;
-      const valuePart = NO_VALUE_OPERATORS.has(f.operator) ? "" : ` "${f.value}"`;
+      const valuePart = NO_VALUE_OPERATORS.has(f.operator)
+        ? ""
+        : ` "${f.value}"`;
       return `${prefix}${f.field} ${f.operator}${valuePart}`;
     })
     .join("");

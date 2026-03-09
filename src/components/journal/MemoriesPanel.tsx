@@ -4,7 +4,12 @@ import { useUIStore } from "../../stores/ui-store";
 import { useFileStore } from "../../stores/file-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useEditorStore } from "../../stores/editor-store";
-import { extractOneLine, extractDiarySection, renderSimpleMarkdown, updateOneLineFrontmatter } from "../../utils/journal-memories";
+import {
+  extractOneLine,
+  extractDiarySection,
+  renderSimpleMarkdown,
+  updateOneLineFrontmatter,
+} from "../../utils/journal-memories";
 import { getMonthDays, getFirstDayOfWeek } from "../../utils/journal";
 import { listDir, readFile, writeFile, getBacklinks } from "../../ipc/invoke";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -25,12 +30,18 @@ interface MemoryEntry {
 function resolveImageSrcs(html: string, fileDir: string): string {
   return html.replace(/<img([^>]*) src="([^"]+)"/g, (_match, before, src) => {
     // Skip absolute URLs and data URIs
-    if (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("data:")) {
+    if (
+      src.startsWith("http://") ||
+      src.startsWith("https://") ||
+      src.startsWith("data:")
+    ) {
       return `<img${before} src="${src}"`;
     }
     // Resolve relative path against journal file's directory
     const cleanSrc = src.startsWith("./") ? src.slice(2) : src;
-    const absolutePath = cleanSrc.startsWith("/") ? cleanSrc : `${fileDir}/${cleanSrc}`;
+    const absolutePath = cleanSrc.startsWith("/")
+      ? cleanSrc
+      : `${fileDir}/${cleanSrc}`;
     return `<img${before} src="${convertFileSrc(absolutePath)}"`;
   });
 }
@@ -61,9 +72,11 @@ export function MemoriesPanel() {
 
   const isToday = (() => {
     const now = new Date();
-    return selectedDate.getFullYear() === now.getFullYear() &&
+    return (
+      selectedDate.getFullYear() === now.getFullYear() &&
       selectedDate.getMonth() === now.getMonth() &&
-      selectedDate.getDate() === now.getDate();
+      selectedDate.getDate() === now.getDate()
+    );
   })();
 
   const navigateDay = (delta: number) => {
@@ -73,7 +86,8 @@ export function MemoriesPanel() {
   };
 
   // Ensure activeTab is valid after Photos tab removal
-  const safeTab: MemoriesTab = activeTab === "journal" || activeTab === "notes" ? activeTab : "journal";
+  const safeTab: MemoriesTab =
+    activeTab === "journal" || activeTab === "notes" ? activeTab : "journal";
 
   const TABS: { id: MemoriesTab; label: string }[] = [
     { id: "journal", label: "Journal" },
@@ -85,8 +99,21 @@ export function MemoriesPanel() {
       <div className="memories-header">
         <span className="memories-header-title">Memories</span>
         <div className="memories-date-nav">
-          <button className="memories-date-nav-btn" onClick={() => navigateDay(-1)} title="이전 날">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <button
+            className="memories-date-nav-btn"
+            onClick={() => navigateDay(-1)}
+            title="이전 날"
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <polyline points="15 18 9 12 15 6" />
             </svg>
           </button>
@@ -98,8 +125,21 @@ export function MemoriesPanel() {
             {month}월 {day}일
             {isToday && <span className="memories-date-nav-today">오늘</span>}
           </button>
-          <button className="memories-date-nav-btn" onClick={() => navigateDay(1)} title="다음 날">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <button
+            className="memories-date-nav-btn"
+            onClick={() => navigateDay(1)}
+            title="다음 날"
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <polyline points="9 18 15 12 9 6" />
             </svg>
           </button>
@@ -109,7 +149,10 @@ export function MemoriesPanel() {
       {showCalendar && (
         <MiniCalendar
           selectedDate={selectedDate}
-          onSelect={(d) => { setSelectedDate(d); setShowCalendar(false); }}
+          onSelect={(d) => {
+            setSelectedDate(d);
+            setShowCalendar(false);
+          }}
           onClose={() => setShowCalendar(false)}
         />
       )}
@@ -149,8 +192,18 @@ export function MemoriesPanel() {
 
 const MINI_CAL_DAY_NAMES = ["일", "월", "화", "수", "목", "금", "토"];
 const MINI_CAL_MONTH_NAMES = [
-  "1월", "2월", "3월", "4월", "5월", "6월",
-  "7월", "8월", "9월", "10월", "11월", "12월",
+  "1월",
+  "2월",
+  "3월",
+  "4월",
+  "5월",
+  "6월",
+  "7월",
+  "8월",
+  "9월",
+  "10월",
+  "11월",
+  "12월",
 ];
 
 interface MiniCalendarProps {
@@ -183,7 +236,9 @@ function MiniCalendar({ selectedDate, onSelect, onClose }: MiniCalendarProps) {
   const today = new Date();
 
   const isSameDay = (a: Date, b: Date) =>
-    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
 
   // Years view: 12-year range centered on current viewYear
   const yearRangeStart = viewYear - (viewYear % 12);
@@ -191,8 +246,10 @@ function MiniCalendar({ selectedDate, onSelect, onClose }: MiniCalendarProps) {
 
   const navPrev = () => {
     if (view === "days") {
-      if (viewMonth === 0) { setViewYear(viewYear - 1); setViewMonth(11); }
-      else setViewMonth(viewMonth - 1);
+      if (viewMonth === 0) {
+        setViewYear(viewYear - 1);
+        setViewMonth(11);
+      } else setViewMonth(viewMonth - 1);
     } else if (view === "months") {
       setViewYear(viewYear - 1);
     } else {
@@ -202,8 +259,10 @@ function MiniCalendar({ selectedDate, onSelect, onClose }: MiniCalendarProps) {
 
   const navNext = () => {
     if (view === "days") {
-      if (viewMonth === 11) { setViewYear(viewYear + 1); setViewMonth(0); }
-      else setViewMonth(viewMonth + 1);
+      if (viewMonth === 11) {
+        setViewYear(viewYear + 1);
+        setViewMonth(0);
+      } else setViewMonth(viewMonth + 1);
     } else if (view === "months") {
       setViewYear(viewYear + 1);
     } else {
@@ -211,24 +270,53 @@ function MiniCalendar({ selectedDate, onSelect, onClose }: MiniCalendarProps) {
     }
   };
 
-  const headerLabel = view === "days"
-    ? <><button className="memories-mini-calendar-title-btn" onClick={() => setView("months")}>{MINI_CAL_MONTH_NAMES[viewMonth]}</button>{" "}<button className="memories-mini-calendar-title-btn" onClick={() => setView("years")}>{viewYear}</button></>
-    : view === "months"
-      ? <button className="memories-mini-calendar-title-btn" onClick={() => setView("years")}>{viewYear}년</button>
-      : <span className="memories-mini-calendar-title-text">{yearRangeStart}–{yearRangeStart + 11}</span>;
+  const headerLabel =
+    view === "days" ? (
+      <>
+        <button
+          className="memories-mini-calendar-title-btn"
+          onClick={() => setView("months")}
+        >
+          {MINI_CAL_MONTH_NAMES[viewMonth]}
+        </button>{" "}
+        <button
+          className="memories-mini-calendar-title-btn"
+          onClick={() => setView("years")}
+        >
+          {viewYear}
+        </button>
+      </>
+    ) : view === "months" ? (
+      <button
+        className="memories-mini-calendar-title-btn"
+        onClick={() => setView("years")}
+      >
+        {viewYear}년
+      </button>
+    ) : (
+      <span className="memories-mini-calendar-title-text">
+        {yearRangeStart}–{yearRangeStart + 11}
+      </span>
+    );
 
   return (
     <div className="memories-mini-calendar" ref={ref}>
       <div className="memories-mini-calendar-header">
-        <button className="memories-mini-calendar-nav" onClick={navPrev}>‹</button>
+        <button className="memories-mini-calendar-nav" onClick={navPrev}>
+          ‹
+        </button>
         <span className="memories-mini-calendar-title">{headerLabel}</span>
-        <button className="memories-mini-calendar-nav" onClick={navNext}>›</button>
+        <button className="memories-mini-calendar-nav" onClick={navNext}>
+          ›
+        </button>
       </div>
 
       {view === "days" && (
         <div className="memories-mini-calendar-grid">
           {MINI_CAL_DAY_NAMES.map((d) => (
-            <div key={d} className="memories-mini-calendar-dow">{d}</div>
+            <div key={d} className="memories-mini-calendar-dow">
+              {d}
+            </div>
           ))}
           {Array.from({ length: firstDow }).map((_, i) => (
             <div key={`pad-${i}`} className="memories-mini-calendar-pad" />
@@ -259,7 +347,10 @@ function MiniCalendar({ selectedDate, onSelect, onClose }: MiniCalendarProps) {
             <button
               key={i}
               className={`memories-mini-calendar-pick-btn ${i === viewMonth && viewYear === selectedDate.getFullYear() ? "memories-mini-calendar-pick-btn-selected" : ""} ${i === today.getMonth() && viewYear === today.getFullYear() ? "memories-mini-calendar-pick-btn-today" : ""}`}
-              onClick={() => { setViewMonth(i); setView("days"); }}
+              onClick={() => {
+                setViewMonth(i);
+                setView("days");
+              }}
             >
               {name}
             </button>
@@ -273,7 +364,10 @@ function MiniCalendar({ selectedDate, onSelect, onClose }: MiniCalendarProps) {
             <button
               key={y}
               className={`memories-mini-calendar-pick-btn ${y === selectedDate.getFullYear() ? "memories-mini-calendar-pick-btn-selected" : ""} ${y === today.getFullYear() ? "memories-mini-calendar-pick-btn-today" : ""}`}
-              onClick={() => { setViewYear(y); setView("months"); }}
+              onClick={() => {
+                setViewYear(y);
+                setView("months");
+              }}
             >
               {y}
             </button>
@@ -297,7 +391,16 @@ interface JournalTabProps {
   day: number;
 }
 
-function JournalTab({ memories, setMemories, mode, setMode, loading, setLoading, month, day }: JournalTabProps) {
+function JournalTab({
+  memories,
+  setMemories,
+  mode,
+  setMode,
+  loading,
+  setLoading,
+  month,
+  day,
+}: JournalTabProps) {
   const { rootPath } = useFileStore();
   const { journalDirectory } = useSettingsStore();
 
@@ -354,17 +457,19 @@ function JournalTab({ memories, setMemories, mode, setMode, loading, setLoading,
     if (existing) {
       useEditorStore.getState().setActiveTab(existing.id);
     } else {
-      readFile(path).then((content) => {
-        const fileName = path.split("/").pop() ?? "Unknown";
-        useFileStore.getState().setFileContent(path, content);
-        useEditorStore.getState().openTab({
-          id: crypto.randomUUID(),
-          filePath: path,
-          title: fileName,
-          isDirty: false,
-          isPinned: false,
-        });
-      }).catch(() => {});
+      readFile(path)
+        .then((content) => {
+          const fileName = path.split("/").pop() ?? "Unknown";
+          useFileStore.getState().setFileContent(path, content);
+          useEditorStore.getState().openTab({
+            id: crypto.randomUUID(),
+            filePath: path,
+            title: fileName,
+            isDirty: false,
+            isPinned: false,
+          });
+        })
+        .catch(() => {});
     }
   };
 
@@ -388,9 +493,7 @@ function JournalTab({ memories, setMemories, mode, setMode, loading, setLoading,
       {loading && <div className="memories-loading">Loading...</div>}
 
       {!loading && memories.length === 0 && (
-        <div className="memories-empty">
-          이 날짜의 기록이 없습니다.
-        </div>
+        <div className="memories-empty">이 날짜의 기록이 없습니다.</div>
       )}
 
       {memories.map((entry) => (
@@ -401,14 +504,25 @@ function JournalTab({ memories, setMemories, mode, setMode, loading, setLoading,
           <div className="memories-year-card-header">
             <span className="memories-year-card-year">
               {entry.year}
-              {entry.isCurrentYear && <span className="memories-year-card-badge">오늘</span>}
+              {entry.isCurrentYear && (
+                <span className="memories-year-card-badge">오늘</span>
+              )}
             </span>
             <button
               className="memories-year-card-open"
               onClick={() => handleOpenEntry(entry.path)}
               title="일기 열기"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                 <polyline points="15 3 21 3 21 9" />
                 <line x1="10" y1="14" x2="21" y2="3" />
@@ -418,20 +532,33 @@ function JournalTab({ memories, setMemories, mode, setMode, loading, setLoading,
           <div className="memories-year-card-body">
             {mode === "oneline" ? (
               entry.isCurrentYear ? (
-                <OneLineEditor entry={entry} onSave={(newText) => {
-                  const updated = updateOneLineFrontmatter(entry.fullContent, newText);
-                  writeFile(entry.path, updated).then(() => {
-                    setMemories(memories.map((m) =>
-                      m.year === entry.year ? { ...m, oneLine: newText, fullContent: updated } : m
-                    ));
-                  }).catch(() => {});
-                }} />
+                <OneLineEditor
+                  entry={entry}
+                  onSave={(newText) => {
+                    const updated = updateOneLineFrontmatter(
+                      entry.fullContent,
+                      newText,
+                    );
+                    writeFile(entry.path, updated)
+                      .then(() => {
+                        setMemories(
+                          memories.map((m) =>
+                            m.year === entry.year
+                              ? { ...m, oneLine: newText, fullContent: updated }
+                              : m,
+                          ),
+                        );
+                      })
+                      .catch(() => {});
+                  }}
+                />
               ) : (
                 <div
                   className="memories-oneline memories-md-render"
                   dangerouslySetInnerHTML={{
                     __html: resolveImageSrcs(
-                      renderSimpleMarkdown(entry.oneLine) || "<p>(내용 없음)</p>",
+                      renderSimpleMarkdown(entry.oneLine) ||
+                        "<p>(내용 없음)</p>",
                       entry.path.substring(0, entry.path.lastIndexOf("/")),
                     ),
                   }}
@@ -442,7 +569,8 @@ function JournalTab({ memories, setMemories, mode, setMode, loading, setLoading,
                 className="memories-full memories-md-render"
                 dangerouslySetInnerHTML={{
                   __html: resolveImageSrcs(
-                    renderSimpleMarkdown(entry.diaryContent) || "<p>(내용 없음)</p>",
+                    renderSimpleMarkdown(entry.diaryContent) ||
+                      "<p>(내용 없음)</p>",
                     entry.path.substring(0, entry.path.lastIndexOf("/")),
                   ),
                 }}
@@ -457,11 +585,19 @@ function JournalTab({ memories, setMemories, mode, setMode, loading, setLoading,
 
 // --- OneLineEditor (inline editing for current year) ---
 
-function OneLineEditor({ entry, onSave }: { entry: MemoryEntry; onSave: (text: string) => void }) {
+function OneLineEditor({
+  entry,
+  onSave,
+}: {
+  entry: MemoryEntry;
+  onSave: (text: string) => void;
+}) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(entry.oneLine);
 
-  useEffect(() => { setDraft(entry.oneLine); }, [entry.oneLine]);
+  useEffect(() => {
+    setDraft(entry.oneLine);
+  }, [entry.oneLine]);
 
   if (!editing) {
     const fileDir = entry.path.substring(0, entry.path.lastIndexOf("/"));
@@ -524,9 +660,12 @@ interface NoteFolder {
 function extractTags(content: string): string[] {
   const tags = new Set<string>();
   // Match #tag patterns (word chars + hyphens), but not inside headings
-  const tagRegex = /(?:^|\s)#([a-zA-Z\uAC00-\uD7AF\u3131-\u3163\u1100-\u11FF][\w\u3131-\u3163\uAC00-\uD7AF-]*)/g;
+  const tagRegex =
+    /(?:^|\s)#([a-zA-Z\uAC00-\uD7AF\u3131-\u3163\u1100-\u11FF][\w\u3131-\u3163\uAC00-\uD7AF-]*)/g;
   // Strip frontmatter and code blocks first
-  const stripped = content.replace(/^---\n[\s\S]*?\n---/, "").replace(/```[\s\S]*?```/g, "");
+  const stripped = content
+    .replace(/^---\n[\s\S]*?\n---/, "")
+    .replace(/```[\s\S]*?```/g, "");
   // Skip heading lines
   for (const line of stripped.split("\n")) {
     if (line.trim().startsWith("#") && line.trim().match(/^#{1,6}\s/)) continue;
@@ -567,59 +706,80 @@ function NotesTab() {
   const [newName, setNewName] = useState("");
   const newNameRef = useRef<HTMLInputElement>(null);
 
-  const loadNotes = useCallback(async (notesDir: string, cancelled: { v: boolean }) => {
-    const entries = await listDir(notesDir);
-    if (cancelled.v) return;
+  const loadNotes = useCallback(
+    async (notesDir: string, cancelled: { v: boolean }) => {
+      const entries = await listDir(notesDir);
+      if (cancelled.v) return;
 
-    // Collect subdirectories
-    const subDirs = entries.filter((e: { isDir: boolean }) => e.isDir);
-    const folderList: NoteFolder[] = await Promise.all(
-      subDirs.map(async (d: { name: string; path: string }) => {
-        let fileCount = 0;
-        try {
-          const sub = await listDir(d.path);
-          fileCount = sub.filter((s: { isDir: boolean; name: string }) => !s.isDir && s.name.endsWith(".md")).length;
-        } catch { /* skip */ }
-        return { name: d.name, path: d.path, fileCount };
-      }),
-    );
+      // Collect subdirectories
+      const subDirs = entries.filter((e: { isDir: boolean }) => e.isDir);
+      const folderList: NoteFolder[] = await Promise.all(
+        subDirs.map(async (d: { name: string; path: string }) => {
+          let fileCount = 0;
+          try {
+            const sub = await listDir(d.path);
+            fileCount = sub.filter(
+              (s: { isDir: boolean; name: string }) =>
+                !s.isDir && s.name.endsWith(".md"),
+            ).length;
+          } catch {
+            /* skip */
+          }
+          return { name: d.name, path: d.path, fileCount };
+        }),
+      );
 
-    const mdFiles = entries
-      .filter((e: { isDir: boolean; name: string }) => !e.isDir && e.name.endsWith(".md"))
-      .map((e: { name: string; modifiedAt?: number }) => ({
-        name: e.name.replace(/\.md$/, ""),
-        path: `${notesDir}/${e.name}`,
-        modifiedAt: (e.modifiedAt ?? 0) * 1000,
-      }));
+      const mdFiles = entries
+        .filter(
+          (e: { isDir: boolean; name: string }) =>
+            !e.isDir && e.name.endsWith(".md"),
+        )
+        .map((e: { name: string; modifiedAt?: number }) => ({
+          name: e.name.replace(/\.md$/, ""),
+          path: `${notesDir}/${e.name}`,
+          modifiedAt: (e.modifiedAt ?? 0) * 1000,
+        }));
 
-    // Read content + backlinks in parallel
-    const enriched: NoteEntry[] = await Promise.all(
-      mdFiles.map(async (f) => {
-        let content = "";
-        let backlinkCount = 0;
-        try { content = await readFile(f.path); } catch { /* skip */ }
-        try {
-          const bl = await getBacklinks(f.path);
-          backlinkCount = bl.length;
-        } catch { /* skip */ }
-        return {
-          name: f.name,
-          path: f.path,
-          preview: extractOneLine(content),
-          tags: extractTags(content),
-          backlinkCount,
-          modifiedAt: f.modifiedAt,
-        };
-      }),
-    );
+      // Read content + backlinks in parallel
+      const enriched: NoteEntry[] = await Promise.all(
+        mdFiles.map(async (f) => {
+          let content = "";
+          let backlinkCount = 0;
+          try {
+            content = await readFile(f.path);
+          } catch {
+            /* skip */
+          }
+          try {
+            const bl = await getBacklinks(f.path);
+            backlinkCount = bl.length;
+          } catch {
+            /* skip */
+          }
+          return {
+            name: f.name,
+            path: f.path,
+            preview: extractOneLine(content),
+            tags: extractTags(content),
+            backlinkCount,
+            modifiedAt: f.modifiedAt,
+          };
+        }),
+      );
 
-    if (!cancelled.v) {
-      // Sort by modification time desc (most recent first)
-      enriched.sort((a, b) => b.modifiedAt - a.modifiedAt);
-      setNotes(enriched);
-      setFolders(folderList.filter((f) => f.fileCount > 0).sort((a, b) => a.name.localeCompare(b.name)));
-    }
-  }, []);
+      if (!cancelled.v) {
+        // Sort by modification time desc (most recent first)
+        enriched.sort((a, b) => b.modifiedAt - a.modifiedAt);
+        setNotes(enriched);
+        setFolders(
+          folderList
+            .filter((f) => f.fileCount > 0)
+            .sort((a, b) => a.name.localeCompare(b.name)),
+        );
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!rootPath || !journalDirectory) return;
@@ -631,18 +791,24 @@ function NotesTab() {
         const notesDir = currentSubdir ?? `${base}/notes`;
         await loadNotes(notesDir, cancelled);
       } catch {
-        if (!cancelled.v) { setNotes([]); setFolders([]); }
+        if (!cancelled.v) {
+          setNotes([]);
+          setFolders([]);
+        }
       } finally {
         if (!cancelled.v) setLoading(false);
       }
     })();
-    return () => { cancelled.v = true; };
+    return () => {
+      cancelled.v = true;
+    };
   }, [rootPath, journalDirectory, currentSubdir, loadNotes]);
 
   // All tags with frequency counts, sorted by frequency desc
   const allTags = useMemo(() => {
     const tagCount = new Map<string, number>();
-    for (const n of notes) for (const t of n.tags) tagCount.set(t, (tagCount.get(t) ?? 0) + 1);
+    for (const n of notes)
+      for (const t of n.tags) tagCount.set(t, (tagCount.get(t) ?? 0) + 1);
     return [...tagCount.entries()]
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
       .map(([tag, count]) => ({ tag, count }));
@@ -657,7 +823,9 @@ function NotesTab() {
     if (filter.trim()) {
       const q = filter.trim().toLowerCase();
       result = result.filter(
-        (n) => n.name.toLowerCase().includes(q) || n.preview.toLowerCase().includes(q),
+        (n) =>
+          n.name.toLowerCase().includes(q) ||
+          n.preview.toLowerCase().includes(q),
       );
     }
     return result;
@@ -669,17 +837,19 @@ function NotesTab() {
     if (existing) {
       useEditorStore.getState().setActiveTab(existing.id);
     } else {
-      readFile(path).then((content) => {
-        const fileName = path.split("/").pop() ?? "Unknown";
-        useFileStore.getState().setFileContent(path, content);
-        useEditorStore.getState().openTab({
-          id: crypto.randomUUID(),
-          filePath: path,
-          title: fileName,
-          isDirty: false,
-          isPinned: false,
-        });
-      }).catch(() => {});
+      readFile(path)
+        .then((content) => {
+          const fileName = path.split("/").pop() ?? "Unknown";
+          useFileStore.getState().setFileContent(path, content);
+          useEditorStore.getState().openTab({
+            id: crypto.randomUUID(),
+            filePath: path,
+            title: fileName,
+            isDirty: false,
+            isPinned: false,
+          });
+        })
+        .catch(() => {});
     }
   };
 
@@ -700,7 +870,17 @@ function NotesTab() {
         isPinned: false,
       });
       // Add to local list
-      setNotes((prev) => [{ name, path: notePath, preview: "", tags: [], backlinkCount: 0, modifiedAt: Date.now() }, ...prev]);
+      setNotes((prev) => [
+        {
+          name,
+          path: notePath,
+          preview: "",
+          tags: [],
+          backlinkCount: 0,
+          modifiedAt: Date.now(),
+        },
+        ...prev,
+      ]);
     } catch (err) {
       console.error("[NotesTab] Failed to create note:", err);
     }
@@ -725,7 +905,10 @@ function NotesTab() {
             onChange={(e) => setFilter(e.target.value)}
           />
           {filter && (
-            <button className="notes-search-clear" onClick={() => setFilter("")}>
+            <button
+              className="notes-search-clear"
+              onClick={() => setFilter("")}
+            >
               &times;
             </button>
           )}
@@ -751,11 +934,22 @@ function NotesTab() {
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") handleCreateNote();
-              if (e.key === "Escape") { setCreating(false); setNewName(""); }
+              if (e.key === "Escape") {
+                setCreating(false);
+                setNewName("");
+              }
             }}
           />
-          <button className="notes-create-confirm" onClick={handleCreateNote}>Create</button>
-          <button className="notes-create-cancel" onClick={() => { setCreating(false); setNewName(""); }}>
+          <button className="notes-create-confirm" onClick={handleCreateNote}>
+            Create
+          </button>
+          <button
+            className="notes-create-cancel"
+            onClick={() => {
+              setCreating(false);
+              setNewName("");
+            }}
+          >
             &times;
           </button>
         </div>
@@ -778,7 +972,8 @@ function NotesTab() {
               className={`notes-tag-chip${activeTag === tag ? " notes-tag-chip-active" : ""}`}
               onClick={() => setActiveTag(activeTag === tag ? null : tag)}
             >
-              #{tag}<span className="notes-tag-count">({count})</span>
+              #{tag}
+              <span className="notes-tag-count">({count})</span>
             </button>
           ))}
         </div>
@@ -803,7 +998,17 @@ function NotesTab() {
               className="notes-folder-item"
               onClick={() => setCurrentSubdir(f.path)}
             >
-              <svg className="notes-folder-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg
+                className="notes-folder-icon"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
               </svg>
               <span className="notes-folder-name">{f.name}/</span>
@@ -834,10 +1039,15 @@ function NotesTab() {
           <div className="notes-card-header">
             <span className="notes-card-name">{note.name}</span>
             {note.modifiedAt > 0 && (
-              <span className="notes-card-time">{formatRelativeTime(note.modifiedAt)}</span>
+              <span className="notes-card-time">
+                {formatRelativeTime(note.modifiedAt)}
+              </span>
             )}
             {note.backlinkCount > 0 && (
-              <span className="notes-card-backlinks" title={`${note.backlinkCount} backlink${note.backlinkCount > 1 ? "s" : ""}`}>
+              <span
+                className="notes-card-backlinks"
+                title={`${note.backlinkCount} backlink${note.backlinkCount > 1 ? "s" : ""}`}
+              >
                 {note.backlinkCount}
               </span>
             )}
@@ -848,7 +1058,9 @@ function NotesTab() {
           {note.tags.length > 0 && (
             <div className="notes-card-tags">
               {note.tags.map((t) => (
-                <span key={t} className="notes-card-tag">#{t}</span>
+                <span key={t} className="notes-card-tag">
+                  #{t}
+                </span>
               ))}
             </div>
           )}

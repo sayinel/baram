@@ -16,10 +16,7 @@ export function formatJournalFilename(date: Date, fmt: string): string {
   const y = String(date.getFullYear());
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
-  return fmt
-    .replace("YYYY", y)
-    .replace("MM", m)
-    .replace("DD", d);
+  return fmt.replace("YYYY", y).replace("MM", m).replace("DD", d);
 }
 
 /** Check if a string is a valid YYYY-MM-DD date string */
@@ -53,21 +50,41 @@ export function resolveDateAlias(alias: string): string | null {
 export function getOrdinalSuffix(day: number): string {
   if (day >= 11 && day <= 13) return "th";
   switch (day % 10) {
-    case 1: return "st";
-    case 2: return "nd";
-    case 3: return "rd";
-    default: return "th";
+    case 1:
+      return "st";
+    case 2:
+      return "nd";
+    case 3:
+      return "rd";
+    default:
+      return "th";
   }
 }
 
 /** Format a date as "January 1st (Thursday), 2026" */
 export function formatReadableDate(date: Date): string {
   const dayNames = [
-    "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
   ];
   const monthNames = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
   ];
   const day = date.getDate();
   return `${monthNames[date.getMonth()]} ${day}${getOrdinalSuffix(day)} (${dayNames[date.getDay()]}), ${date.getFullYear()}`;
@@ -215,7 +232,9 @@ interface MigrationEntry {
  * Detect flat YYYY-MM-DD.md journal files in the root of journalDir.
  * These are candidates for migration to hierarchical structure.
  */
-export function detectFlatJournalFiles(entries: MigrationEntry[]): MigrationEntry[] {
+export function detectFlatJournalFiles(
+  entries: MigrationEntry[],
+): MigrationEntry[] {
   return entries.filter((e) => {
     if (e.isDir) return false;
     const basename = e.name.replace(/\.md$/, "");
@@ -244,7 +263,9 @@ export function buildMigrationPlan(
 
 /** Get ISO 8601 week number (Monday-based) */
 export function getISOWeekNumber(date: Date): number {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const d = new Date(
+    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
+  );
   d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
   return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);

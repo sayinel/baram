@@ -1,24 +1,55 @@
 // §5.5 Table Toolbar — floating toolbar shown when cursor is in a table cell
-import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  type ReactNode,
+} from "react";
 import type { Editor } from "@tiptap/react";
 import { CellSelection } from "@tiptap/pm/tables";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 
 // Mono-style inline SVG icons (16×16, stroke-based)
 const ICON_SIZE = 16;
-const S = { xmlns: "http://www.w3.org/2000/svg", width: ICON_SIZE, height: ICON_SIZE, viewBox: "0 0 16 16", fill: "none", stroke: "currentColor", strokeWidth: 1.6, strokeLinecap: "round" as const };
+const S = {
+  xmlns: "http://www.w3.org/2000/svg",
+  width: ICON_SIZE,
+  height: ICON_SIZE,
+  viewBox: "0 0 16 16",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.6,
+  strokeLinecap: "round" as const,
+};
 
 const AlignLeftIcon = (): ReactNode => (
-  <svg {...S}><line x1="2" y1="4" x2="14" y2="4" /><line x1="2" y1="8" x2="10" y2="8" /><line x1="2" y1="12" x2="12" y2="12" /></svg>
+  <svg {...S}>
+    <line x1="2" y1="4" x2="14" y2="4" />
+    <line x1="2" y1="8" x2="10" y2="8" />
+    <line x1="2" y1="12" x2="12" y2="12" />
+  </svg>
 );
 const AlignCenterIcon = (): ReactNode => (
-  <svg {...S}><line x1="2" y1="4" x2="14" y2="4" /><line x1="4" y1="8" x2="12" y2="8" /><line x1="3" y1="12" x2="13" y2="12" /></svg>
+  <svg {...S}>
+    <line x1="2" y1="4" x2="14" y2="4" />
+    <line x1="4" y1="8" x2="12" y2="8" />
+    <line x1="3" y1="12" x2="13" y2="12" />
+  </svg>
 );
 const AlignRightIcon = (): ReactNode => (
-  <svg {...S}><line x1="2" y1="4" x2="14" y2="4" /><line x1="6" y1="8" x2="14" y2="8" /><line x1="4" y1="12" x2="14" y2="12" /></svg>
+  <svg {...S}>
+    <line x1="2" y1="4" x2="14" y2="4" />
+    <line x1="6" y1="8" x2="14" y2="8" />
+    <line x1="4" y1="12" x2="14" y2="12" />
+  </svg>
 );
 const TrashIcon = (): ReactNode => (
-  <svg {...S}><polyline points="3,5 4,14 12,14 13,5" /><line x1="2" y1="5" x2="14" y2="5" /><line x1="6" y1="3" x2="10" y2="3" /></svg>
+  <svg {...S}>
+    <polyline points="3,5 4,14 12,14 13,5" />
+    <line x1="2" y1="5" x2="14" y2="5" />
+    <line x1="6" y1="3" x2="10" y2="3" />
+  </svg>
 );
 // Header Row icon: table grid with bold top row
 const HeaderRowIcon = (): ReactNode => (
@@ -26,7 +57,16 @@ const HeaderRowIcon = (): ReactNode => (
     <rect x="2" y="2" width="12" height="12" rx="1" />
     <line x1="2" y1="6" x2="14" y2="6" />
     <line x1="2" y1="10" x2="14" y2="10" />
-    <rect x="2" y="2" width="12" height="4" rx="1" fill="currentColor" opacity="0.25" stroke="none" />
+    <rect
+      x="2"
+      y="2"
+      width="12"
+      height="4"
+      rx="1"
+      fill="currentColor"
+      opacity="0.25"
+      stroke="none"
+    />
   </svg>
 );
 // Header Column icon: table grid with bold left column
@@ -35,7 +75,16 @@ const HeaderColIcon = (): ReactNode => (
     <rect x="2" y="2" width="12" height="12" rx="1" />
     <line x1="6" y1="2" x2="6" y2="14" />
     <line x1="10" y1="2" x2="10" y2="14" />
-    <rect x="2" y="2" width="4" height="12" rx="1" fill="currentColor" opacity="0.25" stroke="none" />
+    <rect
+      x="2"
+      y="2"
+      width="4"
+      height="12"
+      rx="1"
+      fill="currentColor"
+      opacity="0.25"
+      stroke="none"
+    />
   </svg>
 );
 // Merge cells icon: two cells becoming one
@@ -56,23 +105,93 @@ const SplitCellsIcon = (): ReactNode => (
 );
 // Copy as Markdown icon: two overlapping rectangles with "MD" label
 const CopyMdIcon = (): ReactNode => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="22" height="16" viewBox="0 0 22 16" fill="none">
-    <rect x="1" y="1" width="13" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
-    <rect x="8" y="5" width="13" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.3" fill="var(--color-bg-primary)" />
-    <text x="14.5" y="12.5" textAnchor="middle" fill="currentColor" fontSize="7" fontWeight="700" fontFamily="system-ui, sans-serif" stroke="none">MD</text>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="22"
+    height="16"
+    viewBox="0 0 22 16"
+    fill="none"
+  >
+    <rect
+      x="1"
+      y="1"
+      width="13"
+      height="10"
+      rx="1.5"
+      stroke="currentColor"
+      strokeWidth="1.3"
+    />
+    <rect
+      x="8"
+      y="5"
+      width="13"
+      height="10"
+      rx="1.5"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      fill="var(--color-bg-primary)"
+    />
+    <text
+      x="14.5"
+      y="12.5"
+      textAnchor="middle"
+      fill="currentColor"
+      fontSize="7"
+      fontWeight="700"
+      fontFamily="system-ui, sans-serif"
+      stroke="none"
+    >
+      MD
+    </text>
   </svg>
 );
 // Copy as HTML icon: two overlapping rectangles with "</>" label
 const CopyHtmlIcon = (): ReactNode => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="22" height="16" viewBox="0 0 22 16" fill="none">
-    <rect x="1" y="1" width="13" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
-    <rect x="8" y="5" width="13" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.3" fill="var(--color-bg-primary)" />
-    <text x="14.5" y="12.5" textAnchor="middle" fill="currentColor" fontSize="6.5" fontWeight="700" fontFamily="system-ui, sans-serif" stroke="none">&lt;/&gt;</text>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="22"
+    height="16"
+    viewBox="0 0 22 16"
+    fill="none"
+  >
+    <rect
+      x="1"
+      y="1"
+      width="13"
+      height="10"
+      rx="1.5"
+      stroke="currentColor"
+      strokeWidth="1.3"
+    />
+    <rect
+      x="8"
+      y="5"
+      width="13"
+      height="10"
+      rx="1.5"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      fill="var(--color-bg-primary)"
+    />
+    <text
+      x="14.5"
+      y="12.5"
+      textAnchor="middle"
+      fill="currentColor"
+      fontSize="6.5"
+      fontWeight="700"
+      fontFamily="system-ui, sans-serif"
+      stroke="none"
+    >
+      &lt;/&gt;
+    </text>
   </svg>
 );
 
 /** Walk up from $from to find the enclosing table node */
-function findTable(editor: Editor): { pos: number; node: ReturnType<typeof editor.state.doc.nodeAt> } | null {
+function findTable(
+  editor: Editor,
+): { pos: number; node: ReturnType<typeof editor.state.doc.nodeAt> } | null {
   const { $from } = editor.state.selection;
   for (let d = $from.depth; d >= 0; d--) {
     const node = $from.node(d);
@@ -89,14 +208,18 @@ interface TableToolbarProps {
 
 export function TableToolbar({ editor }: TableToolbarProps) {
   const [visible, setVisible] = useState(false);
-  const [position, setPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const [position, setPosition] = useState<{ top: number; left: number }>({
+    top: 0,
+    left: 0,
+  });
   const [currentAlign, setCurrentAlign] = useState<string | null>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
 
   const updatePosition = useCallback(() => {
     const { selection } = editor.state;
     const isCellSel = selection instanceof CellSelection;
-    const isTable = editor.isActive("tableCell") || editor.isActive("tableHeader");
+    const isTable =
+      editor.isActive("tableCell") || editor.isActive("tableHeader");
 
     // Show for: cursor in table (empty selection) OR CellSelection (multi-cell)
     if (!isTable && !isCellSel) {
@@ -139,7 +262,9 @@ export function TableToolbar({ editor }: TableToolbarProps) {
 
     // Position toolbar above the table
     const tableRect = tableDOM.getBoundingClientRect();
-    const editorRect = editor.view.dom.closest(".editor-area-scroll")?.getBoundingClientRect();
+    const editorRect = editor.view.dom
+      .closest(".editor-area-scroll")
+      ?.getBoundingClientRect();
     if (!editorRect) {
       setVisible(false);
       return;

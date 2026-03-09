@@ -32,10 +32,7 @@ interface BlockIdDecoState {
 function collectBlockIdEntries(doc: PmNode): BlockIdEntry[] {
   const entries: BlockIdEntry[] = [];
   doc.descendants((node: PmNode, pos: number) => {
-    if (
-      node.type.name !== "paragraph" &&
-      node.type.name !== "heading"
-    ) {
+    if (node.type.name !== "paragraph" && node.type.name !== "heading") {
       return true;
     }
     const blockId = node.attrs.blockId as string | null;
@@ -67,19 +64,17 @@ function buildDecosFromEntries(
       );
     } else if (focusedBlockPos === pos) {
       decos.push(
-        Decoration.widget(
-          endPos,
-          () => createFocusedWidget(blockId),
-          { side: 1, key: `block-id-focus-${pos}` },
-        ),
+        Decoration.widget(endPos, () => createFocusedWidget(blockId), {
+          side: 1,
+          key: `block-id-focus-${pos}`,
+        }),
       );
     } else {
       decos.push(
-        Decoration.widget(
-          endPos,
-          () => createHintWidget(blockId),
-          { side: 1, key: `block-id-hint-${pos}` },
-        ),
+        Decoration.widget(endPos, () => createHintWidget(blockId), {
+          side: 1,
+          key: `block-id-hint-${pos}`,
+        }),
       );
     }
   }
@@ -201,7 +196,10 @@ function createEditWidget(
     const newId = input.value.trim();
     if (!newId) {
       commitBlockIdEdit(view, nodePos, null);
-    } else if (isValidBlockId(newId) && !isDuplicateBlockId(view.state.doc, newId, nodePos)) {
+    } else if (
+      isValidBlockId(newId) &&
+      !isDuplicateBlockId(view.state.doc, newId, nodePos)
+    ) {
       commitBlockIdEdit(view, nodePos, newId);
     } else {
       cancelBlockIdEdit(view);
@@ -361,7 +359,12 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
             focusedBlockPos: null,
             editingBlockPos: null,
             entries,
-            decorations: buildDecosFromEntries(newState.doc, entries, null, null),
+            decorations: buildDecosFromEntries(
+              newState.doc,
+              entries,
+              null,
+              null,
+            ),
           };
         }
 
@@ -377,7 +380,10 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
             ...meta,
             entries,
             decorations: buildDecosFromEntries(
-              newState.doc, entries, meta.focusedBlockPos, meta.editingBlockPos,
+              newState.doc,
+              entries,
+              meta.focusedBlockPos,
+              meta.editingBlockPos,
             ),
           };
         }
@@ -411,10 +417,7 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
           }
         }
 
-        if (
-          editingBlockPos !== null &&
-          editingBlockPos !== focusedBlockPos
-        ) {
+        if (editingBlockPos !== null && editingBlockPos !== focusedBlockPos) {
           editingBlockPos = null;
         }
 
@@ -437,7 +440,10 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
           editingBlockPos,
           entries,
           decorations: buildDecosFromEntries(
-            newState.doc, entries, focusedBlockPos, editingBlockPos,
+            newState.doc,
+            entries,
+            focusedBlockPos,
+            editingBlockPos,
           ),
         };
       },

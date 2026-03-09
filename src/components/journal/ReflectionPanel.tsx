@@ -30,7 +30,8 @@ export function ReflectionPanel({ onClose }: Props) {
   const { send, cancel, isStreaming, text, error } = useLLMStream();
 
   const { provider, apiKey, privacyMode } = useAIStore();
-  const { journalEnabled, journalDirectory, journalUseHierarchy } = useSettingsStore();
+  const { journalEnabled, journalDirectory, journalUseHierarchy } =
+    useSettingsStore();
 
   const resolvedDir = resolveJournalDir(null, journalDirectory);
 
@@ -45,7 +46,11 @@ export function ReflectionPanel({ onClose }: Props) {
 
     try {
       const now = new Date();
-      const { startDate, endDate } = extractReflectionEntries(resolvedDir, period, now);
+      const { startDate, endDate } = extractReflectionEntries(
+        resolvedDir,
+        period,
+        now,
+      );
 
       // Collect files from journal directory
       let fileEntries: { name: string; path: string }[] = [];
@@ -53,10 +58,14 @@ export function ReflectionPanel({ onClose }: Props) {
         if (journalUseHierarchy) {
           const dailyDir = `${resolvedDir}/daily`;
           const entries = await listDir(dailyDir, true);
-          fileEntries = entries.filter((e) => !e.isDir).map((e) => ({ name: e.name, path: e.path }));
+          fileEntries = entries
+            .filter((e) => !e.isDir)
+            .map((e) => ({ name: e.name, path: e.path }));
         } else {
           const entries = await listDir(resolvedDir, false);
-          fileEntries = entries.filter((e) => !e.isDir).map((e) => ({ name: e.name, path: e.path }));
+          fileEntries = entries
+            .filter((e) => !e.isDir)
+            .map((e) => ({ name: e.name, path: e.path }));
         }
       } catch {
         // directory may not exist yet — proceed with empty entries
@@ -93,7 +102,10 @@ export function ReflectionPanel({ onClose }: Props) {
 
       setLoadingEntries(false);
 
-      const { systemPrompt, userPrompt } = buildReflectionPrompt(journalEntries, period);
+      const { systemPrompt, userPrompt } = buildReflectionPrompt(
+        journalEntries,
+        period,
+      );
       send(userPrompt, systemPrompt);
     } catch (e) {
       console.error("[ReflectionPanel] Error collecting entries:", e);
@@ -107,8 +119,17 @@ export function ReflectionPanel({ onClose }: Props) {
 
     try {
       const now = new Date();
-      const { startDate, endDate } = extractReflectionEntries(resolvedDir, period, now);
-      const markdown = formatReflectionMarkdown(text, period, startDate, endDate);
+      const { startDate, endDate } = extractReflectionEntries(
+        resolvedDir,
+        period,
+        now,
+      );
+      const markdown = formatReflectionMarkdown(
+        text,
+        period,
+        startDate,
+        endDate,
+      );
 
       const yyyy = now.getFullYear();
       const mm = String(now.getMonth() + 1).padStart(2, "0");
@@ -168,7 +189,13 @@ export function ReflectionPanel({ onClose }: Props) {
         {onClose && (
           <div className="reflection-header">
             <span className="reflection-title">AI Reflection</span>
-            <button className="reflection-close-btn" onClick={onClose} title="닫기">×</button>
+            <button
+              className="reflection-close-btn"
+              onClick={onClose}
+              title="닫기"
+            >
+              ×
+            </button>
           </div>
         )}
         <div className="reflection-empty">
@@ -184,7 +211,13 @@ export function ReflectionPanel({ onClose }: Props) {
         {onClose && (
           <div className="reflection-header">
             <span className="reflection-title">AI Reflection</span>
-            <button className="reflection-close-btn" onClick={onClose} title="닫기">×</button>
+            <button
+              className="reflection-close-btn"
+              onClick={onClose}
+              title="닫기"
+            >
+              ×
+            </button>
           </div>
         )}
         <div className="reflection-empty">
@@ -201,7 +234,13 @@ export function ReflectionPanel({ onClose }: Props) {
       <div className="reflection-header">
         <span className="reflection-title">✨ AI Reflection</span>
         {onClose && (
-          <button className="reflection-close-btn" onClick={onClose} title="닫기">×</button>
+          <button
+            className="reflection-close-btn"
+            onClick={onClose}
+            title="닫기"
+          >
+            ×
+          </button>
         )}
       </div>
 
@@ -231,7 +270,9 @@ export function ReflectionPanel({ onClose }: Props) {
 
       {text && (
         <div className="reflection-output reflection-md-render">
-          <div dangerouslySetInnerHTML={{ __html: renderSimpleMarkdown(text) }} />
+          <div
+            dangerouslySetInnerHTML={{ __html: renderSimpleMarkdown(text) }}
+          />
           {isStreaming && <span className="reflection-cursor">▋</span>}
         </div>
       )}
@@ -250,7 +291,10 @@ export function ReflectionPanel({ onClose }: Props) {
 
       <div className="reflection-actions">
         {isStreaming ? (
-          <button className="reflection-btn reflection-btn-stop" onClick={cancel}>
+          <button
+            className="reflection-btn reflection-btn-stop"
+            onClick={cancel}
+          >
             중지
           </button>
         ) : (

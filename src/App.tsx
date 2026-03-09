@@ -16,7 +16,10 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { createBaramExtensions } from "./extensions";
 import { prosemirrorToMarkdown } from "./pipeline/pm-to-md";
-import { markdownToProsemirror, mdastBlocksToPmNodes } from "./pipeline/md-to-pm";
+import {
+  markdownToProsemirror,
+  mdastBlocksToPmNodes,
+} from "./pipeline/md-to-pm";
 import { parseMdastAsync } from "./pipeline/parse-async";
 import type { SourceCodeEditorRef } from "./components/editor/SourceCodeEditor";
 import type { EditorTab } from "./stores/editor-store";
@@ -48,9 +51,26 @@ import { useExternalDrop } from "./hooks/use-external-drop";
 import { useJournal } from "./hooks/use-journal";
 import { useZoom } from "./hooks/use-zoom";
 import { useSkillsMode } from "./hooks/use-skills-mode";
-import { isDateString, getJournalFilePath, getHierarchicalJournalPath, resolveJournalDir, generateDefaultJournal, applyJournalTemplate } from "./utils/journal";
-import { parseCapturesFromMarkdown, buildNoteFromCapture, buildPromotedCaptureLink } from "./utils/journal-capture";
-import { readFile, writeFile, createDir, getOpenedUrls, updateFileIndex } from "./ipc/invoke";
+import {
+  isDateString,
+  getJournalFilePath,
+  getHierarchicalJournalPath,
+  resolveJournalDir,
+  generateDefaultJournal,
+  applyJournalTemplate,
+} from "./utils/journal";
+import {
+  parseCapturesFromMarkdown,
+  buildNoteFromCapture,
+  buildPromotedCaptureLink,
+} from "./utils/journal-capture";
+import {
+  readFile,
+  writeFile,
+  createDir,
+  getOpenedUrls,
+  updateFileIndex,
+} from "./ipc/invoke";
 import { useLinkStore } from "./stores/link-store";
 import { migrateFromLocalStorage } from "./stores/tauri-storage";
 import { useBookmarkStore } from "./stores/bookmark-store";
@@ -64,7 +84,10 @@ import { forceCollapseSyntaxReveal } from "./extensions/plugins/syntax-reveal";
 import { showTableGridPicker } from "./utils/table-grid-picker";
 import { MoodBar } from "./components/journal/MoodBar";
 import { FollowUpCard } from "./components/journal/FollowUpCard";
-import { PeriodicInsightBanner, detectPeriodicType } from "./components/journal/PeriodicInsightBanner";
+import {
+  PeriodicInsightBanner,
+  detectPeriodicType,
+} from "./components/journal/PeriodicInsightBanner";
 import { FindReplaceBar } from "./components/editor/FindReplaceBar";
 import { dispatchSetSearchTerm } from "./extensions/plugins/find-replace";
 import { InlineAIPrompt } from "./components/ai/InlineAIPrompt";
@@ -74,10 +97,23 @@ import type { ThemeColors } from "./types/theme";
 import { isMarkdownFile, getLanguageForFile } from "./utils/file-type";
 import { normalizeKeyEvent } from "./keybindings/key-utils";
 import { findCommandByKey } from "./keybindings/use-keybindings";
-import { registerAction, getAction, clearActions } from "./keybindings/keybinding-actions";
-import { initializePlugins, shutdownPlugins, notifyEditorReady, notifyFileOpen, notifyFileSave } from "./plugins/plugin-lifecycle";
+import {
+  registerAction,
+  getAction,
+  clearActions,
+} from "./keybindings/keybinding-actions";
+import {
+  initializePlugins,
+  shutdownPlugins,
+  notifyEditorReady,
+  notifyFileOpen,
+  notifyFileSave,
+} from "./plugins/plugin-lifecycle";
 import { pluginLoader } from "./plugins/plugin-loader";
-import { startUpdateChecker, stopUpdateChecker } from "./plugins/update-checker";
+import {
+  startUpdateChecker,
+  stopUpdateChecker,
+} from "./plugins/update-checker";
 import "./App.css";
 
 // §8.4 Lazy-loaded components — split into separate chunks, loaded on first use
@@ -185,24 +221,39 @@ function App() {
   const sourceEditorRef = useRef<SourceCodeEditorRef>(null);
   // Ref mirrors sourceContent state — always has the latest value, immune to stale closures
   const sourceContentRef = useRef("");
-  const { toggleSidebar, toggleCommandPalette, toggleQuickSwitcher, toggleSettings, setSidebarPanel, welcomeOpen } =
-    useUIStore();
+  const {
+    toggleSidebar,
+    toggleCommandPalette,
+    toggleQuickSwitcher,
+    toggleSettings,
+    setSidebarPanel,
+    welcomeOpen,
+  } = useUIStore();
   const { activeTabId, tabs, openTab, markDirty } = useEditorStore();
   const { openFiles, setFileContent } = useFileStore();
 
   // Derived: non-markdown code file detection for rendering branch
   const activeTab = tabs.find((t) => t.id === activeTabId);
-  const isCodeFile = !!activeTab && isFileTab(activeTab) && !isMarkdownFile(activeTab.filePath);
-  const codeLanguage = activeTab?.filePath ? getLanguageForFile(activeTab.filePath) : null;
+  const isCodeFile =
+    !!activeTab && isFileTab(activeTab) && !isMarkdownFile(activeTab.filePath);
+  const codeLanguage = activeTab?.filePath
+    ? getLanguageForFile(activeTab.filePath)
+    : null;
 
   // §28 Wikilink navigation ref — breaks circular dependency (editor ↔ navigate)
-  const navigateRef = useRef<(target: string, heading?: string | null) => void>(() => {});
+  const navigateRef = useRef<(target: string, heading?: string | null) => void>(
+    () => {},
+  );
   // §30c Block reference navigation ref
-  const blockRefNavigateRef = useRef<(target: string, blockId: string) => void>(() => {});
+  const blockRefNavigateRef = useRef<(target: string, blockId: string) => void>(
+    () => {},
+  );
   // §5.1 Local .md link navigation ref (e.g. [text](sub/doc.md))
   const localLinkNavigateRef = useRef<(href: string) => void>(() => {});
   // §57 Mention navigation ref
-  const mentionNavigateRef = useRef<(type: string, value: string) => void>(() => {});
+  const mentionNavigateRef = useRef<(type: string, value: string) => void>(
+    () => {},
+  );
 
   // Track previously active tab to save its content on switch
   const prevTabRef = useRef<string | null>(null);
@@ -214,10 +265,14 @@ function App() {
   const isNavBackForwardRef = useRef(false);
   // §5.6 Find/Replace state
   const [findReplaceOpen, setFindReplaceOpen] = useState(false);
-  const [findReplaceMode, setFindReplaceMode] = useState<"find" | "replace">("find");
+  const [findReplaceMode, setFindReplaceMode] = useState<"find" | "replace">(
+    "find",
+  );
   // §perf-large-file B2/C2: Loading state for async parse + progressive loading
   const [isParsing, setIsParsing] = useState(false);
-  const progressiveLoadRef = useRef<{ cancelled: boolean }>({ cancelled: false });
+  const progressiveLoadRef = useRef<{ cancelled: boolean }>({
+    cancelled: false,
+  });
 
   // §39 Tab switcher state
   const [tabSwitcherOpen, setTabSwitcherOpen] = useState(false);
@@ -230,9 +285,11 @@ function App() {
   const editor = useEditor({
     extensions: createBaramExtensions({
       onNavigate: (target, heading) => navigateRef.current(target, heading),
-      onNavigateBlockRef: (target, blockId) => blockRefNavigateRef.current(target, blockId),
+      onNavigateBlockRef: (target, blockId) =>
+        blockRefNavigateRef.current(target, blockId),
       onNavigateLocal: (href) => localLinkNavigateRef.current(href),
-      onMentionNavigate: (type, value) => mentionNavigateRef.current(type, value),
+      onMentionNavigate: (type, value) =>
+        mentionNavigateRef.current(type, value),
     }),
     autofocus: true,
     immediatelyRender: false,
@@ -264,7 +321,8 @@ function App() {
     if (!editor) return;
     const handleSelectionUpdate = () => {
       const { from, to } = editor.state.selection;
-      const text = from === to ? "" : editor.state.doc.textBetween(from, to, " ");
+      const text =
+        from === to ? "" : editor.state.doc.textBetween(from, to, " ");
       useEditorStore.getState().setCurrentSelection(text);
     };
     editor.on("selectionUpdate", handleSelectionUpdate);
@@ -302,7 +360,14 @@ function App() {
     return () => {
       if (codeAutoSaveTimer.current) clearTimeout(codeAutoSaveTimer.current);
     };
-  }, [isCodeFile, autoSave, autoSaveDelay, sourceContent, markDirty, setFileContent]);
+  }, [
+    isCodeFile,
+    autoSave,
+    autoSaveDelay,
+    sourceContent,
+    markDirty,
+    setFileContent,
+  ]);
 
   // File system watcher — auto-refresh FileTree on external changes
   useFileWatcher();
@@ -343,17 +408,35 @@ function App() {
   }, []);
 
   // Apply settings to DOM
-  const { activeThemeId, customThemes, fontSize, fontFamily, lineHeight, spellCheck, editorMaxWidth } = useSettingsStore();
+  const {
+    activeThemeId,
+    customThemes,
+    fontSize,
+    fontFamily,
+    lineHeight,
+    spellCheck,
+    editorMaxWidth,
+  } = useSettingsStore();
 
   useEffect(() => {
     const root = document.documentElement;
     const cssKeys: (keyof ThemeColors)[] = [
-      "--color-bg-primary", "--color-bg-secondary", "--color-bg-sidebar", "--color-bg-tertiary",
-      "--color-text-primary", "--color-text-secondary", "--color-text-muted",
-      "--color-border", "--color-border-light",
-      "--color-accent", "--color-accent-hover",
-      "--color-editor-bg", "--color-editor-text", "--color-editor-selection",
-      "--color-editor-cursor", "--color-editor-line-highlight",
+      "--color-bg-primary",
+      "--color-bg-secondary",
+      "--color-bg-sidebar",
+      "--color-bg-tertiary",
+      "--color-text-primary",
+      "--color-text-secondary",
+      "--color-text-muted",
+      "--color-border",
+      "--color-border-light",
+      "--color-accent",
+      "--color-accent-hover",
+      "--color-editor-bg",
+      "--color-editor-text",
+      "--color-editor-selection",
+      "--color-editor-cursor",
+      "--color-editor-line-highlight",
     ];
 
     // Clear previous CSS variable overrides
@@ -376,7 +459,8 @@ function App() {
     root.dataset.theme = themeDef.base;
 
     // For non-default themes, apply CSS variable overrides
-    const isDefault = activeThemeId === "default-light" || activeThemeId === "default-dark";
+    const isDefault =
+      activeThemeId === "default-light" || activeThemeId === "default-dark";
     if (!isDefault) {
       for (const [key, value] of Object.entries(themeDef.colors)) {
         root.style.setProperty(key, value);
@@ -403,7 +487,10 @@ function App() {
       editorProps: {
         ...editor.options.editorProps,
         attributes: {
-          ...(editor.options.editorProps?.attributes as Record<string, string> ?? {}),
+          ...((editor.options.editorProps?.attributes as Record<
+            string,
+            string
+          >) ?? {}),
           spellcheck: String(spellCheck),
         },
       },
@@ -456,9 +543,10 @@ function App() {
         }
         if (prevTab?.filePath) {
           try {
-            const md = prevIsCode || isSourceMode
-              ? sourceContentRef.current
-              : prosemirrorToMarkdown(editor.state.doc);
+            const md =
+              prevIsCode || isSourceMode
+                ? sourceContentRef.current
+                : prosemirrorToMarkdown(editor.state.doc);
             setFileContent(prevTab.filePath, md);
           } catch {
             // ignore serialization errors for outgoing tab
@@ -564,7 +652,9 @@ function App() {
         // Restore exact scroll position (not just cursor visibility)
         if (cachedScrollTop !== undefined) {
           requestAnimationFrame(() => {
-            const scrollContainer = document.querySelector(".editor-area-scroll");
+            const scrollContainer = document.querySelector(
+              ".editor-area-scroll",
+            );
             if (scrollContainer) {
               scrollContainer.scrollTop = cachedScrollTop;
             }
@@ -626,7 +716,8 @@ function App() {
       if (!editor?.view) return;
       // Scroll to specific line if pending (same-tab search result click)
       if (pendingLine !== null) {
-        const { activeTabId: tabId, tabs: currentTabs } = useEditorStore.getState();
+        const { activeTabId: tabId, tabs: currentTabs } =
+          useEditorStore.getState();
         const incomingTab = currentTabs.find((t) => t.id === tabId);
         const content = incomingTab?.filePath
           ? useFileStore.getState().openFiles.get(incomingTab.filePath)
@@ -674,7 +765,9 @@ function App() {
     // Re-parse and update editor from file-store
     const newDoc = markdownToProsemirror(content, editor.schema);
     const prevPos = editor.state.selection.anchor;
-    const selPos = cursorEnd ? newDoc.content.size : Math.min(prevPos, newDoc.content.size);
+    const selPos = cursorEnd
+      ? newDoc.content.size
+      : Math.min(prevPos, newDoc.content.size);
     const newState = EditorState.create({
       doc: newDoc,
       selection: TextSelection.near(newDoc.resolve(selPos), -1),
@@ -689,11 +782,14 @@ function App() {
         editor.view.focus();
         const { from } = editor.view.state.selection;
         const domInfo = editor.view.domAtPos(from);
-        const el = domInfo.node instanceof HTMLElement
-          ? domInfo.node
-          : domInfo.node.parentElement;
+        const el =
+          domInfo.node instanceof HTMLElement
+            ? domInfo.node
+            : domInfo.node.parentElement;
         el?.scrollIntoView({ block: "center" });
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }, 50);
   }, [contentReloadVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -726,7 +822,11 @@ function App() {
       editor.commands.focus();
     };
     window.addEventListener("baram:goto-position", handler as EventListener);
-    return () => window.removeEventListener("baram:goto-position", handler as EventListener);
+    return () =>
+      window.removeEventListener(
+        "baram:goto-position",
+        handler as EventListener,
+      );
   }, [editor]);
 
   // --- Window title update ---
@@ -744,12 +844,15 @@ function App() {
   }, []);
 
   // onChange for non-MD code files — same as source but also marks dirty
-  const handleCodeFileChange = useCallback((content: string) => {
-    sourceContentRef.current = content;
-    setSourceContent(content);
-    const { activeTabId: tabId } = useEditorStore.getState();
-    if (tabId) markDirty(tabId, true);
-  }, [markDirty]);
+  const handleCodeFileChange = useCallback(
+    (content: string) => {
+      sourceContentRef.current = content;
+      setSourceContent(content);
+      const { activeTabId: tabId } = useEditorStore.getState();
+      if (tabId) markDirty(tabId, true);
+    },
+    [markDirty],
+  );
 
   // Cmd+/ toggle between WYSIWYG and Source Code mode (§5.1 cursor preservation)
   const toggleSourceMode = useCallback(() => {
@@ -757,7 +860,12 @@ function App() {
     const currentTab = tabs.find((t) => t.id === activeTabId);
     // Graph tab / non-MD file — source mode not applicable
     if (isGraphTab(currentTab)) return;
-    if (currentTab && isFileTab(currentTab) && !isMarkdownFile(currentTab.filePath)) return;
+    if (
+      currentTab &&
+      isFileTab(currentTab) &&
+      !isMarkdownFile(currentTab.filePath)
+    )
+      return;
 
     if (!isSourceMode) {
       // WYSIWYG → Source: collapse any active syntax reveal expansion first
@@ -830,7 +938,9 @@ function App() {
             // ProseMirror's view.focus() triggers DOMObserver flush which
             // dispatches a transaction based on native selection — this
             // races with our setSelection dispatch.
-            const domObserver = (editor.view as { domObserver?: { stop(): void; start(): void } }).domObserver;
+            const domObserver = (
+              editor.view as { domObserver?: { stop(): void; start(): void } }
+            ).domObserver;
             domObserver?.stop();
             try {
               editor.view.dispatch(
@@ -857,19 +967,22 @@ function App() {
   }, [editor, isSourceMode, tabs, activeTabId]);
 
   // --- File action handlers ---
-  const handleNewFile = useCallback((name?: string) => {
-    const id = crypto.randomUUID();
-    let title: string;
-    if (name) {
-      title = name;
-    } else {
-      const tabNumber =
-        tabs.filter((t) => t.title.startsWith("Untitled")).length + 1;
-      title = tabNumber === 1 ? "Untitled" : `Untitled ${tabNumber}`;
-    }
-    useFileStore.getState().setFileContent(id, "");
-    openTab({ id, filePath: "", title, isDirty: false, isPinned: false });
-  }, [tabs, openTab]);
+  const handleNewFile = useCallback(
+    (name?: string) => {
+      const id = crypto.randomUUID();
+      let title: string;
+      if (name) {
+        title = name;
+      } else {
+        const tabNumber =
+          tabs.filter((t) => t.title.startsWith("Untitled")).length + 1;
+        title = tabNumber === 1 ? "Untitled" : `Untitled ${tabNumber}`;
+      }
+      useFileStore.getState().setFileContent(id, "");
+      openTab({ id, filePath: "", title, isDirty: false, isPinned: false });
+    },
+    [tabs, openTab],
+  );
 
   const handleOpenFile = useCallback(async () => {
     const selected = await open({
@@ -911,9 +1024,10 @@ function App() {
     if (isGraphTab(saveTab)) return;
 
     const isCode = saveTab.filePath && !isMarkdownFile(saveTab.filePath);
-    const md = isCode || isSourceMode
-      ? sourceContentRef.current
-      : prosemirrorToMarkdown(editor.state.doc);
+    const md =
+      isCode || isSourceMode
+        ? sourceContentRef.current
+        : prosemirrorToMarkdown(editor.state.doc);
 
     if (saveTab.filePath) {
       // Existing file — save directly
@@ -974,9 +1088,10 @@ function App() {
     if (isGraphTab(saveAsTab)) return;
 
     const isCode = saveAsTab.filePath && !isMarkdownFile(saveAsTab.filePath);
-    const md = isCode || isSourceMode
-      ? sourceContentRef.current
-      : prosemirrorToMarkdown(editor.state.doc);
+    const md =
+      isCode || isSourceMode
+        ? sourceContentRef.current
+        : prosemirrorToMarkdown(editor.state.doc);
     const savePath = await save({
       filters: [
         { name: "Markdown", extensions: ["md"] },
@@ -1055,8 +1170,13 @@ function App() {
     (target: string, heading?: string | null) => {
       // §56 Date wikilink → open/create journal file
       if (isDateString(target)) {
-        const { journalEnabled, journalDirectory, journalFilenameFormat, journalTemplatePath, journalUseHierarchy } =
-          useSettingsStore.getState();
+        const {
+          journalEnabled,
+          journalDirectory,
+          journalFilenameFormat,
+          journalTemplatePath,
+          journalUseHierarchy,
+        } = useSettingsStore.getState();
         if (!journalEnabled) return;
         const { rootPath } = useFileStore.getState();
         const resolvedDir = resolveJournalDir(rootPath, journalDirectory);
@@ -1064,7 +1184,12 @@ function App() {
         const date = new Date(target + "T00:00:00");
         const journalPath = journalUseHierarchy
           ? getHierarchicalJournalPath(resolvedDir, date, journalFilenameFormat)
-          : getJournalFilePath(rootPath, journalDirectory, date, journalFilenameFormat);
+          : getJournalFilePath(
+              rootPath,
+              journalDirectory,
+              date,
+              journalFilenameFormat,
+            );
         if (!journalPath) return;
         (async () => {
           try {
@@ -1077,7 +1202,10 @@ function App() {
             }
             if (!exists) {
               const { createDir } = await import("./ipc/invoke");
-              const parentDir = journalPath.substring(0, journalPath.lastIndexOf("/"));
+              const parentDir = journalPath.substring(
+                0,
+                journalPath.lastIndexOf("/"),
+              );
               await createDir(parentDir);
               let content: string;
               if (journalTemplatePath) {
@@ -1328,10 +1456,14 @@ function App() {
       // Resolve relative paths against current file's directory or rootPath
       const resolveAbsolute = (p: string): string | null => {
         if (p.startsWith("/")) return p;
-        const { activeTabId: curTabId, tabs: curTabs } = useEditorStore.getState();
+        const { activeTabId: curTabId, tabs: curTabs } =
+          useEditorStore.getState();
         const curTab = curTabs.find((t) => t.id === curTabId);
         if (curTab?.filePath) {
-          const curDir = curTab.filePath.substring(0, curTab.filePath.lastIndexOf("/"));
+          const curDir = curTab.filePath.substring(
+            0,
+            curTab.filePath.lastIndexOf("/"),
+          );
           return `${curDir}/${p}`;
         }
         const { rootPath } = useFileStore.getState();
@@ -1349,11 +1481,13 @@ function App() {
   // Listen for file open events from macOS (Finder "Open With" / double-click)
   useEffect(() => {
     // Cold start: check for files queued before frontend was ready
-    getOpenedUrls().then((paths) => {
-      for (const path of paths) {
-        handleOpenFilePath(path);
-      }
-    }).catch(() => {});
+    getOpenedUrls()
+      .then((paths) => {
+        for (const path of paths) {
+          handleOpenFilePath(path);
+        }
+      })
+      .catch(() => {});
 
     // Hot open: listen for files opened while app is running
     const unlisten = listen<string>("file:open-request", (event) => {
@@ -1371,7 +1505,9 @@ function App() {
       useEditorStore.getState();
     if (!currentId) return;
     const openTabIds = new Set(currentTabs.map((t) => t.id));
-    const targetId = useNavigationStore.getState().goBack(currentId, openTabIds);
+    const targetId = useNavigationStore
+      .getState()
+      .goBack(currentId, openTabIds);
     if (targetId) {
       isNavBackForwardRef.current = true;
       useEditorStore.getState().setActiveTab(targetId);
@@ -1426,7 +1562,8 @@ function App() {
       const fs = useFileStore.getState();
       const activeTab = es.tabs.find((t) => t.id === es.activeTabId);
       if (activeTab?.filePath && fs.rootPath) {
-        const fileName = activeTab.filePath.split("/").pop() ?? activeTab.filePath;
+        const fileName =
+          activeTab.filePath.split("/").pop() ?? activeTab.filePath;
         bs.addBookmark({
           type: "file",
           filePath: activeTab.filePath,
@@ -1459,7 +1596,11 @@ function App() {
           editor
             .chain()
             .focus()
-            .insertTable({ rows: result.rows, cols: result.cols, withHeaderRow: true })
+            .insertTable({
+              rows: result.rows,
+              cols: result.cols,
+              withHeaderRow: true,
+            })
             .run();
         });
       }
@@ -1467,19 +1608,29 @@ function App() {
     registerAction("insert.inlineAI", () => inlineAI.activate());
 
     // AI
-    registerAction("ai.chatPanel", () => useUIStore.getState().toggleRightPanel());
+    registerAction("ai.chatPanel", () =>
+      useUIStore.getState().toggleRightPanel(),
+    );
     registerAction("ai.ghostText", () => {
       const ai = useAIStore.getState();
       ai.setGhostTextEnabled(!ai.ghostTextEnabled);
     });
-    registerAction("ai.skillTest", () => useUIStore.getState().toggleSkillTestDialog());
+    registerAction("ai.skillTest", () =>
+      useUIStore.getState().toggleSkillTestDialog(),
+    );
 
     // Workspace
-    registerAction("workspace.writing", () => useWorkspaceStore.getState().applyPreset("writing"));
-    registerAction("workspace.journal", () => useWorkspaceStore.getState().applyPreset("journal"));
+    registerAction("workspace.writing", () =>
+      useWorkspaceStore.getState().applyPreset("writing"),
+    );
+    registerAction("workspace.journal", () =>
+      useWorkspaceStore.getState().applyPreset("journal"),
+    );
 
     // Journal
-    registerAction("journal.quickCapture", () => useUIStore.getState().toggleQuickCapture());
+    registerAction("journal.quickCapture", () =>
+      useUIStore.getState().toggleQuickCapture(),
+    );
 
     registerAction("journal.promoteCapture", () => {
       (async () => {
@@ -1505,26 +1656,41 @@ function App() {
             let cursorLine = 0;
             for (let li = 0; li < lines.length; li++) {
               charCount += lines[li].length + 1;
-              if (charCount >= cursorPos) { cursorLine = li; break; }
+              if (charCount >= cursorPos) {
+                cursorLine = li;
+                break;
+              }
             }
             const cursorLineText = lines[cursorLine] ?? "";
             // Match cursor line against capture icons
-            const iconMap: Record<string, string> = { idea: "✦", link: "↗", quote: "❝", note: "☰" };
+            const iconMap: Record<string, string> = {
+              idea: "✦",
+              link: "↗",
+              quote: "❝",
+              note: "☰",
+            };
             for (const c of captures) {
               const icon = iconMap[c.type];
-              if (cursorLineText.startsWith(`- ${icon}`) && (c.title ? cursorLineText.includes(c.title) : true)) {
+              if (
+                cursorLineText.startsWith(`- ${icon}`) &&
+                (c.title ? cursorLineText.includes(c.title) : true)
+              ) {
                 capture = c;
                 break;
               }
             }
           }
-          const { filename, content: noteContent } = buildNoteFromCapture(capture);
+          const { filename, content: noteContent } =
+            buildNoteFromCapture(capture);
 
           // Determine notes directory
           const { rootPath } = useFileStore.getState();
           const { journalDirectory } = useSettingsStore.getState();
           if (!rootPath || !journalDirectory) return;
-          const resolvedJournalDir = resolveJournalDir(rootPath, journalDirectory);
+          const resolvedJournalDir = resolveJournalDir(
+            rootPath,
+            journalDirectory,
+          );
           if (!resolvedJournalDir) return;
           const notesDir = `${resolvedJournalDir}/notes`;
           const notePath = `${notesDir}/${filename}`;
@@ -1537,8 +1703,18 @@ function App() {
           const noteName = filename.replace(/\.md$/, "");
           const linkLine = buildPromotedCaptureLink(capture, noteName);
           const originalLine = content.split("\n").find((line) => {
-            const icon = capture.type === "idea" ? "✦" : capture.type === "link" ? "↗" : capture.type === "quote" ? "❝" : "☰";
-            return line.startsWith(`- ${icon}`) && (capture.title ? line.includes(capture.title) : true);
+            const icon =
+              capture.type === "idea"
+                ? "✦"
+                : capture.type === "link"
+                  ? "↗"
+                  : capture.type === "quote"
+                    ? "❝"
+                    : "☰";
+            return (
+              line.startsWith(`- ${icon}`) &&
+              (capture.title ? line.includes(capture.title) : true)
+            );
           });
           if (originalLine) {
             const updated = content.replace(originalLine, linkLine);
@@ -1564,7 +1740,13 @@ function App() {
     registerAction("journal.openToday", () => {
       (async () => {
         try {
-          const { journalEnabled, journalDirectory, journalFilenameFormat, journalTemplatePath, journalUseHierarchy } = useSettingsStore.getState();
+          const {
+            journalEnabled,
+            journalDirectory,
+            journalFilenameFormat,
+            journalTemplatePath,
+            journalUseHierarchy,
+          } = useSettingsStore.getState();
           if (!journalEnabled || !journalDirectory) return;
           const { rootPath } = useFileStore.getState();
           const resolved = resolveJournalDir(rootPath, journalDirectory);
@@ -1572,7 +1754,12 @@ function App() {
           const today = new Date();
           const journalPath = journalUseHierarchy
             ? getHierarchicalJournalPath(resolved, today, journalFilenameFormat)
-            : getJournalFilePath(rootPath, journalDirectory, today, journalFilenameFormat);
+            : getJournalFilePath(
+                rootPath,
+                journalDirectory,
+                today,
+                journalFilenameFormat,
+              );
           if (!journalPath) return;
 
           // Ensure file exists
@@ -1580,7 +1767,10 @@ function App() {
           try {
             fileContent = await readFile(journalPath);
           } catch {
-            const parentDir = journalPath.substring(0, journalPath.lastIndexOf("/"));
+            const parentDir = journalPath.substring(
+              0,
+              journalPath.lastIndexOf("/"),
+            );
             await createDir(parentDir);
             if (journalTemplatePath) {
               try {
@@ -1723,7 +1913,10 @@ function App() {
 
       // §37 Ctrl+- — navigate back (macOS: ⌃-, Windows/Linux: Alt+←)
       if (
-        (e.ctrlKey && !e.shiftKey && !e.metaKey && (e.key === "-" || e.code === "Minus")) ||
+        (e.ctrlKey &&
+          !e.shiftKey &&
+          !e.metaKey &&
+          (e.key === "-" || e.code === "Minus")) ||
         (!e.metaKey && e.altKey && e.key === "ArrowLeft")
       ) {
         e.preventDefault();
@@ -1734,7 +1927,10 @@ function App() {
       // §37 Ctrl+Shift+- — navigate forward (macOS: ⌃⇧-, Windows/Linux: Alt+→)
       // Note: Shift+- produces key="_" on most keyboards, so check both
       if (
-        (e.ctrlKey && e.shiftKey && !e.metaKey && (e.key === "_" || e.key === "-" || e.code === "Minus")) ||
+        (e.ctrlKey &&
+          e.shiftKey &&
+          !e.metaKey &&
+          (e.key === "_" || e.key === "-" || e.code === "Minus")) ||
         (!e.metaKey && e.altKey && e.key === "ArrowRight")
       ) {
         e.preventDefault();
@@ -1743,12 +1939,29 @@ function App() {
       }
 
       // §56b Alt+Left / Alt+Right — previous/next day journal
-      if (e.altKey && !mod && !e.shiftKey && (e.code === "ArrowLeft" || e.code === "ArrowRight")) {
-        const { journalEnabled, journalDirectory, journalFilenameFormat, journalTemplatePath, journalUseHierarchy } = useSettingsStore.getState();
+      if (
+        e.altKey &&
+        !mod &&
+        !e.shiftKey &&
+        (e.code === "ArrowLeft" || e.code === "ArrowRight")
+      ) {
+        const {
+          journalEnabled,
+          journalDirectory,
+          journalFilenameFormat,
+          journalTemplatePath,
+          journalUseHierarchy,
+        } = useSettingsStore.getState();
         const es = useEditorStore.getState();
         const activeTab = es.tabs.find((t) => t.id === es.activeTabId);
-        const basename = activeTab?.filePath?.split("/").pop()?.replace(/\.md$/, "") ?? "";
-        if (journalEnabled && journalDirectory && activeTab?.filePath && isDateString(basename)) {
+        const basename =
+          activeTab?.filePath?.split("/").pop()?.replace(/\.md$/, "") ?? "";
+        if (
+          journalEnabled &&
+          journalDirectory &&
+          activeTab?.filePath &&
+          isDateString(basename)
+        ) {
           e.preventDefault();
           const [y, m, d] = basename.split("-").map(Number);
           const target = new Date(y, m - 1, d);
@@ -1761,15 +1974,27 @@ function App() {
               const resolved = resolveJournalDir(rootPath, journalDirectory);
               if (!resolved) return;
               const journalPath = journalUseHierarchy
-                ? getHierarchicalJournalPath(resolved, target, journalFilenameFormat)
-                : getJournalFilePath(rootPath, journalDirectory, target, journalFilenameFormat);
+                ? getHierarchicalJournalPath(
+                    resolved,
+                    target,
+                    journalFilenameFormat,
+                  )
+                : getJournalFilePath(
+                    rootPath,
+                    journalDirectory,
+                    target,
+                    journalFilenameFormat,
+                  );
               if (!journalPath) return;
 
               let fileContent: string;
               try {
                 fileContent = await readFile(journalPath);
               } catch {
-                const parentDir = journalPath.substring(0, journalPath.lastIndexOf("/"));
+                const parentDir = journalPath.substring(
+                  0,
+                  journalPath.lastIndexOf("/"),
+                );
                 await createDir(parentDir);
                 if (journalTemplatePath) {
                   try {
@@ -1785,11 +2010,15 @@ function App() {
               }
 
               const edStore = useEditorStore.getState();
-              const existing = edStore.tabs.find((t) => t.filePath === journalPath);
+              const existing = edStore.tabs.find(
+                (t) => t.filePath === journalPath,
+              );
               if (existing) {
                 edStore.setActiveTab(existing.id);
               } else {
-                useFileStore.getState().setFileContent(journalPath, fileContent);
+                useFileStore
+                  .getState()
+                  .setFileContent(journalPath, fileContent);
                 edStore.openTab({
                   id: crypto.randomUUID(),
                   filePath: journalPath,
@@ -1953,7 +2182,10 @@ function App() {
           if (!editor) break;
           const imagePath = await open({
             filters: [
-              { name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "svg", "webp"] },
+              {
+                name: "Images",
+                extensions: ["png", "jpg", "jpeg", "gif", "svg", "webp"],
+              },
             ],
           });
           if (imagePath) {
@@ -1962,7 +2194,11 @@ function App() {
           break;
         }
         case "insert_table":
-          editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+          editor
+            ?.chain()
+            .focus()
+            .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+            .run();
           break;
         case "insert_code_block":
           editor?.chain().focus().toggleCodeBlock().run();
@@ -1986,7 +2222,11 @@ function App() {
           editor?.chain().focus().setHorizontalRule().run();
           break;
         case "insert_frontmatter":
-          editor?.chain().focus().insertContent({ type: "frontmatter", attrs: { yaml: "" } }).run();
+          editor
+            ?.chain()
+            .focus()
+            .insertContent({ type: "frontmatter", attrs: { yaml: "" } })
+            .run();
           break;
 
         // --- Help menu handlers ---
@@ -1995,14 +2235,18 @@ function App() {
           if (!useUIStore.getState().rightPanelOpen) {
             useUIStore.getState().toggleRightPanel();
           }
-          window.dispatchEvent(new CustomEvent("help-tab", { detail: "guide" }));
+          window.dispatchEvent(
+            new CustomEvent("help-tab", { detail: "guide" }),
+          );
           break;
         case "help_shortcuts":
           useUIStore.getState().setRightPanelMode("help");
           if (!useUIStore.getState().rightPanelOpen) {
             useUIStore.getState().toggleRightPanel();
           }
-          window.dispatchEvent(new CustomEvent("help-tab", { detail: "shortcuts" }));
+          window.dispatchEvent(
+            new CustomEvent("help-tab", { detail: "shortcuts" }),
+          );
           break;
         case "help_faq":
           useUIStore.getState().setRightPanelMode("help");
@@ -2172,7 +2416,13 @@ function App() {
     <>
       <AppLayout
         editor={editor}
-        statusBar={<StatusBar editor={editor} isSourceMode={isSourceMode} isGraphMode={isGraphTabActive} />}
+        statusBar={
+          <StatusBar
+            editor={editor}
+            isSourceMode={isSourceMode}
+            isGraphMode={isGraphTabActive}
+          />
+        }
       >
         <TabBar />
         <div className="editor-area">
@@ -2227,12 +2477,13 @@ function App() {
               )}
               <MoodBar editor={editor} />
               <FollowUpCard editor={editor} />
-              {activeTab?.filePath && detectPeriodicType(activeTab.filePath) && (
-                <PeriodicInsightBanner
-                  filePath={activeTab.filePath}
-                  type={detectPeriodicType(activeTab.filePath)!}
-                />
-              )}
+              {activeTab?.filePath &&
+                detectPeriodicType(activeTab.filePath) && (
+                  <PeriodicInsightBanner
+                    filePath={activeTab.filePath}
+                    type={detectPeriodicType(activeTab.filePath)!}
+                  />
+                )}
               <div className="editor-area-scroll">
                 {/* §perf-large-file B2: Loading skeleton while Worker parses */}
                 {isParsing && (
@@ -2259,7 +2510,9 @@ function App() {
                         selectionFrom={inlineAI.selectionFrom}
                         selectionTo={inlineAI.selectionTo}
                         hasSelection={inlineAI.hasSelection}
-                        phase={inlineAI.phase as "input" | "streaming" | "completed"}
+                        phase={
+                          inlineAI.phase as "input" | "streaming" | "completed"
+                        }
                         hunks={inlineAI.hunks}
                         onSubmit={inlineAI.submitPrompt}
                         onAccept={inlineAI.accept}

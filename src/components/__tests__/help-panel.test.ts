@@ -29,18 +29,19 @@ describe("prepareHelpMarkdown: H1 removal", () => {
 
 describe("prepareHelpMarkdown: Table of Contents removal", () => {
   it("removes ToC section between ## Table of Contents and next ---", () => {
-    const input = [
-      "# Title",
-      "",
-      "## Table of Contents",
-      "- [Section 1](#section-1)",
-      "- [Section 2](#section-2)",
-      "",
-      "---",
-      "",
-      "## Section 1",
-      "Content here.",
-    ].join("\n") + "\n";
+    const input =
+      [
+        "# Title",
+        "",
+        "## Table of Contents",
+        "- [Section 1](#section-1)",
+        "- [Section 2](#section-2)",
+        "",
+        "---",
+        "",
+        "## Section 1",
+        "Content here.",
+      ].join("\n") + "\n";
 
     const result = prepareHelpMarkdown(input);
     expect(result).not.toContain("Table of Contents");
@@ -50,15 +51,16 @@ describe("prepareHelpMarkdown: Table of Contents removal", () => {
   });
 
   it("preserves content after the closing ---", () => {
-    const input = [
-      "## Table of Contents",
-      "- item",
-      "",
-      "---",
-      "",
-      "## Real Content",
-      "Kept.",
-    ].join("\n") + "\n";
+    const input =
+      [
+        "## Table of Contents",
+        "- item",
+        "",
+        "---",
+        "",
+        "## Real Content",
+        "Kept.",
+      ].join("\n") + "\n";
 
     const result = prepareHelpMarkdown(input);
     expect(result).toContain("## Real Content");
@@ -70,15 +72,16 @@ describe("prepareHelpMarkdown: Table of Contents removal", () => {
 
 describe("prepareHelpMarkdown: ASCII art code block removal", () => {
   it("removes code blocks containing box-drawing characters", () => {
-    const input = [
-      "Before.",
-      "```",
-      "┌──────┐",
-      "│ box  │",
-      "└──────┘",
-      "```",
-      "After.",
-    ].join("\n") + "\n";
+    const input =
+      [
+        "Before.",
+        "```",
+        "┌──────┐",
+        "│ box  │",
+        "└──────┘",
+        "```",
+        "After.",
+      ].join("\n") + "\n";
 
     const result = prepareHelpMarkdown(input);
     expect(result).not.toContain("┌");

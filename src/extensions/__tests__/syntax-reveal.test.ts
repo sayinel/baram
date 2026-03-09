@@ -24,7 +24,11 @@ function loadMarkdown(editor: Editor, md: string): void {
  * then move to the target position. This two-step sequence ensures
  * the syntax-reveal plugin's expansion checks actually run.
  */
-function moveCursorTo(editor: Editor, guardPos: number, targetPos: number): void {
+function moveCursorTo(
+  editor: Editor,
+  guardPos: number,
+  targetPos: number,
+): void {
   editor.commands.setTextSelection(guardPos);
   editor.commands.setTextSelection(targetPos);
 }
@@ -77,7 +81,9 @@ describe("Syntax Reveal (§5.1)", () => {
       loadMarkdown(editor, "Hello [world](https://example.com) end\n");
       moveCursorTo(editor, 2, 9);
 
-      expect(editor.state.doc.textContent).toContain("[world](https://example.com)");
+      expect(editor.state.doc.textContent).toContain(
+        "[world](https://example.com)",
+      );
       editor.destroy();
     });
   });
@@ -115,7 +121,9 @@ describe("Syntax Reveal (§5.1)", () => {
 
       // Expand
       moveCursorTo(editor, 2, 9);
-      expect(editor.state.doc.textContent).toContain("[world](https://example.com)");
+      expect(editor.state.doc.textContent).toContain(
+        "[world](https://example.com)",
+      );
 
       // Collapse
       editor.commands.setTextSelection(2);

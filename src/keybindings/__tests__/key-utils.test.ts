@@ -34,12 +34,22 @@ describe("normalizeKeyEvent", () => {
   });
 
   it("Ctrl+Shift+F on non-macOS → Mod+Shift+F", () => {
-    const e = makeKeyEvent({ ctrlKey: true, shiftKey: true, code: "KeyF", key: "f" });
+    const e = makeKeyEvent({
+      ctrlKey: true,
+      shiftKey: true,
+      code: "KeyF",
+      key: "f",
+    });
     expect(normalizeKeyEvent(e, false)).toBe("Mod+Shift+F");
   });
 
   it("Alt+Mod+1 on macOS → Mod+Alt+1", () => {
-    const e = makeKeyEvent({ metaKey: true, altKey: true, code: "Digit1", key: "1" });
+    const e = makeKeyEvent({
+      metaKey: true,
+      altKey: true,
+      code: "Digit1",
+      key: "1",
+    });
     expect(normalizeKeyEvent(e, true)).toBe("Mod+Alt+1");
   });
 
@@ -60,7 +70,11 @@ describe("normalizeKeyEvent", () => {
   });
 
   it("bare ControlLeft returns empty string", () => {
-    const e = makeKeyEvent({ ctrlKey: true, code: "ControlLeft", key: "Control" });
+    const e = makeKeyEvent({
+      ctrlKey: true,
+      code: "ControlLeft",
+      key: "Control",
+    });
     expect(normalizeKeyEvent(e, false)).toBe("");
   });
 
@@ -86,12 +100,23 @@ describe("normalizeKeyEvent", () => {
   });
 
   it("Mod+Shift+Alt+K on macOS", () => {
-    const e = makeKeyEvent({ metaKey: true, shiftKey: true, altKey: true, code: "KeyK", key: "k" });
+    const e = makeKeyEvent({
+      metaKey: true,
+      shiftKey: true,
+      altKey: true,
+      code: "KeyK",
+      key: "k",
+    });
     expect(normalizeKeyEvent(e, true)).toBe("Mod+Shift+Alt+K");
   });
 
   it("Ctrl+Shift+F5 on non-macOS → Mod+Shift+F5", () => {
-    const e = makeKeyEvent({ ctrlKey: true, shiftKey: true, code: "F5", key: "F5" });
+    const e = makeKeyEvent({
+      ctrlKey: true,
+      shiftKey: true,
+      code: "F5",
+      key: "F5",
+    });
     expect(normalizeKeyEvent(e, false)).toBe("Mod+Shift+F5");
   });
 
@@ -179,27 +204,57 @@ describe("parseKeyNotation", () => {
   });
 
   it("Mod+S → { mod: true, shift: false, alt: false, key: 'S' }", () => {
-    expect(parseKeyNotation("Mod+S")).toEqual({ mod: true, shift: false, alt: false, key: "S" });
+    expect(parseKeyNotation("Mod+S")).toEqual({
+      mod: true,
+      shift: false,
+      alt: false,
+      key: "S",
+    });
   });
 
   it("Escape → { mod: false, shift: false, alt: false, key: 'Escape' }", () => {
-    expect(parseKeyNotation("Escape")).toEqual({ mod: false, shift: false, alt: false, key: "Escape" });
+    expect(parseKeyNotation("Escape")).toEqual({
+      mod: false,
+      shift: false,
+      alt: false,
+      key: "Escape",
+    });
   });
 
   it("Mod+Shift+Alt+K → { mod: true, shift: true, alt: true, key: 'K' }", () => {
-    expect(parseKeyNotation("Mod+Shift+Alt+K")).toEqual({ mod: true, shift: true, alt: true, key: "K" });
+    expect(parseKeyNotation("Mod+Shift+Alt+K")).toEqual({
+      mod: true,
+      shift: true,
+      alt: true,
+      key: "K",
+    });
   });
 
   it("Alt+1 → { mod: false, shift: false, alt: true, key: '1' }", () => {
-    expect(parseKeyNotation("Alt+1")).toEqual({ mod: false, shift: false, alt: true, key: "1" });
+    expect(parseKeyNotation("Alt+1")).toEqual({
+      mod: false,
+      shift: false,
+      alt: true,
+      key: "1",
+    });
   });
 
   it("Shift+Enter → { mod: false, shift: true, alt: false, key: 'Enter' }", () => {
-    expect(parseKeyNotation("Shift+Enter")).toEqual({ mod: false, shift: true, alt: false, key: "Enter" });
+    expect(parseKeyNotation("Shift+Enter")).toEqual({
+      mod: false,
+      shift: true,
+      alt: false,
+      key: "Enter",
+    });
   });
 
   it("/ alone → { mod: false, shift: false, alt: false, key: '/' }", () => {
-    expect(parseKeyNotation("/")).toEqual({ mod: false, shift: false, alt: false, key: "/" });
+    expect(parseKeyNotation("/")).toEqual({
+      mod: false,
+      shift: false,
+      alt: false,
+      key: "/",
+    });
   });
 });
 

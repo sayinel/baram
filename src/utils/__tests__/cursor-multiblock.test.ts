@@ -123,7 +123,9 @@ describe("cursor-mapper: multi-block document drift", () => {
       const start = pos + (child.isLeaf ? 0 : 1);
       const end = start + child.content.size;
       const text = child.textContent.substring(0, 30);
-      console.log(`  Block ${i}: ${child.type.name} [PM ${start}..${end}] "${text}${child.textContent.length > 30 ? "..." : ""}"`);
+      console.log(
+        `  Block ${i}: ${child.type.name} [PM ${start}..${end}] "${text}${child.textContent.length > 30 ? "..." : ""}"`,
+      );
       pos += child.nodeSize;
     }
   });
@@ -133,7 +135,12 @@ describe("cursor-mapper: multi-block document drift", () => {
     const serialized = prosemirrorToMarkdown(doc);
     const newDoc = markdownToProsemirror(serialized, editor.schema);
 
-    const mismatches: { pmPos: number; mdOff: number; rePmPos: number; block: string }[] = [];
+    const mismatches: {
+      pmPos: number;
+      mdOff: number;
+      rePmPos: number;
+      block: string;
+    }[] = [];
 
     let pos = 0;
     for (let i = 0; i < doc.childCount; i++) {
@@ -191,7 +198,9 @@ describe("cursor-mapper: multi-block document drift", () => {
       console.log(`\n=== ${mismatches.length} MISMATCHES ===`);
       for (const m of mismatches) {
         const delta = m.rePmPos - m.pmPos;
-        console.log(`  PM ${m.pmPos} → MD ${m.mdOff} → PM ${m.rePmPos} (delta: ${delta > 0 ? "+" : ""}${delta}) in ${m.block}`);
+        console.log(
+          `  PM ${m.pmPos} → MD ${m.mdOff} → PM ${m.rePmPos} (delta: ${delta > 0 ? "+" : ""}${delta}) in ${m.block}`,
+        );
       }
     }
 
@@ -205,7 +214,12 @@ describe("cursor-mapper: multi-block document drift", () => {
 
     // Pick a position in the middle of each block's text
     let pos = 0;
-    const samples: { blockIdx: number; type: string; pmPos: number; text: string }[] = [];
+    const samples: {
+      blockIdx: number;
+      type: string;
+      pmPos: number;
+      text: string;
+    }[] = [];
 
     for (let i = 0; i < doc.childCount; i++) {
       const child = doc.child(i);
@@ -213,7 +227,12 @@ describe("cursor-mapper: multi-block document drift", () => {
 
       if (child.isTextblock && child.content.size > 0) {
         const mid = start + Math.floor(child.content.size / 2);
-        samples.push({ blockIdx: i, type: child.type.name, pmPos: mid, text: child.textContent.substring(0, 20) });
+        samples.push({
+          blockIdx: i,
+          type: child.type.name,
+          pmPos: mid,
+          text: child.textContent.substring(0, 20),
+        });
       } else if (!child.isLeaf && child.content.size > 0) {
         // For compound blocks, find the middle of the first text node
         let found = false;
@@ -221,7 +240,12 @@ describe("cursor-mapper: multi-block document drift", () => {
           if (found) return false;
           if (node.isText && node.text!.length > 1) {
             const absPos = start + relPos + Math.floor(node.text!.length / 2);
-            samples.push({ blockIdx: i, type: child.type.name, pmPos: absPos, text: node.text!.substring(0, 20) });
+            samples.push({
+              blockIdx: i,
+              type: child.type.name,
+              pmPos: absPos,
+              text: node.text!.substring(0, 20),
+            });
             found = true;
             return false;
           }
@@ -237,23 +261,26 @@ describe("cursor-mapper: multi-block document drift", () => {
       const mdOff = pmPosToMdOffset(doc, s.pmPos, serialized);
       const rePmPos = mdOffsetToPmPos(newDoc, mdOff, serialized);
       const ok = rePmPos === s.pmPos;
-      console.log(`  Block ${s.blockIdx} (${s.type}) PM ${s.pmPos} → MD ${mdOff} → PM ${rePmPos} ${ok ? "OK" : `*** DELTA ${rePmPos - s.pmPos} ***`} "${s.text}"`);
+      console.log(
+        `  Block ${s.blockIdx} (${s.type}) PM ${s.pmPos} → MD ${mdOff} → PM ${rePmPos} ${ok ? "OK" : `*** DELTA ${rePmPos - s.pmPos} ***`} "${s.text}"`,
+      );
       expect(rePmPos).toBe(s.pmPos);
     }
   });
 });
 
 // Helper: test all text positions in a document
-function testAllPositions(
-  label: string,
-  markdown: string,
-  editor: Editor,
-) {
+function testAllPositions(label: string, markdown: string, editor: Editor) {
   const doc = markdownToProsemirror(markdown, editor.schema);
   const serialized = prosemirrorToMarkdown(doc);
   const newDoc = markdownToProsemirror(serialized, editor.schema);
 
-  const mismatches: { pmPos: number; mdOff: number; rePmPos: number; block: string }[] = [];
+  const mismatches: {
+    pmPos: number;
+    mdOff: number;
+    rePmPos: number;
+    block: string;
+  }[] = [];
 
   let pos = 0;
   for (let i = 0; i < doc.childCount; i++) {
@@ -325,11 +352,15 @@ function testAllPositions(
       if (!existing) byBlock.set(m.block, [m]);
       else existing.push(m);
     }
-    console.log(`\n=== ${label}: ${mismatches.length} MISMATCHES in ${byBlock.size} blocks ===`);
+    console.log(
+      `\n=== ${label}: ${mismatches.length} MISMATCHES in ${byBlock.size} blocks ===`,
+    );
     for (const [block, ms] of byBlock) {
       const first = ms[0];
       const delta = first.rePmPos - first.pmPos;
-      console.log(`  ${block}: ${ms.length} mismatches, first: PM ${first.pmPos} → MD ${first.mdOff} → PM ${first.rePmPos} (delta: ${delta > 0 ? "+" : ""}${delta})`);
+      console.log(
+        `  ${block}: ${ms.length} mismatches, first: PM ${first.pmPos} → MD ${first.mdOff} → PM ${first.rePmPos} (delta: ${delta > 0 ? "+" : ""}${delta})`,
+      );
     }
   }
 

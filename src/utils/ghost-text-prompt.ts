@@ -157,8 +157,7 @@ export function buildGhostTextConfig(
   // --- Build user prompt with FIM context (D2) ---
   const parts: string[] = [];
   if (title) parts.push(`Document: "${title}"`);
-  if (prevBlocks.length > 0)
-    parts.push(`Context:\n${prevBlocks.join("\n")}`);
+  if (prevBlocks.length > 0) parts.push(`Context:\n${prevBlocks.join("\n")}`);
   if (openTabSummaries.length > 0)
     parts.push(`Related files:\n${openTabSummaries.join("\n\n")}`);
 

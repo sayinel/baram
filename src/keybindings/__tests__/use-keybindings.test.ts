@@ -12,8 +12,8 @@ import {
 import { KEYBINDING_REGISTRY } from "../keybinding-registry";
 
 // Pick known stable IDs from the registry for tests
-const CUSTOMIZABLE_ID = "file.save";       // defaultKey: "Mod+S", customizable: true
-const CUSTOMIZABLE_ID2 = "file.new";       // defaultKey: "Mod+N", customizable: true
+const CUSTOMIZABLE_ID = "file.save"; // defaultKey: "Mod+S", customizable: true
+const CUSTOMIZABLE_ID2 = "file.new"; // defaultKey: "Mod+N", customizable: true
 const NON_CUSTOMIZABLE_ID = "formatting.bold"; // defaultKey: "Mod+B", customizable: false
 
 describe("getMergedKeybindings", () => {
@@ -33,7 +33,9 @@ describe("getMergedKeybindings", () => {
   });
 
   it("ignores override for a non-customizable entry", () => {
-    const merged = getMergedKeybindings({ [NON_CUSTOMIZABLE_ID]: "Mod+Shift+B" });
+    const merged = getMergedKeybindings({
+      [NON_CUSTOMIZABLE_ID]: "Mod+Shift+B",
+    });
     const entry = merged.find((e) => e.id === NON_CUSTOMIZABLE_ID)!;
     expect(entry.activeKey).toBe(entry.defaultKey);
     expect(entry.isOverridden).toBe(false);
@@ -53,7 +55,9 @@ describe("findCommandByKey", () => {
   });
 
   it("finds a command by its overridden key", () => {
-    const result = findCommandByKey("Mod+Alt+S", { [CUSTOMIZABLE_ID]: "Mod+Alt+S" });
+    const result = findCommandByKey("Mod+Alt+S", {
+      [CUSTOMIZABLE_ID]: "Mod+Alt+S",
+    });
     expect(result).toBeDefined();
     expect(result!.id).toBe(CUSTOMIZABLE_ID);
   });
@@ -92,7 +96,9 @@ describe("findConflict", () => {
 
   it("detects a conflict after an override is applied", () => {
     // Override file.new to "Mod+Z", then try to assign "Mod+Z" to file.save
-    const conflict = findConflict(CUSTOMIZABLE_ID, "Mod+Z", { [CUSTOMIZABLE_ID2]: "Mod+Z" });
+    const conflict = findConflict(CUSTOMIZABLE_ID, "Mod+Z", {
+      [CUSTOMIZABLE_ID2]: "Mod+Z",
+    });
     expect(conflict).not.toBeNull();
     expect(conflict!.id).toBe(CUSTOMIZABLE_ID2);
   });

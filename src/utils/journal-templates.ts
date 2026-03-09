@@ -70,7 +70,9 @@ year: {{year}}
  * Creates `{journalDir}/templates/` and writes the 4 default template files.
  * Existing files are not overwritten.
  */
-export async function initJournalTemplatesDir(journalDir: string): Promise<void> {
+export async function initJournalTemplatesDir(
+  journalDir: string,
+): Promise<void> {
   const templatesDir = `${journalDir}/templates`;
   await createDir(templatesDir);
 

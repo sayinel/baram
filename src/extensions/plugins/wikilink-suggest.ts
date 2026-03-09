@@ -85,9 +85,10 @@ export const WikilinkSuggest = Extension.create({
           // When SyntaxReveal has a wikilink expanded, replace the entire expanded range
           // instead of just the Suggestion range (which misses the trailing ]])
           const expanded = getSyntaxRevealExpanded(ed.view.state);
-          const effectiveRange = expanded?.kind === "wikilink"
-            ? { from: expanded.from, to: expanded.to }
-            : range;
+          const effectiveRange =
+            expanded?.kind === "wikilink"
+              ? { from: expanded.from, to: expanded.to }
+              : range;
 
           // Clear SyntaxReveal state if it was expanded
           if (expanded?.kind === "wikilink") {
@@ -106,7 +107,8 @@ export const WikilinkSuggest = Extension.create({
                   await refreshIndex(rootPath);
                   // Refresh file tree so the new file appears in sidebar & navigation
                   const { listDir } = await import("../../ipc/invoke");
-                  const { buildFileTree } = await import("../../stores/file-store");
+                  const { buildFileTree } =
+                    await import("../../stores/file-store");
                   const entries = await listDir(rootPath, true);
                   const tree = buildFileTree(entries, rootPath);
                   useFileStore.getState().setFileTree(tree);
@@ -140,9 +142,9 @@ export const WikilinkSuggest = Extension.create({
           // §61 Namespace: [[./  or [[../  → filter to relative directory
           if (query.startsWith("./") || query.startsWith("../")) {
             const activeTabId = useEditorStore.getState().activeTabId;
-            const activeTab = useEditorStore.getState().tabs.find(
-              (t) => t.id === activeTabId,
-            );
+            const activeTab = useEditorStore
+              .getState()
+              .tabs.find((t) => t.id === activeTabId);
             const sourcePath = activeTab?.filePath;
             const { rootPath } = useFileStore.getState();
 

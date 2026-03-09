@@ -20,7 +20,9 @@ function isJournalDailyNote(): boolean {
   const activeTab = tabs.find((t) => t.id === activeTabId);
   if (!activeTab?.filePath) return false;
 
-  return activeTab.filePath.includes("/daily/") && activeTab.filePath.endsWith(".md");
+  return (
+    activeTab.filePath.includes("/daily/") && activeTab.filePath.endsWith(".md")
+  );
 }
 
 export function FollowUpCard({ editor }: FollowUpCardProps) {
@@ -31,7 +33,9 @@ export function FollowUpCard({ editor }: FollowUpCardProps) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeTabId = useEditorStore((s) => s.activeTabId);
   const journalAIAutoSuggest = useSettingsStore((s) => s.journalAIAutoSuggest);
-  const journalAIReflectionEnabled = useSettingsStore((s) => s.journalAIReflectionEnabled);
+  const journalAIReflectionEnabled = useSettingsStore(
+    (s) => s.journalAIReflectionEnabled,
+  );
   const llm = useLLMStream();
 
   // Reset state on tab change
@@ -43,12 +47,20 @@ export function FollowUpCard({ editor }: FollowUpCardProps) {
 
   // Debounced trigger: 10s after last editor update
   useEffect(() => {
-    if (!editor || !journalAIAutoSuggest || !journalAIReflectionEnabled || dismissed) return;
+    if (
+      !editor ||
+      !journalAIAutoSuggest ||
+      !journalAIReflectionEnabled ||
+      dismissed
+    )
+      return;
     if (!isJournalDailyNote()) return;
 
-    const filePath = useEditorStore.getState().tabs.find(
-      (t) => t.id === useEditorStore.getState().activeTabId,
-    )?.filePath;
+    const filePath = useEditorStore
+      .getState()
+      .tabs.find(
+        (t) => t.id === useEditorStore.getState().activeTabId,
+      )?.filePath;
     if (!filePath || suggestedRef.current.get(filePath)) return;
 
     const onUpdate = () => {
@@ -57,9 +69,11 @@ export function FollowUpCard({ editor }: FollowUpCardProps) {
       debounceRef.current = setTimeout(() => {
         // Re-check conditions inside the debounced callback
         if (!isJournalDailyNote()) return;
-        const fp = useEditorStore.getState().tabs.find(
-          (t) => t.id === useEditorStore.getState().activeTabId,
-        )?.filePath;
+        const fp = useEditorStore
+          .getState()
+          .tabs.find(
+            (t) => t.id === useEditorStore.getState().activeTabId,
+          )?.filePath;
         if (!fp || suggestedRef.current.get(fp)) return;
 
         // Check content length > 100 chars (excluding frontmatter)
@@ -93,7 +107,14 @@ export function FollowUpCard({ editor }: FollowUpCardProps) {
       editor.off("update", onUpdate);
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [editor, journalAIAutoSuggest, journalAIReflectionEnabled, dismissed, activeTabId, llm]);
+  }, [
+    editor,
+    journalAIAutoSuggest,
+    journalAIReflectionEnabled,
+    dismissed,
+    activeTabId,
+    llm,
+  ]);
 
   // Show card when LLM response is complete
   useEffect(() => {
@@ -110,10 +131,7 @@ export function FollowUpCard({ editor }: FollowUpCardProps) {
     const endPos = editor.state.doc.content.size;
     const insertText = `\n\n> 💭 ${questionText}\n\n`;
 
-    editor.chain()
-      .focus()
-      .insertContentAt(endPos, insertText)
-      .run();
+    editor.chain().focus().insertContentAt(endPos, insertText).run();
 
     setVisible(false);
   }, [editor, questionText]);
@@ -129,10 +147,16 @@ export function FollowUpCard({ editor }: FollowUpCardProps) {
     <div className="follow-up-card">
       <div className="follow-up-card-text">{questionText}</div>
       <div className="follow-up-card-actions">
-        <button className="follow-up-card-btn follow-up-card-btn-insert" onClick={handleInsert}>
+        <button
+          className="follow-up-card-btn follow-up-card-btn-insert"
+          onClick={handleInsert}
+        >
           답변 작성하기
         </button>
-        <button className="follow-up-card-btn follow-up-card-btn-dismiss" onClick={handleDismiss}>
+        <button
+          className="follow-up-card-btn follow-up-card-btn-dismiss"
+          onClick={handleDismiss}
+        >
           무시
         </button>
       </div>

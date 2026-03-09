@@ -32,8 +32,14 @@ export function showConfirm(message: string): Promise<boolean> {
     document.body.appendChild(overlay);
 
     const handleKeydown = (e: KeyboardEvent) => {
-      if (e.key === "Enter") { e.preventDefault(); cleanup(true); }
-      if (e.key === "Escape") { e.preventDefault(); cleanup(false); }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        cleanup(true);
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        cleanup(false);
+      }
     };
 
     const cleanup = (value: boolean) => {

@@ -7,8 +7,12 @@ import { useTranslation } from "../../i18n/useTranslation";
 
 export function CustomAICommandEditor() {
   const { t } = useTranslation();
-  const { customCommands, addCustomCommand, removeCustomCommand, updateCustomCommand } =
-    useAIStore();
+  const {
+    customCommands,
+    addCustomCommand,
+    removeCustomCommand,
+    updateCustomCommand,
+  } = useAIStore();
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
@@ -173,10 +177,18 @@ function CustomCommandRow({
         </span>
       </div>
       <div className="custom-ai-row-actions">
-        <button className="custom-ai-btn-icon" onClick={onEdit} title={t("settings.ai.customCommands.edit")}>
+        <button
+          className="custom-ai-btn-icon"
+          onClick={onEdit}
+          title={t("settings.ai.customCommands.edit")}
+        >
           {t("settings.ai.customCommands.edit")}
         </button>
-        <button className="custom-ai-btn-icon custom-ai-btn-danger" onClick={onDelete} title={t("common.delete")}>
+        <button
+          className="custom-ai-btn-icon custom-ai-btn-danger"
+          onClick={onDelete}
+          title={t("common.delete")}
+        >
           {t("settings.ai.customCommands.del")}
         </button>
       </div>

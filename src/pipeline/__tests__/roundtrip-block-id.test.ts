@@ -118,7 +118,8 @@ describe("§30a Block ID Roundtrip", () => {
   });
 
   it("multiple paragraphs, some with IDs", () => {
-    const input = "First paragraph ^id1\n\nSecond paragraph\n\nThird paragraph ^id3\n";
+    const input =
+      "First paragraph ^id1\n\nSecond paragraph\n\nThird paragraph ^id3\n";
     expect(roundtrip(input)).toBe(input);
   });
 

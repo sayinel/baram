@@ -5,7 +5,12 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useUIStore } from "../../stores/ui-store";
 import { useEditorStore } from "../../stores/editor-store";
 import { useSettingsStore } from "../../stores/settings-store";
-import { exportAsHTML, exportAsPDF, exportForNotion, exportWithPandoc } from "../../utils/export";
+import {
+  exportAsHTML,
+  exportAsPDF,
+  exportForNotion,
+  exportWithPandoc,
+} from "../../utils/export";
 import { detectPandoc } from "../../ipc/invoke";
 import type { PandocInfo } from "../../ipc/types";
 
@@ -14,13 +19,55 @@ interface ExportDialogProps {
 }
 
 const FORMAT_OPTIONS = [
-  { id: "html",   ext: ".html", name: "HTML",  desc: "Standalone page",            pandoc: false },
-  { id: "pdf",    ext: ".pdf",  name: "PDF",   desc: "Print-ready document",       pandoc: false },
-  { id: "notion", ext: ".md",   name: "Notion",desc: "Notion-compatible Markdown", pandoc: false },
-  { id: "docx",   ext: ".docx", name: "Word",  desc: "Editable document",          pandoc: true },
-  { id: "latex",  ext: ".tex",  name: "LaTeX", desc: "Typesetting",                pandoc: true },
-  { id: "epub",   ext: ".epub", name: "EPUB",  desc: "E-book format",              pandoc: true },
-  { id: "rst",    ext: ".rst",  name: "RST",   desc: "Sphinx documentation",       pandoc: true },
+  {
+    id: "html",
+    ext: ".html",
+    name: "HTML",
+    desc: "Standalone page",
+    pandoc: false,
+  },
+  {
+    id: "pdf",
+    ext: ".pdf",
+    name: "PDF",
+    desc: "Print-ready document",
+    pandoc: false,
+  },
+  {
+    id: "notion",
+    ext: ".md",
+    name: "Notion",
+    desc: "Notion-compatible Markdown",
+    pandoc: false,
+  },
+  {
+    id: "docx",
+    ext: ".docx",
+    name: "Word",
+    desc: "Editable document",
+    pandoc: true,
+  },
+  {
+    id: "latex",
+    ext: ".tex",
+    name: "LaTeX",
+    desc: "Typesetting",
+    pandoc: true,
+  },
+  {
+    id: "epub",
+    ext: ".epub",
+    name: "EPUB",
+    desc: "E-book format",
+    pandoc: true,
+  },
+  {
+    id: "rst",
+    ext: ".rst",
+    name: "RST",
+    desc: "Sphinx documentation",
+    pandoc: true,
+  },
 ] as const;
 
 const PANDOC_FORMATS = ["docx", "latex", "epub", "rst"] as const;
@@ -30,10 +77,15 @@ function isPandocFormat(f: string): f is (typeof PANDOC_FORMATS)[number] {
 }
 
 export function ExportDialog({ editor }: ExportDialogProps) {
-  const { exportDialogOpen, exportFormat, closeExportDialog, openExportDialog } =
-    useUIStore();
+  const {
+    exportDialogOpen,
+    exportFormat,
+    closeExportDialog,
+    openExportDialog,
+  } = useUIStore();
   const { activeTabId, tabs } = useEditorStore();
-  const { pandocPath, wordTemplatePath, setWordTemplatePath } = useSettingsStore();
+  const { pandocPath, wordTemplatePath, setWordTemplatePath } =
+    useSettingsStore();
   const [title, setTitle] = useState("Untitled");
   const [exporting, setExporting] = useState(false);
   const [paperSize, setPaperSize] = useState<"a4" | "letter">("a4");
@@ -64,7 +116,7 @@ export function ExportDialog({ editor }: ExportDialogProps) {
           setPandocInfo({ path: pandocPath, version: "", available: false }),
         );
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [exportDialogOpen]);
 
   const handleSelectTemplate = useCallback(async () => {
@@ -91,18 +143,28 @@ export function ExportDialog({ editor }: ExportDialogProps) {
       } else if (isPandocFormat(exportFormat)) {
         await exportWithPandoc(editor, title, exportFormat, {
           pandocPath: pandocInfo?.path || pandocPath || undefined,
-          referenceDoc: exportFormat === "docx" ? wordTemplatePath || undefined : undefined,
+          referenceDoc:
+            exportFormat === "docx" ? wordTemplatePath || undefined : undefined,
         });
       }
       closeExportDialog();
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : String(err);
+      const message = err instanceof Error ? err.message : String(err);
       console.error("[Baram Export]", message);
       setErrorMsg(message);
       setExporting(false);
     }
-  }, [editor, exportFormat, title, paperSize, pandocPath, pandocInfo, wordTemplatePath, exporting, closeExportDialog]);
+  }, [
+    editor,
+    exportFormat,
+    title,
+    paperSize,
+    pandocPath,
+    pandocInfo,
+    wordTemplatePath,
+    exporting,
+    closeExportDialog,
+  ]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -152,14 +214,19 @@ export function ExportDialog({ editor }: ExportDialogProps) {
                     key={fmt.id}
                     className={`export-format-card${isSelected ? " export-format-card-selected" : ""}${isDisabled ? " export-format-card-disabled" : ""}`}
                     onClick={() => {
-                      if (!isDisabled) openExportDialog(fmt.id as typeof exportFormat);
+                      if (!isDisabled)
+                        openExportDialog(fmt.id as typeof exportFormat);
                     }}
                     disabled={isDisabled}
                   >
                     <span className="export-ext-badge">{fmt.ext}</span>
                     <span className="export-format-card-info">
-                      <span className="export-format-card-name">{fmt.name}</span>
-                      <span className="export-format-card-desc">{fmt.desc}</span>
+                      <span className="export-format-card-name">
+                        {fmt.name}
+                      </span>
+                      <span className="export-format-card-desc">
+                        {fmt.desc}
+                      </span>
                     </span>
                     {fmt.pandoc && (
                       <span className="export-pandoc-badge">pandoc</span>
@@ -253,9 +320,7 @@ export function ExportDialog({ editor }: ExportDialogProps) {
             </p>
           )}
 
-          {errorMsg && (
-            <div className="export-dialog-error">{errorMsg}</div>
-          )}
+          {errorMsg && <div className="export-dialog-error">{errorMsg}</div>}
         </div>
 
         <div className="export-dialog-footer">

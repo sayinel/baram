@@ -32,8 +32,8 @@ export interface BacklinkEntry {
   targetPath: string;
   context: string;
   line: number;
-  linkType?: string;   // "wikilink" | "blockRef" | "blockEmbed"
-  blockId?: string;    // ^blockId for block refs/embeds
+  linkType?: string; // "wikilink" | "blockRef" | "blockEmbed"
+  blockId?: string; // ^blockId for block refs/embeds
 }
 
 export interface LinkGraph {
@@ -221,7 +221,7 @@ export interface SnapshotFileEntry {
 
 export interface SnapshotEntry {
   id: string;
-  timestamp: string;        // ISO 8601
+  timestamp: string; // ISO 8601
   type: "auto" | "manual";
   label: string | null;
   files: SnapshotFileEntry[];

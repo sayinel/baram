@@ -3,7 +3,11 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useSettingsStore } from "../../stores/settings-store";
 import { writeFile } from "../../ipc/invoke";
-import { findThemeById, BUILT_IN_THEMES, THEME_COLOR_KEYS } from "../../types/theme";
+import {
+  findThemeById,
+  BUILT_IN_THEMES,
+  THEME_COLOR_KEYS,
+} from "../../types/theme";
 import type { ThemeColors, ThemeDef } from "../../types/theme";
 import { useTranslation } from "../../i18n/useTranslation";
 
@@ -29,7 +33,9 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     sourceTheme.builtIn ? `Custom ${sourceTheme.name}` : sourceTheme.name,
   );
   const [base, setBase] = useState<"light" | "dark">(sourceTheme.base);
-  const [colors, setColors] = useState<ThemeColors>(() => ({ ...sourceTheme.colors }));
+  const [colors, setColors] = useState<ThemeColors>(() => ({
+    ...sourceTheme.colors,
+  }));
 
   // Keep a ref to the original colors so we can restore on cancel/unmount
   const originalColorsRef = useRef<ThemeColors>({ ...sourceTheme.colors });
@@ -86,7 +92,15 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     saveCustomTheme(themeDef);
     setActiveTheme(themeId);
     onClose();
-  }, [sourceTheme, name, base, colors, saveCustomTheme, setActiveTheme, onClose]);
+  }, [
+    sourceTheme,
+    name,
+    base,
+    colors,
+    saveCustomTheme,
+    setActiveTheme,
+    onClose,
+  ]);
 
   const handleCancel = useCallback(() => {
     // Restore original colors before closing

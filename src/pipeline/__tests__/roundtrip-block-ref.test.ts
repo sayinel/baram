@@ -233,7 +233,10 @@ describe("§30b Block Embed PM Structure", () => {
   });
 
   it("embed with extra text stays as paragraph (not blockEmbed)", () => {
-    const doc = markdownToProsemirror("{{embed ((file#^id1))}} extra\n", schema);
+    const doc = markdownToProsemirror(
+      "{{embed ((file#^id1))}} extra\n",
+      schema,
+    );
     const node = doc.firstChild!;
     expect(node.type.name).toBe("paragraph");
   });

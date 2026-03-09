@@ -34,11 +34,7 @@ function resolveImageSrc(src: string): string {
   return convertFileSrc(absolutePath);
 }
 
-export function ImageView({
-  node,
-  updateAttributes,
-  selected,
-}: NodeViewProps) {
+export function ImageView({ node, updateAttributes, selected }: NodeViewProps) {
   const rawSrc = node.attrs.src as string;
   const alt = (node.attrs.alt as string) || "";
   const title = (node.attrs.title as string) || "";
@@ -165,8 +161,15 @@ export function ImageView({
                   value={sizeInput}
                   onChange={(e) => setSizeInput(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") { e.preventDefault(); commitSizeInput(); }
-                    if (e.key === "Escape") { e.preventDefault(); setEditingSize(false); setSizeInput(String(widthPercent)); }
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      commitSizeInput();
+                    }
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      setEditingSize(false);
+                      setSizeInput(String(widthPercent));
+                    }
                   }}
                   onBlur={commitSizeInput}
                 />
@@ -179,7 +182,9 @@ export function ImageView({
                 type="button"
                 title="커스텀 크기 입력"
               >
-                {RESIZE_PRESETS.includes(widthPercent) ? "Custom" : `${widthPercent}%`}
+                {RESIZE_PRESETS.includes(widthPercent)
+                  ? "Custom"
+                  : `${widthPercent}%`}
               </button>
             )}
             <span className="image-toolbar-sep" />

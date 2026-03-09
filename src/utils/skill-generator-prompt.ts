@@ -14,9 +14,10 @@ export function buildSkillGenPrompts(options: SkillGenOptions): {
   systemPrompt: string;
   userPrompt: string;
 } {
-  const variablesList = options.variables.length > 0
-    ? options.variables.map((v) => `{{${v}}}`).join(", ")
-    : "(none)";
+  const variablesList =
+    options.variables.length > 0
+      ? options.variables.map((v) => `{{${v}}}`).join(", ")
+      : "(none)";
 
   const systemPrompt = `You are a Skill file generator for Baram, a markdown editor.
 A Skill file is a markdown document with YAML frontmatter and XML-tagged prompt blocks.

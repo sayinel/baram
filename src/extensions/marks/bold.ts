@@ -1,5 +1,10 @@
 // §5.1 Bold Mark Extension — **text**
-import { Mark, mergeAttributes, markInputRule, markPasteRule } from "@tiptap/core";
+import {
+  Mark,
+  mergeAttributes,
+  markInputRule,
+  markPasteRule,
+} from "@tiptap/core";
 
 export interface BoldOptions {
   HTMLAttributes: Record<string, string>;
@@ -29,21 +34,38 @@ export const Bold = Mark.create<BoldOptions>({
   parseHTML() {
     return [
       { tag: "strong" },
-      { tag: "b", getAttrs: (el) => (el as HTMLElement).style.fontWeight !== "normal" && null },
+      {
+        tag: "b",
+        getAttrs: (el) =>
+          (el as HTMLElement).style.fontWeight !== "normal" && null,
+      },
       { style: "font-weight=bold" },
       { style: "font-weight=700" },
     ];
   },
 
   renderHTML({ HTMLAttributes }) {
-    return ["strong", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
+    return [
+      "strong",
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes),
+      0,
+    ];
   },
 
   addCommands() {
     return {
-      setBold: () => ({ commands }) => commands.setMark(this.name),
-      toggleBold: () => ({ commands }) => commands.toggleMark(this.name),
-      unsetBold: () => ({ commands }) => commands.unsetMark(this.name),
+      setBold:
+        () =>
+        ({ commands }) =>
+          commands.setMark(this.name),
+      toggleBold:
+        () =>
+        ({ commands }) =>
+          commands.toggleMark(this.name),
+      unsetBold:
+        () =>
+        ({ commands }) =>
+          commands.unsetMark(this.name),
     };
   },
 

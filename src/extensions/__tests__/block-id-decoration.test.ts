@@ -115,12 +115,8 @@ describe("BLOCK_ID_PATTERN", () => {
 describe("isDuplicateBlockId", () => {
   it("detects duplicate block ID in another paragraph", () => {
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { blockId: "abc123" }, [
-        schema.text("first"),
-      ]),
-      schema.node("paragraph", { blockId: "def456" }, [
-        schema.text("second"),
-      ]),
+      schema.node("paragraph", { blockId: "abc123" }, [schema.text("first")]),
+      schema.node("paragraph", { blockId: "def456" }, [schema.text("second")]),
     ]);
 
     // "abc123" exists at pos 0, checking from pos of second paragraph
@@ -130,12 +126,8 @@ describe("isDuplicateBlockId", () => {
 
   it("does not flag same node position as duplicate", () => {
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { blockId: "abc123" }, [
-        schema.text("first"),
-      ]),
-      schema.node("paragraph", { blockId: "def456" }, [
-        schema.text("second"),
-      ]),
+      schema.node("paragraph", { blockId: "abc123" }, [schema.text("first")]),
+      schema.node("paragraph", { blockId: "def456" }, [schema.text("second")]),
     ]);
 
     // "abc123" exists at pos 0, checking from pos 0 (same node)
@@ -144,12 +136,8 @@ describe("isDuplicateBlockId", () => {
 
   it("returns false for unique ID", () => {
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { blockId: "abc123" }, [
-        schema.text("first"),
-      ]),
-      schema.node("paragraph", { blockId: "def456" }, [
-        schema.text("second"),
-      ]),
+      schema.node("paragraph", { blockId: "abc123" }, [schema.text("first")]),
+      schema.node("paragraph", { blockId: "def456" }, [schema.text("second")]),
     ]);
 
     const secondPos = doc.child(0).nodeSize;
@@ -161,9 +149,7 @@ describe("isDuplicateBlockId", () => {
       schema.node("heading", { level: 1, blockId: "shared" }, [
         schema.text("Title"),
       ]),
-      schema.node("paragraph", { blockId: null }, [
-        schema.text("text"),
-      ]),
+      schema.node("paragraph", { blockId: null }, [schema.text("text")]),
     ]);
 
     const secondPos = doc.child(0).nodeSize;
@@ -216,9 +202,7 @@ describe("addBlockId integration", () => {
 
   it("setNodeMarkup correctly sets blockId attr", () => {
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { blockId: null }, [
-        schema.text("hello"),
-      ]),
+      schema.node("paragraph", { blockId: null }, [schema.text("hello")]),
     ]);
 
     const state = EditorState.create({ doc, schema });
@@ -233,9 +217,7 @@ describe("addBlockId integration", () => {
 
   it("setNodeMarkup can remove blockId by setting null", () => {
     const doc = schema.node("doc", null, [
-      schema.node("paragraph", { blockId: "existing" }, [
-        schema.text("hello"),
-      ]),
+      schema.node("paragraph", { blockId: "existing" }, [schema.text("hello")]),
     ]);
 
     const state = EditorState.create({ doc, schema });
@@ -279,7 +261,10 @@ describe("Same-document blockReference/blockEmbed update on ID rename", () => {
 
     // Update blockReference nodes that reference oldId
     doc.descendants((child, pos) => {
-      if (child.type.name === "blockReference" && child.attrs.blockId === oldId) {
+      if (
+        child.type.name === "blockReference" &&
+        child.attrs.blockId === oldId
+      ) {
         tr.setNodeMarkup(pos, undefined, { ...child.attrs, blockId: newId });
       }
       return true;
@@ -362,7 +347,10 @@ describe("Same-document blockReference/blockEmbed update on ID rename", () => {
     tr.setNodeMarkup(0, undefined, { ...node.attrs, blockId: newId });
 
     doc.descendants((child, pos) => {
-      if (child.type.name === "blockReference" && child.attrs.blockId === oldId) {
+      if (
+        child.type.name === "blockReference" &&
+        child.attrs.blockId === oldId
+      ) {
         tr.setNodeMarkup(pos, undefined, { ...child.attrs, blockId: newId });
       }
       return true;

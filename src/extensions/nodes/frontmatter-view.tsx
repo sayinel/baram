@@ -87,7 +87,11 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
       const nodeStart = pos + 1;
       const nodeEnd = pos + node.nodeSize - 1;
       if (newYaml) {
-        tr.replaceWith(nodeStart, nodeEnd, editor.view.state.schema.text(newYaml));
+        tr.replaceWith(
+          nodeStart,
+          nodeEnd,
+          editor.view.state.schema.text(newYaml),
+        );
       } else {
         tr.delete(nodeStart, nodeEnd);
       }
@@ -121,7 +125,11 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
       } else if (e.key === "Escape") {
         setInputValue("");
         inputRef.current?.blur();
-      } else if (e.key === "Backspace" && inputValue === "" && tags.length > 0) {
+      } else if (
+        e.key === "Backspace" &&
+        inputValue === "" &&
+        tags.length > 0
+      ) {
         removeTag(tags[tags.length - 1]);
       }
     },
@@ -138,7 +146,11 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
   const showTagBar = isEditable || tags.length > 0;
 
   return (
-    <NodeViewWrapper data-type="frontmatter" className="frontmatter" spellCheck={false}>
+    <NodeViewWrapper
+      data-type="frontmatter"
+      className="frontmatter"
+      spellCheck={false}
+    >
       <NodeViewContent className="frontmatter-code" />
       {showTagBar && (
         <div className="fm-tag-bar" contentEditable={false}>
@@ -146,28 +158,32 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
           {tags.map((tag) => {
             const pillColor = tagColors[tag];
             return (
-            <span
-              key={tag}
-              className="fm-tag-pill"
-              onClick={() => handleTagClick(tag)}
-              title={`Search for #${tag}`}
-              style={pillColor ? { color: pillColor, borderColor: pillColor } : undefined}
-            >
-              #{tag}
-              {isEditable && (
-                <button
-                  className="fm-tag-pill-remove"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeTag(tag);
-                  }}
-                  title="Remove tag"
-                  aria-label={`Remove tag ${tag}`}
-                >
-                  ×
-                </button>
-              )}
-            </span>
+              <span
+                key={tag}
+                className="fm-tag-pill"
+                onClick={() => handleTagClick(tag)}
+                title={`Search for #${tag}`}
+                style={
+                  pillColor
+                    ? { color: pillColor, borderColor: pillColor }
+                    : undefined
+                }
+              >
+                #{tag}
+                {isEditable && (
+                  <button
+                    className="fm-tag-pill-remove"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeTag(tag);
+                    }}
+                    title="Remove tag"
+                    aria-label={`Remove tag ${tag}`}
+                  >
+                    ×
+                  </button>
+                )}
+              </span>
             );
           })}
           {isEditable && (

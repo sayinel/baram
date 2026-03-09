@@ -39,7 +39,8 @@ describe("skill-store", () => {
     });
 
     it("detects skill file with requires array", () => {
-      const yaml = "name: Composite Skill\ndescription: Uses others\nrequires: [skill-a, skill-b]";
+      const yaml =
+        "name: Composite Skill\ndescription: Uses others\nrequires: [skill-a, skill-b]";
       useSkillStore.getState().updateCurrentFile(yaml, "/skills/composite.md");
 
       const state = useSkillStore.getState();
@@ -75,17 +76,15 @@ describe("skill-store", () => {
 
     it("transitions from skill to non-skill correctly", () => {
       // First set as skill
-      useSkillStore.getState().updateCurrentFile(
-        "name: Skill\ndescription: Test",
-        "/skills/test.md",
-      );
+      useSkillStore
+        .getState()
+        .updateCurrentFile("name: Skill\ndescription: Test", "/skills/test.md");
       expect(useSkillStore.getState().isSkill).toBe(true);
 
       // Then switch to non-skill
-      useSkillStore.getState().updateCurrentFile(
-        "title: Just a note",
-        "/notes/note.md",
-      );
+      useSkillStore
+        .getState()
+        .updateCurrentFile("title: Just a note", "/notes/note.md");
       expect(useSkillStore.getState().isSkill).toBe(false);
       expect(useSkillStore.getState().currentSkill).toBeNull();
     });
@@ -94,8 +93,20 @@ describe("skill-store", () => {
   describe("setLintResults", () => {
     it("updates lintResults array", () => {
       const results = [
-        { rule: "ambiguousInstruction", message: "Vague word", from: 10, to: 14, severity: "warning" as const },
-        { rule: "missingOutputFormat", message: "No format", from: 0, to: 3, severity: "warning" as const },
+        {
+          rule: "ambiguousInstruction",
+          message: "Vague word",
+          from: 10,
+          to: 14,
+          severity: "warning" as const,
+        },
+        {
+          rule: "missingOutputFormat",
+          message: "No format",
+          from: 0,
+          to: 3,
+          severity: "warning" as const,
+        },
       ];
       useSkillStore.getState().setLintResults(results);
 
@@ -107,13 +118,25 @@ describe("skill-store", () => {
 
     it("replaces previous results", () => {
       useSkillStore.getState().setLintResults([
-        { rule: "old", message: "Old result", from: 0, to: 1, severity: "warning" },
+        {
+          rule: "old",
+          message: "Old result",
+          from: 0,
+          to: 1,
+          severity: "warning",
+        },
       ]);
       expect(useSkillStore.getState().lintResults).toHaveLength(1);
 
       useSkillStore.getState().setLintResults([
         { rule: "new1", message: "New 1", from: 0, to: 1, severity: "error" },
-        { rule: "new2", message: "New 2", from: 5, to: 10, severity: "warning" },
+        {
+          rule: "new2",
+          message: "New 2",
+          from: 5,
+          to: 10,
+          severity: "warning",
+        },
       ]);
       expect(useSkillStore.getState().lintResults).toHaveLength(2);
       expect(useSkillStore.getState().lintResults[0].rule).toBe("new1");
@@ -121,7 +144,13 @@ describe("skill-store", () => {
 
     it("can be cleared with empty array", () => {
       useSkillStore.getState().setLintResults([
-        { rule: "test", message: "Test", from: 0, to: 1, severity: "warning" },
+        {
+          rule: "test",
+          message: "Test",
+          from: 0,
+          to: 1,
+          severity: "warning",
+        },
       ]);
       expect(useSkillStore.getState().lintResults).toHaveLength(1);
 

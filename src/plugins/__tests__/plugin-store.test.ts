@@ -42,15 +42,21 @@ describe("usePluginStore", () => {
     test("addPlugin adds to installedPlugins", () => {
       const plugin = makePlugin("test-plugin");
       usePluginStore.getState().addPlugin(plugin);
-      expect(usePluginStore.getState().installedPlugins["test-plugin"]).toBeDefined();
-      expect(usePluginStore.getState().installedPlugins["test-plugin"].manifest.name).toBe("Plugin test-plugin");
+      expect(
+        usePluginStore.getState().installedPlugins["test-plugin"],
+      ).toBeDefined();
+      expect(
+        usePluginStore.getState().installedPlugins["test-plugin"].manifest.name,
+      ).toBe("Plugin test-plugin");
     });
 
     test("removePlugin removes from installedPlugins", () => {
       const plugin = makePlugin("test-plugin");
       usePluginStore.getState().addPlugin(plugin);
       usePluginStore.getState().removePlugin("test-plugin");
-      expect(usePluginStore.getState().installedPlugins["test-plugin"]).toBeUndefined();
+      expect(
+        usePluginStore.getState().installedPlugins["test-plugin"],
+      ).toBeUndefined();
     });
 
     test("removePlugin also cleans up settings and errors", () => {
@@ -60,8 +66,12 @@ describe("usePluginStore", () => {
       usePluginStore.getState().setError("test-plugin", "some error");
 
       usePluginStore.getState().removePlugin("test-plugin");
-      expect(usePluginStore.getState().pluginSettings["test-plugin"]).toBeUndefined();
-      expect(usePluginStore.getState().pluginErrors["test-plugin"]).toBeUndefined();
+      expect(
+        usePluginStore.getState().pluginSettings["test-plugin"],
+      ).toBeUndefined();
+      expect(
+        usePluginStore.getState().pluginErrors["test-plugin"],
+      ).toBeUndefined();
     });
   });
 
@@ -69,13 +79,19 @@ describe("usePluginStore", () => {
     test("toggles enabled state", () => {
       const plugin = makePlugin("test-plugin");
       usePluginStore.getState().addPlugin(plugin);
-      expect(usePluginStore.getState().installedPlugins["test-plugin"].enabled).toBe(true);
+      expect(
+        usePluginStore.getState().installedPlugins["test-plugin"].enabled,
+      ).toBe(true);
 
       usePluginStore.getState().setEnabled("test-plugin", false);
-      expect(usePluginStore.getState().installedPlugins["test-plugin"].enabled).toBe(false);
+      expect(
+        usePluginStore.getState().installedPlugins["test-plugin"].enabled,
+      ).toBe(false);
 
       usePluginStore.getState().setEnabled("test-plugin", true);
-      expect(usePluginStore.getState().installedPlugins["test-plugin"].enabled).toBe(true);
+      expect(
+        usePluginStore.getState().installedPlugins["test-plugin"].enabled,
+      ).toBe(true);
     });
 
     test("no-ops for non-existent plugin", () => {
@@ -88,13 +104,17 @@ describe("usePluginStore", () => {
   describe("setError / clearError", () => {
     test("sets error for plugin", () => {
       usePluginStore.getState().setError("test-plugin", "activation failed");
-      expect(usePluginStore.getState().pluginErrors["test-plugin"]).toBe("activation failed");
+      expect(usePluginStore.getState().pluginErrors["test-plugin"]).toBe(
+        "activation failed",
+      );
     });
 
     test("clears error with null", () => {
       usePluginStore.getState().setError("test-plugin", "error");
       usePluginStore.getState().setError("test-plugin", null);
-      expect(usePluginStore.getState().pluginErrors["test-plugin"]).toBeUndefined();
+      expect(
+        usePluginStore.getState().pluginErrors["test-plugin"],
+      ).toBeUndefined();
     });
   });
 
@@ -104,7 +124,9 @@ describe("usePluginStore", () => {
       expect(usePluginStore.getState().installing["test-plugin"]).toBe(true);
 
       usePluginStore.getState().setInstalling("test-plugin", false);
-      expect(usePluginStore.getState().installing["test-plugin"]).toBeUndefined();
+      expect(
+        usePluginStore.getState().installing["test-plugin"],
+      ).toBeUndefined();
     });
   });
 
@@ -113,7 +135,9 @@ describe("usePluginStore", () => {
       const plugin = makePlugin("test-plugin", "1.0.0");
       usePluginStore.getState().addPlugin(plugin);
 
-      usePluginStore.getState().updatePluginVersion("test-plugin", "2.0.0", "newchecksum");
+      usePluginStore
+        .getState()
+        .updatePluginVersion("test-plugin", "2.0.0", "newchecksum");
       const updated = usePluginStore.getState().installedPlugins["test-plugin"];
       expect(updated.manifest.version).toBe("2.0.0");
       expect(updated.checksum).toBe("newchecksum");
@@ -122,7 +146,9 @@ describe("usePluginStore", () => {
 
     test("no-ops for non-existent plugin", () => {
       const before = usePluginStore.getState().installedPlugins;
-      usePluginStore.getState().updatePluginVersion("nonexistent", "2.0.0", "abc");
+      usePluginStore
+        .getState()
+        .updatePluginVersion("nonexistent", "2.0.0", "abc");
       expect(usePluginStore.getState().installedPlugins).toBe(before);
     });
   });
@@ -130,27 +156,37 @@ describe("usePluginStore", () => {
   describe("update availability", () => {
     test("tracks available updates", () => {
       usePluginStore.getState().setUpdateAvailable("test-plugin", "2.0.0");
-      expect(usePluginStore.getState().updateAvailable["test-plugin"]).toBe("2.0.0");
+      expect(usePluginStore.getState().updateAvailable["test-plugin"]).toBe(
+        "2.0.0",
+      );
     });
 
     test("clears update availability", () => {
       usePluginStore.getState().setUpdateAvailable("test-plugin", "2.0.0");
       usePluginStore.getState().clearUpdateAvailable("test-plugin");
-      expect(usePluginStore.getState().updateAvailable["test-plugin"]).toBeUndefined();
+      expect(
+        usePluginStore.getState().updateAvailable["test-plugin"],
+      ).toBeUndefined();
     });
   });
 
   describe("plugin settings", () => {
     test("sets and gets plugin settings", () => {
-      usePluginStore.getState().setPluginSetting("test-plugin", "theme", "dark");
+      usePluginStore
+        .getState()
+        .setPluginSetting("test-plugin", "theme", "dark");
       usePluginStore.getState().setPluginSetting("test-plugin", "fontSize", 14);
 
-      const settings = usePluginStore.getState().getPluginSettings("test-plugin");
+      const settings = usePluginStore
+        .getState()
+        .getPluginSettings("test-plugin");
       expect(settings).toEqual({ theme: "dark", fontSize: 14 });
     });
 
     test("returns empty object for unknown plugin", () => {
-      const settings = usePluginStore.getState().getPluginSettings("nonexistent");
+      const settings = usePluginStore
+        .getState()
+        .getPluginSettings("nonexistent");
       expect(settings).toEqual({});
     });
   });
@@ -166,12 +202,18 @@ describe("usePluginStore", () => {
 
   describe("registry URL", () => {
     test("has default registry URL", () => {
-      expect(usePluginStore.getState().registryUrl).toContain("baram-community");
+      expect(usePluginStore.getState().registryUrl).toContain(
+        "baram-community",
+      );
     });
 
     test("allows custom registry URL", () => {
-      usePluginStore.getState().setRegistryUrl("https://custom-registry.example.com/index.json");
-      expect(usePluginStore.getState().registryUrl).toBe("https://custom-registry.example.com/index.json");
+      usePluginStore
+        .getState()
+        .setRegistryUrl("https://custom-registry.example.com/index.json");
+      expect(usePluginStore.getState().registryUrl).toBe(
+        "https://custom-registry.example.com/index.json",
+      );
     });
   });
 });

@@ -26,7 +26,8 @@ interface PromptLintState {
 function isSkillsFile(doc: PmNode): boolean {
   const firstChild = doc.firstChild;
   if (firstChild?.type.name === "frontmatter") {
-    const yaml = (firstChild.attrs?.yaml as string) || firstChild.textContent || "";
+    const yaml =
+      (firstChild.attrs?.yaml as string) || firstChild.textContent || "";
     if (/^name\s*:/m.test(yaml) && /^description\s*:/m.test(yaml)) return true;
   }
   return false;
@@ -90,11 +91,15 @@ function buildLintState(doc: PmNode): PromptLintState {
   for (const result of rawResults) {
     // Map text offsets to PM positions
     const from = result.from < offsetMap.length ? offsetMap[result.from] : 0;
-    const to = result.to < offsetMap.length ? offsetMap[Math.min(result.to - 1, offsetMap.length - 1)] + 1 : from + 1;
+    const to =
+      result.to < offsetMap.length
+        ? offsetMap[Math.min(result.to - 1, offsetMap.length - 1)] + 1
+        : from + 1;
 
     if (from >= to || from < 0) continue;
 
-    const cssClass = result.severity === "error" ? "prompt-lint-error" : "prompt-lint-warning";
+    const cssClass =
+      result.severity === "error" ? "prompt-lint-error" : "prompt-lint-warning";
 
     decorations.push(
       Decoration.inline(from, to, {
@@ -131,7 +136,9 @@ function buildLintState(doc: PmNode): PromptLintState {
  * Get the current prompt lint results (with PM positions) from editor state.
  */
 export function getPromptLintResults(state: EditorState): PmLintResult[] {
-  const pluginState = promptLintKey.getState(state) as PromptLintState | undefined;
+  const pluginState = promptLintKey.getState(state) as
+    | PromptLintState
+    | undefined;
   return pluginState?.results ?? [];
 }
 
@@ -155,7 +162,9 @@ export const PromptLint = Extension.create({
         },
         props: {
           decorations(state) {
-            const pluginState = promptLintKey.getState(state) as PromptLintState | undefined;
+            const pluginState = promptLintKey.getState(state) as
+              | PromptLintState
+              | undefined;
             return pluginState?.decorations ?? DecorationSet.empty;
           },
         },

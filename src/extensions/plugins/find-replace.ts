@@ -55,7 +55,10 @@ function getAtomText(node: PmNode): string {
 /** Extract all text content from ProseMirror doc with position mapping.
  *  Includes text representation of inline atom nodes (tag, wikilink, etc.)
  *  so they are searchable via Find/Replace. */
-function extractTextWithPositions(doc: PmNode): { text: string; posMap: number[] } {
+function extractTextWithPositions(doc: PmNode): {
+  text: string;
+  posMap: number[];
+} {
   let text = "";
   const posMap: number[] = [];
 
@@ -73,7 +76,11 @@ function extractTextWithPositions(doc: PmNode): { text: string; posMap: number[]
         posMap.push(pos);
         text += atomText[i];
       }
-    } else if (node.isBlock && text.length > 0 && text[text.length - 1] !== "\n") {
+    } else if (
+      node.isBlock &&
+      text.length > 0 &&
+      text[text.length - 1] !== "\n"
+    ) {
       // Add separator between blocks to avoid matching across them
       posMap.push(-1); // sentinel — not a valid position
       text += "\n";
@@ -127,7 +134,12 @@ export function findMatches(
   useRegex: boolean,
   wholeWord: boolean,
 ): FindReplaceMatch[] {
-  const regex = buildSearchRegex(searchTerm, caseSensitive, useRegex, wholeWord);
+  const regex = buildSearchRegex(
+    searchTerm,
+    caseSensitive,
+    useRegex,
+    wholeWord,
+  );
   if (!regex) return [];
 
   const { text, posMap } = extractTextWithPositions(doc);
@@ -191,7 +203,13 @@ function computeState(
   replaceWith: string,
   activeMatchIndex: number,
 ): FindReplaceState {
-  const matches = findMatches(doc, searchTerm, caseSensitive, useRegex, wholeWord);
+  const matches = findMatches(
+    doc,
+    searchTerm,
+    caseSensitive,
+    useRegex,
+    wholeWord,
+  );
   // Clamp activeMatchIndex
   const clampedIndex =
     matches.length === 0
@@ -249,8 +267,15 @@ export const FindReplace = Extension.create({
           init(): FindReplaceState {
             return EMPTY_STATE;
           },
-          apply(tr: Transaction, prev: FindReplaceState, _oldState: EditorState, newState: EditorState): FindReplaceState {
-            const meta = tr.getMeta(findReplacePluginKey) as FindReplaceMeta | undefined;
+          apply(
+            tr: Transaction,
+            prev: FindReplaceState,
+            _oldState: EditorState,
+            newState: EditorState,
+          ): FindReplaceState {
+            const meta = tr.getMeta(findReplacePluginKey) as
+              | FindReplaceMeta
+              | undefined;
 
             if (meta) {
               switch (meta.type) {
@@ -303,11 +328,16 @@ export const FindReplace = Extension.create({
 
                 case "nextMatch": {
                   if (prev.matches.length === 0) return prev;
-                  const nextIdx = (prev.activeMatchIndex + 1) % prev.matches.length;
+                  const nextIdx =
+                    (prev.activeMatchIndex + 1) % prev.matches.length;
                   return {
                     ...prev,
                     activeMatchIndex: nextIdx,
-                    decorations: buildDecorations(newState.doc, prev.matches, nextIdx),
+                    decorations: buildDecorations(
+                      newState.doc,
+                      prev.matches,
+                      nextIdx,
+                    ),
                   };
                 }
 
@@ -319,7 +349,11 @@ export const FindReplace = Extension.create({
                   return {
                     ...prev,
                     activeMatchIndex: prevIdx,
-                    decorations: buildDecorations(newState.doc, prev.matches, prevIdx),
+                    decorations: buildDecorations(
+                      newState.doc,
+                      prev.matches,
+                      prevIdx,
+                    ),
                   };
                 }
 
@@ -329,7 +363,11 @@ export const FindReplace = Extension.create({
                   return {
                     ...prev,
                     activeMatchIndex: idx,
-                    decorations: buildDecorations(newState.doc, prev.matches, idx),
+                    decorations: buildDecorations(
+                      newState.doc,
+                      prev.matches,
+                      idx,
+                    ),
                   };
                 }
 
@@ -356,7 +394,9 @@ export const FindReplace = Extension.create({
         },
         props: {
           decorations(state: EditorState) {
-            const pluginState = findReplacePluginKey.getState(state) as FindReplaceState;
+            const pluginState = findReplacePluginKey.getState(
+              state,
+            ) as FindReplaceState;
             return pluginState?.decorations ?? DecorationSet.empty;
           },
         },
@@ -390,54 +430,60 @@ export function dispatchSetReplaceWith(
   view.dispatch(tr);
 }
 
-export function dispatchToggleCaseSensitive(
-  view: { state: EditorState; dispatch: (tr: Transaction) => void },
-) {
+export function dispatchToggleCaseSensitive(view: {
+  state: EditorState;
+  dispatch: (tr: Transaction) => void;
+}) {
   const tr = view.state.tr.setMeta(findReplacePluginKey, {
     type: "toggleCaseSensitive",
   } satisfies FindReplaceMeta);
   view.dispatch(tr);
 }
 
-export function dispatchToggleRegex(
-  view: { state: EditorState; dispatch: (tr: Transaction) => void },
-) {
+export function dispatchToggleRegex(view: {
+  state: EditorState;
+  dispatch: (tr: Transaction) => void;
+}) {
   const tr = view.state.tr.setMeta(findReplacePluginKey, {
     type: "toggleRegex",
   } satisfies FindReplaceMeta);
   view.dispatch(tr);
 }
 
-export function dispatchToggleWholeWord(
-  view: { state: EditorState; dispatch: (tr: Transaction) => void },
-) {
+export function dispatchToggleWholeWord(view: {
+  state: EditorState;
+  dispatch: (tr: Transaction) => void;
+}) {
   const tr = view.state.tr.setMeta(findReplacePluginKey, {
     type: "toggleWholeWord",
   } satisfies FindReplaceMeta);
   view.dispatch(tr);
 }
 
-export function dispatchNextMatch(
-  view: { state: EditorState; dispatch: (tr: Transaction) => void },
-) {
+export function dispatchNextMatch(view: {
+  state: EditorState;
+  dispatch: (tr: Transaction) => void;
+}) {
   const tr = view.state.tr.setMeta(findReplacePluginKey, {
     type: "nextMatch",
   } satisfies FindReplaceMeta);
   view.dispatch(tr);
 }
 
-export function dispatchPrevMatch(
-  view: { state: EditorState; dispatch: (tr: Transaction) => void },
-) {
+export function dispatchPrevMatch(view: {
+  state: EditorState;
+  dispatch: (tr: Transaction) => void;
+}) {
   const tr = view.state.tr.setMeta(findReplacePluginKey, {
     type: "prevMatch",
   } satisfies FindReplaceMeta);
   view.dispatch(tr);
 }
 
-export function dispatchClearSearch(
-  view: { state: EditorState; dispatch: (tr: Transaction) => void },
-) {
+export function dispatchClearSearch(view: {
+  state: EditorState;
+  dispatch: (tr: Transaction) => void;
+}) {
   const tr = view.state.tr.setMeta(findReplacePluginKey, {
     type: "clear",
   } satisfies FindReplaceMeta);
@@ -445,25 +491,40 @@ export function dispatchClearSearch(
 }
 
 /** Replace the current active match and advance to the next */
-export function dispatchReplaceCurrent(
-  view: { state: EditorState; dispatch: (tr: Transaction) => void },
-) {
-  const pluginState = findReplacePluginKey.getState(view.state) as FindReplaceState;
-  if (!pluginState || pluginState.matches.length === 0 || pluginState.activeMatchIndex < 0) return;
+export function dispatchReplaceCurrent(view: {
+  state: EditorState;
+  dispatch: (tr: Transaction) => void;
+}) {
+  const pluginState = findReplacePluginKey.getState(
+    view.state,
+  ) as FindReplaceState;
+  if (
+    !pluginState ||
+    pluginState.matches.length === 0 ||
+    pluginState.activeMatchIndex < 0
+  )
+    return;
 
   const match = pluginState.matches[pluginState.activeMatchIndex];
   if (!match) return;
 
-  const tr = view.state.tr.insertText(pluginState.replaceWith, match.from, match.to);
+  const tr = view.state.tr.insertText(
+    pluginState.replaceWith,
+    match.from,
+    match.to,
+  );
   // The doc change will trigger recomputation in the plugin apply
   view.dispatch(tr);
 }
 
 /** Replace all matches at once */
-export function dispatchReplaceAll(
-  view: { state: EditorState; dispatch: (tr: Transaction) => void },
-) {
-  const pluginState = findReplacePluginKey.getState(view.state) as FindReplaceState;
+export function dispatchReplaceAll(view: {
+  state: EditorState;
+  dispatch: (tr: Transaction) => void;
+}) {
+  const pluginState = findReplacePluginKey.getState(
+    view.state,
+  ) as FindReplaceState;
   if (!pluginState || pluginState.matches.length === 0) return;
 
   // Replace from last to first so positions remain valid

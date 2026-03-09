@@ -95,7 +95,8 @@ describe("Roundtrip: Footnote", () => {
   });
 
   it("multiple footnotes", () => {
-    const input = "First[^1] and second[^2].\n\n[^1]: First note.\n\n[^2]: Second note.\n";
+    const input =
+      "First[^1] and second[^2].\n\n[^1]: First note.\n\n[^2]: Second note.\n";
     expect(roundtrip(input)).toBe(input);
   });
 
@@ -110,7 +111,8 @@ describe("Roundtrip: Footnote", () => {
   });
 
   it("footnote ref mid-sentence", () => {
-    const input = "This is a footnote[^1] in the middle of a sentence.\n\n[^1]: Some note.\n";
+    const input =
+      "This is a footnote[^1] in the middle of a sentence.\n\n[^1]: Some note.\n";
     expect(roundtrip(input)).toBe(input);
   });
 });

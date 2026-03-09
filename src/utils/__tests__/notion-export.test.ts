@@ -99,25 +99,25 @@ describe("toUnicodeSuperscript", () => {
 describe("convertWikilinksForNotion", () => {
   it("converts simple wikilink", () => {
     expect(convertWikilinksForNotion("See [[my page]] here")).toBe(
-      "See [my page](my%20page.md) here"
+      "See [my page](my%20page.md) here",
     );
   });
 
   it("converts wikilink with alias", () => {
     expect(convertWikilinksForNotion("See [[my page|click here]]")).toBe(
-      "See [click here](my%20page.md)"
+      "See [click here](my%20page.md)",
     );
   });
 
   it("converts wikilink with heading", () => {
     expect(convertWikilinksForNotion("See [[page#section one]]")).toBe(
-      "See [page > section one](page.md#section%20one)"
+      "See [page > section one](page.md#section%20one)",
     );
   });
 
   it("encodes spaces in filename as %20", () => {
     expect(convertWikilinksForNotion("[[my long page name]]")).toBe(
-      "[my long page name](my%20long%20page%20name.md)"
+      "[my long page name](my%20long%20page%20name.md)",
     );
   });
 
@@ -194,7 +194,7 @@ describe("convertInlineMathForNotion", () => {
   it("converts single-dollar inline math to double-dollar", () => {
     const input = "The formula $E = mc^2$ is famous";
     expect(convertInlineMathForNotion(input)).toBe(
-      "The formula $$E = mc^2$$ is famous"
+      "The formula $$E = mc^2$$ is famous",
     );
   });
 
@@ -211,7 +211,7 @@ describe("convertInlineMathForNotion", () => {
   it("converts multiple inline math expressions", () => {
     const input = "Where $a$ and $b$ are constants";
     expect(convertInlineMathForNotion(input)).toBe(
-      "Where $$a$$ and $$b$$ are constants"
+      "Where $$a$$ and $$b$$ are constants",
     );
   });
 
@@ -234,13 +234,13 @@ describe("convertInlineMathForNotion", () => {
 describe("convertHighlightForNotion", () => {
   it("converts basic highlight to bold", () => {
     expect(convertHighlightForNotion("This is ==highlighted== text")).toBe(
-      "This is **highlighted** text"
+      "This is **highlighted** text",
     );
   });
 
   it("converts multiple highlights", () => {
     expect(convertHighlightForNotion("==one== and ==two==")).toBe(
-      "**one** and **two**"
+      "**one** and **two**",
     );
   });
 
@@ -382,7 +382,8 @@ describe("convertDefinitionListsForNotion", () => {
   });
 
   it("converts multiple dt/dd pairs", () => {
-    const input = "<dl>\n<dt>Term 1</dt>\n<dd>Def 1</dd>\n<dt>Term 2</dt>\n<dd>Def 2</dd>\n</dl>";
+    const input =
+      "<dl>\n<dt>Term 1</dt>\n<dd>Def 1</dd>\n<dt>Term 2</dt>\n<dd>Def 2</dd>\n</dl>";
     const result = convertDefinitionListsForNotion(input);
     expect(result).toBe("**Term 1**\n: Def 1\n\n**Term 2**\n: Def 2");
   });
@@ -435,7 +436,8 @@ describe("convertToggleForNotion", () => {
   });
 
   it("converts toggle with multiline body", () => {
-    const input = "<details><summary>Details</summary>\n\nLine 1\nLine 2\nLine 3\n</details>";
+    const input =
+      "<details><summary>Details</summary>\n\nLine 1\nLine 2\nLine 3\n</details>";
     const result = convertToggleForNotion(input);
     expect(result).toContain("**\u25B6 Details**");
     expect(result).toContain("Line 1");
@@ -456,7 +458,7 @@ describe("convertToggleForNotion", () => {
 describe("convertUnderlineForNotion", () => {
   it("converts basic underline to italic", () => {
     expect(convertUnderlineForNotion("This is <u>underlined</u> text")).toBe(
-      "This is *underlined* text"
+      "This is *underlined* text",
     );
   });
 
@@ -482,7 +484,8 @@ describe("convertForNotion", () => {
   });
 
   it("preserves standard markdown unchanged", () => {
-    const input = "# Heading\n\n**bold** and *italic*\n\n- list item\n\n| a | b |\n| --- | --- |\n| 1 | 2 |";
+    const input =
+      "# Heading\n\n**bold** and *italic*\n\n- list item\n\n| a | b |\n| --- | --- |\n| 1 | 2 |";
     expect(convertForNotion(input)).toBe(input);
   });
 
@@ -556,7 +559,8 @@ describe("convertForNotion", () => {
   });
 
   it("converts definition list in full document with colon", () => {
-    const input = "# Glossary\n\n<dl>\n<dt>API</dt>\n<dd>Application Programming Interface</dd>\n</dl>\n\nMore text.";
+    const input =
+      "# Glossary\n\n<dl>\n<dt>API</dt>\n<dd>Application Programming Interface</dd>\n</dl>\n\nMore text.";
     const result = convertForNotion(input);
     expect(result).toContain("**API**\n: Application Programming Interface");
   });
@@ -569,7 +573,8 @@ describe("convertForNotion", () => {
   });
 
   it("preserves external links", () => {
-    const input = "Visit [Google](https://google.com) or [Docs](https://docs.example.com/api).";
+    const input =
+      "Visit [Google](https://google.com) or [Docs](https://docs.example.com/api).";
     expect(convertForNotion(input)).toBe(input);
   });
 
@@ -584,7 +589,8 @@ describe("convertForNotion", () => {
   });
 
   it("preserves block math while converting surrounding inline marks", () => {
-    const input = "==highlighted== and x^2^\n\n$$\n\\sum_{i=0}^{n} a_i x^i\n$$\n\nMore ~0~ text";
+    const input =
+      "==highlighted== and x^2^\n\n$$\n\\sum_{i=0}^{n} a_i x^i\n$$\n\nMore ~0~ text";
     const result = convertForNotion(input);
     expect(result).toContain("**highlighted**");
     expect(result).toContain("\u00B2"); // superscript 2

@@ -3,19 +3,42 @@ import { describe, it, expect } from "vitest";
 import { Schema } from "@tiptap/pm/model";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
-import { serializeTag, TAG_NODE_RE } from "../../pipeline/transformers/tag-transformer";
+import {
+  serializeTag,
+  TAG_NODE_RE,
+} from "../../pipeline/transformers/tag-transformer";
 
 const schema = new Schema({
   nodes: {
     doc: { content: "block+" },
     paragraph: { content: "inline*", group: "block", marks: "_" },
-    heading: { content: "inline*", group: "block", attrs: { level: { default: 1 } } },
+    heading: {
+      content: "inline*",
+      group: "block",
+      attrs: { level: { default: 1 } },
+    },
     blockquote: { content: "block+", group: "block" },
     bulletList: { content: "listItem+", group: "block" },
-    orderedList: { content: "listItem+", group: "block", attrs: { start: { default: 1 } } },
+    orderedList: {
+      content: "listItem+",
+      group: "block",
+      attrs: { start: { default: 1 } },
+    },
     listItem: { content: "paragraph block*" },
-    codeBlock: { content: "text*", group: "block", marks: "", code: true, attrs: { language: { default: null } } },
-    tagNode: { group: "inline", inline: true, atom: true, marks: "", attrs: { tag: { default: "" } } },
+    codeBlock: {
+      content: "text*",
+      group: "block",
+      marks: "",
+      code: true,
+      attrs: { language: { default: null } },
+    },
+    tagNode: {
+      group: "inline",
+      inline: true,
+      atom: true,
+      marks: "",
+      attrs: { tag: { default: "" } },
+    },
     hardBreak: { inline: true, group: "inline" },
     text: { group: "inline" },
   },

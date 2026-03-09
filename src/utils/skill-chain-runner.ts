@@ -2,9 +2,17 @@
 // Executes a sequence of skills in dependency order and validates output flow.
 
 import type { SkillMeta } from "./skill-dependency-analyzer";
-import { buildDependencyGraph, detectCycles } from "./skill-dependency-analyzer";
+import {
+  buildDependencyGraph,
+  detectCycles,
+} from "./skill-dependency-analyzer";
 
-export type ChainStepStatus = "pending" | "running" | "passed" | "failed" | "skipped";
+export type ChainStepStatus =
+  | "pending"
+  | "running"
+  | "passed"
+  | "failed"
+  | "skipped";
 
 export interface ChainStep {
   skillName: string;
@@ -25,7 +33,10 @@ export interface ChainResult {
  * Topological sort: returns execution order for a skill and its transitive deps.
  * Throws if cycles are found.
  */
-export function resolveExecutionOrder(skills: SkillMeta[], targetName: string): string[] {
+export function resolveExecutionOrder(
+  skills: SkillMeta[],
+  targetName: string,
+): string[] {
   const graph = buildDependencyGraph(skills);
   const cycles = detectCycles(graph);
   if (cycles.length > 0) {
@@ -66,7 +77,13 @@ export function dryRunChain(
     executionOrder = resolveExecutionOrder(skills, targetName);
   } catch (err: unknown) {
     return {
-      steps: [{ skillName: targetName, status: "failed", error: err instanceof Error ? err.message : String(err) }],
+      steps: [
+        {
+          skillName: targetName,
+          status: "failed",
+          error: err instanceof Error ? err.message : String(err),
+        },
+      ],
       success: false,
       totalDurationMs: Date.now() - start,
     };
@@ -81,7 +98,11 @@ export function dryRunChain(
 
     const skill = skillByName.get(name);
     if (!skill) {
-      steps.push({ skillName: name, status: "failed", error: `Skill "${name}" not found` });
+      steps.push({
+        skillName: name,
+        status: "failed",
+        error: `Skill "${name}" not found`,
+      });
       chainBroken = true;
       continue;
     }

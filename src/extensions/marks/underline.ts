@@ -35,14 +35,27 @@ export const Underline = Mark.create<UnderlineOptions>({
   },
 
   renderHTML({ HTMLAttributes }) {
-    return ["u", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
+    return [
+      "u",
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes),
+      0,
+    ];
   },
 
   addCommands() {
     return {
-      setUnderline: () => ({ commands }) => commands.setMark(this.name),
-      toggleUnderline: () => ({ commands }) => commands.toggleMark(this.name),
-      unsetUnderline: () => ({ commands }) => commands.unsetMark(this.name),
+      setUnderline:
+        () =>
+        ({ commands }) =>
+          commands.setMark(this.name),
+      toggleUnderline:
+        () =>
+        ({ commands }) =>
+          commands.toggleMark(this.name),
+      unsetUnderline:
+        () =>
+        ({ commands }) =>
+          commands.unsetMark(this.name),
     };
   },
 

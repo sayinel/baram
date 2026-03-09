@@ -31,10 +31,7 @@ export async function readFile(path: string): Promise<string> {
   return invoke<string>("read_file", { path });
 }
 
-export async function writeFile(
-  path: string,
-  content: string,
-): Promise<void> {
+export async function writeFile(path: string, content: string): Promise<void> {
   return invoke<void>("write_file", { path, content });
 }
 
@@ -70,7 +67,10 @@ export async function watchDir(path: string): Promise<void> {
 }
 
 /** §56d Write binary data to a file (for images, etc.) */
-export async function writeBinaryFile(path: string, data: number[]): Promise<void> {
+export async function writeBinaryFile(
+  path: string,
+  data: number[],
+): Promise<void> {
   return invoke<void>("write_binary_file", { path, data });
 }
 
@@ -92,9 +92,7 @@ export async function searchFiles(
 }
 
 // §3.2 Index commands
-export async function getBacklinks(
-  filePath: string,
-): Promise<BacklinkEntry[]> {
+export async function getBacklinks(filePath: string): Promise<BacklinkEntry[]> {
   return invoke<BacklinkEntry[]>("get_backlinks", { filePath });
 }
 
@@ -103,7 +101,10 @@ export async function getUnlinkedMentions(
   filePath: string,
   rootPath: string,
 ): Promise<UnlinkedMention[]> {
-  return invoke<UnlinkedMention[]>("get_unlinked_mentions", { filePath, rootPath });
+  return invoke<UnlinkedMention[]>("get_unlinked_mentions", {
+    filePath,
+    rootPath,
+  });
 }
 
 export async function getLinkIndex(): Promise<LinkGraph> {
@@ -141,7 +142,11 @@ export async function renameNamespace(
   newDir: string,
   rootPath: string,
 ): Promise<NamespaceRenameResult> {
-  return invoke<NamespaceRenameResult>("rename_namespace", { oldDir, newDir, rootPath });
+  return invoke<NamespaceRenameResult>("rename_namespace", {
+    oldDir,
+    newDir,
+    rootPath,
+  });
 }
 
 // §6.3 LLM commands
@@ -188,7 +193,12 @@ export async function exportDocument(
   format: ExportFormat,
   options?: ExportOptions,
 ): Promise<void> {
-  return invoke<void>("export_document", { htmlContent, outputPath, format, options });
+  return invoke<void>("export_document", {
+    htmlContent,
+    outputPath,
+    format,
+    options,
+  });
 }
 
 // §5.10 PDF export via headless Chrome
@@ -250,11 +260,17 @@ export async function gitUnstage(path: string, files: string[]): Promise<void> {
   return invoke<void>("git_unstage", { path, files });
 }
 
-export async function gitCommit(path: string, message: string): Promise<string> {
+export async function gitCommit(
+  path: string,
+  message: string,
+): Promise<string> {
   return invoke<string>("git_commit", { path, message });
 }
 
-export async function gitDiffFile(path: string, filePath: string): Promise<GitFileDiff> {
+export async function gitDiffFile(
+  path: string,
+  filePath: string,
+): Promise<GitFileDiff> {
   return invoke<GitFileDiff>("git_diff_file", { path, filePath });
 }
 
@@ -262,7 +278,10 @@ export async function gitBranches(path: string): Promise<GitBranchInfo[]> {
   return invoke<GitBranchInfo[]>("git_branches", { path });
 }
 
-export async function gitSwitchBranch(path: string, branchName: string): Promise<void> {
+export async function gitSwitchBranch(
+  path: string,
+  branchName: string,
+): Promise<void> {
   return invoke<void>("git_switch_branch", { path, branchName });
 }
 
@@ -270,16 +289,26 @@ export async function gitDiscard(path: string, files: string[]): Promise<void> {
   return invoke<void>("git_discard", { path, files });
 }
 
-export async function gitCreateBranch(path: string, branchName: string): Promise<void> {
+export async function gitCreateBranch(
+  path: string,
+  branchName: string,
+): Promise<void> {
   return invoke<void>("git_create_branch", { path, branchName });
 }
 
 // §67 Git Advanced commands
-export async function gitLog(path: string, maxCount?: number): Promise<GitLogEntry[]> {
+export async function gitLog(
+  path: string,
+  maxCount?: number,
+): Promise<GitLogEntry[]> {
   return invoke<GitLogEntry[]>("git_log", { path, maxCount });
 }
 
-export async function gitStashSave(path: string, message: string, includeUntracked?: boolean): Promise<string> {
+export async function gitStashSave(
+  path: string,
+  message: string,
+  includeUntracked?: boolean,
+): Promise<string> {
   return invoke<string>("git_stash_save", { path, message, includeUntracked });
 }
 
@@ -291,7 +320,10 @@ export async function gitStashPop(path: string, index?: number): Promise<void> {
   return invoke<void>("git_stash_pop", { path, index });
 }
 
-export async function gitStashDrop(path: string, index?: number): Promise<void> {
+export async function gitStashDrop(
+  path: string,
+  index?: number,
+): Promise<void> {
   return invoke<void>("git_stash_drop", { path, index });
 }
 
@@ -303,19 +335,34 @@ export async function gitFetch(path: string, remote?: string): Promise<void> {
   return invoke<void>("git_fetch", { path, remote });
 }
 
-export async function gitPull(path: string, remote?: string, branch?: string): Promise<string> {
+export async function gitPull(
+  path: string,
+  remote?: string,
+  branch?: string,
+): Promise<string> {
   return invoke<string>("git_pull", { path, remote, branch });
 }
 
-export async function gitPush(path: string, remote?: string, branch?: string): Promise<void> {
+export async function gitPush(
+  path: string,
+  remote?: string,
+  branch?: string,
+): Promise<void> {
   return invoke<void>("git_push", { path, remote, branch });
 }
 
-export async function gitAheadBehind(path: string, branch?: string, remote?: string): Promise<GitAheadBehind> {
+export async function gitAheadBehind(
+  path: string,
+  branch?: string,
+  remote?: string,
+): Promise<GitAheadBehind> {
   return invoke<GitAheadBehind>("git_ahead_behind", { path, branch, remote });
 }
 
-export async function gitDeleteBranch(path: string, branchName: string): Promise<void> {
+export async function gitDeleteBranch(
+  path: string,
+  branchName: string,
+): Promise<void> {
   return invoke<void>("git_delete_branch", { path, branchName });
 }
 
@@ -348,7 +395,10 @@ export async function getVaultTags(rootPath: string): Promise<TagEntry[]> {
 }
 
 /** Tag-based file filtering — returns relative paths of files containing the tag */
-export async function getFilesByTag(rootPath: string, tag: string): Promise<string[]> {
+export async function getFilesByTag(
+  rootPath: string,
+  tag: string,
+): Promise<string[]> {
   return invoke<string[]>("get_files_by_tag", { rootPath, tag });
 }
 
@@ -371,10 +421,7 @@ export async function getConfig(key: string): Promise<string | null> {
   return invoke<string | null>("get_config", { key });
 }
 
-export async function setConfig(
-  key: string,
-  value: string,
-): Promise<void> {
+export async function setConfig(key: string, value: string): Promise<void> {
   return invoke<void>("set_config", { key, value });
 }
 
@@ -383,26 +430,58 @@ export async function removeConfig(key: string): Promise<void> {
 }
 
 // §71 Snapshot commands
-export async function createSnapshot(vaultPath: string, snapshotType: string, label?: string): Promise<string> {
-  return invoke<string>("create_snapshot", { vaultPath, snapshotType, label: label ?? null });
+export async function createSnapshot(
+  vaultPath: string,
+  snapshotType: string,
+  label?: string,
+): Promise<string> {
+  return invoke<string>("create_snapshot", {
+    vaultPath,
+    snapshotType,
+    label: label ?? null,
+  });
 }
 
-export async function listSnapshots(vaultPath: string): Promise<SnapshotEntry[]> {
+export async function listSnapshots(
+  vaultPath: string,
+): Promise<SnapshotEntry[]> {
   return invoke<SnapshotEntry[]>("list_snapshots", { vaultPath });
 }
 
-export async function getSnapshotDiff(vaultPath: string, snapshotId: string, filePath: string): Promise<DiffResult> {
-  return invoke<DiffResult>("get_snapshot_diff", { vaultPath, snapshotId, filePath });
+export async function getSnapshotDiff(
+  vaultPath: string,
+  snapshotId: string,
+  filePath: string,
+): Promise<DiffResult> {
+  return invoke<DiffResult>("get_snapshot_diff", {
+    vaultPath,
+    snapshotId,
+    filePath,
+  });
 }
 
-export async function restoreSnapshot(vaultPath: string, snapshotId: string, files?: string[]): Promise<void> {
-  return invoke<void>("restore_snapshot", { vaultPath, snapshotId, files: files ?? null });
+export async function restoreSnapshot(
+  vaultPath: string,
+  snapshotId: string,
+  files?: string[],
+): Promise<void> {
+  return invoke<void>("restore_snapshot", {
+    vaultPath,
+    snapshotId,
+    files: files ?? null,
+  });
 }
 
-export async function deleteSnapshot(vaultPath: string, snapshotId: string): Promise<void> {
+export async function deleteSnapshot(
+  vaultPath: string,
+  snapshotId: string,
+): Promise<void> {
   return invoke<void>("delete_snapshot", { vaultPath, snapshotId });
 }
 
-export async function getFileHistory(vaultPath: string, filePath: string): Promise<SnapshotEntry[]> {
+export async function getFileHistory(
+  vaultPath: string,
+  filePath: string,
+): Promise<SnapshotEntry[]> {
   return invoke<SnapshotEntry[]>("get_file_history", { vaultPath, filePath });
 }

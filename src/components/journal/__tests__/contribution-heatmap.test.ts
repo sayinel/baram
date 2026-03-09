@@ -113,12 +113,27 @@ describe("getMonthLabels", () => {
   test("weekIndex is non-decreasing across months", () => {
     const labels = getMonthLabels(2025);
     for (let i = 1; i < labels.length; i++) {
-      expect(labels[i].weekIndex).toBeGreaterThanOrEqual(labels[i - 1].weekIndex);
+      expect(labels[i].weekIndex).toBeGreaterThanOrEqual(
+        labels[i - 1].weekIndex,
+      );
     }
   });
 
   test("all month names are correct abbreviations", () => {
-    const expected = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const expected = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
     const labels = getMonthLabels(2025);
     expect(labels.map((l) => l.month)).toEqual(expected);
   });

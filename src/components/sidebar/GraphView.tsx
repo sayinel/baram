@@ -8,7 +8,12 @@ import { useEditorStore, isGraphTab } from "../../stores/editor-store";
 import { useLinkStore } from "../../stores/link-store";
 import { useGraphSettingsStore } from "../../stores/graph-settings-store";
 import { getLinkIndex, refreshIndex, readFile } from "../../ipc/invoke";
-import { toGraphElements, nodeSize, matchesFilter, assignNamespaceColors } from "./graph-utils";
+import {
+  toGraphElements,
+  nodeSize,
+  matchesFilter,
+  assignNamespaceColors,
+} from "./graph-utils";
 import { GraphSettingsPanel } from "./GraphSettingsPanel";
 
 // Register fcose layout
@@ -16,8 +21,18 @@ cytoscape.use(fcose);
 
 /** Build fcose layout options from settings */
 function buildLayoutOptions(
-  settings: { centerForce: number; repelForce: number; linkForce: number; linkDistance: number },
-  opts?: { randomize?: boolean; animate?: boolean; fit?: boolean; fixedNodeConstraint?: unknown[] },
+  settings: {
+    centerForce: number;
+    repelForce: number;
+    linkForce: number;
+    linkDistance: number;
+  },
+  opts?: {
+    randomize?: boolean;
+    animate?: boolean;
+    fit?: boolean;
+    fixedNodeConstraint?: unknown[];
+  },
 ) {
   return {
     name: "fcose" as const,
@@ -55,17 +70,22 @@ function buildGraphStyle(settings: {
         width: "data(size)",
         height: "data(size)",
         color: "var(--graph-label-color, #d1d5db)",
-        "transition-property": "opacity, border-width, border-color, background-color",
+        "transition-property":
+          "opacity, border-width, border-color, background-color",
         "transition-duration": 150,
       } as cytoscape.Css.Node,
     },
     // §61 Namespace coloring — uses data(nsColor) set per-node
-    ...(settings.colorByNamespace ? [{
-      selector: "node[nsColor]",
-      style: {
-        "background-color": "data(nsColor)",
-      } as cytoscape.Css.Node,
-    }] : []),
+    ...(settings.colorByNamespace
+      ? [
+          {
+            selector: "node[nsColor]",
+            style: {
+              "background-color": "data(nsColor)",
+            } as cytoscape.Css.Node,
+          },
+        ]
+      : []),
     {
       selector: "node:selected",
       style: {
@@ -250,43 +270,40 @@ export function GraphView() {
       cy.destroy();
       cyRef.current = null;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Handle node click → open file
-  const handleNodeTap = useCallback(
-    async (evt: EventObject) => {
-      const filePath = evt.target.id();
-      if (!filePath) return;
+  const handleNodeTap = useCallback(async (evt: EventObject) => {
+    const filePath = evt.target.id();
+    if (!filePath) return;
 
-      // Don't open ghost or tag nodes
-      if (evt.target.data("isGhost") || evt.target.data("isTag")) return;
+    // Don't open ghost or tag nodes
+    if (evt.target.data("isGhost") || evt.target.data("isTag")) return;
 
-      const { tabs, setActiveTab, openTab } = useEditorStore.getState();
+    const { tabs, setActiveTab, openTab } = useEditorStore.getState();
 
-      const existing = tabs.find((t) => t.filePath === filePath);
-      if (existing) {
-        setActiveTab(existing.id);
-        return;
-      }
+    const existing = tabs.find((t) => t.filePath === filePath);
+    if (existing) {
+      setActiveTab(existing.id);
+      return;
+    }
 
-      try {
-        const content = await readFile(filePath);
-        useFileStore.getState().setFileContent(filePath, content);
-        const fileName = filePath.split("/").pop() ?? filePath;
-        openTab({
-          id: crypto.randomUUID(),
-          filePath,
-          title: fileName,
-          isDirty: false,
-          isPinned: false,
-        });
-      } catch (err) {
-        console.error("§30 GraphView: failed to open file", err);
-      }
-    },
-    [],
-  );
+    try {
+      const content = await readFile(filePath);
+      useFileStore.getState().setFileContent(filePath, content);
+      const fileName = filePath.split("/").pop() ?? filePath;
+      openTab({
+        id: crypto.randomUUID(),
+        filePath,
+        title: fileName,
+        isDirty: false,
+        isPinned: false,
+      });
+    } catch (err) {
+      console.error("§30 GraphView: failed to open file", err);
+    }
+  }, []);
 
   // Effect 2: Fetch data + initial layout
   useEffect(() => {
@@ -323,7 +340,8 @@ export function GraphView() {
           const nsColorMap = assignNamespaceColors(namespaces);
           for (const n of nodesWithSize) {
             if (!n.data.isTag && !n.data.isGhost) {
-              (n.data as Record<string, unknown>).nsColor = nsColorMap.get(n.data.namespace ?? "") ?? "";
+              (n.data as Record<string, unknown>).nsColor =
+                nsColorMap.get(n.data.namespace ?? "") ?? "";
             }
           }
         }
@@ -363,7 +381,7 @@ export function GraphView() {
     return () => {
       cancelled = true;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rootPath, indexVersion, handleNodeTap, colorByNamespace]);
 
   // Effect 3: Re-layout on force settings change
@@ -385,7 +403,7 @@ export function GraphView() {
     if (!cy) return;
 
     const SPRING_K = 0.06; // spring constant — how strongly neighbors follow
-    const DAMPING = 0.5;   // reduce overshoot
+    const DAMPING = 0.5; // reduce overshoot
 
     const handleDrag = (evt: EventObject) => {
       const node = evt.target;
@@ -586,14 +604,26 @@ export function GraphView() {
         edge.style("display", "element");
       }
     });
-  }, [rootPath, searchQuery, showOrphans, existingFilesOnly, showTags, namespaceFilter, nodeCount]);
+  }, [
+    rootPath,
+    searchQuery,
+    showOrphans,
+    existingFilesOnly,
+    showTags,
+    namespaceFilter,
+    nodeCount,
+  ]);
 
   // Effect: Update styles when display settings change
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
 
-    cy.style().fromJson(buildGraphStyle({ linkThickness, showArrows, colorByNamespace })).update();
+    cy.style()
+      .fromJson(
+        buildGraphStyle({ linkThickness, showArrows, colorByNamespace }),
+      )
+      .update();
   }, [linkThickness, showArrows, colorByNamespace]);
 
   // Effect: Update node sizes when nodeSize setting changes
@@ -663,7 +693,12 @@ export function GraphView() {
               onClick={handleOpenInTab}
               title="Open in editor tab"
             >
-              <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+              <svg
+                viewBox="0 0 16 16"
+                width="14"
+                height="14"
+                fill="currentColor"
+              >
                 <path d="M2 1h5v1H3v4H2V1zm12 0h-5v1h4v4h1V1zM2 15h5v-1H3v-4H2v5zm12 0h-5v-1h4v-4h1v5z" />
               </svg>
             </button>

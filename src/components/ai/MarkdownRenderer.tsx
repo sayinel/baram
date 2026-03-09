@@ -5,7 +5,13 @@ import type { ReactNode } from "react";
 import { fromMarkdown } from "mdast-util-from-markdown";
 import { gfmFromMarkdown } from "mdast-util-gfm";
 import { gfm } from "micromark-extension-gfm";
-import type { Nodes, PhrasingContent, BlockContent, DefinitionContent, ListItem } from "mdast";
+import type {
+  Nodes,
+  PhrasingContent,
+  BlockContent,
+  DefinitionContent,
+  ListItem,
+} from "mdast";
 
 type MdastNode = Nodes;
 type MdastBlockContent = BlockContent | DefinitionContent | ListItem;
@@ -22,11 +28,7 @@ function renderInline(node: PhrasingContent, key: number): ReactNode {
         </strong>
       );
     case "emphasis":
-      return (
-        <em key={key}>
-          {node.children.map(renderInline)}
-        </em>
-      );
+      return <em key={key}>{node.children.map(renderInline)}</em>;
     case "delete":
       return (
         <del key={key} className="line-through">
@@ -68,7 +70,9 @@ function renderInline(node: PhrasingContent, key: number): ReactNode {
         />
       );
     case "html":
-      return <span key={key} dangerouslySetInnerHTML={{ __html: node.value }} />;
+      return (
+        <span key={key} dangerouslySetInnerHTML={{ __html: node.value }} />
+      );
     default:
       return null;
   }
@@ -108,7 +112,9 @@ function renderBlock(node: MdastBlockContent, key: number): ReactNode {
           key={key}
           className="mb-2 border-l-2 border-[var(--color-border)] pl-3 italic"
         >
-          {node.children.map((child, i) => renderBlock(child as MdastBlockContent, i))}
+          {node.children.map((child, i) =>
+            renderBlock(child as MdastBlockContent, i),
+          )}
         </blockquote>
       );
     case "list":
@@ -127,7 +133,9 @@ function renderBlock(node: MdastBlockContent, key: number): ReactNode {
     case "listItem":
       return (
         <li key={key}>
-          {node.children.map((child, i) => renderBlock(child as MdastBlockContent, i))}
+          {node.children.map((child, i) =>
+            renderBlock(child as MdastBlockContent, i),
+          )}
         </li>
       );
     case "thematicBreak":
@@ -164,7 +172,9 @@ function renderBlock(node: MdastBlockContent, key: number): ReactNode {
 /** Render a root mdast node to React elements */
 function renderMdast(tree: MdastNode): ReactNode {
   if (tree.type === "root") {
-    return tree.children.map((child, i) => renderBlock(child as MdastBlockContent, i));
+    return tree.children.map((child, i) =>
+      renderBlock(child as MdastBlockContent, i),
+    );
   }
   return null;
 }

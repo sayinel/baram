@@ -114,8 +114,14 @@ export function FootnoteRefView({ node, editor, selected }: NodeViewProps) {
     >
       {displayNumber || identifier}
       {showTooltip && tooltipText && (
-        <div ref={tooltipRef} className="footnote-ref-tooltip" contentEditable={false}>
-          {tooltipText.length > 200 ? tooltipText.slice(0, 200) + "…" : tooltipText}
+        <div
+          ref={tooltipRef}
+          className="footnote-ref-tooltip"
+          contentEditable={false}
+        >
+          {tooltipText.length > 200
+            ? tooltipText.slice(0, 200) + "…"
+            : tooltipText}
         </div>
       )}
     </NodeViewWrapper>

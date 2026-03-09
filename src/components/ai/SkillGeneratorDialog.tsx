@@ -12,12 +12,24 @@ interface SkillGeneratorDialogProps {
   onClose: () => void;
 }
 
-const VARIABLE_OPTIONS = ["selection", "document", "input", "clipboard"] as const;
+const VARIABLE_OPTIONS = [
+  "selection",
+  "document",
+  "input",
+  "clipboard",
+] as const;
 
-export function SkillGeneratorDialog({ open, onClose }: SkillGeneratorDialogProps) {
+export function SkillGeneratorDialog({
+  open,
+  onClose,
+}: SkillGeneratorDialogProps) {
   const [description, setDescription] = useState("");
-  const [selectedVars, setSelectedVars] = useState<Set<string>>(new Set(["input"]));
-  const [outputFormat, setOutputFormat] = useState<"text" | "json" | "markdown">("text");
+  const [selectedVars, setSelectedVars] = useState<Set<string>>(
+    new Set(["input"]),
+  );
+  const [outputFormat, setOutputFormat] = useState<
+    "text" | "json" | "markdown"
+  >("text");
   const [preview, setPreview] = useState("");
   const { send, cancel, isStreaming, text, error } = useLLMStream();
 
@@ -49,11 +61,12 @@ export function SkillGeneratorDialog({ open, onClose }: SkillGeneratorDialogProp
     if (!rootPath) return;
 
     // Generate a filename from the description
-    const safeName = description
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "")
-      .slice(0, 40) || "new-skill";
+    const safeName =
+      description
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "")
+        .slice(0, 40) || "new-skill";
     const filePath = `${rootPath}/skills/${safeName}.md`;
 
     try {
@@ -103,7 +116,15 @@ export function SkillGeneratorDialog({ open, onClose }: SkillGeneratorDialogProp
           <label className="custom-ai-label">Template Variables</label>
           <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
             {VARIABLE_OPTIONS.map((v) => (
-              <label key={v} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13 }}>
+              <label
+                key={v}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  fontSize: 13,
+                }}
+              >
                 <input
                   type="checkbox"
                   checked={selectedVars.has(v)}
@@ -120,7 +141,9 @@ export function SkillGeneratorDialog({ open, onClose }: SkillGeneratorDialogProp
           <select
             className="settings-select"
             value={outputFormat}
-            onChange={(e) => setOutputFormat(e.target.value as "text" | "json" | "markdown")}
+            onChange={(e) =>
+              setOutputFormat(e.target.value as "text" | "json" | "markdown")
+            }
             style={{ marginTop: 4 }}
           >
             <option value="text">Text</option>
@@ -175,15 +198,16 @@ export function SkillGeneratorDialog({ open, onClose }: SkillGeneratorDialogProp
           </div>
         )}
 
-        {error && (() => {
-          const formatted = formatAIError(error);
-          return (
-            <div className="ai-error-message">
-              <strong>{formatted.title}</strong>
-              <span>{formatted.detail}</span>
-            </div>
-          );
-        })()}
+        {error &&
+          (() => {
+            const formatted = formatAIError(error);
+            return (
+              <div className="ai-error-message">
+                <strong>{formatted.title}</strong>
+                <span>{formatted.detail}</span>
+              </div>
+            );
+          })()}
 
         <div style={{ marginTop: 12, textAlign: "right" }}>
           <button className="custom-ai-btn" onClick={onClose}>

@@ -71,7 +71,9 @@ describe("Navigation History Store", () => {
     });
 
     const openTabIds = new Set(["tab-1", "tab-current"]);
-    const targetId = useNavigationStore.getState().goBack("tab-current", openTabIds);
+    const targetId = useNavigationStore
+      .getState()
+      .goBack("tab-current", openTabIds);
 
     expect(targetId).toBe("tab-1");
     expect(useNavigationStore.getState().backStack).toEqual([]);
@@ -85,7 +87,9 @@ describe("Navigation History Store", () => {
     });
 
     const openTabIds = new Set(["tab-current"]);
-    const targetId = useNavigationStore.getState().goBack("tab-current", openTabIds);
+    const targetId = useNavigationStore
+      .getState()
+      .goBack("tab-current", openTabIds);
 
     expect(targetId).toBeNull();
     expect(useNavigationStore.getState().backStack).toEqual([]);
@@ -98,7 +102,9 @@ describe("Navigation History Store", () => {
     });
 
     const openTabIds = new Set(["tab-current", "tab-5"]);
-    const targetId = useNavigationStore.getState().goForward("tab-current", openTabIds);
+    const targetId = useNavigationStore
+      .getState()
+      .goForward("tab-current", openTabIds);
 
     expect(targetId).toBe("tab-5");
     expect(useNavigationStore.getState().backStack).toEqual(["tab-current"]);
@@ -153,6 +159,8 @@ describe("Navigation History Store", () => {
     for (let i = 0; i < 200; i++) {
       store.pushHistory(`tab-${i}`);
     }
-    expect(useNavigationStore.getState().backStack.length).toBeLessThanOrEqual(100);
+    expect(useNavigationStore.getState().backStack.length).toBeLessThanOrEqual(
+      100,
+    );
   });
 });

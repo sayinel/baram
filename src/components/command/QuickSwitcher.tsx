@@ -145,7 +145,7 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
   // §56l Journal prefix filter state
   const resolvedJournalDir = useMemo(
     () =>
-      journalEnabled ? resolveJournalDir(null, journalDirectory) ?? "" : "",
+      journalEnabled ? (resolveJournalDir(null, journalDirectory) ?? "") : "",
     [journalEnabled, journalDirectory],
   );
 
@@ -186,7 +186,12 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
 
     const hashIdx = remainingQuery.indexOf("#");
     if (hashIdx === -1) {
-      return { prefix, nsFilter, fileQuery: remainingQuery, headingQuery: null };
+      return {
+        prefix,
+        nsFilter,
+        fileQuery: remainingQuery,
+        headingQuery: null,
+      };
     }
     return {
       prefix,
@@ -296,14 +301,12 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
 
     const q = parsedQuery.fileQuery.trim();
     if (!q) {
-      const items: ResultItem[] = candidateFiles
-        .slice(0, 50)
-        .map((f) => ({
-          type: "file" as const,
-          file: f,
-          label: f.name,
-          detail: extractNamespace(f.relativePath),
-        }));
+      const items: ResultItem[] = candidateFiles.slice(0, 50).map((f) => ({
+        type: "file" as const,
+        file: f,
+        label: f.name,
+        detail: extractNamespace(f.relativePath),
+      }));
       return items;
     }
 
@@ -435,9 +438,7 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
         if (item.file) {
           openFile(item.file).then(() => {
             // Extra frames for ProseMirror to load the new document
-            requestAnimationFrame(() =>
-              requestAnimationFrame(scrollToHeading),
-            );
+            requestAnimationFrame(() => requestAnimationFrame(scrollToHeading));
           });
         } else {
           scrollToHeading();
@@ -516,7 +517,7 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
                   ? "create"
                   : item.type === "heading"
                     ? `h-${item.heading?.pmPos}`
-                    : item.file?.path ?? idx
+                    : (item.file?.path ?? idx)
               }
               ref={idx === selectedIndex ? selectedRef : null}
               className={`quick-switcher-item ${idx === selectedIndex ? "quick-switcher-item-selected" : ""}`}

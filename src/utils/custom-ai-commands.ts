@@ -27,9 +27,10 @@ export function substituteVariables(
  * The prompt is derived from surrounding text context.
  * Returns { hasInput: true, prompt } if {{input}} is present.
  */
-export function resolveInputVariable(
-  template: string,
-): { hasInput: boolean; prompt: string } {
+export function resolveInputVariable(template: string): {
+  hasInput: boolean;
+  prompt: string;
+} {
   const inputPattern = /\{\{input\}\}/;
   if (!inputPattern.test(template)) {
     return { hasInput: false, prompt: "" };

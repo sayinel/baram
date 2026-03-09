@@ -6,24 +6,81 @@
 // ---------------------------------------------------------------------------
 
 const SUBSCRIPT_MAP: Record<string, string> = {
-  "0": "\u2080", "1": "\u2081", "2": "\u2082", "3": "\u2083", "4": "\u2084",
-  "5": "\u2085", "6": "\u2086", "7": "\u2087", "8": "\u2088", "9": "\u2089",
-  "a": "\u2090", "e": "\u2091", "h": "\u2095", "i": "\u1D62", "j": "\u2C7C",
-  "k": "\u2096", "l": "\u2097", "m": "\u2098", "n": "\u2099", "o": "\u2092",
-  "p": "\u209A", "r": "\u1D63", "s": "\u209B", "t": "\u209C", "u": "\u1D64",
-  "v": "\u1D65", "x": "\u2093",
-  "+": "\u208A", "-": "\u208B", "=": "\u208C", "(": "\u208D", ")": "\u208E",
+  "0": "\u2080",
+  "1": "\u2081",
+  "2": "\u2082",
+  "3": "\u2083",
+  "4": "\u2084",
+  "5": "\u2085",
+  "6": "\u2086",
+  "7": "\u2087",
+  "8": "\u2088",
+  "9": "\u2089",
+  a: "\u2090",
+  e: "\u2091",
+  h: "\u2095",
+  i: "\u1D62",
+  j: "\u2C7C",
+  k: "\u2096",
+  l: "\u2097",
+  m: "\u2098",
+  n: "\u2099",
+  o: "\u2092",
+  p: "\u209A",
+  r: "\u1D63",
+  s: "\u209B",
+  t: "\u209C",
+  u: "\u1D64",
+  v: "\u1D65",
+  x: "\u2093",
+  "+": "\u208A",
+  "-": "\u208B",
+  "=": "\u208C",
+  "(": "\u208D",
+  ")": "\u208E",
 };
 
 const SUPERSCRIPT_MAP: Record<string, string> = {
-  "0": "\u2070", "1": "\u00B9", "2": "\u00B2", "3": "\u00B3", "4": "\u2074",
-  "5": "\u2075", "6": "\u2076", "7": "\u2077", "8": "\u2078", "9": "\u2079",
-  "a": "\u1D43", "b": "\u1D47", "c": "\u1D9C", "d": "\u1D48", "e": "\u1D49",
-  "f": "\u1DA0", "g": "\u1D4D", "h": "\u02B0", "i": "\u2071", "j": "\u02B2",
-  "k": "\u1D4F", "l": "\u02E1", "m": "\u1D50", "n": "\u207F", "o": "\u1D52",
-  "p": "\u1D56", "r": "\u02B3", "s": "\u02E2", "t": "\u1D57", "u": "\u1D58",
-  "v": "\u1D5B", "w": "\u02B7", "x": "\u02E3", "y": "\u02B8", "z": "\u1DBB",
-  "+": "\u207A", "-": "\u207B", "=": "\u207C", "(": "\u207D", ")": "\u207E",
+  "0": "\u2070",
+  "1": "\u00B9",
+  "2": "\u00B2",
+  "3": "\u00B3",
+  "4": "\u2074",
+  "5": "\u2075",
+  "6": "\u2076",
+  "7": "\u2077",
+  "8": "\u2078",
+  "9": "\u2079",
+  a: "\u1D43",
+  b: "\u1D47",
+  c: "\u1D9C",
+  d: "\u1D48",
+  e: "\u1D49",
+  f: "\u1DA0",
+  g: "\u1D4D",
+  h: "\u02B0",
+  i: "\u2071",
+  j: "\u02B2",
+  k: "\u1D4F",
+  l: "\u02E1",
+  m: "\u1D50",
+  n: "\u207F",
+  o: "\u1D52",
+  p: "\u1D56",
+  r: "\u02B3",
+  s: "\u02E2",
+  t: "\u1D57",
+  u: "\u1D58",
+  v: "\u1D5B",
+  w: "\u02B7",
+  x: "\u02E3",
+  y: "\u02B8",
+  z: "\u1DBB",
+  "+": "\u207A",
+  "-": "\u207B",
+  "=": "\u207C",
+  "(": "\u207D",
+  ")": "\u207E",
 };
 
 // ---------------------------------------------------------------------------
@@ -32,7 +89,10 @@ const SUPERSCRIPT_MAP: Record<string, string> = {
 
 /** Convert text to Unicode subscript characters.
  *  Returns { text, complete } where complete=true if all chars mapped. */
-export function toUnicodeSubscript(text: string): { text: string; complete: boolean } {
+export function toUnicodeSubscript(text: string): {
+  text: string;
+  complete: boolean;
+} {
   let result = "";
   let complete = true;
   for (const ch of text) {
@@ -49,7 +109,10 @@ export function toUnicodeSubscript(text: string): { text: string; complete: bool
 
 /** Convert text to Unicode superscript characters.
  *  Returns { text, complete } where complete=true if all chars mapped. */
-export function toUnicodeSuperscript(text: string): { text: string; complete: boolean } {
+export function toUnicodeSuperscript(text: string): {
+  text: string;
+  complete: boolean;
+} {
   let result = "";
   let complete = true;
   for (const ch of text) {
@@ -115,7 +178,10 @@ function replaceOutsideCode(
 ): string {
   const regions = collectCodeRegions(md);
   // Use a global regex
-  const globalRe = new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g");
+  const globalRe = new RegExp(
+    pattern.source,
+    pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g",
+  );
   return md.replace(globalRe, (match: string, ...args: unknown[]) => {
     // The last two args from replace are: offset, original string
     // But args also include groups. We need to find the offset.
@@ -221,7 +287,8 @@ export function convertCalloutsForNotion(md: string): string {
 export function convertToggleForNotion(md: string): string {
   // Handle multi-line details blocks
   // Pattern: <details> ... <summary>Title</summary> ... body ... </details>
-  const detailsRe = /<details[^>]*>\s*<summary>([\s\S]*?)<\/summary>([\s\S]*?)<\/details>/g;
+  const detailsRe =
+    /<details[^>]*>\s*<summary>([\s\S]*?)<\/summary>([\s\S]*?)<\/details>/g;
   return md.replace(detailsRe, (_match, summary: string, body: string) => {
     const title = summary.trim();
     const bodyContent = body.trim();
@@ -238,27 +305,30 @@ export function convertToggleForNotion(md: string): string {
  *  Convert to: `**Term**\nDefinition` */
 export function convertDefinitionListsForNotion(md: string): string {
   // Pattern 1: HTML <dl>...</dl> blocks
-  const result = md.replace(/<dl>\n?([\s\S]*?)\n?<\/dl>/g, (_match, inner: string) => {
-    const terms: string[] = [];
-    // Extract dt/dd pairs
-    const dtRe = /<dt>([\s\S]*?)<\/dt>/g;
-    const ddRe = /<dd>([\s\S]*?)<\/dd>/g;
-    const dts: string[] = [];
-    const dds: string[] = [];
-    let m: RegExpExecArray | null;
-    while ((m = dtRe.exec(inner)) !== null) dts.push(m[1].trim());
-    while ((m = ddRe.exec(inner)) !== null) dds.push(m[1].trim());
+  const result = md.replace(
+    /<dl>\n?([\s\S]*?)\n?<\/dl>/g,
+    (_match, inner: string) => {
+      const terms: string[] = [];
+      // Extract dt/dd pairs
+      const dtRe = /<dt>([\s\S]*?)<\/dt>/g;
+      const ddRe = /<dd>([\s\S]*?)<\/dd>/g;
+      const dts: string[] = [];
+      const dds: string[] = [];
+      let m: RegExpExecArray | null;
+      while ((m = dtRe.exec(inner)) !== null) dts.push(m[1].trim());
+      while ((m = ddRe.exec(inner)) !== null) dds.push(m[1].trim());
 
-    for (let i = 0; i < dts.length; i++) {
-      if (i > 0) terms.push("");
-      terms.push(`**${dts[i]}**`);
-      if (i < dds.length) {
-        terms.push(`: ${dds[i]}`);
+      for (let i = 0; i < dts.length; i++) {
+        if (i > 0) terms.push("");
+        terms.push(`**${dts[i]}**`);
+        if (i < dds.length) {
+          terms.push(`: ${dds[i]}`);
+        }
       }
-    }
 
-    return terms.join("\n");
-  });
+      return terms.join("\n");
+    },
+  );
 
   // Pattern 2: Plain text format from pm-to-md.ts: `Term\n: Definition`
   // These appear as html flow nodes but end up as plain text in the final markdown.
@@ -271,7 +341,13 @@ export function convertDefinitionListsForNotion(md: string): string {
     if (idx + 1 < lines.length && /^:\s/.test(lines[idx + 1])) {
       const term = lines[idx];
       // Don't convert if already bold or if it looks like a heading/blockquote etc.
-      if (!term.startsWith("#") && !term.startsWith(">") && !term.startsWith("-") && !term.startsWith("*") && term.trim() !== "") {
+      if (
+        !term.startsWith("#") &&
+        !term.startsWith(">") &&
+        !term.startsWith("-") &&
+        !term.startsWith("*") &&
+        term.trim() !== ""
+      ) {
         output.push(`**${term}**`);
         // Collect all subsequent definition lines
         idx++;
@@ -322,7 +398,9 @@ export function convertFootnotesForNotion(md: string): string {
   if (definitions.size === 0) return md;
 
   // Remove definition lines from body
-  let result = md.replace(/^\[\^[^\]]+\]:\s*[\s\S]*?(?=\n\[\^|\n\n|$)/gm, "").trim();
+  let result = md
+    .replace(/^\[\^[^\]]+\]:\s*[\s\S]*?(?=\n\[\^|\n\n|$)/gm, "")
+    .trim();
 
   // Replace inline references [^id] -> (id)
   // Be careful not to match footnote definitions [^id]:
@@ -350,85 +428,105 @@ export function convertFootnotesForNotion(md: string): string {
  *  `[[page#heading]]` -> `[page > heading](page.md#heading)` */
 export function convertWikilinksForNotion(md: string): string {
   // Match [[ ... ]] wikilinks — careful not to match inside code
-  return replaceOutsideCode(md, /\[\[([^\]]+)\]\]/g, (_match, inner: string) => {
-    // Check for alias: [[target|alias]]
-    const pipeIdx = inner.indexOf("|");
-    let target: string;
-    let alias: string | null = null;
+  return replaceOutsideCode(
+    md,
+    /\[\[([^\]]+)\]\]/g,
+    (_match, inner: string) => {
+      // Check for alias: [[target|alias]]
+      const pipeIdx = inner.indexOf("|");
+      let target: string;
+      let alias: string | null = null;
 
-    if (pipeIdx >= 0) {
-      target = inner.slice(0, pipeIdx).trim();
-      alias = inner.slice(pipeIdx + 1).trim();
-    } else {
-      target = inner.trim();
-    }
+      if (pipeIdx >= 0) {
+        target = inner.slice(0, pipeIdx).trim();
+        alias = inner.slice(pipeIdx + 1).trim();
+      } else {
+        target = inner.trim();
+      }
 
-    // Check for heading: target#heading
-    const hashIdx = target.indexOf("#");
-    let page = target;
-    let heading = "";
-    if (hashIdx >= 0) {
-      page = target.slice(0, hashIdx);
-      heading = target.slice(hashIdx + 1);
-    }
+      // Check for heading: target#heading
+      const hashIdx = target.indexOf("#");
+      let page = target;
+      let heading = "";
+      if (hashIdx >= 0) {
+        page = target.slice(0, hashIdx);
+        heading = target.slice(hashIdx + 1);
+      }
 
-    // Build URL: encode spaces
-    const urlPage = page.replace(/ /g, "%20");
-    const urlSuffix = heading ? `#${heading.replace(/ /g, "%20")}` : "";
-    const url = `${urlPage}.md${urlSuffix}`;
+      // Build URL: encode spaces
+      const urlPage = page.replace(/ /g, "%20");
+      const urlSuffix = heading ? `#${heading.replace(/ /g, "%20")}` : "";
+      const url = `${urlPage}.md${urlSuffix}`;
 
-    // Build display text
-    let displayText: string;
-    if (alias) {
-      displayText = alias;
-    } else if (heading) {
-      displayText = `${page} > ${heading}`;
-    } else {
-      displayText = page;
-    }
+      // Build display text
+      let displayText: string;
+      if (alias) {
+        displayText = alias;
+      } else if (heading) {
+        displayText = `${page} > ${heading}`;
+      } else {
+        displayText = page;
+      }
 
-    return `[${displayText}](${url})`;
-  });
+      return `[${displayText}](${url})`;
+    },
+  );
 }
 
 /** Convert inline math `$...$` to Notion's `$$...$$`.
  *  Does not touch block math `$$...$$` or code regions. */
 export function convertInlineMathForNotion(md: string): string {
   // Match single $ that are NOT preceded or followed by another $
-  return replaceOutsideCode(md, /(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)/g, (_match, content: string) => {
-    return `$$${content}$$`;
-  });
+  return replaceOutsideCode(
+    md,
+    /(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)/g,
+    (_match, content: string) => {
+      return `$$${content}$$`;
+    },
+  );
 }
 
 /** Convert `==text==` highlight to `**text**` bold (closest Notion equivalent) */
 export function convertHighlightForNotion(md: string): string {
-  return replaceOutsideCode(md, /==((?:(?!==).)+)==/g, (_match, content: string) => {
-    return `**${content}**`;
-  });
+  return replaceOutsideCode(
+    md,
+    /==((?:(?!==).)+)==/g,
+    (_match, content: string) => {
+      return `**${content}**`;
+    },
+  );
 }
 
 /** Convert `~text~` subscript to Unicode subscript or math fallback.
  *  Does NOT match `~~strikethrough~~`. */
 export function convertSubscriptForNotion(md: string): string {
-  return replaceOutsideCode(md, /(?<!~)~(?!~)([^~]+)(?<!~)~(?!~)/g, (_match, content: string) => {
-    const { text, complete } = toUnicodeSubscript(content);
-    if (complete) {
-      return text;
-    }
-    return `$$_{${content}}$$`;
-  });
+  return replaceOutsideCode(
+    md,
+    /(?<!~)~(?!~)([^~]+)(?<!~)~(?!~)/g,
+    (_match, content: string) => {
+      const { text, complete } = toUnicodeSubscript(content);
+      if (complete) {
+        return text;
+      }
+      return `$$_{${content}}$$`;
+    },
+  );
 }
 
 /** Convert `^text^` superscript to Unicode superscript or math fallback.
  *  Does NOT match `^^` sequences. */
 export function convertSuperscriptForNotion(md: string): string {
-  return replaceOutsideCode(md, /(?<!\^)\^(?!\^)([^^]+)(?<!\^)\^(?!\^)/g, (_match, content: string) => {
-    const { text, complete } = toUnicodeSuperscript(content);
-    if (complete) {
-      return text;
-    }
-    return `$$^{${content}}$$`;
-  });
+  return replaceOutsideCode(
+    md,
+    /(?<!\^)\^(?!\^)([^^]+)(?<!\^)\^(?!\^)/g,
+    (_match, content: string) => {
+      const { text, complete } = toUnicodeSuperscript(content);
+      if (complete) {
+        return text;
+      }
+      return `$$^{${content}}$$`;
+    },
+  );
 }
 
 /** Convert `<u>text</u>` underline to `*text*` italic (closest Notion alternative) */

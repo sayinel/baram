@@ -2,10 +2,20 @@
 // Uses a plain ProseMirror NodeView (not React) to properly handle
 // setSelection(), which is critical for CM ↔ PM focus coordination.
 
-import { EditorView as CMView, ViewUpdate, keymap, lineNumbers, drawSelection } from "@codemirror/view";
+import {
+  EditorView as CMView,
+  ViewUpdate,
+  keymap,
+  lineNumbers,
+  drawSelection,
+} from "@codemirror/view";
 import { EditorState as CMState } from "@codemirror/state";
 import { defaultKeymap, indentWithTab } from "@codemirror/commands";
-import { bracketMatching, syntaxHighlighting, indentUnit } from "@codemirror/language";
+import {
+  bracketMatching,
+  syntaxHighlighting,
+  indentUnit,
+} from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { getLanguageExtension, LANGUAGE_OPTIONS } from "./code-block-languages";
 import { getHighlightStyle } from "./code-block-highlight";
@@ -127,7 +137,8 @@ export class CodeBlockNodeView implements NodeView {
         dir,
       );
       // Check if selection resolved back inside this code block
-      const selInside = selection.from > pos && selection.from < pos + this.node.nodeSize;
+      const selInside =
+        selection.from > pos && selection.from < pos + this.node.nodeSize;
       if (selInside) {
         // No valid position in escape direction — insert a new paragraph
         const insertPos = dir < 0 ? pos : pos + this.node.nodeSize;
@@ -189,7 +200,11 @@ export class CodeBlockNodeView implements NodeView {
             const pmNode = this.view.state.doc.nodeAt(pos);
             if (!pmNode) return false;
             const paragraph = this.view.state.schema.nodes.paragraph.create();
-            const tr = this.view.state.tr.replaceWith(pos, pos + pmNode.nodeSize, paragraph);
+            const tr = this.view.state.tr.replaceWith(
+              pos,
+              pos + pmNode.nodeSize,
+              paragraph,
+            );
             tr.setSelection(TextSelection.near(tr.doc.resolve(pos)));
             this.view.dispatch(tr);
             this.view.focus();
@@ -223,7 +238,11 @@ export class CodeBlockNodeView implements NodeView {
 
     const extensions = [
       customKeys,
-      keymap.of([...defaultKeymap, ...(autoPairBrackets ? closeBracketsKeymap : []), indentWithTab]),
+      keymap.of([
+        ...defaultKeymap,
+        ...(autoPairBrackets ? closeBracketsKeymap : []),
+        indentWithTab,
+      ]),
       ...(codeBlockLineNumbers ? [lineNumbers()] : []),
       drawSelection(),
       bracketMatching(),

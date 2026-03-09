@@ -8,7 +8,10 @@ function isAbsolutePath(p: string): boolean {
 }
 
 /** Generate photo filename: YYYYMMDD-HHmmss-{sanitized-original}.{ext} */
-export function generatePhotoFilename(originalName: string, date?: Date): string {
+export function generatePhotoFilename(
+  originalName: string,
+  date?: Date,
+): string {
   const d = date ?? new Date();
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -18,7 +21,9 @@ export function generatePhotoFilename(originalName: string, date?: Date): string
   const ss = String(d.getSeconds()).padStart(2, "0");
 
   // Sanitize original name: lowercase, replace spaces with hyphens, remove special chars
-  const ext = originalName.includes(".") ? originalName.split(".").pop()!.toLowerCase() : "jpg";
+  const ext = originalName.includes(".")
+    ? originalName.split(".").pop()!.toLowerCase()
+    : "jpg";
   const base = originalName
     .replace(/\.[^.]+$/, "")
     .toLowerCase()
@@ -106,7 +111,9 @@ export async function scanJournalPhotos(
 ): Promise<PhotoGalleryEntry[]> {
   const { listDir, readFile } = await import("../ipc/invoke");
 
-  const base = isAbsolutePath(journalDir) ? journalDir : `${rootPath}/${journalDir}`;
+  const base = isAbsolutePath(journalDir)
+    ? journalDir
+    : `${rootPath}/${journalDir}`;
   const dailyBase = `${base}/daily`;
   const entries: PhotoGalleryEntry[] = [];
 
@@ -149,7 +156,9 @@ export async function scanJournalPhotos(
           if (!/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(file.name)) continue;
 
           // Parse date from filename: YYYYMMDD-HHmmss-name.ext
-          const dateMatch = file.name.match(/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/);
+          const dateMatch = file.name.match(
+            /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/,
+          );
           let date: Date;
           let dateFromFilename = false;
           if (dateMatch) {
@@ -225,7 +234,11 @@ async function populateCaptionsFromDir(
     // Parse date from md filename (e.g., "2026-03-03.md")
     const mdDateMatch = mdFile.name.match(/^(\d{4})-(\d{2})-(\d{2})\.md$/);
     const mdDate = mdDateMatch
-      ? new Date(parseInt(mdDateMatch[1]), parseInt(mdDateMatch[2]) - 1, parseInt(mdDateMatch[3]))
+      ? new Date(
+          parseInt(mdDateMatch[1]),
+          parseInt(mdDateMatch[2]) - 1,
+          parseInt(mdDateMatch[3]),
+        )
       : null;
 
     try {
@@ -236,7 +249,10 @@ async function populateCaptionsFromDir(
         const caption = match[1];
         const imgPath = match[2];
         for (const entry of uncaptioned) {
-          if (imgPath.includes(entry.filename) || imgPath === entry.relativePath) {
+          if (
+            imgPath.includes(entry.filename) ||
+            imgPath === entry.relativePath
+          ) {
             entry.caption = caption;
             entry.journalPath = journalPath;
             // If entry date was a fallback, use the journal file's date

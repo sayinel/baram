@@ -24,10 +24,7 @@ export function prepareHelpMarkdown(raw: string): string {
   md = md.replace(/^# .+\n+/, "");
 
   // 2. Remove ToC section: "## Table of Contents" through next "---"
-  md = md.replace(
-    /## Table of Contents\n[\s\S]*?\n---\n*/,
-    "",
-  );
+  md = md.replace(/## Table of Contents\n[\s\S]*?\n---\n*/, "");
 
   // 3. Remove code blocks containing box-drawing characters (┌ └ │ ─)
   md = md.replace(/```[^\n]*\n[^`]*[┌└│─][^`]*```\n*/g, "");

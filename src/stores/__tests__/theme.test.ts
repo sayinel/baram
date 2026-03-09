@@ -184,7 +184,9 @@ describe("saveCustomTheme", () => {
   it("preserves other custom themes when updating one", () => {
     useSettingsStore.getState().saveCustomTheme(makeCustom("c1", "First"));
     useSettingsStore.getState().saveCustomTheme(makeCustom("c2", "Second"));
-    useSettingsStore.getState().saveCustomTheme(makeCustom("c1", "First Updated"));
+    useSettingsStore
+      .getState()
+      .saveCustomTheme(makeCustom("c1", "First Updated"));
     const themes = useSettingsStore.getState().customThemes;
     expect(themes).toHaveLength(2);
     expect(themes.find((t) => t.id === "c2")!.name).toBe("Second");
@@ -219,7 +221,10 @@ describe("deleteCustomTheme", () => {
   });
 
   it("does not change activeThemeId when deleting a non-active theme", () => {
-    useSettingsStore.setState({ activeThemeId: "default-light", theme: "light" });
+    useSettingsStore.setState({
+      activeThemeId: "default-light",
+      theme: "light",
+    });
     useSettingsStore.getState().deleteCustomTheme("deletable");
     expect(useSettingsStore.getState().activeThemeId).toBe("default-light");
   });
@@ -237,8 +242,10 @@ describe("Theme migration v0/v1 → v2 (logic verification)", () => {
     // Simulate what migrate() does for version < 2
     const persisted: Record<string, unknown> = { theme: "light" };
     if (!persisted.activeThemeId) {
-      if (persisted.theme === "light") persisted.activeThemeId = "default-light";
-      else if (persisted.theme === "dark") persisted.activeThemeId = "default-dark";
+      if (persisted.theme === "light")
+        persisted.activeThemeId = "default-light";
+      else if (persisted.theme === "dark")
+        persisted.activeThemeId = "default-dark";
       else persisted.activeThemeId = "system";
     }
     if (!persisted.customThemes) persisted.customThemes = [];
@@ -249,7 +256,8 @@ describe("Theme migration v0/v1 → v2 (logic verification)", () => {
   it("maps old theme=dark to activeThemeId=default-dark", () => {
     const persisted: Record<string, unknown> = { theme: "dark" };
     if (!persisted.activeThemeId) {
-      persisted.activeThemeId = persisted.theme === "dark" ? "default-dark" : "system";
+      persisted.activeThemeId =
+        persisted.theme === "dark" ? "default-dark" : "system";
     }
     expect(persisted.activeThemeId).toBe("default-dark");
   });
@@ -257,8 +265,10 @@ describe("Theme migration v0/v1 → v2 (logic verification)", () => {
   it("maps old theme=system to activeThemeId=system", () => {
     const persisted: Record<string, unknown> = { theme: "system" };
     if (!persisted.activeThemeId) {
-      if (persisted.theme === "light") persisted.activeThemeId = "default-light";
-      else if (persisted.theme === "dark") persisted.activeThemeId = "default-dark";
+      if (persisted.theme === "light")
+        persisted.activeThemeId = "default-light";
+      else if (persisted.theme === "dark")
+        persisted.activeThemeId = "default-dark";
       else persisted.activeThemeId = "system";
     }
     expect(persisted.activeThemeId).toBe("system");

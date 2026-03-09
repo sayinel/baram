@@ -1,6 +1,9 @@
 // §72c Skill Optimize Prompt — unit tests
 import { describe, it, expect } from "vitest";
-import { buildOptimizePrompt, parseOptimizeResponse } from "../skill-optimize-prompt";
+import {
+  buildOptimizePrompt,
+  parseOptimizeResponse,
+} from "../skill-optimize-prompt";
 
 describe("buildOptimizePrompt", () => {
   it("includes skill content in the output", () => {

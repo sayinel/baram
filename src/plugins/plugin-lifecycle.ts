@@ -7,7 +7,9 @@ import type { InstalledPlugin } from "./types";
 /** Initialize all enabled plugins at app startup. Budget: 200ms total. */
 export async function initializePlugins(): Promise<void> {
   const { installedPlugins } = usePluginStore.getState();
-  const enabledPlugins = Object.values(installedPlugins).filter((p) => p.enabled);
+  const enabledPlugins = Object.values(installedPlugins).filter(
+    (p) => p.enabled,
+  );
 
   if (enabledPlugins.length === 0) return;
 
@@ -19,11 +21,16 @@ export async function initializePlugins(): Promise<void> {
   // Load plugins in parallel (no dependency ordering for now since dependencies are rare)
   const results = await Promise.allSettled(
     sorted.map((plugin) =>
-      pluginLoader.loadPlugin(plugin.installPath, plugin.manifest).catch((err) => {
-        console.error(`[PluginLifecycle] Failed to load ${plugin.manifest.id}:`, err);
-        usePluginStore.getState().setError(plugin.manifest.id, String(err));
-        throw err;
-      }),
+      pluginLoader
+        .loadPlugin(plugin.installPath, plugin.manifest)
+        .catch((err) => {
+          console.error(
+            `[PluginLifecycle] Failed to load ${plugin.manifest.id}:`,
+            err,
+          );
+          usePluginStore.getState().setError(plugin.manifest.id, String(err));
+          throw err;
+        }),
     ),
   );
 
@@ -36,7 +43,9 @@ export async function initializePlugins(): Promise<void> {
   );
 
   if (elapsed > 200) {
-    console.warn(`[PluginLifecycle] Plugin loading exceeded 200ms budget: ${elapsed.toFixed(0)}ms`);
+    console.warn(
+      `[PluginLifecycle] Plugin loading exceeded 200ms budget: ${elapsed.toFixed(0)}ms`,
+    );
   }
 }
 

@@ -8,7 +8,12 @@ import { readFile, writeFile, updateFileIndex } from "../ipc/invoke";
 import { useFileStore } from "../stores/file-store";
 import { useEditorStore } from "../stores/editor-store";
 
-type EmbedStatus = "loading" | "ready" | "file-not-found" | "block-not-found" | "error";
+type EmbedStatus =
+  | "loading"
+  | "ready"
+  | "file-not-found"
+  | "block-not-found"
+  | "error";
 
 interface UseEmbedSyncOptions {
   target: string;
@@ -75,17 +80,24 @@ export function useEmbedSync({
         if (!target) {
           fileContent = await getSameFileContent(editor);
           if (fileContent === null) {
-            if (!cancelled) { setContent(null); setStatus("error"); }
+            if (!cancelled) {
+              setContent(null);
+              setStatus("error");
+            }
             return;
           }
         } else {
           const resolved = resolveWikilinkTarget(target);
           if (!resolved) {
-            if (!cancelled) { setContent(null); setStatus("file-not-found"); }
+            if (!cancelled) {
+              setContent(null);
+              setStatus("file-not-found");
+            }
             return;
           }
           const cached = useFileStore.getState().openFiles.get(resolved.path);
-          fileContent = cached !== undefined ? cached : await readFile(resolved.path);
+          fileContent =
+            cached !== undefined ? cached : await readFile(resolved.path);
         }
 
         if (cancelled) return;
@@ -99,12 +111,17 @@ export function useEmbedSync({
           setStatus("block-not-found");
         }
       } catch {
-        if (!cancelled) { setContent(null); setStatus("error"); }
+        if (!cancelled) {
+          setContent(null);
+          setStatus("error");
+        }
       }
     }
 
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [target, blockId, editor]);
 
   const startEditing = useCallback(() => {

@@ -18,7 +18,9 @@ describe("generateStandaloneHTML", () => {
   it("wraps editor HTML in <article class='baram-export'>", () => {
     const editorHTML = "<h1>Title</h1><p>Body text</p>";
     const html = generateStandaloneHTML(editorHTML, "Test");
-    expect(html).toContain(`<article class="baram-export">${editorHTML}</article>`);
+    expect(html).toContain(
+      `<article class="baram-export">${editorHTML}</article>`,
+    );
   });
 
   it("includes KaTeX CSS style block (raw import may be empty in test env)", () => {
@@ -42,7 +44,10 @@ describe("generateStandaloneHTML", () => {
   });
 
   it("escapes special characters in title", () => {
-    const html = generateStandaloneHTML("<p>x</p>", 'A <script>"alert"</script> & B');
+    const html = generateStandaloneHTML(
+      "<p>x</p>",
+      'A <script>"alert"</script> & B',
+    );
     expect(html).toContain(
       "<title>A &lt;script&gt;&quot;alert&quot;&lt;/script&gt; &amp; B</title>",
     );

@@ -3,9 +3,27 @@ import { resolveExecutionOrder, dryRunChain } from "../skill-chain-runner";
 import type { SkillMeta } from "../skill-dependency-analyzer";
 
 const skills: SkillMeta[] = [
-  { name: "a", filePath: "/a.md", requires: ["b"], outputFormat: "json", description: "Skill A" },
-  { name: "b", filePath: "/b.md", requires: ["c"], outputFormat: "text", description: "Skill B" },
-  { name: "c", filePath: "/c.md", requires: [], outputFormat: "markdown", description: "Skill C" },
+  {
+    name: "a",
+    filePath: "/a.md",
+    requires: ["b"],
+    outputFormat: "json",
+    description: "Skill A",
+  },
+  {
+    name: "b",
+    filePath: "/b.md",
+    requires: ["c"],
+    outputFormat: "text",
+    description: "Skill B",
+  },
+  {
+    name: "c",
+    filePath: "/c.md",
+    requires: [],
+    outputFormat: "markdown",
+    description: "Skill C",
+  },
 ];
 
 describe("resolveExecutionOrder", () => {
@@ -24,7 +42,9 @@ describe("resolveExecutionOrder", () => {
       { name: "x", filePath: "/x.md", requires: ["y"], outputFormat: "" },
       { name: "y", filePath: "/y.md", requires: ["x"], outputFormat: "" },
     ];
-    expect(() => resolveExecutionOrder(cyclic, "x")).toThrow("Circular dependency");
+    expect(() => resolveExecutionOrder(cyclic, "x")).toThrow(
+      "Circular dependency",
+    );
   });
 });
 
@@ -38,7 +58,13 @@ describe("dryRunChain", () => {
 
   it("fails for missing skill in chain", () => {
     const partial: SkillMeta[] = [
-      { name: "a", filePath: "/a.md", requires: ["missing"], outputFormat: "json", description: "A" },
+      {
+        name: "a",
+        filePath: "/a.md",
+        requires: ["missing"],
+        outputFormat: "json",
+        description: "A",
+      },
     ];
     const result = dryRunChain(partial, "a");
     expect(result.success).toBe(false);
@@ -47,8 +73,20 @@ describe("dryRunChain", () => {
 
   it("skips downstream steps after failure", () => {
     const broken: SkillMeta[] = [
-      { name: "a", filePath: "/a.md", requires: ["b"], outputFormat: "json", description: "A" },
-      { name: "b", filePath: "/b.md", requires: ["missing"], outputFormat: "text", description: "B" },
+      {
+        name: "a",
+        filePath: "/a.md",
+        requires: ["b"],
+        outputFormat: "json",
+        description: "A",
+      },
+      {
+        name: "b",
+        filePath: "/b.md",
+        requires: ["missing"],
+        outputFormat: "text",
+        description: "B",
+      },
     ];
     const result = dryRunChain(broken, "a");
     expect(result.success).toBe(false);

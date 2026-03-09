@@ -1,7 +1,15 @@
 // Drag & Drop path utilities
 
 const IMAGE_EXTENSIONS = new Set([
-  "png", "jpg", "jpeg", "gif", "webp", "svg", "ico", "bmp", "avif",
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "svg",
+  "ico",
+  "bmp",
+  "avif",
 ]);
 
 /** Check if a file path has an image extension */

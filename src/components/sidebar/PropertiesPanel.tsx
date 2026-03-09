@@ -63,7 +63,13 @@ export function parseYamlProperties(yaml: string): PropertyEntry[] {
       const bracketMatch = rawValue.match(/^\[(.*)\]$/);
       if (bracketMatch) {
         const inner = bracketMatch[1].trim();
-        const items = inner === "" ? [] : inner.split(",").map((s) => s.trim()).filter(Boolean);
+        const items =
+          inner === ""
+            ? []
+            : inner
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean);
         entries.push({ key, value: items, type: "array" });
       } else {
         // single value without brackets — still treat as array
@@ -99,7 +105,9 @@ export function serializeYamlProperties(entries: PropertyEntry[]): string {
 
 // ─── Frontmatter helpers ──────────────────────────────────────────────────────
 
-function extractFrontmatter(content: string): { yaml: string; rest: string } | null {
+function extractFrontmatter(
+  content: string,
+): { yaml: string; rest: string } | null {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!match) return null;
   return { yaml: match[1], rest: content.slice(match[0].length) };
@@ -184,7 +192,8 @@ export function PropertiesPanel() {
 
   const parsed = content ? extractFrontmatter(content) : null;
   const yaml = parsed?.yaml ?? null;
-  const entries: PropertyEntry[] = yaml !== null ? parseYamlProperties(yaml) : [];
+  const entries: PropertyEntry[] =
+    yaml !== null ? parseYamlProperties(yaml) : [];
 
   // ── write-back helpers ───────────────────────────────────────────────────
 
@@ -257,7 +266,9 @@ export function PropertiesPanel() {
 
   const handleStringChange = useCallback(
     (key: string, val: string) => {
-      const updated = entries.map((e) => (e.key === key ? { ...e, value: val } : e));
+      const updated = entries.map((e) =>
+        e.key === key ? { ...e, value: val } : e,
+      );
       applyEntries(updated);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -266,7 +277,9 @@ export function PropertiesPanel() {
 
   const handleEnumChange = useCallback(
     (key: string, val: string) => {
-      const updated = entries.map((e) => (e.key === key ? { ...e, value: val } : e));
+      const updated = entries.map((e) =>
+        e.key === key ? { ...e, value: val } : e,
+      );
       applyEntries(updated);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -318,7 +331,13 @@ export function PropertiesPanel() {
         const { readFile } = await import("../../ipc/invoke");
         const fileContent = await readFile(found.path);
         useFileStore.getState().setFileContent(found.path, fileContent);
-        openTab({ id: tabId, filePath: found.path, title: found.name, isDirty: false, isPinned: false });
+        openTab({
+          id: tabId,
+          filePath: found.path,
+          title: found.name,
+          isDirty: false,
+          isPinned: false,
+        });
         setActiveTab(tabId);
       } catch (err) {
         console.error("PropertiesPanel: failed to open file", err);
@@ -329,7 +348,11 @@ export function PropertiesPanel() {
 
   const handleAddProperty = useCallback(
     (key: string) => {
-      const type: PropertyType = ENUM_KEYS.has(key) ? "enum" : ARRAY_KEYS.has(key) ? "array" : "string";
+      const type: PropertyType = ENUM_KEYS.has(key)
+        ? "enum"
+        : ARRAY_KEYS.has(key)
+          ? "array"
+          : "string";
       const value: string | string[] = type === "array" ? [] : "";
       const updated = [...entries, { key, value, type }];
       setLastAddedKey(key);
@@ -373,7 +396,11 @@ export function PropertiesPanel() {
           >
             ↪
           </button>
-          <button className="properties-source-toggle" onClick={handleToggleSource} title="Toggle source YAML">
+          <button
+            className="properties-source-toggle"
+            onClick={handleToggleSource}
+            title="Toggle source YAML"
+          >
             {"</>"}
           </button>
         </div>
@@ -416,9 +443,13 @@ export function PropertiesPanel() {
                   <input
                     className="properties-input"
                     value={entry.value as string}
-                    onChange={(e) => handleStringChange(entry.key, e.target.value)}
+                    onChange={(e) =>
+                      handleStringChange(entry.key, e.target.value)
+                    }
                     autoFocus={entry.key === lastAddedKey}
-                    onFocus={() => { if (entry.key === lastAddedKey) setLastAddedKey(null); }}
+                    onFocus={() => {
+                      if (entry.key === lastAddedKey) setLastAddedKey(null);
+                    }}
                   />
                 )}
 
@@ -426,13 +457,17 @@ export function PropertiesPanel() {
                   <select
                     className="properties-select"
                     value={entry.value as string}
-                    onChange={(e) => handleEnumChange(entry.key, e.target.value)}
+                    onChange={(e) =>
+                      handleEnumChange(entry.key, e.target.value)
+                    }
                   >
-                    {(ENUM_VALUES[entry.key] ?? [entry.value as string]).map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
-                      </option>
-                    ))}
+                    {(ENUM_VALUES[entry.key] ?? [entry.value as string]).map(
+                      (opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ),
+                    )}
                   </select>
                 )}
 
@@ -444,7 +479,9 @@ export function PropertiesPanel() {
                         <span
                           key={idx}
                           className={`properties-chip${isFileRef ? " file-ref" : ""}`}
-                          onClick={isFileRef ? () => handleOpenFile(chip) : undefined}
+                          onClick={
+                            isFileRef ? () => handleOpenFile(chip) : undefined
+                          }
                         >
                           {isFileRef && <span>📄</span>}
                           {chip}
@@ -476,9 +513,9 @@ export function PropertiesPanel() {
           <AddPropertyButton onAdd={handleAddProperty} />
 
           {/* §72c Skill sections via registry */}
-          {yaml !== null && isSkillFrontmatter(yaml) && (
-            getSkillSections().map((s) => <s.component key={s.id} />)
-          )}
+          {yaml !== null &&
+            isSkillFrontmatter(yaml) &&
+            getSkillSections().map((s) => <s.component key={s.id} />)}
         </>
       )}
     </div>

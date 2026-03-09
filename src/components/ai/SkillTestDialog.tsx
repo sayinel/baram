@@ -1,7 +1,10 @@
 // §47 Skill Inline Test — run a Skill file against sample input
 import { useState, useCallback, useEffect } from "react";
 import { useLLMStream } from "../../hooks/use-llm-stream";
-import { extractSkillPrompt, runSkillTest } from "../../utils/skill-test-runner";
+import {
+  extractSkillPrompt,
+  runSkillTest,
+} from "../../utils/skill-test-runner";
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { formatAIError } from "../../utils/format-error";
@@ -15,7 +18,8 @@ export function SkillTestDialog({ open, onClose }: SkillTestDialogProps) {
   const [variables, setVariables] = useState<Record<string, string>>({});
   const [requiredVars, setRequiredVars] = useState<string[]>([]);
   const [skillContent, setSkillContent] = useState("");
-  const { send, cancel, isStreaming, text, error, totalTokens } = useLLMStream();
+  const { send, cancel, isStreaming, text, error, totalTokens } =
+    useLLMStream();
 
   // Load skill content from the current active tab
   useEffect(() => {
@@ -60,9 +64,16 @@ export function SkillTestDialog({ open, onClose }: SkillTestDialogProps) {
         <h3 className="new-skill-title">Test Skill</h3>
 
         {requiredVars.length === 0 ? (
-          <div style={{ marginTop: 12, color: "var(--color-text-secondary)", fontSize: 13 }}>
-            No template variables found in this Skill file. Make sure the current file
-            contains {"<system>"} and/or {"<user>"} blocks with {`{{variable}}`} placeholders.
+          <div
+            style={{
+              marginTop: 12,
+              color: "var(--color-text-secondary)",
+              fontSize: 13,
+            }}
+          >
+            No template variables found in this Skill file. Make sure the
+            current file contains {"<system>"} and/or {"<user>"} blocks with{" "}
+            {`{{variable}}`} placeholders.
           </div>
         ) : (
           <div style={{ marginTop: 12 }}>
@@ -115,26 +126,29 @@ export function SkillTestDialog({ open, onClose }: SkillTestDialogProps) {
               {text || "Waiting for response..."}
             </pre>
             {totalTokens > 0 && !isStreaming && (
-              <div style={{
-                marginTop: 8,
-                fontSize: 12,
-                color: "var(--color-text-secondary)",
-              }}>
+              <div
+                style={{
+                  marginTop: 8,
+                  fontSize: 12,
+                  color: "var(--color-text-secondary)",
+                }}
+              >
                 Tokens used: ~{totalTokens}
               </div>
             )}
           </div>
         )}
 
-        {error && (() => {
-          const formatted = formatAIError(error);
-          return (
-            <div className="ai-error-message">
-              <strong>{formatted.title}</strong>
-              <span>{formatted.detail}</span>
-            </div>
-          );
-        })()}
+        {error &&
+          (() => {
+            const formatted = formatAIError(error);
+            return (
+              <div className="ai-error-message">
+                <strong>{formatted.title}</strong>
+                <span>{formatted.detail}</span>
+              </div>
+            );
+          })()}
 
         <div style={{ marginTop: 12, textAlign: "right" }}>
           <button className="custom-ai-btn" onClick={onClose}>

@@ -1,6 +1,11 @@
 // §57b Git Source Control Panel — sidebar
 import { useEffect, useCallback, useState } from "react";
-import { useGitStore, groupChanges, statusIcon, statusColorClass } from "../../stores/git-store";
+import {
+  useGitStore,
+  groupChanges,
+  statusIcon,
+  statusColorClass,
+} from "../../stores/git-store";
 import { useFileStore } from "../../stores/file-store";
 // file-store uses rootPath for the vault directory
 import type { GitChange } from "../../ipc/types";
@@ -60,11 +65,7 @@ function ChangeItem({
             >
               ↺
             </button>
-            <button
-              className="git-action-btn"
-              onClick={onStage}
-              title="Stage"
-            >
+            <button className="git-action-btn" onClick={onStage} title="Stage">
               +
             </button>
           </>
@@ -252,7 +253,9 @@ export function GitPanel() {
             <button
               className="git-commit-btn"
               onClick={handleCommit}
-              disabled={committing || !commitMessage.trim() || staged.length === 0}
+              disabled={
+                committing || !commitMessage.trim() || staged.length === 0
+              }
               title="Commit staged changes"
             >
               {committing ? "Committing..." : "Commit"}
@@ -338,9 +341,13 @@ export function GitPanel() {
             <div key={entry.oid} className="git-log-entry">
               <div className="git-log-header">
                 <span className="git-log-oid">{entry.short_oid}</span>
-                <span className="git-log-date">{formatRelativeTime(entry.timestamp)}</span>
+                <span className="git-log-date">
+                  {formatRelativeTime(entry.timestamp)}
+                </span>
               </div>
-              <div className="git-log-message">{entry.message.split("\n")[0]}</div>
+              <div className="git-log-message">
+                {entry.message.split("\n")[0]}
+              </div>
               <div className="git-log-author">{entry.author}</div>
             </div>
           ))}
@@ -354,7 +361,12 @@ export function GitPanel() {
           <div className="git-commit-area">
             <input
               className="git-commit-input"
-              style={{ display: "block", width: "100%", padding: "0.4em", boxSizing: "border-box" }}
+              style={{
+                display: "block",
+                width: "100%",
+                padding: "0.4em",
+                boxSizing: "border-box",
+              }}
               placeholder="Stash message"
               value={stashMessage}
               onChange={(e) => setStashMessage(e.target.value)}
@@ -364,8 +376,8 @@ export function GitPanel() {
                 type="checkbox"
                 checked={stashIncludeUntracked}
                 onChange={(e) => setStashIncludeUntracked(e.target.checked)}
-              />
-              {" "}Include untracked files
+              />{" "}
+              Include untracked files
             </label>
             <button
               className="git-commit-btn"
@@ -389,14 +401,18 @@ export function GitPanel() {
                 <div className="git-stash-actions">
                   <button
                     className="git-action-btn"
-                    onClick={() => vaultPath && popStash(vaultPath, entry.index)}
+                    onClick={() =>
+                      vaultPath && popStash(vaultPath, entry.index)
+                    }
                     title="Pop stash"
                   >
                     Pop
                   </button>
                   <button
                     className="git-action-btn"
-                    onClick={() => vaultPath && dropStash(vaultPath, entry.index)}
+                    onClick={() =>
+                      vaultPath && dropStash(vaultPath, entry.index)
+                    }
                     title="Drop stash"
                   >
                     Drop
@@ -410,11 +426,18 @@ export function GitPanel() {
 
       {/* Diff viewer modal */}
       {activeDiff && (
-        <div className="git-diff-overlay" onClick={(e) => { if (e.target === e.currentTarget) closeDiff(); }}>
+        <div
+          className="git-diff-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeDiff();
+          }}
+        >
           <div className="git-diff-modal">
             <div className="git-diff-header">
               <span className="git-diff-filename">{activeDiff.path}</span>
-              <button className="git-diff-close" onClick={closeDiff}>Close</button>
+              <button className="git-diff-close" onClick={closeDiff}>
+                Close
+              </button>
             </div>
             <div className="git-diff-body">
               {diffLoading ? (
@@ -431,8 +454,11 @@ export function GitPanel() {
                       <div
                         key={li}
                         className={`git-diff-line ${
-                          line.origin === "+" ? "git-diff-add" :
-                          line.origin === "-" ? "git-diff-del" : ""
+                          line.origin === "+"
+                            ? "git-diff-add"
+                            : line.origin === "-"
+                              ? "git-diff-del"
+                              : ""
                         }`}
                       >
                         <span className="git-diff-lineno">

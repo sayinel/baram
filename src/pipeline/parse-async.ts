@@ -29,10 +29,9 @@ function getWorker(): Worker | null {
   if (workerFailed) return null;
   if (!worker) {
     try {
-      worker = new Worker(
-        new URL("./parse-worker.ts", import.meta.url),
-        { type: "module" },
-      );
+      worker = new Worker(new URL("./parse-worker.ts", import.meta.url), {
+        type: "module",
+      });
       worker.onmessage = (e: MessageEvent<ParseResponse>) => {
         const { id, mdast, error } = e.data;
         const entry = pending.get(id);

@@ -30,15 +30,19 @@ interface RegistryEntry {
 
 // ─── Helper (mirrors ExtensionsTab.tsx getExtensionsWithSettings) ─────────────
 
-function getExtensionsWithSettings(): { name: string; settings: SettingDef[] }[] {
+function getExtensionsWithSettings(): {
+  name: string;
+  settings: SettingDef[];
+}[] {
   const allEntries: RegistryEntry[] = [
     ...(registry.nodes as RegistryEntry[]),
     ...(registry.marks as RegistryEntry[]),
     ...(registry.plugins as RegistryEntry[]),
   ];
   return allEntries
-    .filter((e): e is RegistryEntry & { settings: SettingDef[] } =>
-      Array.isArray(e.settings) && e.settings.length > 0,
+    .filter(
+      (e): e is RegistryEntry & { settings: SettingDef[] } =>
+        Array.isArray(e.settings) && e.settings.length > 0,
     )
     .map((e) => ({ name: e.name, settings: e.settings }));
 }
@@ -105,7 +109,9 @@ describe("Settings schema — codeBlock", () => {
   let codeBlockSettings: SettingDef[];
 
   beforeEach(() => {
-    const ext = getExtensionsWithSettings().find((e) => e.name === "codeBlock")!;
+    const ext = getExtensionsWithSettings().find(
+      (e) => e.name === "codeBlock",
+    )!;
     codeBlockSettings = ext.settings;
   });
 
@@ -141,7 +147,9 @@ describe("Settings schema — codeBlock", () => {
 
 describe("Settings schema — mermaidBlock", () => {
   it("has diagrams boolean setting defaulting to true", () => {
-    const ext = getExtensionsWithSettings().find((e) => e.name === "mermaidBlock")!;
+    const ext = getExtensionsWithSettings().find(
+      (e) => e.name === "mermaidBlock",
+    )!;
     const s = ext.settings.find((s) => s.key === "diagrams")!;
     expect(s).toBeDefined();
     expect(s.type).toBe("boolean");
@@ -174,12 +182,18 @@ describe("formatName", () => {
 describe("setExtensionSetting", () => {
   it("stores arbitrary key-value in extensionSettings", () => {
     useSettingsStore.getState().setExtensionSetting("myKey", "myValue");
-    expect(useSettingsStore.getState().extensionSettings["myKey"]).toBe("myValue");
+    expect(useSettingsStore.getState().extensionSettings["myKey"]).toBe(
+      "myValue",
+    );
   });
 
   it("stores boolean false", () => {
-    useSettingsStore.getState().setExtensionSetting("codeBlockLineNumbers", false);
-    expect(useSettingsStore.getState().extensionSettings["codeBlockLineNumbers"]).toBe(false);
+    useSettingsStore
+      .getState()
+      .setExtensionSetting("codeBlockLineNumbers", false);
+    expect(
+      useSettingsStore.getState().extensionSettings["codeBlockLineNumbers"],
+    ).toBe(false);
   });
 
   it("preserves existing keys when adding a new one", () => {
@@ -193,16 +207,22 @@ describe("setExtensionSetting", () => {
   it("overwrites existing key", () => {
     useSettingsStore.getState().setExtensionSetting("diagrams", true);
     useSettingsStore.getState().setExtensionSetting("diagrams", false);
-    expect(useSettingsStore.getState().extensionSettings["diagrams"]).toBe(false);
+    expect(useSettingsStore.getState().extensionSettings["diagrams"]).toBe(
+      false,
+    );
   });
 
   it("backward-compat: syncs codeBlockLineNumbers to top-level field", () => {
-    useSettingsStore.getState().setExtensionSetting("codeBlockLineNumbers", true);
+    useSettingsStore
+      .getState()
+      .setExtensionSetting("codeBlockLineNumbers", true);
     expect(useSettingsStore.getState().codeBlockLineNumbers).toBe(true);
   });
 
   it("backward-compat: syncs codeBlockStyle to top-level field", () => {
-    useSettingsStore.getState().setExtensionSetting("codeBlockStyle", "minimal");
+    useSettingsStore
+      .getState()
+      .setExtensionSetting("codeBlockStyle", "minimal");
     expect(useSettingsStore.getState().codeBlockStyle).toBe("minimal");
   });
 
@@ -216,21 +236,29 @@ describe("setExtensionSetting", () => {
 
 describe("Setting value resolution", () => {
   it("falls back to schema default when extensionSettings has no value", () => {
-    const ext = getExtensionsWithSettings().find((e) => e.name === "codeBlock")!;
+    const ext = getExtensionsWithSettings().find(
+      (e) => e.name === "codeBlock",
+    )!;
     const setting = ext.settings.find((s) => s.key === "codeBlockLineNumbers")!;
 
     // Simulate what ExtensionSettingRow does: extensionSettings[key] ?? setting.default
-    const stored = useSettingsStore.getState().extensionSettings["codeBlockLineNumbers"];
+    const stored =
+      useSettingsStore.getState().extensionSettings["codeBlockLineNumbers"];
     const resolved = stored ?? setting.default;
     expect(resolved).toBe(false);
   });
 
   it("uses stored value over schema default when set", () => {
-    useSettingsStore.getState().setExtensionSetting("codeBlockLineNumbers", true);
-    const ext = getExtensionsWithSettings().find((e) => e.name === "codeBlock")!;
+    useSettingsStore
+      .getState()
+      .setExtensionSetting("codeBlockLineNumbers", true);
+    const ext = getExtensionsWithSettings().find(
+      (e) => e.name === "codeBlock",
+    )!;
     const setting = ext.settings.find((s) => s.key === "codeBlockLineNumbers")!;
 
-    const stored = useSettingsStore.getState().extensionSettings["codeBlockLineNumbers"];
+    const stored =
+      useSettingsStore.getState().extensionSettings["codeBlockLineNumbers"];
     const resolved = stored ?? setting.default;
     expect(resolved).toBe(true);
   });

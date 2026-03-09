@@ -31,7 +31,11 @@ export function MoodTrend30({ moodMap }: Props) {
       const d = new Date(today);
       d.setDate(d.getDate() - i);
       const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      points.push({ date: dateStr, day: 30 - i, mood: moodMap.get(dateStr) ?? null });
+      points.push({
+        date: dateStr,
+        day: 30 - i,
+        mood: moodMap.get(dateStr) ?? null,
+      });
     }
     return points;
   }, [moodMap]);
@@ -100,12 +104,7 @@ export function MoodTrend30({ moodMap }: Props) {
                   opacity={0.4}
                 />
               )}
-              <circle
-                cx={x}
-                cy={y}
-                r={3}
-                fill={MOOD_COLORS[p.mood]}
-              >
+              <circle cx={x} cy={y} r={3} fill={MOOD_COLORS[p.mood]}>
                 <title>{`${p.date}: ${p.mood}`}</title>
               </circle>
             </g>

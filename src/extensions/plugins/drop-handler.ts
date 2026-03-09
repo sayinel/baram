@@ -55,14 +55,18 @@ function insertTableFromTSV(
   const tableHeaderType = schema.nodes.tableHeader;
   const tableCellType = schema.nodes.tableCell;
 
-  if (!tableType || !tableRowType || !tableHeaderType || !tableCellType) return false;
+  if (!tableType || !tableRowType || !tableHeaderType || !tableCellType)
+    return false;
 
   const rows = data.map((rowData, rowIndex) => {
     const cellType = rowIndex === 0 ? tableHeaderType : tableCellType;
     const cells = rowData.map((cellText) =>
       cellType.create(
         null,
-        schema.nodes.paragraph.create(null, cellText ? schema.text(cellText) : null),
+        schema.nodes.paragraph.create(
+          null,
+          cellText ? schema.text(cellText) : null,
+        ),
       ),
     );
     return tableRowType.create(null, cells);
@@ -86,7 +90,12 @@ function readFileAsDataURL(file: File): Promise<string> {
 }
 
 /** Check if the active file is inside a journal directory */
-function getJournalContext(): { isJournal: boolean; rootPath: string; journalDir: string; filePath: string } {
+function getJournalContext(): {
+  isJournal: boolean;
+  rootPath: string;
+  journalDir: string;
+  filePath: string;
+} {
   const activeTabId = useEditorStore.getState().activeTabId;
   const tabs = useEditorStore.getState().tabs;
   const activeTab = tabs.find((t) => t.id === activeTabId);
@@ -94,12 +103,14 @@ function getJournalContext(): { isJournal: boolean; rootPath: string; journalDir
   const rootPath = useFileStore.getState().rootPath ?? "";
   const journalDir = useSettingsStore.getState().journalDirectory ?? "";
 
-  if (!rootPath || !journalDir || !filePath) return { isJournal: false, rootPath: "", journalDir: "", filePath: "" };
+  if (!rootPath || !journalDir || !filePath)
+    return { isJournal: false, rootPath: "", journalDir: "", filePath: "" };
 
   // journalDir is always absolute after migration
-  const journalAbsPath = journalDir.startsWith("/") || /^[A-Z]:\\/i.test(journalDir)
-    ? journalDir
-    : `${rootPath}/${journalDir}`;
+  const journalAbsPath =
+    journalDir.startsWith("/") || /^[A-Z]:\\/i.test(journalDir)
+      ? journalDir
+      : `${rootPath}/${journalDir}`;
   const isJournal = filePath.startsWith(journalAbsPath);
   return { isJournal, rootPath, journalDir, filePath };
 }
@@ -171,7 +182,13 @@ function createDropHandlerPlugin(): Plugin {
         for (const file of files) {
           if (ctx.isJournal) {
             readFileAsBytes(file).then((bytes) => {
-              savePhotoToAssets(bytes, file.name, ctx.rootPath, ctx.journalDir, ctx.filePath).then((relativePath) => {
+              savePhotoToAssets(
+                bytes,
+                file.name,
+                ctx.rootPath,
+                ctx.journalDir,
+                ctx.filePath,
+              ).then((relativePath) => {
                 insertImageAtPos(view, relativePath, file.name, insertPos);
               });
             });
@@ -219,7 +236,13 @@ function createDropHandlerPlugin(): Plugin {
         for (const file of files) {
           if (ctx.isJournal) {
             readFileAsBytes(file).then((bytes) => {
-              savePhotoToAssets(bytes, file.name, ctx.rootPath, ctx.journalDir, ctx.filePath).then((relativePath) => {
+              savePhotoToAssets(
+                bytes,
+                file.name,
+                ctx.rootPath,
+                ctx.journalDir,
+                ctx.filePath,
+              ).then((relativePath) => {
                 insertImageAtPos(view, relativePath, file.name);
               });
             });

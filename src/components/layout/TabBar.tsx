@@ -243,11 +243,7 @@ export function TabBar() {
           ‹
         </button>
       )}
-      <div
-        className="tab-scroll-area"
-        ref={scrollRef}
-        onWheel={handleWheel}
-      >
+      <div className="tab-scroll-area" ref={scrollRef} onWheel={handleWheel}>
         {tabs.map((tab, index) => {
           const showDivider =
             tab.isPinned &&
@@ -264,7 +260,11 @@ export function TabBar() {
                   tab.isPinned && "tab-pinned",
                   dragIndex === index && "tab-dragging",
                   // Show drop indicator on left edge of this tab
-                  dropSlot === index && dragIndex !== null && dropSlot !== dragIndex && dropSlot !== dragIndex + 1 && "tab-drop-before",
+                  dropSlot === index &&
+                    dragIndex !== null &&
+                    dropSlot !== dragIndex &&
+                    dropSlot !== dragIndex + 1 &&
+                    "tab-drop-before",
                 ]
                   .filter(Boolean)
                   .join(" ")}
@@ -292,9 +292,11 @@ export function TabBar() {
           );
         })}
         {/* Drop indicator after last tab */}
-        {dragIndex !== null && dropSlot === tabs.length && dropSlot !== dragIndex + 1 && (
-          <div className="tab-drop-indicator-end" />
-        )}
+        {dragIndex !== null &&
+          dropSlot === tabs.length &&
+          dropSlot !== dragIndex + 1 && (
+            <div className="tab-drop-indicator-end" />
+          )}
       </div>
       {canScrollRight && (
         <button
@@ -307,56 +309,57 @@ export function TabBar() {
       )}
 
       {/* §38 Context Menu */}
-      {contextMenu && (() => {
-        const tab = tabs.find((t) => t.id === contextMenu.tabId);
-        if (!tab) return null;
-        return (
-          <div
-            className="tab-context-menu"
-            style={{ left: contextMenu.x, top: contextMenu.y }}
-            onClick={(e) => e.stopPropagation()}
-          >
+      {contextMenu &&
+        (() => {
+          const tab = tabs.find((t) => t.id === contextMenu.tabId);
+          if (!tab) return null;
+          return (
             <div
-              className="tab-context-item"
-              onClick={() => {
-                togglePinTab(tab.id);
-                setContextMenu(null);
-              }}
+              className="tab-context-menu"
+              style={{ left: contextMenu.x, top: contextMenu.y }}
+              onClick={(e) => e.stopPropagation()}
             >
-              {tab.isPinned ? "Unpin Tab" : "Pin Tab"}
+              <div
+                className="tab-context-item"
+                onClick={() => {
+                  togglePinTab(tab.id);
+                  setContextMenu(null);
+                }}
+              >
+                {tab.isPinned ? "Unpin Tab" : "Pin Tab"}
+              </div>
+              <div
+                className={`tab-context-item${tab.isPinned ? " tab-context-item--disabled" : ""}`}
+                onClick={() => {
+                  if (!tab.isPinned) {
+                    handleClose(tab.id);
+                  }
+                  setContextMenu(null);
+                }}
+              >
+                Close Tab
+              </div>
+              <div
+                className="tab-context-item"
+                onClick={() => {
+                  closeOtherTabs(tab.id);
+                  setContextMenu(null);
+                }}
+              >
+                Close Other Tabs
+              </div>
+              <div
+                className="tab-context-item"
+                onClick={() => {
+                  closeTabsToRight(tab.id);
+                  setContextMenu(null);
+                }}
+              >
+                Close Tabs to the Right
+              </div>
             </div>
-            <div
-              className={`tab-context-item${tab.isPinned ? " tab-context-item--disabled" : ""}`}
-              onClick={() => {
-                if (!tab.isPinned) {
-                  handleClose(tab.id);
-                }
-                setContextMenu(null);
-              }}
-            >
-              Close Tab
-            </div>
-            <div
-              className="tab-context-item"
-              onClick={() => {
-                closeOtherTabs(tab.id);
-                setContextMenu(null);
-              }}
-            >
-              Close Other Tabs
-            </div>
-            <div
-              className="tab-context-item"
-              onClick={() => {
-                closeTabsToRight(tab.id);
-                setContextMenu(null);
-              }}
-            >
-              Close Tabs to the Right
-            </div>
-          </div>
-        );
-      })()}
+          );
+        })()}
     </div>
   );
 }

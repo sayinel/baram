@@ -9,7 +9,15 @@ import {
 describe("KEYBINDING_CATEGORIES", () => {
   it("contains all 9 expected categories in order", () => {
     expect(KEYBINDING_CATEGORIES).toEqual([
-      "file", "edit", "view", "search", "insert", "ai", "workspace", "journal", "formatting",
+      "file",
+      "edit",
+      "view",
+      "search",
+      "insert",
+      "ai",
+      "workspace",
+      "journal",
+      "formatting",
     ]);
   });
 });
@@ -61,30 +69,48 @@ describe("KEYBINDING_REGISTRY", () => {
   it("contains all expected customizable file entries", () => {
     const ids = new Set(KEYBINDING_REGISTRY.map((e) => e.id));
     const expected = [
-      "file.new", "file.open", "file.openFolder", "file.save", "file.saveAs", "file.closeTab",
+      "file.new",
+      "file.open",
+      "file.openFolder",
+      "file.save",
+      "file.saveAs",
+      "file.closeTab",
     ];
     for (const id of expected) expect(ids).toContain(id);
   });
 
   it("contains all expected formatting entries as non-customizable", () => {
-    const formatting = KEYBINDING_REGISTRY.filter((e) => e.category === "formatting");
+    const formatting = KEYBINDING_REGISTRY.filter(
+      (e) => e.category === "formatting",
+    );
     for (const entry of formatting) {
       expect(entry.customizable).toBe(false);
     }
     const ids = new Set(formatting.map((e) => e.id));
     const expected = [
-      "formatting.bold", "formatting.italic", "formatting.underline",
-      "formatting.strikethrough", "formatting.highlight", "formatting.inlineCode",
-      "formatting.codeBlock", "formatting.mathBlock",
-      "formatting.heading1", "formatting.heading2", "formatting.heading3",
-      "formatting.bulletList", "formatting.orderedList", "formatting.taskList",
+      "formatting.bold",
+      "formatting.italic",
+      "formatting.underline",
+      "formatting.strikethrough",
+      "formatting.highlight",
+      "formatting.inlineCode",
+      "formatting.codeBlock",
+      "formatting.mathBlock",
+      "formatting.heading1",
+      "formatting.heading2",
+      "formatting.heading3",
+      "formatting.bulletList",
+      "formatting.orderedList",
+      "formatting.taskList",
       "formatting.mermaid",
     ];
     for (const id of expected) expect(ids).toContain(id);
   });
 
   it("all customizable entries have customizable=true", () => {
-    const nonFormatting = KEYBINDING_REGISTRY.filter((e) => e.category !== "formatting");
+    const nonFormatting = KEYBINDING_REGISTRY.filter(
+      (e) => e.category !== "formatting",
+    );
     for (const entry of nonFormatting) {
       expect(entry.customizable).toBe(true);
     }

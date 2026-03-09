@@ -6,7 +6,10 @@ import {
   substituteInput,
   generateCommandId,
 } from "../../utils/custom-ai-commands";
-import { extractSkillPrompt, runSkillTest } from "../../utils/skill-test-runner";
+import {
+  extractSkillPrompt,
+  runSkillTest,
+} from "../../utils/skill-test-runner";
 
 describe("§48 Custom AI Commands", () => {
   // --- substituteVariables ---
@@ -33,7 +36,8 @@ describe("§48 Custom AI Commands", () => {
   });
 
   test("substituteVariables replaces multiple variables", () => {
-    const template = "Selection: {{selection}}\nDoc: {{document}}\nClip: {{clipboard}}";
+    const template =
+      "Selection: {{selection}}\nDoc: {{document}}\nClip: {{clipboard}}";
     const result = substituteVariables(template, {
       selection: "sel",
       document: "doc",
@@ -48,7 +52,9 @@ describe("§48 Custom AI Commands", () => {
   });
 
   test("substituteVariables does NOT replace {{input}}", () => {
-    const result = substituteVariables("Enter: {{input}}", { selection: "test" });
+    const result = substituteVariables("Enter: {{input}}", {
+      selection: "test",
+    });
     expect(result).toBe("Enter: {{input}}");
   });
 
@@ -80,7 +86,9 @@ describe("§48 Custom AI Commands", () => {
   });
 
   test("resolveInputVariable extracts context from surrounding text", () => {
-    const result = resolveInputVariable("Please provide instructions: {{input}}");
+    const result = resolveInputVariable(
+      "Please provide instructions: {{input}}",
+    );
     expect(result.hasInput).toBe(true);
     expect(result.prompt).toBe("Please provide instructions:");
   });
@@ -129,7 +137,9 @@ Additional context: {{input}}
 
   test("extractSkillPrompt extracts system prompt", () => {
     const { system } = extractSkillPrompt(sampleSkill);
-    expect(system).toBe("You are a helpful assistant specialized in {{domain}}.");
+    expect(system).toBe(
+      "You are a helpful assistant specialized in {{domain}}.",
+    );
   });
 
   test("extractSkillPrompt extracts user prompt", () => {
@@ -148,7 +158,9 @@ Additional context: {{input}}
   });
 
   test("extractSkillPrompt handles missing blocks", () => {
-    const { system, user, variables } = extractSkillPrompt("# Just a heading\nSome text");
+    const { system, user, variables } = extractSkillPrompt(
+      "# Just a heading\nSome text",
+    );
     expect(system).toBe("");
     expect(user).toBe("");
     expect(variables).toEqual([]);
@@ -160,7 +172,9 @@ Additional context: {{input}}
       selection: "function foo() {}",
       input: "Check for bugs",
     });
-    expect(systemPrompt).toBe("You are a helpful assistant specialized in code review.");
+    expect(systemPrompt).toBe(
+      "You are a helpful assistant specialized in code review.",
+    );
     expect(userPrompt).toContain("function foo() {}");
     expect(userPrompt).toContain("Check for bugs");
     expect(userPrompt).not.toContain("{{selection}}");

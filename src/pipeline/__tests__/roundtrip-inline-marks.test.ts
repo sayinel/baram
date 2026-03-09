@@ -97,7 +97,9 @@ describe("Roundtrip: Superscript ^text^", () => {
 describe("Roundtrip: Nested & combined marks", () => {
   it("bold + highlight (custom mark wraps outer)", () => {
     // Custom marks (highlight) wrap outside standard marks (bold) in mdast
-    expect(roundtrip("**==bold highlight==**\n")).toBe("==**bold highlight**==\n");
+    expect(roundtrip("**==bold highlight==**\n")).toBe(
+      "==**bold highlight**==\n",
+    );
   });
 
   it("italic + subscript (custom mark wraps outer)", () => {

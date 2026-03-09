@@ -138,10 +138,7 @@ describe("Definition List Extension", () => {
     });
 
     it("creates multiple descriptions for one term", () => {
-      const doc = markdownToProsemirror(
-        "Term\n: Def 1\n: Def 2",
-        schema,
-      );
+      const doc = markdownToProsemirror("Term\n: Def 1\n: Def 2", schema);
       const dl = doc.child(0);
       expect(dl.childCount).toBe(3);
       expect(dl.child(0).type.name).toBe("definitionTerm");
@@ -178,7 +175,10 @@ describe("Definition List Extension", () => {
     });
 
     it("does not convert when first paragraph starts with colon", () => {
-      const doc = markdownToProsemirror(": Not a definition\n\nSomething", schema);
+      const doc = markdownToProsemirror(
+        ": Not a definition\n\nSomething",
+        schema,
+      );
       expect(doc.child(0).type.name).toBe("paragraph");
     });
   });

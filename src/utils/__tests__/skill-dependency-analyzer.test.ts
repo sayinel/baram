@@ -10,7 +10,8 @@ import {
 
 describe("parseSkillFrontmatter", () => {
   it("parses name, requires, output_format", () => {
-    const yaml = "name: test\nrequires: [a, b]\noutput_format: json\ntype: skill";
+    const yaml =
+      "name: test\nrequires: [a, b]\noutput_format: json\ntype: skill";
     const meta = parseSkillFrontmatter(yaml, "/path/test.md");
     expect(meta.name).toBe("test");
     expect(meta.requires).toEqual(["a", "b"]);

@@ -32,42 +32,100 @@ export function PluginDetail({
   onBack,
 }: PluginDetailProps) {
   return (
-    <div className="plugin-detail" style={{ padding: "16px", overflowY: "auto", height: "100%" }}>
+    <div
+      className="plugin-detail"
+      style={{ padding: "16px", overflowY: "auto", height: "100%" }}
+    >
       {/* Back button */}
       <button
         onClick={onBack}
         style={{
-          display: "flex", alignItems: "center", gap: "4px", marginBottom: "16px",
-          padding: "4px 8px", borderRadius: "4px", fontSize: "13px",
-          backgroundColor: "transparent", color: "var(--color-text-muted, #6b7280)",
-          border: "none", cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          gap: "4px",
+          marginBottom: "16px",
+          padding: "4px 8px",
+          borderRadius: "4px",
+          fontSize: "13px",
+          backgroundColor: "transparent",
+          color: "var(--color-text-muted, #6b7280)",
+          border: "none",
+          cursor: "pointer",
         }}
       >
         &larr; Back
       </button>
 
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "16px" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+          marginBottom: "16px",
+        }}
+      >
         {entry.icon && <span style={{ fontSize: "32px" }}>{entry.icon}</span>}
         <div>
-          <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 700, color: "var(--color-text, #111)" }}>
+          <h2
+            style={{
+              margin: 0,
+              fontSize: "20px",
+              fontWeight: 700,
+              color: "var(--color-text, #111)",
+            }}
+          >
             {entry.name}
           </h2>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" }}>
-            <span style={{ fontSize: "13px", color: "var(--color-text-muted, #6b7280)" }}>{entry.author}</span>
-            <span style={{ fontSize: "13px", color: "var(--color-text-muted, #9ca3af)" }}>v{entry.version}</span>
-            <span style={{ fontSize: "12px", color: "var(--color-text-muted, #9ca3af)" }}>{entry.license}</span>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              marginTop: "4px",
+            }}
+          >
+            <span
+              style={{
+                fontSize: "13px",
+                color: "var(--color-text-muted, #6b7280)",
+              }}
+            >
+              {entry.author}
+            </span>
+            <span
+              style={{
+                fontSize: "13px",
+                color: "var(--color-text-muted, #9ca3af)",
+              }}
+            >
+              v{entry.version}
+            </span>
+            <span
+              style={{
+                fontSize: "12px",
+                color: "var(--color-text-muted, #9ca3af)",
+              }}
+            >
+              {entry.license}
+            </span>
           </div>
         </div>
       </div>
 
       {/* Error banner */}
       {error && (
-        <div style={{
-          padding: "8px 12px", marginBottom: "12px", borderRadius: "6px",
-          backgroundColor: "var(--color-error-bg, #fef2f2)", color: "var(--color-error, #dc2626)",
-          fontSize: "13px", border: "1px solid var(--color-error-border, #fecaca)",
-        }}>
+        <div
+          style={{
+            padding: "8px 12px",
+            marginBottom: "12px",
+            borderRadius: "6px",
+            backgroundColor: "var(--color-error-bg, #fef2f2)",
+            color: "var(--color-error, #dc2626)",
+            fontSize: "13px",
+            border: "1px solid var(--color-error-border, #fecaca)",
+          }}
+        >
           {error}
         </div>
       )}
@@ -75,11 +133,18 @@ export function PluginDetail({
       {/* Action buttons */}
       <div style={{ display: "flex", gap: "8px", marginBottom: "20px" }}>
         {installing ? (
-          <button disabled style={{
-            padding: "8px 20px", borderRadius: "6px", fontSize: "13px", fontWeight: 500,
-            backgroundColor: "var(--color-bg-secondary, #f3f4f6)",
-            color: "var(--color-text-muted, #9ca3af)", border: "1px solid var(--color-border, #e5e7eb)",
-          }}>
+          <button
+            disabled
+            style={{
+              padding: "8px 20px",
+              borderRadius: "6px",
+              fontSize: "13px",
+              fontWeight: 500,
+              backgroundColor: "var(--color-bg-secondary, #f3f4f6)",
+              color: "var(--color-text-muted, #9ca3af)",
+              border: "1px solid var(--color-border, #e5e7eb)",
+            }}
+          >
             Installing...
           </button>
         ) : installed ? (
@@ -87,36 +152,69 @@ export function PluginDetail({
             <button
               onClick={onToggleEnabled}
               style={{
-                padding: "8px 20px", borderRadius: "6px", fontSize: "13px", fontWeight: 500,
-                backgroundColor: enabled ? "var(--color-accent, #3b82f6)" : "var(--color-bg-secondary, #f3f4f6)",
+                padding: "8px 20px",
+                borderRadius: "6px",
+                fontSize: "13px",
+                fontWeight: 500,
+                backgroundColor: enabled
+                  ? "var(--color-accent, #3b82f6)"
+                  : "var(--color-bg-secondary, #f3f4f6)",
                 color: enabled ? "#fff" : "var(--color-text, #111)",
-                border: enabled ? "none" : "1px solid var(--color-border, #e5e7eb)", cursor: "pointer",
+                border: enabled
+                  ? "none"
+                  : "1px solid var(--color-border, #e5e7eb)",
+                cursor: "pointer",
               }}
             >
               {enabled ? "Enabled" : "Disabled"}
             </button>
             {updateAvailable && (
-              <button onClick={onUpdate} style={{
-                padding: "8px 20px", borderRadius: "6px", fontSize: "13px", fontWeight: 500,
-                backgroundColor: "#f59e0b", color: "#fff", border: "none", cursor: "pointer",
-              }}>
+              <button
+                onClick={onUpdate}
+                style={{
+                  padding: "8px 20px",
+                  borderRadius: "6px",
+                  fontSize: "13px",
+                  fontWeight: 500,
+                  backgroundColor: "#f59e0b",
+                  color: "#fff",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
                 Update to v{updateAvailable}
               </button>
             )}
-            <button onClick={onUninstall} style={{
-              padding: "8px 20px", borderRadius: "6px", fontSize: "13px", fontWeight: 500,
-              backgroundColor: "transparent", color: "var(--color-error, #dc2626)",
-              border: "1px solid var(--color-error, #dc2626)", cursor: "pointer",
-            }}>
+            <button
+              onClick={onUninstall}
+              style={{
+                padding: "8px 20px",
+                borderRadius: "6px",
+                fontSize: "13px",
+                fontWeight: 500,
+                backgroundColor: "transparent",
+                color: "var(--color-error, #dc2626)",
+                border: "1px solid var(--color-error, #dc2626)",
+                cursor: "pointer",
+              }}
+            >
               Uninstall
             </button>
           </>
         ) : (
-          <button onClick={onInstall} style={{
-            padding: "8px 20px", borderRadius: "6px", fontSize: "13px", fontWeight: 500,
-            backgroundColor: "var(--color-accent, #3b82f6)", color: "#fff",
-            border: "none", cursor: "pointer",
-          }}>
+          <button
+            onClick={onInstall}
+            style={{
+              padding: "8px 20px",
+              borderRadius: "6px",
+              fontSize: "13px",
+              fontWeight: 500,
+              backgroundColor: "var(--color-accent, #3b82f6)",
+              color: "#fff",
+              border: "none",
+              cursor: "pointer",
+            }}
+          >
             Install
           </button>
         )}
@@ -124,8 +222,24 @@ export function PluginDetail({
 
       {/* Description */}
       <div style={{ marginBottom: "20px" }}>
-        <h3 style={{ fontSize: "14px", fontWeight: 600, marginBottom: "8px", color: "var(--color-text, #111)" }}>Description</h3>
-        <p style={{ margin: 0, fontSize: "14px", lineHeight: 1.6, color: "var(--color-text-secondary, #4b5563)" }}>
+        <h3
+          style={{
+            fontSize: "14px",
+            fontWeight: 600,
+            marginBottom: "8px",
+            color: "var(--color-text, #111)",
+          }}
+        >
+          Description
+        </h3>
+        <p
+          style={{
+            margin: 0,
+            fontSize: "14px",
+            lineHeight: 1.6,
+            color: "var(--color-text-secondary, #4b5563)",
+          }}
+        >
           {entry.description}
         </p>
       </div>
@@ -133,13 +247,33 @@ export function PluginDetail({
       {/* README */}
       {readme && (
         <div style={{ marginBottom: "20px" }}>
-          <h3 style={{ fontSize: "14px", fontWeight: 600, marginBottom: "8px", color: "var(--color-text, #111)" }}>README</h3>
-          <pre style={{
-            margin: 0, padding: "12px", borderRadius: "6px", fontSize: "13px", lineHeight: 1.6,
-            backgroundColor: "var(--color-bg-secondary, #f3f4f6)", color: "var(--color-text-secondary, #4b5563)",
-            whiteSpace: "pre-wrap", wordBreak: "break-word", overflowX: "auto",
-            border: "1px solid var(--color-border, #e5e7eb)", maxHeight: "300px", overflowY: "auto",
-          }}>
+          <h3
+            style={{
+              fontSize: "14px",
+              fontWeight: 600,
+              marginBottom: "8px",
+              color: "var(--color-text, #111)",
+            }}
+          >
+            README
+          </h3>
+          <pre
+            style={{
+              margin: 0,
+              padding: "12px",
+              borderRadius: "6px",
+              fontSize: "13px",
+              lineHeight: 1.6,
+              backgroundColor: "var(--color-bg-secondary, #f3f4f6)",
+              color: "var(--color-text-secondary, #4b5563)",
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+              overflowX: "auto",
+              border: "1px solid var(--color-border, #e5e7eb)",
+              maxHeight: "300px",
+              overflowY: "auto",
+            }}
+          >
             {readme}
           </pre>
         </div>
@@ -147,35 +281,85 @@ export function PluginDetail({
 
       {/* Capabilities */}
       <div style={{ marginBottom: "20px" }}>
-        <h3 style={{ fontSize: "14px", fontWeight: 600, marginBottom: "8px", color: "var(--color-text, #111)" }}>Capabilities</h3>
+        <h3
+          style={{
+            fontSize: "14px",
+            fontWeight: 600,
+            marginBottom: "8px",
+            color: "var(--color-text, #111)",
+          }}
+        >
+          Capabilities
+        </h3>
         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
           {entry.capabilities.map((cap) => (
-            <PluginCapabilityBadge key={cap} capability={cap as PluginCapability} showDescription />
+            <PluginCapabilityBadge
+              key={cap}
+              capability={cap as PluginCapability}
+              showDescription
+            />
           ))}
           {entry.capabilities.length === 0 && (
-            <span style={{ fontSize: "13px", color: "var(--color-text-muted, #9ca3af)" }}>No special permissions required</span>
+            <span
+              style={{
+                fontSize: "13px",
+                color: "var(--color-text-muted, #9ca3af)",
+              }}
+            >
+              No special permissions required
+            </span>
           )}
         </div>
       </div>
 
       {/* Links */}
       <div style={{ marginBottom: "20px" }}>
-        <h3 style={{ fontSize: "14px", fontWeight: 600, marginBottom: "8px", color: "var(--color-text, #111)" }}>Links</h3>
+        <h3
+          style={{
+            fontSize: "14px",
+            fontWeight: 600,
+            marginBottom: "8px",
+            color: "var(--color-text, #111)",
+          }}
+        >
+          Links
+        </h3>
         <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
           {entry.repository && (
-            <a href={entry.repository} target="_blank" rel="noopener noreferrer"
-              style={{ fontSize: "13px", color: "var(--color-accent, #3b82f6)" }}>
+            <a
+              href={entry.repository}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                fontSize: "13px",
+                color: "var(--color-accent, #3b82f6)",
+              }}
+            >
               Repository
             </a>
           )}
           {entry.homepage && (
-            <a href={entry.homepage} target="_blank" rel="noopener noreferrer"
-              style={{ fontSize: "13px", color: "var(--color-accent, #3b82f6)" }}>
+            <a
+              href={entry.homepage}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                fontSize: "13px",
+                color: "var(--color-accent, #3b82f6)",
+              }}
+            >
               Homepage
             </a>
           )}
           {!entry.repository && !entry.homepage && (
-            <span style={{ fontSize: "13px", color: "var(--color-text-muted, #9ca3af)" }}>No links available</span>
+            <span
+              style={{
+                fontSize: "13px",
+                color: "var(--color-text-muted, #9ca3af)",
+              }}
+            >
+              No links available
+            </span>
           )}
         </div>
       </div>
@@ -183,13 +367,28 @@ export function PluginDetail({
       {/* Keywords */}
       {entry.keywords && entry.keywords.length > 0 && (
         <div>
-          <h3 style={{ fontSize: "14px", fontWeight: 600, marginBottom: "8px", color: "var(--color-text, #111)" }}>Keywords</h3>
+          <h3
+            style={{
+              fontSize: "14px",
+              fontWeight: 600,
+              marginBottom: "8px",
+              color: "var(--color-text, #111)",
+            }}
+          >
+            Keywords
+          </h3>
           <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
             {entry.keywords.map((kw) => (
-              <span key={kw} style={{
-                padding: "2px 8px", borderRadius: "4px", fontSize: "12px",
-                backgroundColor: "var(--color-bg-secondary, #f3f4f6)", color: "var(--color-text-secondary, #4b5563)",
-              }}>
+              <span
+                key={kw}
+                style={{
+                  padding: "2px 8px",
+                  borderRadius: "4px",
+                  fontSize: "12px",
+                  backgroundColor: "var(--color-bg-secondary, #f3f4f6)",
+                  color: "var(--color-text-secondary, #4b5563)",
+                }}
+              >
                 {kw}
               </span>
             ))}

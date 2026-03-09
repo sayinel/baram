@@ -88,7 +88,8 @@ export function HoverPreview() {
       previewContent = blockText ?? `Block ^${blockId} not found`;
       previewTitle = `${resolved.name} > ^${blockId}`;
     } else {
-      previewContent = truncatePreview(fileContent, MAX_LINES) || "Empty document";
+      previewContent =
+        truncatePreview(fileContent, MAX_LINES) || "Empty document";
       previewTitle = resolved.name;
     }
 
@@ -97,7 +98,12 @@ export function HoverPreview() {
 
     const rect = element.getBoundingClientRect();
     const pos = calcPosition(
-      { top: rect.top, bottom: rect.bottom, left: rect.left, width: rect.width },
+      {
+        top: rect.top,
+        bottom: rect.bottom,
+        left: rect.left,
+        width: rect.width,
+      },
       { width: window.innerWidth, height: window.innerHeight },
       { width: POPUP_MAX_WIDTH, height: POPUP_MAX_HEIGHT },
     );
@@ -124,10 +130,14 @@ export function HoverPreview() {
       // Require Cmd (Meta) or Ctrl key
       if (!(e.metaKey || e.ctrlKey)) return;
 
-      const wikilinkEl = (e.target as HTMLElement).closest?.("[data-target].wikilink") as HTMLElement | null;
+      const wikilinkEl = (e.target as HTMLElement).closest?.(
+        "[data-target].wikilink",
+      ) as HTMLElement | null;
       // §30c Also detect block-reference elements
       const blockRefEl = !wikilinkEl
-        ? (e.target as HTMLElement).closest?.("[data-target].block-reference") as HTMLElement | null
+        ? ((e.target as HTMLElement).closest?.(
+            "[data-target].block-reference",
+          ) as HTMLElement | null)
         : null;
       const hoverEl = wikilinkEl || blockRefEl;
       if (!hoverEl) return;
@@ -151,7 +161,9 @@ export function HoverPreview() {
     };
 
     const handleMouseOut = (e: MouseEvent) => {
-      const hoverEl = (e.target as HTMLElement).closest?.(".wikilink, .block-reference");
+      const hoverEl = (e.target as HTMLElement).closest?.(
+        ".wikilink, .block-reference",
+      );
       if (hoverEl) {
         hidePreview();
       }
@@ -189,7 +201,9 @@ export function HoverPreview() {
       ref={popupRef}
       className="hover-preview"
       style={{ top: position.top, left: position.left }}
-      onMouseEnter={() => { isOverPopupRef.current = true; }}
+      onMouseEnter={() => {
+        isOverPopupRef.current = true;
+      }}
       onMouseLeave={() => {
         isOverPopupRef.current = false;
         setVisible(false);

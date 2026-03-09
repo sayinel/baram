@@ -58,17 +58,15 @@ export function resolveWikilinkTarget(
   // §61 Relative path resolution: [[./file]] or [[../path/file]]
   if (target.startsWith("./") || target.startsWith("../")) {
     const activeTabId = useEditorStore.getState().activeTabId;
-    const activeTab = useEditorStore.getState().tabs.find(
-      (t) => t.id === activeTabId,
-    );
+    const activeTab = useEditorStore
+      .getState()
+      .tabs.find((t) => t.id === activeTabId);
     const sourcePath = activeTab?.filePath;
     if (sourcePath) {
       const candidate = resolveRelativeTarget(target, sourcePath);
       if (candidate) {
         const candidateLower = candidate.toLowerCase();
-        const match = flat.find(
-          (f) => f.path.toLowerCase() === candidateLower,
-        );
+        const match = flat.find((f) => f.path.toLowerCase() === candidateLower);
         if (match) return { path: match.path, name: match.name };
       }
     }
@@ -79,7 +77,8 @@ export function resolveWikilinkTarget(
 
   // §56l Journal-aware: try notes/ first when journal-scoped
   if (isJournalScoped) {
-    const { journalDirectory, journalUseHierarchy } = useSettingsStore.getState();
+    const { journalDirectory, journalUseHierarchy } =
+      useSettingsStore.getState();
     const journalDir = resolveJournalDir(rootPath, journalDirectory);
     if (journalDir) {
       const notesDir = `${journalDir}/notes`;

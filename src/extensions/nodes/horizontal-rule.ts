@@ -75,10 +75,7 @@ export const HorizontalRule = Node.create<HorizontalRuleOptions>({
       new InputRule({
         find: /^(?:---|\*\*\*|___)\s?$/,
         handler: ({ range, chain }) => {
-          chain()
-            .deleteRange(range)
-            .setHorizontalRule()
-            .run();
+          chain().deleteRange(range).setHorizontalRule().run();
         },
       }),
     ];

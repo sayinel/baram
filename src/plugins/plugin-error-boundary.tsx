@@ -35,26 +35,32 @@ export class PluginErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       if (this.props.fallback) return this.props.fallback;
       return (
-        <div className="plugin-error-boundary" style={{
-          padding: "12px 16px",
-          margin: "8px 0",
-          borderRadius: "6px",
-          backgroundColor: "var(--color-error-bg, #fef2f2)",
-          color: "var(--color-error, #dc2626)",
-          fontSize: "13px",
-          border: "1px solid var(--color-error-border, #fecaca)",
-        }}>
+        <div
+          className="plugin-error-boundary"
+          style={{
+            padding: "12px 16px",
+            margin: "8px 0",
+            borderRadius: "6px",
+            backgroundColor: "var(--color-error-bg, #fef2f2)",
+            color: "var(--color-error, #dc2626)",
+            fontSize: "13px",
+            border: "1px solid var(--color-error-border, #fecaca)",
+          }}
+        >
           <strong>Plugin Error</strong>
           <p style={{ margin: "4px 0 0" }}>
-            Plugin &quot;{this.props.pluginId}&quot; encountered an error and has been disabled.
+            Plugin &quot;{this.props.pluginId}&quot; encountered an error and
+            has been disabled.
           </p>
           {this.state.error && (
-            <pre style={{
-              margin: "8px 0 0",
-              fontSize: "11px",
-              whiteSpace: "pre-wrap",
-              opacity: 0.7,
-            }}>
+            <pre
+              style={{
+                margin: "8px 0 0",
+                fontSize: "11px",
+                whiteSpace: "pre-wrap",
+                opacity: 0.7,
+              }}
+            >
               {this.state.error.message}
             </pre>
           )}

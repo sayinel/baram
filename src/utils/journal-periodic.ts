@@ -1,11 +1,25 @@
 /**
  * §56f — Periodic note (weekly / monthly / yearly) template generation
  */
-import { formatJournalDate, getISOWeekNumber, getWeekStartDate } from "./journal";
+import {
+  formatJournalDate,
+  getISOWeekNumber,
+  getWeekStartDate,
+} from "./journal";
 
 const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
 
 /** Get the end of ISO week (Sunday) from a given date */
@@ -85,25 +99,24 @@ year: ${y}
 }
 
 /** Apply periodic template variables (extends daily template vars) */
-export function applyPeriodicTemplate(
-  template: string,
-  date: Date,
-): string {
+export function applyPeriodicTemplate(template: string, date: Date): string {
   const weekNum = getISOWeekNumber(date);
   const weekStart = getWeekStartDate(date);
   const weekEnd = getWeekEndDate(date);
   const y = date.getFullYear();
   const m = date.getMonth();
 
-  return template
-    // Weekly variables
-    .replace(/\{\{week_number\}\}/g, `W${String(weekNum).padStart(2, "0")}`)
-    .replace(/\{\{week_start\}\}/g, formatJournalDate(weekStart))
-    .replace(/\{\{week_end\}\}/g, formatJournalDate(weekEnd))
-    // Monthly variables
-    .replace(/\{\{month_name\}\}/g, MONTH_NAMES[m])
-    // Shared variables
-    .replace(/\{\{date\}\}/g, formatJournalDate(date))
-    .replace(/\{\{year\}\}/g, String(y))
-    .replace(/\{\{month\}\}/g, String(m + 1).padStart(2, "0"));
+  return (
+    template
+      // Weekly variables
+      .replace(/\{\{week_number\}\}/g, `W${String(weekNum).padStart(2, "0")}`)
+      .replace(/\{\{week_start\}\}/g, formatJournalDate(weekStart))
+      .replace(/\{\{week_end\}\}/g, formatJournalDate(weekEnd))
+      // Monthly variables
+      .replace(/\{\{month_name\}\}/g, MONTH_NAMES[m])
+      // Shared variables
+      .replace(/\{\{date\}\}/g, formatJournalDate(date))
+      .replace(/\{\{year\}\}/g, String(y))
+      .replace(/\{\{month\}\}/g, String(m + 1).padStart(2, "0"))
+  );
 }

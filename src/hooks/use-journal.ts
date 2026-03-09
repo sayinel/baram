@@ -44,7 +44,12 @@ export function useJournal(
     const today = new Date();
     const journalPath = journalUseHierarchy
       ? getHierarchicalJournalPath(resolvedDir, today, journalFilenameFormat)
-      : getJournalFilePath(rootPath, journalDirectory, today, journalFilenameFormat);
+      : getJournalFilePath(
+          rootPath,
+          journalDirectory,
+          today,
+          journalFilenameFormat,
+        );
     if (!journalPath) return;
 
     (async () => {

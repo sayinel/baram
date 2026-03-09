@@ -30,18 +30,29 @@ export function SkillLintSection() {
   if (lintResults.length === 0) return null;
 
   const errorCount = lintResults.filter((r) => r.severity === "error").length;
-  const warningCount = lintResults.filter((r) => r.severity === "warning").length;
+  const warningCount = lintResults.filter(
+    (r) => r.severity === "warning",
+  ).length;
 
   return (
     <div className="skill-lint-section">
-      <button className="skill-lint-header" onClick={() => setExpanded((v) => !v)}>
-        <span className="skill-section-arrow">{expanded ? "\u25be" : "\u25b8"}</span>
+      <button
+        className="skill-lint-header"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <span className="skill-section-arrow">
+          {expanded ? "\u25be" : "\u25b8"}
+        </span>
         <span>Lint</span>
         {errorCount > 0 && (
-          <span className="skill-lint-badge skill-lint-badge--error">{errorCount}</span>
+          <span className="skill-lint-badge skill-lint-badge--error">
+            {errorCount}
+          </span>
         )}
         {warningCount > 0 && (
-          <span className="skill-lint-badge skill-lint-badge--warning">{warningCount}</span>
+          <span className="skill-lint-badge skill-lint-badge--warning">
+            {warningCount}
+          </span>
         )}
       </button>
 

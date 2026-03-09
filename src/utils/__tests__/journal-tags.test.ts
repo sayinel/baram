@@ -31,7 +31,11 @@ tags:
 ---
 
 Body text.`;
-    expect(extractTagsFromContent(content)).toEqual(["kotlin", "rust", "typescript"]);
+    expect(extractTagsFromContent(content)).toEqual([
+      "kotlin",
+      "rust",
+      "typescript",
+    ]);
   });
 
   it("skips #tags inside fenced code blocks", () => {
@@ -61,7 +65,10 @@ Body text.`;
 
   it("extracts nested tags with / separator", () => {
     const content = "Working on #project/baram and #status/done today";
-    expect(extractTagsFromContent(content)).toEqual(["project/baram", "status/done"]);
+    expect(extractTagsFromContent(content)).toEqual([
+      "project/baram",
+      "status/done",
+    ]);
   });
 
   it("extracts deeply nested tags", () => {
@@ -80,7 +87,11 @@ tags: [shared, frontonly]
 ---
 
 #shared #inlineonly`;
-    expect(extractTagsFromContent(content)).toEqual(["frontonly", "inlineonly", "shared"]);
+    expect(extractTagsFromContent(content)).toEqual([
+      "frontonly",
+      "inlineonly",
+      "shared",
+    ]);
   });
 });
 
@@ -202,7 +213,11 @@ describe("buildTagSuggestionPrompt", () => {
   });
 
   it("includes existing tags when provided", () => {
-    const { userPrompt } = buildTagSuggestionPrompt("내용", ["rust", "coding"], []);
+    const { userPrompt } = buildTagSuggestionPrompt(
+      "내용",
+      ["rust", "coding"],
+      [],
+    );
     expect(userPrompt).toContain("기존 태그: rust, coding");
   });
 

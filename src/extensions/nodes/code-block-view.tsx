@@ -1,16 +1,32 @@
 // §5.4 CodeMirror 6 NodeView for Code Blocks
 import { useEffect, useRef, useCallback } from "react";
 import { NodeViewWrapper, NodeViewProps } from "@tiptap/react";
-import { EditorView, ViewUpdate, keymap, lineNumbers, drawSelection } from "@codemirror/view";
+import {
+  EditorView,
+  ViewUpdate,
+  keymap,
+  lineNumbers,
+  drawSelection,
+} from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { defaultKeymap, indentWithTab } from "@codemirror/commands";
-import { bracketMatching, syntaxHighlighting, indentUnit } from "@codemirror/language";
+import {
+  bracketMatching,
+  syntaxHighlighting,
+  indentUnit,
+} from "@codemirror/language";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { getLanguageExtension, LANGUAGE_OPTIONS } from "./code-block-languages";
 import { getHighlightStyle } from "./code-block-highlight";
 import { useSettingsStore } from "../../stores/settings-store";
 
-export function CodeBlockView({ node, updateAttributes, editor, getPos, selected }: NodeViewProps) {
+export function CodeBlockView({
+  node,
+  updateAttributes,
+  editor,
+  getPos,
+  selected,
+}: NodeViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cmViewRef = useRef<EditorView | null>(null);
   const updatingRef = useRef(false);
@@ -47,7 +63,8 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
       if (destroyed || !containerRef.current) return;
 
       const currentTabSize = useSettingsStore.getState().tabSize;
-      const currentShowLineNumbers = useSettingsStore.getState().codeBlockLineNumbers;
+      const currentShowLineNumbers =
+        useSettingsStore.getState().codeBlockLineNumbers;
       const currentAutoPair = useSettingsStore.getState().autoPairBrackets;
 
       // Custom keymaps for PM ↔ CM navigation
@@ -97,7 +114,12 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
             if (head === 0 && view.state.doc.length === 0) {
               const pos = getPos();
               if (typeof pos === "number") {
-                editor.chain().focus().setTextSelection(pos + 1).toggleCodeBlock().run();
+                editor
+                  .chain()
+                  .focus()
+                  .setTextSelection(pos + 1)
+                  .toggleCodeBlock()
+                  .run();
               }
               return true;
             }
@@ -129,7 +151,11 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
 
       const extensions = [
         customKeymap,
-        keymap.of([...defaultKeymap, ...(currentAutoPair ? closeBracketsKeymap : []), indentWithTab]),
+        keymap.of([
+          ...defaultKeymap,
+          ...(currentAutoPair ? closeBracketsKeymap : []),
+          indentWithTab,
+        ]),
         ...(currentShowLineNumbers ? [lineNumbers()] : []),
         drawSelection(),
         bracketMatching(),
@@ -253,7 +279,12 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
   }, [node.textContent]);
 
   return (
-    <NodeViewWrapper className="code-block-wrapper" data-language={language} data-style={codeBlockStyle} spellCheck={false}>
+    <NodeViewWrapper
+      className="code-block-wrapper"
+      data-language={language}
+      data-style={codeBlockStyle}
+      spellCheck={false}
+    >
       <div className="code-block-header">
         <select
           className="code-block-lang-select"
@@ -263,7 +294,9 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
         >
           <option value="">auto</option>
           {LANGUAGE_OPTIONS.map(({ value, label }) => (
-            <option key={value} value={value}>{label}</option>
+            <option key={value} value={value}>
+              {label}
+            </option>
           ))}
         </select>
       </div>

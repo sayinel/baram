@@ -74,10 +74,14 @@ function DependencyGraph({
 
     // Resolve CSS variables for Cytoscape (doesn't support var())
     const computed = getComputedStyle(document.documentElement);
-    const accent = computed.getPropertyValue("--color-accent").trim() || "#6366f1";
-    const borderColor = computed.getPropertyValue("--color-border").trim() || "#d1d5db";
-    const textColor = computed.getPropertyValue("--color-text").trim() || "#1f2937";
-    const bgSecondary = computed.getPropertyValue("--color-bg-secondary").trim() || "#f3f4f6";
+    const accent =
+      computed.getPropertyValue("--color-accent").trim() || "#6366f1";
+    const borderColor =
+      computed.getPropertyValue("--color-border").trim() || "#d1d5db";
+    const textColor =
+      computed.getPropertyValue("--color-text").trim() || "#1f2937";
+    const bgSecondary =
+      computed.getPropertyValue("--color-bg-secondary").trim() || "#f3f4f6";
 
     let cancelled = false;
 
@@ -180,7 +184,10 @@ export function SkillDependencySection() {
   const [showImpact, setShowImpact] = useState(false);
   const [chainResult, setChainResult] = useState<ChainResult | null>(null);
 
-  const currentSkill = useMemo(() => parseSkillFrontmatter(yaml, filePath), [yaml, filePath]);
+  const currentSkill = useMemo(
+    () => parseSkillFrontmatter(yaml, filePath),
+    [yaml, filePath],
+  );
 
   // Scan workspace for all skill files
   const scanSkills = useCallback(async () => {
@@ -223,7 +230,11 @@ export function SkillDependencySection() {
   const graph = useMemo(() => buildDependencyGraph(allSkills), [allSkills]);
 
   const warnings = useMemo(
-    () => analyzeSkillDependencies(allSkills, new Set(allSkills.map((s) => s.name))),
+    () =>
+      analyzeSkillDependencies(
+        allSkills,
+        new Set(allSkills.map((s) => s.name)),
+      ),
     [allSkills],
   );
 
@@ -245,15 +256,23 @@ export function SkillDependencySection() {
   // Early return if not a skill file (AFTER all hooks to satisfy Rules of Hooks)
   if (!isSkill || !filePath) return null;
 
-  const hasNoDeps = currentSkill.requires.length === 0 && reverseDeps.length === 0;
+  const hasNoDeps =
+    currentSkill.requires.length === 0 && reverseDeps.length === 0;
 
   return (
     <div className="dep-section">
-      <button className="dep-section-header" onClick={() => setExpanded((v) => !v)}>
-        <span className="skill-section-arrow">{expanded ? "\u25be" : "\u25b8"}</span>
+      <button
+        className="dep-section-header"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <span className="skill-section-arrow">
+          {expanded ? "\u25be" : "\u25b8"}
+        </span>
         <span>Dependencies</span>
         {currentWarnings.length > 0 && (
-          <span className="dep-badge dep-badge--error">{currentWarnings.length}</span>
+          <span className="dep-badge dep-badge--error">
+            {currentWarnings.length}
+          </span>
         )}
         {loading && <span className="dep-loading" />}
       </button>
@@ -281,12 +300,19 @@ export function SkillDependencySection() {
           {/* Requires list */}
           {currentSkill.requires.length > 0 && (
             <div className="dep-list">
-              <div className="dep-list-title">Requires ({currentSkill.requires.length})</div>
+              <div className="dep-list-title">
+                Requires ({currentSkill.requires.length})
+              </div>
               {currentSkill.requires.map((req) => {
                 const found = allSkills.find((s) => s.name === req);
                 return (
-                  <div key={req} className={`dep-list-item${found ? "" : " dep-list-item--missing"}`}>
-                    <span className="dep-list-icon">{found ? "\u2192" : "\u2717"}</span>
+                  <div
+                    key={req}
+                    className={`dep-list-item${found ? "" : " dep-list-item--missing"}`}
+                  >
+                    <span className="dep-list-icon">
+                      {found ? "\u2192" : "\u2717"}
+                    </span>
                     <span>{req}</span>
                     {!found && <span className="dep-list-hint">not found</span>}
                   </div>
@@ -298,7 +324,9 @@ export function SkillDependencySection() {
           {/* Reverse dependencies (P2 §72b Task 5) */}
           {reverseDeps.length > 0 && (
             <div className="dep-list">
-              <div className="dep-list-title">Used by ({reverseDeps.length})</div>
+              <div className="dep-list-title">
+                Used by ({reverseDeps.length})
+              </div>
               {reverseDeps.map((name) => (
                 <div key={name} className="dep-list-item">
                   <span className="dep-list-icon">{"\u2190"}</span>
@@ -311,13 +339,19 @@ export function SkillDependencySection() {
           {/* Impact analysis (P2 §72b Task 5) */}
           {impact.length > 0 && (
             <div className="dep-list">
-              <button className="dep-impact-toggle" onClick={() => setShowImpact((v) => !v)}>
+              <button
+                className="dep-impact-toggle"
+                onClick={() => setShowImpact((v) => !v)}
+              >
                 Impact Analysis ({impact.length} affected)
                 <span>{showImpact ? "\u25be" : "\u25b8"}</span>
               </button>
               {showImpact &&
                 impact.map((name) => (
-                  <div key={name} className="dep-list-item dep-list-item--impact">
+                  <div
+                    key={name}
+                    className="dep-list-item dep-list-item--impact"
+                  >
                     <span className="dep-list-icon">{"\u26a1"}</span>
                     <span>{name}</span>
                   </div>
@@ -330,23 +364,39 @@ export function SkillDependencySection() {
             <div className="dep-chain">
               <button
                 className="dep-chain-btn"
-                onClick={() => setChainResult(dryRunChain(allSkills, currentSkill.name))}
+                onClick={() =>
+                  setChainResult(dryRunChain(allSkills, currentSkill.name))
+                }
                 disabled={loading || allSkills.length === 0}
               >
                 Chain Test (dry run)
               </button>
               {chainResult && (
-                <div className={`dep-chain-result dep-chain-result--${chainResult.success ? "ok" : "fail"}`}>
+                <div
+                  className={`dep-chain-result dep-chain-result--${chainResult.success ? "ok" : "fail"}`}
+                >
                   <div className="dep-chain-status">
-                    {chainResult.success ? "Chain OK" : "Chain broken"} ({chainResult.totalDurationMs}ms)
+                    {chainResult.success ? "Chain OK" : "Chain broken"} (
+                    {chainResult.totalDurationMs}ms)
                   </div>
                   {chainResult.steps.map((step, i) => (
-                    <div key={i} className={`dep-chain-step dep-chain-step--${step.status}`}>
+                    <div
+                      key={i}
+                      className={`dep-chain-step dep-chain-step--${step.status}`}
+                    >
                       <span className="dep-chain-step-icon">
-                        {step.status === "passed" ? "\u2713" : step.status === "failed" ? "\u2717" : step.status === "skipped" ? "\u2013" : "\u2026"}
+                        {step.status === "passed"
+                          ? "\u2713"
+                          : step.status === "failed"
+                            ? "\u2717"
+                            : step.status === "skipped"
+                              ? "\u2013"
+                              : "\u2026"}
                       </span>
                       <span>{step.skillName}</span>
-                      {step.error && <span className="dep-chain-step-err">{step.error}</span>}
+                      {step.error && (
+                        <span className="dep-chain-step-err">{step.error}</span>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -354,9 +404,15 @@ export function SkillDependencySection() {
             </div>
           )}
 
-          {hasNoDeps && !loading && <div className="dep-empty">No dependencies</div>}
+          {hasNoDeps && !loading && (
+            <div className="dep-empty">No dependencies</div>
+          )}
 
-          <button className="dep-rescan" onClick={scanSkills} disabled={loading}>
+          <button
+            className="dep-rescan"
+            onClick={scanSkills}
+            disabled={loading}
+          >
             {loading ? "Scanning..." : "\u21bb Rescan"}
           </button>
         </div>

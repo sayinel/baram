@@ -12,13 +12,22 @@ describe("parseFrontmatterTags", () => {
   });
 
   it("parses inline array with quotes", () => {
-    const yaml = 'tags: ["hello world", \'coding\', rust]';
-    expect(parseFrontmatterTags(yaml)).toEqual(["hello world", "coding", "rust"]);
+    const yaml = "tags: [\"hello world\", 'coding', rust]";
+    expect(parseFrontmatterTags(yaml)).toEqual([
+      "hello world",
+      "coding",
+      "rust",
+    ]);
   });
 
   it("parses block list format", () => {
-    const yaml = "title: Test\ntags:\n  - kotlin\n  - rust\n  - typescript\ndate: 2026-03-01";
-    expect(parseFrontmatterTags(yaml)).toEqual(["kotlin", "rust", "typescript"]);
+    const yaml =
+      "title: Test\ntags:\n  - kotlin\n  - rust\n  - typescript\ndate: 2026-03-01";
+    expect(parseFrontmatterTags(yaml)).toEqual([
+      "kotlin",
+      "rust",
+      "typescript",
+    ]);
   });
 
   it("returns empty array when no tags field", () => {
@@ -38,12 +47,18 @@ describe("parseFrontmatterTags", () => {
 
   it("handles nested tags in inline array", () => {
     const yaml = "tags: [project/baram, status/done]";
-    expect(parseFrontmatterTags(yaml)).toEqual(["project/baram", "status/done"]);
+    expect(parseFrontmatterTags(yaml)).toEqual([
+      "project/baram",
+      "status/done",
+    ]);
   });
 
   it("handles nested tags in block list", () => {
     const yaml = "tags:\n  - project/baram\n  - status/done";
-    expect(parseFrontmatterTags(yaml)).toEqual(["project/baram", "status/done"]);
+    expect(parseFrontmatterTags(yaml)).toEqual([
+      "project/baram",
+      "status/done",
+    ]);
   });
 });
 
@@ -51,13 +66,17 @@ describe("updateFrontmatterTags", () => {
   it("updates inline array format", () => {
     const yaml = "title: Test\ntags: [rust, react]\ndate: 2026-03-01";
     const result = updateFrontmatterTags(yaml, ["rust", "react", "go"]);
-    expect(result).toBe("title: Test\ntags: [rust, react, go]\ndate: 2026-03-01");
+    expect(result).toBe(
+      "title: Test\ntags: [rust, react, go]\ndate: 2026-03-01",
+    );
   });
 
   it("updates block list format", () => {
     const yaml = "title: Test\ntags:\n  - rust\n  - react\ndate: 2026-03-01";
     const result = updateFrontmatterTags(yaml, ["rust", "react", "go"]);
-    expect(result).toBe("title: Test\ntags:\n  - rust\n  - react\n  - go\ndate: 2026-03-01");
+    expect(result).toBe(
+      "title: Test\ntags:\n  - rust\n  - react\n  - go\ndate: 2026-03-01",
+    );
   });
 
   it("adds tags field when none exists", () => {

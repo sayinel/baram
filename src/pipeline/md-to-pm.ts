@@ -6,8 +6,15 @@ import type { Root, Content, PhrasingContent, Text } from "mdast";
 import { parseMdast, enrichWithEmptyParagraphs } from "./parse-mdast";
 import { parseMdastAsync } from "./parse-async";
 import type { Node as PmNode, Schema, Mark } from "@tiptap/pm/model";
-import { nodeTransformers, markTransformers, pmNodeTransformers } from "./transformers";
-import { isStandaloneImage, parseImgHtml } from "./transformers/image-transformer";
+import {
+  nodeTransformers,
+  markTransformers,
+  pmNodeTransformers,
+} from "./transformers";
+import {
+  isStandaloneImage,
+  parseImgHtml,
+} from "./transformers/image-transformer";
 import { parseCalloutHeader } from "./transformers/callout-transformer";
 import {
   WIKILINK_RE,
@@ -28,7 +35,13 @@ import {
   isDefinitionLine,
   stripDefinitionPrefix,
 } from "./transformers/definition-list-transformer";
-import { extractBlockId, BLOCK_REF_RE, parseBlockRefMatch, BLOCK_EMBED_RE, parseBlockEmbedMatch } from "./block-id";
+import {
+  extractBlockId,
+  BLOCK_REF_RE,
+  parseBlockRefMatch,
+  BLOCK_EMBED_RE,
+  parseBlockEmbedMatch,
+} from "./block-id";
 
 // §perf-large-file: Pre-compiled regex with 'g' flag — avoid per-call RegExp allocation
 const WIKILINK_RE_G = new RegExp(WIKILINK_RE.source, "g");
@@ -38,8 +51,16 @@ const TAG_NODE_RE_G = new RegExp(TAG_NODE_RE.source, "g");
 
 // §perf-large-file: Set for O(1) inline type check (replaces per-call array allocation)
 const INLINE_TYPES = new Set([
-  "text", "emphasis", "strong", "inlineCode", "link",
-  "image", "break", "delete", "html", "inlineMath",
+  "text",
+  "emphasis",
+  "strong",
+  "inlineCode",
+  "link",
+  "image",
+  "break",
+  "delete",
+  "html",
+  "inlineMath",
 ]);
 
 // parseMdast + enrichWithEmptyParagraphs are imported from ./parse-mdast
@@ -85,10 +106,7 @@ export function mdastBlocksToPmNodes(root: Root, schema: Schema): PmNode[] {
 }
 
 /** Convert block-level mdast children to PM nodes */
-function convertBlockChildren(
-  children: Content[],
-  schema: Schema,
-): PmNode[] {
+function convertBlockChildren(children: Content[], schema: Schema): PmNode[] {
   const result: PmNode[] = [];
   let i = 0;
 
@@ -122,8 +140,11 @@ function convertBlockChildren(
     // §perf-large-file: Pre-check avoids calling tryConvertDefinitionList on 99% of paragraphs
     if (child.type === "paragraph" && schema.nodes.definitionList) {
       const paraChildren = (child as { children: PhrasingContent[] }).children;
-      const nextIsDefPara = children[i + 1]?.type === "paragraph" &&
-        isDefinitionParagraph(children[i + 1] as { children: PhrasingContent[] });
+      const nextIsDefPara =
+        children[i + 1]?.type === "paragraph" &&
+        isDefinitionParagraph(
+          children[i + 1] as { children: PhrasingContent[] },
+        );
       const hasInlineDef = paraChildren.some(
         (c) => c.type === "text" && (c as Text).value.includes("\n:"),
       );
@@ -210,10 +231,10 @@ function tryConvertToggle(
   }
 
   // Build toggle node: summary (paragraph or heading) + body blocks
-  const toggleNode = schema.nodes.toggle.create(
-    { open: parsed.isOpen },
-    [summaryNode, ...bodyPmNodes],
-  );
+  const toggleNode = schema.nodes.toggle.create({ open: parsed.isOpen }, [
+    summaryNode,
+    ...bodyPmNodes,
+  ]);
 
   return { node: toggleNode, endIndex };
 }
@@ -256,7 +277,10 @@ function tryConvertDefinitionList(
     // Only attempt if this paragraph is NOT a definition line itself
     if (paraChildren.length > 0) {
       const firstText = paraChildren[0];
-      if (firstText.type === "text" && isDefinitionLine((firstText as Text).value)) {
+      if (
+        firstText.type === "text" &&
+        isDefinitionLine((firstText as Text).value)
+      ) {
         break; // Starts with `: ` — not a term
       }
     }
@@ -268,18 +292,25 @@ function tryConvertDefinitionList(
     ) {
       // This is a term paragraph
       const termInlineNodes = convertInlineChildren(paraChildren, schema, []);
-      dlChildren.push(schema.nodes.definitionTerm.create(null, termInlineNodes));
+      dlChildren.push(
+        schema.nodes.definitionTerm.create(null, termInlineNodes),
+      );
 
       // Consume consecutive definition paragraphs
       let j = i + 1;
       while (j < children.length) {
         const dc = children[j];
         if (dc.type !== "paragraph") break;
-        if (!isDefinitionParagraph(dc as { children: PhrasingContent[] })) break;
+        if (!isDefinitionParagraph(dc as { children: PhrasingContent[] }))
+          break;
 
         const dcChildren = (dc as { children: PhrasingContent[] }).children;
         const strippedChildren = stripDefinitionPrefix(dcChildren);
-        const descInlineNodes = convertInlineChildren(strippedChildren, schema, []);
+        const descInlineNodes = convertInlineChildren(
+          strippedChildren,
+          schema,
+          [],
+        );
         dlChildren.push(
           schema.nodes.definitionDescription.create(null, descInlineNodes),
         );
@@ -300,9 +331,7 @@ function tryConvertDefinitionList(
 }
 
 /** Check if a paragraph starts with `: ` (definition line) */
-function isDefinitionParagraph(
-  para: { children: PhrasingContent[] },
-): boolean {
+function isDefinitionParagraph(para: { children: PhrasingContent[] }): boolean {
   if (para.children.length === 0) return false;
   const first = para.children[0];
   return first.type === "text" && isDefinitionLine((first as Text).value);
@@ -388,9 +417,7 @@ function tryParseInlineDefinition(
     }
 
     const descInlines = convertInlineChildren(defPhrasingChildren, schema, []);
-    result.push(
-      schema.nodes.definitionDescription.create(null, descInlines),
-    );
+    result.push(schema.nodes.definitionDescription.create(null, descInlines));
   }
 
   return result.length > 1 ? result : null;
@@ -495,7 +522,12 @@ function convertBlockNode(
     const bqChildren = (node as { children: Content[] }).children;
     const firstChild = bqChildren[0];
     if (firstChild?.type === "paragraph") {
-      const firstText = ((firstChild as { children: Content[] }).children[0] as Text | undefined)?.value || "";
+      const firstText =
+        (
+          (firstChild as { children: Content[] }).children[0] as
+            | Text
+            | undefined
+        )?.value || "";
       const firstLine = firstText.split("\n")[0];
       if (parseCalloutHeader(firstLine)) {
         const calloutT = pmNodeTransformers.get("callout");
@@ -505,7 +537,11 @@ function convertBlockNode(
             if (!children) return [];
             const first = children[0];
             if (first && isInlineNode(first)) {
-              return convertInlineChildren(children as PhrasingContent[], schema, []);
+              return convertInlineChildren(
+                children as PhrasingContent[],
+                schema,
+                [],
+              );
             }
             return convertBlockChildren(children, schema);
           });
@@ -530,11 +566,7 @@ function convertBlockNode(
 
       const firstChild = children[0];
       if (firstChild && isInlineNode(firstChild)) {
-        return convertInlineChildren(
-          children as PhrasingContent[],
-          schema,
-          [],
-        );
+        return convertInlineChildren(children as PhrasingContent[], schema, []);
       }
       // Otherwise block-level
       return convertBlockChildren(children, schema);
@@ -559,10 +591,7 @@ function convertBlockNode(
 }
 
 /** Convert an mdast list node to PM list node (bulletList/orderedList/taskList) */
-function convertListNode(
-  node: Content,
-  schema: Schema,
-): PmNode {
+function convertListNode(node: Content, schema: Schema): PmNode {
   const list = node as {
     ordered?: boolean;
     start?: number;
@@ -592,10 +621,7 @@ function convertListNode(
   const items = convertListItemChildren(list.children, schema);
 
   if (list.ordered) {
-    return schema.nodes.orderedList.create(
-      { start: list.start ?? 1 },
-      items,
-    );
+    return schema.nodes.orderedList.create({ start: list.start ?? 1 }, items);
   }
 
   return schema.nodes.bulletList.create(null, items);
@@ -605,7 +631,10 @@ function convertListNode(
 function convertTableNode(node: Content, schema: Schema): PmNode {
   const table = node as {
     align?: (string | null)[];
-    children: { type: string; children: { type: string; children: Content[] }[] }[];
+    children: {
+      type: string;
+      children: { type: string; children: Content[] }[];
+    }[];
   };
   const align = table.align || [];
   const rows: PmNode[] = [];
@@ -700,14 +729,46 @@ function convertInlineChildren(
   for (const child of children) {
     if (child.type === "html") {
       const val = (child as { value: string }).value.trim().toLowerCase();
-      if (val === "<u>") { underlineActive = true; htmlMarksDirty = true; continue; }
-      if (val === "</u>") { underlineActive = false; htmlMarksDirty = true; continue; }
-      if (val === "<mark>") { highlightActive = true; htmlMarksDirty = true; continue; }
-      if (val === "</mark>") { highlightActive = false; htmlMarksDirty = true; continue; }
-      if (val === "<sub>") { subscriptActive = true; htmlMarksDirty = true; continue; }
-      if (val === "</sub>") { subscriptActive = false; htmlMarksDirty = true; continue; }
-      if (val === "<sup>") { superscriptActive = true; htmlMarksDirty = true; continue; }
-      if (val === "</sup>") { superscriptActive = false; htmlMarksDirty = true; continue; }
+      if (val === "<u>") {
+        underlineActive = true;
+        htmlMarksDirty = true;
+        continue;
+      }
+      if (val === "</u>") {
+        underlineActive = false;
+        htmlMarksDirty = true;
+        continue;
+      }
+      if (val === "<mark>") {
+        highlightActive = true;
+        htmlMarksDirty = true;
+        continue;
+      }
+      if (val === "</mark>") {
+        highlightActive = false;
+        htmlMarksDirty = true;
+        continue;
+      }
+      if (val === "<sub>") {
+        subscriptActive = true;
+        htmlMarksDirty = true;
+        continue;
+      }
+      if (val === "</sub>") {
+        subscriptActive = false;
+        htmlMarksDirty = true;
+        continue;
+      }
+      if (val === "<sup>") {
+        superscriptActive = true;
+        htmlMarksDirty = true;
+        continue;
+      }
+      if (val === "</sup>") {
+        superscriptActive = false;
+        htmlMarksDirty = true;
+        continue;
+      }
     }
 
     if (htmlMarksDirty) {
@@ -765,7 +826,11 @@ function convertInlineNode(
     }
 
     // Custom inline marks: ==highlight==, ^superscript^, ~subscript~
-    const customMarkNodes = splitTextWithCustomInlineMarks(text.value, schema, parentMarks);
+    const customMarkNodes = splitTextWithCustomInlineMarks(
+      text.value,
+      schema,
+      parentMarks,
+    );
     if (customMarkNodes.length > 0) return customMarkNodes;
 
     return [schema.text(text.value, parentMarks)];
@@ -810,7 +875,9 @@ function convertInlineNode(
   if (node.type === "footnoteReference") {
     const fnRef = node as { identifier: string };
     if (schema.nodes.footnoteRef) {
-      return [schema.nodes.footnoteRef.create({ identifier: fnRef.identifier })];
+      return [
+        schema.nodes.footnoteRef.create({ identifier: fnRef.identifier }),
+      ];
     }
   }
 
@@ -1038,10 +1105,14 @@ function splitTextWithTags(
 }
 
 /** Custom inline mark patterns: ==highlight==, ^superscript^, ~subscript~ */
-const CUSTOM_MARK_PATTERNS: { markName: string; re: RegExp; fastCheck: string }[] = [
-  { markName: "highlight",   re: /==((?:[^=]|=[^=])+)==/g, fastCheck: "==" },
-  { markName: "superscript", re: /\^([^^]+)\^/g,           fastCheck: "^" },
-  { markName: "subscript",   re: /(?<![~])~([^~]+)~(?!~)/g, fastCheck: "~" },
+const CUSTOM_MARK_PATTERNS: {
+  markName: string;
+  re: RegExp;
+  fastCheck: string;
+}[] = [
+  { markName: "highlight", re: /==((?:[^=]|=[^=])+)==/g, fastCheck: "==" },
+  { markName: "superscript", re: /\^([^^]+)\^/g, fastCheck: "^" },
+  { markName: "subscript", re: /(?<![~])~([^~]+)~(?!~)/g, fastCheck: "~" },
 ];
 
 /**
@@ -1058,7 +1129,13 @@ function splitTextWithCustomInlineMarks(
     if (!schema.marks[markName]) continue;
     if (!text.includes(fastCheck)) continue;
 
-    const nodes = splitTextWithSingleCustomMark(text, schema, parentMarks, markName, re);
+    const nodes = splitTextWithSingleCustomMark(
+      text,
+      schema,
+      parentMarks,
+      markName,
+      re,
+    );
     if (nodes.length > 0) return nodes;
   }
   return [];
@@ -1082,7 +1159,11 @@ function splitTextWithSingleCustomMark(
     if (match.index > lastIndex) {
       const before = text.slice(lastIndex, match.index);
       // Recursively check remaining patterns on the "before" text
-      const beforeNodes = splitTextWithCustomInlineMarks(before, schema, parentMarks);
+      const beforeNodes = splitTextWithCustomInlineMarks(
+        before,
+        schema,
+        parentMarks,
+      );
       if (beforeNodes.length > 0) {
         result.push(...beforeNodes);
       } else {
@@ -1104,7 +1185,11 @@ function splitTextWithSingleCustomMark(
   // Text after the last match
   if (lastIndex < text.length) {
     const after = text.slice(lastIndex);
-    const afterNodes = splitTextWithCustomInlineMarks(after, schema, parentMarks);
+    const afterNodes = splitTextWithCustomInlineMarks(
+      after,
+      schema,
+      parentMarks,
+    );
     if (afterNodes.length > 0) {
       result.push(...afterNodes);
     } else {

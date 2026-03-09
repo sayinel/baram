@@ -56,9 +56,15 @@ export function Outline({ editor }: OutlineProps) {
             editor.commands.setTextSelection(h.pos + 1);
             const domNode = editor.view.domAtPos(h.pos + 1);
             if (domNode.node instanceof HTMLElement) {
-              domNode.node.scrollIntoView({ behavior: "smooth", block: "center" });
+              domNode.node.scrollIntoView({
+                behavior: "smooth",
+                block: "center",
+              });
             } else if (domNode.node.parentElement) {
-              domNode.node.parentElement.scrollIntoView({ behavior: "smooth", block: "center" });
+              domNode.node.parentElement.scrollIntoView({
+                behavior: "smooth",
+                block: "center",
+              });
             }
           }}
         >

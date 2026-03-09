@@ -102,8 +102,7 @@ export const Heading = Node.create<HeadingOptions>({
       ...this.options.levels.reduce(
         (shortcuts, level) => ({
           ...shortcuts,
-          [`Mod-${level}`]: () =>
-            this.editor.commands.toggleHeading({ level }),
+          [`Mod-${level}`]: () => this.editor.commands.toggleHeading({ level }),
         }),
         {} as Record<string, () => boolean>,
       ),

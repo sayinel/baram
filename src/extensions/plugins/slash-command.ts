@@ -4,7 +4,10 @@ import { Suggestion } from "@tiptap/suggestion";
 import { open } from "@tauri-apps/plugin-dialog";
 import { ReactRenderer } from "@tiptap/react";
 import type { Editor } from "@tiptap/core";
-import type { SuggestionProps, SuggestionKeyDownProps } from "@tiptap/suggestion";
+import type {
+  SuggestionProps,
+  SuggestionKeyDownProps,
+} from "@tiptap/suggestion";
 import {
   SlashMenuList,
   type SlashMenuItem,
@@ -17,7 +20,11 @@ import {
   resolveInputVariable,
   substituteInput,
 } from "../../utils/custom-ai-commands";
-import { executeAICommand, getSelectionOrParagraph, showPrompt } from "../../utils/ai-commands";
+import {
+  executeAICommand,
+  getSelectionOrParagraph,
+  showPrompt,
+} from "../../utils/ai-commands";
 import { showFieldDialog } from "../../utils/field-dialog";
 import { showTableGridPicker } from "../../utils/table-grid-picker";
 import {
@@ -204,12 +211,19 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
         // Get cursor position for picker placement
         const { from } = editor.state.selection;
         const coords = editor.view.coordsAtPos(from);
-        const result = await showTableGridPicker(coords.left, coords.bottom + 4);
+        const result = await showTableGridPicker(
+          coords.left,
+          coords.bottom + 4,
+        );
         if (!result) return;
         editor
           .chain()
           .focus()
-          .insertTable({ rows: result.rows, cols: result.cols, withHeaderRow: true })
+          .insertTable({
+            rows: result.rows,
+            cols: result.cols,
+            withHeaderRow: true,
+          })
           .run();
       },
     },
@@ -225,7 +239,11 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
           title: "Insert Image",
           fields: [
             { key: "alt", label: "Alt text", placeholder: "Image description" },
-            { key: "src", label: "Image URL", placeholder: "https://... or ./path.png" },
+            {
+              key: "src",
+              label: "Image URL",
+              placeholder: "https://... or ./path.png",
+            },
           ],
         });
         if (!result?.src) return;
@@ -431,7 +449,12 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
         try {
           const selected = await open({
             multiple: true,
-            filters: [{ name: "Images", extensions: ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"] }],
+            filters: [
+              {
+                name: "Images",
+                extensions: ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"],
+              },
+            ],
           });
           if (!selected) return;
 
@@ -440,21 +463,27 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
           // Check journal context
           const { useEditorStore } = await import("../../stores/editor-store");
           const { useFileStore } = await import("../../stores/file-store");
-          const { useSettingsStore } = await import("../../stores/settings-store");
+          const { useSettingsStore } =
+            await import("../../stores/settings-store");
 
           const activeTabId = useEditorStore.getState().activeTabId;
           const tabs = useEditorStore.getState().tabs;
-          const activeTab = tabs.find((t: { id: string }) => t.id === activeTabId);
+          const activeTab = tabs.find(
+            (t: { id: string }) => t.id === activeTabId,
+          );
           const filePath = activeTab?.filePath ?? "";
           const rootPath = useFileStore.getState().rootPath ?? "";
           const journalDir = useSettingsStore.getState().journalDirectory ?? "";
-          const journalAbsPath = rootPath && journalDir ? `${rootPath}/${journalDir}` : "";
-          const isJournal = journalAbsPath && filePath.startsWith(journalAbsPath);
+          const journalAbsPath =
+            rootPath && journalDir ? `${rootPath}/${journalDir}` : "";
+          const isJournal =
+            journalAbsPath && filePath.startsWith(journalAbsPath);
 
           for (const p of paths) {
             if (isJournal && rootPath && journalDir) {
               // Copy file to assets directory using helpers + copyFile IPC
-              const { generatePhotoFilename, getAssetsDir } = await import("../../utils/journal-photo");
+              const { generatePhotoFilename, getAssetsDir } =
+                await import("../../utils/journal-photo");
               const { createDir, copyFile } = await import("../../ipc/invoke");
 
               const now = new Date();
@@ -462,7 +491,11 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
               const assetsRelDir = getAssetsDir(journalDir, now);
               const absoluteAssetsDir = `${rootPath}/${assetsRelDir}`;
 
-              try { await createDir(absoluteAssetsDir); } catch { /* already exists */ }
+              try {
+                await createDir(absoluteAssetsDir);
+              } catch {
+                /* already exists */
+              }
 
               const destName = generatePhotoFilename(fileName, now);
               const absoluteDest = `${absoluteAssetsDir}/${destName}`;
@@ -475,7 +508,11 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
                 .focus()
                 .insertContent({
                   type: "image",
-                  attrs: { src: relativePath, alt: fileName.replace(/\.[^.]+$/, ""), title: "" },
+                  attrs: {
+                    src: relativePath,
+                    alt: fileName.replace(/\.[^.]+$/, ""),
+                    title: "",
+                  },
                 })
                 .run();
             } else {
@@ -504,15 +541,19 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       id: `ai-custom-${cmd.id}`,
       label: cmd.name,
       category: "AI",
-      description: cmd.prompt.length > 60 ? cmd.prompt.slice(0, 60) + "..." : cmd.prompt,
+      description:
+        cmd.prompt.length > 60 ? cmd.prompt.slice(0, 60) + "..." : cmd.prompt,
       mdHint: "AI",
       action: async () => {
         // Get current context for variable substitution
         const { from, to } = editor.state.selection;
-        const selection = from !== to ? editor.state.doc.textBetween(from, to) : "";
+        const selection =
+          from !== to ? editor.state.doc.textBetween(from, to) : "";
         const document = editor.state.doc.textContent;
 
-        const { hasInput, prompt: inputPrompt } = resolveInputVariable(cmd.prompt);
+        const { hasInput, prompt: inputPrompt } = resolveInputVariable(
+          cmd.prompt,
+        );
 
         let finalPrompt = substituteVariables(cmd.prompt, {
           selection,
@@ -526,7 +567,11 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
         }
 
         // Stream LLM response into editor
-        executeAICommand(editor, finalPrompt, "You are a helpful AI assistant. Follow the user's instructions carefully.");
+        executeAICommand(
+          editor,
+          finalPrompt,
+          "You are a helpful AI assistant. Follow the user's instructions carefully.",
+        );
       },
     });
   }

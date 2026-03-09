@@ -170,8 +170,7 @@ function createMathEditPlugin(): Plugin<MathEditState> {
                 pendingRaf = null;
               }
 
-              const formula =
-                (selection.node.attrs.formula as string) || "";
+              const formula = (selection.node.attrs.formula as string) || "";
               const pos = selection.from;
               const { tr } = view.state;
               const newText = `$${formula}$`;
@@ -216,9 +215,7 @@ function createMathEditPlugin(): Plugin<MathEditState> {
               // Has content → restore as plain text (remove $ delimiters)
               const text = view.state.schema.text(formula);
               tr.replaceWith(es.from, es.to, text);
-              tr.setSelection(
-                TextSelection.create(tr.doc, es.from),
-              );
+              tr.setSelection(TextSelection.create(tr.doc, es.from));
             }
             tr.setMeta(mathEditKey, INACTIVE);
             view.dispatch(tr);

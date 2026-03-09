@@ -53,8 +53,7 @@ export const Wikilink = Node.create<WikilinkOptions>({
   },
 
   renderHTML({ HTMLAttributes }) {
-    const display =
-      HTMLAttributes.display || HTMLAttributes.target || "";
+    const display = HTMLAttributes.display || HTMLAttributes.target || "";
     return [
       "span",
       {
@@ -134,10 +133,7 @@ export const Wikilink = Node.create<WikilinkOptions>({
             const isDate = isDateString(target);
             if (!isDate && !(event.metaKey || event.ctrlKey)) return false;
 
-            onNavigate(
-              target,
-              wikilinkNode.attrs.heading as string | null,
-            );
+            onNavigate(target, wikilinkNode.attrs.heading as string | null);
             return true;
           },
         },

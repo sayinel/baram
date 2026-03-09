@@ -14,7 +14,9 @@ export function extractTagsFromContent(content: string): string[] {
   const tags = new Set<string>();
 
   // Strip fenced code blocks before scanning inline tags
-  const withoutCodeBlocks = content.replace(/```[\s\S]*?```/g, "").replace(/`[^`]*`/g, "");
+  const withoutCodeBlocks = content
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/`[^`]*`/g, "");
 
   // Extract frontmatter tags: `tags: [a, b, c]` or `tags:\n  - a`
   const frontmatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
@@ -35,7 +37,12 @@ export function extractTagsFromContent(content: string): string[] {
       if (blockListMatch) {
         blockListMatch[1]
           .split("\n")
-          .map((line) => line.replace(/^\s+-\s+/, "").trim().replace(/^["']|["']$/g, ""))
+          .map((line) =>
+            line
+              .replace(/^\s+-\s+/, "")
+              .trim()
+              .replace(/^["']|["']$/g, ""),
+          )
           .filter(Boolean)
           .forEach((t) => tags.add(t.toLowerCase()));
       }
@@ -84,12 +91,12 @@ export function buildTagSuggestionPrompt(
     return { systemPrompt, userPrompt: "(내용이 비어 있습니다.)" };
   }
 
-  const existingStr = existingTags.length > 0
-    ? `\n\n기존 태그: ${existingTags.join(", ")}`
-    : "";
-  const vaultStr = vaultTags.length > 0
-    ? `\n\n볼트 태그 (상위 ${Math.min(vaultTags.length, 50)}개): ${vaultTags.slice(0, 50).join(", ")}`
-    : "";
+  const existingStr =
+    existingTags.length > 0 ? `\n\n기존 태그: ${existingTags.join(", ")}` : "";
+  const vaultStr =
+    vaultTags.length > 0
+      ? `\n\n볼트 태그 (상위 ${Math.min(vaultTags.length, 50)}개): ${vaultTags.slice(0, 50).join(", ")}`
+      : "";
 
   const userPrompt = `다음 노트에 적합한 태그를 추천해주세요.${existingStr}${vaultStr}\n\n---\n\n${trimmed}`;
   return { systemPrompt, userPrompt };
@@ -99,7 +106,10 @@ export function buildTagSuggestionPrompt(
  * §56m P2 AI Tag Suggestions — parse LLM response into tag array.
  * Splits by comma/newline, strips # prefix, deduplicates, excludes existing tags.
  */
-export function parseTagSuggestions(response: string, existingTags: string[]): string[] {
+export function parseTagSuggestions(
+  response: string,
+  existingTags: string[],
+): string[] {
   const existingSet = new Set(existingTags.map((t) => t.toLowerCase()));
 
   const tags = response
@@ -148,7 +158,10 @@ export function filterTags(
   for (const [tag, count] of tagIndex) {
     if (tag.startsWith(q)) {
       prefixMatches.push([tag, count]);
-    } else if (tag.includes("/" + q) || tag.split("/").some(seg => seg.startsWith(q))) {
+    } else if (
+      tag.includes("/" + q) ||
+      tag.split("/").some((seg) => seg.startsWith(q))
+    ) {
       segmentMatches.push([tag, count]);
     }
   }
@@ -157,7 +170,5 @@ export function filterTags(
   prefixMatches.sort((a, b) => b[1] - a[1]);
   segmentMatches.sort((a, b) => b[1] - a[1]);
 
-  return [...prefixMatches, ...segmentMatches]
-    .slice(0, 10)
-    .map(([tag]) => tag);
+  return [...prefixMatches, ...segmentMatches].slice(0, 10).map(([tag]) => tag);
 }

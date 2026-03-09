@@ -18,7 +18,7 @@ export function useSkillsMode() {
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const filePath = activeTab?.filePath ?? null;
-  const content = filePath ? openFiles.get(filePath) ?? "" : "";
+  const content = filePath ? (openFiles.get(filePath) ?? "") : "";
 
   // Extract YAML from frontmatter
   const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
@@ -50,7 +50,15 @@ export function useSkillsMode() {
     } else if (prevModeRef.current) {
       // Restore previous state
       const prev = prevModeRef.current;
-      ui.setRightPanelMode(prev.mode as "chat" | "help" | "memories" | "photo-gallery" | "properties" | "none");
+      ui.setRightPanelMode(
+        prev.mode as
+          | "chat"
+          | "help"
+          | "memories"
+          | "photo-gallery"
+          | "properties"
+          | "none",
+      );
       if (ui.rightPanelOpen !== prev.open) {
         ui.toggleRightPanel();
       }

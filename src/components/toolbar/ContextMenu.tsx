@@ -1,8 +1,18 @@
 // §4.8 Context Menu — right-click with node-type detection
-import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
+import {
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+  useRef,
+} from "react";
 import type { Editor } from "@tiptap/react";
 import { copyMathToPNG } from "../../utils/katex-to-png";
-import { copyMermaidSvg, copyMermaidPng, copyMermaidSource } from "../../utils/mermaid-utils";
+import {
+  copyMermaidSvg,
+  copyMermaidPng,
+  copyMermaidSource,
+} from "../../utils/mermaid-utils";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 import {
   addBlockId,
@@ -22,7 +32,11 @@ interface MenuItem {
 }
 
 /** Walk up from resolved position to find the enclosing table node */
-function findTableAtCursor(editor: Editor): { node: ReturnType<typeof editor.state.doc.nodeAt>; pos: number; depth: number } | null {
+function findTableAtCursor(editor: Editor): {
+  node: ReturnType<typeof editor.state.doc.nodeAt>;
+  pos: number;
+  depth: number;
+} | null {
   const { $from } = editor.state.selection;
   for (let d = $from.depth; d >= 0; d--) {
     const node = $from.node(d);
@@ -54,7 +68,11 @@ export function ContextMenu({ editor }: ContextMenuProps) {
         const dataType =
           el.getAttribute("data-type") ||
           el.closest("[data-type]")?.getAttribute("data-type");
-        if (dataType === "mathBlock" || dataType === "mathInline" || dataType === "mermaidBlock") {
+        if (
+          dataType === "mathBlock" ||
+          dataType === "mathInline" ||
+          dataType === "mermaidBlock"
+        ) {
           return dataType;
         }
         el = el.parentElement;
@@ -90,7 +108,9 @@ export function ContextMenu({ editor }: ContextMenuProps) {
         },
         {
           label: "Copy as Image",
-          action: () => { copyMathToPNG(formula, true); },
+          action: () => {
+            copyMathToPNG(formula, true);
+          },
         },
         { label: "", action: () => {}, separator: true },
         {
@@ -155,7 +175,9 @@ export function ContextMenu({ editor }: ContextMenuProps) {
   const buildMathInlineMenu = useCallback(
     (target: HTMLElement): MenuItem[] => {
       // Find the inline math node by walking the DOM to get ProseMirror position
-      const nodeViewWrapper = target.closest("[data-type='mathInline']") as HTMLElement | null;
+      const nodeViewWrapper = target.closest(
+        "[data-type='mathInline']",
+      ) as HTMLElement | null;
       if (!nodeViewWrapper) return [];
 
       const pmPos = editor.view.posAtDOM(nodeViewWrapper, 0);
@@ -176,7 +198,9 @@ export function ContextMenu({ editor }: ContextMenuProps) {
         },
         {
           label: "Copy as Image",
-          action: () => { copyMathToPNG(formula, false); },
+          action: () => {
+            copyMathToPNG(formula, false);
+          },
         },
         { label: "", action: () => {}, separator: true },
         {
@@ -242,7 +266,9 @@ export function ContextMenu({ editor }: ContextMenuProps) {
   const buildMermaidBlockMenu = useCallback(
     (target: Element): MenuItem[] => {
       // Find the mermaid NodeView wrapper (target may be SVGElement inside the diagram)
-      const wrapper = target.closest("[data-type='mermaidBlock']") as HTMLElement | null;
+      const wrapper = target.closest(
+        "[data-type='mermaidBlock']",
+      ) as HTMLElement | null;
       if (!wrapper) return [];
 
       const pmPos = editor.view.posAtDOM(wrapper, 0);
@@ -333,7 +359,8 @@ export function ContextMenu({ editor }: ContextMenuProps) {
         }
       }
       if (tableCell) {
-        const currentAlign = (tableCell.attrs.alignment as string | null) ?? null;
+        const currentAlign =
+          (tableCell.attrs.alignment as string | null) ?? null;
         return [
           ...baseItems,
           { label: "", action: () => {}, separator: true },
@@ -356,31 +383,55 @@ export function ContextMenu({ editor }: ContextMenuProps) {
           { label: "", action: () => {}, separator: true },
           {
             label: `Align Left${currentAlign === "left" ? " \u2713" : ""}`,
-            action: () => editor.chain().focus().setCellAttribute("alignment", "left").run(),
+            action: () =>
+              editor
+                .chain()
+                .focus()
+                .setCellAttribute("alignment", "left")
+                .run(),
           },
           {
             label: `Align Center${currentAlign === "center" ? " \u2713" : ""}`,
-            action: () => editor.chain().focus().setCellAttribute("alignment", "center").run(),
+            action: () =>
+              editor
+                .chain()
+                .focus()
+                .setCellAttribute("alignment", "center")
+                .run(),
           },
           {
             label: `Align Right${currentAlign === "right" ? " \u2713" : ""}`,
-            action: () => editor.chain().focus().setCellAttribute("alignment", "right").run(),
+            action: () =>
+              editor
+                .chain()
+                .focus()
+                .setCellAttribute("alignment", "right")
+                .run(),
           },
           {
             label: `No Alignment${currentAlign === null ? " \u2713" : ""}`,
-            action: () => editor.chain().focus().setCellAttribute("alignment", null).run(),
+            action: () =>
+              editor.chain().focus().setCellAttribute("alignment", null).run(),
           },
-          ...(editor.can().mergeCells() || editor.can().splitCell() ? [
-            { label: "", action: () => {}, separator: true },
-          ] : []),
-          ...(editor.can().mergeCells() ? [{
-            label: "Merge Cells",
-            action: () => editor.chain().focus().mergeCells().run(),
-          }] : []),
-          ...(editor.can().splitCell() ? [{
-            label: "Split Cell",
-            action: () => editor.chain().focus().splitCell().run(),
-          }] : []),
+          ...(editor.can().mergeCells() || editor.can().splitCell()
+            ? [{ label: "", action: () => {}, separator: true }]
+            : []),
+          ...(editor.can().mergeCells()
+            ? [
+                {
+                  label: "Merge Cells",
+                  action: () => editor.chain().focus().mergeCells().run(),
+                },
+              ]
+            : []),
+          ...(editor.can().splitCell()
+            ? [
+                {
+                  label: "Split Cell",
+                  action: () => editor.chain().focus().splitCell().run(),
+                },
+              ]
+            : []),
           { label: "", action: () => {}, separator: true },
           {
             label: "Delete Row",
@@ -408,7 +459,9 @@ export function ContextMenu({ editor }: ContextMenuProps) {
             action: () => {
               const table = findTableAtCursor(editor);
               if (!table || !table.node) return;
-              const tempDoc = editor.schema.nodes.doc.create(null, [table.node]);
+              const tempDoc = editor.schema.nodes.doc.create(null, [
+                table.node,
+              ]);
               const md = prosemirrorToMarkdown(tempDoc);
               navigator.clipboard.writeText(md.trim());
             },
@@ -460,9 +513,7 @@ export function ContextMenu({ editor }: ContextMenuProps) {
         const blockNode = editor.state.doc.nodeAt(blockPos);
         if (blockNode) {
           const existingId = blockNode.attrs.blockId as string | null;
-          blockIdItems.push(
-            { label: "", action: () => {}, separator: true },
-          );
+          blockIdItems.push({ label: "", action: () => {}, separator: true });
           if (existingId) {
             blockIdItems.push(
               {
@@ -568,10 +619,21 @@ export function ContextMenu({ editor }: ContextMenuProps) {
       document.removeEventListener("mousedown", handleClick);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [editor, buildMenuItems, buildMathBlockMenu, buildMathInlineMenu, buildMermaidBlockMenu, findSpecialNode, closeMenu]);
+  }, [
+    editor,
+    buildMenuItems,
+    buildMathBlockMenu,
+    buildMathInlineMenu,
+    buildMermaidBlockMenu,
+    findSpecialNode,
+    closeMenu,
+  ]);
 
   // Clamp menu position so it stays within the viewport
-  const [adjustedPos, setAdjustedPos] = useState<{ x: number; y: number } | null>(null);
+  const [adjustedPos, setAdjustedPos] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   useLayoutEffect(() => {
     if (!position || !menuRef.current) {
       setAdjustedPos(null);

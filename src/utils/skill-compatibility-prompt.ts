@@ -10,7 +10,9 @@ export interface CompatibilityCheckRequest {
  * Build a prompt for LLM-based interface compatibility analysis.
  * Compares the output_format of the source skill with the expected input of the target skill.
  */
-export function buildCompatibilityPrompt(req: CompatibilityCheckRequest): string {
+export function buildCompatibilityPrompt(
+  req: CompatibilityCheckRequest,
+): string {
   const { sourceSkill, targetSkill } = req;
 
   return `You are a skill dependency analyzer. Analyze whether the output of skill "${sourceSkill.name}" is compatible with what skill "${targetSkill.name}" expects as input.
@@ -58,7 +60,9 @@ export function parseCompatibilityResponse(raw: string): CompatibilityResult {
     const parsed = JSON.parse(jsonMatch[0]);
     return {
       compatible: Boolean(parsed.compatible),
-      confidence: ["high", "medium", "low"].includes(parsed.confidence) ? parsed.confidence : "low",
+      confidence: ["high", "medium", "low"].includes(parsed.confidence)
+        ? parsed.confidence
+        : "low",
       mismatch: parsed.mismatch ?? null,
       suggestion: parsed.suggestion ?? null,
     };

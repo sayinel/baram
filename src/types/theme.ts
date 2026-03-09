@@ -49,10 +49,26 @@ export const THEME_COLOR_KEYS: {
   category: string;
 }[] = [
   // Background
-  { key: "--color-bg-primary", label: "Primary Background", category: "Background" },
-  { key: "--color-bg-secondary", label: "Secondary Background", category: "Background" },
-  { key: "--color-bg-sidebar", label: "Sidebar Background", category: "Background" },
-  { key: "--color-bg-tertiary", label: "Tertiary Background", category: "Background" },
+  {
+    key: "--color-bg-primary",
+    label: "Primary Background",
+    category: "Background",
+  },
+  {
+    key: "--color-bg-secondary",
+    label: "Secondary Background",
+    category: "Background",
+  },
+  {
+    key: "--color-bg-sidebar",
+    label: "Sidebar Background",
+    category: "Background",
+  },
+  {
+    key: "--color-bg-tertiary",
+    label: "Tertiary Background",
+    category: "Background",
+  },
 
   // Text
   { key: "--color-text-primary", label: "Primary Text", category: "Text" },
@@ -70,9 +86,17 @@ export const THEME_COLOR_KEYS: {
   // Editor
   { key: "--color-editor-bg", label: "Editor Background", category: "Editor" },
   { key: "--color-editor-text", label: "Editor Text", category: "Editor" },
-  { key: "--color-editor-selection", label: "Editor Selection", category: "Editor" },
+  {
+    key: "--color-editor-selection",
+    label: "Editor Selection",
+    category: "Editor",
+  },
   { key: "--color-editor-cursor", label: "Editor Cursor", category: "Editor" },
-  { key: "--color-editor-line-highlight", label: "Editor Line Highlight", category: "Editor" },
+  {
+    key: "--color-editor-line-highlight",
+    label: "Editor Line Highlight",
+    category: "Editor",
+  },
 ];
 
 // ---------------------------------------------------------------------------

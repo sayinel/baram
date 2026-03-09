@@ -68,8 +68,24 @@ export function extractReflectionEntries(
     return { startDate, endDate, filePattern };
   } else {
     // month
-    const startDate = new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
-    const endDate = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
+    const startDate = new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      1,
+      0,
+      0,
+      0,
+      0,
+    );
+    const endDate = new Date(
+      date.getFullYear(),
+      date.getMonth() + 1,
+      0,
+      23,
+      59,
+      59,
+      999,
+    );
 
     const yyyy = date.getFullYear();
     const mm = String(date.getMonth() + 1).padStart(2, "0");
@@ -154,7 +170,10 @@ export function buildMonthlySummaryPrompt(
 /**
  * §56j Auto Follow-Up — build prompt for follow-up questions after diary writing.
  */
-export function buildFollowUpPrompt(diaryText: string): { systemPrompt: string; userPrompt: string } {
+export function buildFollowUpPrompt(diaryText: string): {
+  systemPrompt: string;
+  userPrompt: string;
+} {
   const systemPrompt =
     "당신은 따뜻한 저널 동반자입니다. 일기 내용을 바탕으로 심화 질문 1~2개를 제안합니다. 한국어로 작성하세요. 질문만 출력하세요.";
 
@@ -170,7 +189,10 @@ export function buildFollowUpPrompt(diaryText: string): { systemPrompt: string; 
 /**
  * §56j Emotion Inference — build prompt for mood inference from diary text.
  */
-export function buildEmotionInferencePrompt(diaryText: string): { systemPrompt: string; userPrompt: string } {
+export function buildEmotionInferencePrompt(diaryText: string): {
+  systemPrompt: string;
+  userPrompt: string;
+} {
   const systemPrompt =
     "일기 텍스트에서 감정을 분석합니다. 반드시 deep, calm, neutral, warm, bright 중 하나만 답변하세요. 다른 말은 하지 마세요.";
 
@@ -190,7 +212,9 @@ const VALID_MOODS = ["deep", "calm", "neutral", "warm", "bright"] as const;
  * §56j Emotion Inference — parse LLM response to extract a MoodValue.
  * Handles noisy responses by scanning for the first valid mood keyword.
  */
-export function parseEmotionResponse(text: string): "deep" | "calm" | "neutral" | "warm" | "bright" | null {
+export function parseEmotionResponse(
+  text: string,
+): "deep" | "calm" | "neutral" | "warm" | "bright" | null {
   const lower = text.trim().toLowerCase();
   for (const mood of VALID_MOODS) {
     if (lower.includes(mood)) {

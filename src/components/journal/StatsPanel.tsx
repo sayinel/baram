@@ -1,6 +1,9 @@
 // §56g Journal Streaks & Stats panel
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { calculateStreak, calculateMonthStats } from "../../utils/journal-stats";
+import {
+  calculateStreak,
+  calculateMonthStats,
+} from "../../utils/journal-stats";
 import {
   readStatsCache,
   writeStatsCache,
@@ -26,7 +29,11 @@ interface StatsPanelProps {
   lastSavedContent?: string;
 }
 
-export function StatsPanel({ journalDates, lastSavedDate, lastSavedContent }: StatsPanelProps) {
+export function StatsPanel({
+  journalDates,
+  lastSavedDate,
+  lastSavedContent,
+}: StatsPanelProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [heatmapEntries, setHeatmapEntries] = useState<HeatmapEntry[]>([]);
   const [cache, setCache] = useState<JournalStatsCache | null>(null);
@@ -51,7 +58,10 @@ export function StatsPanel({ journalDates, lastSavedDate, lastSavedContent }: St
   // Prefer cache-derived streaks when available, else fall back to journalDates
   const streak = useMemo(() => {
     if (cache) {
-      return { current: cache.stats.currentStreak, longest: cache.stats.longestStreak };
+      return {
+        current: cache.stats.currentStreak,
+        longest: cache.stats.longestStreak,
+      };
     }
     return calculateStreak(journalDates, today);
   }, [cache, journalDates, today]);
@@ -115,7 +125,10 @@ export function StatsPanel({ journalDates, lastSavedDate, lastSavedContent }: St
         sinSum += Math.sin(angle);
         cosSum += Math.cos(angle);
       }
-      const avgAngle = Math.atan2(sinSum / hoursWithData.length, cosSum / hoursWithData.length);
+      const avgAngle = Math.atan2(
+        sinSum / hoursWithData.length,
+        cosSum / hoursWithData.length,
+      );
       const avgHour = ((avgAngle / TWO_PI) * 24 + 24) % 24;
       const h = Math.floor(avgHour);
       const m = Math.round((avgHour - h) * 60);
@@ -138,24 +151,27 @@ export function StatsPanel({ journalDates, lastSavedDate, lastSavedContent }: St
   }, [cache, currentYear]);
 
   /** Run a full cache rebuild and persist it. */
-  const runFullScan = useCallback(async (resolvedDir: string) => {
-    setRefreshing(true);
-    try {
-      const newCache = await buildFullCache(resolvedDir);
-      await writeStatsCache(resolvedDir, newCache);
-      setCache(newCache);
-      // Derive heatmap entries from cache for current year
-      const yearStr = String(currentYear);
-      const entries: HeatmapEntry[] = Object.entries(newCache.entriesByDate)
-        .filter(([date]) => date.startsWith(yearStr))
-        .map(([date, meta]) => ({ date, wordCount: meta.words }));
-      setHeatmapEntries(entries);
-    } catch {
-      // Silently degrade — heatmap stays empty / old
-    } finally {
-      setRefreshing(false);
-    }
-  }, [currentYear]);
+  const runFullScan = useCallback(
+    async (resolvedDir: string) => {
+      setRefreshing(true);
+      try {
+        const newCache = await buildFullCache(resolvedDir);
+        await writeStatsCache(resolvedDir, newCache);
+        setCache(newCache);
+        // Derive heatmap entries from cache for current year
+        const yearStr = String(currentYear);
+        const entries: HeatmapEntry[] = Object.entries(newCache.entriesByDate)
+          .filter(([date]) => date.startsWith(yearStr))
+          .map(([date, meta]) => ({ date, wordCount: meta.words }));
+        setHeatmapEntries(entries);
+      } catch {
+        // Silently degrade — heatmap stays empty / old
+      } finally {
+        setRefreshing(false);
+      }
+    },
+    [currentYear],
+  );
 
   // On mount: try cache; if fresh use it, otherwise full scan
   useEffect(() => {
@@ -168,7 +184,8 @@ export function StatsPanel({ journalDates, lastSavedDate, lastSavedContent }: St
         const cached = await readStatsCache(resolvedDir);
         const isRecent =
           cached !== null &&
-          Date.now() - new Date(cached.stats.lastFullScan).getTime() < CACHE_MAX_AGE_MS;
+          Date.now() - new Date(cached.stats.lastFullScan).getTime() <
+            CACHE_MAX_AGE_MS;
 
         if (isRecent && cached) {
           if (cancelled) return;
@@ -188,7 +205,9 @@ export function StatsPanel({ journalDates, lastSavedDate, lastSavedContent }: St
         await runFullScan(resolvedDir);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [journalDirectory, currentYear, runFullScan]);
 
   // When a journal file is saved, update its cache entry incrementally
@@ -268,22 +287,48 @@ export function StatsPanel({ journalDates, lastSavedDate, lastSavedContent }: St
         aria-expanded={!collapsed}
       >
         <span className="journal-stats-toggle-label">Stats</span>
-        <span className="journal-stats-toggle-arrow">{collapsed ? "▶" : "▼"}</span>
+        <span className="journal-stats-toggle-arrow">
+          {collapsed ? "▶" : "▼"}
+        </span>
       </button>
       {!collapsed && (
         <div className="journal-stats-body">
           <div className="journal-stats-row">
-            <svg className="journal-stats-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              className="journal-stats-icon"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
             </svg>
             <span className="journal-stats-label">Streak</span>
-            <span className="journal-stats-value"><strong>{streak.current}</strong>d</span>
+            <span className="journal-stats-value">
+              <strong>{streak.current}</strong>d
+            </span>
             <span className="journal-stats-sep" />
             <span className="journal-stats-label">Best</span>
-            <span className="journal-stats-value"><strong>{streak.longest}</strong>d</span>
+            <span className="journal-stats-value">
+              <strong>{streak.longest}</strong>d
+            </span>
           </div>
           <div className="journal-stats-row">
-            <svg className="journal-stats-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              className="journal-stats-icon"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
               <line x1="16" y1="2" x2="16" y2="6" />
               <line x1="8" y1="2" x2="8" y2="6" />
@@ -298,43 +343,103 @@ export function StatsPanel({ journalDates, lastSavedDate, lastSavedContent }: St
           {extStats && (
             <>
               <div className="journal-stats-row">
-                <svg className="journal-stats-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 20V10" /><path d="M18 20V4" /><path d="M6 20v-4" />
+                <svg
+                  className="journal-stats-icon"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M12 20V10" />
+                  <path d="M18 20V4" />
+                  <path d="M6 20v-4" />
                 </svg>
                 <span className="journal-stats-label">Year</span>
-                <span className="journal-stats-value"><strong>{extStats.yearEntries}</strong>d</span>
+                <span className="journal-stats-value">
+                  <strong>{extStats.yearEntries}</strong>d
+                </span>
                 <span className="journal-stats-sep" />
                 <span className="journal-stats-label">All</span>
-                <span className="journal-stats-value"><strong>{extStats.totalEntries}</strong>d</span>
+                <span className="journal-stats-value">
+                  <strong>{extStats.totalEntries}</strong>d
+                </span>
               </div>
               <div className="journal-stats-row">
-                <svg className="journal-stats-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg
+                  className="journal-stats-icon"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
                   <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
                 </svg>
                 <span className="journal-stats-label">Words</span>
-                <span className="journal-stats-value"><strong>{extStats.monthWords.toLocaleString()}</strong></span>
+                <span className="journal-stats-value">
+                  <strong>{extStats.monthWords.toLocaleString()}</strong>
+                </span>
                 <span className="journal-stats-sep" />
-                <span className="journal-stats-value"><strong>{extStats.yearWords.toLocaleString()}</strong></span>
+                <span className="journal-stats-value">
+                  <strong>{extStats.yearWords.toLocaleString()}</strong>
+                </span>
                 <span className="journal-stats-sep" />
-                <span className="journal-stats-value journal-stats-dim">{extStats.totalWords.toLocaleString()}</span>
+                <span className="journal-stats-value journal-stats-dim">
+                  {extStats.totalWords.toLocaleString()}
+                </span>
               </div>
               {extStats.mostActiveDay && (
                 <div className="journal-stats-row">
-                  <svg className="journal-stats-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+                  <svg
+                    className="journal-stats-icon"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="12 6 12 12 16 14" />
                   </svg>
                   <span className="journal-stats-label">Most active</span>
-                  <span className="journal-stats-value"><strong>{extStats.mostActiveDay}</strong></span>
-                  <span className="journal-stats-pct">{extStats.mostActiveDayCount} entries</span>
+                  <span className="journal-stats-value">
+                    <strong>{extStats.mostActiveDay}</strong>
+                  </span>
+                  <span className="journal-stats-pct">
+                    {extStats.mostActiveDayCount} entries
+                  </span>
                 </div>
               )}
               {extStats.avgWritingTime && (
                 <div className="journal-stats-row">
-                  <svg className="journal-stats-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+                  <svg
+                    className="journal-stats-icon"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="12 6 12 12 16 14" />
                   </svg>
                   <span className="journal-stats-label">평균 작성 시간</span>
-                  <span className="journal-stats-value"><strong>{extStats.avgWritingTime}</strong></span>
+                  <span className="journal-stats-value">
+                    <strong>{extStats.avgWritingTime}</strong>
+                  </span>
                 </div>
               )}
             </>
@@ -346,7 +451,16 @@ export function StatsPanel({ journalDates, lastSavedDate, lastSavedContent }: St
             title="Refresh stats"
             aria-label="Refresh journal stats"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <polyline points="23 4 23 10 17 10" />
               <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
             </svg>

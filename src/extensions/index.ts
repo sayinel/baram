@@ -86,7 +86,9 @@ interface BaramExtensionOptions {
 }
 
 /** M2 기본 편집 Extension 세트 */
-export function createBaramExtensions(options?: BaramExtensionOptions): Extensions {
+export function createBaramExtensions(
+  options?: BaramExtensionOptions,
+): Extensions {
   return [
     // Core (required)
     Document,
@@ -246,7 +248,9 @@ export function mergePluginExtensions(
   const filtered = pluginExtensions.filter((ext) => {
     const name = (ext as { name?: string }).name;
     if (name && coreNames.has(name)) {
-      console.warn(`[Plugin] Extension "${name}" conflicts with core extension, skipping`);
+      console.warn(
+        `[Plugin] Extension "${name}" conflicts with core extension, skipping`,
+      );
       return false;
     }
     return true;

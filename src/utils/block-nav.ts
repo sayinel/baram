@@ -40,7 +40,10 @@ export function findBlockPosById(doc: PmNode, blockId: string): number | null {
  * Extract the text content of a block with the given ^blockId.
  * Strips the ^blockId suffix and heading prefix (# markers).
  */
-export function findBlockContent(content: string, blockId: string): string | null {
+export function findBlockContent(
+  content: string,
+  blockId: string,
+): string | null {
   const lines = content.split("\n");
   const suffix = ` ^${blockId}`;
   for (const line of lines) {

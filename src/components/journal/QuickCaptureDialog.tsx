@@ -11,7 +11,12 @@ import {
   type CaptureItem,
   insertCaptureIntoContent,
 } from "../../utils/journal-capture";
-import { getHierarchicalJournalPath, formatJournalFilename, generateDefaultJournal, applyJournalTemplate } from "../../utils/journal";
+import {
+  getHierarchicalJournalPath,
+  formatJournalFilename,
+  generateDefaultJournal,
+  applyJournalTemplate,
+} from "../../utils/journal";
 import { readFile, writeFile, createDir, listDir } from "../../ipc/invoke";
 import { buildTagIndex, filterTags } from "../../utils/journal-tags";
 import { TagSuggest } from "./TagSuggest";
@@ -24,7 +29,8 @@ function getCurrentTagQuery(value: string, cursorPos: number): string | null {
 }
 
 export function QuickCaptureDialog() {
-  const { quickCaptureOpen, quickCaptureType, toggleQuickCapture } = useUIStore();
+  const { quickCaptureOpen, quickCaptureType, toggleQuickCapture } =
+    useUIStore();
   const [captureType, setCaptureType] = useState<CaptureType>("note");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -62,9 +68,10 @@ export function QuickCaptureDialog() {
         const { journalDirectory } = useSettingsStore.getState();
         if (!rootPath || !journalDirectory) return;
 
-        const tagScanDir = journalDirectory.startsWith("/") || /^[A-Z]:\\/.test(journalDirectory)
-          ? journalDirectory
-          : `${rootPath}/${journalDirectory}`;
+        const tagScanDir =
+          journalDirectory.startsWith("/") || /^[A-Z]:\\/.test(journalDirectory)
+            ? journalDirectory
+            : `${rootPath}/${journalDirectory}`;
 
         const entries = await listDir(tagScanDir, true).catch(() => []);
         const mdFiles = entries
@@ -106,15 +113,23 @@ export function QuickCaptureDialog() {
       ...(body.trim() ? { body: body.trim() } : {}),
       ...(url.trim() && captureType === "link" ? { url: url.trim() } : {}),
       ...(tags.trim()
-        ? { tags: tags.split(/\s+/).map((t) => t.replace(/^#/, "")).filter(Boolean) }
+        ? {
+            tags: tags
+              .split(/\s+/)
+              .map((t) => t.replace(/^#/, ""))
+              .filter(Boolean),
+          }
         : {}),
     };
 
-
     try {
       const { rootPath } = useFileStore.getState();
-      const { journalDirectory, journalFilenameFormat, journalTemplatePath, journalUseHierarchy } =
-        useSettingsStore.getState();
+      const {
+        journalDirectory,
+        journalFilenameFormat,
+        journalTemplatePath,
+        journalUseHierarchy,
+      } = useSettingsStore.getState();
 
       if (!rootPath) {
         setSaveError("프로젝트 폴더를 먼저 열어주세요.");
@@ -127,9 +142,10 @@ export function QuickCaptureDialog() {
 
       const date = new Date();
       // Resolve journal dir: absolute paths pass through, relative paths join with rootPath
-      const resolvedDir = journalDirectory.startsWith("/") || /^[A-Z]:\\/.test(journalDirectory)
-        ? journalDirectory
-        : `${rootPath}/${journalDirectory}`;
+      const resolvedDir =
+        journalDirectory.startsWith("/") || /^[A-Z]:\\/.test(journalDirectory)
+          ? journalDirectory
+          : `${rootPath}/${journalDirectory}`;
       const journalPath = journalUseHierarchy
         ? getHierarchicalJournalPath(resolvedDir, date, journalFilenameFormat)
         : `${resolvedDir}/${formatJournalFilename(date, journalFilenameFormat)}`;
@@ -162,9 +178,9 @@ export function QuickCaptureDialog() {
 
       // Update file-store cache + reload editor if journal is open
       useFileStore.getState().setFileContent(journalPath, updated);
-      const activeTab = useEditorStore.getState().tabs.find(
-        (t) => t.id === useEditorStore.getState().activeTabId,
-      );
+      const activeTab = useEditorStore
+        .getState()
+        .tabs.find((t) => t.id === useEditorStore.getState().activeTabId);
       if (activeTab?.filePath === journalPath) {
         useUIStore.getState().triggerContentReload(true);
       }
@@ -172,7 +188,9 @@ export function QuickCaptureDialog() {
       toggleQuickCapture();
     } catch (err) {
       console.error("[QuickCapture] Save failed:", err);
-      setSaveError(`저장 실패: ${err instanceof Error ? err.message : String(err)}`);
+      setSaveError(
+        `저장 실패: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }, [captureType, title, body, url, tags, toggleQuickCapture]);
 
@@ -213,7 +231,8 @@ export function QuickCaptureDialog() {
         ? before.slice(0, before.length - prefixMatch[0].length) + `#${tag}`
         : before + `#${tag}`;
 
-      const newValue = newBefore + (after.startsWith(" ") ? after : " " + after);
+      const newValue =
+        newBefore + (after.startsWith(" ") ? after : " " + after);
       setTags(newValue.trimEnd() + " ");
       setTagSuggestVisible(false);
       setTagQuery(null);
@@ -294,7 +313,8 @@ export function QuickCaptureDialog() {
               className={`quick-capture-type-btn ${captureType === type ? "quick-capture-type-active" : ""}`}
               onClick={() => setCaptureType(type)}
             >
-              {CAPTURE_ICONS[type]} {type.charAt(0).toUpperCase() + type.slice(1)}
+              {CAPTURE_ICONS[type]}{" "}
+              {type.charAt(0).toUpperCase() + type.slice(1)}
             </button>
           ))}
         </div>
@@ -362,9 +382,7 @@ export function QuickCaptureDialog() {
         </div>
 
         {/* Error message */}
-        {saveError && (
-          <div className="quick-capture-error">{saveError}</div>
-        )}
+        {saveError && <div className="quick-capture-error">{saveError}</div>}
 
         {/* Actions */}
         <div className="quick-capture-actions">

@@ -1,5 +1,10 @@
 // §5.1 Superscript Mark Extension — ^text^
-import { Mark, mergeAttributes, markInputRule, markPasteRule } from "@tiptap/core";
+import {
+  Mark,
+  mergeAttributes,
+  markInputRule,
+  markPasteRule,
+} from "@tiptap/core";
 
 export interface SuperscriptOptions {
   HTMLAttributes: Record<string, string>;
@@ -30,14 +35,27 @@ export const Superscript = Mark.create<SuperscriptOptions>({
   },
 
   renderHTML({ HTMLAttributes }) {
-    return ["sup", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
+    return [
+      "sup",
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes),
+      0,
+    ];
   },
 
   addCommands() {
     return {
-      setSuperscript: () => ({ commands }) => commands.setMark(this.name),
-      toggleSuperscript: () => ({ commands }) => commands.toggleMark(this.name),
-      unsetSuperscript: () => ({ commands }) => commands.unsetMark(this.name),
+      setSuperscript:
+        () =>
+        ({ commands }) =>
+          commands.setMark(this.name),
+      toggleSuperscript:
+        () =>
+        ({ commands }) =>
+          commands.toggleMark(this.name),
+      unsetSuperscript:
+        () =>
+        ({ commands }) =>
+          commands.unsetMark(this.name),
     };
   },
 

@@ -15,18 +15,29 @@ function buildImgHtml(attrs: Record<string, unknown>): string {
 }
 
 function escapeHtmlAttr(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 function unescapeHtmlAttr(s: string): string {
-  return s.replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+  return s
+    .replace(/&gt;/g, ">")
+    .replace(/&lt;/g, "<")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, "&");
 }
 
 /** Parse an <img .../> HTML tag into ProseMirror image attributes.
  *  Returns null if the string is not an img tag. */
-export function parseImgHtml(
-  html: string,
-): { src: string; alt: string | null; title: string | null; widthPercent: number } | null {
+export function parseImgHtml(html: string): {
+  src: string;
+  alt: string | null;
+  title: string | null;
+  widthPercent: number;
+} | null {
   const match = html.match(/^<img\s+([^>]*?)\s*\/?>$/i);
   if (!match) return null;
   const attrStr = match[1];

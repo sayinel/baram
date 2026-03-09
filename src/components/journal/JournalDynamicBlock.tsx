@@ -6,7 +6,10 @@ import { useFileStore } from "../../stores/file-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useEditorStore } from "../../stores/editor-store";
 
-export type JournalBlockLanguage = "journal-list" | "journal-mood" | "journal-photos";
+export type JournalBlockLanguage =
+  | "journal-list"
+  | "journal-mood"
+  | "journal-photos";
 
 export interface JournalDynamicBlockProps {
   language: JournalBlockLanguage;
@@ -175,7 +178,9 @@ const MOOD_LABELS: Record<string, string> = {
 };
 
 function JournalMoodBlock({ params }: { params: Record<string, string> }) {
-  const [distribution, setDistribution] = useState<Map<string, number>>(new Map());
+  const [distribution, setDistribution] = useState<Map<string, number>>(
+    new Map(),
+  );
   const [loading, setLoading] = useState(true);
   const rootPath = useFileStore((s) => s.rootPath);
   const journalDirectory = useSettingsStore((s) => s.journalDirectory);
@@ -226,10 +231,16 @@ function JournalMoodBlock({ params }: { params: Record<string, string> }) {
       {Array.from(distribution.entries())
         .sort((a, b) => b[1] - a[1])
         .map(([mood, count]) => (
-          <span key={mood} className={`journal-mood-chip journal-mood-chip-${mood}`}>
+          <span
+            key={mood}
+            className={`journal-mood-chip journal-mood-chip-${mood}`}
+          >
             {MOOD_LABELS[mood] ?? mood}: {count}일
             {total > 0 && (
-              <span className="journal-mood-pct"> ({Math.round((count / total) * 100)}%)</span>
+              <span className="journal-mood-pct">
+                {" "}
+                ({Math.round((count / total) * 100)}%)
+              </span>
             )}
           </span>
         ))}
@@ -323,7 +334,10 @@ function JournalPhotosBlock({ params }: { params: Record<string, string> }) {
 
   const gridStyle =
     layout === "strip"
-      ? { gridTemplateColumns: `repeat(${photos.length}, 80px)`, overflowX: "auto" as const }
+      ? {
+          gridTemplateColumns: `repeat(${photos.length}, 80px)`,
+          overflowX: "auto" as const,
+        }
       : { gridTemplateColumns: `repeat(${columns}, 1fr)` };
 
   return (
@@ -352,11 +366,17 @@ const BLOCK_ICONS: Record<JournalBlockLanguage, string> = {
   "journal-photos": "Photos",
 };
 
-export function JournalDynamicBlock({ language, content, onShowSource }: JournalDynamicBlockProps) {
+export function JournalDynamicBlock({
+  language,
+  content,
+  onShowSource,
+}: JournalDynamicBlockProps) {
   const params = parseBlockParams(content);
   const range = params.range ? parseRange(params.range) : null;
 
-  const rangeLabel = range ? formatMonthLabel(range[0], range[1]) : params.range ?? "";
+  const rangeLabel = range
+    ? formatMonthLabel(range[0], range[1])
+    : (params.range ?? "");
   const headerTitle = `${BLOCK_ICONS[language]}: ${rangeLabel}`;
 
   return (
@@ -374,7 +394,9 @@ export function JournalDynamicBlock({ language, content, onShowSource }: Journal
       <div className="journal-dynamic-block-body">
         {language === "journal-list" && <JournalListBlock params={params} />}
         {language === "journal-mood" && <JournalMoodBlock params={params} />}
-        {language === "journal-photos" && <JournalPhotosBlock params={params} />}
+        {language === "journal-photos" && (
+          <JournalPhotosBlock params={params} />
+        )}
       </div>
     </div>
   );

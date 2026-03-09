@@ -85,7 +85,14 @@ export function GlobalSearch() {
         setLoading(false);
       }
     },
-    [rootPath, caseSensitive, wholeWord, useRegex, includeFilter, excludeFilter],
+    [
+      rootPath,
+      caseSensitive,
+      wholeWord,
+      useRegex,
+      includeFilter,
+      excludeFilter,
+    ],
   );
 
   // Listen for tag-click search requests from the editor (Cmd/Ctrl+Click on #tag)
@@ -99,7 +106,11 @@ export function GlobalSearch() {
       setTimeout(() => inputRef.current?.focus(), 50);
     };
     window.addEventListener("baram:search-query", handler as EventListener);
-    return () => window.removeEventListener("baram:search-query", handler as EventListener);
+    return () =>
+      window.removeEventListener(
+        "baram:search-query",
+        handler as EventListener,
+      );
   }, [doSearch]);
 
   // Debounced search on query change
@@ -241,7 +252,15 @@ export function GlobalSearch() {
     } finally {
       setReplacing(false);
     }
-  }, [query, replaceText, caseSensitive, wholeWord, useRegex, results, doSearch]);
+  }, [
+    query,
+    replaceText,
+    caseSensitive,
+    wholeWord,
+    useRegex,
+    results,
+    doSearch,
+  ]);
 
   const groups = groupByFile(results);
   const fileCount = groups.length;
@@ -388,9 +407,7 @@ export function GlobalSearch() {
                       handleResultClick(match.filePath, match.line)
                     }
                   >
-                    <span className="global-search-line">
-                      L{match.line}
-                    </span>
+                    <span className="global-search-line">L{match.line}</span>
                     <span className="global-search-snippet">
                       {match.snippet}
                     </span>

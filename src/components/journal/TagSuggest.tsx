@@ -26,7 +26,8 @@ export function TagSuggest({
   // Scroll active item into view
   useEffect(() => {
     if (!listRef.current) return;
-    const items = listRef.current.querySelectorAll<HTMLLIElement>(".tag-suggest-item");
+    const items =
+      listRef.current.querySelectorAll<HTMLLIElement>(".tag-suggest-item");
     items[activeIndex]?.scrollIntoView({ block: "nearest" });
   }, [activeIndex]);
 

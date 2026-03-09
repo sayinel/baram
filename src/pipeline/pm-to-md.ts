@@ -21,7 +21,11 @@ import { pmNodeTransformers, pmMarkTransformers } from "./transformers";
 import { serializeWikilink } from "./transformers/wikilink-transformer";
 import { serializeMention } from "./transformers/mention-transformer";
 import { serializeTag } from "./transformers/tag-transformer";
-import { appendBlockId, serializeBlockRef, serializeBlockEmbed } from "./block-id";
+import {
+  appendBlockId,
+  serializeBlockRef,
+  serializeBlockEmbed,
+} from "./block-id";
 
 /** §28 Remark plugin: serialize wikiLink + §30b blockReference + custom inline marks */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -41,8 +45,12 @@ function remarkWikiLink(this: any) {
         const tracker = state.createTracker(info);
         return tracker.move(node.value);
       },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      blockReference(node: { value: string }, _parent: any, state: any, info: any) {
+      blockReference(
+        node: { value: string },
+        _parent: any, // eslint-disable-line @typescript-eslint/no-explicit-any
+        state: any, // eslint-disable-line @typescript-eslint/no-explicit-any
+        info: any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      ) {
         const tracker = state.createTracker(info);
         return tracker.move(node.value);
       },
@@ -57,8 +65,12 @@ function remarkWikiLink(this: any) {
         const tracker = state.createTracker(info);
         return tracker.move(node.value);
       },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      superscript(node: { value: string }, _parent: any, state: any, info: any) {
+      superscript(
+        node: { value: string },
+        _parent: any, // eslint-disable-line @typescript-eslint/no-explicit-any
+        state: any, // eslint-disable-line @typescript-eslint/no-explicit-any
+        info: any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      ) {
         const tracker = state.createTracker(info);
         return tracker.move(node.value);
       },
@@ -82,14 +94,16 @@ const serializer = unified()
     fences: true, // §7.1: fenced code block
     listItemIndent: "one", // compact indent
     tightDefinitions: true,
-    extensions: [{
-      handlers: {
-        // §5.9: Callout title — output [!type] verbatim (prevent bracket escaping)
-        calloutTitle(node: { value: string }) {
-          return node.value;
+    extensions: [
+      {
+        handlers: {
+          // §5.9: Callout title — output [!type] verbatim (prevent bracket escaping)
+          calloutTitle(node: { value: string }) {
+            return node.value;
+          },
         },
       },
-    }],
+    ],
   } as Parameters<typeof remarkStringify>[0])
   .use(remarkGfm, { singleTilde: false })
   .use(remarkMath)
@@ -145,7 +159,10 @@ function convertPmNode(node: PmNode): Content | null {
   if (typeName === "paragraph" || typeName === "heading") {
     const transformer = pmNodeTransformers.get(typeName);
     if (transformer) {
-      const mdastNode = transformer.pmToMdast(node, convertPmInlineChildren) as Content;
+      const mdastNode = transformer.pmToMdast(
+        node,
+        convertPmInlineChildren,
+      ) as Content;
 
       // §30a: Append block ID to last text child
       const blockId = node.attrs.blockId as string | null;
@@ -158,7 +175,11 @@ function convertPmNode(node: PmNode): Content | null {
   }
 
   // Lists — handled directly because listItem/taskItem need special conversion
-  if (typeName === "bulletList" || typeName === "orderedList" || typeName === "taskList") {
+  if (
+    typeName === "bulletList" ||
+    typeName === "orderedList" ||
+    typeName === "taskList"
+  ) {
     return convertListNode(node) as Content;
   }
 
@@ -229,7 +250,10 @@ function convertPmNode(node: PmNode): Content | null {
     if (cTitle) header += ` ${cTitle}`;
 
     // Serialize body to markdown via the normal pipeline
-    const bodyMdast: Root = { type: "root", children: convertPmChildren(node) as Content[] };
+    const bodyMdast: Root = {
+      type: "root",
+      children: convertPmChildren(node) as Content[],
+    };
     const bodyMd = mdastToMarkdown(bodyMdast).trimEnd();
 
     // Build blockquote lines manually
@@ -292,7 +316,9 @@ function convertPmNode(node: PmNode): Content | null {
 
   // §30b: Block embed → paragraph with embed text
   if (typeName === "blockEmbed") {
-    const text = serializeBlockEmbed(node.attrs as { target: string; blockId: string });
+    const text = serializeBlockEmbed(
+      node.attrs as { target: string; blockId: string },
+    );
     return {
       type: "paragraph",
       children: [{ type: "text", value: text } as PhrasingContent],
@@ -443,13 +469,18 @@ function convertPmInlineChildren(node: PmNode): PhrasingContent[] {
       }
     } else if (child.type.name === "wikilink") {
       // §28: Custom wikiLink mdast node — handler in serializer outputs verbatim
-      const text = serializeWikilink(child.attrs as {
-        target: string;
-        display?: string | null;
-        heading?: string | null;
-        blockId?: string | null;
-      });
-      result.push({ type: "wikiLink", value: text } as unknown as PhrasingContent);
+      const text = serializeWikilink(
+        child.attrs as {
+          target: string;
+          display?: string | null;
+          heading?: string | null;
+          blockId?: string | null;
+        },
+      );
+      result.push({
+        type: "wikiLink",
+        value: text,
+      } as unknown as PhrasingContent);
     } else if (child.type.name === "footnoteRef") {
       // §footnote: footnoteReference mdast node — remark-gfm handles serialization
       result.push({
@@ -459,20 +490,33 @@ function convertPmInlineChildren(node: PmNode): PhrasingContent[] {
       } as unknown as PhrasingContent);
     } else if (child.type.name === "blockReference") {
       // §30b: Custom blockReference mdast node — handler in serializer outputs verbatim
-      const text = serializeBlockRef(child.attrs as {
-        target: string;
-        blockId: string;
-        display?: string | null;
-      });
-      result.push({ type: "blockReference", value: text } as unknown as PhrasingContent);
+      const text = serializeBlockRef(
+        child.attrs as {
+          target: string;
+          blockId: string;
+          display?: string | null;
+        },
+      );
+      result.push({
+        type: "blockReference",
+        value: text,
+      } as unknown as PhrasingContent);
     } else if (child.type.name === "mention") {
       // §57: Custom mention mdast node — handler in serializer outputs verbatim
-      const text = serializeMention(child.attrs as { type: string; value: string });
-      result.push({ type: "mention", value: text } as unknown as PhrasingContent);
+      const text = serializeMention(
+        child.attrs as { type: string; value: string },
+      );
+      result.push({
+        type: "mention",
+        value: text,
+      } as unknown as PhrasingContent);
     } else if (child.type.name === "tagNode") {
       // §56m: Custom tagNode mdast node — handler in serializer outputs verbatim
       const text = serializeTag(child.attrs as { tag: string });
-      result.push({ type: "tagNode", value: text } as unknown as PhrasingContent);
+      result.push({
+        type: "tagNode",
+        value: text,
+      } as unknown as PhrasingContent);
     }
   });
 
@@ -526,9 +570,13 @@ function coalesceCustomMarkNodes(nodes: PhrasingContent[]): PhrasingContent[] {
         i++;
         const next = (nodes[i] as unknown as { value: string }).value;
         // Strip close+open delimiters at boundary: ==a== + ==b== → ==ab==
-        merged = merged.slice(0, -delim.close.length) + next.slice(delim.open.length);
+        merged =
+          merged.slice(0, -delim.close.length) + next.slice(delim.open.length);
       }
-      result.push({ type: node.type, value: merged } as unknown as PhrasingContent);
+      result.push({
+        type: node.type,
+        value: merged,
+      } as unknown as PhrasingContent);
     } else {
       result.push(node);
     }
@@ -540,23 +588,32 @@ function coalesceCustomMarkNodes(nodes: PhrasingContent[]): PhrasingContent[] {
 /** Extract plain text from a phrasing content array (for wrapping in custom mark delimiters).
  *  Serializes nested standard marks (bold → **, italic → *, etc.) to markdown. */
 function extractTextFromPhrasing(nodes: PhrasingContent[]): string {
-  return nodes.map((node) => {
-    if (node.type === "text") return (node as Text).value;
-    if (node.type === "strong") {
-      const inner = extractTextFromPhrasing((node as unknown as { children: PhrasingContent[] }).children);
-      return `**${inner}**`;
-    }
-    if (node.type === "emphasis") {
-      const inner = extractTextFromPhrasing((node as unknown as { children: PhrasingContent[] }).children);
-      return `*${inner}*`;
-    }
-    if (node.type === "delete") {
-      const inner = extractTextFromPhrasing((node as unknown as { children: PhrasingContent[] }).children);
-      return `~~${inner}~~`;
-    }
-    if (node.type === "inlineCode") return `\`${(node as { value: string }).value}\``;
-    return "";
-  }).join("");
+  return nodes
+    .map((node) => {
+      if (node.type === "text") return (node as Text).value;
+      if (node.type === "strong") {
+        const inner = extractTextFromPhrasing(
+          (node as unknown as { children: PhrasingContent[] }).children,
+        );
+        return `**${inner}**`;
+      }
+      if (node.type === "emphasis") {
+        const inner = extractTextFromPhrasing(
+          (node as unknown as { children: PhrasingContent[] }).children,
+        );
+        return `*${inner}*`;
+      }
+      if (node.type === "delete") {
+        const inner = extractTextFromPhrasing(
+          (node as unknown as { children: PhrasingContent[] }).children,
+        );
+        return `~~${inner}~~`;
+      }
+      if (node.type === "inlineCode")
+        return `\`${(node as { value: string }).value}\``;
+      return "";
+    })
+    .join("");
 }
 
 /** Convert text with marks to mdast inline structure */
@@ -578,12 +635,19 @@ function convertTextWithMarks(
   }
 
   // Separate special marks that use custom mdast types or raw HTML
-  const specialMarkNames = ["underline", "highlight", "subscript", "superscript"];
+  const specialMarkNames = [
+    "underline",
+    "highlight",
+    "subscript",
+    "superscript",
+  ];
   const underlineMark = marks.find((m) => m.type.name === "underline");
   const highlightMark = marks.find((m) => m.type.name === "highlight");
   const subscriptMark = marks.find((m) => m.type.name === "subscript");
   const superscriptMark = marks.find((m) => m.type.name === "superscript");
-  const otherMarks = marks.filter((m) => !specialMarkNames.includes(m.type.name));
+  const otherMarks = marks.filter(
+    (m) => !specialMarkNames.includes(m.type.name),
+  );
 
   // Build nested mark structure from innermost to outermost
   let current: PhrasingContent[] = [{ type: "text", value: text } as Text];
@@ -605,15 +669,27 @@ function convertTextWithMarks(
   // Uses value-based approach (like wikiLink) to avoid remark-gfm escaping ~ chars
   if (highlightMark) {
     const inner = extractTextFromPhrasing(current);
-    current = [{ type: "highlight", value: `==${inner}==` } as unknown as PhrasingContent];
+    current = [
+      {
+        type: "highlight",
+        value: `==${inner}==`,
+      } as unknown as PhrasingContent,
+    ];
   }
   if (subscriptMark) {
     const inner = extractTextFromPhrasing(current);
-    current = [{ type: "subscript", value: `~${inner}~` } as unknown as PhrasingContent];
+    current = [
+      { type: "subscript", value: `~${inner}~` } as unknown as PhrasingContent,
+    ];
   }
   if (superscriptMark) {
     const inner = extractTextFromPhrasing(current);
-    current = [{ type: "superscript", value: `^${inner}^` } as unknown as PhrasingContent];
+    current = [
+      {
+        type: "superscript",
+        value: `^${inner}^`,
+      } as unknown as PhrasingContent,
+    ];
   }
 
   // Wrap with <u></u> HTML nodes if underline is active

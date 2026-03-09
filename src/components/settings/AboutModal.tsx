@@ -27,10 +27,10 @@ export function AboutModal() {
     <div className="about-overlay" onClick={toggleAbout}>
       <div className="about-modal" onClick={(e) => e.stopPropagation()}>
         <img src={baramLogo} alt="Baram" className="about-logo" />
-        <div className="about-version">{t("about.version").replace("{version}", "0.1.0")}</div>
-        <div className="about-description">
-          {t("about.description")}
+        <div className="about-version">
+          {t("about.version").replace("{version}", "0.1.0")}
         </div>
+        <div className="about-description">{t("about.description")}</div>
         <div className="about-details">
           <div className="about-row">
             <span className="about-label">{t("about.license")}</span>
@@ -38,12 +38,12 @@ export function AboutModal() {
           </div>
           <div className="about-row">
             <span className="about-label">{t("about.stack")}</span>
-            <span className="about-value">Tauri 2.0 + React + Tiptap + Rust</span>
+            <span className="about-value">
+              Tauri 2.0 + React + Tiptap + Rust
+            </span>
           </div>
         </div>
-        <div className="about-copyright">
-          {t("about.copyright")}
-        </div>
+        <div className="about-copyright">{t("about.copyright")}</div>
         <button className="about-close" onClick={toggleAbout}>
           {t("common.close")}
         </button>

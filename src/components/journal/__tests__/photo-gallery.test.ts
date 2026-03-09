@@ -1,5 +1,8 @@
 import { describe, test, expect } from "vitest";
-import { groupPhotosByDate, type PhotoGalleryEntry } from "../../../utils/journal-photo";
+import {
+  groupPhotosByDate,
+  type PhotoGalleryEntry,
+} from "../../../utils/journal-photo";
 
 function makeEntry(dateStr: string, caption = ""): PhotoGalleryEntry {
   return {

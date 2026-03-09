@@ -44,7 +44,12 @@ export function TableOfContentsView({ editor, selected }: NodeViewProps) {
 
   const handleClick = useCallback(
     (pos: number) => {
-      editor.chain().setTextSelection(pos + 1).scrollIntoView().focus().run();
+      editor
+        .chain()
+        .setTextSelection(pos + 1)
+        .scrollIntoView()
+        .focus()
+        .run();
     },
     [editor],
   );

@@ -20,7 +20,10 @@ describe("validateManifest", () => {
     expect(result.valid).toBe(true);
     if (result.valid) {
       expect(result.manifest.id).toBe("baram-word-count");
-      expect(result.manifest.capabilities).toEqual(["editor:readonly", "statusbar"]);
+      expect(result.manifest.capabilities).toEqual([
+        "editor:readonly",
+        "statusbar",
+      ]);
     }
   });
 
@@ -69,7 +72,11 @@ describe("validateManifest", () => {
     const result = validateManifest({ ...validManifest, id: "MyPlugin" });
     expect(result.valid).toBe(false);
     if (!result.valid) {
-      expect(result.errors.some((e) => e.field === "id" && e.message.includes("lowercase"))).toBe(true);
+      expect(
+        result.errors.some(
+          (e) => e.field === "id" && e.message.includes("lowercase"),
+        ),
+      ).toBe(true);
     }
   });
 
@@ -90,17 +97,30 @@ describe("validateManifest", () => {
     });
     expect(result.valid).toBe(false);
     if (!result.valid) {
-      expect(result.errors.some((e) => e.message.includes("dangerous-cap"))).toBe(true);
+      expect(
+        result.errors.some((e) => e.message.includes("dangerous-cap")),
+      ).toBe(true);
     }
   });
 
   test("accepts all valid capabilities", () => {
     const allCaps = [
-      "editor", "editor:readonly", "files", "files:readonly",
-      "commands", "sidebar", "statusbar", "settings",
-      "events", "ai", "network",
+      "editor",
+      "editor:readonly",
+      "files",
+      "files:readonly",
+      "commands",
+      "sidebar",
+      "statusbar",
+      "settings",
+      "events",
+      "ai",
+      "network",
     ];
-    const result = validateManifest({ ...validManifest, capabilities: allCaps });
+    const result = validateManifest({
+      ...validManifest,
+      capabilities: allCaps,
+    });
     expect(result.valid).toBe(true);
   });
 
@@ -113,7 +133,10 @@ describe("validateManifest", () => {
   });
 
   test("rejects non-array capabilities", () => {
-    const result = validateManifest({ ...validManifest, capabilities: "editor" });
+    const result = validateManifest({
+      ...validManifest,
+      capabilities: "editor",
+    });
     expect(result.valid).toBe(false);
     if (!result.valid) {
       expect(result.errors.some((e) => e.field === "capabilities")).toBe(true);
@@ -123,22 +146,23 @@ describe("validateManifest", () => {
   test("validates tiptapExtensions entries", () => {
     const result = validateManifest({
       ...validManifest,
-      tiptapExtensions: [
-        { type: "invalid", name: "test", exportName: "Test" },
-      ],
+      tiptapExtensions: [{ type: "invalid", name: "test", exportName: "Test" }],
     });
     expect(result.valid).toBe(false);
     if (!result.valid) {
-      expect(result.errors.some((e) => e.field.includes("tiptapExtensions") && e.message.includes("type"))).toBe(true);
+      expect(
+        result.errors.some(
+          (e) =>
+            e.field.includes("tiptapExtensions") && e.message.includes("type"),
+        ),
+      ).toBe(true);
     }
   });
 
   test("rejects tiptapExtension with missing name", () => {
     const result = validateManifest({
       ...validManifest,
-      tiptapExtensions: [
-        { type: "node", exportName: "Test" },
-      ],
+      tiptapExtensions: [{ type: "node", exportName: "Test" }],
     });
     expect(result.valid).toBe(false);
   });
@@ -146,9 +170,7 @@ describe("validateManifest", () => {
   test("rejects tiptapExtension with missing exportName", () => {
     const result = validateManifest({
       ...validManifest,
-      tiptapExtensions: [
-        { type: "node", name: "test" },
-      ],
+      tiptapExtensions: [{ type: "node", name: "test" }],
     });
     expect(result.valid).toBe(false);
   });

@@ -1,7 +1,10 @@
 // §4.8 Block Handle — drag handle + menu on block hover
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { Editor } from "@tiptap/react";
-import { addBlockId, editBlockId } from "../../extensions/plugins/block-id-decoration";
+import {
+  addBlockId,
+  editBlockId,
+} from "../../extensions/plugins/block-id-decoration";
 
 interface BlockHandleProps {
   editor: Editor;
@@ -39,7 +42,10 @@ export function BlockHandle({ editor }: BlockHandleProps) {
 
       // Find the block-level node under the cursor
       try {
-        const pos = editor.view.posAtCoords({ left: editorRect.left + 80, top: e.clientY });
+        const pos = editor.view.posAtCoords({
+          left: editorRect.left + 80,
+          top: e.clientY,
+        });
         if (!pos) {
           setHandle(null);
           return;
@@ -101,13 +107,10 @@ export function BlockHandle({ editor }: BlockHandleProps) {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [menuOpen]);
 
-  const handleMenuAction = useCallback(
-    (action: () => void) => {
-      action();
-      setMenuOpen(false);
-    },
-    [],
-  );
+  const handleMenuAction = useCallback((action: () => void) => {
+    action();
+    setMenuOpen(false);
+  }, []);
 
   if (!handle) return null;
 
@@ -119,7 +122,8 @@ export function BlockHandle({ editor }: BlockHandleProps) {
     if (!handle) return null;
     const node = editor.state.doc.nodeAt(handle.pos);
     if (!node) return null;
-    if (node.type.name !== "paragraph" && node.type.name !== "heading") return null;
+    if (node.type.name !== "paragraph" && node.type.name !== "heading")
+      return null;
     const existingId = node.attrs.blockId as string | null;
     if (existingId) {
       return {
@@ -148,11 +152,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
           const node = editor.state.doc.nodeAt(handle.pos);
           if (node) {
             const endPos = handle.pos + node.nodeSize;
-            editor
-              .chain()
-              .focus()
-              .insertContentAt(endPos, node.toJSON())
-              .run();
+            editor.chain().focus().insertContentAt(endPos, node.toJSON()).run();
           }
         }
       },
@@ -181,7 +181,9 @@ export function BlockHandle({ editor }: BlockHandleProps) {
           const prevResolved = editor.state.doc.resolve(handle.pos);
           if (node && prevResolved.nodeBefore) {
             const prevPos = handle.pos - prevResolved.nodeBefore.nodeSize;
-            editor.chain().focus()
+            editor
+              .chain()
+              .focus()
               .deleteRange({ from: handle.pos, to: handle.pos + node.nodeSize })
               .insertContentAt(prevPos, node.toJSON())
               .run();
@@ -199,7 +201,9 @@ export function BlockHandle({ editor }: BlockHandleProps) {
             const nextNode = editor.state.doc.nodeAt(endPos);
             if (nextNode) {
               const newPos = endPos + nextNode.nodeSize;
-              editor.chain().focus()
+              editor
+                .chain()
+                .focus()
                 .deleteRange({ from: handle.pos, to: endPos })
                 .insertContentAt(newPos - node.nodeSize, node.toJSON())
                 .run();

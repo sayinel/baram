@@ -12,9 +12,18 @@ import { useFileStore } from "../../stores/file-store";
 import { useEditorStore } from "../../stores/editor-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useLLMStream } from "../../hooks/use-llm-stream";
-import { buildEmotionInferencePrompt, parseEmotionResponse } from "../../utils/journal-reflection";
-import { buildTagSuggestionPrompt, parseTagSuggestions } from "../../utils/journal-tags";
-import { parseFrontmatterTags, updateFrontmatterTags } from "../../extensions/nodes/frontmatter-view";
+import {
+  buildEmotionInferencePrompt,
+  parseEmotionResponse,
+} from "../../utils/journal-reflection";
+import {
+  buildTagSuggestionPrompt,
+  parseTagSuggestions,
+} from "../../utils/journal-tags";
+import {
+  parseFrontmatterTags,
+  updateFrontmatterTags,
+} from "../../extensions/nodes/frontmatter-view";
 import { getVaultTags } from "../../ipc/invoke";
 
 interface MoodBarProps {
@@ -66,7 +75,9 @@ function isJournalDailyNote(): boolean {
   const activeTab = tabs.find((t) => t.id === activeTabId);
   if (!activeTab?.filePath) return false;
 
-  return activeTab.filePath.includes("/daily/") && activeTab.filePath.endsWith(".md");
+  return (
+    activeTab.filePath.includes("/daily/") && activeTab.filePath.endsWith(".md")
+  );
 }
 
 /** Find frontmatter node and its position in the PM document */
@@ -88,12 +99,19 @@ function parseYamlField(yaml: string, field: string): string | undefined {
 }
 
 /** Update a field in YAML text */
-function updateYamlField(yaml: string, field: string, value: string | undefined): string {
+function updateYamlField(
+  yaml: string,
+  field: string,
+  value: string | undefined,
+): string {
   const fieldRegex = new RegExp(`^${field}:\\s*.*$`, "m");
   const hasField = fieldRegex.test(yaml);
 
   if (value === undefined) {
-    return yaml.replace(fieldRegex, "").replace(/\n{2,}/g, "\n").trim();
+    return yaml
+      .replace(fieldRegex, "")
+      .replace(/\n{2,}/g, "\n")
+      .trim();
   } else if (hasField) {
     return yaml.replace(fieldRegex, `${field}: ${value}`);
   } else {
@@ -102,7 +120,11 @@ function updateYamlField(yaml: string, field: string, value: string | undefined)
 }
 
 /** Update frontmatter in the ProseMirror document */
-function updateFrontmatterField(editor: Editor, field: string, value: string | undefined): boolean {
+function updateFrontmatterField(
+  editor: Editor,
+  field: string,
+  value: string | undefined,
+): boolean {
   const fm = findFrontmatter(editor);
   if (!fm) return false;
 
@@ -140,7 +162,9 @@ export function MoodBar({ editor }: MoodBarProps) {
   const activeTabId = useEditorStore((s) => s.activeTabId);
 
   // §56j Emotion Inference state
-  const journalAIReflectionEnabled = useSettingsStore((s) => s.journalAIReflectionEnabled);
+  const journalAIReflectionEnabled = useSettingsStore(
+    (s) => s.journalAIReflectionEnabled,
+  );
   const [suggestedMood, setSuggestedMood] = useState<MoodValue | null>(null);
   const [emotionDismissed, setEmotionDismissed] = useState(false);
   const emotionInferredRef = useRef<Map<string, boolean>>(new Map());
@@ -190,11 +214,20 @@ export function MoodBar({ editor }: MoodBarProps) {
 
   // §56j Emotion Inference — auto-infer mood when mood is unset
   useEffect(() => {
-    if (!editor || !visible || mood !== undefined || !journalAIReflectionEnabled || emotionDismissed) return;
+    if (
+      !editor ||
+      !visible ||
+      mood !== undefined ||
+      !journalAIReflectionEnabled ||
+      emotionDismissed
+    )
+      return;
 
-    const filePath = useEditorStore.getState().tabs.find(
-      (t) => t.id === useEditorStore.getState().activeTabId,
-    )?.filePath;
+    const filePath = useEditorStore
+      .getState()
+      .tabs.find(
+        (t) => t.id === useEditorStore.getState().activeTabId,
+      )?.filePath;
     if (!filePath || emotionInferredRef.current.get(filePath)) return;
 
     // Check content length > 50 chars (excluding frontmatter)
@@ -220,8 +253,15 @@ export function MoodBar({ editor }: MoodBarProps) {
 
     const { systemPrompt, userPrompt } = buildEmotionInferencePrompt(bodyText);
     emotionLLM.send(userPrompt, systemPrompt, { task: "chat", maxTokens: 50 });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editor, visible, mood, journalAIReflectionEnabled, emotionDismissed, activeTabId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    editor,
+    visible,
+    mood,
+    journalAIReflectionEnabled,
+    emotionDismissed,
+    activeTabId,
+  ]);
 
   // Parse emotion LLM response when streaming completes
   useEffect(() => {
@@ -266,7 +306,11 @@ export function MoodBar({ editor }: MoodBarProps) {
       // Vault tags are optional
     }
 
-    const { systemPrompt, userPrompt } = buildTagSuggestionPrompt(bodyText, existingTags, vaultTagNames);
+    const { systemPrompt, userPrompt } = buildTagSuggestionPrompt(
+      bodyText,
+      existingTags,
+      vaultTagNames,
+    );
     tagLLM.send(userPrompt, systemPrompt, { task: "chat", maxTokens: 200 });
   }, [editor, tagsLoading, tagLLM]);
 
@@ -291,7 +335,10 @@ export function MoodBar({ editor }: MoodBarProps) {
       const currentTags = parseFrontmatterTags(fm.node.textContent);
       if (currentTags.includes(tag)) return;
 
-      const newYaml = updateFrontmatterTags(fm.node.textContent, [...currentTags, tag]);
+      const newYaml = updateFrontmatterTags(fm.node.textContent, [
+        ...currentTags,
+        tag,
+      ]);
       const tr = editor.state.tr;
       const from = fm.pos + 1;
       const to = fm.pos + 1 + fm.node.content.size;
@@ -323,14 +370,19 @@ export function MoodBar({ editor }: MoodBarProps) {
       if (!editor) return;
       const newEnergy = energy === value ? undefined : value;
       setEnergy(newEnergy);
-      updateFrontmatterField(editor, "energy", newEnergy !== undefined ? String(newEnergy) : undefined);
+      updateFrontmatterField(
+        editor,
+        "energy",
+        newEnergy !== undefined ? String(newEnergy) : undefined,
+      );
     },
     [editor, energy],
   );
 
   if (!visible) return null;
 
-  const showEmotionHint = suggestedMood && mood === undefined && !emotionDismissed;
+  const showEmotionHint =
+    suggestedMood && mood === undefined && !emotionDismissed;
   const showTagChips = suggestedTags.length > 0 && !tagsDismissed;
 
   return (
@@ -345,10 +397,14 @@ export function MoodBar({ editor }: MoodBarProps) {
                 <button
                   key={v}
                   className={`mood-segment ${isSelected ? "mood-segment-selected" : ""}`}
-                  style={isSelected ? {
-                    backgroundColor: MOOD_TINTS[v],
-                    color: MOOD_TEXT_COLORS[v],
-                  } : undefined}
+                  style={
+                    isSelected
+                      ? {
+                          backgroundColor: MOOD_TINTS[v],
+                          color: MOOD_TEXT_COLORS[v],
+                        }
+                      : undefined
+                  }
                   onClick={() => handleMoodClick(v)}
                   title={MOOD_SEGMENT_LABELS[v]}
                 >
@@ -367,7 +423,11 @@ export function MoodBar({ editor }: MoodBarProps) {
                 <button
                   key={v}
                   className={`mood-segment energy-segment ${isFilled ? "energy-segment-filled" : ""}`}
-                  style={isFilled ? { backgroundColor: ENERGY_FILLS[v - 1] } : undefined}
+                  style={
+                    isFilled
+                      ? { backgroundColor: ENERGY_FILLS[v - 1] }
+                      : undefined
+                  }
                   onClick={() => handleEnergyClick(v)}
                   title={`Energy ${v}`}
                 >

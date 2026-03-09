@@ -22,7 +22,10 @@ describe("buildCompatibilityPrompt", () => {
   };
 
   it("includes both skill names and formats", () => {
-    const prompt = buildCompatibilityPrompt({ sourceSkill: source, targetSkill: target });
+    const prompt = buildCompatibilityPrompt({
+      sourceSkill: source,
+      targetSkill: target,
+    });
     expect(prompt).toContain("summarizer");
     expect(prompt).toContain("translator");
     expect(prompt).toContain("markdown");
@@ -31,14 +34,18 @@ describe("buildCompatibilityPrompt", () => {
 
   it("handles missing output_format", () => {
     const noFormat: SkillMeta = { ...source, outputFormat: "" };
-    const prompt = buildCompatibilityPrompt({ sourceSkill: noFormat, targetSkill: target });
+    const prompt = buildCompatibilityPrompt({
+      sourceSkill: noFormat,
+      targetSkill: target,
+    });
     expect(prompt).toContain("(not specified)");
   });
 });
 
 describe("parseCompatibilityResponse", () => {
   it("parses valid JSON response", () => {
-    const raw = '{"compatible": true, "confidence": "high", "mismatch": null, "suggestion": null}';
+    const raw =
+      '{"compatible": true, "confidence": "high", "mismatch": null, "suggestion": null}';
     const result = parseCompatibilityResponse(raw);
     expect(result.compatible).toBe(true);
     expect(result.confidence).toBe("high");
@@ -46,7 +53,8 @@ describe("parseCompatibilityResponse", () => {
   });
 
   it("extracts JSON from markdown code block", () => {
-    const raw = '```json\n{"compatible": false, "confidence": "medium", "mismatch": "format differs", "suggestion": "use json"}\n```';
+    const raw =
+      '```json\n{"compatible": false, "confidence": "medium", "mismatch": "format differs", "suggestion": "use json"}\n```';
     const result = parseCompatibilityResponse(raw);
     expect(result.compatible).toBe(false);
     expect(result.mismatch).toBe("format differs");

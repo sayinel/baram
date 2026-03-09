@@ -14,7 +14,9 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
 const pluginKey = new PluginKey("listAtomFix");
 
-function buildListAtomDecos(doc: Parameters<typeof DecorationSet.create>[0]): DecorationSet {
+function buildListAtomDecos(
+  doc: Parameters<typeof DecorationSet.create>[0],
+): DecorationSet {
   const decorations: Decoration[] = [];
 
   doc.descendants((node, pos, parent, index) => {
@@ -22,8 +24,7 @@ function buildListAtomDecos(doc: Parameters<typeof DecorationSet.create>[0]): De
       node.isTextblock &&
       index === 0 &&
       parent &&
-      (parent.type.name === "listItem" ||
-        parent.type.name === "taskItem") &&
+      (parent.type.name === "listItem" || parent.type.name === "taskItem") &&
       node.childCount > 0 &&
       !node.child(0).isText
     ) {

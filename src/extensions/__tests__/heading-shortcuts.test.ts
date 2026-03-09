@@ -102,15 +102,18 @@ describe("Heading Shortcuts (§5.1)", () => {
   });
 
   describe("toggleHeading (Mod-1 ~ Mod-6)", () => {
-    it.each([1, 2, 3, 4, 5, 6])("sets heading level %i from paragraph", (level) => {
-      const editor = createEditor("<p>Hello</p>");
-      editor.commands.setTextSelection(1);
-      editor.commands.toggleHeading({ level });
-      const node = editor.state.doc.firstChild!;
-      expect(node.type.name).toBe("heading");
-      expect(node.attrs.level).toBe(level);
-      editor.destroy();
-    });
+    it.each([1, 2, 3, 4, 5, 6])(
+      "sets heading level %i from paragraph",
+      (level) => {
+        const editor = createEditor("<p>Hello</p>");
+        editor.commands.setTextSelection(1);
+        editor.commands.toggleHeading({ level });
+        const node = editor.state.doc.firstChild!;
+        expect(node.type.name).toBe("heading");
+        expect(node.attrs.level).toBe(level);
+        editor.destroy();
+      },
+    );
 
     it("toggles same level back to paragraph", () => {
       const editor = createEditor("<h2>Hello</h2>");

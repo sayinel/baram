@@ -44,9 +44,17 @@ interface SnapshotState {
   toggleFileSelection: (filePath: string) => void;
   selectAllFiles: () => void;
   deselectAllFiles: () => void;
-  loadDiff: (vaultPath: string, snapshotId: string, filePath: string) => Promise<void>;
+  loadDiff: (
+    vaultPath: string,
+    snapshotId: string,
+    filePath: string,
+  ) => Promise<void>;
   closeDiff: () => void;
-  performRestore: (vaultPath: string, snapshotId: string, files?: string[]) => Promise<void>;
+  performRestore: (
+    vaultPath: string,
+    snapshotId: string,
+    files?: string[],
+  ) => Promise<void>;
   performCreate: (vaultPath: string, label?: string) => Promise<string>;
   performDelete: (vaultPath: string, snapshotId: string) => Promise<void>;
   loadFileHistory: (vaultPath: string, filePath: string) => Promise<void>;
@@ -78,7 +86,12 @@ export const useSnapshotStore = create<SnapshotState>((set, get) => ({
   },
 
   selectSnapshot: (id) => {
-    set({ selectedSnapshotId: id, selectedFiles: [], activeDiff: null, restoreMessage: null });
+    set({
+      selectedSnapshotId: id,
+      selectedFiles: [],
+      activeDiff: null,
+      restoreMessage: null,
+    });
   },
 
   toggleFileSelection: (filePath) => {
@@ -118,8 +131,12 @@ export const useSnapshotStore = create<SnapshotState>((set, get) => ({
       await restoreSnapshot(vaultPath, snapshotId, files);
 
       // §71 Re-read restored files that are currently open in the editor
-      const restoredPaths = files ?? get().snapshots
-        .find((s) => s.id === snapshotId)?.files.map((f) => f.path) ?? [];
+      const restoredPaths =
+        files ??
+        get()
+          .snapshots.find((s) => s.id === snapshotId)
+          ?.files.map((f) => f.path) ??
+        [];
       const { openFiles } = useFileStore.getState();
       const { tabs, markDirty } = useEditorStore.getState();
 

@@ -67,8 +67,14 @@ export function useGhostText(editor: Editor | null) {
 
       // Build context-aware config (D1: block-type modes, D3: cross-file)
       const editorState = useEditorStore.getState();
-      const activeTab = editorState.tabs.find((t) => t.id === editorState.activeTabId);
-      const ghostConfig = buildGhostTextConfig(editor, from, activeTab?.filePath);
+      const activeTab = editorState.tabs.find(
+        (t) => t.id === editorState.activeTabId,
+      );
+      const ghostConfig = buildGhostTextConfig(
+        editor,
+        from,
+        activeTab?.filePath,
+      );
       if (ghostConfig.skip) return;
 
       // Get text before cursor for cache key + min length check
@@ -130,26 +136,23 @@ export function useGhostText(editor: Editor | null) {
             },
           );
 
-          const doneUn = await listen<LLMDonePayload>(
-            "llm:done",
-            (event) => {
-              if (event.payload.requestId !== requestId) return;
-              // Cache the result
-              if (accumulatedRef.current) {
-                if (prefixCache.size >= MAX_CACHE_SIZE) {
-                  const firstKey = prefixCache.keys().next().value;
-                  if (firstKey) prefixCache.delete(firstKey);
-                }
-                prefixCache.set(
-                  cacheKey,
-                  accumulatedRef.current.slice(
-                    0,
-                    storeSnapshot.maxSuggestionLength,
-                  ),
-                );
+          const doneUn = await listen<LLMDonePayload>("llm:done", (event) => {
+            if (event.payload.requestId !== requestId) return;
+            // Cache the result
+            if (accumulatedRef.current) {
+              if (prefixCache.size >= MAX_CACHE_SIZE) {
+                const firstKey = prefixCache.keys().next().value;
+                if (firstKey) prefixCache.delete(firstKey);
               }
-            },
-          );
+              prefixCache.set(
+                cacheKey,
+                accumulatedRef.current.slice(
+                  0,
+                  storeSnapshot.maxSuggestionLength,
+                ),
+              );
+            }
+          });
 
           const errorUn = await listen<LLMErrorPayload>(
             "llm:error",

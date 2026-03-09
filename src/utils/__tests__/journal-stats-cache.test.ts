@@ -147,7 +147,11 @@ tags: [work, focus, health]
 
 Hello`;
     const result = updateCacheEntry(base, "2026-01-01", content);
-    expect(result.entriesByDate["2026-01-01"].tags).toEqual(["work", "focus", "health"]);
+    expect(result.entriesByDate["2026-01-01"].tags).toEqual([
+      "work",
+      "focus",
+      "health",
+    ]);
   });
 
   it("returns undefined mood when not in frontmatter", () => {
@@ -183,7 +187,11 @@ describe("updateCacheEntry — hasPhotos", () => {
   });
 
   it("sets hasPhotos=undefined when no image markdown", () => {
-    const result = updateCacheEntry(base, "2026-01-01", "Just text, no photos.");
+    const result = updateCacheEntry(
+      base,
+      "2026-01-01",
+      "Just text, no photos.",
+    );
     expect(result.entriesByDate["2026-01-01"].hasPhotos).toBeUndefined();
   });
 });
@@ -203,7 +211,7 @@ describe("updateCacheEntry — aggregate stats", () => {
   it("totalWords sums word counts across entries", () => {
     let cache = createEmptyCache();
     cache = updateCacheEntry(cache, "2026-01-01", "one two three"); // 3
-    cache = updateCacheEntry(cache, "2026-01-02", "four five");     // 2
+    cache = updateCacheEntry(cache, "2026-01-02", "four five"); // 2
     expect(cache.stats.totalWords).toBe(5);
   });
 
@@ -247,7 +255,11 @@ describe("updateCacheEntry — streak calculation", () => {
   });
 
   it("single entry gives longestStreak=1", () => {
-    const cache = updateCacheEntry(createEmptyCache(), "2020-06-15", "hello world");
+    const cache = updateCacheEntry(
+      createEmptyCache(),
+      "2020-06-15",
+      "hello world",
+    );
     expect(cache.stats.longestStreak).toBe(1);
   });
 

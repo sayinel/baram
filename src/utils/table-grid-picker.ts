@@ -86,14 +86,20 @@ export function showTableGridPicker(
 
     gridContainer.addEventListener("mouseover", (e) => {
       const target = e.target as HTMLElement;
-      if (target.dataset.row !== undefined && target.dataset.col !== undefined) {
+      if (
+        target.dataset.row !== undefined &&
+        target.dataset.col !== undefined
+      ) {
         updateHighlight(Number(target.dataset.row), Number(target.dataset.col));
       }
     });
 
     gridContainer.addEventListener("click", (e) => {
       const target = e.target as HTMLElement;
-      if (target.dataset.row !== undefined && target.dataset.col !== undefined) {
+      if (
+        target.dataset.row !== undefined &&
+        target.dataset.col !== undefined
+      ) {
         cleanup({ rows: hoverRows, cols: hoverCols });
       }
     });

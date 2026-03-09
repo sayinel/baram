@@ -12,7 +12,8 @@ function isSkillsFile(doc: PmNode): boolean {
   // Check first node for frontmatter with name + description
   const firstChild = doc.firstChild;
   if (firstChild?.type.name === "frontmatter") {
-    const yaml = (firstChild.attrs?.yaml as string) || firstChild.textContent || "";
+    const yaml =
+      (firstChild.attrs?.yaml as string) || firstChild.textContent || "";
     if (/^name\s*:/m.test(yaml) && /^description\s*:/m.test(yaml)) return true;
   }
   return false;
@@ -28,7 +29,8 @@ export interface FilePathMatch {
 export function extractFilePaths(text: string): FilePathMatch[] {
   // Match: ./path, ../path, /path, or bare relative paths like agents/executor.md
   // Bare paths must follow a colon, whitespace, or be at line start to avoid URL false positives
-  const regex = /(?:\.\.?\/[a-zA-Z0-9_./-]+\.[a-zA-Z]+|\/[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)*\.[a-zA-Z]+|(?:(?<=[:\s])|^)[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)+\.[a-zA-Z]+)/gm;
+  const regex =
+    /(?:\.\.?\/[a-zA-Z0-9_./-]+\.[a-zA-Z]+|\/[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)*\.[a-zA-Z]+|(?:(?<=[:\s])|^)[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)+\.[a-zA-Z]+)/gm;
   const matches: FilePathMatch[] = [];
   let match;
   while ((match = regex.exec(text)) !== null) {
@@ -55,9 +57,13 @@ function buildDecorations(doc: PmNode): DecorationSet {
     let match;
     while ((match = xmlRegex.exec(text)) !== null) {
       decorations.push(
-        Decoration.inline(pos + match.index, pos + match.index + match[0].length, {
-          class: "prompt-xml-tag",
-        }),
+        Decoration.inline(
+          pos + match.index,
+          pos + match.index + match[0].length,
+          {
+            class: "prompt-xml-tag",
+          },
+        ),
       );
     }
 
@@ -65,9 +71,13 @@ function buildDecorations(doc: PmNode): DecorationSet {
     const mustacheRegex = /\{\{[\w.]+\}\}/g;
     while ((match = mustacheRegex.exec(text)) !== null) {
       decorations.push(
-        Decoration.inline(pos + match.index, pos + match.index + match[0].length, {
-          class: "prompt-variable",
-        }),
+        Decoration.inline(
+          pos + match.index,
+          pos + match.index + match[0].length,
+          {
+            class: "prompt-variable",
+          },
+        ),
       );
     }
 
@@ -117,7 +127,9 @@ export const PromptHighlight = Extension.create({
             if (!filepath) return false;
 
             window.dispatchEvent(
-              new CustomEvent("baram:open-filepath", { detail: { path: filepath } }),
+              new CustomEvent("baram:open-filepath", {
+                detail: { path: filepath },
+              }),
             );
             return true;
           },

@@ -75,9 +75,11 @@ describe("linkStore", () => {
   });
 
   it("setBacklinks replaces previous entries", () => {
-    useLinkStore.getState().setBacklinks("/a.md", [
-      { sourcePath: "/x.md", targetPath: "/a.md", context: "[[a]]", line: 1 },
-    ]);
+    useLinkStore
+      .getState()
+      .setBacklinks("/a.md", [
+        { sourcePath: "/x.md", targetPath: "/a.md", context: "[[a]]", line: 1 },
+      ]);
     expect(useLinkStore.getState().backlinks).toHaveLength(1);
 
     useLinkStore.getState().setBacklinks("/b.md", [

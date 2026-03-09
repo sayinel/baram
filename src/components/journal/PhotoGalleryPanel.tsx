@@ -41,7 +41,11 @@ export function PhotoGalleryPanel() {
           : groupMode === "month"
             ? { year: selectedYear } // month mode: filter by year
             : { year: selectedYear, month: selectedMonth }; // day mode: filter by year+month
-      const result = await scanJournalPhotos(rootPath, journalDirectory, options);
+      const result = await scanJournalPhotos(
+        rootPath,
+        journalDirectory,
+        options,
+      );
       setPhotos(result);
     } catch {
       setPhotos([]);
@@ -90,7 +94,10 @@ export function PhotoGalleryPanel() {
     return "전체";
   }, [groupMode, selectedYear, selectedMonth]);
 
-  const groups = useMemo(() => groupPhotosByDate(photos, groupMode), [photos, groupMode]);
+  const groups = useMemo(
+    () => groupPhotosByDate(photos, groupMode),
+    [photos, groupMode],
+  );
 
   // Sort group keys descending (newest first)
   const sortedKeys = useMemo(
@@ -161,7 +168,12 @@ export function PhotoGalleryPanel() {
     switch (groupMode) {
       case "day": {
         const d = new Date(key);
-        return d.toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "short" });
+        return d.toLocaleDateString("ko-KR", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+          weekday: "short",
+        });
       }
       case "month": {
         const [y, m] = key.split("-");
@@ -177,7 +189,8 @@ export function PhotoGalleryPanel() {
     setLightboxIndex(idx >= 0 ? idx : 0);
   };
 
-  const lightboxPhoto = lightboxIndex !== null ? flatPhotos[lightboxIndex] : null;
+  const lightboxPhoto =
+    lightboxIndex !== null ? flatPhotos[lightboxIndex] : null;
 
   return (
     <div className="photo-gallery-panel">
@@ -199,9 +212,19 @@ export function PhotoGalleryPanel() {
       {/* Date navigator — Day: month picker, Month: year picker, Year: no nav */}
       {groupMode !== "year" && (
         <div className="photo-gallery-nav">
-          <button className="photo-gallery-nav-btn" onClick={() => navigatePeriod(-1)}>‹</button>
+          <button
+            className="photo-gallery-nav-btn"
+            onClick={() => navigatePeriod(-1)}
+          >
+            ‹
+          </button>
           <span className="photo-gallery-nav-label">{periodLabel}</span>
-          <button className="photo-gallery-nav-btn" onClick={() => navigatePeriod(1)}>›</button>
+          <button
+            className="photo-gallery-nav-btn"
+            onClick={() => navigatePeriod(1)}
+          >
+            ›
+          </button>
         </div>
       )}
 
@@ -220,7 +243,9 @@ export function PhotoGalleryPanel() {
             <div key={key} className="photo-gallery-group">
               <div className="photo-gallery-group-header">
                 <span>{formatGroupLabel(key)}</span>
-                <span className="photo-gallery-group-count">{groupPhotos.length}</span>
+                <span className="photo-gallery-group-count">
+                  {groupPhotos.length}
+                </span>
               </div>
               <div className="photo-gallery-grid">
                 {groupPhotos.map((photo, i) => (
@@ -237,7 +262,9 @@ export function PhotoGalleryPanel() {
                       loading="lazy"
                     />
                     {photo.caption && (
-                      <span className="photo-gallery-item-caption">{photo.caption}</span>
+                      <span className="photo-gallery-item-caption">
+                        {photo.caption}
+                      </span>
                     )}
                   </div>
                 ))}
@@ -253,28 +280,71 @@ export function PhotoGalleryPanel() {
           {/* Nav buttons fixed to overlay edges */}
           <button
             className="photo-lightbox-nav photo-lightbox-prev"
-            onClick={(e) => { e.stopPropagation(); navigateLightbox("prev"); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              navigateLightbox("prev");
+            }}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <polyline points="15 18 9 12 15 6" />
             </svg>
           </button>
           <button
             className="photo-lightbox-nav photo-lightbox-next"
-            onClick={(e) => { e.stopPropagation(); navigateLightbox("next"); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              navigateLightbox("next");
+            }}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <polyline points="9 18 15 12 9 6" />
             </svg>
           </button>
 
-          <button className="photo-lightbox-close" onClick={(e) => { e.stopPropagation(); closeLightbox(); }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+          <button
+            className="photo-lightbox-close"
+            onClick={(e) => {
+              e.stopPropagation();
+              closeLightbox();
+            }}
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
             </svg>
           </button>
 
-          <div className="photo-lightbox-content" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="photo-lightbox-content"
+            onClick={(e) => e.stopPropagation()}
+          >
             <img
               src={convertFileSrc(lightboxPhoto.absolutePath)}
               alt={lightboxPhoto.caption || lightboxPhoto.filename}

@@ -1,9 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  parseQueryDSL,
-  serializeQueryDSL,
-  QueryDef,
-} from "../query-parser";
+import { parseQueryDSL, serializeQueryDSL, QueryDef } from "../query-parser";
 
 const defaults: QueryDef = {
   filters: [],
@@ -24,23 +20,33 @@ describe("parseQueryDSL", () => {
   it("single tag filter", () => {
     const result = parseQueryDSL('filter: tags contains "skills"');
     expect(result.filters).toEqual([
-      { field: "tags", operator: "contains", value: "skills", combinator: "AND" },
+      {
+        field: "tags",
+        operator: "contains",
+        value: "skills",
+        combinator: "AND",
+      },
     ]);
   });
 
   it("AND-combined filters", () => {
     const result = parseQueryDSL(
-      'filter: tags contains "skills" AND status = "draft"'
+      'filter: tags contains "skills" AND status = "draft"',
     );
     expect(result.filters).toEqual([
-      { field: "tags", operator: "contains", value: "skills", combinator: "AND" },
+      {
+        field: "tags",
+        operator: "contains",
+        value: "skills",
+        combinator: "AND",
+      },
       { field: "status", operator: "=", value: "draft", combinator: "AND" },
     ]);
   });
 
   it("OR combinator", () => {
     const result = parseQueryDSL(
-      'filter: tags contains "skills" OR status = "draft"'
+      'filter: tags contains "skills" OR status = "draft"',
     );
     expect(result.filters[1].combinator).toBe("OR");
   });
@@ -85,7 +91,12 @@ describe("parseQueryDSL", () => {
     const result = parseQueryDSL(dsl);
     expect(result).toEqual({
       filters: [
-        { field: "tags", operator: "contains", value: "skills", combinator: "AND" },
+        {
+          field: "tags",
+          operator: "contains",
+          value: "skills",
+          combinator: "AND",
+        },
         { field: "status", operator: "=", value: "draft", combinator: "AND" },
       ],
       sort: { field: "updated_at", direction: "desc" },
@@ -97,7 +108,12 @@ describe("parseQueryDSL", () => {
   it("path filter with starts operator", () => {
     const result = parseQueryDSL('filter: path starts "journal/"');
     expect(result.filters).toEqual([
-      { field: "path", operator: "starts", value: "journal/", combinator: "AND" },
+      {
+        field: "path",
+        operator: "starts",
+        value: "journal/",
+        combinator: "AND",
+      },
     ]);
   });
 
@@ -146,7 +162,14 @@ describe("serializeQueryDSL", () => {
   it("single filter", () => {
     const def: QueryDef = {
       ...defaults,
-      filters: [{ field: "tags", operator: "contains", value: "skills", combinator: "AND" }],
+      filters: [
+        {
+          field: "tags",
+          operator: "contains",
+          value: "skills",
+          combinator: "AND",
+        },
+      ],
     };
     expect(serializeQueryDSL(def)).toBe('filter: tags contains "skills"');
   });
@@ -155,12 +178,17 @@ describe("serializeQueryDSL", () => {
     const def: QueryDef = {
       ...defaults,
       filters: [
-        { field: "tags", operator: "contains", value: "skills", combinator: "AND" },
+        {
+          field: "tags",
+          operator: "contains",
+          value: "skills",
+          combinator: "AND",
+        },
         { field: "status", operator: "=", value: "draft", combinator: "AND" },
       ],
     };
     expect(serializeQueryDSL(def)).toBe(
-      'filter: tags contains "skills" AND status = "draft"'
+      'filter: tags contains "skills" AND status = "draft"',
     );
   });
 
@@ -173,12 +201,15 @@ describe("serializeQueryDSL", () => {
       ],
     };
     expect(serializeQueryDSL(def)).toBe(
-      'filter: tags contains "a" OR tags contains "b"'
+      'filter: tags contains "a" OR tags contains "b"',
     );
   });
 
   it("sort line", () => {
-    const def: QueryDef = { ...defaults, sort: { field: "updated_at", direction: "desc" } };
+    const def: QueryDef = {
+      ...defaults,
+      sort: { field: "updated_at", direction: "desc" },
+    };
     expect(serializeQueryDSL(def)).toBe("sort: updated_at desc");
   });
 
@@ -205,7 +236,9 @@ describe("serializeQueryDSL", () => {
   it("empty operator serialized without value", () => {
     const def: QueryDef = {
       ...defaults,
-      filters: [{ field: "status", operator: "empty", value: "", combinator: "AND" }],
+      filters: [
+        { field: "status", operator: "empty", value: "", combinator: "AND" },
+      ],
     };
     expect(serializeQueryDSL(def)).toBe("filter: status empty");
   });
@@ -213,7 +246,12 @@ describe("serializeQueryDSL", () => {
   it("roundtrip: serialize then parse equals original", () => {
     const original: QueryDef = {
       filters: [
-        { field: "tags", operator: "contains", value: "skills", combinator: "AND" },
+        {
+          field: "tags",
+          operator: "contains",
+          value: "skills",
+          combinator: "AND",
+        },
         { field: "status", operator: "=", value: "draft", combinator: "AND" },
       ],
       sort: { field: "updated_at", direction: "desc" },
@@ -226,7 +264,12 @@ describe("serializeQueryDSL", () => {
   });
 
   it("compact output: defaults serialize to empty string", () => {
-    const result = serializeQueryDSL({ filters: [], sort: null, display: "list", limit: 20 });
+    const result = serializeQueryDSL({
+      filters: [],
+      sort: null,
+      display: "list",
+      limit: 20,
+    });
     expect(result).toBe("");
   });
 });

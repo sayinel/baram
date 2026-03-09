@@ -21,7 +21,11 @@ import type { InlineAIPhase } from "../components/ai/InlineAIPrompt";
 import { llmComplete, llmCancel } from "../ipc/invoke";
 import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
-import type { LLMTokenPayload, LLMDonePayload, LLMErrorPayload } from "../ipc/types";
+import type {
+  LLMTokenPayload,
+  LLMDonePayload,
+  LLMErrorPayload,
+} from "../ipc/types";
 import { isLLMAllowed, getFilePrivacy } from "../utils/privacy-check";
 import { getModelForTask } from "../utils/model-selection";
 
@@ -71,7 +75,9 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
     if (!editor || !isActive) return;
 
     const handleTransaction = () => {
-      const pluginState = aiDiffPluginKey.getState(editor.state) as AIDiffState | undefined;
+      const pluginState = aiDiffPluginKey.getState(editor.state) as
+        | AIDiffState
+        | undefined;
       if (!pluginState) return;
 
       // Sync hunks from plugin state
@@ -80,7 +86,11 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
       }
 
       // If plugin cleared externally (e.g. doc changed), close our UI
-      if (pluginState.phase === "idle" && phase !== "idle" && phase !== "input") {
+      if (
+        pluginState.phase === "idle" &&
+        phase !== "idle" &&
+        phase !== "input"
+      ) {
         setIsActive(false);
         setPhase("idle");
         setHunks([]);
@@ -118,9 +128,7 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
 
       const { from, to } = { from: selectionFrom, to: selectionTo };
       const selectedText =
-        from !== to
-          ? editor.state.doc.textBetween(from, to, "\n")
-          : "";
+        from !== to ? editor.state.doc.textBetween(from, to, "\n") : "";
 
       setPhase("streaming");
 
@@ -225,7 +233,9 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
   const accept = useCallback(() => {
     if (!editor) return;
 
-    const pluginState = aiDiffPluginKey.getState(editor.state) as AIDiffState | undefined;
+    const pluginState = aiDiffPluginKey.getState(editor.state) as
+      | AIDiffState
+      | undefined;
     if (!pluginState || pluginState.phase === "idle") {
       // No-selection case: text was generated at cursor. Already inserted via diff.
     }
@@ -250,7 +260,9 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
 
   const autoApplyIfAllDecided = useCallback(() => {
     if (!editor) return;
-    const ps = aiDiffPluginKey.getState(editor.state) as AIDiffState | undefined;
+    const ps = aiDiffPluginKey.getState(editor.state) as
+      | AIDiffState
+      | undefined;
     if (!ps || ps.phase !== "completed" || ps.hunks.length === 0) return;
     const allDecided = ps.hunks.every((h) => h.accepted || h.rejected);
     if (!allDecided) return;

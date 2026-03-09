@@ -50,10 +50,13 @@ const MARK_DELIMITERS: Record<string, { open: string; close: string }> = {
 /**
  * Compute the content length (text between delimiters) of an expanded range.
  */
-function computeContentLen(state: EditorState, expanded: ExpandedRange): number {
+function computeContentLen(
+  state: EditorState,
+  expanded: ExpandedRange,
+): number {
   const { from, to, kind, openCheck, closeCheck } = expanded;
   if (kind === "mark" && closeCheck) {
-    return (to - closeCheck.length) - (from + openCheck.length);
+    return to - closeCheck.length - (from + openCheck.length);
   }
   if (kind === "link") {
     try {
@@ -207,18 +210,12 @@ function expandLink(
 
 // ── Image expansion ───────────────────────────────────────────────────
 
-function expandImage(
-  view: EditorView,
-  node: PmNode,
-  pos: number,
-): void {
+function expandImage(view: EditorView, node: PmNode, pos: number): void {
   const src = (node.attrs.src as string) || "";
   const alt = (node.attrs.alt as string) || "";
   const title = node.attrs.title as string | null;
 
-  const text = title
-    ? `![${alt}](${src} "${title}")`
-    : `![${alt}](${src})`;
+  const text = title ? `![${alt}](${src} "${title}")` : `![${alt}](${src})`;
 
   const { tr } = view.state;
 
@@ -598,7 +595,10 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
 
       // Validate open delimiter
       try {
-        const openText = newState.doc.textBetween(from, from + openCheck.length);
+        const openText = newState.doc.textBetween(
+          from,
+          from + openCheck.length,
+        );
         if (openText !== openCheck) {
           tr.setMeta(syntaxRevealKey, INACTIVE);
           return tr;
@@ -612,12 +612,24 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
       let contentLen = 0;
       if (kind === "mark" && markName && closeCheck) {
         const markType = newState.schema.marks[markName];
-        if (!markType) { tr.setMeta(syntaxRevealKey, INACTIVE); return tr; }
+        if (!markType) {
+          tr.setMeta(syntaxRevealKey, INACTIVE);
+          return tr;
+        }
 
         try {
-          const closeText = newState.doc.textBetween(to - closeCheck.length, to);
-          if (closeText !== closeCheck) { tr.setMeta(syntaxRevealKey, INACTIVE); return tr; }
-        } catch { tr.setMeta(syntaxRevealKey, INACTIVE); return tr; }
+          const closeText = newState.doc.textBetween(
+            to - closeCheck.length,
+            to,
+          );
+          if (closeText !== closeCheck) {
+            tr.setMeta(syntaxRevealKey, INACTIVE);
+            return tr;
+          }
+        } catch {
+          tr.setMeta(syntaxRevealKey, INACTIVE);
+          return tr;
+        }
 
         const contentFrom = from + openCheck.length;
         const contentTo = to - closeCheck.length;
@@ -635,21 +647,31 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         const linkMatch = fullText.match(
           /^\[([^\]]*)\]\((\S+?)(?:\s+"([^"]*)")?\)$/,
         );
-        if (!linkMatch) { tr.setMeta(syntaxRevealKey, INACTIVE); return tr; }
+        if (!linkMatch) {
+          tr.setMeta(syntaxRevealKey, INACTIVE);
+          return tr;
+        }
 
         const [, , href, title] = linkMatch;
         const bracketIdx = fullText.indexOf("](");
-        if (bracketIdx < 0) { tr.setMeta(syntaxRevealKey, INACTIVE); return tr; }
+        if (bracketIdx < 0) {
+          tr.setMeta(syntaxRevealKey, INACTIVE);
+          return tr;
+        }
 
         contentLen = bracketIdx - 1;
         const linkMark = newState.schema.marks.link.create({
-          href, title: title || null,
+          href,
+          title: title || null,
         });
 
         if (contentLen <= 0) {
           tr.delete(from, to);
         } else {
-          const content = newState.doc.slice(from + 1, from + bracketIdx).content;
+          const content = newState.doc.slice(
+            from + 1,
+            from + bracketIdx,
+          ).content;
           tr.replaceWith(from, to, content);
           tr.addMark(from, from + contentLen, linkMark);
         }
@@ -658,17 +680,25 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         const imgMatch = fullText.match(
           /^!\[([^\]]*)\]\((\S+?)(?:\s+"([^"]*)")?\)$/,
         );
-        if (!imgMatch) { tr.setMeta(syntaxRevealKey, INACTIVE); return tr; }
+        if (!imgMatch) {
+          tr.setMeta(syntaxRevealKey, INACTIVE);
+          return tr;
+        }
 
         const [, alt, src, title2] = imgMatch;
         const imageNode = newState.schema.nodes.image.create({
-          src, alt: alt || null, title: title2 || null,
+          src,
+          alt: alt || null,
+          title: title2 || null,
         });
         tr.replaceWith(from - 1, to + 1, imageNode);
       } else if (kind === "wikilink") {
         const fullText = newState.doc.textBetween(from, to);
         const wlMatch = fullText.match(WIKILINK_REGEX);
-        if (!wlMatch) { tr.setMeta(syntaxRevealKey, INACTIVE); return tr; }
+        if (!wlMatch) {
+          tr.setMeta(syntaxRevealKey, INACTIVE);
+          return tr;
+        }
 
         const [, wlTarget, wlHeading, wlBlockId, wlDisplay] = wlMatch;
         const wikilinkNode = newState.schema.nodes.wikilink.create({
@@ -1034,7 +1064,9 @@ export function isSyntaxRevealExpanded(state: EditorState): boolean {
 }
 
 /** Get the active expanded range info (used by wikilink-suggest to replace entire expanded text). */
-export function getSyntaxRevealExpanded(state: EditorState): ExpandedRange | null {
+export function getSyntaxRevealExpanded(
+  state: EditorState,
+): ExpandedRange | null {
   const es = syntaxRevealKey.getState(state);
   return es?.expanded ?? null;
 }

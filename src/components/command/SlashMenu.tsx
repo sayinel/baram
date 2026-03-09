@@ -76,7 +76,10 @@ export const SlashMenuList = forwardRef<SlashMenuRef, SlashMenuProps>(
     }
 
     // Group by category
-    const groups = new Map<string, { item: SlashMenuItem; flatIdx: number }[]>();
+    const groups = new Map<
+      string,
+      { item: SlashMenuItem; flatIdx: number }[]
+    >();
     items.forEach((item, idx) => {
       const list = groups.get(item.category) || [];
       list.push({ item, flatIdx: idx });

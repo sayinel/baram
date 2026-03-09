@@ -52,7 +52,8 @@ function extractHighlightedLineHTML(lineEl: HTMLElement): string {
         child.classList.contains("cm-cursor") ||
         child.classList.contains("cm-selectionLayer") ||
         child.classList.contains("cm-placeholder")
-      ) continue;
+      )
+        continue;
       const text = escapeCodeHTML(child.textContent || "");
       if (!text) continue;
 
@@ -89,7 +90,12 @@ interface CodeBlockInfo {
 function collectCodeBlockInfo(wrapper: Element): CodeBlockInfo {
   const cmEditor = wrapper.querySelector(".cm-editor");
   if (!cmEditor)
-    return { lang: "", style: "default", lineNumbers: null, highlightedLines: [] };
+    return {
+      lang: "",
+      style: "default",
+      lineNumbers: null,
+      highlightedLines: [],
+    };
 
   const lang =
     wrapper.getAttribute("data-language") ||
@@ -105,7 +111,10 @@ function collectCodeBlockInfo(wrapper: Element): CodeBlockInfo {
   }
 
   // Strip trailing empty lines added by CodeMirror
-  while (highlightedLines.length > 0 && highlightedLines[highlightedLines.length - 1] === "") {
+  while (
+    highlightedLines.length > 0 &&
+    highlightedLines[highlightedLines.length - 1] === ""
+  ) {
     highlightedLines.pop();
   }
 
@@ -119,34 +128,63 @@ function collectCodeBlockInfo(wrapper: Element): CodeBlockInfo {
 }
 
 /** Style presets per code block data-style variant */
-const CODE_STYLE_MAP: Record<string, {
-  langBg: string; langBorder: string; langColor: string;
-  bodyBg: string; bodyBorder: string; bodyColor: string;
-  gutterColor: string; gutterBorder: string;
-}> = {
+const CODE_STYLE_MAP: Record<
+  string,
+  {
+    langBg: string;
+    langBorder: string;
+    langColor: string;
+    bodyBg: string;
+    bodyBorder: string;
+    bodyColor: string;
+    gutterColor: string;
+    gutterBorder: string;
+  }
+> = {
   default: {
-    langBg: "#f0f1f3", langBorder: "#e5e7eb", langColor: "#6b7280",
-    bodyBg: "#f8f9fa", bodyBorder: "#e5e7eb", bodyColor: "#1a1a1a",
-    gutterColor: "#9ca3af", gutterBorder: "#e5e7eb",
+    langBg: "#f0f1f3",
+    langBorder: "#e5e7eb",
+    langColor: "#6b7280",
+    bodyBg: "#f8f9fa",
+    bodyBorder: "#e5e7eb",
+    bodyColor: "#1a1a1a",
+    gutterColor: "#9ca3af",
+    gutterBorder: "#e5e7eb",
   },
   minimal: {
-    langBg: "transparent", langBorder: "transparent", langColor: "#6b7280",
-    bodyBg: "transparent", bodyBorder: "transparent", bodyColor: "#1a1a1a",
-    gutterColor: "#9ca3af", gutterBorder: "#e5e7eb",
+    langBg: "transparent",
+    langBorder: "transparent",
+    langColor: "#6b7280",
+    bodyBg: "transparent",
+    bodyBorder: "transparent",
+    bodyColor: "#1a1a1a",
+    gutterColor: "#9ca3af",
+    gutterBorder: "#e5e7eb",
   },
   contrast: {
-    langBg: "#1e1e2e", langBorder: "#313244", langColor: "#a6adc8",
-    bodyBg: "#1e1e2e", bodyBorder: "#313244", bodyColor: "#cdd6f4",
-    gutterColor: "#6c7086", gutterBorder: "#313244",
+    langBg: "#1e1e2e",
+    langBorder: "#313244",
+    langColor: "#a6adc8",
+    bodyBg: "#1e1e2e",
+    bodyBorder: "#313244",
+    bodyColor: "#cdd6f4",
+    gutterColor: "#6c7086",
+    gutterBorder: "#313244",
   },
   paper: {
-    langBg: "#f0f1f3", langBorder: "transparent", langColor: "#6b7280",
-    bodyBg: "#f0f1f3", bodyBorder: "transparent", bodyColor: "#1a1a1a",
-    gutterColor: "#9ca3af", gutterBorder: "transparent",
+    langBg: "#f0f1f3",
+    langBorder: "transparent",
+    langColor: "#6b7280",
+    bodyBg: "#f0f1f3",
+    bodyBorder: "transparent",
+    bodyColor: "#1a1a1a",
+    gutterColor: "#9ca3af",
+    gutterBorder: "transparent",
   },
 };
 
-const MONO_FONT = '"JetBrains Mono","Fira Code","SF Mono",ui-monospace,monospace';
+const MONO_FONT =
+  '"JetBrains Mono","Fira Code","SF Mono",ui-monospace,monospace';
 
 /** Build export DOM for a code block — uses inline styles for reliable PDF rendering */
 function buildCodeBlockExport(info: CodeBlockInfo): HTMLElement {
@@ -177,9 +215,11 @@ function buildCodeBlockExport(info: CodeBlockInfo): HTMLElement {
 
   // Code content with highlighted spans
   const pre = document.createElement("pre");
-  pre.style.cssText = "flex:1;margin:0;padding:0.75em 1em;border:none;border-radius:0;background:none;font:inherit;line-height:inherit;overflow-x:visible;";
+  pre.style.cssText =
+    "flex:1;margin:0;padding:0.75em 1em;border:none;border-radius:0;background:none;font:inherit;line-height:inherit;overflow-x:visible;";
   const code = document.createElement("code");
-  code.style.cssText = "background:none;border:none;padding:0;font:inherit;line-height:inherit;color:inherit;";
+  code.style.cssText =
+    "background:none;border:none;padding:0;font:inherit;line-height:inherit;color:inherit;";
   code.innerHTML = info.highlightedLines.join("\n");
   pre.appendChild(code);
   body.appendChild(pre);
@@ -602,11 +642,13 @@ export async function captureEditorHTML(editor: Editor): Promise<string> {
   }
 
   // ── Mermaid blocks: keep rendered SVG, remove editing UI ─────────
-  for (const el of clone.querySelectorAll(".mermaid-block-textarea")) el.remove();
+  for (const el of clone.querySelectorAll(".mermaid-block-textarea"))
+    el.remove();
   for (const el of clone.querySelectorAll(".mermaid-block-error")) el.remove();
   for (const el of clone.querySelectorAll(".mermaid-block-empty")) el.remove();
   for (const el of clone.querySelectorAll(".mermaid-context-menu")) el.remove();
-  for (const el of clone.querySelectorAll(".mermaid-template-wrapper")) el.remove();
+  for (const el of clone.querySelectorAll(".mermaid-template-wrapper"))
+    el.remove();
   for (const el of clone.querySelectorAll(".mermaid-block-label")) el.remove();
   for (const el of clone.querySelectorAll(".mermaid-block-editing")) {
     el.classList.remove("mermaid-block-editing");
@@ -687,9 +729,12 @@ export async function captureEditorHTML(editor: Editor): Promise<string> {
   for (const el of clone.querySelectorAll(".block-id-editing")) el.remove();
 
   // ── ProseMirror editing artifacts ────────────────────────────────
-  for (const el of clone.querySelectorAll(".ProseMirror-gapcursor")) el.remove();
-  for (const el of clone.querySelectorAll(".ProseMirror-separator")) el.remove();
-  for (const el of clone.querySelectorAll(".ProseMirror-trailingBreak")) el.remove();
+  for (const el of clone.querySelectorAll(".ProseMirror-gapcursor"))
+    el.remove();
+  for (const el of clone.querySelectorAll(".ProseMirror-separator"))
+    el.remove();
+  for (const el of clone.querySelectorAll(".ProseMirror-trailingBreak"))
+    el.remove();
   for (const el of clone.querySelectorAll(".ProseMirror-selectednode")) {
     el.classList.remove("ProseMirror-selectednode");
   }
@@ -720,13 +765,16 @@ export async function captureEditorHTML(editor: Editor): Promise<string> {
   }
   // Apply inline styles to th/td for reliable PDF rendering
   for (const th of clone.querySelectorAll("th")) {
-    (th as HTMLElement).style.cssText += ";font-weight:600;background-color:#f3f4f6;border:1px solid #d1d5db;padding:0.4em 0.75em;";
+    (th as HTMLElement).style.cssText +=
+      ";font-weight:600;background-color:#f3f4f6;border:1px solid #d1d5db;padding:0.4em 0.75em;";
   }
   for (const td of clone.querySelectorAll("td")) {
-    (td as HTMLElement).style.cssText += ";border:1px solid #d1d5db;padding:0.4em 0.75em;";
+    (td as HTMLElement).style.cssText +=
+      ";border:1px solid #d1d5db;padding:0.4em 0.75em;";
   }
   for (const table of clone.querySelectorAll("table")) {
-    (table as HTMLElement).style.cssText += ";border-collapse:collapse;width:100%;";
+    (table as HTMLElement).style.cssText +=
+      ";border-collapse:collapse;width:100%;";
   }
 
   // ── Remove contenteditable attributes ────────────────────────────

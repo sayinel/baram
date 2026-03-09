@@ -357,12 +357,8 @@ describe("Multi-roundtrip stability", () => {
     const results = multiRoundtripFromPm(
       () =>
         schema.nodes.doc.create(null, [
-          schema.nodes.heading.create({ level: 2 }, [
-            schema.text("My Title"),
-          ]),
-          schema.nodes.paragraph.create(null, [
-            schema.text("Some text here"),
-          ]),
+          schema.nodes.heading.create({ level: 2 }, [schema.text("My Title")]),
+          schema.nodes.paragraph.create(null, [schema.text("Some text here")]),
           schema.nodes.codeBlock.create({ language: "js" }, [
             schema.text("const a = 1;"),
           ]),

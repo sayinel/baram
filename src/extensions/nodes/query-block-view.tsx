@@ -252,7 +252,11 @@ export function QueryBlockView({
   }, [def, execute]);
 
   return (
-    <NodeViewWrapper className="query-block-wrapper" data-type="queryBlock" spellCheck={false}>
+    <NodeViewWrapper
+      className="query-block-wrapper"
+      data-type="queryBlock"
+      spellCheck={false}
+    >
       <div className={`qb-container ${selected ? "qb-editing" : ""}`}>
         <div className="qb-header">
           <span className="qb-title">Query</span>

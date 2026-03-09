@@ -4,18 +4,23 @@
  */
 
 import { useMemo } from "react";
-import { KEYBINDING_REGISTRY, type KeybindingEntry } from "./keybinding-registry";
+import {
+  KEYBINDING_REGISTRY,
+  type KeybindingEntry,
+} from "./keybinding-registry";
 import { useSettingsStore } from "../stores/settings-store";
 
 export interface MergedKeybinding extends KeybindingEntry {
-  activeKey: string;     // override value if exists, else defaultKey
+  activeKey: string; // override value if exists, else defaultKey
   isOverridden: boolean; // true if user has overridden this key
 }
 
 /**
  * Pure function — maps KEYBINDING_REGISTRY entries, applying overrides where allowed.
  */
-export function getMergedKeybindings(overrides: Record<string, string>): MergedKeybinding[] {
+export function getMergedKeybindings(
+  overrides: Record<string, string>,
+): MergedKeybinding[] {
   return KEYBINDING_REGISTRY.map((entry) => {
     const hasOverride = entry.customizable && overrides[entry.id] !== undefined;
     return {
@@ -64,8 +69,13 @@ export function findConflict(
 export function useKeybindings(): MergedKeybinding[] {
   // keybindingOverrides will be added to settings-store in Task 4.
   // Fall back to empty object if the field doesn't exist yet.
-  const overrides = (useSettingsStore as (selector: (s: Record<string, unknown>) => unknown) => unknown)(
-    (s: Record<string, unknown>) => (s["keybindingOverrides"] as Record<string, string> | undefined) ?? {},
+  const overrides = (
+    useSettingsStore as (
+      selector: (s: Record<string, unknown>) => unknown,
+    ) => unknown
+  )(
+    (s: Record<string, unknown>) =>
+      (s["keybindingOverrides"] as Record<string, string> | undefined) ?? {},
   ) as Record<string, string>;
 
   return useMemo(() => getMergedKeybindings(overrides), [overrides]);

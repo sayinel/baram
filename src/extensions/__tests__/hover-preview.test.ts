@@ -3,7 +3,10 @@ import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { Editor } from "@tiptap/core";
 import { createBaramExtensions } from "../../extensions";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
-import { truncatePreview, calcPosition } from "../../components/editor/HoverPreview";
+import {
+  truncatePreview,
+  calcPosition,
+} from "../../components/editor/HoverPreview";
 
 // ── Helpers ──
 
@@ -135,7 +138,9 @@ describe("§32 Hover Preview", () => {
       const editor = createEditor();
       loadMarkdown(editor, "See [[architecture|아키텍처]] docs\n");
 
-      let wikilinkNode = null as ReturnType<typeof editor.state.doc.nodeAt> | null;
+      let wikilinkNode = null as ReturnType<
+        typeof editor.state.doc.nodeAt
+      > | null;
       editor.state.doc.descendants((node) => {
         if (node.type.name === "wikilink") wikilinkNode = node;
       });
@@ -150,7 +155,9 @@ describe("§32 Hover Preview", () => {
       const editor = createEditor();
       loadMarkdown(editor, "See [[architecture#overview]] here\n");
 
-      let wikilinkNode = null as ReturnType<typeof editor.state.doc.nodeAt> | null;
+      let wikilinkNode = null as ReturnType<
+        typeof editor.state.doc.nodeAt
+      > | null;
       editor.state.doc.descendants((node) => {
         if (node.type.name === "wikilink") wikilinkNode = node;
       });
@@ -195,7 +202,9 @@ describe("§32 Hover Preview", () => {
       const wikilinks = el.querySelectorAll("[data-target].wikilink");
 
       expect(wikilinks).toHaveLength(2);
-      const targets = Array.from(wikilinks).map((w) => w.getAttribute("data-target"));
+      const targets = Array.from(wikilinks).map((w) =>
+        w.getAttribute("data-target"),
+      );
       expect(targets).toContain("alpha");
       expect(targets).toContain("beta");
       editor.destroy();

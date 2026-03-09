@@ -19,7 +19,11 @@ vi.mock("../../stores/ai-store", () => ({
       ollamaUrl: "http://localhost:11434",
       privacyMode: false,
       customCommands: [
-        { id: "custom1", name: "Custom Test", prompt: "Do something with {{selection}}" },
+        {
+          id: "custom1",
+          name: "Custom Test",
+          prompt: "Do something with {{selection}}",
+        },
       ],
     }),
   },
@@ -78,7 +82,9 @@ describe("§6.2 AI Slash Commands (post-UX refactor)", () => {
   });
 
   test("buildSlashItems includes all 7 AI commands", () => {
-    const aiIds = items.filter((i) => SLASH_AI_IDS.includes(i.id)).map((i) => i.id);
+    const aiIds = items
+      .filter((i) => SLASH_AI_IDS.includes(i.id))
+      .map((i) => i.id);
     expect(aiIds).toEqual(SLASH_AI_IDS);
   });
 
@@ -93,10 +99,13 @@ describe("§6.2 AI Slash Commands (post-UX refactor)", () => {
     expect(item!.mdHint).toBe("AI");
   });
 
-  test.each(SLASH_AI_IDS)("AI command '%s' has a non-empty description", (id) => {
-    const item = items.find((i) => i.id === id);
-    expect(item!.description.length).toBeGreaterThan(0);
-  });
+  test.each(SLASH_AI_IDS)(
+    "AI command '%s' has a non-empty description",
+    (id) => {
+      const item = items.find((i) => i.id === id);
+      expect(item!.description.length).toBeGreaterThan(0);
+    },
+  );
 
   test.each(SLASH_AI_IDS)("AI command '%s' has an action function", (id) => {
     const item = items.find((i) => i.id === id);
@@ -127,7 +136,9 @@ describe("§6.2 AI Slash Commands (post-UX refactor)", () => {
   test("built-in AI items appear before custom AI items", () => {
     const aiItems = items.filter((i) => i.category === "AI");
     const firstBuiltinIdx = aiItems.findIndex((i) => i.id === "ai-write");
-    const firstCustomIdx = aiItems.findIndex((i) => i.id.startsWith("ai-custom-"));
+    const firstCustomIdx = aiItems.findIndex((i) =>
+      i.id.startsWith("ai-custom-"),
+    );
     expect(firstBuiltinIdx).toBeLessThan(firstCustomIdx);
   });
 

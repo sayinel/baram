@@ -2,8 +2,27 @@
 import { create } from "zustand";
 import { useSettingsStore } from "./settings-store";
 
-type SidebarPanel = "files" | "outline" | "search" | "backlinks" | "bookmarks" | "graph" | "git" | "calendar" | "tags" | "snapshots" | "skills-gallery" | "plugins";
-type ExportFormat = "html" | "pdf" | "notion" | "docx" | "latex" | "epub" | "rst";
+type SidebarPanel =
+  | "files"
+  | "outline"
+  | "search"
+  | "backlinks"
+  | "bookmarks"
+  | "graph"
+  | "git"
+  | "calendar"
+  | "tags"
+  | "snapshots"
+  | "skills-gallery"
+  | "plugins";
+type ExportFormat =
+  | "html"
+  | "pdf"
+  | "notion"
+  | "docx"
+  | "latex"
+  | "epub"
+  | "rst";
 
 interface UIState {
   sidebarOpen: boolean;
@@ -11,7 +30,13 @@ interface UIState {
   sidebarWidth: number;
   rightPanelOpen: boolean;
   rightPanelWidth: number;
-  rightPanelMode: "chat" | "help" | "memories" | "photo-gallery" | "properties" | "none";
+  rightPanelMode:
+    | "chat"
+    | "help"
+    | "memories"
+    | "photo-gallery"
+    | "properties"
+    | "none";
   commandPaletteOpen: boolean;
   quickSwitcherOpen: boolean;
   settingsOpen: boolean;
@@ -36,7 +61,15 @@ interface UIState {
   setSidebarWidth: (width: number) => void;
   toggleRightPanel: () => void;
   setRightPanelWidth: (width: number) => void;
-  setRightPanelMode: (mode: "chat" | "help" | "memories" | "photo-gallery" | "properties" | "none") => void;
+  setRightPanelMode: (
+    mode:
+      | "chat"
+      | "help"
+      | "memories"
+      | "photo-gallery"
+      | "properties"
+      | "none",
+  ) => void;
   toggleCommandPalette: () => void;
   toggleQuickSwitcher: () => void;
   toggleSettings: () => void;
@@ -78,8 +111,7 @@ export const useUIStore = create<UIState>((set) => ({
   contentReloadVersion: 0,
   contentReloadCursorEnd: false,
 
-  toggleSidebar: () =>
-    set((state) => ({ sidebarOpen: !state.sidebarOpen })),
+  toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
 
   setSidebarPanel: (panel) => set({ sidebarPanel: panel }),
 
@@ -98,11 +130,9 @@ export const useUIStore = create<UIState>((set) => ({
   toggleQuickSwitcher: () =>
     set((state) => ({ quickSwitcherOpen: !state.quickSwitcherOpen })),
 
-  toggleSettings: () =>
-    set((state) => ({ settingsOpen: !state.settingsOpen })),
+  toggleSettings: () => set((state) => ({ settingsOpen: !state.settingsOpen })),
 
-  toggleAbout: () =>
-    set((state) => ({ aboutOpen: !state.aboutOpen })),
+  toggleAbout: () => set((state) => ({ aboutOpen: !state.aboutOpen })),
 
   openExportDialog: (format) =>
     set({ exportDialogOpen: true, exportFormat: format ?? "html" }),
@@ -120,7 +150,9 @@ export const useUIStore = create<UIState>((set) => ({
     set((state) => ({ newSkillDialogOpen: !state.newSkillDialogOpen })),
 
   toggleSkillGeneratorDialog: () =>
-    set((state) => ({ skillGeneratorDialogOpen: !state.skillGeneratorDialogOpen })),
+    set((state) => ({
+      skillGeneratorDialogOpen: !state.skillGeneratorDialogOpen,
+    })),
 
   toggleSkillTestDialog: () =>
     set((state) => ({ skillTestDialogOpen: !state.skillTestDialogOpen })),
@@ -133,7 +165,8 @@ export const useUIStore = create<UIState>((set) => ({
 
   setPendingApplyContent: (pendingApplyContent) => set({ pendingApplyContent }),
 
-  setPendingSearchHighlight: (pendingSearchHighlight) => set({ pendingSearchHighlight }),
+  setPendingSearchHighlight: (pendingSearchHighlight) =>
+    set({ pendingSearchHighlight }),
 
   triggerContentReload: (cursorEnd?: boolean) =>
     set((state) => ({

@@ -1,5 +1,9 @@
 import { describe, test, expect } from "vitest";
-import { generatePhotoFilename, getAssetsDir, isJournalPhoto } from "../journal-photo";
+import {
+  generatePhotoFilename,
+  getAssetsDir,
+  isJournalPhoto,
+} from "../journal-photo";
 
 describe("journal-photo utilities", () => {
   const fixedDate = new Date(2026, 2, 1, 14, 30, 22); // 2026-03-01 14:30:22

@@ -35,7 +35,11 @@ function serializeYaml(props: FrontmatterProperty[]): string {
   return props.map((p) => `${p.key}: ${p.value}`).join("\n");
 }
 
-export function FrontmatterEditor({ yaml, onChange, isSkillFile }: FrontmatterEditorProps) {
+export function FrontmatterEditor({
+  yaml,
+  onChange,
+  isSkillFile,
+}: FrontmatterEditorProps) {
   const [properties, setProperties] = useState(() => parseYaml(yaml));
   const [showSource, setShowSource] = useState(false);
   const [sourceText, setSourceText] = useState(yaml);
@@ -51,7 +55,10 @@ export function FrontmatterEditor({ yaml, onChange, isSkillFile }: FrontmatterEd
   );
 
   const addProperty = useCallback(() => {
-    const updated = [...properties, { key: "key", value: "", type: "string" as const }];
+    const updated = [
+      ...properties,
+      { key: "key", value: "", type: "string" as const },
+    ];
     setProperties(updated);
     onChange(serializeYaml(updated));
   }, [properties, onChange]);
@@ -137,7 +144,13 @@ export function FrontmatterEditor({ yaml, onChange, isSkillFile }: FrontmatterEd
             {prop.type === "boolean" ? (
               <button
                 className={`frontmatter-editor-bool ${prop.value === "true" ? "on" : ""}`}
-                onClick={() => updateProperty(i, prop.key, prop.value === "true" ? "false" : "true")}
+                onClick={() =>
+                  updateProperty(
+                    i,
+                    prop.key,
+                    prop.value === "true" ? "false" : "true",
+                  )
+                }
               >
                 {prop.value === "true" ? "true" : "false"}
               </button>
@@ -157,7 +170,9 @@ export function FrontmatterEditor({ yaml, onChange, isSkillFile }: FrontmatterEd
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && e.currentTarget.value) {
                       const current = prop.value.replace(/^\[|\]$/g, "");
-                      const newVal = current ? `[${current}, ${e.currentTarget.value}]` : `[${e.currentTarget.value}]`;
+                      const newVal = current
+                        ? `[${current}, ${e.currentTarget.value}]`
+                        : `[${e.currentTarget.value}]`;
                       updateProperty(i, prop.key, newVal);
                       e.currentTarget.value = "";
                     }

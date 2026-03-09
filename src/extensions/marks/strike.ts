@@ -1,5 +1,10 @@
 // §5.1 Strikethrough Mark Extension — ~~text~~
-import { Mark, mergeAttributes, markInputRule, markPasteRule } from "@tiptap/core";
+import {
+  Mark,
+  mergeAttributes,
+  markInputRule,
+  markPasteRule,
+} from "@tiptap/core";
 
 export interface StrikeOptions {
   HTMLAttributes: Record<string, string>;
@@ -29,19 +34,37 @@ export const Strike = Mark.create<StrikeOptions>({
     return [
       { tag: "del" },
       { tag: "s" },
-      { style: "text-decoration", consuming: false, getAttrs: (style) => (style as string).includes("line-through") ? {} : false },
+      {
+        style: "text-decoration",
+        consuming: false,
+        getAttrs: (style) =>
+          (style as string).includes("line-through") ? {} : false,
+      },
     ];
   },
 
   renderHTML({ HTMLAttributes }) {
-    return ["del", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
+    return [
+      "del",
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes),
+      0,
+    ];
   },
 
   addCommands() {
     return {
-      setStrike: () => ({ commands }) => commands.setMark(this.name),
-      toggleStrike: () => ({ commands }) => commands.toggleMark(this.name),
-      unsetStrike: () => ({ commands }) => commands.unsetMark(this.name),
+      setStrike:
+        () =>
+        ({ commands }) =>
+          commands.setMark(this.name),
+      toggleStrike:
+        () =>
+        ({ commands }) =>
+          commands.toggleMark(this.name),
+      unsetStrike:
+        () =>
+        ({ commands }) =>
+          commands.unsetMark(this.name),
     };
   },
 

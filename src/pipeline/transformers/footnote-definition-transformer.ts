@@ -23,10 +23,7 @@ export const footnoteDefinitionTransformer: NodeTransformerEntry = {
     );
   },
 
-  pmToMdast(
-    node: PmNode,
-    convertChildren: (node: PmNode) => MdastNode[],
-  ) {
+  pmToMdast(node: PmNode, convertChildren: (node: PmNode) => MdastNode[]) {
     return {
       type: "footnoteDefinition",
       identifier: node.attrs.identifier as string,

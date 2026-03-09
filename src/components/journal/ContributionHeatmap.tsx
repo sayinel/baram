@@ -3,7 +3,7 @@ import { useState, useMemo } from "react";
 import { useEditorStore } from "../../stores/editor-store";
 
 export interface HeatmapEntry {
-  date: string;      // YYYY-MM-DD
+  date: string; // YYYY-MM-DD
   wordCount: number;
 }
 
@@ -23,7 +23,9 @@ export function getHeatmapLevel(wordCount: number): 0 | 1 | 2 | 3 | 4 {
 
 // Returns an array of {date, dayOfWeek (0=Sun..6=Sat), weekIndex} for each day in the year.
 // weekIndex is 0-based, determined by the ISO week column position.
-export function getWeekColumns(year: number): { date: string; dayOfWeek: number; weekIndex: number }[] {
+export function getWeekColumns(
+  year: number,
+): { date: string; dayOfWeek: number; weekIndex: number }[] {
   const result: { date: string; dayOfWeek: number; weekIndex: number }[] = [];
   const jan1 = new Date(year, 0, 1);
   // GitHub-style: column 0 starts on Jan 1, each column is a week (Sun-Sat).
@@ -44,14 +46,31 @@ export function getWeekColumns(year: number): { date: string; dayOfWeek: number;
 }
 
 // Returns month label positions: {month (short name), weekIndex of the first day of that month}.
-export function getMonthLabels(year: number): { month: string; weekIndex: number }[] {
-  const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export function getMonthLabels(
+  year: number,
+): { month: string; weekIndex: number }[] {
+  const SHORT_MONTHS = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
   const jan1DayOfWeek = new Date(year, 0, 1).getDay();
   const labels: { month: string; weekIndex: number }[] = [];
 
   for (let m = 0; m < 12; m++) {
     const firstOfMonth = new Date(year, m, 1);
-    const dayOfYear = Math.floor((firstOfMonth.getTime() - new Date(year, 0, 1).getTime()) / 86400000);
+    const dayOfYear = Math.floor(
+      (firstOfMonth.getTime() - new Date(year, 0, 1).getTime()) / 86400000,
+    );
     const weekIndex = Math.floor((dayOfYear + jan1DayOfWeek) / 7);
     labels.push({ month: SHORT_MONTHS[m], weekIndex });
   }
@@ -60,9 +79,18 @@ export function getMonthLabels(year: number): { month: string; weekIndex: number
 
 const DAY_LABEL_MAP: Record<number, string> = { 1: "Mon", 3: "Wed", 5: "Fri" };
 
-export function ContributionHeatmap({ entries, year, onDateClick }: ContributionHeatmapProps) {
+export function ContributionHeatmap({
+  entries,
+  year,
+  onDateClick,
+}: ContributionHeatmapProps) {
   const [collapsed, setCollapsed] = useState(false);
-  const [tooltip, setTooltip] = useState<{ date: string; wordCount: number; x: number; y: number } | null>(null);
+  const [tooltip, setTooltip] = useState<{
+    date: string;
+    wordCount: number;
+    x: number;
+    y: number;
+  } | null>(null);
 
   const wordCountMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -101,11 +129,16 @@ export function ContributionHeatmap({ entries, year, onDateClick }: Contribution
         aria-expanded={!collapsed}
       >
         <span>기여 히트맵</span>
-        <span className="contribution-heatmap-toggle-arrow">{collapsed ? "▸" : "▾"}</span>
+        <span className="contribution-heatmap-toggle-arrow">
+          {collapsed ? "▸" : "▾"}
+        </span>
       </button>
 
       {!collapsed && (
-        <div className="contribution-heatmap" onMouseLeave={() => setTooltip(null)}>
+        <div
+          className="contribution-heatmap"
+          onMouseLeave={() => setTooltip(null)}
+        >
           {/* Month labels row */}
           <div
             className="contribution-heatmap-month-labels"
@@ -142,7 +175,15 @@ export function ContributionHeatmap({ entries, year, onDateClick }: Contribution
             {/* Day-of-week labels (Mon, Wed, Fri) */}
             <div className="contribution-heatmap-day-labels">
               {[0, 1, 2, 3, 4, 5, 6].map((dow) => (
-                <div key={dow} style={{ height: 10, lineHeight: "10px", fontSize: "0.7em", color: "var(--text-secondary)" }}>
+                <div
+                  key={dow}
+                  style={{
+                    height: 10,
+                    lineHeight: "10px",
+                    fontSize: "0.7em",
+                    color: "var(--text-secondary)",
+                  }}
+                >
                   {DAY_LABEL_MAP[dow] ?? ""}
                 </div>
               ))}
@@ -168,8 +209,15 @@ export function ContributionHeatmap({ entries, year, onDateClick }: Contribution
                     title={`${date}: ${wc} words`}
                     onClick={() => handleCellClick(date)}
                     onMouseEnter={(e) => {
-                      const rect = (e.target as HTMLElement).getBoundingClientRect();
-                      setTooltip({ date, wordCount: wc, x: rect.left + rect.width / 2, y: rect.top });
+                      const rect = (
+                        e.target as HTMLElement
+                      ).getBoundingClientRect();
+                      setTooltip({
+                        date,
+                        wordCount: wc,
+                        x: rect.left + rect.width / 2,
+                        y: rect.top,
+                      });
                     }}
                     onMouseLeave={() => setTooltip(null)}
                   />

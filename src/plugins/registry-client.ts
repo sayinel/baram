@@ -6,11 +6,17 @@ import type { RegistryIndex, RegistryEntry } from "./types";
 const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
 /** Fetch registry index, using cache if fresh */
-export async function fetchRegistryIndex(forceRefresh = false): Promise<RegistryIndex> {
+export async function fetchRegistryIndex(
+  forceRefresh = false,
+): Promise<RegistryIndex> {
   const store = usePluginStore.getState();
 
   // Check cache
-  if (!forceRefresh && store.registryCache && Date.now() - store.registryCacheTime < CACHE_DURATION) {
+  if (
+    !forceRefresh &&
+    store.registryCache &&
+    Date.now() - store.registryCacheTime < CACHE_DURATION
+  ) {
     return store.registryCache;
   }
 
@@ -30,7 +36,10 @@ export async function fetchRegistryIndex(forceRefresh = false): Promise<Registry
 }
 
 /** Search registry plugins by query */
-export function searchRegistry(index: RegistryIndex, query: string): RegistryEntry[] {
+export function searchRegistry(
+  index: RegistryIndex,
+  query: string,
+): RegistryEntry[] {
   if (!query.trim()) return index.plugins;
 
   const lower = query.toLowerCase();

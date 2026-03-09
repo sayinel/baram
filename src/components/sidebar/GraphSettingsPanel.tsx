@@ -112,11 +112,7 @@ export function GraphSettingsPanel() {
           checked={s.existingFilesOnly}
           onChange={s.setExistingFilesOnly}
         />
-        <ToggleRow
-          label="Tags"
-          checked={s.showTags}
-          onChange={s.setShowTags}
-        />
+        <ToggleRow label="Tags" checked={s.showTags} onChange={s.setShowTags} />
         <ToggleRow
           label="Color by namespace"
           checked={s.colorByNamespace}

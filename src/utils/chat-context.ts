@@ -4,7 +4,12 @@ import { useFileStore } from "../stores/file-store";
 import type { FileEntry } from "../stores/file-store";
 import { useAIStore } from "../stores/ai-store";
 
-export type ReferenceType = "@selection" | "@current" | "@clipboard" | "@file" | "@folder";
+export type ReferenceType =
+  | "@selection"
+  | "@current"
+  | "@clipboard"
+  | "@file"
+  | "@folder";
 
 /** Collect all file paths under a directory from the file tree */
 function collectFilesInDir(entries: FileEntry[], dirPath: string): string[] {
@@ -57,7 +62,9 @@ export function resolveReference(ref: string): ResolvedReference | null {
     const { activeTabId, tabs } = useEditorStore.getState();
     const tab = tabs.find((t) => t.id === activeTabId);
     if (!tab) return null;
-    const content = useFileStore.getState().openFiles.get(tab.filePath || tab.id);
+    const content = useFileStore
+      .getState()
+      .openFiles.get(tab.filePath || tab.id);
     return {
       type: "@current",
       label: tab.title,
@@ -133,12 +140,13 @@ export function parseReferences(text: string): string[] {
   return refs;
 }
 
-export function buildContextPrompt(userMessage: string, refs: ResolvedReference[]): string {
+export function buildContextPrompt(
+  userMessage: string,
+  refs: ResolvedReference[],
+): string {
   if (refs.length === 0) return userMessage;
 
-  const contextParts = refs.map(
-    (r) => `--- ${r.label} ---\n${r.content}`,
-  );
+  const contextParts = refs.map((r) => `--- ${r.label} ---\n${r.content}`);
 
   return `Context:\n${contextParts.join("\n\n")}\n\n---\n\nUser message: ${userMessage}`;
 }

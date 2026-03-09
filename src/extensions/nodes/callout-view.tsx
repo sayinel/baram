@@ -62,10 +62,7 @@ export function CalloutView({ node, updateAttributes, editor }: NodeViewProps) {
       data-callout-type={type}
       className={`callout callout-${type}`}
     >
-      <div
-        className="callout-header"
-        contentEditable={false}
-      >
+      <div className="callout-header" contentEditable={false}>
         <span className="callout-icon">{getIcon(type)}</span>
 
         {isEditingTitle ? (

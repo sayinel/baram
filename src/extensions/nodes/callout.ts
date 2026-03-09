@@ -119,7 +119,8 @@ export const Callout = Node.create<CalloutOptions>({
         const parentNode = $from.parent; // the paragraph containing the cursor
 
         // Only trigger if: cursor is in the last child of callout AND that child is empty
-        const isLastChild = $from.index(calloutDepth) === calloutNode.childCount - 1;
+        const isLastChild =
+          $from.index(calloutDepth) === calloutNode.childCount - 1;
         if (!isLastChild) return false;
         if (parentNode.content.size !== 0) return false;
 

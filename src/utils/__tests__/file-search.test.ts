@@ -24,9 +24,7 @@ describe("flattenFileTree", () => {
       name: ".git",
       path: "/root/.git",
       isDir: true,
-      children: [
-        { name: "config", path: "/root/.git/config", isDir: false },
-      ],
+      children: [{ name: "config", path: "/root/.git/config", isDir: false }],
     },
     {
       name: "node_modules",
@@ -62,8 +60,7 @@ describe("flattenFileTree", () => {
   it("excludes .git and node_modules contents", () => {
     const result = flattenFileTree(tree, "/root");
     const hidden = result.filter(
-      (f) =>
-        f.path.includes(".git/") || f.path.includes("node_modules/"),
+      (f) => f.path.includes(".git/") || f.path.includes("node_modules/"),
     );
     expect(hidden).toHaveLength(0);
   });
@@ -83,9 +80,7 @@ describe("flattenFileTree", () => {
             name: "b",
             path: "/r/a/b",
             isDir: true,
-            children: [
-              { name: "c.md", path: "/r/a/b/c.md", isDir: false },
-            ],
+            children: [{ name: "c.md", path: "/r/a/b/c.md", isDir: false }],
           },
         ],
       },

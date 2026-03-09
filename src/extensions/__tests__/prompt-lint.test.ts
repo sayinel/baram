@@ -127,7 +127,9 @@ type: skill
 
 Body.`;
       const results = rules.checkMissingRequiredField(text);
-      expect(results.some((r) => r.message.includes('"description"'))).toBe(true);
+      expect(results.some((r) => r.message.includes('"description"'))).toBe(
+        true,
+      );
     });
 
     test("reports both missing fields", () => {

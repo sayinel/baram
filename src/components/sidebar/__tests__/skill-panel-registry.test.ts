@@ -22,11 +22,21 @@ describe("skill-panel-registry", () => {
 
   it("registers a new section", () => {
     const DummyComponent = () => null;
-    registerSkillSection({ id: "test", title: "Test", order: 10, component: DummyComponent });
+    registerSkillSection({
+      id: "test",
+      title: "Test",
+      order: 10,
+      component: DummyComponent,
+    });
 
     const sections = getSkillSections();
     expect(sections).toHaveLength(1);
-    expect(sections[0]).toEqual({ id: "test", title: "Test", order: 10, component: DummyComponent });
+    expect(sections[0]).toEqual({
+      id: "test",
+      title: "Test",
+      order: 10,
+      component: DummyComponent,
+    });
   });
 
   it("replaces section with same id (no duplicates)", () => {
@@ -34,7 +44,12 @@ describe("skill-panel-registry", () => {
     const B = () => null;
 
     registerSkillSection({ id: "dup", title: "First", order: 1, component: A });
-    registerSkillSection({ id: "dup", title: "Second", order: 2, component: B });
+    registerSkillSection({
+      id: "dup",
+      title: "Second",
+      order: 2,
+      component: B,
+    });
 
     const sections = getSkillSections();
     expect(sections).toHaveLength(1);

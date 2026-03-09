@@ -15,7 +15,11 @@ describe("§30d Block Embed Edit — replaceBlockInContent integration", () => {
   ].join("\n");
 
   test("replace paragraph and verify with findBlockContent", () => {
-    const replaced = replaceBlockInContent(sampleDoc, "p1", "Updated paragraph");
+    const replaced = replaceBlockInContent(
+      sampleDoc,
+      "p1",
+      "Updated paragraph",
+    );
     expect(replaced).not.toBeNull();
     const content = findBlockContent(replaced!, "p1");
     expect(content).toBe("Updated paragraph");

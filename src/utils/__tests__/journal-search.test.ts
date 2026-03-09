@@ -19,51 +19,43 @@ describe("categorizeJournalResult", () => {
   });
 
   it("categorizes weekly hierarchical path", () => {
-    expect(
-      categorizeJournalResult(`${DIR}/weekly/2024/2024-W12.md`, DIR),
-    ).toBe("weekly");
+    expect(categorizeJournalResult(`${DIR}/weekly/2024/2024-W12.md`, DIR)).toBe(
+      "weekly",
+    );
   });
 
   it("categorizes monthly hierarchical path", () => {
-    expect(
-      categorizeJournalResult(`${DIR}/monthly/2024/2024-03.md`, DIR),
-    ).toBe("monthly");
+    expect(categorizeJournalResult(`${DIR}/monthly/2024/2024-03.md`, DIR)).toBe(
+      "monthly",
+    );
   });
 
   it("categorizes yearly hierarchical path", () => {
-    expect(
-      categorizeJournalResult(`${DIR}/yearly/2024.md`, DIR),
-    ).toBe("yearly");
+    expect(categorizeJournalResult(`${DIR}/yearly/2024.md`, DIR)).toBe(
+      "yearly",
+    );
   });
 
   it("categorizes notes path", () => {
-    expect(
-      categorizeJournalResult(`${DIR}/notes/ideas.md`, DIR),
-    ).toBe("notes");
+    expect(categorizeJournalResult(`${DIR}/notes/ideas.md`, DIR)).toBe("notes");
   });
 
   it("categorizes flat daily YYYY-MM-DD.md in journal root", () => {
-    expect(
-      categorizeJournalResult(`${DIR}/2024-03-15.md`, DIR),
-    ).toBe("daily");
+    expect(categorizeJournalResult(`${DIR}/2024-03-15.md`, DIR)).toBe("daily");
   });
 
   it("categorizes flat daily YYYYMMDD.md in journal root", () => {
-    expect(
-      categorizeJournalResult(`${DIR}/20240315.md`, DIR),
-    ).toBe("daily");
+    expect(categorizeJournalResult(`${DIR}/20240315.md`, DIR)).toBe("daily");
   });
 
   it("returns 'other' for path outside journal dir", () => {
-    expect(
-      categorizeJournalResult("/home/user/vault/notes.md", DIR),
-    ).toBe("other");
+    expect(categorizeJournalResult("/home/user/vault/notes.md", DIR)).toBe(
+      "other",
+    );
   });
 
   it("returns 'other' for unknown subfolder", () => {
-    expect(
-      categorizeJournalResult(`${DIR}/archive/old.md`, DIR),
-    ).toBe("other");
+    expect(categorizeJournalResult(`${DIR}/archive/old.md`, DIR)).toBe("other");
   });
 
   it("handles trailing slash in journalDir", () => {
@@ -165,13 +157,10 @@ describe("highlightSearchMatch", () => {
 // ── §56k Frontmatter utilities ───────────────────────────────────────────────
 
 describe("extractFrontmatterFields", () => {
-  const mkContent = (yaml: string, body = "") =>
-    `---\n${yaml}\n---\n${body}`;
+  const mkContent = (yaml: string, body = "") => `---\n${yaml}\n---\n${body}`;
 
   it("extracts date, mood, energy from frontmatter", () => {
-    const content = mkContent(
-      "date: 2026-02-28\nmood: calm\nenergy: 4",
-    );
+    const content = mkContent("date: 2026-02-28\nmood: calm\nenergy: 4");
     const fields = extractFrontmatterFields(content);
     expect(fields.date).toBe("2026-02-28");
     expect(fields.mood).toBe("calm");
@@ -191,7 +180,10 @@ describe("extractFrontmatterFields", () => {
   });
 
   it("detects hasPhotos from body", () => {
-    const content = mkContent("date: 2026-01-01", "Some text\n![photo](img.jpg)");
+    const content = mkContent(
+      "date: 2026-01-01",
+      "Some text\n![photo](img.jpg)",
+    );
     expect(extractFrontmatterFields(content).hasPhotos).toBe(true);
   });
 
@@ -215,7 +207,7 @@ describe("extractFrontmatterFields", () => {
   });
 
   it("strips quotes from tag values", () => {
-    const content = mkContent('tags: ["여행", \'운동\']');
+    const content = mkContent("tags: [\"여행\", '운동']");
     const { tags } = extractFrontmatterFields(content);
     expect(tags).toEqual(["여행", "운동"]);
   });
@@ -223,7 +215,9 @@ describe("extractFrontmatterFields", () => {
 
 describe("extractDateFromPath", () => {
   it("extracts YYYY-MM-DD from path", () => {
-    expect(extractDateFromPath("/journal/daily/2026/02/2026-02-28.md")).toBe("2026-02-28");
+    expect(extractDateFromPath("/journal/daily/2026/02/2026-02-28.md")).toBe(
+      "2026-02-28",
+    );
   });
 
   it("extracts date from flat filename", () => {
@@ -242,15 +236,28 @@ describe("filterByFrontmatter", () => {
   });
 
   const items = [
-    r("/j/2026-01-10.md", "date: 2026-01-10\nmood: calm\nenergy: 3\ntags: [여행]"),
-    r("/j/2026-02-01.md", "date: 2026-02-01\nmood: warm\nenergy: 5\ntags: [운동]", "![img](x.jpg)"),
-    r("/j/2026-03-15.md", "date: 2026-03-15\nmood: bright\nenergy: 2\ntags: [독서, 여행]"),
+    r(
+      "/j/2026-01-10.md",
+      "date: 2026-01-10\nmood: calm\nenergy: 3\ntags: [여행]",
+    ),
+    r(
+      "/j/2026-02-01.md",
+      "date: 2026-02-01\nmood: warm\nenergy: 5\ntags: [운동]",
+      "![img](x.jpg)",
+    ),
+    r(
+      "/j/2026-03-15.md",
+      "date: 2026-03-15\nmood: bright\nenergy: 2\ntags: [독서, 여행]",
+    ),
     r("/j/no-date.md", "mood: deep\nenergy: 4"),
   ];
 
   it("date range filter — from only", () => {
     const res = filterByFrontmatter(items, { dateFrom: "2026-02-01" });
-    expect(res.map((r) => r.path)).toEqual(["/j/2026-02-01.md", "/j/2026-03-15.md"]);
+    expect(res.map((r) => r.path)).toEqual([
+      "/j/2026-02-01.md",
+      "/j/2026-03-15.md",
+    ]);
   });
 
   it("date range filter — to only", () => {
@@ -259,8 +266,14 @@ describe("filterByFrontmatter", () => {
   });
 
   it("date range filter — from and to", () => {
-    const res = filterByFrontmatter(items, { dateFrom: "2026-01-10", dateTo: "2026-02-01" });
-    expect(res.map((r) => r.path)).toEqual(["/j/2026-01-10.md", "/j/2026-02-01.md"]);
+    const res = filterByFrontmatter(items, {
+      dateFrom: "2026-01-10",
+      dateTo: "2026-02-01",
+    });
+    expect(res.map((r) => r.path)).toEqual([
+      "/j/2026-01-10.md",
+      "/j/2026-02-01.md",
+    ]);
   });
 
   it("date filter excludes entries with no date", () => {
@@ -270,7 +283,10 @@ describe("filterByFrontmatter", () => {
 
   it("mood filter matches selected moods", () => {
     const res = filterByFrontmatter(items, { moodFilter: ["calm", "bright"] });
-    expect(res.map((r) => r.path)).toEqual(["/j/2026-01-10.md", "/j/2026-03-15.md"]);
+    expect(res.map((r) => r.path)).toEqual([
+      "/j/2026-01-10.md",
+      "/j/2026-03-15.md",
+    ]);
   });
 
   it("mood filter empty array = no filter", () => {
@@ -280,12 +296,18 @@ describe("filterByFrontmatter", () => {
 
   it("energy min filter", () => {
     const res = filterByFrontmatter(items, { energyMin: 4 });
-    expect(res.map((r) => r.path)).toEqual(["/j/2026-02-01.md", "/j/no-date.md"]);
+    expect(res.map((r) => r.path)).toEqual([
+      "/j/2026-02-01.md",
+      "/j/no-date.md",
+    ]);
   });
 
   it("tags filter — OR logic, any match passes", () => {
     const res = filterByFrontmatter(items, { tagsFilter: ["운동", "독서"] });
-    expect(res.map((r) => r.path)).toEqual(["/j/2026-02-01.md", "/j/2026-03-15.md"]);
+    expect(res.map((r) => r.path)).toEqual([
+      "/j/2026-02-01.md",
+      "/j/2026-03-15.md",
+    ]);
   });
 
   it("tags filter empty array = no filter", () => {

@@ -8,12 +8,15 @@ interface ChatMessageProps {
   onApplyToEditor?: (content: string) => void;
 }
 
-export function ChatMessage({ role, content, isStreaming, onApplyToEditor }: ChatMessageProps) {
+export function ChatMessage({
+  role,
+  content,
+  isStreaming,
+  onApplyToEditor,
+}: ChatMessageProps) {
   return (
     <div className={`chat-message chat-message-${role}`}>
-      <div className="chat-message-avatar">
-        {role === "user" ? "U" : "AI"}
-      </div>
+      <div className="chat-message-avatar">{role === "user" ? "U" : "AI"}</div>
       <div className="chat-message-content">
         <div className="chat-message-text">
           {content ? (
@@ -22,8 +25,10 @@ export function ChatMessage({ role, content, isStreaming, onApplyToEditor }: Cha
             ) : (
               content
             )
+          ) : isStreaming ? (
+            "..."
           ) : (
-            isStreaming ? "..." : ""
+            ""
           )}
         </div>
         {role === "assistant" && content && !isStreaming && onApplyToEditor && (

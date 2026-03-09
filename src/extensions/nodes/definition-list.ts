@@ -12,10 +12,7 @@ declare module "@tiptap/core" {
 }
 
 /** Unwrap all children of a definitionList into paragraphs */
-function unwrapDlToParagraphs(
-  dlNode: PmNode,
-  schema: Schema,
-): PmNode[] {
+function unwrapDlToParagraphs(dlNode: PmNode, schema: Schema): PmNode[] {
   const paragraphs: PmNode[] = [];
   dlNode.forEach((child) => {
     paragraphs.push(schema.nodes.paragraph.create(null, child.content));
@@ -289,14 +286,16 @@ export const DefinitionDescription = Node.create({
         if (dlNode.type.name !== "definitionList") return false;
 
         const descIndex = $from.index(dlDepth);
-        const prevSibling =
-          descIndex > 0 ? dlNode.child(descIndex - 1) : null;
+        const prevSibling = descIndex > 0 ? dlNode.child(descIndex - 1) : null;
         const descIsEmpty = $from.parent.content.size === 0;
 
         // Count how many descriptions follow the current term
         // Walk backward to find the term for this description
         let termIdx = descIndex - 1;
-        while (termIdx >= 0 && dlNode.child(termIdx).type.name !== "definitionTerm") {
+        while (
+          termIdx >= 0 &&
+          dlNode.child(termIdx).type.name !== "definitionTerm"
+        ) {
           termIdx--;
         }
         let descCountForTerm = 0;

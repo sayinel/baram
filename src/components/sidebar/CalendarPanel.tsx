@@ -18,7 +18,10 @@ import {
   generateDefaultWeekly,
   applyPeriodicTemplate,
 } from "../../utils/journal-periodic";
-import { parseMoodFromFrontmatter, getMoodColors } from "../../utils/journal-mood";
+import {
+  parseMoodFromFrontmatter,
+  getMoodColors,
+} from "../../utils/journal-mood";
 import type { MoodValue } from "../../utils/journal-mood";
 import { readFile, writeFile, createDir, listDir } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor-store";
@@ -33,8 +36,18 @@ import { useAIStore } from "../../stores/ai-store";
 
 const DAY_NAMES = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
 
 export function CalendarPanel() {
@@ -59,7 +72,10 @@ export function CalendarPanel() {
     theme,
   } = useSettingsStore();
 
-  const journalTheme = useMemo(() => getJournalTheme(journalThemeId), [journalThemeId]);
+  const journalTheme = useMemo(
+    () => getJournalTheme(journalThemeId),
+    [journalThemeId],
+  );
 
   const resolvedDir = useMemo(
     () => resolveJournalDir(null, journalDirectory),
@@ -69,9 +85,14 @@ export function CalendarPanel() {
   // §56e Mood colors — theme-aware palette
   const effectiveBase = useMemo<"light" | "dark">(() => {
     if (theme === "light" || theme === "dark") return theme;
-    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    return window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
   }, [theme]);
-  const MOOD_COLORS = useMemo(() => getMoodColors(effectiveBase), [effectiveBase]);
+  const MOOD_COLORS = useMemo(
+    () => getMoodColors(effectiveBase),
+    [effectiveBase],
+  );
 
   // Fetch journal files via IPC — supports both flat and hierarchical layouts
   const [dirFiles, setDirFiles] = useState<string[]>([]);
@@ -85,10 +106,14 @@ export function CalendarPanel() {
         if (journalUseHierarchy) {
           const dailyDir = `${resolvedDir}/daily`;
           const entries = await listDir(dailyDir, true);
-          fileEntries = entries.filter((e) => !e.isDir).map((e) => ({ name: e.name, path: e.path }));
+          fileEntries = entries
+            .filter((e) => !e.isDir)
+            .map((e) => ({ name: e.name, path: e.path }));
         } else {
           const entries = await listDir(resolvedDir, false);
-          fileEntries = entries.filter((e) => !e.isDir).map((e) => ({ name: e.name, path: e.path }));
+          fileEntries = entries
+            .filter((e) => !e.isDir)
+            .map((e) => ({ name: e.name, path: e.path }));
         }
         if (cancelled) return;
         setDirFiles(fileEntries.map((e) => e.name));
@@ -96,23 +121,31 @@ export function CalendarPanel() {
         // Read frontmatter for mood colors (batch, non-blocking)
         const moods = new Map<string, MoodValue>();
         const reads = fileEntries.slice(0, 62).map(async (entry) => {
-          const match = entry.name.match(/^(\d{4})-(\d{2})-(\d{2})\.md$/) ||
-                        entry.name.match(/^(\d{4})(\d{2})(\d{2})\.md$/);
+          const match =
+            entry.name.match(/^(\d{4})-(\d{2})-(\d{2})\.md$/) ||
+            entry.name.match(/^(\d{4})(\d{2})(\d{2})\.md$/);
           if (!match) return;
           const dateStr = `${match[1]}-${match[2]}-${match[3]}`;
           try {
             const content = await readFile(entry.path);
             const mood = parseMoodFromFrontmatter(content);
             if (mood) moods.set(dateStr, mood);
-          } catch { /* skip unreadable files */ }
+          } catch {
+            /* skip unreadable files */
+          }
         });
         await Promise.all(reads);
         if (!cancelled) setMoodMap(moods);
       } catch {
-        if (!cancelled) { setDirFiles([]); setMoodMap(new Map()); }
+        if (!cancelled) {
+          setDirFiles([]);
+          setMoodMap(new Map());
+        }
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [journalEnabled, resolvedDir, journalUseHierarchy, viewYear, viewMonth]);
 
   // Extract "YYYY-MM-DD" date strings from filenames
@@ -120,8 +153,9 @@ export function CalendarPanel() {
     const dates = new Set<string>();
     if (!journalEnabled) return dates;
     for (const filename of dirFiles) {
-      const match = filename.match(/^(\d{4})-(\d{2})-(\d{2})\.md$/) ||
-                    filename.match(/^(\d{4})(\d{2})(\d{2})\.md$/);
+      const match =
+        filename.match(/^(\d{4})-(\d{2})-(\d{2})\.md$/) ||
+        filename.match(/^(\d{4})(\d{2})(\d{2})\.md$/);
       if (match) {
         dates.add(`${match[1]}-${match[2]}-${match[3]}`);
       }
@@ -129,16 +163,24 @@ export function CalendarPanel() {
     return dates;
   }, [journalEnabled, dirFiles]);
 
-  const days = useMemo(() => getMonthDays(viewYear, viewMonth), [viewYear, viewMonth]);
-  const firstDow = useMemo(() => getFirstDayOfWeek(viewYear, viewMonth), [viewYear, viewMonth]);
+  const days = useMemo(
+    () => getMonthDays(viewYear, viewMonth),
+    [viewYear, viewMonth],
+  );
+  const firstDow = useMemo(
+    () => getFirstDayOfWeek(viewYear, viewMonth),
+    [viewYear, viewMonth],
+  );
   const todayStr = formatJournalDate(today);
 
   const yearRangeStart = viewYear - (viewYear % 12);
 
   const navPrev = useCallback(() => {
     if (calView === "days") {
-      if (viewMonth === 0) { setViewYear((y) => y - 1); setViewMonth(11); }
-      else setViewMonth((m) => m - 1);
+      if (viewMonth === 0) {
+        setViewYear((y) => y - 1);
+        setViewMonth(11);
+      } else setViewMonth((m) => m - 1);
     } else if (calView === "months") {
       setViewYear((y) => y - 1);
     } else {
@@ -148,8 +190,10 @@ export function CalendarPanel() {
 
   const navNext = useCallback(() => {
     if (calView === "days") {
-      if (viewMonth === 11) { setViewYear((y) => y + 1); setViewMonth(0); }
-      else setViewMonth((m) => m + 1);
+      if (viewMonth === 11) {
+        setViewYear((y) => y + 1);
+        setViewMonth(0);
+      } else setViewMonth((m) => m + 1);
     } else if (calView === "months") {
       setViewYear((y) => y + 1);
     } else {
@@ -157,113 +201,141 @@ export function CalendarPanel() {
     }
   }, [viewMonth, calView]);
 
-  const openOrCreateJournal = useCallback(async (date: Date) => {
-    if (!journalEnabled || !resolvedDir) return;
-    const journalPath = journalUseHierarchy
-      ? getHierarchicalJournalPath(resolvedDir, date, journalFilenameFormat)
-      : getJournalFilePath(null, journalDirectory, date, journalFilenameFormat);
-    if (!journalPath) return;
+  const openOrCreateJournal = useCallback(
+    async (date: Date) => {
+      if (!journalEnabled || !resolvedDir) return;
+      const journalPath = journalUseHierarchy
+        ? getHierarchicalJournalPath(resolvedDir, date, journalFilenameFormat)
+        : getJournalFilePath(
+            null,
+            journalDirectory,
+            date,
+            journalFilenameFormat,
+          );
+      if (!journalPath) return;
 
-    // Check if file exists
-    let exists = true;
-    try {
-      await readFile(journalPath);
-    } catch {
-      exists = false;
-    }
+      // Check if file exists
+      let exists = true;
+      try {
+        await readFile(journalPath);
+      } catch {
+        exists = false;
+      }
 
-    if (!exists) {
-      // Create the journal file (and parent dirs for hierarchical layout)
-      const parentDir = journalPath.substring(0, journalPath.lastIndexOf("/"));
-      await createDir(parentDir);
+      if (!exists) {
+        // Create the journal file (and parent dirs for hierarchical layout)
+        const parentDir = journalPath.substring(
+          0,
+          journalPath.lastIndexOf("/"),
+        );
+        await createDir(parentDir);
 
-      let content: string;
-      if (journalTemplatePath) {
-        try {
-          const tpl = await readFile(journalTemplatePath);
-          content = applyJournalTemplate(tpl, date);
-        } catch {
+        let content: string;
+        if (journalTemplatePath) {
+          try {
+            const tpl = await readFile(journalTemplatePath);
+            content = applyJournalTemplate(tpl, date);
+          } catch {
+            content = generateDefaultJournal(date);
+          }
+        } else {
           content = generateDefaultJournal(date);
         }
-      } else {
-        content = generateDefaultJournal(date);
+        await writeFile(journalPath, content);
       }
-      await writeFile(journalPath, content);
-    }
 
-    // Open the file
-    const { tabs } = useEditorStore.getState();
-    const existing = tabs.find((t) => t.filePath === journalPath);
-    if (existing) {
-      useEditorStore.getState().setActiveTab(existing.id);
-    } else {
+      // Open the file
+      const { tabs } = useEditorStore.getState();
+      const existing = tabs.find((t) => t.filePath === journalPath);
+      if (existing) {
+        useEditorStore.getState().setActiveTab(existing.id);
+      } else {
+        try {
+          const content = await readFile(journalPath);
+          const fileName = journalPath.split("/").pop() ?? "Unknown";
+          useFileStore.getState().setFileContent(journalPath, content);
+          useEditorStore.getState().openTab({
+            id: crypto.randomUUID(),
+            filePath: journalPath,
+            title: fileName,
+            isDirty: false,
+            isPinned: false,
+          });
+        } catch (err) {
+          console.error("[CalendarPanel] Failed to open journal:", err);
+        }
+      }
+    },
+    [
+      resolvedDir,
+      journalEnabled,
+      journalDirectory,
+      journalFilenameFormat,
+      journalTemplatePath,
+      journalUseHierarchy,
+    ],
+  );
+
+  // §56f / §56a Open or create periodic notes
+  const openPeriodicNote = useCallback(
+    async (
+      getPath: (dir: string, date: Date) => string,
+      generate: (date: Date) => string,
+      date: Date,
+      templatePath?: string,
+    ) => {
+      if (!journalEnabled || !resolvedDir) return;
+      const notePath = getPath(resolvedDir, date);
+      const parentDir = notePath.substring(0, notePath.lastIndexOf("/"));
+      await createDir(parentDir).catch(() => {});
+
+      let content: string;
       try {
-        const content = await readFile(journalPath);
-        const fileName = journalPath.split("/").pop() ?? "Unknown";
-        useFileStore.getState().setFileContent(journalPath, content);
+        content = await readFile(notePath);
+      } catch {
+        // New file — apply template or fallback to default generator
+        if (templatePath) {
+          try {
+            const tpl = await readFile(templatePath);
+            content = applyPeriodicTemplate(tpl, date);
+          } catch {
+            content = generate(date);
+          }
+        } else {
+          content = generate(date);
+        }
+        await writeFile(notePath, content);
+      }
+
+      const { tabs } = useEditorStore.getState();
+      const existing = tabs.find((t) => t.filePath === notePath);
+      if (existing) {
+        useEditorStore.getState().setActiveTab(existing.id);
+      } else {
+        useFileStore.getState().setFileContent(notePath, content);
         useEditorStore.getState().openTab({
           id: crypto.randomUUID(),
-          filePath: journalPath,
-          title: fileName,
+          filePath: notePath,
+          title: notePath.split("/").pop() ?? "Note",
           isDirty: false,
           isPinned: false,
         });
-      } catch (err) {
-        console.error("[CalendarPanel] Failed to open journal:", err);
       }
-    }
-  }, [resolvedDir, journalEnabled, journalDirectory, journalFilenameFormat, journalTemplatePath, journalUseHierarchy]);
+    },
+    [resolvedDir, journalEnabled],
+  );
 
-  // §56f / §56a Open or create periodic notes
-  const openPeriodicNote = useCallback(async (
-    getPath: (dir: string, date: Date) => string,
-    generate: (date: Date) => string,
-    date: Date,
-    templatePath?: string,
-  ) => {
-    if (!journalEnabled || !resolvedDir) return;
-    const notePath = getPath(resolvedDir, date);
-    const parentDir = notePath.substring(0, notePath.lastIndexOf("/"));
-    await createDir(parentDir).catch(() => {});
-
-    let content: string;
-    try {
-      content = await readFile(notePath);
-    } catch {
-      // New file — apply template or fallback to default generator
-      if (templatePath) {
-        try {
-          const tpl = await readFile(templatePath);
-          content = applyPeriodicTemplate(tpl, date);
-        } catch {
-          content = generate(date);
-        }
-      } else {
-        content = generate(date);
-      }
-      await writeFile(notePath, content);
-    }
-
-    const { tabs } = useEditorStore.getState();
-    const existing = tabs.find((t) => t.filePath === notePath);
-    if (existing) {
-      useEditorStore.getState().setActiveTab(existing.id);
-    } else {
-      useFileStore.getState().setFileContent(notePath, content);
-      useEditorStore.getState().openTab({
-        id: crypto.randomUUID(),
-        filePath: notePath,
-        title: notePath.split("/").pop() ?? "Note",
-        isDirty: false,
-        isPinned: false,
-      });
-    }
-  }, [resolvedDir, journalEnabled]);
-
-  const openWeeklyNote = useCallback((date: Date) => {
-    openPeriodicNote(getWeeklyJournalPath, generateDefaultWeekly, date, journalWeeklyTemplate || undefined);
-  }, [openPeriodicNote, journalWeeklyTemplate]);
-
+  const openWeeklyNote = useCallback(
+    (date: Date) => {
+      openPeriodicNote(
+        getWeeklyJournalPath,
+        generateDefaultWeekly,
+        date,
+        journalWeeklyTemplate || undefined,
+      );
+    },
+    [openPeriodicNote, journalWeeklyTemplate],
+  );
 
   const themeStyle: React.CSSProperties = {
     "--cal-accent": journalTheme.accentColor,
@@ -326,8 +398,7 @@ export function CalendarPanel() {
                 title="Select month"
               >
                 {MONTH_NAMES[viewMonth]}
-              </button>
-              {" "}
+              </button>{" "}
               <button
                 className="calendar-title calendar-title-year"
                 onClick={() => setCalView("years")}
@@ -375,10 +446,16 @@ export function CalendarPanel() {
         )}
       </div>
       {calView === "days" && (
-        <div className={`calendar-grid${journalWeeklyEnabled ? " calendar-grid-with-weeks" : ""}`}>
-          {journalWeeklyEnabled && <div className="calendar-week-header">W</div>}
+        <div
+          className={`calendar-grid${journalWeeklyEnabled ? " calendar-grid-with-weeks" : ""}`}
+        >
+          {journalWeeklyEnabled && (
+            <div className="calendar-week-header">W</div>
+          )}
           {DAY_NAMES.map((d) => (
-            <div key={d} className="calendar-day-name">{d}</div>
+            <div key={d} className="calendar-day-name">
+              {d}
+            </div>
           ))}
           {rows.map((row, rowIdx) => {
             // Find the first real date in this row for week number
@@ -390,7 +467,11 @@ export function CalendarPanel() {
                   <button
                     className="calendar-week-num"
                     onClick={() => firstDate && openWeeklyNote(firstDate)}
-                    title={weekNum !== null ? `Open W${String(weekNum).padStart(2, "0")} note` : undefined}
+                    title={
+                      weekNum !== null
+                        ? `Open W${String(weekNum).padStart(2, "0")} note`
+                        : undefined
+                    }
                     disabled={!firstDate}
                   >
                     {weekNum !== null ? weekNum : ""}
@@ -398,7 +479,12 @@ export function CalendarPanel() {
                 )}
                 {row.map((date, cellIdx) => {
                   if (!date) {
-                    return <div key={`empty-${rowIdx}-${cellIdx}`} className="calendar-cell calendar-cell-empty" />;
+                    return (
+                      <div
+                        key={`empty-${rowIdx}-${cellIdx}`}
+                        className="calendar-cell calendar-cell-empty"
+                      />
+                    );
                   }
                   const dateStr = formatJournalDate(date);
                   const isToday = dateStr === todayStr;
@@ -414,7 +500,14 @@ export function CalendarPanel() {
                       {hasJournal && (
                         <span
                           className="calendar-dot"
-                          style={moodMap.has(dateStr) ? { background: MOOD_COLORS[moodMap.get(dateStr)!] } : undefined}
+                          style={
+                            moodMap.has(dateStr)
+                              ? {
+                                  background:
+                                    MOOD_COLORS[moodMap.get(dateStr)!],
+                                }
+                              : undefined
+                          }
                         />
                       )}
                     </button>
@@ -431,7 +524,10 @@ export function CalendarPanel() {
             <button
               key={name}
               className={`calendar-pick-btn${idx === viewMonth ? " calendar-pick-btn-selected" : ""}${idx === today.getMonth() && viewYear === today.getFullYear() ? " calendar-pick-btn-today" : ""}`}
-              onClick={() => { setViewMonth(idx); setCalView("days"); }}
+              onClick={() => {
+                setViewMonth(idx);
+                setCalView("days");
+              }}
             >
               {name.slice(0, 3)}
             </button>
@@ -440,15 +536,20 @@ export function CalendarPanel() {
       )}
       {calView === "years" && (
         <div className="calendar-picker calendar-years-picker">
-          {Array.from({ length: 12 }, (_, i) => yearRangeStart + i).map((yr) => (
-            <button
-              key={yr}
-              className={`calendar-pick-btn${yr === viewYear ? " calendar-pick-btn-selected" : ""}${yr === today.getFullYear() ? " calendar-pick-btn-today" : ""}`}
-              onClick={() => { setViewYear(yr); setCalView("months"); }}
-            >
-              {yr}
-            </button>
-          ))}
+          {Array.from({ length: 12 }, (_, i) => yearRangeStart + i).map(
+            (yr) => (
+              <button
+                key={yr}
+                className={`calendar-pick-btn${yr === viewYear ? " calendar-pick-btn-selected" : ""}${yr === today.getFullYear() ? " calendar-pick-btn-today" : ""}`}
+                onClick={() => {
+                  setViewYear(yr);
+                  setCalView("months");
+                }}
+              >
+                {yr}
+              </button>
+            ),
+          )}
         </div>
       )}
       {showSearch && (
@@ -459,7 +560,11 @@ export function CalendarPanel() {
       )}
       <StatsPanel journalDates={journalDates} />
       <MoodTrend30 moodMap={moodMap} />
-      <YearInPixels journalDir={resolvedDir} year={viewYear} useHierarchy={journalUseHierarchy} />
+      <YearInPixels
+        journalDir={resolvedDir}
+        year={viewYear}
+        useHierarchy={journalUseHierarchy}
+      />
     </div>
   );
 }

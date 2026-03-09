@@ -31,14 +31,17 @@ export function matchesFilter(file: VaultFile, filter: QueryFilter): boolean {
 
   if (field === "body") {
     if (operator === "contains") {
-      return file.content !== undefined &&
-        file.content.toLowerCase().includes(value.toLowerCase());
+      return (
+        file.content !== undefined &&
+        file.content.toLowerCase().includes(value.toLowerCase())
+      );
     }
     return false;
   }
 
   if (field === "updated_at" || field === "created_at") {
-    const fileTime = field === "updated_at" ? file.modifiedAt : (file.createdAt ?? 0);
+    const fileTime =
+      field === "updated_at" ? file.modifiedAt : (file.createdAt ?? 0);
     const compareTime = new Date(value).getTime();
     if (operator === "before") return fileTime < compareTime;
     if (operator === "after") return fileTime > compareTime;
@@ -57,7 +60,10 @@ export function matchesFilter(file: VaultFile, filter: QueryFilter): boolean {
   return false;
 }
 
-export function applyFilters(files: VaultFile[], filters: QueryFilter[]): VaultFile[] {
+export function applyFilters(
+  files: VaultFile[],
+  filters: QueryFilter[],
+): VaultFile[] {
   if (filters.length === 0) return files;
 
   // Split filters into OR-separated groups.
@@ -77,11 +83,14 @@ export function applyFilters(files: VaultFile[], filters: QueryFilter[]): VaultF
   groups.push(current);
 
   return files.filter((file) =>
-    groups.some((group) => group.every((f) => matchesFilter(file, f)))
+    groups.some((group) => group.every((f) => matchesFilter(file, f))),
   );
 }
 
-export function applySort(files: VaultFile[], sort: QuerySort | null): VaultFile[] {
+export function applySort(
+  files: VaultFile[],
+  sort: QuerySort | null,
+): VaultFile[] {
   const result = [...files];
   if (!sort) return result;
 

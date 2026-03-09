@@ -11,8 +11,13 @@ export function BookmarkPanel() {
   const rootPath = useFileStore((s) => s.rootPath);
   const activeTabId = useEditorStore((s) => s.activeTabId);
   const tabs = useEditorStore((s) => s.tabs);
-  const { bookmarks, addBookmark, removeBookmark, loadBookmarks, saveBookmarks } =
-    useBookmarkStore();
+  const {
+    bookmarks,
+    addBookmark,
+    removeBookmark,
+    loadBookmarks,
+    saveBookmarks,
+  } = useBookmarkStore();
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const filePath = activeTab?.filePath ?? null;
@@ -44,47 +49,47 @@ export function BookmarkPanel() {
   }, [filePath, addBookmark]);
 
   // Navigate to a bookmark
-  const handleClick = useCallback(
-    (bookmark: BookmarkItem) => {
-      const { tabs: currentTabs, openTab, setActiveTab } =
-        useEditorStore.getState();
+  const handleClick = useCallback((bookmark: BookmarkItem) => {
+    const {
+      tabs: currentTabs,
+      openTab,
+      setActiveTab,
+    } = useEditorStore.getState();
 
-      // If file is already open, switch to it
-      const existing = currentTabs.find((t) => t.filePath === bookmark.filePath);
-      if (existing) {
-        setActiveTab(existing.id);
-        // If heading bookmark, scroll to heading after tab switch
-        if (bookmark.type === "heading" && bookmark.headingText) {
-          scrollToHeading(bookmark);
-        }
-        return;
+    // If file is already open, switch to it
+    const existing = currentTabs.find((t) => t.filePath === bookmark.filePath);
+    if (existing) {
+      setActiveTab(existing.id);
+      // If heading bookmark, scroll to heading after tab switch
+      if (bookmark.type === "heading" && bookmark.headingText) {
+        scrollToHeading(bookmark);
       }
+      return;
+    }
 
-      // Open the file
-      (async () => {
-        try {
-          const content = await readFile(bookmark.filePath);
-          const fileName = extractFileNameFromPath(bookmark.filePath);
-          useFileStore.getState().setFileContent(bookmark.filePath, content);
-          openTab({
-            id: crypto.randomUUID(),
-            filePath: bookmark.filePath,
-            title: fileName,
-            isDirty: false,
-            isPinned: false,
-          });
-          // Heading scroll will be handled after editor mounts
-          if (bookmark.type === "heading" && bookmark.headingText) {
-            // Small delay to allow editor to mount and process content
-            setTimeout(() => scrollToHeading(bookmark), 100);
-          }
-        } catch (err) {
-          console.error("[BookmarkPanel] Failed to open file:", err);
+    // Open the file
+    (async () => {
+      try {
+        const content = await readFile(bookmark.filePath);
+        const fileName = extractFileNameFromPath(bookmark.filePath);
+        useFileStore.getState().setFileContent(bookmark.filePath, content);
+        openTab({
+          id: crypto.randomUUID(),
+          filePath: bookmark.filePath,
+          title: fileName,
+          isDirty: false,
+          isPinned: false,
+        });
+        // Heading scroll will be handled after editor mounts
+        if (bookmark.type === "heading" && bookmark.headingText) {
+          // Small delay to allow editor to mount and process content
+          setTimeout(() => scrollToHeading(bookmark), 100);
         }
-      })();
-    },
-    [],
-  );
+      } catch (err) {
+        console.error("[BookmarkPanel] Failed to open file:", err);
+      }
+    })();
+  }, []);
 
   // Check if current file is bookmarked
   const isCurrentFileBookmarked = filePath

@@ -16,7 +16,11 @@ export const AVAILABLE_LOCALES: Locale[] = ["en", "ko"];
  * Get a translated string for the given key and locale.
  * Supports simple {variable} interpolation.
  */
-export function t(key: string, locale: Locale, params?: Record<string, string>): string {
+export function t(
+  key: string,
+  locale: Locale,
+  params?: Record<string, string>,
+): string {
   let value = translations[locale]?.[key] ?? translations.en?.[key] ?? key;
   if (params) {
     for (const [k, v] of Object.entries(params)) {

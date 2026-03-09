@@ -8,12 +8,42 @@ import {
 } from "../plugins/wikilink-suggest-utils";
 
 const testFiles: WikilinkSuggestionItem[] = [
-  { id: "1", target: "architecture", label: "architecture.md", path: "/vault/architecture.md" },
-  { id: "2", target: "architecture-decisions", label: "architecture-decisions.md", path: "/vault/architecture-decisions.md" },
-  { id: "3", target: "roadmap", label: "roadmap.md", path: "/vault/roadmap.md" },
-  { id: "4", target: "meeting-notes", label: "meeting-notes.md", path: "/vault/notes/meeting-notes.md" },
-  { id: "5", target: "api-design", label: "api-design.md", path: "/vault/docs/api-design.md" },
-  { id: "6", target: "getting-started", label: "getting-started.md", path: "/vault/docs/getting-started.md" },
+  {
+    id: "1",
+    target: "architecture",
+    label: "architecture.md",
+    path: "/vault/architecture.md",
+  },
+  {
+    id: "2",
+    target: "architecture-decisions",
+    label: "architecture-decisions.md",
+    path: "/vault/architecture-decisions.md",
+  },
+  {
+    id: "3",
+    target: "roadmap",
+    label: "roadmap.md",
+    path: "/vault/roadmap.md",
+  },
+  {
+    id: "4",
+    target: "meeting-notes",
+    label: "meeting-notes.md",
+    path: "/vault/notes/meeting-notes.md",
+  },
+  {
+    id: "5",
+    target: "api-design",
+    label: "api-design.md",
+    path: "/vault/docs/api-design.md",
+  },
+  {
+    id: "6",
+    target: "getting-started",
+    label: "getting-started.md",
+    path: "/vault/docs/getting-started.md",
+  },
 ];
 
 describe("filterFiles", () => {
@@ -78,10 +108,30 @@ describe("fileNameWithoutExtension", () => {
 
 describe("§61 Namespace: filterFiles with relative-prefix items", () => {
   const namespacedFiles: WikilinkSuggestionItem[] = [
-    { id: "1", target: "./prompt", label: "prompt.md", path: "/vault/notes/ai/prompt.md" },
-    { id: "2", target: "./models", label: "models.md", path: "/vault/notes/ai/models.md" },
-    { id: "3", target: "./training", label: "training.md", path: "/vault/notes/ai/training.md" },
-    { id: "4", target: "../meeting-notes", label: "meeting-notes.md", path: "/vault/notes/meeting-notes.md" },
+    {
+      id: "1",
+      target: "./prompt",
+      label: "prompt.md",
+      path: "/vault/notes/ai/prompt.md",
+    },
+    {
+      id: "2",
+      target: "./models",
+      label: "models.md",
+      path: "/vault/notes/ai/models.md",
+    },
+    {
+      id: "3",
+      target: "./training",
+      label: "training.md",
+      path: "/vault/notes/ai/training.md",
+    },
+    {
+      id: "4",
+      target: "../meeting-notes",
+      label: "meeting-notes.md",
+      path: "/vault/notes/meeting-notes.md",
+    },
   ];
 
   it("returns all relative-prefixed items for empty query", () => {
@@ -123,9 +173,9 @@ describe("longestCommonPrefix", () => {
   });
 
   it("finds common prefix for multiple items", () => {
-    expect(longestCommonPrefix(["architecture", "architecture-decisions"])).toBe(
-      "architecture",
-    );
+    expect(
+      longestCommonPrefix(["architecture", "architecture-decisions"]),
+    ).toBe("architecture");
   });
 
   it("returns empty when no common prefix", () => {
@@ -133,9 +183,9 @@ describe("longestCommonPrefix", () => {
   });
 
   it("is case-insensitive, preserves first item casing", () => {
-    expect(longestCommonPrefix(["Architecture", "architecture-decisions"])).toBe(
-      "Architecture",
-    );
+    expect(
+      longestCommonPrefix(["Architecture", "architecture-decisions"]),
+    ).toBe("Architecture");
   });
 
   it("handles heading mode targets", () => {

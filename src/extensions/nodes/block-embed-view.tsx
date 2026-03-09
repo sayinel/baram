@@ -106,10 +106,7 @@ export function BlockEmbedView({
         return;
       }
 
-      if (
-        e.key === "ArrowRight" &&
-        ta.selectionStart === ta.value.length
-      ) {
+      if (e.key === "ArrowRight" && ta.selectionStart === ta.value.length) {
         e.preventDefault();
         exitBlock("down");
         return;

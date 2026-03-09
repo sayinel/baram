@@ -17,7 +17,7 @@ interface FileState {
   openFiles: Map<string, string>; // path → content
 
   // §56b Journal workspace scoping
-  originalRootPath: string | null;  // rootPath backup before journal scope
+  originalRootPath: string | null; // rootPath backup before journal scope
   isJournalScoped: boolean;
 
   setRootPath: (path: string) => void;
@@ -180,7 +180,10 @@ export const useFileStore = create<FileState>((set, get) => ({
 
   addFileEntry: (parentPath, entry) =>
     set((state) => {
-      function insertSorted(entries: FileEntry[], newEntry: FileEntry): FileEntry[] {
+      function insertSorted(
+        entries: FileEntry[],
+        newEntry: FileEntry,
+      ): FileEntry[] {
         // Skip if already exists (idempotent)
         if (entries.some((e) => e.path === newEntry.path)) return entries;
         const result = [...entries, newEntry];
@@ -277,7 +280,10 @@ export const useFileStore = create<FileState>((set, get) => ({
       }
 
       // Insert into new location (sorted)
-      function insertSorted(entries: FileEntry[], newEntry: FileEntry): FileEntry[] {
+      function insertSorted(
+        entries: FileEntry[],
+        newEntry: FileEntry,
+      ): FileEntry[] {
         const result = [...entries, newEntry];
         result.sort((a, b) => {
           if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
@@ -294,7 +300,10 @@ export const useFileStore = create<FileState>((set, get) => ({
         function addToTree(entries: FileEntry[]): FileEntry[] {
           return entries.map((e) => {
             if (e.path === newParentPath && e.isDir) {
-              return { ...e, children: insertSorted(e.children || [], movedEntry) };
+              return {
+                ...e,
+                children: insertSorted(e.children || [], movedEntry),
+              };
             }
             if (e.isDir && e.children) {
               return { ...e, children: addToTree(e.children) };

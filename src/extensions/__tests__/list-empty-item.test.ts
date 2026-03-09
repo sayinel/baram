@@ -7,12 +7,26 @@ const schema = new Schema({
   nodes: {
     doc: { content: "block+" },
     paragraph: { content: "inline*", group: "block", marks: "_" },
-    heading: { content: "inline*", group: "block", attrs: { level: { default: 1 } } },
+    heading: {
+      content: "inline*",
+      group: "block",
+      attrs: { level: { default: 1 } },
+    },
     blockquote: { content: "block+", group: "block" },
     bulletList: { content: "listItem+", group: "block" },
-    orderedList: { content: "listItem+", group: "block", attrs: { start: { default: 1 } } },
+    orderedList: {
+      content: "listItem+",
+      group: "block",
+      attrs: { start: { default: 1 } },
+    },
     listItem: { content: "paragraph block*" },
-    codeBlock: { content: "text*", group: "block", marks: "", code: true, attrs: { language: { default: null } } },
+    codeBlock: {
+      content: "text*",
+      group: "block",
+      marks: "",
+      code: true,
+      attrs: { language: { default: null } },
+    },
     hardBreak: { inline: true, group: "inline" },
     text: { group: "inline" },
   },
@@ -53,9 +67,7 @@ describe("empty list item roundtrip", () => {
         schema.node("listItem", null, [
           schema.node("paragraph", null, [schema.text("item 1")]),
         ]),
-        schema.node("listItem", null, [
-          schema.node("paragraph", null, []),
-        ]),
+        schema.node("listItem", null, [schema.node("paragraph", null, [])]),
         schema.node("listItem", null, [
           schema.node("paragraph", null, [schema.text("item 3")]),
         ]),

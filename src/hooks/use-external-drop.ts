@@ -45,17 +45,19 @@ function hitTestRect(el: Element | null, x: number, y: number): boolean {
 }
 
 function detectZone(x: number, y: number): DropZone {
-  if (hitTestRect(document.querySelector(".editor-area-scroll"), x, y)) return "editor";
-  if (hitTestRect(document.querySelector(".file-tree"), x, y)) return "filetree";
+  if (hitTestRect(document.querySelector(".editor-area-scroll"), x, y))
+    return "editor";
+  if (hitTestRect(document.querySelector(".file-tree"), x, y))
+    return "filetree";
   return null;
 }
 
 // --- Highlight helpers ---
 
 function clearAllHighlights() {
-  document.querySelectorAll(".file-tree-ext-drop-target").forEach((e) =>
-    e.classList.remove("file-tree-ext-drop-target"),
-  );
+  document
+    .querySelectorAll(".file-tree-ext-drop-target")
+    .forEach((e) => e.classList.remove("file-tree-ext-drop-target"));
   hideDropIndicator();
 }
 
@@ -84,7 +86,9 @@ export function useExternalDrop({ editor }: UseExternalDropOptions) {
         if (folderEl) {
           folderEl.classList.add("file-tree-ext-drop-target");
         } else {
-          document.querySelector(".file-tree")?.classList.add("file-tree-ext-drop-target");
+          document
+            .querySelector(".file-tree")
+            ?.classList.add("file-tree-ext-drop-target");
         }
       }
     };
@@ -125,7 +129,9 @@ export function useExternalDrop({ editor }: UseExternalDropOptions) {
             if (folderEl) {
               folderEl.classList.add("file-tree-ext-drop-target");
             } else {
-              document.querySelector(".file-tree")?.classList.add("file-tree-ext-drop-target");
+              document
+                .querySelector(".file-tree")
+                ?.classList.add("file-tree-ext-drop-target");
             }
           } else if (zone === "editor" && editor) {
             const target = resolveInsertTarget(editor, x, y);

@@ -37,10 +37,7 @@ describe("Integration: Source Mode Toggle", () => {
     const sourceText = prosemirrorToMarkdown(doc);
 
     // User edits source text (simulated)
-    const editedSource = sourceText.replace(
-      "Original Title",
-      "Modified Title",
-    );
+    const editedSource = sourceText.replace("Original Title", "Modified Title");
 
     // Parse back to PM
     const editedDoc = markdownToProsemirror(editedSource, schema);

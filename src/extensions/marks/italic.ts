@@ -1,5 +1,10 @@
 // §5.1 Italic Mark Extension — *text*
-import { Mark, mergeAttributes, markInputRule, markPasteRule } from "@tiptap/core";
+import {
+  Mark,
+  mergeAttributes,
+  markInputRule,
+  markPasteRule,
+} from "@tiptap/core";
 
 export interface ItalicOptions {
   HTMLAttributes: Record<string, string>;
@@ -28,20 +33,37 @@ export const Italic = Mark.create<ItalicOptions>({
   parseHTML() {
     return [
       { tag: "em" },
-      { tag: "i", getAttrs: (el) => (el as HTMLElement).style.fontStyle !== "normal" && null },
+      {
+        tag: "i",
+        getAttrs: (el) =>
+          (el as HTMLElement).style.fontStyle !== "normal" && null,
+      },
       { style: "font-style=italic" },
     ];
   },
 
   renderHTML({ HTMLAttributes }) {
-    return ["em", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
+    return [
+      "em",
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes),
+      0,
+    ];
   },
 
   addCommands() {
     return {
-      setItalic: () => ({ commands }) => commands.setMark(this.name),
-      toggleItalic: () => ({ commands }) => commands.toggleMark(this.name),
-      unsetItalic: () => ({ commands }) => commands.unsetMark(this.name),
+      setItalic:
+        () =>
+        ({ commands }) =>
+          commands.setMark(this.name),
+      toggleItalic:
+        () =>
+        ({ commands }) =>
+          commands.toggleMark(this.name),
+      unsetItalic:
+        () =>
+        ({ commands }) =>
+          commands.unsetMark(this.name),
     };
   },
 

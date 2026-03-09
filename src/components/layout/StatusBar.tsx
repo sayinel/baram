@@ -16,7 +16,11 @@ function countWords(text: string): number {
   return trimmed.split(/\s+/).length;
 }
 
-export function StatusBar({ editor, isSourceMode, isGraphMode }: StatusBarProps) {
+export function StatusBar({
+  editor,
+  isSourceMode,
+  isGraphMode,
+}: StatusBarProps) {
   const stats = useMemo(() => {
     if (!editor) return { words: 0, chars: 0, line: 0, col: 0 };
 
@@ -66,7 +70,10 @@ export function StatusBar({ editor, isSourceMode, isGraphMode }: StatusBarProps)
           {isGraphMode ? "Graph" : isSourceMode ? "Source" : "WYSIWYG"}
         </span>
         {isRepo && branch && (
-          <span className={`status-git-branch ${hasChanges ? "status-git-dirty" : ""}`} title={`Branch: ${branch}${hasChanges ? ` (${changes.length} changes)` : ""}`}>
+          <span
+            className={`status-git-branch ${hasChanges ? "status-git-dirty" : ""}`}
+            title={`Branch: ${branch}${hasChanges ? ` (${changes.length} changes)` : ""}`}
+          >
             ⎇ {branch}
             {hasChanges && <span className="status-git-dot" />}
           </span>

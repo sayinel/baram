@@ -6,7 +6,10 @@ import { createElement } from "react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorView as PMView, NodeView } from "@tiptap/pm/view";
 import { TextSelection } from "@tiptap/pm/state";
-import { JournalDynamicBlock, type JournalBlockLanguage } from "../../components/journal/JournalDynamicBlock";
+import {
+  JournalDynamicBlock,
+  type JournalBlockLanguage,
+} from "../../components/journal/JournalDynamicBlock";
 
 export class JournalBlockNodeView implements NodeView {
   dom: HTMLElement;
@@ -30,7 +33,7 @@ export class JournalBlockNodeView implements NodeView {
   }
 
   private render() {
-    const lang = (this.node.attrs.language as string) as JournalBlockLanguage;
+    const lang = this.node.attrs.language as string as JournalBlockLanguage;
     const content = this.node.textContent;
 
     if (this.showSource) {
@@ -83,7 +86,10 @@ export class JournalBlockNodeView implements NodeView {
 
   update(node: PMNode): boolean {
     if (node.type !== this.node.type) return false;
-    if ((node.attrs.language as string) !== (this.node.attrs.language as string)) return false;
+    if (
+      (node.attrs.language as string) !== (this.node.attrs.language as string)
+    )
+      return false;
     this.node = node;
     if (!this.showSource) {
       this.render();
@@ -95,7 +101,10 @@ export class JournalBlockNodeView implements NodeView {
     // Move PM focus to just after this node so arrow keys work
     const pos = this.getPos();
     if (typeof pos !== "number") return;
-    const sel = TextSelection.near(this.view.state.doc.resolve(pos + this.node.nodeSize), 1);
+    const sel = TextSelection.near(
+      this.view.state.doc.resolve(pos + this.node.nodeSize),
+      1,
+    );
     this.view.dispatch(this.view.state.tr.setSelection(sel));
     this.view.focus();
   }

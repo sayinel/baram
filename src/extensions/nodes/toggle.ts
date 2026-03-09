@@ -189,9 +189,7 @@ export const Toggle = Node.create<ToggleOptions>({
             );
             tr.insert(toggleAfterPos, newToggle);
             // Cursor at start of new toggle's summary (+1 toggle open, +1 summary open)
-            tr.setSelection(
-              TextSelection.create(tr.doc, toggleAfterPos + 2),
-            );
+            tr.setSelection(TextSelection.create(tr.doc, toggleAfterPos + 2));
 
             view.dispatch(tr);
             return true;

@@ -18,10 +18,15 @@ export interface DependencyWarning {
 }
 
 /** Parse YAML frontmatter into SkillMeta */
-export function parseSkillFrontmatter(yaml: string, filePath: string): SkillMeta {
+export function parseSkillFrontmatter(
+  yaml: string,
+  filePath: string,
+): SkillMeta {
   const getName = (y: string) => {
     const m = y.match(/^name\s*:\s*(.+)$/m);
-    return m ? m[1].trim() : filePath.split("/").pop()?.replace(/\.md$/, "") ?? "";
+    return m
+      ? m[1].trim()
+      : (filePath.split("/").pop()?.replace(/\.md$/, "") ?? "");
   };
 
   const getRequires = (y: string): string[] => {
@@ -29,7 +34,10 @@ export function parseSkillFrontmatter(yaml: string, filePath: string): SkillMeta
     if (!m) return [];
     const inner = m[1].trim();
     if (!inner) return [];
-    return inner.split(",").map((s) => s.trim()).filter(Boolean);
+    return inner
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
   };
 
   const getField = (y: string, field: string): string => {
@@ -48,7 +56,9 @@ export function parseSkillFrontmatter(yaml: string, filePath: string): SkillMeta
 }
 
 /** Build adjacency list from skill metas */
-export function buildDependencyGraph(skills: SkillMeta[]): Map<string, string[]> {
+export function buildDependencyGraph(
+  skills: SkillMeta[],
+): Map<string, string[]> {
   const graph = new Map<string, string[]>();
   for (const skill of skills) {
     graph.set(skill.name, [...skill.requires]);
@@ -92,14 +102,20 @@ export function detectCycles(graph: Map<string, string[]>): string[][] {
 }
 
 /** Find skills that directly require the target skill */
-export function getReverseDependencies(skills: SkillMeta[], targetName: string): string[] {
+export function getReverseDependencies(
+  skills: SkillMeta[],
+  targetName: string,
+): string[] {
   return skills
     .filter((s) => s.requires.includes(targetName))
     .map((s) => s.name);
 }
 
 /** Transitive impact analysis — all skills affected if target changes */
-export function getImpactAnalysis(skills: SkillMeta[], targetName: string): string[] {
+export function getImpactAnalysis(
+  skills: SkillMeta[],
+  targetName: string,
+): string[] {
   const impacted = new Set<string>();
   const queue = [targetName];
 

@@ -1,7 +1,11 @@
 // §30c block-nav utility tests
 import { describe, test, expect } from "vitest";
 import { Schema } from "@tiptap/pm/model";
-import { findBlockLine, findBlockPosById, findBlockContent } from "../block-nav";
+import {
+  findBlockLine,
+  findBlockPosById,
+  findBlockContent,
+} from "../block-nav";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 
 // Minimal schema with blockId attribute on paragraph and heading
@@ -14,7 +18,9 @@ const schema = new Schema({
       marks: "_",
       attrs: { blockId: { default: null } },
       parseDOM: [{ tag: "p" }],
-      toDOM() { return ["p", 0]; },
+      toDOM() {
+        return ["p", 0];
+      },
     },
     heading: {
       content: "inline*",
@@ -25,10 +31,19 @@ const schema = new Schema({
         { tag: "h1", attrs: { level: 1 } },
         { tag: "h2", attrs: { level: 2 } },
       ],
-      toDOM(node) { return [`h${node.attrs.level}`, 0]; },
+      toDOM(node) {
+        return [`h${node.attrs.level}`, 0];
+      },
     },
     text: { group: "inline" },
-    hard_break: { group: "inline", inline: true, parseDOM: [{ tag: "br" }], toDOM() { return ["br"]; } },
+    hard_break: {
+      group: "inline",
+      inline: true,
+      parseDOM: [{ tag: "br" }],
+      toDOM() {
+        return ["br"];
+      },
+    },
   },
   marks: {},
 });

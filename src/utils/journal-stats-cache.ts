@@ -172,7 +172,10 @@ export async function buildFullCache(
   }
 
   const mdFiles = entries.filter(
-    (e) => !e.isDir && e.name.endsWith(".md") && /^\d{4}-\d{2}-\d{2}\.md$/.test(e.name),
+    (e) =>
+      !e.isDir &&
+      e.name.endsWith(".md") &&
+      /^\d{4}-\d{2}-\d{2}\.md$/.test(e.name),
   );
 
   const entriesByDate: Record<string, JournalEntryMeta> = {};
@@ -226,7 +229,8 @@ function parseEntryContent(content: string): JournalEntryMeta {
   return {
     words,
     mood: frontmatter.mood,
-    energy: frontmatter.energy !== undefined ? Number(frontmatter.energy) : undefined,
+    energy:
+      frontmatter.energy !== undefined ? Number(frontmatter.energy) : undefined,
     hasPhotos: hasPhotos || undefined,
     tags: frontmatter.tags,
   };
@@ -312,7 +316,9 @@ function extractFrontmatter(content: string): {
       mood: typeof fm.mood === "string" ? fm.mood : undefined,
       energy: typeof fm.energy === "number" ? fm.energy : undefined,
       tags: Array.isArray(fm.tags)
-        ? (fm.tags as string[]).filter((t): t is string => typeof t === "string")
+        ? (fm.tags as string[]).filter(
+            (t): t is string => typeof t === "string",
+          )
         : undefined,
     },
     body,
@@ -328,10 +334,18 @@ function recomputeStats(
 ): Omit<JournalStatsCache["stats"], "lastFullScan"> {
   const dates = Object.keys(entriesByDate).sort();
   const totalEntries = dates.length;
-  const totalWords = dates.reduce((sum, d) => sum + (entriesByDate[d].words ?? 0), 0);
+  const totalWords = dates.reduce(
+    (sum, d) => sum + (entriesByDate[d].words ?? 0),
+    0,
+  );
 
   if (totalEntries === 0) {
-    return { currentStreak: 0, longestStreak: 0, totalEntries: 0, totalWords: 0 };
+    return {
+      currentStreak: 0,
+      longestStreak: 0,
+      totalEntries: 0,
+      totalWords: 0,
+    };
   }
 
   // Longest streak

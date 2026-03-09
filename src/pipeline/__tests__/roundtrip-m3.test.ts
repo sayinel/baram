@@ -119,7 +119,8 @@ describe("Roundtrip: Math Block (§5.3)", () => {
   });
 
   it("aligned environment", () => {
-    const input = "$$\n\\begin{aligned}\nx &= 1 \\\\\ny &= 2\n\\end{aligned}\n$$\n";
+    const input =
+      "$$\n\\begin{aligned}\nx &= 1 \\\\\ny &= 2\n\\end{aligned}\n$$\n";
     expect(roundtrip(input)).toBe(input);
   });
 });
@@ -159,7 +160,8 @@ describe("Roundtrip: Tables (§5.5)", () => {
   });
 
   it("table with alignment preserved", () => {
-    const input = "| Left | Center | Right |\n| :--- | :---: | ---: |\n| a | b | c |\n";
+    const input =
+      "| Left | Center | Right |\n| :--- | :---: | ---: |\n| a | b | c |\n";
     const output = roundtrip(input);
     // Alignment markers should be preserved
     expect(output).toMatch(/\| :--+/); // left align

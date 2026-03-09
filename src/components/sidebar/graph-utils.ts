@@ -34,7 +34,9 @@ export type GraphElements = {
 
 /** §61 Extract namespace (directory relative to rootPath) from a full file path */
 export function extractNamespace(filePath: string, rootPath: string): string {
-  let rel = filePath.startsWith(rootPath) ? filePath.slice(rootPath.length) : filePath;
+  let rel = filePath.startsWith(rootPath)
+    ? filePath.slice(rootPath.length)
+    : filePath;
   if (rel.startsWith("/")) rel = rel.slice(1);
   const lastSlash = rel.lastIndexOf("/");
   if (lastSlash <= 0) return "";
@@ -42,12 +44,22 @@ export function extractNamespace(filePath: string, rootPath: string): string {
 }
 
 const NS_PALETTE = [
-  "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6",
-  "#ec4899", "#06b6d4", "#f97316", "#14b8a6", "#6366f1",
+  "#3b82f6",
+  "#10b981",
+  "#f59e0b",
+  "#ef4444",
+  "#8b5cf6",
+  "#ec4899",
+  "#06b6d4",
+  "#f97316",
+  "#14b8a6",
+  "#6366f1",
 ];
 
 /** §61 Assign colors to namespaces. Returns a Map from namespace string to hex color. */
-export function assignNamespaceColors(namespaces: string[]): Map<string, string> {
+export function assignNamespaceColors(
+  namespaces: string[],
+): Map<string, string> {
   const unique = [...new Set(namespaces)].sort();
   const map = new Map<string, string>();
   unique.forEach((ns, i) => {
@@ -79,7 +91,10 @@ export function matchesFilter(label: string, query: string): boolean {
  * Deduplicates edges and computes node degrees.
  * Creates ghost nodes for edge targets that are not in graph.nodes.
  */
-export function toGraphElements(graph: LinkGraph, rootPath?: string): GraphElements {
+export function toGraphElements(
+  graph: LinkGraph,
+  rootPath?: string,
+): GraphElements {
   const nodeSet = new Set(graph.nodes);
 
   // Build degree map

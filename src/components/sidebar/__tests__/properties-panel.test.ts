@@ -1,26 +1,47 @@
-import { parseYamlProperties, serializeYamlProperties } from "../PropertiesPanel";
+import {
+  parseYamlProperties,
+  serializeYamlProperties,
+} from "../PropertiesPanel";
 
 describe("parseYamlProperties", () => {
   it("parses string fields", () => {
-    const result = parseYamlProperties("name: test-skill\ndescription: A skill");
-    expect(result).toContainEqual({ key: "name", value: "test-skill", type: "string" });
-    expect(result).toContainEqual({ key: "description", value: "A skill", type: "string" });
+    const result = parseYamlProperties(
+      "name: test-skill\ndescription: A skill",
+    );
+    expect(result).toContainEqual({
+      key: "name",
+      value: "test-skill",
+      type: "string",
+    });
+    expect(result).toContainEqual({
+      key: "description",
+      value: "A skill",
+      type: "string",
+    });
   });
 
   it("parses array fields (bracket syntax)", () => {
     const result = parseYamlProperties("tags: [code-gen, tiptap]");
-    expect(result).toContainEqual({ key: "tags", value: ["code-gen", "tiptap"], type: "array" });
+    expect(result).toContainEqual({
+      key: "tags",
+      value: ["code-gen", "tiptap"],
+      type: "array",
+    });
   });
 
   it("parses known array keys even without brackets", () => {
     const result = parseYamlProperties("tags: code-gen");
     // tags is a known array key, but single value without brackets → still treated as array
-    expect(result.find(e => e.key === "tags")?.type).toBe("array");
+    expect(result.find((e) => e.key === "tags")?.type).toBe("array");
   });
 
   it("parses status as enum", () => {
     const result = parseYamlProperties("status: draft");
-    expect(result).toContainEqual({ key: "status", value: "draft", type: "enum" });
+    expect(result).toContainEqual({
+      key: "status",
+      value: "draft",
+      type: "enum",
+    });
   });
 
   it("parses empty array", () => {

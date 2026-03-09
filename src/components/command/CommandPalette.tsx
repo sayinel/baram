@@ -5,7 +5,12 @@ import { useEditorStore } from "../../stores/editor-store";
 import { useGitStore } from "../../stores/git-store";
 import { useFileStore } from "../../stores/file-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
-import { executeAICommand, getSelectedText, getSelectionOrParagraph, showPrompt } from "../../utils/ai-commands";
+import {
+  executeAICommand,
+  getSelectedText,
+  getSelectionOrParagraph,
+  showPrompt,
+} from "../../utils/ai-commands";
 import type { Editor } from "@tiptap/react";
 
 export interface CommandItem {
@@ -89,21 +94,24 @@ function buildCommands(
       label: "Heading 1",
       category: "Insert",
       shortcut: "\u23181",
-      action: (editor) => editor?.chain().focus().toggleHeading({ level: 1 }).run(),
+      action: (editor) =>
+        editor?.chain().focus().toggleHeading({ level: 1 }).run(),
     },
     {
       id: "insert:h2",
       label: "Heading 2",
       category: "Insert",
       shortcut: "\u23182",
-      action: (editor) => editor?.chain().focus().toggleHeading({ level: 2 }).run(),
+      action: (editor) =>
+        editor?.chain().focus().toggleHeading({ level: 2 }).run(),
     },
     {
       id: "insert:h3",
       label: "Heading 3",
       category: "Insert",
       shortcut: "\u23183",
-      action: (editor) => editor?.chain().focus().toggleHeading({ level: 3 }).run(),
+      action: (editor) =>
+        editor?.chain().focus().toggleHeading({ level: 3 }).run(),
     },
     // Insert — Blocks
     {
@@ -462,14 +470,21 @@ export function CommandPalette({
         onOpenFolder,
         onSkillPreview ?? (() => {}),
       ),
-    [toggleSidebar, onToggleSourceMode, onNewFile, onOpenFile, onSave, onOpenFolder, onSkillPreview],
+    [
+      toggleSidebar,
+      onToggleSourceMode,
+      onNewFile,
+      onOpenFile,
+      onSave,
+      onOpenFolder,
+      onSkillPreview,
+    ],
   );
 
   const filtered = useMemo(() => {
     if (!query) return commands;
     return commands.filter(
-      (cmd) =>
-        fuzzyMatch(query, cmd.label) || fuzzyMatch(query, cmd.category),
+      (cmd) => fuzzyMatch(query, cmd.label) || fuzzyMatch(query, cmd.category),
     );
   }, [query, commands]);
 

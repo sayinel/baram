@@ -1,6 +1,9 @@
 // §5.3 KaTeX error message parser — user-friendly error messages
 
-const errorPatterns: Array<{ pattern: RegExp; message: (match: RegExpMatchArray) => string }> = [
+const errorPatterns: Array<{
+  pattern: RegExp;
+  message: (match: RegExpMatchArray) => string;
+}> = [
   {
     pattern: /Undefined control sequence:?\s*\\?([\w]+)/i,
     message: (m) => `Unknown command: \\${m[1]}`,
@@ -19,7 +22,8 @@ const errorPatterns: Array<{ pattern: RegExp; message: (match: RegExpMatchArray)
   },
   {
     pattern: /Double (sub|super)script/,
-    message: (m) => `Double ${m[1]}script — use braces: ${m[1] === "sub" ? "a_{b_c}" : "a^{b^c}"}`,
+    message: (m) =>
+      `Double ${m[1]}script — use braces: ${m[1] === "sub" ? "a_{b_c}" : "a^{b^c}"}`,
   },
   {
     pattern: /Expected 'EOF'/,
@@ -35,7 +39,8 @@ const errorPatterns: Array<{ pattern: RegExp; message: (match: RegExpMatchArray)
   },
   {
     pattern: /Mismatched \\begin\{(\w+)\}.*\\end\{(\w+)\}/,
-    message: (m) => `Mismatched environments: \\begin{${m[1]}} and \\end{${m[2]}}`,
+    message: (m) =>
+      `Mismatched environments: \\begin{${m[1]}} and \\end{${m[2]}}`,
   },
   {
     pattern: /\\[a-z]+ allowed only in math mode/i,
@@ -54,5 +59,8 @@ export function parseKaTeXError(error: unknown): string {
   }
 
   // Fallback: strip "KaTeX parse error:" prefix if present
-  return msg.replace(/^KaTeX parse error:\s*/i, "").trim() || "Invalid LaTeX expression";
+  return (
+    msg.replace(/^KaTeX parse error:\s*/i, "").trim() ||
+    "Invalid LaTeX expression"
+  );
 }

@@ -37,12 +37,15 @@ export const GhostText = Extension.create({
         },
         props: {
           decorations(state) {
-            const pluginState = ghostTextPluginKey.getState(state) as GhostTextState;
+            const pluginState = ghostTextPluginKey.getState(
+              state,
+            ) as GhostTextState;
             if (!pluginState.text) return DecorationSet.empty;
 
             const { text, pos } = pluginState;
             // Validate position is within document bounds
-            if (pos < 0 || pos > state.doc.content.size) return DecorationSet.empty;
+            if (pos < 0 || pos > state.doc.content.size)
+              return DecorationSet.empty;
 
             const widget = Decoration.widget(
               pos,

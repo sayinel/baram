@@ -6,7 +6,12 @@ import type { NodeViewProps } from "@tiptap/react";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useUIStore } from "../../stores/ui-store";
 
-export function TagNodeView({ node, selected, updateAttributes, editor }: NodeViewProps) {
+export function TagNodeView({
+  node,
+  selected,
+  updateAttributes,
+  editor,
+}: NodeViewProps) {
   const tag = (node.attrs.tag as string) || "";
   const tagColor = useSettingsStore((s) => s.tagColors)[tag];
   const [isEditing, setIsEditing] = useState(false);
@@ -98,7 +103,11 @@ export function TagNodeView({ node, selected, updateAttributes, editor }: NodeVi
 
   if (isEditing) {
     return (
-      <NodeViewWrapper as="span" className="tag-node tag-node-editing" data-tag={tag}>
+      <NodeViewWrapper
+        as="span"
+        className="tag-node tag-node-editing"
+        data-tag={tag}
+      >
         <span className="tag-node-hash">#</span>
         <input
           ref={inputRef}

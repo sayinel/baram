@@ -57,7 +57,13 @@ export const useLinkStore = create<LinkState>((set, get) => ({
   setError: (error) => set({ error, loading: false }),
 
   clear: () =>
-    set({ backlinks: [], unlinkedMentions: [], loading: false, error: null, cachedPath: null }),
+    set({
+      backlinks: [],
+      unlinkedMentions: [],
+      loading: false,
+      error: null,
+      cachedPath: null,
+    }),
 
   invalidate: () => set({ indexVersion: get().indexVersion + 1 }),
 

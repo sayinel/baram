@@ -17,9 +17,24 @@ describe("Backlink panel integration", () => {
 
   it("groups backlinks by source file", () => {
     const entries: BacklinkEntry[] = [
-      { sourcePath: "/docs/a.md", targetPath: "/docs/target.md", context: "See [[target]]", line: 3 },
-      { sourcePath: "/docs/b.md", targetPath: "/docs/target.md", context: "Also [[target]]", line: 7 },
-      { sourcePath: "/docs/a.md", targetPath: "/docs/target.md", context: "Another [[target]] ref", line: 15 },
+      {
+        sourcePath: "/docs/a.md",
+        targetPath: "/docs/target.md",
+        context: "See [[target]]",
+        line: 3,
+      },
+      {
+        sourcePath: "/docs/b.md",
+        targetPath: "/docs/target.md",
+        context: "Also [[target]]",
+        line: 7,
+      },
+      {
+        sourcePath: "/docs/a.md",
+        targetPath: "/docs/target.md",
+        context: "Another [[target]] ref",
+        line: 15,
+      },
     ];
 
     const grouped = groupBacklinksByFile(entries);
@@ -57,7 +72,9 @@ describe("Backlink panel integration", () => {
   // --- extractFileNameFromPath ---
 
   it("extracts file name from path", () => {
-    expect(extractFileNameFromPath("/docs/notes/architecture.md")).toBe("architecture.md");
+    expect(extractFileNameFromPath("/docs/notes/architecture.md")).toBe(
+      "architecture.md",
+    );
     expect(extractFileNameFromPath("/single.md")).toBe("single.md");
     expect(extractFileNameFromPath("relative.md")).toBe("relative.md");
   });
@@ -66,9 +83,24 @@ describe("Backlink panel integration", () => {
 
   it("store data can be grouped for display", () => {
     useLinkStore.getState().setBacklinks("/docs/target.md", [
-      { sourcePath: "/docs/overview.md", targetPath: "/docs/target.md", context: "[[target]] is key", line: 5 },
-      { sourcePath: "/docs/roadmap.md", targetPath: "/docs/target.md", context: "planned in [[target]]", line: 12 },
-      { sourcePath: "/docs/overview.md", targetPath: "/docs/target.md", context: "see also [[target#intro]]", line: 22 },
+      {
+        sourcePath: "/docs/overview.md",
+        targetPath: "/docs/target.md",
+        context: "[[target]] is key",
+        line: 5,
+      },
+      {
+        sourcePath: "/docs/roadmap.md",
+        targetPath: "/docs/target.md",
+        context: "planned in [[target]]",
+        line: 12,
+      },
+      {
+        sourcePath: "/docs/overview.md",
+        targetPath: "/docs/target.md",
+        context: "see also [[target#intro]]",
+        line: 22,
+      },
     ]);
 
     const { backlinks } = useLinkStore.getState();

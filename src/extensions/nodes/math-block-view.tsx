@@ -51,7 +51,9 @@ export function MathBlockView({
     };
     updateNumber();
     editor.on("update", updateNumber);
-    return () => { editor.off("update", updateNumber); };
+    return () => {
+      editor.off("update", updateNumber);
+    };
   }, [editor, getPos]);
 
   // Sync local formula and focus textarea when entering edit mode
@@ -96,9 +98,7 @@ export function MathBlockView({
     const f = selected ? localFormula : formula;
 
     if (!f.trim()) {
-      previewRef.current.textContent = selected
-        ? ""
-        : "Empty math block";
+      previewRef.current.textContent = selected ? "" : "Empty math block";
       previewRef.current.className = "math-block-katex math-block-katex-empty";
       setError(null);
       return;
@@ -208,10 +208,7 @@ export function MathBlockView({
         return;
       }
 
-      if (
-        e.key === "ArrowRight" &&
-        ta.selectionStart === ta.value.length
-      ) {
+      if (e.key === "ArrowRight" && ta.selectionStart === ta.value.length) {
         e.preventDefault();
         exitBlock("down");
         return;
@@ -287,8 +284,14 @@ export function MathBlockView({
         data-gramm="false"
       />
       <div className="math-block-row">
-        <div ref={previewRef} className="math-block-katex" contentEditable={false} />
-        <span className="math-block-eq-number" contentEditable={false}>{eqLabel}</span>
+        <div
+          ref={previewRef}
+          className="math-block-katex"
+          contentEditable={false}
+        />
+        <span className="math-block-eq-number" contentEditable={false}>
+          {eqLabel}
+        </span>
       </div>
       {error && (
         <div className="math-block-error" contentEditable={false}>

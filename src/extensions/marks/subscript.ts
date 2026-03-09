@@ -1,5 +1,10 @@
 // §5.1 Subscript Mark Extension — ~text~
-import { Mark, mergeAttributes, markInputRule, markPasteRule } from "@tiptap/core";
+import {
+  Mark,
+  mergeAttributes,
+  markInputRule,
+  markPasteRule,
+} from "@tiptap/core";
 
 export interface SubscriptOptions {
   HTMLAttributes: Record<string, string>;
@@ -32,14 +37,27 @@ export const Subscript = Mark.create<SubscriptOptions>({
   },
 
   renderHTML({ HTMLAttributes }) {
-    return ["sub", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
+    return [
+      "sub",
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes),
+      0,
+    ];
   },
 
   addCommands() {
     return {
-      setSubscript: () => ({ commands }) => commands.setMark(this.name),
-      toggleSubscript: () => ({ commands }) => commands.toggleMark(this.name),
-      unsetSubscript: () => ({ commands }) => commands.unsetMark(this.name),
+      setSubscript:
+        () =>
+        ({ commands }) =>
+          commands.setMark(this.name),
+      toggleSubscript:
+        () =>
+        ({ commands }) =>
+          commands.toggleMark(this.name),
+      unsetSubscript:
+        () =>
+        ({ commands }) =>
+          commands.unsetMark(this.name),
     };
   },
 

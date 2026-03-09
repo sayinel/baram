@@ -12,10 +12,7 @@ export interface MentionOptions {
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
     mention: {
-      insertMention: (attrs: {
-        type: string;
-        value: string;
-      }) => ReturnType;
+      insertMention: (attrs: { type: string; value: string }) => ReturnType;
     };
   }
 }

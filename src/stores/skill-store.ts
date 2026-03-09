@@ -1,6 +1,9 @@
 // §72c Skill Store — shared state for skill mode features
 import { create } from "zustand";
-import type { SkillMeta, DependencyWarning } from "../utils/skill-dependency-analyzer";
+import type {
+  SkillMeta,
+  DependencyWarning,
+} from "../utils/skill-dependency-analyzer";
 import type { LintResult } from "../utils/prompt-linter";
 import {
   parseSkillFrontmatter,

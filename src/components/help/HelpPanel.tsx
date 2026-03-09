@@ -95,7 +95,9 @@ export function HelpPanel() {
         // If there's a #fragment, scroll to it after tab switch
         if (fragment) {
           requestAnimationFrame(() => {
-            const targetEl = contentRef.current?.querySelector(`#${CSS.escape(slugify(fragment))}`);
+            const targetEl = contentRef.current?.querySelector(
+              `#${CSS.escape(slugify(fragment))}`,
+            );
             targetEl?.scrollIntoView({ behavior: "smooth", block: "start" });
           });
         } else {
@@ -107,7 +109,9 @@ export function HelpPanel() {
       // Anchor links (#section) → scroll within panel
       if (href.startsWith("#")) {
         const id = slugify(href.slice(1));
-        const targetEl = contentRef.current?.querySelector(`#${CSS.escape(id)}`);
+        const targetEl = contentRef.current?.querySelector(
+          `#${CSS.escape(id)}`,
+        );
         targetEl?.scrollIntoView({ behavior: "smooth", block: "start" });
         return;
       }

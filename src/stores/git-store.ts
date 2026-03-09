@@ -1,6 +1,15 @@
 // §57b Git 상태 관리 스토어
 import { create } from "zustand";
-import type { GitChange, GitStatusInfo, GitFileDiff, GitBranchInfo, GitLogEntry, GitStashEntry, GitRemoteInfo, GitAheadBehind } from "../ipc/types";
+import type {
+  GitChange,
+  GitStatusInfo,
+  GitFileDiff,
+  GitBranchInfo,
+  GitLogEntry,
+  GitStashEntry,
+  GitRemoteInfo,
+  GitAheadBehind,
+} from "../ipc/types";
 import {
   gitStatus,
   gitStage,
@@ -80,13 +89,21 @@ interface GitState {
   // §67 New actions
   loadLog: (path: string, maxCount?: number) => Promise<void>;
   loadStash: (path: string) => Promise<void>;
-  saveStash: (path: string, message: string, includeUntracked?: boolean) => Promise<void>;
+  saveStash: (
+    path: string,
+    message: string,
+    includeUntracked?: boolean,
+  ) => Promise<void>;
   popStash: (path: string, index?: number) => Promise<void>;
   dropStash: (path: string, index?: number) => Promise<void>;
   loadRemotes: (path: string) => Promise<void>;
   loadAheadBehind: (path: string) => Promise<void>;
   fetchRemote: (path: string, remote?: string) => Promise<void>;
-  pullRemote: (path: string, remote?: string, branch?: string) => Promise<string>;
+  pullRemote: (
+    path: string,
+    remote?: string,
+    branch?: string,
+  ) => Promise<string>;
   pushRemote: (path: string, remote?: string, branch?: string) => Promise<void>;
   deleteBranch: (path: string, branchName: string) => Promise<void>;
   setActiveTab: (tab: "changes" | "history" | "stash") => void;
@@ -152,14 +169,18 @@ export const useGitStore = create<GitState>((set, get) => ({
   },
 
   stageAll: async (path) => {
-    const unstaged = get().changes.filter((c) => !c.staged).map((c) => c.path);
+    const unstaged = get()
+      .changes.filter((c) => !c.staged)
+      .map((c) => c.path);
     if (unstaged.length > 0) {
       await get().stageFiles(path, unstaged);
     }
   },
 
   unstageAll: async (path) => {
-    const staged = get().changes.filter((c) => c.staged).map((c) => c.path);
+    const staged = get()
+      .changes.filter((c) => c.staged)
+      .map((c) => c.path);
     if (staged.length > 0) {
       await get().unstageFiles(path, staged);
     }
@@ -362,23 +383,34 @@ export function groupChanges(changes: GitChange[]): {
 // Helper: status icon
 export function statusIcon(status: string): string {
   switch (status) {
-    case "modified": return "M";
-    case "added": return "A";
-    case "deleted": return "D";
-    case "renamed": return "R";
-    case "untracked": return "U";
-    default: return "?";
+    case "modified":
+      return "M";
+    case "added":
+      return "A";
+    case "deleted":
+      return "D";
+    case "renamed":
+      return "R";
+    case "untracked":
+      return "U";
+    default:
+      return "?";
   }
 }
 
 // Helper: status color class
 export function statusColorClass(status: string): string {
   switch (status) {
-    case "modified": return "git-status-modified";
+    case "modified":
+      return "git-status-modified";
     case "added":
-    case "untracked": return "git-status-added";
-    case "deleted": return "git-status-deleted";
-    case "renamed": return "git-status-renamed";
-    default: return "";
+    case "untracked":
+      return "git-status-added";
+    case "deleted":
+      return "git-status-deleted";
+    case "renamed":
+      return "git-status-renamed";
+    default:
+      return "";
   }
 }

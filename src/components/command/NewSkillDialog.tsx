@@ -9,7 +9,11 @@ interface NewSkillDialogProps {
   onSelect: (template: SkillTemplate, name: string) => void;
 }
 
-export function NewSkillDialog({ open, onClose, onSelect }: NewSkillDialogProps) {
+export function NewSkillDialog({
+  open,
+  onClose,
+  onSelect,
+}: NewSkillDialogProps) {
   const [selected, setSelected] = useState<string>("prompt");
   const [name, setName] = useState("");
 

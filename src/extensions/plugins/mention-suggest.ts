@@ -44,9 +44,27 @@ function getQuickDates(): MentionSuggestionItem[] {
   const tomorrow = resolveDateAlias("tomorrow")!;
 
   return [
-    { id: "date-today", type: "date", value: today, label: `Today (${today})`, category: "date" },
-    { id: "date-yesterday", type: "date", value: yesterday, label: `Yesterday (${yesterday})`, category: "date" },
-    { id: "date-tomorrow", type: "date", value: tomorrow, label: `Tomorrow (${tomorrow})`, category: "date" },
+    {
+      id: "date-today",
+      type: "date",
+      value: today,
+      label: `Today (${today})`,
+      category: "date",
+    },
+    {
+      id: "date-yesterday",
+      type: "date",
+      value: yesterday,
+      label: `Yesterday (${yesterday})`,
+      category: "date",
+    },
+    {
+      id: "date-tomorrow",
+      type: "date",
+      value: tomorrow,
+      label: `Tomorrow (${tomorrow})`,
+      category: "date",
+    },
   ];
 }
 
@@ -116,7 +134,15 @@ export const MentionSuggest = Extension.create({
           // Check if query matches a date pattern (YYYY-MM-DD)
           const dateMatch = query.match(/^(\d{4}-\d{2}-\d{2})$/);
           const customDateItems: MentionSuggestionItem[] = dateMatch
-            ? [{ id: "date-custom", type: "date", value: dateMatch[1], label: dateMatch[1], category: "date" }]
+            ? [
+                {
+                  id: "date-custom",
+                  type: "date",
+                  value: dateMatch[1],
+                  label: dateMatch[1],
+                  category: "date",
+                },
+              ]
             : [];
 
           if (!q) {

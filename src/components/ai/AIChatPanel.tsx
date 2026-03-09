@@ -4,7 +4,11 @@ import { useChatStore } from "../../stores/chat-store";
 import { useUIStore } from "../../stores/ui-store";
 import { useLLMStream } from "../../hooks/use-llm-stream";
 import { ChatMessage } from "./ChatMessage";
-import { parseReferences, resolveReference, buildContextPrompt } from "../../utils/chat-context";
+import {
+  parseReferences,
+  resolveReference,
+  buildContextPrompt,
+} from "../../utils/chat-context";
 import type { ResolvedReference } from "../../utils/chat-context";
 import { formatAIError } from "../../utils/format-error";
 import { ReferenceAutocomplete } from "./ReferenceAutocomplete";
@@ -19,7 +23,10 @@ const ChevronIcon = ({ rotated }: { rotated: boolean }) => (
     strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
-    style={{ transform: rotated ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}
+    style={{
+      transform: rotated ? "rotate(180deg)" : "none",
+      transition: "transform 0.15s",
+    }}
   >
     <polyline points="6 9 12 15 18 9" />
   </svg>
@@ -79,58 +86,64 @@ export function AIChatPanel() {
   }, [isStreaming, text, updateLastMessage]);
 
   // § @ reference autocomplete detection
-  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const value = e.target.value;
-    setInput(value);
+  const handleInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const value = e.target.value;
+      setInput(value);
 
-    const cursorPos = e.target.selectionStart;
-    const textBeforeCursor = value.slice(0, cursorPos);
+      const cursorPos = e.target.selectionStart;
+      const textBeforeCursor = value.slice(0, cursorPos);
 
-    // Find the last @ that's either at start or preceded by whitespace
-    const atMatch = textBeforeCursor.match(/(?:^|\s)@([^\s]*)$/);
-    if (atMatch) {
-      const query = atMatch[1]; // text after @
-      setRefQuery(query);
+      // Find the last @ that's either at start or preceded by whitespace
+      const atMatch = textBeforeCursor.match(/(?:^|\s)@([^\s]*)$/);
+      if (atMatch) {
+        const query = atMatch[1]; // text after @
+        setRefQuery(query);
 
-      // Position the dropdown above the textarea
-      if (inputAreaRef.current) {
-        const rect = inputAreaRef.current.getBoundingClientRect();
-        setRefPosition({ top: rect.height + 4, left: 8 });
+        // Position the dropdown above the textarea
+        if (inputAreaRef.current) {
+          const rect = inputAreaRef.current.getBoundingClientRect();
+          setRefPosition({ top: rect.height + 4, left: 8 });
+        }
+      } else {
+        setRefQuery(null);
       }
-    } else {
+    },
+    [],
+  );
+
+  const handleRefSelect = useCallback(
+    (ref: string) => {
+      const textarea = inputRef.current;
+      if (!textarea) {
+        setInput((prev) => prev + ref + " ");
+        setRefQuery(null);
+        return;
+      }
+
+      const cursorPos = textarea.selectionStart;
+      const textBeforeCursor = input.slice(0, cursorPos);
+      const textAfterCursor = input.slice(cursorPos);
+
+      // Find and replace the @query part
+      const atMatch = textBeforeCursor.match(/(?:^|\s)@([^\s]*)$/);
+      if (atMatch) {
+        const atStart = textBeforeCursor.lastIndexOf("@");
+        const newInput = input.slice(0, atStart) + ref + " " + textAfterCursor;
+        setInput(newInput);
+
+        // Set cursor after inserted reference
+        requestAnimationFrame(() => {
+          const newPos = atStart + ref.length + 1;
+          textarea.setSelectionRange(newPos, newPos);
+          textarea.focus();
+        });
+      }
+
       setRefQuery(null);
-    }
-  }, []);
-
-  const handleRefSelect = useCallback((ref: string) => {
-    const textarea = inputRef.current;
-    if (!textarea) {
-      setInput((prev) => prev + ref + " ");
-      setRefQuery(null);
-      return;
-    }
-
-    const cursorPos = textarea.selectionStart;
-    const textBeforeCursor = input.slice(0, cursorPos);
-    const textAfterCursor = input.slice(cursorPos);
-
-    // Find and replace the @query part
-    const atMatch = textBeforeCursor.match(/(?:^|\s)@([^\s]*)$/);
-    if (atMatch) {
-      const atStart = textBeforeCursor.lastIndexOf("@");
-      const newInput = input.slice(0, atStart) + ref + " " + textAfterCursor;
-      setInput(newInput);
-
-      // Set cursor after inserted reference
-      requestAnimationFrame(() => {
-        const newPos = atStart + ref.length + 1;
-        textarea.setSelectionRange(newPos, newPos);
-        textarea.focus();
-      });
-    }
-
-    setRefQuery(null);
-  }, [input]);
+    },
+    [input],
+  );
 
   const handleApplyToEditor = useCallback((content: string) => {
     useUIStore.getState().setPendingApplyContent(content);
@@ -171,11 +184,12 @@ export function AIChatPanel() {
 
     // Build conversation history for system prompt
     const session = getActiveSession();
-    const history = session?.messages
-      .slice(-20) // Last 20 messages
-      .filter((m) => m.content) // Skip empty
-      .map((m) => `${m.role}: ${m.content}`)
-      .join("\n\n") ?? "";
+    const history =
+      session?.messages
+        .slice(-20) // Last 20 messages
+        .filter((m) => m.content) // Skip empty
+        .map((m) => `${m.role}: ${m.content}`)
+        .join("\n\n") ?? "";
 
     const systemPrompt = history
       ? `You are a helpful AI assistant in a markdown editor called Baram. Previous conversation:\n${history}\n\nRespond helpfully and concisely.`
@@ -183,12 +197,26 @@ export function AIChatPanel() {
 
     send(prompt, systemPrompt);
     setInput("");
-  }, [input, isStreaming, activeSessionId, createSession, addMessage, getActiveSession, send]);
+  }, [
+    input,
+    isStreaming,
+    activeSessionId,
+    createSession,
+    addMessage,
+    getActiveSession,
+    send,
+  ]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       // When autocomplete is open, let it handle navigation keys
-      if (refQuery !== null && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Tab" || e.key === "Escape")) {
+      if (
+        refQuery !== null &&
+        (e.key === "ArrowDown" ||
+          e.key === "ArrowUp" ||
+          e.key === "Tab" ||
+          e.key === "Escape")
+      ) {
         return; // handled by ReferenceAutocomplete's keydown listener
       }
       if (refQuery !== null && e.key === "Enter") {
@@ -227,13 +255,19 @@ export function AIChatPanel() {
                 >
                   <button
                     className="ai-chat-dropdown-item-label"
-                    onClick={() => { setActiveSession(s.id); setDropdownOpen(false); }}
+                    onClick={() => {
+                      setActiveSession(s.id);
+                      setDropdownOpen(false);
+                    }}
                   >
                     {s.title}
                   </button>
                   <button
                     className="ai-chat-dropdown-item-delete"
-                    onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteSession(s.id);
+                    }}
                     title="Delete conversation"
                   >
                     ×
@@ -270,21 +304,24 @@ export function AIChatPanel() {
               msg.id === messages[messages.length - 1]?.id &&
               msg.role === "assistant"
             }
-            onApplyToEditor={msg.role === "assistant" ? handleApplyToEditor : undefined}
+            onApplyToEditor={
+              msg.role === "assistant" ? handleApplyToEditor : undefined
+            }
           />
         ))}
         <div ref={messagesEndRef} />
       </div>
 
-      {error && (() => {
-        const formatted = formatAIError(error);
-        return (
-          <div className="ai-chat-error">
-            <strong>{formatted.title}</strong>
-            <span>{formatted.detail}</span>
-          </div>
-        );
-      })()}
+      {error &&
+        (() => {
+          const formatted = formatAIError(error);
+          return (
+            <div className="ai-chat-error">
+              <strong>{formatted.title}</strong>
+              <span>{formatted.detail}</span>
+            </div>
+          );
+        })()}
 
       <div className="ai-chat-input-area" ref={inputAreaRef}>
         {refQuery !== null && (

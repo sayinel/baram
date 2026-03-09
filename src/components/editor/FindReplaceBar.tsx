@@ -42,7 +42,9 @@ export function FindReplaceBar({
   // Local state for input values — immune to Tiptap v3 re-render optimization
   // Initialize from plugin state if already set (e.g. from Global Search)
   const [localSearchTerm, setLocalSearchTerm] = useState(() => {
-    const ps = findReplacePluginKey.getState(editor.state) as FindReplaceState | undefined;
+    const ps = findReplacePluginKey.getState(editor.state) as
+      | FindReplaceState
+      | undefined;
     return ps?.searchTerm ?? "";
   });
   const [localReplaceWith, setLocalReplaceWith] = useState("");
@@ -67,9 +69,9 @@ export function FindReplaceBar({
   }, [mode]);
 
   // Read plugin state for match info (reactive via forceRender)
-  const pluginState = (
-    findReplacePluginKey.getState(editor.state) as FindReplaceState | undefined
-  ) ?? {
+  const pluginState = (findReplacePluginKey.getState(editor.state) as
+    | FindReplaceState
+    | undefined) ?? {
     searchTerm: "",
     caseSensitive: false,
     useRegex: false,
@@ -246,7 +248,11 @@ export function FindReplaceBar({
       : `${activeMatchIndex + 1} of ${matches.length}`;
 
   return (
-    <div className="find-replace-bar" role="search" aria-label="Find and replace">
+    <div
+      className="find-replace-bar"
+      role="search"
+      aria-label="Find and replace"
+    >
       {/* Search row */}
       <div className="find-replace-row">
         <input

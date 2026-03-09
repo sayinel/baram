@@ -110,7 +110,9 @@ describe("Image Extension", () => {
       }),
     ]);
     const md = prosemirrorToMarkdown(doc).trimEnd();
-    expect(md).toBe('<img src="path/to/image.png" alt="a &amp; b" width="75%" />');
+    expect(md).toBe(
+      '<img src="path/to/image.png" alt="a &amp; b" width="75%" />',
+    );
 
     // Roundtrip: HTML → PM → MD
     const doc2 = markdownToProsemirror(md, schema);

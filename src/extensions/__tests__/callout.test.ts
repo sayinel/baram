@@ -97,7 +97,8 @@ describe("Roundtrip: Callout", () => {
   });
 
   it("callout with multi-paragraph body", () => {
-    const input = "> [!warning] Be careful\n> First paragraph.\n>\n> Second paragraph.\n";
+    const input =
+      "> [!warning] Be careful\n> First paragraph.\n>\n> Second paragraph.\n";
     expect(roundtrip(input)).toBe(input);
   });
 

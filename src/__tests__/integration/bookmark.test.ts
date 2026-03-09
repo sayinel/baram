@@ -176,9 +176,30 @@ describe("§36 Bookmark System", () => {
   describe("getGroups", () => {
     test("extracts unique group names", () => {
       const bookmarks: BookmarkItem[] = [
-        { id: "1", type: "file", filePath: "/a.md", label: "a", group: "Default", createdAt: 1 },
-        { id: "2", type: "file", filePath: "/b.md", label: "b", group: "Work", createdAt: 2 },
-        { id: "3", type: "file", filePath: "/c.md", label: "c", group: "Default", createdAt: 3 },
+        {
+          id: "1",
+          type: "file",
+          filePath: "/a.md",
+          label: "a",
+          group: "Default",
+          createdAt: 1,
+        },
+        {
+          id: "2",
+          type: "file",
+          filePath: "/b.md",
+          label: "b",
+          group: "Work",
+          createdAt: 2,
+        },
+        {
+          id: "3",
+          type: "file",
+          filePath: "/c.md",
+          label: "c",
+          group: "Default",
+          createdAt: 3,
+        },
       ];
       const groups = getGroups(bookmarks);
       expect(groups).toContain("Default");

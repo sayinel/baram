@@ -19,7 +19,10 @@ function makeManifest(capabilities: string[]): PluginManifest {
 
 describe("createExtensionContext", () => {
   test("returns context with pluginId and pluginPath", () => {
-    const ctx = createExtensionContext(makeManifest(["commands"]), "/test/path");
+    const ctx = createExtensionContext(
+      makeManifest(["commands"]),
+      "/test/path",
+    );
     expect(ctx.pluginId).toBe("test-plugin");
     expect(ctx.pluginPath).toBe("/test/path");
     expect(ctx.subscriptions).toBeInstanceOf(Array);
@@ -29,7 +32,9 @@ describe("createExtensionContext", () => {
     test("commands API works when capability is declared", () => {
       const ctx = createExtensionContext(makeManifest(["commands"]), "/test");
       let called = false;
-      ctx.commands.register("test", () => { called = true; });
+      ctx.commands.register("test", () => {
+        called = true;
+      });
       ctx.commands.execute("test-plugin.test");
       expect(called).toBe(true);
     });
@@ -48,17 +53,26 @@ describe("createExtensionContext", () => {
     });
 
     test("editor API available with 'editor:readonly' capability", () => {
-      const ctx = createExtensionContext(makeManifest(["editor:readonly"]), "/test");
+      const ctx = createExtensionContext(
+        makeManifest(["editor:readonly"]),
+        "/test",
+      );
       expect(ctx.editor.getContent()).toBe("");
     });
 
     test("editor:readonly prevents setContent", () => {
-      const ctx = createExtensionContext(makeManifest(["editor:readonly"]), "/test");
+      const ctx = createExtensionContext(
+        makeManifest(["editor:readonly"]),
+        "/test",
+      );
       expect(() => ctx.editor.setContent("test")).toThrow(/readonly/);
     });
 
     test("editor:readonly prevents insertText", () => {
-      const ctx = createExtensionContext(makeManifest(["editor:readonly"]), "/test");
+      const ctx = createExtensionContext(
+        makeManifest(["editor:readonly"]),
+        "/test",
+      );
       expect(() => ctx.editor.insertText("test")).toThrow(/readonly/);
     });
 
@@ -70,8 +84,13 @@ describe("createExtensionContext", () => {
 
   describe("files capability", () => {
     test("files:readonly prevents writeFile", async () => {
-      const ctx = createExtensionContext(makeManifest(["files:readonly"]), "/test");
-      await expect(ctx.files.writeFile("/test.md", "content")).rejects.toThrow(/readonly/);
+      const ctx = createExtensionContext(
+        makeManifest(["files:readonly"]),
+        "/test",
+      );
+      await expect(ctx.files.writeFile("/test.md", "content")).rejects.toThrow(
+        /readonly/,
+      );
     });
 
     test("files API throws when no files capability", () => {
@@ -84,7 +103,9 @@ describe("createExtensionContext", () => {
     test("events API works when capability is declared", () => {
       const ctx = createExtensionContext(makeManifest(["events"]), "/test");
       let received = false;
-      ctx.events.on("test-event", () => { received = true; });
+      ctx.events.on("test-event", () => {
+        received = true;
+      });
       ctx.events.emit("test-event");
       expect(received).toBe(true);
     });
@@ -131,12 +152,16 @@ describe("createExtensionContext", () => {
     test("disposable.dispose() removes handler", async () => {
       const ctx = createExtensionContext(makeManifest(["commands"]), "/test");
       let callCount = 0;
-      const disposable = ctx.commands.register("counter", () => { callCount++; });
+      const disposable = ctx.commands.register("counter", () => {
+        callCount++;
+      });
       await ctx.commands.execute("test-plugin.counter");
       expect(callCount).toBe(1);
 
       disposable.dispose();
-      await expect(ctx.commands.execute("test-plugin.counter")).rejects.toThrow(/not found/);
+      await expect(ctx.commands.execute("test-plugin.counter")).rejects.toThrow(
+        /not found/,
+      );
     });
   });
 

@@ -41,9 +41,9 @@ function makeDoc(...paragraphs: string[]) {
 describe("§5.6 Find/Replace — plugin key", () => {
   test("findReplacePluginKey is defined and named correctly", () => {
     expect(findReplacePluginKey).toBeDefined();
-    expect(
-      (findReplacePluginKey as unknown as { key: string }).key,
-    ).toContain("findReplace");
+    expect((findReplacePluginKey as unknown as { key: string }).key).toContain(
+      "findReplace",
+    );
   });
 });
 

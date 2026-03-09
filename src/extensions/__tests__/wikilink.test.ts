@@ -182,21 +182,21 @@ describe("serializeWikilink", () => {
   });
 
   it("serializes target with display", () => {
-    expect(
-      serializeWikilink({ target: "page", display: "My Page" }),
-    ).toBe("[[page|My Page]]");
+    expect(serializeWikilink({ target: "page", display: "My Page" })).toBe(
+      "[[page|My Page]]",
+    );
   });
 
   it("serializes target with heading", () => {
-    expect(
-      serializeWikilink({ target: "page", heading: "Intro" }),
-    ).toBe("[[page#Intro]]");
+    expect(serializeWikilink({ target: "page", heading: "Intro" })).toBe(
+      "[[page#Intro]]",
+    );
   });
 
   it("serializes target with blockId", () => {
-    expect(
-      serializeWikilink({ target: "page", blockId: "abc123" }),
-    ).toBe("[[page^abc123]]");
+    expect(serializeWikilink({ target: "page", blockId: "abc123" })).toBe(
+      "[[page^abc123]]",
+    );
   });
 
   it("serializes target with heading and display", () => {

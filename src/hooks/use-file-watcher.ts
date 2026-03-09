@@ -8,8 +8,13 @@ import type { FileEntry } from "../stores/file-store";
 
 /** Directories and patterns to ignore (mirrors list_dir skip logic in Rust) */
 const SKIP_DIRS = new Set([
-  "node_modules", "target", "build", "dist",
-  "__pycache__", ".next", ".git",
+  "node_modules",
+  "target",
+  "build",
+  "dist",
+  "__pycache__",
+  ".next",
+  ".git",
 ]);
 
 function shouldSkip(path: string): boolean {
@@ -97,7 +102,10 @@ export function useFileWatcher() {
       if (existing?.kind === "deleted") {
         pendingRef.current.delete(p);
       } else {
-        pendingRef.current.set(p, { kind: "created", isDir: event.payload.isDir });
+        pendingRef.current.set(p, {
+          kind: "created",
+          isDir: event.payload.isDir,
+        });
       }
       scheduleFlush();
     }).then((fn) => unlistenFns.push(fn));

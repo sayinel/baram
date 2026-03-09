@@ -7,9 +7,13 @@ export function getModelForTask(task: AITask): string {
   if (!store.autoModelEnabled) return store.model;
 
   switch (task) {
-    case "ghost-text": return store.modelForGhostText || store.model;
-    case "inline-edit": return store.modelForInlineEdit || store.model;
-    case "chat": return store.modelForChat || store.model;
-    case "agent": return store.modelForAgent || store.model;
+    case "ghost-text":
+      return store.modelForGhostText || store.model;
+    case "inline-edit":
+      return store.modelForInlineEdit || store.model;
+    case "chat":
+      return store.modelForChat || store.model;
+    case "agent":
+      return store.modelForAgent || store.model;
   }
 }

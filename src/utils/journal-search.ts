@@ -1,6 +1,12 @@
 // §56k Journal Search utilities — categorize, group, and highlight journal search results
 
-export type JournalCategory = "daily" | "weekly" | "monthly" | "yearly" | "notes" | "other";
+export type JournalCategory =
+  | "daily"
+  | "weekly"
+  | "monthly"
+  | "yearly"
+  | "notes"
+  | "other";
 
 /**
  * Categorize a search result path relative to the journal root directory.
@@ -22,7 +28,9 @@ export function categorizeJournalResult(
 
   if (!normalizedPath.startsWith(normalizedDir)) return "other";
 
-  const relative = normalizedPath.slice(normalizedDir.length).replace(/^\//, "");
+  const relative = normalizedPath
+    .slice(normalizedDir.length)
+    .replace(/^\//, "");
 
   if (relative.startsWith("daily/")) return "daily";
   if (relative.startsWith("weekly/")) return "weekly";
@@ -31,8 +39,8 @@ export function categorizeJournalResult(
   if (relative.startsWith("notes/")) return "notes";
 
   // Flat layout: YYYY-MM-DD.md directly in journalDir
-  const flatDaily = /^\d{4}-\d{2}-\d{2}\.md$/.test(relative) ||
-                    /^\d{8}\.md$/.test(relative);
+  const flatDaily =
+    /^\d{4}-\d{2}-\d{2}\.md$/.test(relative) || /^\d{8}\.md$/.test(relative);
   if (flatDaily) return "daily";
 
   return "other";
@@ -93,12 +101,12 @@ export function groupSearchResults<T extends { path: string }>(
 // ── §56k Frontmatter filter types and utilities ────────────────────────────
 
 export interface JournalSearchFilters {
-  dateFrom?: string;       // YYYY-MM-DD
-  dateTo?: string;         // YYYY-MM-DD
-  moodFilter?: string[];   // ["warm", "bright"] — empty = all
-  energyMin?: number;      // 1-5, undefined = no filter
-  tagsFilter?: string[];   // ["여행", "운동"] — empty = no filter
-  hasPhotos?: boolean;     // true = only entries with photos
+  dateFrom?: string; // YYYY-MM-DD
+  dateTo?: string; // YYYY-MM-DD
+  moodFilter?: string[]; // ["warm", "bright"] — empty = all
+  energyMin?: number; // 1-5, undefined = no filter
+  tagsFilter?: string[]; // ["여행", "운동"] — empty = no filter
+  hasPhotos?: boolean; // true = only entries with photos
 }
 
 /** Returns true when at least one filter field is active. */
@@ -134,7 +142,10 @@ export function extractFrontmatterFields(content: string): {
   // Inline tags: tags: [tag1, tag2]
   const tagsInline = yaml.match(/^tags:\s*\[([^\]]*)\]/m)?.[1];
   const tags: string[] = tagsInline
-    ? tagsInline.split(",").map((t) => t.trim().replace(/['"]/g, "")).filter(Boolean)
+    ? tagsInline
+        .split(",")
+        .map((t) => t.trim().replace(/['"]/g, ""))
+        .filter(Boolean)
     : [];
 
   // Block tags: tags:\n  - tag1
@@ -175,17 +186,23 @@ export function filterByFrontmatter(
 
     // Mood — must match one of the selected moods
     if (filters.moodFilter && filters.moodFilter.length > 0) {
-      if (!fields.mood || !filters.moodFilter.includes(fields.mood)) return false;
+      if (!fields.mood || !filters.moodFilter.includes(fields.mood))
+        return false;
     }
 
     // Energy minimum
     if (filters.energyMin !== undefined) {
-      if (fields.energy === undefined || fields.energy < filters.energyMin) return false;
+      if (fields.energy === undefined || fields.energy < filters.energyMin)
+        return false;
     }
 
     // Tags — ANY match (OR logic)
     if (filters.tagsFilter && filters.tagsFilter.length > 0) {
-      if (!fields.tags || !filters.tagsFilter.some((t) => fields.tags!.includes(t))) return false;
+      if (
+        !fields.tags ||
+        !filters.tagsFilter.some((t) => fields.tags!.includes(t))
+      )
+        return false;
     }
 
     // Photos

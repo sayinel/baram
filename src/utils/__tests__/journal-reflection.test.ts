@@ -70,7 +70,11 @@ describe("buildReflectionPrompt — week", () => {
 describe("extractReflectionEntries — week", () => {
   it("week period returns 7-day range ending on the given date", () => {
     const date = new Date(2026, 1, 28); // 2026-02-28
-    const { startDate, endDate } = extractReflectionEntries("/journal", "week", date);
+    const { startDate, endDate } = extractReflectionEntries(
+      "/journal",
+      "week",
+      date,
+    );
 
     expect(endDate.getFullYear()).toBe(2026);
     expect(endDate.getMonth()).toBe(1); // Feb
@@ -83,7 +87,11 @@ describe("extractReflectionEntries — week", () => {
 
   it("week period: startDate is at midnight, endDate is end-of-day", () => {
     const date = new Date(2026, 1, 28);
-    const { startDate, endDate } = extractReflectionEntries("/journal", "week", date);
+    const { startDate, endDate } = extractReflectionEntries(
+      "/journal",
+      "week",
+      date,
+    );
     expect(startDate.getHours()).toBe(0);
     expect(startDate.getMinutes()).toBe(0);
     expect(endDate.getHours()).toBe(23);
@@ -93,7 +101,11 @@ describe("extractReflectionEntries — week", () => {
   it("week spanning two months returns cross-month file pattern", () => {
     // 2026-03-04: 7-day window spans Feb and Mar
     const date = new Date(2026, 2, 4); // March 4
-    const { startDate, filePattern } = extractReflectionEntries("/journal", "week", date);
+    const { startDate, filePattern } = extractReflectionEntries(
+      "/journal",
+      "week",
+      date,
+    );
     expect(startDate.getDate()).toBe(26); // March 4 - 6 = Feb 26
     // Pattern includes both months
     expect(filePattern).toMatch(/02|03/);
@@ -103,7 +115,11 @@ describe("extractReflectionEntries — week", () => {
 describe("extractReflectionEntries — month", () => {
   it("month period returns full calendar month range", () => {
     const date = new Date(2026, 1, 15); // mid-Feb
-    const { startDate, endDate } = extractReflectionEntries("/journal", "month", date);
+    const { startDate, endDate } = extractReflectionEntries(
+      "/journal",
+      "month",
+      date,
+    );
 
     expect(startDate.getDate()).toBe(1);
     expect(startDate.getMonth()).toBe(1); // Feb
@@ -124,7 +140,7 @@ describe("extractReflectionEntries — month", () => {
 
 describe("formatReflectionMarkdown", () => {
   const startDate = new Date(2026, 1, 22); // Feb 22
-  const endDate = new Date(2026, 1, 28);   // Feb 28
+  const endDate = new Date(2026, 1, 28); // Feb 28
   const reflection = "이번 주 많이 성장했습니다.";
 
   it("includes frontmatter with type=reflection", () => {
@@ -236,7 +252,9 @@ describe("parseEmotionResponse", () => {
 
   it("extracts mood from noisy response", () => {
     expect(parseEmotionResponse("분석 결과: warm 입니다.")).toBe("warm");
-    expect(parseEmotionResponse("이 일기의 감정은 calm으로 판단됩니다.")).toBe("calm");
+    expect(parseEmotionResponse("이 일기의 감정은 calm으로 판단됩니다.")).toBe(
+      "calm",
+    );
   });
 
   it("returns null for invalid response", () => {

@@ -1,5 +1,10 @@
 // §5.1 Highlight Mark Extension — ==text==
-import { Mark, mergeAttributes, markInputRule, markPasteRule } from "@tiptap/core";
+import {
+  Mark,
+  mergeAttributes,
+  markInputRule,
+  markPasteRule,
+} from "@tiptap/core";
 
 export interface HighlightOptions {
   HTMLAttributes: Record<string, string>;
@@ -30,14 +35,27 @@ export const Highlight = Mark.create<HighlightOptions>({
   },
 
   renderHTML({ HTMLAttributes }) {
-    return ["mark", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
+    return [
+      "mark",
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes),
+      0,
+    ];
   },
 
   addCommands() {
     return {
-      setHighlight: () => ({ commands }) => commands.setMark(this.name),
-      toggleHighlight: () => ({ commands }) => commands.toggleMark(this.name),
-      unsetHighlight: () => ({ commands }) => commands.unsetMark(this.name),
+      setHighlight:
+        () =>
+        ({ commands }) =>
+          commands.setMark(this.name),
+      toggleHighlight:
+        () =>
+        ({ commands }) =>
+          commands.toggleMark(this.name),
+      unsetHighlight:
+        () =>
+        ({ commands }) =>
+          commands.unsetMark(this.name),
     };
   },
 

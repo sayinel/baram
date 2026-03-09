@@ -24,7 +24,11 @@ describe("§52 Workspace Store", () => {
 
   it("has 3 built-in presets", () => {
     expect(BUILTIN_PRESETS).toHaveLength(3);
-    expect(BUILTIN_PRESETS.map((p) => p.id)).toEqual(["writing", "journal", "skills"]);
+    expect(BUILTIN_PRESETS.map((p) => p.id)).toEqual([
+      "writing",
+      "journal",
+      "skills",
+    ]);
   });
 
   it("all built-in presets are marked as builtIn", () => {
@@ -71,7 +75,9 @@ describe("§52 Workspace Store", () => {
       rightPanelMode: "help",
     });
 
-    const id = useWorkspaceStore.getState().saveCustomPreset("My Layout", "테스트용");
+    const id = useWorkspaceStore
+      .getState()
+      .saveCustomPreset("My Layout", "테스트용");
 
     const preset = useWorkspaceStore.getState().getPreset(id);
     expect(preset).toBeDefined();
@@ -105,10 +111,35 @@ describe("§52 Workspace Store", () => {
   it("deleteCustomPreset removes preset and clears activePresetId when active", () => {
     // Use setState directly to avoid persist middleware race conditions
     const presets = [
-      { id: "test-1", name: "First", description: "", builtIn: false, layout: { sidebarOpen: true, sidebarPanel: "files" as const, rightPanelOpen: false, rightPanelMode: "none" as const } },
-      { id: "test-2", name: "Second", description: "", builtIn: false, layout: { sidebarOpen: false, sidebarPanel: "files" as const, rightPanelOpen: true, rightPanelMode: "chat" as const } },
+      {
+        id: "test-1",
+        name: "First",
+        description: "",
+        builtIn: false,
+        layout: {
+          sidebarOpen: true,
+          sidebarPanel: "files" as const,
+          rightPanelOpen: false,
+          rightPanelMode: "none" as const,
+        },
+      },
+      {
+        id: "test-2",
+        name: "Second",
+        description: "",
+        builtIn: false,
+        layout: {
+          sidebarOpen: false,
+          sidebarPanel: "files" as const,
+          rightPanelOpen: true,
+          rightPanelMode: "chat" as const,
+        },
+      },
     ];
-    useWorkspaceStore.setState({ customPresets: presets, activePresetId: "test-2" });
+    useWorkspaceStore.setState({
+      customPresets: presets,
+      activePresetId: "test-2",
+    });
 
     // Delete non-active — activePresetId stays
     useWorkspaceStore.getState().deleteCustomPreset("test-1");

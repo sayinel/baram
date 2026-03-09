@@ -25,7 +25,9 @@ interface JournalSearchPanelProps {
 }
 
 /** Adapt SearchResult (filePath) to the shape groupSearchResults expects (path) */
-function adaptResults(results: SearchResult[]): Array<SearchResult & { path: string }> {
+function adaptResults(
+  results: SearchResult[],
+): Array<SearchResult & { path: string }> {
   return results.map((r) => ({ ...r, path: r.filePath }));
 }
 
@@ -198,7 +200,9 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
           ref={inputRef}
           className="journal-search-input"
           type="text"
-          placeholder={isTagSearch ? "Tag search: #rust…" : "Search journal… (# for tags)"}
+          placeholder={
+            isTagSearch ? "Tag search: #rust…" : "Search journal… (# for tags)"
+          }
           value={query}
           onChange={(e) => handleQueryChange(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -234,7 +238,10 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
               type="date"
               value={filters.dateFrom ?? ""}
               onChange={(e) =>
-                handleFilterChange({ ...filters, dateFrom: e.target.value || undefined })
+                handleFilterChange({
+                  ...filters,
+                  dateFrom: e.target.value || undefined,
+                })
               }
             />
             <span>~</span>
@@ -242,7 +249,10 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
               type="date"
               value={filters.dateTo ?? ""}
               onChange={(e) =>
-                handleFilterChange({ ...filters, dateTo: e.target.value || undefined })
+                handleFilterChange({
+                  ...filters,
+                  dateTo: e.target.value || undefined,
+                })
               }
             />
           </div>
@@ -284,7 +294,10 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
                   .split(",")
                   .map((t) => t.trim())
                   .filter(Boolean);
-                handleFilterChange({ ...filters, tagsFilter: tags.length > 0 ? tags : undefined });
+                handleFilterChange({
+                  ...filters,
+                  tagsFilter: tags.length > 0 ? tags : undefined,
+                });
               }}
             />
           </div>
@@ -297,7 +310,9 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
               onChange={(e) =>
                 handleFilterChange({
                   ...filters,
-                  energyMin: e.target.value ? parseInt(e.target.value) : undefined,
+                  energyMin: e.target.value
+                    ? parseInt(e.target.value)
+                    : undefined,
                 })
               }
             >
@@ -317,7 +332,10 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
                 type="checkbox"
                 checked={filters.hasPhotos ?? false}
                 onChange={(e) =>
-                  handleFilterChange({ ...filters, hasPhotos: e.target.checked || undefined })
+                  handleFilterChange({
+                    ...filters,
+                    hasPhotos: e.target.checked || undefined,
+                  })
                 }
               />
               사진 있는 일기만
@@ -333,14 +351,21 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
       {!loading && (query.trim() || filtersActive) && !error && (
         <div className="journal-search-status">
           {totalMatches} match{totalMatches !== 1 ? "es" : ""}
-          {grouped.size > 0 ? ` across ${grouped.size} category${grouped.size !== 1 ? "ies" : ""}` : ""}
-          {filtersActive && <span className="jsf-active-badge"> (필터 적용 중)</span>}
+          {grouped.size > 0
+            ? ` across ${grouped.size} category${grouped.size !== 1 ? "ies" : ""}`
+            : ""}
+          {filtersActive && (
+            <span className="jsf-active-badge"> (필터 적용 중)</span>
+          )}
         </div>
       )}
 
-      {!loading && (query.trim() || filtersActive) && totalMatches === 0 && !error && (
-        <div className="journal-search-empty">No results in journal</div>
-      )}
+      {!loading &&
+        (query.trim() || filtersActive) &&
+        totalMatches === 0 &&
+        !error && (
+          <div className="journal-search-empty">No results in journal</div>
+        )}
 
       <div className="journal-search-results">
         {[...grouped.entries()].map(([category, categoryResults]) => {
@@ -357,13 +382,16 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
                 </span>
               </div>
               {shown.map((match, i) => {
-                const fileName = match.filePath.split("/").pop() ?? match.filePath;
+                const fileName =
+                  match.filePath.split("/").pop() ?? match.filePath;
                 const highlighted = highlightSearchMatch(match.snippet, query);
                 return (
                   <div
                     key={i}
                     className="journal-search-result"
-                    onClick={() => handleResultClick(match.filePath, match.line)}
+                    onClick={() =>
+                      handleResultClick(match.filePath, match.line)
+                    }
                     role="button"
                     tabIndex={0}
                     onKeyDown={(e) => {
@@ -372,7 +400,9 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
                       }
                     }}
                   >
-                    <div className="journal-search-result-filename">{fileName}</div>
+                    <div className="journal-search-result-filename">
+                      {fileName}
+                    </div>
                     <div
                       className="journal-search-result-snippet"
                       dangerouslySetInnerHTML={{ __html: highlighted }}

@@ -21,8 +21,16 @@ function isLocalFileLink(href: string): boolean {
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
     link: {
-      setLink: (attributes: { href: string; title?: string; target?: string }) => ReturnType;
-      toggleLink: (attributes: { href: string; title?: string; target?: string }) => ReturnType;
+      setLink: (attributes: {
+        href: string;
+        title?: string;
+        target?: string;
+      }) => ReturnType;
+      toggleLink: (attributes: {
+        href: string;
+        title?: string;
+        target?: string;
+      }) => ReturnType;
       unsetLink: () => ReturnType;
     };
   }
@@ -31,10 +39,12 @@ declare module "@tiptap/core" {
 // [text](url) or [text](url "title") — typed inline → auto-convert to link
 // Negative lookbehind for ! to exclude image syntax
 // Supports: [text](url), [text](url "title"), [text](<url with spaces>), [text](url with spaces)
-const linkInputRegex = /(?<!!)\[([^\]]+)\]\((<[^>]+>|[^)]+?)(?:\s+"([^"]*)")?\)$/;
+const linkInputRegex =
+  /(?<!!)\[([^\]]+)\]\((<[^>]+>|[^)]+?)(?:\s+"([^"]*)")?\)$/;
 
 // Auto-detect URLs on paste
-const pasteRegex = /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_+.~#?&//=]*)/g;
+const pasteRegex =
+  /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_+.~#?&//=]*)/g;
 
 export const Link = Mark.create<LinkOptions>({
   name: "link",
@@ -107,16 +117,13 @@ export const Link = Mark.create<LinkOptions>({
         handler: ({ state, range, match }) => {
           const [, text, rawHref, title] = match;
           // Strip angle brackets from <url with spaces> syntax
-          const href = rawHref.startsWith("<") && rawHref.endsWith(">")
-            ? rawHref.slice(1, -1)
-            : rawHref;
+          const href =
+            rawHref.startsWith("<") && rawHref.endsWith(">")
+              ? rawHref.slice(1, -1)
+              : rawHref;
           const { tr } = state;
           const mark = this.type.create({ href, title: title || null });
-          tr.replaceWith(
-            range.from,
-            range.to,
-            state.schema.text(text, [mark]),
-          );
+          tr.replaceWith(range.from, range.to, state.schema.text(text, [mark]));
         },
       }),
     ];
@@ -175,13 +182,20 @@ export const Link = Mark.create<LinkOptions>({
 
                 let linkMark = $pos.marks().find((m) => m.type.name === "link");
                 if (!linkMark && $pos.textOffset === 0) {
-                  const nodeAfter = $pos.parent.maybeChild($pos.index($pos.depth));
+                  const nodeAfter = $pos.parent.maybeChild(
+                    $pos.index($pos.depth),
+                  );
                   if (nodeAfter) {
-                    linkMark = nodeAfter.marks.find((m) => m.type.name === "link");
+                    linkMark = nodeAfter.marks.find(
+                      (m) => m.type.name === "link",
+                    );
                   }
                 }
                 if (!linkMark && pos > 0) {
-                  linkMark = view.state.doc.resolve(pos - 1).marks().find((m) => m.type.name === "link");
+                  linkMark = view.state.doc
+                    .resolve(pos - 1)
+                    .marks()
+                    .find((m) => m.type.name === "link");
                 }
 
                 if (linkMark) {
@@ -199,7 +213,9 @@ export const Link = Mark.create<LinkOptions>({
               if (srState?.expanded?.kind === "link") {
                 const { from, to } = srState.expanded;
                 const expandedText = view.state.doc.textBetween(from, to);
-                const m = expandedText.match(/\[.*?\]\((?:<([^>]+)>|([^)]+?))(?:\s+"[^"]*")?\)/);
+                const m = expandedText.match(
+                  /\[.*?\]\((?:<([^>]+)>|([^)]+?))(?:\s+"[^"]*")?\)/,
+                );
                 const href = m?.[1] || m?.[2];
                 if (href) {
                   event.preventDefault();

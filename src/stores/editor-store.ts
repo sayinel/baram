@@ -138,14 +138,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   renameTab: (oldPath, newPath, newTitle) =>
     set((state) => ({
       tabs: state.tabs.map((t) =>
-        t.filePath === oldPath ? { ...t, filePath: newPath, title: newTitle } : t,
+        t.filePath === oldPath
+          ? { ...t, filePath: newPath, title: newTitle }
+          : t,
       ),
     })),
 
   renameDirInTabs: (oldDir, newDir) =>
     set((state) => ({
       tabs: state.tabs.map((t) => {
-        if (t.filePath && (t.filePath === oldDir || t.filePath.startsWith(oldDir + "/"))) {
+        if (
+          t.filePath &&
+          (t.filePath === oldDir || t.filePath.startsWith(oldDir + "/"))
+        ) {
           const newFilePath = newDir + t.filePath.slice(oldDir.length);
           const newTitle = newFilePath.split("/").pop() ?? t.title;
           return { ...t, filePath: newFilePath, title: newTitle };
@@ -216,7 +221,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       // §38 Keep pinned tabs + the specified tab; close all other unpinned tabs
       const tabs = state.tabs.filter((t) => t.isPinned || t.id === tabId);
       const closedIds = new Set(
-        state.tabs.filter((t) => !t.isPinned && t.id !== tabId).map((t) => t.id),
+        state.tabs
+          .filter((t) => !t.isPinned && t.id !== tabId)
+          .map((t) => t.id),
       );
       const activeTabId = closedIds.has(state.activeTabId ?? "")
         ? tabId
@@ -230,13 +237,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       const idx = state.tabs.findIndex((t) => t.id === tabId);
       if (idx === -1) return state;
       // §38 Close unpinned tabs to the right of tabId
-      const tabs = state.tabs.filter(
-        (t, i) => i <= idx || t.isPinned,
-      );
+      const tabs = state.tabs.filter((t, i) => i <= idx || t.isPinned);
       const closedIds = new Set(
-        state.tabs
-          .filter((t, i) => i > idx && !t.isPinned)
-          .map((t) => t.id),
+        state.tabs.filter((t, i) => i > idx && !t.isPinned).map((t) => t.id),
       );
       const activeTabId = closedIds.has(state.activeTabId ?? "")
         ? tabId
@@ -265,7 +268,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   setCurrentSelection: (text) => set({ currentSelection: text }),
 
-  requestContentRefresh: () => set((state) => ({ contentRefreshKey: state.contentRefreshKey + 1 })),
+  requestContentRefresh: () =>
+    set((state) => ({ contentRefreshKey: state.contentRefreshKey + 1 })),
 
   getNextMruTab: (currentId, direction) => {
     const { mruOrder } = get();

@@ -3,21 +3,27 @@ import { useMemo } from "react";
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { extractSkillPrompt } from "../../utils/skill-test-runner";
-import { estimateTokenCount, formatTokenCount } from "../../utils/token-counter";
+import {
+  estimateTokenCount,
+  formatTokenCount,
+} from "../../utils/token-counter";
 
 interface SkillPreviewPanelProps {
   visible: boolean;
   onClose: () => void;
 }
 
-export function SkillPreviewPanel({ visible, onClose }: SkillPreviewPanelProps) {
+export function SkillPreviewPanel({
+  visible,
+  onClose,
+}: SkillPreviewPanelProps) {
   const activeTabId = useEditorStore((s) => s.activeTabId);
   const tabs = useEditorStore((s) => s.tabs);
   const openFiles = useFileStore((s) => s.openFiles);
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const filePath = activeTab?.filePath ?? null;
-  const content = filePath ? openFiles.get(filePath) ?? "" : "";
+  const content = filePath ? (openFiles.get(filePath) ?? "") : "";
 
   const preview = useMemo(() => {
     if (!content) return null;
@@ -42,12 +48,15 @@ export function SkillPreviewPanel({ visible, onClose }: SkillPreviewPanelProps) 
         <span className="skill-preview-tokens">
           ~{formatTokenCount(preview.tokenCount)} tokens
         </span>
-        <button className="skill-preview-close" onClick={onClose}>×</button>
+        <button className="skill-preview-close" onClick={onClose}>
+          ×
+        </button>
       </div>
       <div className="skill-preview-body">
         {preview.variables.length > 0 && (
           <div className="skill-preview-variables">
-            Variables: {preview.variables.map((v) => (
+            Variables:{" "}
+            {preview.variables.map((v) => (
               <span key={v} className="skill-preview-var">{`{{${v}}}`}</span>
             ))}
           </div>

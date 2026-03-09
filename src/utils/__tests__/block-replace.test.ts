@@ -46,9 +46,7 @@ describe("replaceBlockInContent", () => {
       "sp1",
       "Text with $pecial & <chars>",
     );
-    expect(result).toBe(
-      "Text with $pecial & <chars> ^sp1\n\nOther",
-    );
+    expect(result).toBe("Text with $pecial & <chars> ^sp1\n\nOther");
   });
 
   test("handles blockId at first line", () => {

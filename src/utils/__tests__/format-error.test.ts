@@ -23,7 +23,9 @@ describe("formatAIError", () => {
     const raw = `HTTP 400: {"error":{"code":400,"message":"API key not valid. Please pass a valid API key.","status":"INVALID_ARGUMENT"}}`;
     const result = formatAIError(raw);
     expect(result.title).toBe("Error 400");
-    expect(result.detail).toBe("API key not valid. Please pass a valid API key.");
+    expect(result.detail).toBe(
+      "API key not valid. Please pass a valid API key.",
+    );
   });
 
   // --- Top-level message fallback ---
@@ -59,7 +61,8 @@ describe("formatAIError", () => {
   });
 
   it("handles privacy mode error", () => {
-    const raw = "Privacy mode blocks cloud provider 'claude' — only 'ollama' (local) is allowed";
+    const raw =
+      "Privacy mode blocks cloud provider 'claude' — only 'ollama' (local) is allowed";
     const result = formatAIError(raw);
     expect(result.title).toBe("Error");
     expect(result.detail).toBe(raw);

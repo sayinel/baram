@@ -1,5 +1,10 @@
 // §5.1 Inline Code Mark Extension — `text`
-import { Mark, mergeAttributes, markInputRule, markPasteRule } from "@tiptap/core";
+import {
+  Mark,
+  mergeAttributes,
+  markInputRule,
+  markPasteRule,
+} from "@tiptap/core";
 
 export interface CodeOptions {
   HTMLAttributes: Record<string, string>;
@@ -31,14 +36,27 @@ export const Code = Mark.create<CodeOptions>({
   },
 
   renderHTML({ HTMLAttributes }) {
-    return ["code", mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0];
+    return [
+      "code",
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes),
+      0,
+    ];
   },
 
   addCommands() {
     return {
-      setCode: () => ({ commands }) => commands.setMark(this.name),
-      toggleCode: () => ({ commands }) => commands.toggleMark(this.name),
-      unsetCode: () => ({ commands }) => commands.unsetMark(this.name),
+      setCode:
+        () =>
+        ({ commands }) =>
+          commands.setMark(this.name),
+      toggleCode:
+        () =>
+        ({ commands }) =>
+          commands.toggleMark(this.name),
+      unsetCode:
+        () =>
+        ({ commands }) =>
+          commands.unsetMark(this.name),
     };
   },
 

@@ -10,7 +10,6 @@ import { createVirtualScrollPlugin } from "./table-virtual-scroll";
 
 // §5.5 Tier 3: Table.extend() with resizable columns + pipe-input auto creation
 export const BaramTable = Table.extend({
-
   renderHTML({ HTMLAttributes }) {
     return [
       "table",
@@ -20,10 +19,7 @@ export const BaramTable = Table.extend({
   },
 
   addProseMirrorPlugins() {
-    return [
-      ...(this.parent?.() || []),
-      createVirtualScrollPlugin(),
-    ];
+    return [...(this.parent?.() || []), createVirtualScrollPlugin()];
   },
 
   addKeyboardShortcuts() {
@@ -63,10 +59,7 @@ export const BaramTable = Table.extend({
           ),
         );
         const bodyCells = headers.map(() =>
-          schema.nodes.tableCell.create(
-            null,
-            schema.nodes.paragraph.create(),
-          ),
+          schema.nodes.tableCell.create(null, schema.nodes.paragraph.create()),
         );
         const tableNode = schema.nodes.table.create(null, [
           schema.nodes.tableRow.create(null, headerCells),
@@ -94,7 +87,6 @@ export const BaramTable = Table.extend({
   lastColumnResizable: true,
   allowTableNodeSelection: true,
 });
-
 
 export const BaramTableRow = TableRow.extend({
   // Default TableRow is fine for our needs

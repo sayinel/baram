@@ -4,7 +4,14 @@ import { useState, useEffect, useCallback } from "react";
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { useLinkStore } from "../../stores/link-store";
-import { getBacklinks, getUnlinkedMentions, refreshIndex, readFile, writeFile, updateFileIndex } from "../../ipc/invoke";
+import {
+  getBacklinks,
+  getUnlinkedMentions,
+  refreshIndex,
+  readFile,
+  writeFile,
+  updateFileIndex,
+} from "../../ipc/invoke";
 import {
   groupBacklinksByFile,
   groupBacklinksByNamespace,
@@ -38,8 +45,17 @@ export function Backlinks() {
   const activeTabId = useEditorStore((s) => s.activeTabId);
   const tabs = useEditorStore((s) => s.tabs);
   const rootPath = useFileStore((s) => s.rootPath);
-  const { backlinks, unlinkedMentions, loading, error, indexVersion, setBacklinks, setUnlinkedMentions, setLoading, setError } =
-    useLinkStore();
+  const {
+    backlinks,
+    unlinkedMentions,
+    loading,
+    error,
+    indexVersion,
+    setBacklinks,
+    setUnlinkedMentions,
+    setLoading,
+    setError,
+  } = useLinkStore();
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const filePath = activeTab?.filePath ?? null;
@@ -115,8 +131,11 @@ export function Backlinks() {
         useLinkStore.getState().setPendingScrollLine(line);
       }
 
-      const { tabs: currentTabs, openTab, setActiveTab } =
-        useEditorStore.getState();
+      const {
+        tabs: currentTabs,
+        openTab,
+        setActiveTab,
+      } = useEditorStore.getState();
       const existing = currentTabs.find((t) => t.filePath === sourcePath);
       if (existing) {
         setActiveTab(existing.id);
@@ -149,7 +168,10 @@ export function Backlinks() {
     async (mention: UnlinkedMention) => {
       if (!filePath || !rootPath) return;
 
-      const currentStem = extractFileNameFromPath(filePath).replace(/\.md$/, "");
+      const currentStem = extractFileNameFromPath(filePath).replace(
+        /\.md$/,
+        "",
+      );
 
       try {
         const content = await readFile(mention.sourcePath);
@@ -160,17 +182,23 @@ export function Backlinks() {
 
         // Replace the first occurrence of matchText on this line with [[target]]
         const line = lines[lineIdx];
-        const matchIdx = line.toLowerCase().indexOf(mention.matchText.toLowerCase());
+        const matchIdx = line
+          .toLowerCase()
+          .indexOf(mention.matchText.toLowerCase());
         if (matchIdx === -1) return;
 
         const before = line.slice(0, matchIdx);
-        const matched = line.slice(matchIdx, matchIdx + mention.matchText.length);
+        const matched = line.slice(
+          matchIdx,
+          matchIdx + mention.matchText.length,
+        );
         const after = line.slice(matchIdx + mention.matchText.length);
 
         // If matchText differs from stem (including case), use alias syntax: [[stem|matchText]]
-        const wikilink = matched === currentStem
-          ? `[[${currentStem}]]`
-          : `[[${currentStem}|${matched}]]`;
+        const wikilink =
+          matched === currentStem
+            ? `[[${currentStem}]]`
+            : `[[${currentStem}|${matched}]]`;
 
         lines[lineIdx] = before + wikilink + after;
         const newContent = lines.join("\n");
@@ -222,12 +250,14 @@ export function Backlinks() {
       </div>
       {nsGroups.every((g) => g.fileGroups.length === 0) ? (
         <div className="backlinks-empty-inline">
-          No backlinks to{" "}
-          <strong>{extractFileNameFromPath(filePath)}</strong>
+          No backlinks to <strong>{extractFileNameFromPath(filePath)}</strong>
         </div>
       ) : (
         nsGroups.map((nsGroup) => (
-          <div key={nsGroup.namespace || "__root__"} className="backlinks-ns-group">
+          <div
+            key={nsGroup.namespace || "__root__"}
+            className="backlinks-ns-group"
+          >
             {/* Only show namespace header when there are multiple namespaces */}
             {nsGroups.length > 1 && (
               <div className="backlinks-ns-header">
@@ -238,7 +268,9 @@ export function Backlinks() {
               <div key={group.sourcePath} className="backlinks-group">
                 <div
                   className="backlinks-source"
-                  onClick={() => handleClick(group.sourcePath, group.entries[0].line)}
+                  onClick={() =>
+                    handleClick(group.sourcePath, group.entries[0].line)
+                  }
                 >
                   {extractFileNameFromPath(group.sourcePath)}
                 </div>
@@ -246,10 +278,16 @@ export function Backlinks() {
                   <div
                     key={i}
                     className="backlinks-context"
-                    onClick={() => handleClick(group.sourcePath, entry.line, entry.blockId)}
+                    onClick={() =>
+                      handleClick(group.sourcePath, entry.line, entry.blockId)
+                    }
                   >
                     <span className="backlinks-line">L{entry.line}</span>
-                    <span className={`backlinks-text${wrapBacklinks ? " wrap" : ""}`}>{entry.context}</span>
+                    <span
+                      className={`backlinks-text${wrapBacklinks ? " wrap" : ""}`}
+                    >
+                      {entry.context}
+                    </span>
                     {entry.blockId && (
                       <span
                         style={{
@@ -257,7 +295,8 @@ export function Backlinks() {
                           fontSize: "0.65rem",
                           padding: "0 4px",
                           borderRadius: "3px",
-                          background: "color-mix(in srgb, var(--color-accent) 15%, transparent)",
+                          background:
+                            "color-mix(in srgb, var(--color-accent) 15%, transparent)",
                           color: "var(--color-accent)",
                         }}
                       >
@@ -284,15 +323,15 @@ export function Backlinks() {
         </button>
       </div>
       {unlinkedGroups.length === 0 ? (
-        <div className="backlinks-empty-inline">
-          No unlinked mentions found
-        </div>
+        <div className="backlinks-empty-inline">No unlinked mentions found</div>
       ) : (
         unlinkedGroups.map((group) => (
           <div key={group.sourcePath} className="backlinks-group">
             <div
               className="backlinks-source"
-              onClick={() => handleClick(group.sourcePath, group.entries[0].line)}
+              onClick={() =>
+                handleClick(group.sourcePath, group.entries[0].line)
+              }
             >
               {extractFileNameFromPath(group.sourcePath)}
             </div>

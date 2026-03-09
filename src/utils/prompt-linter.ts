@@ -22,10 +22,22 @@ const AMBIGUOUS_WORDS = [
 
 // Conflicting instruction pairs
 const CONFLICTING_PAIRS: [RegExp, RegExp, string][] = [
-  [/be concise/i, /provide detailed/i, '"be concise" conflicts with "provide detailed"'],
+  [
+    /be concise/i,
+    /provide detailed/i,
+    '"be concise" conflicts with "provide detailed"',
+  ],
   [/be brief/i, /be thorough/i, '"be brief" conflicts with "be thorough"'],
-  [/keep it short/i, /elaborate/i, '"keep it short" conflicts with "elaborate"'],
-  [/respond in one sentence/i, /explain in detail/i, '"respond in one sentence" conflicts with "explain in detail"'],
+  [
+    /keep it short/i,
+    /elaborate/i,
+    '"keep it short" conflicts with "elaborate"',
+  ],
+  [
+    /respond in one sentence/i,
+    /explain in detail/i,
+    '"respond in one sentence" conflicts with "explain in detail"',
+  ],
 ];
 
 /**
@@ -85,14 +97,16 @@ function checkMissingOutputFormat(text: string): LintResult[] {
   if (hasOutputFormatKey) return [];
 
   const body = text.slice(bodyStart);
-  const formatIndicators = /output format|respond in|format.*as|return.*as|output.*json|output.*markdown/i;
+  const formatIndicators =
+    /output format|respond in|format.*as|return.*as|output.*json|output.*markdown/i;
   if (formatIndicators.test(body)) return [];
 
   // Point to the end of frontmatter
   return [
     {
       rule: "missingOutputFormat",
-      message: "No output_format specified — consider adding one to frontmatter or body",
+      message:
+        "No output_format specified — consider adding one to frontmatter or body",
       from: 0,
       to: Math.min(bodyStart, 3), // Highlight the opening ---
       severity: "warning",
@@ -226,17 +240,21 @@ function checkEmptyRequires(text: string): LintResult[] {
   if (!requiresMatch) return [];
 
   const items = requiresMatch[1].split(",").map((s) => s.trim());
-  const hasEmpty = items.some((item) => item === "" || item === '""' || item === "''");
+  const hasEmpty = items.some(
+    (item) => item === "" || item === '""' || item === "''",
+  );
 
   if (hasEmpty) {
     const reqIdx = text.indexOf(requiresMatch[0]);
-    return [{
-      rule: "emptyRequires",
-      message: "requires array contains empty entries",
-      from: reqIdx >= 0 ? reqIdx : 0,
-      to: reqIdx >= 0 ? reqIdx + requiresMatch[0].length : 3,
-      severity: "warning",
-    }];
+    return [
+      {
+        rule: "emptyRequires",
+        message: "requires array contains empty entries",
+        from: reqIdx >= 0 ? reqIdx : 0,
+        to: reqIdx >= 0 ? reqIdx + requiresMatch[0].length : 3,
+        severity: "warning",
+      },
+    ];
   }
   return [];
 }
@@ -252,7 +270,10 @@ function checkDuplicateRequires(text: string): LintResult[] {
   const requiresMatch = frontmatter.match(/^requires\s*:\s*\[([^\]]*)\]/m);
   if (!requiresMatch) return [];
 
-  const items = requiresMatch[1].split(",").map((s) => s.trim()).filter(Boolean);
+  const items = requiresMatch[1]
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
   const seen = new Set<string>();
   const duplicates: string[] = [];
 
@@ -265,13 +286,15 @@ function checkDuplicateRequires(text: string): LintResult[] {
 
   if (duplicates.length > 0) {
     const reqIdx = text.indexOf(requiresMatch[0]);
-    return [{
-      rule: "duplicateRequires",
-      message: `Duplicate requires: ${duplicates.join(", ")}`,
-      from: reqIdx >= 0 ? reqIdx : 0,
-      to: reqIdx >= 0 ? reqIdx + requiresMatch[0].length : 3,
-      severity: "warning",
-    }];
+    return [
+      {
+        rule: "duplicateRequires",
+        message: `Duplicate requires: ${duplicates.join(", ")}`,
+        from: reqIdx >= 0 ? reqIdx : 0,
+        to: reqIdx >= 0 ? reqIdx + requiresMatch[0].length : 3,
+        severity: "warning",
+      },
+    ];
   }
   return [];
 }

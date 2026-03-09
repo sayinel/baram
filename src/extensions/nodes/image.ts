@@ -1,7 +1,12 @@
 // §5.1 Image Extension (block-level) with §3.3 NodeView
 import { Node, mergeAttributes, InputRule } from "@tiptap/core";
 import { ReactNodeViewRenderer } from "@tiptap/react";
-import { Plugin, PluginKey, NodeSelection, TextSelection } from "@tiptap/pm/state";
+import {
+  Plugin,
+  PluginKey,
+  NodeSelection,
+  TextSelection,
+} from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { ImageView } from "./image-view";
 import { getSyntaxRevealExpanded } from "../plugins/syntax-reveal";
@@ -98,7 +103,10 @@ export const Image = Node.create<ImageOptions>({
       view.state.doc.descendants((node, pos) => {
         if (imagePos >= 0) return false; // §perf-large-file: early exit
         if (node.type.name === "image") {
-          if (count === wrapperIdx) { imagePos = pos; return false; }
+          if (count === wrapperIdx) {
+            imagePos = pos;
+            return false;
+          }
           count++;
         }
       });
@@ -116,12 +124,19 @@ export const Image = Node.create<ImageOptions>({
             if (clickedImagePos === null) return null;
             const pos = clickedImagePos;
             clickedImagePos = null;
-            if (clickedImageTimer) { clearTimeout(clickedImageTimer); clickedImageTimer = null; }
+            if (clickedImageTimer) {
+              clearTimeout(clickedImageTimer);
+              clickedImageTimer = null;
+            }
             try {
-              if (view.state.doc.resolve(pos).nodeAfter?.type.name === "image") {
+              if (
+                view.state.doc.resolve(pos).nodeAfter?.type.name === "image"
+              ) {
                 return NodeSelection.create(view.state.doc, pos);
               }
-            } catch { /* ignore */ }
+            } catch {
+              /* ignore */
+            }
             return null;
           },
 
@@ -130,16 +145,27 @@ export const Image = Node.create<ImageOptions>({
               if (event.button !== 0) return false;
 
               const target = event.target as HTMLElement;
-              let imageWrapper = target.closest(".image-node-view") as HTMLElement | null;
+              let imageWrapper = target.closest(
+                ".image-node-view",
+              ) as HTMLElement | null;
 
               // Coordinate-based fallback: WebKit may report wrong event.target.
               if (!imageWrapper) {
                 for (const img of view.dom.querySelectorAll("img")) {
                   const rect = img.getBoundingClientRect();
-                  if (event.clientX >= rect.left && event.clientX <= rect.right &&
-                      event.clientY >= rect.top && event.clientY <= rect.bottom) {
-                    imageWrapper = (img as HTMLElement).closest(".image-node-view") as HTMLElement | null
-                      ?? (img as HTMLElement).closest("[data-node-view-wrapper]") as HTMLElement | null;
+                  if (
+                    event.clientX >= rect.left &&
+                    event.clientX <= rect.right &&
+                    event.clientY >= rect.top &&
+                    event.clientY <= rect.bottom
+                  ) {
+                    imageWrapper =
+                      ((img as HTMLElement).closest(
+                        ".image-node-view",
+                      ) as HTMLElement | null) ??
+                      ((img as HTMLElement).closest(
+                        "[data-node-view-wrapper]",
+                      ) as HTMLElement | null);
                     if (!imageWrapper) {
                       const figure = (img as HTMLElement).closest("figure");
                       if (figure?.parentElement) {
@@ -151,25 +177,44 @@ export const Image = Node.create<ImageOptions>({
                 }
               }
 
-              if (imageWrapper && !target.closest(".image-toolbar") && !target.closest(".image-caption") && target.tagName !== "INPUT") {
-                const allWrappers = view.dom.querySelectorAll(".image-node-view");
+              if (
+                imageWrapper &&
+                !target.closest(".image-toolbar") &&
+                !target.closest(".image-caption") &&
+                target.tagName !== "INPUT"
+              ) {
+                const allWrappers =
+                  view.dom.querySelectorAll(".image-node-view");
                 let wrapperIdx = -1;
                 for (let i = 0; i < allWrappers.length; i++) {
-                  if (allWrappers[i] === imageWrapper) { wrapperIdx = i; break; }
+                  if (allWrappers[i] === imageWrapper) {
+                    wrapperIdx = i;
+                    break;
+                  }
                 }
-                const imagePos = wrapperIdx >= 0 ? findImagePos(view, wrapperIdx) : -1;
+                const imagePos =
+                  wrapperIdx >= 0 ? findImagePos(view, wrapperIdx) : -1;
 
                 if (wrapperIdx >= 0 && imagePos >= 0) {
                   try {
                     clickedImagePos = imagePos;
                     if (clickedImageTimer) clearTimeout(clickedImageTimer);
-                    clickedImageTimer = setTimeout(() => { clickedImagePos = null; clickedImageTimer = null; }, 500);
+                    clickedImageTimer = setTimeout(() => {
+                      clickedImagePos = null;
+                      clickedImageTimer = null;
+                    }, 500);
 
                     event.preventDefault();
-                    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, imagePos)));
+                    view.dispatch(
+                      view.state.tr.setSelection(
+                        NodeSelection.create(view.state.doc, imagePos),
+                      ),
+                    );
                     view.focus();
                     return true;
-                  } catch { clickedImagePos = null; }
+                  } catch {
+                    clickedImagePos = null;
+                  }
                 }
               }
 
@@ -180,15 +225,25 @@ export const Image = Node.create<ImageOptions>({
               // keeps the cursor stuck near the image.
               const expanded = getSyntaxRevealExpanded(view.state);
               if (expanded?.kind === "image") {
-                const coords = view.posAtCoords({ left: event.clientX, top: event.clientY });
-                if (coords && (coords.pos < expanded.from || coords.pos > expanded.to)) {
+                const coords = view.posAtCoords({
+                  left: event.clientX,
+                  top: event.clientY,
+                });
+                if (
+                  coords &&
+                  (coords.pos < expanded.from || coords.pos > expanded.to)
+                ) {
                   try {
                     const $pos = view.state.doc.resolve(coords.pos);
                     event.preventDefault();
-                    view.dispatch(view.state.tr.setSelection(TextSelection.near($pos)));
+                    view.dispatch(
+                      view.state.tr.setSelection(TextSelection.near($pos)),
+                    );
                     view.focus();
                     return true;
-                  } catch { /* fall through to default PM handling */ }
+                  } catch {
+                    /* fall through to default PM handling */
+                  }
                 }
               }
 

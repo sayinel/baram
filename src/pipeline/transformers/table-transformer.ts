@@ -32,10 +32,14 @@ export const tableTransformer: NodeTransformerEntry = {
       const cells: PmNode[] = [];
 
       row.children.forEach((cell, colIndex) => {
-        const cellChildren = (cell as unknown as { children: MdastNode[] }).children || [];
-        const cellContent = cellChildren.length > 0
-          ? convertChildren({ children: cellChildren } as unknown as import("mdast").Parent)
-          : [];
+        const cellChildren =
+          (cell as unknown as { children: MdastNode[] }).children || [];
+        const cellContent =
+          cellChildren.length > 0
+            ? convertChildren({
+                children: cellChildren,
+              } as unknown as import("mdast").Parent)
+            : [];
         // Ensure at least one paragraph in cell
         const content =
           cellContent.length > 0
@@ -136,7 +140,7 @@ export const tableTransformer: NodeTransformerEntry = {
 
           if (!alignCollected) {
             align.push(
-              entry ? ((entry.cell.attrs.alignment as string) || null) : null
+              entry ? (entry.cell.attrs.alignment as string) || null : null,
             );
           }
         }

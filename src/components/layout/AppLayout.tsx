@@ -68,10 +68,7 @@ export function AppLayout({ editor, children, statusBar }: AppLayoutProps) {
       // Right panel: negative delta means expanding (dragging left)
       const current = useUIStore.getState().rightPanelWidth;
       setRightPanelWidth(
-        Math.min(
-          MAX_RIGHT_PANEL,
-          Math.max(MIN_RIGHT_PANEL, current - delta),
-        ),
+        Math.min(MAX_RIGHT_PANEL, Math.max(MIN_RIGHT_PANEL, current - delta)),
       );
     },
     [setRightPanelWidth],
@@ -98,14 +95,15 @@ export function AppLayout({ editor, children, statusBar }: AppLayoutProps) {
         )}
 
         {/* Main Editor Area */}
-        <div className="app-main">
-          {children}
-        </div>
+        <div className="app-main">{children}</div>
 
         {/* Right Panel */}
         {rightPanelOpen && (
           <>
-            <Splitter direction="horizontal" onResize={handleRightPanelResize} />
+            <Splitter
+              direction="horizontal"
+              onResize={handleRightPanelResize}
+            />
             <aside
               className="app-right-panel"
               style={{ width: `${rightPanelWidth}px` }}

@@ -159,19 +159,14 @@ export function PeriodicInsightBanner({ filePath, type }: Props) {
   if (!isLLMAvailable || dismissed) return null;
 
   const label =
-    type === "weekly"
-      ? "이번 주 패턴을 분석할까요?"
-      : "이번 달을 요약할까요?";
+    type === "weekly" ? "이번 주 패턴을 분석할까요?" : "이번 달을 요약할까요?";
 
   return (
     <div className="periodic-insight-banner">
       {!generating && !text && (
         <>
           <span className="periodic-insight-label">&#x2728; {label}</span>
-          <button
-            className="periodic-insight-btn"
-            onClick={handleGenerate}
-          >
+          <button className="periodic-insight-btn" onClick={handleGenerate}>
             분석하기
           </button>
           <button

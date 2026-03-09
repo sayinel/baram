@@ -74,7 +74,6 @@ function sortNodes(nodes: Map<string, TagTreeNode>): TagTreeNode[] {
   });
 }
 
-
 function getCloudFontSize(count: number, max: number, min: number): number {
   if (max === min) return 1;
   const normalized = (count - min) / (max - min);
@@ -103,20 +102,30 @@ function TagTreeItem({
   renaming: string | null;
   renameValue: string;
   onRenameChange: (val: string) => void;
-  onRenameKeyDown: (e: React.KeyboardEvent<HTMLInputElement>, tag: string) => void;
+  onRenameKeyDown: (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    tag: string,
+  ) => void;
   onRenameBlur: () => void;
 }) {
   const hasChildren = node.children.size > 0;
   const totalCount = getTotalCount(node);
-  const sortedChildren = useMemo(() => sortNodes(node.children), [node.children]);
+  const sortedChildren = useMemo(
+    () => sortNodes(node.children),
+    [node.children],
+  );
   const tagColors = useSettingsStore((s) => s.tagColors);
   const tagColor = tagColors[node.fullPath];
 
   // Filter: if filter is set, only show matching nodes
   const matchesFilter = !filter || node.fullPath.toLowerCase().includes(filter);
-  const childrenMatchFilter = !filter || sortedChildren.some(
-    (child) => child.fullPath.toLowerCase().includes(filter) || getTotalCount(child) > 0,
-  );
+  const childrenMatchFilter =
+    !filter ||
+    sortedChildren.some(
+      (child) =>
+        child.fullPath.toLowerCase().includes(filter) ||
+        getTotalCount(child) > 0,
+    );
 
   if (filter && !matchesFilter && !childrenMatchFilter) {
     return null;
@@ -144,7 +153,12 @@ function TagTreeItem({
         ) : (
           <span className="tag-tree-toggle tag-tree-toggle-leaf" />
         )}
-        <span className="tag-tree-hash" style={{ color: tagColor || undefined }}>#</span>
+        <span
+          className="tag-tree-hash"
+          style={{ color: tagColor || undefined }}
+        >
+          #
+        </span>
         {renaming === node.fullPath ? (
           <input
             className="tag-rename-input"
@@ -156,13 +170,19 @@ function TagTreeItem({
             autoFocus
           />
         ) : (
-          <span className="tag-tree-name" style={{ color: tagColor || undefined }}>{node.name}</span>
+          <span
+            className="tag-tree-name"
+            style={{ color: tagColor || undefined }}
+          >
+            {node.name}
+          </span>
         )}
         {renaming !== node.fullPath && (
           <span className="tag-tree-count">{totalCount}</span>
         )}
       </div>
-      {hasChildren && node.expanded &&
+      {hasChildren &&
+        node.expanded &&
         sortedChildren.map((child) => (
           <TagTreeItem
             key={child.fullPath}
@@ -188,8 +208,14 @@ export function TagPanel() {
   const [entries, setEntries] = useState<TagEntry[]>([]);
   const [filter, setFilter] = useState("");
   const [loading, setLoading] = useState(false);
-  const [expandState, setExpandState] = useState<Map<string, boolean>>(new Map());
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; tag: string } | null>(null);
+  const [expandState, setExpandState] = useState<Map<string, boolean>>(
+    new Map(),
+  );
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    tag: string;
+  } | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [notification, setNotification] = useState<string | null>(null);
@@ -344,7 +370,8 @@ export function TagPanel() {
     return [...entries].sort((a, b) => b.count - a.count).slice(0, 50);
   }, [entries]);
   const maxCount = cloudEntries.length > 0 ? cloudEntries[0].count : 1;
-  const minCount = cloudEntries.length > 0 ? cloudEntries[cloudEntries.length - 1].count : 1;
+  const minCount =
+    cloudEntries.length > 0 ? cloudEntries[cloudEntries.length - 1].count : 1;
 
   return (
     <div className="tag-panel">
