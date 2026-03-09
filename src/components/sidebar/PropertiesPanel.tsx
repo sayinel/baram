@@ -5,6 +5,7 @@ import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import type { FileEntry } from "../../stores/file-store";
 import { isSkillFrontmatter } from "../../utils/skill-frontmatter";
+import { showPrompt } from "../../utils/ai-commands";
 import { getSkillSections } from "./skill-panel-registry";
 // §72c Side-effect imports: sections self-register into the registry
 import "./SkillDependencySection";
@@ -287,14 +288,15 @@ export function PropertiesPanel() {
 
   const handleChipAdd = useCallback(
     (key: string) => {
-      // TODO: Replace with custom dialog (Tauri WKWebView issue — window.prompt returns null)
-      const item = window.prompt("Add item:");
-      if (!item) return;
-      const updated = entries.map((e) => {
-        if (e.key !== key) return e;
-        return { ...e, value: [...(e.value as string[]), item.trim()] };
-      });
-      applyEntries(updated);
+      (async () => {
+        const item = await showPrompt("Add item:");
+        if (!item) return;
+        const updated = entries.map((e) => {
+          if (e.key !== key) return e;
+          return { ...e, value: [...(e.value as string[]), item.trim()] };
+        });
+        applyEntries(updated);
+      })();
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [entries, filePath, parsed],
