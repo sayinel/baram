@@ -103,6 +103,16 @@ import {
   clearActions,
 } from "./keybindings/keybinding-actions";
 import {
+  toggleFoldAtCursor,
+  dispatchFoldAll,
+  dispatchUnfoldAll,
+  foldPluginKey,
+  positionsToAnchors,
+  anchorsToPositions,
+  dispatchRestoreFolds,
+} from "./extensions/plugins/fold";
+import { useFoldStore } from "./stores/fold-store";
+import {
   initializePlugins,
   shutdownPlugins,
   notifyEditorReady,
@@ -540,6 +550,19 @@ function App() {
         // Non-MD files don't use ProseMirror — skip caching
         if (!isSourceMode && !prevIsCode) {
           editorStateCache.current.set(prevTabId, editor.state);
+          // Save fold state as content-based anchors
+          if (prevTab?.filePath) {
+            const pluginState = foldPluginKey.getState(editor.state);
+            if (pluginState && pluginState.foldedPositions.size > 0) {
+              const anchors = positionsToAnchors(
+                editor.state.doc,
+                pluginState.foldedPositions,
+              );
+              useFoldStore.getState().saveFolds(prevTab.filePath, anchors);
+            } else if (prevTab?.filePath) {
+              useFoldStore.getState().clearFolds(prevTab.filePath);
+            }
+          }
         }
         if (prevTab?.filePath) {
           try {
@@ -685,6 +708,20 @@ function App() {
           editor.view.updateState(newState);
           setIsParsing(false);
           afterDocLoad();
+
+          // Restore fold state from persistence
+          const inTab = tabs.find((t) => t.id === activeTabId);
+          if (inTab?.filePath) {
+            const savedAnchors = useFoldStore
+              .getState()
+              .getFolds(inTab.filePath);
+            if (savedAnchors.length > 0) {
+              const positions = anchorsToPositions(doc, savedAnchors);
+              if (positions.length > 0) {
+                dispatchRestoreFolds(editor.view, positions);
+              }
+            }
+          }
         });
       }
 
@@ -1548,6 +1585,15 @@ function App() {
     registerAction("edit.findReplace", () => {
       setFindReplaceMode("replace");
       setFindReplaceOpen(true);
+    });
+    registerAction("edit.toggleFold", () => {
+      if (editor?.view) toggleFoldAtCursor(editor.view);
+    });
+    registerAction("edit.foldAll", () => {
+      if (editor?.view) dispatchFoldAll(editor.view);
+    });
+    registerAction("edit.unfoldAll", () => {
+      if (editor?.view) dispatchUnfoldAll(editor.view);
     });
 
     // View

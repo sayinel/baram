@@ -660,6 +660,16 @@
       "status": "implemented",
       "shortcuts": {},
       "_note": "CSS content-visibility: auto on 50+ row tables. ProseMirror Plugin applied via EditorView. Graceful degradation for unsupported browsers."
+    },
+    {
+      "name": "fold",
+      "file": "plugins/fold.ts",
+      "spec": "§fold",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "shortcuts": { "Mod-Shift-[": "toggle fold", "Mod-Shift-Alt-[": "fold all", "Mod-Shift-Alt-]": "unfold all" },
+      "_note": "Obsidian-style heading & list folding. ProseMirror Plugin with DecorationSet — view-only, no doc mutation. Gutter arrows + CSS fold-hidden + ellipsis indicator."
     }
   ]
 }

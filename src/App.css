@@ -186,6 +186,98 @@ body {
   height: 100%;
 }
 
+/* ── Fold — Obsidian-style heading & list folding ─────────────────── */
+
+/* Headings and list items need position: relative for absolute fold arrow */
+.tiptap h1, .tiptap h2, .tiptap h3,
+.tiptap h4, .tiptap h5, .tiptap h6 { position: relative; }
+.tiptap li { position: relative; }
+
+/* Fold arrow — gutter positioned, hidden by default */
+.fold-arrow {
+  position: absolute;
+  left: -24px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.15s ease;
+  z-index: 1;
+}
+
+/* Show arrow on heading/li hover */
+.tiptap h1:hover > .fold-arrow,
+.tiptap h2:hover > .fold-arrow,
+.tiptap h3:hover > .fold-arrow,
+.tiptap h4:hover > .fold-arrow,
+.tiptap h5:hover > .fold-arrow,
+.tiptap h6:hover > .fold-arrow,
+.tiptap li:hover > .fold-arrow { opacity: 0.5; }
+
+/* List items: align arrow with first line, clear of bullet/number markers */
+.tiptap li > .fold-arrow {
+  top: 0.3em;
+  transform: none;
+}
+/* Unordered lists: position left of bullet (disc sits ~1.2em from li edge) */
+.tiptap ul > li > .fold-arrow {
+  top: 0.4em;
+  left: -2.6em;
+}
+/* Ordered lists: wider clearance for 2-digit numbers */
+.tiptap ol > li > .fold-arrow {
+  left: -3.2em;
+}
+
+.fold-arrow:hover { opacity: 1 !important; }
+
+/* Always visible when folded */
+.fold-arrow-folded { opacity: 0.7 !important; }
+
+/* Triangle via border trick (same as toggle-arrow) */
+.fold-arrow::before {
+  content: "";
+  display: block;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 4px 0 4px 6px;
+  border-color: transparent transparent transparent currentColor;
+  transition: transform 0.2s ease;
+}
+
+.fold-arrow-open::before { transform: rotate(90deg); }
+.fold-arrow-folded::before { transform: rotate(0deg); }
+
+/* Hidden content */
+.fold-hidden { display: none !important; }
+
+/* Ellipsis indicator */
+.fold-ellipsis {
+  display: inline-block;
+  color: var(--color-text-muted);
+  background: var(--color-bg-secondary);
+  padding: 0 6px;
+  border-radius: 3px;
+  font-size: 0.85em;
+  cursor: pointer;
+  margin-left: 4px;
+  vertical-align: middle;
+  line-height: 1.4;
+  user-select: none;
+}
+
+.fold-ellipsis:hover {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+}
+
 /* §5.1 Heading styles */
 .tiptap h1 {
   font-size: 2em;

@@ -95,6 +95,27 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
     defaultKey: "Mod+H",
     customizable: true,
   },
+  {
+    id: "edit.toggleFold",
+    label: "keybindings.edit.toggleFold",
+    category: "edit",
+    defaultKey: "Mod+Shift+[",
+    customizable: true,
+  },
+  {
+    id: "edit.foldAll",
+    label: "keybindings.edit.foldAll",
+    category: "edit",
+    defaultKey: "Mod+Shift+Alt+[",
+    customizable: true,
+  },
+  {
+    id: "edit.unfoldAll",
+    label: "keybindings.edit.unfoldAll",
+    category: "edit",
+    defaultKey: "Mod+Shift+Alt+]",
+    customizable: true,
+  },
 
   // ── view ──────────────────────────────────────────────────────────────────
   {

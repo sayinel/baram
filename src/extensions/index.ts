@@ -64,6 +64,7 @@ import { PromptLint } from "./plugins/prompt-lint";
 import { SkillVariableSuggest } from "./plugins/skill-variable-suggest";
 import { AIDiff } from "./plugins/ai-diff";
 import { ListAtomFix } from "./plugins/list-atom-fix";
+import { Fold } from "./plugins/fold";
 
 // Mark Extensions
 import { Bold } from "./marks/bold";
@@ -226,6 +227,9 @@ export function createBaramExtensions(
 
     // Plugins — §56m List atom fix (WebKit marker alignment)
     ListAtomFix,
+
+    // Plugins — Heading & List Folding (Obsidian-style)
+    Fold,
 
     // UI
     Placeholder.configure({
