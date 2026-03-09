@@ -177,8 +177,6 @@ export function PropertiesPanel() {
   const redoStackRef = useRef<string[]>([]);
   const [, forceRender] = useState(0);
 
-  if (!rightPanelOpen || rightPanelMode !== "properties") return null;
-
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const filePath = activeTab?.filePath ?? null;
   const content = filePath ? (openFiles.get(filePath) ?? null) : null;
@@ -343,6 +341,8 @@ export function PropertiesPanel() {
   );
 
   // ── render ───────────────────────────────────────────────────────────────
+
+  if (!rightPanelOpen || rightPanelMode !== "properties") return null;
 
   return (
     <div className="properties-panel">
