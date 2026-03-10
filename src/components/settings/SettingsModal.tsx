@@ -86,13 +86,6 @@ const SETTINGS_REGISTRY: SearchableSetting[] = [
     section: "settings.general.startup",
   },
   {
-    id: "showWelcome",
-    label: "settings.general.showWelcome",
-    description: "settings.general.showWelcome.desc",
-    category: "general",
-    section: "settings.general.startup",
-  },
-  {
     id: "autoSave",
     label: "settings.general.autoSave",
     description: "settings.general.autoSave.desc",
@@ -445,8 +438,6 @@ function GeneralTab() {
     setAutoSaveDelay,
     spellCheck,
     setSpellCheck,
-    showWelcome,
-    setShowWelcome,
     wikilinkFormat,
     setWikilinkFormat,
     autoUpdateLinks,
@@ -505,13 +496,6 @@ function GeneralTab() {
             {t("settings.general.onLaunch.newFile")}
           </option>
         </select>
-      </SettingsRow>
-
-      <SettingsRow
-        label={t("settings.general.showWelcome")}
-        description={t("settings.general.showWelcome.desc")}
-      >
-        <ToggleSwitch checked={showWelcome} onChange={setShowWelcome} />
       </SettingsRow>
 
       <SettingsSectionHeader title={t("settings.general.saving")} />
@@ -2746,13 +2730,6 @@ function SearchSettingControl({
         <ToggleSwitch
           checked={settings.autoSave}
           onChange={settings.setAutoSave}
-        />
-      );
-    case "showWelcome":
-      return (
-        <ToggleSwitch
-          checked={settings.showWelcome}
-          onChange={settings.setShowWelcome}
         />
       );
     case "spellCheck":

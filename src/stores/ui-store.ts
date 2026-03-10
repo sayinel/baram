@@ -1,6 +1,5 @@
 // §3.5 UI 레이아웃 스토어
 import { create } from "zustand";
-import { useSettingsStore } from "./settings-store";
 
 type SidebarPanel =
   | "files"
@@ -43,7 +42,6 @@ interface UIState {
   aboutOpen: boolean;
   exportDialogOpen: boolean;
   exportFormat: ExportFormat;
-  welcomeOpen: boolean;
   newSkillDialogOpen: boolean;
   skillGeneratorDialogOpen: boolean;
   skillTestDialogOpen: boolean;
@@ -76,7 +74,6 @@ interface UIState {
   toggleAbout: () => void;
   openExportDialog: (format?: ExportFormat) => void;
   closeExportDialog: () => void;
-  dismissWelcome: (permanent?: boolean) => void;
   toggleNewSkillDialog: () => void;
   toggleSkillGeneratorDialog: () => void;
   toggleSkillTestDialog: () => void;
@@ -100,7 +97,6 @@ export const useUIStore = create<UIState>((set) => ({
   aboutOpen: false,
   exportDialogOpen: false,
   exportFormat: "html" as ExportFormat,
-  welcomeOpen: useSettingsStore.getState().showWelcome,
   newSkillDialogOpen: false,
   skillGeneratorDialogOpen: false,
   skillTestDialogOpen: false,
@@ -139,13 +135,6 @@ export const useUIStore = create<UIState>((set) => ({
 
   closeExportDialog: () => set({ exportDialogOpen: false }),
 
-  dismissWelcome: (permanent) => {
-    if (permanent) {
-      useSettingsStore.getState().setShowWelcome(false);
-    }
-    set({ welcomeOpen: false });
-  },
-
   toggleNewSkillDialog: () =>
     set((state) => ({ newSkillDialogOpen: !state.newSkillDialogOpen })),
 
@@ -174,11 +163,3 @@ export const useUIStore = create<UIState>((set) => ({
       contentReloadCursorEnd: cursorEnd ?? false,
     })),
 }));
-
-// Sync welcomeOpen after settings-store hydration (persist is async, so
-// the initial `useSettingsStore.getState().showWelcome` may still be the default `true`)
-useSettingsStore.persist.onFinishHydration?.((state) => {
-  if (!state.showWelcome) {
-    useUIStore.setState({ welcomeOpen: false });
-  }
-});
