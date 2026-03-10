@@ -42,6 +42,7 @@ import { useEditorStore } from "./stores/editor-store";
 import { useFileStore, openFolder } from "./stores/file-store";
 import { useUIStore } from "./stores/ui-store";
 import { useSettingsStore } from "./stores/settings-store";
+import { useTranslation } from "./i18n/useTranslation";
 import { useNavigationStore } from "./stores/navigation-store";
 import { useAutoSave } from "./hooks/use-auto-save";
 import { useGhostText } from "./hooks/use-ghost-text";
@@ -142,9 +143,9 @@ const ExportDialog = lazy(() =>
     default: m.ExportDialog,
   })),
 );
-const WelcomeScreen = lazy(() =>
-  import("./components/onboarding/WelcomeScreen").then((m) => ({
-    default: m.WelcomeScreen,
+const HomeScreen = lazy(() =>
+  import("./components/onboarding/HomeScreen").then((m) => ({
+    default: m.HomeScreen,
   })),
 );
 const QuickSwitcher = lazy(() =>
@@ -225,6 +226,7 @@ class ErrorBoundary extends Component<
 }
 
 function App() {
+  const { t } = useTranslation();
   const [isSourceMode, setIsSourceMode] = useState(false);
   const [sourceContent, setSourceContent] = useState("");
   const [sourceCursorOffset, setSourceCursorOffset] = useState(0);
@@ -237,10 +239,10 @@ function App() {
     toggleQuickSwitcher,
     toggleSettings,
     setSidebarPanel,
-    welcomeOpen,
   } = useUIStore();
   const { activeTabId, tabs, openTab, markDirty } = useEditorStore();
   const { openFiles, setFileContent } = useFileStore();
+  const rootPath = useFileStore((s) => s.rootPath);
 
   // Derived: non-markdown code file detection for rendering branch
   const activeTab = tabs.find((t) => t.id === activeTabId);
@@ -1170,7 +1172,13 @@ function App() {
     const selected = await open({ directory: true });
     if (selected) {
       await openFolder(selected);
+      useSettingsStore.getState().addRecentFolder(selected);
     }
+  }, []);
+
+  const handleOpenRecentFolder = useCallback(async (path: string) => {
+    await openFolder(path);
+    useSettingsStore.getState().addRecentFolder(path);
   }, []);
 
   // Open file by path — used by macOS file association (Finder → Baram)
@@ -1194,13 +1202,60 @@ function App() {
         isPinned: false,
       });
       notifyFileOpen(filePath);
+      useSettingsStore.getState().addRecentFile(filePath);
+      useSettingsStore.getState().setLastOpenedFile(filePath);
     } catch (err) {
       console.error("[App] Failed to open file from OS:", err);
     }
   }, []);
 
+  const handleOpenRecentFile = useCallback(
+    async (path: string) => {
+      await handleOpenFilePath(path);
+    },
+    [handleOpenFilePath],
+  );
+
+  const handleCloseFolder = useCallback(() => {
+    useFileStore.getState().closeFolder();
+  }, []);
+
   // §56 Journal — auto-create today's journal on startup
   useJournal(handleOpenFilePath);
+
+  // onLaunch — restore folder/file on startup
+  const onLaunchDone = useRef(false);
+  useEffect(() => {
+    if (onLaunchDone.current) return;
+    onLaunchDone.current = true;
+
+    const { onLaunch, lastOpenedFolder, lastOpenedFile } =
+      useSettingsStore.getState();
+
+    (async () => {
+      if (onLaunch === "restoreLastFolder" && lastOpenedFolder) {
+        try {
+          await openFolder(lastOpenedFolder);
+          useSettingsStore.getState().addRecentFolder(lastOpenedFolder);
+        } catch {
+          /* folder may have been deleted */
+        }
+      } else if (onLaunch === "restoreLastFile" && lastOpenedFolder) {
+        try {
+          await openFolder(lastOpenedFolder);
+          useSettingsStore.getState().addRecentFolder(lastOpenedFolder);
+          if (lastOpenedFile) {
+            await handleOpenFilePath(lastOpenedFile);
+          }
+        } catch {
+          /* ignore */
+        }
+      } else if (onLaunch === "newFile") {
+        handleNewFile();
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // §28 Wikilink Cmd+Click navigation
   const handleWikilinkNavigate = useCallback(
@@ -2472,15 +2527,23 @@ function App() {
       >
         <TabBar />
         <div className="editor-area">
-          {welcomeOpen && !activeTabId ? (
+          {!rootPath && !activeTabId ? (
             <div className="editor-area-scroll">
               <Suspense fallback={null}>
-                <WelcomeScreen
+                <HomeScreen
                   onNewFile={handleNewFile}
                   onOpenFile={handleOpenFile}
                   onOpenFolder={handleOpenFolder}
+                  onOpenRecentFolder={handleOpenRecentFolder}
+                  onOpenRecentFile={handleOpenRecentFile}
                 />
               </Suspense>
+            </div>
+          ) : !activeTabId ? (
+            <div className="editor-area-scroll">
+              <div className="empty-workspace">
+                <p>{t("home.emptyWorkspace")}</p>
+              </div>
             </div>
           ) : isGraphTabActive ? (
             <div className="editor-area-scroll">
@@ -2594,6 +2657,7 @@ function App() {
           onSave={handleSave}
           onOpenFolder={handleOpenFolder}
           onSkillPreview={() => setSkillPreviewOpen((v) => !v)}
+          onCloseFolder={handleCloseFolder}
         />
         <ExportDialog editor={editor} />
         <QuickSwitcher editor={editor} onNewFile={handleNewFile} />

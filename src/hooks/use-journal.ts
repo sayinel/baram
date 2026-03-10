@@ -2,7 +2,6 @@
 import { useEffect, useRef } from "react";
 import { useFileStore } from "../stores/file-store";
 import { useSettingsStore } from "../stores/settings-store";
-import { useUIStore } from "../stores/ui-store";
 import { readFile, writeFile, createDir } from "../ipc/invoke";
 import {
   generateDefaultJournal,
@@ -88,8 +87,6 @@ export function useJournal(
 
         // Open journal if configured
         if (journalStartupBehavior === "openJournal") {
-          // Dismiss welcome screen — journal replaces it
-          useUIStore.getState().dismissWelcome(false);
           await handleOpenFilePath(journalPath);
         }
       } catch (err) {

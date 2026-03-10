@@ -29,6 +29,7 @@ function buildCommands(
   onSave: () => void,
   onOpenFolder: () => void,
   onSkillPreview: () => void,
+  onCloseFolder: () => void,
 ): CommandItem[] {
   return [
     // File
@@ -59,6 +60,12 @@ function buildCommands(
       category: "File",
       shortcut: "⌘⇧O",
       action: () => onOpenFolder(),
+    },
+    {
+      id: "workspace:close-folder",
+      label: "Close Folder",
+      category: "File",
+      action: () => onCloseFolder(),
     },
     {
       id: "file:export",
@@ -442,6 +449,7 @@ interface CommandPaletteProps {
   onSave: () => void;
   onOpenFolder: () => void;
   onSkillPreview?: () => void;
+  onCloseFolder: () => void;
 }
 
 export function CommandPalette({
@@ -452,6 +460,7 @@ export function CommandPalette({
   onSave,
   onOpenFolder,
   onSkillPreview,
+  onCloseFolder,
 }: CommandPaletteProps) {
   const { commandPaletteOpen, toggleCommandPalette, toggleSidebar } =
     useUIStore();
@@ -469,6 +478,7 @@ export function CommandPalette({
         onSave,
         onOpenFolder,
         onSkillPreview ?? (() => {}),
+        onCloseFolder,
       ),
     [
       toggleSidebar,
@@ -478,6 +488,7 @@ export function CommandPalette({
       onSave,
       onOpenFolder,
       onSkillPreview,
+      onCloseFolder,
     ],
   );
 
