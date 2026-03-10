@@ -52,9 +52,9 @@ pub async fn export_document(
 #[tauri::command]
 pub async fn detect_pandoc(pandoc_path: Option<String>) -> Result<pandoc::PandocInfo, String> {
     let path = pandoc_path.unwrap_or_else(|| "pandoc".to_string());
-    Ok(tokio::task::spawn_blocking(move || pandoc::detect_pandoc(&path))
+    tokio::task::spawn_blocking(move || pandoc::detect_pandoc(&path))
         .await
-        .map_err(|e| format!("Task join error: {}", e))?)
+        .map_err(|e| format!("Task join error: {}", e))
 }
 
 /// §55 Pandoc 내보내기 — markdown → docx/latex/epub/rst

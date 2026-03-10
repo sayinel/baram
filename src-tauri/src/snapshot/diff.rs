@@ -95,8 +95,8 @@ pub fn compute_diff(old_text: &str, new_text: &str) -> DiffResult {
         let mut new_count = 0;
         let mut first = true;
 
-        for idx in range_start..range_end {
-            let (tag, ol, nl, ref content) = changes[idx];
+        for change in changes.iter().take(range_end).skip(range_start) {
+            let (tag, ol, nl, ref content) = *change;
 
             if first {
                 old_start = ol;

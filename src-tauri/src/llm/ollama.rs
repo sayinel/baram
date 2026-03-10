@@ -84,6 +84,7 @@ pub(crate) struct OllamaResponse {
 
 /// Ollama NDJSON streaming call (local inference, no auth required).
 /// Emits llm:token, llm:done events to the frontend.
+#[allow(clippy::too_many_arguments)]
 pub async fn complete_stream(
     prompt: &str,
     model: &str,

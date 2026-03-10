@@ -4,6 +4,7 @@ use crate::llm::cancel::CancelRegistry;
 use crate::llm::ModelInfo;
 use tauri::Emitter;
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn llm_complete(
     api_key: String,

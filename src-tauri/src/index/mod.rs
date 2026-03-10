@@ -675,7 +675,7 @@ pub async fn find_unlinked_mentions(
     // Build a word-boundary regex for the stem (case-insensitive)
     let escaped = regex::escape(&stem);
     let pattern = format!(r"(?i)\b{}\b", escaped);
-    let stem_re = Regex::new(&pattern).map_err(|e| IndexError::IoError(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+    let stem_re = Regex::new(&pattern).map_err(|e| IndexError::IoError(std::io::Error::other(e.to_string())))?;
 
     for md_path in &md_files {
         // Skip the current file itself
@@ -692,8 +692,8 @@ pub async fn find_unlinked_mentions(
             // Strip all [[...]] wikilinks from the line, replacing with spaces of same length
             let stripped = strip_wikilinks(line);
 
-            // Search for the stem in the stripped text
-            for mat in stem_re.find_iter(&stripped) {
+            // Search for the stem in the stripped text (only first match per line)
+            if let Some(mat) = stem_re.find(&stripped) {
                 let context = line.trim().to_string();
                 let context = if context.len() > 200 {
                     let mut end = 200;
@@ -711,9 +711,6 @@ pub async fn find_unlinked_mentions(
                     context,
                     match_text: mat.as_str().to_string(),
                 });
-
-                // Only one mention per line to avoid duplicates
-                break;
             }
         }
     }

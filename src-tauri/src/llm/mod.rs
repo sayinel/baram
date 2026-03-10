@@ -42,6 +42,7 @@ const OLLAMA_DEFAULT_BASE_URL: &str = "http://localhost:11434";
 /// When `privacy_mode` is true, only local providers (ollama) are permitted.
 ///
 /// Emits llm:token, llm:done, llm:error events to the frontend.
+#[allow(clippy::too_many_arguments)]
 pub async fn complete(
     provider: &str,
     api_key: &str,

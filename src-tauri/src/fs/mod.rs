@@ -198,10 +198,7 @@ pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>
     })
     .await
     .map_err(|e| {
-        FsError::ReadError(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            e.to_string(),
-        ))
+        FsError::ReadError(std::io::Error::other(e.to_string()))
     })?
 }
 
@@ -222,54 +219,52 @@ pub fn watch_dir(path: &str, app_handle: tauri::AppHandle) -> Result<(), FsError
     std::thread::spawn(move || {
         // Keep watcher alive for the duration of this thread
         let _watcher = watcher;
-        for result in rx {
-            if let Ok(event) = result {
-                for event_path in &event.paths {
-                    let path_str = event_path.to_string_lossy().to_string();
+        for event in rx.into_iter().flatten() {
+            for event_path in &event.paths {
+                let path_str = event_path.to_string_lossy().to_string();
 
-                    // Skip .tmp files (atomic write intermediates)
-                    if path_str.ends_with(".tmp") {
-                        continue;
+                // Skip .tmp files (atomic write intermediates)
+                if path_str.ends_with(".tmp") {
+                    continue;
+                }
+
+                match event.kind {
+                    EventKind::Create(_) => {
+                        let is_dir = event_path.is_dir();
+                        let _ = app_handle.emit(
+                            "file:created",
+                            serde_json::json!({ "path": path_str, "isDir": is_dir }),
+                        );
                     }
-
-                    match event.kind {
-                        EventKind::Create(_) => {
+                    // Rename: macOS FSEvents reports atomic-write rename
+                    // and external moves as Modify(Name), not Create/Remove
+                    EventKind::Modify(ModifyKind::Name(_)) => {
+                        if event_path.exists() {
                             let is_dir = event_path.is_dir();
                             let _ = app_handle.emit(
                                 "file:created",
                                 serde_json::json!({ "path": path_str, "isDir": is_dir }),
                             );
-                        }
-                        // Rename: macOS FSEvents reports atomic-write rename
-                        // and external moves as Modify(Name), not Create/Remove
-                        EventKind::Modify(ModifyKind::Name(_)) => {
-                            if event_path.exists() {
-                                let is_dir = event_path.is_dir();
-                                let _ = app_handle.emit(
-                                    "file:created",
-                                    serde_json::json!({ "path": path_str, "isDir": is_dir }),
-                                );
-                            } else {
-                                let _ = app_handle.emit(
-                                    "file:deleted",
-                                    serde_json::json!({ "path": path_str }),
-                                );
-                            }
-                        }
-                        EventKind::Modify(_) => {
-                            let _ = app_handle.emit(
-                                "file:changed",
-                                serde_json::json!({ "path": path_str, "kind": "modified" }),
-                            );
-                        }
-                        EventKind::Remove(_) => {
+                        } else {
                             let _ = app_handle.emit(
                                 "file:deleted",
                                 serde_json::json!({ "path": path_str }),
                             );
                         }
-                        _ => {}
                     }
+                    EventKind::Modify(_) => {
+                        let _ = app_handle.emit(
+                            "file:changed",
+                            serde_json::json!({ "path": path_str, "kind": "modified" }),
+                        );
+                    }
+                    EventKind::Remove(_) => {
+                        let _ = app_handle.emit(
+                            "file:deleted",
+                            serde_json::json!({ "path": path_str }),
+                        );
+                    }
+                    _ => {}
                 }
             }
         }

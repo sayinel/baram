@@ -108,6 +108,7 @@ pub(crate) struct SseDelta {
 
 /// Claude API SSE streaming call.
 /// Emits llm:token, llm:done events to the frontend.
+#[allow(clippy::too_many_arguments)]
 pub async fn complete_stream(
     api_key: &str,
     prompt: &str,

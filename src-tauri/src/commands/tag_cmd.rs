@@ -42,10 +42,10 @@ async fn collect_md_files(root: &PathBuf, files: &mut Vec<PathBuf>) -> std::io::
             if files.len() < 500 {
                 let _ = Box::pin(collect_md_files(&path, files)).await;
             }
-        } else if metadata.is_file() {
-            if path.extension().and_then(|e| e.to_str()) == Some("md") {
-                files.push(path);
-            }
+        } else if metadata.is_file()
+            && path.extension().and_then(|e| e.to_str()) == Some("md")
+        {
+            files.push(path);
         }
     }
     Ok(())

@@ -183,7 +183,7 @@ fn parse_timestamp_to_epoch(ts: &str) -> Option<u64> {
 /// Convert (year, month, day) to days since Unix epoch.
 fn date_to_days(year: u64, month: u64, day: u64) -> Option<u64> {
     // Algorithm from https://howardhinnant.github.io/date_algorithms.html (civil_from_days inverse)
-    if month < 1 || month > 12 || day < 1 || day > 31 {
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
         return None;
     }
     let y = if month <= 2 { year - 1 } else { year };

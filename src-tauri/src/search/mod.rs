@@ -102,11 +102,11 @@ fn build_snippet(line_text: &str, match_start: usize, match_end: usize) -> Strin
 
     let mut snippet = String::new();
     if snippet_start > 0 {
-        snippet.push_str("…");
+        snippet.push('…');
     }
     snippet.push_str(&line_text[snippet_start..snippet_end]);
     if snippet_end < line_text.len() {
-        snippet.push_str("…");
+        snippet.push('…');
     }
     snippet
 }
