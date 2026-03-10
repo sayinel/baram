@@ -2,6 +2,7 @@
 import { create } from "zustand";
 import { listDir, refreshIndex } from "../ipc/invoke";
 import { useLinkStore } from "./link-store";
+import { useEditorStore } from "./editor-store";
 import type { FileEntry as IpcFileEntry } from "../ipc/types";
 
 export interface FileEntry {
@@ -45,6 +46,8 @@ interface FileState {
   expandedDirs: Set<string>;
   toggleExpandedDir: (path: string) => void;
   expandDir: (path: string) => void;
+  /** Close the current folder and return to home screen */
+  closeFolder: () => void;
 }
 
 /**
@@ -358,4 +361,9 @@ export const useFileStore = create<FileState>((set, get) => ({
       next.add(path);
       return { expandedDirs: next };
     }),
+
+  closeFolder: () => {
+    useEditorStore.getState().closeAllTabs();
+    set({ rootPath: null, fileTree: [], expandedDirs: new Set() });
+  },
 }));
