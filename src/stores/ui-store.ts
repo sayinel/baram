@@ -174,3 +174,11 @@ export const useUIStore = create<UIState>((set) => ({
       contentReloadCursorEnd: cursorEnd ?? false,
     })),
 }));
+
+// Sync welcomeOpen after settings-store hydration (persist is async, so
+// the initial `useSettingsStore.getState().showWelcome` may still be the default `true`)
+useSettingsStore.persist.onFinishHydration?.((state) => {
+  if (!state.showWelcome) {
+    useUIStore.setState({ welcomeOpen: false });
+  }
+});
