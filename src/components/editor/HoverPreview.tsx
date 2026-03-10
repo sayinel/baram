@@ -20,6 +20,7 @@ interface HoverTarget {
   target: string;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function calcPosition(
   rect: { bottom: number; left: number; top: number; width: number },
   viewport: { height: number; width: number },
@@ -215,6 +216,7 @@ export function HoverPreview() {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function truncatePreview(content: string, maxLines: number): string {
   const lines = content.split("\n");
   if (lines.length <= maxLines) return content;

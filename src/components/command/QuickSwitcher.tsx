@@ -22,6 +22,7 @@ import { extractNamespace } from "../../utils/path-utils";
 export type JournalPrefix = "d" | "j" | "n" | null;
 
 /** Filter a file list by journal prefix against resolvedDir. */
+// eslint-disable-next-line react-refresh/only-export-components
 export function filterByJournalPrefix(
   files: FlatFile[],
   prefix: JournalPrefix,
@@ -42,6 +43,7 @@ export function filterByJournalPrefix(
 }
 
 /** Parse a query for journal prefix (n:, d:, j:). Returns prefix and stripped query. */
+// eslint-disable-next-line react-refresh/only-export-components
 export function parseJournalPrefix(query: string): {
   prefix: JournalPrefix;
   strippedQuery: string;
