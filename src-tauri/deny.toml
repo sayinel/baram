@@ -1,0 +1,76 @@
+# deny.toml — Cargo Deny Configuration
+# Baram (Tauri 2.0 Backend)
+#
+# Ensures supply chain security and license compliance.
+# Install: cargo install cargo-deny
+# Usage: cargo deny check
+# Reference: https://embarkstudios.github.io/cargo-deny/
+
+[advisories]
+# Check for known security vulnerabilities in dependencies
+vulnerability = "deny"
+unmaintained = "warn"
+notice = "warn"
+# Allow security advisories for specific time (vulnerable deps in transition)
+# Example: yanked = "warn"
+
+[licenses]
+# Ensure dependency licenses are compatible with project license (AGPL-3.0 for app)
+unlicensed = "deny"
+# License compatibility check: deny copyleft GPL (unless project is also GPL)
+# Note: Baram app is AGPL-3.0, so other AGPL/GPL is OK.
+# But core editor might want MIT, so be permissive here and document in README.
+copyleft = "warn"
+allow-osi-fsf-free = "both"
+# Specific allow list for known-good licenses
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unlicense",
+    "0BSD",
+    "MPL-2.0",
+    "AGPL-3.0",
+    "AGPL-3.0-only",
+    "AGPL-3.0-or-later",
+    "GPL-2.0",
+    "GPL-2.0-only",
+    "GPL-2.0-or-later",
+    "GPL-3.0",
+    "GPL-3.0-only",
+    "GPL-3.0-or-later",
+]
+# Denials: licenses to block
+deny = [
+    "GPL-1.0",
+    "AGPL-1.0",
+    # Note: Commercial/proprietary software should be explicitly checked
+]
+
+[bans]
+# Prevent multiple versions of same crate (forces resolution)
+multiple-versions = "warn"
+# Prevent specific crates entirely
+deny = [
+    # Example: { name = "openssl", version = "*" }  # Force rustls instead
+    # Add specific problematic crates here
+]
+# Allow specific versions even if they have advisories (use sparingly)
+allow = []
+# Skip specific crate versions from vulnerability checks
+skip = []
+
+[sources]
+# Control where dependencies can come from (disabled by default)
+# Uncomment to enforce supply chain restrictions
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# allow-git = []
+
+# Additional recommendations:
+# 1. Run `cargo deny check advisories` regularly in CI/CD
+# 2. Add to pre-commit hook: cargo deny check --all-targets
+# 3. Update advisories: cargo update && cargo deny check
+# 4. Review copyleft crates before shipping (AGPL-3.0 has implications)
