@@ -11,7 +11,10 @@ import type { ModelInfo } from "../../ipc/types";
 import { ThemeEditor } from "./ThemeEditor";
 import { open } from "@tauri-apps/plugin-dialog";
 import { readFile } from "../../ipc/invoke";
-import { MigrationDialog } from "../journal/MigrationDialog";
+import {
+  MigrationDialog,
+  type MigrationDirection,
+} from "../journal/MigrationDialog";
 import { initJournalTemplatesDir } from "../../utils/journal-templates";
 import { BUILT_IN_THEMES } from "../../types/theme";
 import type { ThemeDef } from "../../types/theme";
@@ -430,6 +433,8 @@ export function SettingsModal() {
 function GeneralTab() {
   const { t } = useTranslation();
   const [migrationOpen, setMigrationOpen] = useState(false);
+  const [migrationDirection, setMigrationDirection] =
+    useState<MigrationDirection>("toHierarchy");
   const [templatesInitMsg, setTemplatesInitMsg] = useState<string | null>(null);
   const {
     onLaunch,
@@ -727,14 +732,29 @@ function GeneralTab() {
 
           {journalDirectory && (
             <SettingsRow
-              label={t("settings.general.journalMigrate")}
-              description={t("settings.general.journalMigrate.desc")}
+              label={
+                journalUseHierarchy
+                  ? t("settings.general.journalMigrate")
+                  : t("settings.general.journalFlatten")
+              }
+              description={
+                journalUseHierarchy
+                  ? t("settings.general.journalMigrate.desc")
+                  : t("settings.general.journalFlatten.desc")
+              }
             >
               <button
                 className="settings-key-toggle"
-                onClick={() => setMigrationOpen(true)}
+                onClick={() => {
+                  setMigrationDirection(
+                    journalUseHierarchy ? "toHierarchy" : "toFlat",
+                  );
+                  setMigrationOpen(true);
+                }}
               >
-                {t("settings.general.journalMigrate.button")}
+                {journalUseHierarchy
+                  ? t("settings.general.journalMigrate.button")
+                  : t("settings.general.journalFlatten.button")}
               </button>
             </SettingsRow>
           )}
@@ -845,28 +865,19 @@ function GeneralTab() {
             </div>
           </SettingsRow>
 
-          <SettingsSectionHeader title={t("settings.general.journalAI")} />
-
-          <SettingsRow
-            label={t("settings.general.journalAIAutoSuggest")}
-            description={t("settings.general.journalAIAutoSuggest.desc")}
-          >
-            <ToggleSwitch
-              checked={useSettingsStore.getState().journalAIAutoSuggest}
-              onChange={(v) =>
-                useSettingsStore.getState().setJournalAIAutoSuggest(v)
-              }
-            />
-          </SettingsRow>
-
           {journalDirectory && (
             <SettingsRow
               label={t("settings.general.createTemplateFiles")}
-              description={t(
-                "settings.general.createTemplateFiles.desc",
-              ).replace("{dir}", journalDirectory)}
+              description={t("settings.general.createTemplateFiles.desc")}
             >
-              <div className="settings-key-row">
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "flex-end",
+                  gap: 4,
+                }}
+              >
                 <button
                   className="settings-key-toggle"
                   onClick={async () => {
@@ -886,16 +897,27 @@ function GeneralTab() {
                   {t("settings.general.createTemplateFiles.button")}
                 </button>
                 {templatesInitMsg && (
-                  <span
-                    className="settings-row-description"
-                    style={{ marginLeft: 8 }}
-                  >
+                  <span className="settings-row-description">
                     {templatesInitMsg}
                   </span>
                 )}
               </div>
             </SettingsRow>
           )}
+
+          <SettingsSectionHeader title={t("settings.general.journalAI")} />
+
+          <SettingsRow
+            label={t("settings.general.journalAIAutoSuggest")}
+            description={t("settings.general.journalAIAutoSuggest.desc")}
+          >
+            <ToggleSwitch
+              checked={useSettingsStore.getState().journalAIAutoSuggest}
+              onChange={(v) =>
+                useSettingsStore.getState().setJournalAIAutoSuggest(v)
+              }
+            />
+          </SettingsRow>
         </>
       )}
 
@@ -903,6 +925,7 @@ function GeneralTab() {
         open={migrationOpen}
         onClose={() => setMigrationOpen(false)}
         journalDir={journalDirectory}
+        direction={migrationDirection}
       />
     </div>
   );

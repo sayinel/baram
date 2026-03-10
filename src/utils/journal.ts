@@ -259,6 +259,54 @@ export function buildMigrationPlan(
   return plan;
 }
 
+/**
+ * Convert a hierarchical journal path (root/daily/YYYY/MM/YYYY-MM-DD.md) to flat (root/YYYY-MM-DD.md).
+ * Returns null if the file isn't in a daily/ hierarchy or isn't a date-named file.
+ */
+export function hierarchicalToFlatPath(
+  journalDir: string,
+  filePath: string,
+): string | null {
+  const relative = filePath.slice(journalDir.length + 1);
+  // Must be in daily/YYYY/MM/filename.md structure
+  const match = relative.match(/^daily\/\d{4}\/\d{2}\/(.+\.md)$/);
+  if (!match) return null;
+  const filename = match[1];
+  const basename = filename.replace(/\.md$/, "");
+  if (!isDateString(basename)) return null;
+  return `${journalDir}/${filename}`;
+}
+
+/**
+ * Detect hierarchical journal files (daily/YYYY/MM/YYYY-MM-DD.md) for reverse migration.
+ */
+export function detectHierarchicalJournalFiles(
+  journalDir: string,
+  entries: MigrationEntry[],
+): MigrationEntry[] {
+  return entries.filter((e) => {
+    if (e.isDir) return false;
+    return hierarchicalToFlatPath(journalDir, e.path) !== null;
+  });
+}
+
+/**
+ * Build a reverse migration plan: hierarchy → flat.
+ */
+export function buildFlattenPlan(
+  journalDir: string,
+  hierarchicalFiles: MigrationEntry[],
+): { from: string; to: string }[] {
+  const plan: { from: string; to: string }[] = [];
+  for (const file of hierarchicalFiles) {
+    const to = hierarchicalToFlatPath(journalDir, file.path);
+    if (to) {
+      plan.push({ from: file.path, to });
+    }
+  }
+  return plan;
+}
+
 // --- §56a Periodic Note Paths (weekly / monthly / yearly) ---
 
 /** Get ISO 8601 week number (Monday-based) */
