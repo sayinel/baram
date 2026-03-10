@@ -31,8 +31,7 @@ pub async fn list_models(api_key: &str, base_url: &str) -> Result<Vec<ModelInfo>
     let auth_value = format!("Bearer {}", api_key);
     headers.insert(
         AUTHORIZATION,
-        HeaderValue::from_str(&auth_value)
-            .map_err(|e| LlmError::RequestFailed(e.to_string()))?,
+        HeaderValue::from_str(&auth_value).map_err(|e| LlmError::RequestFailed(e.to_string()))?,
     );
 
     let url = format!("{}/v1/models", base_url.trim_end_matches('/'));
@@ -65,7 +64,11 @@ pub async fn list_models(api_key: &str, base_url: &str) -> Result<Vec<ModelInfo>
     let mut models: Vec<ModelInfo> = body
         .data
         .into_iter()
-        .filter(|m| CHAT_MODEL_PREFIXES.iter().any(|prefix| m.id.starts_with(prefix)))
+        .filter(|m| {
+            CHAT_MODEL_PREFIXES
+                .iter()
+                .any(|prefix| m.id.starts_with(prefix))
+        })
         .map(|m| ModelInfo {
             name: m.id.clone(),
             id: m.id,
@@ -134,8 +137,7 @@ pub async fn complete_stream(
     let auth_value = format!("Bearer {}", api_key);
     headers.insert(
         AUTHORIZATION,
-        HeaderValue::from_str(&auth_value)
-            .map_err(|e| LlmError::RequestFailed(e.to_string()))?,
+        HeaderValue::from_str(&auth_value).map_err(|e| LlmError::RequestFailed(e.to_string()))?,
     );
 
     let mut messages = Vec::new();
@@ -280,10 +282,7 @@ mod tests {
         let json = r#"{"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}"#;
         let chunk: OpenAISseChunk = serde_json::from_str(json).unwrap();
         assert_eq!(chunk.choices.len(), 1);
-        assert_eq!(
-            chunk.choices[0].finish_reason.as_deref(),
-            Some("stop")
-        );
+        assert_eq!(chunk.choices[0].finish_reason.as_deref(), Some("stop"));
     }
 
     #[test]
@@ -346,9 +345,6 @@ mod tests {
     fn test_openai_sse_chunk_finish_reason_length() {
         let json = r#"{"id":"chatcmpl-abc","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"length"}]}"#;
         let chunk: OpenAISseChunk = serde_json::from_str(json).unwrap();
-        assert_eq!(
-            chunk.choices[0].finish_reason.as_deref(),
-            Some("length")
-        );
+        assert_eq!(chunk.choices[0].finish_reason.as_deref(), Some("length"));
     }
 }

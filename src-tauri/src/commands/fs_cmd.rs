@@ -87,10 +87,8 @@ pub async fn write_binary_file(path: String, data: Vec<u8>) -> Result<(), String
     tokio::fs::write(&tmp_path, &data)
         .await
         .map_err(|e| e.to_string())?;
-    tokio::fs::rename(&tmp_path, &path)
-        .await
-        .map_err(|e| {
-            let _ = std::fs::remove_file(&tmp_path);
-            e.to_string()
-        })
+    tokio::fs::rename(&tmp_path, &path).await.map_err(|e| {
+        let _ = std::fs::remove_file(&tmp_path);
+        e.to_string()
+    })
 }

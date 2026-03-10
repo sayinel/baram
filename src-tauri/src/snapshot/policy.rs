@@ -128,10 +128,7 @@ pub fn enforce_policy(
 
 /// Thin snapshots within a time bucket: keep only the newest per bucket_secs interval.
 /// Returns IDs to delete.
-fn thin_by_bucket(
-    snapshots: &[&(String, u64, String)],
-    bucket_secs: u64,
-) -> Vec<String> {
+fn thin_by_bucket(snapshots: &[&(String, u64, String)], bucket_secs: u64) -> Vec<String> {
     if snapshots.is_empty() {
         return Vec::new();
     }
@@ -293,7 +290,12 @@ mod tests {
         // Add a manual labeled snapshot with very old timestamp
         add_entry(
             &mut index,
-            make_entry("snap-manual", "2020-01-01T00-00-00", "manual", Some("important")),
+            make_entry(
+                "snap-manual",
+                "2020-01-01T00-00-00",
+                "manual",
+                Some("important"),
+            ),
         );
         // Add some auto snapshots
         add_entry(
@@ -329,7 +331,7 @@ mod tests {
         let now = current_timestamp_secs();
         for i in 0..10 {
             let epoch = now - (i * 60); // each 1 minute apart, all within 24h
-            // Convert epoch back to timestamp string for testing
+                                        // Convert epoch back to timestamp string for testing
             let ts = epoch_to_timestamp(epoch);
             add_entry(
                 &mut index,

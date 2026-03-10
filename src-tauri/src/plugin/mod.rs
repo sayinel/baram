@@ -102,10 +102,12 @@ pub struct RegistryIndex {
 
 /// Returns the plugin installation base directory: ~/.baram/plugins/
 pub fn get_plugin_dir() -> Result<PathBuf, PluginError> {
-    let home = dirs_next().ok_or_else(|| PluginError::Io(std::io::Error::new(
-        std::io::ErrorKind::NotFound,
-        "Could not determine home directory",
-    )))?;
+    let home = dirs_next().ok_or_else(|| {
+        PluginError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "Could not determine home directory",
+        ))
+    })?;
     let plugin_dir = home.join(".baram").join("plugins");
     if !plugin_dir.exists() {
         std::fs::create_dir_all(&plugin_dir)?;
@@ -129,7 +131,10 @@ fn dirs_next() -> Option<PathBuf> {
 }
 
 /// Download a plugin ZIP from URL, verify checksum, extract to plugin dir.
-pub async fn install_plugin(url: &str, expected_checksum: Option<&str>) -> Result<InstalledPluginInfo, PluginError> {
+pub async fn install_plugin(
+    url: &str,
+    expected_checksum: Option<&str>,
+) -> Result<InstalledPluginInfo, PluginError> {
     // 1. Download ZIP to temp file
     let response = reqwest::get(url).await?;
     let bytes = response.bytes().await?;
@@ -309,28 +314,42 @@ fn validate_manifest(manifest: &PluginManifest) -> Result<(), PluginError> {
         return Err(PluginError::InvalidManifest("name is required".to_string()));
     }
     if manifest.version.is_empty() {
-        return Err(PluginError::InvalidManifest("version is required".to_string()));
+        return Err(PluginError::InvalidManifest(
+            "version is required".to_string(),
+        ));
     }
     if manifest.main.is_empty() {
         return Err(PluginError::InvalidManifest("main is required".to_string()));
     }
     // Validate ID format: lowercase alphanumeric + hyphens
-    if !manifest.id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
+    if !manifest
+        .id
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    {
         return Err(PluginError::InvalidManifest(
             "id must contain only lowercase letters, digits, and hyphens".to_string(),
         ));
     }
     // Validate capabilities
     let valid_caps = [
-        "editor", "editor:readonly", "files", "files:readonly",
-        "commands", "sidebar", "statusbar", "settings",
-        "events", "ai", "network",
+        "editor",
+        "editor:readonly",
+        "files",
+        "files:readonly",
+        "commands",
+        "sidebar",
+        "statusbar",
+        "settings",
+        "events",
+        "ai",
+        "network",
     ];
     for cap in &manifest.capabilities {
         if !valid_caps.contains(&cap.as_str()) {
-            return Err(PluginError::InvalidManifest(
-                format!("unknown capability: {cap}"),
-            ));
+            return Err(PluginError::InvalidManifest(format!(
+                "unknown capability: {cap}"
+            )));
         }
     }
     Ok(())
@@ -350,7 +369,9 @@ mod tests {
             author: "Test".to_string(),
             license: "MIT".to_string(),
             main: "index.mjs".to_string(),
-            engines: EngineRequirement { baram: ">=0.2.0".to_string() },
+            engines: EngineRequirement {
+                baram: ">=0.2.0".to_string(),
+            },
             capabilities: vec!["editor:readonly".to_string(), "statusbar".to_string()],
             dependencies: vec![],
             tiptap_extensions: vec![],
@@ -372,7 +393,9 @@ mod tests {
             author: "".to_string(),
             license: "MIT".to_string(),
             main: "index.mjs".to_string(),
-            engines: EngineRequirement { baram: ">=0.2.0".to_string() },
+            engines: EngineRequirement {
+                baram: ">=0.2.0".to_string(),
+            },
             capabilities: vec![],
             dependencies: vec![],
             tiptap_extensions: vec![],
@@ -394,7 +417,9 @@ mod tests {
             author: "".to_string(),
             license: "MIT".to_string(),
             main: "index.mjs".to_string(),
-            engines: EngineRequirement { baram: ">=0.2.0".to_string() },
+            engines: EngineRequirement {
+                baram: ">=0.2.0".to_string(),
+            },
             capabilities: vec!["dangerous-capability".to_string()],
             dependencies: vec![],
             tiptap_extensions: vec![],
@@ -416,7 +441,9 @@ mod tests {
             author: "".to_string(),
             license: "MIT".to_string(),
             main: "index.mjs".to_string(),
-            engines: EngineRequirement { baram: ">=0.2.0".to_string() },
+            engines: EngineRequirement {
+                baram: ">=0.2.0".to_string(),
+            },
             capabilities: vec![],
             dependencies: vec![],
             tiptap_extensions: vec![],
@@ -431,6 +458,9 @@ mod tests {
     #[test]
     fn test_hex_sha256() {
         let hash = hex_sha256(b"hello");
-        assert_eq!(hash, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
+        assert_eq!(
+            hash,
+            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        );
     }
 }

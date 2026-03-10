@@ -169,10 +169,7 @@ pub fn run_pandoc(
 /// - `${basename}` — file name without extension
 /// - `${output_dir}` — directory of the output path
 /// - `${vault_dir}` — workspace root directory
-pub fn run_custom_export(
-    command: &str,
-    vars: &HashMap<String, String>,
-) -> Result<(), ExportError> {
+pub fn run_custom_export(command: &str, vars: &HashMap<String, String>) -> Result<(), ExportError> {
     let mut expanded = command.to_string();
     for (key, value) in vars {
         expanded = expanded.replace(&format!("${{{}}}", key), value);
@@ -231,7 +228,10 @@ mod tests {
         }"#;
         let opts: PandocExportOptions = serde_json::from_str(json).unwrap();
         assert_eq!(opts.format, "docx");
-        assert_eq!(opts.reference_doc.as_deref(), Some("/path/to/template.docx"));
+        assert_eq!(
+            opts.reference_doc.as_deref(),
+            Some("/path/to/template.docx")
+        );
         assert_eq!(opts.extra_args, vec!["--standalone", "--toc"]);
     }
 

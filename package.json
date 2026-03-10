@@ -107,7 +107,7 @@
       "eslint --max-warnings=0"
     ],
     "src-tauri/src/**/*.rs": [
-      "bash -c 'cd src-tauri && cargo clippy -- -D warnings'"
+      "bash -c 'cd src-tauri && cargo fmt --check && cargo clippy -- -D warnings'"
     ]
   }
 }

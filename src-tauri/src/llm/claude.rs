@@ -31,10 +31,7 @@ pub async fn list_models(api_key: &str) -> Result<Vec<ModelInfo>, LlmError> {
         "x-api-key",
         HeaderValue::from_str(api_key).map_err(|e| LlmError::RequestFailed(e.to_string()))?,
     );
-    headers.insert(
-        "anthropic-version",
-        HeaderValue::from_static("2023-06-01"),
-    );
+    headers.insert("anthropic-version", HeaderValue::from_static("2023-06-01"));
 
     let client = reqwest::Client::new();
     let response = client
@@ -129,10 +126,7 @@ pub async fn complete_stream(
         "x-api-key",
         HeaderValue::from_str(api_key).map_err(|e| LlmError::RequestFailed(e.to_string()))?,
     );
-    headers.insert(
-        "anthropic-version",
-        HeaderValue::from_static("2023-06-01"),
-    );
+    headers.insert("anthropic-version", HeaderValue::from_static("2023-06-01"));
 
     let body = ClaudeRequest {
         model: model.to_string(),
@@ -292,7 +286,8 @@ mod tests {
 
     #[test]
     fn test_sse_event_parse_content_block_start() {
-        let json = r#"{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#;
+        let json =
+            r#"{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#;
         let event: SseEvent = serde_json::from_str(json).unwrap();
         assert_eq!(event.event_type, "content_block_start");
         assert!(event.delta.is_none());

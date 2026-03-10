@@ -22,10 +22,7 @@ async fn collect_md_files(root: &PathBuf, files: &mut Vec<PathBuf>) -> std::io::
             None => break,
         };
         let path = entry.path();
-        let file_name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("");
+        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
         // Skip hidden dirs and node_modules
         if file_name.starts_with('.') || file_name == "node_modules" {
@@ -42,9 +39,7 @@ async fn collect_md_files(root: &PathBuf, files: &mut Vec<PathBuf>) -> std::io::
             if files.len() < 500 {
                 let _ = Box::pin(collect_md_files(&path, files)).await;
             }
-        } else if metadata.is_file()
-            && path.extension().and_then(|e| e.to_str()) == Some("md")
-        {
+        } else if metadata.is_file() && path.extension().and_then(|e| e.to_str()) == Some("md") {
             files.push(path);
         }
     }
@@ -122,8 +117,14 @@ fn extract_frontmatter_tags(frontmatter: &str) -> Vec<String> {
             i += 1;
             while i < lines.len() {
                 if let Some(cap) = re_block_item.captures(lines[i]) {
-                    let t = cap.get(1).map(|m| m.as_str()).unwrap_or("").trim()
-                        .trim_matches('"').trim_matches('\'').to_string();
+                    let t = cap
+                        .get(1)
+                        .map(|m| m.as_str())
+                        .unwrap_or("")
+                        .trim()
+                        .trim_matches('"')
+                        .trim_matches('\'')
+                        .to_string();
                     if !t.is_empty() {
                         tags.push(t);
                     }
@@ -145,10 +146,8 @@ fn extract_frontmatter_tags(frontmatter: &str) -> Vec<String> {
 fn extract_inline_tags(body: &str) -> Vec<String> {
     // Match #tag, #parent/child, #한국어태그
     // Require that # is preceded by whitespace or start-of-line (not inside a word)
-    let re = Regex::new(
-        r"(?:^|[\s\(])#([\w\p{Script=Hangul}]+(?:/[\w\p{Script=Hangul}]+)*)"
-    )
-    .unwrap();
+    let re =
+        Regex::new(r"(?:^|[\s\(])#([\w\p{Script=Hangul}]+(?:/[\w\p{Script=Hangul}]+)*)").unwrap();
     re.captures_iter(body)
         .filter_map(|cap| cap.get(1).map(|m| m.as_str().to_string()))
         .collect()
@@ -318,11 +317,8 @@ pub async fn rename_tag(
     .map_err(|e| e.to_string())?;
 
     // Frontmatter block list item: `  - old_tag` (whole line)
-    let fm_block_re = Regex::new(&format!(
-        r"(?m)^([ \t]+-[ \t]+)({})$",
-        escaped_old
-    ))
-    .map_err(|e| e.to_string())?;
+    let fm_block_re = Regex::new(&format!(r"(?m)^([ \t]+-[ \t]+)({})$", escaped_old))
+        .map_err(|e| e.to_string())?;
 
     let mut files_modified = 0usize;
     let mut occurrences_replaced = 0usize;
@@ -358,7 +354,11 @@ pub async fn rename_tag(
 
         if new_content != content {
             if let Err(e) = tokio::fs::write(file_path, &new_content).await {
-                eprintln!("[rename_tag] Failed to write {}: {}", file_path.display(), e);
+                eprintln!(
+                    "[rename_tag] Failed to write {}: {}",
+                    file_path.display(),
+                    e
+                );
                 continue;
             }
             files_modified += 1;

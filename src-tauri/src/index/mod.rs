@@ -92,9 +92,8 @@ static WIKILINK_RE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 // §30c Block reference regex: ((target#^blockId)) or ((target#^blockId|display)) or ((#^blockId))
-static BLOCK_REF_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\(\(([^)#|]*?)#\^([a-zA-Z0-9][\w-]*)(?:\|[^)]+)?\)\)").unwrap()
-});
+static BLOCK_REF_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\(\(([^)#|]*?)#\^([a-zA-Z0-9][\w-]*)(?:\|[^)]+)?\)\)").unwrap());
 
 // §30c Block embed regex: {{embed ((target#^blockId))}}
 static BLOCK_EMBED_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -107,19 +106,15 @@ static TAG_RE: LazyLock<Regex> = LazyLock::new(|| {
 });
 
 // Frontmatter tags: tags: [tag1, tag2]
-static FM_TAGS_INLINE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)^tags\s*:\s*\[([^\]]*)\]").unwrap()
-});
+static FM_TAGS_INLINE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^tags\s*:\s*\[([^\]]*)\]").unwrap());
 
 // Frontmatter tags block header: tags:
-static FM_TAGS_BLOCK_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)^tags\s*:\s*$").unwrap()
-});
+static FM_TAGS_BLOCK_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^tags\s*:\s*$").unwrap());
 
 // Frontmatter tags block item:   - tag
-static FM_TAGS_ITEM_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^\s+-\s+(.+)$").unwrap()
-});
+static FM_TAGS_ITEM_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s+-\s+(.+)$").unwrap());
 
 impl LinkIndex {
     pub fn new() -> Self {
@@ -326,10 +321,8 @@ impl LinkIndex {
         self.incoming
             .get(&normalized)
             .map(|entries| {
-                let mut paths: Vec<String> = entries
-                    .iter()
-                    .map(|e| e.source_path.clone())
-                    .collect();
+                let mut paths: Vec<String> =
+                    entries.iter().map(|e| e.source_path.clone()).collect();
                 paths.sort();
                 paths.dedup();
                 paths
@@ -445,8 +438,14 @@ fn extract_file_tags(content: &str) -> Vec<String> {
                 i += 1;
                 while i < fm_lines.len() {
                     if let Some(cap) = FM_TAGS_ITEM_RE.captures(fm_lines[i]) {
-                        let t = cap.get(1).map(|m| m.as_str()).unwrap_or("").trim()
-                            .trim_matches('"').trim_matches('\'').to_string();
+                        let t = cap
+                            .get(1)
+                            .map(|m| m.as_str())
+                            .unwrap_or("")
+                            .trim()
+                            .trim_matches('"')
+                            .trim_matches('\'')
+                            .to_string();
                         if !t.is_empty() {
                             tags.insert(t);
                         }
@@ -575,7 +574,10 @@ pub fn replace_wikilink_target(content: &str, old_target: &str, new_target: &str
             let rest = caps.get(2).map(|m| m.as_str()).unwrap_or("");
 
             // Case-insensitive comparison for target matching
-            if captured_target.trim().eq_ignore_ascii_case(old_target.trim()) {
+            if captured_target
+                .trim()
+                .eq_ignore_ascii_case(old_target.trim())
+            {
                 format!("[[{}{rest}]]", new_target)
             } else {
                 // No match — return original
@@ -675,7 +677,8 @@ pub async fn find_unlinked_mentions(
     // Build a word-boundary regex for the stem (case-insensitive)
     let escaped = regex::escape(&stem);
     let pattern = format!(r"(?i)\b{}\b", escaped);
-    let stem_re = Regex::new(&pattern).map_err(|e| IndexError::IoError(std::io::Error::other(e.to_string())))?;
+    let stem_re = Regex::new(&pattern)
+        .map_err(|e| IndexError::IoError(std::io::Error::other(e.to_string())))?;
 
     for md_path in &md_files {
         // Skip the current file itself
@@ -721,9 +724,9 @@ pub async fn find_unlinked_mentions(
 /// Replace [[...]] wikilink blocks with spaces of the same byte length.
 /// This allows searching for unlinked mentions without matching linked ones.
 fn strip_wikilinks(line: &str) -> String {
-    WIKILINK_RE.replace_all(line, |caps: &regex::Captures| {
-        " ".repeat(caps[0].len())
-    }).to_string()
+    WIKILINK_RE
+        .replace_all(line, |caps: &regex::Captures| " ".repeat(caps[0].len()))
+        .to_string()
 }
 
 /// §61 Resolve a relative path against a base directory to an absolute path (no .md extension)
@@ -735,7 +738,9 @@ fn resolve_relative_path(base_dir: &str, relative: &str) -> String {
     for part in &parts {
         match *part {
             "." | "" => continue,
-            ".." => { resolved.pop(); },
+            ".." => {
+                resolved.pop();
+            }
             _ => resolved.push(part),
         }
     }
@@ -754,7 +759,9 @@ fn make_relative_path(source_dir: &str, target_path: &str) -> String {
     let tgt_parts: Vec<&str> = target_path.split('/').filter(|s| !s.is_empty()).collect();
 
     // Find common prefix length
-    let common = src_parts.iter().zip(tgt_parts.iter())
+    let common = src_parts
+        .iter()
+        .zip(tgt_parts.iter())
         .take_while(|(a, b)| a == b)
         .count();
 
@@ -829,10 +836,7 @@ pub(crate) async fn collect_md_files(root: &str) -> Result<Vec<String>, IndexErr
     Ok(files)
 }
 
-async fn collect_md_files_inner(
-    dir: &Path,
-    files: &mut Vec<String>,
-) -> Result<(), IndexError> {
+async fn collect_md_files_inner(dir: &Path, files: &mut Vec<String>) -> Result<(), IndexError> {
     let mut read_dir = tokio::fs::read_dir(dir).await?;
     while let Some(entry) = read_dir.next_entry().await? {
         let metadata = entry.metadata().await?;
@@ -915,7 +919,10 @@ mod tests {
     #[test]
     fn test_extract_block_refs() {
         let entries = extract_links("/test.md", "See ((notes#^abc123)) for context.");
-        let block_refs: Vec<_> = entries.iter().filter(|e| e.link_type == "blockRef").collect();
+        let block_refs: Vec<_> = entries
+            .iter()
+            .filter(|e| e.link_type == "blockRef")
+            .collect();
         assert_eq!(block_refs.len(), 1);
         assert_eq!(block_refs[0].target, "notes");
         assert_eq!(block_refs[0].block_id, Some("abc123".to_string()));
@@ -924,12 +931,18 @@ mod tests {
     #[test]
     fn test_extract_block_embeds() {
         let entries = extract_links("/test.md", "{{embed ((notes#^def456))}}");
-        let embeds: Vec<_> = entries.iter().filter(|e| e.link_type == "blockEmbed").collect();
+        let embeds: Vec<_> = entries
+            .iter()
+            .filter(|e| e.link_type == "blockEmbed")
+            .collect();
         assert_eq!(embeds.len(), 1);
         assert_eq!(embeds[0].target, "notes");
         assert_eq!(embeds[0].block_id, Some("def456".to_string()));
         // Embed should NOT also produce a blockRef
-        let refs: Vec<_> = entries.iter().filter(|e| e.link_type == "blockRef").collect();
+        let refs: Vec<_> = entries
+            .iter()
+            .filter(|e| e.link_type == "blockRef")
+            .collect();
         assert_eq!(refs.len(), 0);
     }
 
@@ -937,7 +950,10 @@ mod tests {
     fn test_self_block_ref() {
         // ((#^id)) with empty target → self-reference to current file stem
         let entries = extract_links("/vault/notes.md", "See ((#^myid)) here.");
-        let block_refs: Vec<_> = entries.iter().filter(|e| e.link_type == "blockRef").collect();
+        let block_refs: Vec<_> = entries
+            .iter()
+            .filter(|e| e.link_type == "blockRef")
+            .collect();
         assert_eq!(block_refs.len(), 1);
         assert_eq!(block_refs[0].target, "notes");
         assert_eq!(block_refs[0].block_id, Some("myid".to_string()));
@@ -947,9 +963,18 @@ mod tests {
     fn test_mixed_links() {
         let content = "Link: [[foo]], ref: ((bar#^id1)), embed: {{embed ((baz#^id2))}}";
         let entries = extract_links("/test.md", content);
-        let wikilinks: Vec<_> = entries.iter().filter(|e| e.link_type == "wikilink").collect();
-        let refs: Vec<_> = entries.iter().filter(|e| e.link_type == "blockRef").collect();
-        let embeds: Vec<_> = entries.iter().filter(|e| e.link_type == "blockEmbed").collect();
+        let wikilinks: Vec<_> = entries
+            .iter()
+            .filter(|e| e.link_type == "wikilink")
+            .collect();
+        let refs: Vec<_> = entries
+            .iter()
+            .filter(|e| e.link_type == "blockRef")
+            .collect();
+        let embeds: Vec<_> = entries
+            .iter()
+            .filter(|e| e.link_type == "blockEmbed")
+            .collect();
         assert_eq!(wikilinks.len(), 1);
         assert_eq!(wikilinks[0].target, "foo");
         assert_eq!(refs.len(), 1);
@@ -961,7 +986,10 @@ mod tests {
     #[test]
     fn test_block_ref_with_display() {
         let entries = extract_links("/test.md", "See ((notes#^abc|my label)) here.");
-        let block_refs: Vec<_> = entries.iter().filter(|e| e.link_type == "blockRef").collect();
+        let block_refs: Vec<_> = entries
+            .iter()
+            .filter(|e| e.link_type == "blockRef")
+            .collect();
         assert_eq!(block_refs.len(), 1);
         assert_eq!(block_refs[0].target, "notes");
         assert_eq!(block_refs[0].block_id, Some("abc".to_string()));
@@ -1278,8 +1306,11 @@ mod tests {
 
         // The edge should point to the actual file in notes/, not ghost at /vault/architecture.md
         assert!(
-            graph.edges.iter().any(|e| e.from == "/vault/daily/2024-01-15.md"
-                && e.to == "/vault/notes/architecture.md"),
+            graph
+                .edges
+                .iter()
+                .any(|e| e.from == "/vault/daily/2024-01-15.md"
+                    && e.to == "/vault/notes/architecture.md"),
             "Edge should resolve to actual file path: {:?}",
             graph.edges
         );
@@ -1302,22 +1333,27 @@ mod tests {
         index.register_file_path("/vault/notes/sub/design.md", "/vault");
 
         // daily → project-x → design chain
-        index.update_file_from_content(
-            "/vault/daily/2024-01-15.md",
-            "Started [[project-x]] today.",
-        );
-        index.update_file_from_content(
-            "/vault/notes/project-x.md",
-            "See [[design]] for details.",
-        );
+        index
+            .update_file_from_content("/vault/daily/2024-01-15.md", "Started [[project-x]] today.");
+        index.update_file_from_content("/vault/notes/project-x.md", "See [[design]] for details.");
 
         let graph = index.get_link_graph();
 
         // Both edges should resolve to actual files
-        assert!(graph.edges.iter().any(|e| e.from == "/vault/daily/2024-01-15.md"
-            && e.to == "/vault/notes/project-x.md"));
-        assert!(graph.edges.iter().any(|e| e.from == "/vault/notes/project-x.md"
-            && e.to == "/vault/notes/sub/design.md"));
+        assert!(
+            graph
+                .edges
+                .iter()
+                .any(|e| e.from == "/vault/daily/2024-01-15.md"
+                    && e.to == "/vault/notes/project-x.md")
+        );
+        assert!(
+            graph
+                .edges
+                .iter()
+                .any(|e| e.from == "/vault/notes/project-x.md"
+                    && e.to == "/vault/notes/sub/design.md")
+        );
     }
 
     #[test]

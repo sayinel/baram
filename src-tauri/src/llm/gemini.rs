@@ -69,7 +69,11 @@ pub async fn list_models(api_key: &str) -> Result<Vec<ModelInfo>, LlmError> {
         })
         .map(|m| {
             // name is "models/gemini-2.0-flash" → strip "models/" prefix for ID
-            let id = m.name.strip_prefix("models/").unwrap_or(&m.name).to_string();
+            let id = m
+                .name
+                .strip_prefix("models/")
+                .unwrap_or(&m.name)
+                .to_string();
             ModelInfo {
                 name: m.display_name.unwrap_or_else(|| id.clone()),
                 id,
@@ -274,7 +278,8 @@ mod tests {
 
     #[test]
     fn test_gemini_sse_chunk_parse_token() {
-        let json = r#"{"candidates":[{"content":{"parts":[{"text":"Hello"}]},"finishReason":null}]}"#;
+        let json =
+            r#"{"candidates":[{"content":{"parts":[{"text":"Hello"}]},"finishReason":null}]}"#;
         let chunk: GeminiSseChunk = serde_json::from_str(json).unwrap();
         assert_eq!(chunk.candidates.len(), 1);
         let content = chunk.candidates[0].content.as_ref().unwrap();
@@ -285,10 +290,7 @@ mod tests {
     fn test_gemini_sse_chunk_parse_finish() {
         let json = r#"{"candidates":[{"content":{"parts":[{"text":""}]},"finishReason":"STOP"}]}"#;
         let chunk: GeminiSseChunk = serde_json::from_str(json).unwrap();
-        assert_eq!(
-            chunk.candidates[0].finish_reason.as_deref(),
-            Some("STOP")
-        );
+        assert_eq!(chunk.candidates[0].finish_reason.as_deref(), Some("STOP"));
     }
 
     #[test]
@@ -352,7 +354,10 @@ mod tests {
         let resp: GeminiModelsResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.models.len(), 2);
         assert_eq!(resp.models[0].name, "models/gemini-2.0-flash");
-        assert_eq!(resp.models[0].display_name.as_deref(), Some("Gemini 2.0 Flash"));
+        assert_eq!(
+            resp.models[0].display_name.as_deref(),
+            Some("Gemini 2.0 Flash")
+        );
         assert!(resp.models[0]
             .supported_generation_methods
             .contains(&"generateContent".to_string()));
@@ -386,8 +391,7 @@ mod tests {
 
     #[test]
     fn test_gemini_sse_chunk_finish_max_tokens() {
-        let json =
-            r#"{"candidates":[{"content":{"parts":[{"text":"..."}]},"finishReason":"MAX_TOKENS"}]}"#;
+        let json = r#"{"candidates":[{"content":{"parts":[{"text":"..."}]},"finishReason":"MAX_TOKENS"}]}"#;
         let chunk: GeminiSseChunk = serde_json::from_str(json).unwrap();
         assert_eq!(
             chunk.candidates[0].finish_reason.as_deref(),

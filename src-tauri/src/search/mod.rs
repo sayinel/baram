@@ -261,7 +261,7 @@ pub async fn search_files(
 
                 results.push(SearchResult {
                     file_path: file_path.clone(),
-                    line: line_idx + 1, // 1-based
+                    line: line_idx + 1,      // 1-based
                     column: mat.start() + 1, // 1-based
                     snippet: build_snippet(line_text, mat.start(), mat.end()),
                 });

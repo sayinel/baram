@@ -1,8 +1,8 @@
 // §71 스냅샷 텍스트 diff — similar crate 기반 라인 레벨 Myers diff
 
 use super::index::{find_entry, load_index};
-use crate::snapshot::io::snapshot_data_dir;
 use super::{DiffChange, DiffHunk, DiffResult, DiffStats, SnapshotError};
+use crate::snapshot::io::snapshot_data_dir;
 use similar::{ChangeTag, TextDiff};
 use std::path::Path;
 
@@ -306,7 +306,11 @@ mod tests {
         let result = compute_diff(&old, &new);
         // Changes at line 5 and 15 are far enough apart (10 lines gap > 2*CONTEXT_LINES)
         // to be in separate hunks
-        assert!(result.hunks.len() >= 2, "Expected at least 2 hunks, got {}", result.hunks.len());
+        assert!(
+            result.hunks.len() >= 2,
+            "Expected at least 2 hunks, got {}",
+            result.hunks.len()
+        );
     }
 
     #[test]

@@ -7,14 +7,17 @@ mod fs;
 mod git;
 mod index;
 mod llm;
+mod plugin;
 mod search;
 mod snapshot;
-mod plugin;
 
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use commands::{config_cmd, export_cmd, fs_cmd, git_cmd, index_cmd, keyring_cmd, llm_cmd, plugin_cmd, search_cmd, snapshot_cmd, tag_cmd};
+use commands::{
+    config_cmd, export_cmd, fs_cmd, git_cmd, index_cmd, keyring_cmd, llm_cmd, plugin_cmd,
+    search_cmd, snapshot_cmd, tag_cmd,
+};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 
@@ -164,9 +167,7 @@ pub fn run() {
             let view_calendar = MenuItemBuilder::new("Calendar")
                 .id("view_calendar")
                 .build(app)?;
-            let view_tags = MenuItemBuilder::new("Tags")
-                .id("view_tags")
-                .build(app)?;
+            let view_tags = MenuItemBuilder::new("Tags").id("view_tags").build(app)?;
             let view_version_history = MenuItemBuilder::new("Version History")
                 .id("view_version_history")
                 .build(app)?;
@@ -241,9 +242,7 @@ pub fn run() {
                 .id("insert_inline_code")
                 .accelerator("CmdOrCtrl+E")
                 .build(app)?;
-            let insert_link = MenuItemBuilder::new("Link")
-                .id("insert_link")
-                .build(app)?;
+            let insert_link = MenuItemBuilder::new("Link").id("insert_link").build(app)?;
             let insert_image = MenuItemBuilder::new("Image")
                 .id("insert_image")
                 .build(app)?;
@@ -427,9 +426,7 @@ pub fn run() {
             let help_shortcuts = MenuItemBuilder::new("Keyboard Shortcuts")
                 .id("help_shortcuts")
                 .build(app)?;
-            let help_faq = MenuItemBuilder::new("FAQ")
-                .id("help_faq")
-                .build(app)?;
+            let help_faq = MenuItemBuilder::new("FAQ").id("help_faq").build(app)?;
             let help_report = MenuItemBuilder::new("Report Issue...")
                 .id("help_report")
                 .build(app)?;
@@ -572,7 +569,11 @@ pub fn run() {
             menu_predef.insert("win_maximize".into(), win_maximize);
             menu_predef.insert("win_close".into(), win_close);
 
-            app.manage(MenuState { items: menu_items, submenus: menu_subs, predefined: menu_predef });
+            app.manage(MenuState {
+                items: menu_items,
+                submenus: menu_subs,
+                predefined: menu_predef,
+            });
 
             app.on_menu_event(move |app_handle, event| {
                 let _ = app_handle.emit("menu-event", event.id().as_ref());

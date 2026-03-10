@@ -55,13 +55,10 @@ pub async fn restore_snapshot(
 }
 
 #[tauri::command]
-pub async fn delete_snapshot(
-    vault_path: String,
-    snapshot_id: String,
-) -> Result<(), String> {
+pub async fn delete_snapshot(vault_path: String, snapshot_id: String) -> Result<(), String> {
     tokio::task::spawn_blocking(move || -> Result<(), String> {
-        let mut index = crate::snapshot::index::load_index(&vault_path)
-            .map_err(|e| e.to_string())?;
+        let mut index =
+            crate::snapshot::index::load_index(&vault_path).map_err(|e| e.to_string())?;
 
         let entry = crate::snapshot::index::remove_entry(&mut index, &snapshot_id)
             .ok_or_else(|| format!("Snapshot not found: {}", snapshot_id))?;
@@ -69,8 +66,7 @@ pub async fn delete_snapshot(
         crate::snapshot::io::delete_snapshot_data(&vault_path, &snapshot_id, &entry.timestamp)
             .map_err(|e| e.to_string())?;
 
-        crate::snapshot::index::save_index(&vault_path, &index)
-            .map_err(|e| e.to_string())?;
+        crate::snapshot::index::save_index(&vault_path, &index).map_err(|e| e.to_string())?;
 
         Ok(())
     })
@@ -84,8 +80,7 @@ pub async fn get_file_history(
     file_path: String,
 ) -> Result<Vec<crate::snapshot::SnapshotEntry>, String> {
     tokio::task::spawn_blocking(move || {
-        let index = crate::snapshot::index::load_index(&vault_path)
-            .map_err(|e| e.to_string())?;
+        let index = crate::snapshot::index::load_index(&vault_path).map_err(|e| e.to_string())?;
 
         let history: Vec<crate::snapshot::SnapshotEntry> =
             crate::snapshot::index::find_file_history(&index, &file_path)

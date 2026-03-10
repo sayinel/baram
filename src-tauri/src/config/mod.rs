@@ -68,7 +68,11 @@ pub fn get_config(app_handle: &tauri::AppHandle, key: &str) -> Result<Option<Str
 }
 
 /// Set a config value (read-modify-write under mutex).
-pub fn set_config(app_handle: &tauri::AppHandle, key: &str, value: &str) -> Result<(), ConfigError> {
+pub fn set_config(
+    app_handle: &tauri::AppHandle,
+    key: &str,
+    value: &str,
+) -> Result<(), ConfigError> {
     let _guard = CONFIG_MUTEX.lock().map_err(|_| ConfigError::LockError)?;
     let path = config_path(app_handle)?;
     let mut map = read_config_map(&path)?;

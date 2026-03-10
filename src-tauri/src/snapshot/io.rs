@@ -403,8 +403,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let vault = setup_vault(&tmp);
 
-        let snap_id =
-            create_snapshot(&vault, "manual", Some("v1.0 release".to_string())).unwrap();
+        let snap_id = create_snapshot(&vault, "manual", Some("v1.0 release".to_string())).unwrap();
 
         let index = load_index(&vault).unwrap();
         let entry = find_entry(&index, &snap_id).unwrap();
@@ -488,11 +487,7 @@ mod tests {
         std::fs::create_dir_all(tmp.path().join(".hidden")).unwrap();
         std::fs::write(tmp.path().join(".hidden").join("secret.md"), "secret").unwrap();
         std::fs::create_dir_all(tmp.path().join("node_modules")).unwrap();
-        std::fs::write(
-            tmp.path().join("node_modules").join("pkg.md"),
-            "package",
-        )
-        .unwrap();
+        std::fs::write(tmp.path().join("node_modules").join("pkg.md"), "package").unwrap();
 
         let files = scan_md_files(&vault).unwrap();
         assert_eq!(files.len(), 3); // Only original 3 files

@@ -1,7 +1,7 @@
 // §3.6 파일 시스템 모듈 — 읽기/쓰기/디렉토리 목록/이름변경/삭제/감시
 
 use crate::commands::fs_cmd::FileEntry;
-use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher, event::ModifyKind};
+use notify::{event::ModifyKind, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::Path;
 use std::sync::mpsc;
 use tauri::Emitter;
@@ -19,15 +19,13 @@ pub enum FsError {
 
 /// UTF-8 파일 읽기
 pub async fn read_file(path: &str) -> Result<String, FsError> {
-    tokio::fs::read_to_string(path)
-        .await
-        .map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                FsError::NotFound(path.to_string())
-            } else {
-                FsError::ReadError(e)
-            }
-        })
+    tokio::fs::read_to_string(path).await.map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            FsError::NotFound(path.to_string())
+        } else {
+            FsError::ReadError(e)
+        }
+    })
 }
 
 /// 원자적 파일 쓰기 (§3.6: tmp → rename)
@@ -70,8 +68,13 @@ async fn list_dir_inner(
 
         // 무거운 디렉토리 제외
         const SKIP_DIRS: &[&str] = &[
-            "node_modules", "target", "build", "dist",
-            "__pycache__", ".next", ".git",
+            "node_modules",
+            "target",
+            "build",
+            "dist",
+            "__pycache__",
+            ".next",
+            ".git",
         ];
         if metadata.is_dir() && SKIP_DIRS.contains(&name.as_str()) {
             continue;
@@ -104,7 +107,9 @@ pub async fn rename_file(from: &str, to: &str) -> Result<(), FsError> {
     if !Path::new(from).exists() {
         return Err(FsError::NotFound(from.to_string()));
     }
-    tokio::fs::rename(from, to).await.map_err(FsError::ReadError)
+    tokio::fs::rename(from, to)
+        .await
+        .map_err(FsError::ReadError)
 }
 
 /// 디렉토리 생성 (중간 디렉토리 포함)
@@ -129,7 +134,9 @@ pub async fn copy_file(from: &str, to: &str) -> Result<(), FsError> {
     if !Path::new(from).exists() {
         return Err(FsError::NotFound(from.to_string()));
     }
-    tokio::fs::copy(from, to).await.map_err(FsError::ReadError)?;
+    tokio::fs::copy(from, to)
+        .await
+        .map_err(FsError::ReadError)?;
     Ok(())
 }
 
@@ -186,8 +193,7 @@ pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>
                 if let Some(parent) = outpath.parent() {
                     std::fs::create_dir_all(parent).map_err(FsError::ReadError)?;
                 }
-                let mut outfile =
-                    std::fs::File::create(&outpath).map_err(FsError::ReadError)?;
+                let mut outfile = std::fs::File::create(&outpath).map_err(FsError::ReadError)?;
                 std::io::copy(&mut file, &mut outfile).map_err(FsError::ReadError)?;
 
                 extracted_paths.push(outpath.to_string_lossy().into_owned());
@@ -197,9 +203,7 @@ pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>
         Ok(extracted_paths)
     })
     .await
-    .map_err(|e| {
-        FsError::ReadError(std::io::Error::other(e.to_string()))
-    })?
+    .map_err(|e| FsError::ReadError(std::io::Error::other(e.to_string())))?
 }
 
 /// 디렉토리 감시 시작 — notify crate 기반
@@ -208,8 +212,8 @@ pub fn watch_dir(path: &str, app_handle: tauri::AppHandle) -> Result<(), FsError
     let path = path.to_string();
     let (tx, rx) = mpsc::channel::<notify::Result<Event>>();
 
-    let mut watcher: RecommendedWatcher =
-        Watcher::new(tx, notify::Config::default()).map_err(|e| FsError::WatchError(e.to_string()))?;
+    let mut watcher: RecommendedWatcher = Watcher::new(tx, notify::Config::default())
+        .map_err(|e| FsError::WatchError(e.to_string()))?;
 
     watcher
         .watch(Path::new(&path), RecursiveMode::Recursive)
@@ -246,10 +250,8 @@ pub fn watch_dir(path: &str, app_handle: tauri::AppHandle) -> Result<(), FsError
                                 serde_json::json!({ "path": path_str, "isDir": is_dir }),
                             );
                         } else {
-                            let _ = app_handle.emit(
-                                "file:deleted",
-                                serde_json::json!({ "path": path_str }),
-                            );
+                            let _ = app_handle
+                                .emit("file:deleted", serde_json::json!({ "path": path_str }));
                         }
                     }
                     EventKind::Modify(_) => {
@@ -259,10 +261,8 @@ pub fn watch_dir(path: &str, app_handle: tauri::AppHandle) -> Result<(), FsError
                         );
                     }
                     EventKind::Remove(_) => {
-                        let _ = app_handle.emit(
-                            "file:deleted",
-                            serde_json::json!({ "path": path_str }),
-                        );
+                        let _ = app_handle
+                            .emit("file:deleted", serde_json::json!({ "path": path_str }));
                     }
                     _ => {}
                 }

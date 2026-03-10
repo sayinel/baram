@@ -1,8 +1,6 @@
 // §57b Git Basic — git2 기반 Git 연동 모듈
 
-use git2::{
-    DiffOptions, ErrorCode, Repository, Signature, Sort, StatusOptions, StatusShow,
-};
+use git2::{DiffOptions, ErrorCode, Repository, Signature, Sort, StatusOptions, StatusShow};
 use serde::Serialize;
 use std::cell::RefCell;
 use std::path::Path;
@@ -79,10 +77,7 @@ pub fn status(path: &str) -> Result<GitStatusInfo, String> {
 
     // Branch name
     let branch = match repo.head() {
-        Ok(head) => head
-            .shorthand()
-            .unwrap_or("HEAD")
-            .to_string(),
+        Ok(head) => head.shorthand().unwrap_or("HEAD").to_string(),
         Err(e) if e.code() == ErrorCode::UnbornBranch => "(no commits)".to_string(),
         Err(e) => return Err(e.message().to_string()),
     };
@@ -93,7 +88,9 @@ pub fn status(path: &str) -> Result<GitStatusInfo, String> {
         .recurse_untracked_dirs(true)
         .show(StatusShow::IndexAndWorkdir);
 
-    let statuses = repo.statuses(Some(&mut opts)).map_err(|e| e.message().to_string())?;
+    let statuses = repo
+        .statuses(Some(&mut opts))
+        .map_err(|e| e.message().to_string())?;
 
     let mut changes = Vec::new();
     for entry in statuses.iter() {
@@ -102,34 +99,70 @@ pub fn status(path: &str) -> Result<GitStatusInfo, String> {
 
         // Index (staged) changes
         if s.is_index_new() {
-            changes.push(GitChange { path: path_str.clone(), status: "added".into(), staged: true });
+            changes.push(GitChange {
+                path: path_str.clone(),
+                status: "added".into(),
+                staged: true,
+            });
         }
         if s.is_index_modified() {
-            changes.push(GitChange { path: path_str.clone(), status: "modified".into(), staged: true });
+            changes.push(GitChange {
+                path: path_str.clone(),
+                status: "modified".into(),
+                staged: true,
+            });
         }
         if s.is_index_deleted() {
-            changes.push(GitChange { path: path_str.clone(), status: "deleted".into(), staged: true });
+            changes.push(GitChange {
+                path: path_str.clone(),
+                status: "deleted".into(),
+                staged: true,
+            });
         }
         if s.is_index_renamed() {
-            changes.push(GitChange { path: path_str.clone(), status: "renamed".into(), staged: true });
+            changes.push(GitChange {
+                path: path_str.clone(),
+                status: "renamed".into(),
+                staged: true,
+            });
         }
 
         // Workdir (unstaged) changes
         if s.is_wt_modified() {
-            changes.push(GitChange { path: path_str.clone(), status: "modified".into(), staged: false });
+            changes.push(GitChange {
+                path: path_str.clone(),
+                status: "modified".into(),
+                staged: false,
+            });
         }
         if s.is_wt_deleted() {
-            changes.push(GitChange { path: path_str.clone(), status: "deleted".into(), staged: false });
+            changes.push(GitChange {
+                path: path_str.clone(),
+                status: "deleted".into(),
+                staged: false,
+            });
         }
         if s.is_wt_renamed() {
-            changes.push(GitChange { path: path_str.clone(), status: "renamed".into(), staged: false });
+            changes.push(GitChange {
+                path: path_str.clone(),
+                status: "renamed".into(),
+                staged: false,
+            });
         }
         if s.is_wt_new() {
-            changes.push(GitChange { path: path_str.clone(), status: "untracked".into(), staged: false });
+            changes.push(GitChange {
+                path: path_str.clone(),
+                status: "untracked".into(),
+                staged: false,
+            });
         }
     }
 
-    Ok(GitStatusInfo { branch, changes, is_repo: true })
+    Ok(GitStatusInfo {
+        branch,
+        changes,
+        is_repo: true,
+    })
 }
 
 /// Stage files for commit.
@@ -142,9 +175,13 @@ pub fn stage(path: &str, files: &[String]) -> Result<(), String> {
         // Check if file exists — if deleted, remove from index
         let workdir = repo.workdir().ok_or("Bare repository")?;
         if workdir.join(file_path).exists() {
-            index.add_path(file_path).map_err(|e| e.message().to_string())?;
+            index
+                .add_path(file_path)
+                .map_err(|e| e.message().to_string())?;
         } else {
-            index.remove_path(file_path).map_err(|e| e.message().to_string())?;
+            index
+                .remove_path(file_path)
+                .map_err(|e| e.message().to_string())?;
         }
     }
 
@@ -232,8 +269,7 @@ pub fn diff_file(path: &str, file_path: &str) -> Result<GitFileDiff, String> {
     diff_opts.pathspec(file_path);
 
     // Diff working tree against HEAD (or empty tree for initial commit)
-    let head_tree = repo.head().ok()
-        .and_then(|h| h.peel_to_tree().ok());
+    let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
 
     let diff = repo
         .diff_tree_to_workdir_with_index(head_tree.as_ref(), Some(&mut diff_opts))
@@ -299,7 +335,9 @@ pub fn list_branches(path: &str) -> Result<Vec<GitBranchInfo>, String> {
 
     for branch_result in repo.branches(None).map_err(|e| e.message().to_string())? {
         let (branch, branch_type) = branch_result.map_err(|e| e.message().to_string())?;
-        let name = branch.name().map_err(|e| e.message().to_string())?
+        let name = branch
+            .name()
+            .map_err(|e| e.message().to_string())?
             .unwrap_or("")
             .to_string();
 
@@ -330,11 +368,10 @@ pub fn switch_branch(path: &str, branch_name: &str) -> Result<(), String> {
 
     let reference = branch.get().name().ok_or("Invalid branch reference")?;
 
-    repo.set_head(reference).map_err(|e| e.message().to_string())?;
-    repo.checkout_head(Some(
-        git2::build::CheckoutBuilder::new().force(),
-    ))
-    .map_err(|e| e.message().to_string())?;
+    repo.set_head(reference)
+        .map_err(|e| e.message().to_string())?;
+    repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force()))
+        .map_err(|e| e.message().to_string())?;
 
     Ok(())
 }
@@ -343,10 +380,7 @@ pub fn switch_branch(path: &str, branch_name: &str) -> Result<(), String> {
 pub fn discard(path: &str, files: &[String]) -> Result<(), String> {
     let repo = open_repo(path)?;
 
-    let head_tree = repo
-        .head()
-        .ok()
-        .and_then(|h| h.peel_to_tree().ok());
+    let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
 
     let mut checkout = git2::build::CheckoutBuilder::new();
     checkout.force();
@@ -409,7 +443,9 @@ pub fn log(path: &str, max_count: usize) -> Result<Vec<GitLogEntry>, String> {
     let repo = open_repo(path)?;
     let mut revwalk = repo.revwalk().map_err(|e| e.message().to_string())?;
     revwalk.push_head().map_err(|e| e.message().to_string())?;
-    revwalk.set_sorting(Sort::TIME).map_err(|e| e.message().to_string())?;
+    revwalk
+        .set_sorting(Sort::TIME)
+        .map_err(|e| e.message().to_string())?;
 
     let mut entries = Vec::new();
     for (i, oid_result) in revwalk.enumerate() {
@@ -497,8 +533,7 @@ pub fn stash_pop(path: &str, index: usize) -> Result<(), String> {
 /// Drop a stash entry without applying.
 pub fn stash_drop(path: &str, index: usize) -> Result<(), String> {
     let mut repo = open_repo(path)?;
-    repo.stash_drop(index)
-        .map_err(|e| e.message().to_string())
+    repo.stash_drop(index).map_err(|e| e.message().to_string())
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -634,11 +669,7 @@ pub fn push(path: &str, remote_name: &str, branch: &str) -> Result<(), String> {
 }
 
 /// Get ahead/behind counts relative to a remote tracking branch.
-pub fn ahead_behind(
-    path: &str,
-    branch: &str,
-    remote_name: &str,
-) -> Result<GitAheadBehind, String> {
+pub fn ahead_behind(path: &str, branch: &str, remote_name: &str) -> Result<GitAheadBehind, String> {
     let repo = open_repo(path)?;
 
     let local_ref = repo
@@ -649,9 +680,7 @@ pub fn ahead_behind(
     let remote_ref = repo
         .find_reference(&format!("refs/remotes/{}/{}", remote_name, branch))
         .map_err(|e| format!("No tracking branch: {}", e.message()))?;
-    let remote_oid = remote_ref
-        .target()
-        .ok_or("Could not resolve remote ref")?;
+    let remote_oid = remote_ref.target().ok_or("Could not resolve remote ref")?;
 
     let (ahead, behind) = repo
         .graph_ahead_behind(local_oid, remote_oid)

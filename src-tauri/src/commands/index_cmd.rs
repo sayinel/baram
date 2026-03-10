@@ -1,7 +1,11 @@
 // §29 인덱스 IPC 커맨드 — 백링크 조회, 인덱스 빌드/갱신
 // §33 파일 이름 변경 시 wikilink 자동 갱신
 
-use crate::index::{collect_md_files, find_unlinked_mentions, replace_block_id_refs, replace_wikilink_target, rewrite_relative_wikilinks, BacklinkResult, IndexStats, LinkGraph, LinkIndex, UnlinkedMentionResult};
+use crate::index::{
+    collect_md_files, find_unlinked_mentions, replace_block_id_refs, replace_wikilink_target,
+    rewrite_relative_wikilinks, BacklinkResult, IndexStats, LinkGraph, LinkIndex,
+    UnlinkedMentionResult,
+};
 use serde::Serialize;
 use std::path::Path;
 use std::sync::Mutex;
@@ -20,9 +24,7 @@ pub async fn get_backlinks(
 }
 
 #[tauri::command]
-pub async fn get_link_index(
-    state: State<'_, LinkIndexState>,
-) -> Result<LinkGraph, String> {
+pub async fn get_link_index(state: State<'_, LinkIndexState>) -> Result<LinkGraph, String> {
     let index = state.0.lock().map_err(|e| e.to_string())?;
     Ok(index.get_link_graph())
 }

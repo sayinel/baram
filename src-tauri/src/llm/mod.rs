@@ -179,7 +179,8 @@ mod tests {
 
     #[test]
     fn test_openai_sse_chunk_finish_stop() {
-        let json = r#"{"id":"chatcmpl-abc","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}"#;
+        let json =
+            r#"{"id":"chatcmpl-abc","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}"#;
         let chunk: openai::OpenAISseChunk = serde_json::from_str(json).unwrap();
         assert_eq!(chunk.choices[0].finish_reason.as_deref(), Some("stop"));
     }
@@ -205,7 +206,8 @@ mod tests {
 
     #[test]
     fn test_gemini_sse_chunk_parse() {
-        let json = r#"{"candidates":[{"content":{"parts":[{"text":"Hello"}]},"finishReason":null}]}"#;
+        let json =
+            r#"{"candidates":[{"content":{"parts":[{"text":"Hello"}]},"finishReason":null}]}"#;
         let chunk: gemini::GeminiSseChunk = serde_json::from_str(json).unwrap();
         assert_eq!(chunk.candidates.len(), 1);
         let content = chunk.candidates[0].content.as_ref().unwrap();
@@ -346,7 +348,10 @@ mod tests {
         let resp: claude::ClaudeModelsResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.data.len(), 2);
         assert_eq!(resp.data[0].id, "claude-sonnet-4-5-20250929");
-        assert_eq!(resp.data[0].display_name.as_deref(), Some("Claude Sonnet 4.5"));
+        assert_eq!(
+            resp.data[0].display_name.as_deref(),
+            Some("Claude Sonnet 4.5")
+        );
         assert_eq!(resp.data[1].id, "claude-3-haiku-20240307");
     }
 
@@ -372,12 +377,22 @@ mod tests {
     #[test]
     fn test_openai_chat_model_filter() {
         let prefixes = &["gpt-", "o1-", "o3-", "o4-", "chatgpt-"];
-        let models = vec!["gpt-4o", "gpt-4o-mini", "dall-e-3", "whisper-1", "o1-preview", "chatgpt-4o-latest"];
+        let models = vec![
+            "gpt-4o",
+            "gpt-4o-mini",
+            "dall-e-3",
+            "whisper-1",
+            "o1-preview",
+            "chatgpt-4o-latest",
+        ];
         let filtered: Vec<&str> = models
             .into_iter()
             .filter(|id| prefixes.iter().any(|p| id.starts_with(p)))
             .collect();
-        assert_eq!(filtered, vec!["gpt-4o", "gpt-4o-mini", "o1-preview", "chatgpt-4o-latest"]);
+        assert_eq!(
+            filtered,
+            vec!["gpt-4o", "gpt-4o-mini", "o1-preview", "chatgpt-4o-latest"]
+        );
     }
 
     // --- API response parsing tests (Ollama tags) ---

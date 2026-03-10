@@ -28,9 +28,7 @@ pub fn load_index(vault_path: &str) -> Result<SnapshotIndex, SnapshotError> {
 
 /// Save snapshot index atomically (write .tmp then rename).
 pub fn save_index(vault_path: &str, index: &SnapshotIndex) -> Result<(), SnapshotError> {
-    let dir = Path::new(vault_path)
-        .join(".baram")
-        .join("snapshots");
+    let dir = Path::new(vault_path).join(".baram").join("snapshots");
     std::fs::create_dir_all(&dir)?;
 
     let index_path = dir.join("index.json");
@@ -66,30 +64,23 @@ pub fn add_entry(index: &mut SnapshotIndex, entry: SnapshotEntry) {
 }
 
 /// Remove an entry from the index by snapshot_id. Returns the removed entry if found.
-pub fn remove_entry(
-    index: &mut SnapshotIndex,
-    snapshot_id: &str,
-) -> Option<SnapshotEntry> {
+pub fn remove_entry(index: &mut SnapshotIndex, snapshot_id: &str) -> Option<SnapshotEntry> {
     let pos = index.snapshots.iter().position(|e| e.id == snapshot_id)?;
     let removed = index.snapshots.remove(pos);
-    index.total_size_bytes = index.total_size_bytes.saturating_sub(removed.total_size_bytes);
+    index.total_size_bytes = index
+        .total_size_bytes
+        .saturating_sub(removed.total_size_bytes);
     update_metadata(index);
     Some(removed)
 }
 
 /// Find an entry by snapshot_id.
-pub fn find_entry<'a>(
-    index: &'a SnapshotIndex,
-    snapshot_id: &str,
-) -> Option<&'a SnapshotEntry> {
+pub fn find_entry<'a>(index: &'a SnapshotIndex, snapshot_id: &str) -> Option<&'a SnapshotEntry> {
     index.snapshots.iter().find(|e| e.id == snapshot_id)
 }
 
 /// Find all snapshots that contain a given file path.
-pub fn find_file_history<'a>(
-    index: &'a SnapshotIndex,
-    file_path: &str,
-) -> Vec<&'a SnapshotEntry> {
+pub fn find_file_history<'a>(index: &'a SnapshotIndex, file_path: &str) -> Vec<&'a SnapshotEntry> {
     index
         .snapshots
         .iter()
@@ -107,16 +98,8 @@ fn update_metadata(index: &mut SnapshotIndex) {
     }
 
     // Timestamps are ISO 8601 strings — lexicographic sort works correctly
-    index.oldest_snapshot = index
-        .snapshots
-        .iter()
-        .map(|e| e.timestamp.clone())
-        .min();
-    index.newest_snapshot = index
-        .snapshots
-        .iter()
-        .map(|e| e.timestamp.clone())
-        .max();
+    index.oldest_snapshot = index.snapshots.iter().map(|e| e.timestamp.clone()).min();
+    index.newest_snapshot = index.snapshots.iter().map(|e| e.timestamp.clone()).max();
 }
 
 #[cfg(test)]
