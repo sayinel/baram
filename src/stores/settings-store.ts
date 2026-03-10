@@ -49,6 +49,10 @@ interface SettingsState {
   autoSaveDelay: number; // ms
   spellCheck: boolean;
   showWelcome: boolean;
+  recentFolders: { path: string; lastOpened: number }[];
+  recentFiles: { path: string; lastOpened: number }[];
+  lastOpenedFolder: string | null;
+  lastOpenedFile: string | null;
 
   // Editor
   fontFamily: string;
@@ -161,6 +165,10 @@ interface SettingsState {
   setAutoSaveDelay: (delay: number) => void;
   setSpellCheck: (enabled: boolean) => void;
   setShowWelcome: (show: boolean) => void;
+  addRecentFolder: (path: string) => void;
+  addRecentFile: (path: string) => void;
+  setLastOpenedFolder: (path: string | null) => void;
+  setLastOpenedFile: (path: string | null) => void;
 
   // Editor setters
   setFontFamily: (family: string) => void;
@@ -240,6 +248,10 @@ export const useSettingsStore = create<SettingsState>()(
       autoSaveDelay: 2000,
       spellCheck: false,
       showWelcome: true,
+      recentFolders: [],
+      recentFiles: [],
+      lastOpenedFolder: null,
+      lastOpenedFile: null,
 
       // Editor
       fontFamily: "Pretendard",
@@ -373,6 +385,33 @@ export const useSettingsStore = create<SettingsState>()(
       setAutoSaveDelay: (autoSaveDelay) => set({ autoSaveDelay }),
       setSpellCheck: (spellCheck) => set({ spellCheck }),
       setShowWelcome: (showWelcome) => set({ showWelcome }),
+
+      addRecentFolder: (path) =>
+        set((state) => {
+          const filtered = state.recentFolders.filter((f) => f.path !== path);
+          return {
+            recentFolders: [
+              { path, lastOpened: Date.now() },
+              ...filtered,
+            ].slice(0, 5),
+            lastOpenedFolder: path,
+          };
+        }),
+
+      addRecentFile: (path) =>
+        set((state) => {
+          const filtered = state.recentFiles.filter((f) => f.path !== path);
+          return {
+            recentFiles: [{ path, lastOpened: Date.now() }, ...filtered].slice(
+              0,
+              10,
+            ),
+            lastOpenedFile: path,
+          };
+        }),
+
+      setLastOpenedFolder: (path) => set({ lastOpenedFolder: path }),
+      setLastOpenedFile: (path) => set({ lastOpenedFile: path }),
 
       // Editor setters
       setFontFamily: (fontFamily) => set({ fontFamily }),
@@ -532,6 +571,10 @@ export const useSettingsStore = create<SettingsState>()(
         autoSaveDelay: state.autoSaveDelay,
         spellCheck: state.spellCheck,
         showWelcome: state.showWelcome,
+        recentFolders: state.recentFolders,
+        recentFiles: state.recentFiles,
+        lastOpenedFolder: state.lastOpenedFolder,
+        lastOpenedFile: state.lastOpenedFile,
         fontFamily: state.fontFamily,
         fontSize: state.fontSize,
         lineHeight: state.lineHeight,
@@ -588,7 +631,7 @@ export const useSettingsStore = create<SettingsState>()(
         locale: state.locale,
         keybindingOverrides: state.keybindingOverrides,
       }),
-      version: 8,
+      version: 9,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
 
@@ -697,6 +740,15 @@ export const useSettingsStore = create<SettingsState>()(
         // v7 → v8: Keybinding overrides
         if (version < 8) {
           if (!state.keybindingOverrides) state.keybindingOverrides = {};
+        }
+
+        // v8 → v9: Home screen recent lists + last-opened paths
+        if (version < 9) {
+          if (!state.recentFolders) state.recentFolders = [];
+          if (!state.recentFiles) state.recentFiles = [];
+          if (state.lastOpenedFolder === undefined)
+            state.lastOpenedFolder = null;
+          if (state.lastOpenedFile === undefined) state.lastOpenedFile = null;
         }
 
         return state;
