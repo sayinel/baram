@@ -1,157 +1,119 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # ── Path Filtering ──────────────────────────────────────────────
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      rust: ${{ steps.filter.outputs.rust }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36  # v3.0.2
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'src/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'tsconfig.json'
+              - '*.config.*'
+            rust:
+              - 'src-tauri/**'
+
+  # ── Frontend: Lint + Type Check ─────────────────────────────────
   lint:
-    name: Lint
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || github.event_name == 'workflow_call'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-node
+      - name: Prettier
+        run: npx prettier --check 'src/**/*.{ts,tsx,css}'
       - name: ESLint
-        run: npm run lint
+        run: npx eslint src/ --max-warnings=0
+      - name: Stylelint
+        run: npx stylelint 'src/**/*.css'
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Knip (dead code)
+        run: npx knip --reporter compact
 
-      - name: Prettier check
-        run: npm run format:check
+  # ── Frontend: Test ──────────────────────────────────────────────
+  test:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || github.event_name == 'workflow_call'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-node
+      - name: Vitest
+        run: npx vitest run
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+  # ── Rust: Check + Test ──────────────────────────────────────────
+  rust-check:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || github.event_name == 'workflow_call'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9  # v1
         with:
+          toolchain: stable
           components: clippy, rustfmt
 
-      - name: Install Tauri system deps (Linux)
+      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5  # v2.8.2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install Tauri system deps
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
+      - name: Format check
+        run: cargo fmt --check
+        working-directory: src-tauri
+
       - name: Build frontend (needed by generate_context macro)
-        run: npm run build
+        uses: ./.github/actions/setup-node
+      - run: npm run build
 
       - name: Clippy
-        working-directory: src-tauri
         run: cargo clippy -- -D warnings
-
-      - name: Rust format check
         working-directory: src-tauri
-        run: cargo fmt --check
-
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Vitest
-        run: npm test
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Tauri system deps (Linux)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-
-      - name: Build frontend (needed by generate_context macro)
-        run: npm run build
 
       - name: Cargo test
-        working-directory: src-tauri
         run: cargo test
+        working-directory: src-tauri
 
-  build:
-    name: Build (${{ matrix.os }})
-    needs: [lint, test]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-14
-            target: aarch64-apple-darwin
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-    runs-on: ${{ matrix.os }}
+  # ── Security: Secret Detection ──────────────────────────────────
+  security:
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
         with:
-          node-version: 24
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - name: Install Tauri system deps (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-
-      - name: Build Tauri app
-        run: npm run tauri build
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7  # v2.3.9
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ""
-
-      - name: Upload macOS artifacts
-        if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
-        with:
-          name: baram-macos
-          path: |
-            src-tauri/target/release/bundle/dmg/*.dmg
-            src-tauri/target/release/bundle/macos/*.app
-          if-no-files-found: warn
-
-      - name: Upload Linux artifacts
-        if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v4
-        with:
-          name: baram-linux
-          path: |
-            src-tauri/target/release/bundle/deb/*.deb
-            src-tauri/target/release/bundle/appimage/*.AppImage
-          if-no-files-found: warn
-
-      - name: Upload Windows artifacts
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: baram-windows
-          path: |
-            src-tauri/target/release/bundle/nsis/*.exe
-          if-no-files-found: warn
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
