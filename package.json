@@ -105,6 +105,9 @@
     "src/**/*.{ts,tsx}": [
       "prettier --check",
       "eslint --max-warnings=0"
+    ],
+    "src-tauri/src/**/*.rs": [
+      "bash -c 'cd src-tauri && cargo clippy -- -D warnings'"
     ]
   }
 }
