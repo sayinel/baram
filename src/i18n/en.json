@@ -326,6 +326,11 @@
 
   "settings.search.navigateHint": "Click to navigate to setting",
 
+  "followUp.ask": "Get follow-up questions",
+  "followUp.insert": "Write answer",
+  "followUp.dismiss": "Dismiss",
+  "followUp.loading": "Thinking...",
+
   "common.save": "Save",
   "common.cancel": "Cancel",
   "common.close": "Close",

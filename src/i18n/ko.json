@@ -321,6 +321,11 @@
 
   "settings.search.navigateHint": "클릭하면 해당 설정으로 이동합니다",
 
+  "followUp.ask": "심화 질문 받기",
+  "followUp.insert": "답변 작성하기",
+  "followUp.dismiss": "무시",
+  "followUp.loading": "생각 중...",
+
   "common.save": "저장",
   "common.cancel": "취소",
   "common.close": "닫기",

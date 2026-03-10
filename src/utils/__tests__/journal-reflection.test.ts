@@ -184,25 +184,25 @@ describe("formatReflectionMarkdown", () => {
 describe("buildFollowUpPrompt", () => {
   it("returns system prompt about journal companion", () => {
     const { systemPrompt } = buildFollowUpPrompt("오늘 좋은 하루였다.");
-    expect(systemPrompt).toContain("저널 동반자");
-    expect(systemPrompt).toContain("심화 질문");
+    expect(systemPrompt).toContain("journal companion");
+    expect(systemPrompt).toContain("follow-up questions");
   });
 
   it("includes diary text in user prompt", () => {
     const text = "오늘 친구를 만나서 즐거웠다.";
     const { userPrompt } = buildFollowUpPrompt(text);
     expect(userPrompt).toContain(text);
-    expect(userPrompt).toContain("심화 질문");
+    expect(userPrompt).toContain("follow-up questions");
   });
 
   it("handles empty text gracefully", () => {
     const { userPrompt } = buildFollowUpPrompt("");
-    expect(userPrompt).toContain("비어 있습니다");
+    expect(userPrompt).toContain("No diary content");
   });
 
   it("handles whitespace-only text as empty", () => {
     const { userPrompt } = buildFollowUpPrompt("   \n  ");
-    expect(userPrompt).toContain("비어 있습니다");
+    expect(userPrompt).toContain("No diary content");
   });
 });
 

@@ -3562,6 +3562,40 @@ body {
   background-color: color-mix(in srgb, var(--color-text-tertiary) 10%, transparent);
 }
 
+.follow-up-card-trigger {
+  padding: 6px 48px;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.follow-up-card-btn-ask {
+  all: unset;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-weight: 500;
+  color: var(--color-text-tertiary);
+  transition: background-color 0.15s, color 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.follow-up-card-btn-ask:hover {
+  background-color: color-mix(in srgb, var(--color-accent, #6366f1) 10%, transparent);
+  color: var(--color-accent, #6366f1);
+}
+
+.follow-up-card-loading {
+  color: var(--color-text-tertiary);
+  font-style: italic;
+}
+
+.follow-up-card-error {
+  color: var(--color-danger, #ef4444);
+}
+
 /* ============================================
    §56c Memories Panel
    ============================================ */

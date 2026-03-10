@@ -1,165 +1,172 @@
-// §56j Auto Follow-Up Questions — suggests deeper questions after diary writing
+// §56j Follow-Up Questions — manual trigger button for deeper questions
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { Editor } from "@tiptap/react";
 import { useLLMStream } from "../../hooks/use-llm-stream";
 import { buildFollowUpPrompt } from "../../utils/journal-reflection";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
+import { useTranslation } from "../../i18n/useTranslation";
 
 interface FollowUpCardProps {
   editor: Editor | null;
 }
 
-/** Check if the active file is a journal daily note */
-function isJournalDailyNote(): boolean {
-  const { isJournalScoped } = useFileStore.getState();
-  if (!isJournalScoped) return false;
-
-  const { tabs, activeTabId } = useEditorStore.getState();
-  const activeTab = tabs.find((t) => t.id === activeTabId);
-  if (!activeTab?.filePath) return false;
-
-  return (
-    activeTab.filePath.includes("/daily/") && activeTab.filePath.endsWith(".md")
-  );
-}
+/** Minimum word count to enable the follow-up button */
+const MIN_WORDS = 20;
 
 export function FollowUpCard({ editor }: FollowUpCardProps) {
-  const [visible, setVisible] = useState(false);
+  const { t } = useTranslation();
   const [questionText, setQuestionText] = useState("");
   const [dismissed, setDismissed] = useState(false);
-  const suggestedRef = useRef<Map<string, boolean>>(new Map());
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeTabId = useEditorStore((s) => s.activeTabId);
   const journalAIAutoSuggest = useSettingsStore((s) => s.journalAIAutoSuggest);
-  const journalAIReflectionEnabled = useSettingsStore(
-    (s) => s.journalAIReflectionEnabled,
-  );
   const llm = useLLMStream();
+  const llmSendRef = useRef(llm.send);
+  llmSendRef.current = llm.send;
 
   // Reset state on tab change
   useEffect(() => {
-    setVisible(false);
     setQuestionText("");
     setDismissed(false);
   }, [activeTabId]);
 
-  // Debounced trigger: 10s after last editor update
+  // Collect body text from editor (excluding frontmatter)
+  const getBodyText = useCallback((): {
+    text: string;
+    wordCount: number;
+  } => {
+    if (!editor) return { text: "", wordCount: 0 };
+    let bodyText = "";
+    let wordCount = 0;
+    editor.state.doc.descendants((node) => {
+      if (node.type.name !== "frontmatter" && node.isTextblock) {
+        const content = node.textContent;
+        bodyText += content + "\n";
+        wordCount += content.trim().split(/\s+/).filter(Boolean).length;
+      }
+    });
+    return { text: bodyText, wordCount };
+  }, [editor]);
+
+  // Request follow-up questions from LLM
+  const handleRequest = useCallback(() => {
+    const { text } = getBodyText();
+    if (!text.trim()) return;
+    const { systemPrompt, userPrompt } = buildFollowUpPrompt(text);
+    llmSendRef.current(userPrompt, systemPrompt, {
+      task: "chat",
+      maxTokens: 300,
+    });
+  }, [getBodyText]);
+
+  // Show question when LLM response is complete
   useEffect(() => {
-    if (
-      !editor ||
-      !journalAIAutoSuggest ||
-      !journalAIReflectionEnabled ||
-      dismissed
-    )
-      return;
-    if (!isJournalDailyNote()) return;
-
-    const filePath = useEditorStore
-      .getState()
-      .tabs.find(
-        (t) => t.id === useEditorStore.getState().activeTabId,
-      )?.filePath;
-    if (!filePath || suggestedRef.current.get(filePath)) return;
-
-    const onUpdate = () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-
-      debounceRef.current = setTimeout(() => {
-        // Re-check conditions inside the debounced callback
-        if (!isJournalDailyNote()) return;
-        const fp = useEditorStore
-          .getState()
-          .tabs.find(
-            (t) => t.id === useEditorStore.getState().activeTabId,
-          )?.filePath;
-        if (!fp || suggestedRef.current.get(fp)) return;
-
-        // Check content length > 100 chars (excluding frontmatter)
-        let textLen = 0;
-        editor.state.doc.descendants((node) => {
-          if (node.type.name !== "frontmatter" && node.isTextblock) {
-            textLen += node.textContent.length;
-          }
-        });
-        if (textLen < 100) return;
-
-        // Mark as suggested for this file
-        suggestedRef.current.set(fp, true);
-
-        // Get body text
-        let bodyText = "";
-        editor.state.doc.descendants((node) => {
-          if (node.type.name !== "frontmatter" && node.isTextblock) {
-            bodyText += node.textContent + "\n";
-          }
-        });
-
-        const { systemPrompt, userPrompt } = buildFollowUpPrompt(bodyText);
-        llm.send(userPrompt, systemPrompt, { task: "chat", maxTokens: 300 });
-      }, 10000);
-    };
-
-    editor.on("update", onUpdate);
-
-    return () => {
-      editor.off("update", onUpdate);
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [
-    editor,
-    journalAIAutoSuggest,
-    journalAIReflectionEnabled,
-    dismissed,
-    activeTabId,
-    llm,
-  ]);
-
-  // Show card when LLM response is complete
-  useEffect(() => {
-    if (!llm.isStreaming && llm.text && !visible && !dismissed) {
+    if (!llm.isStreaming && llm.text && !questionText && !dismissed) {
       setQuestionText(llm.text.trim());
-      setVisible(true);
     }
-  }, [llm.isStreaming, llm.text, visible, dismissed]);
+  }, [llm.isStreaming, llm.text, questionText, dismissed]);
 
   // Insert follow-up question into editor
   const handleInsert = useCallback(() => {
     if (!editor || !questionText) return;
-
     const endPos = editor.state.doc.content.size;
     const insertText = `\n\n> 💭 ${questionText}\n\n`;
-
     editor.chain().focus().insertContentAt(endPos, insertText).run();
-
-    setVisible(false);
+    setQuestionText("");
+    setDismissed(true);
   }, [editor, questionText]);
 
   const handleDismiss = useCallback(() => {
     setDismissed(true);
-    setVisible(false);
+    setQuestionText("");
   }, []);
 
-  if (!visible || !questionText) return null;
+  // Don't render if feature is disabled
+  if (!journalAIAutoSuggest || !editor) return null;
 
-  return (
-    <div className="follow-up-card">
-      <div className="follow-up-card-text">{questionText}</div>
-      <div className="follow-up-card-actions">
+  const { wordCount } = getBodyText();
+  const hasEnoughContent = wordCount >= MIN_WORDS;
+
+  // State: showing question result
+  if (questionText && !dismissed) {
+    return (
+      <div className="follow-up-card">
+        <div className="follow-up-card-text">{questionText}</div>
+        <div className="follow-up-card-actions">
+          <button
+            className="follow-up-card-btn follow-up-card-btn-insert"
+            onClick={handleInsert}
+          >
+            {t("followUp.insert")}
+          </button>
+          <button
+            className="follow-up-card-btn follow-up-card-btn-dismiss"
+            onClick={handleDismiss}
+          >
+            {t("followUp.dismiss")}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // State: streaming response
+  if (llm.isStreaming) {
+    return (
+      <div className="follow-up-card">
+        <div className="follow-up-card-text follow-up-card-loading">
+          {llm.text || t("followUp.loading")}
+        </div>
+      </div>
+    );
+  }
+
+  // State: error
+  if (llm.error && !dismissed) {
+    return (
+      <div className="follow-up-card">
+        <div className="follow-up-card-text follow-up-card-error">
+          {llm.error}
+        </div>
+        <div className="follow-up-card-actions">
+          <button
+            className="follow-up-card-btn follow-up-card-btn-dismiss"
+            onClick={handleDismiss}
+          >
+            {t("followUp.dismiss")}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // State: trigger button (only when enough content and not yet dismissed)
+  if (hasEnoughContent && !dismissed) {
+    return (
+      <div className="follow-up-card follow-up-card-trigger">
         <button
-          className="follow-up-card-btn follow-up-card-btn-insert"
-          onClick={handleInsert}
+          className="follow-up-card-btn follow-up-card-btn-ask"
+          onClick={handleRequest}
         >
-          답변 작성하기
-        </button>
-        <button
-          className="follow-up-card-btn follow-up-card-btn-dismiss"
-          onClick={handleDismiss}
-        >
-          무시
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            <path d="M12 7v2" />
+            <path d="M12 13h.01" />
+          </svg>
+          {t("followUp.ask")}
         </button>
       </div>
-    </div>
-  );
+    );
+  }
+
+  return null;
 }

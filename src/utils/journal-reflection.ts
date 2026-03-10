@@ -174,15 +174,25 @@ export function buildFollowUpPrompt(diaryText: string): {
   systemPrompt: string;
   userPrompt: string;
 } {
-  const systemPrompt =
-    "당신은 따뜻한 저널 동반자입니다. 일기 내용을 바탕으로 심화 질문 1~2개를 제안합니다. 한국어로 작성하세요. 질문만 출력하세요.";
+  const systemPrompt = [
+    "You are a thoughtful journal companion.",
+    "Your ONLY task is to generate 1-2 follow-up questions that help the writer reflect more deeply on their diary entry.",
+    "",
+    "Rules:",
+    "- Output ONLY questions, nothing else. No summaries, no analysis, no commentary.",
+    "- Each question must end with a question mark (?).",
+    "- Questions should encourage deeper self-reflection, not just repeat what was written.",
+    "- Match the language of the diary entry (if written in Korean, ask in Korean; if in English, ask in English).",
+    "- Keep questions concise (1-2 sentences each).",
+    "- Separate multiple questions with a blank line.",
+  ].join("\n");
 
   const trimmed = diaryText.trim();
   if (!trimmed) {
-    return { systemPrompt, userPrompt: "(일기 내용이 비어 있습니다.)" };
+    return { systemPrompt, userPrompt: "(No diary content provided.)" };
   }
 
-  const userPrompt = `다음 일기를 읽고 더 깊이 생각해볼 수 있는 심화 질문 1~2개를 제안해주세요.\n\n${trimmed}`;
+  const userPrompt = `Read the following diary entry and suggest 1-2 follow-up questions for deeper reflection.\n\n---\n${trimmed}\n---`;
   return { systemPrompt, userPrompt };
 }
 
