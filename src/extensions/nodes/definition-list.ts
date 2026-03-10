@@ -1,7 +1,8 @@
-// Definition List Extension — Term\n: Definition → <dl><dt><dd>
-import { Node, mergeAttributes, InputRule } from "@tiptap/core";
-import { TextSelection } from "@tiptap/pm/state";
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
+
+// Definition List Extension — Term\n: Definition → <dl><dt><dd>
+import { InputRule, mergeAttributes, Node } from "@tiptap/core";
+import { TextSelection } from "@tiptap/pm/state";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {

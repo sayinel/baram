@@ -1,22 +1,22 @@
+import type { NodeTransformerEntry } from "../types";
 // table-transformer.ts — §5.5 GFM Table mdast ↔ ProseMirror
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
 import type { Node as MdastNode } from "mdast";
-import type { NodeTransformerEntry } from "../types";
 
 interface MdastTable extends MdastNode {
-  type: "table";
-  align?: (string | null)[];
+  align?: (null | string)[];
   children: MdastTableRow[];
-}
-
-interface MdastTableRow extends MdastNode {
-  type: "tableRow";
-  children: MdastTableCell[];
+  type: "table";
 }
 
 interface MdastTableCell extends MdastNode {
-  type: "tableCell";
   children: MdastNode[];
+  type: "tableCell";
+}
+
+interface MdastTableRow extends MdastNode {
+  children: MdastTableCell[];
+  type: "tableRow";
 }
 
 export const tableTransformer: NodeTransformerEntry = {
@@ -78,7 +78,7 @@ export const tableTransformer: NodeTransformerEntry = {
 
     // Step 2: Build 2D grid (rows × cols), null = unfilled
     const rowCount = node.childCount;
-    const grid: ({ cell: PmNode; isMain: boolean } | null)[][] = [];
+    const grid: (null | { cell: PmNode; isMain: boolean })[][] = [];
     for (let r = 0; r < rowCount; r++) {
       grid.push(new Array(maxCols).fill(null));
     }
@@ -109,7 +109,7 @@ export const tableTransformer: NodeTransformerEntry = {
 
     // Step 4: Serialize grid to GFM mdast rows
     const rows: MdastTableRow[] = [];
-    const align: (string | null)[] = [];
+    const align: (null | string)[] = [];
     let alignCollected = false;
 
     for (let r = 0; r < rowCount; r++) {

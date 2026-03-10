@@ -10,7 +10,7 @@ const GRID_SIZE = 10;
 export function showTableGridPicker(
   x: number,
   y: number,
-): Promise<{ rows: number; cols: number } | null> {
+): Promise<null | { cols: number; rows: number }> {
   return new Promise((resolve) => {
     let hoverRows = 0;
     let hoverCols = 0;
@@ -79,7 +79,7 @@ export function showTableGridPicker(
       }
     };
 
-    const cleanup = (result: { rows: number; cols: number } | null) => {
+    const cleanup = (result: null | { cols: number; rows: number }) => {
       overlay.remove();
       resolve(result);
     };

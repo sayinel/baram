@@ -1,10 +1,11 @@
 // §32 Hover Preview — shows document preview when Cmd+hovering over wikilinks
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useFileStore } from "../../stores/file-store";
-import { resolveWikilinkTarget } from "../../utils/wikilink-nav";
-import { findBlockContent } from "../../utils/block-nav";
+
 import { readFile } from "../../ipc/invoke";
+import { useFileStore } from "../../stores/file-store";
+import { findBlockContent } from "../../utils/block-nav";
+import { resolveWikilinkTarget } from "../../utils/wikilink-nav";
 
 const MAX_LINES = 20;
 const POPUP_MAX_WIDTH = 400;
@@ -13,17 +14,17 @@ const HOVER_DELAY = 300;
 const GAP = 4;
 const VIEWPORT_PADDING = 8;
 
-export function truncatePreview(content: string, maxLines: number): string {
-  const lines = content.split("\n");
-  if (lines.length <= maxLines) return content;
-  return lines.slice(0, maxLines).join("\n") + "\n…";
+interface HoverTarget {
+  blockId?: string; // §30c block reference hover
+  element: HTMLElement;
+  target: string;
 }
 
 export function calcPosition(
-  rect: { top: number; bottom: number; left: number; width: number },
-  viewport: { width: number; height: number },
-  popupSize: { width: number; height: number },
-): { top: number; left: number } {
+  rect: { bottom: number; left: number; top: number; width: number },
+  viewport: { height: number; width: number },
+  popupSize: { height: number; width: number },
+): { left: number; top: number } {
   let top: number;
   let left: number;
 
@@ -43,19 +44,13 @@ export function calcPosition(
   return { top, left };
 }
 
-interface HoverTarget {
-  target: string;
-  element: HTMLElement;
-  blockId?: string; // §30c block reference hover
-}
-
 export function HoverPreview() {
   const [visible, setVisible] = useState(false);
   const [content, setContent] = useState("");
   const [title, setTitle] = useState("");
   const [position, setPosition] = useState({ top: 0, left: 0 });
-  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const currentTargetRef = useRef<string | null>(null);
+  const hoverTimerRef = useRef<null | ReturnType<typeof setTimeout>>(null);
+  const currentTargetRef = useRef<null | string>(null);
   const popupRef = useRef<HTMLDivElement>(null);
   const isOverPopupRef = useRef(false);
 
@@ -198,9 +193,7 @@ export function HoverPreview() {
 
   return createPortal(
     <div
-      ref={popupRef}
       className="hover-preview"
-      style={{ top: position.top, left: position.left }}
       onMouseEnter={() => {
         isOverPopupRef.current = true;
       }}
@@ -209,6 +202,8 @@ export function HoverPreview() {
         setVisible(false);
         currentTargetRef.current = null;
       }}
+      ref={popupRef}
+      style={{ top: position.top, left: position.left }}
     >
       <div className="hover-preview-title">{title}</div>
       <div className="hover-preview-divider" />
@@ -218,4 +213,10 @@ export function HoverPreview() {
     </div>,
     document.body,
   );
+}
+
+export function truncatePreview(content: string, maxLines: number): string {
+  const lines = content.split("\n");
+  if (lines.length <= maxLines) return content;
+  return lines.slice(0, maxLines).join("\n") + "\n…";
 }

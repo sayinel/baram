@@ -1,8 +1,8 @@
+import type { MarkTransformerEntry } from "../types";
 // link-transformer.ts — §5.1 Link mark mdast ↔ ProseMirror
 import type { Mark } from "@tiptap/pm/model";
-import type { Node as MdastNode, Link, PhrasingContent } from "mdast";
-import type { MarkTransformerEntry } from "../types";
 import type { Schema } from "@tiptap/pm/model";
+import type { Link, Node as MdastNode, PhrasingContent } from "mdast";
 
 export const linkTransformer: MarkTransformerEntry = {
   mdastType: "link",

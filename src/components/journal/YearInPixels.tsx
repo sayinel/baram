@@ -1,13 +1,15 @@
 // §56e Year in Pixels — 365-dot grid showing mood per day
-import { useState, useEffect, useMemo } from "react";
-import {
-  parseMoodFromFrontmatter,
-  getMoodColors,
-  MOOD_VALUES,
-} from "../../utils/journal-mood";
+import { useEffect, useMemo, useState } from "react";
+
 import type { MoodValue } from "../../utils/journal-mood";
+
 import { listDir, readFile } from "../../ipc/invoke";
 import { useSettingsStore } from "../../stores/settings-store";
+import {
+  getMoodColors,
+  MOOD_VALUES,
+  parseMoodFromFrontmatter,
+} from "../../utils/journal-mood";
 
 const MONTH_LABELS = [
   "J",
@@ -26,8 +28,8 @@ const MONTH_LABELS = [
 
 interface Props {
   journalDir: string;
-  year: number;
   useHierarchy: boolean;
+  year: number;
 }
 
 export function YearInPixels({ journalDir, year, useHierarchy }: Props) {
@@ -36,7 +38,7 @@ export function YearInPixels({ journalDir, year, useHierarchy }: Props) {
 
   // §56e Theme-aware mood colors
   const theme = useSettingsStore((s) => s.theme);
-  const effectiveBase = useMemo<"light" | "dark">(() => {
+  const effectiveBase = useMemo<"dark" | "light">(() => {
     if (theme === "light" || theme === "dark") return theme;
     return window.matchMedia("(prefers-color-scheme: dark)").matches
       ? "dark"
@@ -82,8 +84,8 @@ export function YearInPixels({ journalDir, year, useHierarchy }: Props) {
   // Build grid: 12 months, each with days
   const grid = useMemo(() => {
     const months: {
-      month: number;
       days: { date: string; mood: MoodValue | null }[];
+      month: number;
     }[] = [];
     for (let m = 0; m < 12; m++) {
       const daysInMonth = new Date(year, m + 1, 0).getDate();
@@ -114,18 +116,18 @@ export function YearInPixels({ journalDir, year, useHierarchy }: Props) {
         <div className="year-in-pixels-grid">
           <div className="year-in-pixels-labels">
             {MONTH_LABELS.map((label, i) => (
-              <div key={i} className="year-in-pixels-month-label">
+              <div className="year-in-pixels-month-label" key={i}>
                 {label}
               </div>
             ))}
           </div>
           <div className="year-in-pixels-dots">
             {grid.map(({ month, days }) => (
-              <div key={month} className="year-in-pixels-month">
+              <div className="year-in-pixels-month" key={month}>
                 {days.map(({ date, mood }) => (
                   <span
+                    className={`year-in-pixels-dot${mood ? "year-in-pixels-dot-filled" : ""}`}
                     key={date}
-                    className={`year-in-pixels-dot${mood ? " year-in-pixels-dot-filled" : ""}`}
                     style={mood ? { background: MOOD_COLORS[mood] } : undefined}
                     title={`${date}${mood ? ` — ${mood}` : ""}`}
                   />
@@ -135,7 +137,7 @@ export function YearInPixels({ journalDir, year, useHierarchy }: Props) {
           </div>
           <div className="year-in-pixels-legend">
             {MOOD_VALUES.map((v) => (
-              <span key={v} className="year-in-pixels-legend-item">
+              <span className="year-in-pixels-legend-item" key={v}>
                 <span
                   className="year-in-pixels-legend-dot"
                   style={{ background: MOOD_COLORS[v] }}

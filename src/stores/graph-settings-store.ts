@@ -2,41 +2,41 @@
 import { create } from "zustand";
 
 export interface GraphSettingsState {
-  // Filters
-  searchQuery: string;
-  showOrphans: boolean;
-  existingFilesOnly: boolean;
-  showTags: boolean;
-  colorByNamespace: boolean;
-  namespaceFilter: string;
-
-  // Display
-  nodeSize: number;
-  linkThickness: number;
-  textFadeThreshold: number;
-  showArrows: boolean;
-
   // Forces
   centerForce: number;
-  repelForce: number;
-  linkForce: number;
+  colorByNamespace: boolean;
+  existingFilesOnly: boolean;
   linkDistance: number;
+  linkForce: number;
+  linkThickness: number;
 
-  // Actions
-  setSearchQuery: (v: string) => void;
-  setShowOrphans: (v: boolean) => void;
-  setExistingFilesOnly: (v: boolean) => void;
-  setShowTags: (v: boolean) => void;
+  namespaceFilter: string;
+  // Display
+  nodeSize: number;
+  repelForce: number;
+  // Filters
+  searchQuery: string;
+
+  setCenterForce: (v: number) => void;
   setColorByNamespace: (v: boolean) => void;
+  setExistingFilesOnly: (v: boolean) => void;
+  setLinkDistance: (v: number) => void;
+
+  setLinkForce: (v: number) => void;
+  setLinkThickness: (v: number) => void;
   setNamespaceFilter: (v: string) => void;
   setNodeSize: (v: number) => void;
-  setLinkThickness: (v: number) => void;
-  setTextFadeThreshold: (v: number) => void;
-  setShowArrows: (v: boolean) => void;
-  setCenterForce: (v: number) => void;
   setRepelForce: (v: number) => void;
-  setLinkForce: (v: number) => void;
-  setLinkDistance: (v: number) => void;
+  // Actions
+  setSearchQuery: (v: string) => void;
+  setShowArrows: (v: boolean) => void;
+  setShowOrphans: (v: boolean) => void;
+  setShowTags: (v: boolean) => void;
+  setTextFadeThreshold: (v: number) => void;
+  showArrows: boolean;
+  showOrphans: boolean;
+  showTags: boolean;
+  textFadeThreshold: number;
 }
 
 export const useGraphSettingsStore = create<GraphSettingsState>((set) => ({

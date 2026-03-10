@@ -1,67 +1,113 @@
 // §69 Plugin Marketplace — Core Types
 
-export type PluginCapability =
-  | "editor"
-  | "editor:readonly"
-  | "files"
-  | "files:readonly"
-  | "commands"
-  | "sidebar"
-  | "statusbar"
-  | "settings"
-  | "events"
-  | "ai"
-  | "network";
-
-export interface PluginManifest {
-  id: string;
-  name: string;
-  description: string;
-  version: string;
-  author: string;
-  license: string;
-  main: string;
-  engines: { baram: string };
-  capabilities: PluginCapability[];
-  dependencies?: string[];
-  tiptapExtensions?: TiptapExtensionDef[];
-  repository?: string;
-  homepage?: string;
-  icon?: string;
-  keywords?: string[];
+export interface CommandsAPI {
+  execute(id: string, ...args: unknown[]): Promise<unknown>;
+  register(id: string, handler: (...args: unknown[]) => unknown): Disposable;
 }
 
-export interface TiptapExtensionDef {
-  type: "node" | "mark" | "plugin";
-  name: string;
-  exportName: string;
+export interface Disposable {
+  dispose(): void;
+}
+
+export interface EditorAPI {
+  getContent(): string;
+  getSelection(): { from: number; text: string; to: number };
+  insertText(text: string): void;
+  setContent(content: string): void;
+}
+
+export interface EventsAPI {
+  emit(event: string, ...args: unknown[]): void;
+  on(event: string, handler: (...args: unknown[]) => void): Disposable;
+}
+
+export interface ExtensionContext {
+  commands: CommandsAPI;
+  editor: EditorAPI;
+  events: EventsAPI;
+  files: FilesAPI;
+  pluginId: string;
+  pluginPath: string;
+  subscriptions: Disposable[];
+  ui: UIAPI;
+}
+
+export interface FilesAPI {
+  listDir(path: string): Promise<string[]>;
+  readFile(path: string): Promise<string>;
+  writeFile(path: string, content: string): Promise<void>;
 }
 
 export interface InstalledPlugin {
-  manifest: PluginManifest;
-  installPath: string;
+  checksum: string;
   enabled: boolean;
   installedAt: number;
+  installPath: string;
+  manifest: PluginManifest;
   updatedAt: number;
-  checksum: string;
+}
+
+export interface LoadedPlugin {
+  context: ExtensionContext;
+  disposables: Disposable[];
+  id: string;
+  manifest: PluginManifest;
+  module: PluginModule;
+}
+
+export type PluginCapability =
+  | "ai"
+  | "commands"
+  | "editor"
+  | "editor:readonly"
+  | "events"
+  | "files"
+  | "files:readonly"
+  | "network"
+  | "settings"
+  | "sidebar"
+  | "statusbar";
+
+export interface PluginManifest {
+  author: string;
+  capabilities: PluginCapability[];
+  dependencies?: string[];
+  description: string;
+  engines: { baram: string };
+  homepage?: string;
+  icon?: string;
+  id: string;
+  keywords?: string[];
+  license: string;
+  main: string;
+  name: string;
+  repository?: string;
+  tiptapExtensions?: TiptapExtensionDef[];
+  version: string;
+}
+
+export interface PluginModule {
+  [key: string]: unknown;
+  activate?(context: ExtensionContext): Promise<void> | void;
+  deactivate?(): Promise<void> | void;
 }
 
 export interface RegistryEntry {
-  id: string;
-  name: string;
-  description: string;
-  version: string;
   author: string;
-  license: string;
-  downloadUrl: string;
-  checksum: string;
   capabilities: PluginCapability[];
-  keywords?: string[];
+  checksum: string;
+  description: string;
   downloads?: number;
-  repository?: string;
+  downloadUrl: string;
+  engines: { baram: string };
   homepage?: string;
   icon?: string;
-  engines: { baram: string };
+  id: string;
+  keywords?: string[];
+  license: string;
+  name: string;
+  repository?: string;
+  version: string;
 }
 
 export interface RegistryIndex {
@@ -69,60 +115,14 @@ export interface RegistryIndex {
   updatedAt?: string;
 }
 
-export interface Disposable {
-  dispose(): void;
-}
-
-export interface LoadedPlugin {
-  id: string;
-  manifest: PluginManifest;
-  module: PluginModule;
-  context: ExtensionContext;
-  disposables: Disposable[];
-}
-
-export interface PluginModule {
-  activate?(context: ExtensionContext): void | Promise<void>;
-  deactivate?(): void | Promise<void>;
-  [key: string]: unknown;
-}
-
-export interface ExtensionContext {
-  pluginId: string;
-  pluginPath: string;
-  subscriptions: Disposable[];
-  commands: CommandsAPI;
-  editor: EditorAPI;
-  files: FilesAPI;
-  events: EventsAPI;
-  ui: UIAPI;
-}
-
-export interface CommandsAPI {
-  register(id: string, handler: (...args: unknown[]) => unknown): Disposable;
-  execute(id: string, ...args: unknown[]): Promise<unknown>;
-}
-
-export interface EditorAPI {
-  getContent(): string;
-  setContent(content: string): void;
-  getSelection(): { from: number; to: number; text: string };
-  insertText(text: string): void;
-}
-
-export interface FilesAPI {
-  readFile(path: string): Promise<string>;
-  writeFile(path: string, content: string): Promise<void>;
-  listDir(path: string): Promise<string[]>;
-}
-
-export interface EventsAPI {
-  on(event: string, handler: (...args: unknown[]) => void): Disposable;
-  emit(event: string, ...args: unknown[]): void;
+export interface TiptapExtensionDef {
+  exportName: string;
+  name: string;
+  type: "mark" | "node" | "plugin";
 }
 
 export interface UIAPI {
-  showNotification(message: string, type?: "info" | "warning" | "error"): void;
+  showNotification(message: string, type?: "error" | "info" | "warning"): void;
   showStatusBarItem(text: string, alignment?: "left" | "right"): Disposable;
 }
 

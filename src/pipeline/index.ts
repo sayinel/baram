@@ -2,13 +2,13 @@
 export {
   markdownToProsemirror,
   markdownToProsemirrorAsync,
-  parseMdast,
-  mdastToProsemirror,
   mdastBlocksToPmNodes,
+  mdastToProsemirror,
+  parseMdast,
 } from "./md-to-pm";
 export { parseMdastAsync } from "./parse-async";
 export {
+  mdastToMarkdown,
   prosemirrorToMarkdown,
   prosemirrorToMdast,
-  mdastToMarkdown,
 } from "./pm-to-md";

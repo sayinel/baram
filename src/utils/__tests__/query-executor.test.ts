@@ -1,13 +1,14 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import {
-  matchesFilter,
   applyFilters,
   applySort,
   executeQuery,
-  type VaultFile,
+  matchesFilter,
+  type QueryDef,
   type QueryFilter,
   type QuerySort,
-  type QueryDef,
+  type VaultFile,
 } from "../query-executor";
 
 const files: VaultFile[] = [

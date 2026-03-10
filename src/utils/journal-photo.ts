@@ -2,9 +2,15 @@
 
 import { createDir } from "../ipc/invoke";
 
-/** Check if a path is absolute (Unix or Windows) */
-function isAbsolutePath(p: string): boolean {
-  return p.startsWith("/") || /^[A-Z]:\\/i.test(p);
+export interface PhotoGalleryEntry {
+  absolutePath: string;
+  caption: string;
+  date: Date;
+  /** Whether the date was parsed from the filename (true) or is a fallback guess (false) */
+  dateFromFilename: boolean;
+  filename: string;
+  journalPath: null | string;
+  relativePath: string;
 }
 
 /** Generate photo filename: YYYYMMDD-HHmmss-{sanitized-original}.{ext} */
@@ -42,6 +48,47 @@ export function getAssetsDir(journalDir: string, date?: Date): string {
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   return `${journalDir}/assets/${yyyy}-${mm}`;
 }
+
+/** Group photos by date at different granularities */
+export function groupPhotosByDate(
+  photos: PhotoGalleryEntry[],
+  mode: "day" | "month" | "year",
+): Map<string, PhotoGalleryEntry[]> {
+  const groups = new Map<string, PhotoGalleryEntry[]>();
+
+  for (const photo of photos) {
+    let key: string;
+    const d = photo.date;
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+
+    switch (mode) {
+      case "day":
+        key = `${yyyy}-${mm}-${dd}`;
+        break;
+      case "month":
+        key = `${yyyy}-${mm}`;
+        break;
+      case "year":
+        key = `${yyyy}`;
+        break;
+    }
+
+    const arr = groups.get(key) ?? [];
+    arr.push(photo);
+    groups.set(key, arr);
+  }
+
+  return groups;
+}
+
+/** Check if a path looks like a journal photo asset */
+export function isJournalPhoto(path: string): boolean {
+  return /assets\/\d{4}-\d{2}\//.test(path);
+}
+
+// §56d Photo Gallery — scan and group utilities
 
 /**
  * Save photo bytes to assets/ subfolder relative to the active md file's directory.
@@ -81,24 +128,6 @@ export async function savePhotoToAssets(
   return `assets/${filename}`;
 }
 
-/** Check if a path looks like a journal photo asset */
-export function isJournalPhoto(path: string): boolean {
-  return /assets\/\d{4}-\d{2}\//.test(path);
-}
-
-// §56d Photo Gallery — scan and group utilities
-
-export interface PhotoGalleryEntry {
-  filename: string;
-  relativePath: string;
-  absolutePath: string;
-  date: Date;
-  /** Whether the date was parsed from the filename (true) or is a fallback guess (false) */
-  dateFromFilename: boolean;
-  caption: string;
-  journalPath: string | null;
-}
-
 /**
  * Scan journal daily directories for photos in per-directory assets/ subfolders.
  * Structure: daily/YYYY/MM/assets/photo.jpg
@@ -107,7 +136,7 @@ export interface PhotoGalleryEntry {
 export async function scanJournalPhotos(
   rootPath: string,
   journalDir: string,
-  options?: { year?: number; month?: number },
+  options?: { month?: number; year?: number },
 ): Promise<PhotoGalleryEntry[]> {
   const { listDir, readFile } = await import("../ipc/invoke");
 
@@ -204,6 +233,11 @@ export async function scanJournalPhotos(
   return entries;
 }
 
+/** Check if a path is absolute (Unix or Windows) */
+function isAbsolutePath(p: string): boolean {
+  return p.startsWith("/") || /^[A-Z]:\\/i.test(p);
+}
+
 /**
  * Populate captions by scanning all markdown files in a month directory.
  * Only updates entries that don't already have captions.
@@ -267,38 +301,4 @@ async function populateCaptionsFromDir(
       // File read failed
     }
   }
-}
-
-/** Group photos by date at different granularities */
-export function groupPhotosByDate(
-  photos: PhotoGalleryEntry[],
-  mode: "day" | "month" | "year",
-): Map<string, PhotoGalleryEntry[]> {
-  const groups = new Map<string, PhotoGalleryEntry[]>();
-
-  for (const photo of photos) {
-    let key: string;
-    const d = photo.date;
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-
-    switch (mode) {
-      case "day":
-        key = `${yyyy}-${mm}-${dd}`;
-        break;
-      case "month":
-        key = `${yyyy}-${mm}`;
-        break;
-      case "year":
-        key = `${yyyy}`;
-        break;
-    }
-
-    const arr = groups.get(key) ?? [];
-    arr.push(photo);
-    groups.set(key, arr);
-  }
-
-  return groups;
 }

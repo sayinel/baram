@@ -10,19 +10,51 @@ export interface FlatFile {
 
 export interface HeadingEntry {
   level: number;
-  text: string;
   /** 1-based line number */
   line: number;
+  text: string;
 }
 
 /** Directories to exclude from file search results. */
 const EXCLUDED_DIRS = new Set([
-  ".git",
-  "node_modules",
-  ".svn",
-  ".hg",
   ".DS_Store",
+  ".git",
+  ".hg",
+  ".svn",
+  "node_modules",
 ]);
+
+/** Extract markdown headings from content string. */
+export function extractHeadings(markdown: string): HeadingEntry[] {
+  if (!markdown) return [];
+
+  const lines = markdown.split("\n");
+  const headings: HeadingEntry[] = [];
+  let inCodeBlock = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Toggle code fence
+    if (line.trimStart().startsWith("```")) {
+      inCodeBlock = !inCodeBlock;
+      continue;
+    }
+    if (inCodeBlock) continue;
+
+    // Match ATX headings: # ... ######
+    const match = line.match(/^(#{1,6})\s+(.+)$/);
+    if (match) {
+      headings.push({
+        level: match[1].length,
+        text: match[2].trimEnd(),
+        line: i + 1,
+      });
+    }
+  }
+
+  return headings;
+}
 
 /** Flatten nested FileEntry tree into a flat list of files (no directories). */
 export function flattenFileTree(
@@ -49,20 +81,6 @@ export function flattenFileTree(
 
   walk(tree);
   return result;
-}
-
-/** Check if query looks like a glob pattern (contains * or ?). */
-export function isGlobPattern(query: string): boolean {
-  return query.includes("*") || query.includes("?");
-}
-
-/** Match text against a glob pattern. * matches any characters, ? matches one character. */
-export function globMatch(pattern: string, text: string): boolean {
-  const escaped = pattern
-    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*/g, ".*")
-    .replace(/\?/g, ".");
-  return new RegExp(`^${escaped}$`, "i").test(text);
 }
 
 /** Fuzzy match query against text. Returns true if all characters match in order. */
@@ -120,34 +138,16 @@ export function fuzzyScore(query: string, text: string): number {
   return score;
 }
 
-/** Extract markdown headings from content string. */
-export function extractHeadings(markdown: string): HeadingEntry[] {
-  if (!markdown) return [];
+/** Match text against a glob pattern. * matches any characters, ? matches one character. */
+export function globMatch(pattern: string, text: string): boolean {
+  const escaped = pattern
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*/g, ".*")
+    .replace(/\?/g, ".");
+  return new RegExp(`^${escaped}$`, "i").test(text);
+}
 
-  const lines = markdown.split("\n");
-  const headings: HeadingEntry[] = [];
-  let inCodeBlock = false;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    // Toggle code fence
-    if (line.trimStart().startsWith("```")) {
-      inCodeBlock = !inCodeBlock;
-      continue;
-    }
-    if (inCodeBlock) continue;
-
-    // Match ATX headings: # ... ######
-    const match = line.match(/^(#{1,6})\s+(.+)$/);
-    if (match) {
-      headings.push({
-        level: match[1].length,
-        text: match[2].trimEnd(),
-        line: i + 1,
-      });
-    }
-  }
-
-  return headings;
+/** Check if query looks like a glob pattern (contains * or ?). */
+export function isGlobPattern(query: string): boolean {
+  return query.includes("*") || query.includes("?");
 }

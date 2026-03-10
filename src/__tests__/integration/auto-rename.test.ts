@@ -1,6 +1,6 @@
 // §33 링크 자동 갱신 통합 테스트
 // Tests the rename flow contract: FileTree rename → IPC → wikilink update
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
 /**
  * Mirrors Rust's `replace_wikilink_target` logic for frontend testing.

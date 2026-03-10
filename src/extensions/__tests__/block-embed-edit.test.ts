@@ -1,7 +1,8 @@
 // §30d Block Embed Bidirectional Editing tests
-import { describe, test, expect } from "vitest";
-import { replaceBlockInContent } from "../../utils/block-replace";
+import { describe, expect, test } from "vitest";
+
 import { findBlockContent, findBlockLine } from "../../utils/block-nav";
+import { replaceBlockInContent } from "../../utils/block-replace";
 
 describe("§30d Block Embed Edit — replaceBlockInContent integration", () => {
   const sampleDoc = [

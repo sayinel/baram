@@ -1,112 +1,114 @@
+import type {
+  GitAheadBehind,
+  GitBranchInfo,
+  GitChange,
+  GitFileDiff,
+  GitLogEntry,
+  GitRemoteInfo,
+  GitStashEntry,
+  GitStatusInfo,
+} from "../ipc/types";
+
 // §57b Git 상태 관리 스토어
 import { create } from "zustand";
-import type {
-  GitChange,
-  GitStatusInfo,
-  GitFileDiff,
-  GitBranchInfo,
-  GitLogEntry,
-  GitStashEntry,
-  GitRemoteInfo,
-  GitAheadBehind,
-} from "../ipc/types";
+
 import {
-  gitStatus,
-  gitStage,
-  gitUnstage,
-  gitCommit,
-  gitDiffFile,
+  gitAheadBehind,
   gitBranches,
-  gitSwitchBranch,
-  gitDiscard,
+  gitCommit,
   gitCreateBranch,
-  gitLog,
-  gitStashSave,
-  gitStashList,
-  gitStashPop,
-  gitStashDrop,
-  gitRemotes,
+  gitDeleteBranch,
+  gitDiffFile,
+  gitDiscard,
   gitFetch,
+  gitLog,
   gitPull,
   gitPush,
-  gitAheadBehind,
-  gitDeleteBranch,
+  gitRemotes,
+  gitStage,
+  gitStashDrop,
+  gitStashList,
+  gitStashPop,
+  gitStashSave,
+  gitStatus,
+  gitSwitchBranch,
+  gitUnstage,
 } from "../ipc/invoke";
 
 interface GitState {
-  // Status
-  isRepo: boolean;
-  branch: string;
-  changes: GitChange[];
-  loading: boolean;
-  error: string | null;
-
-  // Branches
-  branchList: GitBranchInfo[];
-  showBranchPicker: boolean;
-
   // Diff
   activeDiff: GitFileDiff | null;
-  diffLoading: boolean;
+  // §67 Tab
+  activeTab: "changes" | "history" | "stash";
+  aheadBehind: GitAheadBehind | null;
+  branch: string;
+  // Branches
+  branchList: GitBranchInfo[];
 
+  changes: GitChange[];
+  closeDiff: () => void;
+
+  commitChanges: (path: string) => Promise<string>;
   // Commit
   commitMessage: string;
-  committing: boolean;
 
+  committing: boolean;
+  createBranch: (path: string, branchName: string) => Promise<void>;
+
+  deleteBranch: (path: string, branchName: string) => Promise<void>;
+  diffLoading: boolean;
+
+  discardFiles: (path: string, files: string[]) => Promise<void>;
+  dropStash: (path: string, index?: number) => Promise<void>;
+
+  error: null | string;
+  fetchRemote: (path: string, remote?: string) => Promise<void>;
+  // Status
+  isRepo: boolean;
+  loadAheadBehind: (path: string) => Promise<void>;
+
+  loadBranches: (path: string) => Promise<void>;
+
+  loadDiff: (path: string, filePath: string) => Promise<void>;
+  loading: boolean;
+  // §67 New actions
+  loadLog: (path: string, maxCount?: number) => Promise<void>;
+  loadRemotes: (path: string) => Promise<void>;
+  loadStash: (path: string) => Promise<void>;
   // §67 Log
   logEntries: GitLogEntry[];
   logLoading: boolean;
-
-  // §67 Stash
-  stashEntries: GitStashEntry[];
-  stashLoading: boolean;
-
-  // §67 Remote
-  remotes: GitRemoteInfo[];
-  aheadBehind: GitAheadBehind | null;
-  pushing: boolean;
-  pulling: boolean;
-
-  // §67 Tab
-  activeTab: "changes" | "history" | "stash";
-
-  // Actions
-  refresh: (path: string) => Promise<void>;
-  stageFiles: (path: string, files: string[]) => Promise<void>;
-  unstageFiles: (path: string, files: string[]) => Promise<void>;
-  commitChanges: (path: string) => Promise<string>;
-  loadDiff: (path: string, filePath: string) => Promise<void>;
-  closeDiff: () => void;
-  loadBranches: (path: string) => Promise<void>;
-  switchBranch: (path: string, branchName: string) => Promise<void>;
-  createBranch: (path: string, branchName: string) => Promise<void>;
-  discardFiles: (path: string, files: string[]) => Promise<void>;
-  setCommitMessage: (msg: string) => void;
-  setShowBranchPicker: (show: boolean) => void;
-  stageAll: (path: string) => Promise<void>;
-  unstageAll: (path: string) => Promise<void>;
-
-  // §67 New actions
-  loadLog: (path: string, maxCount?: number) => Promise<void>;
-  loadStash: (path: string) => Promise<void>;
-  saveStash: (
-    path: string,
-    message: string,
-    includeUntracked?: boolean,
-  ) => Promise<void>;
   popStash: (path: string, index?: number) => Promise<void>;
-  dropStash: (path: string, index?: number) => Promise<void>;
-  loadRemotes: (path: string) => Promise<void>;
-  loadAheadBehind: (path: string) => Promise<void>;
-  fetchRemote: (path: string, remote?: string) => Promise<void>;
+  pulling: boolean;
   pullRemote: (
     path: string,
     remote?: string,
     branch?: string,
   ) => Promise<string>;
+  pushing: boolean;
   pushRemote: (path: string, remote?: string, branch?: string) => Promise<void>;
-  deleteBranch: (path: string, branchName: string) => Promise<void>;
+  // Actions
+  refresh: (path: string) => Promise<void>;
+  // §67 Remote
+  remotes: GitRemoteInfo[];
+
+  saveStash: (
+    path: string,
+    message: string,
+    includeUntracked?: boolean,
+  ) => Promise<void>;
   setActiveTab: (tab: "changes" | "history" | "stash") => void;
+  setCommitMessage: (msg: string) => void;
+  setShowBranchPicker: (show: boolean) => void;
+  showBranchPicker: boolean;
+  stageAll: (path: string) => Promise<void>;
+  stageFiles: (path: string, files: string[]) => Promise<void>;
+  // §67 Stash
+  stashEntries: GitStashEntry[];
+  stashLoading: boolean;
+  switchBranch: (path: string, branchName: string) => Promise<void>;
+  unstageAll: (path: string) => Promise<void>;
+  unstageFiles: (path: string, files: string[]) => Promise<void>;
 }
 
 export const useGitStore = create<GitState>((set, get) => ({
@@ -380,37 +382,37 @@ export function groupChanges(changes: GitChange[]): {
   };
 }
 
+// Helper: status color class
+export function statusColorClass(status: string): string {
+  switch (status) {
+    case "added":
+    case "untracked":
+      return "git-status-added";
+    case "deleted":
+      return "git-status-deleted";
+    case "modified":
+      return "git-status-modified";
+    case "renamed":
+      return "git-status-renamed";
+    default:
+      return "";
+  }
+}
+
 // Helper: status icon
 export function statusIcon(status: string): string {
   switch (status) {
-    case "modified":
-      return "M";
     case "added":
       return "A";
     case "deleted":
       return "D";
+    case "modified":
+      return "M";
     case "renamed":
       return "R";
     case "untracked":
       return "U";
     default:
       return "?";
-  }
-}
-
-// Helper: status color class
-export function statusColorClass(status: string): string {
-  switch (status) {
-    case "modified":
-      return "git-status-modified";
-    case "added":
-    case "untracked":
-      return "git-status-added";
-    case "deleted":
-      return "git-status-deleted";
-    case "renamed":
-      return "git-status-renamed";
-    default:
-      return "";
   }
 }

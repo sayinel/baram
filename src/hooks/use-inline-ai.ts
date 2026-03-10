@@ -2,61 +2,64 @@
 // Captures selection, streams LLM, updates AI Diff plugin decorations.
 // Pattern: use-ghost-text.ts (LLM streaming + plugin meta)
 
-import { useState, useRef, useCallback, useEffect } from "react";
-import type { Editor } from "@tiptap/core";
-import { useAIStore } from "../stores/ai-store";
-import {
-  aiDiffPluginKey,
-  dispatchAIDiffStart,
-  dispatchAIDiffChunk,
-  dispatchAIDiffDone,
-  dispatchAIDiffAccept,
-  dispatchAIDiffReject,
-  dispatchAIDiffClear,
-  dispatchAIDiffAcceptHunk,
-  dispatchAIDiffRejectHunk,
-} from "../extensions/plugins/ai-diff";
-import type { AIDiffState, Hunk } from "../extensions/plugins/ai-diff";
-import type { InlineAIPhase } from "../components/ai/InlineAIPrompt";
-import { llmComplete, llmCancel } from "../ipc/invoke";
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
+
+import type { InlineAIPhase } from "../components/ai/InlineAIPrompt";
+import type { AIDiffState, Hunk } from "../extensions/plugins/ai-diff";
 import type {
-  LLMTokenPayload,
   LLMDonePayload,
   LLMErrorPayload,
+  LLMTokenPayload,
 } from "../ipc/types";
-import { isLLMAllowed, getFilePrivacy } from "../utils/privacy-check";
+import type { Editor } from "@tiptap/core";
+
+import {
+  aiDiffPluginKey,
+  dispatchAIDiffAccept,
+  dispatchAIDiffAcceptHunk,
+  dispatchAIDiffChunk,
+  dispatchAIDiffClear,
+  dispatchAIDiffDone,
+  dispatchAIDiffReject,
+  dispatchAIDiffRejectHunk,
+  dispatchAIDiffStart,
+} from "../extensions/plugins/ai-diff";
+import { llmCancel, llmComplete } from "../ipc/invoke";
+import { useAIStore } from "../stores/ai-store";
 import { getConfigForTask } from "../utils/model-selection";
+import { getFilePrivacy, isLLMAllowed } from "../utils/privacy-check";
 
 export interface UseInlineAIReturn {
-  isActive: boolean;
-  phase: InlineAIPhase | "idle";
-  selectionFrom: number;
-  selectionTo: number;
+  accept: () => void;
+  acceptHunk: (index: number) => void;
+  activate: () => void;
+  applyContent: (content: string) => void;
+  cancel: () => void;
   hasSelection: boolean;
   hunks: Hunk[];
-  activate: () => void;
-  submitPrompt: (instruction: string) => void;
-  applyContent: (content: string) => void;
-  accept: () => void;
-  reject: () => void;
+  isActive: boolean;
+  phase: "idle" | InlineAIPhase;
   regenerate: () => void;
-  cancel: () => void;
-  acceptHunk: (index: number) => void;
+  reject: () => void;
   rejectHunk: (index: number) => void;
+  selectionFrom: number;
+  selectionTo: number;
+  submitPrompt: (instruction: string) => void;
 }
 
 export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
   const [isActive, setIsActive] = useState(false);
-  const [phase, setPhase] = useState<InlineAIPhase | "idle">("idle");
+  const [phase, setPhase] = useState<"idle" | InlineAIPhase>("idle");
   const [selectionFrom, setSelectionFrom] = useState(0);
   const [selectionTo, setSelectionTo] = useState(0);
   const [hasSelection, setHasSelection] = useState(false);
   const [hunks, setHunks] = useState<Hunk[]>([]);
 
   const unlistenRefs = useRef<UnlistenFn[]>([]);
-  const activeRequestRef = useRef<string | null>(null);
+  const activeRequestRef = useRef<null | string>(null);
   const lastInstructionRef = useRef("");
 
   const cleanupListeners = useCallback(async () => {

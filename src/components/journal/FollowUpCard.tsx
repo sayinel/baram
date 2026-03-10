@@ -1,11 +1,13 @@
 // §56j Follow-Up Questions — manual trigger button for deeper questions
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import type { Editor } from "@tiptap/react";
+
 import { useLLMStream } from "../../hooks/use-llm-stream";
-import { buildFollowUpPrompt } from "../../utils/journal-reflection";
-import { useSettingsStore } from "../../stores/settings-store";
-import { useEditorStore } from "../../stores/editor-store";
 import { useTranslation } from "../../i18n/useTranslation";
+import { useEditorStore } from "../../stores/editor-store";
+import { useSettingsStore } from "../../stores/settings-store";
+import { buildFollowUpPrompt } from "../../utils/journal-reflection";
 
 interface FollowUpCardProps {
   editor: Editor | null;
@@ -149,14 +151,14 @@ export function FollowUpCard({ editor }: FollowUpCardProps) {
           onClick={handleRequest}
         >
           <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
             fill="none"
+            height="14"
             stroke="currentColor"
-            strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
+            strokeWidth="2"
+            viewBox="0 0 24 24"
+            width="14"
           >
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             <path d="M12 7v2" />

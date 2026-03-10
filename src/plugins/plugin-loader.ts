@@ -1,14 +1,45 @@
 // §69 Plugin Loader — Dynamic ESM import with lifecycle management
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { validateManifest } from "./manifest";
-import { createExtensionContext, setEditorInstance } from "./extension-context";
-import type { PluginManifest, PluginModule, LoadedPlugin } from "./types";
+
+import type { LoadedPlugin, PluginManifest, PluginModule } from "./types";
 import type { Extensions } from "@tiptap/core";
+
+import { createExtensionContext, setEditorInstance } from "./extension-context";
+import { validateManifest } from "./manifest";
 
 const ACTIVATE_TIMEOUT = 5000; // 5 seconds
 
 export class PluginLoader {
   private loaded = new Map<string, LoadedPlugin>();
+
+  /** Get all loaded plugins */
+  getLoadedPlugins(): LoadedPlugin[] {
+    return [...this.loaded.values()];
+  }
+
+  /** Get Tiptap extensions from all loaded plugins */
+  getTiptapExtensions(): Extensions {
+    const extensions: Extensions = [];
+    for (const plugin of this.loaded.values()) {
+      if (!plugin.manifest.tiptapExtensions?.length) continue;
+      for (const extDef of plugin.manifest.tiptapExtensions) {
+        const ext = plugin.module[extDef.exportName];
+        if (ext) {
+          extensions.push(ext as Extensions[number]);
+        } else {
+          console.warn(
+            `[PluginLoader] Plugin ${plugin.id}: export "${extDef.exportName}" not found`,
+          );
+        }
+      }
+    }
+    return extensions;
+  }
+
+  /** Check if a plugin is loaded */
+  isLoaded(id: string): boolean {
+    return this.loaded.has(id);
+  }
 
   /** Load and activate a single plugin */
   async loadPlugin(
@@ -66,6 +97,19 @@ export class PluginLoader {
     );
   }
 
+  /** Update the editor instance for plugin editor API */
+  setEditor(editor: unknown): void {
+    setEditorInstance(editor);
+  }
+
+  /** Unload all plugins (reverse order) */
+  async unloadAll(): Promise<void> {
+    const ids = [...this.loaded.keys()].reverse();
+    for (const id of ids) {
+      await this.unloadPlugin(id);
+    }
+  }
+
   /** Unload and deactivate a plugin */
   async unloadPlugin(id: string): Promise<void> {
     const plugin = this.loaded.get(id);
@@ -95,48 +139,6 @@ export class PluginLoader {
 
     this.loaded.delete(id);
     console.info(`[PluginLoader] Unloaded plugin: ${id}`);
-  }
-
-  /** Unload all plugins (reverse order) */
-  async unloadAll(): Promise<void> {
-    const ids = [...this.loaded.keys()].reverse();
-    for (const id of ids) {
-      await this.unloadPlugin(id);
-    }
-  }
-
-  /** Get all loaded plugins */
-  getLoadedPlugins(): LoadedPlugin[] {
-    return [...this.loaded.values()];
-  }
-
-  /** Check if a plugin is loaded */
-  isLoaded(id: string): boolean {
-    return this.loaded.has(id);
-  }
-
-  /** Get Tiptap extensions from all loaded plugins */
-  getTiptapExtensions(): Extensions {
-    const extensions: Extensions = [];
-    for (const plugin of this.loaded.values()) {
-      if (!plugin.manifest.tiptapExtensions?.length) continue;
-      for (const extDef of plugin.manifest.tiptapExtensions) {
-        const ext = plugin.module[extDef.exportName];
-        if (ext) {
-          extensions.push(ext as Extensions[number]);
-        } else {
-          console.warn(
-            `[PluginLoader] Plugin ${plugin.id}: export "${extDef.exportName}" not found`,
-          );
-        }
-      }
-    }
-    return extensions;
-  }
-
-  /** Update the editor instance for plugin editor API */
-  setEditor(editor: unknown): void {
-    setEditorInstance(editor);
   }
 }
 

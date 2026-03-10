@@ -4,22 +4,22 @@
  */
 
 export interface ParsedKey {
-  mod: boolean;
-  shift: boolean;
   alt: boolean;
   key: string;
+  mod: boolean;
+  shift: boolean;
 }
 
 /** e.code values that are bare modifiers — produce no binding notation */
 const MODIFIER_CODES = new Set([
-  "MetaLeft",
-  "MetaRight",
-  "ControlLeft",
-  "ControlRight",
-  "ShiftLeft",
-  "ShiftRight",
   "AltLeft",
   "AltRight",
+  "ControlLeft",
+  "ControlRight",
+  "MetaLeft",
+  "MetaRight",
+  "ShiftLeft",
+  "ShiftRight",
 ]);
 
 /** Map e.code → display key string for non-letter/digit keys */
@@ -162,6 +162,13 @@ export function formatKeyForDisplay(notation: string, isMac: boolean): string {
 }
 
 /**
+ * Simple string equality check for two notation strings.
+ */
+export function keysMatch(a: string, b: string): boolean {
+  return a === b;
+}
+
+/**
  * Parse a notation string like "Mod+Shift+S" into a ParsedKey object.
  */
 export function parseKeyNotation(notation: string): ParsedKey {
@@ -182,11 +189,4 @@ export function parseKeyNotation(notation: string): ParsedKey {
   const key = keyParts.join("+");
 
   return { mod, shift, alt, key };
-}
-
-/**
- * Simple string equality check for two notation strings.
- */
-export function keysMatch(a: string, b: string): boolean {
-  return a === b;
 }

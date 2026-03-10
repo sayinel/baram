@@ -1,6 +1,7 @@
-// M3 Roundtrip tests — 수식, 테이블, Frontmatter 변환 정합성 검증
-import { describe, it, expect } from "vitest";
 import { Schema } from "@tiptap/pm/model";
+// M3 Roundtrip tests — 수식, 테이블, Frontmatter 변환 정합성 검증
+import { describe, expect, it } from "vitest";
+
 import { markdownToProsemirror } from "../md-to-pm";
 import { prosemirrorToMarkdown } from "../pm-to-md";
 

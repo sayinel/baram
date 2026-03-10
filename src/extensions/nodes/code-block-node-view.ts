@@ -2,40 +2,42 @@
 // Uses a plain ProseMirror NodeView (not React) to properly handle
 // setSelection(), which is critical for CM ↔ PM focus coordination.
 
-import {
-  EditorView as CMView,
-  ViewUpdate,
-  keymap,
-  lineNumbers,
-  drawSelection,
-} from "@codemirror/view";
-import { EditorState as CMState } from "@codemirror/state";
+import type { Node as PMNode } from "@tiptap/pm/model";
+import type { NodeView, EditorView as PMView } from "@tiptap/pm/view";
+
+import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { defaultKeymap, indentWithTab } from "@codemirror/commands";
 import {
   bracketMatching,
-  syntaxHighlighting,
   indentUnit,
+  syntaxHighlighting,
 } from "@codemirror/language";
-import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
-import { getLanguageExtension, LANGUAGE_OPTIONS } from "./code-block-languages";
-import { getHighlightStyle } from "./code-block-highlight";
-import { useSettingsStore } from "../../stores/settings-store";
-import type { Node as PMNode } from "@tiptap/pm/model";
+import { EditorState as CMState } from "@codemirror/state";
+import {
+  EditorView as CMView,
+  drawSelection,
+  keymap,
+  lineNumbers,
+  ViewUpdate,
+} from "@codemirror/view";
+import { redo, undo } from "@tiptap/pm/history";
 import { TextSelection } from "@tiptap/pm/state";
-import type { EditorView as PMView, NodeView } from "@tiptap/pm/view";
-import { undo, redo } from "@tiptap/pm/history";
+
+import { useSettingsStore } from "../../stores/settings-store";
+import { getHighlightStyle } from "./code-block-highlight";
+import { getLanguageExtension, LANGUAGE_OPTIONS } from "./code-block-languages";
 
 export class CodeBlockNodeView implements NodeView {
   dom: HTMLElement;
-  private cmView: CMView | null = null;
-  private updating = false;
-  private langSelect: HTMLSelectElement;
   private cmContainer: HTMLElement;
-  private node: PMNode;
-  private view: PMView;
-  private getPos: () => number | undefined;
+  private cmView: CMView | null = null;
   private destroyed = false;
+  private getPos: () => number | undefined;
+  private langSelect: HTMLSelectElement;
+  private node: PMNode;
   private settingsUnsub: (() => void) | null = null;
+  private updating = false;
+  private view: PMView;
 
   constructor(node: PMNode, view: PMView, getPos: () => number | undefined) {
     this.node = node;
@@ -117,6 +119,116 @@ export class CodeBlockNodeView implements NodeView {
         this.initCM(currentLang);
       }
     });
+  }
+
+  deselectNode() {
+    // Nothing needed — CM handles its own blur
+  }
+
+  destroy() {
+    this.destroyed = true;
+    if (this.settingsUnsub) {
+      this.settingsUnsub();
+      this.settingsUnsub = null;
+    }
+    if (this.cmView) {
+      this.cmView.destroy();
+      this.cmView = null;
+    }
+  }
+
+  /** Prevent PM from reacting to CM DOM mutations */
+  ignoreMutation(): boolean {
+    return true;
+  }
+
+  /** Called when node is selected as a whole (NodeSelection) */
+  selectNode() {
+    if (this.cmView) {
+      this.cmView.focus();
+    }
+  }
+
+  /**
+   * Called by ProseMirror when selection enters this node.
+   * This is the KEY method that ReactNodeViewRenderer doesn't expose —
+   * it allows us to properly focus CodeMirror and set its cursor position.
+   */
+  setSelection(anchor: number, head: number) {
+    if (!this.cmView) return;
+    this.cmView.focus();
+    this.updating = true;
+    this.cmView.dispatch({ selection: { anchor, head } });
+    this.updating = false;
+  }
+
+  /** Prevent ProseMirror from handling events inside the code block */
+  stopEvent(): boolean {
+    // Stop PM from processing any events — let CM and native select handle them
+    return true;
+  }
+
+  /** Called by ProseMirror when the node is updated (e.g. undo/redo) */
+  update(node: PMNode): boolean {
+    if (node.type !== this.node.type) return false;
+
+    const oldLang = (this.node.attrs.language as string) || "";
+    this.node = node;
+
+    // Update language selector and recreate CM if language changed
+    const lang = (node.attrs.language as string) || "";
+    if (oldLang !== lang) {
+      this.langSelect.value = lang;
+      this.dom.dataset.language = lang;
+      if (this.cmView) {
+        this.cmView.destroy();
+        this.cmView = null;
+      }
+      this.initCM(lang);
+      return true;
+    }
+
+    // Sync PM → CM
+    if (this.cmView && !this.updating) {
+      const cmContent = this.cmView.state.doc.toString();
+      const pmContent = node.textContent;
+      if (cmContent !== pmContent) {
+        this.updating = true;
+        this.cmView.dispatch({
+          changes: {
+            from: 0,
+            to: this.cmView.state.doc.length,
+            insert: pmContent,
+          },
+        });
+        this.updating = false;
+      }
+    }
+
+    return true;
+  }
+
+  /** Sync CM changes → PM document */
+  private forwardUpdate(update: ViewUpdate) {
+    const pos = this.getPos();
+    if (typeof pos !== "number") return;
+    const pmNode = this.view.state.doc.nodeAt(pos);
+    if (!pmNode) return;
+
+    const newText = update.state.doc.toString();
+    this.updating = true;
+
+    const start = pos + 1;
+    const end = start + pmNode.content.size;
+    const { tr } = this.view.state;
+
+    if (newText) {
+      tr.replaceWith(start, end, this.view.state.schema.text(newText));
+    } else {
+      tr.delete(start, end);
+    }
+    this.view.dispatch(tr);
+    this.updating = false;
   }
 
   private async initCM(language: string) {
@@ -278,116 +390,6 @@ export class CodeBlockNodeView implements NodeView {
           this.dom.scrollIntoView({ block: "nearest", behavior: "smooth" });
         }
       });
-    }
-  }
-
-  /** Sync CM changes → PM document */
-  private forwardUpdate(update: ViewUpdate) {
-    const pos = this.getPos();
-    if (typeof pos !== "number") return;
-    const pmNode = this.view.state.doc.nodeAt(pos);
-    if (!pmNode) return;
-
-    const newText = update.state.doc.toString();
-    this.updating = true;
-
-    const start = pos + 1;
-    const end = start + pmNode.content.size;
-    const { tr } = this.view.state;
-
-    if (newText) {
-      tr.replaceWith(start, end, this.view.state.schema.text(newText));
-    } else {
-      tr.delete(start, end);
-    }
-    this.view.dispatch(tr);
-    this.updating = false;
-  }
-
-  /** Called by ProseMirror when the node is updated (e.g. undo/redo) */
-  update(node: PMNode): boolean {
-    if (node.type !== this.node.type) return false;
-
-    const oldLang = (this.node.attrs.language as string) || "";
-    this.node = node;
-
-    // Update language selector and recreate CM if language changed
-    const lang = (node.attrs.language as string) || "";
-    if (oldLang !== lang) {
-      this.langSelect.value = lang;
-      this.dom.dataset.language = lang;
-      if (this.cmView) {
-        this.cmView.destroy();
-        this.cmView = null;
-      }
-      this.initCM(lang);
-      return true;
-    }
-
-    // Sync PM → CM
-    if (this.cmView && !this.updating) {
-      const cmContent = this.cmView.state.doc.toString();
-      const pmContent = node.textContent;
-      if (cmContent !== pmContent) {
-        this.updating = true;
-        this.cmView.dispatch({
-          changes: {
-            from: 0,
-            to: this.cmView.state.doc.length,
-            insert: pmContent,
-          },
-        });
-        this.updating = false;
-      }
-    }
-
-    return true;
-  }
-
-  /**
-   * Called by ProseMirror when selection enters this node.
-   * This is the KEY method that ReactNodeViewRenderer doesn't expose —
-   * it allows us to properly focus CodeMirror and set its cursor position.
-   */
-  setSelection(anchor: number, head: number) {
-    if (!this.cmView) return;
-    this.cmView.focus();
-    this.updating = true;
-    this.cmView.dispatch({ selection: { anchor, head } });
-    this.updating = false;
-  }
-
-  /** Called when node is selected as a whole (NodeSelection) */
-  selectNode() {
-    if (this.cmView) {
-      this.cmView.focus();
-    }
-  }
-
-  deselectNode() {
-    // Nothing needed — CM handles its own blur
-  }
-
-  /** Prevent ProseMirror from handling events inside the code block */
-  stopEvent(): boolean {
-    // Stop PM from processing any events — let CM and native select handle them
-    return true;
-  }
-
-  /** Prevent PM from reacting to CM DOM mutations */
-  ignoreMutation(): boolean {
-    return true;
-  }
-
-  destroy() {
-    this.destroyed = true;
-    if (this.settingsUnsub) {
-      this.settingsUnsub();
-      this.settingsUnsub = null;
-    }
-    if (this.cmView) {
-      this.cmView.destroy();
-      this.cmView = null;
     }
   }
 }

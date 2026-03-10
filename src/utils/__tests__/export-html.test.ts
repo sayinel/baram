@@ -1,5 +1,6 @@
 // §5.12 Export HTML — generateStandaloneHTML unit tests
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import { generateStandaloneHTML } from "../export-html";
 
 describe("generateStandaloneHTML", () => {

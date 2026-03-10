@@ -1,38 +1,16 @@
 // §40 Frontmatter Visual Editor — property grid for YAML frontmatter
-import { useState, useCallback } from "react";
+import { useCallback, useState } from "react";
+
+interface FrontmatterEditorProps {
+  isSkillFile?: boolean;
+  onChange: (yaml: string) => void;
+  yaml: string;
+}
 
 interface FrontmatterProperty {
   key: string;
+  type: "boolean" | "date" | "string" | "tags";
   value: string;
-  type: "string" | "boolean" | "tags" | "date";
-}
-
-interface FrontmatterEditorProps {
-  yaml: string;
-  onChange: (yaml: string) => void;
-  isSkillFile?: boolean;
-}
-
-function parseYaml(yaml: string): FrontmatterProperty[] {
-  const props: FrontmatterProperty[] = [];
-  for (const line of yaml.split("\n")) {
-    const match = line.match(/^(\w[\w-]*)\s*:\s*(.*)$/);
-    if (!match) continue;
-    const [, key, rawValue] = match;
-    const value = rawValue.trim();
-
-    let type: FrontmatterProperty["type"] = "string";
-    if (value === "true" || value === "false") type = "boolean";
-    else if (/^\d{4}-\d{2}-\d{2}/.test(value)) type = "date";
-    else if (value.startsWith("[") || value.includes(",")) type = "tags";
-
-    props.push({ key, value, type });
-  }
-  return props;
-}
-
-function serializeYaml(props: FrontmatterProperty[]): string {
-  return props.map((p) => `${p.key}: ${p.value}`).join("\n");
 }
 
 export function FrontmatterEditor({
@@ -92,12 +70,12 @@ export function FrontmatterEditor({
         </div>
         <textarea
           className="frontmatter-editor-source"
-          value={sourceText}
           onChange={(e) => {
             setSourceText(e.target.value);
             onChange(e.target.value);
           }}
           rows={Math.max(3, sourceText.split("\n").length + 1)}
+          value={sourceText}
         />
       </div>
     );
@@ -133,12 +111,12 @@ export function FrontmatterEditor({
       )}
       <div className="frontmatter-editor-rows">
         {properties.map((prop, i) => (
-          <div key={i} className="frontmatter-editor-row">
+          <div className="frontmatter-editor-row" key={i}>
             <input
               className="frontmatter-editor-key"
-              value={prop.key}
               onChange={(e) => updateProperty(i, e.target.value, prop.value)}
               placeholder="key"
+              value={prop.key}
             />
             <span className="frontmatter-editor-sep">:</span>
             {prop.type === "boolean" ? (
@@ -160,13 +138,12 @@ export function FrontmatterEditor({
                   .replace(/^\[|\]$/g, "")
                   .split(",")
                   .map((tag, ti) => (
-                    <span key={ti} className="frontmatter-editor-tag-chip">
+                    <span className="frontmatter-editor-tag-chip" key={ti}>
                       {tag.trim()}
                     </span>
                   ))}
                 <input
                   className="frontmatter-editor-tag-input"
-                  placeholder="+ tag"
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && e.currentTarget.value) {
                       const current = prop.value.replace(/^\[|\]$/g, "");
@@ -177,15 +154,16 @@ export function FrontmatterEditor({
                       e.currentTarget.value = "";
                     }
                   }}
+                  placeholder="+ tag"
                 />
               </div>
             ) : (
               <input
                 className="frontmatter-editor-value"
-                value={prop.value}
                 onChange={(e) => updateProperty(i, prop.key, e.target.value)}
                 placeholder="value"
                 type={prop.type === "date" ? "date" : "text"}
+                value={prop.value}
               />
             )}
             <button
@@ -203,4 +181,26 @@ export function FrontmatterEditor({
       </button>
     </div>
   );
+}
+
+function parseYaml(yaml: string): FrontmatterProperty[] {
+  const props: FrontmatterProperty[] = [];
+  for (const line of yaml.split("\n")) {
+    const match = line.match(/^(\w[\w-]*)\s*:\s*(.*)$/);
+    if (!match) continue;
+    const [, key, rawValue] = match;
+    const value = rawValue.trim();
+
+    let type: FrontmatterProperty["type"] = "string";
+    if (value === "true" || value === "false") type = "boolean";
+    else if (/^\d{4}-\d{2}-\d{2}/.test(value)) type = "date";
+    else if (value.startsWith("[") || value.includes(",")) type = "tags";
+
+    props.push({ key, value, type });
+  }
+  return props;
+}
+
+function serializeYaml(props: FrontmatterProperty[]): string {
+  return props.map((p) => `${p.key}: ${p.value}`).join("\n");
 }

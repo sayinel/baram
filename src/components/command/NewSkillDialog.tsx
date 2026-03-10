@@ -1,12 +1,14 @@
 // §42 New Skill Dialog — template selection for creating new Skills files
 import { useState } from "react";
-import { SKILL_TEMPLATES } from "../../utils/skill-templates";
+
 import type { SkillTemplate } from "../../utils/skill-templates";
 
+import { SKILL_TEMPLATES } from "../../utils/skill-templates";
+
 interface NewSkillDialogProps {
-  open: boolean;
   onClose: () => void;
   onSelect: (template: SkillTemplate, name: string) => void;
+  open: boolean;
 }
 
 export function NewSkillDialog({
@@ -28,19 +30,19 @@ export function NewSkillDialog({
         <div className="new-skill-name-row">
           <label className="new-skill-label">Name</label>
           <input
-            type="text"
+            autoFocus
             className="new-skill-input"
-            value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="my-skill"
-            autoFocus
+            type="text"
+            value={name}
           />
         </div>
         <div className="new-skill-templates">
           {SKILL_TEMPLATES.map((t) => (
             <button
-              key={t.id}
               className={`new-skill-template ${selected === t.id ? "new-skill-template-active" : ""}`}
+              key={t.id}
               onClick={() => setSelected(t.id)}
             >
               <div className="new-skill-template-name">{t.name}</div>

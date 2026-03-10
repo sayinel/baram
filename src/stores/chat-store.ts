@@ -1,37 +1,38 @@
 // §44 AI Chat Session Store
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
+
 import { tauriStorage } from "./tauri-storage";
 
 export interface ChatMessage {
-  id: string;
-  role: "user" | "assistant";
   content: string;
-  timestamp: number;
+  id: string;
   references?: string[]; // @reference targets
+  role: "assistant" | "user";
+  timestamp: number;
 }
 
 export interface ChatSession {
-  id: string;
-  title: string;
-  messages: ChatMessage[];
   createdAt: number;
+  id: string;
+  messages: ChatMessage[];
+  title: string;
   updatedAt: number;
 }
 
 interface ChatState {
-  sessions: ChatSession[];
-  activeSessionId: string | null;
-
-  createSession: () => string;
-  setActiveSession: (id: string) => void;
+  activeSessionId: null | string;
   addMessage: (
     sessionId: string,
     message: Omit<ChatMessage, "id" | "timestamp">,
   ) => void;
-  updateLastMessage: (sessionId: string, content: string) => void;
+
+  createSession: () => string;
   deleteSession: (id: string) => void;
   getActiveSession: () => ChatSession | undefined;
+  sessions: ChatSession[];
+  setActiveSession: (id: string) => void;
+  updateLastMessage: (sessionId: string, content: string) => void;
 }
 
 export const useChatStore = create<ChatState>()(

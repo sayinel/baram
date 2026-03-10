@@ -1,8 +1,8 @@
+import type { MarkTransformerEntry } from "../types";
 // italic-transformer.ts — §5.1 Italic mark mdast ↔ ProseMirror
 import type { Mark } from "@tiptap/pm/model";
-import type { Node as MdastNode, Emphasis, PhrasingContent } from "mdast";
-import type { MarkTransformerEntry } from "../types";
 import type { Schema } from "@tiptap/pm/model";
+import type { Emphasis, Node as MdastNode, PhrasingContent } from "mdast";
 
 export const italicTransformer: MarkTransformerEntry = {
   mdastType: "emphasis",

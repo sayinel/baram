@@ -1,6 +1,7 @@
 // §5.1 Table of Contents Node Extension — [TOC]
 import { Node } from "@tiptap/core";
 import { ReactNodeViewRenderer } from "@tiptap/react";
+
 import { TableOfContentsView } from "./table-of-contents-view";
 
 declare module "@tiptap/core" {

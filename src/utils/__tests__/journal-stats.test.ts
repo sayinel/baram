@@ -1,10 +1,11 @@
 /**
  * §56g Journal Streaks & Stats — unit tests
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import {
-  calculateStreak,
   calculateMonthStats,
+  calculateStreak,
   calculateYearStats,
 } from "../journal-stats";
 

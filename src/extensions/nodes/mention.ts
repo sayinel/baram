@@ -1,9 +1,10 @@
 // §57 Mention Node Extension — @[[page]], @[[2026-02-27]]
-import { Node, mergeAttributes } from "@tiptap/core";
+import { mergeAttributes, Node } from "@tiptap/core";
 import { Plugin } from "@tiptap/pm/state";
 import { ReactNodeViewRenderer } from "@tiptap/react";
-import { MentionView } from "./mention-view";
+
 import { isDateString } from "../../utils/journal";
+import { MentionView } from "./mention-view";
 
 export interface MentionOptions {
   onNavigate: (type: string, value: string) => void;

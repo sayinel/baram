@@ -1,5 +1,6 @@
 // §69 Plugin Capability Badge
 import type { PluginCapability } from "../../plugins/types";
+
 import { CAPABILITY_DESCRIPTIONS } from "../../plugins/types";
 
 const CAPABILITY_COLORS: Record<string, string> = {
@@ -29,7 +30,6 @@ export function PluginCapabilityBadge({
   return (
     <span
       className="plugin-capability-badge"
-      title={CAPABILITY_DESCRIPTIONS[capability]}
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -43,6 +43,7 @@ export function PluginCapabilityBadge({
         border: `1px solid ${color}30`,
         lineHeight: "18px",
       }}
+      title={CAPABILITY_DESCRIPTIONS[capability]}
     >
       {capability}
       {showDescription && (

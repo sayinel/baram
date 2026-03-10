@@ -1,8 +1,9 @@
 // §5.5 M10 Table Virtual Scroll — unit tests
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import {
-  VIRTUAL_SCROLL_THRESHOLD,
   shouldApplyVirtualScroll,
+  VIRTUAL_SCROLL_THRESHOLD,
 } from "../nodes/table-virtual-scroll";
 
 describe("Table Virtual Scroll", () => {

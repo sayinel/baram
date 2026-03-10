@@ -2,10 +2,11 @@
 // Uses @tiptap/extension-table as base with custom configuration
 import { mergeAttributes } from "@tiptap/core";
 import { Table } from "@tiptap/extension-table";
-import { TableRow } from "@tiptap/extension-table-row";
 import { TableCell } from "@tiptap/extension-table-cell";
 import { TableHeader } from "@tiptap/extension-table-header";
+import { TableRow } from "@tiptap/extension-table-row";
 import { TextSelection } from "@tiptap/pm/state";
+
 import { createVirtualScrollPlugin } from "./table-virtual-scroll";
 
 // §5.5 Tier 3: Table.extend() with resizable columns + pipe-input auto creation
@@ -101,7 +102,7 @@ export const BaramTableCell = TableCell.extend({
   },
 
   renderHTML({ node, HTMLAttributes }) {
-    const align = node.attrs.alignment as string | null;
+    const align = node.attrs.alignment as null | string;
     const colspan = node.attrs.colspan as number;
     const rowspan = node.attrs.rowspan as number;
     return [
@@ -126,7 +127,7 @@ export const BaramTableHeader = TableHeader.extend({
   },
 
   renderHTML({ node, HTMLAttributes }) {
-    const align = node.attrs.alignment as string | null;
+    const align = node.attrs.alignment as null | string;
     const colspan = node.attrs.colspan as number;
     const rowspan = node.attrs.rowspan as number;
     return [

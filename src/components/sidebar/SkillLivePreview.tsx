@@ -1,5 +1,6 @@
 // §72c Skill Live Preview — auto-updating LLM prompt preview in PropertiesPanel
-import { useState, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { useSkillStore } from "../../stores/skill-store";
@@ -11,21 +12,6 @@ import {
 import { registerSkillSection } from "./skill-panel-registry";
 
 // ─── Variable highlighting ──────────────────────────────────────────────────
-
-function highlightVariables(text: string): React.ReactNode[] {
-  const parts = text.split(/(\{\{[^}]+\}\})/g);
-  return parts.map((part, i) =>
-    part.startsWith("{{") ? (
-      <span key={i} className="slp-var">
-        {part}
-      </span>
-    ) : (
-      part
-    ),
-  );
-}
-
-// ─── SkillLivePreview ───────────────────────────────────────────────────────
 
 export function SkillLivePreview() {
   const { activeTabId, tabs } = useEditorStore();
@@ -104,6 +90,21 @@ export function SkillLivePreview() {
         </div>
       )}
     </div>
+  );
+}
+
+// ─── SkillLivePreview ───────────────────────────────────────────────────────
+
+function highlightVariables(text: string): React.ReactNode[] {
+  const parts = text.split(/(\{\{[^}]+\}\})/g);
+  return parts.map((part, i) =>
+    part.startsWith("{{") ? (
+      <span className="slp-var" key={i}>
+        {part}
+      </span>
+    ) : (
+      part
+    ),
   );
 }
 

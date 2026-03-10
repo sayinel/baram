@@ -1,15 +1,16 @@
 // §45 Skill Auto-generation — modal dialog for AI-powered Skill file creation
-import { useState, useCallback } from "react";
+import { useCallback, useState } from "react";
+
 import { useLLMStream } from "../../hooks/use-llm-stream";
-import { buildSkillGenPrompts } from "../../utils/skill-generator-prompt";
-import { useFileStore } from "../../stores/file-store";
-import { useEditorStore } from "../../stores/editor-store";
 import { writeFile } from "../../ipc/invoke";
+import { useEditorStore } from "../../stores/editor-store";
+import { useFileStore } from "../../stores/file-store";
 import { formatAIError } from "../../utils/format-error";
+import { buildSkillGenPrompts } from "../../utils/skill-generator-prompt";
 
 interface SkillGeneratorDialogProps {
-  open: boolean;
   onClose: () => void;
+  open: boolean;
 }
 
 const VARIABLE_OPTIONS = [
@@ -28,7 +29,7 @@ export function SkillGeneratorDialog({
     new Set(["input"]),
   );
   const [outputFormat, setOutputFormat] = useState<
-    "text" | "json" | "markdown"
+    "json" | "markdown" | "text"
   >("text");
   const [preview, setPreview] = useState("");
   const { send, cancel, isStreaming, text, error } = useLLMStream();
@@ -103,12 +104,12 @@ export function SkillGeneratorDialog({
         <div style={{ marginTop: 12 }}>
           <label className="custom-ai-label">Description</label>
           <textarea
-            className="custom-ai-prompt-input"
-            placeholder="Describe what this Skill should do..."
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={3}
             autoFocus
+            className="custom-ai-prompt-input"
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Describe what this Skill should do..."
+            rows={3}
+            value={description}
           />
         </div>
 
@@ -126,9 +127,9 @@ export function SkillGeneratorDialog({
                 }}
               >
                 <input
-                  type="checkbox"
                   checked={selectedVars.has(v)}
                   onChange={() => toggleVar(v)}
+                  type="checkbox"
                 />
                 {`{{${v}}}`}
               </label>
@@ -140,11 +141,11 @@ export function SkillGeneratorDialog({
           <label className="custom-ai-label">Output Format</label>
           <select
             className="settings-select"
-            value={outputFormat}
             onChange={(e) =>
-              setOutputFormat(e.target.value as "text" | "json" | "markdown")
+              setOutputFormat(e.target.value as "json" | "markdown" | "text")
             }
             style={{ marginTop: 4 }}
+            value={outputFormat}
           >
             <option value="text">Text</option>
             <option value="json">JSON</option>
@@ -155,8 +156,8 @@ export function SkillGeneratorDialog({
         <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
           <button
             className="custom-ai-btn custom-ai-btn-primary"
-            onClick={handleGenerate}
             disabled={!description.trim() || isStreaming}
+            onClick={handleGenerate}
           >
             {isStreaming ? "Generating..." : "Generate"}
           </button>

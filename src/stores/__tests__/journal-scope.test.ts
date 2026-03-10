@@ -2,11 +2,12 @@
  * §56b Phase A — Journal Workspace Scoping & Layout Tests
  * TDD Red Phase: all tests should FAIL before implementation
  */
-import { describe, it, expect, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+
 import { useFileStore } from "../file-store";
-import { useUIStore } from "../ui-store";
-import { useWorkspaceStore, BUILTIN_PRESETS } from "../workspace-store";
 import { useSettingsStore } from "../settings-store";
+import { useUIStore } from "../ui-store";
+import { BUILTIN_PRESETS, useWorkspaceStore } from "../workspace-store";
 
 describe("§56b FileStore journal scoping", () => {
   beforeEach(async () => {

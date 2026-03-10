@@ -3,11 +3,12 @@
 // Original document is NOT modified until accept. Escape = reject.
 // Pattern: PluginKey + meta-based state (ghost-text) + Decoration.inline (find-replace)
 
+import type { EditorState, Transaction } from "@tiptap/pm/state";
+import type { EditorView } from "@tiptap/pm/view";
+
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import type { EditorState, Transaction } from "@tiptap/pm/state";
-import type { EditorView } from "@tiptap/pm/view";
 import diff from "fast-diff";
 
 // ── Plugin key ────────────────────────────────────────────────────────
@@ -16,27 +17,27 @@ export const aiDiffPluginKey = new PluginKey("aiDiff");
 
 // ── State types ───────────────────────────────────────────────────────
 
-export type AIDiffPhase = "idle" | "streaming" | "completed";
-
-export interface Hunk {
-  /** Character offset in originalText */
-  originalStart: number;
-  originalEnd: number;
-  /** The replacement text for this hunk */
-  replacement: string;
-  /** Whether this hunk has been accepted */
-  accepted: boolean;
-  /** Whether this hunk has been rejected */
-  rejected: boolean;
-}
+export type AIDiffPhase = "completed" | "idle" | "streaming";
 
 export interface AIDiffState {
-  phase: AIDiffPhase;
-  originalFrom: number;
-  originalTo: number;
-  originalText: string;
   aiText: string;
   hunks: Hunk[];
+  originalFrom: number;
+  originalText: string;
+  originalTo: number;
+  phase: AIDiffPhase;
+}
+
+export interface Hunk {
+  /** Whether this hunk has been accepted */
+  accepted: boolean;
+  originalEnd: number;
+  /** Character offset in originalText */
+  originalStart: number;
+  /** Whether this hunk has been rejected */
+  rejected: boolean;
+  /** The replacement text for this hunk */
+  replacement: string;
 }
 
 const IDLE_STATE: AIDiffState = {
@@ -51,16 +52,54 @@ const IDLE_STATE: AIDiffState = {
 // ── Meta types ────────────────────────────────────────────────────────
 
 export type AIDiffMeta =
-  | { type: "start"; from: number; to: number; originalText: string }
-  | { type: "streamChunk"; text: string }
-  | { type: "streamDone" }
+  | { from: number; originalText: string; to: number; type: "start" }
+  | { index: number; type: "acceptHunk" }
+  | { index: number; type: "rejectHunk" }
+  | { text: string; type: "streamChunk" }
   | { type: "accept" }
-  | { type: "reject" }
   | { type: "clear" }
-  | { type: "acceptHunk"; index: number }
-  | { type: "rejectHunk"; index: number };
+  | { type: "reject" }
+  | { type: "streamDone" };
 
 // ── Hunk computation ────────────────────────────────────────────────
+
+/**
+ * Build the final text by applying hunk decisions.
+ * For each hunk: accepted → use replacement, rejected → use original.
+ * `defaultAccept` controls what happens for undecided hunks (true = accept all).
+ */
+export function buildTextFromHunks(
+  originalText: string,
+  hunks: Hunk[],
+  defaultAccept: boolean,
+): string {
+  let result = "";
+  let originalOffset = 0;
+
+  for (const hunk of hunks) {
+    // Copy unchanged text before this hunk
+    if (hunk.originalStart > originalOffset) {
+      result += originalText.slice(originalOffset, hunk.originalStart);
+    }
+
+    const useReplacement = hunk.accepted || (!hunk.rejected && defaultAccept);
+    if (useReplacement) {
+      result += hunk.replacement;
+    } else {
+      // Keep original
+      result += originalText.slice(hunk.originalStart, hunk.originalEnd);
+    }
+
+    originalOffset = hunk.originalEnd;
+  }
+
+  // Copy any remaining original text after the last hunk
+  if (originalOffset < originalText.length) {
+    result += originalText.slice(originalOffset);
+  }
+
+  return result;
+}
 
 /**
  * Compute discrete hunks from fast-diff results.
@@ -72,11 +111,11 @@ export function computeHunks(originalText: string, aiText: string): Hunk[] {
   const hunks: Hunk[] = [];
 
   let originalOffset = 0;
-  let currentHunk: {
-    originalStart: number;
+  let currentHunk: null | {
     originalEnd: number;
+    originalStart: number;
     replacement: string;
-  } | null = null;
+  } = null;
 
   for (const [op, text] of diffs) {
     if (op === diff.EQUAL) {
@@ -122,44 +161,6 @@ export function computeHunks(originalText: string, aiText: string): Hunk[] {
   }
 
   return hunks;
-}
-
-/**
- * Build the final text by applying hunk decisions.
- * For each hunk: accepted → use replacement, rejected → use original.
- * `defaultAccept` controls what happens for undecided hunks (true = accept all).
- */
-export function buildTextFromHunks(
-  originalText: string,
-  hunks: Hunk[],
-  defaultAccept: boolean,
-): string {
-  let result = "";
-  let originalOffset = 0;
-
-  for (const hunk of hunks) {
-    // Copy unchanged text before this hunk
-    if (hunk.originalStart > originalOffset) {
-      result += originalText.slice(originalOffset, hunk.originalStart);
-    }
-
-    const useReplacement = hunk.accepted || (!hunk.rejected && defaultAccept);
-    if (useReplacement) {
-      result += hunk.replacement;
-    } else {
-      // Keep original
-      result += originalText.slice(hunk.originalStart, hunk.originalEnd);
-    }
-
-    originalOffset = hunk.originalEnd;
-  }
-
-  // Copy any remaining original text after the last hunk
-  if (originalOffset < originalText.length) {
-    result += originalText.slice(originalOffset);
-  }
-
-  return result;
 }
 
 // ── Decoration builder ───────────────────────────────────────────────
@@ -332,6 +333,42 @@ export const AIDiff = Extension.create({
 
             if (meta) {
               switch (meta.type) {
+                case "accept":
+                  // Accept is handled by the dispatch helper (replaces doc text)
+                  // Plugin just resets to idle
+                  return IDLE_STATE;
+
+                case "acceptHunk": {
+                  if (prev.phase !== "completed") return prev;
+                  const acceptIdx = meta.index;
+                  if (acceptIdx < 0 || acceptIdx >= prev.hunks.length)
+                    return prev;
+                  const acceptedHunks = prev.hunks.map((h, i) =>
+                    i === acceptIdx
+                      ? { ...h, accepted: true, rejected: false }
+                      : h,
+                  );
+                  return { ...prev, hunks: acceptedHunks };
+                }
+
+                case "clear":
+                // fallthrough
+                case "reject":
+                  return IDLE_STATE;
+
+                case "rejectHunk": {
+                  if (prev.phase !== "completed") return prev;
+                  const rejectIdx = meta.index;
+                  if (rejectIdx < 0 || rejectIdx >= prev.hunks.length)
+                    return prev;
+                  const rejectedHunks = prev.hunks.map((h, i) =>
+                    i === rejectIdx
+                      ? { ...h, rejected: true, accepted: false }
+                      : h,
+                  );
+                  return { ...prev, hunks: rejectedHunks };
+                }
+
                 case "start":
                   return {
                     phase: "streaming",
@@ -348,7 +385,6 @@ export const AIDiff = Extension.create({
                     ...prev,
                     aiText: prev.aiText + meta.text,
                   };
-
                 case "streamDone":
                   if (prev.phase === "idle") return prev;
                   return {
@@ -356,41 +392,6 @@ export const AIDiff = Extension.create({
                     phase: "completed",
                     hunks: computeHunks(prev.originalText, prev.aiText),
                   };
-
-                case "acceptHunk": {
-                  if (prev.phase !== "completed") return prev;
-                  const acceptIdx = meta.index;
-                  if (acceptIdx < 0 || acceptIdx >= prev.hunks.length)
-                    return prev;
-                  const acceptedHunks = prev.hunks.map((h, i) =>
-                    i === acceptIdx
-                      ? { ...h, accepted: true, rejected: false }
-                      : h,
-                  );
-                  return { ...prev, hunks: acceptedHunks };
-                }
-
-                case "rejectHunk": {
-                  if (prev.phase !== "completed") return prev;
-                  const rejectIdx = meta.index;
-                  if (rejectIdx < 0 || rejectIdx >= prev.hunks.length)
-                    return prev;
-                  const rejectedHunks = prev.hunks.map((h, i) =>
-                    i === rejectIdx
-                      ? { ...h, rejected: true, accepted: false }
-                      : h,
-                  );
-                  return { ...prev, hunks: rejectedHunks };
-                }
-
-                case "accept":
-                  // Accept is handled by the dispatch helper (replaces doc text)
-                  // Plugin just resets to idle
-                  return IDLE_STATE;
-
-                case "reject":
-                case "clear":
-                  return IDLE_STATE;
               }
             }
 
@@ -437,37 +438,7 @@ export const AIDiff = Extension.create({
 
 // ── Dispatch helpers ─────────────────────────────────────────────────
 
-type Dispatchable = { state: EditorState; dispatch: (tr: Transaction) => void };
-
-export function dispatchAIDiffStart(
-  view: Dispatchable,
-  from: number,
-  to: number,
-  originalText: string,
-) {
-  const tr = view.state.tr.setMeta(aiDiffPluginKey, {
-    type: "start",
-    from,
-    to,
-    originalText,
-  } satisfies AIDiffMeta);
-  view.dispatch(tr);
-}
-
-export function dispatchAIDiffChunk(view: Dispatchable, text: string) {
-  const tr = view.state.tr.setMeta(aiDiffPluginKey, {
-    type: "streamChunk",
-    text,
-  } satisfies AIDiffMeta);
-  view.dispatch(tr);
-}
-
-export function dispatchAIDiffDone(view: Dispatchable) {
-  const tr = view.state.tr.setMeta(aiDiffPluginKey, {
-    type: "streamDone",
-  } satisfies AIDiffMeta);
-  view.dispatch(tr);
-}
+type Dispatchable = { dispatch: (tr: Transaction) => void; state: EditorState };
 
 export function dispatchAIDiffAccept(view: Dispatchable) {
   const pluginState = aiDiffPluginKey.getState(view.state) as AIDiffState;
@@ -500,10 +471,24 @@ export function dispatchAIDiffAcceptHunk(view: Dispatchable, index: number) {
   view.dispatch(tr);
 }
 
-export function dispatchAIDiffRejectHunk(view: Dispatchable, index: number) {
+export function dispatchAIDiffChunk(view: Dispatchable, text: string) {
   const tr = view.state.tr.setMeta(aiDiffPluginKey, {
-    type: "rejectHunk",
-    index,
+    type: "streamChunk",
+    text,
+  } satisfies AIDiffMeta);
+  view.dispatch(tr);
+}
+
+export function dispatchAIDiffClear(view: Dispatchable) {
+  const tr = view.state.tr.setMeta(aiDiffPluginKey, {
+    type: "clear",
+  } satisfies AIDiffMeta);
+  view.dispatch(tr);
+}
+
+export function dispatchAIDiffDone(view: Dispatchable) {
+  const tr = view.state.tr.setMeta(aiDiffPluginKey, {
+    type: "streamDone",
   } satisfies AIDiffMeta);
   view.dispatch(tr);
 }
@@ -515,9 +500,25 @@ export function dispatchAIDiffReject(view: Dispatchable) {
   view.dispatch(tr);
 }
 
-export function dispatchAIDiffClear(view: Dispatchable) {
+export function dispatchAIDiffRejectHunk(view: Dispatchable, index: number) {
   const tr = view.state.tr.setMeta(aiDiffPluginKey, {
-    type: "clear",
+    type: "rejectHunk",
+    index,
+  } satisfies AIDiffMeta);
+  view.dispatch(tr);
+}
+
+export function dispatchAIDiffStart(
+  view: Dispatchable,
+  from: number,
+  to: number,
+  originalText: string,
+) {
+  const tr = view.state.tr.setMeta(aiDiffPluginKey, {
+    type: "start",
+    from,
+    to,
+    originalText,
   } satisfies AIDiffMeta);
   view.dispatch(tr);
 }

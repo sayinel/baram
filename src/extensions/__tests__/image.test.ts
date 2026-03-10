@@ -1,6 +1,7 @@
-// §5.1 Image — roundtrip + widthPercent persistence tests
-import { describe, test, expect } from "vitest";
 import { Schema } from "@tiptap/pm/model";
+// §5.1 Image — roundtrip + widthPercent persistence tests
+import { describe, expect, test } from "vitest";
+
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 

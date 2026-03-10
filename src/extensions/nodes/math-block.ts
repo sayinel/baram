@@ -1,7 +1,8 @@
 // §5.3 Math Block Extension — $$...$$ (atom:true, textarea editing)
-import { Node, mergeAttributes, InputRule } from "@tiptap/core";
+import { InputRule, mergeAttributes, Node } from "@tiptap/core";
+import { NodeSelection, Plugin, PluginKey } from "@tiptap/pm/state";
 import { ReactNodeViewRenderer } from "@tiptap/react";
-import { Plugin, PluginKey, NodeSelection } from "@tiptap/pm/state";
+
 import { MathBlockView } from "./math-block-view";
 
 export interface MathBlockOptions {

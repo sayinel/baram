@@ -1,12 +1,14 @@
 // §5.1 Table of Contents NodeView — auto-generated heading list
-import { useState, useEffect, useCallback, useRef } from "react";
-import { NodeViewWrapper } from "@tiptap/react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import type { NodeViewProps } from "@tiptap/react";
+
+import { NodeViewWrapper } from "@tiptap/react";
 
 interface TocEntry {
   level: number;
-  text: string;
   pos: number;
+  text: string;
 }
 
 export function TableOfContentsView({ editor, selected }: NodeViewProps) {
@@ -66,8 +68,8 @@ export function TableOfContentsView({ editor, selected }: NodeViewProps) {
         <ul className="table-of-contents-list">
           {entries.map((entry, i) => (
             <li
-              key={i}
               className={`table-of-contents-item table-of-contents-level-${entry.level}`}
+              key={i}
               style={{ paddingLeft: `${(entry.level - 1) * 16}px` }}
             >
               <button

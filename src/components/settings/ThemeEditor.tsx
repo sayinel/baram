@@ -1,15 +1,18 @@
 // §54 Theme Editor — color picker editor for customizing themes
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import { save } from "@tauri-apps/plugin-dialog";
-import { useSettingsStore } from "../../stores/settings-store";
+
+import type { ThemeColors, ThemeDef } from "../../types/theme";
+
+import { useTranslation } from "../../i18n/useTranslation";
 import { writeFile } from "../../ipc/invoke";
+import { useSettingsStore } from "../../stores/settings-store";
 import {
-  findThemeById,
   BUILT_IN_THEMES,
+  findThemeById,
   THEME_COLOR_KEYS,
 } from "../../types/theme";
-import type { ThemeColors, ThemeDef } from "../../types/theme";
-import { useTranslation } from "../../i18n/useTranslation";
 
 interface ThemeEditorProps {
   onClose: () => void;
@@ -32,7 +35,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   const [name, setName] = useState(() =>
     sourceTheme.builtIn ? `Custom ${sourceTheme.name}` : sourceTheme.name,
   );
-  const [base, setBase] = useState<"light" | "dark">(sourceTheme.base);
+  const [base, setBase] = useState<"dark" | "light">(sourceTheme.base);
   const [colors, setColors] = useState<ThemeColors>(() => ({
     ...sourceTheme.colors,
   }));
@@ -125,11 +128,11 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
     <div className="theme-editor">
       <div className="theme-editor-header">
         <input
-          type="text"
           className="theme-editor-name"
-          value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder={t("settings.theme.namePlaceholder")}
+          type="text"
+          value={name}
         />
         <div className="theme-editor-base-toggle">
           <button
@@ -151,13 +154,13 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
         <div key={category}>
           <div className="theme-editor-category">{category}</div>
           {entries.map((entry) => (
-            <div key={entry.key} className="theme-editor-row">
+            <div className="theme-editor-row" key={entry.key}>
               <span className="theme-editor-label">{entry.label}</span>
               <input
-                type="color"
                 className="theme-editor-color"
-                value={colors[entry.key]}
                 onChange={(e) => handleColorChange(entry.key, e.target.value)}
+                type="color"
+                value={colors[entry.key]}
               />
               <span className="theme-editor-hex">{colors[entry.key]}</span>
             </div>

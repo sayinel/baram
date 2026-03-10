@@ -2,6 +2,7 @@
 // §30c adds NodeView, onNavigate option
 import { Node } from "@tiptap/core";
 import { ReactNodeViewRenderer } from "@tiptap/react";
+
 import { BlockEmbedView } from "./block-embed-view";
 
 export interface BlockEmbedOptions {
@@ -12,8 +13,8 @@ declare module "@tiptap/core" {
   interface Commands<ReturnType> {
     blockEmbed: {
       insertBlockEmbed: (attrs: {
-        target: string;
         blockId: string;
+        target: string;
       }) => ReturnType;
     };
   }

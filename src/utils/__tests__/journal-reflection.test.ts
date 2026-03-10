@@ -1,13 +1,14 @@
 /**
  * §56j AI Reflection utility tests
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import {
+  buildEmotionInferencePrompt,
+  buildFollowUpPrompt,
   buildReflectionPrompt,
   extractReflectionEntries,
   formatReflectionMarkdown,
-  buildFollowUpPrompt,
-  buildEmotionInferencePrompt,
   parseEmotionResponse,
 } from "../journal-reflection";
 

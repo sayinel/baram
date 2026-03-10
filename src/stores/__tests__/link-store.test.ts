@@ -1,5 +1,6 @@
 // §29 link-store 단위 테스트
-import { describe, it, expect, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+
 import { useLinkStore } from "../link-store";
 
 describe("linkStore", () => {

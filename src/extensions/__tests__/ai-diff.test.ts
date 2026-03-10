@@ -1,13 +1,15 @@
-// §6.2 AI Diff Plugin tests — state transitions + decoration verification
-import { describe, test, expect } from "vitest";
+import type { AIDiffMeta, AIDiffState } from "../plugins/ai-diff";
+
 import { Schema } from "@tiptap/pm/model";
 import { EditorState, Plugin } from "@tiptap/pm/state";
+// §6.2 AI Diff Plugin tests — state transitions + decoration verification
+import { describe, expect, test } from "vitest";
+
 import {
   aiDiffPluginKey,
-  computeHunks,
   buildTextFromHunks,
+  computeHunks,
 } from "../plugins/ai-diff";
-import type { AIDiffState, AIDiffMeta } from "../plugins/ai-diff";
 
 // ── Minimal schema for testing ─────────────────────────────────────
 
@@ -40,25 +42,10 @@ function createAIDiffPlugin(): Plugin {
         const meta = tr.getMeta(aiDiffPluginKey) as AIDiffMeta | undefined;
         if (meta) {
           switch (meta.type) {
-            case "start":
-              return {
-                phase: "streaming",
-                originalFrom: meta.from,
-                originalTo: meta.to,
-                originalText: meta.originalText,
-                aiText: "",
-                hunks: [],
-              };
-            case "streamChunk":
-              if (prev.phase === "idle") return prev;
-              return { ...prev, aiText: prev.aiText + meta.text };
-            case "streamDone":
-              if (prev.phase === "idle") return prev;
-              return {
-                ...prev,
-                phase: "completed",
-                hunks: computeHunks(prev.originalText, prev.aiText),
-              };
+            case "accept":
+            case "clear":
+            case "reject":
+              return IDLE;
             case "acceptHunk": {
               if (prev.phase !== "completed") return prev;
               const idx = meta.index;
@@ -81,10 +68,25 @@ function createAIDiffPlugin(): Plugin {
                 ),
               };
             }
-            case "accept":
-            case "reject":
-            case "clear":
-              return IDLE;
+            case "start":
+              return {
+                phase: "streaming",
+                originalFrom: meta.from,
+                originalTo: meta.to,
+                originalText: meta.originalText,
+                aiText: "",
+                hunks: [],
+              };
+            case "streamChunk":
+              if (prev.phase === "idle") return prev;
+              return { ...prev, aiText: prev.aiText + meta.text };
+            case "streamDone":
+              if (prev.phase === "idle") return prev;
+              return {
+                ...prev,
+                phase: "completed",
+                hunks: computeHunks(prev.originalText, prev.aiText),
+              };
           }
         }
         if (tr.docChanged && prev.phase !== "idle") {
@@ -105,13 +107,13 @@ function createState(text: string): EditorState {
   return EditorState.create({ doc, plugins: [createAIDiffPlugin()] });
 }
 
-function getPluginState(state: EditorState): AIDiffState {
-  return aiDiffPluginKey.getState(state) as AIDiffState;
-}
-
 function dispatchMeta(state: EditorState, meta: AIDiffMeta): EditorState {
   const tr = state.tr.setMeta(aiDiffPluginKey, meta);
   return state.apply(tr);
+}
+
+function getPluginState(state: EditorState): AIDiffState {
+  return aiDiffPluginKey.getState(state) as AIDiffState;
 }
 
 // ── Tests ──────────────────────────────────────────────────────────

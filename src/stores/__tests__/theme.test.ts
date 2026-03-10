@@ -1,8 +1,10 @@
-// §54 Theme System — settings store theme functionality tests
-import { describe, it, expect, beforeEach } from "vitest";
-import { useSettingsStore } from "../settings-store";
-import { BUILT_IN_THEMES, findThemeById } from "../../types/theme";
 import type { ThemeDef } from "../../types/theme";
+
+// §54 Theme System — settings store theme functionality tests
+import { beforeEach, describe, expect, it } from "vitest";
+
+import { BUILT_IN_THEMES, findThemeById } from "../../types/theme";
+import { useSettingsStore } from "../settings-store";
 
 // Reset store state before each test
 beforeEach(() => {

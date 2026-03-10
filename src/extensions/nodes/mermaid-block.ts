@@ -1,7 +1,8 @@
 // §5.5 Mermaid Block Extension — ```mermaid (atom:true, dual mode)
-import { Node, mergeAttributes } from "@tiptap/core";
+import { mergeAttributes, Node } from "@tiptap/core";
+import { NodeSelection, Plugin, PluginKey } from "@tiptap/pm/state";
 import { ReactNodeViewRenderer } from "@tiptap/react";
-import { Plugin, PluginKey, NodeSelection } from "@tiptap/pm/state";
+
 import { MermaidBlockView } from "./mermaid-block-view";
 
 export interface MermaidBlockOptions {

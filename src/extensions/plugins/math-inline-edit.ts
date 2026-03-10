@@ -3,15 +3,16 @@
 // confirm/cancel, re-edit (atom → text), block math auto-conversion.
 import { Extension } from "@tiptap/core";
 import {
+  type EditorState,
+  NodeSelection,
   Plugin,
   PluginKey,
   TextSelection,
-  NodeSelection,
-  type EditorState,
   type Transaction,
 } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import katex from "katex";
+
 import { parseKaTeXError } from "../../utils/katex-error";
 import { preprocessNotionFormula } from "../../utils/notion-katex-compat";
 
@@ -26,11 +27,6 @@ const INACTIVE: MathEditState = { active: false, from: 0, to: 0 };
 const mathEditKey = new PluginKey<MathEditState>("mathInlineEdit");
 
 // ── Helpers ───────────────────────────────────────────────────────────
-
-function getFormula(state: EditorState, es: MathEditState): string {
-  if (!es.active || es.to - es.from < 2) return "";
-  return state.doc.textBetween(es.from + 1, es.to - 1);
-}
 
 function confirmEdit(view: EditorView, es: MathEditState) {
   const formula = getFormula(view.state, es);
@@ -49,10 +45,8 @@ function confirmEdit(view: EditorView, es: MathEditState) {
   view.dispatch(tr);
 }
 
-// ── Plugin factory ────────────────────────────────────────────────────
-
 function createMathEditPlugin(): Plugin<MathEditState> {
-  let pendingRaf: number | null = null;
+  let pendingRaf: null | number = null;
 
   return new Plugin<MathEditState>({
     key: mathEditKey,
@@ -396,6 +390,13 @@ function createMathEditPlugin(): Plugin<MathEditState> {
       };
     },
   });
+}
+
+// ── Plugin factory ────────────────────────────────────────────────────
+
+function getFormula(state: EditorState, es: MathEditState): string {
+  if (!es.active || es.to - es.from < 2) return "";
+  return state.doc.textBetween(es.from + 1, es.to - 1);
 }
 
 // ── Tiptap Extension wrapper ──────────────────────────────────────────

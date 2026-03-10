@@ -1,11 +1,12 @@
 /**
  * §56g Journal Stats Cache — unit tests for pure functions
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
 import {
   createEmptyCache,
-  updateCacheEntry,
   type JournalStatsCache,
+  updateCacheEntry,
 } from "../journal-stats-cache";
 
 // Mock IPC — we only test pure functions here so no actual IPC is called

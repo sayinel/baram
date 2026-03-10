@@ -2,30 +2,13 @@
 import type { BacklinkEntry } from "../../ipc/types";
 
 export interface BacklinkGroup {
-  sourcePath: string;
   entries: BacklinkEntry[];
+  sourcePath: string;
 }
 
-/** Group backlink entries by source file path */
-export function groupBacklinksByFile(
-  entries: BacklinkEntry[],
-): BacklinkGroup[] {
-  if (entries.length === 0) return [];
-
-  const map = new Map<string, BacklinkEntry[]>();
-  for (const entry of entries) {
-    const existing = map.get(entry.sourcePath);
-    if (existing) {
-      existing.push(entry);
-    } else {
-      map.set(entry.sourcePath, [entry]);
-    }
-  }
-
-  return Array.from(map.entries()).map(([sourcePath, groupEntries]) => ({
-    sourcePath,
-    entries: groupEntries,
-  }));
+export interface NamespaceBacklinkGroup {
+  fileGroups: BacklinkGroup[];
+  namespace: string;
 }
 
 /** Extract file name from a full path */
@@ -48,9 +31,26 @@ export function extractNamespaceFromPath(
   return rel.substring(0, lastSlash);
 }
 
-export interface NamespaceBacklinkGroup {
-  namespace: string;
-  fileGroups: BacklinkGroup[];
+/** Group backlink entries by source file path */
+export function groupBacklinksByFile(
+  entries: BacklinkEntry[],
+): BacklinkGroup[] {
+  if (entries.length === 0) return [];
+
+  const map = new Map<string, BacklinkEntry[]>();
+  for (const entry of entries) {
+    const existing = map.get(entry.sourcePath);
+    if (existing) {
+      existing.push(entry);
+    } else {
+      map.set(entry.sourcePath, [entry]);
+    }
+  }
+
+  return Array.from(map.entries()).map(([sourcePath, groupEntries]) => ({
+    sourcePath,
+    entries: groupEntries,
+  }));
 }
 
 /** §61 Group backlinks first by namespace, then by file within each namespace */

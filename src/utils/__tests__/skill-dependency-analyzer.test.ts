@@ -1,10 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import {
-  parseSkillFrontmatter,
   buildDependencyGraph,
   detectCycles,
-  getReverseDependencies,
   getImpactAnalysis,
+  getReverseDependencies,
+  parseSkillFrontmatter,
   type SkillMeta,
 } from "../skill-dependency-analyzer";
 

@@ -1,7 +1,9 @@
 import { useCallback } from "react";
+
+import type { Locale } from "./index";
+
 import { useSettingsStore } from "../stores/settings-store";
 import { t } from "./index";
-import type { Locale } from "./index";
 
 /**
  * Hook that returns a translation function bound to the current locale.

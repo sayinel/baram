@@ -1,79 +1,16 @@
 // §57b Git Source Control Panel — sidebar
-import { useEffect, useCallback, useState } from "react";
-import {
-  useGitStore,
-  groupChanges,
-  statusIcon,
-  statusColorClass,
-} from "../../stores/git-store";
-import { useFileStore } from "../../stores/file-store";
+import { useCallback, useEffect, useState } from "react";
+
 // file-store uses rootPath for the vault directory
 import type { GitChange } from "../../ipc/types";
 
-function formatRelativeTime(timestamp: number): string {
-  const now = Date.now() / 1000;
-  const diff = now - timestamp;
-  if (diff < 60) return "just now";
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
-  return new Date(timestamp * 1000).toLocaleDateString();
-}
-
-function ChangeItem({
-  change,
-  onStage,
-  onUnstage,
-  onDiscard,
-  onDiff,
-}: {
-  change: GitChange;
-  onStage: () => void;
-  onUnstage: () => void;
-  onDiscard: () => void;
-  onDiff: () => void;
-}) {
-  const fileName = change.path.split("/").pop() || change.path;
-  const dirPath = change.path.includes("/")
-    ? change.path.substring(0, change.path.lastIndexOf("/"))
-    : "";
-
-  return (
-    <div className="git-change-item" onDoubleClick={onDiff}>
-      <span className={`git-change-icon ${statusColorClass(change.status)}`}>
-        {statusIcon(change.status)}
-      </span>
-      <span className="git-change-name" title={change.path}>
-        {fileName}
-        {dirPath && <span className="git-change-dir"> {dirPath}</span>}
-      </span>
-      <div className="git-change-actions">
-        {change.staged ? (
-          <button
-            className="git-action-btn"
-            onClick={onUnstage}
-            title="Unstage"
-          >
-            −
-          </button>
-        ) : (
-          <>
-            <button
-              className="git-action-btn"
-              onClick={onDiscard}
-              title="Discard changes"
-            >
-              ↺
-            </button>
-            <button className="git-action-btn" onClick={onStage} title="Stage">
-              +
-            </button>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
+import { useFileStore } from "../../stores/file-store";
+import {
+  groupChanges,
+  statusColorClass,
+  statusIcon,
+  useGitStore,
+} from "../../stores/git-store";
 
 export function GitPanel() {
   const {
@@ -196,16 +133,16 @@ export function GitPanel() {
         <div className="git-remote-bar">
           <button
             className="git-action-btn"
-            onClick={() => vaultPath && pullRemote(vaultPath)}
             disabled={pulling}
+            onClick={() => vaultPath && pullRemote(vaultPath)}
             title="Pull"
           >
             {pulling ? "…" : "↓"}
           </button>
           <button
             className="git-action-btn"
-            onClick={() => vaultPath && pushRemote(vaultPath)}
             disabled={pushing}
+            onClick={() => vaultPath && pushRemote(vaultPath)}
             title="Push"
           >
             {pushing ? "…" : "↑"}
@@ -216,19 +153,19 @@ export function GitPanel() {
       {/* Tab bar */}
       <div className="git-tabs">
         <button
-          className={`git-tab${activeTab === "changes" ? " active" : ""}`}
+          className={`git-tab${activeTab === "changes" ? "active" : ""}`}
           onClick={() => setActiveTab("changes")}
         >
           Changes
         </button>
         <button
-          className={`git-tab${activeTab === "history" ? " active" : ""}`}
+          className={`git-tab${activeTab === "history" ? "active" : ""}`}
           onClick={() => setActiveTab("history")}
         >
           History
         </button>
         <button
-          className={`git-tab${activeTab === "stash" ? " active" : ""}`}
+          className={`git-tab${activeTab === "stash" ? "active" : ""}`}
           onClick={() => setActiveTab("stash")}
         >
           Stash
@@ -244,18 +181,18 @@ export function GitPanel() {
           <div className="git-commit-area">
             <textarea
               className="git-commit-input"
-              placeholder="Commit message (Cmd+Enter to commit)"
-              value={commitMessage}
               onChange={(e) => setCommitMessage(e.target.value)}
               onKeyDown={handleKeyDown}
+              placeholder="Commit message (Cmd+Enter to commit)"
               rows={3}
+              value={commitMessage}
             />
             <button
               className="git-commit-btn"
-              onClick={handleCommit}
               disabled={
                 committing || !commitMessage.trim() || staged.length === 0
               }
+              onClick={handleCommit}
               title="Commit staged changes"
             >
               {committing ? "Committing..." : "Commit"}
@@ -279,12 +216,12 @@ export function GitPanel() {
               <div className="git-change-list">
                 {staged.map((c) => (
                   <ChangeItem
-                    key={`staged-${c.path}`}
                     change={c}
+                    key={`staged-${c.path}`}
+                    onDiff={() => loadDiff(vaultPath, c.path)}
+                    onDiscard={() => {}}
                     onStage={() => {}}
                     onUnstage={() => unstageFiles(vaultPath, [c.path])}
-                    onDiscard={() => {}}
-                    onDiff={() => loadDiff(vaultPath, c.path)}
                   />
                 ))}
               </div>
@@ -308,12 +245,12 @@ export function GitPanel() {
               <div className="git-change-list">
                 {unstaged.map((c) => (
                   <ChangeItem
-                    key={`unstaged-${c.path}`}
                     change={c}
+                    key={`unstaged-${c.path}`}
+                    onDiff={() => loadDiff(vaultPath, c.path)}
+                    onDiscard={() => discardFiles(vaultPath, [c.path])}
                     onStage={() => stageFiles(vaultPath, [c.path])}
                     onUnstage={() => {}}
-                    onDiscard={() => discardFiles(vaultPath, [c.path])}
-                    onDiff={() => loadDiff(vaultPath, c.path)}
                   />
                 ))}
               </div>
@@ -338,7 +275,7 @@ export function GitPanel() {
             <div className="git-panel-empty">No commits</div>
           )}
           {logEntries.map((entry) => (
-            <div key={entry.oid} className="git-log-entry">
+            <div className="git-log-entry" key={entry.oid}>
               <div className="git-log-header">
                 <span className="git-log-oid">{entry.short_oid}</span>
                 <span className="git-log-date">
@@ -361,28 +298,28 @@ export function GitPanel() {
           <div className="git-commit-area">
             <input
               className="git-commit-input"
+              onChange={(e) => setStashMessage(e.target.value)}
+              placeholder="Stash message"
               style={{
                 display: "block",
                 width: "100%",
                 padding: "0.4em",
                 boxSizing: "border-box",
               }}
-              placeholder="Stash message"
               value={stashMessage}
-              onChange={(e) => setStashMessage(e.target.value)}
             />
             <label className="git-stash-untracked-label">
               <input
-                type="checkbox"
                 checked={stashIncludeUntracked}
                 onChange={(e) => setStashIncludeUntracked(e.target.checked)}
+                type="checkbox"
               />{" "}
               Include untracked files
             </label>
             <button
               className="git-commit-btn"
-              onClick={handleSaveStash}
               disabled={!stashMessage.trim()}
+              onClick={handleSaveStash}
               title="Save stash"
             >
               Stash
@@ -396,7 +333,7 @@ export function GitPanel() {
               <div className="git-panel-empty">No stashes</div>
             )}
             {stashEntries.map((entry) => (
-              <div key={entry.index} className="git-stash-entry">
+              <div className="git-stash-entry" key={entry.index}>
                 <div className="git-stash-message">{entry.message}</div>
                 <div className="git-stash-actions">
                   <button
@@ -448,11 +385,10 @@ export function GitPanel() {
                 <div className="git-diff-empty">No differences</div>
               ) : (
                 activeDiff.hunks.map((hunk, hi) => (
-                  <div key={hi} className="git-diff-hunk">
+                  <div className="git-diff-hunk" key={hi}>
                     <div className="git-diff-hunk-header">{hunk.header}</div>
                     {hunk.lines.map((line, li) => (
                       <div
-                        key={li}
                         className={`git-diff-line ${
                           line.origin === "+"
                             ? "git-diff-add"
@@ -460,6 +396,7 @@ export function GitPanel() {
                               ? "git-diff-del"
                               : ""
                         }`}
+                        key={li}
                       >
                         <span className="git-diff-lineno">
                           {line.old_lineno ?? " "}
@@ -480,4 +417,69 @@ export function GitPanel() {
       )}
     </div>
   );
+}
+
+function ChangeItem({
+  change,
+  onStage,
+  onUnstage,
+  onDiscard,
+  onDiff,
+}: {
+  change: GitChange;
+  onDiff: () => void;
+  onDiscard: () => void;
+  onStage: () => void;
+  onUnstage: () => void;
+}) {
+  const fileName = change.path.split("/").pop() || change.path;
+  const dirPath = change.path.includes("/")
+    ? change.path.substring(0, change.path.lastIndexOf("/"))
+    : "";
+
+  return (
+    <div className="git-change-item" onDoubleClick={onDiff}>
+      <span className={`git-change-icon ${statusColorClass(change.status)}`}>
+        {statusIcon(change.status)}
+      </span>
+      <span className="git-change-name" title={change.path}>
+        {fileName}
+        {dirPath && <span className="git-change-dir"> {dirPath}</span>}
+      </span>
+      <div className="git-change-actions">
+        {change.staged ? (
+          <button
+            className="git-action-btn"
+            onClick={onUnstage}
+            title="Unstage"
+          >
+            −
+          </button>
+        ) : (
+          <>
+            <button
+              className="git-action-btn"
+              onClick={onDiscard}
+              title="Discard changes"
+            >
+              ↺
+            </button>
+            <button className="git-action-btn" onClick={onStage} title="Stage">
+              +
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function formatRelativeTime(timestamp: number): string {
+  const now = Date.now() / 1000;
+  const diff = now - timestamp;
+  if (diff < 60) return "just now";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
+  return new Date(timestamp * 1000).toLocaleDateString();
 }

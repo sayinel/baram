@@ -1,14 +1,16 @@
+import type { Editor } from "@tiptap/core";
+import type {
+  SuggestionKeyDownProps,
+  SuggestionProps,
+} from "@tiptap/suggestion";
+
 // §57 Mention autocomplete — Tiptap Extension using Suggestion API
 // Triggers on @ and shows Quick Dates + page search popup
 import { Extension } from "@tiptap/core";
-import { Suggestion } from "@tiptap/suggestion";
-import { ReactRenderer } from "@tiptap/react";
 import { PluginKey } from "@tiptap/pm/state";
-import type { Editor } from "@tiptap/core";
-import type {
-  SuggestionProps,
-  SuggestionKeyDownProps,
-} from "@tiptap/suggestion";
+import { ReactRenderer } from "@tiptap/react";
+import { Suggestion } from "@tiptap/suggestion";
+
 import {
   MentionMenuList,
   type MentionMenuRef,
@@ -20,21 +22,31 @@ import { resolveDateAlias } from "../../utils/journal";
 const MENU_HEIGHT = 300;
 
 export interface MentionSuggestionItem {
+  category: "date" | "page";
   id: string;
+  label: string;
   type: "date" | "page";
   value: string;
-  label: string;
-  category: "date" | "page";
 }
 
-function positionPopup(popup: HTMLDivElement, coords: DOMRect) {
-  const spaceBelow = window.innerHeight - coords.bottom - 4;
-  popup.style.left = `${coords.left}px`;
-  if (spaceBelow < MENU_HEIGHT) {
-    popup.style.top = `${coords.top - MENU_HEIGHT - 4}px`;
-  } else {
-    popup.style.top = `${coords.bottom + 4}px`;
-  }
+/** Build page items from the file store */
+function getPageItems(): MentionSuggestionItem[] {
+  const { rootPath, fileTree } = useFileStore.getState();
+  if (!rootPath || fileTree.length === 0) return [];
+
+  const flat = flattenFileTree(fileTree, rootPath);
+  return flat
+    .filter((f) => f.name.endsWith(".md") || f.name.endsWith(".markdown"))
+    .map((f, idx) => {
+      const name = f.name.replace(/\.(md|markdown)$/, "");
+      return {
+        id: `page-${idx}`,
+        type: "page" as const,
+        value: name,
+        label: name,
+        category: "page" as const,
+      };
+    });
 }
 
 /** Quick date entries: Today, Yesterday, Tomorrow */
@@ -68,24 +80,14 @@ function getQuickDates(): MentionSuggestionItem[] {
   ];
 }
 
-/** Build page items from the file store */
-function getPageItems(): MentionSuggestionItem[] {
-  const { rootPath, fileTree } = useFileStore.getState();
-  if (!rootPath || fileTree.length === 0) return [];
-
-  const flat = flattenFileTree(fileTree, rootPath);
-  return flat
-    .filter((f) => f.name.endsWith(".md") || f.name.endsWith(".markdown"))
-    .map((f, idx) => {
-      const name = f.name.replace(/\.(md|markdown)$/, "");
-      return {
-        id: `page-${idx}`,
-        type: "page" as const,
-        value: name,
-        label: name,
-        category: "page" as const,
-      };
-    });
+function positionPopup(popup: HTMLDivElement, coords: DOMRect) {
+  const spaceBelow = window.innerHeight - coords.bottom - 4;
+  popup.style.left = `${coords.left}px`;
+  if (spaceBelow < MENU_HEIGHT) {
+    popup.style.top = `${coords.top - MENU_HEIGHT - 4}px`;
+  } else {
+    popup.style.top = `${coords.bottom + 4}px`;
+  }
 }
 
 export const MentionSuggest = Extension.create({
@@ -117,8 +119,8 @@ export const MentionSuggest = Extension.create({
           props,
         }: {
           editor: Editor;
-          range: { from: number; to: number };
           props: MentionSuggestionItem;
+          range: { from: number; to: number };
         }) => {
           ed.chain()
             .focus()
@@ -168,7 +170,7 @@ export const MentionSuggest = Extension.create({
           return [...customDateItems, ...filteredDates, ...filteredPages];
         },
         render: () => {
-          let component: ReactRenderer<MentionMenuRef> | null = null;
+          let component: null | ReactRenderer<MentionMenuRef> = null;
           let popup: HTMLDivElement | null = null;
 
           return {

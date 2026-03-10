@@ -1,7 +1,7 @@
+import type { NodeTransformerEntry } from "../types";
 // list-item-transformer.ts — §5.1 List Item mdast ↔ ProseMirror
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
-import type { Node as MdastNode, ListItem } from "mdast";
-import type { NodeTransformerEntry } from "../types";
+import type { ListItem, Node as MdastNode } from "mdast";
 
 export const listItemTransformer: NodeTransformerEntry = {
   mdastType: "listItem",

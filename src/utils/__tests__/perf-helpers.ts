@@ -46,20 +46,8 @@ function generateBlock(
   seed: number,
 ): string {
   switch (type) {
-    case "heading": {
-      const level = (seed % 3) + 1;
-      const prefix = "#".repeat(level);
-      return `${prefix} Section ${seed}`;
-    }
-    case "paragraph":
-      return `This is paragraph ${seed} with **bold**, *italic*, and \`inline code\`. It contains a [link](https://example.com) and some regular text to simulate real-world content that a user might type into a markdown editor.`;
-    case "list":
-      return [
-        `- Item ${seed}a with some text`,
-        `- Item ${seed}b with **bold**`,
-        `- Item ${seed}c with *italic*`,
-        `- Item ${seed}d with \`code\``,
-      ].join("\n");
+    case "blockquote":
+      return `> This is a blockquote number ${seed}. It contains some meaningful text that simulates real content in a document.`;
     case "code":
       return [
         "```typescript",
@@ -69,8 +57,20 @@ function generateBlock(
         "}",
         "```",
       ].join("\n");
-    case "blockquote":
-      return `> This is a blockquote number ${seed}. It contains some meaningful text that simulates real content in a document.`;
+    case "heading": {
+      const level = (seed % 3) + 1;
+      const prefix = "#".repeat(level);
+      return `${prefix} Section ${seed}`;
+    }
+    case "list":
+      return [
+        `- Item ${seed}a with some text`,
+        `- Item ${seed}b with **bold**`,
+        `- Item ${seed}c with *italic*`,
+        `- Item ${seed}d with \`code\``,
+      ].join("\n");
+    case "paragraph":
+      return `This is paragraph ${seed} with **bold**, *italic*, and \`inline code\`. It contains a [link](https://example.com) and some regular text to simulate real-world content that a user might type into a markdown editor.`;
     case "table":
       return [
         `| Column A | Column B | Column C |`,

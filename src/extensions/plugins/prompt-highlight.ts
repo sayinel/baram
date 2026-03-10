@@ -1,28 +1,17 @@
+import type { Node as PmNode } from "@tiptap/pm/model";
+
 // §41 Prompt Syntax Highlighting — decoration plugin for Skills files
 // §72 Cmd+click file path navigation
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import type { Node as PmNode } from "@tiptap/pm/model";
 
 export const promptHighlightKey = new PluginKey("promptHighlight");
 
-// Detect if current document is a Skills file
-function isSkillsFile(doc: PmNode): boolean {
-  // Check first node for frontmatter with name + description
-  const firstChild = doc.firstChild;
-  if (firstChild?.type.name === "frontmatter") {
-    const yaml =
-      (firstChild.attrs?.yaml as string) || firstChild.textContent || "";
-    if (/^name\s*:/m.test(yaml) && /^description\s*:/m.test(yaml)) return true;
-  }
-  return false;
-}
-
 export interface FilePathMatch {
+  end: number;
   path: string;
   start: number;
-  end: number;
 }
 
 /** Extract file path references from text (exported for testing) */
@@ -95,6 +84,18 @@ function buildDecorations(doc: PmNode): DecorationSet {
   });
 
   return DecorationSet.create(doc, decorations);
+}
+
+// Detect if current document is a Skills file
+function isSkillsFile(doc: PmNode): boolean {
+  // Check first node for frontmatter with name + description
+  const firstChild = doc.firstChild;
+  if (firstChild?.type.name === "frontmatter") {
+    const yaml =
+      (firstChild.attrs?.yaml as string) || firstChild.textContent || "";
+    if (/^name\s*:/m.test(yaml) && /^description\s*:/m.test(yaml)) return true;
+  }
+  return false;
 }
 
 export const PromptHighlight = Extension.create({

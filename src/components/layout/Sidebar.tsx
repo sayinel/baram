@@ -1,18 +1,19 @@
+import type { Editor } from "@tiptap/react";
+
 // §4.3 Left sidebar container — panel switching via ActivityBar
 import { useUIStore } from "../../stores/ui-store";
-import { FileTree } from "../sidebar/FileTree";
-import { Outline } from "../sidebar/Outline";
-import { GlobalSearch } from "../sidebar/GlobalSearch";
+import { PluginMarketplace } from "../plugins/PluginMarketplace";
 import { Backlinks } from "../sidebar/Backlinks";
 import { BookmarkPanel } from "../sidebar/BookmarkPanel";
-import { GraphView } from "../sidebar/GraphView";
-import { GitPanel } from "../sidebar/GitPanel";
 import { CalendarPanel } from "../sidebar/CalendarPanel";
+import { FileTree } from "../sidebar/FileTree";
+import { GitPanel } from "../sidebar/GitPanel";
+import { GlobalSearch } from "../sidebar/GlobalSearch";
+import { GraphView } from "../sidebar/GraphView";
+import { Outline } from "../sidebar/Outline";
+import { SkillGalleryPanel } from "../sidebar/SkillGalleryPanel";
 import { TagPanel } from "../sidebar/TagPanel";
 import { VersionHistoryPanel } from "../sidebar/VersionHistoryPanel";
-import { SkillGalleryPanel } from "../sidebar/SkillGalleryPanel";
-import { PluginMarketplace } from "../plugins/PluginMarketplace";
-import type { Editor } from "@tiptap/react";
 
 interface SidebarProps {
   editor: Editor | null;

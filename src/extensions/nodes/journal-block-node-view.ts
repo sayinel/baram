@@ -1,23 +1,26 @@
 // §56f Journal Dynamic Block NodeView — mounts React into a plain PM NodeView
 // Used for journal-list, journal-mood, journal-photos fenced code blocks.
 
-import { createRoot, type Root } from "react-dom/client";
 import { createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+
 import type { Node as PMNode } from "@tiptap/pm/model";
-import type { EditorView as PMView, NodeView } from "@tiptap/pm/view";
+import type { NodeView, EditorView as PMView } from "@tiptap/pm/view";
+
 import { TextSelection } from "@tiptap/pm/state";
+
 import {
-  JournalDynamicBlock,
   type JournalBlockLanguage,
+  JournalDynamicBlock,
 } from "../../components/journal/JournalDynamicBlock";
 
 export class JournalBlockNodeView implements NodeView {
   dom: HTMLElement;
-  private node: PMNode;
-  private view: PMView;
   private getPos: () => number | undefined;
+  private node: PMNode;
   private root: Root;
   private showSource = false;
+  private view: PMView;
 
   constructor(node: PMNode, view: PMView, getPos: () => number | undefined) {
     this.node = node;
@@ -30,6 +33,55 @@ export class JournalBlockNodeView implements NodeView {
 
     this.root = createRoot(wrapper);
     this.render();
+  }
+
+  deselectNode() {}
+
+  destroy() {
+    // Defer unmount to avoid React "unmount during render" warning
+    setTimeout(() => {
+      try {
+        this.root.unmount();
+      } catch {
+        // ignore
+      }
+    }, 0);
+  }
+
+  ignoreMutation(): boolean {
+    return true;
+  }
+
+  selectNode() {
+    // Move PM focus to just after this node so arrow keys work
+    const pos = this.getPos();
+    if (typeof pos !== "number") return;
+    const sel = TextSelection.near(
+      this.view.state.doc.resolve(pos + this.node.nodeSize),
+      1,
+    );
+    this.view.dispatch(this.view.state.tr.setSelection(sel));
+    this.view.focus();
+  }
+
+  stopEvent(event: Event): boolean {
+    // Allow button/textarea events through, block everything else
+    const target = event.target as HTMLElement;
+    if (target.closest("button") || target.closest("textarea")) return true;
+    return false;
+  }
+
+  update(node: PMNode): boolean {
+    if (node.type !== this.node.type) return false;
+    if (
+      (node.attrs.language as string) !== (this.node.attrs.language as string)
+    )
+      return false;
+    this.node = node;
+    if (!this.showSource) {
+      this.render();
+    }
+    return true;
   }
 
   private render() {
@@ -82,54 +134,5 @@ export class JournalBlockNodeView implements NodeView {
         },
       }),
     );
-  }
-
-  update(node: PMNode): boolean {
-    if (node.type !== this.node.type) return false;
-    if (
-      (node.attrs.language as string) !== (this.node.attrs.language as string)
-    )
-      return false;
-    this.node = node;
-    if (!this.showSource) {
-      this.render();
-    }
-    return true;
-  }
-
-  selectNode() {
-    // Move PM focus to just after this node so arrow keys work
-    const pos = this.getPos();
-    if (typeof pos !== "number") return;
-    const sel = TextSelection.near(
-      this.view.state.doc.resolve(pos + this.node.nodeSize),
-      1,
-    );
-    this.view.dispatch(this.view.state.tr.setSelection(sel));
-    this.view.focus();
-  }
-
-  deselectNode() {}
-
-  stopEvent(event: Event): boolean {
-    // Allow button/textarea events through, block everything else
-    const target = event.target as HTMLElement;
-    if (target.closest("button") || target.closest("textarea")) return true;
-    return false;
-  }
-
-  ignoreMutation(): boolean {
-    return true;
-  }
-
-  destroy() {
-    // Defer unmount to avoid React "unmount during render" warning
-    setTimeout(() => {
-      try {
-        this.root.unmount();
-      } catch {
-        // ignore
-      }
-    }, 0);
   }
 }

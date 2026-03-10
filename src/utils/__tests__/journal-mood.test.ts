@@ -2,16 +2,17 @@
  * §56e Phase B — Mood/Energy utility tests
  * TDD Red Phase: all tests should FAIL before implementation
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import {
-  MOOD_VALUES,
+  getMoodColors,
   MOOD_LABELS,
   MOOD_PALETTE,
-  getMoodColors,
-  parseMoodFromFrontmatter,
+  MOOD_VALUES,
   parseEnergyFromFrontmatter,
-  updateFrontmatterMood,
+  parseMoodFromFrontmatter,
   updateFrontmatterEnergy,
+  updateFrontmatterMood,
 } from "../journal-mood";
 
 describe("§56e Mood types and constants", () => {

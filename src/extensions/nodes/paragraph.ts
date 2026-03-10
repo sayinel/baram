@@ -1,5 +1,5 @@
 // §5.1 Paragraph Extension (default block)
-import { Node, mergeAttributes } from "@tiptap/core";
+import { mergeAttributes, Node } from "@tiptap/core";
 
 export interface ParagraphOptions {
   HTMLAttributes: Record<string, string>;

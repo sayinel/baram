@@ -1,16 +1,17 @@
 // §30a Block ID utility tests + §30b Block Reference/Embed utility tests
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import {
-  extractBlockId,
   appendBlockId,
-  BLOCK_ID_SUFFIX_RE,
-  generateBlockId,
-  BLOCK_REF_RE,
-  parseBlockRefMatch,
-  serializeBlockRef,
   BLOCK_EMBED_RE,
+  BLOCK_ID_SUFFIX_RE,
+  BLOCK_REF_RE,
+  extractBlockId,
+  generateBlockId,
   parseBlockEmbedMatch,
+  parseBlockRefMatch,
   serializeBlockEmbed,
+  serializeBlockRef,
 } from "../block-id";
 
 describe("extractBlockId", () => {

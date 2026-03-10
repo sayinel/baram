@@ -1,15 +1,130 @@
 // §30 Graph View — inline settings panel overlay
 import { useState } from "react";
+
 import { useGraphSettingsStore } from "../../stores/graph-settings-store";
+
+export function GraphSettingsPanel() {
+  const s = useGraphSettingsStore();
+
+  return (
+    <div className="graph-settings-panel">
+      <SettingsSection title="Filters">
+        <div className="graph-settings-row">
+          <label className="graph-settings-label">Search</label>
+          <input
+            className="graph-settings-search"
+            onChange={(e) => s.setSearchQuery(e.target.value)}
+            placeholder="Filter nodes..."
+            type="text"
+            value={s.searchQuery}
+          />
+        </div>
+        <ToggleRow
+          checked={s.showOrphans}
+          label="Orphans"
+          onChange={s.setShowOrphans}
+        />
+        <ToggleRow
+          checked={s.existingFilesOnly}
+          label="Existing only"
+          onChange={s.setExistingFilesOnly}
+        />
+        <ToggleRow checked={s.showTags} label="Tags" onChange={s.setShowTags} />
+        <ToggleRow
+          checked={s.colorByNamespace}
+          label="Color by namespace"
+          onChange={s.setColorByNamespace}
+        />
+        <div className="graph-settings-row">
+          <label className="graph-settings-label">Namespace</label>
+          <input
+            className="graph-settings-search"
+            onChange={(e) => s.setNamespaceFilter(e.target.value)}
+            placeholder="e.g. notes/ai"
+            type="text"
+            value={s.namespaceFilter}
+          />
+        </div>
+      </SettingsSection>
+
+      <SettingsSection title="Display">
+        <SliderRow
+          label="Node size"
+          max={80}
+          min={10}
+          onChange={s.setNodeSize}
+          step={1}
+          value={s.nodeSize}
+        />
+        <SliderRow
+          label="Link width"
+          max={5}
+          min={0.5}
+          onChange={s.setLinkThickness}
+          step={0.5}
+          value={s.linkThickness}
+        />
+        <SliderRow
+          label="Text fade"
+          max={2}
+          min={0}
+          onChange={s.setTextFadeThreshold}
+          step={0.1}
+          value={s.textFadeThreshold}
+        />
+        <ToggleRow
+          checked={s.showArrows}
+          label="Arrows"
+          onChange={s.setShowArrows}
+        />
+      </SettingsSection>
+
+      <SettingsSection title="Forces">
+        <SliderRow
+          label="Center"
+          max={1}
+          min={0}
+          onChange={s.setCenterForce}
+          step={0.05}
+          value={s.centerForce}
+        />
+        <SliderRow
+          label="Repel"
+          max={50}
+          min={0}
+          onChange={s.setRepelForce}
+          step={0.5}
+          value={s.repelForce}
+        />
+        <SliderRow
+          label="Link"
+          max={1}
+          min={0}
+          onChange={s.setLinkForce}
+          step={0.05}
+          value={s.linkForce}
+        />
+        <SliderRow
+          label="Distance"
+          max={500}
+          min={30}
+          onChange={s.setLinkDistance}
+          step={10}
+          value={s.linkDistance}
+        />
+      </SettingsSection>
+    </div>
+  );
+}
 
 function SettingsSection({
   title,
   defaultOpen = true,
   children,
 }: {
-  title: string;
-  defaultOpen?: boolean;
   children: React.ReactNode;
+  defaultOpen?: boolean;
+  title: string;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
@@ -37,24 +152,24 @@ function SliderRow({
   onChange,
 }: {
   label: string;
-  value: number;
-  min: number;
   max: number;
-  step: number;
+  min: number;
   onChange: (v: number) => void;
+  step: number;
+  value: number;
 }) {
   return (
     <div className="graph-settings-row">
       <label className="graph-settings-label">{label}</label>
       <div className="graph-settings-slider-group">
         <input
-          type="range"
-          min={min}
-          max={max}
-          step={step}
-          value={value}
-          onChange={(e) => onChange(Number(e.target.value))}
           className="graph-settings-slider"
+          max={max}
+          min={min}
+          onChange={(e) => onChange(Number(e.target.value))}
+          step={step}
+          type="range"
+          value={value}
         />
         <span className="graph-settings-value">{value}</span>
       </div>
@@ -67,135 +182,21 @@ function ToggleRow({
   checked,
   onChange,
 }: {
-  label: string;
   checked: boolean;
+  label: string;
   onChange: (v: boolean) => void;
 }) {
   return (
     <div className="graph-settings-row">
       <label className="graph-settings-label">{label}</label>
       <button
+        aria-checked={checked}
         className={`graph-settings-toggle ${checked ? "on" : ""}`}
         onClick={() => onChange(!checked)}
         role="switch"
-        aria-checked={checked}
       >
         <span className="graph-settings-toggle-knob" />
       </button>
-    </div>
-  );
-}
-
-export function GraphSettingsPanel() {
-  const s = useGraphSettingsStore();
-
-  return (
-    <div className="graph-settings-panel">
-      <SettingsSection title="Filters">
-        <div className="graph-settings-row">
-          <label className="graph-settings-label">Search</label>
-          <input
-            type="text"
-            className="graph-settings-search"
-            value={s.searchQuery}
-            onChange={(e) => s.setSearchQuery(e.target.value)}
-            placeholder="Filter nodes..."
-          />
-        </div>
-        <ToggleRow
-          label="Orphans"
-          checked={s.showOrphans}
-          onChange={s.setShowOrphans}
-        />
-        <ToggleRow
-          label="Existing only"
-          checked={s.existingFilesOnly}
-          onChange={s.setExistingFilesOnly}
-        />
-        <ToggleRow label="Tags" checked={s.showTags} onChange={s.setShowTags} />
-        <ToggleRow
-          label="Color by namespace"
-          checked={s.colorByNamespace}
-          onChange={s.setColorByNamespace}
-        />
-        <div className="graph-settings-row">
-          <label className="graph-settings-label">Namespace</label>
-          <input
-            type="text"
-            className="graph-settings-search"
-            value={s.namespaceFilter}
-            onChange={(e) => s.setNamespaceFilter(e.target.value)}
-            placeholder="e.g. notes/ai"
-          />
-        </div>
-      </SettingsSection>
-
-      <SettingsSection title="Display">
-        <SliderRow
-          label="Node size"
-          value={s.nodeSize}
-          min={10}
-          max={80}
-          step={1}
-          onChange={s.setNodeSize}
-        />
-        <SliderRow
-          label="Link width"
-          value={s.linkThickness}
-          min={0.5}
-          max={5}
-          step={0.5}
-          onChange={s.setLinkThickness}
-        />
-        <SliderRow
-          label="Text fade"
-          value={s.textFadeThreshold}
-          min={0}
-          max={2}
-          step={0.1}
-          onChange={s.setTextFadeThreshold}
-        />
-        <ToggleRow
-          label="Arrows"
-          checked={s.showArrows}
-          onChange={s.setShowArrows}
-        />
-      </SettingsSection>
-
-      <SettingsSection title="Forces">
-        <SliderRow
-          label="Center"
-          value={s.centerForce}
-          min={0}
-          max={1}
-          step={0.05}
-          onChange={s.setCenterForce}
-        />
-        <SliderRow
-          label="Repel"
-          value={s.repelForce}
-          min={0}
-          max={50}
-          step={0.5}
-          onChange={s.setRepelForce}
-        />
-        <SliderRow
-          label="Link"
-          value={s.linkForce}
-          min={0}
-          max={1}
-          step={0.05}
-          onChange={s.setLinkForce}
-        />
-        <SliderRow
-          label="Distance"
-          value={s.linkDistance}
-          min={30}
-          max={500}
-          step={10}
-          onChange={s.setLinkDistance}
-        />
-      </SettingsSection>
     </div>
   );
 }

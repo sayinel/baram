@@ -1,34 +1,40 @@
 // Extension Settings — registry schema parsing and settings store integration tests
-import { describe, it, expect, beforeEach } from "vitest";
-import { useSettingsStore } from "../../stores/settings-store";
+import { beforeEach, describe, expect, it } from "vitest";
+
 import registry from "../../extensions/registry.json";
+import { useSettingsStore } from "../../stores/settings-store";
 
 // ─── Types (mirrors ExtensionsTab.tsx) ───────────────────────────────────────
-
-interface SettingOption {
-  value: string;
-  label: string;
-}
-
-interface SettingDef {
-  key: string;
-  type: "boolean" | "select" | "number" | "string";
-  label: string;
-  description: string;
-  default: unknown;
-  options?: SettingOption[];
-  min?: number;
-  max?: number;
-  step?: number;
-  placeholder?: string;
-}
 
 interface RegistryEntry {
   name: string;
   settings?: SettingDef[];
 }
 
+interface SettingDef {
+  default: unknown;
+  description: string;
+  key: string;
+  label: string;
+  max?: number;
+  min?: number;
+  options?: SettingOption[];
+  placeholder?: string;
+  step?: number;
+  type: "boolean" | "number" | "select" | "string";
+}
+
+interface SettingOption {
+  label: string;
+  value: string;
+}
+
 // ─── Helper (mirrors ExtensionsTab.tsx getExtensionsWithSettings) ─────────────
+
+function formatName(name: string): string {
+  const spaced = name.replace(/([A-Z])/g, " $1");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
 
 function getExtensionsWithSettings(): {
   name: string;
@@ -45,11 +51,6 @@ function getExtensionsWithSettings(): {
         Array.isArray(e.settings) && e.settings.length > 0,
     )
     .map((e) => ({ name: e.name, settings: e.settings }));
-}
-
-function formatName(name: string): string {
-  const spaced = name.replace(/([A-Z])/g, " $1");
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
 // Reset extension settings before each test

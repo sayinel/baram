@@ -1,9 +1,11 @@
-import { describe, it, expect } from "vitest";
+import type { SkillMeta } from "../skill-dependency-analyzer";
+
+import { describe, expect, it } from "vitest";
+
 import {
   buildCompatibilityPrompt,
   parseCompatibilityResponse,
 } from "../skill-compatibility-prompt";
-import type { SkillMeta } from "../skill-dependency-analyzer";
 
 describe("buildCompatibilityPrompt", () => {
   const source: SkillMeta = {

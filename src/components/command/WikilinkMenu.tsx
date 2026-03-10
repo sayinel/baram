@@ -1,12 +1,13 @@
 // §31 Wikilink autocomplete menu — file suggestion popup
 import {
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
   forwardRef,
+  useCallback,
+  useEffect,
   useImperativeHandle,
+  useRef,
+  useState,
 } from "react";
+
 import type { WikilinkSuggestionItem } from "../../extensions/plugins/wikilink-suggest-utils";
 
 export interface WikilinkMenuRef {
@@ -14,8 +15,8 @@ export interface WikilinkMenuRef {
 }
 
 interface WikilinkMenuProps {
-  items: WikilinkSuggestionItem[];
   command: (item: WikilinkSuggestionItem) => void;
+  items: WikilinkSuggestionItem[];
 }
 
 export const WikilinkMenuList = forwardRef<WikilinkMenuRef, WikilinkMenuProps>(
@@ -70,8 +71,8 @@ export const WikilinkMenuList = forwardRef<WikilinkMenuRef, WikilinkMenuProps>(
       <div className="wikilink-menu" ref={listRef}>
         {items.map((item, idx) => (
           <div
+            className={`wikilink-menu-item ${idx === selectedIndex ? "wikilink-item-selected" : ""}${item.kind === "create" ? "wikilink-item-create" : ""}`}
             key={item.id}
-            className={`wikilink-menu-item ${idx === selectedIndex ? "wikilink-item-selected" : ""}${item.kind === "create" ? " wikilink-item-create" : ""}`}
             onClick={() => selectItem(idx)}
             onMouseEnter={() => setSelectedIndex(idx)}
           >

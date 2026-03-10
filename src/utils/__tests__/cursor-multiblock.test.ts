@@ -1,11 +1,12 @@
+import { Editor } from "@tiptap/core";
 // §5.1 Cursor mapper — multi-block document tests
 // Verify cursor position drift doesn't accumulate across blocks
-import { describe, test, expect } from "vitest";
-import { Editor } from "@tiptap/core";
+import { describe, expect, test } from "vitest";
+
 import { createBaramExtensions } from "../../extensions";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
-import { pmPosToMdOffset, mdOffsetToPmPos } from "../cursor-mapper";
+import { mdOffsetToPmPos, pmPosToMdOffset } from "../cursor-mapper";
 
 function createEditor(): Editor {
   return new Editor({
@@ -136,10 +137,10 @@ describe("cursor-mapper: multi-block document drift", () => {
     const newDoc = markdownToProsemirror(serialized, editor.schema);
 
     const mismatches: {
-      pmPos: number;
-      mdOff: number;
-      rePmPos: number;
       block: string;
+      mdOff: number;
+      pmPos: number;
+      rePmPos: number;
     }[] = [];
 
     let pos = 0;
@@ -216,9 +217,9 @@ describe("cursor-mapper: multi-block document drift", () => {
     let pos = 0;
     const samples: {
       blockIdx: number;
-      type: string;
       pmPos: number;
       text: string;
+      type: string;
     }[] = [];
 
     for (let i = 0; i < doc.childCount; i++) {
@@ -276,10 +277,10 @@ function testAllPositions(label: string, markdown: string, editor: Editor) {
   const newDoc = markdownToProsemirror(serialized, editor.schema);
 
   const mismatches: {
-    pmPos: number;
-    mdOff: number;
-    rePmPos: number;
     block: string;
+    mdOff: number;
+    pmPos: number;
+    rePmPos: number;
   }[] = [];
 
   let pos = 0;

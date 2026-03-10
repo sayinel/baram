@@ -1,14 +1,15 @@
-// §30a Block ID Decoration — utility function tests
-import { describe, it, expect } from "vitest";
 import { Schema } from "@tiptap/pm/model";
 import { EditorState } from "@tiptap/pm/state";
-import {
-  isValidBlockId,
-  isDuplicateBlockId,
-  BLOCK_ID_PATTERN,
-} from "../plugins/block-id-decoration";
+// §30a Block ID Decoration — utility function tests
+import { describe, expect, it } from "vitest";
+
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
+import {
+  BLOCK_ID_PATTERN,
+  isDuplicateBlockId,
+  isValidBlockId,
+} from "../plugins/block-id-decoration";
 
 // ── Minimal schema for unit tests ────────────────────────────────────
 

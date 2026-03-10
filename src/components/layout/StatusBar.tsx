@@ -1,19 +1,15 @@
 // §4.8 Status bar — word count, cursor position, mode indicator, git branch
 import { useMemo } from "react";
+
 import type { Editor } from "@tiptap/react";
+
 import { useGitStore } from "../../stores/git-store";
 import { useSettingsStore } from "../../stores/settings-store";
 
 interface StatusBarProps {
   editor: Editor | null;
-  isSourceMode: boolean;
   isGraphMode?: boolean;
-}
-
-function countWords(text: string): number {
-  const trimmed = text.trim();
-  if (!trimmed) return 0;
-  return trimmed.split(/\s+/).length;
+  isSourceMode: boolean;
 }
 
 export function StatusBar({
@@ -100,4 +96,10 @@ export function StatusBar({
       )}
     </div>
   );
+}
+
+function countWords(text: string): number {
+  const trimmed = text.trim();
+  if (!trimmed) return 0;
+  return trimmed.split(/\s+/).length;
 }

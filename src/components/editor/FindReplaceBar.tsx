@@ -5,23 +5,26 @@
 // We use local React state for input values and manually subscribe to
 // editor transactions to read match counts from plugin state.
 
-import { useEffect, useRef, useCallback, useState, useReducer } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+
+import type { FindReplaceState } from "../../extensions/plugins/find-replace";
 import type { Editor } from "@tiptap/react";
+
 import { TextSelection } from "@tiptap/pm/state";
+
 import {
-  findReplacePluginKey,
-  dispatchSetSearchTerm,
+  dispatchClearSearch,
+  dispatchNextMatch,
+  dispatchPrevMatch,
+  dispatchReplaceAll,
+  dispatchReplaceCurrent,
   dispatchSetReplaceWith,
+  dispatchSetSearchTerm,
   dispatchToggleCaseSensitive,
   dispatchToggleRegex,
   dispatchToggleWholeWord,
-  dispatchNextMatch,
-  dispatchPrevMatch,
-  dispatchReplaceCurrent,
-  dispatchReplaceAll,
-  dispatchClearSearch,
+  findReplacePluginKey,
 } from "../../extensions/plugins/find-replace";
-import type { FindReplaceState } from "../../extensions/plugins/find-replace";
 
 interface FindReplaceBarProps {
   editor: Editor;
@@ -93,7 +96,7 @@ export function FindReplaceBar({
   }, [pluginState.searchTerm]);
 
   // Track last selected match to avoid redundant dispatches
-  const lastSelectedRef = useRef<{ from: number; to: number } | null>(null);
+  const lastSelectedRef = useRef<null | { from: number; to: number }>(null);
 
   // Select active match in editor + scroll to center
   useEffect(() => {
@@ -249,45 +252,45 @@ export function FindReplaceBar({
 
   return (
     <div
+      aria-label="Find and replace"
       className="find-replace-bar"
       role="search"
-      aria-label="Find and replace"
     >
       {/* Search row */}
       <div className="find-replace-row">
         <input
-          ref={searchInputRef}
+          aria-label="Search"
           className="find-replace-input"
-          type="text"
-          placeholder="Find..."
-          value={localSearchTerm}
           onChange={handleSearchChange}
           onKeyDown={handleSearchKeyDown}
-          aria-label="Search"
+          placeholder="Find..."
+          ref={searchInputRef}
+          type="text"
+          value={localSearchTerm}
         />
 
         <div className="find-replace-toggles">
           <button
-            className={`find-replace-toggle${caseSensitive ? " active" : ""}`}
+            aria-pressed={caseSensitive}
+            className={`find-replace-toggle${caseSensitive ? "active" : ""}`}
             onClick={() => dispatchToggleCaseSensitive(editor.view)}
             title="Case Sensitive (Aa)"
-            aria-pressed={caseSensitive}
           >
             Aa
           </button>
           <button
-            className={`find-replace-toggle${useRegex ? " active" : ""}`}
+            aria-pressed={useRegex}
+            className={`find-replace-toggle${useRegex ? "active" : ""}`}
             onClick={() => dispatchToggleRegex(editor.view)}
             title="Regular Expression (.*)"
-            aria-pressed={useRegex}
           >
             .*
           </button>
           <button
-            className={`find-replace-toggle${wholeWord ? " active" : ""}`}
+            aria-pressed={wholeWord}
+            className={`find-replace-toggle${wholeWord ? "active" : ""}`}
             onClick={() => dispatchToggleWholeWord(editor.view)}
             title="Whole Word"
-            aria-pressed={wholeWord}
           >
             W
           </button>
@@ -299,37 +302,37 @@ export function FindReplaceBar({
 
         <div className="find-replace-actions">
           <button
-            className="find-replace-nav-btn"
-            onClick={handlePrevMatch}
-            disabled={matches.length === 0}
-            title="Previous Match (Shift+Enter)"
             aria-label="Previous match"
+            className="find-replace-nav-btn"
+            disabled={matches.length === 0}
+            onClick={handlePrevMatch}
+            title="Previous Match (Shift+Enter)"
           >
             &#9650;
           </button>
           <button
-            className="find-replace-nav-btn"
-            onClick={handleNextMatch}
-            disabled={matches.length === 0}
-            title="Next Match (Enter)"
             aria-label="Next match"
+            className="find-replace-nav-btn"
+            disabled={matches.length === 0}
+            onClick={handleNextMatch}
+            title="Next Match (Enter)"
           >
             &#9660;
           </button>
           <button
-            className={`find-replace-toggle-replace${mode === "replace" ? " active" : ""}`}
+            aria-expanded={mode === "replace"}
+            aria-label={mode === "replace" ? "Hide replace" : "Show replace"}
+            className={`find-replace-toggle-replace${mode === "replace" ? "active" : ""}`}
             onClick={() => onSetMode(mode === "replace" ? "find" : "replace")}
             title={mode === "replace" ? "Hide Replace" : "Show Replace (Cmd+H)"}
-            aria-label={mode === "replace" ? "Hide replace" : "Show replace"}
-            aria-expanded={mode === "replace"}
           >
             &#8644;
           </button>
           <button
+            aria-label="Close find"
             className="find-replace-close-btn"
             onClick={handleClose}
             title="Close (Escape)"
-            aria-label="Close find"
           >
             &#10005;
           </button>
@@ -340,28 +343,28 @@ export function FindReplaceBar({
       {mode === "replace" && (
         <div className="find-replace-row">
           <input
-            ref={replaceInputRef}
+            aria-label="Replace"
             className="find-replace-input"
-            type="text"
-            placeholder="Replace..."
-            value={localReplaceWith}
             onChange={handleReplaceChange}
             onKeyDown={handleReplaceKeyDown}
-            aria-label="Replace"
+            placeholder="Replace..."
+            ref={replaceInputRef}
+            type="text"
+            value={localReplaceWith}
           />
           <div className="find-replace-actions">
             <button
               className="find-replace-action-btn"
-              onClick={handleReplaceCurrent}
               disabled={matches.length === 0}
+              onClick={handleReplaceCurrent}
               title="Replace Current"
             >
               Replace
             </button>
             <button
               className="find-replace-action-btn"
-              onClick={handleReplaceAll}
               disabled={matches.length === 0}
+              onClick={handleReplaceAll}
               title="Replace All"
             >
               All

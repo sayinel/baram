@@ -1,7 +1,7 @@
 // §69 Plugin Update Checker — Periodic background check
 import { checkForUpdates } from "./registry-client";
 
-let intervalId: ReturnType<typeof setInterval> | null = null;
+let intervalId: null | ReturnType<typeof setInterval> = null;
 const CHECK_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
 
 /** Start periodic update checking */

@@ -1,169 +1,23 @@
 // §72b Skill Dependency Section — dependency analysis UI for PropertiesPanel
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { useFileStore } from "../../stores/file-store";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import type { FileEntry } from "../../stores/file-store";
+
 import { useEditorStore } from "../../stores/editor-store";
+import { useFileStore } from "../../stores/file-store";
 import { useSkillStore } from "../../stores/skill-store";
+import { type ChainResult, dryRunChain } from "../../utils/skill-chain-runner";
 import {
-  parseSkillFrontmatter,
   analyzeSkillDependencies,
   buildDependencyGraph,
-  getReverseDependencies,
-  getImpactAnalysis,
-  type SkillMeta,
   type DependencyWarning,
+  getImpactAnalysis,
+  getReverseDependencies,
+  parseSkillFrontmatter,
+  type SkillMeta,
 } from "../../utils/skill-dependency-analyzer";
-import { dryRunChain, type ChainResult } from "../../utils/skill-chain-runner";
 import { isSkillFrontmatter } from "../../utils/skill-frontmatter";
 import { registerSkillSection } from "./skill-panel-registry";
-
-/** Recursively collect all .md files from the file tree */
-function collectMdFiles(tree: FileEntry[]): FileEntry[] {
-  const result: FileEntry[] = [];
-  for (const entry of tree) {
-    if (!entry.isDir && entry.name.endsWith(".md")) {
-      result.push(entry);
-    }
-    if (entry.isDir && entry.children) {
-      result.push(...collectMdFiles(entry.children));
-    }
-  }
-  return result;
-}
-
-// ─── WarningItem ──────────────────────────────────────────────────────────────
-
-function WarningItem({ warning }: { warning: DependencyWarning }) {
-  const isError = warning.severity === "error";
-  return (
-    <div className={`dep-warning dep-warning--${warning.severity}`}>
-      <span className="dep-warning-icon">{isError ? "\u2717" : "!"}</span>
-      <span className="dep-warning-msg">{warning.message}</span>
-    </div>
-  );
-}
-
-// ─── DependencyGraph (Cytoscape mini-graph) ───────────────────────────────────
-
-function DependencyGraph({
-  currentName,
-  allSkills,
-  graph,
-}: {
-  currentName: string;
-  allSkills: SkillMeta[];
-  graph: Map<string, string[]>;
-}) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const cyRef = useRef<{ destroy(): void } | null>(null);
-
-  useEffect(() => {
-    if (!containerRef.current) return;
-
-    // Collect visible nodes: current + direct deps + reverse deps
-    const nodes = new Set<string>();
-    nodes.add(currentName);
-    const currentDeps = graph.get(currentName) ?? [];
-    for (const dep of currentDeps) nodes.add(dep);
-    const reverseDeps = getReverseDependencies(allSkills, currentName);
-    for (const rd of reverseDeps) nodes.add(rd);
-
-    if (nodes.size <= 1 && currentDeps.length === 0) {
-      return; // Nothing to graph
-    }
-
-    // Resolve CSS variables for Cytoscape (doesn't support var())
-    const computed = getComputedStyle(document.documentElement);
-    const accent =
-      computed.getPropertyValue("--color-accent").trim() || "#6366f1";
-    const borderColor =
-      computed.getPropertyValue("--color-border").trim() || "#d1d5db";
-    const textColor =
-      computed.getPropertyValue("--color-text").trim() || "#1f2937";
-    const bgSecondary =
-      computed.getPropertyValue("--color-bg-secondary").trim() || "#f3f4f6";
-
-    let cancelled = false;
-
-    import("cytoscape").then(({ default: cytoscape }) => {
-      if (cancelled || !containerRef.current) return;
-      if (cyRef.current) cyRef.current.destroy();
-
-      const cyNodes = [...nodes].map((name) => ({
-        data: { id: name, label: name },
-        classes: name === currentName ? "current" : undefined,
-      }));
-
-      const cyEdges: { data: { source: string; target: string } }[] = [];
-      for (const name of nodes) {
-        for (const dep of graph.get(name) ?? []) {
-          if (nodes.has(dep)) {
-            cyEdges.push({ data: { source: name, target: dep } });
-          }
-        }
-      }
-
-      cyRef.current = cytoscape({
-        container: containerRef.current,
-        elements: [...cyNodes, ...cyEdges],
-        style: [
-          {
-            selector: "node",
-            style: {
-              label: "data(label)",
-              "font-size": "9px",
-              width: 22,
-              height: 22,
-              "background-color": bgSecondary,
-              "border-width": 1,
-              "border-color": borderColor,
-              color: textColor,
-              "text-valign": "bottom",
-              "text-margin-y": 4,
-            } as Record<string, unknown>,
-          },
-          {
-            selector: "node.current",
-            style: {
-              "background-color": accent,
-              "border-width": 2,
-              "border-color": accent,
-              color: accent,
-              "font-weight": "bold",
-            } as Record<string, unknown>,
-          },
-          {
-            selector: "edge",
-            style: {
-              width: 1.5,
-              "line-color": borderColor,
-              "target-arrow-color": borderColor,
-              "target-arrow-shape": "triangle",
-              "curve-style": "bezier",
-              "arrow-scale": 0.8,
-            } as Record<string, unknown>,
-          },
-        ],
-        layout: { name: "breadthfirst", directed: true, padding: 10 },
-        userZoomingEnabled: false,
-        userPanningEnabled: false,
-        autoungrabify: true,
-      });
-    });
-
-    return () => {
-      cancelled = true;
-      if (cyRef.current) {
-        cyRef.current.destroy();
-        cyRef.current = null;
-      }
-    };
-  }, [currentName, allSkills, graph]);
-
-  return <div ref={containerRef} className="dep-graph-container" />;
-}
-
-// ─── SkillDependencySection ───────────────────────────────────────────────────
 
 export function SkillDependencySection() {
   const fileTree = useFileStore((s) => s.fileTree);
@@ -291,8 +145,8 @@ export function SkillDependencySection() {
           {/* Mini Graph */}
           {!hasNoDeps && (
             <DependencyGraph
-              currentName={currentSkill.name}
               allSkills={allSkills}
+              currentName={currentSkill.name}
               graph={graph}
             />
           )}
@@ -307,8 +161,8 @@ export function SkillDependencySection() {
                 const found = allSkills.find((s) => s.name === req);
                 return (
                   <div
+                    className={`dep-list-item${found ? "" : "dep-list-item--missing"}`}
                     key={req}
-                    className={`dep-list-item${found ? "" : " dep-list-item--missing"}`}
                   >
                     <span className="dep-list-icon">
                       {found ? "\u2192" : "\u2717"}
@@ -328,7 +182,7 @@ export function SkillDependencySection() {
                 Used by ({reverseDeps.length})
               </div>
               {reverseDeps.map((name) => (
-                <div key={name} className="dep-list-item">
+                <div className="dep-list-item" key={name}>
                   <span className="dep-list-icon">{"\u2190"}</span>
                   <span>{name}</span>
                 </div>
@@ -349,8 +203,8 @@ export function SkillDependencySection() {
               {showImpact &&
                 impact.map((name) => (
                   <div
-                    key={name}
                     className="dep-list-item dep-list-item--impact"
+                    key={name}
                   >
                     <span className="dep-list-icon">{"\u26a1"}</span>
                     <span>{name}</span>
@@ -364,10 +218,10 @@ export function SkillDependencySection() {
             <div className="dep-chain">
               <button
                 className="dep-chain-btn"
+                disabled={loading || allSkills.length === 0}
                 onClick={() =>
                   setChainResult(dryRunChain(allSkills, currentSkill.name))
                 }
-                disabled={loading || allSkills.length === 0}
               >
                 Chain Test (dry run)
               </button>
@@ -381,8 +235,8 @@ export function SkillDependencySection() {
                   </div>
                   {chainResult.steps.map((step, i) => (
                     <div
-                      key={i}
                       className={`dep-chain-step dep-chain-step--${step.status}`}
+                      key={i}
                     >
                       <span className="dep-chain-step-icon">
                         {step.status === "passed"
@@ -410,13 +264,161 @@ export function SkillDependencySection() {
 
           <button
             className="dep-rescan"
-            onClick={scanSkills}
             disabled={loading}
+            onClick={scanSkills}
           >
             {loading ? "Scanning..." : "\u21bb Rescan"}
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── WarningItem ──────────────────────────────────────────────────────────────
+
+/** Recursively collect all .md files from the file tree */
+function collectMdFiles(tree: FileEntry[]): FileEntry[] {
+  const result: FileEntry[] = [];
+  for (const entry of tree) {
+    if (!entry.isDir && entry.name.endsWith(".md")) {
+      result.push(entry);
+    }
+    if (entry.isDir && entry.children) {
+      result.push(...collectMdFiles(entry.children));
+    }
+  }
+  return result;
+}
+
+// ─── DependencyGraph (Cytoscape mini-graph) ───────────────────────────────────
+
+function DependencyGraph({
+  currentName,
+  allSkills,
+  graph,
+}: {
+  allSkills: SkillMeta[];
+  currentName: string;
+  graph: Map<string, string[]>;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const cyRef = useRef<null | { destroy(): void }>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    // Collect visible nodes: current + direct deps + reverse deps
+    const nodes = new Set<string>();
+    nodes.add(currentName);
+    const currentDeps = graph.get(currentName) ?? [];
+    for (const dep of currentDeps) nodes.add(dep);
+    const reverseDeps = getReverseDependencies(allSkills, currentName);
+    for (const rd of reverseDeps) nodes.add(rd);
+
+    if (nodes.size <= 1 && currentDeps.length === 0) {
+      return; // Nothing to graph
+    }
+
+    // Resolve CSS variables for Cytoscape (doesn't support var())
+    const computed = getComputedStyle(document.documentElement);
+    const accent =
+      computed.getPropertyValue("--color-accent").trim() || "#6366f1";
+    const borderColor =
+      computed.getPropertyValue("--color-border").trim() || "#d1d5db";
+    const textColor =
+      computed.getPropertyValue("--color-text").trim() || "#1f2937";
+    const bgSecondary =
+      computed.getPropertyValue("--color-bg-secondary").trim() || "#f3f4f6";
+
+    let cancelled = false;
+
+    import("cytoscape").then(({ default: cytoscape }) => {
+      if (cancelled || !containerRef.current) return;
+      if (cyRef.current) cyRef.current.destroy();
+
+      const cyNodes = [...nodes].map((name) => ({
+        data: { id: name, label: name },
+        classes: name === currentName ? "current" : undefined,
+      }));
+
+      const cyEdges: { data: { source: string; target: string } }[] = [];
+      for (const name of nodes) {
+        for (const dep of graph.get(name) ?? []) {
+          if (nodes.has(dep)) {
+            cyEdges.push({ data: { source: name, target: dep } });
+          }
+        }
+      }
+
+      cyRef.current = cytoscape({
+        container: containerRef.current,
+        elements: [...cyNodes, ...cyEdges],
+        style: [
+          {
+            selector: "node",
+            style: {
+              label: "data(label)",
+              "font-size": "9px",
+              width: 22,
+              height: 22,
+              "background-color": bgSecondary,
+              "border-width": 1,
+              "border-color": borderColor,
+              color: textColor,
+              "text-valign": "bottom",
+              "text-margin-y": 4,
+            } as Record<string, unknown>,
+          },
+          {
+            selector: "node.current",
+            style: {
+              "background-color": accent,
+              "border-width": 2,
+              "border-color": accent,
+              color: accent,
+              "font-weight": "bold",
+            } as Record<string, unknown>,
+          },
+          {
+            selector: "edge",
+            style: {
+              width: 1.5,
+              "line-color": borderColor,
+              "target-arrow-color": borderColor,
+              "target-arrow-shape": "triangle",
+              "curve-style": "bezier",
+              "arrow-scale": 0.8,
+            } as Record<string, unknown>,
+          },
+        ],
+        layout: { name: "breadthfirst", directed: true, padding: 10 },
+        userZoomingEnabled: false,
+        userPanningEnabled: false,
+        autoungrabify: true,
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      if (cyRef.current) {
+        cyRef.current.destroy();
+        cyRef.current = null;
+      }
+    };
+  }, [currentName, allSkills, graph]);
+
+  return <div className="dep-graph-container" ref={containerRef} />;
+}
+
+// ─── SkillDependencySection ───────────────────────────────────────────────────
+
+function WarningItem({ warning }: { warning: DependencyWarning }) {
+  const isError = warning.severity === "error";
+  return (
+    <div className={`dep-warning dep-warning--${warning.severity}`}>
+      <span className="dep-warning-icon">{isError ? "\u2717" : "!"}</span>
+      <span className="dep-warning-msg">{warning.message}</span>
     </div>
   );
 }

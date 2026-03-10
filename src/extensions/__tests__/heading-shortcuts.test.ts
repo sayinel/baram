@@ -1,6 +1,7 @@
-// §5.1 Heading shortcuts — increaseHeadingLevel / decreaseHeadingLevel / toggleHeading
-import { describe, it, expect } from "vitest";
 import { Editor } from "@tiptap/core";
+// §5.1 Heading shortcuts — increaseHeadingLevel / decreaseHeadingLevel / toggleHeading
+import { describe, expect, it } from "vitest";
+
 import { createBaramExtensions } from "../../extensions";
 
 function createEditor(content: string): Editor {
