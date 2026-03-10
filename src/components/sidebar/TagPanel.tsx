@@ -1,10 +1,12 @@
 // §56m Tag Sidebar Panel — tree view of vault-wide tags with counts
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useFileStore } from "../../stores/file-store";
-import { useUIStore } from "../../stores/ui-store";
-import { useSettingsStore } from "../../stores/settings-store";
-import { getVaultTags, renameTag } from "../../ipc/invoke";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import type { TagEntry } from "../../ipc/invoke";
+
+import { getVaultTags, renameTag } from "../../ipc/invoke";
+import { useFileStore } from "../../stores/file-store";
+import { useSettingsStore } from "../../stores/settings-store";
+import { useUIStore } from "../../stores/ui-store";
 
 const TAG_COLOR_PRESETS = [
   "#ef4444", // red
@@ -16,191 +18,11 @@ const TAG_COLOR_PRESETS = [
 ];
 
 interface TagTreeNode {
-  name: string;
-  fullPath: string;
-  count: number;
   children: Map<string, TagTreeNode>;
+  count: number;
   expanded: boolean;
-}
-
-function buildTagTree(entries: TagEntry[]): Map<string, TagTreeNode> {
-  const root = new Map<string, TagTreeNode>();
-
-  for (const { tag, count } of entries) {
-    const segments = tag.split("/");
-    let current = root;
-    let pathSoFar = "";
-
-    for (let i = 0; i < segments.length; i++) {
-      const seg = segments[i];
-      pathSoFar = pathSoFar ? `${pathSoFar}/${seg}` : seg;
-      const isLeaf = i === segments.length - 1;
-
-      if (!current.has(seg)) {
-        current.set(seg, {
-          name: seg,
-          fullPath: pathSoFar,
-          count: isLeaf ? count : 0,
-          children: new Map(),
-          expanded: true,
-        });
-      } else if (isLeaf) {
-        // Update count for the leaf node
-        const node = current.get(seg)!;
-        node.count = count;
-      }
-
-      current = current.get(seg)!.children;
-    }
-  }
-
-  return root;
-}
-
-function getTotalCount(node: TagTreeNode): number {
-  let total = node.count;
-  for (const child of node.children.values()) {
-    total += getTotalCount(child);
-  }
-  return total;
-}
-
-function sortNodes(nodes: Map<string, TagTreeNode>): TagTreeNode[] {
-  return [...nodes.values()].sort((a, b) => {
-    const countA = getTotalCount(a);
-    const countB = getTotalCount(b);
-    if (countB !== countA) return countB - countA;
-    return a.name.localeCompare(b.name);
-  });
-}
-
-function getCloudFontSize(count: number, max: number, min: number): number {
-  if (max === min) return 1;
-  const normalized = (count - min) / (max - min);
-  return 0.7 + normalized * 1.3; // Range: 0.7rem to 2.0rem
-}
-
-function TagTreeItem({
-  node,
-  depth,
-  filter,
-  onClickTag,
-  onToggle,
-  onContextMenu,
-  renaming,
-  renameValue,
-  onRenameChange,
-  onRenameKeyDown,
-  onRenameBlur,
-}: {
-  node: TagTreeNode;
-  depth: number;
-  filter: string;
-  onClickTag: (tag: string) => void;
-  onToggle: (fullPath: string) => void;
-  onContextMenu: (e: React.MouseEvent, tag: string) => void;
-  renaming: string | null;
-  renameValue: string;
-  onRenameChange: (val: string) => void;
-  onRenameKeyDown: (
-    e: React.KeyboardEvent<HTMLInputElement>,
-    tag: string,
-  ) => void;
-  onRenameBlur: () => void;
-}) {
-  const hasChildren = node.children.size > 0;
-  const totalCount = getTotalCount(node);
-  const sortedChildren = useMemo(
-    () => sortNodes(node.children),
-    [node.children],
-  );
-  const tagColors = useSettingsStore((s) => s.tagColors);
-  const tagColor = tagColors[node.fullPath];
-
-  // Filter: if filter is set, only show matching nodes
-  const matchesFilter = !filter || node.fullPath.toLowerCase().includes(filter);
-  const childrenMatchFilter =
-    !filter ||
-    sortedChildren.some(
-      (child) =>
-        child.fullPath.toLowerCase().includes(filter) ||
-        getTotalCount(child) > 0,
-    );
-
-  if (filter && !matchesFilter && !childrenMatchFilter) {
-    return null;
-  }
-
-  return (
-    <>
-      <div
-        className={`tag-tree-item ${depth === 0 ? "tag-tree-item-root" : ""}`}
-        style={{ paddingLeft: `${8 + depth * 16}px` }}
-        onClick={() => onClickTag(node.fullPath)}
-        onContextMenu={(e) => onContextMenu(e, node.fullPath)}
-        title={`#${node.fullPath} (${totalCount})`}
-      >
-        {hasChildren ? (
-          <button
-            className="tag-tree-toggle"
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggle(node.fullPath);
-            }}
-          >
-            {node.expanded ? "▾" : "▸"}
-          </button>
-        ) : (
-          <span className="tag-tree-toggle tag-tree-toggle-leaf" />
-        )}
-        <span
-          className="tag-tree-hash"
-          style={{ color: tagColor || undefined }}
-        >
-          #
-        </span>
-        {renaming === node.fullPath ? (
-          <input
-            className="tag-rename-input"
-            value={renameValue}
-            onChange={(e) => onRenameChange(e.target.value)}
-            onKeyDown={(e) => onRenameKeyDown(e, node.fullPath)}
-            onBlur={onRenameBlur}
-            onClick={(e) => e.stopPropagation()}
-            autoFocus
-          />
-        ) : (
-          <span
-            className="tag-tree-name"
-            style={{ color: tagColor || undefined }}
-          >
-            {node.name}
-          </span>
-        )}
-        {renaming !== node.fullPath && (
-          <span className="tag-tree-count">{totalCount}</span>
-        )}
-      </div>
-      {hasChildren &&
-        node.expanded &&
-        sortedChildren.map((child) => (
-          <TagTreeItem
-            key={child.fullPath}
-            node={child}
-            depth={depth + 1}
-            filter={filter}
-            onClickTag={onClickTag}
-            onToggle={onToggle}
-            onContextMenu={onContextMenu}
-            renaming={renaming}
-            renameValue={renameValue}
-            onRenameChange={onRenameChange}
-            onRenameKeyDown={onRenameKeyDown}
-            onRenameBlur={onRenameBlur}
-          />
-        ))}
-    </>
-  );
+  fullPath: string;
+  name: string;
 }
 
 export function TagPanel() {
@@ -211,16 +33,16 @@ export function TagPanel() {
   const [expandState, setExpandState] = useState<Map<string, boolean>>(
     new Map(),
   );
-  const [contextMenu, setContextMenu] = useState<{
+  const [contextMenu, setContextMenu] = useState<null | {
+    tag: string;
     x: number;
     y: number;
-    tag: string;
-  } | null>(null);
-  const [renaming, setRenaming] = useState<string | null>(null);
+  }>(null);
+  const [renaming, setRenaming] = useState<null | string>(null);
   const [renameValue, setRenameValue] = useState("");
-  const [notification, setNotification] = useState<string | null>(null);
-  const notifTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [viewMode, setViewMode] = useState<"tree" | "cloud">("tree");
+  const [notification, setNotification] = useState<null | string>(null);
+  const notifTimerRef = useRef<null | ReturnType<typeof setTimeout>>(null);
+  const [viewMode, setViewMode] = useState<"cloud" | "tree">("tree");
   const tagColors = useSettingsStore((s) => s.tagColors);
   const setTagColor = useSettingsStore((s) => s.setTagColor);
   const removeTagColor = useSettingsStore((s) => s.removeTagColor);
@@ -397,14 +219,14 @@ export function TagPanel() {
             </>
           )}
           <button
-            className={`tag-panel-action-btn${viewMode === "tree" ? " tag-panel-action-active" : ""}`}
+            className={`tag-panel-action-btn${viewMode === "tree" ? "tag-panel-action-active" : ""}`}
             onClick={() => setViewMode("tree")}
             title="Tree view"
           >
             ☰
           </button>
           <button
-            className={`tag-panel-action-btn${viewMode === "cloud" ? " tag-panel-action-active" : ""}`}
+            className={`tag-panel-action-btn${viewMode === "cloud" ? "tag-panel-action-active" : ""}`}
             onClick={() => setViewMode("cloud")}
             title="Cloud view"
           >
@@ -412,9 +234,9 @@ export function TagPanel() {
           </button>
           <button
             className="tag-panel-action-btn"
+            disabled={loading}
             onClick={fetchTags}
             title="Refresh tags"
-            disabled={loading}
           >
             ↻
           </button>
@@ -427,11 +249,11 @@ export function TagPanel() {
 
       <div className="tag-panel-filter">
         <input
-          type="text"
           className="tag-panel-filter-input"
-          placeholder="Filter tags..."
-          value={filter}
           onChange={(e) => setFilter(e.target.value)}
+          placeholder="Filter tags..."
+          type="text"
+          value={filter}
         />
       </div>
 
@@ -448,10 +270,10 @@ export function TagPanel() {
             const tagColor = tagColors[entry.tag];
             return (
               <span
-                key={entry.tag}
                 className="tag-cloud-item"
-                style={{ fontSize: `${size}rem`, color: tagColor || undefined }}
+                key={entry.tag}
                 onClick={() => handleClickTag(entry.tag)}
+                style={{ fontSize: `${size}rem`, color: tagColor || undefined }}
                 title={`#${entry.tag} (${entry.count})`}
               >
                 #{entry.tag}
@@ -463,18 +285,18 @@ export function TagPanel() {
         <div className="tag-panel-tree">
           {sortedRoots.map((node) => (
             <TagTreeItem
-              key={node.fullPath}
-              node={node}
               depth={0}
               filter={normalizedFilter}
+              key={node.fullPath}
+              node={node}
               onClickTag={handleClickTag}
-              onToggle={handleToggle}
               onContextMenu={handleContextMenu}
-              renaming={renaming}
-              renameValue={renameValue}
+              onRenameBlur={handleRenameBlur}
               onRenameChange={setRenameValue}
               onRenameKeyDown={handleRenameKeyDown}
-              onRenameBlur={handleRenameBlur}
+              onToggle={handleToggle}
+              renameValue={renameValue}
+              renaming={renaming}
             />
           ))}
           <div className="tag-panel-stats">
@@ -486,8 +308,8 @@ export function TagPanel() {
       {contextMenu && (
         <div
           className="tag-context-menu"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
           onMouseDown={(e) => e.stopPropagation()}
+          style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           <button
             onClick={() => {
@@ -520,29 +342,209 @@ export function TagPanel() {
           <div className="tag-color-palette">
             {TAG_COLOR_PRESETS.map((color) => (
               <button
+                className={`tag-color-dot${tagColors[contextMenu.tag] === color ? "tag-color-dot-active" : ""}`}
                 key={color}
-                className={`tag-color-dot${tagColors[contextMenu.tag] === color ? " tag-color-dot-active" : ""}`}
-                style={{ background: color }}
-                title={color}
                 onClick={() => {
                   setTagColor(contextMenu.tag, color);
                   setContextMenu(null);
                 }}
+                style={{ background: color }}
+                title={color}
               />
             ))}
             {tagColors[contextMenu.tag] && (
               <button
                 className="tag-color-dot tag-color-dot-clear"
-                title="Remove color"
                 onClick={() => {
                   removeTagColor(contextMenu.tag);
                   setContextMenu(null);
                 }}
+                title="Remove color"
               />
             )}
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+function buildTagTree(entries: TagEntry[]): Map<string, TagTreeNode> {
+  const root = new Map<string, TagTreeNode>();
+
+  for (const { tag, count } of entries) {
+    const segments = tag.split("/");
+    let current = root;
+    let pathSoFar = "";
+
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      pathSoFar = pathSoFar ? `${pathSoFar}/${seg}` : seg;
+      const isLeaf = i === segments.length - 1;
+
+      if (!current.has(seg)) {
+        current.set(seg, {
+          name: seg,
+          fullPath: pathSoFar,
+          count: isLeaf ? count : 0,
+          children: new Map(),
+          expanded: true,
+        });
+      } else if (isLeaf) {
+        // Update count for the leaf node
+        const node = current.get(seg)!;
+        node.count = count;
+      }
+
+      current = current.get(seg)!.children;
+    }
+  }
+
+  return root;
+}
+
+function getCloudFontSize(count: number, max: number, min: number): number {
+  if (max === min) return 1;
+  const normalized = (count - min) / (max - min);
+  return 0.7 + normalized * 1.3; // Range: 0.7rem to 2.0rem
+}
+
+function getTotalCount(node: TagTreeNode): number {
+  let total = node.count;
+  for (const child of node.children.values()) {
+    total += getTotalCount(child);
+  }
+  return total;
+}
+
+function sortNodes(nodes: Map<string, TagTreeNode>): TagTreeNode[] {
+  return [...nodes.values()].sort((a, b) => {
+    const countA = getTotalCount(a);
+    const countB = getTotalCount(b);
+    if (countB !== countA) return countB - countA;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+function TagTreeItem({
+  node,
+  depth,
+  filter,
+  onClickTag,
+  onToggle,
+  onContextMenu,
+  renaming,
+  renameValue,
+  onRenameChange,
+  onRenameKeyDown,
+  onRenameBlur,
+}: {
+  depth: number;
+  filter: string;
+  node: TagTreeNode;
+  onClickTag: (tag: string) => void;
+  onContextMenu: (e: React.MouseEvent, tag: string) => void;
+  onRenameBlur: () => void;
+  onRenameChange: (val: string) => void;
+  onRenameKeyDown: (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    tag: string,
+  ) => void;
+  onToggle: (fullPath: string) => void;
+  renameValue: string;
+  renaming: null | string;
+}) {
+  const hasChildren = node.children.size > 0;
+  const totalCount = getTotalCount(node);
+  const sortedChildren = useMemo(
+    () => sortNodes(node.children),
+    [node.children],
+  );
+  const tagColors = useSettingsStore((s) => s.tagColors);
+  const tagColor = tagColors[node.fullPath];
+
+  // Filter: if filter is set, only show matching nodes
+  const matchesFilter = !filter || node.fullPath.toLowerCase().includes(filter);
+  const childrenMatchFilter =
+    !filter ||
+    sortedChildren.some(
+      (child) =>
+        child.fullPath.toLowerCase().includes(filter) ||
+        getTotalCount(child) > 0,
+    );
+
+  if (filter && !matchesFilter && !childrenMatchFilter) {
+    return null;
+  }
+
+  return (
+    <>
+      <div
+        className={`tag-tree-item ${depth === 0 ? "tag-tree-item-root" : ""}`}
+        onClick={() => onClickTag(node.fullPath)}
+        onContextMenu={(e) => onContextMenu(e, node.fullPath)}
+        style={{ paddingLeft: `${8 + depth * 16}px` }}
+        title={`#${node.fullPath} (${totalCount})`}
+      >
+        {hasChildren ? (
+          <button
+            className="tag-tree-toggle"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggle(node.fullPath);
+            }}
+          >
+            {node.expanded ? "▾" : "▸"}
+          </button>
+        ) : (
+          <span className="tag-tree-toggle tag-tree-toggle-leaf" />
+        )}
+        <span
+          className="tag-tree-hash"
+          style={{ color: tagColor || undefined }}
+        >
+          #
+        </span>
+        {renaming === node.fullPath ? (
+          <input
+            autoFocus
+            className="tag-rename-input"
+            onBlur={onRenameBlur}
+            onChange={(e) => onRenameChange(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => onRenameKeyDown(e, node.fullPath)}
+            value={renameValue}
+          />
+        ) : (
+          <span
+            className="tag-tree-name"
+            style={{ color: tagColor || undefined }}
+          >
+            {node.name}
+          </span>
+        )}
+        {renaming !== node.fullPath && (
+          <span className="tag-tree-count">{totalCount}</span>
+        )}
+      </div>
+      {hasChildren &&
+        node.expanded &&
+        sortedChildren.map((child) => (
+          <TagTreeItem
+            depth={depth + 1}
+            filter={filter}
+            key={child.fullPath}
+            node={child}
+            onClickTag={onClickTag}
+            onContextMenu={onContextMenu}
+            onRenameBlur={onRenameBlur}
+            onRenameChange={onRenameChange}
+            onRenameKeyDown={onRenameKeyDown}
+            onToggle={onToggle}
+            renameValue={renameValue}
+            renaming={renaming}
+          />
+        ))}
+    </>
   );
 }

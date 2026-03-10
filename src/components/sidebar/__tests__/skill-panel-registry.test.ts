@@ -1,5 +1,5 @@
 // §72c skill-panel-registry tests
-import { describe, it, expect, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 // We need to isolate the module state between tests, so we use dynamic import with cache busting
 // Instead, we'll directly test the exported functions and reset state via re-registration

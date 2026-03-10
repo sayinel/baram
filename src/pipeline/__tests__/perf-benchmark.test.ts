@@ -1,10 +1,11 @@
-// §8.4 Performance benchmark tests — measure pipeline throughput
-import { describe, it, expect } from "vitest";
 import { Schema } from "@tiptap/pm/model";
+import katex from "katex";
+// §8.4 Performance benchmark tests — measure pipeline throughput
+import { describe, expect, it } from "vitest";
+
+import { generateMarkdown } from "../../utils/__tests__/perf-helpers";
 import { markdownToProsemirror } from "../md-to-pm";
 import { prosemirrorToMarkdown } from "../pm-to-md";
-import { generateMarkdown } from "../../utils/__tests__/perf-helpers";
-import katex from "katex";
 
 // CI runners are shared machines — allow 3x headroom
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

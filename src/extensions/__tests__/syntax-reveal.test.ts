@@ -1,8 +1,9 @@
+import { Editor } from "@tiptap/core";
 // §5.1 + §3.3 Syntax Reveal — expansion / collapse integration tests
 // Tests that the SyntaxReveal plugin inserts/removes markdown delimiters
 // when the cursor enters/exits a mark or link range.
-import { describe, it, expect } from "vitest";
-import { Editor } from "@tiptap/core";
+import { describe, expect, it } from "vitest";
+
 import { createBaramExtensions } from "../../extensions";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 

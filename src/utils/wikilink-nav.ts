@@ -1,7 +1,7 @@
+import { useEditorStore } from "../stores/editor-store";
 // §28 Wikilink navigation — resolve target to file path
 // §61 Namespace — relative path resolution (./  ../)
 import { useFileStore } from "../stores/file-store";
-import { useEditorStore } from "../stores/editor-store";
 import { useSettingsStore } from "../stores/settings-store";
 import { flattenFileTree } from "./file-search";
 import { isDateString, resolveJournalDir } from "./journal";
@@ -13,7 +13,7 @@ import { isDateString, resolveJournalDir } from "./journal";
 export function resolveRelativeTarget(
   target: string,
   sourcePath: string,
-): string | null {
+): null | string {
   const sourceDir = sourcePath.substring(0, sourcePath.lastIndexOf("/"));
   const isAbsolute = sourceDir.startsWith("/");
   // Build candidate: join sourceDir + target, then normalize
@@ -49,7 +49,7 @@ export function resolveRelativeTarget(
  */
 export function resolveWikilinkTarget(
   target: string,
-): { path: string; name: string } | null {
+): null | { name: string; path: string } {
   const { rootPath, fileTree, isJournalScoped } = useFileStore.getState();
   if (!rootPath || fileTree.length === 0) return null;
 

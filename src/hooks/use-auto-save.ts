@@ -1,11 +1,13 @@
 // §3.6 Auto-save hook — debounced write after last edit
-import { useEffect, useRef, useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
+
 import type { Editor } from "@tiptap/core";
-import { useEditorStore } from "../stores/editor-store";
-import { useSettingsStore } from "../stores/settings-store";
+
+import { updateFileIndex, writeFile } from "../ipc/invoke";
 import { prosemirrorToMarkdown } from "../pipeline";
-import { writeFile, updateFileIndex } from "../ipc/invoke";
+import { useEditorStore } from "../stores/editor-store";
 import { useLinkStore } from "../stores/link-store";
+import { useSettingsStore } from "../stores/settings-store";
 import { isMarkdownFile } from "../utils/file-type";
 
 /**
@@ -14,7 +16,7 @@ import { isMarkdownFile } from "../utils/file-type";
  * Note: Non-MD files are auto-saved by App.tsx directly; this hook only handles markdown.
  */
 export function useAutoSave(editor: Editor | null) {
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timerRef = useRef<null | ReturnType<typeof setTimeout>>(null);
   const { autoSave, autoSaveDelay } = useSettingsStore();
 
   const save = useCallback(async () => {

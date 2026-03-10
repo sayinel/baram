@@ -1,8 +1,9 @@
-import { describe, test, expect } from "vitest";
+import { describe, expect, test } from "vitest";
+
 import {
   getHeatmapLevel,
-  getWeekColumns,
   getMonthLabels,
+  getWeekColumns,
 } from "../ContributionHeatmap";
 
 describe("getHeatmapLevel", () => {

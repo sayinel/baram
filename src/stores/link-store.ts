@@ -1,42 +1,43 @@
+import type { BacklinkEntry, UnlinkedMention } from "../ipc/types";
+
 // §29 링크 인덱스 스토어 — 백링크, 링크 그래프 프론트엔드 캐시
 // §34 언링크드 멘션 상태 추가
 import { create } from "zustand";
-import type { BacklinkEntry, UnlinkedMention } from "../ipc/types";
 
 interface LinkState {
   /** Backlinks for the currently viewed file */
   backlinks: BacklinkEntry[];
-  /** §34 Unlinked mentions for the currently viewed file */
-  unlinkedMentions: UnlinkedMention[];
-  /** Whether backlinks are being loaded */
-  loading: boolean;
-  /** Last error from IPC */
-  error: string | null;
   /** Path of the file whose backlinks are cached */
-  cachedPath: string | null;
-  /** Monotonic counter — incremented when the Rust index changes, triggers refetch */
-  indexVersion: number;
-
-  /** Set backlinks data (called after IPC response) */
-  setBacklinks: (path: string, entries: BacklinkEntry[]) => void;
-  /** §34 Set unlinked mentions data */
-  setUnlinkedMentions: (entries: UnlinkedMention[]) => void;
-  /** Set loading state */
-  setLoading: (loading: boolean) => void;
-  /** Set error state */
-  setError: (error: string | null) => void;
+  cachedPath: null | string;
   /** Clear all cached data */
   clear: () => void;
+  /** Last error from IPC */
+  error: null | string;
+  /** Monotonic counter — incremented when the Rust index changes, triggers refetch */
+  indexVersion: number;
   /** Signal that the Rust index was updated — triggers Backlinks refetch */
   invalidate: () => void;
-  /** Markdown line number to scroll to after backlink navigation (1-based) */
-  pendingScrollLine: number | null;
-  /** Set pending scroll line (consumed by App.tsx after tab switch) */
-  setPendingScrollLine: (line: number | null) => void;
+
+  /** Whether backlinks are being loaded */
+  loading: boolean;
   /** §30c Block ID to scroll to after block ref navigation */
-  pendingScrollBlockId: string | null;
+  pendingScrollBlockId: null | string;
+  /** Markdown line number to scroll to after backlink navigation (1-based) */
+  pendingScrollLine: null | number;
+  /** Set backlinks data (called after IPC response) */
+  setBacklinks: (path: string, entries: BacklinkEntry[]) => void;
+  /** Set error state */
+  setError: (error: null | string) => void;
+  /** Set loading state */
+  setLoading: (loading: boolean) => void;
   /** Set pending scroll block ID (consumed by App.tsx after tab switch) */
-  setPendingScrollBlockId: (id: string | null) => void;
+  setPendingScrollBlockId: (id: null | string) => void;
+  /** Set pending scroll line (consumed by App.tsx after tab switch) */
+  setPendingScrollLine: (line: null | number) => void;
+  /** §34 Set unlinked mentions data */
+  setUnlinkedMentions: (entries: UnlinkedMention[]) => void;
+  /** §34 Unlinked mentions for the currently viewed file */
+  unlinkedMentions: UnlinkedMention[];
 }
 
 export const useLinkStore = create<LinkState>((set, get) => ({

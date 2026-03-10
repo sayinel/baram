@@ -1,8 +1,9 @@
-// §69 Plugin Lifecycle — App-level plugin management
-import { pluginLoader } from "./plugin-loader";
+import type { InstalledPlugin } from "./types";
+
 import { usePluginStore } from "../stores/plugin-store";
 import { emitPluginEvent } from "./extension-context";
-import type { InstalledPlugin } from "./types";
+// §69 Plugin Lifecycle — App-level plugin management
+import { pluginLoader } from "./plugin-loader";
 
 /** Initialize all enabled plugins at app startup. Budget: 200ms total. */
 export async function initializePlugins(): Promise<void> {
@@ -49,6 +50,11 @@ export async function initializePlugins(): Promise<void> {
   }
 }
 
+/** Called when the editor is ready */
+export function notifyEditorReady(): void {
+  emitPluginEvent("editor:ready");
+}
+
 /** Called when a file is opened in the editor */
 export function notifyFileOpen(filePath: string): void {
   emitPluginEvent("file:open", filePath);
@@ -57,11 +63,6 @@ export function notifyFileOpen(filePath: string): void {
 /** Called when a file is saved */
 export function notifyFileSave(filePath: string): void {
   emitPluginEvent("file:save", filePath);
-}
-
-/** Called when the editor is ready */
-export function notifyEditorReady(): void {
-  emitPluginEvent("editor:ready");
 }
 
 /** Cleanup all plugins on app shutdown */

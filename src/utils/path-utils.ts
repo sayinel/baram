@@ -1,21 +1,23 @@
 // Drag & Drop path utilities
 
 const IMAGE_EXTENSIONS = new Set([
-  "png",
-  "jpg",
-  "jpeg",
-  "gif",
-  "webp",
-  "svg",
-  "ico",
-  "bmp",
   "avif",
+  "bmp",
+  "gif",
+  "ico",
+  "jpeg",
+  "jpg",
+  "png",
+  "svg",
+  "webp",
 ]);
 
-/** Check if a file path has an image extension */
-export function isImageFile(path: string): boolean {
-  const ext = path.split(".").pop()?.toLowerCase() ?? "";
-  return IMAGE_EXTENSIONS.has(ext);
+/** §61 Extract namespace (directory path) from a vault-relative file path.
+ *  e.g. "notes/ai/prompt.md" → "notes/ai", "readme.md" → undefined */
+export function extractNamespace(relativePath: string): string | undefined {
+  const lastSlash = relativePath.lastIndexOf("/");
+  if (lastSlash <= 0) return undefined;
+  return relativePath.substring(0, lastSlash);
 }
 
 /** Convert an absolute path to a relative path from a given directory */
@@ -42,12 +44,10 @@ export function getRelativePath(fromDir: string, toPath: string): string {
   return "../".repeat(ups) + remainder.join("/");
 }
 
-/** §61 Extract namespace (directory path) from a vault-relative file path.
- *  e.g. "notes/ai/prompt.md" → "notes/ai", "readme.md" → undefined */
-export function extractNamespace(relativePath: string): string | undefined {
-  const lastSlash = relativePath.lastIndexOf("/");
-  if (lastSlash <= 0) return undefined;
-  return relativePath.substring(0, lastSlash);
+/** Check if a file path has an image extension */
+export function isImageFile(path: string): boolean {
+  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  return IMAGE_EXTENSIONS.has(ext);
 }
 
 /** Resolve name conflict by appending -1, -2, etc. */

@@ -1,62 +1,44 @@
 // §56a Journal Migration Dialog — bidirectional: flat ↔ hierarchy
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
+
+import { useTranslation } from "../../i18n/useTranslation";
 import {
+  createDir,
+  deleteFile,
   listDir,
   readFile,
   writeFile,
-  createDir,
-  deleteFile,
 } from "../../ipc/invoke";
 import {
-  detectFlatJournalFiles,
-  buildMigrationPlan,
-  detectHierarchicalJournalFiles,
   buildFlattenPlan,
+  buildMigrationPlan,
+  detectFlatJournalFiles,
+  detectHierarchicalJournalFiles,
 } from "../../utils/journal";
-import { useTranslation } from "../../i18n/useTranslation";
 
-export type MigrationDirection = "toHierarchy" | "toFlat";
+export type MigrationDirection = "toFlat" | "toHierarchy";
 
 interface MigrationDialogProps {
-  open: boolean;
-  onClose: () => void;
-  journalDir: string;
   direction: MigrationDirection;
+  journalDir: string;
+  onClose: () => void;
+  open: boolean;
 }
-
-type MigrationStatus =
-  | "idle"
-  | "loading"
-  | "ready"
-  | "migrating"
-  | "done"
-  | "error";
 
 interface MigrationPair {
   from: string;
   to: string;
 }
 
-const PREVIEW_MAX = 10;
+type MigrationStatus =
+  | "done"
+  | "error"
+  | "idle"
+  | "loading"
+  | "migrating"
+  | "ready";
 
-/**
- * Recursively collect all file entries under a directory.
- */
-async function listDirRecursive(
-  dir: string,
-): Promise<{ name: string; path: string; isDir: boolean }[]> {
-  const entries = await listDir(dir, false);
-  const result: { name: string; path: string; isDir: boolean }[] = [];
-  for (const entry of entries) {
-    if (entry.isDir) {
-      const children = await listDirRecursive(entry.path);
-      result.push(...children);
-    } else {
-      result.push(entry);
-    }
-  }
-  return result;
-}
+const PREVIEW_MAX = 10;
 
 export function MigrationDialog({
   open,
@@ -191,7 +173,7 @@ export function MigrationDialog({
                     const fromRelative = from.substring(journalDir.length + 1);
                     const toRelative = to.substring(journalDir.length + 1);
                     return (
-                      <li key={from} className="migration-dialog-list-item">
+                      <li className="migration-dialog-list-item" key={from}>
                         <span className="migration-dialog-from">
                           {fromRelative}
                         </span>
@@ -232,15 +214,15 @@ export function MigrationDialog({
             <>
               <button
                 className="migration-dialog-btn migration-dialog-btn-secondary"
-                onClick={handleClose}
                 disabled={status === "migrating"}
+                onClick={handleClose}
               >
                 {t("common.cancel")}
               </button>
               <button
                 className="migration-dialog-btn migration-dialog-btn-primary"
-                onClick={handleMigrate}
                 disabled={status !== "ready" || plan.length === 0}
+                onClick={handleMigrate}
               >
                 {status === "migrating"
                   ? t("settings.general.journalMigrate.migrating")
@@ -254,4 +236,23 @@ export function MigrationDialog({
       </div>
     </div>
   );
+}
+
+/**
+ * Recursively collect all file entries under a directory.
+ */
+async function listDirRecursive(
+  dir: string,
+): Promise<{ isDir: boolean; name: string; path: string }[]> {
+  const entries = await listDir(dir, false);
+  const result: { isDir: boolean; name: string; path: string }[] = [];
+  for (const entry of entries) {
+    if (entry.isDir) {
+      const children = await listDirRecursive(entry.path);
+      result.push(...children);
+    } else {
+      result.push(entry);
+    }
+  }
+  return result;
 }

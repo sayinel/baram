@@ -1,12 +1,13 @@
-// §6.3 Auto Model Selection — returns the appropriate model/provider for a given AI task
-import { useAIStore } from "../stores/ai-store";
 import type { AIProvider, AITask } from "../stores/ai-store";
 
+// §6.3 Auto Model Selection — returns the appropriate model/provider for a given AI task
+import { useAIStore } from "../stores/ai-store";
+
 export interface TaskConfig {
-  provider: AIProvider;
-  model: string;
   apiKey: string;
   baseUrl: string | undefined;
+  model: string;
+  provider: AIProvider;
 }
 
 /**
@@ -26,9 +27,17 @@ export function getConfigForTask(task: AITask): TaskConfig {
     };
   }
 
-  let tp: AIProvider | "" = "";
+  let tp: "" | AIProvider = "";
   let tm = "";
   switch (task) {
+    case "agent":
+      tp = s.providerForAgent;
+      tm = s.modelForAgent;
+      break;
+    case "chat":
+      tp = s.providerForChat;
+      tm = s.modelForChat;
+      break;
     case "ghost-text":
       tp = s.providerForGhostText;
       tm = s.modelForGhostText;
@@ -36,14 +45,6 @@ export function getConfigForTask(task: AITask): TaskConfig {
     case "inline-edit":
       tp = s.providerForInlineEdit;
       tm = s.modelForInlineEdit;
-      break;
-    case "chat":
-      tp = s.providerForChat;
-      tm = s.modelForChat;
-      break;
-    case "agent":
-      tp = s.providerForAgent;
-      tm = s.modelForAgent;
       break;
   }
 

@@ -1,8 +1,9 @@
-// Stability test: simulate multiple Source ↔ WYSIWYG toggle cycles
-// Reproduces: "편집모드에서 WYSIWYG 모드로 돌아올 때마다 한 라인씩 사라져"
-import { describe, it, expect } from "vitest";
 import { Schema } from "@tiptap/pm/model";
 import { EditorState } from "@tiptap/pm/state";
+// Stability test: simulate multiple Source ↔ WYSIWYG toggle cycles
+// Reproduces: "편집모드에서 WYSIWYG 모드로 돌아올 때마다 한 라인씩 사라져"
+import { describe, expect, it } from "vitest";
+
 import { markdownToProsemirror } from "../md-to-pm";
 import { prosemirrorToMarkdown } from "../pm-to-md";
 

@@ -1,15 +1,16 @@
 // §56i Daily Writing Prompt — compact display with refresh + history tracking (§10.5)
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+
+import { useSettingsStore } from "../../stores/settings-store";
+import { resolveJournalDir } from "../../utils/journal";
 import {
   DAILY_PROMPTS,
   getPromptAvoidingHistory,
 } from "../../utils/journal-prompts";
 import {
-  readPromptHistory,
   addPromptToHistory,
+  readPromptHistory,
 } from "../../utils/journal-stats-cache";
-import { useSettingsStore } from "../../stores/settings-store";
-import { resolveJournalDir } from "../../utils/journal";
 
 interface Props {
   date?: Date;
@@ -21,7 +22,7 @@ export function DailyPrompt({ date }: Props) {
   const journalDir = resolveJournalDir(null, journalDirectory);
 
   // null = loading, string = ready
-  const [prompt, setPrompt] = useState<string | null>(null);
+  const [prompt, setPrompt] = useState<null | string>(null);
   // Local mirror of used IDs so refresh can exclude already-shown prompts
   const [usedIds, setUsedIds] = useState<string[]>([]);
 

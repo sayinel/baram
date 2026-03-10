@@ -1,5 +1,6 @@
 // §69 Plugin Manifest validation tests
-import { describe, test, expect } from "vitest";
+import { describe, expect, test } from "vitest";
+
 import { validateManifest } from "../manifest";
 
 const validManifest = {

@@ -1,10 +1,12 @@
 // §56f Journal Dynamic Code Block — renders journal-list / journal-mood / journal-photos
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
+
 import { convertFileSrc } from "@tauri-apps/api/core";
+
 import { listDir, readFile } from "../../ipc/invoke";
+import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { useSettingsStore } from "../../stores/settings-store";
-import { useEditorStore } from "../../stores/editor-store";
 
 export type JournalBlockLanguage =
   | "journal-list"
@@ -12,14 +14,20 @@ export type JournalBlockLanguage =
   | "journal-photos";
 
 export interface JournalDynamicBlockProps {
-  language: JournalBlockLanguage;
   content: string; // raw code block content (YAML-like params)
+  language: JournalBlockLanguage;
   onShowSource: () => void;
 }
 
 // ---------------------------------------------------------------------------
 // Parsing helpers
 // ---------------------------------------------------------------------------
+
+interface JournalListEntry {
+  date: string;
+  filePath: string;
+  preview: string;
+}
 
 export function parseBlockParams(content: string): Record<string, string> {
   const params: Record<string, string> = {};
@@ -50,6 +58,10 @@ function datesInRange(start: string, end: string): string[] {
   return dates;
 }
 
+// ---------------------------------------------------------------------------
+// journal-list sub-component
+// ---------------------------------------------------------------------------
+
 function formatMonthLabel(start: string, end: string): string {
   const s = new Date(start + "T00:00:00");
   const e = new Date(end + "T00:00:00");
@@ -57,16 +69,6 @@ function formatMonthLabel(start: string, end: string): string {
     return s.toLocaleDateString("ko-KR", { year: "numeric", month: "long" });
   }
   return `${start} ~ ${end}`;
-}
-
-// ---------------------------------------------------------------------------
-// journal-list sub-component
-// ---------------------------------------------------------------------------
-
-interface JournalListEntry {
-  date: string;
-  preview: string;
-  filePath: string;
 }
 
 function JournalListBlock({ params }: { params: Record<string, string> }) {
@@ -153,8 +155,8 @@ function JournalListBlock({ params }: { params: Record<string, string> }) {
     <ul className="journal-list-items">
       {entries.map((entry) => (
         <li
-          key={entry.date}
           className="journal-list-item"
+          key={entry.date}
           onClick={() => openEntry(entry.filePath)}
         >
           <span className="journal-list-date">{entry.date}</span>
@@ -176,6 +178,16 @@ const MOOD_LABELS: Record<string, string> = {
   calm: "Calm",
   gloomy: "Gloomy",
 };
+
+interface PhotoEntry {
+  absolutePath: string;
+  date: string;
+  filename: string;
+}
+
+// ---------------------------------------------------------------------------
+// journal-photos sub-component
+// ---------------------------------------------------------------------------
 
 function JournalMoodBlock({ params }: { params: Record<string, string> }) {
   const [distribution, setDistribution] = useState<Map<string, number>>(
@@ -232,8 +244,8 @@ function JournalMoodBlock({ params }: { params: Record<string, string> }) {
         .sort((a, b) => b[1] - a[1])
         .map(([mood, count]) => (
           <span
-            key={mood}
             className={`journal-mood-chip journal-mood-chip-${mood}`}
+            key={mood}
           >
             {MOOD_LABELS[mood] ?? mood}: {count}일
             {total > 0 && (
@@ -246,16 +258,6 @@ function JournalMoodBlock({ params }: { params: Record<string, string> }) {
         ))}
     </div>
   );
-}
-
-// ---------------------------------------------------------------------------
-// journal-photos sub-component
-// ---------------------------------------------------------------------------
-
-interface PhotoEntry {
-  filename: string;
-  absolutePath: string;
-  date: string;
 }
 
 function JournalPhotosBlock({ params }: { params: Record<string, string> }) {
@@ -344,11 +346,11 @@ function JournalPhotosBlock({ params }: { params: Record<string, string> }) {
     <div className="journal-photos-grid" style={gridStyle}>
       {photos.map((photo) => (
         <img
-          key={photo.absolutePath}
-          src={convertFileSrc(photo.absolutePath)}
           alt={photo.filename}
           className="journal-photos-thumb"
+          key={photo.absolutePath}
           loading="lazy"
+          src={convertFileSrc(photo.absolutePath)}
           title={`${photo.date} — ${photo.filename}`}
         />
       ))}

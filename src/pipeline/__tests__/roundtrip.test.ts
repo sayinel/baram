@@ -1,7 +1,8 @@
+import { Schema } from "@tiptap/pm/model";
 // Roundtrip tests — MD → ProseMirror → MD 변환 정합성 검증
 // §8.4 최우선 품질 기준: 변환 후 원본과 정확히 일치해야 함
-import { describe, it, expect } from "vitest";
-import { Schema } from "@tiptap/pm/model";
+import { describe, expect, it } from "vitest";
+
 import { markdownToProsemirror } from "../md-to-pm";
 import { prosemirrorToMarkdown } from "../pm-to-md";
 

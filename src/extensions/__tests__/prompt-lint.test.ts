@@ -1,5 +1,6 @@
 // §46 Prompt Lint — unit tests for each linter rule
-import { describe, test, expect } from "vitest";
+import { describe, expect, test } from "vitest";
+
 import { lintPrompt, rules } from "../../utils/prompt-linter";
 
 describe("§46 Prompt Linter", () => {

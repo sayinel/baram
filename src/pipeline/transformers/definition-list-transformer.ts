@@ -1,10 +1,10 @@
+import type { NodeTransformerEntry } from "../types";
 // definition-list-transformer.ts — Definition List mdast ↔ ProseMirror
 // Markdown: Term\n: Definition
 // remark-parse produces paragraphs — detection is in md-to-pm.ts.
 // This transformer is a placeholder entry for the registry.
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
 import type { Node as MdastNode } from "mdast";
-import type { NodeTransformerEntry } from "../types";
 import type { PhrasingContent, Text } from "mdast";
 
 /** Regex to detect definition line prefix `: ` */

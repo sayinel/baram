@@ -1,6 +1,7 @@
 // §5.8 YAML Frontmatter Extension — ---\nyaml\n---
-import { Node, mergeAttributes } from "@tiptap/core";
+import { mergeAttributes, Node } from "@tiptap/core";
 import { ReactNodeViewRenderer } from "@tiptap/react";
+
 import { FrontmatterView } from "./frontmatter-view";
 
 export interface FrontmatterOptions {

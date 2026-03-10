@@ -2,11 +2,11 @@
 
 export type JournalCategory =
   | "daily"
-  | "weekly"
   | "monthly"
-  | "yearly"
   | "notes"
-  | "other";
+  | "other"
+  | "weekly"
+  | "yearly";
 
 /**
  * Categorize a search result path relative to the journal root directory.
@@ -66,68 +66,30 @@ export const CATEGORY_ORDER: JournalCategory[] = [
   "other",
 ];
 
-/**
- * Group search results by journal category.
- * Returns a Map keyed by category in CATEGORY_ORDER order.
- * Categories with no results are omitted.
- */
-export function groupSearchResults<T extends { path: string }>(
-  results: T[],
-  journalDir: string,
-): Map<JournalCategory, T[]> {
-  const map = new Map<JournalCategory, T[]>();
-
-  for (const result of results) {
-    const category = categorizeJournalResult(result.path, journalDir);
-    const existing = map.get(category);
-    if (existing) {
-      existing.push(result);
-    } else {
-      map.set(category, [result]);
-    }
-  }
-
-  // Return in canonical order
-  const ordered = new Map<JournalCategory, T[]>();
-  for (const cat of CATEGORY_ORDER) {
-    const items = map.get(cat);
-    if (items && items.length > 0) {
-      ordered.set(cat, items);
-    }
-  }
-  return ordered;
+export interface JournalSearchFilters {
+  dateFrom?: string; // YYYY-MM-DD
+  dateTo?: string; // YYYY-MM-DD
+  energyMin?: number; // 1-5, undefined = no filter
+  hasPhotos?: boolean; // true = only entries with photos
+  moodFilter?: string[]; // ["warm", "bright"] — empty = all
+  tagsFilter?: string[]; // ["여행", "운동"] — empty = no filter
 }
 
 // ── §56k Frontmatter filter types and utilities ────────────────────────────
 
-export interface JournalSearchFilters {
-  dateFrom?: string; // YYYY-MM-DD
-  dateTo?: string; // YYYY-MM-DD
-  moodFilter?: string[]; // ["warm", "bright"] — empty = all
-  energyMin?: number; // 1-5, undefined = no filter
-  tagsFilter?: string[]; // ["여행", "운동"] — empty = no filter
-  hasPhotos?: boolean; // true = only entries with photos
-}
-
-/** Returns true when at least one filter field is active. */
-export function hasActiveFilters(filters: JournalSearchFilters): boolean {
-  return !!(
-    filters.dateFrom ||
-    filters.dateTo ||
-    (filters.moodFilter && filters.moodFilter.length > 0) ||
-    filters.energyMin !== undefined ||
-    (filters.tagsFilter && filters.tagsFilter.length > 0) ||
-    filters.hasPhotos
-  );
+/** Extract YYYY-MM-DD from a file path (e.g. daily/2026/02/2026-02-28.md). */
+export function extractDateFromPath(path: string): null | string {
+  const m = path.match(/(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : null;
 }
 
 /** Extract frontmatter scalar fields from raw markdown content. */
 export function extractFrontmatterFields(content: string): {
   date?: string;
-  mood?: string;
   energy?: number;
-  tags?: string[];
   hasPhotos: boolean;
+  mood?: string;
+  tags?: string[];
 } {
   const hasPhotos = content.includes("![");
   const fm = content.match(/^---\n([\s\S]*?)\n---/);
@@ -162,17 +124,11 @@ export function extractFrontmatterFields(content: string): {
   return { date, mood, energy, tags, hasPhotos };
 }
 
-/** Extract YYYY-MM-DD from a file path (e.g. daily/2026/02/2026-02-28.md). */
-export function extractDateFromPath(path: string): string | null {
-  const m = path.match(/(\d{4}-\d{2}-\d{2})/);
-  return m ? m[1] : null;
-}
-
 /** Filter an array of {path, content} results by frontmatter criteria. */
 export function filterByFrontmatter(
-  results: Array<{ path: string; content: string }>,
+  results: Array<{ content: string; path: string }>,
   filters: JournalSearchFilters,
-): Array<{ path: string; content: string }> {
+): Array<{ content: string; path: string }> {
   return results.filter((r) => {
     const fields = extractFrontmatterFields(r.content);
 
@@ -210,6 +166,50 @@ export function filterByFrontmatter(
 
     return true;
   });
+}
+
+/**
+ * Group search results by journal category.
+ * Returns a Map keyed by category in CATEGORY_ORDER order.
+ * Categories with no results are omitted.
+ */
+export function groupSearchResults<T extends { path: string }>(
+  results: T[],
+  journalDir: string,
+): Map<JournalCategory, T[]> {
+  const map = new Map<JournalCategory, T[]>();
+
+  for (const result of results) {
+    const category = categorizeJournalResult(result.path, journalDir);
+    const existing = map.get(category);
+    if (existing) {
+      existing.push(result);
+    } else {
+      map.set(category, [result]);
+    }
+  }
+
+  // Return in canonical order
+  const ordered = new Map<JournalCategory, T[]>();
+  for (const cat of CATEGORY_ORDER) {
+    const items = map.get(cat);
+    if (items && items.length > 0) {
+      ordered.set(cat, items);
+    }
+  }
+  return ordered;
+}
+
+/** Returns true when at least one filter field is active. */
+export function hasActiveFilters(filters: JournalSearchFilters): boolean {
+  return !!(
+    filters.dateFrom ||
+    filters.dateTo ||
+    (filters.moodFilter && filters.moodFilter.length > 0) ||
+    filters.energyMin !== undefined ||
+    (filters.tagsFilter && filters.tagsFilter.length > 0) ||
+    filters.hasPhotos
+  );
 }
 
 // ── Text highlight ───────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
+import type { NodeTransformerEntry } from "../types";
 // blockquote-transformer.ts — §5.1 Blockquote mdast ↔ ProseMirror
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
-import type { Node as MdastNode, Blockquote } from "mdast";
-import type { NodeTransformerEntry } from "../types";
+import type { Blockquote, Node as MdastNode } from "mdast";
 
 export const blockquoteTransformer: NodeTransformerEntry = {
   mdastType: "blockquote",

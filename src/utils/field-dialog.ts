@@ -1,16 +1,16 @@
 // Multi-field dialog — extends showPrompt() pattern for link/image insertion
 // Reuses ai-prompt-* CSS classes + field-dialog-* additions
 
+export interface FieldDialogOptions {
+  fields: FieldSpec[];
+  submitLabel?: string;
+  title: string;
+}
+
 export interface FieldSpec {
   key: string;
   label: string;
   placeholder?: string;
-}
-
-export interface FieldDialogOptions {
-  title: string;
-  fields: FieldSpec[];
-  submitLabel?: string;
 }
 
 /**
@@ -21,7 +21,7 @@ export interface FieldDialogOptions {
  */
 export function showFieldDialog(
   options: FieldDialogOptions,
-): Promise<Record<string, string> | null> {
+): Promise<null | Record<string, string>> {
   const { title, fields, submitLabel = "Insert" } = options;
 
   return new Promise((resolve) => {
@@ -84,7 +84,7 @@ export function showFieldDialog(
       return result;
     };
 
-    const cleanup = (value: Record<string, string> | null) => {
+    const cleanup = (value: null | Record<string, string>) => {
       overlay.remove();
       resolve(value);
     };

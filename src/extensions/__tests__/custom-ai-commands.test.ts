@@ -1,10 +1,11 @@
 // §48 Custom AI Commands — unit tests
-import { describe, test, expect } from "vitest";
+import { describe, expect, test } from "vitest";
+
 import {
-  substituteVariables,
+  generateCommandId,
   resolveInputVariable,
   substituteInput,
-  generateCommandId,
+  substituteVariables,
 } from "../../utils/custom-ai-commands";
 import {
   extractSkillPrompt,

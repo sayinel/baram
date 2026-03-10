@@ -1,5 +1,5 @@
 // §5.1 Task List Extension
-import { Node, mergeAttributes, wrappingInputRule } from "@tiptap/core";
+import { mergeAttributes, Node, wrappingInputRule } from "@tiptap/core";
 
 export interface TaskListOptions {
   HTMLAttributes: Record<string, string>;

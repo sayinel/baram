@@ -1,8 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import {
-  JOURNAL_THEMES,
   getJournalTheme,
   getStreakIcon,
+  JOURNAL_THEMES,
 } from "../journal-themes";
 
 describe("JOURNAL_THEMES", () => {

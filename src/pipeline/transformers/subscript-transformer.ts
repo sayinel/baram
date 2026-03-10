@@ -1,8 +1,8 @@
+import type { MarkTransformerEntry } from "../types";
 // subscript-transformer.ts — §5.1 Subscript mark mdast ↔ ProseMirror
 import type { Mark } from "@tiptap/pm/model";
-import type { Node as MdastNode, PhrasingContent } from "mdast";
-import type { MarkTransformerEntry } from "../types";
 import type { Schema } from "@tiptap/pm/model";
+import type { Node as MdastNode, PhrasingContent } from "mdast";
 
 export const subscriptTransformer: MarkTransformerEntry = {
   mdastType: "subscript",

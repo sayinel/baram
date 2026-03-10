@@ -1,14 +1,54 @@
 // §5.12 HTML Export — Standalone HTML document generator
 import type { Editor } from "@tiptap/core";
+
 import katexCSS from "katex/dist/katex.min.css?raw";
 
-/** Escape HTML special characters in title */
-function escapeHTML(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+interface CodeBlockInfo {
+  highlightedLines: string[];
+  lang: string;
+  lineNumbers: null | string[];
+  style: string;
+}
+
+/** Collect code block data from the live DOM (before cloning) */
+function collectCodeBlockInfo(wrapper: Element): CodeBlockInfo {
+  const cmEditor = wrapper.querySelector(".cm-editor");
+  if (!cmEditor)
+    return {
+      lang: "",
+      style: "default",
+      lineNumbers: null,
+      highlightedLines: [],
+    };
+
+  const lang =
+    wrapper.getAttribute("data-language") ||
+    (wrapper.querySelector(".code-block-lang-select") as HTMLSelectElement)
+      ?.value ||
+    "";
+  const style = wrapper.getAttribute("data-style") || "default";
+
+  // Highlighted lines with computed inline styles
+  const highlightedLines: string[] = [];
+  for (const lineEl of cmEditor.querySelectorAll(".cm-content .cm-line")) {
+    highlightedLines.push(extractHighlightedLineHTML(lineEl as HTMLElement));
+  }
+
+  // Strip trailing empty lines added by CodeMirror
+  while (
+    highlightedLines.length > 0 &&
+    highlightedLines[highlightedLines.length - 1] === ""
+  ) {
+    highlightedLines.pop();
+  }
+
+  // Line numbers: check if gutter is present, then generate 1..N
+  const hasLineNumbers = !!cmEditor.querySelector(".cm-lineNumbers");
+  const lineNumbers = hasLineNumbers
+    ? highlightedLines.map((_, i) => String(i + 1))
+    : null;
+
+  return { lang, style, lineNumbers, highlightedLines };
 }
 
 /** Escape HTML special characters in code text content */
@@ -19,20 +59,13 @@ function escapeCodeHTML(text: string): string {
     .replace(/>/g, "&gt;");
 }
 
-/** Convert an image URL to a base64 data URI */
-async function imageToDataURI(src: string): Promise<string> {
-  try {
-    const response = await fetch(src);
-    const blob = await response.blob();
-    return new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  } catch {
-    return src; // fallback to original URL
-  }
+/** Escape HTML special characters in title */
+function escapeHTML(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 /**
@@ -79,66 +112,34 @@ function extractHighlightedLineHTML(lineEl: HTMLElement): string {
   return html;
 }
 
-interface CodeBlockInfo {
-  lang: string;
-  style: string;
-  lineNumbers: string[] | null;
-  highlightedLines: string[];
-}
-
-/** Collect code block data from the live DOM (before cloning) */
-function collectCodeBlockInfo(wrapper: Element): CodeBlockInfo {
-  const cmEditor = wrapper.querySelector(".cm-editor");
-  if (!cmEditor)
-    return {
-      lang: "",
-      style: "default",
-      lineNumbers: null,
-      highlightedLines: [],
-    };
-
-  const lang =
-    wrapper.getAttribute("data-language") ||
-    (wrapper.querySelector(".code-block-lang-select") as HTMLSelectElement)
-      ?.value ||
-    "";
-  const style = wrapper.getAttribute("data-style") || "default";
-
-  // Highlighted lines with computed inline styles
-  const highlightedLines: string[] = [];
-  for (const lineEl of cmEditor.querySelectorAll(".cm-content .cm-line")) {
-    highlightedLines.push(extractHighlightedLineHTML(lineEl as HTMLElement));
+/** Convert an image URL to a base64 data URI */
+async function imageToDataURI(src: string): Promise<string> {
+  try {
+    const response = await fetch(src);
+    const blob = await response.blob();
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return src; // fallback to original URL
   }
-
-  // Strip trailing empty lines added by CodeMirror
-  while (
-    highlightedLines.length > 0 &&
-    highlightedLines[highlightedLines.length - 1] === ""
-  ) {
-    highlightedLines.pop();
-  }
-
-  // Line numbers: check if gutter is present, then generate 1..N
-  const hasLineNumbers = !!cmEditor.querySelector(".cm-lineNumbers");
-  const lineNumbers = hasLineNumbers
-    ? highlightedLines.map((_, i) => String(i + 1))
-    : null;
-
-  return { lang, style, lineNumbers, highlightedLines };
 }
 
 /** Style presets per code block data-style variant */
 const CODE_STYLE_MAP: Record<
   string,
   {
-    langBg: string;
-    langBorder: string;
-    langColor: string;
     bodyBg: string;
     bodyBorder: string;
     bodyColor: string;
-    gutterColor: string;
     gutterBorder: string;
+    gutterColor: string;
+    langBg: string;
+    langBorder: string;
+    langColor: string;
   }
 > = {
   default: {
@@ -607,7 +608,7 @@ const PRINT_CSS = `
 `;
 
 export interface ExportHTMLOptions {
-  theme?: "light" | "dark";
+  theme?: "dark" | "light";
 }
 
 /**

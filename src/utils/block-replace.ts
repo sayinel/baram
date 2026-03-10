@@ -9,7 +9,7 @@ export function replaceBlockInContent(
   content: string,
   blockId: string,
   newText: string,
-): string | null {
+): null | string {
   const lines = content.split("\n");
   const suffix = ` ^${blockId}`;
   let found = false;

@@ -1,3 +1,4 @@
+import type { NodeTransformerEntry } from "../types";
 // callout-transformer.ts — §5.9 Callout mdast ↔ ProseMirror
 // Callout in markdown: > [!type] title / > body
 // remark-parse produces mdast "blockquote" — detection is in md-to-pm.ts.
@@ -5,13 +6,12 @@
 // and provides a helper for md-to-pm detection.
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
 import type {
-  Node as MdastNode,
   Blockquote,
+  Node as MdastNode,
   Paragraph,
-  Text,
   PhrasingContent,
+  Text,
 } from "mdast";
-import type { NodeTransformerEntry } from "../types";
 
 /** Regex to detect callout syntax in the first line of a blockquote paragraph.
  *  Matches: [!type], [!type]-, [!type]+, [!type] title, [!type]- title
@@ -23,7 +23,7 @@ export const CALLOUT_RE = /^\[!(\w+)\]([+-])?\s*(.*)?$/;
  */
 export function parseCalloutHeader(
   line: string,
-): { type: string; title: string; collapsed: boolean } | null {
+): null | { collapsed: boolean; title: string; type: string } {
   const m = line.match(CALLOUT_RE);
   if (!m) return null;
   const type = m[1].toLowerCase();

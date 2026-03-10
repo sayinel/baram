@@ -1,8 +1,8 @@
+import type { MarkTransformerEntry } from "../types";
 // code-transformer.ts — §5.1 Inline code mark mdast ↔ ProseMirror
 import type { Mark } from "@tiptap/pm/model";
-import type { Node as MdastNode, InlineCode } from "mdast";
-import type { MarkTransformerEntry } from "../types";
 import type { Schema } from "@tiptap/pm/model";
+import type { InlineCode, Node as MdastNode } from "mdast";
 
 export const codeTransformer: MarkTransformerEntry = {
   mdastType: "inlineCode",

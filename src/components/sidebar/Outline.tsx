@@ -1,29 +1,16 @@
+import type { Editor } from "@tiptap/react";
+
 // §4.3 Outline sidebar — heading hierarchy from editor
 import { useEditorState } from "@tiptap/react";
-import type { Editor } from "@tiptap/react";
 
 interface HeadingItem {
   level: number;
-  text: string;
   pos: number;
+  text: string;
 }
 
 interface OutlineProps {
   editor: Editor | null;
-}
-
-function extractHeadings(editor: Editor): HeadingItem[] {
-  const headings: HeadingItem[] = [];
-  editor.state.doc.descendants((node, pos) => {
-    if (node.type.name === "heading") {
-      headings.push({
-        level: node.attrs.level as number,
-        text: node.textContent,
-        pos,
-      });
-    }
-  });
-  return headings;
 }
 
 export function Outline({ editor }: OutlineProps) {
@@ -48,9 +35,8 @@ export function Outline({ editor }: OutlineProps) {
     <div className="outline">
       {headings.map((h, i) => (
         <div
-          key={i}
           className={`outline-item outline-h${h.level}`}
-          style={{ paddingLeft: `${(h.level - 1) * 12 + 8}px` }}
+          key={i}
           onClick={() => {
             editor.commands.focus();
             editor.commands.setTextSelection(h.pos + 1);
@@ -67,6 +53,7 @@ export function Outline({ editor }: OutlineProps) {
               });
             }
           }}
+          style={{ paddingLeft: `${(h.level - 1) * 12 + 8}px` }}
         >
           <span className="outline-level">H{h.level}</span>
           <span className="outline-text">{h.text}</span>
@@ -74,4 +61,18 @@ export function Outline({ editor }: OutlineProps) {
       ))}
     </div>
   );
+}
+
+function extractHeadings(editor: Editor): HeadingItem[] {
+  const headings: HeadingItem[] = [];
+  editor.state.doc.descendants((node, pos) => {
+    if (node.type.name === "heading") {
+      headings.push({
+        level: node.attrs.level as number,
+        text: node.textContent,
+        pos,
+      });
+    }
+  });
+  return headings;
 }

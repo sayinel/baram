@@ -1,40 +1,28 @@
 // File system watcher hook — listens for file:created/deleted events and updates FileTree
 import { useEffect, useRef } from "react";
+
 import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
+
+import type { FileEntry } from "../stores/file-store";
+
 import { watchDir } from "../ipc/invoke";
 import { useFileStore } from "../stores/file-store";
-import type { FileEntry } from "../stores/file-store";
 
 /** Directories and patterns to ignore (mirrors list_dir skip logic in Rust) */
 const SKIP_DIRS = new Set([
-  "node_modules",
-  "target",
+  ".git",
+  ".next",
+  "__pycache__",
   "build",
   "dist",
-  "__pycache__",
-  ".next",
-  ".git",
+  "node_modules",
+  "target",
 ]);
 
-function shouldSkip(path: string): boolean {
-  const parts = path.split("/");
-  return parts.some((p) => p.startsWith(".") || SKIP_DIRS.has(p));
-}
-
-function parentDir(path: string): string {
-  const idx = path.lastIndexOf("/");
-  return idx > 0 ? path.substring(0, idx) : path;
-}
-
-function fileName(path: string): string {
-  const idx = path.lastIndexOf("/");
-  return idx >= 0 ? path.substring(idx + 1) : path;
-}
-
 interface CreatedPayload {
-  path: string;
   isDir: boolean;
+  path: string;
 }
 
 interface DeletedPayload {
@@ -42,8 +30,8 @@ interface DeletedPayload {
 }
 
 interface PendingEntry {
-  kind: "created" | "deleted";
   isDir?: boolean;
+  kind: "created" | "deleted";
 }
 
 /**
@@ -52,7 +40,7 @@ interface PendingEntry {
  */
 export function useFileWatcher() {
   const rootPath = useFileStore((s) => s.rootPath);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debounceRef = useRef<null | ReturnType<typeof setTimeout>>(null);
   const pendingRef = useRef<Map<string, PendingEntry>>(new Map());
 
   useEffect(() => {
@@ -128,4 +116,19 @@ export function useFileWatcher() {
       for (const fn of unlistenFns) fn();
     };
   }, [rootPath]);
+}
+
+function fileName(path: string): string {
+  const idx = path.lastIndexOf("/");
+  return idx >= 0 ? path.substring(idx + 1) : path;
+}
+
+function parentDir(path: string): string {
+  const idx = path.lastIndexOf("/");
+  return idx > 0 ? path.substring(0, idx) : path;
+}
+
+function shouldSkip(path: string): boolean {
+  const parts = path.split("/");
+  return parts.some((p) => p.startsWith(".") || SKIP_DIRS.has(p));
 }

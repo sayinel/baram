@@ -1,16 +1,17 @@
+import type { PluginCapability, RegistryEntry } from "../../plugins/types";
+
 // §69 Plugin Card — Compact card for marketplace listing
 import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
-import type { RegistryEntry, PluginCapability } from "../../plugins/types";
 
 interface PluginCardProps {
   entry: RegistryEntry;
   installed: boolean;
   installing: boolean;
-  updateAvailable?: string;
   onInstall: () => void;
+  onSelect: () => void;
   onUninstall: () => void;
   onUpdate: () => void;
-  onSelect: () => void;
+  updateAvailable?: string;
 }
 
 export function PluginCard({
@@ -27,18 +28,18 @@ export function PluginCard({
     <div
       className="plugin-card"
       onClick={onSelect}
-      style={{
-        padding: "12px 16px",
-        borderBottom: "1px solid var(--color-border, #e5e7eb)",
-        cursor: "pointer",
-        transition: "background-color 0.15s",
-      }}
       onMouseEnter={(e) =>
         (e.currentTarget.style.backgroundColor = "var(--color-hover, #f3f4f6)")
       }
       onMouseLeave={(e) =>
         (e.currentTarget.style.backgroundColor = "transparent")
       }
+      style={{
+        padding: "12px 16px",
+        borderBottom: "1px solid var(--color-border, #e5e7eb)",
+        cursor: "pointer",
+        transition: "background-color 0.15s",
+      }}
     >
       <div
         style={{
@@ -129,8 +130,8 @@ export function PluginCard({
             >
               {entry.capabilities.slice(0, 3).map((cap) => (
                 <PluginCapabilityBadge
-                  key={cap}
                   capability={cap as PluginCapability}
+                  key={cap}
                 />
               ))}
               {entry.capabilities.length > 3 && (
@@ -147,7 +148,7 @@ export function PluginCard({
             </div>
           )}
         </div>
-        <div style={{ flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+        <div onClick={(e) => e.stopPropagation()} style={{ flexShrink: 0 }}>
           {installing ? (
             <button
               disabled

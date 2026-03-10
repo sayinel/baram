@@ -1,9 +1,27 @@
+import type { RegistryEntry, RegistryIndex } from "./types";
+
+import { pluginFetchRegistry } from "../ipc/plugin-invoke";
 // §69 Plugin Registry Client — GitHub-based registry with 24h cache
 import { usePluginStore } from "../stores/plugin-store";
-import { pluginFetchRegistry } from "../ipc/plugin-invoke";
-import type { RegistryIndex, RegistryEntry } from "./types";
 
 const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+
+/** Check for updates for all installed plugins */
+export async function checkForUpdates(): Promise<Record<string, string>> {
+  const store = usePluginStore.getState();
+  const index = await fetchRegistryIndex();
+  const updates: Record<string, string> = {};
+
+  for (const [id, plugin] of Object.entries(store.installedPlugins)) {
+    const registryEntry = index.plugins.find((p) => p.id === id);
+    if (registryEntry && registryEntry.version !== plugin.manifest.version) {
+      updates[id] = registryEntry.version;
+      store.setUpdateAvailable(id, registryEntry.version);
+    }
+  }
+
+  return updates;
+}
 
 /** Fetch registry index, using cache if fresh */
 export async function fetchRegistryIndex(
@@ -51,21 +69,4 @@ export function searchRegistry(
       p.keywords?.some((k) => k.toLowerCase().includes(lower)) ||
       p.author.toLowerCase().includes(lower),
   );
-}
-
-/** Check for updates for all installed plugins */
-export async function checkForUpdates(): Promise<Record<string, string>> {
-  const store = usePluginStore.getState();
-  const index = await fetchRegistryIndex();
-  const updates: Record<string, string> = {};
-
-  for (const [id, plugin] of Object.entries(store.installedPlugins)) {
-    const registryEntry = index.plugins.find((p) => p.id === id);
-    if (registryEntry && registryEntry.version !== plugin.manifest.version) {
-      updates[id] = registryEntry.version;
-      store.setUpdateAvailable(id, registryEntry.version);
-    }
-  }
-
-  return updates;
 }

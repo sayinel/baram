@@ -1,10 +1,10 @@
 // §42 Skill Templates — predefined templates for new Skills files
 
 export interface SkillTemplate {
+  content: string;
+  description: string;
   id: string;
   name: string;
-  description: string;
-  content: string;
 }
 
 export const SKILL_TEMPLATES: SkillTemplate[] = [

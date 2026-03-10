@@ -1,15 +1,17 @@
 // §56d Photo Gallery — full gallery view panel
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
 import { convertFileSrc } from "@tauri-apps/api/core";
+
+import { readFile } from "../../ipc/invoke";
+import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { useSettingsStore } from "../../stores/settings-store";
-import { useEditorStore } from "../../stores/editor-store";
 import { useUIStore } from "../../stores/ui-store";
-import { readFile } from "../../ipc/invoke";
 import {
-  scanJournalPhotos,
   groupPhotosByDate,
   type PhotoGalleryEntry,
+  scanJournalPhotos,
 } from "../../utils/journal-photo";
 
 type GroupMode = "day" | "month" | "year";
@@ -22,7 +24,7 @@ export function PhotoGalleryPanel() {
   const [photos, setPhotos] = useState<PhotoGalleryEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [groupMode, setGroupMode] = useState<GroupMode>("day");
-  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [lightboxIndex, setLightboxIndex] = useState<null | number>(null);
 
   // Date navigation state
   const now = useMemo(() => new Date(), []);
@@ -116,7 +118,7 @@ export function PhotoGalleryPanel() {
   }, [groups, sortedKeys]);
 
   const navigateLightbox = useCallback(
-    (direction: "prev" | "next") => {
+    (direction: "next" | "prev") => {
       setLightboxIndex((prev) => {
         if (prev === null) return null;
         const len = flatPhotos.length;
@@ -199,8 +201,8 @@ export function PhotoGalleryPanel() {
         <div className="photo-gallery-mode-toggle">
           {(["day", "month", "year"] as GroupMode[]).map((m) => (
             <button
-              key={m}
               className={`photo-gallery-mode-btn ${groupMode === m ? "photo-gallery-mode-btn-active" : ""}`}
+              key={m}
               onClick={() => setGroupMode(m)}
             >
               {m === "day" ? "Day" : m === "month" ? "Month" : "Year"}
@@ -240,7 +242,7 @@ export function PhotoGalleryPanel() {
         {sortedKeys.map((key) => {
           const groupPhotos = groups.get(key)!;
           return (
-            <div key={key} className="photo-gallery-group">
+            <div className="photo-gallery-group" key={key}>
               <div className="photo-gallery-group-header">
                 <span>{formatGroupLabel(key)}</span>
                 <span className="photo-gallery-group-count">
@@ -250,16 +252,16 @@ export function PhotoGalleryPanel() {
               <div className="photo-gallery-grid">
                 {groupPhotos.map((photo, i) => (
                   <div
-                    key={`${photo.filename}-${i}`}
                     className="photo-gallery-item"
+                    key={`${photo.filename}-${i}`}
                     onClick={() => openLightbox(photo)}
                     title={photo.caption || photo.filename}
                   >
                     <img
-                      src={convertFileSrc(photo.absolutePath)}
                       alt={photo.caption || photo.filename}
                       className="photo-gallery-thumb"
                       loading="lazy"
+                      src={convertFileSrc(photo.absolutePath)}
                     />
                     {photo.caption && (
                       <span className="photo-gallery-item-caption">
@@ -286,14 +288,14 @@ export function PhotoGalleryPanel() {
             }}
           >
             <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
               fill="none"
+              height="20"
               stroke="currentColor"
-              strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
+              width="20"
             >
               <polyline points="15 18 9 12 15 6" />
             </svg>
@@ -306,14 +308,14 @@ export function PhotoGalleryPanel() {
             }}
           >
             <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
               fill="none"
+              height="20"
               stroke="currentColor"
-              strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
+              width="20"
             >
               <polyline points="9 18 15 12 9 6" />
             </svg>
@@ -327,17 +329,17 @@ export function PhotoGalleryPanel() {
             }}
           >
             <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
               fill="none"
+              height="18"
               stroke="currentColor"
-              strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
+              width="18"
             >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
+              <line x1="18" x2="6" y1="6" y2="18" />
+              <line x1="6" x2="18" y1="6" y2="18" />
             </svg>
           </button>
 
@@ -346,9 +348,9 @@ export function PhotoGalleryPanel() {
             onClick={(e) => e.stopPropagation()}
           >
             <img
-              src={convertFileSrc(lightboxPhoto.absolutePath)}
               alt={lightboxPhoto.caption || lightboxPhoto.filename}
               className="photo-lightbox-img"
+              src={convertFileSrc(lightboxPhoto.absolutePath)}
             />
             <div className="photo-lightbox-info">
               <span className="photo-lightbox-caption">

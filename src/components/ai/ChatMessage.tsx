@@ -2,10 +2,10 @@
 import MarkdownRenderer from "./MarkdownRenderer";
 
 interface ChatMessageProps {
-  role: "user" | "assistant";
   content: string;
   isStreaming?: boolean;
   onApplyToEditor?: (content: string) => void;
+  role: "assistant" | "user";
 }
 
 export function ChatMessage({

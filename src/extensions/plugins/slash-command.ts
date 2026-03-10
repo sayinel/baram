@@ -1,39 +1,42 @@
-// §4.6 Slash Commands — Tiptap Extension using Suggestion API
-import { Extension } from "@tiptap/core";
-import { Suggestion } from "@tiptap/suggestion";
 import { open } from "@tauri-apps/plugin-dialog";
-import { ReactRenderer } from "@tiptap/react";
+
 import type { Editor } from "@tiptap/core";
 import type {
-  SuggestionProps,
   SuggestionKeyDownProps,
+  SuggestionProps,
 } from "@tiptap/suggestion";
+
+// §4.6 Slash Commands — Tiptap Extension using Suggestion API
+import { Extension } from "@tiptap/core";
+import { ReactRenderer } from "@tiptap/react";
+import { Suggestion } from "@tiptap/suggestion";
+
 import {
-  SlashMenuList,
   type SlashMenuItem,
+  SlashMenuList,
   type SlashMenuRef,
 } from "../../components/command/SlashMenu";
 import { useAIStore } from "../../stores/ai-store";
 import { useUIStore } from "../../stores/ui-store";
 import {
-  substituteVariables,
-  resolveInputVariable,
-  substituteInput,
-} from "../../utils/custom-ai-commands";
+  AI_EXPAND,
+  AI_EXPLAIN,
+  AI_FIX_GRAMMAR,
+  AI_SUMMARIZE,
+  AI_TRANSLATE,
+} from "../../utils/ai-command-prompts";
 import {
   executeAICommand,
   getSelectionOrParagraph,
   showPrompt,
 } from "../../utils/ai-commands";
+import {
+  resolveInputVariable,
+  substituteInput,
+  substituteVariables,
+} from "../../utils/custom-ai-commands";
 import { showFieldDialog } from "../../utils/field-dialog";
 import { showTableGridPicker } from "../../utils/table-grid-picker";
-import {
-  AI_TRANSLATE,
-  AI_SUMMARIZE,
-  AI_EXPAND,
-  AI_FIX_GRAMMAR,
-  AI_EXPLAIN,
-} from "../../utils/ai-command-prompts";
 
 export function buildSlashItems(editor: Editor): SlashMenuItem[] {
   const items: SlashMenuItem[] = [
@@ -609,8 +612,8 @@ export const SlashCommands = Extension.create({
           props,
         }: {
           editor: Editor;
-          range: { from: number; to: number };
           props: SlashMenuItem;
+          range: { from: number; to: number };
         }) => {
           ed.chain().focus().deleteRange(range).run();
           props.action();
@@ -629,7 +632,7 @@ export const SlashCommands = Extension.create({
           );
         },
         render: () => {
-          let component: ReactRenderer<SlashMenuRef> | null = null;
+          let component: null | ReactRenderer<SlashMenuRef> = null;
           let popup: HTMLDivElement | null = null;
 
           return {

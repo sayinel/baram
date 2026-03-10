@@ -2382,7 +2382,7 @@ function ActivityBarTab() {
           key={item.id}
           ref={(el) => setRowRef(item.id, el)}
           className={`settings-row activity-bar-config-row${
-            draggingId === item.id ? " activity-bar-dragging" : ""
+            draggingId === item.id ? "activity-bar-dragging" : ""
           }${
             dropIndicator?.id === item.id
               ? ` activity-bar-drop-${dropIndicator.position}`
@@ -2577,7 +2577,7 @@ function KeybindingsTab() {
           {grouped.get(cat)!.map((entry) => (
             <div
               key={entry.id}
-              className={`keybinding-row${entry.isOverridden ? " keybinding-overridden" : ""}${!entry.customizable ? " keybinding-readonly-row" : ""}`}
+              className={`keybinding-row${entry.isOverridden ? "keybinding-overridden" : ""}${!entry.customizable ? "keybinding-readonly-row" : ""}`}
             >
               <span className="keybinding-label">{t(entry.label)}</span>
               <span className="keybinding-key">

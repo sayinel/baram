@@ -1,5 +1,6 @@
 // §39 Tab Switcher — Ctrl+Tab MRU popup
 import { useEffect, useRef } from "react";
+
 import type { EditorTab } from "../../stores/editor-store";
 
 interface TabSwitcherProps {
@@ -24,9 +25,9 @@ export function TabSwitcher({ mruTabs, selectedIndex }: TabSwitcherProps) {
         <div className="tab-switcher-list">
           {mruTabs.map((tab, i) => (
             <div
+              className={`tab-switcher-item${i === selectedIndex ? "tab-switcher-item--selected" : ""}`}
               key={tab.id}
               ref={i === selectedIndex ? selectedRef : null}
-              className={`tab-switcher-item${i === selectedIndex ? " tab-switcher-item--selected" : ""}`}
             >
               <span className="tab-switcher-title">{tab.title}</span>
               {tab.isDirty && <span className="tab-switcher-dirty">●</span>}

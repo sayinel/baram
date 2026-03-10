@@ -3,6 +3,29 @@
  */
 
 /**
+ * Calculate stats for a specific month.
+ *
+ * @param dates - Set of "YYYY-MM-DD" strings
+ * @param year  - full year number (e.g. 2026)
+ * @param month - 0-indexed month (0=January … 11=December)
+ */
+export function calculateMonthStats(
+  dates: Set<string>,
+  year: number,
+  month: number,
+): { daysInMonth: number; percentage: number; total: number } {
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  let total = 0;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    if (dates.has(dateStr)) total++;
+  }
+  const percentage =
+    daysInMonth > 0 ? Math.round((total / daysInMonth) * 100) : 0;
+  return { total, daysInMonth, percentage };
+}
+
+/**
  * Calculate current and longest consecutive day streaks.
  * Checks backwards from `today`. A day counts if it appears in `dates`.
  * Capture-only days count for streak (per spec §56g).
@@ -48,29 +71,6 @@ export function calculateStreak(
 }
 
 /**
- * Calculate stats for a specific month.
- *
- * @param dates - Set of "YYYY-MM-DD" strings
- * @param year  - full year number (e.g. 2026)
- * @param month - 0-indexed month (0=January … 11=December)
- */
-export function calculateMonthStats(
-  dates: Set<string>,
-  year: number,
-  month: number,
-): { total: number; daysInMonth: number; percentage: number } {
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  let total = 0;
-  for (let d = 1; d <= daysInMonth; d++) {
-    const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-    if (dates.has(dateStr)) total++;
-  }
-  const percentage =
-    daysInMonth > 0 ? Math.round((total / daysInMonth) * 100) : 0;
-  return { total, daysInMonth, percentage };
-}
-
-/**
  * Calculate stats for a full year.
  *
  * @param dates - Set of "YYYY-MM-DD" strings
@@ -79,7 +79,7 @@ export function calculateMonthStats(
 export function calculateYearStats(
   dates: Set<string>,
   year: number,
-): { total: number; percentage: number; byMonth: number[] } {
+): { byMonth: number[]; percentage: number; total: number } {
   const daysInYear = isLeapYear(year) ? 366 : 365;
   const byMonth: number[] = new Array(12).fill(0);
   let total = 0;
@@ -99,9 +99,14 @@ export function calculateYearStats(
 
 // ---- Internal helpers ----
 
-/** Return true if year is a leap year */
-function isLeapYear(year: number): boolean {
-  return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+/** Add `n` days to a "YYYY-MM-DD" string and return the result as "YYYY-MM-DD" */
+function addDays(dateStr: string, n: number): string {
+  const d = parseDate(dateStr);
+  d.setDate(d.getDate() + n);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 /**
@@ -112,14 +117,9 @@ function daysDiff(a: string, b: string): number {
   return (parseDate(b).getTime() - parseDate(a).getTime()) / 86400000;
 }
 
-/** Add `n` days to a "YYYY-MM-DD" string and return the result as "YYYY-MM-DD" */
-function addDays(dateStr: string, n: number): string {
-  const d = parseDate(dateStr);
-  d.setDate(d.getDate() + n);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+/** Return true if year is a leap year */
+function isLeapYear(year: number): boolean {
+  return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
 }
 
 /** Parse "YYYY-MM-DD" as a local-midnight Date (avoids UTC offset issues) */

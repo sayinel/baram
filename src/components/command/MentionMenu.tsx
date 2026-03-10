@@ -1,12 +1,13 @@
 // §57 Mention autocomplete menu — date/page suggestion popup
 import {
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
   forwardRef,
+  useCallback,
+  useEffect,
   useImperativeHandle,
+  useRef,
+  useState,
 } from "react";
+
 import type { MentionSuggestionItem } from "../../extensions/plugins/mention-suggest";
 
 export interface MentionMenuRef {
@@ -14,8 +15,8 @@ export interface MentionMenuRef {
 }
 
 interface MentionMenuProps {
-  items: MentionSuggestionItem[];
   command: (item: MentionSuggestionItem) => void;
+  items: MentionSuggestionItem[];
 }
 
 export const MentionMenuList = forwardRef<MentionMenuRef, MentionMenuProps>(
@@ -81,8 +82,8 @@ export const MentionMenuList = forwardRef<MentionMenuRef, MentionMenuProps>(
               const idx = globalIdx++;
               return (
                 <div
+                  className={`mention-menu-item mention-menu-item-date${idx === selectedIndex ? "mention-item-selected" : ""}`}
                   key={item.id}
-                  className={`mention-menu-item mention-menu-item-date${idx === selectedIndex ? " mention-item-selected" : ""}`}
                   onClick={() => selectItem(idx)}
                   onMouseEnter={() => setSelectedIndex(idx)}
                 >
@@ -100,8 +101,8 @@ export const MentionMenuList = forwardRef<MentionMenuRef, MentionMenuProps>(
               const idx = globalIdx++;
               return (
                 <div
+                  className={`mention-menu-item mention-menu-item-page${idx === selectedIndex ? "mention-item-selected" : ""}`}
                   key={item.id}
-                  className={`mention-menu-item mention-menu-item-page${idx === selectedIndex ? " mention-item-selected" : ""}`}
                   onClick={() => selectItem(idx)}
                   onMouseEnter={() => setSelectedIndex(idx)}
                 >

@@ -1,12 +1,13 @@
-// §30c block-nav utility tests
-import { describe, test, expect } from "vitest";
 import { Schema } from "@tiptap/pm/model";
+// §30c block-nav utility tests
+import { describe, expect, test } from "vitest";
+
+import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import {
+  findBlockContent,
   findBlockLine,
   findBlockPosById,
-  findBlockContent,
 } from "../block-nav";
-import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 
 // Minimal schema with blockId attribute on paragraph and heading
 const schema = new Schema({

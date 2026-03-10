@@ -1,20 +1,22 @@
 // §44 @ Reference autocomplete dropdown for AI Chat
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { useFileStore } from "../../stores/file-store";
-import { useAIStore } from "../../stores/ai-store";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import type { FileEntry } from "../../stores/file-store";
 
+import { useAIStore } from "../../stores/ai-store";
+import { useFileStore } from "../../stores/file-store";
+
 interface ReferenceAutocompleteProps {
-  query: string;
-  position: { top: number; left: number };
-  onSelect: (ref: string) => void;
   onClose: () => void;
+  onSelect: (ref: string) => void;
+  position: { left: number; top: number };
+  query: string;
 }
 
 interface RefOption {
+  description: string;
   label: string;
   value: string;
-  description: string;
 }
 
 const BUILTIN_REFS: RefOption[] = [
@@ -30,46 +32,6 @@ const BUILTIN_REFS: RefOption[] = [
     description: "Clipboard content",
   },
 ];
-
-/** Flatten file tree into file paths */
-function flattenFiles(entries: FileEntry[]): { name: string; path: string }[] {
-  const result: { name: string; path: string }[] = [];
-  for (const entry of entries) {
-    if (entry.isDir) {
-      if (entry.children) {
-        result.push(...flattenFiles(entry.children));
-      }
-    } else {
-      result.push({ name: entry.name, path: entry.path });
-    }
-  }
-  return result;
-}
-
-/** Flatten file tree into directory paths */
-function flattenDirs(entries: FileEntry[]): { name: string; path: string }[] {
-  const result: { name: string; path: string }[] = [];
-  for (const entry of entries) {
-    if (entry.isDir) {
-      result.push({ name: entry.name, path: entry.path });
-      if (entry.children) {
-        result.push(...flattenDirs(entry.children));
-      }
-    }
-  }
-  return result;
-}
-
-/** Simple fuzzy match: all query chars must appear in order within target */
-function fuzzyMatch(query: string, target: string): boolean {
-  const q = query.toLowerCase();
-  const t = target.toLowerCase();
-  let qi = 0;
-  for (let ti = 0; ti < t.length && qi < q.length; ti++) {
-    if (t[ti] === q[qi]) qi++;
-  }
-  return qi === q.length;
-}
 
 export function ReferenceAutocomplete({
   query,
@@ -200,13 +162,13 @@ export function ReferenceAutocomplete({
   return (
     <div
       className="ref-autocomplete"
-      style={{ bottom: position.top, left: position.left }}
       ref={listRef}
+      style={{ bottom: position.top, left: position.left }}
     >
       {options.map((opt, i) => (
         <button
-          key={opt.value}
           className={`ref-autocomplete-item ${i === selectedIndex ? "ref-autocomplete-item-active" : ""}`}
+          key={opt.value}
           onMouseDown={(e) => {
             e.preventDefault();
             handleSelect(opt.value);
@@ -219,4 +181,44 @@ export function ReferenceAutocomplete({
       ))}
     </div>
   );
+}
+
+/** Flatten file tree into directory paths */
+function flattenDirs(entries: FileEntry[]): { name: string; path: string }[] {
+  const result: { name: string; path: string }[] = [];
+  for (const entry of entries) {
+    if (entry.isDir) {
+      result.push({ name: entry.name, path: entry.path });
+      if (entry.children) {
+        result.push(...flattenDirs(entry.children));
+      }
+    }
+  }
+  return result;
+}
+
+/** Flatten file tree into file paths */
+function flattenFiles(entries: FileEntry[]): { name: string; path: string }[] {
+  const result: { name: string; path: string }[] = [];
+  for (const entry of entries) {
+    if (entry.isDir) {
+      if (entry.children) {
+        result.push(...flattenFiles(entry.children));
+      }
+    } else {
+      result.push({ name: entry.name, path: entry.path });
+    }
+  }
+  return result;
+}
+
+/** Simple fuzzy match: all query chars must appear in order within target */
+function fuzzyMatch(query: string, target: string): boolean {
+  const q = query.toLowerCase();
+  const t = target.toLowerCase();
+  let qi = 0;
+  for (let ti = 0; ti < t.length && qi < q.length; ti++) {
+    if (t[ti] === q[qi]) qi++;
+  }
+  return qi === q.length;
 }

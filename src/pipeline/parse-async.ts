@@ -5,27 +5,50 @@
 // parsing on the main thread if the Worker fails to load.
 
 import type { Root } from "mdast";
-import { parseMdast, enrichWithEmptyParagraphs } from "./parse-mdast";
+
+import { enrichWithEmptyParagraphs, parseMdast } from "./parse-mdast";
 
 // ── Worker message protocol ──────────────────────────────────────────
 
 interface ParseResponse {
+  error?: string;
   id: number;
   mdast?: Root;
-  error?: string;
 }
 
 // ── Singleton worker ─────────────────────────────────────────────────
 
-let worker: Worker | null = null;
+let worker: null | Worker = null;
 let workerFailed = false;
 let nextId = 0;
 const pending = new Map<
   number,
-  { resolve: (r: Root) => void; reject: (e: Error) => void }
+  { reject: (e: Error) => void; resolve: (r: Root) => void }
 >();
 
-function getWorker(): Worker | null {
+/**
+ * Parse markdown to enriched mdast tree using a Web Worker.
+ * Falls back to synchronous main-thread parsing if the Worker is unavailable.
+ */
+export function parseMdastAsync(markdown: string): Promise<Root> {
+  const w = getWorker();
+  if (!w) {
+    return Promise.resolve(parseMdastSync(markdown));
+  }
+
+  return new Promise<Root>((resolve, reject) => {
+    const id = nextId++;
+    pending.set(id, { resolve, reject });
+    w.postMessage({ id, markdown });
+  }).catch(() => {
+    // Per-request fallback if the worker rejects
+    return parseMdastSync(markdown);
+  });
+}
+
+// ── Synchronous fallback ─────────────────────────────────────────────
+
+function getWorker(): null | Worker {
   if (workerFailed) return null;
   if (!worker) {
     try {
@@ -56,31 +79,9 @@ function getWorker(): Worker | null {
   return worker;
 }
 
-// ── Synchronous fallback ─────────────────────────────────────────────
+// ── Public API ───────────────────────────────────────────────────────
 
 function parseMdastSync(markdown: string): Root {
   const mdast = parseMdast(markdown);
   return enrichWithEmptyParagraphs(mdast, markdown);
-}
-
-// ── Public API ───────────────────────────────────────────────────────
-
-/**
- * Parse markdown to enriched mdast tree using a Web Worker.
- * Falls back to synchronous main-thread parsing if the Worker is unavailable.
- */
-export function parseMdastAsync(markdown: string): Promise<Root> {
-  const w = getWorker();
-  if (!w) {
-    return Promise.resolve(parseMdastSync(markdown));
-  }
-
-  return new Promise<Root>((resolve, reject) => {
-    const id = nextId++;
-    pending.set(id, { resolve, reject });
-    w.postMessage({ id, markdown });
-  }).catch(() => {
-    // Per-request fallback if the worker rejects
-    return parseMdastSync(markdown);
-  });
 }

@@ -1,26 +1,26 @@
 // §56l Tag autocomplete menu — inline #tag suggestion popup
 import {
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
   forwardRef,
+  useCallback,
+  useEffect,
   useImperativeHandle,
+  useRef,
+  useState,
 } from "react";
-
-export interface TagSuggestionItem {
-  id: string;
-  tag: string;
-  count: number;
-}
 
 export interface TagMenuRef {
   onKeyDown: (event: KeyboardEvent) => boolean;
 }
 
+export interface TagSuggestionItem {
+  count: number;
+  id: string;
+  tag: string;
+}
+
 interface TagMenuProps {
-  items: TagSuggestionItem[];
   command: (item: TagSuggestionItem) => void;
+  items: TagSuggestionItem[];
 }
 
 export const TagMenuList = forwardRef<TagMenuRef, TagMenuProps>(
@@ -75,8 +75,8 @@ export const TagMenuList = forwardRef<TagMenuRef, TagMenuProps>(
       <div className="tag-menu" ref={listRef}>
         {items.map((item, idx) => (
           <div
-            key={item.id}
             className={`tag-menu-item ${idx === selectedIndex ? "tag-menu-item-selected" : ""}`}
+            key={item.id}
             onClick={() => selectItem(idx)}
             onMouseEnter={() => setSelectedIndex(idx)}
           >

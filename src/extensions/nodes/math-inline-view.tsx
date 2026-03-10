@@ -1,7 +1,9 @@
 // §5.3 Math Inline NodeView — KaTeX render only (editing handled by MathInlineEdit plugin)
 import { useEffect, useRef } from "react";
-import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
+
+import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 import katex from "katex";
+
 import { preprocessNotionFormula } from "../../utils/notion-katex-compat";
 
 export function MathInlineView({ node, selected }: NodeViewProps) {
@@ -25,8 +27,8 @@ export function MathInlineView({ node, selected }: NodeViewProps) {
     <NodeViewWrapper
       as="span"
       className={`math-inline math-inline-rendered ${selected ? "math-inline-selected" : ""}`}
-      data-math-size={mathSize}
       contentEditable={false}
+      data-math-size={mathSize}
     >
       <span ref={renderRef} />
     </NodeViewWrapper>

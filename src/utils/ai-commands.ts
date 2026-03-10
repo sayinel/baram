@@ -1,11 +1,18 @@
 // §6.2 Shared AI command utilities — used by slash menu, FloatingToolbar, CommandPalette
 import type { Editor } from "@tiptap/core";
+
 import { useAIStore } from "../stores/ai-store";
 import { getConfigForTask } from "./model-selection";
 
 export interface AICommandOptions {
   // When true, insert response on a new line after the block containing the selection end
   afterSelection?: boolean;
+}
+
+// Custom prompt dialog — replaces window.prompt() which doesn't work in Tauri WKWebView
+export interface PromptOptions {
+  /** Preset quick-pick choices shown as buttons above the input */
+  presets?: string[];
 }
 
 // Stream LLM response tokens into editor at cursor
@@ -65,7 +72,7 @@ export async function executeAICommand(
     errorUn();
   });
 
-  const errorUn = await listen<{ requestId: string; error: string }>(
+  const errorUn = await listen<{ error: string; requestId: string }>(
     "llm:error",
     (event) => {
       if (event.payload.requestId !== requestId) return;
@@ -91,6 +98,15 @@ export async function executeAICommand(
   ).catch(console.error);
 }
 
+// Get only the selected text (empty string if no selection)
+export function getSelectedText(editor: Editor): string {
+  const { from, to } = editor.state.selection;
+  if (from !== to) {
+    return editor.state.doc.textBetween(from, to);
+  }
+  return "";
+}
+
 // Get selected text or fall back to current paragraph text
 export function getSelectionOrParagraph(editor: Editor): string {
   const { from, to } = editor.state.selection;
@@ -103,26 +119,11 @@ export function getSelectionOrParagraph(editor: Editor): string {
   return node.textContent || "";
 }
 
-// Get only the selected text (empty string if no selection)
-export function getSelectedText(editor: Editor): string {
-  const { from, to } = editor.state.selection;
-  if (from !== to) {
-    return editor.state.doc.textBetween(from, to);
-  }
-  return "";
-}
-
-// Custom prompt dialog — replaces window.prompt() which doesn't work in Tauri WKWebView
-export interface PromptOptions {
-  /** Preset quick-pick choices shown as buttons above the input */
-  presets?: string[];
-}
-
 export function showPrompt(
   message: string,
   defaultValue = "",
   options?: PromptOptions,
-): Promise<string | null> {
+): Promise<null | string> {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
     overlay.className = "ai-prompt-overlay";
@@ -174,7 +175,7 @@ export function showPrompt(
     overlay.appendChild(dialog);
     document.body.appendChild(overlay);
 
-    const cleanup = (value: string | null) => {
+    const cleanup = (value: null | string) => {
       overlay.remove();
       resolve(value);
     };

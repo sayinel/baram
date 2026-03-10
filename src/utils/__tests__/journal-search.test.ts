@@ -1,12 +1,13 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import {
   categorizeJournalResult,
-  groupSearchResults,
-  highlightSearchMatch,
-  extractFrontmatterFields,
   extractDateFromPath,
+  extractFrontmatterFields,
   filterByFrontmatter,
+  groupSearchResults,
   hasActiveFilters,
+  highlightSearchMatch,
 } from "../journal-search";
 
 const DIR = "/home/user/journal";

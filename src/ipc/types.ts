@@ -1,244 +1,38 @@
 // IPC 타입 정의 — ipc-registry.json과 동기화 유지 필수
 
-// §3.2 File System types
-export interface FileEntry {
-  name: string;
-  path: string;
-  isDir: boolean;
-  size: number;
-  modifiedAt: number;
-}
-
-// §3.2 Search types
-export interface SearchOptions {
-  caseSensitive?: boolean;
-  wholeWord?: boolean;
-  regex?: boolean;
-  maxResults?: number;
-  includeGlob?: string;
-  excludeGlob?: string;
-}
-
-export interface SearchResult {
-  filePath: string;
-  line: number;
-  column: number;
-  snippet: string;
-}
-
 // §3.2 Index types
 export interface BacklinkEntry {
-  sourcePath: string;
-  targetPath: string;
+  blockId?: string; // ^blockId for block refs/embeds
   context: string;
   line: number;
   linkType?: string; // "wikilink" | "blockRef" | "blockEmbed"
-  blockId?: string; // ^blockId for block refs/embeds
-}
-
-export interface LinkGraph {
-  nodes: string[];
-  edges: Array<{ from: string; to: string }>;
-}
-
-export interface IndexStats {
-  filesIndexed: number;
-  linksFound: number;
-  duration: number;
-}
-
-// §34 Unlinked Mentions
-export interface UnlinkedMention {
   sourcePath: string;
-  line: number;
-  context: string;
-  matchText: string;
-}
-
-// §57b Git types
-export interface GitChange {
-  path: string;
-  /** "modified" | "added" | "deleted" | "renamed" | "untracked" */
-  status: string;
-  staged: boolean;
-}
-
-export interface GitStatusInfo {
-  branch: string;
-  changes: GitChange[];
-  is_repo: boolean;
-}
-
-export interface GitDiffLine {
-  /** "+" | "-" | " " */
-  origin: string;
-  content: string;
-  old_lineno: number | null;
-  new_lineno: number | null;
-}
-
-export interface GitDiffHunk {
-  header: string;
-  lines: GitDiffLine[];
-}
-
-export interface GitFileDiff {
-  path: string;
-  hunks: GitDiffHunk[];
-  is_binary: boolean;
-}
-
-export interface GitBranchInfo {
-  name: string;
-  is_current: boolean;
-  is_remote: boolean;
-}
-
-// §67 Git Advanced types
-export interface GitLogEntry {
-  oid: string;
-  short_oid: string;
-  message: string;
-  author: string;
-  author_email: string;
-  timestamp: number;
-  parent_count: number;
-}
-
-export interface GitStashEntry {
-  index: number;
-  message: string;
-  oid: string;
-}
-
-export interface GitRemoteInfo {
-  name: string;
-  url: string;
-}
-
-export interface GitAheadBehind {
-  ahead: number;
-  behind: number;
-}
-
-// §6.3 LLM types
-export interface ModelInfo {
-  id: string;
-  name: string;
-}
-
-export interface LLMCompleteInput {
-  apiKey: string;
-  prompt: string;
-  model: string;
-  requestId: string;
-  systemPrompt?: string;
-  maxTokens?: number;
-  provider?: string;
-  baseUrl?: string;
-  privacyMode?: boolean;
-}
-
-// §6.3 Multi-turn message type
-export interface LLMMessage {
-  role: "user" | "assistant" | "system";
-  content: string;
-}
-
-// §3.2 Export types
-export type ExportFormat = "pdf" | "html";
-
-export interface ExportOptions {
-  includeYaml?: boolean;
-  theme?: string;
-}
-
-// §55 Pandoc Extended Export types
-export type PandocFormat = "docx" | "latex" | "epub" | "rst";
-
-export interface PandocInfo {
-  path: string;
-  version: string;
-  available: boolean;
+  targetPath: string;
 }
 
 export interface CustomExportItem {
-  name: string;
   command: string;
   extension: string;
+  name: string;
   showInMenu: boolean;
 }
 
-// §5.10 PDF export options (headless Chrome backend)
-export interface PdfOptions {
-  paperSize?: "a4" | "letter";
-  landscape?: boolean;
-  printBackground?: boolean;
-  scale?: number;
-  marginTop?: number; // inches
-  marginBottom?: number;
-  marginLeft?: number;
-  marginRight?: number;
-}
-
-// §3.2 Config types
-export type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | JsonValue[]
-  | { [key: string]: JsonValue };
-
-// §33 Rename result
-export interface RenameResult {
-  updatedFiles: string[];
-}
-
-// §61 Namespace rename result
-export interface NamespaceRenameResult {
-  updatedFiles: string[];
-  filesMoved: number;
-}
-
-// §56m Tag types
-export interface TagEntry {
-  tag: string;
-  count: number;
-}
-
-export interface RenameTagResult {
-  filesModified: number;
-  occurrencesReplaced: number;
-}
-
-// §71 Snapshot types
-export interface SnapshotFileEntry {
-  path: string;
-  checksum: string;
-  sizeBytes: number;
-}
-
-export interface SnapshotEntry {
-  id: string;
-  timestamp: string; // ISO 8601
-  type: "auto" | "manual";
-  label: string | null;
-  files: SnapshotFileEntry[];
-  totalSizeBytes: number;
-}
-
 export interface DiffChange {
-  type: "equal" | "delete" | "insert";
   content: string;
+  type: "delete" | "equal" | "insert";
 }
 
 export interface DiffHunk {
-  oldStart: number;
-  oldCount: number;
-  newStart: number;
-  newCount: number;
   changes: DiffChange[];
+  newCount: number;
+  newStart: number;
+  oldCount: number;
+  oldStart: number;
+}
+
+export interface DiffResult {
+  hunks: DiffHunk[];
+  stats: DiffStats;
 }
 
 export interface DiffStats {
@@ -247,9 +41,12 @@ export interface DiffStats {
   unchanged: number;
 }
 
-export interface DiffResult {
-  hunks: DiffHunk[];
-  stats: DiffStats;
+// §3.2 Export types
+export type ExportFormat = "html" | "pdf";
+
+export interface ExportOptions {
+  includeYaml?: boolean;
+  theme?: string;
 }
 
 // §69 Plugin Marketplace types
@@ -303,13 +100,120 @@ export interface RegistryIndex {
 
 // Event payloads
 export interface FileChangedPayload {
+  kind: "created" | "deleted" | "modified";
   path: string;
-  kind: "modified" | "created" | "deleted";
 }
 
-export interface LLMTokenPayload {
+// §3.2 File System types
+export interface FileEntry {
+  isDir: boolean;
+  modifiedAt: number;
+  name: string;
+  path: string;
+  size: number;
+}
+
+export interface GitAheadBehind {
+  ahead: number;
+  behind: number;
+}
+
+export interface GitBranchInfo {
+  is_current: boolean;
+  is_remote: boolean;
+  name: string;
+}
+
+// §57b Git types
+export interface GitChange {
+  path: string;
+  staged: boolean;
+  /** "modified" | "added" | "deleted" | "renamed" | "untracked" */
+  status: string;
+}
+
+export interface GitDiffHunk {
+  header: string;
+  lines: GitDiffLine[];
+}
+
+export interface GitDiffLine {
+  content: string;
+  new_lineno: null | number;
+  old_lineno: null | number;
+  /** "+" | "-" | " " */
+  origin: string;
+}
+
+export interface GitFileDiff {
+  hunks: GitDiffHunk[];
+  is_binary: boolean;
+  path: string;
+}
+
+// §67 Git Advanced types
+export interface GitLogEntry {
+  author: string;
+  author_email: string;
+  message: string;
+  oid: string;
+  parent_count: number;
+  short_oid: string;
+  timestamp: number;
+}
+
+export interface GitRemoteInfo {
+  name: string;
+  url: string;
+}
+
+export interface GitStashEntry {
+  index: number;
+  message: string;
+  oid: string;
+}
+
+export interface GitStatusInfo {
+  branch: string;
+  changes: GitChange[];
+  is_repo: boolean;
+}
+
+export interface IndexStats {
+  duration: number;
+  filesIndexed: number;
+  linksFound: number;
+}
+
+export interface IndexUpdatedPayload {
+  duration: number;
+  filesIndexed: number;
+}
+
+// §3.2 Config types
+export type JsonValue =
+  | boolean
+  | JsonValue[]
+  | null
+  | number
+  | string
+  | { [key: string]: JsonValue };
+
+export interface LinkGraph {
+  edges: Array<{ from: string; to: string }>;
+  nodes: string[];
+}
+
+export interface LLMCompleteInput {
+  apiKey: string;
+  baseUrl?: string;
+  maxTokens?: number;
+  model: string;
+  privacyMode?: boolean;
+  prompt: string;
+  provider?: string;
   requestId: string;
-  token: string;
+  systemPrompt?: string;
 }
 
 export interface LLMDonePayload {
@@ -318,11 +222,107 @@ export interface LLMDonePayload {
 }
 
 export interface LLMErrorPayload {
-  requestId: string;
   error: string;
+  requestId: string;
 }
 
-export interface IndexUpdatedPayload {
-  filesIndexed: number;
-  duration: number;
+// §6.3 Multi-turn message type
+export interface LLMMessage {
+  content: string;
+  role: "assistant" | "system" | "user";
+}
+
+export interface LLMTokenPayload {
+  requestId: string;
+  token: string;
+}
+
+// §6.3 LLM types
+export interface ModelInfo {
+  id: string;
+  name: string;
+}
+
+// §61 Namespace rename result
+export interface NamespaceRenameResult {
+  filesMoved: number;
+  updatedFiles: string[];
+}
+
+// §55 Pandoc Extended Export types
+export type PandocFormat = "docx" | "epub" | "latex" | "rst";
+
+export interface PandocInfo {
+  available: boolean;
+  path: string;
+  version: string;
+}
+
+// §5.10 PDF export options (headless Chrome backend)
+export interface PdfOptions {
+  landscape?: boolean;
+  marginBottom?: number;
+  marginLeft?: number;
+  marginRight?: number;
+  marginTop?: number; // inches
+  paperSize?: "a4" | "letter";
+  printBackground?: boolean;
+  scale?: number;
+}
+
+// §33 Rename result
+export interface RenameResult {
+  updatedFiles: string[];
+}
+
+export interface RenameTagResult {
+  filesModified: number;
+  occurrencesReplaced: number;
+}
+
+// §3.2 Search types
+export interface SearchOptions {
+  caseSensitive?: boolean;
+  excludeGlob?: string;
+  includeGlob?: string;
+  maxResults?: number;
+  regex?: boolean;
+  wholeWord?: boolean;
+}
+
+export interface SearchResult {
+  column: number;
+  filePath: string;
+  line: number;
+  snippet: string;
+}
+
+export interface SnapshotEntry {
+  files: SnapshotFileEntry[];
+  id: string;
+  label: null | string;
+  timestamp: string; // ISO 8601
+  totalSizeBytes: number;
+  type: "auto" | "manual";
+}
+
+// §71 Snapshot types
+export interface SnapshotFileEntry {
+  checksum: string;
+  path: string;
+  sizeBytes: number;
+}
+
+// §56m Tag types
+export interface TagEntry {
+  count: number;
+  tag: string;
+}
+
+// §34 Unlinked Mentions
+export interface UnlinkedMention {
+  context: string;
+  line: number;
+  matchText: string;
+  sourcePath: string;
 }

@@ -1,17 +1,18 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import {
+  applyJournalTemplate,
   formatJournalDate,
   formatJournalFilename,
-  isDateString,
-  resolveDateAlias,
+  formatReadableDate,
   generateDefaultJournal,
-  applyJournalTemplate,
-  resolveJournalDir,
+  getFirstDayOfWeek,
   getJournalFilePath,
   getMonthDays,
-  getFirstDayOfWeek,
   getOrdinalSuffix,
-  formatReadableDate,
+  isDateString,
+  resolveDateAlias,
+  resolveJournalDir,
 } from "../journal";
 
 describe("journal utilities", () => {

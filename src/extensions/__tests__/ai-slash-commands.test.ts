@@ -1,5 +1,5 @@
 // §6.2 Built-in AI Slash Commands — unit tests (post-UX refactor)
-import { describe, test, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
 // Mock Tauri API and stores before importing
 vi.mock("@tauri-apps/api/event", () => ({

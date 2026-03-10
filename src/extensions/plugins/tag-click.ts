@@ -1,7 +1,9 @@
+import type { EditorView } from "@tiptap/pm/view";
+
 // §56m Tag click → search — Cmd/Ctrl+Click on #tag triggers global search
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
-import type { EditorView } from "@tiptap/pm/view";
+
 import { useUIStore } from "../../stores/ui-store";
 
 const TAG_REGEX = /#([\w가-힣]+(?:\/[\w가-힣]+)*)/g;
@@ -35,7 +37,7 @@ export const TagClick = Extension.create({
             const offsetInNode = pos - nodeStart;
 
             TAG_REGEX.lastIndex = 0;
-            let match: RegExpExecArray | null;
+            let match: null | RegExpExecArray;
             while ((match = TAG_REGEX.exec(text)) !== null) {
               const tagStart = match.index;
               const tagEnd = tagStart + match[0].length;

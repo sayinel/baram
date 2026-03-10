@@ -1,8 +1,9 @@
 // §31 wikilink autocomplete — search/filter logic tests
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import {
-  filterFiles,
   fileNameWithoutExtension,
+  filterFiles,
   longestCommonPrefix,
   type WikilinkSuggestionItem,
 } from "../plugins/wikilink-suggest-utils";

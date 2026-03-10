@@ -1,54 +1,45 @@
+import type { FileEntry } from "../stores/file-store";
+
+import { useAIStore } from "../stores/ai-store";
 // §44 AI Chat @reference resolver
 import { useEditorStore } from "../stores/editor-store";
 import { useFileStore } from "../stores/file-store";
-import type { FileEntry } from "../stores/file-store";
-import { useAIStore } from "../stores/ai-store";
 
 export type ReferenceType =
-  | "@selection"
-  | "@current"
   | "@clipboard"
+  | "@current"
   | "@file"
-  | "@folder";
-
-/** Collect all file paths under a directory from the file tree */
-function collectFilesInDir(entries: FileEntry[], dirPath: string): string[] {
-  const result: string[] = [];
-  for (const entry of entries) {
-    if (entry.isDir) {
-      if (entry.path === dirPath) {
-        // Found the target dir — collect all descendant files
-        collectAllFiles(entry.children ?? [], result);
-        return result;
-      }
-      if (entry.children) {
-        const found = collectFilesInDir(entry.children, dirPath);
-        if (found.length > 0) return found;
-      }
-    }
-  }
-  return result;
-}
-
-function collectAllFiles(entries: FileEntry[], result: string[]): void {
-  for (const entry of entries) {
-    if (entry.isDir) {
-      if (entry.children) {
-        collectAllFiles(entry.children, result);
-      }
-    } else {
-      result.push(entry.path);
-    }
-  }
-}
+  | "@folder"
+  | "@selection";
 
 export interface ResolvedReference {
-  type: ReferenceType;
-  label: string;
   content: string;
+  label: string;
+  type: ReferenceType;
 }
 
-export function resolveReference(ref: string): ResolvedReference | null {
+export function buildContextPrompt(
+  userMessage: string,
+  refs: ResolvedReference[],
+): string {
+  if (refs.length === 0) return userMessage;
+
+  const contextParts = refs.map((r) => `--- ${r.label} ---\n${r.content}`);
+
+  return `Context:\n${contextParts.join("\n\n")}\n\n---\n\nUser message: ${userMessage}`;
+}
+
+export function parseReferences(text: string): string[] {
+  const refs: string[] = [];
+  const regex = /@(selection|current|clipboard|file:[^\s]+|folder:[^\s]+)/g;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    refs.push(`@${match[1]}`);
+  }
+  return refs;
+}
+
+export function resolveReference(ref: string): null | ResolvedReference {
   if (ref === "@selection") {
     const selectionText = useEditorStore.getState().currentSelection;
     return {
@@ -130,23 +121,33 @@ export function resolveReference(ref: string): ResolvedReference | null {
   return null;
 }
 
-export function parseReferences(text: string): string[] {
-  const refs: string[] = [];
-  const regex = /@(selection|current|clipboard|file:[^\s]+|folder:[^\s]+)/g;
-  let match;
-  while ((match = regex.exec(text)) !== null) {
-    refs.push(`@${match[1]}`);
+function collectAllFiles(entries: FileEntry[], result: string[]): void {
+  for (const entry of entries) {
+    if (entry.isDir) {
+      if (entry.children) {
+        collectAllFiles(entry.children, result);
+      }
+    } else {
+      result.push(entry.path);
+    }
   }
-  return refs;
 }
 
-export function buildContextPrompt(
-  userMessage: string,
-  refs: ResolvedReference[],
-): string {
-  if (refs.length === 0) return userMessage;
-
-  const contextParts = refs.map((r) => `--- ${r.label} ---\n${r.content}`);
-
-  return `Context:\n${contextParts.join("\n\n")}\n\n---\n\nUser message: ${userMessage}`;
+/** Collect all file paths under a directory from the file tree */
+function collectFilesInDir(entries: FileEntry[], dirPath: string): string[] {
+  const result: string[] = [];
+  for (const entry of entries) {
+    if (entry.isDir) {
+      if (entry.path === dirPath) {
+        // Found the target dir — collect all descendant files
+        collectAllFiles(entry.children ?? [], result);
+        return result;
+      }
+      if (entry.children) {
+        const found = collectFilesInDir(entry.children, dirPath);
+        if (found.length > 0) return found;
+      }
+    }
+  }
+  return result;
 }

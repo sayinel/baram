@@ -1,10 +1,10 @@
 // §72 Skills 전용 모드 — 활성 파일의 frontmatter 감지, UI 자동 전환
 import { useEffect, useRef } from "react";
+
 import { useEditorStore } from "../stores/editor-store";
 import { useFileStore } from "../stores/file-store";
-import { useUIStore } from "../stores/ui-store";
 import { useSkillStore } from "../stores/skill-store";
-
+import { useUIStore } from "../stores/ui-store";
 import { isSkillFrontmatter } from "../utils/skill-frontmatter";
 // Re-export for backward compatibility
 export { isSkillFrontmatter };
@@ -14,7 +14,7 @@ export function useSkillsMode() {
   const activeTabId = useEditorStore((s) => s.activeTabId);
   const tabs = useEditorStore((s) => s.tabs);
   const openFiles = useFileStore((s) => s.openFiles);
-  const prevModeRef = useRef<{ mode: string; open: boolean } | null>(null);
+  const prevModeRef = useRef<null | { mode: string; open: boolean }>(null);
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const filePath = activeTab?.filePath ?? null;
@@ -55,9 +55,9 @@ export function useSkillsMode() {
           | "chat"
           | "help"
           | "memories"
+          | "none"
           | "photo-gallery"
-          | "properties"
-          | "none",
+          | "properties",
       );
       if (ui.rightPanelOpen !== prev.open) {
         ui.toggleRightPanel();

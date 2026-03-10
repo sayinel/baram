@@ -1,17 +1,18 @@
 // §47 Skill Inline Test — run a Skill file against sample input
-import { useState, useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
+
 import { useLLMStream } from "../../hooks/use-llm-stream";
+import { useEditorStore } from "../../stores/editor-store";
+import { useFileStore } from "../../stores/file-store";
+import { formatAIError } from "../../utils/format-error";
 import {
   extractSkillPrompt,
   runSkillTest,
 } from "../../utils/skill-test-runner";
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
-import { formatAIError } from "../../utils/format-error";
 
 interface SkillTestDialogProps {
-  open: boolean;
   onClose: () => void;
+  open: boolean;
 }
 
 export function SkillTestDialog({ open, onClose }: SkillTestDialogProps) {
@@ -82,10 +83,10 @@ export function SkillTestDialog({ open, onClose }: SkillTestDialogProps) {
                 <label className="custom-ai-label">{`{{${v}}}`}</label>
                 <textarea
                   className="custom-ai-prompt-input"
-                  placeholder={`Enter value for {{${v}}}...`}
-                  value={variables[v] || ""}
                   onChange={(e) => handleVarChange(v, e.target.value)}
+                  placeholder={`Enter value for {{${v}}}...`}
                   rows={2}
+                  value={variables[v] || ""}
                 />
               </div>
             ))}
@@ -95,8 +96,8 @@ export function SkillTestDialog({ open, onClose }: SkillTestDialogProps) {
         <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
           <button
             className="custom-ai-btn custom-ai-btn-primary"
-            onClick={handleRun}
             disabled={isStreaming || !skillContent}
+            onClick={handleRun}
           >
             {isStreaming ? "Running..." : "Run Test"}
           </button>

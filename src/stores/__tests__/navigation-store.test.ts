@@ -1,5 +1,6 @@
 // §37 Navigation History Store — unit tests
-import { describe, it, expect, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+
 import { useNavigationStore } from "../navigation-store";
 
 // Reset store before each test
@@ -101,7 +102,7 @@ describe("Navigation History Store", () => {
       forwardStack: ["tab-closed", "tab-5"],
     });
 
-    const openTabIds = new Set(["tab-current", "tab-5"]);
+    const openTabIds = new Set(["tab-5", "tab-current"]);
     const targetId = useNavigationStore
       .getState()
       .goForward("tab-current", openTabIds);

@@ -1,5 +1,6 @@
 // Help Panel — prepareHelpMarkdown logic and content structure tests
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import { prepareHelpMarkdown } from "../help/prepare-help-markdown";
 
 // ─── prepareHelpMarkdown: H1 removal ─────────────────────────────────────────

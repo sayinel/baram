@@ -1,24 +1,26 @@
 // §5.4 CodeMirror 6 NodeView for Code Blocks
-import { useEffect, useRef, useCallback } from "react";
-import { NodeViewWrapper, NodeViewProps } from "@tiptap/react";
-import {
-  EditorView,
-  ViewUpdate,
-  keymap,
-  lineNumbers,
-  drawSelection,
-} from "@codemirror/view";
-import { EditorState } from "@codemirror/state";
+import { useCallback, useEffect, useRef } from "react";
+
+import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { defaultKeymap, indentWithTab } from "@codemirror/commands";
 import {
   bracketMatching,
-  syntaxHighlighting,
   indentUnit,
+  syntaxHighlighting,
 } from "@codemirror/language";
-import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
-import { getLanguageExtension, LANGUAGE_OPTIONS } from "./code-block-languages";
-import { getHighlightStyle } from "./code-block-highlight";
+import { EditorState } from "@codemirror/state";
+import {
+  drawSelection,
+  EditorView,
+  keymap,
+  lineNumbers,
+  ViewUpdate,
+} from "@codemirror/view";
+import { NodeViewProps, NodeViewWrapper } from "@tiptap/react";
+
 import { useSettingsStore } from "../../stores/settings-store";
+import { getHighlightStyle } from "./code-block-highlight";
+import { getLanguageExtension, LANGUAGE_OPTIONS } from "./code-block-languages";
 
 export function CodeBlockView({
   node,
@@ -288,9 +290,9 @@ export function CodeBlockView({
       <div className="code-block-header">
         <select
           className="code-block-lang-select"
-          value={language}
-          onChange={handleLanguageChange}
           contentEditable={false}
+          onChange={handleLanguageChange}
+          value={language}
         >
           <option value="">auto</option>
           {LANGUAGE_OPTIONS.map(({ value, label }) => (
@@ -300,7 +302,7 @@ export function CodeBlockView({
           ))}
         </select>
       </div>
-      <div ref={containerRef} className="code-block-editor" />
+      <div className="code-block-editor" ref={containerRef} />
     </NodeViewWrapper>
   );
 }

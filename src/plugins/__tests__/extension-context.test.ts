@@ -1,7 +1,9 @@
-// §69 Plugin ExtensionContext capability gating tests
-import { describe, test, expect } from "vitest";
-import { createExtensionContext } from "../extension-context";
 import type { PluginManifest } from "../types";
+
+// §69 Plugin ExtensionContext capability gating tests
+import { describe, expect, test } from "vitest";
+
+import { createExtensionContext } from "../extension-context";
 
 function makeManifest(capabilities: string[]): PluginManifest {
   return {

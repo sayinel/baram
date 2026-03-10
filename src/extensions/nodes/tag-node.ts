@@ -1,6 +1,7 @@
 // §56m Tag Inline Atom Node — #tag as ProseMirror inline atom
-import { Node, InputRule } from "@tiptap/core";
+import { InputRule, Node } from "@tiptap/core";
 import { ReactNodeViewRenderer } from "@tiptap/react";
+
 import { TagNodeView } from "./tag-node-view";
 
 declare module "@tiptap/core" {

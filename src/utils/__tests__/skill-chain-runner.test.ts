@@ -1,6 +1,8 @@
-import { describe, it, expect } from "vitest";
-import { resolveExecutionOrder, dryRunChain } from "../skill-chain-runner";
 import type { SkillMeta } from "../skill-dependency-analyzer";
+
+import { describe, expect, it } from "vitest";
+
+import { dryRunChain, resolveExecutionOrder } from "../skill-chain-runner";
 
 const skills: SkillMeta[] = [
   {

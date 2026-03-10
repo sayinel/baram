@@ -1,9 +1,9 @@
 // wikilink-transformer.ts — §28 Wikilink mdast ↔ ProseMirror
 // Stub — to be implemented in Step 3
 
+import type { NodeTransformerEntry } from "../types";
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
 import type { Node as MdastNode, Parent as MdastParent } from "mdast";
-import type { NodeTransformerEntry } from "../types";
 
 /** Regex to detect [[...]] patterns in text */
 export const WIKILINK_RE =
@@ -11,10 +11,10 @@ export const WIKILINK_RE =
 
 /** Parse wikilink attributes from a regex match */
 export function parseWikilinkMatch(match: RegExpMatchArray): {
+  blockId: null | string;
+  display: null | string;
+  heading: null | string;
   target: string;
-  heading: string | null;
-  blockId: string | null;
-  display: string | null;
 } {
   return {
     target: match[1],
@@ -26,10 +26,10 @@ export function parseWikilinkMatch(match: RegExpMatchArray): {
 
 /** Serialize wikilink attrs back to [[...]] string */
 export function serializeWikilink(attrs: {
+  blockId?: null | string;
+  display?: null | string;
+  heading?: null | string;
   target: string;
-  display?: string | null;
-  heading?: string | null;
-  blockId?: string | null;
 }): string {
   let result = attrs.target;
   if (attrs.heading) result += `#${attrs.heading}`;
@@ -46,7 +46,7 @@ export const wikilinkTransformer: NodeTransformerEntry = {
     _node: MdastNode,
     _schema: Schema,
     _convertChildren: (parent: MdastParent) => PmNode[],
-  ): PmNode | null {
+  ): null | PmNode {
     // Not used — wikilinks are parsed from text nodes in md-to-pm.ts
     return null;
   },

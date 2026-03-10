@@ -1,5 +1,5 @@
 // §5.1 Bullet List Extension
-import { Node, mergeAttributes, wrappingInputRule } from "@tiptap/core";
+import { mergeAttributes, Node, wrappingInputRule } from "@tiptap/core";
 
 export interface BulletListOptions {
   HTMLAttributes: Record<string, string>;

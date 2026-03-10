@@ -1,8 +1,9 @@
 // §5.9 Callout Extension — Obsidian-compatible callout blocks
 // Markdown: > [!type] title / > body
-import { Node, mergeAttributes } from "@tiptap/core";
+import { mergeAttributes, Node } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 import { ReactNodeViewRenderer } from "@tiptap/react";
+
 import { CalloutView } from "./callout-view";
 
 export interface CalloutOptions {
@@ -13,9 +14,9 @@ declare module "@tiptap/core" {
   interface Commands<ReturnType> {
     callout: {
       setCallout: (attrs?: {
-        type?: string;
-        title?: string;
         collapsed?: boolean;
+        title?: string;
+        type?: string;
       }) => ReturnType;
       toggleCallout: () => ReturnType;
       unsetCallout: () => ReturnType;

@@ -1,27 +1,29 @@
+import type { EditorView } from "@tiptap/pm/view";
+
 // §5.1 Image Extension (block-level) with §3.3 NodeView
-import { Node, mergeAttributes, InputRule } from "@tiptap/core";
-import { ReactNodeViewRenderer } from "@tiptap/react";
+import { InputRule, mergeAttributes, Node } from "@tiptap/core";
 import {
+  NodeSelection,
   Plugin,
   PluginKey,
-  NodeSelection,
   TextSelection,
 } from "@tiptap/pm/state";
-import type { EditorView } from "@tiptap/pm/view";
-import { ImageView } from "./image-view";
+import { ReactNodeViewRenderer } from "@tiptap/react";
+
 import { getSyntaxRevealExpanded } from "../plugins/syntax-reveal";
+import { ImageView } from "./image-view";
 
 export interface ImageOptions {
-  HTMLAttributes: Record<string, string>;
   allowBase64: boolean;
+  HTMLAttributes: Record<string, string>;
 }
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
     image: {
       setImage: (options: {
-        src: string;
         alt?: string;
+        src: string;
         title?: string;
       }) => ReturnType;
     };
@@ -93,8 +95,8 @@ export const Image = Node.create<ImageOptions>({
     const pluginKey = new PluginKey("imageClickGuard");
 
     // Flag: which image was clicked (mousedown sets, createSelectionBetween reads)
-    let clickedImagePos: number | null = null;
-    let clickedImageTimer: ReturnType<typeof setTimeout> | null = null;
+    let clickedImagePos: null | number = null;
+    let clickedImageTimer: null | ReturnType<typeof setTimeout> = null;
 
     /** Find PM document position for the N-th image by matching DOM order */
     const findImagePos = (view: EditorView, wrapperIdx: number): number => {

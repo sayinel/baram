@@ -2,8 +2,8 @@
  * §56e — Mood/Energy types and frontmatter helpers
  */
 
-export type MoodValue = "deep" | "calm" | "neutral" | "warm" | "bright";
 export type EnergyValue = 1 | 2 | 3 | 4 | 5;
+export type MoodValue = "bright" | "calm" | "deep" | "neutral" | "warm";
 
 export const MOOD_VALUES: MoodValue[] = [
   "deep",
@@ -15,7 +15,7 @@ export const MOOD_VALUES: MoodValue[] = [
 
 /** §56e Theme-aware mood color palettes */
 export const MOOD_PALETTE: Record<
-  "light" | "dark",
+  "dark" | "light",
   Record<MoodValue, string>
 > = {
   light: {
@@ -36,7 +36,7 @@ export const MOOD_PALETTE: Record<
 
 /** Returns mood colors for the given theme base (light or dark). */
 export function getMoodColors(
-  themeBase: "light" | "dark",
+  themeBase: "dark" | "light",
 ): Record<MoodValue, string> {
   return MOOD_PALETTE[themeBase];
 }
@@ -48,25 +48,6 @@ export const MOOD_LABELS: Record<MoodValue, string> = {
   warm: "Warm",
   bright: "Bright",
 };
-
-/** Parse mood value from frontmatter content */
-export function parseMoodFromFrontmatter(
-  content: string,
-): MoodValue | undefined {
-  if (!content.trim()) return undefined;
-
-  const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
-  if (!fmMatch) return undefined;
-
-  const moodMatch = fmMatch[1].match(/^mood:\s*(\S+)\s*$/m);
-  if (!moodMatch) return undefined;
-
-  const value = moodMatch[1];
-  if (MOOD_VALUES.includes(value as MoodValue)) {
-    return value as MoodValue;
-  }
-  return undefined;
-}
 
 /** Parse energy value (1-5) from frontmatter content */
 export function parseEnergyFromFrontmatter(
@@ -87,12 +68,23 @@ export function parseEnergyFromFrontmatter(
   return undefined;
 }
 
-/** Update or add mood field in frontmatter. Pass undefined to remove. */
-export function updateFrontmatterMood(
+/** Parse mood value from frontmatter content */
+export function parseMoodFromFrontmatter(
   content: string,
-  mood: MoodValue | undefined,
-): string {
-  return updateFrontmatterField(content, "mood", mood);
+): MoodValue | undefined {
+  if (!content.trim()) return undefined;
+
+  const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+  if (!fmMatch) return undefined;
+
+  const moodMatch = fmMatch[1].match(/^mood:\s*(\S+)\s*$/m);
+  if (!moodMatch) return undefined;
+
+  const value = moodMatch[1];
+  if (MOOD_VALUES.includes(value as MoodValue)) {
+    return value as MoodValue;
+  }
+  return undefined;
 }
 
 /** Update or add energy field in frontmatter. Pass undefined to remove. */
@@ -105,6 +97,14 @@ export function updateFrontmatterEnergy(
     "energy",
     energy !== undefined ? String(energy) : undefined,
   );
+}
+
+/** Update or add mood field in frontmatter. Pass undefined to remove. */
+export function updateFrontmatterMood(
+  content: string,
+  mood: MoodValue | undefined,
+): string {
+  return updateFrontmatterField(content, "mood", mood);
 }
 
 /** Generic frontmatter field updater */

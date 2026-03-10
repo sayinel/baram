@@ -1,18 +1,21 @@
 // §5.12 Export Dialog — HTML/PDF/Notion + §55 Pandoc Extended Export
-import { useState, useCallback, useEffect, useRef } from "react";
-import type { Editor } from "@tiptap/react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import { open } from "@tauri-apps/plugin-dialog";
-import { useUIStore } from "../../stores/ui-store";
+
+import type { PandocInfo } from "../../ipc/types";
+import type { Editor } from "@tiptap/react";
+
+import { detectPandoc } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor-store";
 import { useSettingsStore } from "../../stores/settings-store";
+import { useUIStore } from "../../stores/ui-store";
 import {
   exportAsHTML,
   exportAsPDF,
   exportForNotion,
   exportWithPandoc,
 } from "../../utils/export";
-import { detectPandoc } from "../../ipc/invoke";
-import type { PandocInfo } from "../../ipc/types";
 
 interface ExportDialogProps {
   editor: Editor | null;
@@ -72,10 +75,6 @@ const FORMAT_OPTIONS = [
 
 const PANDOC_FORMATS = ["docx", "latex", "epub", "rst"] as const;
 
-function isPandocFormat(f: string): f is (typeof PANDOC_FORMATS)[number] {
-  return (PANDOC_FORMATS as readonly string[]).includes(f);
-}
-
 export function ExportDialog({ editor }: ExportDialogProps) {
   const {
     exportDialogOpen,
@@ -89,8 +88,8 @@ export function ExportDialog({ editor }: ExportDialogProps) {
   const [title, setTitle] = useState("Untitled");
   const [exporting, setExporting] = useState(false);
   const [paperSize, setPaperSize] = useState<"a4" | "letter">("a4");
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [pandocInfo, setPandocInfo] = useState<PandocInfo | null>(null);
+  const [errorMsg, setErrorMsg] = useState<null | string>(null);
+  const [pandocInfo, setPandocInfo] = useState<null | PandocInfo>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
 
   // Reset state when dialog opens
@@ -194,9 +193,9 @@ export function ExportDialog({ editor }: ExportDialogProps) {
         <div className="export-dialog-header">
           <span className="export-dialog-title">Export Document</span>
           <button
+            aria-label="Close"
             className="export-dialog-close"
             onClick={closeExportDialog}
-            aria-label="Close"
           >
             &times;
           </button>
@@ -211,13 +210,13 @@ export function ExportDialog({ editor }: ExportDialogProps) {
                 const isSelected = exportFormat === fmt.id;
                 return (
                   <button
+                    className={`export-format-card${isSelected ? "export-format-card-selected" : ""}${isDisabled ? "export-format-card-disabled" : ""}`}
+                    disabled={isDisabled}
                     key={fmt.id}
-                    className={`export-format-card${isSelected ? " export-format-card-selected" : ""}${isDisabled ? " export-format-card-disabled" : ""}`}
                     onClick={() => {
                       if (!isDisabled)
                         openExportDialog(fmt.id as typeof exportFormat);
                     }}
-                    disabled={isDisabled}
                   >
                     <span className="export-ext-badge">{fmt.ext}</span>
                     <span className="export-format-card-info">
@@ -240,9 +239,9 @@ export function ExportDialog({ editor }: ExportDialogProps) {
                 ⚠ Install Pandoc for additional formats.{" "}
                 <a
                   href="https://pandoc.org/installing.html"
-                  target="_blank"
                   rel="noreferrer"
                   style={{ color: "var(--color-accent, #4a9eff)" }}
+                  target="_blank"
                 >
                   pandoc.org
                 </a>
@@ -255,12 +254,12 @@ export function ExportDialog({ editor }: ExportDialogProps) {
               Title
             </label>
             <input
-              ref={titleInputRef}
-              id="export-title"
               className="export-dialog-input"
+              id="export-title"
+              onChange={(e) => setTitle(e.target.value)}
+              ref={titleInputRef}
               type="text"
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
             />
           </div>
 
@@ -299,10 +298,10 @@ export function ExportDialog({ editor }: ExportDialogProps) {
               <div className="export-dialog-template-row">
                 <input
                   className="export-dialog-input"
+                  placeholder="No template selected"
+                  readOnly
                   type="text"
                   value={wordTemplatePath}
-                  readOnly
-                  placeholder="No template selected"
                 />
                 <button
                   className="export-dialog-btn export-dialog-btn-cancel"
@@ -332,12 +331,12 @@ export function ExportDialog({ editor }: ExportDialogProps) {
           </button>
           <button
             className="export-dialog-btn export-dialog-btn-primary"
-            onClick={handleExport}
             disabled={
               exporting ||
               !title.trim() ||
               (isPandocFormat(exportFormat) && !pandocAvailable)
             }
+            onClick={handleExport}
           >
             {exporting ? "Exporting..." : "Export"}
           </button>
@@ -345,4 +344,8 @@ export function ExportDialog({ editor }: ExportDialogProps) {
       </div>
     </div>
   );
+}
+
+function isPandocFormat(f: string): f is (typeof PANDOC_FORMATS)[number] {
+  return (PANDOC_FORMATS as readonly string[]).includes(f);
 }

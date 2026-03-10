@@ -1,9 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
 import {
   DAILY_PROMPTS,
   getDailyPrompt,
-  getRandomPrompt,
   getDailyPromptWithHistory,
+  getRandomPrompt,
   HISTORY_SIZE,
 } from "../journal-prompts";
 

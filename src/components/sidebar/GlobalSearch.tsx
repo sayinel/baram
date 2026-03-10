@@ -1,34 +1,19 @@
 // §5.11 Global Search (Cmd+Shift+F) — vault-wide text search panel
-import { useState, useCallback, useRef, useEffect } from "react";
-import { useFileStore } from "../../stores/file-store";
-import { useEditorStore } from "../../stores/editor-store";
-import { useUIStore } from "../../stores/ui-store";
-import { useLinkStore } from "../../stores/link-store";
-import { searchFiles, readFile, writeFile } from "../../ipc/invoke";
-import { extractFileNameFromPath } from "./backlink-utils";
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import type { SearchResult } from "../../ipc/types";
 
-interface FileGroup {
-  filePath: string;
-  fileName: string;
-  matches: SearchResult[];
-}
+import { readFile, searchFiles, writeFile } from "../../ipc/invoke";
+import { useEditorStore } from "../../stores/editor-store";
+import { useFileStore } from "../../stores/file-store";
+import { useLinkStore } from "../../stores/link-store";
+import { useUIStore } from "../../stores/ui-store";
+import { extractFileNameFromPath } from "./backlink-utils";
 
-function groupByFile(results: SearchResult[]): FileGroup[] {
-  const map = new Map<string, SearchResult[]>();
-  for (const r of results) {
-    const existing = map.get(r.filePath);
-    if (existing) {
-      existing.push(r);
-    } else {
-      map.set(r.filePath, [r]);
-    }
-  }
-  return Array.from(map.entries()).map(([filePath, matches]) => ({
-    filePath,
-    fileName: extractFileNameFromPath(filePath),
-    matches,
-  }));
+interface FileGroup {
+  fileName: string;
+  filePath: string;
+  matches: SearchResult[];
 }
 
 export function GlobalSearch() {
@@ -40,7 +25,7 @@ export function GlobalSearch() {
   const [useRegex, setUseRegex] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<null | string>(null);
   const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set());
 
   const [showReplace, setShowReplace] = useState(false);
@@ -50,7 +35,7 @@ export function GlobalSearch() {
   const [showFilters, setShowFilters] = useState(false);
   const [replacing, setReplacing] = useState(false);
 
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debounceRef = useRef<null | ReturnType<typeof setTimeout>>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Focus input on mount
@@ -276,13 +261,13 @@ export function GlobalSearch() {
 
       <div className="global-search-input-row">
         <input
-          ref={inputRef}
           className="global-search-input"
-          type="text"
-          placeholder="Search across files…"
-          value={query}
           onChange={(e) => handleQueryChange(e.target.value)}
+          placeholder="Search across files…"
+          ref={inputRef}
           spellCheck={false}
+          type="text"
+          value={query}
         />
       </div>
 
@@ -328,17 +313,17 @@ export function GlobalSearch() {
         <div className="global-search-replace-row">
           <input
             className="global-search-input"
-            type="text"
-            placeholder="Replace with…"
-            value={replaceText}
             onChange={(e) => setReplaceText(e.target.value)}
+            placeholder="Replace with…"
             spellCheck={false}
+            type="text"
+            value={replaceText}
           />
           <div className="global-search-replace-actions">
             <button
               className="global-search-replace-btn"
-              onClick={handleReplaceAll}
               disabled={replacing || !query.trim()}
+              onClick={handleReplaceAll}
               title="Replace All (in unopened files)"
             >
               Replace All
@@ -351,19 +336,19 @@ export function GlobalSearch() {
         <div className="global-search-filters">
           <input
             className="global-search-filter-input"
-            type="text"
-            placeholder="Include: *.md, docs/**"
-            value={includeFilter}
             onChange={(e) => setIncludeFilter(e.target.value)}
+            placeholder="Include: *.md, docs/**"
             spellCheck={false}
+            type="text"
+            value={includeFilter}
           />
           <input
             className="global-search-filter-input"
-            type="text"
-            placeholder="Exclude: drafts/, archive/"
-            value={excludeFilter}
             onChange={(e) => setExcludeFilter(e.target.value)}
+            placeholder="Exclude: drafts/, archive/"
             spellCheck={false}
+            type="text"
+            value={excludeFilter}
           />
         </div>
       )}
@@ -383,7 +368,7 @@ export function GlobalSearch() {
         {groups.map((group) => {
           const collapsed = collapsedFiles.has(group.filePath);
           return (
-            <div key={group.filePath} className="global-search-group">
+            <div className="global-search-group" key={group.filePath}>
               <div
                 className="global-search-file"
                 onClick={() => toggleCollapse(group.filePath)}
@@ -401,8 +386,8 @@ export function GlobalSearch() {
               {!collapsed &&
                 group.matches.map((match, i) => (
                   <div
-                    key={i}
                     className="global-search-match"
+                    key={i}
                     onClick={() =>
                       handleResultClick(match.filePath, match.line)
                     }
@@ -431,4 +416,21 @@ export function GlobalSearch() {
       </div>
     </div>
   );
+}
+
+function groupByFile(results: SearchResult[]): FileGroup[] {
+  const map = new Map<string, SearchResult[]>();
+  for (const r of results) {
+    const existing = map.get(r.filePath);
+    if (existing) {
+      existing.push(r);
+    } else {
+      map.set(r.filePath, [r]);
+    }
+  }
+  return Array.from(map.entries()).map(([filePath, matches]) => ({
+    filePath,
+    fileName: extractFileNameFromPath(filePath),
+    matches,
+  }));
 }

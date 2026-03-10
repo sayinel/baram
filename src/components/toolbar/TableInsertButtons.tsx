@@ -1,43 +1,22 @@
 // §5.5 Table Insert Buttons — hover ⊕ buttons for row/column insertion
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import type { Editor } from "@tiptap/react";
+
 import { TextSelection } from "@tiptap/pm/state";
+
+interface ButtonState {
+  /** Whether to insert before (true) or after (false) */
+  before: boolean;
+  /** PM position of the cell to use for insertion reference */
+  cellPos: number;
+  type: "col" | "row";
+  x: number;
+  y: number;
+}
 
 interface TableInsertButtonsProps {
   editor: Editor;
-}
-
-interface ButtonState {
-  type: "row" | "col";
-  x: number;
-  y: number;
-  /** PM position of the cell to use for insertion reference */
-  cellPos: number;
-  /** Whether to insert before (true) or after (false) */
-  before: boolean;
-}
-
-/** Find the ProseMirror position for a table DOM element */
-function findTablePos(
-  editor: Editor,
-  tableEl: HTMLTableElement,
-): number | null {
-  let found: number | null = null;
-  editor.state.doc.descendants((node, pos) => {
-    if (found !== null) return false;
-    if (node.type.name === "table") {
-      const dom = editor.view.nodeDOM(pos);
-      if (
-        dom === tableEl ||
-        (dom instanceof HTMLElement && dom.contains(tableEl))
-      ) {
-        found = pos;
-        return false;
-      }
-    }
-    return true;
-  });
-  return found;
 }
 
 /** Find the PM position of a cell at given row/col indices within a table */
@@ -46,12 +25,12 @@ function findCellPos(
   tablePos: number,
   targetRow: number,
   targetCol: number,
-): number | null {
+): null | number {
   const tableNode = editor.state.doc.nodeAt(tablePos);
   if (!tableNode) return null;
 
   let rowIdx = 0;
-  let result: number | null = null;
+  let result: null | number = null;
 
   tableNode.forEach((row, rowOffset) => {
     if (result !== null) return;
@@ -69,6 +48,29 @@ function findCellPos(
   });
 
   return result;
+}
+
+/** Find the ProseMirror position for a table DOM element */
+function findTablePos(
+  editor: Editor,
+  tableEl: HTMLTableElement,
+): null | number {
+  let found: null | number = null;
+  editor.state.doc.descendants((node, pos) => {
+    if (found !== null) return false;
+    if (node.type.name === "table") {
+      const dom = editor.view.nodeDOM(pos);
+      if (
+        dom === tableEl ||
+        (dom instanceof HTMLElement && dom.contains(tableEl))
+      ) {
+        found = pos;
+        return false;
+      }
+    }
+    return true;
+  });
+  return found;
 }
 
 // Detection zone size around table edges
@@ -355,7 +357,7 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
   return (
     <button
       className="table-insert-btn"
-      style={style}
+      onClick={handleClick}
       onMouseEnter={() => {
         hoveringBtnRef.current = true;
         cancelHide();
@@ -364,21 +366,21 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
         hoveringBtnRef.current = false;
         scheduleHide();
       }}
-      onClick={handleClick}
+      style={style}
       title={isCol ? "Insert column" : "Insert row"}
     >
       <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="12"
-        height="12"
-        viewBox="0 0 12 12"
         fill="none"
+        height="12"
         stroke="currentColor"
-        strokeWidth="1.8"
         strokeLinecap="round"
+        strokeWidth="1.8"
+        viewBox="0 0 12 12"
+        width="12"
+        xmlns="http://www.w3.org/2000/svg"
       >
-        <line x1="6" y1="2" x2="6" y2="10" />
-        <line x1="2" y1="6" x2="10" y2="6" />
+        <line x1="6" x2="6" y1="2" y2="10" />
+        <line x1="2" x2="10" y1="6" y2="6" />
       </svg>
     </button>
   );

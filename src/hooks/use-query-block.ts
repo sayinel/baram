@@ -1,40 +1,18 @@
 // §5.13 useQueryBlock — loads vault files and executes queries
-import { useState, useCallback } from "react";
-import { useFileStore } from "../stores/file-store";
-import { listDir, readFile } from "../ipc/invoke";
-import { parseQueryDSL } from "../utils/query-parser";
-import { executeQuery, type VaultFile } from "../utils/query-executor";
+import { useCallback, useState } from "react";
+
 import type { FileEntry } from "../ipc/types";
 
-// Parse frontmatter from markdown content
-function parseFrontmatter(content: string): Record<string, unknown> {
-  if (!content.startsWith("---")) return {};
-  const endIdx = content.indexOf("\n---", 3);
-  if (endIdx === -1) return {};
-  const yaml = content.slice(4, endIdx);
-  const result: Record<string, unknown> = {};
-  for (const line of yaml.split("\n")) {
-    const colonIdx = line.indexOf(":");
-    if (colonIdx === -1) continue;
-    const key = line.slice(0, colonIdx).trim();
-    const val = line.slice(colonIdx + 1).trim();
-    // Remove surrounding quotes
-    result[key] = val.replace(/^["']|["']$/g, "");
-  }
-  return result;
-}
-
-// Extract tags (#tag) from content
-function extractTags(content: string): string[] {
-  const matches = content.match(/#[a-zA-Z0-9_\-/\u3131-\uD79D]+/g);
-  return matches ? [...new Set(matches.map((t) => t.slice(1)))] : [];
-}
+import { listDir, readFile } from "../ipc/invoke";
+import { useFileStore } from "../stores/file-store";
+import { executeQuery, type VaultFile } from "../utils/query-executor";
+import { parseQueryDSL } from "../utils/query-parser";
 
 export function useQueryBlock() {
   const vaultPath = useFileStore((s) => s.rootPath);
   const [results, setResults] = useState<VaultFile[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<null | string>(null);
 
   const execute = useCallback(
     async (queryDsl: string) => {
@@ -103,4 +81,28 @@ export function useQueryBlock() {
   );
 
   return { results, loading, error, execute, vaultPath };
+}
+
+// Extract tags (#tag) from content
+function extractTags(content: string): string[] {
+  const matches = content.match(/#[a-zA-Z0-9_\-/\u3131-\uD79D]+/g);
+  return matches ? [...new Set(matches.map((t) => t.slice(1)))] : [];
+}
+
+// Parse frontmatter from markdown content
+function parseFrontmatter(content: string): Record<string, unknown> {
+  if (!content.startsWith("---")) return {};
+  const endIdx = content.indexOf("\n---", 3);
+  if (endIdx === -1) return {};
+  const yaml = content.slice(4, endIdx);
+  const result: Record<string, unknown> = {};
+  for (const line of yaml.split("\n")) {
+    const colonIdx = line.indexOf(":");
+    if (colonIdx === -1) continue;
+    const key = line.slice(0, colonIdx).trim();
+    const val = line.slice(colonIdx + 1).trim();
+    // Remove surrounding quotes
+    result[key] = val.replace(/^["']|["']$/g, "");
+  }
+  return result;
 }

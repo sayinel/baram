@@ -1,42 +1,34 @@
+import type { Editor } from "@tiptap/core";
+import type {
+  SuggestionKeyDownProps,
+  SuggestionProps,
+} from "@tiptap/suggestion";
+
 // §31 Wikilink autocomplete — Tiptap Extension using Suggestion API
 // Triggers on [[ and shows a file search popup
 import { Extension } from "@tiptap/core";
-import { Suggestion } from "@tiptap/suggestion";
-import { ReactRenderer } from "@tiptap/react";
 import { PluginKey } from "@tiptap/pm/state";
-import type { Editor } from "@tiptap/core";
-import type {
-  SuggestionProps,
-  SuggestionKeyDownProps,
-} from "@tiptap/suggestion";
+import { ReactRenderer } from "@tiptap/react";
+import { Suggestion } from "@tiptap/suggestion";
+
 import {
   WikilinkMenuList,
   type WikilinkMenuRef,
 } from "../../components/command/WikilinkMenu";
+import { refreshIndex, writeFile } from "../../ipc/invoke";
+import { useEditorStore } from "../../stores/editor-store";
+import { useFileStore } from "../../stores/file-store";
+import { flattenFileTree, fuzzyScore } from "../../utils/file-search";
+import { getSyntaxRevealExpanded, syntaxRevealKey } from "./syntax-reveal";
 import {
-  filterFiles,
   fileNameWithoutExtension,
+  filterFiles,
   loadFileHeadings,
   longestCommonPrefix,
   type WikilinkSuggestionItem,
 } from "./wikilink-suggest-utils";
-import { useFileStore } from "../../stores/file-store";
-import { useEditorStore } from "../../stores/editor-store";
-import { flattenFileTree, fuzzyScore } from "../../utils/file-search";
-import { writeFile, refreshIndex } from "../../ipc/invoke";
-import { getSyntaxRevealExpanded, syntaxRevealKey } from "./syntax-reveal";
 
 const MENU_HEIGHT = 280;
-
-function positionPopup(popup: HTMLDivElement, coords: DOMRect) {
-  const spaceBelow = window.innerHeight - coords.bottom - 4;
-  popup.style.left = `${coords.left}px`;
-  if (spaceBelow < MENU_HEIGHT) {
-    popup.style.top = `${coords.top - MENU_HEIGHT - 4}px`;
-  } else {
-    popup.style.top = `${coords.bottom + 4}px`;
-  }
-}
 
 /** Build suggestion items from the file store */
 function getFileItems(): WikilinkSuggestionItem[] {
@@ -52,6 +44,16 @@ function getFileItems(): WikilinkSuggestionItem[] {
       label: f.name,
       path: f.path,
     }));
+}
+
+function positionPopup(popup: HTMLDivElement, coords: DOMRect) {
+  const spaceBelow = window.innerHeight - coords.bottom - 4;
+  popup.style.left = `${coords.left}px`;
+  if (spaceBelow < MENU_HEIGHT) {
+    popup.style.top = `${coords.top - MENU_HEIGHT - 4}px`;
+  } else {
+    popup.style.top = `${coords.bottom + 4}px`;
+  }
 }
 
 export const WikilinkSuggest = Extension.create({
@@ -79,8 +81,8 @@ export const WikilinkSuggest = Extension.create({
           props,
         }: {
           editor: Editor;
-          range: { from: number; to: number };
           props: WikilinkSuggestionItem;
+          range: { from: number; to: number };
         }) => {
           // When SyntaxReveal has a wikilink expanded, replace the entire expanded range
           // instead of just the Suggestion range (which misses the trailing ]])
@@ -124,7 +126,7 @@ export const WikilinkSuggest = Extension.create({
           }
 
           // Delete the range and insert a wikilink node
-          const attrs: { target: string; heading?: string | null } = {
+          const attrs: { heading?: null | string; target: string } = {
             target: props.target,
           };
           if (props.heading) {
@@ -250,10 +252,10 @@ export const WikilinkSuggest = Extension.create({
           return filtered;
         },
         render: () => {
-          let component: ReactRenderer<WikilinkMenuRef> | null = null;
+          let component: null | ReactRenderer<WikilinkMenuRef> = null;
           let popup: HTMLDivElement | null = null;
           let latestItems: WikilinkSuggestionItem[] = [];
-          let latestRange: { from: number; to: number } | null = null;
+          let latestRange: null | { from: number; to: number } = null;
 
           return {
             onStart: (props: SuggestionProps) => {

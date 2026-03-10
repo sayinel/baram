@@ -1,7 +1,7 @@
+import type { NodeTransformerEntry } from "../types";
 // §56m tag-transformer.ts — Tag mdast ↔ ProseMirror
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
 import type { Node as MdastNode, Parent as MdastParent } from "mdast";
-import type { NodeTransformerEntry } from "../types";
 
 /** Regex to detect #tag patterns in text.
  *  Matches #tag at start of string or after whitespace.
@@ -22,7 +22,7 @@ export const tagTransformer: NodeTransformerEntry = {
     _node: MdastNode,
     _schema: Schema,
     _convertChildren: (parent: MdastParent) => PmNode[],
-  ): PmNode | null {
+  ): null | PmNode {
     // Not used — tags are parsed from text nodes in md-to-pm.ts
     return null;
   },

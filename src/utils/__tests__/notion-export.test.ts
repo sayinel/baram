@@ -1,21 +1,22 @@
 // notion-export.test.ts — Tests for Baram -> Notion markdown conversion
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import {
-  toUnicodeSubscript,
-  toUnicodeSuperscript,
-  convertWikilinksForNotion,
   convertCalloutsForNotion,
-  convertInlineMathForNotion,
+  convertDefinitionListsForNotion,
+  convertFootnotesForNotion,
+  convertForNotion,
   convertHighlightForNotion,
+  convertInlineMathForNotion,
   convertSubscriptForNotion,
   convertSuperscriptForNotion,
-  convertFootnotesForNotion,
-  stripBlockRefsForNotion,
-  convertDefinitionListsForNotion,
-  stripTocForNotion,
   convertToggleForNotion,
   convertUnderlineForNotion,
-  convertForNotion,
+  convertWikilinksForNotion,
+  stripBlockRefsForNotion,
+  stripTocForNotion,
+  toUnicodeSubscript,
+  toUnicodeSuperscript,
 } from "../notion-export";
 
 // ---------------------------------------------------------------------------

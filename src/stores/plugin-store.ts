@@ -1,35 +1,37 @@
-// §69 Plugin Marketplace — Plugin State Store
-import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
-import { tauriStorage } from "./tauri-storage";
 import type { InstalledPlugin, RegistryIndex } from "../plugins/types";
 
+// §69 Plugin Marketplace — Plugin State Store
+import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
+
+import { tauriStorage } from "./tauri-storage";
+
 interface PluginState {
-  // Persisted state
-  installedPlugins: Record<string, InstalledPlugin>;
-  pluginSettings: Record<string, Record<string, unknown>>;
-  registryUrl: string;
-
-  // Runtime state (not persisted)
-  pluginErrors: Record<string, string>;
-  registryCache: RegistryIndex | null;
-  registryCacheTime: number;
-  updateAvailable: Record<string, string>; // pluginId -> latest version
-  installing: Record<string, boolean>;
-
   // Actions
   addPlugin: (plugin: InstalledPlugin) => void;
+  clearUpdateAvailable: (id: string) => void;
+  getPluginSettings: (pluginId: string) => Record<string, unknown>;
+
+  // Persisted state
+  installedPlugins: Record<string, InstalledPlugin>;
+  installing: Record<string, boolean>;
+  // Runtime state (not persisted)
+  pluginErrors: Record<string, string>;
+  pluginSettings: Record<string, Record<string, unknown>>;
+  registryCache: null | RegistryIndex;
+
+  registryCacheTime: number;
+  registryUrl: string;
   removePlugin: (id: string) => void;
   setEnabled: (id: string, enabled: boolean) => void;
-  setError: (id: string, error: string | null) => void;
+  setError: (id: string, error: null | string) => void;
   setInstalling: (id: string, installing: boolean) => void;
-  updatePluginVersion: (id: string, version: string, checksum: string) => void;
-  setRegistryCache: (index: RegistryIndex) => void;
-  setUpdateAvailable: (id: string, version: string) => void;
-  clearUpdateAvailable: (id: string) => void;
   setPluginSetting: (pluginId: string, key: string, value: unknown) => void;
-  getPluginSettings: (pluginId: string) => Record<string, unknown>;
+  setRegistryCache: (index: RegistryIndex) => void;
   setRegistryUrl: (url: string) => void;
+  setUpdateAvailable: (id: string, version: string) => void;
+  updateAvailable: Record<string, string>; // pluginId -> latest version
+  updatePluginVersion: (id: string, version: string, checksum: string) => void;
 }
 
 const DEFAULT_REGISTRY_URL =

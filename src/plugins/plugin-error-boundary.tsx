@@ -1,16 +1,16 @@
 // §69 Plugin Error Boundary — Catches and isolates plugin render errors
 import { Component } from "react";
-import type { ReactNode, ErrorInfo } from "react";
+import type { ErrorInfo, ReactNode } from "react";
 
 interface Props {
-  pluginId: string;
   children: ReactNode;
   fallback?: ReactNode;
+  pluginId: string;
 }
 
 interface State {
-  hasError: boolean;
   error: Error | null;
+  hasError: boolean;
 }
 
 export class PluginErrorBoundary extends Component<Props, State> {

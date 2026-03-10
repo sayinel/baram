@@ -1,71 +1,51 @@
 // §30d Bidirectional embed sync hook — write-back edited content to source block
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import type { NodeViewProps } from "@tiptap/react";
-import { resolveWikilinkTarget } from "../utils/wikilink-nav";
+
+import { readFile, updateFileIndex, writeFile } from "../ipc/invoke";
+import { useEditorStore } from "../stores/editor-store";
+import { useFileStore } from "../stores/file-store";
 import { findBlockContent, findBlockPosById } from "../utils/block-nav";
 import { replaceBlockInContent } from "../utils/block-replace";
-import { readFile, writeFile, updateFileIndex } from "../ipc/invoke";
-import { useFileStore } from "../stores/file-store";
-import { useEditorStore } from "../stores/editor-store";
+import { resolveWikilinkTarget } from "../utils/wikilink-nav";
 
 type EmbedStatus =
-  | "loading"
-  | "ready"
-  | "file-not-found"
   | "block-not-found"
-  | "error";
+  | "error"
+  | "file-not-found"
+  | "loading"
+  | "ready";
 
 interface UseEmbedSyncOptions {
-  target: string;
   blockId: string;
   editor: NodeViewProps["editor"];
+  target: string;
 }
 
 interface UseEmbedSyncReturn {
-  content: string | null;
-  status: EmbedStatus;
+  cancelEdit: () => void;
+  commitEdit: () => Promise<void>;
+  content: null | string;
   isEditing: boolean;
   startEditing: () => void;
+  status: EmbedStatus;
   updateContent: (newText: string) => void;
-  commitEdit: () => Promise<void>;
-  cancelEdit: () => void;
 }
 
 const DEBOUNCE_MS = 500;
-
-/**
- * Get markdown content for the current file from file store or editor serialization.
- */
-async function getSameFileContent(
-  editor: NodeViewProps["editor"],
-): Promise<string | null> {
-  const { activeTabId, tabs } = useEditorStore.getState();
-  const activeTab = tabs.find((t) => t.id === activeTabId);
-  if (activeTab) {
-    const key = activeTab.filePath || activeTab.id;
-    const cached = useFileStore.getState().openFiles.get(key);
-    if (cached !== undefined) return cached;
-  }
-
-  try {
-    const { prosemirrorToMarkdown } = await import("../pipeline/pm-to-md");
-    return prosemirrorToMarkdown(editor.state.doc);
-  } catch {
-    return null;
-  }
-}
 
 export function useEmbedSync({
   target,
   blockId,
   editor,
 }: UseEmbedSyncOptions): UseEmbedSyncReturn {
-  const [content, setContent] = useState<string | null>(null);
+  const [content, setContent] = useState<null | string>(null);
   const [status, setStatus] = useState<EmbedStatus>("loading");
   const [isEditing, setIsEditing] = useState(false);
   const isEditingRef = useRef(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingTextRef = useRef<string | null>(null);
+  const debounceRef = useRef<null | ReturnType<typeof setTimeout>>(null);
+  const pendingTextRef = useRef<null | string>(null);
 
   // Load block content
   useEffect(() => {
@@ -75,7 +55,7 @@ export function useEmbedSync({
     async function load() {
       setStatus("loading");
       try {
-        let fileContent: string | null;
+        let fileContent: null | string;
 
         if (!target) {
           fileContent = await getSameFileContent(editor);
@@ -239,4 +219,26 @@ export function useEmbedSync({
     commitEdit,
     cancelEdit,
   };
+}
+
+/**
+ * Get markdown content for the current file from file store or editor serialization.
+ */
+async function getSameFileContent(
+  editor: NodeViewProps["editor"],
+): Promise<null | string> {
+  const { activeTabId, tabs } = useEditorStore.getState();
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+  if (activeTab) {
+    const key = activeTab.filePath || activeTab.id;
+    const cached = useFileStore.getState().openFiles.get(key);
+    if (cached !== undefined) return cached;
+  }
+
+  try {
+    const { prosemirrorToMarkdown } = await import("../pipeline/pm-to-md");
+    return prosemirrorToMarkdown(editor.state.doc);
+  } catch {
+    return null;
+  }
 }

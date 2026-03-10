@@ -6,74 +6,19 @@
 // Tier 3: Document title (first heading)
 
 import type { Editor } from "@tiptap/core";
+
+import { useAIStore } from "../stores/ai-store";
 import { useEditorStore } from "../stores/editor-store";
 import { useFileStore } from "../stores/file-store";
-import { useAIStore } from "../stores/ai-store";
 
 /** Configuration returned by buildGhostTextConfig */
 export interface GhostTextConfig {
+  /** User prompt with context */
+  contextText: string;
   /** If true, ghost text should be skipped entirely */
   skip: boolean;
   /** System prompt tailored to the block type */
   systemPrompt: string;
-  /** User prompt with context */
-  contextText: string;
-}
-
-/** Detect whether the current document is a Skills file via frontmatter */
-function isSkillsFile(editor: Editor): boolean {
-  let hasSkillType = false;
-  editor.state.doc.descendants((node) => {
-    if (node.type.name === "frontmatter") {
-      const text = node.textContent;
-      if (/type:\s*skill/i.test(text)) {
-        hasSkillType = true;
-      }
-      return false;
-    }
-    return !hasSkillType;
-  });
-  return hasSkillType;
-}
-
-/** Tier 4: Cross-file context from open tabs (D3).
- *  Returns summaries (filename + first 500 chars) of up to 2 other open files. */
-function getOpenTabContext(currentFilePath?: string): string[] {
-  const aiStore = useAIStore.getState();
-  // Check if cross-file context is enabled (default: true when ghost text enabled)
-  if (aiStore.ghostTextCrossFileEnabled === false) return [];
-
-  const editorStore = useEditorStore.getState();
-  const fileStore = useFileStore.getState();
-
-  const otherTabs = editorStore.tabs.filter(
-    (t) =>
-      t.filePath &&
-      t.filePath !== currentFilePath &&
-      (!t.type || t.type === "file"),
-  );
-
-  const summaries: string[] = [];
-  for (const tab of otherTabs) {
-    if (summaries.length >= 2) break;
-    const content = fileStore.openFiles.get(tab.filePath);
-    if (content) {
-      const snippet = content.slice(0, 500);
-      const name = tab.filePath.split("/").pop() || tab.title;
-      summaries.push(`[${name}]\n${snippet}`);
-    }
-  }
-  return summaries;
-}
-
-/** Get language attribute from a codeBlock node */
-function getCodeBlockLanguage(editor: Editor, cursorPos: number): string {
-  const $pos = editor.state.doc.resolve(cursorPos);
-  const parent = $pos.parent;
-  if (parent.type.name === "codeBlock") {
-    return (parent.attrs.language as string) || "";
-  }
-  return "";
 }
 
 /** Build context-aware Ghost Text configuration.
@@ -184,4 +129,60 @@ export function buildGhostTextPrompt(
 ): string {
   const config = buildGhostTextConfig(editor, cursorPos);
   return config.contextText;
+}
+
+/** Get language attribute from a codeBlock node */
+function getCodeBlockLanguage(editor: Editor, cursorPos: number): string {
+  const $pos = editor.state.doc.resolve(cursorPos);
+  const parent = $pos.parent;
+  if (parent.type.name === "codeBlock") {
+    return (parent.attrs.language as string) || "";
+  }
+  return "";
+}
+
+/** Tier 4: Cross-file context from open tabs (D3).
+ *  Returns summaries (filename + first 500 chars) of up to 2 other open files. */
+function getOpenTabContext(currentFilePath?: string): string[] {
+  const aiStore = useAIStore.getState();
+  // Check if cross-file context is enabled (default: true when ghost text enabled)
+  if (aiStore.ghostTextCrossFileEnabled === false) return [];
+
+  const editorStore = useEditorStore.getState();
+  const fileStore = useFileStore.getState();
+
+  const otherTabs = editorStore.tabs.filter(
+    (t) =>
+      t.filePath &&
+      t.filePath !== currentFilePath &&
+      (!t.type || t.type === "file"),
+  );
+
+  const summaries: string[] = [];
+  for (const tab of otherTabs) {
+    if (summaries.length >= 2) break;
+    const content = fileStore.openFiles.get(tab.filePath);
+    if (content) {
+      const snippet = content.slice(0, 500);
+      const name = tab.filePath.split("/").pop() || tab.title;
+      summaries.push(`[${name}]\n${snippet}`);
+    }
+  }
+  return summaries;
+}
+
+/** Detect whether the current document is a Skills file via frontmatter */
+function isSkillsFile(editor: Editor): boolean {
+  let hasSkillType = false;
+  editor.state.doc.descendants((node) => {
+    if (node.type.name === "frontmatter") {
+      const text = node.textContent;
+      if (/type:\s*skill/i.test(text)) {
+        hasSkillType = true;
+      }
+      return false;
+    }
+    return !hasSkillType;
+  });
+  return hasSkillType;
 }

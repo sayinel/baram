@@ -1,11 +1,13 @@
 // §72 Properties Panel — YAML frontmatter GUI editor
-import { useState, useCallback, useRef } from "react";
-import { useUIStore } from "../../stores/ui-store";
+import { useCallback, useRef, useState } from "react";
+
+import type { FileEntry } from "../../stores/file-store";
+
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
-import type { FileEntry } from "../../stores/file-store";
-import { isSkillFrontmatter } from "../../utils/skill-frontmatter";
+import { useUIStore } from "../../stores/ui-store";
 import { showPrompt } from "../../utils/ai-commands";
+import { isSkillFrontmatter } from "../../utils/skill-frontmatter";
 import { getSkillSections } from "./skill-panel-registry";
 // §72c Side-effect imports: sections self-register into the registry
 import "./SkillDependencySection";
@@ -15,16 +17,16 @@ import "./SkillOptimizeSection";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type PropertyType = "string" | "array" | "enum";
-
 export interface PropertyEntry {
   key: string;
-  value: string | string[];
   type: PropertyType;
+  value: string | string[];
 }
 
+export type PropertyType = "array" | "enum" | "string";
+
 // Keys that are always treated as arrays
-const ARRAY_KEYS = new Set(["tags", "requires"]);
+const ARRAY_KEYS = new Set(["requires", "tags"]);
 
 // Keys that are treated as enums
 const ENUM_KEYS = new Set(["status"]);
@@ -86,94 +88,6 @@ export function parseYamlProperties(yaml: string): PropertyEntry[] {
   return entries;
 }
 
-/**
- * Serialize PropertyEntry[] back to a YAML string (without --- delimiters).
- * Exported for testing.
- */
-export function serializeYamlProperties(entries: PropertyEntry[]): string {
-  return entries
-    .map((entry) => {
-      if (entry.type === "array") {
-        const arr = entry.value as string[];
-        const bracketList = arr.join(", ");
-        return `${entry.key}: [${bracketList}]`;
-      }
-      return `${entry.key}: ${entry.value as string}`;
-    })
-    .join("\n");
-}
-
-// ─── Frontmatter helpers ──────────────────────────────────────────────────────
-
-function extractFrontmatter(
-  content: string,
-): { yaml: string; rest: string } | null {
-  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (!match) return null;
-  return { yaml: match[1], rest: content.slice(match[0].length) };
-}
-
-function rebuildContent(yaml: string, rest: string): string {
-  return `---\n${yaml}\n---${rest}`;
-}
-
-// ─── File tree search ─────────────────────────────────────────────────────────
-
-function findFileInTree(tree: FileEntry[], name: string): FileEntry | null {
-  for (const entry of tree) {
-    if (!entry.isDir && (entry.name === name || entry.name === `${name}.md`)) {
-      return entry;
-    }
-    if (entry.isDir && entry.children) {
-      const found = findFileInTree(entry.children, name);
-      if (found) return found;
-    }
-  }
-  return null;
-}
-
-// ─── AddPropertyButton ────────────────────────────────────────────────────────
-
-function AddPropertyButton({ onAdd }: { onAdd: (key: string) => void }) {
-  const [adding, setAdding] = useState(false);
-  const [newKey, setNewKey] = useState("");
-
-  const commit = () => {
-    const trimmed = newKey.trim();
-    if (trimmed) onAdd(trimmed);
-    setAdding(false);
-    setNewKey("");
-  };
-
-  if (!adding) {
-    return (
-      <button className="properties-add-btn" onClick={() => setAdding(true)}>
-        + 속성 추가
-      </button>
-    );
-  }
-
-  return (
-    <input
-      className="properties-input"
-      autoFocus
-      placeholder="key 이름 입력 후 Enter"
-      value={newKey}
-      onChange={(e) => setNewKey(e.target.value)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") commit();
-        if (e.key === "Escape") {
-          setAdding(false);
-          setNewKey("");
-        }
-      }}
-      onBlur={commit}
-    />
-  );
-}
-
-// ─── PropertiesPanel ──────────────────────────────────────────────────────────
-
 export function PropertiesPanel() {
   const { rightPanelOpen, rightPanelMode } = useUIStore();
   const { activeTabId, tabs } = useEditorStore();
@@ -181,7 +95,7 @@ export function PropertiesPanel() {
 
   const [sourceMode, setSourceMode] = useState(false);
   const [sourceText, setSourceText] = useState("");
-  const [lastAddedKey, setLastAddedKey] = useState<string | null>(null);
+  const [lastAddedKey, setLastAddedKey] = useState<null | string>(null);
   const undoStackRef = useRef<string[]>([]);
   const redoStackRef = useRef<string[]>([]);
   const [, forceRender] = useState(0);
@@ -382,16 +296,16 @@ export function PropertiesPanel() {
         <div className="properties-header-actions">
           <button
             className="properties-undo-btn"
-            onClick={handleUndo}
             disabled={undoStackRef.current.length === 0}
+            onClick={handleUndo}
             title="Undo (Ctrl+Z)"
           >
             ↩
           </button>
           <button
             className="properties-undo-btn"
-            onClick={handleRedo}
             disabled={redoStackRef.current.length === 0}
+            onClick={handleRedo}
             title="Redo (Ctrl+Shift+Z)"
           >
             ↪
@@ -417,9 +331,9 @@ export function PropertiesPanel() {
       {content !== null && yaml !== null && sourceMode && (
         <textarea
           className="properties-source"
-          value={sourceText}
           onChange={(e) => setSourceText(e.target.value)}
           spellCheck={false}
+          value={sourceText}
         />
       )}
 
@@ -427,7 +341,7 @@ export function PropertiesPanel() {
         <>
           <div className="properties-entries">
             {entries.map((entry) => (
-              <div key={entry.key} className="properties-row">
+              <div className="properties-row" key={entry.key}>
                 <div className="properties-key">
                   <span>{entry.key}</span>
                   <button
@@ -441,25 +355,25 @@ export function PropertiesPanel() {
 
                 {entry.type === "string" && (
                   <input
+                    autoFocus={entry.key === lastAddedKey}
                     className="properties-input"
-                    value={entry.value as string}
                     onChange={(e) =>
                       handleStringChange(entry.key, e.target.value)
                     }
-                    autoFocus={entry.key === lastAddedKey}
                     onFocus={() => {
                       if (entry.key === lastAddedKey) setLastAddedKey(null);
                     }}
+                    value={entry.value as string}
                   />
                 )}
 
                 {entry.type === "enum" && (
                   <select
                     className="properties-select"
-                    value={entry.value as string}
                     onChange={(e) =>
                       handleEnumChange(entry.key, e.target.value)
                     }
+                    value={entry.value as string}
                   >
                     {(ENUM_VALUES[entry.key] ?? [entry.value as string]).map(
                       (opt) => (
@@ -477,8 +391,8 @@ export function PropertiesPanel() {
                       const isFileRef = entry.key === "requires";
                       return (
                         <span
+                          className={`properties-chip${isFileRef ? "file-ref" : ""}`}
                           key={idx}
-                          className={`properties-chip${isFileRef ? " file-ref" : ""}`}
                           onClick={
                             isFileRef ? () => handleOpenFile(chip) : undefined
                           }
@@ -520,4 +434,92 @@ export function PropertiesPanel() {
       )}
     </div>
   );
+}
+
+// ─── Frontmatter helpers ──────────────────────────────────────────────────────
+
+/**
+ * Serialize PropertyEntry[] back to a YAML string (without --- delimiters).
+ * Exported for testing.
+ */
+export function serializeYamlProperties(entries: PropertyEntry[]): string {
+  return entries
+    .map((entry) => {
+      if (entry.type === "array") {
+        const arr = entry.value as string[];
+        const bracketList = arr.join(", ");
+        return `${entry.key}: [${bracketList}]`;
+      }
+      return `${entry.key}: ${entry.value as string}`;
+    })
+    .join("\n");
+}
+
+function AddPropertyButton({ onAdd }: { onAdd: (key: string) => void }) {
+  const [adding, setAdding] = useState(false);
+  const [newKey, setNewKey] = useState("");
+
+  const commit = () => {
+    const trimmed = newKey.trim();
+    if (trimmed) onAdd(trimmed);
+    setAdding(false);
+    setNewKey("");
+  };
+
+  if (!adding) {
+    return (
+      <button className="properties-add-btn" onClick={() => setAdding(true)}>
+        + 속성 추가
+      </button>
+    );
+  }
+
+  return (
+    <input
+      autoFocus
+      className="properties-input"
+      onBlur={commit}
+      onChange={(e) => setNewKey(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") commit();
+        if (e.key === "Escape") {
+          setAdding(false);
+          setNewKey("");
+        }
+      }}
+      placeholder="key 이름 입력 후 Enter"
+      value={newKey}
+    />
+  );
+}
+
+// ─── File tree search ─────────────────────────────────────────────────────────
+
+function extractFrontmatter(
+  content: string,
+): null | { rest: string; yaml: string } {
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!match) return null;
+  return { yaml: match[1], rest: content.slice(match[0].length) };
+}
+
+// ─── AddPropertyButton ────────────────────────────────────────────────────────
+
+function findFileInTree(tree: FileEntry[], name: string): FileEntry | null {
+  for (const entry of tree) {
+    if (!entry.isDir && (entry.name === name || entry.name === `${name}.md`)) {
+      return entry;
+    }
+    if (entry.isDir && entry.children) {
+      const found = findFileInTree(entry.children, name);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+// ─── PropertiesPanel ──────────────────────────────────────────────────────────
+
+function rebuildContent(yaml: string, rest: string): string {
+  return `---\n${yaml}\n---${rest}`;
 }

@@ -1,9 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import {
-  extractTagsFromContent,
   buildTagIndex,
-  filterTags,
   buildTagSuggestionPrompt,
+  extractTagsFromContent,
+  filterTags,
   parseTagSuggestions,
 } from "../journal-tags";
 
@@ -125,12 +126,12 @@ describe("buildTagIndex", () => {
 
 describe("filterTags", () => {
   const index = new Map<string, number>([
-    ["rust", 10],
+    ["coding", 2],
+    ["daily", 7],
+    ["design", 5],
     ["react", 8],
     ["readme", 3],
-    ["design", 5],
-    ["daily", 7],
-    ["coding", 2],
+    ["rust", 10],
   ]);
 
   it("filters by prefix and sorts by frequency", () => {
@@ -165,10 +166,10 @@ describe("filterTags", () => {
 
   it("matches nested tag prefix", () => {
     const nestedIndex = new Map<string, number>([
+      ["coding", 8],
       ["project/baram", 5],
       ["project/other", 3],
       ["status/done", 2],
-      ["coding", 8],
     ]);
     const result = filterTags("project", nestedIndex);
     expect(result).toEqual(["project/baram", "project/other"]);
@@ -176,9 +177,9 @@ describe("filterTags", () => {
 
   it("matches nested tag segment prefix", () => {
     const nestedIndex = new Map<string, number>([
+      ["baram", 10],
       ["project/baram", 5],
       ["project/other", 3],
-      ["baram", 10],
     ]);
     // "baram" matches both the top-level tag (prefix) and nested segment
     const result = filterTags("baram", nestedIndex);

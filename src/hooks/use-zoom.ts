@@ -4,23 +4,13 @@
 // Persists zoom level in settings store.
 
 import { useEffect } from "react";
+
 import { useSettingsStore } from "../stores/settings-store";
 
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 2.0;
 const KEYBOARD_STEP = 0.1;
 const PINCH_SENSITIVITY = 0.005;
-
-function clampZoom(level: number): number {
-  return Math.round(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, level)) * 100) / 100;
-}
-
-function applyZoom(level: number): void {
-  const el = document.querySelector(".tiptap") as HTMLElement | null;
-  if (el) {
-    el.style.zoom = level === 1 ? "" : String(level);
-  }
-}
 
 export function useZoom(): void {
   // Apply persisted zoom level on mount and when editor re-renders
@@ -94,4 +84,15 @@ export function useZoom(): void {
       window.removeEventListener("keydown", handleKeydown, { capture: true });
     };
   }, []);
+}
+
+function applyZoom(level: number): void {
+  const el = document.querySelector(".tiptap") as HTMLElement | null;
+  if (el) {
+    el.style.zoom = level === 1 ? "" : String(level);
+  }
+}
+
+function clampZoom(level: number): number {
+  return Math.round(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, level)) * 100) / 100;
 }
