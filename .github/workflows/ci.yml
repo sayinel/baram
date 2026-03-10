@@ -37,10 +37,13 @@ jobs:
               - 'package.json'
               - 'package-lock.json'
               - 'tsconfig.json'
+              - 'tsconfig.node.json'
               - 'vite.config.*'
               - 'vitest.config.*'
               - 'eslint.config.*'
               - 'stylelint.config.*'
+              - 'tailwind.config.*'
+              - 'postcss.config.*'
               - 'knip.json'
             rust:
               - 'src-tauri/**'
@@ -97,6 +100,7 @@ jobs:
       - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5  # v2.8.2
         with:
           workspaces: src-tauri -> target
+          cache-on-failure: true
 
       - name: Install Tauri system deps
         run: |
@@ -107,12 +111,13 @@ jobs:
         run: cargo fmt --check
         working-directory: src-tauri
 
-      - name: Build frontend (needed by generate_context macro)
+      - name: Setup Node.js (for frontend build)
         uses: ./.github/actions/setup-node
-      - run: npm run build
+      - name: Build frontend assets
+        run: npm run build
 
       - name: Clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
         working-directory: src-tauri
 
       - name: Cargo test
@@ -134,22 +139,30 @@ jobs:
   # ── CI Gate (single required check for branch protection) ───────
   ci-pass:
     if: always()
-    needs: [lint, test, rust-check, security]
+    needs: [changes, lint, test, rust-check, security]
     runs-on: ubuntu-latest
     steps:
       - name: Check job results
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          LINT: ${{ needs.lint.result }}
+          TEST: ${{ needs.test.result }}
+          RUST: ${{ needs.rust-check.result }}
+          SEC: ${{ needs.security.result }}
         run: |
-          if [[ "${{ needs.lint.result }}" =~ ^(success|skipped)$ && \
-                "${{ needs.test.result }}" =~ ^(success|skipped)$ && \
-                "${{ needs.rust-check.result }}" =~ ^(success|skipped)$ && \
-                "${{ needs.security.result }}" =~ ^(success|skipped)$ ]]; then
+          if [[ "$CHANGES" == "success" && \
+                "$LINT" =~ ^(success|skipped)$ && \
+                "$TEST" =~ ^(success|skipped)$ && \
+                "$RUST" =~ ^(success|skipped)$ && \
+                "$SEC" =~ ^(success|skipped)$ ]]; then
             echo "All checks passed or were skipped."
             exit 0
           else
             echo "One or more checks failed or were cancelled."
-            echo "lint: ${{ needs.lint.result }}"
-            echo "test: ${{ needs.test.result }}"
-            echo "rust-check: ${{ needs.rust-check.result }}"
-            echo "security: ${{ needs.security.result }}"
+            echo "changes: $CHANGES"
+            echo "lint: $LINT"
+            echo "test: $TEST"
+            echo "rust-check: $RUST"
+            echo "security: $SEC"
             exit 1
           fi
