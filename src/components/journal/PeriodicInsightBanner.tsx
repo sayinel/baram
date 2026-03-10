@@ -23,6 +23,7 @@ interface Props {
  * Detect if a file path is a weekly or monthly periodic note.
  * Returns null if it's neither.
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function detectPeriodicType(filePath: string): InsightType | null {
   if (/\/weekly\//.test(filePath)) return "weekly";
   if (/\/monthly\//.test(filePath)) return "monthly";

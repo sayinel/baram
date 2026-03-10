@@ -150,6 +150,7 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
  *   tags: [tag1, tag2]       (inline array)
  *   tags:\n  - tag1\n  - tag2  (block list)
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function parseFrontmatterTags(yaml: string): string[] {
   // Inline array: tags: [tag1, "tag 2", tag3]
   const inlineMatch = yaml.match(/^tags:\s*\[([^\]]*)\]/m);
@@ -176,6 +177,7 @@ export function parseFrontmatterTags(yaml: string): string[] {
  * Rewrites the `tags:` section in YAML with new tags, preserving the original format.
  * If no tags field exists, appends `tags: [...]` after the first line.
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function updateFrontmatterTags(yaml: string, tags: string[]): string {
   const format = detectTagsFormat(yaml);
 

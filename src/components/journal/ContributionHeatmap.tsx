@@ -14,6 +14,7 @@ interface ContributionHeatmapProps {
   year: number;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function getHeatmapLevel(wordCount: number): 0 | 1 | 2 | 3 | 4 {
   if (wordCount === 0) return 0;
   if (wordCount < 100) return 1;
@@ -23,6 +24,7 @@ export function getHeatmapLevel(wordCount: number): 0 | 1 | 2 | 3 | 4 {
 }
 
 // Returns month label positions: {month (short name), weekIndex of the first day of that month}.
+// eslint-disable-next-line react-refresh/only-export-components
 export function getMonthLabels(
   year: number,
 ): { month: string; weekIndex: number }[] {
@@ -56,6 +58,7 @@ export function getMonthLabels(
 
 // Returns an array of {date, dayOfWeek (0=Sun..6=Sat), weekIndex} for each day in the year.
 // weekIndex is 0-based, determined by the ISO week column position.
+// eslint-disable-next-line react-refresh/only-export-components
 export function getWeekColumns(
   year: number,
 ): { date: string; dayOfWeek: number; weekIndex: number }[] {

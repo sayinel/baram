@@ -29,6 +29,7 @@ interface JournalListEntry {
   preview: string;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function parseBlockParams(content: string): Record<string, string> {
   const params: Record<string, string> = {};
   for (const line of content.split("\n")) {
@@ -38,6 +39,7 @@ export function parseBlockParams(content: string): Record<string, string> {
   return params;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function parseRange(range: string): [string, string] | null {
   const m = range.match(/^(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})$/);
   return m ? [m[1], m[2]] : null;

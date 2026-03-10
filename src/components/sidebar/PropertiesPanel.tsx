@@ -40,6 +40,7 @@ const ENUM_VALUES: Record<string, string[]> = {
  * Parse a YAML frontmatter string (without --- delimiters) into PropertyEntry[].
  * Exported for testing.
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function parseYamlProperties(yaml: string): PropertyEntry[] {
   if (!yaml || !yaml.trim()) return [];
 
@@ -442,6 +443,7 @@ export function PropertiesPanel() {
  * Serialize PropertyEntry[] back to a YAML string (without --- delimiters).
  * Exported for testing.
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function serializeYamlProperties(entries: PropertyEntry[]): string {
   return entries
     .map((entry) => {
