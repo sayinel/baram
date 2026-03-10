@@ -1,0 +1,36 @@
+{
+  // https://go.microsoft.com/fwlink/?linkid=830387
+  // Requires: vadimcn.vscode-lldb extension
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // Debug Rust backend during development (Vite dev server starts automatically)
+      "type": "lldb",
+      "request": "launch",
+      "name": "Tauri Development Debug",
+      "cargo": {
+        "args": [
+          "build",
+          "--manifest-path=./src-tauri/Cargo.toml",
+          "--no-default-features"
+        ]
+      },
+      // Starts the Vite dev server before launching the debugger
+      "preLaunchTask": "ui:dev"
+    },
+    {
+      // Debug Rust backend against a production build of the frontend
+      "type": "lldb",
+      "request": "launch",
+      "name": "Tauri Production Debug",
+      "cargo": {
+        "args": [
+          "build",
+          "--release",
+          "--manifest-path=./src-tauri/Cargo.toml"
+        ]
+      },
+      "preLaunchTask": "ui:build"
+    }
+  ]
+}
