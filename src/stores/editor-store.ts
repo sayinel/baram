@@ -66,6 +66,8 @@ interface EditorState {
   setCurrentSelection: (text: string) => void;
   /** §72 Signal editor to re-read content from fileStore */
   requestContentRefresh: () => void;
+  /** Close all tabs (including pinned) */
+  closeAllTabs: () => void;
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -246,6 +248,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         : state.activeTabId;
       const mruOrder = state.mruOrder.filter((id) => !closedIds.has(id));
       return { tabs, activeTabId, mruOrder };
+    }),
+
+  closeAllTabs: () =>
+    set({
+      tabs: [],
+      activeTabId: null,
+      mruOrder: [],
     }),
 
   openGraphTab: () => {
