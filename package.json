@@ -11,9 +11,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src/",
-    "check": "tsc --noEmit && eslint src/ && vitest run",
-    "format": "prettier --write 'src/**/*.{ts,tsx}'",
-    "format:check": "prettier --check 'src/**/*.{ts,tsx}'",
+    "lint:css": "stylelint 'src/**/*.css'",
+    "check": "tsc --noEmit && eslint src/ && stylelint 'src/**/*.css' && vitest run",
+    "format": "prettier --write 'src/**/*.{ts,tsx,css}'",
+    "format:check": "prettier --check 'src/**/*.{ts,tsx,css}'",
     "prepare": "husky"
   },
   "dependencies": {
@@ -80,6 +81,8 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "@commitlint/cli": "^20.4.3",
+    "@commitlint/config-conventional": "^20.4.3",
     "@eslint/js": "^9.39.2",
     "@tauri-apps/cli": "^2",
     "@testing-library/jest-dom": "^6.9.1",
@@ -91,11 +94,18 @@
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
     "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-perfectionist": "^5.6.0",
     "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.5.2",
     "husky": "^9.1.7",
     "jsdom": "^28.0.0",
     "lint-staged": "^16.3.2",
     "prettier": "^3.8.1",
+    "prettier-plugin-tailwindcss": "^0.7.2",
+    "stylelint": "^17.4.0",
+    "stylelint-config-recess-order": "^7.6.1",
+    "stylelint-config-standard": "^40.0.0",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.55.0",
     "vite": "^7.0.4",
@@ -105,6 +115,10 @@
     "src/**/*.{ts,tsx}": [
       "prettier --check",
       "eslint --max-warnings=0"
+    ],
+    "src/**/*.css": [
+      "prettier --check",
+      "stylelint --max-warnings=0"
     ],
     "src-tauri/src/**/*.rs": [
       "bash -c 'cd src-tauri && cargo fmt --check && cargo clippy -- -D warnings'"
