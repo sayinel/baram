@@ -162,6 +162,31 @@ Type `#` through `######` followed by a space to create headings H1–H6. You ca
 
 Use `Tab` to indent and `Shift+Tab` to outdent list items.
 
+#### Folding (Headings & Lists)
+
+Baram supports Obsidian-style folding for headings and nested list items.
+
+**How it works:**
+
+- **Headings**: Hover over any heading (H1–H6) to reveal a fold arrow in the gutter. Click the arrow or use the keyboard shortcut to collapse all content below that heading until the next heading of equal or higher level.
+- **Nested lists**: List items that contain nested sub-lists show a fold arrow. Clicking it collapses the nested children.
+- **Ellipsis indicator**: When a section is folded, a `...` badge appears after the heading or list item text, indicating hidden content. Click the `...` or the arrow to expand.
+
+**Keyboard shortcuts:**
+
+| Action | macOS | Windows/Linux |
+|--------|-------|---------------|
+| Toggle Fold | `Cmd+Shift+[` | `Ctrl+Shift+[` |
+| Fold All | `Cmd+Shift+Alt+[` | `Ctrl+Shift+Alt+[` |
+| Unfold All | `Cmd+Shift+Alt+]` | `Ctrl+Shift+Alt+]` |
+
+**Key behaviors:**
+
+- Fold state is **view-only** — it does not modify the markdown document, affect undo history, or change the saved file
+- Fold state is **preserved per file** — when you switch tabs and come back, your folds are restored
+- **Find & Replace** automatically unfolds a section if a search match is inside a folded region
+- **TOC clicks** automatically unfold the target heading section
+
 #### Other Blocks
 
 | Block | How to Create | Shortcut (macOS) | Shortcut (Win/Linux) |

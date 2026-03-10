@@ -32,6 +32,9 @@ Complete list of keyboard shortcuts available in Baram.
 | Select All | `Cmd+A` | `Ctrl+A` |
 | Find | `Cmd+F` | `Ctrl+F` |
 | Replace | `Cmd+H` | `Ctrl+H` |
+| Toggle Fold | `Cmd+Shift+[` | `Ctrl+Shift+[` |
+| Fold All | `Cmd+Shift+Alt+[` | `Ctrl+Shift+Alt+[` |
+| Unfold All | `Cmd+Shift+Alt+]` | `Ctrl+Shift+Alt+]` |
 
 ## Inline Formatting
 
@@ -157,6 +160,7 @@ Complete list of keyboard shortcuts available in Baram.
 - **Tab Switcher**: Hold `Ctrl` while pressing `Tab` to cycle through recently used tabs; release `Ctrl` to select
 - **Ghost Text**: AI autocomplete appears as faded text — press `Tab` to accept, `Cmd+Right` for just the first word, `Escape` to dismiss
 - **Find & Replace**: Use `Cmd+F` to find text, `Cmd+H` to find and replace. Press `Enter`/`Shift+Enter` to navigate between matches
+- **Folding**: Hover over a heading or nested list item to see a fold arrow. Click it or press `Cmd+Shift+[` to collapse/expand. Use `Cmd+Shift+Alt+[` / `]` to fold/unfold all
 - **Date Mentions**: Type `@` and select Today/Yesterday/Tomorrow to insert a date mention chip linked to that day's journal entry
 
 ---

@@ -143,6 +143,22 @@ Type `[^id]` (e.g., `[^1]` or `[^note]`) anywhere in your text to insert a footn
 
 Press `Cmd+Shift+F` (macOS) or `Ctrl+Shift+F` (Windows/Linux) to open Global Search. It searches all files in your workspace using full-text search. Supports regex, file/folder filters, and replace across files.
 
+### How do I fold/collapse a heading section?
+
+Hover over any heading (H1–H6) to reveal a fold arrow in the left gutter. Click the arrow to collapse all content below that heading until the next heading of equal or higher level. Click again (or click the `...` indicator) to expand. You can also use `Cmd+Shift+[` (macOS) / `Ctrl+Shift+[` (Windows/Linux) to toggle fold at the cursor position.
+
+### How do I fold a nested list?
+
+List items that contain nested sub-lists (bullet, ordered, or task) show a fold arrow on hover. Click the arrow to collapse the nested children. This works at any nesting depth.
+
+### How do I fold/unfold everything at once?
+
+Use `Cmd+Shift+Alt+[` (macOS) / `Ctrl+Shift+Alt+[` (Windows/Linux) to fold all headings and nested list items. Use `Cmd+Shift+Alt+]` / `Ctrl+Shift+Alt+]` to unfold all.
+
+### Does folding change my markdown file?
+
+No. Folding is purely a view-level feature — it does not modify the document, affect undo history, or change the saved file. Fold state is preserved per file across tab switches.
+
 ### What is Source Mode?
 
 Press `Cmd+/` (macOS) or `Ctrl+/` (Windows/Linux) to toggle Source Mode. This shows the raw markdown in a CodeMirror editor with full undo/redo support, useful for precise editing or troubleshooting formatting.
