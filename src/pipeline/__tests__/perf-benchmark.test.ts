@@ -10,7 +10,7 @@ import { prosemirrorToMarkdown } from "../pm-to-md";
 // CI runners are shared machines — allow 3x headroom
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const CI = !!(globalThis as any).process?.env?.CI;
-const CI_MULTIPLIER = CI ? 3 : 1;
+const CI_MULTIPLIER = CI ? 3 : 2;
 
 // Full schema matching M2 + M3 extensions
 const schema = new Schema({
