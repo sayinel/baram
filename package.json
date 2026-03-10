@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.2.0",
   "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
@@ -15,6 +18,8 @@
     "check": "tsc --noEmit && eslint src/ && stylelint 'src/**/*.css' && vitest run",
     "format": "prettier --write 'src/**/*.{ts,tsx,css}'",
     "format:check": "prettier --check 'src/**/*.{ts,tsx,css}'",
+    "knip": "knip",
+    "knip:ci": "knip --reporter compact",
     "prepare": "husky"
   },
   "dependencies": {
@@ -100,6 +105,7 @@
     "eslint-plugin-react-refresh": "^0.5.2",
     "husky": "^9.1.7",
     "jsdom": "^28.0.0",
+    "knip": "^5.86.0",
     "lint-staged": "^16.3.2",
     "prettier": "^3.8.1",
     "prettier-plugin-tailwindcss": "^0.7.2",

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "src/main.tsx",
+    "src/**/__tests__/**/*.{ts,tsx}",
+    "src/**/*.test.{ts,tsx}",
+    "vite.config.ts",
+    "vitest.config.ts"
+  ],
+  "project": ["src/**/*.{ts,tsx}"],
+  "ignore": ["src/ipc/**"],
+  "ignoreDependencies": [
+    "stylelint-config-standard",
+    "stylelint-config-recess-order",
+    "prettier-plugin-tailwindcss",
+    "@commitlint/config-conventional",
+    "eslint-config-prettier"
+  ]
+}
