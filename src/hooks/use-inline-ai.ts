@@ -27,7 +27,7 @@ import type {
   LLMErrorPayload,
 } from "../ipc/types";
 import { isLLMAllowed, getFilePrivacy } from "../utils/privacy-check";
-import { getModelForTask } from "../utils/model-selection";
+import { getConfigForTask } from "../utils/model-selection";
 
 export interface UseInlineAIReturn {
   isActive: boolean;
@@ -185,15 +185,16 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
 
         unlistenRefs.current = [tokenUn, doneUn, errorUn];
 
+        const inlineCfg = getConfigForTask("inline-edit");
         await llmComplete(
-          store.apiKey,
+          inlineCfg.apiKey,
           prompt,
-          getModelForTask("inline-edit"),
+          inlineCfg.model,
           requestId,
           systemPrompt,
           1024,
-          store.provider,
-          store.provider === "ollama" ? store.ollamaUrl : undefined,
+          inlineCfg.provider,
+          inlineCfg.baseUrl,
           store.privacyMode,
         );
       } catch {

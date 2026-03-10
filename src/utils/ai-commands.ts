@@ -1,7 +1,7 @@
 // §6.2 Shared AI command utilities — used by slash menu, FloatingToolbar, CommandPalette
 import type { Editor } from "@tiptap/core";
 import { useAIStore } from "../stores/ai-store";
-import { getModelForTask } from "./model-selection";
+import { getConfigForTask } from "./model-selection";
 
 export interface AICommandOptions {
   // When true, insert response on a new line after the block containing the selection end
@@ -17,7 +17,9 @@ export async function executeAICommand(
 ): Promise<void> {
   const store = useAIStore.getState();
 
-  if (!store.apiKey && store.provider !== "ollama") {
+  const inlineCfg = getConfigForTask("inline-edit");
+
+  if (!inlineCfg.apiKey && inlineCfg.provider !== "ollama") {
     console.error("AI command: no API key configured");
     return;
   }
@@ -77,14 +79,14 @@ export async function executeAICommand(
   // Fire LLM request
   const { llmComplete } = await import("../ipc/invoke");
   await llmComplete(
-    store.apiKey,
+    inlineCfg.apiKey,
     prompt,
-    getModelForTask("inline-edit"),
+    inlineCfg.model,
     requestId,
     systemPrompt,
     undefined,
-    store.provider,
-    store.provider === "ollama" ? store.ollamaUrl : undefined,
+    inlineCfg.provider,
+    inlineCfg.baseUrl,
     store.privacyMode,
   ).catch(console.error);
 }

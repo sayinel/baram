@@ -7419,6 +7419,22 @@ body {
   width: 180px;
 }
 
+/* Task model selector (provider + model dropdowns) */
+.settings-task-model-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  width: 280px;
+}
+.settings-select-task-provider {
+  flex: 0 0 auto;
+  width: 120px;
+}
+.settings-select-task-model {
+  flex: 1;
+  min-width: 0;
+}
+
 .settings-input-model,
 .settings-select-model {
   flex: 1;

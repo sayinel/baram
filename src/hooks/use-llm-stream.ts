@@ -5,7 +5,7 @@ import { llmComplete, llmCancel } from "../ipc/invoke";
 import { useAIStore } from "../stores/ai-store";
 import type { AITask } from "../stores/ai-store";
 import { isLLMAllowed } from "../utils/privacy-check";
-import { getModelForTask } from "../utils/model-selection";
+import { getConfigForTask } from "../utils/model-selection";
 import type {
   LLMTokenPayload,
   LLMDonePayload,
@@ -67,10 +67,11 @@ export function useLLMStream(): UseLLMStreamReturn {
       await cleanup();
 
       const store = useAIStore.getState();
-      const provider = opts?.provider ?? store.provider;
       const task = opts?.task ?? "chat";
-      const model = opts?.model ?? getModelForTask(task);
-      const apiKey = store.apiKey;
+      const config = getConfigForTask(task);
+      const provider = opts?.provider ?? config.provider;
+      const model = opts?.model ?? config.model;
+      const apiKey = store.apiKeys[provider] ?? config.apiKey;
       const baseUrl =
         opts?.baseUrl ?? (provider === "ollama" ? store.ollamaUrl : undefined);
       const privacyMode = store.privacyMode;

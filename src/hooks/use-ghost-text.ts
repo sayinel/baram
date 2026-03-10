@@ -17,7 +17,7 @@ import type {
   LLMErrorPayload,
 } from "../ipc/types";
 import { isLLMAllowed, getFilePrivacy } from "../utils/privacy-check";
-import { getModelForTask } from "../utils/model-selection";
+import { getConfigForTask } from "../utils/model-selection";
 
 // Simple prefix cache (last 5 suggestions)
 const prefixCache = new Map<string, string>();
@@ -56,7 +56,11 @@ export function useGhostText(editor: Editor | null) {
       const store = useAIStore.getState();
       if (!store.ghostTextEnabled) return;
       const filePrivacy = getFilePrivacy(editor);
-      if (!isLLMAllowed(store.privacyMode, store.provider, filePrivacy)) return;
+      const ghostTaskConfig = getConfigForTask("ghost-text");
+      if (
+        !isLLMAllowed(store.privacyMode, ghostTaskConfig.provider, filePrivacy)
+      )
+        return;
 
       // Cancel previous request
       cleanup();
@@ -174,17 +178,16 @@ export function useGhostText(editor: Editor | null) {
 
           unlistenRefs.current = [tokenUn, doneUn, errorUn];
 
+          const taskCfg = getConfigForTask("ghost-text");
           await llmComplete(
-            storeSnapshot.apiKey,
+            taskCfg.apiKey,
             ghostConfig.contextText,
-            getModelForTask("ghost-text"),
+            taskCfg.model,
             requestId,
             ghostConfig.systemPrompt,
             storeSnapshot.maxSuggestionLength,
-            storeSnapshot.provider,
-            storeSnapshot.provider === "ollama"
-              ? storeSnapshot.ollamaUrl
-              : undefined,
+            taskCfg.provider,
+            taskCfg.baseUrl,
             storeSnapshot.privacyMode,
           );
         } catch {

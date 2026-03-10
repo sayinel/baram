@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useUIStore } from "../../stores/ui-store";
 import { useSettingsStore } from "../../stores/settings-store";
-import { useAIStore } from "../../stores/ai-store";
+import { useAIStore, type AIProvider } from "../../stores/ai-store";
 import { CustomAICommandEditor } from "./CustomAICommandEditor";
 import { llmListModels } from "../../ipc/invoke";
 import { formatAIError } from "../../utils/format-error";
@@ -1488,6 +1488,105 @@ function MarkdownTab() {
   );
 }
 
+// ─── Task Model Selector ────────────────────────────────
+// Provider + Model dropdowns for per-task auto model selection
+
+const PROVIDER_LABELS: Record<AIProvider, string> = {
+  claude: "Claude",
+  openai: "OpenAI",
+  gemini: "Gemini",
+  ollama: "Ollama",
+};
+
+function TaskModelSelector({
+  label,
+  description,
+  taskProvider,
+  taskModel,
+  onProviderChange,
+  onModelChange,
+  configuredProviders,
+  defaultProvider,
+  defaultModel,
+  fetchModelsForProvider,
+}: {
+  label: string;
+  description: string;
+  taskProvider: AIProvider | "";
+  taskModel: string;
+  onProviderChange: (provider: AIProvider | "") => void;
+  onModelChange: (model: string) => void;
+  configuredProviders: AIProvider[];
+  defaultProvider: AIProvider;
+  defaultModel: string;
+  fetchModelsForProvider: (provider: AIProvider) => Promise<ModelInfo[]>;
+}) {
+  const { t } = useTranslation();
+  const [taskModels, setTaskModels] = useState<ModelInfo[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const effectiveProvider = taskProvider || defaultProvider;
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetchModelsForProvider(effectiveProvider).then((result) => {
+      if (!cancelled) {
+        setTaskModels(result);
+        setLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveProvider, fetchModelsForProvider]);
+
+  return (
+    <SettingsRow label={label} description={description}>
+      <div className="settings-task-model-row">
+        <select
+          className="settings-select settings-select-task-provider"
+          value={taskProvider}
+          onChange={(e) => {
+            const val = e.target.value as AIProvider | "";
+            onProviderChange(val);
+            if (val) onModelChange("");
+          }}
+        >
+          <option value="">
+            {t("settings.ai.useDefault")} ({PROVIDER_LABELS[defaultProvider]})
+          </option>
+          {configuredProviders.map((p) => (
+            <option key={p} value={p}>
+              {PROVIDER_LABELS[p]}
+            </option>
+          ))}
+        </select>
+        {loading ? (
+          <span className="settings-model-spinner" />
+        ) : (
+          <select
+            className="settings-select settings-select-task-model"
+            value={taskModel}
+            onChange={(e) => onModelChange(e.target.value)}
+          >
+            {!taskProvider && !taskModel ? (
+              <option value="">{defaultModel}</option>
+            ) : (
+              <option value="">{t("settings.ai.selectModel")}</option>
+            )}
+            {taskModels.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+    </SettingsRow>
+  );
+}
+
 // ─── AI Tab ─────────────────────────────────────────────
 
 function AITab() {
@@ -1517,12 +1616,47 @@ function AITab() {
     modelForChat,
     modelForAgent,
     setModelForTask,
+    apiKeys,
+    providerForGhostText,
+    providerForInlineEdit,
+    providerForChat,
+    providerForAgent,
+    setProviderForTask,
   } = useAIStore();
   const [showKey, setShowKey] = useState(false);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [customMode, setCustomMode] = useState(false);
+
+  // Model cache for task-specific selectors (avoids redundant API calls)
+  const modelCacheRef = useRef<Record<string, ModelInfo[]>>({});
+
+  const fetchModelsForProvider = useCallback(
+    async (prov: AIProvider): Promise<ModelInfo[]> => {
+      if (modelCacheRef.current[prov]) return modelCacheRef.current[prov];
+      try {
+        const keys = useAIStore.getState().apiKeys;
+        const key = prov === "ollama" ? undefined : keys[prov];
+        const baseUrl = prov === "ollama" ? ollamaUrl || undefined : undefined;
+        const result = await llmListModels(prov, key, baseUrl);
+        modelCacheRef.current[prov] = result;
+        return result;
+      } catch {
+        return [];
+      }
+    },
+    [ollamaUrl],
+  );
+
+  const configuredProviders = useMemo((): AIProvider[] => {
+    const result: AIProvider[] = [];
+    if (apiKeys.claude) result.push("claude");
+    if (apiKeys.openai) result.push("openai");
+    if (apiKeys.gemini) result.push("gemini");
+    result.push("ollama");
+    return result;
+  }, [apiKeys]);
 
   const handleProviderChange = useCallback(
     (newProvider: "claude" | "openai" | "ollama" | "gemini") => {
@@ -1714,54 +1848,54 @@ function AITab() {
 
       {autoModelEnabled && (
         <>
-          <SettingsRow
+          <TaskModelSelector
             label={t("settings.ai.ghostTextModel")}
             description={t("settings.ai.ghostTextModel.desc")}
-          >
-            <input
-              type="text"
-              className="settings-input"
-              value={modelForGhostText}
-              onChange={(e) => setModelForTask("ghost-text", e.target.value)}
-              placeholder={model}
-            />
-          </SettingsRow>
-          <SettingsRow
+            taskProvider={providerForGhostText}
+            taskModel={modelForGhostText}
+            onProviderChange={(p) => setProviderForTask("ghost-text", p)}
+            onModelChange={(m) => setModelForTask("ghost-text", m)}
+            configuredProviders={configuredProviders}
+            defaultProvider={provider}
+            defaultModel={model}
+            fetchModelsForProvider={fetchModelsForProvider}
+          />
+          <TaskModelSelector
             label={t("settings.ai.inlineEditModel")}
             description={t("settings.ai.inlineEditModel.desc")}
-          >
-            <input
-              type="text"
-              className="settings-input"
-              value={modelForInlineEdit}
-              onChange={(e) => setModelForTask("inline-edit", e.target.value)}
-              placeholder={model}
-            />
-          </SettingsRow>
-          <SettingsRow
+            taskProvider={providerForInlineEdit}
+            taskModel={modelForInlineEdit}
+            onProviderChange={(p) => setProviderForTask("inline-edit", p)}
+            onModelChange={(m) => setModelForTask("inline-edit", m)}
+            configuredProviders={configuredProviders}
+            defaultProvider={provider}
+            defaultModel={model}
+            fetchModelsForProvider={fetchModelsForProvider}
+          />
+          <TaskModelSelector
             label={t("settings.ai.chatModel")}
             description={t("settings.ai.chatModel.desc")}
-          >
-            <input
-              type="text"
-              className="settings-input"
-              value={modelForChat}
-              onChange={(e) => setModelForTask("chat", e.target.value)}
-              placeholder={model}
-            />
-          </SettingsRow>
-          <SettingsRow
+            taskProvider={providerForChat}
+            taskModel={modelForChat}
+            onProviderChange={(p) => setProviderForTask("chat", p)}
+            onModelChange={(m) => setModelForTask("chat", m)}
+            configuredProviders={configuredProviders}
+            defaultProvider={provider}
+            defaultModel={model}
+            fetchModelsForProvider={fetchModelsForProvider}
+          />
+          <TaskModelSelector
             label={t("settings.ai.agentModel")}
             description={t("settings.ai.agentModel.desc")}
-          >
-            <input
-              type="text"
-              className="settings-input"
-              value={modelForAgent}
-              onChange={(e) => setModelForTask("agent", e.target.value)}
-              placeholder={model}
-            />
-          </SettingsRow>
+            taskProvider={providerForAgent}
+            taskModel={modelForAgent}
+            onProviderChange={(p) => setProviderForTask("agent", p)}
+            onModelChange={(m) => setModelForTask("agent", m)}
+            configuredProviders={configuredProviders}
+            defaultProvider={provider}
+            defaultModel={model}
+            fetchModelsForProvider={fetchModelsForProvider}
+          />
         </>
       )}
 

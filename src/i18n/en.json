@@ -175,6 +175,8 @@
   "settings.ai.chatModel.desc": "Model for AI chat conversations",
   "settings.ai.agentModel": "Agent Model",
   "settings.ai.agentModel.desc": "Model for autonomous AI tasks",
+  "settings.ai.useDefault": "Default",
+  "settings.ai.selectModel": "Select model...",
   "settings.ai.privacy": "Privacy",
   "settings.ai.privacyMode": "Privacy Mode",
   "settings.ai.privacyMode.desc": "Do not send document content to AI providers",

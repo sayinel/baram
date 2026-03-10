@@ -51,6 +51,10 @@ interface AIState {
   modelForInlineEdit: string;
   modelForChat: string;
   modelForAgent: string;
+  providerForGhostText: AIProvider | "";
+  providerForInlineEdit: AIProvider | "";
+  providerForChat: AIProvider | "";
+  providerForAgent: AIProvider | "";
 
   setProvider: (provider: AIProvider) => void;
   setModel: (model: string) => void;
@@ -69,6 +73,7 @@ interface AIState {
   updateCustomCommand: (id: string, updates: Partial<CustomAICommand>) => void;
   setAutoModelEnabled: (enabled: boolean) => void;
   setModelForTask: (task: AITask, model: string) => void;
+  setProviderForTask: (task: AITask, provider: AIProvider | "") => void;
   loadApiKeysFromKeyring: () => Promise<void>;
   /** §44 Set clipboard content for @clipboard reference */
   setClipboardContent: (text: string) => void;
@@ -99,6 +104,10 @@ export const useAIStore = create<AIState>()(
       modelForInlineEdit: "",
       modelForChat: "",
       modelForAgent: "",
+      providerForGhostText: "",
+      providerForInlineEdit: "",
+      providerForChat: "",
+      providerForAgent: "",
 
       setProvider: (provider) =>
         set((state) => ({
@@ -160,6 +169,22 @@ export const useAIStore = create<AIState>()(
             break;
         }
       },
+      setProviderForTask: (task, provider) => {
+        switch (task) {
+          case "ghost-text":
+            set({ providerForGhostText: provider });
+            break;
+          case "inline-edit":
+            set({ providerForInlineEdit: provider });
+            break;
+          case "chat":
+            set({ providerForChat: provider });
+            break;
+          case "agent":
+            set({ providerForAgent: provider });
+            break;
+        }
+      },
       setClipboardContent: (clipboardContent) => set({ clipboardContent }),
       setGhostTextCrossFileEnabled: (ghostTextCrossFileEnabled) =>
         set({ ghostTextCrossFileEnabled }),
@@ -188,7 +213,7 @@ export const useAIStore = create<AIState>()(
     }),
     {
       name: "baram:ai-settings",
-      version: 2,
+      version: 3,
       storage: createJSONStorage(() => tauriStorage),
       partialize: (state) => ({
         provider: state.provider,
@@ -206,6 +231,10 @@ export const useAIStore = create<AIState>()(
         modelForInlineEdit: state.modelForInlineEdit,
         modelForChat: state.modelForChat,
         modelForAgent: state.modelForAgent,
+        providerForGhostText: state.providerForGhostText,
+        providerForInlineEdit: state.providerForInlineEdit,
+        providerForChat: state.providerForChat,
+        providerForAgent: state.providerForAgent,
       }),
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
@@ -227,6 +256,13 @@ export const useAIStore = create<AIState>()(
             state._pendingKeyringMigration = apiKeys;
           }
           delete state.apiKeys;
+        }
+        if (version <= 2) {
+          // v2 → v3: add per-task provider fields
+          state.providerForGhostText = state.providerForGhostText ?? "";
+          state.providerForInlineEdit = state.providerForInlineEdit ?? "";
+          state.providerForChat = state.providerForChat ?? "";
+          state.providerForAgent = state.providerForAgent ?? "";
         }
         return state as unknown as AIState;
       },
