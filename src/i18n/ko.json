@@ -241,6 +241,7 @@
   "menu.file.save": "저장",
   "menu.file.saveAs": "다른 이름으로 저장...",
   "menu.file.closeTab": "탭 닫기",
+  "menu.file.closeFolder": "폴더 닫기",
   "menu.file.export": "내보내기...",
   "menu.edit": "편집",
   "menu.edit.undo": "실행 취소",

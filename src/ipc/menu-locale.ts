@@ -28,6 +28,7 @@ const MENU_I18N_MAP: Record<string, string> = {
   file_save: "menu.file.save",
   file_save_as: "menu.file.saveAs",
   file_close_tab: "menu.file.closeTab",
+  file_close_folder: "menu.file.closeFolder",
   export_doc: "menu.file.export",
 
   // Edit menu (predefined)

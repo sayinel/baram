@@ -87,6 +87,9 @@ pub fn run() {
                 .id("file_close_tab")
                 .accelerator("CmdOrCtrl+W")
                 .build(app)?;
+            let file_close_folder = MenuItemBuilder::new("Close Folder")
+                .id("file_close_folder")
+                .build(app)?;
             let export_doc = MenuItemBuilder::new("Export...")
                 .id("export_doc")
                 .accelerator("CmdOrCtrl+Shift+E")
@@ -99,6 +102,7 @@ pub fn run() {
                 .item(&file_save)
                 .item(&file_save_as)
                 .item(&file_close_tab)
+                .item(&file_close_folder)
                 .separator()
                 .item(&export_doc)
                 .build()?;
@@ -485,6 +489,7 @@ pub fn run() {
             menu_items.insert("file_save".into(), file_save);
             menu_items.insert("file_save_as".into(), file_save_as);
             menu_items.insert("file_close_tab".into(), file_close_tab);
+            menu_items.insert("file_close_folder".into(), file_close_folder);
             menu_items.insert("export_doc".into(), export_doc);
             menu_items.insert("edit_find_replace".into(), edit_find_replace);
             menu_items.insert("view_source".into(), view_source);

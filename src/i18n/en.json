@@ -246,6 +246,7 @@
   "menu.file.save": "Save",
   "menu.file.saveAs": "Save As...",
   "menu.file.closeTab": "Close Tab",
+  "menu.file.closeFolder": "Close Folder",
   "menu.file.export": "Export...",
   "menu.edit": "Edit",
   "menu.edit.undo": "Undo",

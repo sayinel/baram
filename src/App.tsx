@@ -2211,6 +2211,9 @@ function App() {
         case "file_close_tab":
           handleCloseTab();
           break;
+        case "file_close_folder":
+          handleCloseFolder();
+          break;
         case "app_about":
           useUIStore.getState().toggleAbout();
           break;
@@ -2500,6 +2503,7 @@ function App() {
     handleSave,
     handleSaveAs,
     handleCloseTab,
+    handleCloseFolder,
     handleGoBack,
     handleGoForward,
     handleOpenFilePath,
