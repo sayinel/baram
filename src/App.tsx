@@ -685,7 +685,11 @@ function App() {
             }
           });
         } else {
-          editor.commands.scrollIntoView();
+          // No cached scroll — reset to top (avoid stale scroll from previous tab)
+          requestAnimationFrame(() => {
+            const sc = document.querySelector(".editor-area-scroll");
+            if (sc) sc.scrollTop = 0;
+          });
         }
         afterDocLoad();
       } else {
@@ -709,6 +713,15 @@ function App() {
           });
           editor.view.updateState(newState);
           setIsParsing(false);
+          // Reset scroll to top for freshly opened documents
+          requestAnimationFrame(() => {
+            const scrollContainer = document.querySelector(
+              ".editor-area-scroll",
+            );
+            if (scrollContainer) {
+              scrollContainer.scrollTop = 0;
+            }
+          });
           afterDocLoad();
 
           // Restore fold state from persistence
