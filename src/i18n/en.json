@@ -367,6 +367,7 @@
   "keybindings.file.save": "Save",
   "keybindings.file.saveAs": "Save As",
   "keybindings.file.closeTab": "Close Tab",
+  "keybindings.file.closeFolder": "Close Folder",
   "keybindings.edit.find": "Find",
   "keybindings.edit.findReplace": "Find & Replace",
   "keybindings.edit.toggleFold": "Toggle Fold",

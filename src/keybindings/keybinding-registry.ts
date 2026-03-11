@@ -79,6 +79,13 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
     defaultKey: "Mod+W",
     customizable: true,
   },
+  {
+    id: "file.closeFolder",
+    label: "keybindings.file.closeFolder",
+    category: "file",
+    defaultKey: "Mod+Shift+W",
+    customizable: true,
+  },
 
   // ── edit ──────────────────────────────────────────────────────────────────
   {

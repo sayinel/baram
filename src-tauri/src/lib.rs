@@ -89,6 +89,7 @@ pub fn run() {
                 .build(app)?;
             let file_close_folder = MenuItemBuilder::new("Close Folder")
                 .id("file_close_folder")
+                .accelerator("CmdOrCtrl+Shift+W")
                 .build(app)?;
             let export_doc = MenuItemBuilder::new("Export...")
                 .id("export_doc")

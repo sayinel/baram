@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { listDir, refreshIndex } from "../ipc/invoke";
 import { useLinkStore } from "./link-store";
 import { useEditorStore } from "./editor-store";
+import { useSettingsStore } from "./settings-store";
 import type { FileEntry as IpcFileEntry } from "../ipc/types";
 
 export interface FileEntry {
@@ -364,6 +365,9 @@ export const useFileStore = create<FileState>((set, get) => ({
 
   closeFolder: () => {
     useEditorStore.getState().closeAllTabs();
+    // Clear last-opened so onLaunch won't reopen the closed folder
+    useSettingsStore.getState().setLastOpenedFolder(null);
+    useSettingsStore.getState().setLastOpenedFile(null);
     set({ rootPath: null, fileTree: [], expandedDirs: new Set() });
   },
 }));

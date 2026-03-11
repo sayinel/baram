@@ -1631,6 +1631,7 @@ function App() {
     registerAction("file.save", () => handleSave());
     registerAction("file.saveAs", () => handleSaveAs());
     registerAction("file.closeTab", () => handleCloseTab());
+    registerAction("file.closeFolder", () => handleCloseFolder());
 
     // Edit
     registerAction("edit.find", () => {
@@ -1971,6 +1972,7 @@ function App() {
     handleSave,
     handleSaveAs,
     handleCloseTab,
+    handleCloseFolder,
     inlineAI,
     editor,
   ]);
