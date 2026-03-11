@@ -41,61 +41,17 @@ export interface DiffStats {
   unchanged: number;
 }
 
+// §69 Plugin Marketplace types
+export interface EngineRequirement {
+  baram: string;
+}
+
 // §3.2 Export types
 export type ExportFormat = "html" | "pdf";
 
 export interface ExportOptions {
   includeYaml?: boolean;
   theme?: string;
-}
-
-// §69 Plugin Marketplace types
-export interface EngineRequirement {
-  baram: string;
-}
-
-export interface TiptapExtensionDef {
-  type: string; // "node" | "mark" | "plugin"
-  name: string;
-  exportName: string;
-}
-
-export interface PluginManifest {
-  id: string;
-  name: string;
-  description: string;
-  version: string;
-  author: string;
-  license: string;
-  main: string;
-  engines: EngineRequirement;
-  capabilities: string[];
-  dependencies: string[];
-  tiptapExtensions: TiptapExtensionDef[];
-  repository?: string;
-}
-
-export interface InstalledPluginInfo {
-  manifest: PluginManifest;
-  installPath: string;
-  checksum: string;
-}
-
-export interface RegistryEntry {
-  id: string;
-  name: string;
-  description: string;
-  version: string;
-  author: string;
-  license: string;
-  downloadUrl: string;
-  checksum: string;
-  capabilities: string[];
-}
-
-export interface RegistryIndex {
-  plugins: RegistryEntry[];
-  updatedAt?: string;
 }
 
 // Event payloads
@@ -190,6 +146,12 @@ export interface IndexUpdatedPayload {
   filesIndexed: number;
 }
 
+export interface InstalledPluginInfo {
+  checksum: string;
+  installPath: string;
+  manifest: PluginManifest;
+}
+
 // §3.2 Config types
 export type JsonValue =
   | boolean
@@ -270,6 +232,38 @@ export interface PdfOptions {
   scale?: number;
 }
 
+export interface PluginManifest {
+  author: string;
+  capabilities: string[];
+  dependencies: string[];
+  description: string;
+  engines: EngineRequirement;
+  id: string;
+  license: string;
+  main: string;
+  name: string;
+  repository?: string;
+  tiptapExtensions: TiptapExtensionDef[];
+  version: string;
+}
+
+export interface RegistryEntry {
+  author: string;
+  capabilities: string[];
+  checksum: string;
+  description: string;
+  downloadUrl: string;
+  id: string;
+  license: string;
+  name: string;
+  version: string;
+}
+
+export interface RegistryIndex {
+  plugins: RegistryEntry[];
+  updatedAt?: string;
+}
+
 // §33 Rename result
 export interface RenameResult {
   updatedFiles: string[];
@@ -317,6 +311,12 @@ export interface SnapshotFileEntry {
 export interface TagEntry {
   count: number;
   tag: string;
+}
+
+export interface TiptapExtensionDef {
+  exportName: string;
+  name: string;
+  type: string; // "node" | "mark" | "plugin"
 }
 
 // §34 Unlinked Mentions

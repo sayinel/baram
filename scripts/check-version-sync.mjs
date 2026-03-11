@@ -1,9 +1,5 @@
 import { readFileSync } from "node:fs";
 
-function readJson(path) {
-  return JSON.parse(readFileSync(path, "utf8"));
-}
-
 function readCargoPackageVersion(path) {
   const content = readFileSync(path, "utf8");
   const packageBlock = content.match(/\[package\][\s\S]*?(?=\n\[|$)/);
@@ -19,6 +15,10 @@ function readCargoPackageVersion(path) {
   }
 
   return versionMatch[1];
+}
+
+function readJson(path) {
+  return JSON.parse(readFileSync(path, "utf8"));
 }
 
 const packageVersion = readJson("package.json").version;

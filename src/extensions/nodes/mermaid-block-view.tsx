@@ -1,46 +1,22 @@
 // §5.5 Mermaid Block NodeView — selected: textarea + preview, unselected: SVG render
 // §50 Enhanced: template picker + full-screen edit
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
+
 import { TextSelection } from "@tiptap/pm/state";
-import { mermaidBlockEntryKey } from "./mermaid-block";
+import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
+
 import {
-  MERMAID_TEMPLATES,
-  detectMermaidType,
+  copyMermaidPng,
   copyMermaidSource,
   copyMermaidSvg,
-  copyMermaidPng,
+  detectMermaidType,
+  MERMAID_TEMPLATES,
 } from "../../utils/mermaid-utils";
+import { mermaidBlockEntryKey } from "./mermaid-block";
 
 // Unique ID counter for mermaid rendering
 let mermaidIdCounter = 0;
-
-/** Shared rendering logic */
-async function renderMermaid(
-  source: string,
-  onSuccess: (svg: string) => void,
-  onError: (msg: string) => void,
-): Promise<void> {
-  if (!source.trim()) {
-    onSuccess("");
-    return;
-  }
-  try {
-    const mermaid = (await import("mermaid")).default;
-    mermaid.initialize({
-      startOnLoad: false,
-      theme:
-        document.documentElement.dataset.theme === "dark" ? "dark" : "default",
-      securityLevel: "strict",
-    });
-    const id = `mermaid-${++mermaidIdCounter}`;
-    const { svg } = await mermaid.render(id, source);
-    onSuccess(svg);
-  } catch (err) {
-    onError(err instanceof Error ? err.message : "Mermaid rendering error");
-  }
-}
 
 export function MermaidBlockView({
   node,
@@ -54,17 +30,17 @@ export function MermaidBlockView({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const renderRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<null | string>(null);
   const [svgHtml, setSvgHtml] = useState<string>("");
   const [showTemplates, setShowTemplates] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenCode, setFullscreenCode] = useState("");
   const [fullscreenSvg, setFullscreenSvg] = useState("");
-  const [fullscreenError, setFullscreenError] = useState<string | null>(null);
-  const [contextMenu, setContextMenu] = useState<{
+  const [fullscreenError, setFullscreenError] = useState<null | string>(null);
+  const [contextMenu, setContextMenu] = useState<null | {
     x: number;
     y: number;
-  } | null>(null);
+  }>(null);
   const [viewFullscreen, setViewFullscreen] = useState(false);
   const fullscreenTextareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -231,7 +207,7 @@ export function MermaidBlockView({
   }, [editor, getPos, node.nodeSize]);
 
   const exitBlock = useCallback(
-    (direction: "up" | "down") => {
+    (direction: "down" | "up") => {
       const pos = getPos();
       if (typeof pos !== "number") return;
 
@@ -355,16 +331,16 @@ export function MermaidBlockView({
     ? createPortal(
         <div
           className="mermaid-fullscreen-overlay"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") closeViewFullscreen();
+          }}
           onMouseDown={(e) => {
             e.stopPropagation(); // Prevent React event from reaching NodeViewWrapper
             if (e.target === e.currentTarget) {
               e.preventDefault();
               closeViewFullscreen();
             }
-          }}
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") closeViewFullscreen();
           }}
         >
           <div className="mermaid-view-fullscreen-modal">
@@ -377,8 +353,8 @@ export function MermaidBlockView({
               )}
               <button
                 className="mermaid-fullscreen-close"
-                onMouseDown={(e) => e.preventDefault()}
                 onClick={closeViewFullscreen}
+                onMouseDown={(e) => e.preventDefault()}
               >
                 Close
               </button>
@@ -431,15 +407,15 @@ export function MermaidBlockView({
             <div className="mermaid-fullscreen-body">
               <div className="mermaid-fullscreen-editor">
                 <textarea
-                  ref={fullscreenTextareaRef}
-                  className="mermaid-block-textarea"
-                  value={fullscreenCode}
-                  onChange={(e) => setFullscreenCode(e.target.value)}
-                  spellCheck={false}
-                  autoCorrect="off"
                   autoCapitalize="off"
-                  data-gramm="false"
+                  autoCorrect="off"
                   autoFocus
+                  className="mermaid-block-textarea"
+                  data-gramm="false"
+                  onChange={(e) => setFullscreenCode(e.target.value)}
+                  ref={fullscreenTextareaRef}
+                  spellCheck={false}
+                  value={fullscreenCode}
                 />
               </div>
               <div className="mermaid-fullscreen-preview">
@@ -464,12 +440,15 @@ export function MermaidBlockView({
   if (!selected) {
     return (
       <NodeViewWrapper
-        ref={wrapperRef}
         className="mermaid-block mermaid-block-preview"
-        data-type="mermaidBlock"
         contentEditable={false}
-        spellCheck={false}
+        data-type="mermaidBlock"
         onClick={handlePreviewClick}
+        onContextMenu={(e: React.MouseEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setContextMenu({ x: e.clientX, y: e.clientY });
+        }}
         onMouseDown={(e: React.MouseEvent) => {
           // Prevent right-click from propagating to ProseMirror
           // which would set NodeSelection and switch to editing mode
@@ -477,17 +456,14 @@ export function MermaidBlockView({
             e.stopPropagation();
           }
         }}
-        onContextMenu={(e: React.MouseEvent) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setContextMenu({ x: e.clientX, y: e.clientY });
-        }}
+        ref={wrapperRef}
+        spellCheck={false}
       >
         {svgHtml ? (
           <div
-            ref={renderRef}
             className="mermaid-block-svg"
             dangerouslySetInnerHTML={{ __html: svgHtml }}
+            ref={renderRef}
           />
         ) : error ? (
           <div className="mermaid-block-error">{error}</div>
@@ -509,16 +485,16 @@ export function MermaidBlockView({
               title="Copy source code"
             >
               <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
                 fill="none"
+                height="16"
                 stroke="currentColor"
-                strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+                width="16"
               >
-                <rect x="9" y="9" width="13" height="13" rx="2" />
+                <rect height="13" rx="2" width="13" x="9" y="9" />
                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
               </svg>
             </button>
@@ -531,14 +507,14 @@ export function MermaidBlockView({
               title="Fullscreen view"
             >
               <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
                 fill="none"
+                height="16"
                 stroke="currentColor"
-                strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+                width="16"
               >
                 <path d="M8 3H5a2 2 0 0 0-2 2v3" />
                 <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
@@ -552,13 +528,13 @@ export function MermaidBlockView({
           createPortal(
             <div
               className="mermaid-context-menu"
+              onMouseDown={(e) => e.stopPropagation()}
               style={{
                 position: "fixed",
                 left: contextMenu.x,
                 top: contextMenu.y,
                 zIndex: 9999,
               }}
-              onMouseDown={(e) => e.stopPropagation()}
             >
               {svgHtml && (
                 <>
@@ -634,10 +610,10 @@ export function MermaidBlockView({
   // Editing: textarea + live preview
   return (
     <NodeViewWrapper
-      ref={wrapperRef}
       className="mermaid-block mermaid-block-editing"
-      data-type="mermaidBlock"
       contentEditable={false}
+      data-type="mermaidBlock"
+      ref={wrapperRef}
       spellCheck={false}
     >
       <div className="mermaid-block-header">
@@ -660,8 +636,8 @@ export function MermaidBlockView({
               <div className="mermaid-template-dropdown">
                 {Object.entries(MERMAID_TEMPLATES).map(([key, tmpl]) => (
                   <button
-                    key={key}
                     className={`mermaid-template-dropdown-item${detectedType === key ? "mermaid-template-active" : ""}`}
+                    key={key}
                     onClick={() => applyTemplate(key)}
                   >
                     {tmpl.label}
@@ -685,27 +661,53 @@ export function MermaidBlockView({
         </div>
       </div>
       <textarea
-        ref={textareaRef}
+        autoCapitalize="off"
+        autoCorrect="off"
         className="mermaid-block-textarea"
-        value={localCode}
+        data-gramm="false"
         onChange={(e) => setLocalCode(e.target.value)}
         onKeyDown={handleKeyDown}
-        rows={1}
         placeholder="flowchart LR&#10;  A --> B"
+        ref={textareaRef}
+        rows={1}
         spellCheck={false}
-        autoCorrect="off"
-        autoCapitalize="off"
-        data-gramm="false"
+        value={localCode}
       />
       {svgHtml ? (
         <div
-          ref={renderRef}
           className={`mermaid-block-svg${error ? "mermaid-block-svg-faded" : ""}`}
           dangerouslySetInnerHTML={{ __html: svgHtml }}
+          ref={renderRef}
         />
       ) : null}
       {error && <div className="mermaid-block-error">{error}</div>}
       {fullscreenModal}
     </NodeViewWrapper>
   );
+}
+
+/** Shared rendering logic */
+async function renderMermaid(
+  source: string,
+  onSuccess: (svg: string) => void,
+  onError: (msg: string) => void,
+): Promise<void> {
+  if (!source.trim()) {
+    onSuccess("");
+    return;
+  }
+  try {
+    const mermaid = (await import("mermaid")).default;
+    mermaid.initialize({
+      startOnLoad: false,
+      theme:
+        document.documentElement.dataset.theme === "dark" ? "dark" : "default",
+      securityLevel: "strict",
+    });
+    const id = `mermaid-${++mermaidIdCounter}`;
+    const { svg } = await mermaid.render(id, source);
+    onSuccess(svg);
+  } catch (err) {
+    onError(err instanceof Error ? err.message : "Mermaid rendering error");
+  }
 }

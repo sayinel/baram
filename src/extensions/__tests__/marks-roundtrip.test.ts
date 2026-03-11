@@ -1,7 +1,8 @@
+import { Schema } from "@tiptap/pm/model";
 // Dedicated roundtrip tests for all 9 mark extensions
 // bold, italic, code, strike, link, underline, highlight, subscript, superscript
-import { describe, it, expect } from "vitest";
-import { Schema } from "@tiptap/pm/model";
+import { describe, expect, it } from "vitest";
+
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 

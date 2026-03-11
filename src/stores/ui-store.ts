@@ -1,86 +1,84 @@
 // §3.5 UI 레이아웃 스토어
 import { create } from "zustand";
 
+type ExportFormat =
+  | "docx"
+  | "epub"
+  | "html"
+  | "latex"
+  | "notion"
+  | "pdf"
+  | "rst";
 type SidebarPanel =
-  | "files"
-  | "outline"
-  | "search"
   | "backlinks"
   | "bookmarks"
-  | "graph"
-  | "git"
   | "calendar"
-  | "tags"
-  | "snapshots"
+  | "files"
+  | "git"
+  | "graph"
+  | "outline"
+  | "plugins"
+  | "search"
   | "skills-gallery"
-  | "plugins";
-type ExportFormat =
-  | "html"
-  | "pdf"
-  | "notion"
-  | "docx"
-  | "latex"
-  | "epub"
-  | "rst";
+  | "snapshots"
+  | "tags";
 
 interface UIState {
-  sidebarOpen: boolean;
-  sidebarPanel: SidebarPanel;
-  sidebarWidth: number;
-  rightPanelOpen: boolean;
-  rightPanelWidth: number;
+  aboutOpen: boolean;
+  closeExportDialog: () => void;
+  commandPaletteOpen: boolean;
+  /** When true, cursor moves to end of document after reload (e.g. Quick Capture append) */
+  contentReloadCursorEnd: boolean;
+  /** Monotonic counter — incremented after Global Search Replace / Quick Capture to signal editor reload */
+  contentReloadVersion: number;
+  exportDialogOpen: boolean;
+  exportFormat: ExportFormat;
+  openExportDialog: (format?: ExportFormat) => void;
+  openQuickCapture: (type?: "idea" | "link" | "note" | "quote") => void;
+  pendingApplyContent: null | string;
+  pendingSearchHighlight: null | string;
+  quickCaptureOpen: boolean;
+  quickCaptureType: "idea" | "link" | "note" | "quote";
+  quickSwitcherOpen: boolean;
   rightPanelMode:
     | "chat"
     | "help"
     | "memories"
+    | "none"
     | "photo-gallery"
-    | "properties"
-    | "none";
-  commandPaletteOpen: boolean;
-  quickSwitcherOpen: boolean;
-  settingsOpen: boolean;
-  aboutOpen: boolean;
-  exportDialogOpen: boolean;
-  exportFormat: ExportFormat;
-  newSkillDialogOpen: boolean;
-  skillGeneratorDialogOpen: boolean;
-  skillTestDialogOpen: boolean;
-  pendingApplyContent: string | null;
-  quickCaptureOpen: boolean;
-  quickCaptureType: "idea" | "link" | "quote" | "note";
-  pendingSearchHighlight: string | null;
-  /** Monotonic counter — incremented after Global Search Replace / Quick Capture to signal editor reload */
-  contentReloadVersion: number;
-  /** When true, cursor moves to end of document after reload (e.g. Quick Capture append) */
-  contentReloadCursorEnd: boolean;
-
-  toggleSidebar: () => void;
-  setSidebarPanel: (panel: SidebarPanel) => void;
-  setSidebarWidth: (width: number) => void;
-  toggleRightPanel: () => void;
-  setRightPanelWidth: (width: number) => void;
+    | "properties";
+  rightPanelOpen: boolean;
+  rightPanelWidth: number;
+  setPendingApplyContent: (content: null | string) => void;
+  setPendingSearchHighlight: (term: null | string) => void;
   setRightPanelMode: (
     mode:
       | "chat"
       | "help"
       | "memories"
+      | "none"
       | "photo-gallery"
-      | "properties"
-      | "none",
+      | "properties",
   ) => void;
-  toggleCommandPalette: () => void;
-  toggleQuickSwitcher: () => void;
-  toggleSettings: () => void;
+
+  setRightPanelWidth: (width: number) => void;
+  setSidebarPanel: (panel: SidebarPanel) => void;
+  setSidebarWidth: (width: number) => void;
+  settingsOpen: boolean;
+  sidebarOpen: boolean;
+  sidebarPanel: SidebarPanel;
+  sidebarWidth: number;
+  skillGeneratorDialogOpen: boolean;
+  skillTestDialogOpen: boolean;
   toggleAbout: () => void;
-  openExportDialog: (format?: ExportFormat) => void;
-  closeExportDialog: () => void;
-  toggleNewSkillDialog: () => void;
+  toggleCommandPalette: () => void;
+  toggleQuickCapture: () => void;
+  toggleQuickSwitcher: () => void;
+  toggleRightPanel: () => void;
+  toggleSettings: () => void;
+  toggleSidebar: () => void;
   toggleSkillGeneratorDialog: () => void;
   toggleSkillTestDialog: () => void;
-  toggleQuickCapture: () => void;
-  openQuickCapture: (type?: "idea" | "link" | "quote" | "note") => void;
-  setPendingApplyContent: (content: string | null) => void;
-  setPendingSearchHighlight: (term: string | null) => void;
   triggerContentReload: (cursorEnd?: boolean) => void;
 }
 
@@ -97,7 +95,6 @@ export const useUIStore = create<UIState>((set) => ({
   aboutOpen: false,
   exportDialogOpen: false,
   exportFormat: "html" as ExportFormat,
-  newSkillDialogOpen: false,
   skillGeneratorDialogOpen: false,
   skillTestDialogOpen: false,
   pendingApplyContent: null,
@@ -134,9 +131,6 @@ export const useUIStore = create<UIState>((set) => ({
     set({ exportDialogOpen: true, exportFormat: format ?? "html" }),
 
   closeExportDialog: () => set({ exportDialogOpen: false }),
-
-  toggleNewSkillDialog: () =>
-    set((state) => ({ newSkillDialogOpen: !state.newSkillDialogOpen })),
 
   toggleSkillGeneratorDialog: () =>
     set((state) => ({

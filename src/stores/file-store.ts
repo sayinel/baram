@@ -1,54 +1,56 @@
-// §3.5 파일 시스템 스토어
-import { create } from "zustand";
-import { listDir, refreshIndex } from "../ipc/invoke";
-import { useLinkStore } from "./link-store";
-import { useEditorStore } from "./editor-store";
-import { useSettingsStore } from "./settings-store";
 import type { FileEntry as IpcFileEntry } from "../ipc/types";
 
+// §3.5 파일 시스템 스토어
+import { create } from "zustand";
+
+import { listDir, refreshIndex } from "../ipc/invoke";
+import { useEditorStore } from "./editor-store";
+import { useLinkStore } from "./link-store";
+import { useSettingsStore } from "./settings-store";
+
 export interface FileEntry {
+  children?: FileEntry[];
+  isDir: boolean;
   name: string;
   path: string;
-  isDir: boolean;
-  children?: FileEntry[];
 }
 
 interface FileState {
-  rootPath: string | null;
-  fileTree: FileEntry[];
-  openFiles: Map<string, string>; // path → content
-
-  // §56b Journal workspace scoping
-  originalRootPath: string | null; // rootPath backup before journal scope
-  isJournalScoped: boolean;
-
-  setRootPath: (path: string) => void;
-  setFileTree: (tree: FileEntry[]) => void;
-  setFileContent: (path: string, content: string) => void;
-  removeFileContent: (path: string) => void;
-  /** §33 Rename a file entry in the tree and update openFiles cache key */
-  renameFileEntry: (oldPath: string, newPath: string, newName: string) => void;
   /** Add a file/folder entry under parentPath (sorted: dirs first, then name) */
   addFileEntry: (parentPath: string, entry: FileEntry) => void;
-  /** Remove a file/folder entry by path */
-  removeFileEntry: (path: string) => void;
-  /** Move a file/folder entry to a new parent directory */
-  moveFileEntry: (oldPath: string, newParentPath: string) => void;
+  /** Close the current folder and return to home screen */
+  closeFolder: () => void;
   /** §56b Enter journal scope: save rootPath, switch to journal directory */
   enterJournalScope: (journalDir: string) => void;
+
   /** §56b Exit journal scope: restore original rootPath */
   exitJournalScope: () => void;
-
-  // Tag filter for FileTree
-  tagFilter: string | null;
-  setTagFilter: (tag: string | null) => void;
+  expandDir: (path: string) => void;
 
   // FileTree expanded directories (persisted across sidebar tab switches)
   expandedDirs: Set<string>;
+  fileTree: FileEntry[];
+  isJournalScoped: boolean;
+  /** Move a file/folder entry to a new parent directory */
+  moveFileEntry: (oldPath: string, newParentPath: string) => void;
+  openFiles: Map<string, string>; // path → content
+  // §56b Journal workspace scoping
+  originalRootPath: null | string; // rootPath backup before journal scope
+  removeFileContent: (path: string) => void;
+  /** Remove a file/folder entry by path */
+  removeFileEntry: (path: string) => void;
+  /** §33 Rename a file entry in the tree and update openFiles cache key */
+  renameFileEntry: (oldPath: string, newPath: string, newName: string) => void;
+  rootPath: null | string;
+
+  setFileContent: (path: string, content: string) => void;
+  setFileTree: (tree: FileEntry[]) => void;
+
+  setRootPath: (path: string) => void;
+  setTagFilter: (tag: null | string) => void;
+  // Tag filter for FileTree
+  tagFilter: null | string;
   toggleExpandedDir: (path: string) => void;
-  expandDir: (path: string) => void;
-  /** Close the current folder and return to home screen */
-  closeFolder: () => void;
 }
 
 /**

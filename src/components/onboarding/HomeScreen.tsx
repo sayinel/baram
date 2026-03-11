@@ -1,3 +1,5 @@
+import { useCallback } from "react";
+
 import { useTranslation } from "../../i18n/useTranslation";
 import { useSettingsStore } from "../../stores/settings-store";
 
@@ -5,8 +7,8 @@ interface HomeScreenProps {
   onNewFile: () => void;
   onOpenFile: () => void;
   onOpenFolder: () => void;
-  onOpenRecentFolder: (path: string) => void;
   onOpenRecentFile: (path: string) => void;
+  onOpenRecentFolder: (path: string) => void;
 }
 
 export function HomeScreen({
@@ -20,16 +22,19 @@ export function HomeScreen({
   const recentFolders = useSettingsStore((s) => s.recentFolders);
   const recentFiles = useSettingsStore((s) => s.recentFiles);
 
-  const timeAgo = (ts: number): string => {
-    const diff = Date.now() - ts;
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return t("home.justNow");
-    if (mins < 60) return t("home.minutesAgo", { count: String(mins) });
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return t("home.hoursAgo", { count: String(hours) });
-    const days = Math.floor(hours / 24);
-    return t("home.daysAgo", { count: String(days) });
-  };
+  const timeAgo = useCallback(
+    (ts: number): string => {
+      const diff = Date.now() - ts;
+      const mins = Math.floor(diff / 60000);
+      if (mins < 1) return t("home.justNow");
+      if (mins < 60) return t("home.minutesAgo", { count: String(mins) });
+      const hours = Math.floor(mins / 60);
+      if (hours < 24) return t("home.hoursAgo", { count: String(hours) });
+      const days = Math.floor(hours / 24);
+      return t("home.daysAgo", { count: String(days) });
+    },
+    [t],
+  );
 
   return (
     <div className="home-screen">

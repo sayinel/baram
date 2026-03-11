@@ -1,25 +1,27 @@
-// §3.5 사용자 설정 스토어
-import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
-import { tauriStorage } from "./tauri-storage";
-import { findThemeById } from "../types/theme";
-import type { ThemeDef } from "../types/theme";
 import type { CustomExportItem } from "../ipc/types";
+import type { ThemeDef } from "../types/theme";
 import type { JournalTheme } from "../utils/journal-themes";
 
-type Theme = "light" | "dark" | "system";
-type OnLaunch = "newFile" | "restoreLastFolder" | "restoreLastFile";
-type WikilinkFormat = "wikilink" | "markdown";
-type CodeBlockStyle = "default" | "minimal" | "contrast" | "paper";
-type JournalStartupBehavior = "openJournal" | "nothing";
-type MemoriesTab = "journal" | "notes";
-type MemoriesMode = "oneline" | "full";
+// §3.5 사용자 설정 스토어
+import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
+
+import { findThemeById } from "../types/theme";
+import { tauriStorage } from "./tauri-storage";
 
 export interface ActivityBarItemConfig {
   id: string;
+  section: "bottom" | "top";
   visible: boolean;
-  section: "top" | "bottom";
 }
+type CodeBlockStyle = "contrast" | "default" | "minimal" | "paper";
+type JournalStartupBehavior = "nothing" | "openJournal";
+type MemoriesMode = "full" | "oneline";
+type MemoriesTab = "journal" | "notes";
+type OnLaunch = "newFile" | "restoreLastFile" | "restoreLastFolder";
+type Theme = "dark" | "light" | "system";
+
+type WikilinkFormat = "markdown" | "wikilink";
 
 export const DEFAULT_ACTIVITY_BAR_CONFIG: ActivityBarItemConfig[] = [
   // Top section — sidebar panels
@@ -43,200 +45,200 @@ export const DEFAULT_ACTIVITY_BAR_CONFIG: ActivityBarItemConfig[] = [
 ];
 
 interface SettingsState {
-  // General
-  onLaunch: OnLaunch;
+  activeThemeId: string; // "system" | "default-light" | "default-dark" | custom id
+  // Activity Bar config
+  activityBarConfig: ActivityBarItemConfig[];
+  addRecentFile: (path: string) => void;
+  addRecentFolder: (path: string) => void;
+  autoPairBrackets: boolean;
   autoSave: boolean;
   autoSaveDelay: number; // ms
-  spellCheck: boolean;
-  showWelcome: boolean;
-  recentFolders: { path: string; lastOpened: number }[];
-  recentFiles: { path: string; lastOpened: number }[];
-  lastOpenedFolder: string | null;
-  lastOpenedFile: string | null;
+  autoUpdateLinks: boolean;
+  codeBlockLineNumbers: boolean;
 
+  codeBlockStyle: CodeBlockStyle;
+  customExports: CustomExportItem[];
+  customThemes: ThemeDef[];
+  deleteCustomTheme: (id: string) => void;
+  diagrams: boolean;
+  editorMaxWidth: number; // px, 0 = no limit
+  // Extension settings (dynamic key-value)
+  extensionSettings: Record<string, unknown>;
   // Editor
   fontFamily: string;
+
   fontSize: number;
-  lineHeight: number;
-  tabSize: number;
-  lineNumbers: boolean;
-  autoPairBrackets: boolean;
-  editorMaxWidth: number; // px, 0 = no limit
-  zoomLevel: number; // 0.5 ~ 2.0 (1.0 = 100%)
-
-  // Appearance
-  theme: Theme;
-  activeThemeId: string; // "system" | "default-light" | "default-dark" | custom id
-  customThemes: ThemeDef[];
-
-  // Files & Links
-  wikilinkFormat: WikilinkFormat;
-  autoUpdateLinks: boolean;
-
+  highlight: boolean;
   // Markdown
   inlineMath: boolean;
-  highlight: boolean;
-  strikethrough: boolean;
-  diagrams: boolean;
-  codeBlockLineNumbers: boolean;
-  codeBlockStyle: CodeBlockStyle;
-  smartPunctuation: boolean;
 
+  journalAIAutoSuggest: boolean; // auto-suggest after save
+  // §56j AI Reflection
+  journalAIReflectionEnabled: boolean;
+
+  journalCustomThemes: JournalTheme[];
+  journalDirectory: string;
   // §56 Journal / Daily Notes
   journalEnabled: boolean;
-  journalDirectory: string;
+  journalEnergyEnabled: boolean;
   journalFilenameFormat: string;
-  journalTemplatePath: string;
-  journalStartupBehavior: JournalStartupBehavior;
-  journalUseHierarchy: boolean; // §56a: daily/YYYY/MM/ 구조 사용 여부
-  journalWeeklyEnabled: boolean; // §56f: weekly notes
   journalMonthlyEnabled: boolean; // §56f: monthly notes
-  journalYearlyEnabled: boolean; // §56f: yearly notes
-  journalWeekStartDay: "monday" | "sunday"; // §56f: week start day
-  journalWeeklyTemplate: string; // §56a: weekly note template path
   journalMonthlyTemplate: string; // §56a: monthly note template path
-  journalYearlyTemplate: string; // §56a: yearly note template path
 
   // §56e Mood/Energy
   journalMoodEnabled: boolean;
-  journalEnergyEnabled: boolean;
-
-  // §56g Stats
-  journalShowStreak: boolean;
-
-  // §56h Journal Theme
-  journalThemeId: string;
-  journalCustomThemes: JournalTheme[];
-
+  journalPromptCategory: string; // "" = all categories
   // §56i Prompts
   journalPromptEnabled: boolean;
-  journalPromptCategory: string; // "" = all categories
   journalPromptMode: "random" | "sequential";
+  // §56g Stats
+  journalShowStreak: boolean;
+  journalStartupBehavior: JournalStartupBehavior;
+  journalTemplatePath: string;
+  // §56h Journal Theme
+  journalThemeId: string;
+  journalUseHierarchy: boolean; // §56a: daily/YYYY/MM/ 구조 사용 여부
+  journalWeeklyEnabled: boolean; // §56f: weekly notes
+  journalWeeklyTemplate: string; // §56a: weekly note template path
+  journalWeekStartDay: "monday" | "sunday"; // §56f: week start day
+  journalYearlyEnabled: boolean; // §56f: yearly notes
 
-  // §56j AI Reflection
-  journalAIReflectionEnabled: boolean;
-  journalAIAutoSuggest: boolean; // auto-suggest after save
+  journalYearlyTemplate: string; // §56a: yearly note template path
+  // Keybinding overrides
+  keybindingOverrides: Record<string, string>;
+
+  lastOpenedFile: null | string;
+
+  lastOpenedFolder: null | string;
+  lineHeight: number;
+
+  lineNumbers: boolean;
+  // i18n
+  locale: string;
+  memoriesMode: MemoriesMode;
 
   // §56b Memories Panel UI state
   memoriesTab: MemoriesTab;
-  memoriesMode: MemoriesMode;
+  // General
+  onLaunch: OnLaunch;
 
   // §55 Pandoc Extended Export
   pandocPath: string;
-  wordTemplatePath: string;
-  customExports: CustomExportItem[];
-  setPandocPath: (path: string) => void;
-  setWordTemplatePath: (path: string) => void;
+  recentFiles: { lastOpened: number; path: string }[];
+
+  recentFolders: { lastOpened: number; path: string }[];
+  removeKeybindingOverride: (id: string) => void;
+  removeTagColor: (tag: string) => void;
+  resetActivityBarConfig: () => void;
+  resetAllKeybindings: () => void;
+  saveCustomTheme: (theme: ThemeDef) => void;
+
+  setActiveTheme: (id: string) => void;
+  setActivityBarConfig: (config: ActivityBarItemConfig[]) => void;
+  setAutoPairBrackets: (enabled: boolean) => void;
+  setAutoSave: (enabled: boolean) => void;
+
+  setAutoSaveDelay: (delay: number) => void;
+  setAutoUpdateLinks: (enabled: boolean) => void;
+
+  setCodeBlockLineNumbers: (enabled: boolean) => void;
+  setCodeBlockStyle: (style: CodeBlockStyle) => void;
   setCustomExports: (items: CustomExportItem[]) => void;
+
+  // Legacy setters (delegate to setExtensionSetting — will be removed after SettingsModal migration)
+  setDiagrams: (enabled: boolean) => void;
+  setEditorMaxWidth: (width: number) => void;
+
+  setExtensionSetting: (key: string, value: unknown) => void;
+  // Editor setters
+  setFontFamily: (family: string) => void;
+  setFontSize: (size: number) => void;
+
+  setHighlight: (enabled: boolean) => void;
+  // Markdown setters
+  setInlineMath: (enabled: boolean) => void;
+  setJournalAIAutoSuggest: (enabled: boolean) => void;
+  // §56j AI Reflection setters
+  setJournalAIReflectionEnabled: (enabled: boolean) => void;
+
+  setJournalCustomThemes: (themes: JournalTheme[]) => void;
+  setJournalDirectory: (dir: string) => void;
+  // §56 Journal setters
+  setJournalEnabled: (enabled: boolean) => void;
+  setJournalEnergyEnabled: (enabled: boolean) => void;
+  setJournalFilenameFormat: (fmt: string) => void;
+  setJournalMonthlyTemplate: (path: string) => void;
+  // §56e Mood/Energy setters
+  setJournalMoodEnabled: (enabled: boolean) => void;
+  setJournalPromptCategory: (category: string) => void;
+  // §56i Prompt setters
+  setJournalPromptEnabled: (enabled: boolean) => void;
+
+  setJournalPromptMode: (mode: "random" | "sequential") => void;
+  // §56g Stats setter
+  setJournalShowStreak: (enabled: boolean) => void;
+  setJournalStartupBehavior: (behavior: JournalStartupBehavior) => void;
+  setJournalTemplatePath: (path: string) => void;
+  // §56h Journal Theme setters
+  setJournalThemeId: (id: string) => void;
+  setJournalUseHierarchy: (enabled: boolean) => void;
+  // §56a Periodic template setters
+  setJournalWeeklyTemplate: (path: string) => void;
+  setJournalYearlyTemplate: (path: string) => void;
+
+  setKeybindingOverride: (id: string, key: string) => void;
+  setLastOpenedFile: (path: null | string) => void;
+  setLastOpenedFolder: (path: null | string) => void;
+  setLineHeight: (height: number) => void;
+
+  setLineNumbers: (enabled: boolean) => void;
+  setLocale: (locale: string) => void;
+
+  setMemoriesMode: (mode: MemoriesMode) => void;
+  // §56b Memories Panel UI state setters
+  setMemoriesTab: (tab: MemoriesTab) => void;
+  // General setters
+  setOnLaunch: (onLaunch: OnLaunch) => void;
+  setPandocPath: (path: string) => void;
+
+  setShowWelcome: (show: boolean) => void;
+  setSmartPunctuation: (enabled: boolean) => void;
+  setSnapshotInterval: (minutes: number) => void;
+  setSnapshotMaxCount: (count: number) => void;
+  setSpellCheck: (enabled: boolean) => void;
+  setStrikethrough: (enabled: boolean) => void;
+
+  setTabSize: (size: number) => void;
+  setTagColor: (tag: string, color: string) => void;
+  // Appearance setters
+  setTheme: (theme: Theme) => void;
+
+  // Files setters
+  setWikilinkFormat: (format: WikilinkFormat) => void;
+  setWordTemplatePath: (path: string) => void;
+
+  setZoomLevel: (level: number) => void;
+
+  showWelcome: boolean;
+  smartPunctuation: boolean;
 
   // Snapshots (§71)
   snapshotInterval: number; // minutes, 0 = disabled
   snapshotMaxCount: number;
-  setSnapshotInterval: (minutes: number) => void;
-  setSnapshotMaxCount: (count: number) => void;
+  spellCheck: boolean;
 
-  // Extension settings (dynamic key-value)
-  extensionSettings: Record<string, unknown>;
-  setExtensionSetting: (key: string, value: unknown) => void;
-
-  // Activity Bar config
-  activityBarConfig: ActivityBarItemConfig[];
-  setActivityBarConfig: (config: ActivityBarItemConfig[]) => void;
-  resetActivityBarConfig: () => void;
-
-  // i18n
-  locale: string;
-  setLocale: (locale: string) => void;
+  strikethrough: boolean;
+  tabSize: number;
 
   // Tag colors
   tagColors: Record<string, string>;
-  setTagColor: (tag: string, color: string) => void;
-  removeTagColor: (tag: string) => void;
+  // Appearance
+  theme: Theme;
 
-  // Keybinding overrides
-  keybindingOverrides: Record<string, string>;
-  setKeybindingOverride: (id: string, key: string) => void;
-  removeKeybindingOverride: (id: string) => void;
-  resetAllKeybindings: () => void;
-
-  // General setters
-  setOnLaunch: (onLaunch: OnLaunch) => void;
-  setAutoSave: (enabled: boolean) => void;
-  setAutoSaveDelay: (delay: number) => void;
-  setSpellCheck: (enabled: boolean) => void;
-  setShowWelcome: (show: boolean) => void;
-  addRecentFolder: (path: string) => void;
-  addRecentFile: (path: string) => void;
-  setLastOpenedFolder: (path: string | null) => void;
-  setLastOpenedFile: (path: string | null) => void;
-
-  // Editor setters
-  setFontFamily: (family: string) => void;
-  setFontSize: (size: number) => void;
-  setLineHeight: (height: number) => void;
-  setTabSize: (size: number) => void;
-  setLineNumbers: (enabled: boolean) => void;
-  setAutoPairBrackets: (enabled: boolean) => void;
-  setEditorMaxWidth: (width: number) => void;
-  setZoomLevel: (level: number) => void;
-
-  // Appearance setters
-  setTheme: (theme: Theme) => void;
-  setActiveTheme: (id: string) => void;
-  saveCustomTheme: (theme: ThemeDef) => void;
-  deleteCustomTheme: (id: string) => void;
-
-  // Files setters
-  setWikilinkFormat: (format: WikilinkFormat) => void;
-  setAutoUpdateLinks: (enabled: boolean) => void;
-
-  // Markdown setters
-  setInlineMath: (enabled: boolean) => void;
-  setHighlight: (enabled: boolean) => void;
-  setStrikethrough: (enabled: boolean) => void;
-  setSmartPunctuation: (enabled: boolean) => void;
-
-  // §56 Journal setters
-  setJournalEnabled: (enabled: boolean) => void;
-  setJournalDirectory: (dir: string) => void;
-  setJournalFilenameFormat: (fmt: string) => void;
-  setJournalTemplatePath: (path: string) => void;
-  setJournalStartupBehavior: (behavior: JournalStartupBehavior) => void;
-  setJournalUseHierarchy: (enabled: boolean) => void;
-
-  // §56a Periodic template setters
-  setJournalWeeklyTemplate: (path: string) => void;
-  setJournalMonthlyTemplate: (path: string) => void;
-  setJournalYearlyTemplate: (path: string) => void;
-
-  // §56e Mood/Energy setters
-  setJournalMoodEnabled: (enabled: boolean) => void;
-  setJournalEnergyEnabled: (enabled: boolean) => void;
-
-  // §56g Stats setter
-  setJournalShowStreak: (enabled: boolean) => void;
-
-  // §56h Journal Theme setters
-  setJournalThemeId: (id: string) => void;
-  setJournalCustomThemes: (themes: JournalTheme[]) => void;
-
-  // §56i Prompt setters
-  setJournalPromptEnabled: (enabled: boolean) => void;
-  setJournalPromptCategory: (category: string) => void;
-  setJournalPromptMode: (mode: "random" | "sequential") => void;
-
-  // §56j AI Reflection setters
-  setJournalAIReflectionEnabled: (enabled: boolean) => void;
-  setJournalAIAutoSuggest: (enabled: boolean) => void;
-
-  // §56b Memories Panel UI state setters
-  setMemoriesTab: (tab: MemoriesTab) => void;
-  setMemoriesMode: (mode: MemoriesMode) => void;
-
-  // Legacy setters (delegate to setExtensionSetting — will be removed after SettingsModal migration)
-  setDiagrams: (enabled: boolean) => void;
-  setCodeBlockLineNumbers: (enabled: boolean) => void;
-  setCodeBlockStyle: (style: CodeBlockStyle) => void;
+  // Files & Links
+  wikilinkFormat: WikilinkFormat;
+  wordTemplatePath: string;
+  zoomLevel: number; // 0.5 ~ 2.0 (1.0 = 100%)
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -439,7 +441,7 @@ export const useSettingsStore = create<SettingsState>()(
       },
       setActiveTheme: (id) =>
         set((state) => {
-          let base: "light" | "dark" | "system" = "system";
+          let base: "dark" | "light" | "system" = "system";
           if (id !== "system") {
             const theme = findThemeById(id, state.customThemes);
             base = theme?.base ?? "light";
