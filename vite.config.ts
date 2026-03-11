@@ -6,6 +6,52 @@ import path from "path";
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 
+function manualChunks(id: string): string | undefined {
+  const normalizedId = id.replace(/\\/g, "/");
+  if (!normalizedId.includes("/node_modules/")) return undefined;
+
+  if (normalizedId.includes("/@tauri-apps/")) return "vendor-tauri";
+
+  if (
+    normalizedId.includes("/react/") ||
+    normalizedId.includes("/react-dom/") ||
+    normalizedId.includes("/scheduler/") ||
+    normalizedId.includes("/zustand/")
+  ) {
+    return "vendor-react";
+  }
+
+  if (
+    normalizedId.includes("/@tiptap/") ||
+    normalizedId.includes("/prosemirror-") ||
+    normalizedId.includes("/orderedmap/")
+  ) {
+    return "vendor-editor";
+  }
+
+  if (
+    /\/node_modules\/@codemirror\/(autocomplete|commands|language|search|state|view)\//.test(
+      normalizedId,
+    ) ||
+    normalizedId.includes("/@lezer/highlight/")
+  ) {
+    return "vendor-codemirror";
+  }
+
+  if (normalizedId.includes("/katex/")) return "vendor-katex";
+
+  if (
+    normalizedId.includes("/unified/") ||
+    normalizedId.includes("/remark-") ||
+    normalizedId.includes("/mdast-util-") ||
+    normalizedId.includes("/micromark") ||
+    normalizedId.includes("/unist-util-") ||
+    normalizedId.includes("/vfile/")
+  ) {
+    return "vendor-markdown";
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [react(), tailwindcss()],
@@ -15,41 +61,11 @@ export default defineConfig(async () => ({
     },
   },
 
-  // §8.4 Build optimization — vendor chunk splitting
+  // §8.4 Build optimization — group large vendor families into stable chunks.
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          // ProseMirror + Tiptap core — editor essentials (always needed)
-          "vendor-editor": [
-            "@tiptap/core",
-            "@tiptap/react",
-            "@tiptap/pm/state",
-            "@tiptap/pm/view",
-            "@tiptap/pm/model",
-          ],
-          // CodeMirror core — code blocks / source mode only
-          "vendor-codemirror": [
-            "@codemirror/view",
-            "@codemirror/state",
-            "@codemirror/commands",
-            "@codemirror/language",
-          ],
-          // KaTeX — math content only
-          "vendor-katex": ["katex"],
-          // Markdown pipeline — file open/save
-          "vendor-markdown": [
-            "unified",
-            "remark-parse",
-            "remark-stringify",
-            "remark-gfm",
-            "remark-math",
-            "remark-frontmatter",
-            "mdast-util-from-markdown",
-            "mdast-util-gfm",
-            "mdast-util-to-markdown",
-          ],
-        },
+        manualChunks,
       },
     },
   },

@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import * as invoke from "../../ipc/invoke";
 import {
   DAILY_PROMPTS,
   getDailyPrompt,
   getDailyPromptWithHistory,
   getRandomPrompt,
   HISTORY_SIZE,
+  loadCustomPrompts,
 } from "../journal-prompts";
 
 // ── DAILY_PROMPTS structure ─────────────────────────────────────────────────
@@ -194,13 +196,10 @@ describe("loadCustomPrompts", () => {
   });
 
   it("returns empty array when prompts folder does not exist", async () => {
-    // Simulate IPC failure (folder missing)
-    vi.mock("../../ipc/invoke", () => ({
-      listDir: vi.fn().mockRejectedValue(new Error("No such directory")),
-      readFile: vi.fn(),
-    }));
-    const { loadCustomPrompts: lcp } = await import("../journal-prompts");
-    const result = await lcp("/some/journal/dir");
+    vi.spyOn(invoke, "listDir").mockRejectedValue(
+      new Error("No such directory"),
+    );
+    const result = await loadCustomPrompts("/some/journal/dir");
     expect(result).toEqual([]);
   });
 });

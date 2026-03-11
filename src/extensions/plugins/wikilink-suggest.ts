@@ -15,9 +15,9 @@ import {
   WikilinkMenuList,
   type WikilinkMenuRef,
 } from "../../components/command/WikilinkMenu";
-import { refreshIndex, writeFile } from "../../ipc/invoke";
+import { listDir, refreshIndex, writeFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
+import { buildFileTree, useFileStore } from "../../stores/file-store";
 import { flattenFileTree, fuzzyScore } from "../../utils/file-search";
 import { getSyntaxRevealExpanded, syntaxRevealKey } from "./syntax-reveal";
 import {
@@ -108,9 +108,6 @@ export const WikilinkSuggest = Extension.create({
                 .then(async () => {
                   await refreshIndex(rootPath);
                   // Refresh file tree so the new file appears in sidebar & navigation
-                  const { listDir } = await import("../../ipc/invoke");
-                  const { buildFileTree } =
-                    await import("../../stores/file-store");
                   const entries = await listDir(rootPath, true);
                   const tree = buildFileTree(entries, rootPath);
                   useFileStore.getState().setFileTree(tree);

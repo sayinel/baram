@@ -1134,7 +1134,7 @@ mod tests {
             .push(entry);
 
         index.remove_file("/vault/a.md");
-        assert!(index.outgoing.get("/vault/a.md").is_none());
+        assert!(!index.outgoing.contains_key("/vault/a.md"));
         assert!(index.get_backlinks("/vault/b.md").is_empty());
     }
 

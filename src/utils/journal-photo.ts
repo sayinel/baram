@@ -1,6 +1,6 @@
 // §56d Journal Photo — asset utility functions
 
-import { createDir } from "../ipc/invoke";
+import { createDir, listDir, readFile, writeBinaryFile } from "../ipc/invoke";
 
 export interface PhotoGalleryEntry {
   absolutePath: string;
@@ -103,8 +103,6 @@ export async function savePhotoToAssets(
   _journalDir: string,
   activeFilePath?: string,
 ): Promise<string> {
-  const { writeBinaryFile } = await import("../ipc/invoke");
-
   if (!activeFilePath) {
     throw new Error("Cannot save photo: no active file path");
   }
@@ -138,8 +136,6 @@ export async function scanJournalPhotos(
   journalDir: string,
   options?: { month?: number; year?: number },
 ): Promise<PhotoGalleryEntry[]> {
-  const { listDir, readFile } = await import("../ipc/invoke");
-
   const base = isAbsolutePath(journalDir)
     ? journalDir
     : `${rootPath}/${journalDir}`;
@@ -247,8 +243,6 @@ async function populateCaptionsFromDir(
   monthDirPath: string,
   readFile: (path: string) => Promise<string>,
 ): Promise<void> {
-  const { listDir } = await import("../ipc/invoke");
-
   // Find entries without captions in this batch
   const uncaptioned = entries.filter((e) => !e.caption && !e.journalPath);
   if (uncaptioned.length === 0) return;

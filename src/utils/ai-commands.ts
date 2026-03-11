@@ -1,6 +1,9 @@
 // §6.2 Shared AI command utilities — used by slash menu, FloatingToolbar, CommandPalette
+import { listen } from "@tauri-apps/api/event";
+
 import type { Editor } from "@tiptap/core";
 
+import { llmComplete } from "../ipc/invoke";
 import { useAIStore } from "../stores/ai-store";
 import { getConfigForTask } from "./model-selection";
 
@@ -53,8 +56,6 @@ export async function executeAICommand(
     currentPos = insertPos;
   }
 
-  const { listen } = await import("@tauri-apps/api/event");
-
   const tokenUn = await listen<{ requestId: string; token: string }>(
     "llm:token",
     (event) => {
@@ -84,7 +85,6 @@ export async function executeAICommand(
   );
 
   // Fire LLM request
-  const { llmComplete } = await import("../ipc/invoke");
   await llmComplete(
     inlineCfg.apiKey,
     prompt,

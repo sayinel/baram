@@ -16,7 +16,11 @@ import {
   SlashMenuList,
   type SlashMenuRef,
 } from "../../components/command/SlashMenu";
+import { copyFile, createDir } from "../../ipc/invoke";
 import { useAIStore } from "../../stores/ai-store";
+import { useEditorStore } from "../../stores/editor-store";
+import { useFileStore } from "../../stores/file-store";
+import { useSettingsStore } from "../../stores/settings-store";
 import { useUIStore } from "../../stores/ui-store";
 import {
   AI_EXPAND,
@@ -36,6 +40,7 @@ import {
   substituteVariables,
 } from "../../utils/custom-ai-commands";
 import { showFieldDialog } from "../../utils/field-dialog";
+import { generatePhotoFilename, getAssetsDir } from "../../utils/journal-photo";
 import { showTableGridPicker } from "../../utils/table-grid-picker";
 
 export function buildSlashItems(editor: Editor): SlashMenuItem[] {
@@ -464,11 +469,6 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
           const paths = Array.isArray(selected) ? selected : [selected];
 
           // Check journal context
-          const { useEditorStore } = await import("../../stores/editor-store");
-          const { useFileStore } = await import("../../stores/file-store");
-          const { useSettingsStore } =
-            await import("../../stores/settings-store");
-
           const activeTabId = useEditorStore.getState().activeTabId;
           const tabs = useEditorStore.getState().tabs;
           const activeTab = tabs.find(
@@ -485,10 +485,6 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
           for (const p of paths) {
             if (isJournal && rootPath && journalDir) {
               // Copy file to assets directory using helpers + copyFile IPC
-              const { generatePhotoFilename, getAssetsDir } =
-                await import("../../utils/journal-photo");
-              const { createDir, copyFile } = await import("../../ipc/invoke");
-
               const now = new Date();
               const fileName = p.split("/").pop() ?? "photo.jpg";
               const assetsRelDir = getAssetsDir(journalDir, now);

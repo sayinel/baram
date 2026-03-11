@@ -50,6 +50,14 @@ jobs:
               - 'knip.json'
             rust:
               - 'src-tauri/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.node-version'
+              - 'tsconfig.json'
+              - 'tsconfig.node.json'
+              - 'vite.config.*'
+              - '.github/actions/**'
+              - '.github/workflows/ci.yml'
             build:
               - 'src/**'
               - 'src-tauri/**'
@@ -74,16 +82,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node
-      - name: Prettier
-        run: npx prettier --check 'src/**/*.{ts,tsx,css}'
-      - name: ESLint
-        run: npx eslint src/ --max-warnings=0
-      - name: Stylelint
-        run: npx stylelint 'src/**/*.css'
-      - name: TypeScript
-        run: npx tsc --noEmit
-      - name: Knip (dead code)
-        run: npx knip --reporter compact
+      - name: Frontend lint suite
+        run: npm run lint
 
   # ── Frontend: Test ──────────────────────────────────────────────
   test:
@@ -96,7 +96,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-node
       - name: Vitest
-        run: npx vitest run
+        run: npm run test
 
   # ── PR: Build Smoke Test (Ubuntu, no bundle) ───────────────────
   build-smoke:
@@ -154,22 +154,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
-      - name: Format check
-        run: cargo fmt --check
-        working-directory: src-tauri
-
-      - name: Setup Node.js (for frontend build)
+      - name: Setup Node.js (for frontend and Tauri build)
         uses: ./.github/actions/setup-node
-      - name: Build frontend assets
-        run: npm run build
-
-      - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings
-        working-directory: src-tauri
-
-      - name: Cargo test
-        run: cargo test
-        working-directory: src-tauri
+      - name: Rust check suite
+        run: npm run rust:check
 
   # ── Security: Secret Detection ──────────────────────────────────
   security:

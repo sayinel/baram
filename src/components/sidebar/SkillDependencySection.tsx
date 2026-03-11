@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { FileEntry } from "../../stores/file-store";
 
+import { readFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { useSkillStore } from "../../stores/skill-store";
@@ -49,7 +50,6 @@ export function SkillDependencySection() {
     try {
       const mdFiles = collectMdFiles(fileTree);
       const { openFiles } = useFileStore.getState();
-      const { readFile } = await import("../../ipc/invoke");
       const skills: SkillMeta[] = [];
 
       for (const file of mdFiles) {

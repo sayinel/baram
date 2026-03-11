@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from "react";
 
 import type { FileEntry } from "../../stores/file-store";
 
+import { readFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { useUIStore } from "../../stores/ui-store";
@@ -243,7 +244,6 @@ export function PropertiesPanel() {
         return;
       }
       try {
-        const { readFile } = await import("../../ipc/invoke");
         const fileContent = await readFile(found.path);
         useFileStore.getState().setFileContent(found.path, fileContent);
         openTab({

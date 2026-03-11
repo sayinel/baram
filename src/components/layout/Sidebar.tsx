@@ -1,19 +1,70 @@
+import { lazy, Suspense } from "react";
+
 import type { Editor } from "@tiptap/react";
 
 // §4.3 Left sidebar container — panel switching via ActivityBar
 import { useUIStore } from "../../stores/ui-store";
-import { PluginMarketplace } from "../plugins/PluginMarketplace";
-import { Backlinks } from "../sidebar/Backlinks";
-import { BookmarkPanel } from "../sidebar/BookmarkPanel";
-import { CalendarPanel } from "../sidebar/CalendarPanel";
-import { FileTree } from "../sidebar/FileTree";
-import { GitPanel } from "../sidebar/GitPanel";
-import { GlobalSearch } from "../sidebar/GlobalSearch";
-import { GraphView } from "../sidebar/GraphView";
-import { Outline } from "../sidebar/Outline";
-import { SkillGalleryPanel } from "../sidebar/SkillGalleryPanel";
-import { TagPanel } from "../sidebar/TagPanel";
-import { VersionHistoryPanel } from "../sidebar/VersionHistoryPanel";
+
+const PluginMarketplace = lazy(() =>
+  import("../plugins/PluginMarketplace").then((m) => ({
+    default: m.PluginMarketplace,
+  })),
+);
+const Backlinks = lazy(() =>
+  import("../sidebar/Backlinks").then((m) => ({
+    default: m.Backlinks,
+  })),
+);
+const BookmarkPanel = lazy(() =>
+  import("../sidebar/BookmarkPanel").then((m) => ({
+    default: m.BookmarkPanel,
+  })),
+);
+const CalendarPanel = lazy(() =>
+  import("../sidebar/CalendarPanel").then((m) => ({
+    default: m.CalendarPanel,
+  })),
+);
+const FileTree = lazy(() =>
+  import("../sidebar/FileTree").then((m) => ({
+    default: m.FileTree,
+  })),
+);
+const GitPanel = lazy(() =>
+  import("../sidebar/GitPanel").then((m) => ({
+    default: m.GitPanel,
+  })),
+);
+const GlobalSearch = lazy(() =>
+  import("../sidebar/GlobalSearch").then((m) => ({
+    default: m.GlobalSearch,
+  })),
+);
+const GraphView = lazy(() =>
+  import("../sidebar/GraphView").then((m) => ({
+    default: m.GraphView,
+  })),
+);
+const Outline = lazy(() =>
+  import("../sidebar/Outline").then((m) => ({
+    default: m.Outline,
+  })),
+);
+const SkillGalleryPanel = lazy(() =>
+  import("../sidebar/SkillGalleryPanel").then((m) => ({
+    default: m.SkillGalleryPanel,
+  })),
+);
+const TagPanel = lazy(() =>
+  import("../sidebar/TagPanel").then((m) => ({
+    default: m.TagPanel,
+  })),
+);
+const VersionHistoryPanel = lazy(() =>
+  import("../sidebar/VersionHistoryPanel").then((m) => ({
+    default: m.VersionHistoryPanel,
+  })),
+);
 
 interface SidebarProps {
   editor: Editor | null;
@@ -24,20 +75,22 @@ export function Sidebar({ editor }: SidebarProps) {
 
   return (
     <div className="sidebar">
-      <div className="sidebar-content">
-        {sidebarPanel === "files" && <FileTree editor={editor} />}
-        {sidebarPanel === "search" && <GlobalSearch />}
-        {sidebarPanel === "outline" && <Outline editor={editor} />}
-        {sidebarPanel === "backlinks" && <Backlinks />}
-        {sidebarPanel === "bookmarks" && <BookmarkPanel />}
-        {sidebarPanel === "graph" && <GraphView />}
-        {sidebarPanel === "git" && <GitPanel />}
-        {sidebarPanel === "calendar" && <CalendarPanel />}
-        {sidebarPanel === "tags" && <TagPanel />}
-        {sidebarPanel === "snapshots" && <VersionHistoryPanel />}
-        {sidebarPanel === "skills-gallery" && <SkillGalleryPanel />}
-        {sidebarPanel === "plugins" && <PluginMarketplace />}
-      </div>
+      <Suspense fallback={<div className="sidebar-content" />}>
+        <div className="sidebar-content">
+          {sidebarPanel === "files" && <FileTree editor={editor} />}
+          {sidebarPanel === "search" && <GlobalSearch />}
+          {sidebarPanel === "outline" && <Outline editor={editor} />}
+          {sidebarPanel === "backlinks" && <Backlinks />}
+          {sidebarPanel === "bookmarks" && <BookmarkPanel />}
+          {sidebarPanel === "graph" && <GraphView />}
+          {sidebarPanel === "git" && <GitPanel />}
+          {sidebarPanel === "calendar" && <CalendarPanel />}
+          {sidebarPanel === "tags" && <TagPanel />}
+          {sidebarPanel === "snapshots" && <VersionHistoryPanel />}
+          {sidebarPanel === "skills-gallery" && <SkillGalleryPanel />}
+          {sidebarPanel === "plugins" && <PluginMarketplace />}
+        </div>
+      </Suspense>
     </div>
   );
 }
