@@ -1,13 +1,14 @@
 // §56 Journal — startup auto-creation hook
 import { useEffect, useRef } from "react";
+
+import { createDir, readFile, writeFile } from "../ipc/invoke";
 import { useFileStore } from "../stores/file-store";
 import { useSettingsStore } from "../stores/settings-store";
-import { readFile, writeFile, createDir } from "../ipc/invoke";
 import {
-  generateDefaultJournal,
   applyJournalTemplate,
-  getJournalFilePath,
+  generateDefaultJournal,
   getHierarchicalJournalPath,
+  getJournalFilePath,
   resolveJournalDir,
 } from "../utils/journal";
 
@@ -19,7 +20,7 @@ export function useJournal(
   handleOpenFilePath: (path: string) => Promise<void>,
 ) {
   const rootPath = useFileStore((s) => s.rootPath);
-  const didRunRef = useRef<string | null>(null);
+  const didRunRef = useRef<null | string>(null);
 
   useEffect(() => {
     const {
