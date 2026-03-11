@@ -4,7 +4,8 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    branches:
+      - '**'
   workflow_call:
 
 concurrency:
@@ -177,6 +178,7 @@ jobs:
     if: >
       always() &&
       github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
       needs.changes.outputs.build == 'true' &&
       needs.security.result == 'success' &&
       contains(fromJSON('["success","skipped"]'), needs.lint.result) &&
