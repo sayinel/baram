@@ -365,7 +365,7 @@ mod tests {
 
     #[test]
     fn test_gemini_models_filter_non_gemini() {
-        let models = vec![
+        let models = [
             GeminiModelEntry {
                 name: "models/gemini-2.0-flash".to_string(),
                 display_name: Some("Gemini 2.0 Flash".to_string()),

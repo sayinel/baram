@@ -11,6 +11,8 @@ import type {
   UIAPI,
 } from "./types";
 
+import { listDir, readFile, writeFile } from "../ipc/invoke";
+
 /** Creates a denied proxy that throws on any property access */
 function createDeniedProxy(
   apiName: string,
@@ -215,17 +217,14 @@ function createEditorAPI(readonly: boolean): EditorAPI {
 function createFilesAPI(readonly: boolean): FilesAPI {
   return {
     async readFile(path: string): Promise<string> {
-      const { readFile } = await import("../ipc/invoke");
       return readFile(path);
     },
     async writeFile(path: string, content: string): Promise<void> {
       if (readonly)
         throw new Error("files:readonly — writeFile is not allowed");
-      const { writeFile } = await import("../ipc/invoke");
       return writeFile(path, content);
     },
     async listDir(path: string): Promise<string[]> {
-      const { listDir } = await import("../ipc/invoke");
       const entries = await listDir(path);
       return entries.map((e) => e.name);
     },

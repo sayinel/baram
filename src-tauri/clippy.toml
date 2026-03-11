@@ -1,79 +1,39 @@
-# clippy.toml — Clippy Linting Configuration
-# Baram (Tauri 2.0 Backend)
+# clippy.toml — stable Clippy configuration for the Tauri backend.
 #
-# Customizes clippy lints for stricter code quality.
-# Reference: https://doc.rust-lang.org/clippy/
+# Keep this file intentionally small:
+# - only override stable, documented keys
+# - only diverge from defaults where the project has an explicit policy
 
-# Minimum Supported Rust Version (MSRV)
-# Tauri 2.0 requires Rust 1.70+. Setting to 1.75 for safety margin.
-# This prevents clippy from suggesting unstable features unavailable in your MSRV.
-msrv = "1.75"
+# Minimum Supported Rust Version (MSRV) for lint suggestions.
+# The backend currently uses std::sync::LazyLock, which requires Rust 1.80+.
+msrv = "1.80.0"
 
-# Cognitive Complexity Threshold
-# Default: 25 (high complexity)
-# Recommendation: 20 (encourage breaking down complex functions)
-# Guideline: Keep functions focused, extract helper methods for branches
-cognitive_complexity_threshold = 20
+# Stricter than Clippy's default (25) to keep handlers and services decomposed.
+cognitive-complexity-threshold = 20
 
-# Type Complexity Threshold
-# Default: 250 (hard to measure, reasonable default)
-# This penalizes deeply nested generic types. 250 is reasonable for most projects.
-type_complexity_threshold = 250
+# Stricter than Clippy's default (7) to push argument-heavy APIs toward structs.
+too-many-arguments-threshold = 6
 
-# Too Many Arguments Threshold
-# Default: 7 arguments
-# Recommendation: 6 (enforce good API design)
-# Guideline: Functions with many args are hard to use/test. Refactor into structs.
-too_many_arguments_threshold = 6
-
-# Single Character Binding Names Threshold
-# Default: 4 (allow single letters in short loops/matches)
-# Recommendation: Keep default. Single letters like `i`, `x`, `e` are fine in tight scopes.
-single_char_binding_names_threshold = 4
-
-# Single Character Lifetime Names Threshold
-# Default: 4 (allow single letters in lifetimes)
-# Recommendation: Keep default. Lifetimes like `'a`, `'b` are idiomatic in Rust.
-single_char_lifetime_names_threshold = 4
-
-# Docs Threshold
-# Default: 100 (encourage docs for public items)
-# Recommendation: Keep default.
-doc-valid-idents = [
-    # Standard Rust/Tauri terms that don't need backticks in docs
-    "IPC",
-    "CLI",
-    "HTTP",
-    "HTTPS",
-    "SQLite",
-    "UTF",
-    "JSON",
-    "LLM",
-    "AI",
-    "PDF",
-    "HTML",
-    "CSS",
-    "JS",
-    "UUID",
-    "WYSIWYG",
-    "Baram",
-    "Tauri",
-]
-
-# Array/Vector Length Threshold
-# Default: 3 (forbid hardcoded arrays > 3 elements)
-# Recommendation: Keep default for code quality.
-
-# Complexity penalties for clippy::complexity checks
-# These are stricter defaults to catch issues early.
-
-# Allow expect() in test code (cfg(test))
-# This is safe because test code doesn't run in production
+# Test code can use expect() when it improves failure messages.
 allow-expect-in-tests = true
 
-# Suggest matches! macro for let-else patterns (ergonomic improvement)
-matches-for-let-else = true
-
-# Note: these settings only apply to lint rules that support them.
-# For a full list of configurable lints, see:
-# https://doc.rust-lang.org/clippy/lint_configuration.html
+# Preserve Clippy defaults and append project-specific terms used in docs.
+doc-valid-idents = [
+    "AI",
+    "Baram",
+    "CLI",
+    "CSS",
+    "HTML",
+    "HTTP",
+    "HTTPS",
+    "IPC",
+    "JSON",
+    "LLM",
+    "PDF",
+    "SQLite",
+    "Tauri",
+    "UTF",
+    "UUID",
+    "WYSIWYG",
+    "..",
+]

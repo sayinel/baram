@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { NodeViewProps } from "@tiptap/react";
 
 import { readFile, updateFileIndex, writeFile } from "../ipc/invoke";
+import { prosemirrorToMarkdown } from "../pipeline/pm-to-md";
 import { useEditorStore } from "../stores/editor-store";
 import { useFileStore } from "../stores/file-store";
 import { findBlockContent, findBlockPosById } from "../utils/block-nav";
@@ -236,7 +237,6 @@ async function getSameFileContent(
   }
 
   try {
-    const { prosemirrorToMarkdown } = await import("../pipeline/pm-to-md");
     return prosemirrorToMarkdown(editor.state.doc);
   } catch {
     return null;

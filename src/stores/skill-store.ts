@@ -8,6 +8,7 @@ import type { FileEntry } from "./file-store";
 // §72c Skill Store — shared state for skill mode features
 import { create } from "zustand";
 
+import { readFile } from "../ipc/invoke";
 import {
   analyzeSkillDependencies,
   parseSkillFrontmatter,
@@ -60,7 +61,6 @@ export const useSkillStore = create<SkillState>()((set, get) => ({
     try {
       const { fileTree } = useFileStore.getState();
       const mdFiles = collectMdFiles(fileTree);
-      const { readFile } = await import("../ipc/invoke");
 
       const skills: SkillMeta[] = [];
       for (const file of mdFiles) {

@@ -1,20 +1,13 @@
 /**
  * §56g Journal Stats Cache — unit tests for pure functions
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   createEmptyCache,
   type JournalStatsCache,
   updateCacheEntry,
 } from "../journal-stats-cache";
-
-// Mock IPC — we only test pure functions here so no actual IPC is called
-vi.mock("../../ipc/invoke", () => ({
-  readFile: vi.fn(),
-  writeFile: vi.fn(),
-  listDir: vi.fn(),
-}));
 
 // ============================================================
 // createEmptyCache

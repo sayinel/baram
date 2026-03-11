@@ -506,10 +506,13 @@ npm run tauri dev
 
 # Run tests
 npm test                          # Vitest (frontend)
-cd src-tauri && cargo test        # Rust backend
+npm run rust:test                 # Rust backend
+npm run rust:check                # fmt + frontend build + clippy + cargo test
 
 # Lint & format
 npm run lint
+npm run check                     # frontend lint + tests
+npm run verify:ci                 # local equivalent of CI gates
 npm run format
 ```
 
