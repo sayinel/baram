@@ -2518,14 +2518,16 @@ function App() {
       <AppLayout
         editor={editor}
         statusBar={
-          <StatusBar
-            editor={editor}
-            isSourceMode={isSourceMode}
-            isGraphMode={isGraphTabActive}
-          />
+          rootPath ? (
+            <StatusBar
+              editor={editor}
+              isSourceMode={isSourceMode}
+              isGraphMode={isGraphTabActive}
+            />
+          ) : undefined
         }
       >
-        <TabBar />
+        {!!rootPath && <TabBar />}
         <div className="editor-area">
           {!rootPath && !activeTabId ? (
             <div className="editor-area-scroll">

@@ -1,6 +1,7 @@
 // §4.2 3-Column resizable layout
 import { Suspense, lazy, useCallback } from "react";
 import { useUIStore } from "../../stores/ui-store";
+import { useFileStore } from "../../stores/file-store";
 import { Splitter } from "./Splitter";
 import { Sidebar } from "./Sidebar";
 import { ActivityBar } from "./ActivityBar";
@@ -52,6 +53,10 @@ export function AppLayout({ editor, children, statusBar }: AppLayoutProps) {
     rightPanelWidth,
     setRightPanelWidth,
   } = useUIStore();
+  const rootPath = useFileStore((s) => s.rootPath);
+
+  // Hide sidebar & activity bar when no folder is open (HomeScreen state)
+  const showSidebar = !!rootPath && sidebarOpen;
 
   const handleSidebarResize = useCallback(
     (delta: number) => {
@@ -78,11 +83,11 @@ export function AppLayout({ editor, children, statusBar }: AppLayoutProps) {
     <div className="app-layout">
       {/* Body: sidebar + main + right panel */}
       <div className="app-layout-body">
-        {/* Activity Bar — always visible */}
-        <ActivityBar />
+        {/* Activity Bar — hidden when no folder open */}
+        {!!rootPath && <ActivityBar />}
 
         {/* Left Sidebar */}
-        {sidebarOpen && (
+        {showSidebar && (
           <>
             <aside
               className="app-sidebar"
@@ -97,8 +102,8 @@ export function AppLayout({ editor, children, statusBar }: AppLayoutProps) {
         {/* Main Editor Area */}
         <div className="app-main">{children}</div>
 
-        {/* Right Panel */}
-        {rightPanelOpen && (
+        {/* Right Panel — hidden when no folder open */}
+        {!!rootPath && rightPanelOpen && (
           <>
             <Splitter
               direction="horizontal"
