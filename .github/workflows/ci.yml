@@ -20,7 +20,7 @@ env:
 jobs:
   # ── Lint (all events) ──────────────────────────────────────────────
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-node
@@ -29,7 +29,7 @@ jobs:
 
   # ── Security: Secret Detection (all events) ────────────────────────
   security:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
         with:
@@ -41,7 +41,7 @@ jobs:
   # ── Test (PR + workflow_call) ──────────────────────────────────────
   test:
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_call'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-node
@@ -51,7 +51,7 @@ jobs:
   # ── Rust: fmt + clippy + test + build smoke (PR + workflow_call) ───
   rust:
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_call'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/setup-node
@@ -91,7 +91,7 @@ jobs:
   ci-pass:
     if: always()
     needs: [lint, security, test, rust]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Verify all jobs passed
         env:
