@@ -23,13 +23,14 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
+      build: ${{ steps.filter.outputs.build }}
       frontend: ${{ steps.filter.outputs.frontend }}
       rust: ${{ steps.filter.outputs.rust }}
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36  # v3.0.2
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
         id: filter
         with:
           filters: |
@@ -37,6 +38,7 @@ jobs:
               - 'src/**'
               - 'package.json'
               - 'package-lock.json'
+              - '.node-version'
               - 'tsconfig.json'
               - 'tsconfig.node.json'
               - 'vite.config.*'
@@ -48,6 +50,19 @@ jobs:
               - 'knip.json'
             rust:
               - 'src-tauri/**'
+            build:
+              - 'src/**'
+              - 'src-tauri/**'
+              - 'index.html'
+              - 'public/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.node-version'
+              - 'tsconfig.json'
+              - 'tsconfig.node.json'
+              - 'vite.config.*'
+              - '.github/actions/**'
+              - '.github/workflows/ci.yml'
 
   # ── Frontend: Lint + Type Check ─────────────────────────────────
   lint:
@@ -83,6 +98,37 @@ jobs:
       - name: Vitest
         run: npx vitest run
 
+  # ── PR: Build Smoke Test (Ubuntu, no bundle) ───────────────────
+  build-smoke:
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+
+      - uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # v1
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
+        with:
+          workspaces: src-tauri -> target
+          cache-on-failure: true
+
+      - name: Install Tauri system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Tauri smoke build
+        run: npm run tauri build -- --no-bundle
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ""
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+
   # ── Rust: Check + Test ──────────────────────────────────────────
   rust-check:
     needs: changes
@@ -93,12 +139,12 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9  # v1
+      - uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # v1
         with:
           toolchain: stable
           components: clippy, rustfmt
 
-      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5  # v2.8.2
+      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
         with:
           workspaces: src-tauri -> target
           cache-on-failure: true
@@ -133,14 +179,65 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7  # v2.3.9
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Main: Cross-Platform Build Matrix ───────────────────────────
+  build-matrix:
+    needs: [changes, lint, test, rust-check, security]
+    if: >
+      always() &&
+      github.event_name == 'push' &&
+      needs.changes.outputs.build == 'true' &&
+      needs.security.result == 'success' &&
+      contains(fromJSON('["success","skipped"]'), needs.lint.result) &&
+      contains(fromJSON('["success","skipped"]'), needs.test.result) &&
+      contains(fromJSON('["success","skipped"]'), needs.rust-check.result)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node
+
+      - uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9 # v1
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5 # v2.8.2
+        with:
+          workspaces: src-tauri -> target
+          cache-on-failure: true
+
+      - name: Install Tauri system deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Tauri build
+        run: npm run tauri build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ""
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
 
   # ── CI Gate (single required check for branch protection) ───────
   ci-pass:
     if: always()
-    needs: [changes, lint, test, rust-check, security]
+    needs:
+      [changes, lint, test, build-smoke, rust-check, security, build-matrix]
     runs-on: ubuntu-latest
     steps:
       - name: Check job results
@@ -148,14 +245,18 @@ jobs:
           CHANGES: ${{ needs.changes.result }}
           LINT: ${{ needs.lint.result }}
           TEST: ${{ needs.test.result }}
+          BUILD_SMOKE: ${{ needs.build-smoke.result }}
           RUST: ${{ needs.rust-check.result }}
           SEC: ${{ needs.security.result }}
+          BUILD_MATRIX: ${{ needs.build-matrix.result }}
         run: |
           if [[ "$CHANGES" == "success" && \
                 "$LINT" =~ ^(success|skipped)$ && \
                 "$TEST" =~ ^(success|skipped)$ && \
+                "$BUILD_SMOKE" =~ ^(success|skipped)$ && \
                 "$RUST" =~ ^(success|skipped)$ && \
-                "$SEC" =~ ^(success|skipped)$ ]]; then
+                "$SEC" =~ ^(success|skipped)$ && \
+                "$BUILD_MATRIX" =~ ^(success|skipped)$ ]]; then
             echo "All checks passed or were skipped."
             exit 0
           else
@@ -163,7 +264,9 @@ jobs:
             echo "changes: $CHANGES"
             echo "lint: $LINT"
             echo "test: $TEST"
+            echo "build-smoke: $BUILD_SMOKE"
             echo "rust-check: $RUST"
             echo "security: $SEC"
+            echo "build-matrix: $BUILD_MATRIX"
             exit 1
           fi
