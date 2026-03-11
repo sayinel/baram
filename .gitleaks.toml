@@ -1,7 +1,7 @@
 [extend]
 # Use default gitleaks rules as base
 
-[[allowlist]]
+[allowlist]
 description = "Test fixture API keys (not real secrets)"
 paths = [
   '''src/.+/__tests__/.*''',
