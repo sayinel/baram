@@ -3,8 +3,10 @@
   "private": true,
   "version": "0.2.0",
   "type": "module",
+  "packageManager": "npm@11.9.0",
   "engines": {
-    "node": ">=24.0.0"
+    "node": "24.14.x",
+    "npm": "11.9.x"
   },
   "scripts": {
     "dev": "vite",
@@ -14,7 +16,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "npm run lint:frontend",
+    "lint": "npm run version:check && npm run lint:frontend",
     "lint:frontend": "npm run format:check && npm run lint:ts && npm run lint:css && npm run typecheck && npm run knip:ci",
     "lint:ts": "eslint src/ --max-warnings=0",
     "lint:css": "stylelint 'src/**/*.css' --max-warnings=0",
@@ -31,6 +33,7 @@
     "format:check": "prettier --check 'src/**/*.{ts,tsx,css}'",
     "knip": "knip",
     "knip:ci": "knip --reporter compact",
+    "version:check": "node ./scripts/check-version-sync.mjs",
     "prepare": "husky"
   },
   "dependencies": {

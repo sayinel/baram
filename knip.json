@@ -24,6 +24,7 @@
     "prettier-plugin-tailwindcss",
     "@commitlint/config-conventional",
     "eslint-config-prettier",
+    "@floating-ui/dom",
     "@tiptap/core",
     "@tiptap/pm",
     "@tiptap/starter-kit",

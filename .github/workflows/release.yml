@@ -28,11 +28,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest
+          - platform: macos-14
             args: '--target aarch64-apple-darwin'
           - platform: ubuntu-22.04
             args: ''
-          - platform: windows-latest
+          - platform: windows-2022
             args: ''
     runs-on: ${{ matrix.platform }}
     steps:
@@ -47,7 +47,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin' || '' }}
+          targets: ${{ matrix.platform == 'macos-14' && 'aarch64-apple-darwin' || '' }}
 
       - uses: swatinem/rust-cache@v2
         with:
