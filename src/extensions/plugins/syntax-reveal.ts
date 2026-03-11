@@ -314,12 +314,6 @@ export function getSyntaxRevealExpanded(
 
 // ── Plugin factory ────────────────────────────────────────────────────
 
-/** Check if SyntaxReveal has an active expansion (used by other plugins to avoid conflicts). */
-export function isSyntaxRevealExpanded(state: EditorState): boolean {
-  const es = syntaxRevealKey.getState(state);
-  return !!es?.expanded;
-}
-
 function buildExpandedDecorations(
   state: EditorState,
   expanded: ExpandedRange,

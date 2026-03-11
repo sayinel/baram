@@ -82,14 +82,6 @@ export function anchorsToPositions(
   return positions;
 }
 
-/** Auto-unfold the region containing targetPos, if it's folded */
-export function autoUnfoldAt(view: EditorView, targetPos: number): void {
-  const foldPos = isInsideFoldedRegion(view.state, targetPos);
-  if (foldPos !== null) {
-    dispatchToggleFold(view, foldPos);
-  }
-}
-
 export function dispatchFoldAll(view: EditorView): void {
   const tr = view.state.tr.setMeta(foldPluginKey, {
     type: "foldAll",
@@ -244,30 +236,6 @@ export function getFoldRange(
 }
 
 // ── Exported dispatch functions ────────────────────────────────────
-
-/** Check if a position is currently folded */
-export function isFolded(state: EditorState, pos: number): boolean {
-  const pluginState = foldPluginKey.getState(state);
-  return pluginState?.foldedPositions.has(pos) ?? false;
-}
-
-/** Check if a document position falls within any folded region */
-export function isInsideFoldedRegion(
-  state: EditorState,
-  targetPos: number,
-): null | number {
-  const pluginState = foldPluginKey.getState(state);
-  if (!pluginState || pluginState.foldedPositions.size === 0) return null;
-
-  const foldables = findAllFoldables(state.doc);
-  for (const item of foldables) {
-    if (!pluginState.foldedPositions.has(item.pos)) continue;
-    if (targetPos >= item.foldFrom && targetPos < item.foldTo) {
-      return item.pos;
-    }
-  }
-  return null;
-}
 
 /** Convert fold positions to content-based anchors for persistence */
 export function positionsToAnchors(

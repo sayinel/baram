@@ -54,7 +54,3 @@ export function getConfigForTask(task: AITask): TaskConfig {
   const baseUrl = provider === "ollama" ? s.ollamaUrl : undefined;
   return { provider, model, apiKey, baseUrl };
 }
-
-export function getModelForTask(task: AITask): string {
-  return getConfigForTask(task).model;
-}
