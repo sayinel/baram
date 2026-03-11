@@ -122,15 +122,6 @@ export function buildGhostTextConfig(
   };
 }
 
-/** Legacy API — returns just the prompt string (used by existing callers) */
-export function buildGhostTextPrompt(
-  editor: Editor,
-  cursorPos: number,
-): string {
-  const config = buildGhostTextConfig(editor, cursorPos);
-  return config.contextText;
-}
-
 /** Get language attribute from a codeBlock node */
 function getCodeBlockLanguage(editor: Editor, cursorPos: number): string {
   const $pos = editor.state.doc.resolve(cursorPos);

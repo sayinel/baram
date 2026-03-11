@@ -7,7 +7,7 @@ import { SKILL_TEMPLATES } from "../../utils/skill-templates";
 
 interface NewSkillDialogProps {
   onClose: () => void;
-  onSelect: (template: SkillTemplate, name: string) => void;
+  onSelect: (template: SkillTemplate, name: string) => Promise<void> | void;
   open: boolean;
 }
 
@@ -57,10 +57,9 @@ export function NewSkillDialog({
           <button
             className="new-skill-create"
             disabled={!name.trim() || !template}
-            onClick={() => {
+            onClick={async () => {
               if (template && name.trim()) {
-                onSelect(template, name.trim());
-                onClose();
+                await onSelect(template, name.trim());
               }
             }}
           >

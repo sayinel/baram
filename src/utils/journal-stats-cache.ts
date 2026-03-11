@@ -32,9 +32,6 @@ export interface JournalStatsCache {
   version: 1;
 }
 
-/** Maximum number of prompt IDs retained in history. */
-const PROMPT_HISTORY_MAX = 50;
-
 // ---- Cache path -----------------------------------------------------------
 
 interface ParsedFrontmatter {
@@ -45,26 +42,6 @@ interface ParsedFrontmatter {
 }
 
 // ---- Public API -----------------------------------------------------------
-
-/**
- * Append a prompt ID to the history, capping at PROMPT_HISTORY_MAX entries.
- * Persists the updated history back to the cache file without modifying stats.
- */
-export async function addPromptToHistory(
-  journalDir: string,
-  promptId: string,
-): Promise<void> {
-  const cache = await readStatsCache(journalDir);
-  const existing = cache?.promptHistory?.usedPromptIds ?? [];
-  // Append and trim oldest entries beyond cap
-  const updated = [...existing, promptId].slice(-PROMPT_HISTORY_MAX);
-
-  const base: JournalStatsCache = cache ?? createEmptyCache();
-  await writeStatsCache(journalDir, {
-    ...base,
-    promptHistory: { usedPromptIds: updated },
-  });
-}
 
 /**
  * Full scan of the daily/ directory, parse all files, compute all stats.
@@ -145,15 +122,6 @@ export function createEmptyCache(): JournalStatsCache {
     },
     entriesByDate: {},
   };
-}
-
-/**
- * Read the list of recently used prompt IDs from the cache.
- * Returns an empty array if the cache doesn't exist or has no prompt history.
- */
-export async function readPromptHistory(journalDir: string): Promise<string[]> {
-  const cache = await readStatsCache(journalDir);
-  return cache?.promptHistory?.usedPromptIds ?? [];
 }
 
 // ---- Stats cache ----------------------------------------------------------

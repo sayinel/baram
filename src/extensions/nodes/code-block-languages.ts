@@ -118,31 +118,6 @@ export async function getLanguageExtension(
   }
 }
 
-/** List of supported language names for UI */
-export const SUPPORTED_LANGUAGES = [
-  "javascript",
-  "typescript",
-  "python",
-  "rust",
-  "go",
-  "java",
-  "c",
-  "cpp",
-  "shell",
-  "ruby",
-  "swift",
-  "kotlin",
-  "html",
-  "css",
-  "json",
-  "yaml",
-  "markdown",
-  "sql",
-  "xml",
-  "php",
-  "latex",
-] as const;
-
 /** Language options for the dropdown UI — only includes languages with actual highlighting support */
 export const LANGUAGE_OPTIONS: ReadonlyArray<{ label: string; value: string }> =
   [

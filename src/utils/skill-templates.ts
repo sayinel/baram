@@ -134,7 +134,3 @@ Transformation: {{input}}
 `,
   },
 ];
-
-export function getTemplate(id: string): SkillTemplate | undefined {
-  return SKILL_TEMPLATES.find((t) => t.id === id);
-}
