@@ -278,6 +278,17 @@
       "description": "블록 ID 이름 변경 + 모든 참조 자동 갱신"
     },
     {
+      "name": "rename_namespace",
+      "input": { "oldDir": "string", "newDir": "string", "rootPath": "string" },
+      "output": "NamespaceRenameResult",
+      "module": "index",
+      "spec": "§61",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "네임스페이스(디렉토리) 이름 변경 + 상대 위키링크 자동 갱신"
+    },
+    {
       "name": "git_status",
       "input": { "path": "string" },
       "output": "GitStatus",
@@ -432,6 +443,127 @@
       "description": "Git 새 브랜치 생성"
     },
     {
+      "name": "git_log",
+      "input": { "path": "string", "maxCount": "number?" },
+      "output": "GitLogEntry[]",
+      "module": "git",
+      "spec": "§67",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "Git 커밋 로그 조회"
+    },
+    {
+      "name": "git_stash_save",
+      "input": { "path": "string", "message": "string", "includeUntracked": "boolean?" },
+      "output": "string",
+      "module": "git",
+      "spec": "§67",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "Git stash 저장"
+    },
+    {
+      "name": "git_stash_list",
+      "input": { "path": "string" },
+      "output": "GitStashEntry[]",
+      "module": "git",
+      "spec": "§67",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "Git stash 목록 조회"
+    },
+    {
+      "name": "git_stash_pop",
+      "input": { "path": "string", "index": "number?" },
+      "output": "void",
+      "module": "git",
+      "spec": "§67",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "Git stash 적용 (pop)"
+    },
+    {
+      "name": "git_stash_drop",
+      "input": { "path": "string", "index": "number?" },
+      "output": "void",
+      "module": "git",
+      "spec": "§67",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "Git stash 삭제"
+    },
+    {
+      "name": "git_remotes",
+      "input": { "path": "string" },
+      "output": "GitRemoteInfo[]",
+      "module": "git",
+      "spec": "§67",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "Git 리모트 목록 조회"
+    },
+    {
+      "name": "git_fetch",
+      "input": { "path": "string", "remote": "string?" },
+      "output": "void",
+      "module": "git",
+      "spec": "§67",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "Git fetch (리모트에서 변경사항 가져오기)"
+    },
+    {
+      "name": "git_pull",
+      "input": { "path": "string", "remote": "string?", "branch": "string?" },
+      "output": "string",
+      "module": "git",
+      "spec": "§67",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "Git pull (fetch + merge)"
+    },
+    {
+      "name": "git_push",
+      "input": { "path": "string", "remote": "string?", "branch": "string?" },
+      "output": "void",
+      "module": "git",
+      "spec": "§67",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "Git push (리모트에 변경사항 올리기)"
+    },
+    {
+      "name": "git_ahead_behind",
+      "input": { "path": "string", "branch": "string?", "remote": "string?" },
+      "output": "GitAheadBehind",
+      "module": "git",
+      "spec": "§67",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "Git ahead/behind 커밋 수 조회"
+    },
+    {
+      "name": "git_delete_branch",
+      "input": { "path": "string", "branchName": "string" },
+      "output": "void",
+      "module": "git",
+      "spec": "§67",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "Git 브랜치 삭제"
+    },
+    {
       "name": "keyring_store",
       "input": { "key": "string", "value": "string" },
       "output": "void",
@@ -518,6 +650,138 @@
       "milestone": "M9",
       "status": "implemented",
       "description": "바이너리 파일 쓰기 (이미지 등 비텍스트 파일, 원자적 쓰기)"
+    },
+    {
+      "name": "create_snapshot",
+      "input": { "vaultPath": "string", "snapshotType": "string", "label": "string?" },
+      "output": "string",
+      "module": "snapshot",
+      "spec": "§71",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "파일 스냅샷 생성 (auto/manual, 스냅샷 ID 반환)"
+    },
+    {
+      "name": "list_snapshots",
+      "input": { "vaultPath": "string" },
+      "output": "SnapshotEntry[]",
+      "module": "snapshot",
+      "spec": "§71",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "Vault 스냅샷 목록 조회"
+    },
+    {
+      "name": "get_snapshot_diff",
+      "input": { "vaultPath": "string", "snapshotId": "string", "filePath": "string" },
+      "output": "DiffResult",
+      "module": "snapshot",
+      "spec": "§71",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "스냅샷 vs 현재 파일 diff 조회"
+    },
+    {
+      "name": "restore_snapshot",
+      "input": { "vaultPath": "string", "snapshotId": "string", "files": "string[]?" },
+      "output": "void",
+      "module": "snapshot",
+      "spec": "§71",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "스냅샷에서 파일 복원 (전체 또는 선택 파일)"
+    },
+    {
+      "name": "delete_snapshot",
+      "input": { "vaultPath": "string", "snapshotId": "string" },
+      "output": "void",
+      "module": "snapshot",
+      "spec": "§71",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "스냅샷 삭제"
+    },
+    {
+      "name": "get_file_history",
+      "input": { "vaultPath": "string", "filePath": "string" },
+      "output": "SnapshotEntry[]",
+      "module": "snapshot",
+      "spec": "§71",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "파일별 스냅샷 히스토리 조회"
+    },
+    {
+      "name": "plugin_install",
+      "input": { "url": "string", "checksum": "string?" },
+      "output": "InstalledPluginInfo",
+      "module": "plugin",
+      "spec": "§69",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "플러그인 설치 (URL에서 ZIP 다운로드 + 검증)"
+    },
+    {
+      "name": "plugin_uninstall",
+      "input": { "pluginId": "string" },
+      "output": "void",
+      "module": "plugin",
+      "spec": "§69",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "플러그인 제거"
+    },
+    {
+      "name": "plugin_list_installed",
+      "input": {},
+      "output": "InstalledPluginInfo[]",
+      "module": "plugin",
+      "spec": "§69",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "설치된 플러그인 목록 조회"
+    },
+    {
+      "name": "plugin_read_manifest",
+      "input": { "pluginId": "string" },
+      "output": "PluginManifest",
+      "module": "plugin",
+      "spec": "§69",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "플러그인 매니페스트 읽기"
+    },
+    {
+      "name": "plugin_fetch_registry",
+      "input": { "url": "string" },
+      "output": "RegistryIndex",
+      "module": "plugin",
+      "spec": "§69",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "플러그인 레지스트리 인덱스 조회"
+    },
+    {
+      "name": "plugin_get_dir",
+      "input": {},
+      "output": "string",
+      "module": "plugin",
+      "spec": "§69",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "플러그인 설치 디렉토리 경로 조회"
     }
   ],
   "events": [

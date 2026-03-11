@@ -670,6 +670,16 @@
       "status": "implemented",
       "shortcuts": { "Mod-Shift-[": "toggle fold", "Mod-Shift-Alt-[": "fold all", "Mod-Shift-Alt-]": "unfold all" },
       "_note": "Obsidian-style heading & list folding. ProseMirror Plugin with DecorationSet — view-only, no doc mutation. Gutter arrows + CSS fold-hidden + ellipsis indicator."
+    },
+    {
+      "name": "skillVariableSuggest",
+      "file": "plugins/skill-variable-suggest.ts",
+      "spec": "§72c",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "shortcuts": { "{{": "skill variable autocomplete" },
+      "_note": "Tiptap Suggestion plugin for {{variable}} autocomplete in skill files. Default variables: selection, document, input, clipboard. Only active when isSkill=true."
     }
   ]
 }

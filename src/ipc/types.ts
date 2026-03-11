@@ -252,6 +252,55 @@ export interface DiffResult {
   stats: DiffStats;
 }
 
+// §69 Plugin Marketplace types
+export interface EngineRequirement {
+  baram: string;
+}
+
+export interface TiptapExtensionDef {
+  type: string; // "node" | "mark" | "plugin"
+  name: string;
+  exportName: string;
+}
+
+export interface PluginManifest {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  author: string;
+  license: string;
+  main: string;
+  engines: EngineRequirement;
+  capabilities: string[];
+  dependencies: string[];
+  tiptapExtensions: TiptapExtensionDef[];
+  repository?: string;
+}
+
+export interface InstalledPluginInfo {
+  manifest: PluginManifest;
+  installPath: string;
+  checksum: string;
+}
+
+export interface RegistryEntry {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  author: string;
+  license: string;
+  downloadUrl: string;
+  checksum: string;
+  capabilities: string[];
+}
+
+export interface RegistryIndex {
+  plugins: RegistryEntry[];
+  updatedAt?: string;
+}
+
 // Event payloads
 export interface FileChangedPayload {
   path: string;

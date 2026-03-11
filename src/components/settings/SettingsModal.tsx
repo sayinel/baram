@@ -1,4 +1,4 @@
-// Settings Modal — 5-tab settings (General, Editor, Appearance, Markdown, AI)
+// Settings Modal — 9-tab settings (General, Editor, Appearance, Markdown, AI, ActivityBar, Language, Keybindings, Plugins)
 // Obsidian-style layout: label + description per row, section headers for grouping
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useUIStore } from "../../stores/ui-store";

@@ -331,7 +331,7 @@
         "§71-file-snapshots": { "status": "completed", "tests": "34 cargo tests pass (index 5, io 8, diff 10, policy 6, integration 5)", "spec": "§71", "details": "Rust snapshot module (index, io, diff, policy) + 6 IPC commands + Zustand store + VersionHistoryPanel sidebar + ActivityBar icon + settings (snapshotInterval, snapshotMaxCount)" },
         "§61-namespace": { "status": "completed", "tests": "20 vitest pass (9 roundtrip + 5 suggest + 6 extractNamespace) + 5 cargo test (resolve + make_relative + rewrite)", "spec": "§61", "details": "P0: relative wikilink resolve (./  ../), wikilink-suggest namespace filter, Quick Switcher ns: filter + namespace detail, Rust resolve_relative_path + make_relative_path + rewrite_relative_wikilinks + rename_namespace IPC. P1: Graph View colorByNamespace + namespaceFilter, Backlinks groupByNamespace. P2 자동 prefix 삽입은 YAGNI — 필요 시 구현 예정" },
         "§72-skills-mode": { "status": "completed", "tests": "existing vitest pass", "spec": "§72", "details": "Skills auto-switch, Properties Panel (YAML GUI), LLM Preview, Variable Autocomplete, Live Lint, Live Preview, Skills Gallery, Prompt Optimize, WKWebView showPrompt() fix" },
-        "§settings-redesign": { "status": "completed", "tests": "1791/1791 vitest pass", "spec": "§settings", "details": "P0+P1: 8-tab restructure (General/Editor/Appearance/Markdown/AI/ActivityBar/Language/Keybindings), settings search, theme mini preview, activity bar customization, i18n, dead code cleanup (ExtensionsTab.tsx/WorkspaceTab.tsx removed)" },
+        "§settings-redesign": { "status": "completed", "tests": "1791/1791 vitest pass", "spec": "§settings", "details": "P0+P1: 9-tab restructure (General/Editor/Appearance/Markdown/AI/ActivityBar/Language/Keybindings/Plugins), settings search, theme mini preview, activity bar customization, i18n, dead code cleanup (ExtensionsTab.tsx/WorkspaceTab.tsx removed)" },
         "§settings-keybindings": { "status": "completed", "tests": "3 test files (key-utils, registry, use-keybindings)", "spec": "§settings", "details": "54-entry registry (40 customizable + 14 read-only), key capture/conflict detection UI, registerAction() runtime dispatch, persist v8 migration, 5 context-dependent shortcuts remain hardcoded by design" },
         "§fold-heading-list": { "status": "completed", "tests": "19/19 vitest pass (fold.test.ts)", "spec": "§fold", "details": "Obsidian-style heading & list folding — ProseMirror plugin + DecorationSet (view-only, no doc mutation), gutter fold arrows (hover reveal), CSS fold-hidden + ellipsis indicator, Mod+Shift+[ toggle / Mod+Shift+Alt+[/] fold/unfold all, content-based anchor persistence (fold-store.ts), tab-switch save/restore, find-replace auto-unfold integration" }
       }
@@ -368,11 +368,11 @@
   },
 
   "testSummary": {
-    "vitest": "1863/1863 pass (108 test files)",
+    "vitest": "1928/1928 pass (110 test files)",
     "cargoTest": "163/163 pass (4 ignored)",
     "note": "All medium+low+info spec-check issues resolved. Coverage 99%. Only §8.4 manual perf measurements remain.",
     "breakdown": {
-      "_comment": "79 test files, 1300 tests total (2026-03-01 spec-check verified)",
+      "_comment": "110 test files, 1928 tests total (2026-03-11 spec-check verified)",
       "integration/ai-edit-workflow": 5,
       "integration/auto-rename": 11,
       "integration/backlink-panel": 5,
@@ -451,7 +451,21 @@
       "utils/notion-export": 76,
       "utils/pandoc-export": 30,
       "utils/path-utils": 19,
-      "utils/wikilink-nav": 7
+      "utils/wikilink-nav": 7,
+      "extensions/fold": 19,
+      "extensions/table-virtual-scroll": 4,
+      "extensions/frontmatter-tags": 13,
+      "extensions/image": 12,
+      "extensions/table-advanced": 16,
+      "extensions/tag-node": 14,
+      "keybindings/key-utils": 25,
+      "keybindings/keybinding-registry": 18,
+      "keybindings/use-keybindings": 7,
+      "components/plugin-marketplace": 22,
+      "stores/plugin-store": 12,
+      "stores/keybinding-store": 8,
+      "extensions/query-block": 11,
+      "extensions/marks-roundtrip": 54
     }
   },
 
