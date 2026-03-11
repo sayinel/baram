@@ -29,7 +29,7 @@ tempfile = "3"
 notify = "7"
 regex = "1"
 keyring = { version = "3", features = ["apple-native"] }
-git2 = "0.19"
+git2 = "0.20"
 zip = "2"
 similar = "2"
 sha2 = "0.10"
