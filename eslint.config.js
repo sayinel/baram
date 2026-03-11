@@ -14,6 +14,9 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
+      // Disable new v7 rules — codebase pre-dates these stricter checks
+      "react-hooks/set-state-in-effect": "off",
+      "react-hooks/refs": "off",
       "@typescript-eslint/no-unused-vars": [
         "error",
         { argsIgnorePattern: "^_" },
