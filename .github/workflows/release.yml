@@ -15,7 +15,15 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # ── Run full CI first ──────────────────────────────────────────────
+  ci:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  # ── Build on 3 platforms + create GitHub Release ───────────────────
   build-and-release:
+    needs: [ci]
     strategy:
       fail-fast: false
       matrix:
