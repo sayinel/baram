@@ -65,6 +65,7 @@ export function MermaidBlockView({
     x: number;
     y: number;
   } | null>(null);
+  const [viewFullscreen, setViewFullscreen] = useState(false);
   const fullscreenTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Render Mermaid SVG (async — dynamic import)
@@ -341,6 +342,65 @@ export function MermaidBlockView({
 
   const detectedType = detectMermaidType(localCode);
 
+  // Fullscreen View modal (read-only — diagram only, no editor)
+  const closeViewFullscreen = useCallback(() => {
+    setViewFullscreen(false);
+    // Prevent ProseMirror from selecting the mermaid block when modal closes
+    requestAnimationFrame(() => {
+      editor.commands.blur();
+    });
+  }, [editor]);
+
+  const viewFullscreenModal = viewFullscreen
+    ? createPortal(
+        <div
+          className="mermaid-fullscreen-overlay"
+          onMouseDown={(e) => {
+            e.stopPropagation(); // Prevent React event from reaching NodeViewWrapper
+            if (e.target === e.currentTarget) {
+              e.preventDefault();
+              closeViewFullscreen();
+            }
+          }}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") closeViewFullscreen();
+          }}
+        >
+          <div className="mermaid-view-fullscreen-modal">
+            <div className="mermaid-fullscreen-header">
+              <span className="mermaid-block-label">mermaid</span>
+              {detectedType && (
+                <span className="mermaid-fullscreen-type">
+                  {MERMAID_TEMPLATES[detectedType]?.label || detectedType}
+                </span>
+              )}
+              <button
+                className="mermaid-fullscreen-close"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={closeViewFullscreen}
+              >
+                Close
+              </button>
+            </div>
+            <div className="mermaid-view-fullscreen-body">
+              {svgHtml ? (
+                <div
+                  className="mermaid-block-svg"
+                  dangerouslySetInnerHTML={{ __html: svgHtml }}
+                />
+              ) : error ? (
+                <div className="mermaid-block-error">{error}</div>
+              ) : (
+                <div className="mermaid-block-empty">Empty diagram</div>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )
+    : null;
+
   // Fullscreen edit modal
   const fullscreenModal = fullscreen
     ? createPortal(
@@ -410,6 +470,13 @@ export function MermaidBlockView({
         contentEditable={false}
         spellCheck={false}
         onClick={handlePreviewClick}
+        onMouseDown={(e: React.MouseEvent) => {
+          // Prevent right-click from propagating to ProseMirror
+          // which would set NodeSelection and switch to editing mode
+          if (e.button === 2) {
+            e.stopPropagation();
+          }
+        }}
         onContextMenu={(e: React.MouseEvent) => {
           e.preventDefault();
           e.stopPropagation();
@@ -426,6 +493,60 @@ export function MermaidBlockView({
           <div className="mermaid-block-error">{error}</div>
         ) : (
           <div className="mermaid-block-empty">Empty diagram</div>
+        )}
+        {/* Hover toolbar — appears on mouse hover */}
+        {svgHtml && (
+          <div
+            className="mermaid-hover-toolbar"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <button
+              className="mermaid-hover-toolbar-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                copyMermaidSource(code);
+              }}
+              title="Copy source code"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <rect x="9" y="9" width="13" height="13" rx="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+            </button>
+            <button
+              className="mermaid-hover-toolbar-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                setViewFullscreen(true);
+              }}
+              title="Fullscreen view"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+                <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+                <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+                <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+              </svg>
+            </button>
+          </div>
         )}
         {contextMenu &&
           createPortal(
@@ -474,6 +595,15 @@ export function MermaidBlockView({
               <button
                 className="mermaid-context-menu-item"
                 onClick={() => {
+                  setViewFullscreen(true);
+                  setContextMenu(null);
+                }}
+              >
+                View Fullscreen
+              </button>
+              <button
+                className="mermaid-context-menu-item"
+                onClick={() => {
                   setFullscreenCode(code);
                   setFullscreenSvg(svgHtml);
                   setFullscreenError(error);
@@ -495,6 +625,7 @@ export function MermaidBlockView({
             </div>,
             document.body,
           )}
+        {viewFullscreenModal}
         {fullscreenModal}
       </NodeViewWrapper>
     );
