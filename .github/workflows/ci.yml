@@ -5,10 +5,11 @@ on:
     branches: ['**']
   pull_request:
     branches: [main]
+  workflow_call:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
 
 permissions:
   contents: read
@@ -37,9 +38,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # ── Test (PR only) ─────────────────────────────────────────────────
+  # ── Test (PR + workflow_call) ──────────────────────────────────────
   test:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_call'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -47,9 +48,9 @@ jobs:
       - name: Vitest
         run: npm run test
 
-  # ── Rust: fmt + clippy + test + build smoke (PR only) ──────────────
+  # ── Rust: fmt + clippy + test + build smoke (PR + workflow_call) ───
   rust:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_call'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -94,6 +95,7 @@ jobs:
     steps:
       - name: Verify all jobs passed
         env:
+          EVENT: ${{ github.event_name }}
           LINT: ${{ needs.lint.result }}
           SECURITY: ${{ needs.security.result }}
           TEST: ${{ needs.test.result }}
@@ -102,4 +104,9 @@ jobs:
           for r in "$LINT" "$SECURITY" "$TEST" "$RUST"; do
             [[ "$r" =~ ^(success|skipped)$ ]] || { echo "Failed: $r"; exit 1; }
           done
+          # On workflow_call (release), test and rust must actually run
+          if [[ "$EVENT" == "workflow_call" ]]; then
+            [[ "$TEST" == "success" && "$RUST" == "success" ]] || \
+              { echo "Release requires test and rust to pass (test=$TEST, rust=$RUST)"; exit 1; }
+          fi
           echo "All checks passed."
