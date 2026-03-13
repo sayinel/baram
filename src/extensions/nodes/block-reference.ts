@@ -1,12 +1,13 @@
 // §30b Block Reference Extension — ((target#^blockId)) or ((target#^blockId|display))
 // §30c adds NodeView, onNavigate option, Cmd+click plugin
-import { Node } from "@tiptap/core";
+import { mergeAttributes, Node } from "@tiptap/core";
 import { Plugin } from "@tiptap/pm/state";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
 import { BlockReferenceView } from "./block-reference-view";
 
 export interface BlockReferenceOptions {
+  HTMLAttributes: Record<string, string>;
   onNavigate: (target: string, blockId: string) => void;
 }
 
@@ -31,6 +32,7 @@ export const BlockReference = Node.create<BlockReferenceOptions>({
 
   addOptions() {
     return {
+      HTMLAttributes: {},
       onNavigate: () => {},
     };
   },
@@ -47,19 +49,18 @@ export const BlockReference = Node.create<BlockReferenceOptions>({
     return [{ tag: 'span[data-type="block-reference"]' }];
   },
 
-  renderHTML({ HTMLAttributes }) {
+  renderHTML({ node, HTMLAttributes }) {
     const display =
-      HTMLAttributes.display ||
-      `${HTMLAttributes.target}#^${HTMLAttributes.blockId}`;
+      node.attrs.display || `${node.attrs.target}#^${node.attrs.blockId}`;
     return [
       "span",
-      {
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
         "data-type": "block-reference",
-        "data-target": HTMLAttributes.target,
-        "data-block-id": HTMLAttributes.blockId,
-        "data-display": HTMLAttributes.display || "",
+        "data-target": node.attrs.target,
+        "data-block-id": node.attrs.blockId,
+        "data-display": node.attrs.display || "",
         class: "block-reference",
-      },
+      }),
       display,
     ];
   },

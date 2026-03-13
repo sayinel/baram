@@ -12,11 +12,19 @@ declare module "@tiptap/core" {
   }
 }
 
-export const QueryBlock = Node.create({
+export interface QueryBlockOptions {
+  HTMLAttributes: Record<string, string>;
+}
+
+export const QueryBlock = Node.create<QueryBlockOptions>({
   name: "queryBlock",
   group: "block",
   atom: true,
   defining: true,
+
+  addOptions() {
+    return { HTMLAttributes: {} };
+  },
 
   addAttributes() {
     return {

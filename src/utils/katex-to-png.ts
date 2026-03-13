@@ -1,10 +1,10 @@
 // §5.3 KaTeX to PNG — copy math as image to clipboard
-import katex from "katex";
 
 export async function copyMathToPNG(
   formula: string,
   displayMode: boolean,
 ): Promise<void> {
+  const katex = (await import("katex")).default;
   // Render KaTeX to HTML string
   const html = katex.renderToString(formula, {
     throwOnError: false,

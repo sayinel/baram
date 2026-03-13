@@ -1,5 +1,5 @@
 // §5.1 Source Code Mode — CodeMirror 6 editor (markdown + non-MD languages)
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { useEffect, useImperativeHandle, useRef } from "react";
 
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import {
@@ -38,15 +38,16 @@ interface SourceCodeEditorProps {
   /** CodeMirror language name (e.g. "json", "python"). Omit or "markdown" for markdown. */
   language?: string;
   onChange: (content: string) => void;
+  ref?: React.Ref<SourceCodeEditorRef>;
 }
 
-export const SourceCodeEditor = forwardRef<
-  SourceCodeEditorRef,
-  SourceCodeEditorProps
->(function SourceCodeEditor(
-  { content, onChange, initialCursorOffset, language },
+export function SourceCodeEditor({
+  content,
+  onChange,
+  initialCursorOffset,
+  language,
   ref,
-) {
+}: SourceCodeEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   // Guard: prevent onChange during destroy (React StrictMode double-invoke safety)
@@ -206,4 +207,4 @@ export const SourceCodeEditor = forwardRef<
       style={{ height: "100%", overflow: "auto" }}
     />
   );
-});
+}

@@ -8,8 +8,8 @@ use crate::index::{
 };
 use serde::Serialize;
 use std::path::Path;
-use std::sync::Mutex;
 use tauri::State;
+use tokio::sync::Mutex;
 
 /// Managed state wrapping the in-memory link index
 pub struct LinkIndexState(pub Mutex<LinkIndex>);
@@ -19,13 +19,13 @@ pub async fn get_backlinks(
     file_path: String,
     state: State<'_, LinkIndexState>,
 ) -> Result<Vec<BacklinkResult>, String> {
-    let index = state.0.lock().map_err(|e| e.to_string())?;
+    let index = state.0.lock().await;
     Ok(index.get_backlinks(&file_path))
 }
 
 #[tauri::command]
 pub async fn get_link_index(state: State<'_, LinkIndexState>) -> Result<LinkGraph, String> {
-    let index = state.0.lock().map_err(|e| e.to_string())?;
+    let index = state.0.lock().await;
     Ok(index.get_link_graph())
 }
 
@@ -42,7 +42,7 @@ pub async fn refresh_index(
         .map_err(|e| e.to_string())?;
 
     // Swap in the new index
-    let mut index = state.0.lock().map_err(|e| e.to_string())?;
+    let mut index = state.0.lock().await;
     *index = new_index;
     Ok(stats)
 }
@@ -58,7 +58,7 @@ pub async fn update_file_index(
         .unwrap_or_default();
 
     // Update index synchronously inside the lock
-    let mut index = state.0.lock().map_err(|e| e.to_string())?;
+    let mut index = state.0.lock().await;
     index.update_file_from_content(&file_path, &content);
     Ok(())
 }
@@ -99,7 +99,7 @@ pub async fn rename_file_with_links(
 
     // 1. Get referencing files from the index (inside lock, quick read)
     let referring_files = {
-        let index = state.0.lock().map_err(|e| e.to_string())?;
+        let index = state.0.lock().await;
         index.get_files_linking_to(&old_target)
     };
 
@@ -135,7 +135,7 @@ pub async fn rename_file_with_links(
 
     // 4. Update the index (inside lock)
     {
-        let mut index = state.0.lock().map_err(|e| e.to_string())?;
+        let mut index = state.0.lock().await;
 
         // Remove old file entry, add new one
         index.remove_file(&old_path);
@@ -156,7 +156,7 @@ pub async fn rename_file_with_links(
         .await
         .unwrap_or_default();
     {
-        let mut index = state.0.lock().map_err(|e| e.to_string())?;
+        let mut index = state.0.lock().await;
         index.update_file_from_content(&new_path, &renamed_content);
     }
 
@@ -173,7 +173,7 @@ pub async fn rename_block_id(
 ) -> Result<RenameResult, String> {
     // 1. Get referring files from index (block_id == old_id, target == this file)
     let referring_files = {
-        let index = state.0.lock().map_err(|e| e.to_string())?;
+        let index = state.0.lock().await;
         let backlinks = index.get_backlinks(&file_path);
         let mut files: Vec<String> = backlinks
             .iter()
@@ -209,7 +209,7 @@ pub async fn rename_block_id(
 
     // 3. Update index (inside lock)
     {
-        let mut index = state.0.lock().map_err(|e| e.to_string())?;
+        let mut index = state.0.lock().await;
         for (path, content) in &updated_contents {
             index.update_file_from_content(path, content);
         }
@@ -286,7 +286,7 @@ pub async fn rename_namespace(
         .build(&root_path)
         .await
         .map_err(|e| e.to_string())?;
-    let mut index = state.0.lock().map_err(|e| e.to_string())?;
+    let mut index = state.0.lock().await;
     *index = new_index;
 
     Ok(NamespaceRenameResult {

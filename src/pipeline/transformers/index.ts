@@ -16,6 +16,7 @@ import { frontmatterTransformer } from "./frontmatter-transformer";
 import { headingTransformer } from "./heading-transformer";
 import { highlightTransformer } from "./highlight-transformer";
 import { horizontalRuleTransformer } from "./horizontal-rule-transformer";
+import { htmlBlockTransformer } from "./html-block-transformer";
 import { imageTransformer } from "./image-transformer";
 import { italicTransformer } from "./italic-transformer";
 import { linkTransformer } from "./link-transformer";
@@ -30,6 +31,7 @@ import { queryBlockTransformer } from "./query-block-transformer";
 import { strikeTransformer } from "./strike-transformer";
 import { subscriptTransformer } from "./subscript-transformer";
 import { superscriptTransformer } from "./superscript-transformer";
+import { tableOfContentsTransformer } from "./table-of-contents-transformer";
 import { tableTransformer } from "./table-transformer";
 import { tagTransformer } from "./tag-transformer";
 import { taskListTransformer } from "./task-list-transformer";
@@ -72,6 +74,8 @@ const nodeEntries: NodeTransformerEntry[] = [
   footnoteRefTransformer,
   footnoteDefinitionTransformer,
   definitionListTransformer,
+  tableOfContentsTransformer,
+  htmlBlockTransformer,
   mentionTransformer,
   tagTransformer,
 ];

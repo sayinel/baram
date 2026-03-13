@@ -1,6 +1,8 @@
 // §5.1 Ordered List Extension
 import { mergeAttributes, Node, wrappingInputRule } from "@tiptap/core";
 
+import { resolveShortcut } from "../utils/shortcut-resolver";
+
 export interface OrderedListOptions {
   HTMLAttributes: Record<string, string>;
   itemTypeName: string;
@@ -57,9 +59,8 @@ export const OrderedList = Node.create<OrderedListOptions>({
   },
 
   addKeyboardShortcuts() {
-    return {
-      "Mod-Shift-7": () => this.editor.commands.toggleOrderedList(),
-    };
+    const key = resolveShortcut("formatting.orderedList", "Mod-Shift-7");
+    return { [key]: () => this.editor.commands.toggleOrderedList() };
   },
 
   addInputRules() {

@@ -15,6 +15,7 @@ import {
   detectFlatJournalFiles,
   detectHierarchicalJournalFiles,
 } from "../../utils/journal";
+import { logger } from "../../utils/logger";
 
 export type MigrationDirection = "toFlat" | "toHierarchy";
 
@@ -103,7 +104,7 @@ export function MigrationDialog({
         await deleteFile(from);
         count++;
       } catch (err) {
-        console.error(`[MigrationDialog] Failed to migrate ${from}:`, err);
+        logger.error(`[MigrationDialog] Failed to migrate ${from}:`, err);
       }
     }
 

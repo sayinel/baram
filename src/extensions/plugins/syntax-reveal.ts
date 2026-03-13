@@ -1,4 +1,4 @@
-import type { Mark, Node as PmNode } from "@tiptap/pm/model";
+import type { Mark } from "@tiptap/pm/model";
 
 // §5.1 + §3.3 Syntax Reveal — Typora-style focus-based syntax exposure
 // Expansion-based: When cursor enters a mark/link/image range, the markdown
@@ -9,291 +9,33 @@ import {
   type EditorState,
   NodeSelection,
   Plugin,
-  PluginKey,
   TextSelection,
   type Transaction,
 } from "@tiptap/pm/state";
-import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
+import { DecorationSet, type EditorView } from "@tiptap/pm/view";
 
-// ── Plugin state ──────────────────────────────────────────────────────
+import { collapseExpanded } from "./syntax-reveal-collapse";
+import { buildExpandedDecorations } from "./syntax-reveal-decorations";
+import {
+  expandImage,
+  expandLink,
+  expandMark,
+  expandWikilink,
+} from "./syntax-reveal-expand";
+import {
+  computeContentLen,
+  type ExpandedRange,
+  findMarkRange,
+  INACTIVE,
+  MARK_DELIMITERS,
+  syntaxRevealKey,
+  type SyntaxRevealState,
+} from "./syntax-reveal-state";
 
-interface ExpandedRange {
-  closeCheck?: string; // closing delimiter to validate (marks only)
-  from: number; // start of expanded text (for images: inside paragraph)
-  kind: "image" | "link" | "mark" | "wikilink";
-  markName?: string; // for marks: "bold", "italic", etc.
-  openCheck: string; // opening delimiter to validate
-  to: number; // end of expanded text
-}
+// ── Public API re-exports ─────────────────────────────────────────────
 
-interface SyntaxRevealState {
-  expanded: ExpandedRange | null;
-}
-
-const INACTIVE: SyntaxRevealState = { expanded: null };
-const syntaxRevealKey = new PluginKey<SyntaxRevealState>("syntaxReveal");
-
-// ── Mark delimiter definitions ────────────────────────────────────────
-
-const MARK_DELIMITERS: Record<string, { close: string; open: string }> = {
-  bold: { open: "**", close: "**" },
-  italic: { open: "*", close: "*" },
-  strike: { open: "~~", close: "~~" },
-  code: { open: "`", close: "`" },
-  underline: { open: "<u>", close: "</u>" },
-  highlight: { open: "==", close: "==" },
-  subscript: { open: "~", close: "~" },
-  superscript: { open: "^", close: "^" },
-};
-
-// ── Helpers ───────────────────────────────────────────────────────────
-
-/**
- * Compute the content length (text between delimiters) of an expanded range.
- */
-function computeContentLen(
-  state: EditorState,
-  expanded: ExpandedRange,
-): number {
-  const { from, to, kind, openCheck, closeCheck } = expanded;
-  if (kind === "mark" && closeCheck) {
-    return to - closeCheck.length - (from + openCheck.length);
-  }
-  if (kind === "link") {
-    try {
-      const fullText = state.doc.textBetween(from, to);
-      const bracketIdx = fullText.indexOf("](");
-      return bracketIdx >= 0 ? bracketIdx - 1 : 0;
-    } catch {
-      return 0;
-    }
-  }
-  if (kind === "wikilink") {
-    // Wikilink atom node = 1 position when collapsed
-    return 0;
-  }
-  return 0;
-}
-
-function expandImage(view: EditorView, node: PmNode, pos: number): void {
-  const src = (node.attrs.src as string) || "";
-  const alt = (node.attrs.alt as string) || "";
-  const title = node.attrs.title as null | string;
-
-  const text = title ? `![${alt}](${src} "${title}")` : `![${alt}](${src})`;
-
-  const { tr } = view.state;
-
-  // Image is block-level → replace with paragraph containing markdown text
-  const textNode = view.state.schema.text(text);
-  const para = view.state.schema.nodes.paragraph.create(null, textNode);
-  tr.replaceWith(pos, pos + node.nodeSize, para);
-
-  // Content starts at pos+1 (inside paragraph)
-  const contentStart = pos + 1;
-  // Place cursor right after "![" for natural alt-text editing
-  const cursorPos = contentStart + 2;
-
-  tr.setSelection(TextSelection.create(tr.doc, cursorPos));
-  tr.setMeta(syntaxRevealKey, {
-    expanded: {
-      kind: "image",
-      from: contentStart,
-      to: contentStart + text.length,
-      openCheck: "![",
-    },
-  });
-
-  view.dispatch(tr);
-}
-
-// ── Mark expansion ────────────────────────────────────────────────────
-
-function expandLink(
-  view: EditorView,
-  mark: Mark,
-  range: { from: number; to: number },
-): void {
-  const { state } = view;
-  const href = (mark.attrs.href as string) || "";
-  const title = mark.attrs.title as null | string;
-  const cursorPos = state.selection.from;
-
-  const openDelim = "[";
-  const closeDelim = title ? `](${href} "${title}")` : `](${href})`;
-
-  const { tr } = state;
-
-  tr.removeMark(range.from, range.to, state.schema.marks.link);
-  tr.insert(range.to, state.schema.text(closeDelim));
-  tr.insert(range.from, state.schema.text(openDelim));
-
-  const newTo = range.to + openDelim.length + closeDelim.length;
-
-  let newCursorPos: number;
-  if (cursorPos <= range.from) {
-    newCursorPos = range.from;
-  } else if (cursorPos >= range.to) {
-    newCursorPos = newTo;
-  } else {
-    newCursorPos = cursorPos + openDelim.length;
-  }
-
-  tr.setSelection(TextSelection.create(tr.doc, newCursorPos));
-  tr.setMeta(syntaxRevealKey, {
-    expanded: {
-      kind: "link",
-      from: range.from,
-      to: newTo,
-      openCheck: "[",
-    },
-  });
-
-  view.dispatch(tr);
-}
-
-// ── Link expansion ────────────────────────────────────────────────────
-
-function expandMark(
-  view: EditorView,
-  mark: Mark,
-  range: { from: number; to: number },
-): void {
-  const delim = MARK_DELIMITERS[mark.type.name];
-  if (!delim) return;
-
-  const { state } = view;
-  const cursorPos = state.selection.from;
-  const markType = state.schema.marks[mark.type.name];
-  if (!markType) return;
-
-  const { tr } = state;
-
-  // Step 1: Remove mark from range
-  tr.removeMark(range.from, range.to, markType);
-
-  // Step 2: Insert close delimiter FIRST (keeps positions for step 3 stable)
-  tr.insert(range.to, state.schema.text(delim.close));
-
-  // Step 3: Insert open delimiter
-  tr.insert(range.from, state.schema.text(delim.open));
-
-  const newTo = range.to + delim.open.length + delim.close.length;
-
-  // Cursor placement depends on which boundary triggered expansion:
-  // - Left boundary: before opening delimiter  → |**hello**
-  // - Right boundary: after closing delimiter  → **hello**|
-  // - Inside: shift by opening delimiter length → **hel|lo**
-  // checkCursorOut uses strict inequality so boundaries are inside the range.
-  let newCursorPos: number;
-  if (cursorPos <= range.from) {
-    newCursorPos = range.from;
-  } else if (cursorPos >= range.to) {
-    newCursorPos = newTo;
-  } else {
-    newCursorPos = cursorPos + delim.open.length;
-  }
-
-  tr.setSelection(TextSelection.create(tr.doc, newCursorPos));
-  tr.setMeta(syntaxRevealKey, {
-    expanded: {
-      kind: "mark",
-      markName: mark.type.name,
-      from: range.from,
-      to: newTo,
-      openCheck: delim.open,
-      closeCheck: delim.close,
-    },
-  });
-
-  view.dispatch(tr);
-}
-
-// ── Image expansion ───────────────────────────────────────────────────
-
-function expandWikilink(
-  view: EditorView,
-  node: PmNode,
-  pos: number,
-  cursorAt: "back" | "front" = "front",
-): void {
-  const target = (node.attrs.target as string) || "";
-  const heading = node.attrs.heading as null | string;
-  const blockId = node.attrs.blockId as null | string;
-  const display = node.attrs.display as null | string;
-
-  // Build [[target#heading^blockId|display]] text
-  let inner = target;
-  if (heading) inner += `#${heading}`;
-  if (blockId) inner += `^${blockId}`;
-  if (display) inner += `|${display}`;
-  const text = `[[${inner}]]`;
-
-  const { tr } = view.state;
-
-  // Wikilink is inline atom (nodeSize=1) — replace with text in same paragraph
-  const textNode = view.state.schema.text(text);
-  tr.replaceWith(pos, pos + node.nodeSize, textNode);
-
-  // from = pos, to = pos + text.length
-  const from = pos;
-  const to = pos + text.length;
-  // Place cursor based on entry direction
-  const cursorPos = cursorAt === "back" ? to - 2 : pos + 2;
-
-  tr.setSelection(TextSelection.create(tr.doc, cursorPos));
-  tr.setMeta(syntaxRevealKey, {
-    expanded: {
-      kind: "wikilink",
-      from,
-      to,
-      openCheck: "[[",
-      closeCheck: "]]",
-    },
-  });
-
-  view.dispatch(tr);
-}
-
-// ── Wikilink expansion ───────────────────────────────────────────────
-
-/**
- * Find the contiguous range of a specific mark that contains the cursor.
- */
-function findMarkRange(
-  parentNode: PmNode,
-  parentPos: number,
-  markType: string,
-  cursorPos: number,
-): null | { from: number; to: number } {
-  const ranges: { from: number; to: number }[] = [];
-
-  parentNode.forEach((child, childOffset) => {
-    const childFrom = parentPos + childOffset;
-    const childTo = childFrom + child.nodeSize;
-    if (child.marks.some((m) => m.type.name === markType)) {
-      const last = ranges[ranges.length - 1];
-      if (last && last.to === childFrom) {
-        last.to = childTo;
-      } else {
-        ranges.push({ from: childFrom, to: childTo });
-      }
-    }
-  });
-
-  for (const range of ranges) {
-    if (cursorPos >= range.from && cursorPos <= range.to) {
-      return range;
-    }
-  }
-  return null;
-}
-
-// Regex to parse expanded wikilink text: [[target#heading^blockId|display]]
-const WIKILINK_REGEX =
-  /^\[\[([^\]|#^]+)(?:#([^\]|^]+))?(?:\^([^\]|]+))?(?:\|([^\]]+))?\]\]$/;
-
-// ── Collapse expanded range ───────────────────────────────────────────
+/** Get the SyntaxReveal PluginKey (used by other plugins to clear expansion state via meta). */
+export { syntaxRevealKey };
 
 /** Force-collapse any active expansion. Call before source mode toggle. */
 export function forceCollapseSyntaxReveal(view: EditorView): void {
@@ -301,8 +43,6 @@ export function forceCollapseSyntaxReveal(view: EditorView): void {
   if (!es?.expanded) return;
   collapseExpanded(view, es.expanded);
 }
-
-// ── Build delimiter decorations for expanded range ────────────────────
 
 /** Get the active expanded range info (used by wikilink-suggest to replace entire expanded text). */
 export function getSyntaxRevealExpanded(
@@ -313,226 +53,6 @@ export function getSyntaxRevealExpanded(
 }
 
 // ── Plugin factory ────────────────────────────────────────────────────
-
-function buildExpandedDecorations(
-  state: EditorState,
-  expanded: ExpandedRange,
-): Decoration[] {
-  const { from, to, kind, openCheck, closeCheck } = expanded;
-  const decos: Decoration[] = [];
-
-  try {
-    if (kind === "mark" && closeCheck) {
-      // Style opening delimiter
-      decos.push(
-        Decoration.inline(from, from + openCheck.length, {
-          class: "syntax-delimiter-inline",
-        }),
-      );
-      // Style closing delimiter
-      decos.push(
-        Decoration.inline(to - closeCheck.length, to, {
-          class: "syntax-delimiter-inline",
-        }),
-      );
-    } else if (kind === "link" || kind === "image") {
-      const text = state.doc.textBetween(from, to);
-      const closeBracket = text.indexOf("](");
-      const openLen = kind === "image" ? 2 : 1;
-
-      if (closeBracket >= 0) {
-        // Style opening delimiter
-        decos.push(
-          Decoration.inline(from, from + openLen, {
-            class: "syntax-delimiter-inline",
-          }),
-        );
-        // Style "](url)" portion
-        decos.push(
-          Decoration.inline(from + closeBracket, to, {
-            class: "syntax-delimiter-inline",
-          }),
-        );
-      }
-    } else if (kind === "wikilink" && closeCheck) {
-      // Style [[ and ]]
-      decos.push(
-        Decoration.inline(from, from + openCheck.length, {
-          class: "syntax-delimiter-inline",
-        }),
-      );
-      decos.push(
-        Decoration.inline(to - closeCheck.length, to, {
-          class: "syntax-delimiter-inline",
-        }),
-      );
-    }
-  } catch {
-    // Position out of range, skip
-  }
-
-  return decos;
-}
-
-/**
- * Collapse expanded delimiters back to marks/nodes.
- * @param cursorTarget — if provided, place cursor here in the collapsed doc.
- *   Otherwise ProseMirror's default position mapping through the replace steps
- *   determines the final cursor position.
- */
-function collapseExpanded(
-  view: EditorView,
-  expanded: ExpandedRange,
-  cursorTarget?: number,
-): void {
-  const { state } = view;
-  const { tr } = state;
-  const { from, to, kind, openCheck, closeCheck, markName } = expanded;
-
-  // Validate open delimiter still exists
-  try {
-    const openText = state.doc.textBetween(from, from + openCheck.length);
-    if (openText !== openCheck) {
-      tr.setMeta(syntaxRevealKey, INACTIVE);
-      view.dispatch(tr);
-      return;
-    }
-  } catch {
-    tr.setMeta(syntaxRevealKey, INACTIVE);
-    view.dispatch(tr);
-    return;
-  }
-
-  let contentLen = 0;
-
-  if (kind === "mark" && markName) {
-    const markType = state.schema.marks[markName];
-    if (!markType || !closeCheck) {
-      tr.setMeta(syntaxRevealKey, INACTIVE);
-      view.dispatch(tr);
-      return;
-    }
-
-    try {
-      const closeText = state.doc.textBetween(to - closeCheck.length, to);
-      if (closeText !== closeCheck) {
-        tr.setMeta(syntaxRevealKey, INACTIVE);
-        view.dispatch(tr);
-        return;
-      }
-    } catch {
-      tr.setMeta(syntaxRevealKey, INACTIVE);
-      view.dispatch(tr);
-      return;
-    }
-
-    const contentFrom = from + openCheck.length;
-    const contentTo = to - closeCheck.length;
-    contentLen = contentTo - contentFrom;
-
-    if (contentLen <= 0) {
-      tr.delete(from, to);
-    } else {
-      const content = state.doc.slice(contentFrom, contentTo).content;
-      tr.replaceWith(from, to, content);
-      tr.addMark(from, from + contentLen, markType.create());
-    }
-  } else if (kind === "link") {
-    const fullText = state.doc.textBetween(from, to);
-    const linkMatch = fullText.match(
-      /^\[([^\]]*)\]\((\S+?)(?:\s+"([^"]*)")?\)$/,
-    );
-    if (!linkMatch) {
-      tr.setMeta(syntaxRevealKey, INACTIVE);
-      view.dispatch(tr);
-      return;
-    }
-
-    const [, , href, title] = linkMatch;
-    const bracketIdx = fullText.indexOf("](");
-    if (bracketIdx < 0) {
-      tr.setMeta(syntaxRevealKey, INACTIVE);
-      view.dispatch(tr);
-      return;
-    }
-
-    const contentFrom = from + 1;
-    const contentTo = from + bracketIdx;
-    contentLen = bracketIdx - 1;
-
-    const linkMark = state.schema.marks.link.create({
-      href,
-      title: title || null,
-    });
-
-    if (contentLen <= 0) {
-      tr.delete(from, to);
-    } else {
-      const content = state.doc.slice(contentFrom, contentTo).content;
-      tr.replaceWith(from, to, content);
-      tr.addMark(from, from + contentLen, linkMark);
-    }
-  } else if (kind === "image") {
-    const fullText = state.doc.textBetween(from, to);
-    const imgMatch = fullText.match(
-      /^!\[([^\]]*)\]\((\S+?)(?:\s+"([^"]*)")?\)$/,
-    );
-    if (!imgMatch) {
-      tr.setMeta(syntaxRevealKey, INACTIVE);
-      view.dispatch(tr);
-      return;
-    }
-
-    const [, alt, src, title] = imgMatch;
-    const imageNode = state.schema.nodes.image.create({
-      src,
-      alt: alt || null,
-      title: title || null,
-    });
-    const imgFrom = from - 1;
-    const imgTo = to + 1;
-    tr.replaceWith(imgFrom, imgTo, imageNode);
-  } else if (kind === "wikilink") {
-    const fullText = state.doc.textBetween(from, to);
-    const wlMatch = fullText.match(WIKILINK_REGEX);
-    if (!wlMatch) {
-      // Invalid syntax — just deactivate, keep as text (lenient)
-      tr.setMeta(syntaxRevealKey, INACTIVE);
-      view.dispatch(tr);
-      return;
-    }
-
-    const [, wlTarget, wlHeading, wlBlockId, wlDisplay] = wlMatch;
-    const wikilinkNode = state.schema.nodes.wikilink.create({
-      target: wlTarget,
-      heading: wlHeading || null,
-      blockId: wlBlockId || null,
-      display: wlDisplay || null,
-    });
-    tr.replaceWith(from, to, wikilinkNode);
-    contentLen = 0; // atom node = 1 position after collapse
-  }
-
-  // Set explicit cursor position if requested
-  if (cursorTarget !== undefined) {
-    try {
-      tr.setSelection(
-        TextSelection.create(
-          tr.doc,
-          Math.max(0, Math.min(cursorTarget, tr.doc.content.size)),
-        ),
-      );
-    } catch {
-      // fallback: let ProseMirror's default mapping handle it
-    }
-  }
-
-  tr.setMeta(syntaxRevealKey, INACTIVE);
-  view.dispatch(tr);
-}
-
-/** Get the SyntaxReveal PluginKey (used by other plugins to clear expansion state via meta). */
-export { syntaxRevealKey };
 
 function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
   let pendingRaf: null | number = null;
@@ -713,7 +233,9 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         tr.replaceWith(from - 1, to + 1, imageNode);
       } else if (kind === "wikilink") {
         const fullText = newState.doc.textBetween(from, to);
-        const wlMatch = fullText.match(WIKILINK_REGEX);
+        const wlMatch = fullText.match(
+          /^\[\[([^\]|#^]+)(?:#([^\]|^]+))?(?:\^([^\]|]+))?(?:\|([^\]]+))?\]\]$/,
+        );
         if (!wlMatch) {
           tr.setMeta(syntaxRevealKey, INACTIVE);
           return tr;

@@ -11,14 +11,13 @@ export { isSkillFrontmatter };
 
 /** Auto-detect skill files and switch right panel to "properties" mode */
 export function useSkillsMode() {
-  const activeTabId = useEditorStore((s) => s.activeTabId);
-  const tabs = useEditorStore((s) => s.tabs);
-  const openFiles = useFileStore((s) => s.openFiles);
+  const filePath = useEditorStore(
+    (s) => s.tabs.find((t) => t.id === s.activeTabId)?.filePath ?? null,
+  );
+  const content = useFileStore((s) =>
+    filePath ? (s.openFiles.get(filePath) ?? "") : "",
+  );
   const prevModeRef = useRef<null | { mode: string; open: boolean }>(null);
-
-  const activeTab = tabs.find((t) => t.id === activeTabId);
-  const filePath = activeTab?.filePath ?? null;
-  const content = filePath ? (openFiles.get(filePath) ?? "") : "";
 
   // Extract YAML from frontmatter
   const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);

@@ -2,6 +2,8 @@
 import { mergeAttributes, Node } from "@tiptap/core";
 import { textblockTypeInputRule } from "@tiptap/core";
 
+import { resolveShortcut } from "../utils/shortcut-resolver";
+
 export interface HeadingOptions {
   HTMLAttributes: Record<string, string>;
   levels: number[];
@@ -100,10 +102,16 @@ export const Heading = Node.create<HeadingOptions>({
   addKeyboardShortcuts() {
     return {
       ...this.options.levels.reduce(
-        (shortcuts, level) => ({
-          ...shortcuts,
-          [`Mod-${level}`]: () => this.editor.commands.toggleHeading({ level }),
-        }),
+        (shortcuts, level) => {
+          const key = resolveShortcut(
+            `formatting.heading${level}`,
+            `Mod-${level}`,
+          );
+          return {
+            ...shortcuts,
+            [key]: () => this.editor.commands.toggleHeading({ level }),
+          };
+        },
         {} as Record<string, () => boolean>,
       ),
       "Mod-=": () => this.editor.commands.increaseHeadingLevel(),

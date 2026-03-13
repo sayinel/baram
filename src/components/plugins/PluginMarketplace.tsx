@@ -201,19 +201,26 @@ export function PluginMarketplace() {
   // If detail view is showing
   if (selectedEntry) {
     const plugin = installedPlugins[selectedEntry.id];
+    const detailStatus: import("../../plugins/types").PluginStatus = installing[
+      selectedEntry.id
+    ]
+      ? "installing"
+      : !plugin
+        ? "not-installed"
+        : plugin.enabled
+          ? "enabled"
+          : "disabled";
     return (
       <PluginDetail
-        enabled={plugin?.enabled}
         entry={selectedEntry}
         error={pluginErrors[selectedEntry.id]}
-        installed={!!plugin}
-        installing={!!installing[selectedEntry.id]}
         onBack={() => setSelectedEntry(null)}
         onInstall={() => handleInstall(selectedEntry)}
         onToggleEnabled={() => handleToggleEnabled(selectedEntry.id)}
         onUninstall={() => handleUninstall(selectedEntry.id)}
         onUpdate={() => handleUpdate(selectedEntry)}
         readme={readme}
+        status={detailStatus}
         updateAvailable={updateAvailable[selectedEntry.id]}
       />
     );
@@ -370,19 +377,29 @@ export function PluginMarketplace() {
               {searchQuery ? "No plugins found" : "No plugins available"}
             </div>
           ) : (
-            filteredPlugins.map((entry) => (
-              <PluginCard
-                entry={entry}
-                installed={!!installedPlugins[entry.id]}
-                installing={!!installing[entry.id]}
-                key={entry.id}
-                onInstall={() => handleInstall(entry)}
-                onSelect={() => setSelectedEntry(entry)}
-                onUninstall={() => handleUninstall(entry.id)}
-                onUpdate={() => handleUpdate(entry)}
-                updateAvailable={updateAvailable[entry.id]}
-              />
-            ))
+            filteredPlugins.map((entry) => {
+              const cardPlugin = installedPlugins[entry.id];
+              const cardStatus: import("../../plugins/types").PluginStatus =
+                installing[entry.id]
+                  ? "installing"
+                  : !cardPlugin
+                    ? "not-installed"
+                    : cardPlugin.enabled
+                      ? "enabled"
+                      : "disabled";
+              return (
+                <PluginCard
+                  entry={entry}
+                  key={entry.id}
+                  onInstall={() => handleInstall(entry)}
+                  onSelect={() => setSelectedEntry(entry)}
+                  onUninstall={() => handleUninstall(entry.id)}
+                  onUpdate={() => handleUpdate(entry)}
+                  status={cardStatus}
+                  updateAvailable={updateAvailable[entry.id]}
+                />
+              );
+            })
           ))}
 
         {/* Installed tab */}
@@ -556,16 +573,21 @@ export function PluginMarketplace() {
               if (!plugin) return null;
               const entry = registryIndex?.plugins.find((p) => p.id === id);
               if (!entry) return null;
+              const updateCardStatus: import("../../plugins/types").PluginStatus =
+                installing[id]
+                  ? "installing"
+                  : plugin.enabled
+                    ? "enabled"
+                    : "disabled";
               return (
                 <PluginCard
                   entry={entry}
-                  installed
-                  installing={!!installing[id]}
                   key={id}
                   onInstall={() => {}}
                   onSelect={() => setSelectedEntry(entry)}
                   onUninstall={() => handleUninstall(id)}
                   onUpdate={() => handleUpdate(entry)}
+                  status={updateCardStatus}
                   updateAvailable={version}
                 />
               );

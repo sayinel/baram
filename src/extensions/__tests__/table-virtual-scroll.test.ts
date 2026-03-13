@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   shouldApplyVirtualScroll,
   VIRTUAL_SCROLL_THRESHOLD,
-} from "../nodes/table-virtual-scroll";
+} from "../nodes/plugins/table-virtual-scroll";
 
 describe("Table Virtual Scroll", () => {
   describe("VIRTUAL_SCROLL_THRESHOLD", () => {

@@ -33,6 +33,7 @@ git2 = "0.19"
 zip = "2"
 similar = "2"
 sha2 = "0.10"
+shell-escape = "0.1.5"
 
 [features]
 default = ["custom-protocol"]

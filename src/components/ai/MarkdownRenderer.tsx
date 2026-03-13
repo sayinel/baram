@@ -1,5 +1,3 @@
-// §44 Lightweight markdown renderer for AI chat messages
-// Uses mdast-util-from-markdown to parse markdown and renders to React elements
 import { useMemo } from "react";
 import type { ReactNode } from "react";
 
@@ -11,6 +9,9 @@ import type {
   PhrasingContent,
 } from "mdast";
 
+// §44 Lightweight markdown renderer for AI chat messages
+// Uses mdast-util-from-markdown to parse markdown and renders to React elements
+import DOMPurify from "dompurify";
 import { fromMarkdown } from "mdast-util-from-markdown";
 import { gfmFromMarkdown } from "mdast-util-gfm";
 import { gfm } from "micromark-extension-gfm";
@@ -69,7 +70,12 @@ function renderBlock(node: MdastBlockContent, key: number): ReactNode {
       );
     }
     case "html":
-      return <div dangerouslySetInnerHTML={{ __html: node.value }} key={key} />;
+      return (
+        <div
+          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(node.value) }}
+          key={key}
+        />
+      );
     case "list":
       if (node.ordered) {
         return (
@@ -141,7 +147,10 @@ function renderInline(node: PhrasingContent, key: number): ReactNode {
       return <em key={key}>{node.children.map(renderInline)}</em>;
     case "html":
       return (
-        <span dangerouslySetInnerHTML={{ __html: node.value }} key={key} />
+        <span
+          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(node.value) }}
+          key={key}
+        />
       );
     case "image":
       return (

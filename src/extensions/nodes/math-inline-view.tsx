@@ -2,7 +2,6 @@
 import { useEffect, useRef } from "react";
 
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
-import katex from "katex";
 
 import { preprocessNotionFormula } from "../../utils/notion-katex-compat";
 
@@ -13,14 +12,19 @@ export function MathInlineView({ node, selected }: NodeViewProps) {
 
   useEffect(() => {
     if (!renderRef.current || !formula) return;
-    try {
-      katex.render(preprocessNotionFormula(formula), renderRef.current, {
-        throwOnError: false,
-        displayMode: false,
-      });
-    } catch {
-      renderRef.current.textContent = formula;
-    }
+    const el = renderRef.current;
+    const processed = preprocessNotionFormula(formula);
+    void import("katex").then(({ default: katex }) => {
+      if (!el.isConnected) return;
+      try {
+        katex.render(processed, el, {
+          throwOnError: false,
+          displayMode: false,
+        });
+      } catch {
+        el.textContent = formula;
+      }
+    });
   }, [formula]);
 
   return (

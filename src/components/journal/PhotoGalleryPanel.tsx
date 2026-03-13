@@ -231,7 +231,11 @@ export function PhotoGalleryPanel() {
       )}
 
       <div className="photo-gallery-content">
-        {loading && <div className="photo-gallery-loading">Loading...</div>}
+        {loading && (
+          <div aria-live="polite" className="photo-gallery-loading">
+            Loading…
+          </div>
+        )}
 
         {!loading && photos.length === 0 && (
           <div className="photo-gallery-empty">

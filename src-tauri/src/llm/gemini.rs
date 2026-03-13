@@ -8,6 +8,19 @@ use tokio::sync::oneshot;
 
 use super::{LlmError, ModelInfo};
 
+/// Redact the API key from error messages to prevent accidental leakage.
+fn redact_api_key(msg: &str, api_key: &str) -> String {
+    if api_key.is_empty() {
+        return msg.to_string();
+    }
+    let prefix: String = api_key.chars().take(4).collect();
+    if prefix.len() < api_key.len() {
+        msg.replace(api_key, &format!("{}...REDACTED", prefix))
+    } else {
+        msg.replace(api_key, "REDACTED")
+    }
+}
+
 const GEMINI_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
 
 // --- Model listing types ---
@@ -40,7 +53,7 @@ pub async fn list_models(api_key: &str) -> Result<Vec<ModelInfo>, LlmError> {
         .get(&url)
         .send()
         .await
-        .map_err(|e| LlmError::RequestFailed(e.to_string()))?;
+        .map_err(|e| LlmError::RequestFailed(redact_api_key(&e.to_string(), api_key)))?;
 
     if !response.status().is_success() {
         let status = response.status();
@@ -187,7 +200,7 @@ pub async fn complete_stream(
         .json(&body)
         .send()
         .await
-        .map_err(|e| LlmError::RequestFailed(e.to_string()))?;
+        .map_err(|e| LlmError::RequestFailed(redact_api_key(&e.to_string(), api_key)))?;
 
     if !response.status().is_success() {
         let status = response.status();
@@ -214,7 +227,7 @@ pub async fn complete_stream(
                 let Some(chunk) = chunk else {
                     break;
                 };
-                let chunk = chunk.map_err(|e| LlmError::RequestFailed(e.to_string()))?;
+                let chunk = chunk.map_err(|e| LlmError::RequestFailed(redact_api_key(&e.to_string(), api_key)))?;
                 let text = String::from_utf8_lossy(&chunk);
                 buffer.push_str(&text);
 

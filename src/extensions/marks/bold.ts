@@ -6,6 +6,8 @@ import {
   mergeAttributes,
 } from "@tiptap/core";
 
+import { resolveShortcut } from "../utils/shortcut-resolver";
+
 export interface BoldOptions {
   HTMLAttributes: Record<string, string>;
 }
@@ -70,7 +72,8 @@ export const Bold = Mark.create<BoldOptions>({
   },
 
   addKeyboardShortcuts() {
-    return { "Mod-b": () => this.editor.commands.toggleBold() };
+    const key = resolveShortcut("formatting.bold", "Mod-b");
+    return { [key]: () => this.editor.commands.toggleBold() };
   },
 
   addInputRules() {

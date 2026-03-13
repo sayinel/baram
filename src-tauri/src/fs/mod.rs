@@ -2,7 +2,7 @@
 
 use crate::commands::fs_cmd::FileEntry;
 use notify::{event::ModifyKind, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use tauri::Emitter;
 use thiserror::Error;
@@ -15,6 +15,53 @@ pub enum FsError {
     ReadError(#[from] std::io::Error),
     #[error("파일 감시 실패: {0}")]
     WatchError(String),
+}
+
+/// Directories to skip during recursive file collection.
+pub const SKIP_DIRS: &[&str] = &["node_modules", ".git", ".obsidian", ".baram"];
+
+/// Recursively collect all .md file paths under root, skipping hidden dirs and SKIP_DIRS.
+pub async fn collect_md_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<(), FsError> {
+    let mut read_dir = tokio::fs::read_dir(root).await?;
+    while let Some(entry) = read_dir.next_entry().await? {
+        let name = entry.file_name().to_string_lossy().to_string();
+
+        // Skip hidden files/dirs
+        if name.starts_with('.') {
+            continue;
+        }
+
+        let metadata = match entry.metadata().await {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+
+        if metadata.is_dir() {
+            if !SKIP_DIRS.contains(&name.as_str()) {
+                Box::pin(collect_md_files(&entry.path(), files)).await?;
+            }
+        } else if metadata.is_file() && (name.ends_with(".md") || name.ends_with(".markdown")) {
+            files.push(entry.path());
+        }
+    }
+    Ok(())
+}
+
+/// Validate a user-supplied path: reject null bytes and non-absolute paths.
+pub fn validate_path(path: &str) -> Result<(), FsError> {
+    if path.contains('\0') {
+        return Err(FsError::ReadError(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Path contains null byte",
+        )));
+    }
+    if !Path::new(path).is_absolute() {
+        return Err(FsError::ReadError(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Only absolute paths are allowed",
+        )));
+    }
+    Ok(())
 }
 
 /// UTF-8 파일 읽기
@@ -180,11 +227,36 @@ pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>
                 ))
             })?;
 
-            let outpath = std::path::Path::new(&output_dir).join(file.name());
-
-            // Skip __MACOSX and .DS_Store
+            // Skip __MACOSX and .DS_Store before any path operations
             if file.name().starts_with("__MACOSX") || file.name().ends_with(".DS_Store") {
                 continue;
+            }
+
+            let outpath = std::path::Path::new(&output_dir).join(file.name());
+
+            // Zip Slip prevention: normalize path and check containment
+            // BEFORE creating any directories or files.
+            let canonical_output =
+                std::fs::canonicalize(&output_dir).map_err(FsError::ReadError)?;
+
+            // Build a normalized check path without touching the filesystem.
+            // Iterate components and resolve ".." manually.
+            let mut normalized = canonical_output.clone();
+            for component in std::path::Path::new(file.name()).components() {
+                match component {
+                    std::path::Component::Normal(c) => normalized.push(c),
+                    std::path::Component::ParentDir => {
+                        normalized.pop();
+                    }
+                    std::path::Component::CurDir => {}
+                    _ => {}
+                }
+            }
+            if !normalized.starts_with(&canonical_output) {
+                return Err(FsError::ReadError(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("Zip entry escapes output directory: {}", file.name()),
+                )));
             }
 
             if file.is_dir() {

@@ -1,23 +1,25 @@
-import type { PluginCapability, RegistryEntry } from "../../plugins/types";
+import type {
+  PluginCapability,
+  PluginStatus,
+  RegistryEntry,
+} from "../../plugins/types";
 
 // §69 Plugin Card — Compact card for marketplace listing
 import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
 
 interface PluginCardProps {
   entry: RegistryEntry;
-  installed: boolean;
-  installing: boolean;
   onInstall: () => void;
   onSelect: () => void;
   onUninstall: () => void;
   onUpdate: () => void;
+  status: PluginStatus;
   updateAvailable?: string;
 }
 
 export function PluginCard({
   entry,
-  installed,
-  installing,
+  status,
   updateAvailable,
   onInstall,
   onUninstall,
@@ -149,7 +151,7 @@ export function PluginCard({
           )}
         </div>
         <div onClick={(e) => e.stopPropagation()} style={{ flexShrink: 0 }}>
-          {installing ? (
+          {status === "installing" ? (
             <button
               disabled
               style={{
@@ -163,7 +165,7 @@ export function PluginCard({
                 cursor: "not-allowed",
               }}
             >
-              Installing...
+              Installing…
             </button>
           ) : updateAvailable ? (
             <button
@@ -181,7 +183,7 @@ export function PluginCard({
             >
               Update to v{updateAvailable}
             </button>
-          ) : installed ? (
+          ) : status === "enabled" || status === "disabled" ? (
             <button
               onClick={onUninstall}
               style={{

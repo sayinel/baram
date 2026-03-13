@@ -10,6 +10,7 @@ import {
   getJournalFilePath,
   resolveJournalDir,
 } from "../utils/journal";
+import { logger } from "../utils/logger";
 import { useEditorStore } from "./editor-store";
 import { useFileStore } from "./file-store";
 import { buildFileTree } from "./file-store";
@@ -138,7 +139,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
                 const tree = buildFileTree(entries, originalRoot);
                 useFileStore.getState().setFileTree(tree);
               } catch (err) {
-                console.error("[Workspace] Failed to restore file tree:", err);
+                logger.error("[Workspace] Failed to restore file tree:", err);
               }
             })();
           }
@@ -225,7 +226,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
                 const tree = buildFileTree(entries, resolvedDir);
                 useFileStore.getState().setFileTree(tree);
               } catch (err) {
-                console.error("[Workspace] Failed to open journal:", err);
+                logger.error("[Workspace] Failed to open journal:", err);
               }
             })();
           }

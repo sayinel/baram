@@ -12,6 +12,7 @@ import type {
 } from "./types";
 
 import { listDir, readFile, writeFile } from "../ipc/invoke";
+import { logger } from "../utils/logger";
 
 /** Creates a denied proxy that throws on any property access */
 function createDeniedProxy(
@@ -91,7 +92,7 @@ function createEventsAPI(disposables: Disposable[]): EventsAPI {
         try {
           handler(...args);
         } catch (e) {
-          console.error(`[Plugin Event Error] ${event}:`, e);
+          logger.error(`[Plugin Event Error] ${event}:`, e);
         }
       });
     },
@@ -160,7 +161,7 @@ export function emitPluginEvent(event: string, ...args: unknown[]): void {
     try {
       handler(...args);
     } catch (e) {
-      console.error(`[Plugin Event Error] ${event}:`, e);
+      logger.error(`[Plugin Event Error] ${event}:`, e);
     }
   });
 }
@@ -239,16 +240,16 @@ function createUIAPI(disposables: Disposable[]): UIAPI {
       type: "error" | "info" | "warning" = "info",
     ): void {
       // Use console for now; can be replaced with toast system
-      if (type === "error") console.error(`[Plugin] ${message}`);
-      else if (type === "warning") console.warn(`[Plugin] ${message}`);
-      else console.info(`[Plugin] ${message}`);
+      if (type === "error") logger.error(`[Plugin] ${message}`);
+      else if (type === "warning") logger.warn(`[Plugin] ${message}`);
+      else logger.info(`[Plugin] ${message}`);
     },
     showStatusBarItem(
       text: string,
       _alignment: "left" | "right" = "right",
     ): Disposable {
       // Status bar integration placeholder
-      console.info(`[Plugin StatusBar] ${text}`);
+      logger.info(`[Plugin StatusBar] ${text}`);
       const disposable: Disposable = { dispose: () => {} };
       disposables.push(disposable);
       return disposable;

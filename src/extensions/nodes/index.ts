@@ -10,6 +10,7 @@ export { Frontmatter } from "./frontmatter";
 // Node Extensions index — M2 기본 블록 + M3 리치 콘텐츠
 export { Heading } from "./heading";
 export { HorizontalRule } from "./horizontal-rule";
+export { HtmlBlock } from "./html-block";
 export { Image } from "./image";
 export { ListItem } from "./list-item";
 // M3

@@ -3,6 +3,7 @@ import type { RegistryEntry, RegistryIndex } from "./types";
 import { pluginFetchRegistry } from "../ipc/plugin-invoke";
 // §69 Plugin Registry Client — GitHub-based registry with 24h cache
 import { usePluginStore } from "../stores/plugin-store";
+import { logger } from "../utils/logger";
 
 const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -46,7 +47,7 @@ export async function fetchRegistryIndex(
   } catch (err) {
     // If fetch fails and we have stale cache, return it
     if (store.registryCache) {
-      console.warn("[Registry] Fetch failed, using stale cache:", err);
+      logger.warn("[Registry] Fetch failed, using stale cache:", err);
       return store.registryCache;
     }
     throw err;

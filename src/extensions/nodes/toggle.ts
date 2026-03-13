@@ -1,8 +1,8 @@
+// §5.1 Toggle Extension — <details><summary> collapsible block
 import type { ResolvedPos } from "@tiptap/pm/model";
 import type { EditorState } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 
-// §5.1 Toggle Extension — <details><summary> collapsible block
 import { mergeAttributes, Node } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 import { ReactNodeViewRenderer } from "@tiptap/react";
