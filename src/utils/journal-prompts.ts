@@ -3,11 +3,11 @@
  * Expanded to 120 structured prompts across 5 categories.
  */
 
-import { readFile, listDir } from "../ipc/invoke";
+import { listDir, readFile } from "../ipc/invoke";
 
 export interface DailyPrompt {
+  category: "creative" | "goals" | "gratitude" | "reflection" | "relationships";
   id: string;
-  category: "gratitude" | "reflection" | "goals" | "creative" | "relationships";
   text: string;
 }
 
@@ -622,31 +622,6 @@ export function getRandomPrompt(): string {
 
 /** Number of recently-used prompt IDs to remember when avoiding repeats. */
 export const HISTORY_SIZE = 30;
-
-/**
- * Pick a prompt not in `usedIds`. When all prompts have been used, resets
- * and falls back to the deterministic daily prompt for `date`.
- */
-export function getPromptAvoidingHistory(
-  date: Date,
-  usedIds: string[],
-): DailyPrompt {
-  const unused = DAILY_PROMPTS.filter((p) => !usedIds.includes(p.id));
-  if (unused.length === 0) {
-    // Full cycle — fall back to deterministic daily selection (reset)
-    const start = new Date(date.getFullYear(), 0, 0);
-    const diff = date.getTime() - start.getTime();
-    const oneDay = 1000 * 60 * 60 * 24;
-    const dayOfYear = Math.floor(diff / oneDay);
-    return DAILY_PROMPTS[dayOfYear % DAILY_PROMPTS.length];
-  }
-  // Deterministic pick from unused pool based on date so same date is stable
-  const start = new Date(date.getFullYear(), 0, 0);
-  const diff = date.getTime() - start.getTime();
-  const oneDay = 1000 * 60 * 60 * 24;
-  const dayOfYear = Math.floor(diff / oneDay);
-  return unused[dayOfYear % unused.length];
-}
 
 /**
  * Return a DailyPrompt avoiding recently-used IDs.

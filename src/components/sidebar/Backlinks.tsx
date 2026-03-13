@@ -1,45 +1,25 @@
 // §29 백링크 패널 — 현재 파일을 참조하는 다른 파일 목록
 // §34 언링크드 멘션 — [[]] 없이 파일명이 언급된 곳 표시
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
+
+import type { UnlinkedMention } from "../../ipc/types";
+
+import {
+  getBacklinks,
+  getUnlinkedMentions,
+  readFile,
+  refreshIndex,
+  updateFileIndex,
+  writeFile,
+} from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { useLinkStore } from "../../stores/link-store";
 import {
-  getBacklinks,
-  getUnlinkedMentions,
-  refreshIndex,
-  readFile,
-  writeFile,
-  updateFileIndex,
-} from "../../ipc/invoke";
-import {
+  extractFileNameFromPath,
   groupBacklinksByFile,
   groupBacklinksByNamespace,
-  extractFileNameFromPath,
 } from "./backlink-utils";
-import type { UnlinkedMention } from "../../ipc/types";
-
-/** Group unlinked mentions by source file */
-function groupUnlinkedByFile(
-  entries: UnlinkedMention[],
-): { sourcePath: string; entries: UnlinkedMention[] }[] {
-  if (entries.length === 0) return [];
-
-  const map = new Map<string, UnlinkedMention[]>();
-  for (const entry of entries) {
-    const existing = map.get(entry.sourcePath);
-    if (existing) {
-      existing.push(entry);
-    } else {
-      map.set(entry.sourcePath, [entry]);
-    }
-  }
-
-  return Array.from(map.entries()).map(([sourcePath, groupEntries]) => ({
-    sourcePath,
-    entries: groupEntries,
-  }));
-}
 
 export function Backlinks() {
   const activeTabId = useEditorStore((s) => s.activeTabId);
@@ -255,8 +235,8 @@ export function Backlinks() {
       ) : (
         nsGroups.map((nsGroup) => (
           <div
-            key={nsGroup.namespace || "__root__"}
             className="backlinks-ns-group"
+            key={nsGroup.namespace || "__root__"}
           >
             {/* Only show namespace header when there are multiple namespaces */}
             {nsGroups.length > 1 && (
@@ -265,7 +245,7 @@ export function Backlinks() {
               </div>
             )}
             {nsGroup.fileGroups.map((group) => (
-              <div key={group.sourcePath} className="backlinks-group">
+              <div className="backlinks-group" key={group.sourcePath}>
                 <div
                   className="backlinks-source"
                   onClick={() =>
@@ -276,15 +256,15 @@ export function Backlinks() {
                 </div>
                 {group.entries.map((entry, i) => (
                   <div
-                    key={i}
                     className="backlinks-context"
+                    key={i}
                     onClick={() =>
                       handleClick(group.sourcePath, entry.line, entry.blockId)
                     }
                   >
                     <span className="backlinks-line">L{entry.line}</span>
                     <span
-                      className={`backlinks-text${wrapBacklinks ? " wrap" : ""}`}
+                      className={`backlinks-text${wrapBacklinks ? "wrap" : ""}`}
                     >
                       {entry.context}
                     </span>
@@ -326,7 +306,7 @@ export function Backlinks() {
         <div className="backlinks-empty-inline">No unlinked mentions found</div>
       ) : (
         unlinkedGroups.map((group) => (
-          <div key={group.sourcePath} className="backlinks-group">
+          <div className="backlinks-group" key={group.sourcePath}>
             <div
               className="backlinks-source"
               onClick={() =>
@@ -336,9 +316,9 @@ export function Backlinks() {
               {extractFileNameFromPath(group.sourcePath)}
             </div>
             {group.entries.map((entry, i) => (
-              <div key={i} className="backlinks-context">
+              <div className="backlinks-context" key={i}>
                 <span
-                  className={`backlinks-text${wrapUnlinked ? " wrap" : ""}`}
+                  className={`backlinks-text${wrapUnlinked ? "wrap" : ""}`}
                   onClick={() => handleClick(group.sourcePath, entry.line)}
                 >
                   {entry.context}
@@ -360,4 +340,26 @@ export function Backlinks() {
       )}
     </div>
   );
+}
+
+/** Group unlinked mentions by source file */
+function groupUnlinkedByFile(
+  entries: UnlinkedMention[],
+): { entries: UnlinkedMention[]; sourcePath: string }[] {
+  if (entries.length === 0) return [];
+
+  const map = new Map<string, UnlinkedMention[]>();
+  for (const entry of entries) {
+    const existing = map.get(entry.sourcePath);
+    if (existing) {
+      existing.push(entry);
+    } else {
+      map.set(entry.sourcePath, [entry]);
+    }
+  }
+
+  return Array.from(map.entries()).map(([sourcePath, groupEntries]) => ({
+    sourcePath,
+    entries: groupEntries,
+  }));
 }

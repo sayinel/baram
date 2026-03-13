@@ -1,7 +1,7 @@
+import type { NodeTransformerEntry } from "../types";
 // footnote-definition-transformer.ts — §footnote footnoteDefinition ↔ footnoteDefinition
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
 import type { Node as MdastNode, Parent as MdastParent } from "mdast";
-import type { NodeTransformerEntry } from "../types";
 
 export const footnoteDefinitionTransformer: NodeTransformerEntry = {
   mdastType: "footnoteDefinition",
@@ -13,8 +13,8 @@ export const footnoteDefinitionTransformer: NodeTransformerEntry = {
     convertChildren: (parent: MdastParent) => PmNode[],
   ) {
     const fnDef = node as MdastNode & {
-      identifier: string;
       children: MdastNode[];
+      identifier: string;
     };
     const children = convertChildren(fnDef as unknown as MdastParent);
     return schema.nodes.footnoteDefinition.create(

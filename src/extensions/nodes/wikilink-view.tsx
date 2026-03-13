@@ -1,15 +1,18 @@
 // §28 Wikilink NodeView — renders [[target]] as styled inline link
 import { useCallback } from "react";
-import { NodeViewWrapper } from "@tiptap/react";
-import type { NodeViewProps } from "@tiptap/react";
+
 import type { WikilinkOptions } from "./wikilink";
+import type { NodeViewProps } from "@tiptap/react";
+
+import { NodeViewWrapper } from "@tiptap/react";
+
 import { isDateString } from "../../utils/journal";
 
 export function WikilinkView({ node, selected, extension }: NodeViewProps) {
   const { target, display, heading } = node.attrs as {
+    display: null | string;
+    heading: null | string;
     target: string;
-    display: string | null;
-    heading: string | null;
   };
 
   // Display text priority: display > heading > target
@@ -34,7 +37,7 @@ export function WikilinkView({ node, selected, extension }: NodeViewProps) {
   return (
     <NodeViewWrapper
       as="span"
-      className={`wikilink ${selected ? "wikilink-selected" : ""}${isDate ? " wikilink-date" : ""}`}
+      className={`wikilink ${selected ? "wikilink-selected" : ""}${isDate ? "wikilink-date" : ""}`}
       data-target={target}
       onClick={handleClick}
     >

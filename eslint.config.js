@@ -1,6 +1,9 @@
 import js from "@eslint/js";
-import tseslint from "typescript-eslint";
+import eslintConfigPrettier from "eslint-config-prettier/flat";
+import perfectionist from "eslint-plugin-perfectionist";
 import reactHooks from "eslint-plugin-react-hooks";
+import { reactRefresh } from "eslint-plugin-react-refresh";
+import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   js.configs.recommended,
@@ -11,13 +14,58 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
+      // Disable new v7 rules — codebase pre-dates these stricter checks
+      "react-hooks/set-state-in-effect": "off",
+      "react-hooks/refs": "off",
       "@typescript-eslint/no-unused-vars": [
         "error",
         { argsIgnorePattern: "^_" },
       ],
     },
   },
+  reactRefresh.configs.vite(),
+  {
+    rules: {
+      "react-refresh/only-export-components": [
+        "warn",
+        { allowConstantExport: true },
+      ],
+    },
+  },
+  perfectionist.configs["recommended-natural"],
+  {
+    rules: {
+      "perfectionist/sort-imports": [
+        "error",
+        {
+          type: "natural",
+          groups: [
+            "react",
+            "tauri",
+            "type",
+            ["builtin", "external"],
+            "internal",
+            ["parent", "sibling", "index"],
+            "unknown",
+          ],
+          customGroups: [
+            {
+              groupName: "react",
+              elementNamePattern: "^react$|^react-.+|^react/.+",
+            },
+            {
+              groupName: "tauri",
+              elementNamePattern: "^@tauri-apps/.+",
+            },
+          ],
+          newlinesBetween: 1,
+        },
+      ],
+      "perfectionist/sort-objects": "off",
+    },
+  },
   {
     ignores: ["dist/", "src-tauri/", "node_modules/"],
   },
+  eslintConfigPrettier,
 );

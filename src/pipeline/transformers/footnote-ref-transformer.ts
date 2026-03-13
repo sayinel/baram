@@ -1,7 +1,7 @@
+import type { NodeTransformerEntry } from "../types";
 // footnote-ref-transformer.ts — §footnote footnoteReference ↔ footnoteRef
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
 import type { Node as MdastNode } from "mdast";
-import type { NodeTransformerEntry } from "../types";
 
 export const footnoteRefTransformer: NodeTransformerEntry = {
   mdastType: "footnoteReference",

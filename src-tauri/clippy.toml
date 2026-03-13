@@ -1,0 +1,39 @@
+# clippy.toml — stable Clippy configuration for the Tauri backend.
+#
+# Keep this file intentionally small:
+# - only override stable, documented keys
+# - only diverge from defaults where the project has an explicit policy
+
+# Minimum Supported Rust Version (MSRV) for lint suggestions.
+# The backend currently uses std::sync::LazyLock, which requires Rust 1.80+.
+msrv = "1.80.0"
+
+# Stricter than Clippy's default (25) to keep handlers and services decomposed.
+cognitive-complexity-threshold = 20
+
+# Stricter than Clippy's default (7) to push argument-heavy APIs toward structs.
+too-many-arguments-threshold = 6
+
+# Test code can use expect() when it improves failure messages.
+allow-expect-in-tests = true
+
+# Preserve Clippy defaults and append project-specific terms used in docs.
+doc-valid-idents = [
+    "AI",
+    "Baram",
+    "CLI",
+    "CSS",
+    "HTML",
+    "HTTP",
+    "HTTPS",
+    "IPC",
+    "JSON",
+    "LLM",
+    "PDF",
+    "SQLite",
+    "Tauri",
+    "UTF",
+    "UUID",
+    "WYSIWYG",
+    "..",
+]

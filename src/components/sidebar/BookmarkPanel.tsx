@@ -1,10 +1,12 @@
 // §36 북마크 패널 — 사이드바에서 북마크 목록 표시 및 관리
-import { useEffect, useCallback } from "react";
-import { useBookmarkStore, getGroups } from "../../stores/bookmark-store";
+import { useCallback, useEffect } from "react";
+
 import type { BookmarkItem } from "../../stores/bookmark-store";
+
+import { readFile } from "../../ipc/invoke";
+import { getGroups, useBookmarkStore } from "../../stores/bookmark-store";
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
-import { readFile } from "../../ipc/invoke";
 import { extractFileNameFromPath } from "./backlink-utils";
 
 export function BookmarkPanel() {
@@ -108,8 +110,8 @@ export function BookmarkPanel() {
         <span>Bookmarks ({bookmarks.length})</span>
         <button
           className={`bookmark-add-btn ${isCurrentFileBookmarked ? "bookmark-added" : ""}`}
-          onClick={handleBookmarkFile}
           disabled={!filePath || isCurrentFileBookmarked}
+          onClick={handleBookmarkFile}
           title={
             isCurrentFileBookmarked
               ? "Already bookmarked"
@@ -131,12 +133,12 @@ export function BookmarkPanel() {
           const groupBookmarks = bookmarks.filter((b) => b.group === group);
           if (groupBookmarks.length === 0) return null;
           return (
-            <div key={group} className="bookmark-group">
+            <div className="bookmark-group" key={group}>
               <div className="bookmark-group-name">{group}</div>
               {groupBookmarks.map((bookmark) => (
                 <div
-                  key={bookmark.id}
                   className={`bookmark-item ${bookmark.filePath === filePath ? "bookmark-item-active" : ""}`}
+                  key={bookmark.id}
                 >
                   <span
                     className="bookmark-item-label"

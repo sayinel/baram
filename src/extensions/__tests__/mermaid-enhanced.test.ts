@@ -1,8 +1,9 @@
 // §50 Mermaid Enhanced — utility function tests
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import {
-  MERMAID_TEMPLATES,
   detectMermaidType,
+  MERMAID_TEMPLATES,
 } from "../../utils/mermaid-utils";
 
 describe("Mermaid Templates", () => {

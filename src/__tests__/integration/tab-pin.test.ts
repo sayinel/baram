@@ -1,6 +1,7 @@
 // §38 Integration: Tab Pin — pin/unpin, close protection, reorder boundary, context menu actions
-import { describe, it, expect, beforeEach } from "vitest";
-import { useEditorStore, type EditorTab } from "../../stores/editor-store";
+import { beforeEach, describe, expect, it } from "vitest";
+
+import { type EditorTab, useEditorStore } from "../../stores/editor-store";
 
 function makeTab(id: string, filePath: string): EditorTab {
   return {

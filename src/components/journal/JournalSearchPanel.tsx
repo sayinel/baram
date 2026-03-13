@@ -1,34 +1,29 @@
 // §56k Journal Search Panel — search across journal files (daily, weekly, monthly, yearly, notes)
-import { useState, useCallback, useRef, useEffect } from "react";
-import { useSettingsStore } from "../../stores/settings-store";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import type { SearchResult } from "../../ipc/types";
+
+import { readFile, searchFiles } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { useLinkStore } from "../../stores/link-store";
+import { useSettingsStore } from "../../stores/settings-store";
 import { useUIStore } from "../../stores/ui-store";
-import { searchFiles, readFile } from "../../ipc/invoke";
+import { resolveJournalDir } from "../../utils/journal";
 import {
-  groupSearchResults,
-  highlightSearchMatch,
-  filterByFrontmatter,
-  hasActiveFilters,
   CATEGORY_LABELS,
+  filterByFrontmatter,
+  groupSearchResults,
+  hasActiveFilters,
+  highlightSearchMatch,
   type JournalCategory,
   type JournalSearchFilters,
 } from "../../utils/journal-search";
-import { resolveJournalDir } from "../../utils/journal";
-import type { SearchResult } from "../../ipc/types";
 
 const MAX_PER_CATEGORY = 5;
 
 interface JournalSearchPanelProps {
   onClose?: () => void;
-}
-
-/** Adapt SearchResult (filePath) to the shape groupSearchResults expects (path) */
-function adaptResults(
-  results: SearchResult[],
-): Array<SearchResult & { path: string }> {
-  return results.map((r) => ({ ...r, path: r.filePath }));
 }
 
 export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
@@ -38,13 +33,13 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<null | string>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState<JournalSearchFilters>({});
   // Cache file contents for frontmatter filtering
   const contentCacheRef = useRef<Map<string, string>>(new Map());
 
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debounceRef = useRef<null | ReturnType<typeof setTimeout>>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -197,32 +192,32 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
     <div className="journal-search">
       <div className="journal-search-input-row">
         <input
-          ref={inputRef}
+          aria-label="Journal search"
           className="journal-search-input"
-          type="text"
+          onChange={(e) => handleQueryChange(e.target.value)}
+          onKeyDown={handleKeyDown}
           placeholder={
             isTagSearch ? "Tag search: #rust…" : "Search journal… (# for tags)"
           }
-          value={query}
-          onChange={(e) => handleQueryChange(e.target.value)}
-          onKeyDown={handleKeyDown}
+          ref={inputRef}
           spellCheck={false}
-          aria-label="Journal search"
+          type="text"
+          value={query}
         />
         <button
+          aria-label="Toggle filters"
           className={`journal-search-filter-toggle ${showFilters ? "active" : ""} ${filtersActive ? "has-filters" : ""}`}
           onClick={() => setShowFilters((v) => !v)}
           title="필터"
-          aria-label="Toggle filters"
         >
           ⊟
         </button>
         {onClose && (
           <button
+            aria-label="Close"
             className="journal-search-close"
             onClick={onClose}
             title="Close journal search"
-            aria-label="Close"
           >
             ✕
           </button>
@@ -235,25 +230,25 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
           <div className="jsf-row">
             <span className="jsf-label">기간</span>
             <input
-              type="date"
-              value={filters.dateFrom ?? ""}
               onChange={(e) =>
                 handleFilterChange({
                   ...filters,
                   dateFrom: e.target.value || undefined,
                 })
               }
+              type="date"
+              value={filters.dateFrom ?? ""}
             />
             <span>~</span>
             <input
-              type="date"
-              value={filters.dateTo ?? ""}
               onChange={(e) =>
                 handleFilterChange({
                   ...filters,
                   dateTo: e.target.value || undefined,
                 })
               }
+              type="date"
+              value={filters.dateTo ?? ""}
             />
           </div>
 
@@ -263,10 +258,9 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
             <div className="jsf-mood-dots">
               {MOODS.map((mood) => (
                 <button
-                  key={mood}
                   className={`jsf-mood-dot ${(filters.moodFilter ?? []).includes(mood) ? "active" : ""}`}
                   data-mood={mood}
-                  title={mood}
+                  key={mood}
                   onClick={() => {
                     const current = filters.moodFilter ?? [];
                     const next = current.includes(mood)
@@ -277,6 +271,7 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
                       moodFilter: next.length > 0 ? next : undefined,
                     });
                   }}
+                  title={mood}
                 />
               ))}
             </div>
@@ -286,9 +281,6 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
           <div className="jsf-row">
             <span className="jsf-label">태그</span>
             <input
-              type="text"
-              placeholder="태그1, 태그2"
-              value={(filters.tagsFilter ?? []).join(", ")}
               onChange={(e) => {
                 const tags = e.target.value
                   .split(",")
@@ -299,6 +291,9 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
                   tagsFilter: tags.length > 0 ? tags : undefined,
                 });
               }}
+              placeholder="태그1, 태그2"
+              type="text"
+              value={(filters.tagsFilter ?? []).join(", ")}
             />
           </div>
 
@@ -306,7 +301,6 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
           <div className="jsf-row">
             <span className="jsf-label">에너지</span>
             <select
-              value={filters.energyMin ?? ""}
               onChange={(e) =>
                 handleFilterChange({
                   ...filters,
@@ -315,6 +309,7 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
                     : undefined,
                 })
               }
+              value={filters.energyMin ?? ""}
             >
               <option value="">전체</option>
               <option value="1">1 이상</option>
@@ -329,7 +324,6 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
           <div className="jsf-row">
             <label className="jsf-checkbox-label">
               <input
-                type="checkbox"
                 checked={filters.hasPhotos ?? false}
                 onChange={(e) =>
                   handleFilterChange({
@@ -337,6 +331,7 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
                     hasPhotos: e.target.checked || undefined,
                   })
                 }
+                type="checkbox"
               />
               사진 있는 일기만
             </label>
@@ -374,7 +369,7 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
           const overflow = categoryResults.length - shown.length;
 
           return (
-            <div key={category} className="journal-search-category-group">
+            <div className="journal-search-category-group" key={category}>
               <div className="journal-search-category">
                 {label}
                 <span className="journal-search-category-count">
@@ -387,18 +382,18 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
                 const highlighted = highlightSearchMatch(match.snippet, query);
                 return (
                   <div
-                    key={i}
                     className="journal-search-result"
+                    key={i}
                     onClick={() =>
                       handleResultClick(match.filePath, match.line)
                     }
-                    role="button"
-                    tabIndex={0}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         handleResultClick(match.filePath, match.line);
                       }
                     }}
+                    role="button"
+                    tabIndex={0}
                   >
                     <div className="journal-search-result-filename">
                       {fileName}
@@ -421,4 +416,11 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
       </div>
     </div>
   );
+}
+
+/** Adapt SearchResult (filePath) to the shape groupSearchResults expects (path) */
+function adaptResults(
+  results: SearchResult[],
+): Array<SearchResult & { path: string }> {
+  return results.map((r) => ({ ...r, path: r.filePath }));
 }

@@ -3,42 +3,155 @@
 // no doc mutation, no undo pollution, no roundtrip impact.
 // Pattern: block-id-decoration.ts (Plugin + PluginKey + DecorationSet)
 
+import type { Node as PmNode } from "@tiptap/pm/model";
+import type { EditorState, Transaction } from "@tiptap/pm/state";
+import type { EditorView } from "@tiptap/pm/view";
+
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import type { EditorState, Transaction } from "@tiptap/pm/state";
-import type { Node as PmNode } from "@tiptap/pm/model";
-import type { EditorView } from "@tiptap/pm/view";
 
 // ── Types ──────────────────────────────────────────────────────────
 
-export interface FoldState {
-  foldedPositions: Set<number>;
-  decorations: DecorationSet;
-}
-
 export type FoldMeta =
-  | { type: "toggle"; pos: number }
+  | { pos: number; type: "toggle" }
+  | { positions: number[]; type: "restore" }
   | { type: "foldAll" }
-  | { type: "unfoldAll" }
-  | { type: "restore"; positions: number[] };
+  | { type: "unfoldAll" };
+
+export interface FoldState {
+  decorations: DecorationSet;
+  foldedPositions: Set<number>;
+}
 
 export const foldPluginKey = new PluginKey<FoldState>("fold");
 
 // ── Fold range computation ─────────────────────────────────────────
 
 export interface FoldableItem {
-  pos: number;
-  node: PmNode;
   foldFrom: number;
   foldTo: number;
   kind: "heading" | "listItem";
+  node: PmNode;
+  pos: number;
 }
+
+export interface FoldAnchor {
+  level?: number;
+  textPrefix: string;
+  type: "heading" | "listItem";
+}
+
+/** Resolve content-based anchors back to doc positions */
+export function anchorsToPositions(
+  doc: PmNode,
+  anchors: FoldAnchor[],
+): number[] {
+  const positions: number[] = [];
+  const remaining = [...anchors];
+
+  doc.descendants((node, pos) => {
+    if (remaining.length === 0) return false;
+
+    for (let i = 0; i < remaining.length; i++) {
+      const anchor = remaining[i];
+      const prefix = anchor.textPrefix.slice(0, 20);
+      if (
+        anchor.type === "heading" &&
+        node.type.name === "heading" &&
+        node.attrs.level === anchor.level &&
+        node.textContent.startsWith(prefix)
+      ) {
+        positions.push(pos);
+        remaining.splice(i, 1);
+        break;
+      }
+      if (
+        anchor.type === "listItem" &&
+        node.type.name === "listItem" &&
+        node.textContent.startsWith(prefix)
+      ) {
+        positions.push(pos);
+        remaining.splice(i, 1);
+        break;
+      }
+    }
+    return true;
+  });
+
+  return positions;
+}
+
+export function dispatchFoldAll(view: EditorView): void {
+  const tr = view.state.tr.setMeta(foldPluginKey, {
+    type: "foldAll",
+  } as FoldMeta);
+
+  // Move selection to start of doc to avoid being inside folded region
+  const $start = view.state.doc.resolve(0);
+  tr.setSelection(TextSelection.near($start, 1));
+
+  view.dispatch(tr);
+}
+
+// ── Widget DOM creators ────────────────────────────────────────────
+
+export function dispatchRestoreFolds(
+  view: EditorView,
+  positions: number[],
+): void {
+  if (positions.length === 0) return;
+  const tr = view.state.tr.setMeta(foldPluginKey, {
+    type: "restore",
+    positions,
+  } as FoldMeta);
+  view.dispatch(tr);
+}
+
+export function dispatchToggleFold(view: EditorView, pos: number): void {
+  const state = foldPluginKey.getState(view.state);
+  if (!state) return;
+
+  const isFolding = !state.foldedPositions.has(pos);
+  const tr = view.state.tr.setMeta(foldPluginKey, {
+    type: "toggle",
+    pos,
+  } as FoldMeta);
+
+  // Selection safety: move cursor out of fold range
+  if (isFolding) {
+    const range = getFoldRange(view.state.doc, pos);
+    if (range) {
+      const { from } = view.state.selection;
+      if (from >= range.foldFrom && from < range.foldTo) {
+        const $pos = view.state.doc.resolve(Math.max(0, range.foldFrom - 1));
+        tr.setSelection(TextSelection.near($pos));
+      }
+    }
+  }
+
+  view.dispatch(tr);
+}
+
+// ── Decoration builder ─────────────────────────────────────────────
+
+export function dispatchUnfoldAll(view: EditorView): void {
+  const tr = view.state.tr.setMeta(foldPluginKey, {
+    type: "unfoldAll",
+  } as FoldMeta);
+  view.dispatch(tr);
+}
+
+export function findAllFoldables(doc: PmNode): FoldableItem[] {
+  return [...findFoldableHeadings(doc), ...findFoldableListItems(doc)];
+}
+
+// ── Anchor-based persistence ───────────────────────────────────────
 
 /** Find all foldable headings — direct doc children only */
 export function findFoldableHeadings(doc: PmNode): FoldableItem[] {
   const items: FoldableItem[] = [];
-  const children: { pos: number; node: PmNode }[] = [];
+  const children: { node: PmNode; pos: number }[] = [];
 
   doc.forEach((node, offset) => {
     children.push({ pos: offset, node });
@@ -112,40 +225,50 @@ export function findFoldableListItems(doc: PmNode): FoldableItem[] {
   return items;
 }
 
-export function findAllFoldables(doc: PmNode): FoldableItem[] {
-  return [...findFoldableHeadings(doc), ...findFoldableListItems(doc)];
-}
-
 /** Get the fold range for a specific position, or null if not foldable */
 export function getFoldRange(
   doc: PmNode,
   pos: number,
-): { foldFrom: number; foldTo: number } | null {
+): null | { foldFrom: number; foldTo: number } {
   const foldables = findAllFoldables(doc);
   const item = foldables.find((f) => f.pos === pos);
   return item ? { foldFrom: item.foldFrom, foldTo: item.foldTo } : null;
 }
 
-// ── Widget DOM creators ────────────────────────────────────────────
+// ── Exported dispatch functions ────────────────────────────────────
 
-function createFoldArrow(folded: boolean, pos: number): HTMLElement {
-  const span = document.createElement("span");
-  span.className = `fold-arrow ${folded ? "fold-arrow-folded" : "fold-arrow-open"}`;
-  span.setAttribute("data-fold-pos", String(pos));
-  span.contentEditable = "false";
-  return span;
+/** Convert fold positions to content-based anchors for persistence */
+export function positionsToAnchors(
+  doc: PmNode,
+  positions: Set<number>,
+): FoldAnchor[] {
+  const anchors: FoldAnchor[] = [];
+  for (const pos of positions) {
+    const node = doc.nodeAt(pos);
+    if (!node) continue;
+    if (node.type.name === "heading") {
+      anchors.push({
+        type: "heading",
+        level: node.attrs.level as number,
+        textPrefix: node.textContent.slice(0, 50),
+      });
+    } else if (node.type.name === "listItem") {
+      anchors.push({
+        type: "listItem",
+        textPrefix: node.textContent.slice(0, 50),
+      });
+    }
+  }
+  return anchors;
 }
 
-function createEllipsis(pos: number): HTMLElement {
-  const span = document.createElement("span");
-  span.className = "fold-ellipsis";
-  span.textContent = "⋯";
-  span.setAttribute("data-fold-pos", String(pos));
-  span.contentEditable = "false";
-  return span;
+/** Toggle fold at the cursor position (for keyboard shortcut) */
+export function toggleFoldAtCursor(view: EditorView): boolean {
+  const pos = findFoldableAtCursor(view.state);
+  if (pos === null) return false;
+  dispatchToggleFold(view, pos);
+  return true;
 }
-
-// ── Decoration builder ─────────────────────────────────────────────
 
 function buildDecorations(
   doc: PmNode,
@@ -222,221 +345,22 @@ function buildDecorations(
   return DecorationSet.create(doc, decos);
 }
 
-function getFirstChildSize(node: PmNode): number {
-  let size = 0;
-  let found = false;
-  node.forEach((child) => {
-    if (!found) {
-      size = child.nodeSize;
-      found = true;
-    }
-  });
-  return size;
+function createEllipsis(pos: number): HTMLElement {
+  const span = document.createElement("span");
+  span.className = "fold-ellipsis";
+  span.textContent = "⋯";
+  span.setAttribute("data-fold-pos", String(pos));
+  span.contentEditable = "false";
+  return span;
 }
 
-// ── Anchor-based persistence ───────────────────────────────────────
-
-export interface FoldAnchor {
-  type: "heading" | "listItem";
-  level?: number;
-  textPrefix: string;
+function createFoldArrow(folded: boolean, pos: number): HTMLElement {
+  const span = document.createElement("span");
+  span.className = `fold-arrow ${folded ? "fold-arrow-folded" : "fold-arrow-open"}`;
+  span.setAttribute("data-fold-pos", String(pos));
+  span.contentEditable = "false";
+  return span;
 }
-
-/** Convert fold positions to content-based anchors for persistence */
-export function positionsToAnchors(
-  doc: PmNode,
-  positions: Set<number>,
-): FoldAnchor[] {
-  const anchors: FoldAnchor[] = [];
-  for (const pos of positions) {
-    const node = doc.nodeAt(pos);
-    if (!node) continue;
-    if (node.type.name === "heading") {
-      anchors.push({
-        type: "heading",
-        level: node.attrs.level as number,
-        textPrefix: node.textContent.slice(0, 50),
-      });
-    } else if (node.type.name === "listItem") {
-      anchors.push({
-        type: "listItem",
-        textPrefix: node.textContent.slice(0, 50),
-      });
-    }
-  }
-  return anchors;
-}
-
-/** Resolve content-based anchors back to doc positions */
-export function anchorsToPositions(
-  doc: PmNode,
-  anchors: FoldAnchor[],
-): number[] {
-  const positions: number[] = [];
-  const remaining = [...anchors];
-
-  doc.descendants((node, pos) => {
-    if (remaining.length === 0) return false;
-
-    for (let i = 0; i < remaining.length; i++) {
-      const anchor = remaining[i];
-      const prefix = anchor.textPrefix.slice(0, 20);
-      if (
-        anchor.type === "heading" &&
-        node.type.name === "heading" &&
-        node.attrs.level === anchor.level &&
-        node.textContent.startsWith(prefix)
-      ) {
-        positions.push(pos);
-        remaining.splice(i, 1);
-        break;
-      }
-      if (
-        anchor.type === "listItem" &&
-        node.type.name === "listItem" &&
-        node.textContent.startsWith(prefix)
-      ) {
-        positions.push(pos);
-        remaining.splice(i, 1);
-        break;
-      }
-    }
-    return true;
-  });
-
-  return positions;
-}
-
-// ── Exported dispatch functions ────────────────────────────────────
-
-export function dispatchToggleFold(view: EditorView, pos: number): void {
-  const state = foldPluginKey.getState(view.state);
-  if (!state) return;
-
-  const isFolding = !state.foldedPositions.has(pos);
-  const tr = view.state.tr.setMeta(foldPluginKey, {
-    type: "toggle",
-    pos,
-  } as FoldMeta);
-
-  // Selection safety: move cursor out of fold range
-  if (isFolding) {
-    const range = getFoldRange(view.state.doc, pos);
-    if (range) {
-      const { from } = view.state.selection;
-      if (from >= range.foldFrom && from < range.foldTo) {
-        const $pos = view.state.doc.resolve(Math.max(0, range.foldFrom - 1));
-        tr.setSelection(TextSelection.near($pos));
-      }
-    }
-  }
-
-  view.dispatch(tr);
-}
-
-export function dispatchFoldAll(view: EditorView): void {
-  const tr = view.state.tr.setMeta(foldPluginKey, {
-    type: "foldAll",
-  } as FoldMeta);
-
-  // Move selection to start of doc to avoid being inside folded region
-  const $start = view.state.doc.resolve(0);
-  tr.setSelection(TextSelection.near($start, 1));
-
-  view.dispatch(tr);
-}
-
-export function dispatchUnfoldAll(view: EditorView): void {
-  const tr = view.state.tr.setMeta(foldPluginKey, {
-    type: "unfoldAll",
-  } as FoldMeta);
-  view.dispatch(tr);
-}
-
-export function dispatchRestoreFolds(
-  view: EditorView,
-  positions: number[],
-): void {
-  if (positions.length === 0) return;
-  const tr = view.state.tr.setMeta(foldPluginKey, {
-    type: "restore",
-    positions,
-  } as FoldMeta);
-  view.dispatch(tr);
-}
-
-/** Check if a position is currently folded */
-export function isFolded(state: EditorState, pos: number): boolean {
-  const pluginState = foldPluginKey.getState(state);
-  return pluginState?.foldedPositions.has(pos) ?? false;
-}
-
-/** Check if a document position falls within any folded region */
-export function isInsideFoldedRegion(
-  state: EditorState,
-  targetPos: number,
-): number | null {
-  const pluginState = foldPluginKey.getState(state);
-  if (!pluginState || pluginState.foldedPositions.size === 0) return null;
-
-  const foldables = findAllFoldables(state.doc);
-  for (const item of foldables) {
-    if (!pluginState.foldedPositions.has(item.pos)) continue;
-    if (targetPos >= item.foldFrom && targetPos < item.foldTo) {
-      return item.pos;
-    }
-  }
-  return null;
-}
-
-/** Auto-unfold the region containing targetPos, if it's folded */
-export function autoUnfoldAt(view: EditorView, targetPos: number): void {
-  const foldPos = isInsideFoldedRegion(view.state, targetPos);
-  if (foldPos !== null) {
-    dispatchToggleFold(view, foldPos);
-  }
-}
-
-/** Get the closest foldable heading/listItem at or containing the cursor */
-function findFoldableAtCursor(state: EditorState): number | null {
-  const { $from } = state.selection;
-  const foldables = findAllFoldables(state.doc);
-
-  // Check if cursor is directly inside a foldable heading (depth 1 = direct doc child)
-  for (let d = $from.depth; d >= 1; d--) {
-    const ancestor = $from.node(d);
-    const ancestorPos = $from.before(d);
-    if (foldables.some((f) => f.pos === ancestorPos)) {
-      return ancestorPos;
-    }
-    // Also check if cursor is in content under a heading
-    if (ancestor.type.name === "heading" || ancestor.type.name === "listItem") {
-      break;
-    }
-  }
-
-  // If cursor is in content below a heading, find the heading that owns this region
-  const cursorPos = $from.pos;
-  for (const item of foldables) {
-    if (item.kind === "heading") {
-      if (cursorPos >= item.pos && cursorPos < item.foldTo) {
-        return item.pos;
-      }
-    }
-  }
-
-  return null;
-}
-
-/** Toggle fold at the cursor position (for keyboard shortcut) */
-export function toggleFoldAtCursor(view: EditorView): boolean {
-  const pos = findFoldableAtCursor(view.state);
-  if (pos === null) return false;
-  dispatchToggleFold(view, pos);
-  return true;
-}
-
-// ── Plugin factory ─────────────────────────────────────────────────
 
 function createFoldPlugin(): Plugin<FoldState> {
   return new Plugin<FoldState>({
@@ -462,6 +386,15 @@ function createFoldPlugin(): Plugin<FoldState> {
           let newFolded: Set<number>;
 
           switch (meta.type) {
+            case "foldAll": {
+              const foldables = findAllFoldables(newState.doc);
+              newFolded = new Set(foldables.map((f) => f.pos));
+              break;
+            }
+            case "restore": {
+              newFolded = new Set(meta.positions);
+              break;
+            }
             case "toggle": {
               newFolded = new Set(value.foldedPositions);
               if (newFolded.has(meta.pos)) {
@@ -471,17 +404,8 @@ function createFoldPlugin(): Plugin<FoldState> {
               }
               break;
             }
-            case "foldAll": {
-              const foldables = findAllFoldables(newState.doc);
-              newFolded = new Set(foldables.map((f) => f.pos));
-              break;
-            }
             case "unfoldAll": {
               newFolded = new Set();
-              break;
-            }
-            case "restore": {
-              newFolded = new Set(meta.positions);
               break;
             }
           }
@@ -540,6 +464,51 @@ function createFoldPlugin(): Plugin<FoldState> {
       },
     },
   });
+}
+
+/** Get the closest foldable heading/listItem at or containing the cursor */
+function findFoldableAtCursor(state: EditorState): null | number {
+  const { $from } = state.selection;
+  const foldables = findAllFoldables(state.doc);
+
+  // Check if cursor is directly inside a foldable heading (depth 1 = direct doc child)
+  for (let d = $from.depth; d >= 1; d--) {
+    const ancestor = $from.node(d);
+    const ancestorPos = $from.before(d);
+    if (foldables.some((f) => f.pos === ancestorPos)) {
+      return ancestorPos;
+    }
+    // Also check if cursor is in content under a heading
+    if (ancestor.type.name === "heading" || ancestor.type.name === "listItem") {
+      break;
+    }
+  }
+
+  // If cursor is in content below a heading, find the heading that owns this region
+  const cursorPos = $from.pos;
+  for (const item of foldables) {
+    if (item.kind === "heading") {
+      if (cursorPos >= item.pos && cursorPos < item.foldTo) {
+        return item.pos;
+      }
+    }
+  }
+
+  return null;
+}
+
+// ── Plugin factory ─────────────────────────────────────────────────
+
+function getFirstChildSize(node: PmNode): number {
+  let size = 0;
+  let found = false;
+  node.forEach((child) => {
+    if (!found) {
+      size = child.nodeSize;
+      found = true;
+    }
+  });
+  return size;
 }
 
 // ── Tiptap Extension wrapper ───────────────────────────────────────

@@ -1,15 +1,17 @@
 // §69 Plugin Extension Context — Capability-gated API surface
 import type {
-  PluginManifest,
-  PluginCapability,
-  ExtensionContext,
-  Disposable,
   CommandsAPI,
+  Disposable,
   EditorAPI,
-  FilesAPI,
   EventsAPI,
+  ExtensionContext,
+  FilesAPI,
+  PluginCapability,
+  PluginManifest,
   UIAPI,
 } from "./types";
+
+import { listDir, readFile, writeFile } from "../ipc/invoke";
 
 /** Creates a denied proxy that throws on any property access */
 function createDeniedProxy(
@@ -40,6 +42,9 @@ function createDeniedProxy(
 // --- Command Registry (shared across all plugins) ---
 const commandHandlers = new Map<string, (...args: unknown[]) => unknown>();
 
+// --- Event Bus (shared across all plugins) ---
+type EventHandler = (...args: unknown[]) => void;
+
 function createCommandsAPI(
   pluginId: string,
   disposables: Disposable[],
@@ -64,9 +69,6 @@ function createCommandsAPI(
     },
   };
 }
-
-// --- Event Bus (shared across all plugins) ---
-type EventHandler = (...args: unknown[]) => void;
 const eventListeners = new Map<string, Set<EventHandler>>();
 
 function createEventsAPI(disposables: Disposable[]): EventsAPI {
@@ -97,97 +99,13 @@ function createEventsAPI(disposables: Disposable[]): EventsAPI {
 }
 
 // --- Editor API ---
-let editorInstance: {
+let editorInstance: null | {
+  chain: () => Record<string, unknown>;
+  commands: Record<string, unknown>;
   getHTML: () => string;
   getText: () => string;
-  commands: Record<string, unknown>;
   state: { selection: { from: number; to: number } };
-  chain: () => Record<string, unknown>;
-} | null = null;
-
-export function setEditorInstance(editor: unknown): void {
-  editorInstance = editor as typeof editorInstance;
-}
-
-function createEditorAPI(readonly: boolean): EditorAPI {
-  return {
-    getContent(): string {
-      if (!editorInstance) return "";
-      return editorInstance.getText();
-    },
-    setContent(content: string): void {
-      if (readonly)
-        throw new Error("editor:readonly — setContent is not allowed");
-      if (!editorInstance) return;
-      (
-        editorInstance.commands as Record<
-          string,
-          (c: { content: string }) => void
-        >
-      ).setContent({ content });
-    },
-    getSelection(): { from: number; to: number; text: string } {
-      if (!editorInstance) return { from: 0, to: 0, text: "" };
-      const { from, to } = editorInstance.state.selection;
-      const text = editorInstance.getText().slice(from, to);
-      return { from, to, text };
-    },
-    insertText(text: string): void {
-      if (readonly)
-        throw new Error("editor:readonly — insertText is not allowed");
-      if (!editorInstance) return;
-      (
-        editorInstance.commands as Record<string, (t: string) => void>
-      ).insertContent(text);
-    },
-  };
-}
-
-// --- Files API ---
-function createFilesAPI(readonly: boolean): FilesAPI {
-  return {
-    async readFile(path: string): Promise<string> {
-      const { readFile } = await import("../ipc/invoke");
-      return readFile(path);
-    },
-    async writeFile(path: string, content: string): Promise<void> {
-      if (readonly)
-        throw new Error("files:readonly — writeFile is not allowed");
-      const { writeFile } = await import("../ipc/invoke");
-      return writeFile(path, content);
-    },
-    async listDir(path: string): Promise<string[]> {
-      const { listDir } = await import("../ipc/invoke");
-      const entries = await listDir(path);
-      return entries.map((e) => e.name);
-    },
-  };
-}
-
-// --- UI API ---
-function createUIAPI(disposables: Disposable[]): UIAPI {
-  return {
-    showNotification(
-      message: string,
-      type: "info" | "warning" | "error" = "info",
-    ): void {
-      // Use console for now; can be replaced with toast system
-      if (type === "error") console.error(`[Plugin] ${message}`);
-      else if (type === "warning") console.warn(`[Plugin] ${message}`);
-      else console.info(`[Plugin] ${message}`);
-    },
-    showStatusBarItem(
-      text: string,
-      _alignment: "left" | "right" = "right",
-    ): Disposable {
-      // Status bar integration placeholder
-      console.info(`[Plugin StatusBar] ${text}`);
-      const disposable: Disposable = { dispose: () => {} };
-      disposables.push(disposable);
-      return disposable;
-    },
-  };
-}
+} = null;
 
 /** Create an ExtensionContext with capability-gated API access */
 export function createExtensionContext(
@@ -255,4 +173,85 @@ export async function executePluginCommand(
   const handler = commandHandlers.get(id);
   if (!handler) throw new Error(`Plugin command not found: ${id}`);
   return handler(...args);
+}
+
+export function setEditorInstance(editor: unknown): void {
+  editorInstance = editor as typeof editorInstance;
+}
+
+function createEditorAPI(readonly: boolean): EditorAPI {
+  return {
+    getContent(): string {
+      if (!editorInstance) return "";
+      return editorInstance.getText();
+    },
+    setContent(content: string): void {
+      if (readonly)
+        throw new Error("editor:readonly — setContent is not allowed");
+      if (!editorInstance) return;
+      (
+        editorInstance.commands as Record<
+          string,
+          (c: { content: string }) => void
+        >
+      ).setContent({ content });
+    },
+    getSelection(): { from: number; text: string; to: number } {
+      if (!editorInstance) return { from: 0, to: 0, text: "" };
+      const { from, to } = editorInstance.state.selection;
+      const text = editorInstance.getText().slice(from, to);
+      return { from, to, text };
+    },
+    insertText(text: string): void {
+      if (readonly)
+        throw new Error("editor:readonly — insertText is not allowed");
+      if (!editorInstance) return;
+      (
+        editorInstance.commands as Record<string, (t: string) => void>
+      ).insertContent(text);
+    },
+  };
+}
+
+// --- Files API ---
+function createFilesAPI(readonly: boolean): FilesAPI {
+  return {
+    async readFile(path: string): Promise<string> {
+      return readFile(path);
+    },
+    async writeFile(path: string, content: string): Promise<void> {
+      if (readonly)
+        throw new Error("files:readonly — writeFile is not allowed");
+      return writeFile(path, content);
+    },
+    async listDir(path: string): Promise<string[]> {
+      const entries = await listDir(path);
+      return entries.map((e) => e.name);
+    },
+  };
+}
+
+// --- UI API ---
+function createUIAPI(disposables: Disposable[]): UIAPI {
+  return {
+    showNotification(
+      message: string,
+      type: "error" | "info" | "warning" = "info",
+    ): void {
+      // Use console for now; can be replaced with toast system
+      if (type === "error") console.error(`[Plugin] ${message}`);
+      else if (type === "warning") console.warn(`[Plugin] ${message}`);
+      else console.info(`[Plugin] ${message}`);
+    },
+    showStatusBarItem(
+      text: string,
+      _alignment: "left" | "right" = "right",
+    ): Disposable {
+      // Status bar integration placeholder
+      console.info(`[Plugin StatusBar] ${text}`);
+      const disposable: Disposable = { dispose: () => {} };
+      disposables.push(disposable);
+      return disposable;
+    },
+  };
 }

@@ -1,6 +1,7 @@
 // §footnote FootnoteRef Node Extension — [^id] inline reference (superscript)
-import { Node, InputRule } from "@tiptap/core";
+import { InputRule, Node } from "@tiptap/core";
 import { ReactNodeViewRenderer } from "@tiptap/react";
+
 import { FootnoteRefView } from "./footnote-ref-view";
 
 declare module "@tiptap/core" {

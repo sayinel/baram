@@ -6,6 +6,13 @@ export interface CompatibilityCheckRequest {
   targetSkill: SkillMeta;
 }
 
+export interface CompatibilityResult {
+  compatible: boolean;
+  confidence: "high" | "low" | "medium";
+  mismatch: null | string;
+  suggestion: null | string;
+}
+
 /**
  * Build a prompt for LLM-based interface compatibility analysis.
  * Compares the output_format of the source skill with the expected input of the target skill.
@@ -40,13 +47,6 @@ Respond in JSON:
 }`;
 }
 
-export interface CompatibilityResult {
-  compatible: boolean;
-  confidence: "high" | "medium" | "low";
-  mismatch: string | null;
-  suggestion: string | null;
-}
-
 /**
  * Parse LLM response into a typed CompatibilityResult.
  * Falls back to a safe default on parse failure.
@@ -60,7 +60,7 @@ export function parseCompatibilityResponse(raw: string): CompatibilityResult {
     const parsed = JSON.parse(jsonMatch[0]);
     return {
       compatible: Boolean(parsed.compatible),
-      confidence: ["high", "medium", "low"].includes(parsed.confidence)
+      confidence: ["high", "low", "medium"].includes(parsed.confidence)
         ? parsed.confidence
         : "low",
       mismatch: parsed.mismatch ?? null,

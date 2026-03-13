@@ -1,12 +1,14 @@
+import type { BacklinkEntry } from "../../ipc/types";
+
 // §29 백링크 패널 통합 테스트
 // Tests the backlink data flow: IPC response → linkStore → grouping logic
-import { describe, it, expect, beforeEach } from "vitest";
-import { useLinkStore } from "../../stores/link-store";
-import type { BacklinkEntry } from "../../ipc/types";
+import { beforeEach, describe, expect, it } from "vitest";
+
 import {
-  groupBacklinksByFile,
   extractFileNameFromPath,
+  groupBacklinksByFile,
 } from "../../components/sidebar/backlink-utils";
+import { useLinkStore } from "../../stores/link-store";
 
 describe("Backlink panel integration", () => {
   beforeEach(() => {

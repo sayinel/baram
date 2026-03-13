@@ -1,27 +1,28 @@
 // §6.2 InlineAIPrompt — Floating prompt UI for Cmd+J inline AI editing
 // Renders via createPortal at selection position. States: input → streaming → completed.
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { Editor } from "@tiptap/core";
-import type { Hunk } from "../../extensions/plugins/ai-diff";
 
-export type InlineAIPhase = "input" | "streaming" | "completed";
+import type { Hunk } from "../../extensions/plugins/ai-diff";
+import type { Editor } from "@tiptap/core";
+
+export type InlineAIPhase = "completed" | "input" | "streaming";
 
 interface InlineAIPromptProps {
   editor: Editor;
+  hasSelection: boolean;
+  hunks: Hunk[];
+  onAccept: () => void;
+  onAcceptHunk: (index: number) => void;
+  onClose: () => void;
+  onRegenerate: () => void;
+  onReject: () => void;
+  onRejectHunk: (index: number) => void;
+  onSubmit: (instruction: string) => void;
+  phase: InlineAIPhase;
   selectionFrom: number;
   selectionTo: number;
-  hasSelection: boolean;
-  phase: InlineAIPhase;
-  hunks: Hunk[];
-  onSubmit: (instruction: string) => void;
-  onAccept: () => void;
-  onReject: () => void;
-  onRegenerate: () => void;
-  onAcceptHunk: (index: number) => void;
-  onRejectHunk: (index: number) => void;
-  onClose: () => void;
 }
 
 export function InlineAIPrompt({
@@ -97,25 +98,25 @@ export function InlineAIPrompt({
 
   return createPortal(
     <div
-      ref={containerRef}
       className="inline-ai-prompt"
-      style={{ top: position.top, left: position.left }}
       onKeyDown={handleKeyDown}
+      ref={containerRef}
+      style={{ top: position.top, left: position.left }}
     >
       {phase === "input" && (
         <>
           <input
-            ref={inputRef}
             className="inline-ai-prompt-input"
-            value={instruction}
             onChange={(e) => setInstruction(e.target.value)}
             placeholder="Ask AI to edit..."
+            ref={inputRef}
+            value={instruction}
           />
           <div className="ai-diff-action-bar">
             <button
               className="ai-diff-action-btn ai-diff-action-btn-accept"
-              onClick={() => instruction.trim() && onSubmit(instruction.trim())}
               disabled={!instruction.trim()}
+              onClick={() => instruction.trim() && onSubmit(instruction.trim())}
             >
               Submit
             </button>
@@ -157,20 +158,20 @@ export function InlineAIPrompt({
                   <span style={{ flex: 1 }} />
                   <button
                     className="ai-diff-action-btn ai-diff-action-btn-hunk-accept"
+                    disabled={pendingIndex < 0}
                     onClick={() =>
                       pendingIndex >= 0 && onAcceptHunk(pendingIndex)
                     }
-                    disabled={pendingIndex < 0}
                     title="Accept next pending hunk"
                   >
                     Accept Hunk
                   </button>
                   <button
                     className="ai-diff-action-btn ai-diff-action-btn-hunk-reject"
+                    disabled={pendingIndex < 0}
                     onClick={() =>
                       pendingIndex >= 0 && onRejectHunk(pendingIndex)
                     }
-                    disabled={pendingIndex < 0}
                     title="Reject next pending hunk"
                   >
                     Reject Hunk

@@ -1,5 +1,5 @@
 // §5.1 Task Item Extension
-import { Node, mergeAttributes } from "@tiptap/core";
+import { mergeAttributes, Node } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 
 export interface TaskItemOptions {

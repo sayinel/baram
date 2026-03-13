@@ -1,13 +1,14 @@
 // §6.2 Shared AI command utilities — unit tests
-import { describe, test, expect } from "vitest";
+import { describe, expect, test } from "vitest";
+
 import { getSelectedText, getSelectionOrParagraph } from "../ai-commands";
 
 // Minimal mock editor factory
 function createMockEditor(opts: {
   from: number;
-  to: number;
-  textBetween?: string;
   parentTextContent?: string;
+  textBetween?: string;
+  to: number;
 }) {
   return {
     state: {

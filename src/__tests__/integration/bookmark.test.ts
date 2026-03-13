@@ -1,37 +1,33 @@
 // §36 북마크 시스템 — 통합 테스트
-import { describe, test, expect } from "vitest";
+import { describe, expect, test } from "vitest";
 
 // ── BookmarkItem 타입 계약 ──
 
 export interface BookmarkItem {
-  id: string;
-  type: "file" | "heading";
-  filePath: string;
-  label: string;
-  group: string;
   createdAt: number;
-  headingText?: string;
+  filePath: string;
+  group: string;
   headingLevel?: number;
+  headingText?: string;
+  id: string;
+  label: string;
+  type: "file" | "heading";
 }
 
 // ── 유틸리티 함수 (bookmark-store.ts에서 export 예정) ──
 
-/** Generate localStorage key scoped to vault root */
-function storageKey(rootPath: string): string {
-  return `baram:bookmarks:${rootPath}`;
-}
-
-/** Check for duplicate bookmark (same type + filePath + headingText) */
-function isDuplicate(
-  bookmarks: BookmarkItem[],
-  item: Pick<BookmarkItem, "type" | "filePath" | "headingText">,
-): boolean {
-  return bookmarks.some(
-    (b) =>
-      b.type === item.type &&
-      b.filePath === item.filePath &&
-      b.headingText === item.headingText,
+/** Find heading pos by text+level in a doc (simulated) */
+function findHeadingPos(
+  headings: Array<{ level: number; pos: number; text: string }>,
+  headingText: string,
+  headingLevel?: number,
+): null | number {
+  const match = headings.find(
+    (h) =>
+      h.text === headingText &&
+      (headingLevel === undefined || h.level === headingLevel),
   );
+  return match?.pos ?? null;
 }
 
 /** Get unique groups from bookmarks list */
@@ -43,18 +39,22 @@ function getGroups(bookmarks: BookmarkItem[]): string[] {
   return Array.from(groups);
 }
 
-/** Find heading pos by text+level in a doc (simulated) */
-function findHeadingPos(
-  headings: Array<{ level: number; text: string; pos: number }>,
-  headingText: string,
-  headingLevel?: number,
-): number | null {
-  const match = headings.find(
-    (h) =>
-      h.text === headingText &&
-      (headingLevel === undefined || h.level === headingLevel),
+/** Check for duplicate bookmark (same type + filePath + headingText) */
+function isDuplicate(
+  bookmarks: BookmarkItem[],
+  item: Pick<BookmarkItem, "filePath" | "headingText" | "type">,
+): boolean {
+  return bookmarks.some(
+    (b) =>
+      b.type === item.type &&
+      b.filePath === item.filePath &&
+      b.headingText === item.headingText,
   );
-  return match?.pos ?? null;
+}
+
+/** Generate localStorage key scoped to vault root */
+function storageKey(rootPath: string): string {
+  return `baram:bookmarks:${rootPath}`;
 }
 
 // ── Tests ──

@@ -1,14 +1,13 @@
 // §6.2 Built-in AI Slash Commands — unit tests (post-UX refactor)
-import { describe, test, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
-// Mock Tauri API and stores before importing
-vi.mock("@tauri-apps/api/event", () => ({
-  listen: vi.fn().mockResolvedValue(vi.fn()),
-}));
-
-vi.mock("../../ipc/invoke", () => ({
-  llmComplete: vi.fn().mockResolvedValue(undefined),
-}));
+vi.mock("../../ipc/invoke", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../ipc/invoke")>();
+  return {
+    ...actual,
+    llmComplete: vi.fn().mockResolvedValue(undefined),
+  };
+});
 
 vi.mock("../../stores/ai-store", () => ({
   useAIStore: {

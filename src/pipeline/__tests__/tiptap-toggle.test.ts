@@ -1,9 +1,10 @@
+import { Editor } from "@tiptap/core";
 /**
  * Reproduce the exact Source ↔ WYSIWYG toggle cycle using the REAL Tiptap editor.
  * This uses the actual Baram extensions schema — not a manual schema.
  */
-import { describe, it, expect } from "vitest";
-import { Editor } from "@tiptap/core";
+import { describe, expect, it } from "vitest";
+
 import { createBaramExtensions } from "../../extensions";
 import { markdownToProsemirror } from "../md-to-pm";
 import { prosemirrorToMarkdown } from "../pm-to-md";

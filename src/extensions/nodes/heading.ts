@@ -1,19 +1,19 @@
 // §5.1 Heading Extension (H1-H6)
-import { Node, mergeAttributes } from "@tiptap/core";
+import { mergeAttributes, Node } from "@tiptap/core";
 import { textblockTypeInputRule } from "@tiptap/core";
 
 export interface HeadingOptions {
-  levels: number[];
   HTMLAttributes: Record<string, string>;
+  levels: number[];
 }
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
     heading: {
+      decreaseHeadingLevel: () => ReturnType;
+      increaseHeadingLevel: () => ReturnType;
       setHeading: (attributes: { level: number }) => ReturnType;
       toggleHeading: (attributes: { level: number }) => ReturnType;
-      increaseHeadingLevel: () => ReturnType;
-      decreaseHeadingLevel: () => ReturnType;
     };
   }
 }

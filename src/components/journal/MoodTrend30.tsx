@@ -1,7 +1,9 @@
 // §56e 30-day Mood Trend — dot chart showing recent mood pattern
 import { useMemo } from "react";
-import { MOOD_VALUES } from "../../utils/journal-mood";
+
 import type { MoodValue } from "../../utils/journal-mood";
+
+import { MOOD_VALUES } from "../../utils/journal-mood";
 
 const MOOD_COLORS: Record<MoodValue, string> = {
   deep: "#64748B",
@@ -55,22 +57,22 @@ export function MoodTrend30({ moodMap }: Props) {
     <div className="mood-trend-30">
       <div className="mood-trend-30-header">30-Day Mood</div>
       <svg
-        width={W}
+        className="mood-trend-30-chart"
         height={H}
         viewBox={`0 0 ${W} ${H}`}
-        className="mood-trend-30-chart"
+        width={W}
       >
         {/* Grid lines */}
         {MOOD_VALUES.map((v, i) => (
           <line
             key={v}
-            x1={padX}
-            y1={padY + (4 - i) * rowH}
-            x2={W - padX}
-            y2={padY + (4 - i) * rowH}
             stroke="var(--color-border)"
-            strokeWidth={0.5}
             strokeDasharray="2,2"
+            strokeWidth={0.5}
+            x1={padX}
+            x2={W - padX}
+            y1={padY + (4 - i) * rowH}
+            y2={padY + (4 - i) * rowH}
           />
         ))}
 
@@ -95,16 +97,16 @@ export function MoodTrend30({ moodMap }: Props) {
             <g key={p.date}>
               {nextLine && (
                 <line
-                  x1={x}
-                  y1={y}
-                  x2={nextLine.x2}
-                  y2={nextLine.y2}
+                  opacity={0.4}
                   stroke={MOOD_COLORS[p.mood]}
                   strokeWidth={1}
-                  opacity={0.4}
+                  x1={x}
+                  x2={nextLine.x2}
+                  y1={y}
+                  y2={nextLine.y2}
                 />
               )}
-              <circle cx={x} cy={y} r={3} fill={MOOD_COLORS[p.mood]}>
+              <circle cx={x} cy={y} fill={MOOD_COLORS[p.mood]} r={3}>
                 <title>{`${p.date}: ${p.mood}`}</title>
               </circle>
             </g>

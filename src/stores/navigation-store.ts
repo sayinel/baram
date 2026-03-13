@@ -4,19 +4,19 @@ import { create } from "zustand";
 const MAX_STACK_SIZE = 100;
 
 interface NavigationState {
-  backStack: string[];
-  forwardStack: string[];
   /** Internal flag to suppress pushHistory during goBack/goForward */
   _navigating: boolean;
+  backStack: string[];
+  forwardStack: string[];
 
-  /** Push current tabId to backStack when navigating to a new tab. Clears forwardStack. */
-  pushHistory: (tabId: string) => void;
   /** Go back: pop from backStack, push current to forwardStack. Returns target tabId or null. */
-  goBack: (currentTabId: string, openTabIds?: Set<string>) => string | null;
+  goBack: (currentTabId: string, openTabIds?: Set<string>) => null | string;
   /** Go forward: pop from forwardStack, push current to backStack. Returns target tabId or null. */
-  goForward: (currentTabId: string, openTabIds?: Set<string>) => string | null;
+  goForward: (currentTabId: string, openTabIds?: Set<string>) => null | string;
   /** Check if currently navigating (back/forward in progress) */
   isNavigating: () => boolean;
+  /** Push current tabId to backStack when navigating to a new tab. Clears forwardStack. */
+  pushHistory: (tabId: string) => void;
 }
 
 export const useNavigationStore = create<NavigationState>((set, get) => ({
@@ -39,7 +39,7 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
     const backStack = [...state.backStack];
 
     // Find the next valid (open) tab from the back of the stack
-    let targetId: string | null = null;
+    let targetId: null | string = null;
     while (backStack.length > 0) {
       const candidate = backStack.pop()!;
       if (!openTabIds || openTabIds.has(candidate)) {
@@ -72,7 +72,7 @@ export const useNavigationStore = create<NavigationState>((set, get) => ({
     const state = get();
     const forwardStack = [...state.forwardStack];
 
-    let targetId: string | null = null;
+    let targetId: null | string = null;
     while (forwardStack.length > 0) {
       const candidate = forwardStack.pop()!;
       if (!openTabIds || openTabIds.has(candidate)) {

@@ -2,22 +2,6 @@
 
 import type { LinkGraph } from "../../ipc/types";
 
-/** Cytoscape node element */
-export interface GraphNode {
-  data: {
-    id: string;
-    label: string;
-    /** Number of connections (in + out) */
-    degree: number;
-    /** True if the file does not exist (wikilink target only) */
-    isGhost?: boolean;
-    /** True if this is a tag virtual node */
-    isTag?: boolean;
-    /** §61 Namespace — directory path relative to rootPath (empty string = root) */
-    namespace?: string;
-  };
-}
-
 /** Cytoscape edge element */
 export interface GraphEdge {
   data: {
@@ -28,9 +12,25 @@ export interface GraphEdge {
 }
 
 export type GraphElements = {
-  nodes: GraphNode[];
   edges: GraphEdge[];
+  nodes: GraphNode[];
 };
+
+/** Cytoscape node element */
+export interface GraphNode {
+  data: {
+    /** Number of connections (in + out) */
+    degree: number;
+    id: string;
+    /** True if the file does not exist (wikilink target only) */
+    isGhost?: boolean;
+    /** True if this is a tag virtual node */
+    isTag?: boolean;
+    label: string;
+    /** §61 Namespace — directory path relative to rootPath (empty string = root) */
+    namespace?: string;
+  };
+}
 
 /** §61 Extract namespace (directory relative to rootPath) from a full file path */
 export function extractNamespace(filePath: string, rootPath: string): string {
@@ -84,6 +84,16 @@ export function displayName(filePath: string): string {
 export function matchesFilter(label: string, query: string): boolean {
   if (!query) return true;
   return label.toLowerCase().includes(query.toLowerCase());
+}
+
+/**
+ * Compute node size based on degree (more connections = larger node).
+ * Returns a value between minSize and maxSize.
+ */
+export function nodeSize(degree: number, minSize = 20, maxSize = 60): number {
+  if (degree <= 0) return minSize;
+  // Logarithmic scaling capped at maxSize
+  return Math.min(minSize + Math.log2(degree + 1) * 10, maxSize);
 }
 
 /**
@@ -174,14 +184,4 @@ export function toGraphElements(
   }
 
   return { nodes, edges };
-}
-
-/**
- * Compute node size based on degree (more connections = larger node).
- * Returns a value between minSize and maxSize.
- */
-export function nodeSize(degree: number, minSize = 20, maxSize = 60): number {
-  if (degree <= 0) return minSize;
-  // Logarithmic scaling capped at maxSize
-  return Math.min(minSize + Math.log2(degree + 1) * 10, maxSize);
 }

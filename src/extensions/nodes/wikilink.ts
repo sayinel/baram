@@ -1,22 +1,23 @@
 // §28 Wikilink Node Extension — [[page]], [[page|display]], [[page#heading]]
-import { Node, InputRule } from "@tiptap/core";
+import { InputRule, Node } from "@tiptap/core";
 import { Plugin } from "@tiptap/pm/state";
-import { isDateString } from "../../utils/journal";
 import { ReactNodeViewRenderer } from "@tiptap/react";
+
+import { isDateString } from "../../utils/journal";
 import { WikilinkView } from "./wikilink-view";
 
 export interface WikilinkOptions {
-  onNavigate: (target: string, heading?: string | null) => void;
+  onNavigate: (target: string, heading?: null | string) => void;
 }
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
     wikilink: {
       insertWikilink: (attrs: {
+        blockId?: null | string;
+        display?: null | string;
+        heading?: null | string;
         target: string;
-        display?: string | null;
-        heading?: string | null;
-        blockId?: string | null;
       }) => ReturnType;
     };
   }
@@ -133,7 +134,7 @@ export const Wikilink = Node.create<WikilinkOptions>({
             const isDate = isDateString(target);
             if (!isDate && !(event.metaKey || event.ctrlKey)) return false;
 
-            onNavigate(target, wikilinkNode.attrs.heading as string | null);
+            onNavigate(target, wikilinkNode.attrs.heading as null | string);
             return true;
           },
         },

@@ -1,8 +1,8 @@
+import type { NodeTransformerEntry } from "../types";
 // §30b Block Reference transformer — stub
 // Actual conversion is handled directly in md-to-pm.ts (text splitting) and pm-to-md.ts (inline handler)
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
 import type { Node as MdastNode, Parent as MdastParent } from "mdast";
-import type { NodeTransformerEntry } from "../types";
 
 export const blockReferenceTransformer: NodeTransformerEntry = {
   mdastType: "blockReference",
@@ -12,7 +12,7 @@ export const blockReferenceTransformer: NodeTransformerEntry = {
     _node: MdastNode,
     _schema: Schema,
     _convertChildren: (parent: MdastParent) => PmNode[],
-  ): PmNode | null {
+  ): null | PmNode {
     return null;
   },
 

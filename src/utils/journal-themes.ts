@@ -1,23 +1,23 @@
 // §56h Journal visual themes — calendar and journal component theming
 
+export interface JournalTheme {
+  accentColor: string;
+  calendarBg: string;
+  dotColor: string;
+  headerBg: string;
+  headerColor: string;
+  id: string;
+  name: string;
+  promptBg: string;
+  promptBorder: string;
+  streakIcon: string;
+  typography: JournalTypography;
+}
+
 export interface JournalTypography {
   fontFamily: string;
   lineHeight: number;
   maxWidth: string;
-}
-
-export interface JournalTheme {
-  id: string;
-  name: string;
-  calendarBg: string;
-  headerColor: string;
-  accentColor: string;
-  dotColor: string;
-  streakIcon: string;
-  typography: JournalTypography;
-  headerBg: string;
-  promptBg: string;
-  promptBorder: string;
 }
 
 export const JOURNAL_THEMES: JournalTheme[] = [

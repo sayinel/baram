@@ -1,130 +1,134 @@
 // §4.2 Baram App — 3-Column layout with editor
 import {
   Component,
-  Suspense,
   lazy,
-  useEffect,
-  useState,
+  Suspense,
   useCallback,
+  useEffect,
   useRef,
+  useState,
 } from "react";
-import type { ReactNode, ErrorInfo } from "react";
-import { useEditor, EditorContent } from "@tiptap/react";
-import { EditorState, TextSelection } from "@tiptap/pm/state";
+import type { ErrorInfo, ReactNode } from "react";
+
 import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
+
+import type { SourceCodeEditorRef } from "./components/editor/SourceCodeEditor";
+import type { EditorTab } from "./stores/editor-store";
+import type { ThemeColors } from "./types/theme";
+
+import { EditorState, TextSelection } from "@tiptap/pm/state";
+import { EditorContent, useEditor } from "@tiptap/react";
+
+import { InlineAIPrompt } from "./components/ai/InlineAIPrompt";
+import { PromptLintPanel } from "./components/ai/PromptLintPanel";
+import { FindReplaceBar } from "./components/editor/FindReplaceBar";
+import { FollowUpCard } from "./components/journal/FollowUpCard";
+import { MoodBar } from "./components/journal/MoodBar";
+import {
+  detectPeriodicType,
+  PeriodicInsightBanner,
+} from "./components/journal/PeriodicInsightBanner";
+import { AppLayout } from "./components/layout/AppLayout";
+import { StatusBar } from "./components/layout/StatusBar";
+import { TabBar } from "./components/layout/TabBar";
+import { TabSwitcher } from "./components/layout/TabSwitcher";
+import { BlockHandle } from "./components/toolbar/BlockHandle";
+import { ContextMenu } from "./components/toolbar/ContextMenu";
+import { FloatingToolbar } from "./components/toolbar/FloatingToolbar";
+import { TableInsertButtons } from "./components/toolbar/TableInsertButtons";
+import { TableToolbar } from "./components/toolbar/TableToolbar";
 import { createBaramExtensions } from "./extensions";
-import { prosemirrorToMarkdown } from "./pipeline/pm-to-md";
+import { dispatchSetSearchTerm } from "./extensions/plugins/find-replace";
+import {
+  anchorsToPositions,
+  dispatchFoldAll,
+  dispatchRestoreFolds,
+  dispatchUnfoldAll,
+  foldPluginKey,
+  positionsToAnchors,
+  toggleFoldAtCursor,
+} from "./extensions/plugins/fold";
+import { forceCollapseSyntaxReveal } from "./extensions/plugins/syntax-reveal";
+import { useAutoSave } from "./hooks/use-auto-save";
+import { useExternalDrop } from "./hooks/use-external-drop";
+import { useFileWatcher } from "./hooks/use-file-watcher";
+import { useGhostText } from "./hooks/use-ghost-text";
+import { useInlineAI } from "./hooks/use-inline-ai";
+import { useJournal } from "./hooks/use-journal";
+import { useSkillsMode } from "./hooks/use-skills-mode";
+import { useZoom } from "./hooks/use-zoom";
+import { useTranslation } from "./i18n/useTranslation";
+import {
+  createDir,
+  getOpenedUrls,
+  readFile,
+  updateFileIndex,
+  writeFile,
+} from "./ipc/invoke";
+import { normalizeKeyEvent } from "./keybindings/key-utils";
+import {
+  clearActions,
+  getAction,
+  registerAction,
+} from "./keybindings/keybinding-actions";
+import { findCommandByKey } from "./keybindings/use-keybindings";
 import {
   markdownToProsemirror,
   mdastBlocksToPmNodes,
 } from "./pipeline/md-to-pm";
 import { parseMdastAsync } from "./pipeline/parse-async";
-import type { SourceCodeEditorRef } from "./components/editor/SourceCodeEditor";
-import type { EditorTab } from "./stores/editor-store";
-import { isFileTab, isGraphTab } from "./stores/editor-store";
-import { TabSwitcher } from "./components/layout/TabSwitcher";
-import {
-  pmPosToMdOffset,
-  mdOffsetToPmPos,
-  mdLineToPmBlockStart,
-} from "./utils/cursor-mapper";
-import { AppLayout } from "./components/layout/AppLayout";
-import { TabBar } from "./components/layout/TabBar";
-import { StatusBar } from "./components/layout/StatusBar";
-import { FloatingToolbar } from "./components/toolbar/FloatingToolbar";
-import { TableToolbar } from "./components/toolbar/TableToolbar";
-import { BlockHandle } from "./components/toolbar/BlockHandle";
-import { TableInsertButtons } from "./components/toolbar/TableInsertButtons";
-import { ContextMenu } from "./components/toolbar/ContextMenu";
-import { useEditorStore } from "./stores/editor-store";
-import { useFileStore, openFolder } from "./stores/file-store";
-import { useUIStore } from "./stores/ui-store";
-import { useSettingsStore } from "./stores/settings-store";
-import { useTranslation } from "./i18n/useTranslation";
-import { useNavigationStore } from "./stores/navigation-store";
-import { useAutoSave } from "./hooks/use-auto-save";
-import { useGhostText } from "./hooks/use-ghost-text";
-import { useInlineAI } from "./hooks/use-inline-ai";
-import { useFileWatcher } from "./hooks/use-file-watcher";
-import { useExternalDrop } from "./hooks/use-external-drop";
-import { useJournal } from "./hooks/use-journal";
-import { useZoom } from "./hooks/use-zoom";
-import { useSkillsMode } from "./hooks/use-skills-mode";
-import {
-  isDateString,
-  getJournalFilePath,
-  getHierarchicalJournalPath,
-  resolveJournalDir,
-  generateDefaultJournal,
-  applyJournalTemplate,
-} from "./utils/journal";
-import {
-  parseCapturesFromMarkdown,
-  buildNoteFromCapture,
-  buildPromotedCaptureLink,
-} from "./utils/journal-capture";
-import {
-  readFile,
-  writeFile,
-  createDir,
-  getOpenedUrls,
-  updateFileIndex,
-} from "./ipc/invoke";
-import { useLinkStore } from "./stores/link-store";
-import { migrateFromLocalStorage } from "./stores/tauri-storage";
-import { useBookmarkStore } from "./stores/bookmark-store";
-import { useWorkspaceStore } from "./stores/workspace-store";
-import { useAIStore } from "./stores/ai-store";
-import { logAppReady } from "./utils/perf";
-import { resolveWikilinkTarget } from "./utils/wikilink-nav";
-import { findBlockPosById } from "./utils/block-nav";
-import { showPrompt } from "./utils/ai-commands";
-import { forceCollapseSyntaxReveal } from "./extensions/plugins/syntax-reveal";
-import { showTableGridPicker } from "./utils/table-grid-picker";
-import { MoodBar } from "./components/journal/MoodBar";
-import { FollowUpCard } from "./components/journal/FollowUpCard";
-import {
-  PeriodicInsightBanner,
-  detectPeriodicType,
-} from "./components/journal/PeriodicInsightBanner";
-import { FindReplaceBar } from "./components/editor/FindReplaceBar";
-import { dispatchSetSearchTerm } from "./extensions/plugins/find-replace";
-import { InlineAIPrompt } from "./components/ai/InlineAIPrompt";
-import { PromptLintPanel } from "./components/ai/PromptLintPanel";
-import { findThemeById } from "./types/theme";
-import type { ThemeColors } from "./types/theme";
-import { isMarkdownFile, getLanguageForFile } from "./utils/file-type";
-import { normalizeKeyEvent } from "./keybindings/key-utils";
-import { findCommandByKey } from "./keybindings/use-keybindings";
-import {
-  registerAction,
-  getAction,
-  clearActions,
-} from "./keybindings/keybinding-actions";
-import {
-  toggleFoldAtCursor,
-  dispatchFoldAll,
-  dispatchUnfoldAll,
-  foldPluginKey,
-  positionsToAnchors,
-  anchorsToPositions,
-  dispatchRestoreFolds,
-} from "./extensions/plugins/fold";
-import { useFoldStore } from "./stores/fold-store";
+import { prosemirrorToMarkdown } from "./pipeline/pm-to-md";
 import {
   initializePlugins,
-  shutdownPlugins,
   notifyEditorReady,
   notifyFileOpen,
   notifyFileSave,
+  shutdownPlugins,
 } from "./plugins/plugin-lifecycle";
 import { pluginLoader } from "./plugins/plugin-loader";
 import {
   startUpdateChecker,
   stopUpdateChecker,
 } from "./plugins/update-checker";
+import { useAIStore } from "./stores/ai-store";
+import { useBookmarkStore } from "./stores/bookmark-store";
+import { isFileTab, isGraphTab } from "./stores/editor-store";
+import { useEditorStore } from "./stores/editor-store";
+import { openFolder, useFileStore } from "./stores/file-store";
+import { useFoldStore } from "./stores/fold-store";
+import { useLinkStore } from "./stores/link-store";
+import { useNavigationStore } from "./stores/navigation-store";
+import { useSettingsStore } from "./stores/settings-store";
+import { migrateFromLocalStorage } from "./stores/tauri-storage";
+import { useUIStore } from "./stores/ui-store";
+import { useWorkspaceStore } from "./stores/workspace-store";
+import { findThemeById } from "./types/theme";
+import { showPrompt } from "./utils/ai-commands";
+import { findBlockPosById } from "./utils/block-nav";
+import {
+  mdLineToPmBlockStart,
+  mdOffsetToPmPos,
+  pmPosToMdOffset,
+} from "./utils/cursor-mapper";
+import { getLanguageForFile, isMarkdownFile } from "./utils/file-type";
+import {
+  applyJournalTemplate,
+  generateDefaultJournal,
+  getHierarchicalJournalPath,
+  getJournalFilePath,
+  isDateString,
+  resolveJournalDir,
+} from "./utils/journal";
+import {
+  buildNoteFromCapture,
+  buildPromotedCaptureLink,
+  parseCapturesFromMarkdown,
+} from "./utils/journal-capture";
+import { logAppReady } from "./utils/perf";
+import { showTableGridPicker } from "./utils/table-grid-picker";
+import { resolveWikilinkTarget } from "./utils/wikilink-nav";
 import "./App.css";
 
 // §8.4 Lazy-loaded components — split into separate chunks, loaded on first use
@@ -253,7 +257,7 @@ function App() {
     : null;
 
   // §28 Wikilink navigation ref — breaks circular dependency (editor ↔ navigate)
-  const navigateRef = useRef<(target: string, heading?: string | null) => void>(
+  const navigateRef = useRef<(target: string, heading?: null | string) => void>(
     () => {},
   );
   // §30c Block reference navigation ref
@@ -268,7 +272,7 @@ function App() {
   );
 
   // Track previously active tab to save its content on switch
-  const prevTabRef = useRef<string | null>(null);
+  const prevTabRef = useRef<null | string>(null);
   // Per-tab EditorState cache — preserves undo/redo history across tab switches
   const editorStateCache = useRef(new Map<string, EditorState>());
   // Per-tab scroll position cache — preserves view position across tab switches
@@ -351,7 +355,7 @@ function App() {
 
   // Auto-save for non-MD code files (debounced write when dirty)
   const { autoSave, autoSaveDelay } = useSettingsStore();
-  const codeAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const codeAutoSaveTimer = useRef<null | ReturnType<typeof setTimeout>>(null);
   useEffect(() => {
     if (!isCodeFile || !autoSave) return;
     const { activeTabId: tabId, tabs: currentTabs } = useEditorStore.getState();
@@ -617,7 +621,7 @@ function App() {
         // §29 Check if navigating from backlinks — compute scroll position
         const pendingLine = useLinkStore.getState().pendingScrollLine;
         const pendingBlockId = useLinkStore.getState().pendingScrollBlockId;
-        let scrollPos: number | null = null;
+        let scrollPos: null | number = null;
         const doc = editor.view.state.doc;
         if (pendingBlockId) {
           useLinkStore.getState().setPendingScrollBlockId(null);
@@ -991,7 +995,7 @@ function App() {
             // dispatches a transaction based on native selection — this
             // races with our setSelection dispatch.
             const domObserver = (
-              editor.view as { domObserver?: { stop(): void; start(): void } }
+              editor.view as { domObserver?: { start(): void; stop(): void } }
             ).domObserver;
             domObserver?.stop();
             try {
@@ -1272,7 +1276,7 @@ function App() {
 
   // §28 Wikilink Cmd+Click navigation
   const handleWikilinkNavigate = useCallback(
-    (target: string, heading?: string | null) => {
+    (target: string, heading?: null | string) => {
       // §56 Date wikilink → open/create journal file
       if (isDateString(target)) {
         const {
@@ -1385,7 +1389,7 @@ function App() {
           requestAnimationFrame(() => {
             if (!editor) return;
             const headingLower = heading.toLowerCase();
-            let targetPos: number | null = null;
+            let targetPos: null | number = null;
 
             editor.state.doc.descendants((node, pos) => {
               if (targetPos !== null) return false;
@@ -1461,7 +1465,7 @@ function App() {
       if (href.startsWith("#")) {
         if (!editor) return;
         const headingLower = href.slice(1).replace(/-/g, " ").toLowerCase();
-        let targetPos: number | null = null;
+        let targetPos: null | number = null;
         editor.state.doc.descendants((node, pos) => {
           if (targetPos !== null) return false;
           if (
@@ -1506,7 +1510,7 @@ function App() {
           requestAnimationFrame(() => {
             if (!editor) return;
             const headingLower = heading.toLowerCase();
-            let targetPos: number | null = null;
+            let targetPos: null | number = null;
             editor.state.doc.descendants((node, pos) => {
               if (targetPos !== null) return false;
               if (
@@ -1559,7 +1563,7 @@ function App() {
       const filePath = detail.path;
 
       // Resolve relative paths against current file's directory or rootPath
-      const resolveAbsolute = (p: string): string | null => {
+      const resolveAbsolute = (p: string): null | string => {
         if (p.startsWith("/")) return p;
         const { activeTabId: curTabId, tabs: curTabs } =
           useEditorStore.getState();
@@ -2208,6 +2212,22 @@ function App() {
   useEffect(() => {
     const unlisten = listen<string>("menu-event", async (event) => {
       switch (event.payload) {
+        case "app_about":
+          useUIStore.getState().toggleAbout();
+          break;
+        // --- Edit menu handlers ---
+        case "edit_find_replace":
+          setFindReplaceOpen((prev) => !prev);
+          break;
+        case "export_doc":
+          useUIStore.getState().openExportDialog("html");
+          break;
+        case "file_close_folder":
+          handleCloseFolder();
+          break;
+        case "file_close_tab":
+          handleCloseTab();
+          break;
         case "file_new":
           handleNewFile();
           break;
@@ -2223,30 +2243,8 @@ function App() {
         case "file_save_as":
           handleSaveAs();
           break;
-        case "file_close_tab":
-          handleCloseTab();
-          break;
-        case "file_close_folder":
-          handleCloseFolder();
-          break;
-        case "app_about":
-          useUIStore.getState().toggleAbout();
-          break;
         case "file_settings":
           toggleSettings();
-          break;
-        case "export_doc":
-          useUIStore.getState().openExportDialog("html");
-          break;
-        case "view_source":
-          toggleSourceMode();
-          break;
-        case "view_sidebar":
-          toggleSidebar();
-          break;
-        case "view_palette":
-        case "go_palette":
-          toggleCommandPalette();
           break;
         case "go_back":
           handleGoBack();
@@ -2254,10 +2252,72 @@ function App() {
         case "go_forward":
           handleGoForward();
           break;
+        case "go_palette":
+        case "view_palette":
+          toggleCommandPalette();
+          break;
         case "go_quick_switcher":
           toggleQuickSwitcher();
           break;
+        case "help_faq":
+          useUIStore.getState().setRightPanelMode("help");
+          if (!useUIStore.getState().rightPanelOpen) {
+            useUIStore.getState().toggleRightPanel();
+          }
+          window.dispatchEvent(new CustomEvent("help-tab", { detail: "faq" }));
+          break;
 
+        case "help_report":
+          openUrl("https://github.com/anthropics/baram/issues").catch(() => {});
+          break;
+        case "help_shortcuts":
+          useUIStore.getState().setRightPanelMode("help");
+          if (!useUIStore.getState().rightPanelOpen) {
+            useUIStore.getState().toggleRightPanel();
+          }
+          window.dispatchEvent(
+            new CustomEvent("help-tab", { detail: "shortcuts" }),
+          );
+          break;
+        // --- Help menu handlers ---
+        case "help_user_guide":
+          useUIStore.getState().setRightPanelMode("help");
+          if (!useUIStore.getState().rightPanelOpen) {
+            useUIStore.getState().toggleRightPanel();
+          }
+          window.dispatchEvent(
+            new CustomEvent("help-tab", { detail: "guide" }),
+          );
+          break;
+        case "insert_blockquote":
+          editor?.chain().focus().toggleBlockquote().run();
+          break;
+        case "insert_bold":
+          editor?.chain().focus().toggleBold().run();
+          break;
+        // --- Insert menu: new block handlers ---
+        case "insert_callout":
+          editor?.commands.setCallout({ type: "info" });
+          break;
+        case "insert_code_block":
+          editor?.chain().focus().toggleCodeBlock().run();
+          break;
+        case "insert_definition_list":
+          editor?.commands.setDefinitionList();
+          break;
+        case "insert_footnote": {
+          if (!editor) break;
+          const fnId = `fn-${Date.now()}`;
+          editor.commands.insertFootnoteRef(fnId);
+          break;
+        }
+        case "insert_frontmatter":
+          editor
+            ?.chain()
+            .focus()
+            .insertContent({ type: "frontmatter", attrs: { yaml: "" } })
+            .run();
+          break;
         // --- Insert menu handlers ---
         case "insert_h1":
           editor?.chain().focus().toggleHeading({ level: 1 }).run();
@@ -2268,35 +2328,13 @@ function App() {
         case "insert_h3":
           editor?.chain().focus().toggleHeading({ level: 3 }).run();
           break;
-        case "insert_paragraph":
-          editor?.chain().focus().setNode("paragraph").run();
+        // --- Insert menu: new inline mark handlers ---
+        case "insert_highlight":
+          editor?.chain().focus().toggleHighlight().run();
           break;
-        case "insert_bold":
-          editor?.chain().focus().toggleBold().run();
+        case "insert_hr":
+          editor?.chain().focus().setHorizontalRule().run();
           break;
-        case "insert_italic":
-          editor?.chain().focus().toggleItalic().run();
-          break;
-        case "insert_underline":
-          editor?.chain().focus().toggleUnderline().run();
-          break;
-        case "insert_strikethrough":
-          editor?.chain().focus().toggleStrike().run();
-          break;
-        case "insert_inline_code":
-          editor?.chain().focus().toggleCode().run();
-          break;
-        case "insert_link": {
-          if (!editor) break;
-          const { from, to } = editor.state.selection;
-          if (from === to) break; // Need selection for link
-          showPrompt("Enter URL:").then((url) => {
-            if (url) {
-              editor.chain().focus().toggleLink({ href: url }).run();
-            }
-          });
-          break;
-        }
         case "insert_image": {
           if (!editor) break;
           const imagePath = await open({
@@ -2312,6 +2350,50 @@ function App() {
           }
           break;
         }
+        case "insert_inline_code":
+          editor?.chain().focus().toggleCode().run();
+          break;
+        case "insert_italic":
+          editor?.chain().focus().toggleItalic().run();
+          break;
+        case "insert_link": {
+          if (!editor) break;
+          const { from, to } = editor.state.selection;
+          if (from === to) break; // Need selection for link
+          showPrompt("Enter URL:").then((url) => {
+            if (url) {
+              editor.chain().focus().toggleLink({ href: url }).run();
+            }
+          });
+          break;
+        }
+        case "insert_math_block":
+          editor?.chain().focus().setMathBlock().run();
+          break;
+
+        case "insert_mermaid":
+          editor?.commands.setMermaidBlock();
+          break;
+        case "insert_ordered_list":
+          editor?.chain().focus().toggleOrderedList().run();
+          break;
+        case "insert_paragraph":
+          editor?.chain().focus().setNode("paragraph").run();
+          break;
+        case "insert_query_block":
+          editor?.commands.setQueryBlock();
+          break;
+
+        case "insert_strikethrough":
+          editor?.chain().focus().toggleStrike().run();
+          break;
+
+        case "insert_subscript":
+          editor?.chain().focus().toggleSubscript().run();
+          break;
+        case "insert_superscript":
+          editor?.chain().focus().toggleSuperscript().run();
+          break;
         case "insert_table":
           editor
             ?.chain()
@@ -2319,125 +2401,25 @@ function App() {
             .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
             .run();
           break;
-        case "insert_code_block":
-          editor?.chain().focus().toggleCodeBlock().run();
+        case "insert_task_list":
+          editor?.chain().focus().toggleTaskList().run();
           break;
-        case "insert_math_block":
-          editor?.chain().focus().setMathBlock().run();
+        case "insert_toc":
+          editor?.commands.insertTableOfContents();
           break;
-        case "insert_blockquote":
-          editor?.chain().focus().toggleBlockquote().run();
+        case "insert_toggle":
+          editor?.commands.setToggle();
           break;
-        case "insert_ordered_list":
-          editor?.chain().focus().toggleOrderedList().run();
+        case "insert_underline":
+          editor?.chain().focus().toggleUnderline().run();
           break;
         case "insert_unordered_list":
           editor?.chain().focus().toggleBulletList().run();
           break;
-        case "insert_task_list":
-          editor?.chain().focus().toggleTaskList().run();
+        // --- Insert menu: inline element handlers ---
+        case "insert_wikilink":
+          editor?.chain().focus().insertContent("[[]]").run();
           break;
-        case "insert_hr":
-          editor?.chain().focus().setHorizontalRule().run();
-          break;
-        case "insert_frontmatter":
-          editor
-            ?.chain()
-            .focus()
-            .insertContent({ type: "frontmatter", attrs: { yaml: "" } })
-            .run();
-          break;
-
-        // --- Help menu handlers ---
-        case "help_user_guide":
-          useUIStore.getState().setRightPanelMode("help");
-          if (!useUIStore.getState().rightPanelOpen) {
-            useUIStore.getState().toggleRightPanel();
-          }
-          window.dispatchEvent(
-            new CustomEvent("help-tab", { detail: "guide" }),
-          );
-          break;
-        case "help_shortcuts":
-          useUIStore.getState().setRightPanelMode("help");
-          if (!useUIStore.getState().rightPanelOpen) {
-            useUIStore.getState().toggleRightPanel();
-          }
-          window.dispatchEvent(
-            new CustomEvent("help-tab", { detail: "shortcuts" }),
-          );
-          break;
-        case "help_faq":
-          useUIStore.getState().setRightPanelMode("help");
-          if (!useUIStore.getState().rightPanelOpen) {
-            useUIStore.getState().toggleRightPanel();
-          }
-          window.dispatchEvent(new CustomEvent("help-tab", { detail: "faq" }));
-          break;
-        case "help_report":
-          openUrl("https://github.com/anthropics/baram/issues").catch(() => {});
-          break;
-
-        // --- Edit menu handlers ---
-        case "edit_find_replace":
-          setFindReplaceOpen((prev) => !prev);
-          break;
-
-        // --- View menu: sidebar panel handlers ---
-        case "view_global_search": {
-          const uiGS = useUIStore.getState();
-          if (!uiGS.sidebarOpen) uiGS.toggleSidebar();
-          uiGS.setSidebarPanel("search");
-          break;
-        }
-        case "view_outline": {
-          const uiOL = useUIStore.getState();
-          if (!uiOL.sidebarOpen) uiOL.toggleSidebar();
-          uiOL.setSidebarPanel("outline");
-          break;
-        }
-        case "view_backlinks": {
-          const uiBL = useUIStore.getState();
-          if (!uiBL.sidebarOpen) uiBL.toggleSidebar();
-          uiBL.setSidebarPanel("backlinks");
-          break;
-        }
-        case "view_graph": {
-          const uiGR = useUIStore.getState();
-          if (!uiGR.sidebarOpen) uiGR.toggleSidebar();
-          uiGR.setSidebarPanel("graph");
-          break;
-        }
-        case "view_git": {
-          const uiGIT = useUIStore.getState();
-          if (!uiGIT.sidebarOpen) uiGIT.toggleSidebar();
-          uiGIT.setSidebarPanel("git");
-          break;
-        }
-        case "view_calendar": {
-          const uiCAL = useUIStore.getState();
-          if (!uiCAL.sidebarOpen) uiCAL.toggleSidebar();
-          uiCAL.setSidebarPanel("calendar");
-          break;
-        }
-        case "view_tags": {
-          const uiTAG = useUIStore.getState();
-          if (!uiTAG.sidebarOpen) uiTAG.toggleSidebar();
-          uiTAG.setSidebarPanel("tags");
-          break;
-        }
-        case "view_version_history": {
-          const uiVH = useUIStore.getState();
-          if (!uiVH.sidebarOpen) uiVH.toggleSidebar();
-          uiVH.setSidebarPanel("snapshots");
-          break;
-        }
-        case "view_skills_gallery": {
-          const uiSG = useUIStore.getState();
-          if (!uiSG.sidebarOpen) uiSG.toggleSidebar();
-          uiSG.setSidebarPanel("skills-gallery");
-          break;
-        }
 
         // --- View menu: right panel handlers ---
         case "view_ai_chat": {
@@ -2453,57 +2435,79 @@ function App() {
           break;
         }
 
-        // --- Insert menu: new block handlers ---
-        case "insert_callout":
-          editor?.commands.setCallout({ type: "info" });
+        case "view_backlinks": {
+          const uiBL = useUIStore.getState();
+          if (!uiBL.sidebarOpen) uiBL.toggleSidebar();
+          uiBL.setSidebarPanel("backlinks");
           break;
-        case "insert_toggle":
-          editor?.commands.setToggle();
+        }
+        case "view_calendar": {
+          const uiCAL = useUIStore.getState();
+          if (!uiCAL.sidebarOpen) uiCAL.toggleSidebar();
+          uiCAL.setSidebarPanel("calendar");
           break;
-        case "insert_toc":
-          editor?.commands.insertTableOfContents();
+        }
+        case "view_git": {
+          const uiGIT = useUIStore.getState();
+          if (!uiGIT.sidebarOpen) uiGIT.toggleSidebar();
+          uiGIT.setSidebarPanel("git");
           break;
-        case "insert_definition_list":
-          editor?.commands.setDefinitionList();
+        }
+        // --- View menu: sidebar panel handlers ---
+        case "view_global_search": {
+          const uiGS = useUIStore.getState();
+          if (!uiGS.sidebarOpen) uiGS.toggleSidebar();
+          uiGS.setSidebarPanel("search");
           break;
-        case "insert_mermaid":
-          editor?.commands.setMermaidBlock();
+        }
+        case "view_graph": {
+          const uiGR = useUIStore.getState();
+          if (!uiGR.sidebarOpen) uiGR.toggleSidebar();
+          uiGR.setSidebarPanel("graph");
           break;
-        case "insert_query_block":
-          editor?.commands.setQueryBlock();
-          break;
-
-        // --- Insert menu: new inline mark handlers ---
-        case "insert_highlight":
-          editor?.chain().focus().toggleHighlight().run();
-          break;
-        case "insert_superscript":
-          editor?.chain().focus().toggleSuperscript().run();
-          break;
-        case "insert_subscript":
-          editor?.chain().focus().toggleSubscript().run();
-          break;
-
-        // --- Insert menu: inline element handlers ---
-        case "insert_wikilink":
-          editor?.chain().focus().insertContent("[[]]").run();
-          break;
-        case "insert_footnote": {
-          if (!editor) break;
-          const fnId = `fn-${Date.now()}`;
-          editor.commands.insertFootnoteRef(fnId);
+        }
+        case "view_outline": {
+          const uiOL = useUIStore.getState();
+          if (!uiOL.sidebarOpen) uiOL.toggleSidebar();
+          uiOL.setSidebarPanel("outline");
           break;
         }
 
-        // --- Workspace menu handlers (§52) ---
-        case "workspace_writing":
-          useWorkspaceStore.getState().applyPreset("writing");
+        case "view_sidebar":
+          toggleSidebar();
           break;
+        case "view_skills_gallery": {
+          const uiSG = useUIStore.getState();
+          if (!uiSG.sidebarOpen) uiSG.toggleSidebar();
+          uiSG.setSidebarPanel("skills-gallery");
+          break;
+        }
+        case "view_source":
+          toggleSourceMode();
+          break;
+
+        case "view_tags": {
+          const uiTAG = useUIStore.getState();
+          if (!uiTAG.sidebarOpen) uiTAG.toggleSidebar();
+          uiTAG.setSidebarPanel("tags");
+          break;
+        }
+        case "view_version_history": {
+          const uiVH = useUIStore.getState();
+          if (!uiVH.sidebarOpen) uiVH.toggleSidebar();
+          uiVH.setSidebarPanel("snapshots");
+          break;
+        }
+
         case "workspace_journal":
           useWorkspaceStore.getState().applyPreset("journal");
           break;
         case "workspace_skills":
           useWorkspaceStore.getState().applyPreset("skills");
+          break;
+        // --- Workspace menu handlers (§52) ---
+        case "workspace_writing":
+          useWorkspaceStore.getState().applyPreset("writing");
           break;
       }
     });
@@ -2540,8 +2544,8 @@ function App() {
           rootPath ? (
             <StatusBar
               editor={editor}
-              isSourceMode={isSourceMode}
               isGraphMode={isGraphTabActive}
+              isSourceMode={isSourceMode}
             />
           ) : undefined
         }
@@ -2555,8 +2559,8 @@ function App() {
                   onNewFile={handleNewFile}
                   onOpenFile={handleOpenFile}
                   onOpenFolder={handleOpenFolder}
-                  onOpenRecentFolder={handleOpenRecentFolder}
                   onOpenRecentFile={handleOpenRecentFile}
+                  onOpenRecentFolder={handleOpenRecentFolder}
                 />
               </Suspense>
             </div>
@@ -2576,11 +2580,11 @@ function App() {
             <div className="editor-area-scroll">
               <Suspense fallback={null}>
                 <SourceCodeEditor
-                  key={`code-${activeTabId}`}
-                  ref={sourceEditorRef}
                   content={sourceContent}
-                  onChange={handleCodeFileChange}
+                  key={`code-${activeTabId}`}
                   language={codeLanguage ?? undefined}
+                  onChange={handleCodeFileChange}
+                  ref={sourceEditorRef}
                 />
               </Suspense>
             </div>
@@ -2588,10 +2592,10 @@ function App() {
             <div className="editor-area-scroll">
               <Suspense fallback={null}>
                 <SourceCodeEditor
-                  ref={sourceEditorRef}
                   content={sourceContent}
-                  onChange={handleSourceChange}
                   initialCursorOffset={sourceCursorOffset}
+                  onChange={handleSourceChange}
+                  ref={sourceEditorRef}
                 />
               </Suspense>
             </div>
@@ -2637,20 +2641,20 @@ function App() {
                     {inlineAI.isActive && inlineAI.phase !== "idle" && (
                       <InlineAIPrompt
                         editor={editor}
+                        hasSelection={inlineAI.hasSelection}
+                        hunks={inlineAI.hunks}
+                        onAccept={inlineAI.accept}
+                        onAcceptHunk={inlineAI.acceptHunk}
+                        onClose={inlineAI.cancel}
+                        onRegenerate={inlineAI.regenerate}
+                        onReject={inlineAI.reject}
+                        onRejectHunk={inlineAI.rejectHunk}
+                        onSubmit={inlineAI.submitPrompt}
+                        phase={
+                          inlineAI.phase as "completed" | "input" | "streaming"
+                        }
                         selectionFrom={inlineAI.selectionFrom}
                         selectionTo={inlineAI.selectionTo}
-                        hasSelection={inlineAI.hasSelection}
-                        phase={
-                          inlineAI.phase as "input" | "streaming" | "completed"
-                        }
-                        hunks={inlineAI.hunks}
-                        onSubmit={inlineAI.submitPrompt}
-                        onAccept={inlineAI.accept}
-                        onReject={inlineAI.reject}
-                        onRegenerate={inlineAI.regenerate}
-                        onAcceptHunk={inlineAI.acceptHunk}
-                        onRejectHunk={inlineAI.rejectHunk}
-                        onClose={inlineAI.cancel}
                       />
                     )}
                   </>
@@ -2663,8 +2667,8 @@ function App() {
         {isSkill && (
           <Suspense fallback={null}>
             <SkillPreviewPanel
-              visible={skillPreviewOpen}
               onClose={() => setSkillPreviewOpen(false)}
+              visible={skillPreviewOpen}
             />
           </Suspense>
         )}
@@ -2672,13 +2676,13 @@ function App() {
       <Suspense fallback={null}>
         <CommandPalette
           editor={editor}
-          onToggleSourceMode={toggleSourceMode}
+          onCloseFolder={handleCloseFolder}
           onNewFile={handleNewFile}
           onOpenFile={handleOpenFile}
-          onSave={handleSave}
           onOpenFolder={handleOpenFolder}
+          onSave={handleSave}
           onSkillPreview={() => setSkillPreviewOpen((v) => !v)}
-          onCloseFolder={handleCloseFolder}
+          onToggleSourceMode={toggleSourceMode}
         />
         <ExportDialog editor={editor} />
         <QuickSwitcher editor={editor} onNewFile={handleNewFile} />
@@ -2699,12 +2703,20 @@ function App() {
   );
 }
 
+function AppWithErrorBoundary() {
+  return (
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  );
+}
+
 function SkillGeneratorDialogWrapper() {
   const { skillGeneratorDialogOpen, toggleSkillGeneratorDialog } = useUIStore();
   return (
     <SkillGeneratorDialog
-      open={skillGeneratorDialogOpen}
       onClose={toggleSkillGeneratorDialog}
+      open={skillGeneratorDialogOpen}
     />
   );
 }
@@ -2713,17 +2725,9 @@ function SkillTestDialogWrapper() {
   const { skillTestDialogOpen, toggleSkillTestDialog } = useUIStore();
   return (
     <SkillTestDialog
-      open={skillTestDialogOpen}
       onClose={toggleSkillTestDialog}
+      open={skillTestDialogOpen}
     />
-  );
-}
-
-function AppWithErrorBoundary() {
-  return (
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
   );
 }
 

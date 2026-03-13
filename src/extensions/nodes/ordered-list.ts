@@ -1,5 +1,5 @@
 // §5.1 Ordered List Extension
-import { Node, mergeAttributes, wrappingInputRule } from "@tiptap/core";
+import { mergeAttributes, Node, wrappingInputRule } from "@tiptap/core";
 
 export interface OrderedListOptions {
   HTMLAttributes: Record<string, string>;

@@ -1,8 +1,8 @@
 import {
-  KEYBINDING_CATEGORIES,
   CATEGORY_LABELS,
-  KEYBINDING_REGISTRY,
   getKeybindingsByCategory,
+  KEYBINDING_CATEGORIES,
+  KEYBINDING_REGISTRY,
   type KeybindingEntry,
 } from "../keybinding-registry";
 

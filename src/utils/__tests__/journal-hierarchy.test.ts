@@ -2,19 +2,20 @@
  * §56a Phase A — Journal Hierarchy & Migration Tests
  * TDD Red Phase: all tests should FAIL before implementation
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import {
-  getHierarchicalJournalPath,
-  flatToHierarchicalPath,
-  detectFlatJournalFiles,
   buildMigrationPlan,
-  JOURNAL_HIDDEN_ENTRIES,
-  isJournalHiddenEntry,
+  detectFlatJournalFiles,
+  flatToHierarchicalPath,
+  getHierarchicalJournalPath,
   getISOWeekNumber,
-  getWeekStartDate,
-  getWeeklyJournalPath,
   getMonthlyJournalPath,
+  getWeeklyJournalPath,
+  getWeekStartDate,
   getYearlyJournalPath,
+  isJournalHiddenEntry,
+  JOURNAL_HIDDEN_ENTRIES,
 } from "../journal";
 
 describe("§56a Hierarchical journal paths", () => {

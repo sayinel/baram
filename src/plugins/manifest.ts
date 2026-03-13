@@ -1,5 +1,5 @@
 // §69 Plugin Manifest validation
-import type { PluginManifest, PluginCapability } from "./types";
+import type { PluginCapability, PluginManifest } from "./types";
 
 const VALID_CAPABILITIES: PluginCapability[] = [
   "editor",
@@ -23,8 +23,8 @@ export interface ManifestValidationError {
 export function validateManifest(
   data: unknown,
 ):
-  | { valid: true; manifest: PluginManifest }
-  | { valid: false; errors: ManifestValidationError[] } {
+  | { errors: ManifestValidationError[]; valid: false }
+  | { manifest: PluginManifest; valid: true } {
   const errors: ManifestValidationError[] = [];
   if (!data || typeof data !== "object") {
     return {
@@ -101,7 +101,7 @@ export function validateManifest(
     } else {
       for (let i = 0; i < obj.tiptapExtensions.length; i++) {
         const ext = obj.tiptapExtensions[i] as Record<string, unknown>;
-        if (!["node", "mark", "plugin"].includes(ext.type as string)) {
+        if (!["mark", "node", "plugin"].includes(ext.type as string)) {
           errors.push({
             field: `tiptapExtensions[${i}].type`,
             message: "type must be node, mark, or plugin",

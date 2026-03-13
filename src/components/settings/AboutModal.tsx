@@ -1,8 +1,9 @@
 // About Baram modal
-import { useEffect, useCallback } from "react";
-import { useUIStore } from "../../stores/ui-store";
+import { useCallback, useEffect } from "react";
+
 import baramLogo from "../../assets/baram-logo.png";
 import { useTranslation } from "../../i18n/useTranslation";
+import { useUIStore } from "../../stores/ui-store";
 
 export function AboutModal() {
   const { t } = useTranslation();
@@ -26,7 +27,7 @@ export function AboutModal() {
   return (
     <div className="about-overlay" onClick={toggleAbout}>
       <div className="about-modal" onClick={(e) => e.stopPropagation()}>
-        <img src={baramLogo} alt="Baram" className="about-logo" />
+        <img alt="Baram" className="about-logo" src={baramLogo} />
         <div className="about-version">
           {t("about.version").replace("{version}", "0.1.0")}
         </div>

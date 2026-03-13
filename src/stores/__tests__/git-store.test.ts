@@ -1,7 +1,9 @@
-// §57b Git Store — utility function tests
-import { describe, it, expect } from "vitest";
-import { groupChanges, statusIcon, statusColorClass } from "../git-store";
 import type { GitChange } from "../../ipc/types";
+
+// §57b Git Store — utility function tests
+import { describe, expect, it } from "vitest";
+
+import { groupChanges, statusColorClass, statusIcon } from "../git-store";
 
 describe("groupChanges", () => {
   it("separates staged and unstaged changes", () => {

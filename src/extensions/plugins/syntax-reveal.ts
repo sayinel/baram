@@ -1,28 +1,29 @@
+import type { Mark, Node as PmNode } from "@tiptap/pm/model";
+
 // §5.1 + §3.3 Syntax Reveal — Typora-style focus-based syntax exposure
 // Expansion-based: When cursor enters a mark/link/image range, the markdown
 // delimiters are inserted as real editable text. When cursor leaves, they
 // collapse back to marks/nodes. Follows the math-inline-edit pattern (§5.3).
 import { Extension } from "@tiptap/core";
 import {
+  type EditorState,
+  NodeSelection,
   Plugin,
   PluginKey,
   TextSelection,
-  NodeSelection,
-  type EditorState,
   type Transaction,
 } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
-import type { Node as PmNode, Mark } from "@tiptap/pm/model";
 
 // ── Plugin state ──────────────────────────────────────────────────────
 
 interface ExpandedRange {
-  kind: "mark" | "link" | "image" | "wikilink";
-  markName?: string; // for marks: "bold", "italic", etc.
-  from: number; // start of expanded text (for images: inside paragraph)
-  to: number; // end of expanded text
-  openCheck: string; // opening delimiter to validate
   closeCheck?: string; // closing delimiter to validate (marks only)
+  from: number; // start of expanded text (for images: inside paragraph)
+  kind: "image" | "link" | "mark" | "wikilink";
+  markName?: string; // for marks: "bold", "italic", etc.
+  openCheck: string; // opening delimiter to validate
+  to: number; // end of expanded text
 }
 
 interface SyntaxRevealState {
@@ -34,7 +35,7 @@ const syntaxRevealKey = new PluginKey<SyntaxRevealState>("syntaxReveal");
 
 // ── Mark delimiter definitions ────────────────────────────────────────
 
-const MARK_DELIMITERS: Record<string, { open: string; close: string }> = {
+const MARK_DELIMITERS: Record<string, { close: string; open: string }> = {
   bold: { open: "**", close: "**" },
   italic: { open: "*", close: "*" },
   strike: { open: "~~", close: "~~" },
@@ -74,39 +75,84 @@ function computeContentLen(
   return 0;
 }
 
-/**
- * Find the contiguous range of a specific mark that contains the cursor.
- */
-function findMarkRange(
-  parentNode: PmNode,
-  parentPos: number,
-  markType: string,
-  cursorPos: number,
-): { from: number; to: number } | null {
-  const ranges: { from: number; to: number }[] = [];
+function expandImage(view: EditorView, node: PmNode, pos: number): void {
+  const src = (node.attrs.src as string) || "";
+  const alt = (node.attrs.alt as string) || "";
+  const title = node.attrs.title as null | string;
 
-  parentNode.forEach((child, childOffset) => {
-    const childFrom = parentPos + childOffset;
-    const childTo = childFrom + child.nodeSize;
-    if (child.marks.some((m) => m.type.name === markType)) {
-      const last = ranges[ranges.length - 1];
-      if (last && last.to === childFrom) {
-        last.to = childTo;
-      } else {
-        ranges.push({ from: childFrom, to: childTo });
-      }
-    }
+  const text = title ? `![${alt}](${src} "${title}")` : `![${alt}](${src})`;
+
+  const { tr } = view.state;
+
+  // Image is block-level → replace with paragraph containing markdown text
+  const textNode = view.state.schema.text(text);
+  const para = view.state.schema.nodes.paragraph.create(null, textNode);
+  tr.replaceWith(pos, pos + node.nodeSize, para);
+
+  // Content starts at pos+1 (inside paragraph)
+  const contentStart = pos + 1;
+  // Place cursor right after "![" for natural alt-text editing
+  const cursorPos = contentStart + 2;
+
+  tr.setSelection(TextSelection.create(tr.doc, cursorPos));
+  tr.setMeta(syntaxRevealKey, {
+    expanded: {
+      kind: "image",
+      from: contentStart,
+      to: contentStart + text.length,
+      openCheck: "![",
+    },
   });
 
-  for (const range of ranges) {
-    if (cursorPos >= range.from && cursorPos <= range.to) {
-      return range;
-    }
-  }
-  return null;
+  view.dispatch(tr);
 }
 
 // ── Mark expansion ────────────────────────────────────────────────────
+
+function expandLink(
+  view: EditorView,
+  mark: Mark,
+  range: { from: number; to: number },
+): void {
+  const { state } = view;
+  const href = (mark.attrs.href as string) || "";
+  const title = mark.attrs.title as null | string;
+  const cursorPos = state.selection.from;
+
+  const openDelim = "[";
+  const closeDelim = title ? `](${href} "${title}")` : `](${href})`;
+
+  const { tr } = state;
+
+  tr.removeMark(range.from, range.to, state.schema.marks.link);
+  tr.insert(range.to, state.schema.text(closeDelim));
+  tr.insert(range.from, state.schema.text(openDelim));
+
+  const newTo = range.to + openDelim.length + closeDelim.length;
+
+  let newCursorPos: number;
+  if (cursorPos <= range.from) {
+    newCursorPos = range.from;
+  } else if (cursorPos >= range.to) {
+    newCursorPos = newTo;
+  } else {
+    newCursorPos = cursorPos + openDelim.length;
+  }
+
+  tr.setSelection(TextSelection.create(tr.doc, newCursorPos));
+  tr.setMeta(syntaxRevealKey, {
+    expanded: {
+      kind: "link",
+      from: range.from,
+      to: newTo,
+      openCheck: "[",
+    },
+  });
+
+  view.dispatch(tr);
+}
+
+// ── Link expansion ────────────────────────────────────────────────────
 
 function expandMark(
   view: EditorView,
@@ -163,97 +209,18 @@ function expandMark(
   view.dispatch(tr);
 }
 
-// ── Link expansion ────────────────────────────────────────────────────
-
-function expandLink(
-  view: EditorView,
-  mark: Mark,
-  range: { from: number; to: number },
-): void {
-  const { state } = view;
-  const href = (mark.attrs.href as string) || "";
-  const title = mark.attrs.title as string | null;
-  const cursorPos = state.selection.from;
-
-  const openDelim = "[";
-  const closeDelim = title ? `](${href} "${title}")` : `](${href})`;
-
-  const { tr } = state;
-
-  tr.removeMark(range.from, range.to, state.schema.marks.link);
-  tr.insert(range.to, state.schema.text(closeDelim));
-  tr.insert(range.from, state.schema.text(openDelim));
-
-  const newTo = range.to + openDelim.length + closeDelim.length;
-
-  let newCursorPos: number;
-  if (cursorPos <= range.from) {
-    newCursorPos = range.from;
-  } else if (cursorPos >= range.to) {
-    newCursorPos = newTo;
-  } else {
-    newCursorPos = cursorPos + openDelim.length;
-  }
-
-  tr.setSelection(TextSelection.create(tr.doc, newCursorPos));
-  tr.setMeta(syntaxRevealKey, {
-    expanded: {
-      kind: "link",
-      from: range.from,
-      to: newTo,
-      openCheck: "[",
-    },
-  });
-
-  view.dispatch(tr);
-}
-
 // ── Image expansion ───────────────────────────────────────────────────
-
-function expandImage(view: EditorView, node: PmNode, pos: number): void {
-  const src = (node.attrs.src as string) || "";
-  const alt = (node.attrs.alt as string) || "";
-  const title = node.attrs.title as string | null;
-
-  const text = title ? `![${alt}](${src} "${title}")` : `![${alt}](${src})`;
-
-  const { tr } = view.state;
-
-  // Image is block-level → replace with paragraph containing markdown text
-  const textNode = view.state.schema.text(text);
-  const para = view.state.schema.nodes.paragraph.create(null, textNode);
-  tr.replaceWith(pos, pos + node.nodeSize, para);
-
-  // Content starts at pos+1 (inside paragraph)
-  const contentStart = pos + 1;
-  // Place cursor right after "![" for natural alt-text editing
-  const cursorPos = contentStart + 2;
-
-  tr.setSelection(TextSelection.create(tr.doc, cursorPos));
-  tr.setMeta(syntaxRevealKey, {
-    expanded: {
-      kind: "image",
-      from: contentStart,
-      to: contentStart + text.length,
-      openCheck: "![",
-    },
-  });
-
-  view.dispatch(tr);
-}
-
-// ── Wikilink expansion ───────────────────────────────────────────────
 
 function expandWikilink(
   view: EditorView,
   node: PmNode,
   pos: number,
-  cursorAt: "front" | "back" = "front",
+  cursorAt: "back" | "front" = "front",
 ): void {
   const target = (node.attrs.target as string) || "";
-  const heading = node.attrs.heading as string | null;
-  const blockId = node.attrs.blockId as string | null;
-  const display = node.attrs.display as string | null;
+  const heading = node.attrs.heading as null | string;
+  const blockId = node.attrs.blockId as null | string;
+  const display = node.attrs.display as null | string;
 
   // Build [[target#heading^blockId|display]] text
   let inner = target;
@@ -288,11 +255,124 @@ function expandWikilink(
   view.dispatch(tr);
 }
 
+// ── Wikilink expansion ───────────────────────────────────────────────
+
+/**
+ * Find the contiguous range of a specific mark that contains the cursor.
+ */
+function findMarkRange(
+  parentNode: PmNode,
+  parentPos: number,
+  markType: string,
+  cursorPos: number,
+): null | { from: number; to: number } {
+  const ranges: { from: number; to: number }[] = [];
+
+  parentNode.forEach((child, childOffset) => {
+    const childFrom = parentPos + childOffset;
+    const childTo = childFrom + child.nodeSize;
+    if (child.marks.some((m) => m.type.name === markType)) {
+      const last = ranges[ranges.length - 1];
+      if (last && last.to === childFrom) {
+        last.to = childTo;
+      } else {
+        ranges.push({ from: childFrom, to: childTo });
+      }
+    }
+  });
+
+  for (const range of ranges) {
+    if (cursorPos >= range.from && cursorPos <= range.to) {
+      return range;
+    }
+  }
+  return null;
+}
+
 // Regex to parse expanded wikilink text: [[target#heading^blockId|display]]
 const WIKILINK_REGEX =
   /^\[\[([^\]|#^]+)(?:#([^\]|^]+))?(?:\^([^\]|]+))?(?:\|([^\]]+))?\]\]$/;
 
 // ── Collapse expanded range ───────────────────────────────────────────
+
+/** Force-collapse any active expansion. Call before source mode toggle. */
+export function forceCollapseSyntaxReveal(view: EditorView): void {
+  const es = syntaxRevealKey.getState(view.state);
+  if (!es?.expanded) return;
+  collapseExpanded(view, es.expanded);
+}
+
+// ── Build delimiter decorations for expanded range ────────────────────
+
+/** Get the active expanded range info (used by wikilink-suggest to replace entire expanded text). */
+export function getSyntaxRevealExpanded(
+  state: EditorState,
+): ExpandedRange | null {
+  const es = syntaxRevealKey.getState(state);
+  return es?.expanded ?? null;
+}
+
+// ── Plugin factory ────────────────────────────────────────────────────
+
+function buildExpandedDecorations(
+  state: EditorState,
+  expanded: ExpandedRange,
+): Decoration[] {
+  const { from, to, kind, openCheck, closeCheck } = expanded;
+  const decos: Decoration[] = [];
+
+  try {
+    if (kind === "mark" && closeCheck) {
+      // Style opening delimiter
+      decos.push(
+        Decoration.inline(from, from + openCheck.length, {
+          class: "syntax-delimiter-inline",
+        }),
+      );
+      // Style closing delimiter
+      decos.push(
+        Decoration.inline(to - closeCheck.length, to, {
+          class: "syntax-delimiter-inline",
+        }),
+      );
+    } else if (kind === "link" || kind === "image") {
+      const text = state.doc.textBetween(from, to);
+      const closeBracket = text.indexOf("](");
+      const openLen = kind === "image" ? 2 : 1;
+
+      if (closeBracket >= 0) {
+        // Style opening delimiter
+        decos.push(
+          Decoration.inline(from, from + openLen, {
+            class: "syntax-delimiter-inline",
+          }),
+        );
+        // Style "](url)" portion
+        decos.push(
+          Decoration.inline(from + closeBracket, to, {
+            class: "syntax-delimiter-inline",
+          }),
+        );
+      }
+    } else if (kind === "wikilink" && closeCheck) {
+      // Style [[ and ]]
+      decos.push(
+        Decoration.inline(from, from + openCheck.length, {
+          class: "syntax-delimiter-inline",
+        }),
+      );
+      decos.push(
+        Decoration.inline(to - closeCheck.length, to, {
+          class: "syntax-delimiter-inline",
+        }),
+      );
+    }
+  } catch {
+    // Position out of range, skip
+  }
+
+  return decos;
+}
 
 /**
  * Collapse expanded delimiters back to marks/nodes.
@@ -451,72 +531,11 @@ function collapseExpanded(
   view.dispatch(tr);
 }
 
-// ── Build delimiter decorations for expanded range ────────────────────
-
-function buildExpandedDecorations(
-  state: EditorState,
-  expanded: ExpandedRange,
-): Decoration[] {
-  const { from, to, kind, openCheck, closeCheck } = expanded;
-  const decos: Decoration[] = [];
-
-  try {
-    if (kind === "mark" && closeCheck) {
-      // Style opening delimiter
-      decos.push(
-        Decoration.inline(from, from + openCheck.length, {
-          class: "syntax-delimiter-inline",
-        }),
-      );
-      // Style closing delimiter
-      decos.push(
-        Decoration.inline(to - closeCheck.length, to, {
-          class: "syntax-delimiter-inline",
-        }),
-      );
-    } else if (kind === "link" || kind === "image") {
-      const text = state.doc.textBetween(from, to);
-      const closeBracket = text.indexOf("](");
-      const openLen = kind === "image" ? 2 : 1;
-
-      if (closeBracket >= 0) {
-        // Style opening delimiter
-        decos.push(
-          Decoration.inline(from, from + openLen, {
-            class: "syntax-delimiter-inline",
-          }),
-        );
-        // Style "](url)" portion
-        decos.push(
-          Decoration.inline(from + closeBracket, to, {
-            class: "syntax-delimiter-inline",
-          }),
-        );
-      }
-    } else if (kind === "wikilink" && closeCheck) {
-      // Style [[ and ]]
-      decos.push(
-        Decoration.inline(from, from + openCheck.length, {
-          class: "syntax-delimiter-inline",
-        }),
-      );
-      decos.push(
-        Decoration.inline(to - closeCheck.length, to, {
-          class: "syntax-delimiter-inline",
-        }),
-      );
-    }
-  } catch {
-    // Position out of range, skip
-  }
-
-  return decos;
-}
-
-// ── Plugin factory ────────────────────────────────────────────────────
+/** Get the SyntaxReveal PluginKey (used by other plugins to clear expansion state via meta). */
+export { syntaxRevealKey };
 
 function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
-  let pendingRaf: number | null = null;
+  let pendingRaf: null | number = null;
 
   return new Plugin<SyntaxRevealState>({
     key: syntaxRevealKey,
@@ -1011,7 +1030,7 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
       // Track cursor position at last doc change to prevent
       // InputRule/collapse → cursor at mark boundary → immediate re-expand.
       // Expansion is only allowed after the cursor MOVES from this position.
-      let cursorAtDocChange: number | null = null;
+      let cursorAtDocChange: null | number = null;
 
       return {
         update(view: EditorView, prevState: EditorState) {
@@ -1055,30 +1074,6 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
       };
     },
   });
-}
-
-/** Check if SyntaxReveal has an active expansion (used by other plugins to avoid conflicts). */
-export function isSyntaxRevealExpanded(state: EditorState): boolean {
-  const es = syntaxRevealKey.getState(state);
-  return !!es?.expanded;
-}
-
-/** Get the active expanded range info (used by wikilink-suggest to replace entire expanded text). */
-export function getSyntaxRevealExpanded(
-  state: EditorState,
-): ExpandedRange | null {
-  const es = syntaxRevealKey.getState(state);
-  return es?.expanded ?? null;
-}
-
-/** Get the SyntaxReveal PluginKey (used by other plugins to clear expansion state via meta). */
-export { syntaxRevealKey };
-
-/** Force-collapse any active expansion. Call before source mode toggle. */
-export function forceCollapseSyntaxReveal(view: EditorView): void {
-  const es = syntaxRevealKey.getState(view.state);
-  if (!es?.expanded) return;
-  collapseExpanded(view, es.expanded);
 }
 
 /** Tiptap Extension wrapper */

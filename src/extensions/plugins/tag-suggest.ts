@@ -1,21 +1,23 @@
+import type {
+  SuggestionKeyDownProps,
+  SuggestionProps,
+} from "@tiptap/suggestion";
+
 // §56m Tag autocomplete — Tiptap Extension using Suggestion API
 // Triggers on # and shows tag suggestions from vault-wide Rust index
 import { Extension } from "@tiptap/core";
-import { Suggestion } from "@tiptap/suggestion";
-import { ReactRenderer } from "@tiptap/react";
 import { PluginKey } from "@tiptap/pm/state";
-import type {
-  SuggestionProps,
-  SuggestionKeyDownProps,
-} from "@tiptap/suggestion";
+import { ReactRenderer } from "@tiptap/react";
+import { Suggestion } from "@tiptap/suggestion";
+
 import {
   TagMenuList,
   type TagMenuRef,
   type TagSuggestionItem,
 } from "../../components/command/TagMenu";
-import { filterTags } from "../../utils/journal-tags";
-import { useFileStore } from "../../stores/file-store";
 import { getVaultTags } from "../../ipc/invoke";
+import { useFileStore } from "../../stores/file-store";
+import { filterTags } from "../../utils/journal-tags";
 
 const MENU_HEIGHT = 200;
 
@@ -89,8 +91,8 @@ export const TagSuggest = Extension.create({
           props,
         }: {
           editor: typeof editor;
-          range: { from: number; to: number };
           props: TagSuggestionItem;
+          range: { from: number; to: number };
         }) => {
           // Replace the #query with tagNode atom + trailing space
           ed.chain()
@@ -112,7 +114,7 @@ export const TagSuggest = Extension.create({
           }));
         },
         render: () => {
-          let component: ReactRenderer<TagMenuRef> | null = null;
+          let component: null | ReactRenderer<TagMenuRef> = null;
           let popup: HTMLDivElement | null = null;
 
           return {

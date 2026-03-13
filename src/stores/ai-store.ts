@@ -1,83 +1,84 @@
 // §3.5 AI 상태 스토어 (§6.1)
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
-import { tauriStorage } from "./tauri-storage";
-import { keyringStore, keyringGet } from "../ipc/invoke";
+import { createJSONStorage, persist } from "zustand/middleware";
 
-export type AIProvider = "claude" | "openai" | "ollama" | "gemini";
-export type AITask = "ghost-text" | "inline-edit" | "chat" | "agent";
+import { keyringGet, keyringStore } from "../ipc/invoke";
+import { tauriStorage } from "./tauri-storage";
+
+export type AIProvider = "claude" | "gemini" | "ollama" | "openai";
+export type AITask = "agent" | "chat" | "ghost-text" | "inline-edit";
 
 const KEYRING_PROVIDERS: AIProvider[] = ["claude", "openai", "gemini"];
 
-function keyringKeyFor(provider: string): string {
-  return `baram-${provider}-api-key`;
-}
-
 export interface CustomAICommand {
+  icon?: string;
   id: string;
   name: string;
   prompt: string;
-  icon?: string;
 }
 
 interface AIState {
-  provider: AIProvider;
-  model: string;
-  /** Per-provider API keys (in-memory only — persisted in OS keyring) */
-  apiKeys: Record<string, string>;
+  // M8 additions
+  activeRequestId: null | string;
+  addCustomCommand: (cmd: CustomAICommand) => void;
   /** Computed getter: API key for the current provider */
   apiKey: string;
-  ollamaUrl: string;
-  privacyMode: boolean;
-  isStreaming: boolean;
-  ghostText: string | null;
-  keychainReady: boolean;
-
-  // M8 additions
-  activeRequestId: string | null;
-  ghostTextEnabled: boolean;
-  ghostTextDebounceMs: number;
-  maxSuggestionLength: number;
-  customCommands: CustomAICommand[];
-
+  /** Per-provider API keys (in-memory only — persisted in OS keyring) */
+  apiKeys: Record<string, string>;
+  // Auto model selection
+  autoModelEnabled: boolean;
   /** §44 Clipboard content captured for @clipboard reference */
   clipboardContent: string;
+  customCommands: CustomAICommand[];
+  ghostText: null | string;
   /** D3: Include open tab context in Ghost Text prompts */
   ghostTextCrossFileEnabled: boolean;
 
-  // Auto model selection
-  autoModelEnabled: boolean;
+  ghostTextDebounceMs: number;
+  ghostTextEnabled: boolean;
+  isStreaming: boolean;
+  keychainReady: boolean;
+  loadApiKeysFromKeyring: () => Promise<void>;
+
+  maxSuggestionLength: number;
+  model: string;
+
+  modelForAgent: string;
+  modelForChat: string;
   modelForGhostText: string;
   modelForInlineEdit: string;
-  modelForChat: string;
-  modelForAgent: string;
-  providerForGhostText: AIProvider | "";
-  providerForInlineEdit: AIProvider | "";
-  providerForChat: AIProvider | "";
-  providerForAgent: AIProvider | "";
+  ollamaUrl: string;
+  privacyMode: boolean;
+  provider: AIProvider;
+  providerForAgent: "" | AIProvider;
+  providerForChat: "" | AIProvider;
 
-  setProvider: (provider: AIProvider) => void;
-  setModel: (model: string) => void;
-  setApiKey: (key: string) => void;
-  setOllamaUrl: (url: string) => void;
-  setPrivacyMode: (enabled: boolean) => void;
-  setStreaming: (streaming: boolean) => void;
-  setGhostText: (text: string | null) => void;
-  setActiveRequestId: (id: string | null) => void;
-  setGhostTextEnabled: (enabled: boolean) => void;
-  setGhostTextDebounceMs: (ms: number) => void;
-  setMaxSuggestionLength: (len: number) => void;
-  setCustomCommands: (cmds: CustomAICommand[]) => void;
-  addCustomCommand: (cmd: CustomAICommand) => void;
+  providerForGhostText: "" | AIProvider;
+  providerForInlineEdit: "" | AIProvider;
   removeCustomCommand: (id: string) => void;
-  updateCustomCommand: (id: string, updates: Partial<CustomAICommand>) => void;
+  setActiveRequestId: (id: null | string) => void;
+  setApiKey: (key: string) => void;
   setAutoModelEnabled: (enabled: boolean) => void;
-  setModelForTask: (task: AITask, model: string) => void;
-  setProviderForTask: (task: AITask, provider: AIProvider | "") => void;
-  loadApiKeysFromKeyring: () => Promise<void>;
   /** §44 Set clipboard content for @clipboard reference */
   setClipboardContent: (text: string) => void;
+  setCustomCommands: (cmds: CustomAICommand[]) => void;
+  setGhostText: (text: null | string) => void;
   setGhostTextCrossFileEnabled: (enabled: boolean) => void;
+  setGhostTextDebounceMs: (ms: number) => void;
+  setGhostTextEnabled: (enabled: boolean) => void;
+  setMaxSuggestionLength: (len: number) => void;
+  setModel: (model: string) => void;
+  setModelForTask: (task: AITask, model: string) => void;
+  setOllamaUrl: (url: string) => void;
+  setPrivacyMode: (enabled: boolean) => void;
+  setProvider: (provider: AIProvider) => void;
+  setProviderForTask: (task: AITask, provider: "" | AIProvider) => void;
+  setStreaming: (streaming: boolean) => void;
+  updateCustomCommand: (id: string, updates: Partial<CustomAICommand>) => void;
+}
+
+function keyringKeyFor(provider: string): string {
+  return `baram-${provider}-api-key`;
 }
 
 export const useAIStore = create<AIState>()(
@@ -155,33 +156,33 @@ export const useAIStore = create<AIState>()(
       setAutoModelEnabled: (autoModelEnabled) => set({ autoModelEnabled }),
       setModelForTask: (task, model) => {
         switch (task) {
+          case "agent":
+            set({ modelForAgent: model });
+            break;
+          case "chat":
+            set({ modelForChat: model });
+            break;
           case "ghost-text":
             set({ modelForGhostText: model });
             break;
           case "inline-edit":
             set({ modelForInlineEdit: model });
             break;
-          case "chat":
-            set({ modelForChat: model });
-            break;
-          case "agent":
-            set({ modelForAgent: model });
-            break;
         }
       },
       setProviderForTask: (task, provider) => {
         switch (task) {
+          case "agent":
+            set({ providerForAgent: provider });
+            break;
+          case "chat":
+            set({ providerForChat: provider });
+            break;
           case "ghost-text":
             set({ providerForGhostText: provider });
             break;
           case "inline-edit":
             set({ providerForInlineEdit: provider });
-            break;
-          case "chat":
-            set({ providerForChat: provider });
-            break;
-          case "agent":
-            set({ providerForAgent: provider });
             break;
         }
       },

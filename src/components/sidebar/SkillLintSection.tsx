@@ -1,27 +1,12 @@
 // §72c Skill Lint Section — live lint results in PropertiesPanel
 import { useState } from "react";
-import { useSkillStore } from "../../stores/skill-store";
+
 import type { LintResult } from "../../utils/prompt-linter";
+
+import { useSkillStore } from "../../stores/skill-store";
 import { registerSkillSection } from "./skill-panel-registry";
 
 // ─── LintItem ────────────────────────────────────────────────────────────────
-
-function LintItem({ result }: { result: LintResult }) {
-  const handleClick = () => {
-    window.dispatchEvent(
-      new CustomEvent("baram:goto-position", { detail: { from: result.from } }),
-    );
-  };
-
-  return (
-    <div className="skill-lint-item" onClick={handleClick}>
-      <span className="skill-lint-rule">{result.rule}</span>
-      <span className="skill-lint-message">{result.message}</span>
-    </div>
-  );
-}
-
-// ─── SkillLintSection ────────────────────────────────────────────────────────
 
 export function SkillLintSection() {
   const lintResults = useSkillStore((s) => s.lintResults);
@@ -63,6 +48,23 @@ export function SkillLintSection() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── SkillLintSection ────────────────────────────────────────────────────────
+
+function LintItem({ result }: { result: LintResult }) {
+  const handleClick = () => {
+    window.dispatchEvent(
+      new CustomEvent("baram:goto-position", { detail: { from: result.from } }),
+    );
+  };
+
+  return (
+    <div className="skill-lint-item" onClick={handleClick}>
+      <span className="skill-lint-rule">{result.rule}</span>
+      <span className="skill-lint-message">{result.message}</span>
     </div>
   );
 }

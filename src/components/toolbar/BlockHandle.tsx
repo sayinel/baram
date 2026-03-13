@@ -1,6 +1,8 @@
 // §4.8 Block Handle — drag handle + menu on block hover
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import type { Editor } from "@tiptap/react";
+
 import {
   addBlockId,
   editBlockId,
@@ -10,15 +12,15 @@ interface BlockHandleProps {
   editor: Editor;
 }
 
-interface HandlePosition {
-  top: number;
-  pos: number;
+interface DropdownItem {
+  action: () => void;
+  label: string;
+  separator?: boolean;
 }
 
-interface DropdownItem {
-  label: string;
-  action: () => void;
-  separator?: boolean;
+interface HandlePosition {
+  pos: number;
+  top: number;
 }
 
 export function BlockHandle({ editor }: BlockHandleProps) {
@@ -124,7 +126,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
     if (!node) return null;
     if (node.type.name !== "paragraph" && node.type.name !== "heading")
       return null;
-    const existingId = node.attrs.blockId as string | null;
+    const existingId = node.attrs.blockId as null | string;
     if (existingId) {
       return {
         label: `Edit Block ID (^${existingId})`,
@@ -228,8 +230,8 @@ export function BlockHandle({ editor }: BlockHandleProps) {
       >
         <button
           className="block-handle-btn"
-          title="Click for menu"
           onClick={() => setMenuOpen(!menuOpen)}
+          title="Click for menu"
         >
           {"\u22EE"}
         </button>
@@ -237,8 +239,8 @@ export function BlockHandle({ editor }: BlockHandleProps) {
 
       {menuOpen && (
         <div
-          ref={menuRef}
           className="block-handle-menu"
+          ref={menuRef}
           style={{
             top: `${handle.top}px`,
             left: `${editorRect.left - 24}px`,

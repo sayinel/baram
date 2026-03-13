@@ -1,7 +1,8 @@
 // §footnote FootnoteDefinition Node Extension — [^id]: content block
-import { Node, mergeAttributes } from "@tiptap/core";
+import { mergeAttributes, Node } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 import { ReactNodeViewRenderer } from "@tiptap/react";
+
 import { FootnoteDefinitionView } from "./footnote-definition-view";
 
 export const FootnoteDefinition = Node.create({

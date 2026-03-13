@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { parseQueryDSL, serializeQueryDSL, QueryDef } from "../query-parser";
+import { describe, expect, it } from "vitest";
+
+import { parseQueryDSL, QueryDef, serializeQueryDSL } from "../query-parser";
 
 const defaults: QueryDef = {
   filters: [],

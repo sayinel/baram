@@ -1,7 +1,7 @@
+import type { NodeTransformerEntry } from "../types";
 // query-block-transformer.ts — §5.13 Query Block mdast ↔ ProseMirror
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
-import type { Node as MdastNode, Code } from "mdast";
-import type { NodeTransformerEntry } from "../types";
+import type { Code, Node as MdastNode } from "mdast";
 
 export const queryBlockTransformer: NodeTransformerEntry = {
   // Uses a synthetic mdast type for Map registration; actual routing is in md-to-pm.ts

@@ -1,15 +1,18 @@
 // §5.13 Query Block NodeView — visual builder + results display
-import { useState, useEffect, useCallback } from "react";
-import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
+import { useCallback, useEffect, useState } from "react";
+
+import type { VaultFile } from "../../utils/query-executor";
+
+import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
+
+import { useQueryBlock } from "../../hooks/use-query-block";
 import {
   parseQueryDSL,
-  serializeQueryDSL,
   type QueryDef,
-  type QueryFilter,
   type QueryDisplay,
+  type QueryFilter,
+  serializeQueryDSL,
 } from "../../utils/query-parser";
-import { useQueryBlock } from "../../hooks/use-query-block";
-import type { VaultFile } from "../../utils/query-executor";
 
 const FIELD_OPTIONS = [
   "tags",
@@ -30,164 +33,6 @@ const OPERATOR_OPTIONS: Record<string, string[]> = {
   name: ["contains", "starts", "="],
 };
 const DISPLAY_OPTIONS: QueryDisplay[] = ["list", "table", "card"];
-
-function FilterRow({
-  filter,
-  index,
-  onChange,
-  onRemove,
-}: {
-  filter: QueryFilter;
-  index: number;
-  onChange: (index: number, updated: QueryFilter) => void;
-  onRemove: (index: number) => void;
-}) {
-  const operators = OPERATOR_OPTIONS[filter.field] || ["=", "!=", "contains"];
-
-  return (
-    <div className="qb-filter-row">
-      {index > 0 && (
-        <select
-          className="qb-select qb-combinator"
-          value={filter.combinator}
-          onChange={(e) =>
-            onChange(index, {
-              ...filter,
-              combinator: e.target.value as "AND" | "OR",
-            })
-          }
-        >
-          <option value="AND">AND</option>
-          <option value="OR">OR</option>
-        </select>
-      )}
-      <select
-        className="qb-select qb-field"
-        value={filter.field}
-        onChange={(e) => {
-          const newField = e.target.value;
-          const ops = OPERATOR_OPTIONS[newField] || ["="];
-          onChange(index, { ...filter, field: newField, operator: ops[0] });
-        }}
-      >
-        {FIELD_OPTIONS.map((f) => (
-          <option key={f} value={f}>
-            {f}
-          </option>
-        ))}
-      </select>
-      <select
-        className="qb-select qb-operator"
-        value={filter.operator}
-        onChange={(e) =>
-          onChange(index, { ...filter, operator: e.target.value })
-        }
-      >
-        {operators.map((op) => (
-          <option key={op} value={op}>
-            {op}
-          </option>
-        ))}
-      </select>
-      {filter.operator !== "empty" && (
-        <input
-          className="qb-input qb-value"
-          type={filter.field.endsWith("_at") ? "date" : "text"}
-          value={filter.value}
-          placeholder="value"
-          onChange={(e) =>
-            onChange(index, { ...filter, value: e.target.value })
-          }
-        />
-      )}
-      <button
-        className="qb-btn qb-remove"
-        onClick={() => onRemove(index)}
-        title="Remove filter"
-      >
-        ×
-      </button>
-    </div>
-  );
-}
-
-function ResultsList({
-  results,
-  display,
-}: {
-  results: VaultFile[];
-  display: QueryDisplay;
-}) {
-  if (results.length === 0) {
-    return <div className="qb-empty">No results</div>;
-  }
-
-  if (display === "table") {
-    // Collect all frontmatter keys
-    const keys = new Set<string>();
-    results.forEach((f) =>
-      Object.keys(f.frontmatter).forEach((k) => keys.add(k)),
-    );
-    const columns = ["name", "path", ...Array.from(keys)];
-
-    return (
-      <table className="qb-table">
-        <thead>
-          <tr>
-            {columns.map((col) => (
-              <th key={col}>{col}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {results.map((file) => (
-            <tr key={file.path}>
-              <td>{file.name}</td>
-              <td className="qb-path">{file.path}</td>
-              {Array.from(keys).map((k) => (
-                <td key={k}>{String(file.frontmatter[k] ?? "")}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    );
-  }
-
-  if (display === "card") {
-    return (
-      <div className="qb-cards">
-        {results.map((file) => (
-          <div key={file.path} className="qb-card">
-            <div className="qb-card-name">{file.name}</div>
-            <div className="qb-card-path">{file.path}</div>
-            {file.tags.length > 0 && (
-              <div className="qb-card-tags">
-                {file.tags.slice(0, 5).map((t) => (
-                  <span key={t} className="qb-tag">
-                    #{t}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  // Default: list
-  return (
-    <div className="qb-list">
-      {results.map((file) => (
-        <div key={file.path} className="qb-list-item">
-          <span className="qb-list-name">{file.name}</span>
-          <span className="qb-list-path">{file.path}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 export function QueryBlockView({
   node,
@@ -272,9 +117,9 @@ export function QueryBlockView({
               <div className="qb-section-label">Filters</div>
               {def.filters.map((filter, i) => (
                 <FilterRow
-                  key={i}
                   filter={filter}
                   index={i}
+                  key={i}
                   onChange={handleFilterChange}
                   onRemove={handleFilterRemove}
                 />
@@ -289,7 +134,6 @@ export function QueryBlockView({
               <label className="qb-section-label">Sort</label>
               <select
                 className="qb-select"
-                value={def.sort?.field || ""}
                 onChange={(e) => {
                   const field = e.target.value;
                   updateDef({
@@ -299,6 +143,7 @@ export function QueryBlockView({
                       : null,
                   });
                 }}
+                value={def.sort?.field || ""}
               >
                 <option value="">None</option>
                 {["updated_at", "created_at", "name", "path"].map((f) => (
@@ -310,7 +155,6 @@ export function QueryBlockView({
               {def.sort && (
                 <select
                   className="qb-select"
-                  value={def.sort.direction}
                   onChange={(e) =>
                     updateDef({
                       ...def,
@@ -320,6 +164,7 @@ export function QueryBlockView({
                       },
                     })
                   }
+                  value={def.sort.direction}
                 >
                   <option value="desc">Descending</option>
                   <option value="asc">Ascending</option>
@@ -332,13 +177,13 @@ export function QueryBlockView({
               <label className="qb-section-label">Display</label>
               <select
                 className="qb-select"
-                value={def.display}
                 onChange={(e) =>
                   updateDef({
                     ...def,
                     display: e.target.value as QueryDisplay,
                   })
                 }
+                value={def.display}
               >
                 {DISPLAY_OPTIONS.map((d) => (
                   <option key={d} value={d}>
@@ -349,16 +194,16 @@ export function QueryBlockView({
               <label className="qb-section-label">Limit</label>
               <input
                 className="qb-input qb-limit"
-                type="number"
-                min={1}
                 max={200}
-                value={def.limit}
+                min={1}
                 onChange={(e) =>
                   updateDef({
                     ...def,
                     limit: parseInt(e.target.value, 10) || 20,
                   })
                 }
+                type="number"
+                value={def.limit}
               />
             </div>
 
@@ -373,7 +218,7 @@ export function QueryBlockView({
         {/* Results */}
         {results.length > 0 && (
           <div className="qb-results">
-            <ResultsList results={results} display={def.display} />
+            <ResultsList display={def.display} results={results} />
           </div>
         )}
 
@@ -386,5 +231,163 @@ export function QueryBlockView({
         )}
       </div>
     </NodeViewWrapper>
+  );
+}
+
+function FilterRow({
+  filter,
+  index,
+  onChange,
+  onRemove,
+}: {
+  filter: QueryFilter;
+  index: number;
+  onChange: (index: number, updated: QueryFilter) => void;
+  onRemove: (index: number) => void;
+}) {
+  const operators = OPERATOR_OPTIONS[filter.field] || ["=", "!=", "contains"];
+
+  return (
+    <div className="qb-filter-row">
+      {index > 0 && (
+        <select
+          className="qb-select qb-combinator"
+          onChange={(e) =>
+            onChange(index, {
+              ...filter,
+              combinator: e.target.value as "AND" | "OR",
+            })
+          }
+          value={filter.combinator}
+        >
+          <option value="AND">AND</option>
+          <option value="OR">OR</option>
+        </select>
+      )}
+      <select
+        className="qb-select qb-field"
+        onChange={(e) => {
+          const newField = e.target.value;
+          const ops = OPERATOR_OPTIONS[newField] || ["="];
+          onChange(index, { ...filter, field: newField, operator: ops[0] });
+        }}
+        value={filter.field}
+      >
+        {FIELD_OPTIONS.map((f) => (
+          <option key={f} value={f}>
+            {f}
+          </option>
+        ))}
+      </select>
+      <select
+        className="qb-select qb-operator"
+        onChange={(e) =>
+          onChange(index, { ...filter, operator: e.target.value })
+        }
+        value={filter.operator}
+      >
+        {operators.map((op) => (
+          <option key={op} value={op}>
+            {op}
+          </option>
+        ))}
+      </select>
+      {filter.operator !== "empty" && (
+        <input
+          className="qb-input qb-value"
+          onChange={(e) =>
+            onChange(index, { ...filter, value: e.target.value })
+          }
+          placeholder="value"
+          type={filter.field.endsWith("_at") ? "date" : "text"}
+          value={filter.value}
+        />
+      )}
+      <button
+        className="qb-btn qb-remove"
+        onClick={() => onRemove(index)}
+        title="Remove filter"
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
+function ResultsList({
+  results,
+  display,
+}: {
+  display: QueryDisplay;
+  results: VaultFile[];
+}) {
+  if (results.length === 0) {
+    return <div className="qb-empty">No results</div>;
+  }
+
+  if (display === "table") {
+    // Collect all frontmatter keys
+    const keys = new Set<string>();
+    results.forEach((f) =>
+      Object.keys(f.frontmatter).forEach((k) => keys.add(k)),
+    );
+    const columns = ["name", "path", ...Array.from(keys)];
+
+    return (
+      <table className="qb-table">
+        <thead>
+          <tr>
+            {columns.map((col) => (
+              <th key={col}>{col}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {results.map((file) => (
+            <tr key={file.path}>
+              <td>{file.name}</td>
+              <td className="qb-path">{file.path}</td>
+              {Array.from(keys).map((k) => (
+                <td key={k}>{String(file.frontmatter[k] ?? "")}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
+  }
+
+  if (display === "card") {
+    return (
+      <div className="qb-cards">
+        {results.map((file) => (
+          <div className="qb-card" key={file.path}>
+            <div className="qb-card-name">{file.name}</div>
+            <div className="qb-card-path">{file.path}</div>
+            {file.tags.length > 0 && (
+              <div className="qb-card-tags">
+                {file.tags.slice(0, 5).map((t) => (
+                  <span className="qb-tag" key={t}>
+                    #{t}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // Default: list
+  return (
+    <div className="qb-list">
+      {results.map((file) => (
+        <div className="qb-list-item" key={file.path}>
+          <span className="qb-list-name">{file.name}</span>
+          <span className="qb-list-path">{file.path}</span>
+        </div>
+      ))}
+    </div>
   );
 }

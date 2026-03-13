@@ -4,11 +4,11 @@
  */
 
 export interface KeybindingEntry {
+  category: string; // "file" | "edit" | "view" | "search" | "insert" | "ai" | "workspace" | "journal" | "formatting"
+  customizable: boolean; // true = global shortcut, false = Tiptap extension
+  defaultKey: string; // Platform-independent: "Mod+S"
   id: string; // e.g. "file.save"
   label: string; // i18n key e.g. "keybindings.file.save"
-  category: string; // "file" | "edit" | "view" | "search" | "insert" | "ai" | "workspace" | "journal" | "formatting"
-  defaultKey: string; // Platform-independent: "Mod+S"
-  customizable: boolean; // true = global shortcut, false = Tiptap extension
 }
 
 export const KEYBINDING_CATEGORIES: string[] = [

@@ -13,19 +13,22 @@
 // boundary detection — the 3px Splitter between sidebar and editor causes
 // elementFromPoint to miss both zones at the boundary.
 import { useEffect } from "react";
+
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+
 import type { Editor } from "@tiptap/core";
+
 import { copyFile, createDir, listDir } from "../ipc/invoke";
-import { useFileStore } from "../stores/file-store";
 import { useEditorStore } from "../stores/editor-store";
-import { isImageFile, resolveNameConflict } from "../utils/path-utils";
+import { useFileStore } from "../stores/file-store";
 import {
-  showDropIndicator,
   hideDropIndicator,
+  insertNodeAtPos,
   removeDropIndicator,
   resolveInsertTarget,
-  insertNodeAtPos,
+  showDropIndicator,
 } from "../utils/drop-indicator";
+import { isImageFile, resolveNameConflict } from "../utils/path-utils";
 
 interface UseExternalDropOptions {
   editor: Editor | null;
@@ -36,32 +39,7 @@ export let isExternalFileDrag = false;
 
 // --- Zone detection via bounding rects ---
 
-type DropZone = "filetree" | "editor" | null;
-
-function hitTestRect(el: Element | null, x: number, y: number): boolean {
-  if (!el) return false;
-  const r = el.getBoundingClientRect();
-  return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
-}
-
-function detectZone(x: number, y: number): DropZone {
-  if (hitTestRect(document.querySelector(".editor-area-scroll"), x, y))
-    return "editor";
-  if (hitTestRect(document.querySelector(".file-tree"), x, y))
-    return "filetree";
-  return null;
-}
-
-// --- Highlight helpers ---
-
-function clearAllHighlights() {
-  document
-    .querySelectorAll(".file-tree-ext-drop-target")
-    .forEach((e) => e.classList.remove("file-tree-ext-drop-target"));
-  hideDropIndicator();
-}
-
-// --- Hook ---
+type DropZone = "editor" | "filetree" | null;
 
 export function useExternalDrop({ editor }: UseExternalDropOptions) {
   useEffect(() => {
@@ -188,43 +166,24 @@ export function useExternalDrop({ editor }: UseExternalDropOptions) {
   }, [editor]);
 }
 
-// --- Drop handlers ---
-
-async function handleFileTreeDrop(paths: string[], el: Element | null) {
-  const { rootPath, addFileEntry } = useFileStore.getState();
-  if (!rootPath) return;
-
-  const folderEl = el?.closest<HTMLElement>("[data-drop-path]");
-  const targetDir = folderEl?.dataset.dropPath || rootPath;
-
-  let existingNames: Set<string>;
-  try {
-    const entries = await listDir(targetDir);
-    existingNames = new Set(entries.map((e) => e.name));
-  } catch {
-    existingNames = new Set();
-  }
-
-  for (const sourcePath of paths) {
-    const originalName = sourcePath.split("/").pop() ?? "";
-    if (!originalName) continue;
-
-    const finalName = resolveNameConflict(originalName, existingNames);
-    const destPath = targetDir + "/" + finalName;
-
-    try {
-      await copyFile(sourcePath, destPath);
-      existingNames.add(finalName);
-      addFileEntry(targetDir, {
-        name: finalName,
-        path: destPath,
-        isDir: false,
-      });
-    } catch (err) {
-      console.error("[ExternalDrop] Copy to FileTree failed:", err);
-    }
-  }
+function clearAllHighlights() {
+  document
+    .querySelectorAll(".file-tree-ext-drop-target")
+    .forEach((e) => e.classList.remove("file-tree-ext-drop-target"));
+  hideDropIndicator();
 }
+
+// --- Highlight helpers ---
+
+function detectZone(x: number, y: number): DropZone {
+  if (hitTestRect(document.querySelector(".editor-area-scroll"), x, y))
+    return "editor";
+  if (hitTestRect(document.querySelector(".file-tree"), x, y))
+    return "filetree";
+  return null;
+}
+
+// --- Hook ---
 
 async function handleEditorDrop(
   paths: string[],
@@ -283,4 +242,48 @@ async function handleEditorDrop(
       console.error("[ExternalDrop] Image drop failed:", err);
     }
   }
+}
+
+// --- Drop handlers ---
+
+async function handleFileTreeDrop(paths: string[], el: Element | null) {
+  const { rootPath, addFileEntry } = useFileStore.getState();
+  if (!rootPath) return;
+
+  const folderEl = el?.closest<HTMLElement>("[data-drop-path]");
+  const targetDir = folderEl?.dataset.dropPath || rootPath;
+
+  let existingNames: Set<string>;
+  try {
+    const entries = await listDir(targetDir);
+    existingNames = new Set(entries.map((e) => e.name));
+  } catch {
+    existingNames = new Set();
+  }
+
+  for (const sourcePath of paths) {
+    const originalName = sourcePath.split("/").pop() ?? "";
+    if (!originalName) continue;
+
+    const finalName = resolveNameConflict(originalName, existingNames);
+    const destPath = targetDir + "/" + finalName;
+
+    try {
+      await copyFile(sourcePath, destPath);
+      existingNames.add(finalName);
+      addFileEntry(targetDir, {
+        name: finalName,
+        path: destPath,
+        isDir: false,
+      });
+    } catch (err) {
+      console.error("[ExternalDrop] Copy to FileTree failed:", err);
+    }
+  }
+}
+
+function hitTestRect(el: Element | null, x: number, y: number): boolean {
+  if (!el) return false;
+  const r = el.getBoundingClientRect();
+  return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
 }

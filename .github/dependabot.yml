@@ -1,0 +1,60 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Seoul
+    open-pull-requests-limit: 5
+    groups:
+      tiptap:
+        patterns: ["@tiptap/*"]
+      codemirror:
+        patterns: ["@codemirror/*"]
+      tauri-js:
+        patterns: ["@tauri-apps/*"]
+      testing:
+        patterns: ["vitest", "@testing-library/*", "jsdom"]
+      linting:
+        patterns: ["eslint*", "@eslint/*", "typescript-eslint", "stylelint*", "prettier*"]
+      dev-tools:
+        patterns: ["husky", "lint-staged", "@commitlint/*"]
+    ignore:
+      - dependency-name: "@tiptap/*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "vite"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "mermaid"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Seoul
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Seoul
+    open-pull-requests-limit: 3
+    groups:
+      tauri-core:
+        patterns: ["tauri", "tauri-build", "tauri-plugin-*"]
+    ignore:
+      - dependency-name: "tauri"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "tauri-build"
+        update-types: ["version-update:semver-major"]

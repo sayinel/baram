@@ -3,13 +3,14 @@
  * §settings: keybinding customization support
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
+import { KEYBINDING_REGISTRY } from "../keybinding-registry";
 import {
-  getMergedKeybindings,
   findCommandByKey,
   findConflict,
+  getMergedKeybindings,
 } from "../use-keybindings";
-import { KEYBINDING_REGISTRY } from "../keybinding-registry";
 
 // Pick known stable IDs from the registry for tests
 const CUSTOMIZABLE_ID = "file.save"; // defaultKey: "Mod+S", customizable: true

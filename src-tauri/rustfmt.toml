@@ -1,0 +1,65 @@
+# rustfmt.toml — Rust Formatting Configuration (STABLE ONLY)
+# Baram (Tauri 2.0 Backend)
+#
+# This configuration uses ONLY stable rustfmt options (no nightly required).
+# Verified with: rustfmt --check --config-path .
+# Reference: https://rust-lang.github.io/rustfmt/
+
+# Edition: Must match Cargo.toml (2021)
+edition = "2021"
+
+# Line width: Standard 100 columns (good for modern monitors)
+max_width = 100
+
+# Indentation: 4 spaces (standard Rust)
+tab_spaces = 4
+hard_tabs = false
+
+# Imports: Always reorder/sort imports
+reorder_imports = true
+
+# Newline style: Auto-detect per platform
+newline_style = "Auto"
+
+# Struct init shorthand: Use Struct { field } not Struct { field: field }
+use_field_init_shorthand = true
+
+# Merge derived traits: Combine multiple #[derive] into one
+merge_derives = true
+
+# Parentheses: Don't require explicit ABI (only for FFI)
+force_explicit_abi = false
+
+# Modules: Keep in declaration order (don't auto-reorder)
+reorder_modules = false
+
+# Match arms: No leading pipes (unless needed)
+match_arm_leading_pipes = "Never"
+
+# ============================================================
+# REJECTED UNSTABLE OPTIONS (require nightly)
+# ============================================================
+# The following options are UNSTABLE and require `rustup default nightly`.
+# They are NOT included in this stable configuration:
+#
+#   - imports_granularity            (fine-grained import grouping)
+#   - group_imports                  (import organization)
+#   - comment_width                  (wrap comment lines)
+#   - format_code_in_doc_comments    (auto-format examples in docs)
+#   - trailing_comma                 (comma style in function args)
+#   - fn_args_layout                 (function parameter layout)
+#   - fn_single_line                 (allow single-line functions)
+#   - reorder_impl_items             (sort impl block items)
+#   - blank_lines_upper_bound        (max blank lines)
+#   - blank_lines_lower_bound        (min blank lines)
+#   - spaces_around_ranges           (operator spacing)
+#   - reorder_derives                (sort derive macros)
+#   - format_strings                 (reformat string literals)
+#   - normalize_comments             (normalize comment styles)
+#   - format_if_else                 (format conditionals)
+#   - overflow_delimited_expressions (multiline expression handling)
+#   - use_try_shorthand              (convert try! to ?, requires -Z unstable)
+#   - use_small_heuristics           (smart formatting, requires -Z unstable)
+#
+# Recommendation: If you need these features, use a pre-commit hook with
+# `rustup default nightly; rustfmt && rustup default stable` instead.

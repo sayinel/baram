@@ -1,6 +1,7 @@
-// §5.1 Toggle Block Extension — roundtrip + feature tests
-import { describe, it, expect } from "vitest";
 import { Schema } from "@tiptap/pm/model";
+// §5.1 Toggle Block Extension — roundtrip + feature tests
+import { describe, expect, it } from "vitest";
+
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 
@@ -190,7 +191,7 @@ describe("Nested toggles", () => {
     expect(outer.child(0).textContent).toBe("Outer");
 
     // Find the inner toggle
-    let innerToggle: typeof outer | null = null;
+    let innerToggle: null | typeof outer = null;
     outer.forEach((child) => {
       if (child.type.name === "toggle") innerToggle = child;
     });

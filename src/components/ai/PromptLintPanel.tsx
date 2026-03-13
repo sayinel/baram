@@ -1,9 +1,12 @@
 // §46 Prompt Lint Suggestions Panel — displays lint issues with click-to-navigate
-import { useState, useEffect } from "react";
-import type { Editor } from "@tiptap/core";
-import { getPromptLintResults } from "../../extensions/plugins/prompt-lint";
+import { useEffect, useState } from "react";
+
 import type { PmLintResult } from "../../extensions/plugins/prompt-lint";
+import type { Editor } from "@tiptap/core";
+
 import { TextSelection } from "@tiptap/pm/state";
+
+import { getPromptLintResults } from "../../extensions/plugins/prompt-lint";
 
 interface PromptLintPanelProps {
   editor: Editor | null;
@@ -52,8 +55,8 @@ export function PromptLintPanel({ editor }: PromptLintPanelProps) {
       <div className="prompt-lint-list">
         {results.map((r, i) => (
           <button
-            key={`${r.rule}-${r.pmFrom}-${i}`}
             className={`prompt-lint-item prompt-lint-item-${r.severity}`}
+            key={`${r.rule}-${r.pmFrom}-${i}`}
             onClick={() => handleClick(r)}
           >
             <span className="prompt-lint-severity-icon">

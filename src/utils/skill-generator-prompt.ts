@@ -2,8 +2,8 @@
 
 export interface SkillGenOptions {
   description: string;
+  outputFormat: "json" | "markdown" | "text";
   variables: string[];
-  outputFormat: "text" | "json" | "markdown";
 }
 
 /**

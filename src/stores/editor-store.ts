@@ -1,73 +1,73 @@
 // §3.5 에디터 상태 스토어
 import { create } from "zustand";
 
-export type EditorTabType = "file" | "graph";
-
 export interface EditorTab {
-  id: string;
   filePath: string;
-  title: string;
+  id: string;
   isDirty: boolean;
   /** §38 Tab Pin */
   isPinned: boolean;
+  title: string;
   /** Tab type — defaults to "file" for backward compat */
   type?: EditorTabType;
 }
 
-export function isFileTab(tab: EditorTab | undefined): boolean {
-  return !!tab && (!tab.type || tab.type === "file");
-}
-export function isGraphTab(tab: EditorTab | undefined): boolean {
-  return tab?.type === "graph";
-}
+export type EditorTabType = "file" | "graph";
 
 interface EditorState {
-  activeTabId: string | null;
-  tabs: EditorTab[];
-  isSourceMode: boolean;
-  /** §39 MRU tab order — index 0 is most recently used */
-  mruOrder: string[];
-  /** §44 Current editor selection text (for @selection reference) */
-  currentSelection: string;
+  activeTabId: null | string;
+  /** Close all tabs (including pinned) */
+  closeAllTabs: () => void;
+  /** §38 Close all unpinned tabs except the given one */
+  closeOtherTabs: (tabId: string) => void;
+  closeTab: (tabId: string) => void;
+  /** §38 Close unpinned tabs to the right of the given tab */
+  closeTabsToRight: (tabId: string) => void;
   /** §72 Bumped when external code (e.g. PropertiesPanel) updates file content in store */
   contentRefreshKey: number;
 
-  setActiveTab: (tabId: string) => void;
-  openTab: (tab: EditorTab) => void;
-  closeTab: (tabId: string) => void;
-  markDirty: (tabId: string, dirty: boolean) => void;
-  toggleSourceMode: () => void;
-  /** §39 Move tabId to front of MRU list */
-  touchMru: (tabId: string) => void;
+  /** §44 Current editor selection text (for @selection reference) */
+  currentSelection: string;
   /** §39 Get next/previous tab in MRU order (wraps around). Returns null if ≤1 tab. */
   getNextMruTab: (
     currentId: string,
-    direction: "forward" | "backward",
-  ) => string | null;
-  /** §33 Rename tab: update filePath and title for a renamed file */
-  renameTab: (oldPath: string, newPath: string, newTitle: string) => void;
-  /** §61 Rename directory: update all tabs whose filePath starts with oldDir */
-  renameDirInTabs: (oldDir: string, newDir: string) => void;
-  /** Reorder tab from one index to another */
-  reorderTab: (fromIndex: number, toIndex: number) => void;
-  /** §38 Pin a tab — moves to end of pinned group */
-  pinTab: (tabId: string) => void;
-  /** §38 Unpin a tab — moves to start of unpinned group */
-  unpinTab: (tabId: string) => void;
-  /** §38 Toggle pin state */
-  togglePinTab: (tabId: string) => void;
-  /** §38 Close all unpinned tabs except the given one */
-  closeOtherTabs: (tabId: string) => void;
-  /** §38 Close unpinned tabs to the right of the given tab */
-  closeTabsToRight: (tabId: string) => void;
+    direction: "backward" | "forward",
+  ) => null | string;
+  isSourceMode: boolean;
+  markDirty: (tabId: string, dirty: boolean) => void;
+  /** §39 MRU tab order — index 0 is most recently used */
+  mruOrder: string[];
   /** Open graph view as a singleton tab */
   openGraphTab: () => void;
-  /** §44 Update current editor selection text */
-  setCurrentSelection: (text: string) => void;
+  openTab: (tab: EditorTab) => void;
+  /** §38 Pin a tab — moves to end of pinned group */
+  pinTab: (tabId: string) => void;
+  /** §61 Rename directory: update all tabs whose filePath starts with oldDir */
+  renameDirInTabs: (oldDir: string, newDir: string) => void;
+  /** §33 Rename tab: update filePath and title for a renamed file */
+  renameTab: (oldPath: string, newPath: string, newTitle: string) => void;
+  /** Reorder tab from one index to another */
+  reorderTab: (fromIndex: number, toIndex: number) => void;
   /** §72 Signal editor to re-read content from fileStore */
   requestContentRefresh: () => void;
-  /** Close all tabs (including pinned) */
-  closeAllTabs: () => void;
+  setActiveTab: (tabId: string) => void;
+  /** §44 Update current editor selection text */
+  setCurrentSelection: (text: string) => void;
+  tabs: EditorTab[];
+  /** §38 Toggle pin state */
+  togglePinTab: (tabId: string) => void;
+  toggleSourceMode: () => void;
+  /** §39 Move tabId to front of MRU list */
+  touchMru: (tabId: string) => void;
+  /** §38 Unpin a tab — moves to start of unpinned group */
+  unpinTab: (tabId: string) => void;
+}
+export function isFileTab(tab: EditorTab | undefined): boolean {
+  return !!tab && (!tab.type || tab.type === "file");
+}
+
+export function isGraphTab(tab: EditorTab | undefined): boolean {
+  return tab?.type === "graph";
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({

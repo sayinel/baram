@@ -2,35 +2,34 @@
 // Debounces cursor idle, builds context prompt, streams LLM response,
 // updates ProseMirror decoration via ghostTextPluginKey meta.
 
-import { useEffect, useRef, useCallback } from "react";
-import type { Editor } from "@tiptap/core";
-import { useAIStore } from "../stores/ai-store";
-import { useEditorStore } from "../stores/editor-store";
-import { ghostTextPluginKey } from "../extensions/plugins/ghost-text";
-import { buildGhostTextConfig } from "../utils/ghost-text-prompt";
-import { llmComplete, llmCancel } from "../ipc/invoke";
+import { useCallback, useEffect, useRef } from "react";
+
 import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
+
 import type {
-  LLMTokenPayload,
   LLMDonePayload,
   LLMErrorPayload,
+  LLMTokenPayload,
 } from "../ipc/types";
-import { isLLMAllowed, getFilePrivacy } from "../utils/privacy-check";
+import type { Editor } from "@tiptap/core";
+
+import { ghostTextPluginKey } from "../extensions/plugins/ghost-text";
+import { llmCancel, llmComplete } from "../ipc/invoke";
+import { useAIStore } from "../stores/ai-store";
+import { useEditorStore } from "../stores/editor-store";
+import { buildGhostTextConfig } from "../utils/ghost-text-prompt";
 import { getConfigForTask } from "../utils/model-selection";
+import { getFilePrivacy, isLLMAllowed } from "../utils/privacy-check";
 
 // Simple prefix cache (last 5 suggestions)
 const prefixCache = new Map<string, string>();
 const MAX_CACHE_SIZE = 5;
 
-function getCacheKey(textBefore: string): string {
-  return textBefore.slice(-200);
-}
-
 export function useGhostText(editor: Editor | null) {
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debounceRef = useRef<null | ReturnType<typeof setTimeout>>(null);
   const unlistenRefs = useRef<UnlistenFn[]>([]);
-  const activeRequestRef = useRef<string | null>(null);
+  const activeRequestRef = useRef<null | string>(null);
   const accumulatedRef = useRef("");
 
   const cleanup = useCallback(async () => {
@@ -202,4 +201,8 @@ export function useGhostText(editor: Editor | null) {
       cleanup();
     };
   }, [editor, cleanup]);
+}
+
+function getCacheKey(textBefore: string): string {
+  return textBefore.slice(-200);
 }

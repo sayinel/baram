@@ -2,17 +2,18 @@
  * §56l Phase B — Daily Capture utility tests
  * TDD Red Phase: all tests should FAIL before implementation
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import {
-  type CaptureItem,
-  CAPTURE_TYPES,
-  CAPTURE_ICONS,
-  parseCapturesFromMarkdown,
-  serializeCaptureToMarkdown,
-  insertCaptureIntoContent,
-  extractCapturesSection,
   buildNoteFromCapture,
   buildPromotedCaptureLink,
+  CAPTURE_ICONS,
+  CAPTURE_TYPES,
+  type CaptureItem,
+  extractCapturesSection,
+  insertCaptureIntoContent,
+  parseCapturesFromMarkdown,
+  serializeCaptureToMarkdown,
 } from "../journal-capture";
 
 describe("§56l Capture types and constants", () => {

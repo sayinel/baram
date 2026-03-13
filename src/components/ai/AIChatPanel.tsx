@@ -1,32 +1,34 @@
 // §44 AI Chat Panel — right-side conversational AI interface
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import type { ResolvedReference } from "../../utils/chat-context";
+
+import { useLLMStream } from "../../hooks/use-llm-stream";
 import { useChatStore } from "../../stores/chat-store";
 import { useUIStore } from "../../stores/ui-store";
-import { useLLMStream } from "../../hooks/use-llm-stream";
-import { ChatMessage } from "./ChatMessage";
 import {
+  buildContextPrompt,
   parseReferences,
   resolveReference,
-  buildContextPrompt,
 } from "../../utils/chat-context";
-import type { ResolvedReference } from "../../utils/chat-context";
 import { formatAIError } from "../../utils/format-error";
+import { ChatMessage } from "./ChatMessage";
 import { ReferenceAutocomplete } from "./ReferenceAutocomplete";
 
 const ChevronIcon = ({ rotated }: { rotated: boolean }) => (
   <svg
-    width="12"
-    height="12"
-    viewBox="0 0 24 24"
     fill="none"
+    height="12"
     stroke="currentColor"
-    strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
+    strokeWidth="2"
     style={{
       transform: rotated ? "rotate(180deg)" : "none",
       transition: "transform 0.15s",
     }}
+    viewBox="0 0 24 24"
+    width="12"
   >
     <polyline points="6 9 12 15 18 9" />
   </svg>
@@ -47,12 +49,12 @@ export function AIChatPanel() {
   const { send, cancel, isStreaming, text, error } = useLLMStream();
   const [input, setInput] = useState("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [refQuery, setRefQuery] = useState<string | null>(null);
+  const [refQuery, setRefQuery] = useState<null | string>(null);
   const [refPosition, setRefPosition] = useState({ top: 0, left: 0 });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const inputAreaRef = useRef<HTMLDivElement>(null);
-  const streamSessionRef = useRef<string | null>(null);
+  const streamSessionRef = useRef<null | string>(null);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -250,8 +252,8 @@ export function AIChatPanel() {
             <div className="ai-chat-dropdown-menu">
               {sessions.map((s) => (
                 <div
-                  key={s.id}
                   className={`ai-chat-dropdown-item ${s.id === activeSessionId ? "active" : ""}`}
+                  key={s.id}
                 >
                   <button
                     className="ai-chat-dropdown-item-label"
@@ -296,17 +298,17 @@ export function AIChatPanel() {
         )}
         {messages.map((msg) => (
           <ChatMessage
-            key={msg.id}
-            role={msg.role}
             content={msg.content}
             isStreaming={
               isStreaming &&
               msg.id === messages[messages.length - 1]?.id &&
               msg.role === "assistant"
             }
+            key={msg.id}
             onApplyToEditor={
               msg.role === "assistant" ? handleApplyToEditor : undefined
             }
+            role={msg.role}
           />
         ))}
         <div ref={messagesEndRef} />
@@ -326,21 +328,21 @@ export function AIChatPanel() {
       <div className="ai-chat-input-area" ref={inputAreaRef}>
         {refQuery !== null && (
           <ReferenceAutocomplete
-            query={refQuery}
-            position={refPosition}
-            onSelect={handleRefSelect}
             onClose={() => setRefQuery(null)}
+            onSelect={handleRefSelect}
+            position={refPosition}
+            query={refQuery}
           />
         )}
         <textarea
-          ref={inputRef}
           className="ai-chat-input"
-          value={input}
+          disabled={isStreaming}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           placeholder="Ask AI... (@current for context)"
+          ref={inputRef}
           rows={2}
-          disabled={isStreaming}
+          value={input}
         />
         <div className="ai-chat-input-actions">
           {isStreaming ? (
@@ -350,8 +352,8 @@ export function AIChatPanel() {
           ) : (
             <button
               className="ai-chat-send-btn"
-              onClick={handleSend}
               disabled={!input.trim()}
+              onClick={handleSend}
             >
               Send
             </button>

@@ -10,21 +10,21 @@
 /** Matches ` ^{id}` at end of string. ID: starts with [a-zA-Z0-9], followed by [\w-]* */
 export const BLOCK_ID_SUFFIX_RE = / \^([a-zA-Z0-9][\w-]*)$/;
 
+/** Append ` ^{id}` suffix to text */
+export function appendBlockId(text: string, blockId: string): string {
+  return `${text} ^${blockId}`;
+}
+
 /** Extract block ID from text, returning stripped text + id, or null if not found */
 export function extractBlockId(
   text: string,
-): { blockId: string; strippedText: string } | null {
+): null | { blockId: string; strippedText: string } {
   const match = BLOCK_ID_SUFFIX_RE.exec(text);
   if (!match) return null;
   return {
     blockId: match[1],
     strippedText: text.slice(0, match.index),
   };
-}
-
-/** Append ` ^{id}` suffix to text */
-export function appendBlockId(text: string, blockId: string): string {
-  return `${text} ^${blockId}`;
 }
 
 // --- §30b: Auto-generation ---
@@ -42,9 +42,9 @@ export const BLOCK_REF_RE =
 
 /** Parse block reference attributes from a regex match */
 export function parseBlockRefMatch(match: RegExpMatchArray): {
-  target: string;
   blockId: string;
-  display: string | null;
+  display: null | string;
+  target: string;
 } {
   return {
     target: match[1],
@@ -55,9 +55,9 @@ export function parseBlockRefMatch(match: RegExpMatchArray): {
 
 /** Serialize block reference attrs back to ((...)) string */
 export function serializeBlockRef(attrs: {
-  target: string;
   blockId: string;
-  display?: string | null;
+  display?: null | string;
+  target: string;
 }): string {
   const ref = `${attrs.target}#^${attrs.blockId}`;
   if (attrs.display) {
@@ -74,8 +74,8 @@ export const BLOCK_EMBED_RE =
 
 /** Parse block embed attributes from a regex match */
 export function parseBlockEmbedMatch(match: RegExpMatchArray): {
-  target: string;
   blockId: string;
+  target: string;
 } {
   return {
     target: match[1],
@@ -85,8 +85,8 @@ export function parseBlockEmbedMatch(match: RegExpMatchArray): {
 
 /** Serialize block embed attrs back to {{embed ((...))}} string */
 export function serializeBlockEmbed(attrs: {
-  target: string;
   blockId: string;
+  target: string;
 }): string {
   return `{{embed ((${attrs.target}#^${attrs.blockId}))}}`;
 }

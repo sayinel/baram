@@ -1,17 +1,24 @@
 // §56e Mood/Energy Bar — segmented control design
 // §56j Emotion Inference + §56m AI Tag Suggestions
-import { useState, useEffect, useCallback, useRef } from "react";
-import type { Editor } from "@tiptap/react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import type { Node as PMNode } from "@tiptap/pm/model";
+import type { Editor } from "@tiptap/react";
+
 import {
+  parseFrontmatterTags,
+  updateFrontmatterTags,
+} from "../../extensions/nodes/frontmatter-view";
+import { useLLMStream } from "../../hooks/use-llm-stream";
+import { getVaultTags } from "../../ipc/invoke";
+import { useEditorStore } from "../../stores/editor-store";
+import { useFileStore } from "../../stores/file-store";
+import { useSettingsStore } from "../../stores/settings-store";
+import {
+  type EnergyValue,
   MOOD_VALUES,
   type MoodValue,
-  type EnergyValue,
 } from "../../utils/journal-mood";
-import { useFileStore } from "../../stores/file-store";
-import { useEditorStore } from "../../stores/editor-store";
-import { useSettingsStore } from "../../stores/settings-store";
-import { useLLMStream } from "../../hooks/use-llm-stream";
 import {
   buildEmotionInferencePrompt,
   parseEmotionResponse,
@@ -20,11 +27,6 @@ import {
   buildTagSuggestionPrompt,
   parseTagSuggestions,
 } from "../../utils/journal-tags";
-import {
-  parseFrontmatterTags,
-  updateFrontmatterTags,
-} from "../../extensions/nodes/frontmatter-view";
-import { getVaultTags } from "../../ipc/invoke";
 
 interface MoodBarProps {
   editor: Editor | null;
@@ -66,6 +68,18 @@ const ENERGY_FILLS = [
   "rgba(var(--mood-accent-rgb, 100, 116, 139), 0.42)",
 ];
 
+/** Find frontmatter node and its position in the PM document */
+function findFrontmatter(editor: Editor): null | { node: PMNode; pos: number } {
+  let result: null | { node: PMNode; pos: number } = null;
+  editor.state.doc.descendants((node, pos) => {
+    if (node.type.name === "frontmatter" && !result) {
+      result = { node, pos };
+      return false;
+    }
+  });
+  return result;
+}
+
 /** Check if the active file is a journal daily note */
 function isJournalDailyNote(): boolean {
   const { isJournalScoped } = useFileStore.getState();
@@ -80,43 +94,10 @@ function isJournalDailyNote(): boolean {
   );
 }
 
-/** Find frontmatter node and its position in the PM document */
-function findFrontmatter(editor: Editor): { node: PMNode; pos: number } | null {
-  let result: { node: PMNode; pos: number } | null = null;
-  editor.state.doc.descendants((node, pos) => {
-    if (node.type.name === "frontmatter" && !result) {
-      result = { node, pos };
-      return false;
-    }
-  });
-  return result;
-}
-
 /** Parse a field value from YAML text */
 function parseYamlField(yaml: string, field: string): string | undefined {
   const match = yaml.match(new RegExp(`^${field}:\\s*(.+)$`, "m"));
   return match ? match[1].trim() : undefined;
-}
-
-/** Update a field in YAML text */
-function updateYamlField(
-  yaml: string,
-  field: string,
-  value: string | undefined,
-): string {
-  const fieldRegex = new RegExp(`^${field}:\\s*.*$`, "m");
-  const hasField = fieldRegex.test(yaml);
-
-  if (value === undefined) {
-    return yaml
-      .replace(fieldRegex, "")
-      .replace(/\n{2,}/g, "\n")
-      .trim();
-  } else if (hasField) {
-    return yaml.replace(fieldRegex, `${field}: ${value}`);
-  } else {
-    return yaml.trim() + `\n${field}: ${value}`;
-  }
 }
 
 /** Update frontmatter in the ProseMirror document */
@@ -144,6 +125,27 @@ function updateFrontmatterField(
 
   editor.view.dispatch(tr);
   return true;
+}
+
+/** Update a field in YAML text */
+function updateYamlField(
+  yaml: string,
+  field: string,
+  value: string | undefined,
+): string {
+  const fieldRegex = new RegExp(`^${field}:\\s*.*$`, "m");
+  const hasField = fieldRegex.test(yaml);
+
+  if (value === undefined) {
+    return yaml
+      .replace(fieldRegex, "")
+      .replace(/\n{2,}/g, "\n")
+      .trim();
+  } else if (hasField) {
+    return yaml.replace(fieldRegex, `${field}: ${value}`);
+  } else {
+    return yaml.trim() + `\n${field}: ${value}`;
+  }
 }
 
 /** Mood labels in Korean for AI suggestion display */
@@ -395,8 +397,9 @@ export function MoodBar({ editor }: MoodBarProps) {
               const isSelected = mood === v;
               return (
                 <button
-                  key={v}
                   className={`mood-segment ${isSelected ? "mood-segment-selected" : ""}`}
+                  key={v}
+                  onClick={() => handleMoodClick(v)}
                   style={
                     isSelected
                       ? {
@@ -405,7 +408,6 @@ export function MoodBar({ editor }: MoodBarProps) {
                         }
                       : undefined
                   }
-                  onClick={() => handleMoodClick(v)}
                   title={MOOD_SEGMENT_LABELS[v]}
                 >
                   {MOOD_SEGMENT_LABELS[v]}
@@ -421,14 +423,14 @@ export function MoodBar({ editor }: MoodBarProps) {
               const isFilled = energy !== undefined && v <= energy;
               return (
                 <button
-                  key={v}
                   className={`mood-segment energy-segment ${isFilled ? "energy-segment-filled" : ""}`}
+                  key={v}
+                  onClick={() => handleEnergyClick(v)}
                   style={
                     isFilled
                       ? { backgroundColor: ENERGY_FILLS[v - 1] }
                       : undefined
                   }
-                  onClick={() => handleEnergyClick(v)}
                   title={`Energy ${v}`}
                 >
                   {v}
@@ -441,8 +443,8 @@ export function MoodBar({ editor }: MoodBarProps) {
         {journalAIReflectionEnabled && (
           <button
             className="mood-bar-tag-suggest-btn"
-            onClick={handleTagSuggest}
             disabled={tagsLoading || tagLLM.isStreaming}
+            onClick={handleTagSuggest}
             title="AI 태그 추천"
           >
             {tagsLoading || tagLLM.isStreaming ? "..." : "🏷️"}
@@ -482,8 +484,8 @@ export function MoodBar({ editor }: MoodBarProps) {
           <span className="mood-bar-ai-tags-label">AI 태그:</span>
           {suggestedTags.map((tag) => (
             <button
-              key={tag}
               className="ai-tag-chip"
+              key={tag}
               onClick={() => handleAcceptTag(tag)}
               title={`"${tag}" 추가`}
             >

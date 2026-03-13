@@ -4,146 +4,44 @@
  * The cache file lives at {journalDir}/.journal.json and is already in
  * JOURNAL_HIDDEN_ENTRIES so it won't appear in the FileTree.
  */
-import { readFile, writeFile, listDir } from "../ipc/invoke";
+import { listDir, readFile, writeFile } from "../ipc/invoke";
 
 // ---- Types ----------------------------------------------------------------
 
 export interface JournalEntryMeta {
-  words: number;
-  mood?: string;
   energy?: number;
   hasPhotos?: boolean;
-  tags?: string[];
   modifiedHour?: number; // 0-23, hour-of-day when the file was last modified
+  mood?: string;
+  tags?: string[];
+  words: number;
 }
 
 export interface JournalStatsCache {
-  version: 1;
-  stats: {
-    currentStreak: number;
-    longestStreak: number;
-    totalEntries: number;
-    totalWords: number;
-    lastFullScan: string; // ISO datetime
-  };
   entriesByDate: Record<string, JournalEntryMeta>;
   promptHistory?: {
     usedPromptIds: string[]; // recently used prompt IDs, oldest first (max 50)
   };
+  stats: {
+    currentStreak: number;
+    lastFullScan: string; // ISO datetime
+    longestStreak: number;
+    totalEntries: number;
+    totalWords: number;
+  };
+  version: 1;
 }
-
-/** Maximum number of prompt IDs retained in history. */
-const PROMPT_HISTORY_MAX = 50;
 
 // ---- Cache path -----------------------------------------------------------
 
-function cachePath(journalDir: string): string {
-  return `${journalDir}/.journal.json`;
+interface ParsedFrontmatter {
+  [key: string]: unknown;
+  energy?: number;
+  mood?: string;
+  tags?: string[];
 }
 
 // ---- Public API -----------------------------------------------------------
-
-/** Read the cache from disk. Returns null if not found or parse fails. */
-export async function readStatsCache(
-  journalDir: string,
-): Promise<JournalStatsCache | null> {
-  try {
-    const raw = await readFile(cachePath(journalDir));
-    const parsed = JSON.parse(raw) as JournalStatsCache;
-    if (parsed.version !== 1) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-/** Write the cache to disk. */
-export async function writeStatsCache(
-  journalDir: string,
-  cache: JournalStatsCache,
-): Promise<void> {
-  await writeFile(cachePath(journalDir), JSON.stringify(cache, null, 2));
-}
-
-// ---- Prompt history helpers -----------------------------------------------
-
-/**
- * Read the list of recently used prompt IDs from the cache.
- * Returns an empty array if the cache doesn't exist or has no prompt history.
- */
-export async function readPromptHistory(journalDir: string): Promise<string[]> {
-  const cache = await readStatsCache(journalDir);
-  return cache?.promptHistory?.usedPromptIds ?? [];
-}
-
-/**
- * Append a prompt ID to the history, capping at PROMPT_HISTORY_MAX entries.
- * Persists the updated history back to the cache file without modifying stats.
- */
-export async function addPromptToHistory(
-  journalDir: string,
-  promptId: string,
-): Promise<void> {
-  const cache = await readStatsCache(journalDir);
-  const existing = cache?.promptHistory?.usedPromptIds ?? [];
-  // Append and trim oldest entries beyond cap
-  const updated = [...existing, promptId].slice(-PROMPT_HISTORY_MAX);
-
-  const base: JournalStatsCache = cache ?? createEmptyCache();
-  await writeStatsCache(journalDir, {
-    ...base,
-    promptHistory: { usedPromptIds: updated },
-  });
-}
-
-// ---- Stats cache ----------------------------------------------------------
-
-/** Create a fresh empty cache object. */
-export function createEmptyCache(): JournalStatsCache {
-  return {
-    version: 1,
-    stats: {
-      currentStreak: 0,
-      longestStreak: 0,
-      totalEntries: 0,
-      totalWords: 0,
-      lastFullScan: new Date(0).toISOString(),
-    },
-    entriesByDate: {},
-  };
-}
-
-/**
- * Parse a single journal file's content and update the cache for its date.
- * Also recomputes aggregate stats (streak, totals).
- *
- * @param cache - The current cache object (not mutated; a new object is returned)
- * @param date  - "YYYY-MM-DD" string for this entry
- * @param content - Raw markdown content of the file
- */
-export function updateCacheEntry(
-  cache: JournalStatsCache,
-  date: string,
-  content: string,
-): JournalStatsCache {
-  const meta = parseEntryContent(content);
-
-  const newEntriesByDate: Record<string, JournalEntryMeta> = {
-    ...cache.entriesByDate,
-    [date]: meta,
-  };
-
-  const stats = recomputeStats(newEntriesByDate);
-
-  return {
-    version: 1,
-    stats: {
-      ...stats,
-      lastFullScan: cache.stats.lastFullScan,
-    },
-    entriesByDate: newEntriesByDate,
-  };
-}
 
 /**
  * Full scan of the daily/ directory, parse all files, compute all stats.
@@ -209,38 +107,96 @@ export async function buildFullCache(
   };
 }
 
-// ---- Internal helpers -----------------------------------------------------
+// ---- Prompt history helpers -----------------------------------------------
 
-/**
- * Parse a journal file's content to extract word count and frontmatter fields.
- */
-function parseEntryContent(content: string): JournalEntryMeta {
-  const { frontmatter, body } = extractFrontmatter(content);
-
-  // Word count: body text only, strip headings (#…) and count tokens
-  const bodyText = body
-    .split("\n")
-    .filter((line) => !line.startsWith("#"))
-    .join(" ");
-  const words = bodyText.split(/\s+/).filter(Boolean).length;
-
-  const hasPhotos = content.includes("![");
-
+/** Create a fresh empty cache object. */
+export function createEmptyCache(): JournalStatsCache {
   return {
-    words,
-    mood: frontmatter.mood,
-    energy:
-      frontmatter.energy !== undefined ? Number(frontmatter.energy) : undefined,
-    hasPhotos: hasPhotos || undefined,
-    tags: frontmatter.tags,
+    version: 1,
+    stats: {
+      currentStreak: 0,
+      longestStreak: 0,
+      totalEntries: 0,
+      totalWords: 0,
+      lastFullScan: new Date(0).toISOString(),
+    },
+    entriesByDate: {},
   };
 }
 
-interface ParsedFrontmatter {
-  mood?: string;
-  energy?: number;
-  tags?: string[];
-  [key: string]: unknown;
+// ---- Stats cache ----------------------------------------------------------
+
+/** Read the cache from disk. Returns null if not found or parse fails. */
+export async function readStatsCache(
+  journalDir: string,
+): Promise<JournalStatsCache | null> {
+  try {
+    const raw = await readFile(cachePath(journalDir));
+    const parsed = JSON.parse(raw) as JournalStatsCache;
+    if (parsed.version !== 1) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Parse a single journal file's content and update the cache for its date.
+ * Also recomputes aggregate stats (streak, totals).
+ *
+ * @param cache - The current cache object (not mutated; a new object is returned)
+ * @param date  - "YYYY-MM-DD" string for this entry
+ * @param content - Raw markdown content of the file
+ */
+export function updateCacheEntry(
+  cache: JournalStatsCache,
+  date: string,
+  content: string,
+): JournalStatsCache {
+  const meta = parseEntryContent(content);
+
+  const newEntriesByDate: Record<string, JournalEntryMeta> = {
+    ...cache.entriesByDate,
+    [date]: meta,
+  };
+
+  const stats = recomputeStats(newEntriesByDate);
+
+  return {
+    version: 1,
+    stats: {
+      ...stats,
+      lastFullScan: cache.stats.lastFullScan,
+    },
+    entriesByDate: newEntriesByDate,
+  };
+}
+
+/** Write the cache to disk. */
+export async function writeStatsCache(
+  journalDir: string,
+  cache: JournalStatsCache,
+): Promise<void> {
+  await writeFile(cachePath(journalDir), JSON.stringify(cache, null, 2));
+}
+
+// ---- Internal helpers -----------------------------------------------------
+
+function addDays(dateStr: string, n: number): string {
+  const d = parseDate(dateStr);
+  d.setDate(d.getDate() + n);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function cachePath(journalDir: string): string {
+  return `${journalDir}/.journal.json`;
+}
+
+function daysDiff(a: string, b: string): number {
+  return (parseDate(b).getTime() - parseDate(a).getTime()) / 86400000;
 }
 
 /**
@@ -248,8 +204,8 @@ interface ParsedFrontmatter {
  * Only handles simple key: value and tags as YAML list.
  */
 function extractFrontmatter(content: string): {
-  frontmatter: ParsedFrontmatter;
   body: string;
+  frontmatter: ParsedFrontmatter;
 } {
   const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
   if (!fmMatch) {
@@ -325,6 +281,44 @@ function extractFrontmatter(content: string): {
   };
 }
 
+function formatToday(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function parseDate(dateStr: string): Date {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+/**
+ * Parse a journal file's content to extract word count and frontmatter fields.
+ */
+function parseEntryContent(content: string): JournalEntryMeta {
+  const { frontmatter, body } = extractFrontmatter(content);
+
+  // Word count: body text only, strip headings (#…) and count tokens
+  const bodyText = body
+    .split("\n")
+    .filter((line) => !line.startsWith("#"))
+    .join(" ");
+  const words = bodyText.split(/\s+/).filter(Boolean).length;
+
+  const hasPhotos = content.includes("![");
+
+  return {
+    words,
+    mood: frontmatter.mood,
+    energy:
+      frontmatter.energy !== undefined ? Number(frontmatter.energy) : undefined,
+    hasPhotos: hasPhotos || undefined,
+    tags: frontmatter.tags,
+  };
+}
+
 /**
  * Recompute aggregate stats from the full entriesByDate map.
  * Today is computed at call time so streaks are always fresh.
@@ -373,30 +367,4 @@ function recomputeStats(
   if (currentStreak > longestStreak) longestStreak = currentStreak;
 
   return { currentStreak, longestStreak, totalEntries, totalWords };
-}
-
-function formatToday(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function parseDate(dateStr: string): Date {
-  const [y, m, d] = dateStr.split("-").map(Number);
-  return new Date(y, m - 1, d);
-}
-
-function daysDiff(a: string, b: string): number {
-  return (parseDate(b).getTime() - parseDate(a).getTime()) / 86400000;
-}
-
-function addDays(dateStr: string, n: number): string {
-  const d = parseDate(dateStr);
-  d.setDate(d.getDate() + n);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
 }

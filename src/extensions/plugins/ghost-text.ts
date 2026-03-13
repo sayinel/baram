@@ -10,8 +10,8 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 export const ghostTextPluginKey = new PluginKey("ghostText");
 
 export interface GhostTextState {
-  text: string | null;
   pos: number;
+  text: null | string;
 }
 
 export const GhostText = Extension.create({

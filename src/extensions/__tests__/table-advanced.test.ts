@@ -1,6 +1,7 @@
-// §5.5 M10 Table Advanced — cell merge tests
-import { describe, it, expect } from "vitest";
 import { Schema } from "@tiptap/pm/model";
+// §5.5 M10 Table Advanced — cell merge tests
+import { describe, expect, it } from "vitest";
+
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 
@@ -52,17 +53,17 @@ const schema = new Schema({
   },
 });
 
-function roundtrip(md: string): string {
-  const doc = markdownToProsemirror(md, schema);
-  return prosemirrorToMarkdown(doc);
-}
-
 /** Count inner cells in a GFM table row like `| A | B |` */
 function countInnerCells(line: string): string[] {
   return line
     .split("|")
     .map((s) => s.trim())
     .filter((_s, i, arr) => i > 0 && i < arr.length - 1);
+}
+
+function roundtrip(md: string): string {
+  const doc = markdownToProsemirror(md, schema);
+  return prosemirrorToMarkdown(doc);
 }
 
 describe("Table Advanced — cell merge (§5.5 M10)", () => {

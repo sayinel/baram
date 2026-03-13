@@ -2,6 +2,50 @@
  * §56c — Memories View utility: One Line extraction + Memories data grouping
  */
 
+/** Memory entry for grouping */
+export interface MemoryEntry {
+  content: string;
+  path: string;
+  year: number;
+}
+
+/** Extract the Diary section content (markdown) from journal content */
+export function extractDiarySection(content: string): string {
+  if (!content.trim()) return "";
+
+  // Strip frontmatter
+  const fmMatch = content.match(/^---\n[\s\S]*?\n---/);
+  const body = fmMatch
+    ? content.slice(fmMatch[0].length).trim()
+    : content.trim();
+  if (!body) return "";
+
+  const diaryMatch = body.match(/^## Diary\s*$/m);
+  if (!diaryMatch) return "";
+
+  const diaryStart = diaryMatch.index! + diaryMatch[0].length;
+  const nextSectionMatch = body.slice(diaryStart).match(/^## /m);
+  const diaryContent = nextSectionMatch
+    ? body.slice(diaryStart, diaryStart + nextSectionMatch.index!)
+    : body.slice(diaryStart);
+
+  return diaryContent.trim();
+}
+
+/** Extract image references from journal markdown content */
+export function extractImages(content: string): { alt: string; src: string }[] {
+  if (!content.trim()) return [];
+
+  const images: { alt: string; src: string }[] = [];
+  // Match ![alt](src) pattern
+  const imgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+  let match;
+  while ((match = imgRegex.exec(content)) !== null) {
+    images.push({ alt: match[1], src: match[2] });
+  }
+  return images;
+}
+
 /** Extract a one-line summary from journal markdown content */
 export function extractOneLine(content: string): string {
   if (!content.trim()) return "";
@@ -90,27 +134,11 @@ export function extractOneLine(content: string): string {
   return firstLine;
 }
 
-/** Extract the Diary section content (markdown) from journal content */
-export function extractDiarySection(content: string): string {
-  if (!content.trim()) return "";
+/** Group memory entries by year in reverse chronological order */
+export function groupMemoriesByYear(entries: MemoryEntry[]): MemoryEntry[] {
+  if (entries.length === 0) return [];
 
-  // Strip frontmatter
-  const fmMatch = content.match(/^---\n[\s\S]*?\n---/);
-  const body = fmMatch
-    ? content.slice(fmMatch[0].length).trim()
-    : content.trim();
-  if (!body) return "";
-
-  const diaryMatch = body.match(/^## Diary\s*$/m);
-  if (!diaryMatch) return "";
-
-  const diaryStart = diaryMatch.index! + diaryMatch[0].length;
-  const nextSectionMatch = body.slice(diaryStart).match(/^## /m);
-  const diaryContent = nextSectionMatch
-    ? body.slice(diaryStart, diaryStart + nextSectionMatch.index!)
-    : body.slice(diaryStart);
-
-  return diaryContent.trim();
+  return [...entries].sort((a, b) => b.year - a.year);
 }
 
 /**
@@ -127,7 +155,7 @@ export function renderSimpleMarkdown(md: string): string {
 
   const lines = escaped.split("\n");
   const html: string[] = [];
-  let inList: "ul" | "ol" | null = null;
+  let inList: "ol" | "ul" | null = null;
   let inBlockquote = false;
   let paragraphLines: string[] = [];
 
@@ -254,6 +282,40 @@ export function renderSimpleMarkdown(md: string): string {
   return html.join("\n");
 }
 
+/** Update or insert the `oneline` field in frontmatter */
+export function updateOneLineFrontmatter(
+  content: string,
+  newOneLine: string,
+): string {
+  const fmMatch = content.match(/^(---\n)([\s\S]*?)(\n---)/);
+  if (fmMatch) {
+    const fmBody = fmMatch[2];
+    const onelineRegex = /^oneline:\s*.*$/m;
+    if (onelineRegex.test(fmBody)) {
+      // Replace existing oneline
+      const updatedBody = fmBody.replace(
+        onelineRegex,
+        `oneline: "${newOneLine}"`,
+      );
+      return (
+        fmMatch[1] + updatedBody + fmMatch[3] + content.slice(fmMatch[0].length)
+      );
+    } else {
+      // Append oneline to existing frontmatter
+      return (
+        fmMatch[1] +
+        fmBody +
+        `\noneline: "${newOneLine}"` +
+        fmMatch[3] +
+        content.slice(fmMatch[0].length)
+      );
+    }
+  } else {
+    // No frontmatter — prepend one
+    return `---\noneline: "${newOneLine}"\n---\n${content}`;
+  }
+}
+
 /** Convert inline markdown syntax to HTML */
 function inlineMarkdown(text: string): string {
   // 1. Extract images and links first to protect them from inline formatting
@@ -301,66 +363,4 @@ function inlineMarkdown(text: string): string {
   );
 
   return processed;
-}
-
-/** Extract image references from journal markdown content */
-export function extractImages(content: string): { alt: string; src: string }[] {
-  if (!content.trim()) return [];
-
-  const images: { alt: string; src: string }[] = [];
-  // Match ![alt](src) pattern
-  const imgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
-  let match;
-  while ((match = imgRegex.exec(content)) !== null) {
-    images.push({ alt: match[1], src: match[2] });
-  }
-  return images;
-}
-
-/** Update or insert the `oneline` field in frontmatter */
-export function updateOneLineFrontmatter(
-  content: string,
-  newOneLine: string,
-): string {
-  const fmMatch = content.match(/^(---\n)([\s\S]*?)(\n---)/);
-  if (fmMatch) {
-    const fmBody = fmMatch[2];
-    const onelineRegex = /^oneline:\s*.*$/m;
-    if (onelineRegex.test(fmBody)) {
-      // Replace existing oneline
-      const updatedBody = fmBody.replace(
-        onelineRegex,
-        `oneline: "${newOneLine}"`,
-      );
-      return (
-        fmMatch[1] + updatedBody + fmMatch[3] + content.slice(fmMatch[0].length)
-      );
-    } else {
-      // Append oneline to existing frontmatter
-      return (
-        fmMatch[1] +
-        fmBody +
-        `\noneline: "${newOneLine}"` +
-        fmMatch[3] +
-        content.slice(fmMatch[0].length)
-      );
-    }
-  } else {
-    // No frontmatter — prepend one
-    return `---\noneline: "${newOneLine}"\n---\n${content}`;
-  }
-}
-
-/** Memory entry for grouping */
-export interface MemoryEntry {
-  year: number;
-  path: string;
-  content: string;
-}
-
-/** Group memory entries by year in reverse chronological order */
-export function groupMemoriesByYear(entries: MemoryEntry[]): MemoryEntry[] {
-  if (entries.length === 0) return [];
-
-  return [...entries].sort((a, b) => b.year - a.year);
 }

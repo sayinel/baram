@@ -1,57 +1,31 @@
 // §56c Memories View — right panel component
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { useUIStore } from "../../stores/ui-store";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { convertFileSrc } from "@tauri-apps/api/core";
+
+import { getBacklinks, listDir, readFile, writeFile } from "../../ipc/invoke";
+import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { useSettingsStore } from "../../stores/settings-store";
-import { useEditorStore } from "../../stores/editor-store";
+import { useUIStore } from "../../stores/ui-store";
+import { getFirstDayOfWeek, getMonthDays } from "../../utils/journal";
 import {
-  extractOneLine,
   extractDiarySection,
+  extractOneLine,
   renderSimpleMarkdown,
   updateOneLineFrontmatter,
 } from "../../utils/journal-memories";
-import { getMonthDays, getFirstDayOfWeek } from "../../utils/journal";
-import { listDir, readFile, writeFile, getBacklinks } from "../../ipc/invoke";
-import { convertFileSrc } from "@tauri-apps/api/core";
 
+type MemoriesMode = "full" | "oneline";
 type MemoriesTab = "journal" | "notes";
-type MemoriesMode = "oneline" | "full";
 
 interface MemoryEntry {
-  year: number;
-  path: string;
-  oneLine: string;
   diaryContent: string;
   fullContent: string;
   isCurrentYear: boolean;
-}
-
-/** Resolve relative image src attributes in rendered HTML to Tauri asset protocol URLs */
-function resolveImageSrcs(html: string, fileDir: string): string {
-  return html.replace(/<img([^>]*) src="([^"]+)"/g, (_match, before, src) => {
-    // Skip absolute URLs and data URIs
-    if (
-      src.startsWith("http://") ||
-      src.startsWith("https://") ||
-      src.startsWith("data:")
-    ) {
-      return `<img${before} src="${src}"`;
-    }
-    // Resolve relative path against journal file's directory
-    const cleanSrc = src.startsWith("./") ? src.slice(2) : src;
-    const absolutePath = cleanSrc.startsWith("/")
-      ? cleanSrc
-      : `${fileDir}/${cleanSrc}`;
-    return `<img${before} src="${convertFileSrc(absolutePath)}"`;
-  });
-}
-
-/** Resolve journal base path, handling absolute journalDirectory */
-function resolveJournalBase(rootPath: string, journalDir: string): string {
-  if (journalDir.startsWith("/") || /^[A-Z]:\\/i.test(journalDir)) {
-    return journalDir;
-  }
-  return `${rootPath}/${journalDir}`;
+  oneLine: string;
+  path: string;
+  year: number;
 }
 
 export function MemoriesPanel() {
@@ -105,14 +79,14 @@ export function MemoriesPanel() {
             title="이전 날"
           >
             <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
               fill="none"
+              height="12"
               stroke="currentColor"
-              strokeWidth="2.5"
               strokeLinecap="round"
               strokeLinejoin="round"
+              strokeWidth="2.5"
+              viewBox="0 0 24 24"
+              width="12"
             >
               <polyline points="15 18 9 12 15 6" />
             </svg>
@@ -131,14 +105,14 @@ export function MemoriesPanel() {
             title="다음 날"
           >
             <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
               fill="none"
+              height="12"
               stroke="currentColor"
-              strokeWidth="2.5"
               strokeLinecap="round"
               strokeLinejoin="round"
+              strokeWidth="2.5"
+              viewBox="0 0 24 24"
+              width="12"
             >
               <polyline points="9 18 15 12 9 6" />
             </svg>
@@ -148,20 +122,20 @@ export function MemoriesPanel() {
 
       {showCalendar && (
         <MiniCalendar
-          selectedDate={selectedDate}
+          onClose={() => setShowCalendar(false)}
           onSelect={(d) => {
             setSelectedDate(d);
             setShowCalendar(false);
           }}
-          onClose={() => setShowCalendar(false)}
+          selectedDate={selectedDate}
         />
       )}
 
       <div className="memories-tabs">
         {TABS.map((tab) => (
           <button
-            key={tab.id}
             className={`memories-tabs-btn ${safeTab === tab.id ? "memories-tabs-btn-active" : ""}`}
+            key={tab.id}
             onClick={() => setActiveTab(tab.id)}
           >
             {tab.label}
@@ -172,20 +146,48 @@ export function MemoriesPanel() {
       <div className="memories-content">
         {safeTab === "journal" && (
           <JournalTab
-            memories={memories}
-            setMemories={setMemories}
-            mode={mode}
-            setMode={setMode}
-            loading={loading}
-            setLoading={setLoading}
-            month={month}
             day={day}
+            loading={loading}
+            memories={memories}
+            mode={mode}
+            month={month}
+            setLoading={setLoading}
+            setMemories={setMemories}
+            setMode={setMode}
           />
         )}
         {safeTab === "notes" && <NotesTab />}
       </div>
     </div>
   );
+}
+
+/** Resolve relative image src attributes in rendered HTML to Tauri asset protocol URLs */
+function resolveImageSrcs(html: string, fileDir: string): string {
+  return html.replace(/<img([^>]*) src="([^"]+)"/g, (_match, before, src) => {
+    // Skip absolute URLs and data URIs
+    if (
+      src.startsWith("http://") ||
+      src.startsWith("https://") ||
+      src.startsWith("data:")
+    ) {
+      return `<img${before} src="${src}"`;
+    }
+    // Resolve relative path against journal file's directory
+    const cleanSrc = src.startsWith("./") ? src.slice(2) : src;
+    const absolutePath = cleanSrc.startsWith("/")
+      ? cleanSrc
+      : `${fileDir}/${cleanSrc}`;
+    return `<img${before} src="${convertFileSrc(absolutePath)}"`;
+  });
+}
+
+/** Resolve journal base path, handling absolute journalDirectory */
+function resolveJournalBase(rootPath: string, journalDir: string): string {
+  if (journalDir.startsWith("/") || /^[A-Z]:\\/i.test(journalDir)) {
+    return journalDir;
+  }
+  return `${rootPath}/${journalDir}`;
 }
 
 // --- MiniCalendar ---
@@ -206,189 +208,81 @@ const MINI_CAL_MONTH_NAMES = [
   "12월",
 ];
 
-interface MiniCalendarProps {
-  selectedDate: Date;
-  onSelect: (date: Date) => void;
-  onClose: () => void;
-}
-
 type CalendarView = "days" | "months" | "years";
 
-function MiniCalendar({ selectedDate, onSelect, onClose }: MiniCalendarProps) {
-  const [viewYear, setViewYear] = useState(selectedDate.getFullYear());
-  const [viewMonth, setViewMonth] = useState(selectedDate.getMonth());
-  const [view, setView] = useState<CalendarView>("days");
-  const ref = useRef<HTMLDivElement>(null);
+interface JournalTabProps {
+  day: number;
+  loading: boolean;
+  memories: MemoryEntry[];
+  mode: MemoriesMode;
+  month: number;
+  setLoading: (l: boolean) => void;
+  setMemories: (m: MemoryEntry[]) => void;
+  setMode: (m: MemoriesMode) => void;
+}
 
-  // Close on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [onClose]);
-
-  const days = getMonthDays(viewYear, viewMonth);
-  const firstDow = getFirstDayOfWeek(viewYear, viewMonth);
-  const today = new Date();
-
-  const isSameDay = (a: Date, b: Date) =>
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate();
-
-  // Years view: 12-year range centered on current viewYear
-  const yearRangeStart = viewYear - (viewYear % 12);
-  const yearRange = Array.from({ length: 12 }, (_, i) => yearRangeStart + i);
-
-  const navPrev = () => {
-    if (view === "days") {
-      if (viewMonth === 0) {
-        setViewYear(viewYear - 1);
-        setViewMonth(11);
-      } else setViewMonth(viewMonth - 1);
-    } else if (view === "months") {
-      setViewYear(viewYear - 1);
-    } else {
-      setViewYear(yearRangeStart - 12);
-    }
-  };
-
-  const navNext = () => {
-    if (view === "days") {
-      if (viewMonth === 11) {
-        setViewYear(viewYear + 1);
-        setViewMonth(0);
-      } else setViewMonth(viewMonth + 1);
-    } else if (view === "months") {
-      setViewYear(viewYear + 1);
-    } else {
-      setViewYear(yearRangeStart + 12);
-    }
-  };
-
-  const headerLabel =
-    view === "days" ? (
-      <>
-        <button
-          className="memories-mini-calendar-title-btn"
-          onClick={() => setView("months")}
-        >
-          {MINI_CAL_MONTH_NAMES[viewMonth]}
-        </button>{" "}
-        <button
-          className="memories-mini-calendar-title-btn"
-          onClick={() => setView("years")}
-        >
-          {viewYear}
-        </button>
-      </>
-    ) : view === "months" ? (
-      <button
-        className="memories-mini-calendar-title-btn"
-        onClick={() => setView("years")}
-      >
-        {viewYear}년
-      </button>
-    ) : (
-      <span className="memories-mini-calendar-title-text">
-        {yearRangeStart}–{yearRangeStart + 11}
-      </span>
-    );
-
-  return (
-    <div className="memories-mini-calendar" ref={ref}>
-      <div className="memories-mini-calendar-header">
-        <button className="memories-mini-calendar-nav" onClick={navPrev}>
-          ‹
-        </button>
-        <span className="memories-mini-calendar-title">{headerLabel}</span>
-        <button className="memories-mini-calendar-nav" onClick={navNext}>
-          ›
-        </button>
-      </div>
-
-      {view === "days" && (
-        <div className="memories-mini-calendar-grid">
-          {MINI_CAL_DAY_NAMES.map((d) => (
-            <div key={d} className="memories-mini-calendar-dow">
-              {d}
-            </div>
-          ))}
-          {Array.from({ length: firstDow }).map((_, i) => (
-            <div key={`pad-${i}`} className="memories-mini-calendar-pad" />
-          ))}
-          {days.map((d) => {
-            const isSelected = isSameDay(d, selectedDate);
-            const isToday = isSameDay(d, today);
-            return (
-              <button
-                key={d.getDate()}
-                className={[
-                  "memories-mini-calendar-day",
-                  isSelected ? "memories-mini-calendar-day-selected" : "",
-                  isToday ? "memories-mini-calendar-day-today" : "",
-                ].join(" ")}
-                onClick={() => onSelect(d)}
-              >
-                {d.getDate()}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {view === "months" && (
-        <div className="memories-mini-calendar-picker">
-          {MINI_CAL_MONTH_NAMES.map((name, i) => (
-            <button
-              key={i}
-              className={`memories-mini-calendar-pick-btn ${i === viewMonth && viewYear === selectedDate.getFullYear() ? "memories-mini-calendar-pick-btn-selected" : ""} ${i === today.getMonth() && viewYear === today.getFullYear() ? "memories-mini-calendar-pick-btn-today" : ""}`}
-              onClick={() => {
-                setViewMonth(i);
-                setView("days");
-              }}
-            >
-              {name}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {view === "years" && (
-        <div className="memories-mini-calendar-picker">
-          {yearRange.map((y) => (
-            <button
-              key={y}
-              className={`memories-mini-calendar-pick-btn ${y === selectedDate.getFullYear() ? "memories-mini-calendar-pick-btn-selected" : ""} ${y === today.getFullYear() ? "memories-mini-calendar-pick-btn-today" : ""}`}
-              onClick={() => {
-                setViewYear(y);
-                setView("months");
-              }}
-            >
-              {y}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+interface MiniCalendarProps {
+  onClose: () => void;
+  onSelect: (date: Date) => void;
+  selectedDate: Date;
 }
 
 // --- Journal Tab ---
 
-interface JournalTabProps {
-  memories: MemoryEntry[];
-  setMemories: (m: MemoryEntry[]) => void;
-  mode: MemoriesMode;
-  setMode: (m: MemoriesMode) => void;
-  loading: boolean;
-  setLoading: (l: boolean) => void;
-  month: number;
-  day: number;
+interface NoteEntry {
+  backlinkCount: number;
+  modifiedAt: number; // epoch ms
+  name: string;
+  path: string;
+  preview: string;
+  tags: string[];
+}
+
+interface NoteFolder {
+  fileCount: number;
+  name: string;
+  path: string;
+}
+
+// --- OneLineEditor (inline editing for current year) ---
+
+/** Extract #tags from markdown content (skip headings and code blocks) */
+function extractTags(content: string): string[] {
+  const tags = new Set<string>();
+  // Match #tag patterns (word chars + hyphens), but not inside headings
+  const tagRegex =
+    /(?:^|\s)#([a-zA-Z\uAC00-\uD7AF\u3131-\u3163\u1100-\u11FF][\w\u3131-\u3163\uAC00-\uD7AF-]*)/g;
+  // Strip frontmatter and code blocks first
+  const stripped = content
+    .replace(/^---\n[\s\S]*?\n---/, "")
+    .replace(/```[\s\S]*?```/g, "");
+  // Skip heading lines
+  for (const line of stripped.split("\n")) {
+    if (line.trim().startsWith("#") && line.trim().match(/^#{1,6}\s/)) continue;
+    let m;
+    while ((m = tagRegex.exec(line)) !== null) {
+      tags.add(m[1]);
+    }
+  }
+  return [...tags];
+}
+
+// --- Notes Tab ---
+
+/** Format a timestamp as relative time (e.g. "2시간 전", "3일 전") */
+function formatRelativeTime(epochMs: number): string {
+  if (!epochMs) return "";
+  const diff = Date.now() - epochMs;
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return "방금";
+  if (minutes < 60) return `${minutes}분 전`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}시간 전`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}일 전`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}개월 전`;
+  return `${Math.floor(months / 12)}년 전`;
 }
 
 function JournalTab({
@@ -498,8 +392,8 @@ function JournalTab({
 
       {memories.map((entry) => (
         <div
-          key={entry.year}
           className={`memories-year-card ${entry.isCurrentYear ? "memories-year-card-current" : ""}`}
+          key={entry.year}
         >
           <div className="memories-year-card-header">
             <span className="memories-year-card-year">
@@ -514,18 +408,18 @@ function JournalTab({
               title="일기 열기"
             >
               <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
                 fill="none"
+                height="14"
                 stroke="currentColor"
-                strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+                width="14"
               >
                 <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                 <polyline points="15 3 21 3 21 9" />
-                <line x1="10" y1="14" x2="21" y2="3" />
+                <line x1="10" x2="21" y1="14" y2="3" />
               </svg>
             </button>
           </div>
@@ -583,114 +477,168 @@ function JournalTab({
   );
 }
 
-// --- OneLineEditor (inline editing for current year) ---
+function MiniCalendar({ selectedDate, onSelect, onClose }: MiniCalendarProps) {
+  const [viewYear, setViewYear] = useState(selectedDate.getFullYear());
+  const [viewMonth, setViewMonth] = useState(selectedDate.getMonth());
+  const [view, setView] = useState<CalendarView>("days");
+  const ref = useRef<HTMLDivElement>(null);
 
-function OneLineEditor({
-  entry,
-  onSave,
-}: {
-  entry: MemoryEntry;
-  onSave: (text: string) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(entry.oneLine);
-
+  // Close on outside click
   useEffect(() => {
-    setDraft(entry.oneLine);
-  }, [entry.oneLine]);
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose]);
 
-  if (!editing) {
-    const fileDir = entry.path.substring(0, entry.path.lastIndexOf("/"));
-    return (
-      <div
-        className="memories-oneline memories-oneline-editable memories-md-render"
-        onClick={() => setEditing(true)}
-        title="클릭하여 편집"
-        dangerouslySetInnerHTML={{
-          __html: entry.oneLine
-            ? resolveImageSrcs(renderSimpleMarkdown(entry.oneLine), fileDir)
-            : "<p>(클릭하여 한 줄 요약 입력)</p>",
-        }}
-      />
+  const days = getMonthDays(viewYear, viewMonth);
+  const firstDow = getFirstDayOfWeek(viewYear, viewMonth);
+  const today = new Date();
+
+  const isSameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+
+  // Years view: 12-year range centered on current viewYear
+  const yearRangeStart = viewYear - (viewYear % 12);
+  const yearRange = Array.from({ length: 12 }, (_, i) => yearRangeStart + i);
+
+  const navPrev = () => {
+    if (view === "days") {
+      if (viewMonth === 0) {
+        setViewYear(viewYear - 1);
+        setViewMonth(11);
+      } else setViewMonth(viewMonth - 1);
+    } else if (view === "months") {
+      setViewYear(viewYear - 1);
+    } else {
+      setViewYear(yearRangeStart - 12);
+    }
+  };
+
+  const navNext = () => {
+    if (view === "days") {
+      if (viewMonth === 11) {
+        setViewYear(viewYear + 1);
+        setViewMonth(0);
+      } else setViewMonth(viewMonth + 1);
+    } else if (view === "months") {
+      setViewYear(viewYear + 1);
+    } else {
+      setViewYear(yearRangeStart + 12);
+    }
+  };
+
+  const headerLabel =
+    view === "days" ? (
+      <>
+        <button
+          className="memories-mini-calendar-title-btn"
+          onClick={() => setView("months")}
+        >
+          {MINI_CAL_MONTH_NAMES[viewMonth]}
+        </button>{" "}
+        <button
+          className="memories-mini-calendar-title-btn"
+          onClick={() => setView("years")}
+        >
+          {viewYear}
+        </button>
+      </>
+    ) : view === "months" ? (
+      <button
+        className="memories-mini-calendar-title-btn"
+        onClick={() => setView("years")}
+      >
+        {viewYear}년
+      </button>
+    ) : (
+      <span className="memories-mini-calendar-title-text">
+        {yearRangeStart}–{yearRangeStart + 11}
+      </span>
     );
-  }
 
   return (
-    <input
-      className="memories-oneline-input"
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={() => {
-        setEditing(false);
-        if (draft !== entry.oneLine) onSave(draft);
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          setEditing(false);
-          if (draft !== entry.oneLine) onSave(draft);
-        } else if (e.key === "Escape") {
-          setEditing(false);
-          setDraft(entry.oneLine);
-        }
-      }}
-      autoFocus
-      placeholder="한 줄 요약 입력..."
-    />
+    <div className="memories-mini-calendar" ref={ref}>
+      <div className="memories-mini-calendar-header">
+        <button className="memories-mini-calendar-nav" onClick={navPrev}>
+          ‹
+        </button>
+        <span className="memories-mini-calendar-title">{headerLabel}</span>
+        <button className="memories-mini-calendar-nav" onClick={navNext}>
+          ›
+        </button>
+      </div>
+
+      {view === "days" && (
+        <div className="memories-mini-calendar-grid">
+          {MINI_CAL_DAY_NAMES.map((d) => (
+            <div className="memories-mini-calendar-dow" key={d}>
+              {d}
+            </div>
+          ))}
+          {Array.from({ length: firstDow }).map((_, i) => (
+            <div className="memories-mini-calendar-pad" key={`pad-${i}`} />
+          ))}
+          {days.map((d) => {
+            const isSelected = isSameDay(d, selectedDate);
+            const isToday = isSameDay(d, today);
+            return (
+              <button
+                className={[
+                  "memories-mini-calendar-day",
+                  isSelected ? "memories-mini-calendar-day-selected" : "",
+                  isToday ? "memories-mini-calendar-day-today" : "",
+                ].join(" ")}
+                key={d.getDate()}
+                onClick={() => onSelect(d)}
+              >
+                {d.getDate()}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {view === "months" && (
+        <div className="memories-mini-calendar-picker">
+          {MINI_CAL_MONTH_NAMES.map((name, i) => (
+            <button
+              className={`memories-mini-calendar-pick-btn ${i === viewMonth && viewYear === selectedDate.getFullYear() ? "memories-mini-calendar-pick-btn-selected" : ""} ${i === today.getMonth() && viewYear === today.getFullYear() ? "memories-mini-calendar-pick-btn-today" : ""}`}
+              key={i}
+              onClick={() => {
+                setViewMonth(i);
+                setView("days");
+              }}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {view === "years" && (
+        <div className="memories-mini-calendar-picker">
+          {yearRange.map((y) => (
+            <button
+              className={`memories-mini-calendar-pick-btn ${y === selectedDate.getFullYear() ? "memories-mini-calendar-pick-btn-selected" : ""} ${y === today.getFullYear() ? "memories-mini-calendar-pick-btn-today" : ""}`}
+              key={y}
+              onClick={() => {
+                setViewYear(y);
+                setView("months");
+              }}
+            >
+              {y}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
-}
-
-// --- Notes Tab ---
-
-interface NoteEntry {
-  name: string;
-  path: string;
-  preview: string;
-  tags: string[];
-  backlinkCount: number;
-  modifiedAt: number; // epoch ms
-}
-
-interface NoteFolder {
-  name: string;
-  path: string;
-  fileCount: number;
-}
-
-/** Extract #tags from markdown content (skip headings and code blocks) */
-function extractTags(content: string): string[] {
-  const tags = new Set<string>();
-  // Match #tag patterns (word chars + hyphens), but not inside headings
-  const tagRegex =
-    /(?:^|\s)#([a-zA-Z\uAC00-\uD7AF\u3131-\u3163\u1100-\u11FF][\w\u3131-\u3163\uAC00-\uD7AF-]*)/g;
-  // Strip frontmatter and code blocks first
-  const stripped = content
-    .replace(/^---\n[\s\S]*?\n---/, "")
-    .replace(/```[\s\S]*?```/g, "");
-  // Skip heading lines
-  for (const line of stripped.split("\n")) {
-    if (line.trim().startsWith("#") && line.trim().match(/^#{1,6}\s/)) continue;
-    let m;
-    while ((m = tagRegex.exec(line)) !== null) {
-      tags.add(m[1]);
-    }
-  }
-  return [...tags];
-}
-
-/** Format a timestamp as relative time (e.g. "2시간 전", "3일 전") */
-function formatRelativeTime(epochMs: number): string {
-  if (!epochMs) return "";
-  const diff = Date.now() - epochMs;
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return "방금";
-  if (minutes < 60) return `${minutes}분 전`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}시간 전`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}일 전`;
-  const months = Math.floor(days / 30);
-  if (months < 12) return `${months}개월 전`;
-  return `${Math.floor(months / 12)}년 전`;
 }
 
 function NotesTab() {
@@ -698,10 +646,10 @@ function NotesTab() {
   const { journalDirectory } = useSettingsStore();
   const [notes, setNotes] = useState<NoteEntry[]>([]);
   const [folders, setFolders] = useState<NoteFolder[]>([]);
-  const [currentSubdir, setCurrentSubdir] = useState<string | null>(null);
+  const [currentSubdir, setCurrentSubdir] = useState<null | string>(null);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState("");
-  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [activeTag, setActiveTag] = useState<null | string>(null);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const newNameRef = useRef<HTMLInputElement>(null);
@@ -734,7 +682,7 @@ function NotesTab() {
           (e: { isDir: boolean; name: string }) =>
             !e.isDir && e.name.endsWith(".md"),
         )
-        .map((e: { name: string; modifiedAt?: number }) => ({
+        .map((e: { modifiedAt?: number; name: string }) => ({
           name: e.name.replace(/\.md$/, ""),
           path: `${notesDir}/${e.name}`,
           modifiedAt: (e.modifiedAt ?? 0) * 1000,
@@ -899,10 +847,10 @@ function NotesTab() {
         <div className="notes-search-wrap">
           <input
             className="notes-search-input"
-            type="text"
-            placeholder="Search notes..."
-            value={filter}
             onChange={(e) => setFilter(e.target.value)}
+            placeholder="Search notes..."
+            type="text"
+            value={filter}
           />
           {filter && (
             <button
@@ -926,11 +874,7 @@ function NotesTab() {
       {creating && (
         <div className="notes-create-row">
           <input
-            ref={newNameRef}
             className="notes-create-input"
-            type="text"
-            placeholder="Note name..."
-            value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") handleCreateNote();
@@ -939,6 +883,10 @@ function NotesTab() {
                 setNewName("");
               }
             }}
+            placeholder="Note name..."
+            ref={newNameRef}
+            type="text"
+            value={newName}
           />
           <button className="notes-create-confirm" onClick={handleCreateNote}>
             Create
@@ -968,8 +916,8 @@ function NotesTab() {
           )}
           {allTags.map(({ tag, count }) => (
             <button
+              className={`notes-tag-chip${activeTag === tag ? "notes-tag-chip-active" : ""}`}
               key={tag}
-              className={`notes-tag-chip${activeTag === tag ? " notes-tag-chip-active" : ""}`}
               onClick={() => setActiveTag(activeTag === tag ? null : tag)}
             >
               #{tag}
@@ -994,20 +942,20 @@ function NotesTab() {
         <div className="notes-folders">
           {folders.map((f) => (
             <button
-              key={f.path}
               className="notes-folder-item"
+              key={f.path}
               onClick={() => setCurrentSubdir(f.path)}
             >
               <svg
                 className="notes-folder-icon"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
                 fill="none"
+                height="14"
                 stroke="currentColor"
-                strokeWidth="1.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
+                strokeWidth="1.5"
+                viewBox="0 0 24 24"
+                width="14"
               >
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
               </svg>
@@ -1031,8 +979,8 @@ function NotesTab() {
       {/* Note cards */}
       {filtered.map((note) => (
         <button
-          key={note.path}
           className="notes-card"
+          key={note.path}
           onClick={() => handleOpenNote(note.path)}
           title={note.path}
         >
@@ -1058,7 +1006,7 @@ function NotesTab() {
           {note.tags.length > 0 && (
             <div className="notes-card-tags">
               {note.tags.map((t) => (
-                <span key={t} className="notes-card-tag">
+                <span className="notes-card-tag" key={t}>
                   #{t}
                 </span>
               ))}
@@ -1067,5 +1015,59 @@ function NotesTab() {
         </button>
       ))}
     </div>
+  );
+}
+
+function OneLineEditor({
+  entry,
+  onSave,
+}: {
+  entry: MemoryEntry;
+  onSave: (text: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(entry.oneLine);
+
+  useEffect(() => {
+    setDraft(entry.oneLine);
+  }, [entry.oneLine]);
+
+  if (!editing) {
+    const fileDir = entry.path.substring(0, entry.path.lastIndexOf("/"));
+    return (
+      <div
+        className="memories-oneline memories-oneline-editable memories-md-render"
+        dangerouslySetInnerHTML={{
+          __html: entry.oneLine
+            ? resolveImageSrcs(renderSimpleMarkdown(entry.oneLine), fileDir)
+            : "<p>(클릭하여 한 줄 요약 입력)</p>",
+        }}
+        onClick={() => setEditing(true)}
+        title="클릭하여 편집"
+      />
+    );
+  }
+
+  return (
+    <input
+      autoFocus
+      className="memories-oneline-input"
+      onBlur={() => {
+        setEditing(false);
+        if (draft !== entry.oneLine) onSave(draft);
+      }}
+      onChange={(e) => setDraft(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          setEditing(false);
+          if (draft !== entry.oneLine) onSave(draft);
+        } else if (e.key === "Escape") {
+          setEditing(false);
+          setDraft(entry.oneLine);
+        }
+      }}
+      placeholder="한 줄 요약 입력..."
+      value={draft}
+    />
   );
 }

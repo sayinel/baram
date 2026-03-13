@@ -1,9 +1,12 @@
 // §4.5 Command Palette — Cmd+P
-import { useState, useCallback, useEffect, useRef, useMemo } from "react";
-import { useUIStore } from "../../stores/ui-store";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import type { Editor } from "@tiptap/react";
+
 import { useEditorStore } from "../../stores/editor-store";
-import { useGitStore } from "../../stores/git-store";
 import { useFileStore } from "../../stores/file-store";
+import { useGitStore } from "../../stores/git-store";
+import { useUIStore } from "../../stores/ui-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
 import {
   executeAICommand,
@@ -11,14 +14,184 @@ import {
   getSelectionOrParagraph,
   showPrompt,
 } from "../../utils/ai-commands";
-import type { Editor } from "@tiptap/react";
 
 export interface CommandItem {
+  action: (editor: Editor | null) => void;
+  category: string;
   id: string;
   label: string;
-  category: string;
   shortcut?: string;
-  action: (editor: Editor | null) => void;
+}
+
+interface CommandPaletteProps {
+  editor: Editor | null;
+  onCloseFolder: () => void;
+  onNewFile: () => void;
+  onOpenFile: () => void;
+  onOpenFolder: () => void;
+  onSave: () => void;
+  onSkillPreview?: () => void;
+  onToggleSourceMode: () => void;
+}
+
+export function CommandPalette({
+  editor,
+  onToggleSourceMode,
+  onNewFile,
+  onOpenFile,
+  onSave,
+  onOpenFolder,
+  onSkillPreview,
+  onCloseFolder,
+}: CommandPaletteProps) {
+  const { commandPaletteOpen, toggleCommandPalette, toggleSidebar } =
+    useUIStore();
+  const [query, setQuery] = useState("");
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const commands = useMemo(
+    () =>
+      buildCommands(
+        toggleSidebar,
+        onToggleSourceMode,
+        onNewFile,
+        onOpenFile,
+        onSave,
+        onOpenFolder,
+        onSkillPreview ?? (() => {}),
+        onCloseFolder,
+      ),
+    [
+      toggleSidebar,
+      onToggleSourceMode,
+      onNewFile,
+      onOpenFile,
+      onSave,
+      onOpenFolder,
+      onSkillPreview,
+      onCloseFolder,
+    ],
+  );
+
+  const filtered = useMemo(() => {
+    if (!query) return commands;
+    return commands.filter(
+      (cmd) => fuzzyMatch(query, cmd.label) || fuzzyMatch(query, cmd.category),
+    );
+  }, [query, commands]);
+
+  // Reset on open
+  useEffect(() => {
+    if (commandPaletteOpen) {
+      setQuery("");
+      setSelectedIndex(0);
+      setTimeout(() => inputRef.current?.focus(), 0);
+    }
+  }, [commandPaletteOpen]);
+
+  // Clamp selectedIndex
+  useEffect(() => {
+    if (selectedIndex >= filtered.length) {
+      setSelectedIndex(Math.max(0, filtered.length - 1));
+    }
+  }, [filtered.length, selectedIndex]);
+
+  const executeCommand = useCallback(
+    (cmd: CommandItem) => {
+      toggleCommandPalette();
+      cmd.action(editor);
+    },
+    [editor, toggleCommandPalette],
+  );
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Escape") {
+        toggleCommandPalette();
+        return;
+      }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedIndex((i) => Math.min(i + 1, filtered.length - 1));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedIndex((i) => Math.max(i - 1, 0));
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (filtered[selectedIndex]) {
+          executeCommand(filtered[selectedIndex]);
+        }
+      }
+    },
+    [filtered, selectedIndex, executeCommand, toggleCommandPalette],
+  );
+
+  if (!commandPaletteOpen) return null;
+
+  // Group by category
+  const groups = new Map<string, CommandItem[]>();
+  for (const cmd of filtered) {
+    const list = groups.get(cmd.category) || [];
+    list.push(cmd);
+    groups.set(cmd.category, list);
+  }
+
+  let flatIndex = 0;
+
+  return (
+    <div className="command-palette-overlay" onClick={toggleCommandPalette}>
+      <div
+        className="command-palette"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={handleKeyDown}
+      >
+        <input
+          className="command-palette-input"
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setSelectedIndex(0);
+          }}
+          placeholder="Type a command..."
+          ref={inputRef}
+          type="text"
+          value={query}
+        />
+        <div className="command-palette-list">
+          {filtered.length === 0 && (
+            <div className="command-palette-empty">No commands found</div>
+          )}
+          {Array.from(groups.entries()).map(([category, items]) => (
+            <div className="command-palette-group" key={category}>
+              <div className="command-palette-category">{category}</div>
+              {items.map((cmd) => {
+                const idx = flatIndex++;
+                return (
+                  <div
+                    className={`command-palette-item ${idx === selectedIndex ? "command-palette-item-selected" : ""}`}
+                    key={cmd.id}
+                    onClick={() => executeCommand(cmd)}
+                    onMouseEnter={() => setSelectedIndex(idx)}
+                  >
+                    <span className="command-item-label">{cmd.label}</span>
+                    {cmd.shortcut && (
+                      <span className="command-item-shortcut">
+                        {cmd.shortcut}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function buildCommands(
@@ -202,14 +375,6 @@ function buildCommands(
       action: (editor) => editor?.chain().focus().toggleCode().run(),
     },
     // Skills
-    {
-      id: "skill:new",
-      label: "New Skill from Template",
-      category: "Skills",
-      action: () => {
-        useUIStore.getState().toggleNewSkillDialog();
-      },
-    },
     {
       id: "skill:generate",
       label: "AI: Generate Skill",
@@ -439,175 +604,4 @@ function fuzzyMatch(query: string, text: string): boolean {
     if (t[ti] === q[qi]) qi++;
   }
   return qi === q.length;
-}
-
-interface CommandPaletteProps {
-  editor: Editor | null;
-  onToggleSourceMode: () => void;
-  onNewFile: () => void;
-  onOpenFile: () => void;
-  onSave: () => void;
-  onOpenFolder: () => void;
-  onSkillPreview?: () => void;
-  onCloseFolder: () => void;
-}
-
-export function CommandPalette({
-  editor,
-  onToggleSourceMode,
-  onNewFile,
-  onOpenFile,
-  onSave,
-  onOpenFolder,
-  onSkillPreview,
-  onCloseFolder,
-}: CommandPaletteProps) {
-  const { commandPaletteOpen, toggleCommandPalette, toggleSidebar } =
-    useUIStore();
-  const [query, setQuery] = useState("");
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const commands = useMemo(
-    () =>
-      buildCommands(
-        toggleSidebar,
-        onToggleSourceMode,
-        onNewFile,
-        onOpenFile,
-        onSave,
-        onOpenFolder,
-        onSkillPreview ?? (() => {}),
-        onCloseFolder,
-      ),
-    [
-      toggleSidebar,
-      onToggleSourceMode,
-      onNewFile,
-      onOpenFile,
-      onSave,
-      onOpenFolder,
-      onSkillPreview,
-      onCloseFolder,
-    ],
-  );
-
-  const filtered = useMemo(() => {
-    if (!query) return commands;
-    return commands.filter(
-      (cmd) => fuzzyMatch(query, cmd.label) || fuzzyMatch(query, cmd.category),
-    );
-  }, [query, commands]);
-
-  // Reset on open
-  useEffect(() => {
-    if (commandPaletteOpen) {
-      setQuery("");
-      setSelectedIndex(0);
-      setTimeout(() => inputRef.current?.focus(), 0);
-    }
-  }, [commandPaletteOpen]);
-
-  // Clamp selectedIndex
-  useEffect(() => {
-    if (selectedIndex >= filtered.length) {
-      setSelectedIndex(Math.max(0, filtered.length - 1));
-    }
-  }, [filtered.length, selectedIndex]);
-
-  const executeCommand = useCallback(
-    (cmd: CommandItem) => {
-      toggleCommandPalette();
-      cmd.action(editor);
-    },
-    [editor, toggleCommandPalette],
-  );
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Escape") {
-        toggleCommandPalette();
-        return;
-      }
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setSelectedIndex((i) => Math.min(i + 1, filtered.length - 1));
-        return;
-      }
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setSelectedIndex((i) => Math.max(i - 1, 0));
-        return;
-      }
-      if (e.key === "Enter") {
-        e.preventDefault();
-        if (filtered[selectedIndex]) {
-          executeCommand(filtered[selectedIndex]);
-        }
-      }
-    },
-    [filtered, selectedIndex, executeCommand, toggleCommandPalette],
-  );
-
-  if (!commandPaletteOpen) return null;
-
-  // Group by category
-  const groups = new Map<string, CommandItem[]>();
-  for (const cmd of filtered) {
-    const list = groups.get(cmd.category) || [];
-    list.push(cmd);
-    groups.set(cmd.category, list);
-  }
-
-  let flatIndex = 0;
-
-  return (
-    <div className="command-palette-overlay" onClick={toggleCommandPalette}>
-      <div
-        className="command-palette"
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={handleKeyDown}
-      >
-        <input
-          ref={inputRef}
-          className="command-palette-input"
-          type="text"
-          placeholder="Type a command..."
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setSelectedIndex(0);
-          }}
-        />
-        <div className="command-palette-list">
-          {filtered.length === 0 && (
-            <div className="command-palette-empty">No commands found</div>
-          )}
-          {Array.from(groups.entries()).map(([category, items]) => (
-            <div key={category} className="command-palette-group">
-              <div className="command-palette-category">{category}</div>
-              {items.map((cmd) => {
-                const idx = flatIndex++;
-                return (
-                  <div
-                    key={cmd.id}
-                    className={`command-palette-item ${idx === selectedIndex ? "command-palette-item-selected" : ""}`}
-                    onClick={() => executeCommand(cmd)}
-                    onMouseEnter={() => setSelectedIndex(idx)}
-                  >
-                    <span className="command-item-label">{cmd.label}</span>
-                    {cmd.shortcut && (
-                      <span className="command-item-shortcut">
-                        {cmd.shortcut}
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
 }

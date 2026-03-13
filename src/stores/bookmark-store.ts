@@ -2,42 +2,38 @@
 import { create } from "zustand";
 
 export interface BookmarkItem {
-  id: string;
-  type: "file" | "heading";
-  filePath: string;
-  label: string;
-  group: string;
   createdAt: number;
-  headingText?: string;
+  filePath: string;
+  group: string;
   headingLevel?: number;
+  headingText?: string;
+  id: string;
+  label: string;
+  type: "file" | "heading";
 }
 
 interface BookmarkState {
-  bookmarks: BookmarkItem[];
+  addBookmark: (item: Omit<BookmarkItem, "createdAt" | "id">) => void;
 
-  addBookmark: (item: Omit<BookmarkItem, "id" | "createdAt">) => void;
-  removeBookmark: (id: string) => void;
-  moveToGroup: (id: string, group: string) => void;
+  bookmarks: BookmarkItem[];
   loadBookmarks: (rootPath: string) => void;
+  moveToGroup: (id: string, group: string) => void;
+  removeBookmark: (id: string) => void;
   saveBookmarks: (rootPath: string) => void;
 }
 
-/** Generate localStorage key scoped to vault root */
-export function storageKey(rootPath: string): string {
-  return `baram:bookmarks:${rootPath}`;
-}
-
-/** Check for duplicate bookmark (same type + filePath + headingText) */
-export function isDuplicate(
-  bookmarks: BookmarkItem[],
-  item: Pick<BookmarkItem, "type" | "filePath" | "headingText">,
-): boolean {
-  return bookmarks.some(
-    (b) =>
-      b.type === item.type &&
-      b.filePath === item.filePath &&
-      b.headingText === item.headingText,
+/** Find heading pos by text+level */
+export function findHeadingPos(
+  headings: Array<{ level: number; pos: number; text: string }>,
+  headingText: string,
+  headingLevel?: number,
+): null | number {
+  const match = headings.find(
+    (h) =>
+      h.text === headingText &&
+      (headingLevel === undefined || h.level === headingLevel),
   );
+  return match?.pos ?? null;
 }
 
 /** Get unique groups from bookmarks list */
@@ -49,18 +45,22 @@ export function getGroups(bookmarks: BookmarkItem[]): string[] {
   return Array.from(groups);
 }
 
-/** Find heading pos by text+level */
-export function findHeadingPos(
-  headings: Array<{ level: number; text: string; pos: number }>,
-  headingText: string,
-  headingLevel?: number,
-): number | null {
-  const match = headings.find(
-    (h) =>
-      h.text === headingText &&
-      (headingLevel === undefined || h.level === headingLevel),
+/** Check for duplicate bookmark (same type + filePath + headingText) */
+export function isDuplicate(
+  bookmarks: BookmarkItem[],
+  item: Pick<BookmarkItem, "filePath" | "headingText" | "type">,
+): boolean {
+  return bookmarks.some(
+    (b) =>
+      b.type === item.type &&
+      b.filePath === item.filePath &&
+      b.headingText === item.headingText,
   );
-  return match?.pos ?? null;
+}
+
+/** Generate localStorage key scoped to vault root */
+export function storageKey(rootPath: string): string {
+  return `baram:bookmarks:${rootPath}`;
 }
 
 export const useBookmarkStore = create<BookmarkState>((set, get) => ({

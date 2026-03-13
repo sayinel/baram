@@ -1,5 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+
 import App from "./App";
 import { markAppStart } from "./utils/perf";
 import "./App.css";

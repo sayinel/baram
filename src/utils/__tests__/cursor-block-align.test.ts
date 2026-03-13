@@ -1,6 +1,7 @@
+import { Editor } from "@tiptap/core";
 // Debug: compare MD block structure vs PM block structure
 import { describe, test } from "vitest";
-import { Editor } from "@tiptap/core";
+
 import { createBaramExtensions } from "../../extensions";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
@@ -14,7 +15,7 @@ function debugSplitMarkdownBlocks(markdown: string) {
   if (markdown.length === 0) return [];
 
   const lines = markdown.split("\n");
-  const blocks: { start: number; end: number; text: string }[] = [];
+  const blocks: { end: number; start: number; text: string }[] = [];
   let blockStartLine = 0;
   let inFencedCode = false;
   let inFrontmatter = false;

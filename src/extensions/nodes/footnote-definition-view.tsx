@@ -1,21 +1,10 @@
 // §footnote FootnoteDefinition NodeView — N. content ↩ layout with back navigation
 import { useCallback } from "react";
-import { NodeViewWrapper, NodeViewContent } from "@tiptap/react";
-import type { NodeViewProps } from "@tiptap/react";
-import type { Editor } from "@tiptap/core";
 
-/** Return display number (1-based) for a footnote identifier based on document order */
-function getFootnoteNumber(editor: Editor, identifier: string): number {
-  const order: string[] = [];
-  editor.state.doc.descendants((node) => {
-    if (node.type.name === "footnoteRef") {
-      const id = node.attrs.identifier as string;
-      if (!order.includes(id)) order.push(id);
-    }
-  });
-  const idx = order.indexOf(identifier);
-  return idx >= 0 ? idx + 1 : 0;
-}
+import type { Editor } from "@tiptap/core";
+import type { NodeViewProps } from "@tiptap/react";
+
+import { NodeViewContent, NodeViewWrapper } from "@tiptap/react";
 
 export function FootnoteDefinitionView({ node, editor }: NodeViewProps) {
   const identifier = node.attrs.identifier as string;
@@ -48,9 +37,9 @@ export function FootnoteDefinitionView({ node, editor }: NodeViewProps) {
 
   return (
     <NodeViewWrapper
-      data-type="footnote-definition"
-      data-identifier={identifier}
       className="footnote-definition"
+      data-identifier={identifier}
+      data-type="footnote-definition"
     >
       <span
         className="footnote-definition-label"
@@ -71,4 +60,17 @@ export function FootnoteDefinitionView({ node, editor }: NodeViewProps) {
       </button>
     </NodeViewWrapper>
   );
+}
+
+/** Return display number (1-based) for a footnote identifier based on document order */
+function getFootnoteNumber(editor: Editor, identifier: string): number {
+  const order: string[] = [];
+  editor.state.doc.descendants((node) => {
+    if (node.type.name === "footnoteRef") {
+      const id = node.attrs.identifier as string;
+      if (!order.includes(id)) order.push(id);
+    }
+  });
+  const idx = order.indexOf(identifier);
+  return idx >= 0 ? idx + 1 : 0;
 }

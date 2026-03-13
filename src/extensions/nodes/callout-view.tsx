@@ -1,7 +1,9 @@
-// §5.9 Callout NodeView — React component for rendering callout blocks
-import { NodeViewWrapper, NodeViewContent } from "@tiptap/react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import type { NodeViewProps } from "@tiptap/react";
-import { useCallback, useState, useRef, useEffect } from "react";
+
+// §5.9 Callout NodeView — React component for rendering callout blocks
+import { NodeViewContent, NodeViewWrapper } from "@tiptap/react";
 
 /** Callout type → emoji icon mapping */
 const CALLOUT_ICONS: Record<string, string> = {
@@ -19,10 +21,6 @@ const CALLOUT_ICONS: Record<string, string> = {
   failure: "❌",
   question: "❓",
 };
-
-function getIcon(type: string): string {
-  return CALLOUT_ICONS[type] || CALLOUT_ICONS.info;
-}
 
 export function CalloutView({ node, updateAttributes, editor }: NodeViewProps) {
   const type = (node.attrs.type as string) || "info";
@@ -58,16 +56,15 @@ export function CalloutView({ node, updateAttributes, editor }: NodeViewProps) {
 
   return (
     <NodeViewWrapper
-      data-type="callout"
-      data-callout-type={type}
       className={`callout callout-${type}`}
+      data-callout-type={type}
+      data-type="callout"
     >
       <div className="callout-header" contentEditable={false}>
         <span className="callout-icon">{getIcon(type)}</span>
 
         {isEditingTitle ? (
           <input
-            ref={titleInputRef}
             className="callout-title-input"
             defaultValue={title}
             onBlur={(e) => commitTitle(e.target.value)}
@@ -75,6 +72,7 @@ export function CalloutView({ node, updateAttributes, editor }: NodeViewProps) {
               if (e.key === "Enter") commitTitle(e.currentTarget.value);
               if (e.key === "Escape") setIsEditingTitle(false);
             }}
+            ref={titleInputRef}
           />
         ) : (
           <span
@@ -95,8 +93,12 @@ export function CalloutView({ node, updateAttributes, editor }: NodeViewProps) {
       </div>
 
       <NodeViewContent
-        className={`callout-body${collapsed ? " callout-body-collapsed" : ""}`}
+        className={`callout-body${collapsed ? "callout-body-collapsed" : ""}`}
       />
     </NodeViewWrapper>
   );
+}
+
+function getIcon(type: string): string {
+  return CALLOUT_ICONS[type] || CALLOUT_ICONS.info;
 }

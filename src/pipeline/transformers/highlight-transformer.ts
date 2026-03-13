@@ -1,8 +1,8 @@
+import type { MarkTransformerEntry } from "../types";
 // highlight-transformer.ts — §5.1 Highlight mark mdast ↔ ProseMirror
 import type { Mark } from "@tiptap/pm/model";
-import type { Node as MdastNode, PhrasingContent } from "mdast";
-import type { MarkTransformerEntry } from "../types";
 import type { Schema } from "@tiptap/pm/model";
+import type { Node as MdastNode, PhrasingContent } from "mdast";
 
 export const highlightTransformer: MarkTransformerEntry = {
   mdastType: "highlight",

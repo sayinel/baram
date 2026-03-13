@@ -1,6 +1,7 @@
 // §5.3 Math Inline Node — atom:true, render-only (editing handled by MathInlineEdit plugin)
-import { Node, mergeAttributes } from "@tiptap/core";
+import { mergeAttributes, Node } from "@tiptap/core";
 import { ReactNodeViewRenderer } from "@tiptap/react";
+
 import { MathInlineView } from "./math-inline-view";
 
 export interface MathInlineOptions {

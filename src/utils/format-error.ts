@@ -1,8 +1,8 @@
 // AI error message formatting utility
 
 export interface FormattedError {
-  title: string;
   detail: string;
+  title: string;
 }
 
 /**
@@ -38,7 +38,7 @@ export function formatAIError(raw: string): FormattedError {
  * Supports OpenAI format: { error: { message: "..." } }
  * Supports Gemini format: { error: { message: "..." } }
  */
-function extractJsonMessage(body: string): string | null {
+function extractJsonMessage(body: string): null | string {
   try {
     const parsed = JSON.parse(body);
 

@@ -1,5 +1,6 @@
 // §56f Journal Dynamic Block — unit tests for pure parsing helpers
-import { describe, test, expect } from "vitest";
+import { describe, expect, test } from "vitest";
+
 import { parseBlockParams, parseRange } from "../JournalDynamicBlock";
 
 describe("parseBlockParams", () => {

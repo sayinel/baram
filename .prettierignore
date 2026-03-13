@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+dist-ssr/
+dist-installers/
+
+# Rust source — handled by rustfmt
+src-tauri/**/*.rs
+src-tauri/target/
+src-tauri/gen/
+src-tauri/WixTools/
+
+# Test coverage
+coverage/
+
+# Lock files
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+
+# Minified / vendor
+*.min.js
+*.min.css
+
+# OS / editor
+.DS_Store
+*.log

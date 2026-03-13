@@ -1,5 +1,13 @@
 // §72c Skill Optimize Prompt — build LLM prompt for skill optimization suggestions
 
+export interface OptimizeSuggestion {
+  after: null | string;
+  before: null | string;
+  category: "clarity" | "efficiency" | "missing" | "variables";
+  description: string;
+  title: string;
+}
+
 export function buildOptimizePrompt(skillContent: string): string {
   return `You are a prompt engineering expert. Analyze this skill file and suggest improvements.
 
@@ -21,14 +29,6 @@ Provide 3-5 actionable suggestions as JSON array:
 
 Focus on: unclear instructions, token waste, missing constraints, better variable usage.
 Return ONLY the JSON array.`;
-}
-
-export interface OptimizeSuggestion {
-  category: "clarity" | "efficiency" | "missing" | "variables";
-  title: string;
-  description: string;
-  before: string | null;
-  after: string | null;
 }
 
 export function parseOptimizeResponse(raw: string): OptimizeSuggestion[] {

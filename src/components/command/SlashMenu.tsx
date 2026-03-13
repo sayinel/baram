@@ -1,20 +1,20 @@
 // §4.6 Slash Menu — block insertion via /
 import {
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
   forwardRef,
+  useCallback,
+  useEffect,
   useImperativeHandle,
+  useRef,
+  useState,
 } from "react";
 
 export interface SlashMenuItem {
-  id: string;
-  label: string;
+  action: () => void;
   category: string;
   description: string;
+  id: string;
+  label: string;
   mdHint?: string;
-  action: () => void;
 }
 
 export interface SlashMenuRef {
@@ -22,8 +22,8 @@ export interface SlashMenuRef {
 }
 
 interface SlashMenuProps {
-  items: SlashMenuItem[];
   command: (item: SlashMenuItem) => void;
+  items: SlashMenuItem[];
 }
 
 export const SlashMenuList = forwardRef<SlashMenuRef, SlashMenuProps>(
@@ -78,7 +78,7 @@ export const SlashMenuList = forwardRef<SlashMenuRef, SlashMenuProps>(
     // Group by category
     const groups = new Map<
       string,
-      { item: SlashMenuItem; flatIdx: number }[]
+      { flatIdx: number; item: SlashMenuItem }[]
     >();
     items.forEach((item, idx) => {
       const list = groups.get(item.category) || [];
@@ -89,12 +89,12 @@ export const SlashMenuList = forwardRef<SlashMenuRef, SlashMenuProps>(
     return (
       <div className="slash-menu" ref={listRef}>
         {Array.from(groups.entries()).map(([category, entries]) => (
-          <div key={category} className="slash-menu-group">
+          <div className="slash-menu-group" key={category}>
             <div className="slash-menu-category">{category}</div>
             {entries.map(({ item, flatIdx }) => (
               <div
-                key={item.id}
                 className={`slash-menu-item ${flatIdx === selectedIndex ? "slash-item-selected" : ""}`}
+                key={item.id}
                 onClick={() => selectItem(flatIdx)}
                 onMouseEnter={() => setSelectedIndex(flatIdx)}
               >

@@ -1,11 +1,13 @@
+import type { LintResult } from "../../utils/prompt-linter";
+import type { Node as PmNode } from "@tiptap/pm/model";
+
 // §46 Prompt Lint — ProseMirror decoration plugin for Skill prompt analysis
 import { Extension } from "@tiptap/core";
-import { Plugin, PluginKey, EditorState } from "@tiptap/pm/state";
+import { EditorState, Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import type { Node as PmNode } from "@tiptap/pm/model";
-import { lintPrompt } from "../../utils/prompt-linter";
-import type { LintResult } from "../../utils/prompt-linter";
+
 import { useSkillStore } from "../../stores/skill-store";
+import { lintPrompt } from "../../utils/prompt-linter";
 
 export const promptLintKey = new PluginKey("promptLint");
 
@@ -21,51 +23,13 @@ interface PromptLintState {
 }
 
 /**
- * Check if the current document is a Skills file (frontmatter with name + description).
+ * Get the current prompt lint results (with PM positions) from editor state.
  */
-function isSkillsFile(doc: PmNode): boolean {
-  const firstChild = doc.firstChild;
-  if (firstChild?.type.name === "frontmatter") {
-    const yaml =
-      (firstChild.attrs?.yaml as string) || firstChild.textContent || "";
-    if (/^name\s*:/m.test(yaml) && /^description\s*:/m.test(yaml)) return true;
-  }
-  return false;
-}
-
-/**
- * Extract plain text from the ProseMirror doc with approximate character offsets.
- * Returns the full text and a mapping from text offset to PM position.
- */
-function extractDocText(doc: PmNode): { text: string; offsetMap: number[] } {
-  let text = "";
-  const offsetMap: number[] = [];
-
-  doc.descendants((node, pos) => {
-    if (node.type.name === "frontmatter") {
-      // Include frontmatter content
-      const yaml = (node.attrs?.yaml as string) || node.textContent || "";
-      const frontmatterText = `---\n${yaml}\n---\n`;
-      for (let i = 0; i < frontmatterText.length; i++) {
-        offsetMap.push(pos);
-      }
-      text += frontmatterText;
-      return false;
-    }
-    if (node.isText) {
-      const nodeText = node.text ?? "";
-      for (let i = 0; i < nodeText.length; i++) {
-        offsetMap.push(pos + i);
-      }
-      text += nodeText;
-    } else if (node.isBlock && text.length > 0 && !text.endsWith("\n")) {
-      offsetMap.push(pos);
-      text += "\n";
-    }
-    return true;
-  });
-
-  return { text, offsetMap };
+export function getPromptLintResults(state: EditorState): PmLintResult[] {
+  const pluginState = promptLintKey.getState(state) as
+    | PromptLintState
+    | undefined;
+  return pluginState?.results ?? [];
 }
 
 /**
@@ -133,13 +97,51 @@ function buildLintState(doc: PmNode): PromptLintState {
 }
 
 /**
- * Get the current prompt lint results (with PM positions) from editor state.
+ * Extract plain text from the ProseMirror doc with approximate character offsets.
+ * Returns the full text and a mapping from text offset to PM position.
  */
-export function getPromptLintResults(state: EditorState): PmLintResult[] {
-  const pluginState = promptLintKey.getState(state) as
-    | PromptLintState
-    | undefined;
-  return pluginState?.results ?? [];
+function extractDocText(doc: PmNode): { offsetMap: number[]; text: string } {
+  let text = "";
+  const offsetMap: number[] = [];
+
+  doc.descendants((node, pos) => {
+    if (node.type.name === "frontmatter") {
+      // Include frontmatter content
+      const yaml = (node.attrs?.yaml as string) || node.textContent || "";
+      const frontmatterText = `---\n${yaml}\n---\n`;
+      for (let i = 0; i < frontmatterText.length; i++) {
+        offsetMap.push(pos);
+      }
+      text += frontmatterText;
+      return false;
+    }
+    if (node.isText) {
+      const nodeText = node.text ?? "";
+      for (let i = 0; i < nodeText.length; i++) {
+        offsetMap.push(pos + i);
+      }
+      text += nodeText;
+    } else if (node.isBlock && text.length > 0 && !text.endsWith("\n")) {
+      offsetMap.push(pos);
+      text += "\n";
+    }
+    return true;
+  });
+
+  return { text, offsetMap };
+}
+
+/**
+ * Check if the current document is a Skills file (frontmatter with name + description).
+ */
+function isSkillsFile(doc: PmNode): boolean {
+  const firstChild = doc.firstChild;
+  if (firstChild?.type.name === "frontmatter") {
+    const yaml =
+      (firstChild.attrs?.yaml as string) || firstChild.textContent || "";
+    if (/^name\s*:/m.test(yaml) && /^description\s*:/m.test(yaml)) return true;
+  }
+  return false;
 }
 
 export const PromptLint = Extension.create({

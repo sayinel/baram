@@ -1,17 +1,19 @@
+import type {
+  SuggestionKeyDownProps,
+  SuggestionProps,
+} from "@tiptap/suggestion";
+
 // §72c Skill variable autocomplete — Tiptap Extension using Suggestion API
 // Triggers on {{ and shows variable suggestions for skill files
 import { Extension } from "@tiptap/core";
-import { Suggestion } from "@tiptap/suggestion";
-import { ReactRenderer } from "@tiptap/react";
 import { PluginKey } from "@tiptap/pm/state";
-import type {
-  SuggestionProps,
-  SuggestionKeyDownProps,
-} from "@tiptap/suggestion";
+import { ReactRenderer } from "@tiptap/react";
+import { Suggestion } from "@tiptap/suggestion";
+
 import {
+  type SkillVariableItem,
   SkillVariableList,
   type SkillVariableListRef,
-  type SkillVariableItem,
 } from "../../components/editor/SkillVariableList";
 import { useSkillStore } from "../../stores/skill-store";
 
@@ -69,8 +71,8 @@ export const SkillVariableSuggest = Extension.create({
           props,
         }: {
           editor: typeof editor;
-          range: { from: number; to: number };
           props: SkillVariableItem;
+          range: { from: number; to: number };
         }) => {
           // Replace the {{query with {{name}} (the trigger {{ is already consumed,
           // so we insert the full {{name}} to ensure correct output)
@@ -92,7 +94,7 @@ export const SkillVariableSuggest = Extension.create({
           );
         },
         render: () => {
-          let component: ReactRenderer<SkillVariableListRef> | null = null;
+          let component: null | ReactRenderer<SkillVariableListRef> = null;
           let popup: HTMLDivElement | null = null;
 
           return {

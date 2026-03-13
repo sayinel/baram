@@ -1,64 +1,66 @@
+import type { DiffResult, SnapshotEntry } from "../ipc/types";
+
 // §71 스냅샷 상태 관리 스토어
 import { create } from "zustand";
-import type { SnapshotEntry, DiffResult } from "../ipc/types";
+
 import {
   createSnapshot,
-  listSnapshots,
-  getSnapshotDiff,
-  restoreSnapshot,
   deleteSnapshot,
   getFileHistory,
+  getSnapshotDiff,
+  listSnapshots,
   readFile,
+  restoreSnapshot,
 } from "../ipc/invoke";
-import { useFileStore } from "./file-store";
 import { useEditorStore } from "./editor-store";
+import { useFileStore } from "./file-store";
 
 interface SnapshotState {
-  // List
-  snapshots: SnapshotEntry[];
-  loading: boolean;
-  error: string | null;
-
-  // Selected snapshot
-  selectedSnapshotId: string | null;
-  selectedFiles: string[];
-
   // Diff
-  activeDiff: { filePath: string; diff: DiffResult } | null;
-  diffLoading: boolean;
-
-  // File history mode
-  fileHistoryPath: string | null;
-  fileHistory: SnapshotEntry[];
-
-  // Restore
-  restoring: boolean;
-  restoreMessage: string | null;
+  activeDiff: null | { diff: DiffResult; filePath: string };
+  clearFileHistory: () => void;
+  closeDiff: () => void;
 
   // Creating
   creating: boolean;
-
-  // Actions
-  loadSnapshots: (vaultPath: string) => Promise<void>;
-  selectSnapshot: (id: string | null) => void;
-  toggleFileSelection: (filePath: string) => void;
-  selectAllFiles: () => void;
   deselectAllFiles: () => void;
+
+  diffLoading: boolean;
+  error: null | string;
+
+  fileHistory: SnapshotEntry[];
+  // File history mode
+  fileHistoryPath: null | string;
+
   loadDiff: (
     vaultPath: string,
     snapshotId: string,
     filePath: string,
   ) => Promise<void>;
-  closeDiff: () => void;
+  loadFileHistory: (vaultPath: string, filePath: string) => Promise<void>;
+
+  loading: boolean;
+
+  // Actions
+  loadSnapshots: (vaultPath: string) => Promise<void>;
+  performCreate: (vaultPath: string, label?: string) => Promise<string>;
+  performDelete: (vaultPath: string, snapshotId: string) => Promise<void>;
   performRestore: (
     vaultPath: string,
     snapshotId: string,
     files?: string[],
   ) => Promise<void>;
-  performCreate: (vaultPath: string, label?: string) => Promise<string>;
-  performDelete: (vaultPath: string, snapshotId: string) => Promise<void>;
-  loadFileHistory: (vaultPath: string, filePath: string) => Promise<void>;
-  clearFileHistory: () => void;
+  restoreMessage: null | string;
+  // Restore
+  restoring: boolean;
+  selectAllFiles: () => void;
+  selectedFiles: string[];
+  // Selected snapshot
+  selectedSnapshotId: null | string;
+  selectSnapshot: (id: null | string) => void;
+  // List
+  snapshots: SnapshotEntry[];
+  toggleFileSelection: (filePath: string) => void;
 }
 
 export const useSnapshotStore = create<SnapshotState>((set, get) => ({

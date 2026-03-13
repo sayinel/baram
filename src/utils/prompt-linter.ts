@@ -1,11 +1,11 @@
 // §46 Prompt Optimization — static analysis rules for Skill prompts
 
 export interface LintResult {
-  rule: string;
-  message: string;
   from: number;
+  message: string;
+  rule: string;
+  severity: "error" | "warning";
   to: number;
-  severity: "warning" | "error";
 }
 
 // Ambiguous words that indicate vague instructions
@@ -41,23 +41,19 @@ const CONFLICTING_PAIRS: [RegExp, RegExp, string][] = [
 ];
 
 /**
- * Parse YAML frontmatter from markdown text.
- * Returns the frontmatter string and the offset where body starts.
+ * Run all 8 lint rules on a Skill prompt.
  */
-function parseFrontmatter(text: string): {
-  frontmatter: string;
-  frontmatterEnd: number;
-  bodyStart: number;
-} {
-  const fmMatch = text.match(/^---\n([\s\S]*?)\n---/);
-  if (!fmMatch) {
-    return { frontmatter: "", frontmatterEnd: 0, bodyStart: 0 };
-  }
-  return {
-    frontmatter: fmMatch[1],
-    frontmatterEnd: fmMatch[0].length,
-    bodyStart: fmMatch[0].length,
-  };
+export function lintPrompt(text: string): LintResult[] {
+  return [
+    ...checkAmbiguousInstruction(text),
+    ...checkMissingOutputFormat(text),
+    ...checkMissingRequiredField(text),
+    ...checkExcessiveLength(text),
+    ...checkUnusedVariable(text),
+    ...checkConflictingInstructions(text),
+    ...checkEmptyRequires(text),
+    ...checkDuplicateRequires(text),
+  ];
 }
 
 /**
@@ -83,6 +79,124 @@ function checkAmbiguousInstruction(text: string): LintResult[] {
     }
   }
   return results;
+}
+
+/**
+ * Rule: conflictingInstructions
+ * Detects contradictory phrases in the prompt body.
+ */
+function checkConflictingInstructions(text: string): LintResult[] {
+  const { bodyStart } = parseFrontmatter(text);
+  const body = text.slice(bodyStart);
+  const results: LintResult[] = [];
+
+  for (const [pattern1, pattern2, message] of CONFLICTING_PAIRS) {
+    const match1 = pattern1.exec(body);
+    const match2 = pattern2.exec(body);
+    if (match1 && match2) {
+      // Highlight the second conflicting phrase
+      results.push({
+        rule: "conflictingInstructions",
+        message: `Conflicting instructions: ${message}`,
+        from: bodyStart + match2.index,
+        to: bodyStart + match2.index + match2[0].length,
+        severity: "warning",
+      });
+    }
+  }
+  return results;
+}
+
+/**
+ * Rule: duplicateRequires
+ * requires array contains duplicate entries.
+ */
+function checkDuplicateRequires(text: string): LintResult[] {
+  const { frontmatter } = parseFrontmatter(text);
+  if (!frontmatter) return [];
+
+  const requiresMatch = frontmatter.match(/^requires\s*:\s*\[([^\]]*)\]/m);
+  if (!requiresMatch) return [];
+
+  const items = requiresMatch[1]
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const seen = new Set<string>();
+  const duplicates: string[] = [];
+
+  for (const item of items) {
+    if (seen.has(item)) {
+      duplicates.push(item);
+    }
+    seen.add(item);
+  }
+
+  if (duplicates.length > 0) {
+    const reqIdx = text.indexOf(requiresMatch[0]);
+    return [
+      {
+        rule: "duplicateRequires",
+        message: `Duplicate requires: ${duplicates.join(", ")}`,
+        from: reqIdx >= 0 ? reqIdx : 0,
+        to: reqIdx >= 0 ? reqIdx + requiresMatch[0].length : 3,
+        severity: "warning",
+      },
+    ];
+  }
+  return [];
+}
+
+/**
+ * Rule: emptyRequires
+ * requires array contains empty or whitespace-only entries.
+ */
+function checkEmptyRequires(text: string): LintResult[] {
+  const { frontmatter } = parseFrontmatter(text);
+  if (!frontmatter) return [];
+
+  const requiresMatch = frontmatter.match(/^requires\s*:\s*\[([^\]]*)\]/m);
+  if (!requiresMatch) return [];
+
+  const items = requiresMatch[1].split(",").map((s) => s.trim());
+  const hasEmpty = items.some(
+    (item) => item === "" || item === '""' || item === "''",
+  );
+
+  if (hasEmpty) {
+    const reqIdx = text.indexOf(requiresMatch[0]);
+    return [
+      {
+        rule: "emptyRequires",
+        message: "requires array contains empty entries",
+        from: reqIdx >= 0 ? reqIdx : 0,
+        to: reqIdx >= 0 ? reqIdx + requiresMatch[0].length : 3,
+        severity: "warning",
+      },
+    ];
+  }
+  return [];
+}
+
+/**
+ * Rule: excessiveLength
+ * Prompt body exceeds 4000 characters.
+ */
+function checkExcessiveLength(text: string): LintResult[] {
+  const { bodyStart } = parseFrontmatter(text);
+  const body = text.slice(bodyStart);
+  if (body.length > 4000) {
+    return [
+      {
+        rule: "excessiveLength",
+        message: `Prompt body is ${body.length} characters — consider shortening (max recommended: 4000)`,
+        from: bodyStart + 3990,
+        to: bodyStart + Math.min(body.length, 4010),
+        severity: "warning",
+      },
+    ];
+  }
+  return [];
 }
 
 /**
@@ -145,27 +259,6 @@ function checkMissingRequiredField(text: string): LintResult[] {
 }
 
 /**
- * Rule: excessiveLength
- * Prompt body exceeds 4000 characters.
- */
-function checkExcessiveLength(text: string): LintResult[] {
-  const { bodyStart } = parseFrontmatter(text);
-  const body = text.slice(bodyStart);
-  if (body.length > 4000) {
-    return [
-      {
-        rule: "excessiveLength",
-        message: `Prompt body is ${body.length} characters — consider shortening (max recommended: 4000)`,
-        from: bodyStart + 3990,
-        to: bodyStart + Math.min(body.length, 4010),
-        severity: "warning",
-      },
-    ];
-  }
-  return [];
-}
-
-/**
  * Rule: unusedVariable
  * Variable declared in frontmatter but not used in body.
  */
@@ -203,116 +296,23 @@ function checkUnusedVariable(text: string): LintResult[] {
 }
 
 /**
- * Rule: conflictingInstructions
- * Detects contradictory phrases in the prompt body.
+ * Parse YAML frontmatter from markdown text.
+ * Returns the frontmatter string and the offset where body starts.
  */
-function checkConflictingInstructions(text: string): LintResult[] {
-  const { bodyStart } = parseFrontmatter(text);
-  const body = text.slice(bodyStart);
-  const results: LintResult[] = [];
-
-  for (const [pattern1, pattern2, message] of CONFLICTING_PAIRS) {
-    const match1 = pattern1.exec(body);
-    const match2 = pattern2.exec(body);
-    if (match1 && match2) {
-      // Highlight the second conflicting phrase
-      results.push({
-        rule: "conflictingInstructions",
-        message: `Conflicting instructions: ${message}`,
-        from: bodyStart + match2.index,
-        to: bodyStart + match2.index + match2[0].length,
-        severity: "warning",
-      });
-    }
+function parseFrontmatter(text: string): {
+  bodyStart: number;
+  frontmatter: string;
+  frontmatterEnd: number;
+} {
+  const fmMatch = text.match(/^---\n([\s\S]*?)\n---/);
+  if (!fmMatch) {
+    return { frontmatter: "", frontmatterEnd: 0, bodyStart: 0 };
   }
-  return results;
-}
-
-/**
- * Rule: emptyRequires
- * requires array contains empty or whitespace-only entries.
- */
-function checkEmptyRequires(text: string): LintResult[] {
-  const { frontmatter } = parseFrontmatter(text);
-  if (!frontmatter) return [];
-
-  const requiresMatch = frontmatter.match(/^requires\s*:\s*\[([^\]]*)\]/m);
-  if (!requiresMatch) return [];
-
-  const items = requiresMatch[1].split(",").map((s) => s.trim());
-  const hasEmpty = items.some(
-    (item) => item === "" || item === '""' || item === "''",
-  );
-
-  if (hasEmpty) {
-    const reqIdx = text.indexOf(requiresMatch[0]);
-    return [
-      {
-        rule: "emptyRequires",
-        message: "requires array contains empty entries",
-        from: reqIdx >= 0 ? reqIdx : 0,
-        to: reqIdx >= 0 ? reqIdx + requiresMatch[0].length : 3,
-        severity: "warning",
-      },
-    ];
-  }
-  return [];
-}
-
-/**
- * Rule: duplicateRequires
- * requires array contains duplicate entries.
- */
-function checkDuplicateRequires(text: string): LintResult[] {
-  const { frontmatter } = parseFrontmatter(text);
-  if (!frontmatter) return [];
-
-  const requiresMatch = frontmatter.match(/^requires\s*:\s*\[([^\]]*)\]/m);
-  if (!requiresMatch) return [];
-
-  const items = requiresMatch[1]
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const seen = new Set<string>();
-  const duplicates: string[] = [];
-
-  for (const item of items) {
-    if (seen.has(item)) {
-      duplicates.push(item);
-    }
-    seen.add(item);
-  }
-
-  if (duplicates.length > 0) {
-    const reqIdx = text.indexOf(requiresMatch[0]);
-    return [
-      {
-        rule: "duplicateRequires",
-        message: `Duplicate requires: ${duplicates.join(", ")}`,
-        from: reqIdx >= 0 ? reqIdx : 0,
-        to: reqIdx >= 0 ? reqIdx + requiresMatch[0].length : 3,
-        severity: "warning",
-      },
-    ];
-  }
-  return [];
-}
-
-/**
- * Run all 8 lint rules on a Skill prompt.
- */
-export function lintPrompt(text: string): LintResult[] {
-  return [
-    ...checkAmbiguousInstruction(text),
-    ...checkMissingOutputFormat(text),
-    ...checkMissingRequiredField(text),
-    ...checkExcessiveLength(text),
-    ...checkUnusedVariable(text),
-    ...checkConflictingInstructions(text),
-    ...checkEmptyRequires(text),
-    ...checkDuplicateRequires(text),
-  ];
+  return {
+    frontmatter: fmMatch[1],
+    frontmatterEnd: fmMatch[0].length,
+    bodyStart: fmMatch[0].length,
+  };
 }
 
 // Export individual rules for testing

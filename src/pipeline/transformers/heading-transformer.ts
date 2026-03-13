@@ -1,7 +1,7 @@
+import type { NodeTransformerEntry } from "../types";
 // heading-transformer.ts — §5.1 Heading (H1-H6) mdast ↔ ProseMirror
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
-import type { Node as MdastNode, Heading } from "mdast";
-import type { NodeTransformerEntry } from "../types";
+import type { Heading, Node as MdastNode } from "mdast";
 
 export const headingTransformer: NodeTransformerEntry = {
   mdastType: "heading",

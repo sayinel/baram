@@ -1,9 +1,10 @@
-import { describe, test, expect } from "vitest";
+import { describe, expect, test } from "vitest";
+
 import {
-  isImageFile,
-  getRelativePath,
-  resolveNameConflict,
   extractNamespace,
+  getRelativePath,
+  isImageFile,
+  resolveNameConflict,
 } from "../path-utils";
 
 describe("isImageFile", () => {
@@ -107,7 +108,7 @@ describe("resolveNameConflict", () => {
     expect(
       resolveNameConflict(
         "photo.png",
-        new Set(["photo.png", "photo-1.png", "photo-2.png"]),
+        new Set(["photo-1.png", "photo-2.png", "photo.png"]),
       ),
     ).toBe("photo-3.png");
   });

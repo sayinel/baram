@@ -5,11 +5,12 @@
 // 1. Pipeline preserves content that would appear in exported HTML
 // 2. generateStandaloneHTML produces valid HTML5 with editor-like content
 //
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 import { generateStandaloneHTML } from "../../utils/export-html";
-import { FIXTURE_RICH, createTestSchema } from "./fixtures";
+import { createTestSchema, FIXTURE_RICH } from "./fixtures";
 
 const schema = createTestSchema();
 

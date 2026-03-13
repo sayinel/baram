@@ -1,7 +1,7 @@
+import type { NodeTransformerEntry } from "../types";
 // ordered-list-transformer.ts — §5.1 Ordered List mdast ↔ ProseMirror
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
-import type { Node as MdastNode, List } from "mdast";
-import type { NodeTransformerEntry } from "../types";
+import type { List, Node as MdastNode } from "mdast";
 
 export const orderedListTransformer: NodeTransformerEntry = {
   mdastType: "list",
