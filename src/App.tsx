@@ -753,6 +753,9 @@ function App() {
         }
       }
     }
+    // Intentionally only re-run on activeTabId change; other values (editor,
+    // tabs, openFiles, etc.) are read from store state or refs to avoid
+    // re-registering the effect on every keystroke.
   }, [activeTabId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // §5.11 Activate Find highlights from Global Search result click (same-tab case)
@@ -847,6 +850,8 @@ function App() {
         /* ignore */
       }
     }, 50);
+    // Intentionally only re-run on contentReloadVersion bump; editor and other
+    // values are read from store state to avoid re-running on every edit.
   }, [contentReloadVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // §72 External content refresh (PropertiesPanel → editor sync)
@@ -867,6 +872,8 @@ function App() {
       plugins: editor.state.plugins,
     });
     editor.view.updateState(newState);
+    // Intentionally only re-run on contentRefreshKey bump; editor and other
+    // values are read from store state to avoid re-running on every edit.
   }, [contentRefreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // §72c Navigate to ProseMirror position from lint results / external panels
