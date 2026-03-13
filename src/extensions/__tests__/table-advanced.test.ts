@@ -152,7 +152,7 @@ describe("Table Advanced — cell merge (§5.5 M10)", () => {
       expect(bodyCells).toHaveLength(2);
       // First cell has content, second is empty
       expect(bodyCells[0]).toBe("Span");
-      expect(bodyCells[1]).toBe("");
+      expect(bodyCells[1]).toBe("<");
     });
   });
 
@@ -192,7 +192,7 @@ describe("Table Advanced — cell merge (§5.5 M10)", () => {
       const bodyCells = countInnerCells(lines[2]);
       // Body row also has 2 columns; col 0 is empty (spanned from above)
       expect(bodyCells).toHaveLength(2);
-      expect(bodyCells[0]).toBe(""); // spanned cell → empty
+      expect(bodyCells[0]).toBe("^"); // spanned cell → rowspan marker
       expect(bodyCells[1]).toBe("B2");
     });
   });

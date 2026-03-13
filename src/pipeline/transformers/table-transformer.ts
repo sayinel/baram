@@ -78,12 +78,18 @@ export const tableTransformer: NodeTransformerEntry = {
 
     // Step 2: Build 2D grid (rows × cols), null = unfilled
     const rowCount = node.childCount;
-    const grid: (null | { cell: PmNode; isMain: boolean })[][] = [];
+    const grid: (null | {
+      cell: PmNode;
+      isMain: boolean;
+      mainCol: number;
+      mainRow: number;
+    })[][] = [];
     for (let r = 0; r < rowCount; r++) {
       grid.push(new Array(maxCols).fill(null));
     }
 
     // Step 3: Fill grid from PM cells, respecting colspan + rowspan
+    let hasMerge = false;
     node.forEach((row, _offset, rowIndex) => {
       let gridCol = 0;
       row.forEach((cell) => {
@@ -93,12 +99,15 @@ export const tableTransformer: NodeTransformerEntry = {
         }
         const cs = (cell.attrs.colspan as number) || 1;
         const rs = (cell.attrs.rowspan as number) || 1;
+        if (cs > 1 || rs > 1) hasMerge = true;
         for (let dr = 0; dr < rs; dr++) {
           for (let dc = 0; dc < cs; dc++) {
             if (rowIndex + dr < rowCount && gridCol + dc < maxCols) {
               grid[rowIndex + dr][gridCol + dc] = {
                 cell,
                 isMain: dr === 0 && dc === 0,
+                mainRow: rowIndex,
+                mainCol: gridCol,
               };
             }
           }
@@ -131,8 +140,15 @@ export const tableTransformer: NodeTransformerEntry = {
           if (!alignCollected) {
             align.push((entry.cell.attrs.alignment as string) || null);
           }
+        } else if (hasMerge && entry) {
+          // Merge marker cell
+          const marker = entry.mainRow === r ? "<" : "^";
+          cells.push({
+            type: "tableCell",
+            children: [{ type: "text", value: marker } as unknown as MdastNode],
+          } as MdastTableCell);
         } else {
-          // Spanned or empty cell — emit empty content
+          // Spanned or empty cell (no merge) — emit empty content
           cells.push({
             type: "tableCell",
             children: [],
