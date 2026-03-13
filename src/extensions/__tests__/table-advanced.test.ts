@@ -650,4 +650,15 @@ describe("Table Advanced — cell merge (§5.5 M10)", () => {
       expect(countInnerCells(lines[3])[0]).toBe("^");
     });
   });
+
+  describe("Backward compatibility: no-merge tables unchanged", () => {
+    it("table without merge produces no markers", () => {
+      const input = "| A | B | C |\n| --- | --- | --- |\n| 1 | 2 | 3 |";
+      const output = roundtrip(input);
+      expect(output).not.toContain("| < |");
+      expect(output).not.toContain("| ^ |");
+      expect(output).toContain("| A | B | C |");
+      expect(output).toContain("| 1 | 2 | 3 |");
+    });
+  });
 });
