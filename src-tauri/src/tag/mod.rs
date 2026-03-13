@@ -4,7 +4,25 @@ use regex::Regex;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::LazyLock;
 use thiserror::Error;
+
+// Frontmatter inline array: tags: [tag1, tag2, ...]
+static FM_TAGS_INLINE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^tags\s*:\s*\[([^\]]*)\]").unwrap());
+
+// Frontmatter block list header: tags:
+static FM_TAGS_BLOCK_HEADER_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)^tags\s*:\s*$").unwrap());
+
+// Frontmatter block list item:   - tag
+static FM_TAGS_BLOCK_ITEM_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\s+-\s+(.+)$").unwrap());
+
+// Inline #tag regex: #tag, #parent/child, #한국어태그
+static INLINE_TAG_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?:^|[\s\(])#([\w\p{Script=Hangul}]+(?:/[\w\p{Script=Hangul}]+)*)").unwrap()
+});
 
 #[derive(Debug, Error)]
 pub enum TagError {
@@ -76,17 +94,11 @@ fn split_frontmatter(content: &str) -> (String, String) {
 fn extract_frontmatter_tags(frontmatter: &str) -> Vec<String> {
     let mut tags = Vec::new();
 
-    // Inline array: tags: [tag1, tag2, ...]
-    let re_inline = Regex::new(r"(?i)^tags\s*:\s*\[([^\]]*)\]").unwrap();
-    // Block list: tags:\n  - item
-    let re_block_header = Regex::new(r"(?i)^tags\s*:\s*$").unwrap();
-    let re_block_item = Regex::new(r"^\s+-\s+(.+)$").unwrap();
-
     let lines: Vec<&str> = frontmatter.lines().collect();
     let mut i = 0;
     while i < lines.len() {
         let line = lines[i];
-        if let Some(cap) = re_inline.captures(line) {
+        if let Some(cap) = FM_TAGS_INLINE_RE.captures(line) {
             let inner = cap.get(1).map(|m| m.as_str()).unwrap_or("");
             for part in inner.split(',') {
                 let t = part.trim().trim_matches('"').trim_matches('\'').to_string();
@@ -94,11 +106,11 @@ fn extract_frontmatter_tags(frontmatter: &str) -> Vec<String> {
                     tags.push(t);
                 }
             }
-        } else if re_block_header.is_match(line) {
+        } else if FM_TAGS_BLOCK_HEADER_RE.is_match(line) {
             // Consume following list items
             i += 1;
             while i < lines.len() {
-                if let Some(cap) = re_block_item.captures(lines[i]) {
+                if let Some(cap) = FM_TAGS_BLOCK_ITEM_RE.captures(lines[i]) {
                     let t = cap
                         .get(1)
                         .map(|m| m.as_str())
@@ -128,9 +140,8 @@ fn extract_frontmatter_tags(frontmatter: &str) -> Vec<String> {
 fn extract_inline_tags(body: &str) -> Vec<String> {
     // Match #tag, #parent/child, #한국어태그
     // Require that # is preceded by whitespace or start-of-line (not inside a word)
-    let re =
-        Regex::new(r"(?:^|[\s\(])#([\w\p{Script=Hangul}]+(?:/[\w\p{Script=Hangul}]+)*)").unwrap();
-    re.captures_iter(body)
+    INLINE_TAG_RE
+        .captures_iter(body)
         .filter_map(|cap| cap.get(1).map(|m| m.as_str().to_string()))
         .collect()
 }

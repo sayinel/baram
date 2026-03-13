@@ -116,6 +116,25 @@ static FM_TAGS_BLOCK_RE: LazyLock<Regex> =
 // Frontmatter tags block item:   - tag
 static FM_TAGS_ITEM_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s+-\s+(.+)$").unwrap());
 
+// §33 Wikilink replace regex: captures (target, rest) for replace_wikilink_target
+static REPLACE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\[\[([^\]|#^]+)((?:#[^\]|^]+)?(?:\^[^\]|]+)?(?:\|[^\]]+)?)\]\]").unwrap()
+});
+
+// §30a Block embed replace regex: {{embed ((target#^ID))}}
+static EMBED_REPLACE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\{\{embed \(\(([^)#|]*?)#\^([a-zA-Z0-9][\w-]*)\)\)\}\}").unwrap()
+});
+
+// §30a Block ref replace regex: ((target#^ID)) or ((target#^ID|display))
+static REF_REPLACE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\(\(([^)#|]*?)#\^([a-zA-Z0-9][\w-]*)(\|[^)]+)?\)\)").unwrap());
+
+// §61 Relative wikilink regex: [[./path...]] or [[../path...]]
+static RELATIVE_WIKILINK_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\[\[(\.\.?/[^\]|#^]+)((?:#[^\]|^]+)?(?:\^[^\]|]+)?(?:\|[^\]]+)?)\]\]").unwrap()
+});
+
 impl LinkIndex {
     pub fn new() -> Self {
         Self::default()
@@ -562,12 +581,7 @@ fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
 /// Only replaces the target portion, preserving display, heading, and blockId.
 pub fn replace_wikilink_target(content: &str, old_target: &str, new_target: &str) -> String {
     // Match all wikilink forms: [[target]], [[target|display]], [[target#heading]], etc.
-    // We need a regex that captures the full wikilink and allows us to replace just the target part.
-    static REPLACE_RE: LazyLock<Regex> = LazyLock::new(|| {
-        // Capture groups: (1) target, (2) rest — #heading, ^blockId, |display in any combo
-        Regex::new(r"\[\[([^\]|#^]+)((?:#[^\]|^]+)?(?:\^[^\]|]+)?(?:\|[^\]]+)?)\]\]").unwrap()
-    });
-
+    // Capture groups: (1) target, (2) rest — #heading, ^blockId, |display in any combo
     REPLACE_RE
         .replace_all(content, |caps: &regex::Captures| {
             let captured_target = caps.get(1).map(|m| m.as_str()).unwrap_or("");
@@ -591,15 +605,6 @@ pub fn replace_wikilink_target(content: &str, old_target: &str, new_target: &str
 /// Updates ((target#^oldId)), ((target#^oldId|display)), ((#^oldId)),
 /// and {{embed ((target#^oldId))}} patterns.
 pub fn replace_block_id_refs(content: &str, old_id: &str, new_id: &str) -> String {
-    // Regex: block embed — {{embed ((target#^ID))}}
-    static EMBED_REPLACE_RE: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"\{\{embed \(\(([^)#|]*?)#\^([a-zA-Z0-9][\w-]*)\)\)\}\}").unwrap()
-    });
-    // Regex: block ref — ((target#^ID)) or ((target#^ID|display))
-    static REF_REPLACE_RE: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"\(\(([^)#|]*?)#\^([a-zA-Z0-9][\w-]*)(\|[^)]+)?\)\)").unwrap()
-    });
-
     let step1 = EMBED_REPLACE_RE.replace_all(content, |caps: &regex::Captures| {
         let target = caps.get(1).map(|m| m.as_str()).unwrap_or("");
         let id = caps.get(2).map(|m| m.as_str()).unwrap_or("");
@@ -790,11 +795,6 @@ pub fn rewrite_relative_wikilinks(
     old_dir: &str,
     new_dir: &str,
 ) -> String {
-    // Regex for relative wikilinks: [[./path...]] or [[../path...]] with optional #heading, ^block, |display
-    static RELATIVE_WIKILINK_RE: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"\[\[(\.\.?/[^\]|#^]+)((?:#[^\]|^]+)?(?:\^[^\]|]+)?(?:\|[^\]]+)?)\]\]").unwrap()
-    });
-
     let source_dir = Path::new(source_path)
         .parent()
         .map(|p| p.to_string_lossy().to_string())
