@@ -5,6 +5,7 @@ pub async fn git_status(path: String) -> Result<crate::git::GitStatusInfo, Strin
     tokio::task::spawn_blocking(move || crate::git::status(&path))
         .await
         .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -12,6 +13,7 @@ pub async fn git_stage(path: String, files: Vec<String>) -> Result<(), String> {
     tokio::task::spawn_blocking(move || crate::git::stage(&path, &files))
         .await
         .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -19,6 +21,7 @@ pub async fn git_unstage(path: String, files: Vec<String>) -> Result<(), String>
     tokio::task::spawn_blocking(move || crate::git::unstage(&path, &files))
         .await
         .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -26,6 +29,7 @@ pub async fn git_commit(path: String, message: String) -> Result<String, String>
     tokio::task::spawn_blocking(move || crate::git::commit(&path, &message))
         .await
         .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -36,6 +40,7 @@ pub async fn git_diff_file(
     tokio::task::spawn_blocking(move || crate::git::diff_file(&path, &file_path))
         .await
         .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -43,6 +48,7 @@ pub async fn git_branches(path: String) -> Result<Vec<crate::git::GitBranchInfo>
     tokio::task::spawn_blocking(move || crate::git::list_branches(&path))
         .await
         .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -50,6 +56,7 @@ pub async fn git_switch_branch(path: String, branch_name: String) -> Result<(), 
     tokio::task::spawn_blocking(move || crate::git::switch_branch(&path, &branch_name))
         .await
         .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -57,6 +64,7 @@ pub async fn git_discard(path: String, files: Vec<String>) -> Result<(), String>
     tokio::task::spawn_blocking(move || crate::git::discard(&path, &files))
         .await
         .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -64,6 +72,7 @@ pub async fn git_create_branch(path: String, branch_name: String) -> Result<(), 
     tokio::task::spawn_blocking(move || crate::git::create_branch(&path, &branch_name))
         .await
         .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 // §67 Git Advanced IPC commands
@@ -77,6 +86,7 @@ pub async fn git_log(
     tokio::task::spawn_blocking(move || crate::git::log(&path, count))
         .await
         .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -89,6 +99,7 @@ pub async fn git_stash_save(
     tokio::task::spawn_blocking(move || crate::git::stash_save(&path, &message, untracked))
         .await
         .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -96,6 +107,7 @@ pub async fn git_stash_list(path: String) -> Result<Vec<crate::git::GitStashEntr
     tokio::task::spawn_blocking(move || crate::git::stash_list(&path))
         .await
         .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -104,6 +116,7 @@ pub async fn git_stash_pop(path: String, index: Option<usize>) -> Result<(), Str
     tokio::task::spawn_blocking(move || crate::git::stash_pop(&path, idx))
         .await
         .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -112,6 +125,7 @@ pub async fn git_stash_drop(path: String, index: Option<usize>) -> Result<(), St
     tokio::task::spawn_blocking(move || crate::git::stash_drop(&path, idx))
         .await
         .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -119,6 +133,7 @@ pub async fn git_remotes(path: String) -> Result<Vec<crate::git::GitRemoteInfo>,
     tokio::task::spawn_blocking(move || crate::git::list_remotes(&path))
         .await
         .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -127,6 +142,7 @@ pub async fn git_fetch(path: String, remote: Option<String>) -> Result<(), Strin
     tokio::task::spawn_blocking(move || crate::git::fetch(&path, &remote_name))
         .await
         .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -140,6 +156,7 @@ pub async fn git_pull(
     tokio::task::spawn_blocking(move || crate::git::pull(&path, &remote_name, &branch_name))
         .await
         .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -153,6 +170,7 @@ pub async fn git_push(
     tokio::task::spawn_blocking(move || crate::git::push(&path, &remote_name, &branch_name))
         .await
         .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -166,6 +184,7 @@ pub async fn git_ahead_behind(
     tokio::task::spawn_blocking(move || crate::git::ahead_behind(&path, &branch_name, &remote_name))
         .await
         .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -173,4 +192,5 @@ pub async fn git_delete_branch(path: String, branch_name: String) -> Result<(), 
     tokio::task::spawn_blocking(move || crate::git::delete_branch(&path, &branch_name))
         .await
         .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
