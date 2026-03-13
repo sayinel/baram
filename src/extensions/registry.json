@@ -371,6 +371,18 @@
       "_note": "Inline atom node (not a mark). Listed under nodes because implementation is nodes/wikilink.ts."
     },
     {
+      "name": "htmlBlock",
+      "file": "nodes/html-block.ts",
+      "markdown": "<div>...</div>",
+      "spec": "§5.1",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "hasNodeView": true,
+      "inputRules": [],
+      "shortcuts": {}
+    },
+    {
       "name": "mention",
       "file": "nodes/mention.ts",
       "markdown": "@[[page]]",

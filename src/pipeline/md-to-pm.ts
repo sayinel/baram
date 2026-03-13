@@ -129,6 +129,14 @@ function convertBlockChildren(children: Content[], schema: Schema): PmNode[] {
       }
     }
 
+    // Fallback: unrecognized HTML block → htmlBlock node
+    if (child.type === "html" && schema.nodes.htmlBlock) {
+      const htmlVal = (child as { value: string }).value;
+      result.push(schema.nodes.htmlBlock.create({ content: htmlVal }));
+      i++;
+      continue;
+    }
+
     // Detect definition list: paragraph(non-:) + paragraph(:) pattern
     // §perf-large-file: Pre-check avoids calling tryConvertDefinitionList on 99% of paragraphs
     if (child.type === "paragraph" && schema.nodes.definitionList) {
