@@ -597,4 +597,57 @@ describe("Table Advanced — cell merge (§5.5 M10)", () => {
       expect(bodyCells[2]).toBe("D");
     });
   });
+
+  describe("Roundtrip: merge markers with inline marks and alignment", () => {
+    it("colspan cell with bold text preserves marks on roundtrip", () => {
+      const md = "| **Bold** | < | C |\n| --- | --- | --- |\n| 1 | 2 | 3 |";
+      const doc = markdownToProsemirror(md, schema);
+      const table = doc.firstChild!;
+      const headerRow = table.firstChild!;
+
+      // Bold cell has colspan=2
+      expect(headerRow.child(0).attrs.colspan).toBe(2);
+
+      // Re-serialize and verify bold + marker preserved
+      const output = prosemirrorToMarkdown(doc);
+      const lines = output.trim().split("\n");
+      const headerCells = countInnerCells(lines[0]);
+      expect(headerCells[0]).toContain("**Bold**");
+      expect(headerCells[1]).toBe("<");
+      expect(headerCells[2]).toBe("C");
+    });
+
+    it("merge table with alignment roundtrips correctly", () => {
+      const md = "| A | < | C |\n| :--- | :---: | ---: |\n| 1 | 2 | 3 |";
+      const doc = markdownToProsemirror(md, schema);
+      const output = prosemirrorToMarkdown(doc);
+
+      // Left and right alignment markers preserved
+      // Note: the '<' marker column inherits the merged cell's alignment (left),
+      // so center alignment from the separator is not preserved on that column.
+      expect(output).toMatch(/:-+/); // left
+      expect(output).toMatch(/-+:/); // right
+
+      // Merge marker preserved
+      const lines = output.trim().split("\n");
+      const headerCells = countInnerCells(lines[0]);
+      expect(headerCells[1]).toBe("<");
+    });
+
+    it("rowspan=3 with consecutive '^' markers", () => {
+      const md = "| Tall | B |\n| --- | --- |\n| ^ | C |\n| ^ | D |";
+      const doc = markdownToProsemirror(md, schema);
+      const table = doc.firstChild!;
+      const headerRow = table.firstChild!;
+
+      expect(headerRow.child(0).attrs.rowspan).toBe(3);
+      expect(headerRow.child(0).textContent).toBe("Tall");
+
+      // Re-serialize and verify markers
+      const output = prosemirrorToMarkdown(doc);
+      const lines = output.trim().split("\n");
+      expect(countInnerCells(lines[2])[0]).toBe("^");
+      expect(countInnerCells(lines[3])[0]).toBe("^");
+    });
+  });
 });
