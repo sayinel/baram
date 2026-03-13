@@ -147,6 +147,10 @@ export const tableTransformer: NodeTransformerEntry = {
             type: "tableCell",
             children: [{ type: "text", value: marker } as unknown as MdastNode],
           } as MdastTableCell);
+
+          if (!alignCollected) {
+            align.push((entry.cell.attrs.alignment as string) || null);
+          }
         } else {
           // Spanned or empty cell (no merge) — emit empty content
           cells.push({
