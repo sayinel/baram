@@ -74,7 +74,6 @@
     "@tiptap/extension-text": "^3.19.0",
     "@tiptap/pm": "^3.19.0",
     "@tiptap/react": "^3.19.0",
-    "@tiptap/starter-kit": "^3.19.0",
     "@tiptap/suggestion": "^3.19.0",
     "@types/mdast": "^4.0.4",
     "codemirror-lang-latex": "^0.2.0",

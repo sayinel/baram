@@ -152,7 +152,7 @@
       "phase": 1,
       "milestone": "M3",
       "status": "implemented",
-      "hasNodeView": true,
+      "hasNodeView": false,
       "inputRules": ["| H1 | H2 | + Enter"],
       "shortcuts": { "Mod-t": "insert table (grid picker)", "Mod-m": "merge or split cells" },
       "notes": "Tier 3: resizable columns (session only), pipe-input auto creation, context menu, hover insert buttons, TSV paste, CellSelection toolbar. M10: cell merge/split (colspan/rowspan → GFM decomposition), virtual scroll (content-visibility: auto) for 50+ row tables"
