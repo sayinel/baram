@@ -588,7 +588,7 @@ pub fn run() {
             Ok(())
         })
         .manage(PendingOpenFiles(Mutex::new(Vec::new())))
-        .manage(index_cmd::LinkIndexState(Mutex::new(
+        .manage(index_cmd::LinkIndexState(tokio::sync::Mutex::new(
             index::LinkIndex::new(),
         )))
         .manage(llm::cancel::CancelRegistry::new())
