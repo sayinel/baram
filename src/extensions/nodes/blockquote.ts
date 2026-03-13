@@ -1,6 +1,8 @@
 // §5.1 Blockquote Extension
 import { mergeAttributes, Node, wrappingInputRule } from "@tiptap/core";
 
+import { resolveShortcut } from "../utils/shortcut-resolver";
+
 export interface BlockquoteOptions {
   HTMLAttributes: Record<string, string>;
 }
@@ -57,8 +59,9 @@ export const Blockquote = Node.create<BlockquoteOptions>({
   },
 
   addKeyboardShortcuts() {
+    const key = resolveShortcut("formatting.blockquote", "Mod-Shift-b");
     return {
-      "Mod-Shift-b": () => this.editor.commands.toggleBlockquote(),
+      [key]: () => this.editor.commands.toggleBlockquote(),
     };
   },
 

@@ -1,9 +1,13 @@
 // §5.3 Math Block Extension — $$...$$ (atom:true, textarea editing)
 import { InputRule, mergeAttributes, Node } from "@tiptap/core";
-import { NodeSelection, Plugin, PluginKey } from "@tiptap/pm/state";
+import { NodeSelection, PluginKey } from "@tiptap/pm/state";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
 import { resolveShortcut } from "../utils/shortcut-resolver";
+import {
+  AtomBlockEntryState,
+  createAtomBlockEntryPlugin,
+} from "./atom-block-entry-plugin";
 import { MathBlockView } from "./math-block-view";
 
 export interface MathBlockOptions {
@@ -19,9 +23,7 @@ declare module "@tiptap/core" {
 }
 
 // Plugin state: tracks entry direction when a mathBlock gets selected
-export interface MathBlockEntryState {
-  direction: "above" | "below";
-}
+export type MathBlockEntryState = AtomBlockEntryState;
 
 export const mathBlockEntryKey = new PluginKey<MathBlockEntryState>(
   "mathBlockEntry",
@@ -73,47 +75,7 @@ export const MathBlock = Node.create<MathBlockOptions>({
   },
 
   addProseMirrorPlugins() {
-    return [
-      new Plugin<MathBlockEntryState>({
-        key: mathBlockEntryKey,
-        state: {
-          init() {
-            return { direction: "above" };
-          },
-          apply(tr, value, oldState) {
-            const newSel = tr.selection;
-            const oldSel = oldState.selection;
-            // Detect when a mathBlock node becomes selected
-            if (
-              newSel instanceof NodeSelection &&
-              newSel.node.type.name === "mathBlock"
-            ) {
-              // Only update direction on fresh entry (not re-selection of same node)
-              if (
-                !(oldSel instanceof NodeSelection) ||
-                oldSel.from !== newSel.from
-              ) {
-                const enteredFromBelow = oldSel.from > newSel.from;
-                return { direction: enteredFromBelow ? "below" : "above" };
-              }
-            }
-            return value;
-          },
-        },
-        props: {
-          handleClickOn(view, _pos, node, nodePos, _event, direct) {
-            if (node.type.name === "mathBlock" && direct) {
-              const tr = view.state.tr.setSelection(
-                NodeSelection.create(view.state.doc, nodePos),
-              );
-              view.dispatch(tr);
-              return true;
-            }
-            return false;
-          },
-        },
-      }),
-    ];
+    return [createAtomBlockEntryPlugin("mathBlock", mathBlockEntryKey)];
   },
 
   addCommands() {
