@@ -198,6 +198,31 @@ function convertBlockNode(
     }
   }
 
+  // Tables — dedicated handler wraps cell inline children in paragraphs
+  if (node.type === "table") {
+    const transformer = nodeTransformers.get("table");
+    if (transformer) {
+      const result = transformer.mdastToPm(node, schema, (parent) => {
+        const children = (parent as { children?: Content[] }).children;
+        if (!children || children.length === 0) return [];
+        const inlineContent = convertInlineChildren(
+          children as PhrasingContent[],
+          schema,
+          [],
+        );
+        return [schema.nodes.paragraph.create(null, inlineContent)];
+      });
+      if (result && !Array.isArray(result)) return result;
+    }
+    // Fallback: minimal valid table
+    const cell = schema.nodes.tableHeader.create(
+      null,
+      schema.nodes.paragraph.create(),
+    );
+    const row = schema.nodes.tableRow.create(null, [cell]);
+    return schema.nodes.table.create(null, [row]);
+  }
+
   // Lists — handle directly (bulletList/orderedList/taskList all share mdast type "list")
   if (node.type === "list") {
     return convertListNode(node, schema, convertBlockChildren);
@@ -532,148 +557,6 @@ function convertInlineNode(
   }
 
   return [];
-}
-
-/** Convert list item children (ensure listItem wrapping) */
-function convertListItemChildren(
-  children: Content[],
-  schema: Schema,
-): PmNode[] {
-  const result: PmNode[] = [];
-
-  for (const child of children) {
-    if (child.type === "listItem") {
-      const item = child as { checked?: boolean | null; children: Content[] };
-
-      if (item.checked != null) {
-        // Task item
-        let innerChildren = convertBlockChildren(item.children, schema);
-        // Empty task items must have at least one paragraph for cursor placement
-        if (innerChildren.length === 0) {
-          innerChildren = [schema.nodes.paragraph.create()];
-        }
-        result.push(
-          schema.nodes.taskItem.create(
-            { checked: item.checked ?? false },
-            innerChildren,
-          ),
-        );
-      } else {
-        // Regular list item
-        let innerChildren = convertBlockChildren(item.children, schema);
-        // Empty list items must have at least one paragraph for cursor placement
-        if (innerChildren.length === 0) {
-          innerChildren = [schema.nodes.paragraph.create()];
-        }
-        result.push(schema.nodes.listItem.create(null, innerChildren));
-      }
-    }
-  }
-
-  return result;
-}
-
-/** Convert an mdast list node to PM list node (bulletList/orderedList/taskList) */
-function convertListNode(node: Content, schema: Schema): PmNode {
-  const list = node as {
-    children: Content[];
-    ordered?: boolean;
-    start?: number;
-  };
-
-  // Check if any child has a checked property → task list
-  const hasTaskItems = list.children.some(
-    (child) =>
-      child.type === "listItem" &&
-      (child as { checked?: boolean | null }).checked != null,
-  );
-
-  if (hasTaskItems) {
-    const items = list.children.map((child) => {
-      const item = child as { checked?: boolean | null; children: Content[] };
-      const innerChildren = convertBlockChildren(item.children, schema);
-      return schema.nodes.taskItem.create(
-        { checked: item.checked ?? false },
-        innerChildren,
-      );
-    });
-    return schema.nodes.taskList.create(null, items);
-  }
-
-  // Ordered or bullet list
-  const items = convertListItemChildren(list.children, schema);
-
-  if (list.ordered) {
-    return schema.nodes.orderedList.create({ start: list.start ?? 1 }, items);
-  }
-
-  return schema.nodes.bulletList.create(null, items);
-}
-
-/** Convert an mdast table node to PM table node — delegates to tableTransformer */
-function convertTableNode(node: Content, schema: Schema): PmNode {
-  const transformer = nodeTransformers.get("table");
-  if (transformer) {
-    const result = transformer.mdastToPm(node, schema, (parent) => {
-      // Table cell children are inline — convert and wrap in paragraph
-      const children = (parent as { children?: Content[] }).children;
-      if (!children || children.length === 0) return [];
-      const inlineContent = convertInlineChildren(
-        children as PhrasingContent[],
-        schema,
-        [],
-      );
-      return [schema.nodes.paragraph.create(null, inlineContent)];
-    });
-    if (result && !Array.isArray(result)) return result;
-  }
-
-  // Fallback: minimal valid table (1 header row with 1 cell)
-  const cell = schema.nodes.tableHeader.create(
-    null,
-    schema.nodes.paragraph.create(),
-  );
-  const row = schema.nodes.tableRow.create(null, [cell]);
-  return schema.nodes.table.create(null, [row]);
-}
-
-/**
- * §30a: Extract block ID from the last text child of an mdast node.
- * Returns a new children array with the block ID suffix stripped, without mutating the original.
- * Returns null if no block ID is found.
- */
-function extractBlockIdFromMdast(node: Content): BlockIdResult | null {
-  const children = (node as { children?: Content[] }).children;
-  if (!children || children.length === 0) return null;
-
-  // Find the last text node (block ID must be at the very end of block content)
-  const lastChild = children[children.length - 1];
-  if (lastChild.type !== "text") return null;
-
-  const text = (lastChild as Text).value;
-  const result = extractBlockId(text);
-  if (!result) return null;
-
-  // Return new children array without mutating original
-  let strippedChildren: Content[];
-  if (result.strippedText) {
-    strippedChildren = [
-      ...children.slice(0, -1),
-      { ...lastChild, value: result.strippedText } as Content,
-    ];
-  } else {
-    // If stripping leaves empty text, omit the last child entirely
-    strippedChildren = children.slice(0, -1);
-  }
-
-  return { blockId: result.blockId, strippedChildren };
-}
-
-/** Check if a paragraph starts with `: ` (definition line) */
-function isDefinitionParagraph(para: { children: PhrasingContent[] }): boolean {
-  if (para.children.length === 0) return false;
-  const first = para.children[0];
-  return first.type === "text" && isDefinitionLine((first as Text).value);
 }
 
 /** Check if an mdast node is inline-level */

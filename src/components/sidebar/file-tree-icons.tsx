@@ -11,10 +11,6 @@ const S = {
   strokeLinecap: "round" as const,
 };
 
-export function IconChevron(): React.JSX.Element {
-  return <>{"\u25B6"}</>;
-}
-
 export function IconFile({
   label,
   color,

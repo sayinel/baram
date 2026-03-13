@@ -19,13 +19,3 @@ export const logger = {
     console.error(`[ERROR ${timestamp()}]`, ...args); // always log errors
   },
 } as const;
-
-/** Create a scoped logger that prefixes all messages with a module name */
-export function createLogger(module: string) {
-  return {
-    debug: (...args: unknown[]): void => logger.debug(`[${module}]`, ...args),
-    info: (...args: unknown[]): void => logger.info(`[${module}]`, ...args),
-    warn: (...args: unknown[]): void => logger.warn(`[${module}]`, ...args),
-    error: (...args: unknown[]): void => logger.error(`[${module}]`, ...args),
-  } as const;
-}
