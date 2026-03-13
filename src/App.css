@@ -425,9 +425,95 @@ body {
   user-select: none;
 }
 
-.tiptap .callout-icon {
+.tiptap .callout-icon-wrapper {
+  position: relative;
   flex-shrink: 0;
-  font-size: 1.1em;
+}
+
+.tiptap .callout-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  cursor: pointer;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.tiptap .callout-icon-btn:hover {
+  background: rgb(0 0 0 / 6%);
+  border-color: var(--color-border-light);
+}
+
+[data-theme="dark"] .tiptap .callout-icon-btn:hover {
+  background: rgb(255 255 255 / 10%);
+}
+
+.tiptap .callout-icon-btn svg {
+  flex-shrink: 0;
+}
+
+/* Callout type picker popover */
+.tiptap .callout-type-picker {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  width: 280px;
+  padding: 6px;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow:
+    0 4px 16px rgb(0 0 0 / 12%),
+    0 1px 3px rgb(0 0 0 / 8%);
+}
+
+[data-theme="dark"] .tiptap .callout-type-picker {
+  box-shadow:
+    0 4px 16px rgb(0 0 0 / 40%),
+    0 1px 3px rgb(0 0 0 / 20%);
+}
+
+.tiptap .callout-type-option {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 4px;
+  cursor: pointer;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
+}
+
+.tiptap .callout-type-option:hover {
+  background: var(--color-bg-secondary);
+  border-color: var(--color-border-light);
+}
+
+.tiptap .callout-type-option.active {
+  background: var(--color-bg-secondary);
+  border-color: var(--color-accent);
+}
+
+.tiptap .callout-type-label {
+  font-size: 0.65em;
+  font-weight: 500;
+  color: var(--color-text-secondary);
 }
 
 .tiptap .callout-title {
