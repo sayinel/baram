@@ -112,6 +112,14 @@ Four ways:
 
 Once created, navigate cells with `Tab` and `Shift+Tab`. Drag column borders to resize (session only). Hover over the table to see ⊕ buttons for adding rows and columns. Right-click for alignment, header toggle, and copy options.
 
+### How do I merge table cells?
+
+1. Select the cells you want to merge by clicking and dragging across them
+2. Press `Cmd+M` (macOS) / `Ctrl+M` (Windows/Linux), or right-click and select **Merge Cells**
+3. To split a merged cell back, place your cursor in it and press `Cmd+M` again
+
+**Persistence:** Cell merges are saved in your markdown file using `<` (colspan) and `^` (rowspan) markers inside the pipe table. This means merges survive source mode toggle (`Cmd+/`), file close/reopen, and are compatible with Obsidian Sheets Extended. In non-supporting markdown viewers, the markers simply appear as cell text.
+
 ### How do I insert math formulas?
 
 - **Block math**: Type `$$` and press Enter, or use `Cmd+Shift+M`
