@@ -831,42 +831,14 @@ pub fn rewrite_relative_wikilinks(
 
 /// Recursively collect all .md files under a root path
 pub(crate) async fn collect_md_files(root: &str) -> Result<Vec<String>, IndexError> {
-    let mut files = Vec::new();
-    collect_md_files_inner(Path::new(root), &mut files).await?;
-    Ok(files)
-}
-
-async fn collect_md_files_inner(dir: &Path, files: &mut Vec<String>) -> Result<(), IndexError> {
-    let mut read_dir = tokio::fs::read_dir(dir).await?;
-    while let Some(entry) = read_dir.next_entry().await? {
-        let metadata = entry.metadata().await?;
-        let name = entry.file_name().to_string_lossy().to_string();
-
-        // Skip hidden files/dirs
-        if name.starts_with('.') {
-            continue;
-        }
-
-        // Skip heavy directories
-        const SKIP_DIRS: &[&str] = &[
-            "node_modules",
-            "target",
-            "build",
-            "dist",
-            "__pycache__",
-            ".next",
-        ];
-        if metadata.is_dir() && SKIP_DIRS.contains(&name.as_str()) {
-            continue;
-        }
-
-        if metadata.is_dir() {
-            Box::pin(collect_md_files_inner(&entry.path(), files)).await?;
-        } else if name.ends_with(".md") || name.ends_with(".markdown") {
-            files.push(entry.path().to_string_lossy().to_string());
-        }
-    }
-    Ok(())
+    let mut path_bufs = Vec::new();
+    crate::fs::collect_md_files(Path::new(root), &mut path_bufs)
+        .await
+        .map_err(|e| IndexError::IoError(std::io::Error::other(e.to_string())))?;
+    Ok(path_bufs
+        .into_iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect())
 }
 
 #[cfg(test)]

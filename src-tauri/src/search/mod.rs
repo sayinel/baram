@@ -52,16 +52,7 @@ impl Default for SearchOptions {
 }
 
 /// Directories to skip during recursive file collection.
-const SKIP_DIRS: &[&str] = &[
-    "node_modules",
-    "target",
-    "build",
-    "dist",
-    "__pycache__",
-    ".next",
-    ".git",
-    ".baram",
-];
+use crate::fs::SKIP_DIRS;
 
 /// Build a regex pattern from the query and options.
 fn build_pattern(query: &str, opts: &SearchOptions) -> Result<Regex, String> {

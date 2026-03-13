@@ -28,39 +28,6 @@ pub struct RenameTagResult {
     pub occurrences_replaced: usize,
 }
 
-/// Recursively collect all .md file paths under root, skipping hidden dirs and node_modules.
-pub async fn collect_md_files(root: &PathBuf, files: &mut Vec<PathBuf>) -> std::io::Result<()> {
-    let mut read_dir = tokio::fs::read_dir(root).await?;
-    loop {
-        let entry = match read_dir.next_entry().await? {
-            Some(e) => e,
-            None => break,
-        };
-        let path = entry.path();
-        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-
-        // Skip hidden dirs and node_modules
-        if file_name.starts_with('.') || file_name == "node_modules" {
-            continue;
-        }
-
-        let metadata = match tokio::fs::metadata(&path).await {
-            Ok(m) => m,
-            Err(_) => continue,
-        };
-
-        if metadata.is_dir() {
-            // Recurse but respect the 500-file limit
-            if files.len() < 500 {
-                let _ = Box::pin(collect_md_files(&path, files)).await;
-            }
-        } else if metadata.is_file() && path.extension().and_then(|e| e.to_str()) == Some("md") {
-            files.push(path);
-        }
-    }
-    Ok(())
-}
-
 /// Strip fenced code blocks from content so tags inside them are not extracted.
 fn strip_code_blocks(content: &str) -> String {
     let mut result = String::with_capacity(content.len());
@@ -178,7 +145,9 @@ pub async fn get_vault_tags(root_path: &str) -> Result<Vec<TagEntry>, TagError> 
     }
 
     let mut md_files: Vec<PathBuf> = Vec::new();
-    collect_md_files(&root, &mut md_files).await?;
+    crate::fs::collect_md_files(&root, &mut md_files)
+        .await
+        .map_err(|e| TagError::Custom(e.to_string()))?;
 
     let mut counts: HashMap<String, u32> = HashMap::new();
 
@@ -230,7 +199,9 @@ pub async fn get_files_by_tag(root_path: &str, tag: &str) -> Result<Vec<String>,
     }
 
     let mut md_files: Vec<PathBuf> = Vec::new();
-    collect_md_files(&root, &mut md_files).await?;
+    crate::fs::collect_md_files(&root, &mut md_files)
+        .await
+        .map_err(|e| TagError::Custom(e.to_string()))?;
 
     let normalized_tag = tag.to_lowercase();
 
@@ -295,7 +266,9 @@ pub async fn rename_tag(
     }
 
     let mut md_files: Vec<PathBuf> = Vec::new();
-    collect_md_files(&root, &mut md_files).await?;
+    crate::fs::collect_md_files(&root, &mut md_files)
+        .await
+        .map_err(|e| TagError::Custom(e.to_string()))?;
 
     // Escape regex special characters in old_tag
     let escaped_old = regex::escape(old_tag);

@@ -2,7 +2,7 @@
 
 use crate::commands::fs_cmd::FileEntry;
 use notify::{event::ModifyKind, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use tauri::Emitter;
 use thiserror::Error;
@@ -15,6 +15,36 @@ pub enum FsError {
     ReadError(#[from] std::io::Error),
     #[error("파일 감시 실패: {0}")]
     WatchError(String),
+}
+
+/// Directories to skip during recursive file collection.
+pub const SKIP_DIRS: &[&str] = &["node_modules", ".git", ".obsidian", ".baram"];
+
+/// Recursively collect all .md file paths under root, skipping hidden dirs and SKIP_DIRS.
+pub async fn collect_md_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<(), FsError> {
+    let mut read_dir = tokio::fs::read_dir(root).await?;
+    while let Some(entry) = read_dir.next_entry().await? {
+        let name = entry.file_name().to_string_lossy().to_string();
+
+        // Skip hidden files/dirs
+        if name.starts_with('.') {
+            continue;
+        }
+
+        let metadata = match entry.metadata().await {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+
+        if metadata.is_dir() {
+            if !SKIP_DIRS.contains(&name.as_str()) {
+                Box::pin(collect_md_files(&entry.path(), files)).await?;
+            }
+        } else if metadata.is_file() && (name.ends_with(".md") || name.ends_with(".markdown")) {
+            files.push(entry.path());
+        }
+    }
+    Ok(())
 }
 
 /// UTF-8 파일 읽기
