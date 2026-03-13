@@ -92,6 +92,12 @@ export interface PluginModule {
   deactivate?(): Promise<void> | void;
 }
 
+export type PluginStatus =
+  | "disabled"
+  | "enabled"
+  | "installing"
+  | "not-installed";
+
 export interface RegistryEntry {
   author: string;
   capabilities: PluginCapability[];
