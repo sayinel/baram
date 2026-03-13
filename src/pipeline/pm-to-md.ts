@@ -707,11 +707,11 @@ function extractTextFromPhrasing(nodes: PhrasingContent[]): string {
         );
       if (node.type === "inlineMath")
         return (node as unknown as { value: string }).value || "";
-      if (node.type === "wikiLink")
+      if ((node as unknown as { type: string }).type === "wikiLink")
         return (node as unknown as { value: string }).value || "";
-      if (node.type === "mention")
+      if ((node as unknown as { type: string }).type === "mention")
         return (node as unknown as { value: string }).value || "";
-      if (node.type === "tagNode")
+      if ((node as unknown as { type: string }).type === "tagNode")
         return (node as unknown as { value: string }).value || "";
       return "";
     })
