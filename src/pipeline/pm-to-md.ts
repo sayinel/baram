@@ -1,10 +1,6 @@
 import type { Mark, Node as PmNode } from "@tiptap/pm/model";
 import type { Content, PhrasingContent, Root, Text } from "mdast";
 
-import remarkFrontmatter from "remark-frontmatter";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import remarkStringify from "remark-stringify";
 // pm-to-md.ts — §3.3 ProseMirror Document → Markdown 변환 파이프라인
 //
 // ProseMirror Document → custom converter → mdast → remark-stringify
@@ -16,109 +12,15 @@ import remarkStringify from "remark-stringify";
 // - Code block: fenced (```)
 // - 1 blank line between block elements
 // - Single newline at file end
-//
-import { unified } from "unified";
-
 import { appendBlockId, serializeBlockRef } from "./block-id";
+import { mdastToMarkdown } from "./serializer";
 import { pmMarkTransformers, pmNodeTransformers } from "./transformers";
 import { serializeMention } from "./transformers/mention-transformer";
 import { serializeTag } from "./transformers/tag-transformer";
 import { serializeWikilink } from "./transformers/wikilink-transformer";
 
-/** §28 Remark plugin: serialize wikiLink + §30b blockReference + custom inline marks */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function remarkWikiLink(this: any) {
-  const data = this.data();
-  const key = "toMarkdownExtensions";
-  const list: unknown[] = data[key] || (data[key] = []);
-  list.push({
-    handlers: {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      wikiLink(node: { value: string }, _parent: any, state: any, info: any) {
-        const tracker = state.createTracker(info);
-        return tracker.move(node.value);
-      },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      mention(node: { value: string }, _parent: any, state: any, info: any) {
-        const tracker = state.createTracker(info);
-        return tracker.move(node.value);
-      },
-      blockReference(
-        node: { value: string },
-        _parent: any, // eslint-disable-line @typescript-eslint/no-explicit-any
-        state: any, // eslint-disable-line @typescript-eslint/no-explicit-any
-        info: any, // eslint-disable-line @typescript-eslint/no-explicit-any
-      ) {
-        const tracker = state.createTracker(info);
-        return tracker.move(node.value);
-      },
-      // Custom inline marks — return pre-serialized value verbatim
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      highlight(node: { value: string }, _parent: any, state: any, info: any) {
-        const tracker = state.createTracker(info);
-        return tracker.move(node.value);
-      },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      subscript(node: { value: string }, _parent: any, state: any, info: any) {
-        const tracker = state.createTracker(info);
-        return tracker.move(node.value);
-      },
-      superscript(
-        node: { value: string },
-        _parent: any, // eslint-disable-line @typescript-eslint/no-explicit-any
-        state: any, // eslint-disable-line @typescript-eslint/no-explicit-any
-        info: any, // eslint-disable-line @typescript-eslint/no-explicit-any
-      ) {
-        const tracker = state.createTracker(info);
-        return tracker.move(node.value);
-      },
-      // §56m: Tag node — output verbatim #tag string
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      tagNode(node: { value: string }, _parent: any, state: any, info: any) {
-        const tracker = state.createTracker(info);
-        return tracker.move(node.value);
-      },
-    },
-  });
-}
-
-/** remark serializer — mdast → markdown string */
-const serializer = unified()
-  .use(remarkStringify, {
-    bullet: "-", // §7.1: 항상 -
-    strong: "*", // §7.1: 항상 ** (remark uses strong char doubled)
-    emphasis: "*", // §7.1: 항상 *
-    rule: "-", // §7.1: 항상 ---
-    fences: true, // §7.1: fenced code block
-    listItemIndent: "one", // compact indent
-    tightDefinitions: true,
-    extensions: [
-      {
-        handlers: {
-          // §5.9: Callout title — output [!type] verbatim (prevent bracket escaping)
-          calloutTitle(node: { value: string }) {
-            return node.value;
-          },
-        },
-      },
-    ],
-  } as Parameters<typeof remarkStringify>[0])
-  .use(remarkGfm, { singleTilde: false })
-  .use(remarkMath)
-  .use(remarkFrontmatter, ["yaml"])
-  .use(remarkWikiLink);
-
-/** Serialize mdast tree to markdown string */
-export function mdastToMarkdown(root: Root): string {
-  let result = serializer.stringify(root);
-  // §56l: remark-stringify escapes # at line start (atBreak), but #tag (no space)
-  // is never heading syntax — unescape when followed by word characters.
-  result = result.replace(/\\#(?=[\w가-힣])/g, "#");
-  // §56m: remark-stringify encodes trailing spaces as &#x20; when the last inline
-  // node is a tagNode followed by a whitespace-only text node.  Strip at end of lines.
-  result = result.replace(/&#x20;(?=\n|$)/g, "");
-  return result;
-}
+// Re-export mdastToMarkdown so existing imports from pm-to-md continue to work
+export { mdastToMarkdown } from "./serializer";
 
 /** Full pipeline: ProseMirror document → markdown string */
 export function prosemirrorToMarkdown(doc: PmNode): string {
@@ -335,88 +237,7 @@ function convertPmNode(node: PmNode): Content | null {
     }
   }
 
-  // Lists + listItem/taskItem → handled by their respective transformers via standard lookup below
-
-  // §5.1: Toggle → <details><summary>...</summary> body </details>
-  if (typeName === "toggle") {
-    const isOpen = node.attrs.open as boolean;
-    const openTag = isOpen ? "<details open>" : "<details>";
-
-    // First child is summary (paragraph or heading)
-    const summaryChild = node.childCount > 0 ? node.child(0) : null;
-    let summaryText = "";
-    if (summaryChild) {
-      if (summaryChild.type.name === "heading") {
-        // Heading summary: prefix with # marks
-        const level = summaryChild.attrs.level as number;
-        const prefix = "#".repeat(level);
-        summaryText = summaryChild.textContent
-          ? `${prefix} ${summaryChild.textContent}`
-          : prefix;
-      } else {
-        summaryText = summaryChild.textContent;
-      }
-    }
-
-    // Build body from remaining children
-    const bodyChildren: Content[] = [];
-    for (let ci = 1; ci < node.childCount; ci++) {
-      const childMdast = convertPmNode(node.child(ci));
-      if (childMdast) bodyChildren.push(childMdast);
-    }
-
-    // Serialize body to markdown
-    let bodyMd = "";
-    if (bodyChildren.length > 0) {
-      const bodyMdast: Root = { type: "root", children: bodyChildren };
-      bodyMd = mdastToMarkdown(bodyMdast).trimEnd();
-    }
-
-    // Build the complete HTML block
-    const parts: string[] = [];
-    if (summaryText) {
-      parts.push(`${openTag}\n<summary>${summaryText}</summary>`);
-    } else {
-      parts.push(openTag);
-    }
-    if (bodyMd) {
-      parts.push(""); // blank line to separate HTML from markdown
-      parts.push(bodyMd);
-    }
-    parts.push(""); // blank line before closing tag
-    parts.push("</details>");
-
-    return { type: "html", value: parts.join("\n") } as Content;
-  }
-
-  // §5.9: Callout → serialize manually to preserve [!type] without escaping
-  if (typeName === "callout") {
-    const cType = (node.attrs.type as string) || "info";
-    const cTitle = (node.attrs.title as string) || "";
-    const cCollapsed = node.attrs.collapsed as boolean;
-
-    let header = `[!${cType}]`;
-    if (cCollapsed) header += "-";
-    if (cTitle) header += ` ${cTitle}`;
-
-    // Serialize body to markdown via the normal pipeline
-    const bodyMdast: Root = {
-      type: "root",
-      children: convertPmChildren(node) as Content[],
-    };
-    const bodyMd = mdastToMarkdown(bodyMdast).trimEnd();
-
-    // Build blockquote lines manually
-    const lines = [`> ${header}`];
-    for (const line of bodyMd.split("\n")) {
-      lines.push(line ? `> ${line}` : ">");
-    }
-
-    // Return as html flow node (remark-stringify passes through verbatim)
-    return { type: "html", value: lines.join("\n") } as Content;
-  }
-
-  // Definition list → manual serialization (like callout pattern)
+  // Definition list → manual serialization (needs convertPmInlineChildren)
   if (typeName === "definitionList") {
     const groups: string[] = [];
     let currentGroup: string[] = [];
@@ -463,10 +284,6 @@ function convertPmNode(node: PmNode): Content | null {
 
     return { type: "html", value: groups.join("\n\n") } as Content;
   }
-
-  // §30b: Block embed → handled by block-embed-transformer via standard lookup below
-
-  // [TOC] → handled by table-of-contents-transformer via standard lookup below
 
   // Image → wrap in paragraph for mdast (mdast image is inline)
   // When widthPercent !== 100, transformer returns html node → return directly
