@@ -25,9 +25,9 @@ use tauri::{Emitter, Manager};
 struct PendingOpenFiles(Mutex<Vec<String>>);
 
 #[tauri::command]
-fn get_opened_urls(state: tauri::State<'_, PendingOpenFiles>) -> Vec<String> {
-    let mut pending = state.0.lock().unwrap();
-    pending.drain(..).collect()
+fn get_opened_urls(state: tauri::State<'_, PendingOpenFiles>) -> Result<Vec<String>, String> {
+    let mut pending = state.0.lock().map_err(|e| e.to_string())?;
+    Ok(pending.drain(..).collect())
 }
 
 /// Stores references to custom menu items and submenus for locale updates.
