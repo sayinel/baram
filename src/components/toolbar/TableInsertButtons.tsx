@@ -83,71 +83,6 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
   const hoveringBtnRef = useRef(false);
   const hideTimerRef = useRef(0);
 
-  const handleMouseMove = useCallback(
-    (e: MouseEvent) => {
-      // Don't dismiss when hovering the button itself
-      if (hoveringBtnRef.current) return;
-      if (rafRef.current) return;
-
-      rafRef.current = requestAnimationFrame(() => {
-        rafRef.current = 0;
-        if (hoveringBtnRef.current) return;
-
-        const target = e.target as HTMLElement;
-        const tableEl = target.closest("table") as HTMLTableElement | null;
-
-        if (!tableEl) {
-          // Mouse left the table — check if we're in the outer detection zone
-          // by looking for tables near the cursor
-          const elBelow = document.elementFromPoint(e.clientX + 20, e.clientY);
-          const elRight = document.elementFromPoint(e.clientX, e.clientY + 20);
-          const nearTable =
-            (elBelow?.closest("table") as HTMLTableElement | null) ??
-            (elRight?.closest("table") as HTMLTableElement | null);
-
-          if (!nearTable) {
-            scheduleHide();
-            return;
-          }
-
-          // Check if we're in the outer zone of this nearby table
-          const rect = nearTable.getBoundingClientRect();
-          const inTopZone =
-            e.clientY >= rect.top - DETECT_OUTER &&
-            e.clientY <= rect.top + DETECT_INNER;
-          const inLeftZone =
-            e.clientX >= rect.left - DETECT_OUTER &&
-            e.clientX <= rect.left + DETECT_INNER;
-
-          if (!inTopZone && !inLeftZone) {
-            scheduleHide();
-            return;
-          }
-
-          computeButton(nearTable, e);
-          return;
-        }
-
-        const tableRect = tableEl.getBoundingClientRect();
-        const nearTop =
-          e.clientY >= tableRect.top - DETECT_OUTER &&
-          e.clientY <= tableRect.top + DETECT_INNER;
-        const nearLeft =
-          e.clientX >= tableRect.left - DETECT_OUTER &&
-          e.clientX <= tableRect.left + DETECT_INNER;
-
-        if (!nearTop && !nearLeft) {
-          scheduleHide();
-          return;
-        }
-
-        computeButton(tableEl, e);
-      });
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [editor],
-  );
-
   const scheduleHide = useCallback(() => {
     if (hideTimerRef.current) return;
     hideTimerRef.current = window.setTimeout(() => {
@@ -273,6 +208,70 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
       }
     },
     [editor, cancelHide],
+  );
+
+  const handleMouseMove = useCallback(
+    (e: MouseEvent) => {
+      // Don't dismiss when hovering the button itself
+      if (hoveringBtnRef.current) return;
+      if (rafRef.current) return;
+
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = 0;
+        if (hoveringBtnRef.current) return;
+
+        const target = e.target as HTMLElement;
+        const tableEl = target.closest("table") as HTMLTableElement | null;
+
+        if (!tableEl) {
+          // Mouse left the table — check if we're in the outer detection zone
+          // by looking for tables near the cursor
+          const elBelow = document.elementFromPoint(e.clientX + 20, e.clientY);
+          const elRight = document.elementFromPoint(e.clientX, e.clientY + 20);
+          const nearTable =
+            (elBelow?.closest("table") as HTMLTableElement | null) ??
+            (elRight?.closest("table") as HTMLTableElement | null);
+
+          if (!nearTable) {
+            scheduleHide();
+            return;
+          }
+
+          // Check if we're in the outer zone of this nearby table
+          const rect = nearTable.getBoundingClientRect();
+          const inTopZone =
+            e.clientY >= rect.top - DETECT_OUTER &&
+            e.clientY <= rect.top + DETECT_INNER;
+          const inLeftZone =
+            e.clientX >= rect.left - DETECT_OUTER &&
+            e.clientX <= rect.left + DETECT_INNER;
+
+          if (!inTopZone && !inLeftZone) {
+            scheduleHide();
+            return;
+          }
+
+          computeButton(nearTable, e);
+          return;
+        }
+
+        const tableRect = tableEl.getBoundingClientRect();
+        const nearTop =
+          e.clientY >= tableRect.top - DETECT_OUTER &&
+          e.clientY <= tableRect.top + DETECT_INNER;
+        const nearLeft =
+          e.clientX >= tableRect.left - DETECT_OUTER &&
+          e.clientX <= tableRect.left + DETECT_INNER;
+
+        if (!nearTop && !nearLeft) {
+          scheduleHide();
+          return;
+        }
+
+        computeButton(tableEl, e);
+      });
+    },
+    [scheduleHide, computeButton],
   );
 
   useEffect(() => {

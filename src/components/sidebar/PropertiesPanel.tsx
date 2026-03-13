@@ -188,6 +188,7 @@ export function PropertiesPanel() {
       );
       applyEntries(updated);
     },
+    // deps change on every edit, suppress to avoid infinite re-render
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [entries, filePath, parsed],
   );
@@ -199,6 +200,7 @@ export function PropertiesPanel() {
       );
       applyEntries(updated);
     },
+    // deps change on every edit, suppress to avoid infinite re-render
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [entries, filePath, parsed],
   );
@@ -212,6 +214,7 @@ export function PropertiesPanel() {
       });
       applyEntries(updated);
     },
+    // deps change on every edit, suppress to avoid infinite re-render
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [entries, filePath, parsed],
   );
@@ -228,6 +231,7 @@ export function PropertiesPanel() {
         applyEntries(updated);
       })();
     },
+    // deps change on every edit, suppress to avoid infinite re-render
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [entries, filePath, parsed],
   );
@@ -274,6 +278,7 @@ export function PropertiesPanel() {
       setLastAddedKey(key);
       applyEntries(updated);
     },
+    // deps change on every edit, suppress to avoid infinite re-render
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [entries, filePath, parsed],
   );
@@ -283,6 +288,7 @@ export function PropertiesPanel() {
       const updated = entries.filter((e) => e.key !== key);
       applyEntries(updated);
     },
+    // deps change on every edit, suppress to avoid infinite re-render
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [entries, filePath, parsed],
   );

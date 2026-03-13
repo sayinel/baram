@@ -255,6 +255,8 @@ export function MoodBar({ editor }: MoodBarProps) {
 
     const { systemPrompt, userPrompt } = buildEmotionInferencePrompt(bodyText);
     emotionLLM.send(userPrompt, systemPrompt, { task: "chat", maxTokens: 50 });
+    // emotionLLM object identity changes each render; adding it would cause
+    // infinite re-triggering. filePath is read from store inside the effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     editor,
