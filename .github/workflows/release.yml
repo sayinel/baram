@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -25,6 +25,8 @@ jobs:
   # ── Build on 3 platforms + create GitHub Release ───────────────────
   build-and-release:
     needs: [ci]
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:

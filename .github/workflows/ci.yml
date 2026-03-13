@@ -19,6 +19,37 @@ env:
   TZ: Asia/Seoul
 
 jobs:
+  # ── Path Change Detection ────────────────────────────────────────
+  # On PR: detects if Rust-related files changed to skip rust job.
+  # On push/workflow_call: filter steps are skipped, decide step
+  # defaults to 'true' so rust job always runs when needed.
+  changes:
+    runs-on: ubuntu-22.04
+    outputs:
+      rust: ${{ steps.decide.outputs.rust }}
+    steps:
+      - uses: actions/checkout@v6
+        if: github.event_name == 'pull_request'
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          filters: |
+            rust:
+              - 'src-tauri/**'
+              - 'Cargo.lock'
+              - '.github/workflows/ci.yml'
+              - '.github/actions/setup-node/**'
+      - name: Determine rust job necessity
+        id: decide
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "rust=${{ steps.filter.outputs.rust }}" >> "$GITHUB_OUTPUT"
+          fi
+
   # ── Lint (all events) ──────────────────────────────────────────────
   lint:
     runs-on: ubuntu-22.04
@@ -37,8 +68,12 @@ jobs:
           fetch-depth: 0
       - name: Install gitleaks
         run: |
-          GITLEAKS_VERSION=$(curl -s https://api.github.com/repos/gitleaks/gitleaks/releases/latest | grep tag_name | cut -d '"' -f4)
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION#v}_linux_x64.tar.gz" | tar xz -C /usr/local/bin
+          GITLEAKS_VERSION="v8.30.0"
+          EXPECTED_SHA="79a3ab579b53f71efd634f3aaf7e04a0fa0cf206b7ed434638d1547a2470a66e"
+          curl -sSfL -o gitleaks.tar.gz "https://github.com/gitleaks/gitleaks/releases/download/${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION#v}_linux_x64.tar.gz"
+          echo "${EXPECTED_SHA}  gitleaks.tar.gz" | sha256sum -c -
+          tar xz -C /usr/local/bin -f gitleaks.tar.gz
+          rm gitleaks.tar.gz
       - name: Run gitleaks
         run: gitleaks detect --source . --config .gitleaks.toml --verbose
 
@@ -52,9 +87,12 @@ jobs:
       - name: Vitest
         run: npm run test
 
-  # ── Rust: fmt + clippy + test + build smoke (PR + workflow_call) ───
+  # ── Rust: fmt + clippy + test + build smoke ────────────────────────
   rust:
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_call'
+    needs: [changes]
+    if: |
+      github.event_name == 'workflow_call' ||
+      (github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true')
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
@@ -86,6 +124,7 @@ jobs:
         run: npm run rust:_test
 
       - name: Tauri build smoke test
+        if: github.event_name == 'workflow_call'
         run: npm run tauri build -- --no-bundle
         env:
           TAURI_SIGNING_PRIVATE_KEY: ''
