@@ -256,7 +256,7 @@ pub async fn get_files_by_tag(root_path: &str, tag: &str) -> Result<Vec<String>,
 ///   - Inline #tags in body text
 ///   - Frontmatter tags: inline array `tags: [tag1, tag2]`
 ///   - Frontmatter tags: block list `tags:\n  - tag1`
-/// Prefix rename: renaming `project` also renames `project/baram` → `new/baram`.
+///     Prefix rename: renaming `project` also renames `project/baram` → `new/baram`.
 pub async fn rename_tag(
     root_path: &str,
     old_tag: &str,
