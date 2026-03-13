@@ -1,17 +1,28 @@
-import type { Mark, Node as PmNode, Schema } from "@tiptap/pm/model";
 // md-to-pm.ts — §3.3 Markdown → ProseMirror Document 변환 파이프라인
 //
-// remark-parse → mdast → custom converter → ProseMirror Document
+// Public API + orchestrator. Implementation details are split into:
+//   convert-inline-text.ts  — text splitting for inline patterns
+//   convert-list.ts         — list node conversion
+//   convert-block-special.ts — toggle, definition list, block ID extraction
 //
+import type { Mark, Node as PmNode, Schema } from "@tiptap/pm/model";
 import type { Content, PhrasingContent, Root, Text } from "mdast";
 
+import { BLOCK_EMBED_RE, parseBlockEmbedMatch } from "./block-id";
 import {
-  BLOCK_EMBED_RE,
-  BLOCK_REF_RE,
-  extractBlockId,
-  parseBlockEmbedMatch,
-  parseBlockRefMatch,
-} from "./block-id";
+  extractBlockIdFromMdast,
+  isDefinitionParagraph,
+  tryConvertDefinitionList,
+  tryConvertToggle,
+} from "./convert-block-special";
+import {
+  splitTextWithBlockRefs,
+  splitTextWithCustomInlineMarks,
+  splitTextWithMentions,
+  splitTextWithTags,
+  splitTextWithWikilinks,
+} from "./convert-inline-text";
+import { convertListNode } from "./convert-list";
 import { parseMdastAsync } from "./parse-async";
 import { enrichWithEmptyParagraphs, parseMdast } from "./parse-mdast";
 import {
@@ -21,34 +32,10 @@ import {
 } from "./transformers";
 import { parseCalloutHeader } from "./transformers/callout-transformer";
 import {
-  DEFINITION_PREFIX_RE,
-  isDefinitionLine,
-  stripDefinitionPrefix,
-} from "./transformers/definition-list-transformer";
-import {
   isStandaloneImage,
   parseImgHtml,
 } from "./transformers/image-transformer";
-import {
-  MENTION_RE,
-  parseMentionMatch,
-} from "./transformers/mention-transformer";
-import { TAG_NODE_RE } from "./transformers/tag-transformer";
-import {
-  isDetailsClosing,
-  isDetailsOpening,
-  parseDetailsOpening,
-} from "./transformers/toggle-transformer";
-import {
-  parseWikilinkMatch,
-  WIKILINK_RE,
-} from "./transformers/wikilink-transformer";
-
-// §perf-large-file: Pre-compiled regex with 'g' flag — avoid per-call RegExp allocation
-const WIKILINK_RE_G = new RegExp(WIKILINK_RE.source, "g");
-const BLOCK_REF_RE_G = new RegExp(BLOCK_REF_RE.source, "g");
-const MENTION_RE_G = new RegExp(MENTION_RE.source, "g");
-const TAG_NODE_RE_G = new RegExp(TAG_NODE_RE.source, "g");
+import { isDetailsOpening } from "./transformers/toggle-transformer";
 
 // §perf-large-file: Set for O(1) inline type check (replaces per-call array allocation)
 const INLINE_TYPES = new Set([
@@ -67,11 +54,6 @@ const INLINE_TYPES = new Set([
 // parseMdast + enrichWithEmptyParagraphs are imported from ./parse-mdast
 // (pure module with no ProseMirror deps — safe for Web Worker import)
 export { parseMdast };
-
-interface BlockIdResult {
-  blockId: string;
-  strippedChildren: Content[];
-}
 
 /** Full pipeline: markdown string → ProseMirror document */
 export function markdownToProsemirror(
@@ -123,7 +105,12 @@ function convertBlockChildren(children: Content[], schema: Schema): PmNode[] {
     if (child.type === "html" && schema.nodes.toggle) {
       const htmlVal = (child as { value: string }).value;
       if (isDetailsOpening(htmlVal)) {
-        const toggleResult = tryConvertToggle(children, i, schema);
+        const toggleResult = tryConvertToggle(
+          children,
+          i,
+          schema,
+          convertBlockChildren,
+        );
         if (toggleResult) {
           result.push(toggleResult.node);
           i = toggleResult.endIndex + 1;
@@ -155,7 +142,12 @@ function convertBlockChildren(children: Content[], schema: Schema): PmNode[] {
         (c) => c.type === "text" && (c as Text).value.includes("\n:"),
       );
       if (nextIsDefPara || hasInlineDef) {
-        const dlResult = tryConvertDefinitionList(children, i, schema);
+        const dlResult = tryConvertDefinitionList(
+          children,
+          i,
+          schema,
+          convertInlineChildren,
+        );
         if (dlResult) {
           result.push(dlResult.node);
           i = dlResult.endIndex + 1;
@@ -200,7 +192,7 @@ function convertBlockNode(
 
   // Lists — handle directly (bulletList/orderedList/taskList all share mdast type "list")
   if (node.type === "list") {
-    return convertListNode(node, schema);
+    return convertListNode(node, schema, convertBlockChildren);
   }
 
   // List items
@@ -301,21 +293,25 @@ function convertBlockNode(
   }
 
   // §30a: Extract block ID from paragraph/heading before conversion
+  // Create a working copy to avoid mutating the original mdast node
+  let workingNode = node;
   let blockId: null | string = null;
   if (node.type === "paragraph" || node.type === "heading") {
     const blockIdResult = extractBlockIdFromMdast(node);
     if (blockIdResult) {
-      // Replace the children with stripped versions (explicit mutation at call site)
-      (node as { children: Content[] }).children =
-        blockIdResult.strippedChildren;
+      // Create a shallow copy with stripped children — no mutation of the original
+      workingNode = {
+        ...node,
+        children: blockIdResult.strippedChildren,
+      } as typeof node;
       blockId = blockIdResult.blockId;
     }
   }
 
   // Standard node transformer lookup
-  const transformer = nodeTransformers.get(node.type);
+  const transformer = nodeTransformers.get(workingNode.type);
   if (transformer) {
-    const result = transformer.mdastToPm(node, schema, (parent) => {
+    const result = transformer.mdastToPm(workingNode, schema, (parent) => {
       // If parent has inline children (heading, paragraph), use inline conversion
       const children = (parent as { children?: Content[] }).children;
       if (!children) return [];
@@ -675,522 +671,4 @@ function isDefinitionParagraph(para: { children: PhrasingContent[] }): boolean {
 /** Check if an mdast node is inline-level */
 function isInlineNode(node: Content): boolean {
   return INLINE_TYPES.has(node.type);
-}
-
-/** §30b: Split text at ((block-ref)) boundaries into mixed text + blockReference PM nodes */
-function splitTextWithBlockRefs(
-  text: string,
-  schema: Schema,
-  parentMarks: Mark[],
-): PmNode[] {
-  const result: PmNode[] = [];
-  BLOCK_REF_RE_G.lastIndex = 0;
-  let lastIndex = 0;
-  let match: null | RegExpExecArray;
-
-  while ((match = BLOCK_REF_RE_G.exec(text)) !== null) {
-    // Text before the block reference
-    if (match.index > lastIndex) {
-      const before = text.slice(lastIndex, match.index);
-      result.push(schema.text(before, parentMarks));
-    }
-
-    // Block reference node
-    const parsed = parseBlockRefMatch(match);
-    result.push(
-      schema.nodes.blockReference.create({
-        target: parsed.target,
-        blockId: parsed.blockId,
-        display: parsed.display,
-      }),
-    );
-
-    lastIndex = BLOCK_REF_RE_G.lastIndex;
-  }
-
-  // Text after the last block reference
-  if (lastIndex < text.length) {
-    result.push(schema.text(text.slice(lastIndex), parentMarks));
-  }
-
-  return result;
-}
-
-/** §57: Split text at @[[mention]] boundaries into mixed text + mention PM nodes.
- *  Remaining text segments are recursively processed for wikilinks. */
-function splitTextWithMentions(
-  text: string,
-  schema: Schema,
-  parentMarks: Mark[],
-): PmNode[] {
-  const result: PmNode[] = [];
-  MENTION_RE_G.lastIndex = 0;
-  let lastIndex = 0;
-  let match: null | RegExpExecArray;
-
-  while ((match = MENTION_RE_G.exec(text)) !== null) {
-    // Text before the mention — may contain wikilinks
-    if (match.index > lastIndex) {
-      const before = text.slice(lastIndex, match.index);
-      if (schema.nodes.wikilink && before.includes("[[")) {
-        const wlNodes = splitTextWithWikilinks(before, schema, parentMarks);
-        if (wlNodes.length > 0) {
-          result.push(...wlNodes);
-        } else {
-          result.push(schema.text(before, parentMarks));
-        }
-      } else {
-        result.push(schema.text(before, parentMarks));
-      }
-    }
-
-    // Mention node
-    const parsed = parseMentionMatch(match);
-    result.push(
-      schema.nodes.mention.create({
-        type: parsed.type,
-        value: parsed.value,
-      }),
-    );
-
-    lastIndex = MENTION_RE_G.lastIndex;
-  }
-
-  if (result.length === 0) return [];
-
-  // Text after the last mention — may contain wikilinks
-  if (lastIndex < text.length) {
-    const after = text.slice(lastIndex);
-    if (schema.nodes.wikilink && after.includes("[[")) {
-      const wlNodes = splitTextWithWikilinks(after, schema, parentMarks);
-      if (wlNodes.length > 0) {
-        result.push(...wlNodes);
-      } else {
-        result.push(schema.text(after, parentMarks));
-      }
-    } else {
-      result.push(schema.text(after, parentMarks));
-    }
-  }
-
-  return result;
-}
-
-/** §56m: Split a text string at #tag boundaries into mixed text + tagNode PM nodes */
-function splitTextWithTags(
-  text: string,
-  schema: Schema,
-  parentMarks: Mark[],
-): PmNode[] {
-  const result: PmNode[] = [];
-  TAG_NODE_RE_G.lastIndex = 0;
-  let lastIndex = 0;
-  let match: null | RegExpExecArray;
-
-  while ((match = TAG_NODE_RE_G.exec(text)) !== null) {
-    // Find where the # actually starts in the full match
-    // The match may start with a leading whitespace char (from the alternation)
-    const hashOffset = match[0].indexOf("#");
-    const hashIndex = match.index + hashOffset;
-
-    // Text before the # (including any leading whitespace in the match)
-    if (hashIndex > lastIndex) {
-      result.push(schema.text(text.slice(lastIndex, hashIndex), parentMarks));
-    }
-
-    // Tag node
-    const tag = match[1];
-    result.push(schema.nodes.tagNode.create({ tag }));
-
-    lastIndex = hashIndex + 1 + tag.length; // past the # and the tag text
-  }
-
-  if (result.length === 0) return [];
-
-  // Text after the last tag
-  if (lastIndex < text.length) {
-    result.push(schema.text(text.slice(lastIndex), parentMarks));
-  }
-
-  return result;
-}
-
-/** Split a text string at [[wikilink]] boundaries into mixed text + wikilink PM nodes */
-function splitTextWithWikilinks(
-  text: string,
-  schema: Schema,
-  parentMarks: Mark[],
-): PmNode[] {
-  const result: PmNode[] = [];
-  WIKILINK_RE_G.lastIndex = 0;
-  let lastIndex = 0;
-  let match: null | RegExpExecArray;
-
-  while ((match = WIKILINK_RE_G.exec(text)) !== null) {
-    // Text before the wikilink
-    if (match.index > lastIndex) {
-      const before = text.slice(lastIndex, match.index);
-      result.push(schema.text(before, parentMarks));
-    }
-
-    // Wikilink node
-    const parsed = parseWikilinkMatch(match);
-    result.push(
-      schema.nodes.wikilink.create({
-        target: parsed.target,
-        display: parsed.display,
-        heading: parsed.heading,
-        blockId: parsed.blockId,
-      }),
-    );
-
-    lastIndex = WIKILINK_RE_G.lastIndex;
-  }
-
-  // Text after the last wikilink
-  if (lastIndex < text.length) {
-    result.push(schema.text(text.slice(lastIndex), parentMarks));
-  }
-
-  return result;
-}
-
-/**
- * Try to convert a sequence of paragraphs into a definition list.
- *
- * remark-parse does NOT create separate paragraphs for `Term\n: Def` (no blank line).
- * Instead, it produces a SINGLE paragraph with text "Term\n: Def".
- *
- * Two patterns:
- * 1. Single paragraph: text contains `\n: ` — term is text before first `\n: `, defs after.
- * 2. Two paragraphs (blank line): paragraph(term) + paragraph(`: def`).
- *
- * Multiple consecutive definition groups are merged into one <dl>.
- */
-function tryConvertDefinitionList(
-  children: Content[],
-  startIndex: number,
-  schema: Schema,
-): null | { endIndex: number; node: PmNode } {
-  const dlChildren: PmNode[] = [];
-  let i = startIndex;
-
-  while (i < children.length) {
-    const child = children[i];
-    if (child.type !== "paragraph") break;
-
-    const paraChildren = (child as { children: PhrasingContent[] }).children;
-
-    // Pattern 1: Single paragraph with inline definition (Term\n: Def)
-    const inlineResult = tryParseInlineDefinition(paraChildren, schema);
-    if (inlineResult) {
-      dlChildren.push(...inlineResult);
-      i++;
-      continue;
-    }
-
-    // Pattern 2: Two separate paragraphs — term paragraph + `: def` paragraph
-    // Only attempt if this paragraph is NOT a definition line itself
-    if (paraChildren.length > 0) {
-      const firstText = paraChildren[0];
-      if (
-        firstText.type === "text" &&
-        isDefinitionLine((firstText as Text).value)
-      ) {
-        break; // Starts with `: ` — not a term
-      }
-    }
-
-    const nextChild = children[i + 1];
-    if (
-      nextChild?.type === "paragraph" &&
-      isDefinitionParagraph(nextChild as { children: PhrasingContent[] })
-    ) {
-      // This is a term paragraph
-      const termInlineNodes = convertInlineChildren(paraChildren, schema, []);
-      dlChildren.push(
-        schema.nodes.definitionTerm.create(null, termInlineNodes),
-      );
-
-      // Consume consecutive definition paragraphs
-      let j = i + 1;
-      while (j < children.length) {
-        const dc = children[j];
-        if (dc.type !== "paragraph") break;
-        if (!isDefinitionParagraph(dc as { children: PhrasingContent[] }))
-          break;
-
-        const dcChildren = (dc as { children: PhrasingContent[] }).children;
-        const strippedChildren = stripDefinitionPrefix(dcChildren);
-        const descInlineNodes = convertInlineChildren(
-          strippedChildren,
-          schema,
-          [],
-        );
-        dlChildren.push(
-          schema.nodes.definitionDescription.create(null, descInlineNodes),
-        );
-        j++;
-      }
-
-      i = j;
-      continue;
-    }
-
-    break; // Not a definition pattern
-  }
-
-  if (dlChildren.length === 0) return null;
-
-  const dlNode = schema.nodes.definitionList.create(null, dlChildren);
-  return { node: dlNode, endIndex: i - 1 };
-}
-
-/**
- * §5.1: Try to convert a sequence of html(<details>...) + block* + html(</details>)
- * into a toggle PM node. Returns null if pattern not matched.
- */
-function tryConvertToggle(
-  children: Content[],
-  startIndex: number,
-  schema: Schema,
-): null | { endIndex: number; node: PmNode } {
-  const openHtml = (children[startIndex] as { value: string }).value;
-  const parsed = parseDetailsOpening(openHtml);
-  if (!parsed) return null;
-
-  // Find matching </details>, handling nesting
-  let depth = 1;
-  let endIndex = -1;
-  for (let j = startIndex + 1; j < children.length; j++) {
-    if (children[j].type === "html") {
-      const val = (children[j] as { value: string }).value;
-      if (isDetailsOpening(val)) depth++;
-      if (isDetailsClosing(val)) {
-        depth--;
-        if (depth === 0) {
-          endIndex = j;
-          break;
-        }
-      }
-    }
-  }
-
-  if (endIndex === -1) return null; // No matching closing tag
-
-  // Collect body children (between opening and closing html nodes)
-  const bodyMdastChildren = children.slice(startIndex + 1, endIndex);
-
-  // Recursively convert body children (handles nested toggles)
-  const bodyPmNodes =
-    bodyMdastChildren.length > 0
-      ? convertBlockChildren(bodyMdastChildren, schema)
-      : [];
-
-  // Create summary node (first child of toggle)
-  // Detect heading prefix: "## Title" → heading level 2
-  const headingMatch = parsed.summary.match(/^(#{1,6})\s+(.*)$/);
-  let summaryNode;
-  if (headingMatch && schema.nodes.heading) {
-    const level = headingMatch[1].length;
-    const text = headingMatch[2];
-    summaryNode = schema.nodes.heading.create(
-      { level },
-      text ? [schema.text(text)] : undefined,
-    );
-  } else {
-    summaryNode = parsed.summary
-      ? schema.nodes.paragraph.create(null, [schema.text(parsed.summary)])
-      : schema.nodes.paragraph.create();
-  }
-
-  // Build toggle node: summary (paragraph or heading) + body blocks
-  const toggleNode = schema.nodes.toggle.create({ open: parsed.isOpen }, [
-    summaryNode,
-    ...bodyPmNodes,
-  ]);
-
-  return { node: toggleNode, endIndex };
-}
-
-/**
- * Parse a single paragraph that contains term + definitions inline.
- * remark-parse combines `Term\n: Def` into one paragraph with text "Term\n: Def".
- * Returns array of [definitionTerm, definitionDescription, ...] PM nodes, or null.
- */
-function tryParseInlineDefinition(
-  paraChildren: PhrasingContent[],
-  schema: Schema,
-): null | PmNode[] {
-  // Find the first text node containing `\n` followed by a line starting with `: `
-  let splitChildIdx = -1;
-  let splitOffset = -1;
-
-  for (let ci = 0; ci < paraChildren.length; ci++) {
-    const child = paraChildren[ci];
-    if (child.type !== "text") continue;
-
-    const text = (child as Text).value;
-    // Search for \n followed by `: `
-    let searchFrom = 0;
-    while (searchFrom < text.length) {
-      const nlIdx = text.indexOf("\n", searchFrom);
-      if (nlIdx === -1) break;
-      const afterNl = text.substring(nlIdx + 1);
-      if (isDefinitionLine(afterNl.split("\n")[0])) {
-        splitChildIdx = ci;
-        splitOffset = nlIdx;
-        break;
-      }
-      searchFrom = nlIdx + 1;
-    }
-    if (splitChildIdx !== -1) break;
-  }
-
-  if (splitChildIdx === -1) return null;
-
-  // Verify the first line is not a definition line
-  const firstChild = paraChildren[0];
-  if (firstChild.type === "text") {
-    const firstLine = (firstChild as Text).value.split("\n")[0];
-    if (isDefinitionLine(firstLine)) return null;
-  }
-
-  // Build term children: everything before the split point
-  const termPhrasingChildren: PhrasingContent[] = [];
-  for (let ci = 0; ci < splitChildIdx; ci++) {
-    termPhrasingChildren.push(paraChildren[ci]);
-  }
-  const splitTextValue = (paraChildren[splitChildIdx] as Text).value;
-  const termTextPart = splitTextValue.substring(0, splitOffset);
-  if (termTextPart) {
-    termPhrasingChildren.push({ type: "text", value: termTextPart } as Text);
-  }
-
-  // Create term PM node
-  const termInlines = convertInlineChildren(termPhrasingChildren, schema, []);
-  const result: PmNode[] = [
-    schema.nodes.definitionTerm.create(null, termInlines),
-  ];
-
-  // Extract definition lines from the text after the split
-  const defText = splitTextValue.substring(splitOffset + 1);
-  const defLines = defText.split("\n");
-
-  for (let li = 0; li < defLines.length; li++) {
-    const line = defLines[li];
-    if (!isDefinitionLine(line)) continue;
-
-    const stripped = line.replace(DEFINITION_PREFIX_RE, "");
-    const defPhrasingChildren: PhrasingContent[] = stripped
-      ? [{ type: "text", value: stripped } as Text]
-      : [];
-
-    // For the last definition line, append any remaining inline children
-    // after the split text node (e.g. bold/italic marks following the def text)
-    if (li === defLines.length - 1 && splitChildIdx + 1 < paraChildren.length) {
-      defPhrasingChildren.push(...paraChildren.slice(splitChildIdx + 1));
-    }
-
-    const descInlines = convertInlineChildren(defPhrasingChildren, schema, []);
-    result.push(schema.nodes.definitionDescription.create(null, descInlines));
-  }
-
-  return result.length > 1 ? result : null;
-}
-
-/** Custom inline mark patterns: ==highlight==, ^superscript^, ~subscript~ */
-const CUSTOM_MARK_PATTERNS: {
-  fastCheck: string;
-  markName: string;
-  re: RegExp;
-}[] = [
-  { markName: "highlight", re: /==((?:[^=]|=[^=])+)==/g, fastCheck: "==" },
-  { markName: "superscript", re: /\^([^^]+)\^/g, fastCheck: "^" },
-  { markName: "subscript", re: /(?<![~])~([^~]+)~(?!~)/g, fastCheck: "~" },
-];
-
-/**
- * Split text at custom inline mark boundaries (==highlight==, ^super^, ~sub~).
- * Processes each mark pattern in order; returns empty array if no matches.
- */
-function splitTextWithCustomInlineMarks(
-  text: string,
-  schema: Schema,
-  parentMarks: Mark[],
-): PmNode[] {
-  // Try each pattern; first match wins
-  for (const { markName, re, fastCheck } of CUSTOM_MARK_PATTERNS) {
-    if (!schema.marks[markName]) continue;
-    if (!text.includes(fastCheck)) continue;
-
-    const nodes = splitTextWithSingleCustomMark(
-      text,
-      schema,
-      parentMarks,
-      markName,
-      re,
-    );
-    if (nodes.length > 0) return nodes;
-  }
-  return [];
-}
-
-/** Split text on a single custom mark regex, returning PM nodes with the mark applied */
-function splitTextWithSingleCustomMark(
-  text: string,
-  schema: Schema,
-  parentMarks: Mark[],
-  markName: string,
-  regex: RegExp,
-): PmNode[] {
-  const result: PmNode[] = [];
-  const re = new RegExp(regex.source, regex.flags);
-  let lastIndex = 0;
-  let match: null | RegExpExecArray;
-
-  while ((match = re.exec(text)) !== null) {
-    // Text before the match
-    if (match.index > lastIndex) {
-      const before = text.slice(lastIndex, match.index);
-      // Recursively check remaining patterns on the "before" text
-      const beforeNodes = splitTextWithCustomInlineMarks(
-        before,
-        schema,
-        parentMarks,
-      );
-      if (beforeNodes.length > 0) {
-        result.push(...beforeNodes);
-      } else {
-        result.push(schema.text(before, parentMarks));
-      }
-    }
-
-    // The matched content with the mark applied
-    const mark = schema.marks[markName]?.create();
-    if (mark) {
-      result.push(schema.text(match[1], [...parentMarks, mark]));
-    }
-
-    lastIndex = re.lastIndex;
-  }
-
-  if (result.length === 0) return [];
-
-  // Text after the last match
-  if (lastIndex < text.length) {
-    const after = text.slice(lastIndex);
-    const afterNodes = splitTextWithCustomInlineMarks(
-      after,
-      schema,
-      parentMarks,
-    );
-    if (afterNodes.length > 0) {
-      result.push(...afterNodes);
-    } else {
-      result.push(schema.text(after, parentMarks));
-    }
-  }
-
-  return result;
 }
