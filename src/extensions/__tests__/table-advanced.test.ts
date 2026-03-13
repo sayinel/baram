@@ -502,4 +502,99 @@ describe("Table Advanced — cell merge (§5.5 M10)", () => {
       expect(countInnerCells(lines[2])).toHaveLength(3);
     });
   });
+
+  describe("Roundtrip: merge markers", () => {
+    it("colspan=2 roundtrips via '<' marker", () => {
+      // Build PM with colspan=2
+      const merged = schema.nodes.tableHeader.create(
+        { colspan: 2, rowspan: 1, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("A")])],
+      );
+      const normal = schema.nodes.tableHeader.create(
+        { colspan: 1, rowspan: 1, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("B")])],
+      );
+      const headerRow = schema.nodes.tableRow.create(null, [merged, normal]);
+
+      const c1 = schema.nodes.tableCell.create(
+        { colspan: 1, rowspan: 1, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("1")])],
+      );
+      const c2 = schema.nodes.tableCell.create(
+        { colspan: 1, rowspan: 1, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("2")])],
+      );
+      const c3 = schema.nodes.tableCell.create(
+        { colspan: 1, rowspan: 1, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("3")])],
+      );
+      const bodyRow = schema.nodes.tableRow.create(null, [c1, c2, c3]);
+
+      const table = schema.nodes.table.create(null, [headerRow, bodyRow]);
+      const doc = schema.nodes.doc.create(null, [table]);
+
+      // PM → MD → PM
+      const md = prosemirrorToMarkdown(doc);
+      expect(md).toContain("| < |");
+
+      const doc2 = markdownToProsemirror(md, schema);
+      const table2 = doc2.firstChild!;
+      const headerRow2 = table2.firstChild!;
+
+      expect(headerRow2.child(0).attrs.colspan).toBe(2);
+      expect(headerRow2.child(0).textContent).toBe("A");
+    });
+
+    it("2x2 merge roundtrips via '<' and '^' markers", () => {
+      const big = schema.nodes.tableHeader.create(
+        { colspan: 2, rowspan: 2, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("Big")])],
+      );
+      const h3 = schema.nodes.tableHeader.create(
+        { colspan: 1, rowspan: 1, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("N")])],
+      );
+      const headerRow = schema.nodes.tableRow.create(null, [big, h3]);
+
+      const bodyCell = schema.nodes.tableCell.create(
+        { colspan: 1, rowspan: 1, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("O")])],
+      );
+      const bodyRow = schema.nodes.tableRow.create(null, [bodyCell]);
+
+      const table = schema.nodes.table.create(null, [headerRow, bodyRow]);
+      const doc = schema.nodes.doc.create(null, [table]);
+
+      // PM → MD → PM
+      const md = prosemirrorToMarkdown(doc);
+      expect(md).toContain("| < |");
+      expect(md).toContain("| ^ |");
+
+      const doc2 = markdownToProsemirror(md, schema);
+      const table2 = doc2.firstChild!;
+      const headerRow2 = table2.firstChild!;
+
+      expect(headerRow2.child(0).attrs.colspan).toBe(2);
+      expect(headerRow2.child(0).attrs.rowspan).toBe(2);
+      expect(headerRow2.child(0).textContent).toBe("Big");
+    });
+
+    it("MD with merge markers roundtrips: MD → PM → MD content preserved", () => {
+      const input = "| A | < | C |\n| --- | --- | --- |\n| ^ | ^ | D |";
+      const doc = markdownToProsemirror(input, schema);
+      const output = prosemirrorToMarkdown(doc);
+
+      // Verify markers are re-emitted
+      const lines = output.trim().split("\n");
+      const headerCells = countInnerCells(lines[0]);
+      expect(headerCells[0]).toBe("A");
+      expect(headerCells[1]).toBe("<");
+      expect(headerCells[2]).toBe("C");
+
+      const bodyCells = countInnerCells(lines[2]);
+      expect(bodyCells[0]).toBe("^");
+      expect(bodyCells[1]).toBe("^");
+      expect(bodyCells[2]).toBe("D");
+    });
+  });
 });
