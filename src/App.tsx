@@ -624,7 +624,7 @@ function App() {
         {!!rootPath && <TabBar />}
         <div className="editor-area">
           {!rootPath && !activeTabId ? (
-            <div className="editor-area-scroll">
+            <div className="editor-area-scroll" data-editor-scroll>
               <Suspense fallback={null}>
                 <HomeScreen
                   onNewFile={handleNewFile}
@@ -636,19 +636,19 @@ function App() {
               </Suspense>
             </div>
           ) : !activeTabId ? (
-            <div className="editor-area-scroll">
+            <div className="editor-area-scroll" data-editor-scroll>
               <div className="empty-workspace">
                 <p>{t("home.emptyWorkspace")}</p>
               </div>
             </div>
           ) : isGraphTabActive ? (
-            <div className="editor-area-scroll">
+            <div className="editor-area-scroll" data-editor-scroll>
               <Suspense fallback={null}>
                 <GraphViewTab />
               </Suspense>
             </div>
           ) : isCodeFile ? (
-            <div className="editor-area-scroll">
+            <div className="editor-area-scroll" data-editor-scroll>
               <Suspense fallback={null}>
                 <SourceCodeEditor
                   content={sourceContent}
@@ -660,7 +660,7 @@ function App() {
               </Suspense>
             </div>
           ) : isSourceMode ? (
-            <div className="editor-area-scroll">
+            <div className="editor-area-scroll" data-editor-scroll>
               <Suspense fallback={null}>
                 <SourceCodeEditor
                   content={sourceContent}
@@ -689,7 +689,7 @@ function App() {
                     type={detectPeriodicType(activeTab.filePath)!}
                   />
                 )}
-              <div className="editor-area-scroll">
+              <div className="editor-area-scroll" data-editor-scroll>
                 {/* §perf-large-file B2: Loading skeleton while Worker parses */}
                 {isParsing && (
                   <div className="editor-loading-skeleton">
