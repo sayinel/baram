@@ -6,17 +6,20 @@ import type { Editor } from "@tiptap/react";
 import { useGitStore } from "../../stores/git-store";
 import { useSettingsStore } from "../../stores/settings-store";
 
+export type EditorMode = "graph" | "source" | "wysiwyg";
+
+const MODE_LABELS: Record<EditorMode, string> = {
+  graph: "Graph",
+  source: "Source",
+  wysiwyg: "WYSIWYG",
+};
+
 interface StatusBarProps {
   editor: Editor | null;
-  isGraphMode?: boolean;
-  isSourceMode: boolean;
+  mode: EditorMode;
 }
 
-export function StatusBar({
-  editor,
-  isSourceMode,
-  isGraphMode,
-}: StatusBarProps) {
+export function StatusBar({ editor, mode }: StatusBarProps) {
   const stats = useMemo(() => {
     if (!editor) return { words: 0, chars: 0, line: 0, col: 0 };
 
@@ -62,9 +65,7 @@ export function StatusBar({
   return (
     <div className="status-bar">
       <div className="status-bar-left">
-        <span className="status-mode">
-          {isGraphMode ? "Graph" : isSourceMode ? "Source" : "WYSIWYG"}
-        </span>
+        <span className="status-mode">{MODE_LABELS[mode]}</span>
         {isRepo && branch && (
           <span
             className={`status-git-branch ${hasChanges ? "status-git-dirty" : ""}`}
@@ -75,7 +76,7 @@ export function StatusBar({
           </span>
         )}
       </div>
-      {!isGraphMode && (
+      {mode !== "graph" && (
         <div className="status-bar-right">
           <span className="status-words" title={`${stats.chars} characters`}>
             {stats.words} words

@@ -621,8 +621,9 @@ function App() {
           rootPath ? (
             <StatusBar
               editor={editor}
-              isGraphMode={isGraphTabActive}
-              isSourceMode={isSourceMode}
+              mode={
+                isGraphTabActive ? "graph" : isSourceMode ? "source" : "wysiwyg"
+              }
             />
           ) : undefined
         }

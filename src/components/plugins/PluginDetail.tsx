@@ -1,28 +1,28 @@
-import type { PluginCapability, RegistryEntry } from "../../plugins/types";
+import type {
+  PluginCapability,
+  PluginStatus,
+  RegistryEntry,
+} from "../../plugins/types";
 
 // §69 Plugin Detail Panel — Full info view for a selected plugin
 import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
 
 interface PluginDetailProps {
-  enabled?: boolean;
   entry: RegistryEntry;
   error?: string;
-  installed: boolean;
-  installing: boolean;
   onBack: () => void;
   onInstall: () => void;
   onToggleEnabled: () => void;
   onUninstall: () => void;
   onUpdate: () => void;
   readme?: null | string;
+  status: PluginStatus;
   updateAvailable?: string;
 }
 
 export function PluginDetail({
   entry,
-  installed,
-  installing,
-  enabled,
+  status,
   updateAvailable,
   error,
   onInstall,
@@ -133,7 +133,7 @@ export function PluginDetail({
 
       {/* Action buttons */}
       <div style={{ display: "flex", gap: "8px", marginBottom: "20px" }}>
-        {installing ? (
+        {status === "installing" ? (
           <button
             disabled
             style={{
@@ -148,7 +148,7 @@ export function PluginDetail({
           >
             Installing...
           </button>
-        ) : installed ? (
+        ) : status === "enabled" || status === "disabled" ? (
           <>
             <button
               onClick={onToggleEnabled}
@@ -157,17 +157,20 @@ export function PluginDetail({
                 borderRadius: "6px",
                 fontSize: "13px",
                 fontWeight: 500,
-                backgroundColor: enabled
-                  ? "var(--color-accent, #3b82f6)"
-                  : "var(--color-bg-secondary, #f3f4f6)",
-                color: enabled ? "#fff" : "var(--color-text, #111)",
-                border: enabled
-                  ? "none"
-                  : "1px solid var(--color-border, #e5e7eb)",
+                backgroundColor:
+                  status === "enabled"
+                    ? "var(--color-accent, #3b82f6)"
+                    : "var(--color-bg-secondary, #f3f4f6)",
+                color:
+                  status === "enabled" ? "#fff" : "var(--color-text, #111)",
+                border:
+                  status === "enabled"
+                    ? "none"
+                    : "1px solid var(--color-border, #e5e7eb)",
                 cursor: "pointer",
               }}
             >
-              {enabled ? "Enabled" : "Disabled"}
+              {status === "enabled" ? "Enabled" : "Disabled"}
             </button>
             {updateAvailable && (
               <button
