@@ -13,10 +13,9 @@ pub struct TagEntry {
 }
 
 /// Recursively collect all .md file paths under root, skipping hidden dirs and node_modules.
-/// Stops collecting after 500 files.
 async fn collect_md_files(root: &PathBuf, files: &mut Vec<PathBuf>) -> std::io::Result<()> {
     let mut read_dir = tokio::fs::read_dir(root).await?;
-    while files.len() < 500 {
+    loop {
         let entry = match read_dir.next_entry().await? {
             Some(e) => e,
             None => break,
@@ -353,7 +352,8 @@ pub async fn rename_tag(
         let new_content = after_fm_block.into_owned();
 
         if new_content != content {
-            if let Err(e) = tokio::fs::write(file_path, &new_content).await {
+            if let Err(e) = crate::fs::write_file(&file_path.to_string_lossy(), &new_content).await
+            {
                 eprintln!(
                     "[rename_tag] Failed to write {}: {}",
                     file_path.display(),
