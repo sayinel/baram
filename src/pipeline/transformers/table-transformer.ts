@@ -58,6 +58,8 @@ export const tableTransformer: NodeTransformerEntry = {
         rawCells[r][c] = cell;
         const text = extractCellText(cell).trim();
         content[r][c] = text;
+        // Known limitation: literal "<" or "^" as sole cell content will be
+        // misinterpreted as merge markers. Workaround: escape (\<, \^) or add space.
         if (text === "<" || text === "^") hasMergeMarkers = true;
       }
     }
