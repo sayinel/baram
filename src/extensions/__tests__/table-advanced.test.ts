@@ -367,6 +367,52 @@ describe("Table Advanced — cell merge (§5.5 M10)", () => {
     });
   });
 
+  describe("MD→PM merge markers: rowspan", () => {
+    it("'^' marker creates rowspan=2 on cell above", () => {
+      const md = "| Tall | B |\n| --- | --- |\n| ^ | C |";
+      const doc = markdownToProsemirror(md, schema);
+      const table = doc.firstChild!;
+      const headerRow = table.firstChild!;
+      const bodyRow = table.child(1);
+
+      expect(headerRow.child(0).attrs.rowspan).toBe(2);
+      expect(headerRow.child(0).textContent).toBe("Tall");
+      // Body row should have only 1 cell (C), since ^ is consumed
+      expect(bodyRow.childCount).toBe(1);
+      expect(bodyRow.child(0).textContent).toBe("C");
+    });
+
+    it("2x2 merge with '<' and '^' markers", () => {
+      const md = "| Big | < | N |\n| --- | --- | --- |\n| ^ | ^ | O |";
+      const doc = markdownToProsemirror(md, schema);
+      const table = doc.firstChild!;
+      const headerRow = table.firstChild!;
+      const bodyRow = table.child(1);
+
+      // Header: Big (colspan=2, rowspan=2), N (colspan=1, rowspan=1)
+      expect(headerRow.childCount).toBe(2);
+      expect(headerRow.child(0).attrs.colspan).toBe(2);
+      expect(headerRow.child(0).attrs.rowspan).toBe(2);
+      expect(headerRow.child(0).textContent).toBe("Big");
+      expect(headerRow.child(1).textContent).toBe("N");
+
+      // Body: only O (colspan=1, rowspan=1)
+      expect(bodyRow.childCount).toBe(1);
+      expect(bodyRow.child(0).textContent).toBe("O");
+    });
+
+    it("'^' in first row is treated as plain text", () => {
+      const md = "| ^ | B |\n| --- | --- |\n| 1 | 2 |";
+      const doc = markdownToProsemirror(md, schema);
+      const table = doc.firstChild!;
+      const headerRow = table.firstChild!;
+
+      expect(headerRow.childCount).toBe(2);
+      expect(headerRow.child(0).attrs.rowspan).toBe(1);
+      expect(headerRow.child(0).textContent).toBe("^");
+    });
+  });
+
   describe("Roundtrip stability", () => {
     it("normal GFM table round-trips with stable cell count and content", () => {
       const input = "| A | B |\n| --- | --- |\n| 1 | 2 |";
