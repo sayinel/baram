@@ -6,6 +6,8 @@ import {
   mergeAttributes,
 } from "@tiptap/core";
 
+import { resolveShortcut } from "../utils/shortcut-resolver";
+
 export interface CodeOptions {
   HTMLAttributes: Record<string, string>;
 }
@@ -61,7 +63,8 @@ export const Code = Mark.create<CodeOptions>({
   },
 
   addKeyboardShortcuts() {
-    return { "Mod-e": () => this.editor.commands.toggleCode() };
+    const key = resolveShortcut("formatting.inlineCode", "Mod-e");
+    return { [key]: () => this.editor.commands.toggleCode() };
   },
 
   addInputRules() {

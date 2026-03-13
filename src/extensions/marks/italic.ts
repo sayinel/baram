@@ -6,6 +6,8 @@ import {
   mergeAttributes,
 } from "@tiptap/core";
 
+import { resolveShortcut } from "../utils/shortcut-resolver";
+
 export interface ItalicOptions {
   HTMLAttributes: Record<string, string>;
 }
@@ -68,7 +70,8 @@ export const Italic = Mark.create<ItalicOptions>({
   },
 
   addKeyboardShortcuts() {
-    return { "Mod-i": () => this.editor.commands.toggleItalic() };
+    const key = resolveShortcut("formatting.italic", "Mod-i");
+    return { [key]: () => this.editor.commands.toggleItalic() };
   },
 
   addInputRules() {

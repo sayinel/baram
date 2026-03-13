@@ -1,6 +1,8 @@
 // §5.1 Task List Extension
 import { mergeAttributes, Node, wrappingInputRule } from "@tiptap/core";
 
+import { resolveShortcut } from "../utils/shortcut-resolver";
+
 export interface TaskListOptions {
   HTMLAttributes: Record<string, string>;
   itemTypeName: string;
@@ -50,9 +52,8 @@ export const TaskList = Node.create<TaskListOptions>({
   },
 
   addKeyboardShortcuts() {
-    return {
-      "Mod-Shift-9": () => this.editor.commands.toggleTaskList(),
-    };
+    const key = resolveShortcut("formatting.taskList", "Mod-Shift-9");
+    return { [key]: () => this.editor.commands.toggleTaskList() };
   },
 
   addInputRules() {

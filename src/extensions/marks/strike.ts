@@ -6,6 +6,8 @@ import {
   mergeAttributes,
 } from "@tiptap/core";
 
+import { resolveShortcut } from "../utils/shortcut-resolver";
+
 export interface StrikeOptions {
   HTMLAttributes: Record<string, string>;
 }
@@ -69,7 +71,8 @@ export const Strike = Mark.create<StrikeOptions>({
   },
 
   addKeyboardShortcuts() {
-    return { "Mod-Shift-x": () => this.editor.commands.toggleStrike() };
+    const key = resolveShortcut("formatting.strikethrough", "Mod-Shift-x");
+    return { [key]: () => this.editor.commands.toggleStrike() };
   },
 
   addInputRules() {

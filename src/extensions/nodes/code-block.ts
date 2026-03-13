@@ -1,6 +1,7 @@
 // §5.1 Code Block Extension (fenced code blocks)
 import { mergeAttributes, Node, textblockTypeInputRule } from "@tiptap/core";
 
+import { resolveShortcut } from "../utils/shortcut-resolver";
 import { JournalBlockNodeView } from "./journal-block-node-view";
 import { CodeBlockNodeView } from "./views/code-block-node-view";
 
@@ -78,9 +79,8 @@ export const CodeBlock = Node.create<CodeBlockOptions>({
   },
 
   addKeyboardShortcuts() {
-    return {
-      "Mod-Alt-c": () => this.editor.commands.toggleCodeBlock(),
-    };
+    const key = resolveShortcut("formatting.codeBlock", "Mod-Alt-c");
+    return { [key]: () => this.editor.commands.toggleCodeBlock() };
   },
 
   addNodeView() {
