@@ -1,3 +1,5 @@
+import type KatexType from "katex";
+
 // §5.3 MathInlineEdit — ProseMirror plugin for inline math editing
 // Handles: $ auto-pairing, delimiter decorations, preview overlay,
 // confirm/cancel, re-edit (atom → text), block math auto-conversion.
@@ -11,9 +13,14 @@ import {
   type Transaction,
 } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
-import katex from "katex";
 
 import { parseKaTeXError } from "../../utils/katex-error";
+
+// Lazily loaded katex — populated on first use, null until then
+let _katex: null | typeof KatexType = null;
+void import("katex").then(({ default: k }) => {
+  _katex = k;
+});
 import { preprocessNotionFormula } from "../../utils/notion-katex-compat";
 
 // ── Plugin state ──────────────────────────────────────────────────────
@@ -298,22 +305,28 @@ function createMathEditPlugin(): Plugin<MathEditState> {
           previewContent.style.fontStyle = "";
 
           const processed = preprocessNotionFormula(formula);
-          try {
-            katex.render(processed, previewContent, {
-              throwOnError: true,
-              displayMode: false,
-            });
+          if (!_katex) {
+            // katex not yet loaded — show raw formula as fallback
+            previewContent.textContent = formula;
             errorEl.style.display = "none";
-          } catch (err) {
-            errorEl.textContent = parseKaTeXError(err);
-            errorEl.style.display = "block";
+          } else {
             try {
-              katex.render(processed, previewContent, {
-                throwOnError: false,
+              _katex.render(processed, previewContent, {
+                throwOnError: true,
                 displayMode: false,
               });
-            } catch {
-              previewContent.textContent = formula;
+              errorEl.style.display = "none";
+            } catch (err) {
+              errorEl.textContent = parseKaTeXError(err);
+              errorEl.style.display = "block";
+              try {
+                _katex.render(processed, previewContent, {
+                  throwOnError: false,
+                  displayMode: false,
+                });
+              } catch {
+                previewContent.textContent = formula;
+              }
             }
           }
         }

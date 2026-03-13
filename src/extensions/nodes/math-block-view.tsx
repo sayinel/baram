@@ -5,7 +5,6 @@ import type { Node as PmNode } from "@tiptap/pm/model";
 
 import { TextSelection } from "@tiptap/pm/state";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
-import katex from "katex";
 
 import { parseKaTeXError } from "../../utils/katex-error";
 import { preprocessNotionFormula } from "../../utils/notion-katex-compat";
@@ -95,36 +94,40 @@ export function MathBlockView({
   useEffect(() => {
     if (!previewRef.current) return;
     const f = selected ? localFormula : formula;
+    const el = previewRef.current;
 
     if (!f.trim()) {
-      previewRef.current.textContent = selected ? "" : "Empty math block";
-      previewRef.current.className = "math-block-katex math-block-katex-empty";
+      el.textContent = selected ? "" : "Empty math block";
+      el.className = "math-block-katex math-block-katex-empty";
       setError(null);
       return;
     }
 
     const processed = preprocessNotionFormula(f);
 
-    try {
-      katex.render(processed, previewRef.current, {
-        throwOnError: true,
-        displayMode: true,
-      });
-      previewRef.current.className = "math-block-katex";
-      setError(null);
-    } catch (err) {
-      setError(parseKaTeXError(err));
+    void import("katex").then(({ default: katex }) => {
+      if (!el.isConnected) return;
       try {
-        katex.render(processed, previewRef.current, {
-          throwOnError: false,
+        katex.render(processed, el, {
+          throwOnError: true,
           displayMode: true,
         });
-        previewRef.current.className = "math-block-katex";
-      } catch {
-        previewRef.current.textContent = f;
-        previewRef.current.className = "math-block-katex";
+        el.className = "math-block-katex";
+        setError(null);
+      } catch (err) {
+        setError(parseKaTeXError(err));
+        try {
+          katex.render(processed, el, {
+            throwOnError: false,
+            displayMode: true,
+          });
+          el.className = "math-block-katex";
+        } catch {
+          el.textContent = f;
+          el.className = "math-block-katex";
+        }
       }
-    }
+    });
   }, [localFormula, formula, selected]);
 
   // Delete this math block and move cursor to nearest valid position
