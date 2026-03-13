@@ -4,7 +4,7 @@ import { logger } from "../utils/logger";
 
 interface Props {
   children: ReactNode;
-  fallback: ReactNode;
+  fallback?: ReactNode;
 }
 
 interface State {
@@ -25,8 +25,34 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render(): ReactNode {
     if (this.state.hasError) {
-      return this.props.fallback;
+      if (this.props.fallback) {
+        return this.props.fallback;
+      }
+      return (
+        <div style={{ padding: "2rem", textAlign: "center" }}>
+          <h2>Something went wrong</h2>
+          <p
+            style={{ color: "var(--color-text-secondary)", margin: "0.5rem 0" }}
+          >
+            {this.state.error?.message}
+          </p>
+          <button
+            onClick={this.handleRetry}
+            style={{
+              marginTop: "1rem",
+              padding: "0.5rem 1rem",
+              cursor: "pointer",
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      );
     }
     return this.props.children;
   }
+
+  private handleRetry = (): void => {
+    this.setState({ hasError: false, error: null });
+  };
 }

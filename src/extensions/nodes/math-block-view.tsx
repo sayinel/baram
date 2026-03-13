@@ -10,9 +10,8 @@ import { parseKaTeXError } from "../../utils/katex-error";
 import { preprocessNotionFormula } from "../../utils/notion-katex-compat";
 import { mathBlockEntryKey } from "./math-block";
 
-// §perf-large-file: Shared cache — one doc walk per doc change, all instances read from it
-let _cachedDoc: null | PmNode = null;
-let _mathPositions: Map<number, number> = new Map(); // pos → 1-based eq number
+// §perf-large-file: Per-doc cache via WeakMap — avoids cross-tab equation number bleed
+const mathPositionCache = new WeakMap<PmNode, Map<number, number>>();
 
 export function MathBlockView({
   node,
@@ -305,16 +304,21 @@ export function MathBlockView({
 }
 
 function getMathBlockNumber(doc: PmNode, pos: number): number {
-  if (doc !== _cachedDoc) {
-    _cachedDoc = doc;
-    _mathPositions = new Map();
+  return getMathPositions(doc).get(pos) ?? 1;
+}
+
+function getMathPositions(doc: PmNode): Map<number, number> {
+  let positions = mathPositionCache.get(doc);
+  if (!positions) {
+    positions = new Map();
     let count = 0;
     doc.descendants((n, nPos) => {
       if (n.type.name === "mathBlock") {
         count++;
-        _mathPositions.set(nPos, count);
+        positions!.set(nPos, count);
       }
     });
+    mathPositionCache.set(doc, positions);
   }
-  return _mathPositions.get(pos) ?? 1;
+  return positions;
 }

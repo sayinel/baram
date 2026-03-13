@@ -1,6 +1,7 @@
 // §55 Pandoc Extended Export — Pandoc 감지, 실행, 커스텀 Export
 
 use serde::{Deserialize, Serialize};
+use shell_escape;
 use std::collections::HashMap;
 use std::process::Command;
 use tempfile::tempdir;
@@ -39,6 +40,25 @@ pub struct CustomExportItem {
     pub extension: String,
     pub show_in_menu: bool,
 }
+
+/// Allowlist of permitted Pandoc CLI flags for extra_args validation.
+const ALLOWED_PANDOC_FLAGS: &[&str] = &[
+    "--standalone",
+    "--toc",
+    "--toc-depth",
+    "--columns",
+    "--wrap",
+    "--number-sections",
+    "--table-of-contents",
+    "--highlight-style",
+    "--pdf-engine",
+    "--variable",
+    "--metadata",
+    "--from",
+    "--to",
+    "--slide-level",
+    "--shift-heading-level-by",
+];
 
 /// Common Pandoc installation paths to probe when bare "pandoc" fails.
 /// Covers Homebrew (Apple Silicon + Intel), system paths, and common installers.
@@ -144,8 +164,16 @@ pub fn run_pandoc(
         }
     }
 
-    // Add extra args
+    // Add extra args — validated against allowlist
     for arg in &options.extra_args {
+        let flag = arg.split('=').next().unwrap_or(arg);
+        let flag_base = flag.split(' ').next().unwrap_or(flag);
+        if !ALLOWED_PANDOC_FLAGS.iter().any(|a| *a == flag_base) {
+            return Err(ExportError::PandocFailed(format!(
+                "Disallowed pandoc argument: {}",
+                flag_base
+            )));
+        }
         cmd.arg(arg);
     }
 
@@ -172,7 +200,8 @@ pub fn run_pandoc(
 pub fn run_custom_export(command: &str, vars: &HashMap<String, String>) -> Result<(), ExportError> {
     let mut expanded = command.to_string();
     for (key, value) in vars {
-        expanded = expanded.replace(&format!("${{{}}}", key), value);
+        let escaped = shell_escape::escape(std::borrow::Cow::Borrowed(value));
+        expanded = expanded.replace(&format!("${{{}}}", key), &escaped);
     }
 
     let output = if cfg!(target_os = "windows") {
@@ -277,6 +306,26 @@ mod tests {
         assert_eq!(
             expanded,
             "pandoc /home/user/doc.md -o /home/user/output/doc.docx"
+        );
+    }
+
+    #[test]
+    fn test_variable_substitution_escapes_shell_chars() {
+        let mut vars = HashMap::new();
+        vars.insert("file".to_string(), "test`rm -rf /`.md".to_string());
+        let cmd = "echo ${file}";
+        let mut expanded = cmd.to_string();
+        for (key, value) in &vars {
+            let escaped = shell_escape::escape(std::borrow::Cow::Borrowed(value));
+            expanded = expanded.replace(&format!("${{{}}}", key), &escaped);
+        }
+        // shell_escape wraps in single quotes on Unix, neutralising backticks and
+        // other metacharacters — the value must be quoted so the shell cannot
+        // interpret the backtick as a command substitution.
+        assert!(
+            expanded.contains('\''),
+            "value must be single-quoted to neutralise shell metacharacters: {}",
+            expanded
         );
     }
 

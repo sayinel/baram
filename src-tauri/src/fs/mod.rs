@@ -47,6 +47,23 @@ pub async fn collect_md_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<(
     Ok(())
 }
 
+/// Validate a user-supplied path: reject null bytes and non-absolute paths.
+pub fn validate_path(path: &str) -> Result<(), FsError> {
+    if path.contains('\0') {
+        return Err(FsError::ReadError(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Path contains null byte",
+        )));
+    }
+    if !Path::new(path).is_absolute() {
+        return Err(FsError::ReadError(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Only absolute paths are allowed",
+        )));
+    }
+    Ok(())
+}
+
 /// UTF-8 파일 읽기
 pub async fn read_file(path: &str) -> Result<String, FsError> {
     tokio::fs::read_to_string(path).await.map_err(|e| {
@@ -210,11 +227,36 @@ pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>
                 ))
             })?;
 
-            let outpath = std::path::Path::new(&output_dir).join(file.name());
-
-            // Skip __MACOSX and .DS_Store
+            // Skip __MACOSX and .DS_Store before any path operations
             if file.name().starts_with("__MACOSX") || file.name().ends_with(".DS_Store") {
                 continue;
+            }
+
+            let outpath = std::path::Path::new(&output_dir).join(file.name());
+
+            // Zip Slip prevention: normalize path and check containment
+            // BEFORE creating any directories or files.
+            let canonical_output =
+                std::fs::canonicalize(&output_dir).map_err(FsError::ReadError)?;
+
+            // Build a normalized check path without touching the filesystem.
+            // Iterate components and resolve ".." manually.
+            let mut normalized = canonical_output.clone();
+            for component in std::path::Path::new(file.name()).components() {
+                match component {
+                    std::path::Component::Normal(c) => normalized.push(c),
+                    std::path::Component::ParentDir => {
+                        normalized.pop();
+                    }
+                    std::path::Component::CurDir => {}
+                    _ => {}
+                }
+            }
+            if !normalized.starts_with(&canonical_output) {
+                return Err(FsError::ReadError(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("Zip entry escapes output directory: {}", file.name()),
+                )));
             }
 
             if file.is_dir() {

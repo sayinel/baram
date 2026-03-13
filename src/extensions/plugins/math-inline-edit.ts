@@ -18,9 +18,24 @@ import { parseKaTeXError } from "../../utils/katex-error";
 
 // Lazily loaded katex — populated on first use, null until then
 let _katex: null | typeof KatexType = null;
-void import("katex").then(({ default: k }) => {
-  _katex = k;
-});
+let _katexRetries = 0;
+const MAX_KATEX_RETRIES = 3;
+function loadKatex(): void {
+  void import("katex")
+    .then(({ default: k }) => {
+      _katex = k;
+    })
+    .catch((err) => {
+      _katexRetries++;
+      if (_katexRetries <= MAX_KATEX_RETRIES) {
+        console.error(`Failed to load KaTeX (attempt ${_katexRetries}):`, err);
+        setTimeout(loadKatex, 2000 * _katexRetries);
+      } else {
+        console.error("KaTeX failed to load after max retries:", err);
+      }
+    });
+}
+loadKatex();
 import { preprocessNotionFormula } from "../../utils/notion-katex-compat";
 
 // ── Plugin state ──────────────────────────────────────────────────────

@@ -1,10 +1,11 @@
-// §5.5 Mermaid Block NodeView — selected: textarea + preview, unselected: SVG render
-// §50 Enhanced: template picker + full-screen edit
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { TextSelection } from "@tiptap/pm/state";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
+// §5.5 Mermaid Block NodeView — selected: textarea + preview, unselected: SVG render
+// §50 Enhanced: template picker + full-screen edit
+import DOMPurify from "dompurify";
 
 import {
   copyMermaidPng,
@@ -717,7 +718,14 @@ async function renderMermaid(
     });
     const id = `mermaid-${++mermaidIdCounter}`;
     const { svg } = await mermaid.render(id, source);
-    onSuccess(svg);
+    // foreignObject is required for Mermaid text labels (flowchart nodes, sequence text).
+    // Risk is mitigated by Mermaid's securityLevel:"strict" which sanitizes its own output.
+    onSuccess(
+      DOMPurify.sanitize(svg, {
+        USE_PROFILES: { svg: true },
+        ADD_TAGS: ["foreignObject"],
+      }),
+    );
   } catch (err) {
     onError(err instanceof Error ? err.message : "Mermaid rendering error");
   }
