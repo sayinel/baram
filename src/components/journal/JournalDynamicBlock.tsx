@@ -149,7 +149,12 @@ function JournalListBlock({ params }: { params: Record<string, string> }) {
     }
   }, []);
 
-  if (loading) return <div className="journal-block-loading">Loading...</div>;
+  if (loading)
+    return (
+      <div aria-live="polite" className="journal-block-loading">
+        Loading…
+      </div>
+    );
   if (entries.length === 0)
     return <div className="journal-block-empty">(해당 기간 데이터 없음)</div>;
 
@@ -234,7 +239,12 @@ function JournalMoodBlock({ params }: { params: Record<string, string> }) {
     })();
   }, [rootPath, journalDirectory, params.range]);
 
-  if (loading) return <div className="journal-block-loading">Loading...</div>;
+  if (loading)
+    return (
+      <div aria-live="polite" className="journal-block-loading">
+        Loading…
+      </div>
+    );
   if (distribution.size === 0)
     return <div className="journal-block-empty">(해당 기간 데이터 없음)</div>;
 
@@ -332,7 +342,12 @@ function JournalPhotosBlock({ params }: { params: Record<string, string> }) {
     })();
   }, [rootPath, journalDirectory, params.range]);
 
-  if (loading) return <div className="journal-block-loading">Loading...</div>;
+  if (loading)
+    return (
+      <div aria-live="polite" className="journal-block-loading">
+        Loading…
+      </div>
+    );
   if (photos.length === 0)
     return <div className="journal-block-empty">(해당 기간 데이터 없음)</div>;
 

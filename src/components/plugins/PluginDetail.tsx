@@ -146,7 +146,7 @@ export function PluginDetail({
               border: "1px solid var(--color-border, #e5e7eb)",
             }}
           >
-            Installing...
+            Installing…
           </button>
         ) : status === "enabled" || status === "disabled" ? (
           <>
