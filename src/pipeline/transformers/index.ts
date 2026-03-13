@@ -30,6 +30,7 @@ import { queryBlockTransformer } from "./query-block-transformer";
 import { strikeTransformer } from "./strike-transformer";
 import { subscriptTransformer } from "./subscript-transformer";
 import { superscriptTransformer } from "./superscript-transformer";
+import { tableOfContentsTransformer } from "./table-of-contents-transformer";
 import { tableTransformer } from "./table-transformer";
 import { tagTransformer } from "./tag-transformer";
 import { taskListTransformer } from "./task-list-transformer";
@@ -72,6 +73,7 @@ const nodeEntries: NodeTransformerEntry[] = [
   footnoteRefTransformer,
   footnoteDefinitionTransformer,
   definitionListTransformer,
+  tableOfContentsTransformer,
   mentionTransformer,
   tagTransformer,
 ];

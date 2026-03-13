@@ -19,11 +19,7 @@ import remarkStringify from "remark-stringify";
 //
 import { unified } from "unified";
 
-import {
-  appendBlockId,
-  serializeBlockEmbed,
-  serializeBlockRef,
-} from "./block-id";
+import { appendBlockId, serializeBlockRef } from "./block-id";
 import { pmMarkTransformers, pmNodeTransformers } from "./transformers";
 import { serializeMention } from "./transformers/mention-transformer";
 import { serializeTag } from "./transformers/tag-transformer";
@@ -223,62 +219,6 @@ function coalesceUnderlineTags(nodes: PhrasingContent[]): PhrasingContent[] {
   return result;
 }
 
-/** Convert a PM listItem/taskItem to mdast listItem */
-function convertListItemNode(node: PmNode): Content {
-  const blockChildren = convertPmChildren(node);
-
-  if (node.type.name === "taskItem") {
-    return {
-      type: "listItem",
-      checked: (node.attrs.checked as boolean) ?? false,
-      spread: false,
-      children: blockChildren,
-    } as Content;
-  }
-
-  return {
-    type: "listItem",
-    spread: false,
-    children: blockChildren,
-  } as Content;
-}
-
-/** Convert a PM list node (bulletList/orderedList/taskList) to mdast list */
-function convertListNode(node: PmNode): Content {
-  const children: Content[] = [];
-
-  node.forEach((child) => {
-    const item = convertListItemNode(child);
-    if (item) children.push(item as Content);
-  });
-
-  if (node.type.name === "taskList") {
-    return {
-      type: "list",
-      ordered: false,
-      spread: false,
-      children,
-    } as Content;
-  }
-
-  if (node.type.name === "orderedList") {
-    return {
-      type: "list",
-      ordered: true,
-      start: (node.attrs.start as number) ?? 1,
-      spread: false,
-      children,
-    } as Content;
-  }
-
-  return {
-    type: "list",
-    ordered: false,
-    spread: false,
-    children,
-  } as Content;
-}
-
 /** Convert PM block children to mdast nodes */
 function convertPmChildren(node: PmNode): Content[] {
   const result: Content[] = [];
@@ -395,18 +335,7 @@ function convertPmNode(node: PmNode): Content | null {
     }
   }
 
-  // Lists — handled directly because listItem/taskItem need special conversion
-  if (
-    typeName === "bulletList" ||
-    typeName === "orderedList" ||
-    typeName === "taskList"
-  ) {
-    return convertListNode(node) as Content;
-  }
-
-  if (typeName === "listItem" || typeName === "taskItem") {
-    return convertListItemNode(node) as Content;
-  }
+  // Lists + listItem/taskItem → handled by their respective transformers via standard lookup below
 
   // §5.1: Toggle → <details><summary>...</summary> body </details>
   if (typeName === "toggle") {
@@ -535,21 +464,9 @@ function convertPmNode(node: PmNode): Content | null {
     return { type: "html", value: groups.join("\n\n") } as Content;
   }
 
-  // §30b: Block embed → paragraph with embed text
-  if (typeName === "blockEmbed") {
-    const text = serializeBlockEmbed(
-      node.attrs as { blockId: string; target: string },
-    );
-    return {
-      type: "paragraph",
-      children: [{ type: "text", value: text } as PhrasingContent],
-    } as Content;
-  }
+  // §30b: Block embed → handled by block-embed-transformer via standard lookup below
 
-  // [TOC] → html flow node to prevent remark escaping [ → \[
-  if (typeName === "tableOfContents") {
-    return { type: "html", value: "[TOC]" } as Content;
-  }
+  // [TOC] → handled by table-of-contents-transformer via standard lookup below
 
   // Image → wrap in paragraph for mdast (mdast image is inline)
   // When widthPercent !== 100, transformer returns html node → return directly
