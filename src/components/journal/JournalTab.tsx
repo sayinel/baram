@@ -127,7 +127,11 @@ export function JournalTab({
         </button>
       </div>
 
-      {loading && <div className="memories-loading">Loading...</div>}
+      {loading && (
+        <div aria-live="polite" className="memories-loading">
+          Loading…
+        </div>
+      )}
 
       {!loading && memories.length === 0 && (
         <div className="memories-empty">이 날짜의 기록이 없습니다.</div>

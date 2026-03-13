@@ -449,7 +449,7 @@ export function MoodBar({ editor }: MoodBarProps) {
             onClick={handleTagSuggest}
             title="AI 태그 추천"
           >
-            {tagsLoading || tagLLM.isStreaming ? "..." : "🏷️"}
+            {tagsLoading || tagLLM.isStreaming ? "…" : "🏷️"}
           </button>
         )}
       </div>

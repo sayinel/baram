@@ -165,7 +165,7 @@ export function PluginCard({
                 cursor: "not-allowed",
               }}
             >
-              Installing...
+              Installing…
             </button>
           ) : updateAvailable ? (
             <button

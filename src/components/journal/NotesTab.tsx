@@ -349,7 +349,11 @@ export function NotesTab() {
         </div>
       )}
 
-      {loading && <div className="memories-loading">Loading...</div>}
+      {loading && (
+        <div aria-live="polite" className="memories-loading">
+          Loading…
+        </div>
+      )}
 
       {!loading && filtered.length === 0 && (
         <div className="memories-empty">

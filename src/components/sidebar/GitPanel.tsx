@@ -262,7 +262,9 @@ export function GitPanel() {
           )}
 
           {loading && changes.length === 0 && (
-            <div className="git-panel-empty">Loading...</div>
+            <div aria-live="polite" className="git-panel-empty">
+              Loading…
+            </div>
           )}
         </>
       )}
@@ -270,7 +272,11 @@ export function GitPanel() {
       {/* History tab */}
       {activeTab === "history" && (
         <div className="git-log-list">
-          {logLoading && <div className="git-panel-empty">Loading...</div>}
+          {logLoading && (
+            <div aria-live="polite" className="git-panel-empty">
+              Loading…
+            </div>
+          )}
           {!logLoading && logEntries.length === 0 && (
             <div className="git-panel-empty">No commits</div>
           )}
@@ -328,7 +334,11 @@ export function GitPanel() {
 
           {/* Stash list */}
           <div className="git-stash-list">
-            {stashLoading && <div className="git-panel-empty">Loading...</div>}
+            {stashLoading && (
+              <div aria-live="polite" className="git-panel-empty">
+                Loading…
+              </div>
+            )}
             {!stashLoading && stashEntries.length === 0 && (
               <div className="git-panel-empty">No stashes</div>
             )}

@@ -26,7 +26,7 @@ export function ChatMessage({
               content
             )
           ) : isStreaming ? (
-            "..."
+            "…"
           ) : (
             ""
           )}
