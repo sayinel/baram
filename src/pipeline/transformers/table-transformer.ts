@@ -23,10 +23,11 @@ interface MdastTableRow extends MdastNode {
 function extractCellText(cell: MdastTableCell): string {
   let text = "";
   function walk(node: MdastNode) {
-    if ((node as { value?: string }).value)
-      text += (node as { value: string }).value;
-    if ((node as { children?: MdastNode[] }).children) {
-      for (const child of (node as { children: MdastNode[] }).children)
+    if ((node as unknown as { value?: string }).value)
+      text += (node as unknown as { value: string }).value;
+    if ((node as unknown as { children?: MdastNode[] }).children) {
+      for (const child of (node as unknown as { children: MdastNode[] })
+        .children)
         walk(child);
     }
   }

@@ -604,7 +604,7 @@ function convertListNode(node: Content, schema: Schema): PmNode {
 function convertTableNode(node: Content, schema: Schema): PmNode {
   const transformer = nodeTransformers.get("table");
   if (transformer) {
-    return transformer.mdastToPm(node, schema, (parent) => {
+    const result = transformer.mdastToPm(node, schema, (parent) => {
       // Table cell children are inline — convert and wrap in paragraph
       const children = (parent as { children?: Content[] }).children;
       if (!children || children.length === 0) return [];
@@ -615,10 +615,16 @@ function convertTableNode(node: Content, schema: Schema): PmNode {
       );
       return [schema.nodes.paragraph.create(null, inlineContent)];
     });
+    if (result && !Array.isArray(result)) return result;
   }
 
-  // Fallback: should not reach here if transformer is registered
-  return schema.nodes.table.create(null, []);
+  // Fallback: minimal valid table (1 header row with 1 cell)
+  const cell = schema.nodes.tableHeader.create(
+    null,
+    schema.nodes.paragraph.create(),
+  );
+  const row = schema.nodes.tableRow.create(null, [cell]);
+  return schema.nodes.table.create(null, [row]);
 }
 
 /**
