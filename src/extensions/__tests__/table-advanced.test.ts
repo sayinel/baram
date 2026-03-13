@@ -263,6 +263,71 @@ describe("Table Advanced — cell merge (§5.5 M10)", () => {
     });
   });
 
+  describe("PM→MD merge markers: rowspan", () => {
+    it("rowspan=2 emits '^' marker in second row", () => {
+      const h1 = schema.nodes.tableHeader.create(
+        { colspan: 1, rowspan: 2, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("Tall")])],
+      );
+      const h2 = schema.nodes.tableHeader.create(
+        { colspan: 1, rowspan: 1, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("Normal")])],
+      );
+      const headerRow = schema.nodes.tableRow.create(null, [h1, h2]);
+
+      const bodyCell = schema.nodes.tableCell.create(
+        { colspan: 1, rowspan: 1, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("B")])],
+      );
+      const bodyRow = schema.nodes.tableRow.create(null, [bodyCell]);
+
+      const table = schema.nodes.table.create(null, [headerRow, bodyRow]);
+      const doc = schema.nodes.doc.create(null, [table]);
+      const md = prosemirrorToMarkdown(doc);
+      const lines = md.trim().split("\n");
+
+      const bodyCells = countInnerCells(lines[2]);
+      expect(bodyCells).toHaveLength(2);
+      expect(bodyCells[0]).toBe("^");
+      expect(bodyCells[1]).toBe("B");
+    });
+
+    it("2x2 merge emits '<' in header and '^' markers in body", () => {
+      const big = schema.nodes.tableHeader.create(
+        { colspan: 2, rowspan: 2, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("Big")])],
+      );
+      const h3 = schema.nodes.tableHeader.create(
+        { colspan: 1, rowspan: 1, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("Normal")])],
+      );
+      const headerRow = schema.nodes.tableRow.create(null, [big, h3]);
+
+      const bodyCell = schema.nodes.tableCell.create(
+        { colspan: 1, rowspan: 1, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("Other")])],
+      );
+      const bodyRow = schema.nodes.tableRow.create(null, [bodyCell]);
+
+      const table = schema.nodes.table.create(null, [headerRow, bodyRow]);
+      const doc = schema.nodes.doc.create(null, [table]);
+      const md = prosemirrorToMarkdown(doc);
+      const lines = md.trim().split("\n");
+
+      const headerCells = countInnerCells(lines[0]);
+      expect(headerCells).toHaveLength(3);
+      expect(headerCells[0]).toBe("Big");
+      expect(headerCells[1]).toBe("<");
+      expect(headerCells[2]).toBe("Normal");
+
+      const bodyCells = countInnerCells(lines[2]);
+      expect(bodyCells).toHaveLength(3);
+      expect(bodyCells[0]).toBe("^");
+      expect(bodyCells[1]).toBe("^");
+      expect(bodyCells[2]).toBe("Other");
+    });
+  });
+
   describe("Roundtrip stability", () => {
     it("normal GFM table round-trips with stable cell count and content", () => {
       const input = "| A | B |\n| --- | --- |\n| 1 | 2 |";
