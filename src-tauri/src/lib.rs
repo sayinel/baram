@@ -11,6 +11,7 @@ mod menu;
 mod plugin;
 mod search;
 mod snapshot;
+mod tag;
 
 use std::collections::HashMap;
 use std::sync::Mutex;
