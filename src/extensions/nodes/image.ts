@@ -1,6 +1,6 @@
+// §5.1 Image Extension (block-level) with §3.3 NodeView
 import type { EditorView } from "@tiptap/pm/view";
 
-// §5.1 Image Extension (block-level) with §3.3 NodeView
 import { InputRule, mergeAttributes, Node } from "@tiptap/core";
 import {
   NodeSelection,

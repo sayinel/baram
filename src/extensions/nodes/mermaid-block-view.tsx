@@ -1,10 +1,11 @@
-// §5.5 Mermaid Block NodeView — selected: textarea + preview, unselected: SVG render
-// §50 Enhanced: template picker + full-screen edit
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { TextSelection } from "@tiptap/pm/state";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
+// §5.5 Mermaid Block NodeView — selected: textarea + preview, unselected: SVG render
+// §50 Enhanced: template picker + full-screen edit
+import DOMPurify from "dompurify";
 
 import {
   copyMermaidPng,
@@ -44,6 +45,18 @@ export function MermaidBlockView({
   const [viewFullscreen, setViewFullscreen] = useState(false);
   const fullscreenTextareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Refs so the selected-change effect can access latest values without listing
+  // them as deps (localCode changes on every keystroke; adding it would re-run
+  // the effect — and re-focus the textarea — on every character typed).
+  const localCodeRef = useRef(localCode);
+  localCodeRef.current = localCode;
+  const codeRef = useRef(code);
+  codeRef.current = code;
+  const updateAttributesRef = useRef(updateAttributes);
+  updateAttributesRef.current = updateAttributes;
+  const editorRef = useRef(editor);
+  editorRef.current = editor;
+
   // Render Mermaid SVG (async — dynamic import)
   useEffect(() => {
     const source = selected ? localCode : code;
@@ -82,8 +95,8 @@ export function MermaidBlockView({
   // Sync local code and focus textarea when entering edit mode
   useEffect(() => {
     if (selected) {
-      setLocalCode(code);
-      const entryState = mermaidBlockEntryKey.getState(editor.state);
+      setLocalCode(codeRef.current);
+      const entryState = mermaidBlockEntryKey.getState(editorRef.current.state);
       const enteredFromBelow = entryState?.direction === "below";
 
       setTimeout(() => {
@@ -98,12 +111,11 @@ export function MermaidBlockView({
       }, 0);
     } else {
       // Save on deselect
-      if (localCode !== code) {
-        updateAttributes({ code: localCode });
+      if (localCodeRef.current !== codeRef.current) {
+        updateAttributesRef.current({ code: localCodeRef.current });
       }
       setShowTemplates(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
 
   // Auto-resize textarea
@@ -706,7 +718,14 @@ async function renderMermaid(
     });
     const id = `mermaid-${++mermaidIdCounter}`;
     const { svg } = await mermaid.render(id, source);
-    onSuccess(svg);
+    // foreignObject is required for Mermaid text labels (flowchart nodes, sequence text).
+    // Risk is mitigated by Mermaid's securityLevel:"strict" which sanitizes its own output.
+    onSuccess(
+      DOMPurify.sanitize(svg, {
+        USE_PROFILES: { svg: true },
+        ADD_TAGS: ["foreignObject"],
+      }),
+    );
   } catch (err) {
     onError(err instanceof Error ? err.message : "Mermaid rendering error");
   }

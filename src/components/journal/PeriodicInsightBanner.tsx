@@ -11,6 +11,7 @@ import {
   buildMonthlySummaryPrompt,
   buildWeeklyPatternPrompt,
 } from "../../utils/journal-reflection";
+import { logger } from "../../utils/logger";
 
 type InsightType = "monthly" | "weekly";
 
@@ -147,7 +148,7 @@ export function PeriodicInsightBanner({ filePath, type }: Props) {
 
       send(userPrompt, systemPrompt);
     } catch (e) {
-      console.error("[PeriodicInsightBanner] Error:", e);
+      logger.error("[PeriodicInsightBanner] Error:", e);
       setGenerating(false);
     }
   }, [resolvedDir, type, filePath, journalUseHierarchy, send]);

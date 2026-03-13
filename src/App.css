@@ -181,7 +181,10 @@ body {
   background: var(--color-bg-primary);
   border: 1px solid var(--color-border);
   border-radius: 4px;
-  transition: all 0.15s;
+  transition:
+    background-color 0.15s,
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .mode-toggle-btn:hover {
@@ -4323,7 +4326,7 @@ body {
   background: var(--color-bg-secondary);
   border: none;
   border-radius: 6px;
-  transition: all 0.15s;
+  transition: color 0.15s;
 }
 
 .memories-tabs-btn:hover {
@@ -4374,7 +4377,9 @@ body {
   background: transparent;
   border: none;
   border-radius: 4px;
-  transition: all 0.15s;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
 }
 
 .memories-mode-btn-active {
@@ -4430,7 +4435,9 @@ body {
   background: none;
   border: none;
   border-radius: 4px;
-  transition: all 0.15s;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
 }
 
 .memories-year-card-open:hover {
@@ -4863,6 +4870,7 @@ body {
   max-height: 420px;
   padding: 16px 20px;
   overflow: visible;
+  overscroll-behavior: contain;
   background: var(--color-bg-primary);
   border: 1px solid var(--color-border);
   border-radius: 10px;
@@ -4889,7 +4897,9 @@ body {
   background: var(--color-bg-primary);
   border: 1px solid var(--color-border);
   border-radius: 6px;
-  transition: all 0.15s;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .quick-capture-type-btn:hover {
@@ -5005,6 +5015,7 @@ body {
   width: 480px;
   max-width: 92vw;
   overflow: hidden;
+  overscroll-behavior: contain;
   background: var(--color-bg-primary);
   border: 1px solid var(--color-border);
   border-radius: 10px;
@@ -5120,7 +5131,9 @@ body {
   font-weight: 500;
   cursor: pointer;
   border-radius: 6px;
-  transition: all 0.15s;
+  transition:
+    background-color 0.15s,
+    filter 0.15s;
 }
 
 .migration-dialog-btn:disabled {
@@ -5168,6 +5181,7 @@ body {
   width: 520px;
   max-height: 400px;
   overflow: hidden;
+  overscroll-behavior: contain;
   background-color: var(--color-bg-primary);
   border: 1px solid var(--color-border);
   border-radius: 8px;
@@ -5353,7 +5367,9 @@ body {
   background: transparent;
   border: none;
   border-radius: 4px;
-  transition: all 0.1s;
+  transition:
+    background-color 0.1s,
+    color 0.1s;
 }
 
 .floating-toolbar-btn:hover {
@@ -5463,7 +5479,10 @@ body {
   background: var(--color-bg-secondary);
   border: 1px solid var(--color-border);
   border-radius: 6px;
-  transition: all 0.1s;
+  transition:
+    background-color 0.1s,
+    color 0.1s,
+    border-color 0.1s;
 }
 
 .ai-prompt-preset-btn:hover {
@@ -5672,6 +5691,7 @@ body {
   flex-direction: column;
   width: 440px;
   overflow: hidden;
+  overscroll-behavior: contain;
   background-color: var(--color-bg-primary);
   border: 1px solid var(--color-border);
   border-radius: 8px;
@@ -5848,7 +5868,7 @@ body {
   cursor: pointer;
   background: transparent;
   border: none;
-  transition: all 0.1s;
+  transition: background-color 0.1s;
 }
 
 .export-paper-tab:not(:last-child) {
@@ -5899,7 +5919,9 @@ body {
   cursor: pointer;
   border: 1px solid var(--color-border);
   border-radius: 6px;
-  transition: all 0.1s;
+  transition:
+    background-color 0.1s,
+    border-color 0.1s;
 }
 
 .export-dialog-btn-cancel {
@@ -6272,6 +6294,7 @@ body {
   width: 520px;
   max-height: 420px;
   overflow: hidden;
+  overscroll-behavior: contain;
   background-color: var(--color-bg-primary);
   border: 1px solid var(--color-border);
   border-radius: 8px;
@@ -7253,6 +7276,7 @@ body {
   width: 720px;
   max-height: 85vh;
   overflow: hidden;
+  overscroll-behavior: contain;
   background-color: var(--color-bg-primary);
   border: 1px solid var(--color-border);
   border-radius: 10px;
@@ -8154,6 +8178,7 @@ body {
   width: 400px;
   max-width: 90vw;
   padding: 32px 40px;
+  overscroll-behavior: contain;
   text-align: center;
   background: var(--color-bg-primary);
   border: 1px solid var(--color-border);
@@ -8735,6 +8760,7 @@ body {
   max-height: 80vh;
   padding: 20px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--color-bg-primary);
   border: 1px solid var(--color-border);
   border-radius: 10px;
@@ -9298,7 +9324,9 @@ body {
   background: transparent;
   border: 1px solid transparent;
   border-radius: 3px;
-  transition: all 0.15s;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
 }
 
 .find-replace-toggle:hover {
@@ -9338,7 +9366,9 @@ body {
   background: transparent;
   border: 1px solid transparent;
   border-radius: 3px;
-  transition: all 0.15s;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
 }
 
 .find-replace-nav-btn:hover:not(:disabled) {
@@ -9363,7 +9393,9 @@ body {
   background: none;
   border: 1px solid transparent;
   border-radius: 3px;
-  transition: all 0.15s;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
 }
 
 .find-replace-toggle-replace:hover {
@@ -9389,7 +9421,9 @@ body {
   background: transparent;
   border: none;
   border-radius: 3px;
-  transition: all 0.15s;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
 }
 
 .find-replace-close-btn:hover {
@@ -9406,7 +9440,10 @@ body {
   background: var(--color-bg-secondary);
   border: 1px solid var(--color-border);
   border-radius: 3px;
-  transition: all 0.15s;
+  transition:
+    background-color 0.15s,
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .find-replace-action-btn:hover:not(:disabled) {
@@ -11236,7 +11273,9 @@ body {
   background: transparent;
   border: none;
   border-radius: 4px;
-  transition: all 0.15s;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
 }
 
 .photo-gallery-mode-btn-active {
@@ -11266,7 +11305,9 @@ body {
   background: none;
   border: 1px solid var(--color-border);
   border-radius: 4px;
-  transition: all 0.15s;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
 }
 
 .photo-gallery-nav-btn:hover {
@@ -11376,6 +11417,7 @@ body {
   align-items: center;
   max-width: 85vw;
   max-height: 85vh;
+  overscroll-behavior: contain;
 }
 
 .photo-lightbox-close {
@@ -11393,7 +11435,9 @@ body {
   border: 1px solid rgb(255 255 255 / 20%);
   border-radius: 50%;
   opacity: 0.7;
-  transition: all 0.2s;
+  transition:
+    background-color 0.2s,
+    opacity 0.2s;
 }
 
 .photo-lightbox-close:hover {
@@ -11418,7 +11462,10 @@ body {
   opacity: 0.6;
   backdrop-filter: blur(4px);
   transform: translateY(-50%);
-  transition: all 0.2s;
+  transition:
+    background-color 0.2s,
+    border-color 0.2s,
+    opacity 0.2s;
 }
 
 .photo-lightbox-nav:hover {
@@ -11469,7 +11516,7 @@ body {
   background: rgb(255 255 255 / 12%);
   border: 1px solid rgb(255 255 255 / 25%);
   border-radius: 6px;
-  transition: all 0.15s;
+  transition: background-color 0.15s;
 }
 
 .photo-lightbox-open-journal:hover {
@@ -13988,4 +14035,30 @@ body {
 .keybinding-reset-all {
   margin-top: 16px;
   text-align: center;
+}
+
+/* §a11y: Visible focus indicator for keyboard navigation */
+*:focus-visible {
+  outline: 2px solid var(--color-accent, #3b82f6);
+  outline-offset: 2px;
+}
+
+/* Exclude editor areas that have their own focus indicators */
+.ProseMirror:focus-visible,
+.cm-editor:focus-visible,
+.source-code-editor:focus-visible,
+.cm-content:focus-visible {
+  outline: none;
+}
+
+/* §a11y: Respect OS motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

@@ -3,6 +3,7 @@ import { mergeAttributes, Node } from "@tiptap/core";
 import { NodeSelection, Plugin, PluginKey } from "@tiptap/pm/state";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
+import { resolveShortcut } from "../utils/shortcut-resolver";
 import { MermaidBlockView } from "./mermaid-block-view";
 
 export interface MermaidBlockOptions {
@@ -125,8 +126,7 @@ export const MermaidBlock = Node.create<MermaidBlockOptions>({
   },
 
   addKeyboardShortcuts() {
-    return {
-      "Mod-Shift-d": () => this.editor.commands.setMermaidBlock(),
-    };
+    const key = resolveShortcut("formatting.mermaid", "Mod-Shift-d");
+    return { [key]: () => this.editor.commands.setMermaidBlock() };
   },
 });

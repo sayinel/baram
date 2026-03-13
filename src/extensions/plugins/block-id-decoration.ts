@@ -14,6 +14,7 @@ import { generateBlockId } from "../../pipeline/block-id";
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { useLinkStore } from "../../stores/link-store";
+import { logger } from "../../utils/logger";
 
 // ── Plugin state ──────────────────────────────────────────────────────
 
@@ -226,7 +227,7 @@ function commitBlockIdEdit(
           }
           useLinkStore.getState().invalidate();
         })
-        .catch(console.error);
+        .catch((e) => logger.error(e));
     }
   }
 }

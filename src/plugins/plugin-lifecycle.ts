@@ -1,6 +1,7 @@
 import type { InstalledPlugin } from "./types";
 
 import { usePluginStore } from "../stores/plugin-store";
+import { logger } from "../utils/logger";
 import { emitPluginEvent } from "./extension-context";
 // §69 Plugin Lifecycle — App-level plugin management
 import { pluginLoader } from "./plugin-loader";
@@ -25,7 +26,7 @@ export async function initializePlugins(): Promise<void> {
       pluginLoader
         .loadPlugin(plugin.installPath, plugin.manifest)
         .catch((err) => {
-          console.error(
+          logger.error(
             `[PluginLifecycle] Failed to load ${plugin.manifest.id}:`,
             err,
           );
@@ -39,12 +40,12 @@ export async function initializePlugins(): Promise<void> {
   const failed = results.filter((r) => r.status === "rejected").length;
   const elapsed = performance.now() - startTime;
 
-  console.info(
+  logger.info(
     `[PluginLifecycle] Loaded ${loaded} plugins (${failed} failed) in ${elapsed.toFixed(0)}ms`,
   );
 
   if (elapsed > 200) {
-    console.warn(
+    logger.warn(
       `[PluginLifecycle] Plugin loading exceeded 200ms budget: ${elapsed.toFixed(0)}ms`,
     );
   }

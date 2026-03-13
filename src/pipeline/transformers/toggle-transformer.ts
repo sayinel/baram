@@ -4,7 +4,9 @@ import type { NodeTransformerEntry } from "../types";
 // remark-parse produces sequence: html(<details>...) + block* + html(</details>)
 // Pattern detection is in md-to-pm.ts; this file provides parsing helpers.
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
-import type { Node as MdastNode } from "mdast";
+import type { Content, Node as MdastNode, Root } from "mdast";
+
+import { mdastToMarkdown } from "../serializer";
 
 /** Check if an HTML value is a </details> closing tag */
 export function isDetailsClosing(htmlValue: string): boolean {
@@ -48,8 +50,52 @@ export const toggleTransformer: NodeTransformerEntry = {
     return schema.nodes.toggle?.create({ open: true }) ?? null;
   },
 
-  pmToMdast(_node: PmNode) {
-    // Not called directly — toggle serialization is handled in pm-to-md.ts
-    return { type: "html", value: "" } as unknown as MdastNode;
+  pmToMdast(node: PmNode, convertChildren): MdastNode {
+    const isOpen = node.attrs.open as boolean;
+    const openTag = isOpen ? "<details open>" : "<details>";
+
+    // First child is summary (paragraph or heading)
+    const summaryChild = node.childCount > 0 ? node.child(0) : null;
+    let summaryText = "";
+    if (summaryChild) {
+      if (summaryChild.type.name === "heading") {
+        // Heading summary: prefix with # marks
+        const level = summaryChild.attrs.level as number;
+        const prefix = "#".repeat(level);
+        summaryText = summaryChild.textContent
+          ? `${prefix} ${summaryChild.textContent}`
+          : prefix;
+      } else {
+        summaryText = summaryChild.textContent;
+      }
+    }
+
+    // convertChildren converts all block children of the toggle node.
+    // Skip the first (summary) to get only body children.
+    const allChildren = convertChildren(node) as Content[];
+    const bodyChildren = allChildren.slice(1);
+
+    // Serialize body to markdown
+    let bodyMd = "";
+    if (bodyChildren.length > 0) {
+      const bodyMdast: Root = { type: "root", children: bodyChildren };
+      bodyMd = mdastToMarkdown(bodyMdast).trimEnd();
+    }
+
+    // Build the complete HTML block
+    const parts: string[] = [];
+    if (summaryText) {
+      parts.push(`${openTag}\n<summary>${summaryText}</summary>`);
+    } else {
+      parts.push(openTag);
+    }
+    if (bodyMd) {
+      parts.push(""); // blank line to separate HTML from markdown
+      parts.push(bodyMd);
+    }
+    parts.push(""); // blank line before closing tag
+    parts.push("</details>");
+
+    return { type: "html", value: parts.join("\n") } as unknown as MdastNode;
   },
 };

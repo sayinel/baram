@@ -3,6 +3,7 @@ import { InputRule, mergeAttributes, Node } from "@tiptap/core";
 import { NodeSelection, Plugin, PluginKey } from "@tiptap/pm/state";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
+import { resolveShortcut } from "../utils/shortcut-resolver";
 import { MathBlockView } from "./math-block-view";
 
 export interface MathBlockOptions {
@@ -127,8 +128,9 @@ export const MathBlock = Node.create<MathBlockOptions>({
   },
 
   addKeyboardShortcuts() {
+    const key = resolveShortcut("formatting.mathBlock", "Mod-Shift-m");
     return {
-      "Mod-Shift-m": () => this.editor.commands.setMathBlock(),
+      [key]: () => this.editor.commands.setMathBlock(),
       Enter: () => {
         const { state } = this.editor;
         const { $from } = state.selection;

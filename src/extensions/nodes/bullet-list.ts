@@ -1,6 +1,8 @@
 // §5.1 Bullet List Extension
 import { mergeAttributes, Node, wrappingInputRule } from "@tiptap/core";
 
+import { resolveShortcut } from "../utils/shortcut-resolver";
+
 export interface BulletListOptions {
   HTMLAttributes: Record<string, string>;
   itemTypeName: string;
@@ -48,9 +50,8 @@ export const BulletList = Node.create<BulletListOptions>({
   },
 
   addKeyboardShortcuts() {
-    return {
-      "Mod-Shift-8": () => this.editor.commands.toggleBulletList(),
-    };
+    const key = resolveShortcut("formatting.bulletList", "Mod-Shift-8");
+    return { [key]: () => this.editor.commands.toggleBulletList() };
   },
 
   addInputRules() {

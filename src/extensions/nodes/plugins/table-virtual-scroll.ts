@@ -1,3 +1,4 @@
+// §5.5 Table virtual scroll performance plugin
 import type { EditorView } from "@tiptap/pm/view";
 
 // §5.5 M10 Virtual Scroll — CSS content-visibility for 50+ row tables

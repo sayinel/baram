@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { keyringGet, keyringStore } from "../ipc/invoke";
+import { logger } from "../utils/logger";
 import { tauriStorage } from "./tauri-storage";
 
 export type AIProvider = "claude" | "gemini" | "ollama" | "openai";
@@ -126,7 +127,7 @@ export const useAIStore = create<AIState>()(
         const { provider } = useAIStore.getState();
         if (KEYRING_PROVIDERS.includes(provider)) {
           keyringStore(keyringKeyFor(provider), key).catch((err) => {
-            console.warn("[AI Store] Failed to save API key to keyring:", err);
+            logger.warn("[AI Store] Failed to save API key to keyring:", err);
           });
         }
       },

@@ -174,7 +174,7 @@ function CustomCommandRow({
         <span className="custom-ai-row-name">{command.name}</span>
         <span className="custom-ai-row-preview">
           {command.prompt.length > 80
-            ? command.prompt.slice(0, 80) + "..."
+            ? command.prompt.slice(0, 80) + "…"
             : command.prompt}
         </span>
       </div>

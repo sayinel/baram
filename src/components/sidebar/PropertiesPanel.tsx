@@ -8,6 +8,7 @@ import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { useUIStore } from "../../stores/ui-store";
 import { showPrompt } from "../../utils/ai-commands";
+import { logger } from "../../utils/logger";
 import { isSkillFrontmatter } from "../../utils/skill-frontmatter";
 import { getSkillSections } from "./skill-panel-registry";
 // §72c Side-effect imports: sections self-register into the registry
@@ -187,6 +188,7 @@ export function PropertiesPanel() {
       );
       applyEntries(updated);
     },
+    // deps change on every edit, suppress to avoid infinite re-render
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [entries, filePath, parsed],
   );
@@ -198,6 +200,7 @@ export function PropertiesPanel() {
       );
       applyEntries(updated);
     },
+    // deps change on every edit, suppress to avoid infinite re-render
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [entries, filePath, parsed],
   );
@@ -211,6 +214,7 @@ export function PropertiesPanel() {
       });
       applyEntries(updated);
     },
+    // deps change on every edit, suppress to avoid infinite re-render
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [entries, filePath, parsed],
   );
@@ -227,6 +231,7 @@ export function PropertiesPanel() {
         applyEntries(updated);
       })();
     },
+    // deps change on every edit, suppress to avoid infinite re-render
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [entries, filePath, parsed],
   );
@@ -255,7 +260,7 @@ export function PropertiesPanel() {
         });
         setActiveTab(tabId);
       } catch (err) {
-        console.error("PropertiesPanel: failed to open file", err);
+        logger.error("PropertiesPanel: failed to open file", err);
       }
     },
     [fileTree],
@@ -273,6 +278,7 @@ export function PropertiesPanel() {
       setLastAddedKey(key);
       applyEntries(updated);
     },
+    // deps change on every edit, suppress to avoid infinite re-render
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [entries, filePath, parsed],
   );
@@ -282,6 +288,7 @@ export function PropertiesPanel() {
       const updated = entries.filter((e) => e.key !== key);
       applyEntries(updated);
     },
+    // deps change on every edit, suppress to avoid infinite re-render
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [entries, filePath, parsed],
   );

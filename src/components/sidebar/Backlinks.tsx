@@ -1,6 +1,6 @@
 // §29 백링크 패널 — 현재 파일을 참조하는 다른 파일 목록
 // §34 언링크드 멘션 — [[]] 없이 파일명이 언급된 곳 표시
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { UnlinkedMention } from "../../ipc/types";
 
@@ -15,6 +15,7 @@ import {
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { useLinkStore } from "../../stores/link-store";
+import { logger } from "../../utils/logger";
 import {
   extractFileNameFromPath,
   groupBacklinksByFile,
@@ -68,6 +69,16 @@ export function Backlinks() {
     [setUnlinkedMentions],
   );
 
+  // Keep latest fetch callbacks and filePath in refs so the rootPath-only effect
+  // can call them without listing them as deps (which would re-run the full index
+  // rebuild on every active-file change — the second effect handles that case).
+  const fetchBacklinksRef = useRef(fetchBacklinks);
+  fetchBacklinksRef.current = fetchBacklinks;
+  const fetchUnlinkedMentionsRef = useRef(fetchUnlinkedMentions);
+  fetchUnlinkedMentionsRef.current = fetchUnlinkedMentions;
+  const filePathRef = useRef(filePath);
+  filePathRef.current = filePath;
+
   // Build index on vault open, then fetch backlinks
   useEffect(() => {
     if (!rootPath) return;
@@ -79,17 +90,17 @@ export function Backlinks() {
       } catch {
         // Index build failure is non-fatal
       }
-      if (!cancelled && filePath) {
-        fetchBacklinks(filePath);
-        fetchUnlinkedMentions(filePath, rootPath);
+      if (!cancelled && filePathRef.current) {
+        fetchBacklinksRef.current(filePathRef.current);
+        fetchUnlinkedMentionsRef.current(filePathRef.current, rootPath);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-    // Only re-run when rootPath changes (full rebuild)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Only re-run when rootPath changes (triggers full index rebuild).
+    // filePath/fetch callbacks are read via refs to avoid running on every file change.
   }, [rootPath]);
 
   // Fetch backlinks + unlinked mentions when active file changes or index is updated
@@ -136,7 +147,7 @@ export function Backlinks() {
             isPinned: false,
           });
         } catch (err) {
-          console.error("[Backlinks] Failed to open file:", err);
+          logger.error("[Backlinks] Failed to open file:", err);
         }
       })();
     },
@@ -189,7 +200,7 @@ export function Backlinks() {
         await updateFileIndex(mention.sourcePath);
         useLinkStore.getState().invalidate();
       } catch (err) {
-        console.error("[Backlinks] Failed to linkify:", err);
+        logger.error("[Backlinks] Failed to linkify:", err);
       }
     },
     [filePath, rootPath],

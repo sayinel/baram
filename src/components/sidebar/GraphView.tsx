@@ -11,6 +11,7 @@ import { isGraphTab, useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { useGraphSettingsStore } from "../../stores/graph-settings-store";
 import { useLinkStore } from "../../stores/link-store";
+import { logger } from "../../utils/logger";
 import {
   assignNamespaceColors,
   matchesFilter,
@@ -86,6 +87,9 @@ export function GraphView() {
       cy.destroy();
       cyRef.current = null;
     };
+    // Intentionally mount-only: creates the Cytoscape instance once. Style
+    // settings (linkThickness, showArrows, colorByNamespace) passed here are only
+    // for the initial render; subsequent changes are applied by dedicated effects.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -117,7 +121,7 @@ export function GraphView() {
         isPinned: false,
       });
     } catch (err) {
-      console.error("§30 GraphView: failed to open file", err);
+      logger.error("§30 GraphView: failed to open file", err);
     }
   }, []);
 
@@ -190,13 +194,16 @@ export function GraphView() {
         cy.off("tap", "node");
         cy.on("tap", "node", handleNodeTap);
       } catch (err) {
-        console.error("§30 GraphView: failed to load link graph", err);
+        logger.error("§30 GraphView: failed to load link graph", err);
       }
     })();
 
     return () => {
       cancelled = true;
     };
+    // settingsNodeSize/centerForce/repelForce/linkForce/linkDistance intentionally
+    // omitted: adding them would re-fetch all graph data on every settings tweak,
+    // but dedicated effects (Effect 3, node-size effect) handle those updates.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rootPath, indexVersion, handleNodeTap, colorByNamespace]);
 

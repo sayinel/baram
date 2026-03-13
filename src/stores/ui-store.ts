@@ -1,15 +1,7 @@
 // §3.5 UI 레이아웃 스토어
 import { create } from "zustand";
 
-type ExportFormat =
-  | "docx"
-  | "epub"
-  | "html"
-  | "latex"
-  | "notion"
-  | "pdf"
-  | "rst";
-type SidebarPanel =
+export type SidebarPanel =
   | "backlinks"
   | "bookmarks"
   | "calendar"
@@ -22,6 +14,14 @@ type SidebarPanel =
   | "skills-gallery"
   | "snapshots"
   | "tags";
+type ExportFormat =
+  | "docx"
+  | "epub"
+  | "html"
+  | "latex"
+  | "notion"
+  | "pdf"
+  | "rst";
 
 interface UIState {
   aboutOpen: boolean;

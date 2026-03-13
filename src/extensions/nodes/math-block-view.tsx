@@ -5,15 +5,13 @@ import type { Node as PmNode } from "@tiptap/pm/model";
 
 import { TextSelection } from "@tiptap/pm/state";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
-import katex from "katex";
 
 import { parseKaTeXError } from "../../utils/katex-error";
 import { preprocessNotionFormula } from "../../utils/notion-katex-compat";
 import { mathBlockEntryKey } from "./math-block";
 
-// §perf-large-file: Shared cache — one doc walk per doc change, all instances read from it
-let _cachedDoc: null | PmNode = null;
-let _mathPositions: Map<number, number> = new Map(); // pos → 1-based eq number
+// §perf-large-file: Per-doc cache via WeakMap — avoids cross-tab equation number bleed
+const mathPositionCache = new WeakMap<PmNode, Map<number, number>>();
 
 export function MathBlockView({
   node,
@@ -29,6 +27,18 @@ export function MathBlockView({
   const previewRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<null | string>(null);
   const [eqNumber, setEqNumber] = useState(1);
+
+  // Refs so the selected-change effect can access latest values without listing
+  // them as deps (localFormula changes on every keystroke; adding it would
+  // re-run the effect — and re-focus the textarea — on every character typed).
+  const localFormulaRef = useRef(localFormula);
+  localFormulaRef.current = localFormula;
+  const formulaRef = useRef(formula);
+  formulaRef.current = formula;
+  const updateAttributesRef = useRef(updateAttributes);
+  updateAttributesRef.current = updateAttributes;
+  const editorRef = useRef(editor);
+  editorRef.current = editor;
 
   // §perf-large-file: Use shared cache — O(1) per instance, O(n) total per doc change
   useEffect(() => {
@@ -47,9 +57,9 @@ export function MathBlockView({
   // Sync local formula and focus textarea when entering edit mode
   useEffect(() => {
     if (selected) {
-      setLocalFormula(formula);
+      setLocalFormula(formulaRef.current);
       // Read entry direction from ProseMirror plugin state (synchronously computed)
-      const entryState = mathBlockEntryKey.getState(editor.state);
+      const entryState = mathBlockEntryKey.getState(editorRef.current.state);
       const enteredFromBelow = entryState?.direction === "below";
 
       setTimeout(() => {
@@ -64,11 +74,10 @@ export function MathBlockView({
       }, 0);
     } else {
       // Save on deselect
-      if (localFormula !== formula) {
-        updateAttributes({ formula: localFormula });
+      if (localFormulaRef.current !== formulaRef.current) {
+        updateAttributesRef.current({ formula: localFormulaRef.current });
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
 
   // Auto-resize textarea
@@ -84,36 +93,40 @@ export function MathBlockView({
   useEffect(() => {
     if (!previewRef.current) return;
     const f = selected ? localFormula : formula;
+    const el = previewRef.current;
 
     if (!f.trim()) {
-      previewRef.current.textContent = selected ? "" : "Empty math block";
-      previewRef.current.className = "math-block-katex math-block-katex-empty";
+      el.textContent = selected ? "" : "Empty math block";
+      el.className = "math-block-katex math-block-katex-empty";
       setError(null);
       return;
     }
 
     const processed = preprocessNotionFormula(f);
 
-    try {
-      katex.render(processed, previewRef.current, {
-        throwOnError: true,
-        displayMode: true,
-      });
-      previewRef.current.className = "math-block-katex";
-      setError(null);
-    } catch (err) {
-      setError(parseKaTeXError(err));
+    void import("katex").then(({ default: katex }) => {
+      if (!el.isConnected) return;
       try {
-        katex.render(processed, previewRef.current, {
-          throwOnError: false,
+        katex.render(processed, el, {
+          throwOnError: true,
           displayMode: true,
         });
-        previewRef.current.className = "math-block-katex";
-      } catch {
-        previewRef.current.textContent = f;
-        previewRef.current.className = "math-block-katex";
+        el.className = "math-block-katex";
+        setError(null);
+      } catch (err) {
+        setError(parseKaTeXError(err));
+        try {
+          katex.render(processed, el, {
+            throwOnError: false,
+            displayMode: true,
+          });
+          el.className = "math-block-katex";
+        } catch {
+          el.textContent = f;
+          el.className = "math-block-katex";
+        }
       }
-    }
+    });
   }, [localFormula, formula, selected]);
 
   // Delete this math block and move cursor to nearest valid position
@@ -291,16 +304,21 @@ export function MathBlockView({
 }
 
 function getMathBlockNumber(doc: PmNode, pos: number): number {
-  if (doc !== _cachedDoc) {
-    _cachedDoc = doc;
-    _mathPositions = new Map();
+  return getMathPositions(doc).get(pos) ?? 1;
+}
+
+function getMathPositions(doc: PmNode): Map<number, number> {
+  let positions = mathPositionCache.get(doc);
+  if (!positions) {
+    positions = new Map();
     let count = 0;
     doc.descendants((n, nPos) => {
       if (n.type.name === "mathBlock") {
         count++;
-        _mathPositions.set(nPos, count);
+        positions!.set(nPos, count);
       }
     });
+    mathPositionCache.set(doc, positions);
   }
-  return _mathPositions.get(pos) ?? 1;
+  return positions;
 }

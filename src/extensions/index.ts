@@ -11,6 +11,7 @@ import History from "@tiptap/extension-history";
 import Placeholder from "@tiptap/extension-placeholder";
 import Text from "@tiptap/extension-text";
 
+import { logger } from "../utils/logger";
 // Mark Extensions
 import { Bold } from "./marks/bold";
 import { Code } from "./marks/code";
@@ -38,6 +39,7 @@ import { Frontmatter } from "./nodes/frontmatter";
 // Node Extensions
 import { Heading } from "./nodes/heading";
 import { HorizontalRule } from "./nodes/horizontal-rule";
+import { HtmlBlock } from "./nodes/html-block";
 import { Image } from "./nodes/image";
 import { ListItem } from "./nodes/list-item";
 import { MathBlock } from "./nodes/math-block";
@@ -125,6 +127,9 @@ export function createBaramExtensions(
 
     // Nodes — §5.8 Frontmatter
     Frontmatter,
+
+    // Nodes — §5.1 HTML Block (raw HTML preservation)
+    HtmlBlock,
 
     // Nodes — §28 Wikilink
     Wikilink.configure({
@@ -250,7 +255,7 @@ export function mergePluginExtensions(
   const filtered = pluginExtensions.filter((ext) => {
     const name = (ext as { name?: string }).name;
     if (name && coreNames.has(name)) {
-      console.warn(
+      logger.warn(
         `[Plugin] Extension "${name}" conflicts with core extension, skipping`,
       );
       return false;
@@ -283,6 +288,7 @@ export {
   Heading,
   Highlight,
   HorizontalRule,
+  HtmlBlock,
   Image,
   Italic,
   Link,

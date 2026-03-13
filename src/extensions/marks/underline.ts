@@ -1,6 +1,8 @@
 // §5.1 Underline Mark Extension — <u>text</u>
 import { Mark, markInputRule, mergeAttributes } from "@tiptap/core";
 
+import { resolveShortcut } from "../utils/shortcut-resolver";
+
 export interface UnderlineOptions {
   HTMLAttributes: Record<string, string>;
 }
@@ -71,6 +73,7 @@ export const Underline = Mark.create<UnderlineOptions>({
   },
 
   addKeyboardShortcuts() {
-    return { "Mod-u": () => this.editor.commands.toggleUnderline() };
+    const key = resolveShortcut("formatting.underline", "Mod-u");
+    return { [key]: () => this.editor.commands.toggleUnderline() };
   },
 });

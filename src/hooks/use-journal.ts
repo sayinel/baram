@@ -11,6 +11,7 @@ import {
   getJournalFilePath,
   resolveJournalDir,
 } from "../utils/journal";
+import { logger } from "../utils/logger";
 
 /**
  * On workspace open (rootPath change), auto-create today's journal
@@ -91,7 +92,7 @@ export function useJournal(
           await handleOpenFilePath(journalPath);
         }
       } catch (err) {
-        console.error("[useJournal] Failed to create/open journal:", err);
+        logger.error("[useJournal] Failed to create/open journal:", err);
       }
     })();
   }, [rootPath, handleOpenFilePath]);

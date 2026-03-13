@@ -2,16 +2,20 @@ import type { NodeTransformerEntry } from "../types";
 // callout-transformer.ts — §5.9 Callout mdast ↔ ProseMirror
 // Callout in markdown: > [!type] title / > body
 // remark-parse produces mdast "blockquote" — detection is in md-to-pm.ts.
-// This transformer handles PM callout → mdast blockquote (reverse direction)
+// This transformer handles PM callout → mdast (reverse direction)
 // and provides a helper for md-to-pm detection.
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
 import type {
   Blockquote,
+  Content,
   Node as MdastNode,
   Paragraph,
   PhrasingContent,
+  Root,
   Text,
 } from "mdast";
+
+import { mdastToMarkdown } from "../serializer";
 
 /** Regex to detect callout syntax in the first line of a blockquote paragraph.
  *  Matches: [!type], [!type]-, [!type]+, [!type] title, [!type]- title
@@ -111,28 +115,28 @@ export const calloutTransformer: NodeTransformerEntry = {
   },
 
   pmToMdast(node: PmNode, convertChildren): MdastNode {
-    const type = (node.attrs.type as string) || "info";
-    const title = (node.attrs.title as string) || "";
-    const collapsed = node.attrs.collapsed as boolean;
+    const cType = (node.attrs.type as string) || "info";
+    const cTitle = (node.attrs.title as string) || "";
+    const cCollapsed = node.attrs.collapsed as boolean;
 
-    // Build header text: [!type] title or [!type]- title
-    let header = `[!${type}]`;
-    if (collapsed) header += "-";
-    if (title) header += ` ${title}`;
+    let header = `[!${cType}]`;
+    if (cCollapsed) header += "-";
+    if (cTitle) header += ` ${cTitle}`;
 
-    // Title paragraph — uses custom "calloutTitle" node to prevent
-    // remark-stringify from escaping [ in [!type].
-    const titlePara: Paragraph = {
-      type: "paragraph",
-      children: [{ type: "calloutTitle", value: header } as unknown as Text],
+    // Serialize body to markdown via the normal pipeline
+    const bodyMdast: Root = {
+      type: "root",
+      children: convertChildren(node) as Content[],
     };
+    const bodyMd = mdastToMarkdown(bodyMdast).trimEnd();
 
-    // Body children
-    const bodyChildren = convertChildren(node);
+    // Build blockquote lines manually to preserve [!type] without escaping
+    const lines = [`> ${header}`];
+    for (const line of bodyMd.split("\n")) {
+      lines.push(line ? `> ${line}` : ">");
+    }
 
-    return {
-      type: "blockquote",
-      children: [titlePara, ...bodyChildren],
-    } as Blockquote;
+    // Return as html flow node (remark-stringify passes through verbatim)
+    return { type: "html", value: lines.join("\n") } as unknown as MdastNode;
   },
 };

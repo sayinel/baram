@@ -8,6 +8,7 @@ import type { FileEntry } from "../stores/file-store";
 
 import { watchDir } from "../ipc/invoke";
 import { useFileStore } from "../stores/file-store";
+import { logger } from "../utils/logger";
 
 /** Directories and patterns to ignore (mirrors list_dir skip logic in Rust) */
 const SKIP_DIRS = new Set([
@@ -78,7 +79,7 @@ export function useFileWatcher() {
 
     // Start watcher
     watchDir(rootPath).catch((err) =>
-      console.warn("useFileWatcher: watchDir failed", err),
+      logger.warn("useFileWatcher: watchDir failed", err),
     );
 
     // Listen for events
