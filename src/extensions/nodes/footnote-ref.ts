@@ -1,5 +1,9 @@
 // §footnote FootnoteRef Node Extension — [^id] inline reference (superscript)
-import { InputRule, Node } from "@tiptap/core";
+import { InputRule, mergeAttributes, Node } from "@tiptap/core";
+
+export interface FootnoteRefOptions {
+  HTMLAttributes: Record<string, string>;
+}
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
 import { FootnoteRefView } from "./footnote-ref-view";
@@ -15,12 +19,16 @@ declare module "@tiptap/core" {
 // [^id] — footnote reference input rule
 const footnoteRefInputRegex = /\[\^([a-zA-Z0-9][\w-]*)\]$/;
 
-export const FootnoteRef = Node.create({
+export const FootnoteRef = Node.create<FootnoteRefOptions>({
   name: "footnoteRef",
   group: "inline",
   inline: true,
   atom: true,
   marks: "",
+
+  addOptions() {
+    return { HTMLAttributes: {} };
+  },
 
   addAttributes() {
     return {
@@ -32,14 +40,14 @@ export const FootnoteRef = Node.create({
     return [{ tag: 'sup[data-type="footnote-ref"]' }];
   },
 
-  renderHTML({ node }) {
+  renderHTML({ node, HTMLAttributes }) {
     return [
       "sup",
-      {
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
         "data-type": "footnote-ref",
         "data-identifier": node.attrs.identifier,
         class: "footnote-ref",
-      },
+      }),
       `[${node.attrs.identifier}]`,
     ];
   },

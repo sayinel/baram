@@ -1,11 +1,12 @@
 // §30b Block Embed Extension — {{embed ((target#^blockId))}}
 // §30c adds NodeView, onNavigate option
-import { Node } from "@tiptap/core";
+import { mergeAttributes, Node } from "@tiptap/core";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
 import { BlockEmbedView } from "./block-embed-view";
 
 export interface BlockEmbedOptions {
+  HTMLAttributes: Record<string, string>;
   onNavigate: (target: string, blockId: string) => void;
 }
 
@@ -27,6 +28,7 @@ export const BlockEmbed = Node.create<BlockEmbedOptions>({
 
   addOptions() {
     return {
+      HTMLAttributes: {},
       onNavigate: () => {},
     };
   },
@@ -42,16 +44,16 @@ export const BlockEmbed = Node.create<BlockEmbedOptions>({
     return [{ tag: 'div[data-type="block-embed"]' }];
   },
 
-  renderHTML({ HTMLAttributes }) {
+  renderHTML({ node, HTMLAttributes }) {
     return [
       "div",
-      {
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
         "data-type": "block-embed",
-        "data-target": HTMLAttributes.target,
-        "data-block-id": HTMLAttributes.blockId,
+        "data-target": node.attrs.target,
+        "data-block-id": node.attrs.blockId,
         class: "block-embed",
-      },
-      `{{embed ((${HTMLAttributes.target}#^${HTMLAttributes.blockId}))}}`,
+      }),
+      `{{embed ((${node.attrs.target}#^${node.attrs.blockId}))}}`,
     ];
   },
 

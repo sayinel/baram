@@ -1,5 +1,5 @@
 // §5.1 Table of Contents Node Extension — [TOC]
-import { Node } from "@tiptap/core";
+import { mergeAttributes, Node } from "@tiptap/core";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
 import { TableOfContentsView } from "./table-of-contents-view";
@@ -12,17 +12,31 @@ declare module "@tiptap/core" {
   }
 }
 
-export const TableOfContents = Node.create({
+export interface TableOfContentsOptions {
+  HTMLAttributes: Record<string, string>;
+}
+
+export const TableOfContents = Node.create<TableOfContentsOptions>({
   name: "tableOfContents",
   group: "block",
   atom: true,
+
+  addOptions() {
+    return { HTMLAttributes: {} };
+  },
 
   parseHTML() {
     return [{ tag: 'div[data-type="table-of-contents"]' }];
   },
 
-  renderHTML() {
-    return ["div", { "data-type": "table-of-contents" }, "[TOC]"];
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "div",
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
+        "data-type": "table-of-contents",
+      }),
+      "[TOC]",
+    ];
   },
 
   addNodeView() {
