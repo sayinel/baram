@@ -1,5 +1,4 @@
 // §4.3 File tree — shared type definitions
-import type { FileEntry } from "../../stores/file-store";
 
 export interface ContextMenuState {
   targetIsDir: boolean;
@@ -19,14 +18,6 @@ export interface DragState {
   sourcePath: string;
   startX: number;
   startY: number;
-}
-
-export interface FileTreeNodeProps {
-  depth: number;
-  entry: FileEntry;
-  onContextMenu: (e: React.MouseEvent, path: string, isDir: boolean) => void;
-  onFileClick: (entry: FileEntry) => void;
-  onToggleDir: (path: string) => void;
 }
 
 // --- Constants (magic numbers extracted) ---
