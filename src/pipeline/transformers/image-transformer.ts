@@ -10,6 +10,7 @@ export function parseImgHtml(html: string): null | {
   src: string;
   title: null | string;
   widthPercent: number;
+  widthPixel?: number;
 } {
   const match = html.match(/^<img\s+([^>]*?)\s*\/?>$/i);
   if (!match) return null;
@@ -25,10 +26,22 @@ export function parseImgHtml(html: string): null | {
   if (!src) return null;
 
   let widthPercent = 100;
+  let widthPixel: number | undefined;
   const widthVal = getAttr("width");
   if (widthVal) {
-    const pct = parseInt(widthVal.replace("%", ""), 10);
-    if (!isNaN(pct) && pct > 0 && pct <= 100) widthPercent = pct;
+    if (widthVal.includes("%")) {
+      const pct = parseInt(widthVal.replace("%", ""), 10);
+      if (!isNaN(pct) && pct > 0 && pct <= 100) widthPercent = pct;
+    } else {
+      const px = parseInt(widthVal, 10);
+      if (!isNaN(px) && px > 0) {
+        if (px <= 100) {
+          widthPercent = px;
+        } else {
+          widthPixel = px;
+        }
+      }
+    }
   }
 
   return {
@@ -36,6 +49,7 @@ export function parseImgHtml(html: string): null | {
     alt: getAttr("alt") || null,
     title: getAttr("title") || null,
     widthPercent,
+    widthPixel,
   };
 }
 
@@ -45,8 +59,13 @@ function buildImgHtml(attrs: Record<string, unknown>): string {
   if (attrs.src) parts.push(`src="${escapeHtmlAttr(String(attrs.src))}"`);
   if (attrs.alt) parts.push(`alt="${escapeHtmlAttr(String(attrs.alt))}"`);
   if (attrs.title) parts.push(`title="${escapeHtmlAttr(String(attrs.title))}"`);
-  const w = attrs.widthPercent as number;
-  if (w && w !== 100) parts.push(`width="${w}%"`);
+  const px = attrs.widthPixel as number | undefined;
+  if (px) {
+    parts.push(`width="${px}"`);
+  } else {
+    const w = attrs.widthPercent as number;
+    if (w && w !== 100) parts.push(`width="${w}%"`);
+  }
   return `<img ${parts.join(" ")} />`;
 }
 
@@ -81,9 +100,10 @@ export const imageTransformer: NodeTransformerEntry = {
 
   pmToMdast(node: PmNode): MdastNode {
     const widthPercent = (node.attrs.widthPercent as number) || 100;
+    const widthPixel = node.attrs.widthPixel as number | undefined;
 
     // When width is customized, serialize as HTML <img> to preserve size
-    if (widthPercent !== 100) {
+    if (widthPercent !== 100 || widthPixel) {
       return {
         type: "html",
         value: buildImgHtml(node.attrs),

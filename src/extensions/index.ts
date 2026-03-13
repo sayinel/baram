@@ -39,6 +39,7 @@ import { Frontmatter } from "./nodes/frontmatter";
 // Node Extensions
 import { Heading } from "./nodes/heading";
 import { HorizontalRule } from "./nodes/horizontal-rule";
+import { HtmlBlock } from "./nodes/html-block";
 import { Image } from "./nodes/image";
 import { ListItem } from "./nodes/list-item";
 import { MathBlock } from "./nodes/math-block";
@@ -126,6 +127,9 @@ export function createBaramExtensions(
 
     // Nodes — §5.8 Frontmatter
     Frontmatter,
+
+    // Nodes — §5.1 HTML Block (raw HTML preservation)
+    HtmlBlock,
 
     // Nodes — §28 Wikilink
     Wikilink.configure({
@@ -284,6 +288,7 @@ export {
   Heading,
   Highlight,
   HorizontalRule,
+  HtmlBlock,
   Image,
   Italic,
   Link,

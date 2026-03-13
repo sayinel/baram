@@ -16,6 +16,7 @@ import { frontmatterTransformer } from "./frontmatter-transformer";
 import { headingTransformer } from "./heading-transformer";
 import { highlightTransformer } from "./highlight-transformer";
 import { horizontalRuleTransformer } from "./horizontal-rule-transformer";
+import { htmlBlockTransformer } from "./html-block-transformer";
 import { imageTransformer } from "./image-transformer";
 import { italicTransformer } from "./italic-transformer";
 import { linkTransformer } from "./link-transformer";
@@ -74,6 +75,7 @@ const nodeEntries: NodeTransformerEntry[] = [
   footnoteDefinitionTransformer,
   definitionListTransformer,
   tableOfContentsTransformer,
+  htmlBlockTransformer,
   mentionTransformer,
   tagTransformer,
 ];
