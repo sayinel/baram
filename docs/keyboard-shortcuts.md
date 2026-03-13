@@ -131,6 +131,7 @@ Complete list of keyboard shortcuts available in Baram.
 |--------|-------|-----------------|
 | Next Cell | `Tab` | `Tab` |
 | Previous Cell | `Shift+Tab` | `Shift+Tab` |
+| Merge / Split Cells | `Cmd+M` | `Ctrl+M` |
 
 ## Math Editing (inside math blocks)
 
