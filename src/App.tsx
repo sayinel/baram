@@ -1,6 +1,5 @@
 // §4.2 Baram App — 3-Column layout with editor
 import {
-  Component,
   lazy,
   Suspense,
   useCallback,
@@ -8,7 +7,6 @@ import {
   useRef,
   useState,
 } from "react";
-import type { ErrorInfo, ReactNode } from "react";
 
 import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
@@ -23,6 +21,7 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import { InlineAIPrompt } from "./components/ai/InlineAIPrompt";
 import { PromptLintPanel } from "./components/ai/PromptLintPanel";
 import { FindReplaceBar } from "./components/editor/FindReplaceBar";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { FollowUpCard } from "./components/journal/FollowUpCard";
 import { MoodBar } from "./components/journal/MoodBar";
 import {
@@ -197,37 +196,6 @@ const QuickCaptureDialog = lazy(() =>
     default: m.QuickCaptureDialog,
   })),
 );
-
-// Error boundary to catch and display runtime errors
-class ErrorBoundary extends Component<
-  { children: ReactNode },
-  { error: Error | null }
-> {
-  state = { error: null as Error | null };
-
-  static getDerivedStateFromError(error: Error) {
-    return { error };
-  }
-
-  componentDidCatch(error: Error, info: ErrorInfo) {
-    logger.error("[Baram ErrorBoundary]", error, info.componentStack);
-  }
-
-  render() {
-    if (this.state.error) {
-      return (
-        <div style={{ padding: 20, color: "red", fontFamily: "monospace" }}>
-          <h2>Runtime Error</h2>
-          <pre>{this.state.error.message}</pre>
-          <pre style={{ fontSize: "0.8em", color: "#666" }}>
-            {this.state.error.stack}
-          </pre>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
 
 function App() {
   const { t } = useTranslation();
@@ -2411,7 +2379,20 @@ function App() {
 
 function AppWithErrorBoundary() {
   return (
-    <ErrorBoundary>
+    <ErrorBoundary
+      fallback={
+        <div
+          style={{
+            padding: 24,
+            fontFamily: "monospace",
+            color: "red",
+          }}
+        >
+          <h2>Something went wrong</h2>
+          <button onClick={() => window.location.reload()}>Reload</button>
+        </div>
+      }
+    >
       <App />
     </ErrorBoundary>
   );
