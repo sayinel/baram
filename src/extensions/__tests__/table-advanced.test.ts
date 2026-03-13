@@ -152,7 +152,7 @@ describe("Table Advanced — cell merge (§5.5 M10)", () => {
       expect(bodyCells).toHaveLength(2);
       // First cell has content, second is empty
       expect(bodyCells[0]).toBe("Span");
-      expect(bodyCells[1]).toBe("");
+      expect(bodyCells[1]).toBe("<");
     });
   });
 
@@ -192,8 +192,224 @@ describe("Table Advanced — cell merge (§5.5 M10)", () => {
       const bodyCells = countInnerCells(lines[2]);
       // Body row also has 2 columns; col 0 is empty (spanned from above)
       expect(bodyCells).toHaveLength(2);
-      expect(bodyCells[0]).toBe(""); // spanned cell → empty
+      expect(bodyCells[0]).toBe("^"); // spanned cell → rowspan marker
       expect(bodyCells[1]).toBe("B2");
+    });
+  });
+
+  describe("PM→MD merge markers: colspan", () => {
+    it("colspan=2 emits '<' marker in second cell", () => {
+      const merged = schema.nodes.tableHeader.create(
+        { colspan: 2, rowspan: 1, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("Merged")])],
+      );
+      const normal = schema.nodes.tableHeader.create(
+        { colspan: 1, rowspan: 1, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("Normal")])],
+      );
+      const headerRow = schema.nodes.tableRow.create(null, [merged, normal]);
+
+      const c1 = schema.nodes.tableCell.create(
+        { colspan: 1, rowspan: 1, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("A")])],
+      );
+      const c2 = schema.nodes.tableCell.create(
+        { colspan: 1, rowspan: 1, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("B")])],
+      );
+      const c3 = schema.nodes.tableCell.create(
+        { colspan: 1, rowspan: 1, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("C")])],
+      );
+      const bodyRow = schema.nodes.tableRow.create(null, [c1, c2, c3]);
+
+      const table = schema.nodes.table.create(null, [headerRow, bodyRow]);
+      const doc = schema.nodes.doc.create(null, [table]);
+      const md = prosemirrorToMarkdown(doc);
+      const lines = md.trim().split("\n");
+
+      const headerCells = countInnerCells(lines[0]);
+      expect(headerCells).toHaveLength(3);
+      expect(headerCells[0]).toBe("Merged");
+      expect(headerCells[1]).toBe("<");
+      expect(headerCells[2]).toBe("Normal");
+    });
+
+    it("colspan=3 emits two '<' markers", () => {
+      const merged = schema.nodes.tableHeader.create(
+        { colspan: 3, rowspan: 1, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("Wide")])],
+      );
+      const headerRow = schema.nodes.tableRow.create(null, [merged]);
+
+      const bodyCells = [1, 2, 3].map((n) =>
+        schema.nodes.tableCell.create(
+          { colspan: 1, rowspan: 1, alignment: null },
+          [schema.nodes.paragraph.create(null, [schema.text(String(n))])],
+        ),
+      );
+      const bodyRow = schema.nodes.tableRow.create(null, bodyCells);
+
+      const table = schema.nodes.table.create(null, [headerRow, bodyRow]);
+      const doc = schema.nodes.doc.create(null, [table]);
+      const md = prosemirrorToMarkdown(doc);
+      const lines = md.trim().split("\n");
+
+      const headerCells = countInnerCells(lines[0]);
+      expect(headerCells).toHaveLength(3);
+      expect(headerCells[0]).toBe("Wide");
+      expect(headerCells[1]).toBe("<");
+      expect(headerCells[2]).toBe("<");
+    });
+  });
+
+  describe("PM→MD merge markers: rowspan", () => {
+    it("rowspan=2 emits '^' marker in second row", () => {
+      const h1 = schema.nodes.tableHeader.create(
+        { colspan: 1, rowspan: 2, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("Tall")])],
+      );
+      const h2 = schema.nodes.tableHeader.create(
+        { colspan: 1, rowspan: 1, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("Normal")])],
+      );
+      const headerRow = schema.nodes.tableRow.create(null, [h1, h2]);
+
+      const bodyCell = schema.nodes.tableCell.create(
+        { colspan: 1, rowspan: 1, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("B")])],
+      );
+      const bodyRow = schema.nodes.tableRow.create(null, [bodyCell]);
+
+      const table = schema.nodes.table.create(null, [headerRow, bodyRow]);
+      const doc = schema.nodes.doc.create(null, [table]);
+      const md = prosemirrorToMarkdown(doc);
+      const lines = md.trim().split("\n");
+
+      const bodyCells = countInnerCells(lines[2]);
+      expect(bodyCells).toHaveLength(2);
+      expect(bodyCells[0]).toBe("^");
+      expect(bodyCells[1]).toBe("B");
+    });
+
+    it("2x2 merge emits '<' in header and '^' markers in body", () => {
+      const big = schema.nodes.tableHeader.create(
+        { colspan: 2, rowspan: 2, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("Big")])],
+      );
+      const h3 = schema.nodes.tableHeader.create(
+        { colspan: 1, rowspan: 1, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("Normal")])],
+      );
+      const headerRow = schema.nodes.tableRow.create(null, [big, h3]);
+
+      const bodyCell = schema.nodes.tableCell.create(
+        { colspan: 1, rowspan: 1, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("Other")])],
+      );
+      const bodyRow = schema.nodes.tableRow.create(null, [bodyCell]);
+
+      const table = schema.nodes.table.create(null, [headerRow, bodyRow]);
+      const doc = schema.nodes.doc.create(null, [table]);
+      const md = prosemirrorToMarkdown(doc);
+      const lines = md.trim().split("\n");
+
+      const headerCells = countInnerCells(lines[0]);
+      expect(headerCells).toHaveLength(3);
+      expect(headerCells[0]).toBe("Big");
+      expect(headerCells[1]).toBe("<");
+      expect(headerCells[2]).toBe("Normal");
+
+      const bodyCells = countInnerCells(lines[2]);
+      expect(bodyCells).toHaveLength(3);
+      expect(bodyCells[0]).toBe("^");
+      expect(bodyCells[1]).toBe("^");
+      expect(bodyCells[2]).toBe("Other");
+    });
+  });
+
+  describe("MD→PM merge markers: colspan", () => {
+    it("'<' marker creates colspan=2 on preceding cell", () => {
+      const md = "| A | < | C |\n| --- | --- | --- |\n| 1 | 2 | 3 |";
+      const doc = markdownToProsemirror(md, schema);
+      const table = doc.firstChild!;
+      const headerRow = table.firstChild!;
+
+      // Header row should have 2 PM cells (A with colspan=2, C with colspan=1)
+      expect(headerRow.childCount).toBe(2);
+      expect(headerRow.child(0).attrs.colspan).toBe(2);
+      expect(headerRow.child(0).textContent).toBe("A");
+      expect(headerRow.child(1).attrs.colspan).toBe(1);
+      expect(headerRow.child(1).textContent).toBe("C");
+    });
+
+    it("consecutive '<' markers create colspan=3", () => {
+      const md = "| Wide | < | < |\n| --- | --- | --- |\n| 1 | 2 | 3 |";
+      const doc = markdownToProsemirror(md, schema);
+      const table = doc.firstChild!;
+      const headerRow = table.firstChild!;
+
+      expect(headerRow.childCount).toBe(1);
+      expect(headerRow.child(0).attrs.colspan).toBe(3);
+      expect(headerRow.child(0).textContent).toBe("Wide");
+    });
+
+    it("'<' in first column is treated as plain text", () => {
+      const md = "| < | B |\n| --- | --- |\n| 1 | 2 |";
+      const doc = markdownToProsemirror(md, schema);
+      const table = doc.firstChild!;
+      const headerRow = table.firstChild!;
+
+      // Both cells should exist with colspan=1
+      expect(headerRow.childCount).toBe(2);
+      expect(headerRow.child(0).attrs.colspan).toBe(1);
+      expect(headerRow.child(0).textContent).toBe("<");
+    });
+  });
+
+  describe("MD→PM merge markers: rowspan", () => {
+    it("'^' marker creates rowspan=2 on cell above", () => {
+      const md = "| Tall | B |\n| --- | --- |\n| ^ | C |";
+      const doc = markdownToProsemirror(md, schema);
+      const table = doc.firstChild!;
+      const headerRow = table.firstChild!;
+      const bodyRow = table.child(1);
+
+      expect(headerRow.child(0).attrs.rowspan).toBe(2);
+      expect(headerRow.child(0).textContent).toBe("Tall");
+      // Body row should have only 1 cell (C), since ^ is consumed
+      expect(bodyRow.childCount).toBe(1);
+      expect(bodyRow.child(0).textContent).toBe("C");
+    });
+
+    it("2x2 merge with '<' and '^' markers", () => {
+      const md = "| Big | < | N |\n| --- | --- | --- |\n| ^ | ^ | O |";
+      const doc = markdownToProsemirror(md, schema);
+      const table = doc.firstChild!;
+      const headerRow = table.firstChild!;
+      const bodyRow = table.child(1);
+
+      // Header: Big (colspan=2, rowspan=2), N (colspan=1, rowspan=1)
+      expect(headerRow.childCount).toBe(2);
+      expect(headerRow.child(0).attrs.colspan).toBe(2);
+      expect(headerRow.child(0).attrs.rowspan).toBe(2);
+      expect(headerRow.child(0).textContent).toBe("Big");
+      expect(headerRow.child(1).textContent).toBe("N");
+
+      // Body: only O (colspan=1, rowspan=1)
+      expect(bodyRow.childCount).toBe(1);
+      expect(bodyRow.child(0).textContent).toBe("O");
+    });
+
+    it("'^' in first row is treated as plain text", () => {
+      const md = "| ^ | B |\n| --- | --- |\n| 1 | 2 |";
+      const doc = markdownToProsemirror(md, schema);
+      const table = doc.firstChild!;
+      const headerRow = table.firstChild!;
+
+      expect(headerRow.childCount).toBe(2);
+      expect(headerRow.child(0).attrs.rowspan).toBe(1);
+      expect(headerRow.child(0).textContent).toBe("^");
     });
   });
 
@@ -284,6 +500,165 @@ describe("Table Advanced — cell merge (§5.5 M10)", () => {
       // Both header and body should have 3 columns
       expect(countInnerCells(lines[0])).toHaveLength(3);
       expect(countInnerCells(lines[2])).toHaveLength(3);
+    });
+  });
+
+  describe("Roundtrip: merge markers", () => {
+    it("colspan=2 roundtrips via '<' marker", () => {
+      // Build PM with colspan=2
+      const merged = schema.nodes.tableHeader.create(
+        { colspan: 2, rowspan: 1, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("A")])],
+      );
+      const normal = schema.nodes.tableHeader.create(
+        { colspan: 1, rowspan: 1, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("B")])],
+      );
+      const headerRow = schema.nodes.tableRow.create(null, [merged, normal]);
+
+      const c1 = schema.nodes.tableCell.create(
+        { colspan: 1, rowspan: 1, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("1")])],
+      );
+      const c2 = schema.nodes.tableCell.create(
+        { colspan: 1, rowspan: 1, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("2")])],
+      );
+      const c3 = schema.nodes.tableCell.create(
+        { colspan: 1, rowspan: 1, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("3")])],
+      );
+      const bodyRow = schema.nodes.tableRow.create(null, [c1, c2, c3]);
+
+      const table = schema.nodes.table.create(null, [headerRow, bodyRow]);
+      const doc = schema.nodes.doc.create(null, [table]);
+
+      // PM → MD → PM
+      const md = prosemirrorToMarkdown(doc);
+      expect(md).toContain("| < |");
+
+      const doc2 = markdownToProsemirror(md, schema);
+      const table2 = doc2.firstChild!;
+      const headerRow2 = table2.firstChild!;
+
+      expect(headerRow2.child(0).attrs.colspan).toBe(2);
+      expect(headerRow2.child(0).textContent).toBe("A");
+    });
+
+    it("2x2 merge roundtrips via '<' and '^' markers", () => {
+      const big = schema.nodes.tableHeader.create(
+        { colspan: 2, rowspan: 2, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("Big")])],
+      );
+      const h3 = schema.nodes.tableHeader.create(
+        { colspan: 1, rowspan: 1, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("N")])],
+      );
+      const headerRow = schema.nodes.tableRow.create(null, [big, h3]);
+
+      const bodyCell = schema.nodes.tableCell.create(
+        { colspan: 1, rowspan: 1, alignment: null },
+        [schema.nodes.paragraph.create(null, [schema.text("O")])],
+      );
+      const bodyRow = schema.nodes.tableRow.create(null, [bodyCell]);
+
+      const table = schema.nodes.table.create(null, [headerRow, bodyRow]);
+      const doc = schema.nodes.doc.create(null, [table]);
+
+      // PM → MD → PM
+      const md = prosemirrorToMarkdown(doc);
+      expect(md).toContain("| < |");
+      expect(md).toContain("| ^ |");
+
+      const doc2 = markdownToProsemirror(md, schema);
+      const table2 = doc2.firstChild!;
+      const headerRow2 = table2.firstChild!;
+
+      expect(headerRow2.child(0).attrs.colspan).toBe(2);
+      expect(headerRow2.child(0).attrs.rowspan).toBe(2);
+      expect(headerRow2.child(0).textContent).toBe("Big");
+    });
+
+    it("MD with merge markers roundtrips: MD → PM → MD content preserved", () => {
+      const input = "| A | < | C |\n| --- | --- | --- |\n| ^ | ^ | D |";
+      const doc = markdownToProsemirror(input, schema);
+      const output = prosemirrorToMarkdown(doc);
+
+      // Verify markers are re-emitted
+      const lines = output.trim().split("\n");
+      const headerCells = countInnerCells(lines[0]);
+      expect(headerCells[0]).toBe("A");
+      expect(headerCells[1]).toBe("<");
+      expect(headerCells[2]).toBe("C");
+
+      const bodyCells = countInnerCells(lines[2]);
+      expect(bodyCells[0]).toBe("^");
+      expect(bodyCells[1]).toBe("^");
+      expect(bodyCells[2]).toBe("D");
+    });
+  });
+
+  describe("Roundtrip: merge markers with inline marks and alignment", () => {
+    it("colspan cell with bold text preserves marks on roundtrip", () => {
+      const md = "| **Bold** | < | C |\n| --- | --- | --- |\n| 1 | 2 | 3 |";
+      const doc = markdownToProsemirror(md, schema);
+      const table = doc.firstChild!;
+      const headerRow = table.firstChild!;
+
+      // Bold cell has colspan=2
+      expect(headerRow.child(0).attrs.colspan).toBe(2);
+
+      // Re-serialize and verify bold + marker preserved
+      const output = prosemirrorToMarkdown(doc);
+      const lines = output.trim().split("\n");
+      const headerCells = countInnerCells(lines[0]);
+      expect(headerCells[0]).toContain("**Bold**");
+      expect(headerCells[1]).toBe("<");
+      expect(headerCells[2]).toBe("C");
+    });
+
+    it("merge table with alignment roundtrips correctly", () => {
+      const md = "| A | < | C |\n| :--- | :---: | ---: |\n| 1 | 2 | 3 |";
+      const doc = markdownToProsemirror(md, schema);
+      const output = prosemirrorToMarkdown(doc);
+
+      // Left and right alignment markers preserved
+      // Note: the '<' marker column inherits the merged cell's alignment (left),
+      // so center alignment from the separator is not preserved on that column.
+      expect(output).toMatch(/:-+/); // left
+      expect(output).toMatch(/-+:/); // right
+
+      // Merge marker preserved
+      const lines = output.trim().split("\n");
+      const headerCells = countInnerCells(lines[0]);
+      expect(headerCells[1]).toBe("<");
+    });
+
+    it("rowspan=3 with consecutive '^' markers", () => {
+      const md = "| Tall | B |\n| --- | --- |\n| ^ | C |\n| ^ | D |";
+      const doc = markdownToProsemirror(md, schema);
+      const table = doc.firstChild!;
+      const headerRow = table.firstChild!;
+
+      expect(headerRow.child(0).attrs.rowspan).toBe(3);
+      expect(headerRow.child(0).textContent).toBe("Tall");
+
+      // Re-serialize and verify markers
+      const output = prosemirrorToMarkdown(doc);
+      const lines = output.trim().split("\n");
+      expect(countInnerCells(lines[2])[0]).toBe("^");
+      expect(countInnerCells(lines[3])[0]).toBe("^");
+    });
+  });
+
+  describe("Backward compatibility: no-merge tables unchanged", () => {
+    it("table without merge produces no markers", () => {
+      const input = "| A | B | C |\n| --- | --- | --- |\n| 1 | 2 | 3 |";
+      const output = roundtrip(input);
+      expect(output).not.toContain("| < |");
+      expect(output).not.toContain("| ^ |");
+      expect(output).toContain("| A | B | C |");
+      expect(output).toContain("| 1 | 2 | 3 |");
     });
   });
 });

@@ -600,47 +600,31 @@ function convertListNode(node: Content, schema: Schema): PmNode {
   return schema.nodes.bulletList.create(null, items);
 }
 
-/** Convert an mdast table node to PM table node */
+/** Convert an mdast table node to PM table node — delegates to tableTransformer */
 function convertTableNode(node: Content, schema: Schema): PmNode {
-  const table = node as {
-    align?: (null | string)[];
-    children: {
-      children: { children: Content[]; type: string }[];
-      type: string;
-    }[];
-  };
-  const align = table.align || [];
-  const rows: PmNode[] = [];
-
-  table.children.forEach((row, rowIndex) => {
-    const cells: PmNode[] = [];
-
-    row.children.forEach((cell, colIndex) => {
-      // Convert cell's inline children to PM nodes, then wrap in paragraph
+  const transformer = nodeTransformers.get("table");
+  if (transformer) {
+    const result = transformer.mdastToPm(node, schema, (parent) => {
+      // Table cell children are inline — convert and wrap in paragraph
+      const children = (parent as { children?: Content[] }).children;
+      if (!children || children.length === 0) return [];
       const inlineContent = convertInlineChildren(
-        cell.children as PhrasingContent[],
+        children as PhrasingContent[],
         schema,
         [],
       );
-      const paragraph = schema.nodes.paragraph.create(null, inlineContent);
-
-      const cellAttrs = {
-        colspan: 1,
-        rowspan: 1,
-        alignment: align[colIndex] || null,
-      };
-
-      if (rowIndex === 0) {
-        cells.push(schema.nodes.tableHeader.create(cellAttrs, [paragraph]));
-      } else {
-        cells.push(schema.nodes.tableCell.create(cellAttrs, [paragraph]));
-      }
+      return [schema.nodes.paragraph.create(null, inlineContent)];
     });
+    if (result && !Array.isArray(result)) return result;
+  }
 
-    rows.push(schema.nodes.tableRow.create(null, cells));
-  });
-
-  return schema.nodes.table.create(null, rows);
+  // Fallback: minimal valid table (1 header row with 1 cell)
+  const cell = schema.nodes.tableHeader.create(
+    null,
+    schema.nodes.paragraph.create(),
+  );
+  const row = schema.nodes.tableRow.create(null, [cell]);
+  return schema.nodes.table.create(null, [row]);
 }
 
 /**
