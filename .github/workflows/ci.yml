@@ -16,6 +16,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  TZ: Asia/Seoul
 
 jobs:
   # ── Lint (all events) ──────────────────────────────────────────────
