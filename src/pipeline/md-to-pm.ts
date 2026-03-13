@@ -68,6 +68,11 @@ const INLINE_TYPES = new Set([
 // (pure module with no ProseMirror deps — safe for Web Worker import)
 export { parseMdast };
 
+interface BlockIdResult {
+  blockId: string;
+  strippedChildren: Content[];
+}
+
 /** Full pipeline: markdown string → ProseMirror document */
 export function markdownToProsemirror(
   markdown: string,
@@ -298,7 +303,13 @@ function convertBlockNode(
   // §30a: Extract block ID from paragraph/heading before conversion
   let blockId: null | string = null;
   if (node.type === "paragraph" || node.type === "heading") {
-    blockId = extractBlockIdFromMdast(node);
+    const blockIdResult = extractBlockIdFromMdast(node);
+    if (blockIdResult) {
+      // Replace the children with stripped versions (explicit mutation at call site)
+      (node as { children: Content[] }).children =
+        blockIdResult.strippedChildren;
+      blockId = blockIdResult.blockId;
+    }
   }
 
   // Standard node transformer lookup
@@ -624,10 +635,10 @@ function convertTableNode(node: Content, schema: Schema): PmNode {
 
 /**
  * §30a: Extract block ID from the last text child of an mdast node.
- * Mutates the node in-place (strips ` ^{id}` from text).
- * Returns the block ID string, or null if not found.
+ * Returns a new children array with the block ID suffix stripped, without mutating the original.
+ * Returns null if no block ID is found.
  */
-function extractBlockIdFromMdast(node: Content): null | string {
+function extractBlockIdFromMdast(node: Content): BlockIdResult | null {
   const children = (node as { children?: Content[] }).children;
   if (!children || children.length === 0) return null;
 
@@ -639,15 +650,19 @@ function extractBlockIdFromMdast(node: Content): null | string {
   const result = extractBlockId(text);
   if (!result) return null;
 
-  // Mutate the text node to strip the block ID suffix
+  // Return new children array without mutating original
+  let strippedChildren: Content[];
   if (result.strippedText) {
-    (lastChild as Text).value = result.strippedText;
+    strippedChildren = [
+      ...children.slice(0, -1),
+      { ...lastChild, value: result.strippedText } as Content,
+    ];
   } else {
-    // If stripping leaves empty text, remove the node
-    children.pop();
+    // If stripping leaves empty text, omit the last child entirely
+    strippedChildren = children.slice(0, -1);
   }
 
-  return result.blockId;
+  return { blockId: result.blockId, strippedChildren };
 }
 
 /** Check if a paragraph starts with `: ` (definition line) */
