@@ -1,5 +1,5 @@
 // §56m Tag Inline Atom Node — #tag as ProseMirror inline atom
-import { InputRule, Node } from "@tiptap/core";
+import { InputRule, mergeAttributes, Node } from "@tiptap/core";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
 import { TagNodeView } from "./tag-node-view";
@@ -12,12 +12,20 @@ declare module "@tiptap/core" {
   }
 }
 
-export const TagNode = Node.create({
+export interface TagNodeOptions {
+  HTMLAttributes: Record<string, string>;
+}
+
+export const TagNode = Node.create<TagNodeOptions>({
   name: "tagNode",
   group: "inline",
   inline: true,
   atom: true,
   marks: "",
+
+  addOptions() {
+    return { HTMLAttributes: {} };
+  },
 
   addAttributes() {
     return {
@@ -29,15 +37,15 @@ export const TagNode = Node.create({
     return [{ tag: 'span[data-type="tag"]' }];
   },
 
-  renderHTML({ HTMLAttributes }) {
+  renderHTML({ node, HTMLAttributes }) {
     return [
       "span",
-      {
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
         "data-type": "tag",
-        "data-tag": HTMLAttributes.tag,
+        "data-tag": node.attrs.tag,
         class: "tag-node",
-      },
-      `#${HTMLAttributes.tag}`,
+      }),
+      `#${node.attrs.tag}`,
     ];
   },
 

@@ -1,6 +1,6 @@
+// §5.1 Definition List Extension — Term\n: Definition → <dl><dt><dd>
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
 
-// Definition List Extension — Term\n: Definition → <dl><dt><dd>
 import { InputRule, mergeAttributes, Node } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 
@@ -12,6 +12,18 @@ declare module "@tiptap/core" {
   }
 }
 
+export interface DefinitionDescriptionOptions {
+  HTMLAttributes: Record<string, string>;
+}
+
+export interface DefinitionListOptions {
+  HTMLAttributes: Record<string, string>;
+}
+
+export interface DefinitionTermOptions {
+  HTMLAttributes: Record<string, string>;
+}
+
 /** Unwrap all children of a definitionList into paragraphs */
 function unwrapDlToParagraphs(dlNode: PmNode, schema: Schema): PmNode[] {
   const paragraphs: PmNode[] = [];
@@ -21,11 +33,15 @@ function unwrapDlToParagraphs(dlNode: PmNode, schema: Schema): PmNode[] {
   return paragraphs;
 }
 
-export const DefinitionList = Node.create({
+export const DefinitionList = Node.create<DefinitionListOptions>({
   name: "definitionList",
   group: "block",
   content: "(definitionTerm definitionDescription+)+",
   defining: true,
+
+  addOptions() {
+    return { HTMLAttributes: {} };
+  },
 
   parseHTML() {
     return [{ tag: "dl.definition-list" }];
@@ -55,10 +71,14 @@ export const DefinitionList = Node.create({
   },
 });
 
-export const DefinitionTerm = Node.create({
+export const DefinitionTerm = Node.create<DefinitionTermOptions>({
   name: "definitionTerm",
   content: "inline*",
   marks: "_",
+
+  addOptions() {
+    return { HTMLAttributes: {} };
+  },
 
   parseHTML() {
     return [{ tag: "dt" }];
@@ -158,10 +178,14 @@ export const DefinitionTerm = Node.create({
   },
 });
 
-export const DefinitionDescription = Node.create({
+export const DefinitionDescription = Node.create<DefinitionDescriptionOptions>({
   name: "definitionDescription",
   content: "inline*",
   marks: "_",
+
+  addOptions() {
+    return { HTMLAttributes: {} };
+  },
 
   parseHTML() {
     return [{ tag: "dd" }];
