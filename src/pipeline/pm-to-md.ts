@@ -701,6 +701,18 @@ function extractTextFromPhrasing(nodes: PhrasingContent[]): string {
       }
       if (node.type === "inlineCode")
         return `\`${(node as { value: string }).value}\``;
+      if (node.type === "link")
+        return extractTextFromPhrasing(
+          (node as unknown as { children: PhrasingContent[] }).children,
+        );
+      if (node.type === "inlineMath")
+        return (node as unknown as { value: string }).value || "";
+      if (node.type === "wikiLink")
+        return (node as unknown as { value: string }).value || "";
+      if (node.type === "mention")
+        return (node as unknown as { value: string }).value || "";
+      if (node.type === "tagNode")
+        return (node as unknown as { value: string }).value || "";
       return "";
     })
     .join("");
