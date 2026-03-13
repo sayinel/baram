@@ -8,6 +8,7 @@ import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { useUIStore } from "../../stores/ui-store";
 import { showPrompt } from "../../utils/ai-commands";
+import { logger } from "../../utils/logger";
 import { isSkillFrontmatter } from "../../utils/skill-frontmatter";
 import { getSkillSections } from "./skill-panel-registry";
 // §72c Side-effect imports: sections self-register into the registry
@@ -255,7 +256,7 @@ export function PropertiesPanel() {
         });
         setActiveTab(tabId);
       } catch (err) {
-        console.error("PropertiesPanel: failed to open file", err);
+        logger.error("PropertiesPanel: failed to open file", err);
       }
     },
     [fileTree],

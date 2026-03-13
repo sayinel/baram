@@ -28,6 +28,7 @@ import {
   resolveInsertTarget,
   showDropIndicator,
 } from "../utils/drop-indicator";
+import { logger } from "../utils/logger";
 import { isImageFile, resolveNameConflict } from "../utils/path-utils";
 
 interface UseExternalDropOptions {
@@ -239,7 +240,7 @@ async function handleEditorDrop(
       });
       pos = insertNodeAtPos(editor, pos, imageNode);
     } catch (err) {
-      console.error("[ExternalDrop] Image drop failed:", err);
+      logger.error("[ExternalDrop] Image drop failed:", err);
     }
   }
 }
@@ -277,7 +278,7 @@ async function handleFileTreeDrop(paths: string[], el: Element | null) {
         isDir: false,
       });
     } catch (err) {
-      console.error("[ExternalDrop] Copy to FileTree failed:", err);
+      logger.error("[ExternalDrop] Copy to FileTree failed:", err);
     }
   }
 }

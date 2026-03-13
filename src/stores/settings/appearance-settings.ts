@@ -3,6 +3,7 @@ import type { ActivityBarItemConfig } from "../settings-store";
 import type { StateCreator } from "zustand";
 
 import { findThemeById } from "../../types/theme";
+import { logger } from "../../utils/logger";
 
 export interface AppearanceSettingsSlice {
   activeThemeId: string;
@@ -87,7 +88,7 @@ export const createAppearanceSettingsSlice: StateCreator<
   setLocale: (locale) => {
     set({ locale });
     import("../../ipc/menu-locale").then(({ syncMenuLocale }) => {
-      syncMenuLocale(locale as "en" | "ko").catch(console.error);
+      syncMenuLocale(locale as "en" | "ko").catch((e) => logger.error(e));
     });
   },
 

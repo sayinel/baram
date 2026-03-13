@@ -4,6 +4,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import type { LoadedPlugin, PluginManifest, PluginModule } from "./types";
 import type { Extensions } from "@tiptap/core";
 
+import { logger } from "../utils/logger";
 import { createExtensionContext, setEditorInstance } from "./extension-context";
 import { validateManifest } from "./manifest";
 
@@ -27,7 +28,7 @@ export class PluginLoader {
         if (ext) {
           extensions.push(ext as Extensions[number]);
         } else {
-          console.warn(
+          logger.warn(
             `[PluginLoader] Plugin ${plugin.id}: export "${extDef.exportName}" not found`,
           );
         }
@@ -47,7 +48,7 @@ export class PluginLoader {
     manifest: PluginManifest,
   ): Promise<void> {
     if (this.loaded.has(manifest.id)) {
-      console.warn(`[PluginLoader] Plugin ${manifest.id} is already loaded`);
+      logger.warn(`[PluginLoader] Plugin ${manifest.id} is already loaded`);
       return;
     }
 
@@ -92,7 +93,7 @@ export class PluginLoader {
       disposables: context.subscriptions,
     });
 
-    console.info(
+    logger.info(
       `[PluginLoader] Loaded plugin: ${manifest.id} v${manifest.version}`,
     );
   }
@@ -124,7 +125,7 @@ export class PluginLoader {
           `Plugin ${id} deactivation timed out`,
         );
       } catch (err) {
-        console.error(`[PluginLoader] Error deactivating ${id}:`, err);
+        logger.error(`[PluginLoader] Error deactivating ${id}:`, err);
       }
     }
 
@@ -133,12 +134,12 @@ export class PluginLoader {
       try {
         disposable.dispose();
       } catch (e) {
-        console.error(`[PluginLoader] Dispose error:`, e);
+        logger.error(`[PluginLoader] Dispose error:`, e);
       }
     }
 
     this.loaded.delete(id);
-    console.info(`[PluginLoader] Unloaded plugin: ${id}`);
+    logger.info(`[PluginLoader] Unloaded plugin: ${id}`);
   }
 }
 

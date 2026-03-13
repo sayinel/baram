@@ -30,6 +30,18 @@ export function MathBlockView({
   const [error, setError] = useState<null | string>(null);
   const [eqNumber, setEqNumber] = useState(1);
 
+  // Refs so the selected-change effect can access latest values without listing
+  // them as deps (localFormula changes on every keystroke; adding it would
+  // re-run the effect — and re-focus the textarea — on every character typed).
+  const localFormulaRef = useRef(localFormula);
+  localFormulaRef.current = localFormula;
+  const formulaRef = useRef(formula);
+  formulaRef.current = formula;
+  const updateAttributesRef = useRef(updateAttributes);
+  updateAttributesRef.current = updateAttributes;
+  const editorRef = useRef(editor);
+  editorRef.current = editor;
+
   // §perf-large-file: Use shared cache — O(1) per instance, O(n) total per doc change
   useEffect(() => {
     const updateNumber = () => {
@@ -47,9 +59,9 @@ export function MathBlockView({
   // Sync local formula and focus textarea when entering edit mode
   useEffect(() => {
     if (selected) {
-      setLocalFormula(formula);
+      setLocalFormula(formulaRef.current);
       // Read entry direction from ProseMirror plugin state (synchronously computed)
-      const entryState = mathBlockEntryKey.getState(editor.state);
+      const entryState = mathBlockEntryKey.getState(editorRef.current.state);
       const enteredFromBelow = entryState?.direction === "below";
 
       setTimeout(() => {
@@ -64,11 +76,10 @@ export function MathBlockView({
       }, 0);
     } else {
       // Save on deselect
-      if (localFormula !== formula) {
-        updateAttributes({ formula: localFormula });
+      if (localFormulaRef.current !== formulaRef.current) {
+        updateAttributesRef.current({ formula: localFormulaRef.current });
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
 
   // Auto-resize textarea

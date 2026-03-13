@@ -11,6 +11,7 @@ import History from "@tiptap/extension-history";
 import Placeholder from "@tiptap/extension-placeholder";
 import Text from "@tiptap/extension-text";
 
+import { logger } from "../utils/logger";
 // Mark Extensions
 import { Bold } from "./marks/bold";
 import { Code } from "./marks/code";
@@ -250,7 +251,7 @@ export function mergePluginExtensions(
   const filtered = pluginExtensions.filter((ext) => {
     const name = (ext as { name?: string }).name;
     if (name && coreNames.has(name)) {
-      console.warn(
+      logger.warn(
         `[Plugin] Extension "${name}" conflicts with core extension, skipping`,
       );
       return false;

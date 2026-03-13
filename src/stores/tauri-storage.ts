@@ -4,6 +4,7 @@
 import type { StateStorage } from "zustand/middleware";
 
 import { getConfig, removeConfig, setConfig } from "../ipc/invoke";
+import { logger } from "../utils/logger";
 
 /**
  * Custom StateStorage that delegates to Tauri's config module.
@@ -14,7 +15,7 @@ export const tauriStorage: StateStorage = {
     try {
       return await getConfig(name);
     } catch (e) {
-      console.warn("[tauriStorage] getItem failed, returning null:", e);
+      logger.warn("[tauriStorage] getItem failed, returning null:", e);
       return null;
     }
   },
@@ -22,14 +23,14 @@ export const tauriStorage: StateStorage = {
     try {
       await setConfig(name, value);
     } catch (e) {
-      console.error("[tauriStorage] setItem failed:", e);
+      logger.error("[tauriStorage] setItem failed:", e);
     }
   },
   removeItem: async (name: string): Promise<void> => {
     try {
       await removeConfig(name);
     } catch (e) {
-      console.error("[tauriStorage] removeItem failed:", e);
+      logger.error("[tauriStorage] removeItem failed:", e);
     }
   },
 };
@@ -52,9 +53,9 @@ export async function migrateFromLocalStorage(): Promise<void> {
 
       await setConfig(key, localValue);
       localStorage.removeItem(key);
-      console.log(`[tauriStorage] Migrated "${key}" from localStorage`);
+      logger.debug(`[tauriStorage] Migrated "${key}" from localStorage`);
     } catch (e) {
-      console.warn(`[tauriStorage] Migration failed for "${key}":`, e);
+      logger.warn(`[tauriStorage] Migration failed for "${key}":`, e);
     }
   }
 }

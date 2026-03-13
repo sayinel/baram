@@ -20,6 +20,7 @@ import {
   insertCaptureIntoContent,
 } from "../../utils/journal-capture";
 import { buildTagIndex, filterTags } from "../../utils/journal-tags";
+import { logger } from "../../utils/logger";
 import { TagSuggest } from "./TagSuggest";
 
 export function QuickCaptureDialog() {
@@ -88,7 +89,7 @@ export function QuickCaptureDialog() {
         );
         setTagIndex(buildTagIndex(validFiles));
       } catch (err) {
-        console.error("[QuickCapture] Tag index build failed:", err);
+        logger.error("[QuickCapture] Tag index build failed:", err);
       }
     })();
   }, [quickCaptureOpen, quickCaptureType]);
@@ -181,7 +182,7 @@ export function QuickCaptureDialog() {
 
       toggleQuickCapture();
     } catch (err) {
-      console.error("[QuickCapture] Save failed:", err);
+      logger.error("[QuickCapture] Save failed:", err);
       setSaveError(
         `저장 실패: ${err instanceof Error ? err.message : String(err)}`,
       );

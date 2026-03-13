@@ -19,6 +19,7 @@ import {
   type JournalCategory,
   type JournalSearchFilters,
 } from "../../utils/journal-search";
+import { logger } from "../../utils/logger";
 
 const MAX_PER_CATEGORY = 5;
 
@@ -156,7 +157,7 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
             isPinned: false,
           });
         } catch (err) {
-          console.error("[JournalSearchPanel] Failed to open file:", err);
+          logger.error("[JournalSearchPanel] Failed to open file:", err);
         }
       })();
     },

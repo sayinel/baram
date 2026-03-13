@@ -16,6 +16,7 @@ import {
   exportForNotion,
   exportWithPandoc,
 } from "../../utils/export";
+import { logger } from "../../utils/logger";
 
 interface ExportDialogProps {
   editor: Editor | null;
@@ -149,7 +150,7 @@ export function ExportDialog({ editor }: ExportDialogProps) {
       closeExportDialog();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error("[Baram Export]", message);
+      logger.error("[Baram Export]", message);
       setErrorMsg(message);
       setExporting(false);
     }

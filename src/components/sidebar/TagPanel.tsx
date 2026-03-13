@@ -7,6 +7,7 @@ import { getVaultTags, renameTag } from "../../ipc/invoke";
 import { useFileStore } from "../../stores/file-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useUIStore } from "../../stores/ui-store";
+import { logger } from "../../utils/logger";
 
 const TAG_COLOR_PRESETS = [
   "#ef4444", // red
@@ -54,7 +55,7 @@ export function TagPanel() {
       const result = await getVaultTags(rootPath);
       setEntries(result);
     } catch (err) {
-      console.error("[TagPanel] Failed to fetch tags:", err);
+      logger.error("[TagPanel] Failed to fetch tags:", err);
     } finally {
       setLoading(false);
     }
@@ -171,7 +172,7 @@ export function TagPanel() {
           await fetchTags();
           useUIStore.getState().triggerContentReload();
         } catch (err) {
-          console.error("[TagPanel] rename_tag failed:", err);
+          logger.error("[TagPanel] rename_tag failed:", err);
           showNotification(`Failed to rename tag: ${err}`);
         } finally {
           setRenaming(null);

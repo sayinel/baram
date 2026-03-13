@@ -44,6 +44,18 @@ export function MermaidBlockView({
   const [viewFullscreen, setViewFullscreen] = useState(false);
   const fullscreenTextareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Refs so the selected-change effect can access latest values without listing
+  // them as deps (localCode changes on every keystroke; adding it would re-run
+  // the effect — and re-focus the textarea — on every character typed).
+  const localCodeRef = useRef(localCode);
+  localCodeRef.current = localCode;
+  const codeRef = useRef(code);
+  codeRef.current = code;
+  const updateAttributesRef = useRef(updateAttributes);
+  updateAttributesRef.current = updateAttributes;
+  const editorRef = useRef(editor);
+  editorRef.current = editor;
+
   // Render Mermaid SVG (async — dynamic import)
   useEffect(() => {
     const source = selected ? localCode : code;
@@ -82,8 +94,8 @@ export function MermaidBlockView({
   // Sync local code and focus textarea when entering edit mode
   useEffect(() => {
     if (selected) {
-      setLocalCode(code);
-      const entryState = mermaidBlockEntryKey.getState(editor.state);
+      setLocalCode(codeRef.current);
+      const entryState = mermaidBlockEntryKey.getState(editorRef.current.state);
       const enteredFromBelow = entryState?.direction === "below";
 
       setTimeout(() => {
@@ -98,12 +110,11 @@ export function MermaidBlockView({
       }, 0);
     } else {
       // Save on deselect
-      if (localCode !== code) {
-        updateAttributes({ code: localCode });
+      if (localCodeRef.current !== codeRef.current) {
+        updateAttributesRef.current({ code: localCodeRef.current });
       }
       setShowTemplates(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
 
   // Auto-resize textarea

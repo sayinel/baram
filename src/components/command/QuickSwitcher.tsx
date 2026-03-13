@@ -16,6 +16,7 @@ import {
   fuzzyScore,
 } from "../../utils/file-search";
 import { resolveJournalDir } from "../../utils/journal";
+import { logger } from "../../utils/logger";
 import { extractNamespace } from "../../utils/path-utils";
 
 /** §56l Journal prefix filter prefixes */
@@ -344,7 +345,7 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
           isPinned: false,
         });
       } catch (err) {
-        console.error("[QuickSwitcher] Failed to open file:", err);
+        logger.error("[QuickSwitcher] Failed to open file:", err);
       }
     },
     [tabs, setFileContent, openTab],

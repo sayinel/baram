@@ -14,6 +14,7 @@ import {
 } from "../../../stores/workspace-store";
 import { BUILT_IN_THEMES } from "../../../types/theme";
 import { THEME_COLOR_KEYS } from "../../../types/theme";
+import { logger } from "../../../utils/logger";
 import { SettingsSectionHeader } from "../settings-shared";
 import { ThemeEditor } from "../ThemeEditor";
 
@@ -67,7 +68,7 @@ export function AppearanceTab() {
       saveCustomTheme(newTheme);
       setActiveTheme(newTheme.id);
     } catch (err) {
-      console.error("Theme import failed:", err);
+      logger.error("Theme import failed:", err);
     }
   }, [saveCustomTheme, setActiveTheme]);
 

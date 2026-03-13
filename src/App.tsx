@@ -125,6 +125,7 @@ import {
   buildPromotedCaptureLink,
   parseCapturesFromMarkdown,
 } from "./utils/journal-capture";
+import { logger } from "./utils/logger";
 import { logAppReady } from "./utils/perf";
 import { showTableGridPicker } from "./utils/table-grid-picker";
 import { resolveWikilinkTarget } from "./utils/wikilink-nav";
@@ -209,7 +210,7 @@ class ErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error("[Baram ErrorBoundary]", error, info.componentStack);
+    logger.error("[Baram ErrorBoundary]", error, info.componentStack);
   }
 
   render() {
@@ -317,12 +318,12 @@ function App() {
   // §69 Plugin system — initialize plugins and update checker on mount
   useEffect(() => {
     initializePlugins().catch((err) =>
-      console.error("[App] Plugin initialization failed:", err),
+      logger.error("[App] Plugin initialization failed:", err),
     );
     startUpdateChecker();
     return () => {
       stopUpdateChecker();
-      shutdownPlugins().catch(console.error);
+      shutdownPlugins().catch((e) => logger.error(e));
     };
   }, []);
 
@@ -516,7 +517,7 @@ function App() {
   const locale = useSettingsStore((s) => s.locale);
   useEffect(() => {
     import("./ipc/menu-locale").then(({ syncMenuLocale }) => {
-      syncMenuLocale(locale as "en" | "ko").catch(console.error);
+      syncMenuLocale(locale as "en" | "ko").catch((e) => logger.error(e));
     });
   }, [locale]);
 
@@ -1068,7 +1069,7 @@ function App() {
         isPinned: false,
       });
     } catch (err) {
-      console.error("[App] Failed to open file:", err);
+      logger.error("[App] Failed to open file:", err);
     }
   }, [tabs, setFileContent, openTab]);
 
@@ -1098,7 +1099,7 @@ function App() {
             .catch(() => {});
         }
       } catch (err) {
-        console.error("[App] Failed to save:", err);
+        logger.error("[App] Failed to save:", err);
       }
     } else {
       // Untitled — Save As dialog
@@ -1131,7 +1132,7 @@ function App() {
           ),
         }));
       } catch (err) {
-        console.error("[App] Failed to save as:", err);
+        logger.error("[App] Failed to save as:", err);
       }
     }
   }, [editor, tabs, activeTabId, isSourceMode, setFileContent, markDirty]);
@@ -1175,7 +1176,7 @@ function App() {
         ),
       }));
     } catch (err) {
-      console.error("[App] Failed to save as:", err);
+      logger.error("[App] Failed to save as:", err);
     }
   }, [editor, tabs, activeTabId, isSourceMode, setFileContent]);
 
@@ -1221,7 +1222,7 @@ function App() {
       useSettingsStore.getState().addRecentFile(filePath);
       useSettingsStore.getState().setLastOpenedFile(filePath);
     } catch (err) {
-      console.error("[App] Failed to open file from OS:", err);
+      logger.error("[App] Failed to open file from OS:", err);
     }
   }, []);
 
@@ -1241,6 +1242,11 @@ function App() {
 
   // onLaunch — restore folder/file on startup
   const onLaunchDone = useRef(false);
+  // Capture latest handleNewFile in a ref so the mount-only effect does not need
+  // it as a dep (handleNewFile changes identity when `tabs` changes, which would
+  // incorrectly re-run the startup restore logic on every tab mutation).
+  const handleNewFileRef = useRef(handleNewFile);
+  handleNewFileRef.current = handleNewFile;
   useEffect(() => {
     if (onLaunchDone.current) return;
     onLaunchDone.current = true;
@@ -1267,11 +1273,10 @@ function App() {
           /* ignore */
         }
       } else if (onLaunch === "newFile") {
-        handleNewFile();
+        handleNewFileRef.current();
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [handleOpenFilePath]);
 
   // §28 Wikilink Cmd+Click navigation
   const handleWikilinkNavigate = useCallback(
@@ -1330,7 +1335,7 @@ function App() {
             }
             await handleOpenFilePath(journalPath);
           } catch (err) {
-            console.error("[App] Failed to open journal:", err);
+            logger.error("[App] Failed to open journal:", err);
           }
         })();
         return;
@@ -1373,7 +1378,7 @@ function App() {
             useFileStore.getState().setFileTree(tree);
             await handleOpenFilePath(newPath);
           } catch (err) {
-            console.error("[App] Failed to create wikilink target:", err);
+            logger.error("[App] Failed to create wikilink target:", err);
           }
         })();
         return;
@@ -1850,7 +1855,7 @@ function App() {
             isPinned: false,
           });
         } catch (err) {
-          console.error("[PromoteCapture] Failed:", err);
+          logger.error("[PromoteCapture] Failed:", err);
         }
       })();
     });
@@ -1919,7 +1924,7 @@ function App() {
             });
           }
         } catch (err) {
-          console.error("[JournalShortcut] Failed:", err);
+          logger.error("[JournalShortcut] Failed:", err);
         }
       })();
     });
@@ -2147,7 +2152,7 @@ function App() {
                 });
               }
             } catch (err) {
-              console.error("[JournalNav] Failed:", err);
+              logger.error("[JournalNav] Failed:", err);
             }
           })();
           return;

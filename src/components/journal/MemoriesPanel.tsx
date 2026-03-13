@@ -15,6 +15,7 @@ import {
   renderSimpleMarkdown,
   updateOneLineFrontmatter,
 } from "../../utils/journal-memories";
+import { logger } from "../../utils/logger";
 
 type MemoriesMode = "full" | "oneline";
 type MemoriesTab = "journal" | "notes";
@@ -830,7 +831,7 @@ function NotesTab() {
         ...prev,
       ]);
     } catch (err) {
-      console.error("[NotesTab] Failed to create note:", err);
+      logger.error("[NotesTab] Failed to create note:", err);
     }
     setCreating(false);
     setNewName("");
