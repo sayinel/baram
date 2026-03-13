@@ -1,9 +1,11 @@
 // §5.1 HTML Block NodeView — sanitized HTML preview, raw textarea on select
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
-import { TextSelection } from "@tiptap/pm/state";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 import DOMPurify from "dompurify";
+
+import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
+import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
 
 const SANITIZE_CONFIG = {
   USE_PROFILES: { html: true },
@@ -77,97 +79,24 @@ export function HtmlBlockView({
   }, [selected]);
 
   // Auto-resize textarea
-  useEffect(() => {
-    if (selected && textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height =
-        textareaRef.current.scrollHeight + "px";
+  useTextareaAutoResize(textareaRef, localContent, selected);
+
+  // Common atom-block behavior: deleteBlock, exitBlock, handleKeyDown
+  const onSaveBeforeExit = useCallback((): void => {
+    if (localContent !== content) {
+      updateAttributes({ content: localContent });
     }
-  }, [localContent, selected]);
+  }, [localContent, content, updateAttributes]);
 
-  const deleteBlock = useCallback((): void => {
-    const pos = getPos();
-    if (typeof pos !== "number") return;
-    const { tr } = editor.state;
-    tr.delete(pos, pos + node.nodeSize);
-    const $pos = tr.doc.resolve(Math.min(pos, tr.doc.content.size));
-    tr.setSelection(TextSelection.near($pos, -1));
-    editor.view.dispatch(tr);
-    editor.view.focus();
-  }, [editor, getPos, node.nodeSize]);
-
-  const exitBlock = useCallback(
-    (direction: "down" | "up"): void => {
-      const pos = getPos();
-      if (typeof pos !== "number") return;
-
-      if (localContent !== content) {
-        updateAttributes({ content: localContent });
-      }
-
-      if (direction === "up") {
-        editor.chain().setTextSelection(pos).focus().run();
-      } else {
-        const afterPos = pos + node.nodeSize;
-        const { doc } = editor.state;
-        const $after = doc.resolve(afterPos);
-        if ($after.parentOffset >= $after.parent.content.size) {
-          editor
-            .chain()
-            .insertContentAt(afterPos, { type: "paragraph" })
-            .setTextSelection(afterPos + 1)
-            .focus()
-            .run();
-        } else {
-          editor.chain().setTextSelection(afterPos).focus().run();
-        }
-      }
-    },
-    [editor, getPos, localContent, content, updateAttributes, node.nodeSize],
-  );
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
-      const ta = textareaRef.current;
-      if (!ta) return;
-
-      if (e.key === "Escape") {
-        e.preventDefault();
-        exitBlock("down");
-        return;
-      }
-
-      if (
-        e.key === "Backspace" &&
-        ta.selectionStart === 0 &&
-        ta.selectionEnd === 0 &&
-        !localContent
-      ) {
-        e.preventDefault();
-        deleteBlock();
-        return;
-      }
-
-      if (
-        e.key === "ArrowUp" &&
-        !ta.value.substring(0, ta.selectionStart).includes("\n")
-      ) {
-        e.preventDefault();
-        exitBlock("up");
-        return;
-      }
-
-      if (
-        e.key === "ArrowDown" &&
-        !ta.value.substring(ta.selectionStart).includes("\n")
-      ) {
-        e.preventDefault();
-        exitBlock("down");
-        return;
-      }
-    },
-    [exitBlock, deleteBlock, localContent],
-  );
+  const { handleKeyDown } = useAtomBlockBehavior({
+    editor,
+    getPos,
+    nodeSize: node.nodeSize,
+    textareaRef,
+    onSaveBeforeExit,
+    keyboard: { backspaceOnEmpty: true, horizontalArrowExit: false },
+    isEmpty: useCallback(() => !localContent, [localContent]),
+  });
 
   const handlePreviewClick = useCallback((): void => {
     const pos = getPos();

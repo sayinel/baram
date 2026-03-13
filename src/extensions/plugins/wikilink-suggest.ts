@@ -1,24 +1,20 @@
 import type { Editor } from "@tiptap/core";
-import type {
-  SuggestionKeyDownProps,
-  SuggestionProps,
-} from "@tiptap/suggestion";
 
 // §31 Wikilink autocomplete — Tiptap Extension using Suggestion API
 // Triggers on [[ and shows a file search popup
 import { Extension } from "@tiptap/core";
 import { PluginKey } from "@tiptap/pm/state";
-import { ReactRenderer } from "@tiptap/react";
 import { Suggestion } from "@tiptap/suggestion";
 
-import {
-  WikilinkMenuList,
-  type WikilinkMenuRef,
-} from "../../components/command/WikilinkMenu";
+import { WikilinkMenuList } from "../../components/command/WikilinkMenu";
 import { listDir, refreshIndex, writeFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor-store";
 import { buildFileTree, useFileStore } from "../../stores/file-store";
 import { flattenFileTree, fuzzyScore } from "../../utils/file-search";
+import {
+  createSuggestionRenderer,
+  type SuggestionRendererState,
+} from "./suggestion-renderer";
 import { getSyntaxRevealExpanded, syntaxRevealKey } from "./syntax-reveal";
 import {
   fileNameWithoutExtension,
@@ -27,8 +23,6 @@ import {
   longestCommonPrefix,
   type WikilinkSuggestionItem,
 } from "./wikilink-suggest-utils";
-
-const MENU_HEIGHT = 280;
 
 /** Build suggestion items from the file store */
 function getFileItems(): WikilinkSuggestionItem[] {
@@ -44,16 +38,6 @@ function getFileItems(): WikilinkSuggestionItem[] {
       label: f.name,
       path: f.path,
     }));
-}
-
-function positionPopup(popup: HTMLDivElement, coords: DOMRect) {
-  const spaceBelow = window.innerHeight - coords.bottom - 4;
-  popup.style.left = `${coords.left}px`;
-  if (spaceBelow < MENU_HEIGHT) {
-    popup.style.top = `${coords.top - MENU_HEIGHT - 4}px`;
-  } else {
-    popup.style.top = `${coords.bottom + 4}px`;
-  }
 }
 
 export const WikilinkSuggest = Extension.create({
@@ -248,100 +232,44 @@ export const WikilinkSuggest = Extension.create({
 
           return filtered;
         },
-        render: () => {
-          let component: null | ReactRenderer<WikilinkMenuRef> = null;
-          let popup: HTMLDivElement | null = null;
-          let latestItems: WikilinkSuggestionItem[] = [];
-          let latestRange: null | { from: number; to: number } = null;
+        render: createSuggestionRenderer<WikilinkSuggestionItem>({
+          component: WikilinkMenuList,
+          popupClass: "wikilink-menu-popup",
+          menuHeight: 280,
+          onKeyDown: (
+            props,
+            state: SuggestionRendererState<WikilinkSuggestionItem>,
+          ) => {
+            // Tab: bash-style common-prefix completion
+            if (props.event.key === "Tab" && state.range) {
+              const queryFrom = state.range.from + 2; // skip [[
+              const currentQuery = editor.view.state.doc.textBetween(
+                queryFrom,
+                state.range.to,
+              );
+              const queryLower = currentQuery.toLowerCase();
 
-          return {
-            onStart: (props: SuggestionProps) => {
-              latestItems = props.items as WikilinkSuggestionItem[];
-              latestRange = { from: props.range.from, to: props.range.to };
+              // Only use prefix-matching items for LCP (exclude fuzzy-only matches)
+              const targets = state.items
+                .filter((i) => i.kind !== "create")
+                .map((i) =>
+                  i.kind === "heading" ? `${i.target}#${i.heading}` : i.target,
+                )
+                .filter((t) => t.toLowerCase().startsWith(queryLower));
 
-              component = new ReactRenderer(WikilinkMenuList, {
-                props: {
-                  items: latestItems,
-                  command: props.command,
-                },
-                editor: props.editor,
-              });
-
-              popup = document.createElement("div");
-              popup.className = "wikilink-menu-popup";
-              document.body.appendChild(popup);
-              popup.appendChild(component.element);
-
-              const coords = props.clientRect?.();
-              if (coords && popup) {
-                positionPopup(popup, coords);
-              }
-            },
-            onUpdate: (props: SuggestionProps) => {
-              latestItems = props.items as WikilinkSuggestionItem[];
-              latestRange = { from: props.range.from, to: props.range.to };
-
-              component?.updateProps({
-                items: latestItems,
-                command: props.command,
-              });
-
-              const coords = props.clientRect?.();
-              if (coords && popup) {
-                positionPopup(popup, coords);
-              }
-            },
-            onKeyDown: (props: SuggestionKeyDownProps) => {
-              if (props.event.key === "Escape") {
-                popup?.remove();
-                component?.destroy();
-                popup = null;
-                component = null;
-                return true;
-              }
-
-              // Tab: bash-style common-prefix completion
-              if (props.event.key === "Tab" && latestRange) {
-                const queryFrom = latestRange.from + 2; // skip [[
-                const currentQuery = editor.view.state.doc.textBetween(
-                  queryFrom,
-                  latestRange.to,
-                );
-                const queryLower = currentQuery.toLowerCase();
-
-                // Only use prefix-matching items for LCP (exclude fuzzy-only matches)
-                const targets = latestItems
-                  .filter((i) => i.kind !== "create")
-                  .map((i) =>
-                    i.kind === "heading"
-                      ? `${i.target}#${i.heading}`
-                      : i.target,
-                  )
-                  .filter((t) => t.toLowerCase().startsWith(queryLower));
-
-                if (targets.length > 0) {
-                  const prefix = longestCommonPrefix(targets);
-                  if (prefix.length > currentQuery.length) {
-                    const { tr } = editor.view.state;
-                    tr.insertText(prefix, queryFrom, latestRange.to);
-                    editor.view.dispatch(tr);
-                  }
+              if (targets.length > 0) {
+                const prefix = longestCommonPrefix(targets);
+                if (prefix.length > currentQuery.length) {
+                  const { tr } = editor.view.state;
+                  tr.insertText(prefix, queryFrom, state.range.to);
+                  editor.view.dispatch(tr);
                 }
-                return true;
               }
-
-              return component?.ref?.onKeyDown(props.event) ?? false;
-            },
-            onExit: () => {
-              popup?.remove();
-              component?.destroy();
-              popup = null;
-              component = null;
-              latestItems = [];
-              latestRange = null;
-            },
-          };
-        },
+              return true;
+            }
+            return false;
+          },
+        }),
       }),
     ];
   },

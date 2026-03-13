@@ -396,6 +396,34 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
     defaultKey: "Mod+Shift+D",
     customizable: false,
   },
+  {
+    id: "formatting.blockquote",
+    label: "keybindings.formatting.blockquote",
+    category: "formatting",
+    defaultKey: "Mod+Shift+B",
+    customizable: false,
+  },
+  {
+    id: "formatting.link",
+    label: "keybindings.formatting.link",
+    category: "formatting",
+    defaultKey: "Mod+K",
+    customizable: false,
+  },
+  {
+    id: "formatting.tableMerge",
+    label: "keybindings.formatting.tableMerge",
+    category: "formatting",
+    defaultKey: "Mod+M",
+    customizable: false,
+  },
+  {
+    id: "formatting.toggleBlock",
+    label: "keybindings.formatting.toggleBlock",
+    category: "formatting",
+    defaultKey: "Mod+Enter",
+    customizable: false,
+  },
 ];
 
 /**

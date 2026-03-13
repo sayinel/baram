@@ -1,9 +1,13 @@
 // §5.5 Mermaid Block Extension — ```mermaid (atom:true, dual mode)
 import { mergeAttributes, Node } from "@tiptap/core";
-import { NodeSelection, Plugin, PluginKey } from "@tiptap/pm/state";
+import { PluginKey } from "@tiptap/pm/state";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
 import { resolveShortcut } from "../utils/shortcut-resolver";
+import {
+  AtomBlockEntryState,
+  createAtomBlockEntryPlugin,
+} from "./atom-block-entry-plugin";
 import { MermaidBlockView } from "./mermaid-block-view";
 
 export interface MermaidBlockOptions {
@@ -18,9 +22,7 @@ declare module "@tiptap/core" {
   }
 }
 
-export interface MermaidBlockEntryState {
-  direction: "above" | "below";
-}
+export type MermaidBlockEntryState = AtomBlockEntryState;
 
 export const mermaidBlockEntryKey = new PluginKey<MermaidBlockEntryState>(
   "mermaidBlockEntry",
@@ -70,45 +72,7 @@ export const MermaidBlock = Node.create<MermaidBlockOptions>({
   },
 
   addProseMirrorPlugins() {
-    return [
-      new Plugin<MermaidBlockEntryState>({
-        key: mermaidBlockEntryKey,
-        state: {
-          init() {
-            return { direction: "above" };
-          },
-          apply(tr, value, oldState) {
-            const newSel = tr.selection;
-            const oldSel = oldState.selection;
-            if (
-              newSel instanceof NodeSelection &&
-              newSel.node.type.name === "mermaidBlock"
-            ) {
-              if (
-                !(oldSel instanceof NodeSelection) ||
-                oldSel.from !== newSel.from
-              ) {
-                const enteredFromBelow = oldSel.from > newSel.from;
-                return { direction: enteredFromBelow ? "below" : "above" };
-              }
-            }
-            return value;
-          },
-        },
-        props: {
-          handleClickOn(view, _pos, node, nodePos, _event, direct) {
-            if (node.type.name === "mermaidBlock" && direct) {
-              const tr = view.state.tr.setSelection(
-                NodeSelection.create(view.state.doc, nodePos),
-              );
-              view.dispatch(tr);
-              return true;
-            }
-            return false;
-          },
-        },
-      }),
-    ];
+    return [createAtomBlockEntryPlugin("mermaidBlock", mermaidBlockEntryKey)];
   },
 
   addCommands() {
