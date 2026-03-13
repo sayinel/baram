@@ -131,6 +131,7 @@ export function MathBlockView({
     }
   }, [localFormula, formula, updateAttributes]);
 
+  const isEmpty = useCallback(() => !localFormula, [localFormula]);
   const { handleKeyDown } = useAtomBlockBehavior({
     editor,
     getPos,
@@ -138,7 +139,7 @@ export function MathBlockView({
     textareaRef,
     onSaveBeforeExit,
     keyboard: { backspaceOnEmpty: true, horizontalArrowExit: true },
-    isEmpty: useCallback(() => !localFormula, [localFormula]),
+    isEmpty,
   });
 
   // Click on preview → enter edit

@@ -435,7 +435,8 @@ export function getKeybindingsByCategory(): Map<string, KeybindingEntry[]> {
     map.set(cat, []);
   }
   for (const entry of KEYBINDING_REGISTRY) {
-    map.get(entry.category)!.push(entry);
+    const bucket = map.get(entry.category);
+    if (bucket) bucket.push(entry);
   }
   return map;
 }

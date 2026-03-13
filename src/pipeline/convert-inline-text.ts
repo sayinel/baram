@@ -245,11 +245,11 @@ function splitTextWithSingleCustomMark(
   regex: RegExp,
 ): PmNode[] {
   const result: PmNode[] = [];
-  const re = new RegExp(regex.source, regex.flags);
+  regex.lastIndex = 0;
   let lastIndex = 0;
   let match: null | RegExpExecArray;
 
-  while ((match = re.exec(text)) !== null) {
+  while ((match = regex.exec(text)) !== null) {
     // Text before the match
     if (match.index > lastIndex) {
       const before = text.slice(lastIndex, match.index);
@@ -272,7 +272,7 @@ function splitTextWithSingleCustomMark(
       result.push(schema.text(match[1], [...parentMarks, mark]));
     }
 
-    lastIndex = re.lastIndex;
+    lastIndex = regex.lastIndex;
   }
 
   if (result.length === 0) return [];

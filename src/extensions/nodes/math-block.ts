@@ -3,6 +3,7 @@ import { InputRule, mergeAttributes, Node } from "@tiptap/core";
 import { NodeSelection, PluginKey } from "@tiptap/pm/state";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
+import { htmlAttributesOptions } from "../utils/html-attributes-options";
 import { resolveShortcut } from "../utils/shortcut-resolver";
 import {
   AtomBlockEntryState,
@@ -35,11 +36,7 @@ export const MathBlock = Node.create<MathBlockOptions>({
   atom: true,
   defining: true,
 
-  addOptions() {
-    return {
-      HTMLAttributes: {},
-    };
-  },
+  ...htmlAttributesOptions,
 
   addAttributes() {
     return {

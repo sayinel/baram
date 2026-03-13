@@ -1,6 +1,8 @@
 // §5.1 List Item Extension
 import { mergeAttributes, Node } from "@tiptap/core";
 
+import { htmlAttributesOptions } from "../utils/html-attributes-options";
+
 export interface ListItemOptions {
   HTMLAttributes: Record<string, string>;
 }
@@ -10,11 +12,7 @@ export const ListItem = Node.create<ListItemOptions>({
   content: "paragraph block*",
   defining: true,
 
-  addOptions() {
-    return {
-      HTMLAttributes: {},
-    };
-  },
+  ...htmlAttributesOptions,
 
   parseHTML() {
     return [{ tag: "li" }];

@@ -209,6 +209,7 @@ export function MermaidBlockView({
     }
   }, [localCode, code, updateAttributes]);
 
+  const isEmpty = useCallback(() => !localCode, [localCode]);
   const { deleteBlock, handleKeyDown } = useAtomBlockBehavior({
     editor,
     getPos,
@@ -216,7 +217,7 @@ export function MermaidBlockView({
     textareaRef,
     onSaveBeforeExit,
     keyboard: { backspaceOnEmpty: true, horizontalArrowExit: true },
-    isEmpty: useCallback(() => !localCode, [localCode]),
+    isEmpty,
   });
 
   const handlePreviewClick = useCallback(() => {
