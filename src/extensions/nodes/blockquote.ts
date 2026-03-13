@@ -1,5 +1,5 @@
 // §5.1 Blockquote Extension
-import { Node, mergeAttributes, wrappingInputRule } from "@tiptap/core";
+import { mergeAttributes, Node, wrappingInputRule } from "@tiptap/core";
 
 export interface BlockquoteOptions {
   HTMLAttributes: Record<string, string>;

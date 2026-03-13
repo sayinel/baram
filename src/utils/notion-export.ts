@@ -87,11 +87,16 @@ const SUPERSCRIPT_MAP: Record<string, string> = {
 // Unicode helpers
 // ---------------------------------------------------------------------------
 
+interface CodeRegion {
+  end: number;
+  start: number;
+}
+
 /** Convert text to Unicode subscript characters.
  *  Returns { text, complete } where complete=true if all chars mapped. */
 export function toUnicodeSubscript(text: string): {
-  text: string;
   complete: boolean;
+  text: string;
 } {
   let result = "";
   let complete = true;
@@ -107,11 +112,15 @@ export function toUnicodeSubscript(text: string): {
   return { text: result, complete };
 }
 
+// ---------------------------------------------------------------------------
+// Helper: protect code blocks and inline code from regex transforms
+// ---------------------------------------------------------------------------
+
 /** Convert text to Unicode superscript characters.
  *  Returns { text, complete } where complete=true if all chars mapped. */
 export function toUnicodeSuperscript(text: string): {
-  text: string;
   complete: boolean;
+  text: string;
 } {
   let result = "";
   let complete = true;
@@ -127,22 +136,13 @@ export function toUnicodeSuperscript(text: string): {
   return { text: result, complete };
 }
 
-// ---------------------------------------------------------------------------
-// Helper: protect code blocks and inline code from regex transforms
-// ---------------------------------------------------------------------------
-
-interface CodeRegion {
-  start: number;
-  end: number;
-}
-
 /** Collect all protected regions (code blocks, inline code, math blocks) in the markdown */
 function collectCodeRegions(md: string): CodeRegion[] {
   const regions: CodeRegion[] = [];
 
   // Fenced code blocks: ``` or ~~~
   const fencedRe = /^(`{3,}|~{3,})[^\n]*\n[\s\S]*?\n\1\s*$/gm;
-  let m: RegExpExecArray | null;
+  let m: null | RegExpExecArray;
   while ((m = fencedRe.exec(md)) !== null) {
     regions.push({ start: m.index, end: m.index + m[0].length });
   }
@@ -282,23 +282,6 @@ export function convertCalloutsForNotion(md: string): string {
   return result.join("\n");
 }
 
-/** Convert Baram toggle (details/summary) to Notion-compatible format.
- *  `<details><summary>Title</summary>\n\nBody\n</details>` -> `**triangle Title**\n\nBody` */
-export function convertToggleForNotion(md: string): string {
-  // Handle multi-line details blocks
-  // Pattern: <details> ... <summary>Title</summary> ... body ... </details>
-  const detailsRe =
-    /<details[^>]*>\s*<summary>([\s\S]*?)<\/summary>([\s\S]*?)<\/details>/g;
-  return md.replace(detailsRe, (_match, summary: string, body: string) => {
-    const title = summary.trim();
-    const bodyContent = body.trim();
-    if (bodyContent) {
-      return `**\u25B6 ${title}**\n\n${bodyContent}`;
-    }
-    return `**\u25B6 ${title}**`;
-  });
-}
-
 /** Convert Baram definition lists (HTML dl/dt/dd) to Notion-compatible format.
  *  Baram pm-to-md.ts outputs `Term\n: Definition` as html flow node,
  *  but it can also produce `<dl><dt>Term</dt><dd>Def</dd></dl>`.
@@ -314,7 +297,7 @@ export function convertDefinitionListsForNotion(md: string): string {
       const ddRe = /<dd>([\s\S]*?)<\/dd>/g;
       const dts: string[] = [];
       const dds: string[] = [];
-      let m: RegExpExecArray | null;
+      let m: null | RegExpExecArray;
       while ((m = dtRe.exec(inner)) !== null) dts.push(m[1].trim());
       while ((m = ddRe.exec(inner)) !== null) dds.push(m[1].trim());
 
@@ -365,27 +348,13 @@ export function convertDefinitionListsForNotion(md: string): string {
   return output.join("\n");
 }
 
-/** Remove [TOC] lines */
-export function stripTocForNotion(md: string): string {
-  return md.replace(/^\[TOC\]\s*$/gim, "").replace(/\n{3,}/g, "\n\n");
-}
-
-/** Remove block references: `((target#^blockId))` and ` ^blockId` suffixes */
-export function stripBlockRefsForNotion(md: string): string {
-  // Remove ((target#^blockId)) inline refs
-  let result = md.replace(/\(\([^)]*#\^[^)]+\)\)/g, "");
-  // Remove ^blockId suffixes at end of lines (space + ^ + word chars at EOL)
-  result = result.replace(/ \^\w+$/gm, "");
-  return result;
-}
-
 /** Convert footnotes to Notion-compatible format.
  *  Inline refs `[^id]` -> `(id)`, definitions collected to "Notes" section at end. */
 export function convertFootnotesForNotion(md: string): string {
   // Collect footnote definitions: [^id]: content
   const defRe = /^\[\^([^\]]+)\]:\s*([\s\S]*?)(?=\n\[\^|\n\n|\n?$)/gm;
   const definitions: Map<string, string> = new Map();
-  let m: RegExpExecArray | null;
+  let m: null | RegExpExecArray;
 
   // First pass: collect definitions
   const tempMd = md + "\n"; // ensure trailing newline for regex
@@ -422,6 +391,110 @@ export function convertFootnotesForNotion(md: string): string {
   return result + notesLines.join("\n");
 }
 
+/** Convert Baram markdown to Notion-compatible markdown.
+ *  Applies all conversions in order while preserving frontmatter and standard markdown. */
+export function convertForNotion(md: string): string {
+  let result = md;
+
+  // 1. Block-level conversions first
+  result = convertCalloutsForNotion(result);
+  result = convertToggleForNotion(result);
+  result = convertDefinitionListsForNotion(result);
+  result = stripTocForNotion(result);
+  result = stripBlockRefsForNotion(result);
+  result = convertFootnotesForNotion(result);
+
+  // 2. Inline conversions
+  result = convertWikilinksForNotion(result);
+  result = convertInlineMathForNotion(result);
+  result = convertHighlightForNotion(result);
+  result = convertSubscriptForNotion(result);
+  result = convertSuperscriptForNotion(result);
+  result = convertUnderlineForNotion(result);
+
+  return result;
+}
+
+/** Convert `==text==` highlight to `**text**` bold (closest Notion equivalent) */
+export function convertHighlightForNotion(md: string): string {
+  return replaceOutsideCode(
+    md,
+    /==((?:(?!==).)+)==/g,
+    (_match, content: string) => {
+      return `**${content}**`;
+    },
+  );
+}
+
+/** Convert inline math `$...$` to Notion's `$$...$$`.
+ *  Does not touch block math `$$...$$` or code regions. */
+export function convertInlineMathForNotion(md: string): string {
+  // Match single $ that are NOT preceded or followed by another $
+  return replaceOutsideCode(
+    md,
+    /(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)/g,
+    (_match, content: string) => {
+      return `$$${content}$$`;
+    },
+  );
+}
+
+/** Convert `~text~` subscript to Unicode subscript or math fallback.
+ *  Does NOT match `~~strikethrough~~`. */
+export function convertSubscriptForNotion(md: string): string {
+  return replaceOutsideCode(
+    md,
+    /(?<!~)~(?!~)([^~]+)(?<!~)~(?!~)/g,
+    (_match, content: string) => {
+      const { text, complete } = toUnicodeSubscript(content);
+      if (complete) {
+        return text;
+      }
+      return `$$_{${content}}$$`;
+    },
+  );
+}
+
+/** Convert `^text^` superscript to Unicode superscript or math fallback.
+ *  Does NOT match `^^` sequences. */
+export function convertSuperscriptForNotion(md: string): string {
+  return replaceOutsideCode(
+    md,
+    /(?<!\^)\^(?!\^)([^^]+)(?<!\^)\^(?!\^)/g,
+    (_match, content: string) => {
+      const { text, complete } = toUnicodeSuperscript(content);
+      if (complete) {
+        return text;
+      }
+      return `$$^{${content}}$$`;
+    },
+  );
+}
+
+/** Convert Baram toggle (details/summary) to Notion-compatible format.
+ *  `<details><summary>Title</summary>\n\nBody\n</details>` -> `**triangle Title**\n\nBody` */
+export function convertToggleForNotion(md: string): string {
+  // Handle multi-line details blocks
+  // Pattern: <details> ... <summary>Title</summary> ... body ... </details>
+  const detailsRe =
+    /<details[^>]*>\s*<summary>([\s\S]*?)<\/summary>([\s\S]*?)<\/details>/g;
+  return md.replace(detailsRe, (_match, summary: string, body: string) => {
+    const title = summary.trim();
+    const bodyContent = body.trim();
+    if (bodyContent) {
+      return `**\u25B6 ${title}**\n\n${bodyContent}`;
+    }
+    return `**\u25B6 ${title}**`;
+  });
+}
+
+/** Convert `<u>text</u>` underline to `*text*` italic (closest Notion alternative) */
+export function convertUnderlineForNotion(md: string): string {
+  return md.replace(/<u>([\s\S]*?)<\/u>/g, (_match, content: string) => {
+    return `*${content}*`;
+  });
+}
+
 /** Convert wikilinks to standard markdown links.
  *  `[[page]]` -> `[page](page.md)`
  *  `[[page|alias]]` -> `[alias](page.md)`
@@ -435,7 +508,7 @@ export function convertWikilinksForNotion(md: string): string {
       // Check for alias: [[target|alias]]
       const pipeIdx = inner.indexOf("|");
       let target: string;
-      let alias: string | null = null;
+      let alias: null | string = null;
 
       if (pipeIdx >= 0) {
         target = inner.slice(0, pipeIdx).trim();
@@ -473,93 +546,20 @@ export function convertWikilinksForNotion(md: string): string {
   );
 }
 
-/** Convert inline math `$...$` to Notion's `$$...$$`.
- *  Does not touch block math `$$...$$` or code regions. */
-export function convertInlineMathForNotion(md: string): string {
-  // Match single $ that are NOT preceded or followed by another $
-  return replaceOutsideCode(
-    md,
-    /(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)/g,
-    (_match, content: string) => {
-      return `$$${content}$$`;
-    },
-  );
-}
-
-/** Convert `==text==` highlight to `**text**` bold (closest Notion equivalent) */
-export function convertHighlightForNotion(md: string): string {
-  return replaceOutsideCode(
-    md,
-    /==((?:(?!==).)+)==/g,
-    (_match, content: string) => {
-      return `**${content}**`;
-    },
-  );
-}
-
-/** Convert `~text~` subscript to Unicode subscript or math fallback.
- *  Does NOT match `~~strikethrough~~`. */
-export function convertSubscriptForNotion(md: string): string {
-  return replaceOutsideCode(
-    md,
-    /(?<!~)~(?!~)([^~]+)(?<!~)~(?!~)/g,
-    (_match, content: string) => {
-      const { text, complete } = toUnicodeSubscript(content);
-      if (complete) {
-        return text;
-      }
-      return `$$_{${content}}$$`;
-    },
-  );
-}
-
-/** Convert `^text^` superscript to Unicode superscript or math fallback.
- *  Does NOT match `^^` sequences. */
-export function convertSuperscriptForNotion(md: string): string {
-  return replaceOutsideCode(
-    md,
-    /(?<!\^)\^(?!\^)([^^]+)(?<!\^)\^(?!\^)/g,
-    (_match, content: string) => {
-      const { text, complete } = toUnicodeSuperscript(content);
-      if (complete) {
-        return text;
-      }
-      return `$$^{${content}}$$`;
-    },
-  );
-}
-
-/** Convert `<u>text</u>` underline to `*text*` italic (closest Notion alternative) */
-export function convertUnderlineForNotion(md: string): string {
-  return md.replace(/<u>([\s\S]*?)<\/u>/g, (_match, content: string) => {
-    return `*${content}*`;
-  });
+/** Remove block references: `((target#^blockId))` and ` ^blockId` suffixes */
+export function stripBlockRefsForNotion(md: string): string {
+  // Remove ((target#^blockId)) inline refs
+  let result = md.replace(/\(\([^)]*#\^[^)]+\)\)/g, "");
+  // Remove ^blockId suffixes at end of lines (space + ^ + word chars at EOL)
+  result = result.replace(/ \^\w+$/gm, "");
+  return result;
 }
 
 // ---------------------------------------------------------------------------
 // Main orchestrator
 // ---------------------------------------------------------------------------
 
-/** Convert Baram markdown to Notion-compatible markdown.
- *  Applies all conversions in order while preserving frontmatter and standard markdown. */
-export function convertForNotion(md: string): string {
-  let result = md;
-
-  // 1. Block-level conversions first
-  result = convertCalloutsForNotion(result);
-  result = convertToggleForNotion(result);
-  result = convertDefinitionListsForNotion(result);
-  result = stripTocForNotion(result);
-  result = stripBlockRefsForNotion(result);
-  result = convertFootnotesForNotion(result);
-
-  // 2. Inline conversions
-  result = convertWikilinksForNotion(result);
-  result = convertInlineMathForNotion(result);
-  result = convertHighlightForNotion(result);
-  result = convertSubscriptForNotion(result);
-  result = convertSuperscriptForNotion(result);
-  result = convertUnderlineForNotion(result);
-
-  return result;
+/** Remove [TOC] lines */
+export function stripTocForNotion(md: string): string {
+  return md.replace(/^\[TOC\]\s*$/gim, "").replace(/\n{3,}/g, "\n\n");
 }

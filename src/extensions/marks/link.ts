@@ -1,15 +1,17 @@
-// §5.1 Link Mark Extension — [text](url)
-import { Mark, mergeAttributes, markPasteRule, InputRule } from "@tiptap/core";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { openUrl } from "@tauri-apps/plugin-opener";
+
+// §5.1 Link Mark Extension — [text](url)
+import { InputRule, Mark, markPasteRule, mergeAttributes } from "@tiptap/core";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
+
 import { syntaxRevealKey } from "../plugins/syntax-reveal";
 
 export interface LinkOptions {
-  HTMLAttributes: Record<string, string>;
-  openOnClick: boolean;
   autolink: boolean;
+  HTMLAttributes: Record<string, string>;
   /** Callback for navigating to local .md file links (relative paths). */
   onNavigateLocal: (href: string) => void;
+  openOnClick: boolean;
 }
 
 /** Check if href points to a local markdown file (not an external URL). */
@@ -23,13 +25,13 @@ declare module "@tiptap/core" {
     link: {
       setLink: (attributes: {
         href: string;
-        title?: string;
         target?: string;
+        title?: string;
       }) => ReturnType;
       toggleLink: (attributes: {
         href: string;
-        title?: string;
         target?: string;
+        title?: string;
       }) => ReturnType;
       unsetLink: () => ReturnType;
     };

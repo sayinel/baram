@@ -3,7 +3,7 @@
 // Runs remark-parse + enrichWithEmptyParagraphs off the main thread
 // so large files don't freeze the UI during file open.
 
-import { parseMdast, enrichWithEmptyParagraphs } from "./parse-mdast";
+import { enrichWithEmptyParagraphs, parseMdast } from "./parse-mdast";
 
 interface ParseRequest {
   id: number;
@@ -11,9 +11,9 @@ interface ParseRequest {
 }
 
 interface ParseResponse {
+  error?: string;
   id: number;
   mdast?: unknown;
-  error?: string;
 }
 
 self.onmessage = (e: MessageEvent<ParseRequest>) => {

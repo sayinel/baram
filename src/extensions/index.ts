@@ -1,89 +1,87 @@
 // Baram Extension 번들 — M2 기본 편집 세트
 // StarterKit 대신 커스텀 Extension 조합 사용
 
+import type { Extensions } from "@tiptap/core";
+
 import Document from "@tiptap/extension-document";
-import Text from "@tiptap/extension-text";
-import HardBreak from "@tiptap/extension-hard-break";
-import History from "@tiptap/extension-history";
 import Dropcursor from "@tiptap/extension-dropcursor";
 import Gapcursor from "@tiptap/extension-gapcursor";
+import HardBreak from "@tiptap/extension-hard-break";
+import History from "@tiptap/extension-history";
 import Placeholder from "@tiptap/extension-placeholder";
-
-// Node Extensions
-import { Heading } from "./nodes/heading";
-import { Paragraph } from "./nodes/paragraph";
-import { Blockquote } from "./nodes/blockquote";
-import { BulletList } from "./nodes/bullet-list";
-import { OrderedList } from "./nodes/ordered-list";
-import { ListItem } from "./nodes/list-item";
-import { TaskList } from "./nodes/task-list";
-import { TaskItem } from "./nodes/task-item";
-import { HorizontalRule } from "./nodes/horizontal-rule";
-import { Image } from "./nodes/image";
-import { CodeBlock } from "./nodes/code-block";
-import { MathBlock } from "./nodes/math-block";
-import { MermaidBlock } from "./nodes/mermaid-block";
-import { MathInline } from "./nodes/math-inline";
-import {
-  BaramTable,
-  BaramTableRow,
-  BaramTableCell,
-  BaramTableHeader,
-} from "./nodes/table";
-import { Frontmatter } from "./nodes/frontmatter";
-import { Wikilink } from "./nodes/wikilink";
-import { Mention } from "./nodes/mention";
-import { TagNode } from "./nodes/tag-node";
-import { BlockReference } from "./nodes/block-reference";
-import { BlockEmbed } from "./nodes/block-embed";
-import { Callout } from "./nodes/callout";
-import { Toggle } from "./nodes/toggle";
-import { TableOfContents } from "./nodes/table-of-contents";
-import { FootnoteRef } from "./nodes/footnote-ref";
-import { FootnoteDefinition } from "./nodes/footnote-definition";
-import {
-  DefinitionList,
-  DefinitionTerm,
-  DefinitionDescription,
-} from "./nodes/definition-list";
-
-// Plugin Extensions — M3/M4
-import { MathInlineEdit } from "./plugins/math-inline-edit";
-import { SlashCommands } from "./plugins/slash-command";
-import { SyntaxReveal } from "./plugins/syntax-reveal";
-import { DropHandler } from "./plugins/drop-handler";
-import { WikilinkSuggest } from "./plugins/wikilink-suggest";
-import { MentionSuggest } from "./plugins/mention-suggest";
-import { TagSuggest } from "./plugins/tag-suggest";
-import { TagClick } from "./plugins/tag-click";
-import { BlockIdDecoration } from "./plugins/block-id-decoration";
-import { GhostText } from "./plugins/ghost-text";
-import { PromptHighlight } from "./plugins/prompt-highlight";
-import { FindReplace } from "./plugins/find-replace";
-import { PromptLint } from "./plugins/prompt-lint";
-import { SkillVariableSuggest } from "./plugins/skill-variable-suggest";
-import { AIDiff } from "./plugins/ai-diff";
-import { ListAtomFix } from "./plugins/list-atom-fix";
-import { Fold } from "./plugins/fold";
+import Text from "@tiptap/extension-text";
 
 // Mark Extensions
 import { Bold } from "./marks/bold";
-import { Italic } from "./marks/italic";
 import { Code } from "./marks/code";
-import { Strike } from "./marks/strike";
-import { Link } from "./marks/link";
-import { Underline } from "./marks/underline";
 import { Highlight } from "./marks/highlight";
+import { Italic } from "./marks/italic";
+import { Link } from "./marks/link";
+import { Strike } from "./marks/strike";
 import { Subscript } from "./marks/subscript";
 import { Superscript } from "./marks/superscript";
-
-import type { Extensions } from "@tiptap/core";
+import { Underline } from "./marks/underline";
+import { BlockEmbed } from "./nodes/block-embed";
+import { BlockReference } from "./nodes/block-reference";
+import { Blockquote } from "./nodes/blockquote";
+import { BulletList } from "./nodes/bullet-list";
+import { Callout } from "./nodes/callout";
+import { CodeBlock } from "./nodes/code-block";
+import {
+  DefinitionDescription,
+  DefinitionList,
+  DefinitionTerm,
+} from "./nodes/definition-list";
+import { FootnoteDefinition } from "./nodes/footnote-definition";
+import { FootnoteRef } from "./nodes/footnote-ref";
+import { Frontmatter } from "./nodes/frontmatter";
+// Node Extensions
+import { Heading } from "./nodes/heading";
+import { HorizontalRule } from "./nodes/horizontal-rule";
+import { Image } from "./nodes/image";
+import { ListItem } from "./nodes/list-item";
+import { MathBlock } from "./nodes/math-block";
+import { MathInline } from "./nodes/math-inline";
+import { Mention } from "./nodes/mention";
+import { MermaidBlock } from "./nodes/mermaid-block";
+import { OrderedList } from "./nodes/ordered-list";
+import { Paragraph } from "./nodes/paragraph";
+import {
+  BaramTable,
+  BaramTableCell,
+  BaramTableHeader,
+  BaramTableRow,
+} from "./nodes/table";
+import { TableOfContents } from "./nodes/table-of-contents";
+import { TagNode } from "./nodes/tag-node";
+import { TaskItem } from "./nodes/task-item";
+import { TaskList } from "./nodes/task-list";
+import { Toggle } from "./nodes/toggle";
+import { Wikilink } from "./nodes/wikilink";
+import { AIDiff } from "./plugins/ai-diff";
+import { BlockIdDecoration } from "./plugins/block-id-decoration";
+import { DropHandler } from "./plugins/drop-handler";
+import { FindReplace } from "./plugins/find-replace";
+import { Fold } from "./plugins/fold";
+import { GhostText } from "./plugins/ghost-text";
+import { ListAtomFix } from "./plugins/list-atom-fix";
+// Plugin Extensions — M3/M4
+import { MathInlineEdit } from "./plugins/math-inline-edit";
+import { MentionSuggest } from "./plugins/mention-suggest";
+import { PromptHighlight } from "./plugins/prompt-highlight";
+import { PromptLint } from "./plugins/prompt-lint";
+import { SkillVariableSuggest } from "./plugins/skill-variable-suggest";
+import { SlashCommands } from "./plugins/slash-command";
+import { SyntaxReveal } from "./plugins/syntax-reveal";
+import { TagClick } from "./plugins/tag-click";
+import { TagSuggest } from "./plugins/tag-suggest";
+import { WikilinkSuggest } from "./plugins/wikilink-suggest";
 
 interface BaramExtensionOptions {
-  onNavigate?: (target: string, heading?: string | null) => void;
+  onMentionNavigate?: (type: string, value: string) => void;
+  onNavigate?: (target: string, heading?: null | string) => void;
   onNavigateBlockRef?: (target: string, blockId: string) => void;
   onNavigateLocal?: (href: string) => void;
-  onMentionNavigate?: (type: string, value: string) => void;
 }
 
 /** M2 기본 편집 Extension 세트 */
@@ -264,45 +262,45 @@ export function mergePluginExtensions(
 
 // Re-export all extensions
 export {
-  Heading,
-  Paragraph,
-  Blockquote,
-  BulletList,
-  OrderedList,
-  ListItem,
-  TaskList,
-  TaskItem,
-  HorizontalRule,
-  Image,
-  CodeBlock,
-  MathBlock,
-  MermaidBlock,
-  MathInline,
   BaramTable,
-  BaramTableRow,
   BaramTableCell,
   BaramTableHeader,
-  Frontmatter,
-  Wikilink,
-  Mention,
-  BlockReference,
+  BaramTableRow,
   BlockEmbed,
-  Callout,
-  Toggle,
+  Blockquote,
+  BlockReference,
   Bold,
-  Italic,
+  BulletList,
+  Callout,
   Code,
-  Strike,
-  Link,
-  Underline,
+  CodeBlock,
+  DefinitionDescription,
+  DefinitionList,
+  DefinitionTerm,
+  FootnoteDefinition,
+  FootnoteRef,
+  Frontmatter,
+  Heading,
   Highlight,
+  HorizontalRule,
+  Image,
+  Italic,
+  Link,
+  ListItem,
+  MathBlock,
+  MathInline,
+  Mention,
+  MermaidBlock,
+  OrderedList,
+  Paragraph,
+  Strike,
   Subscript,
   Superscript,
   TableOfContents,
-  FootnoteRef,
-  FootnoteDefinition,
-  DefinitionList,
-  DefinitionTerm,
-  DefinitionDescription,
   TagNode,
+  TaskItem,
+  TaskList,
+  Toggle,
+  Underline,
+  Wikilink,
 };

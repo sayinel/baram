@@ -1,12 +1,14 @@
+import type { FileEntry } from "../../stores/file-store";
+
 // §35 Quick Switcher — file search utility tests
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import {
+  extractHeadings,
   flattenFileTree,
   fuzzyMatch,
   fuzzyScore,
-  extractHeadings,
 } from "../file-search";
-import type { FileEntry } from "../../stores/file-store";
 
 describe("flattenFileTree", () => {
   const tree: FileEntry[] = [

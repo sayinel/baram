@@ -1,10 +1,11 @@
-// §5.1 Cursor mapper — character-level text matching tests
-import { describe, test, expect } from "vitest";
 import { Editor } from "@tiptap/core";
+// §5.1 Cursor mapper — character-level text matching tests
+import { describe, expect, test } from "vitest";
+
 import { createBaramExtensions } from "../../extensions";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
-import { pmPosToMdOffset, mdOffsetToPmPos } from "../cursor-mapper";
+import { mdOffsetToPmPos, pmPosToMdOffset } from "../cursor-mapper";
 
 function createEditor(): Editor {
   return new Editor({

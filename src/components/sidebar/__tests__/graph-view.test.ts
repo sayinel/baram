@@ -1,12 +1,14 @@
+import type { LinkGraph } from "../../../ipc/types";
+
 // §30 Graph View — unit tests
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import {
   displayName,
-  toGraphElements,
-  nodeSize,
   matchesFilter,
+  nodeSize,
+  toGraphElements,
 } from "../graph-utils";
-import type { LinkGraph } from "../../../ipc/types";
 
 // ─── displayName ─────────────────────────────────────
 

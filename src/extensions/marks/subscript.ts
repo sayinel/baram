@@ -1,9 +1,9 @@
 // §5.1 Subscript Mark Extension — ~text~
 import {
   Mark,
-  mergeAttributes,
   markInputRule,
   markPasteRule,
+  mergeAttributes,
 } from "@tiptap/core";
 
 export interface SubscriptOptions {

@@ -1,42 +1,28 @@
 // §35 Quick Switcher — Cmd+K file/heading fuzzy search
-import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import type { FlatFile } from "../../utils/file-search";
 import type { Editor } from "@tiptap/react";
-import { useUIStore } from "../../stores/ui-store";
-import { useFileStore } from "../../stores/file-store";
-import { useEditorStore } from "../../stores/editor-store";
-import { useSettingsStore } from "../../stores/settings-store";
+
 import { readFile } from "../../ipc/invoke";
+import { useEditorStore } from "../../stores/editor-store";
+import { useFileStore } from "../../stores/file-store";
+import { useSettingsStore } from "../../stores/settings-store";
+import { useUIStore } from "../../stores/ui-store";
 import {
+  extractHeadings,
   flattenFileTree,
   fuzzyMatch,
   fuzzyScore,
-  extractHeadings,
 } from "../../utils/file-search";
-import type { FlatFile } from "../../utils/file-search";
 import { resolveJournalDir } from "../../utils/journal";
 import { extractNamespace } from "../../utils/path-utils";
 
 /** §56l Journal prefix filter prefixes */
-export type JournalPrefix = "n" | "d" | "j" | null;
-
-/** Parse a query for journal prefix (n:, d:, j:). Returns prefix and stripped query. */
-export function parseJournalPrefix(query: string): {
-  prefix: JournalPrefix;
-  strippedQuery: string;
-} {
-  if (/^n:/i.test(query)) {
-    return { prefix: "n", strippedQuery: query.slice(2) };
-  }
-  if (/^d:/i.test(query)) {
-    return { prefix: "d", strippedQuery: query.slice(2) };
-  }
-  if (/^j:/i.test(query)) {
-    return { prefix: "j", strippedQuery: query.slice(2) };
-  }
-  return { prefix: null, strippedQuery: query };
-}
+export type JournalPrefix = "d" | "j" | "n" | null;
 
 /** Filter a file list by journal prefix against resolvedDir. */
+// eslint-disable-next-line react-refresh/only-export-components
 export function filterByJournalPrefix(
   files: FlatFile[],
   prefix: JournalPrefix,
@@ -56,73 +42,49 @@ export function filterByJournalPrefix(
   return files;
 }
 
+/** Parse a query for journal prefix (n:, d:, j:). Returns prefix and stripped query. */
+// eslint-disable-next-line react-refresh/only-export-components
+export function parseJournalPrefix(query: string): {
+  prefix: JournalPrefix;
+  strippedQuery: string;
+} {
+  if (/^n:/i.test(query)) {
+    return { prefix: "n", strippedQuery: query.slice(2) };
+  }
+  if (/^d:/i.test(query)) {
+    return { prefix: "d", strippedQuery: query.slice(2) };
+  }
+  if (/^j:/i.test(query)) {
+    return { prefix: "j", strippedQuery: query.slice(2) };
+  }
+  return { prefix: null, strippedQuery: query };
+}
+
 const PREFIX_BADGE_LABELS: Record<NonNullable<JournalPrefix>, string> = {
   n: "Notes",
   d: "Daily",
   j: "Journal",
 };
 
+/** Heading with ProseMirror position for direct navigation. */
+interface HeadingResult {
+  level: number;
+  /** ProseMirror doc position (start of heading content) */
+  pmPos: number;
+  text: string;
+}
+
 interface QuickSwitcherProps {
   editor: Editor | null;
   onNewFile: (name?: string) => void;
 }
 
-/** Heading with ProseMirror position for direct navigation. */
-interface HeadingResult {
-  level: number;
-  text: string;
-  /** ProseMirror doc position (start of heading content) */
-  pmPos: number;
-}
-
 interface ResultItem {
-  type: "file" | "heading" | "create";
+  detail?: string;
   file?: FlatFile;
   heading?: HeadingResult;
   label: string;
-  detail?: string;
-}
-
-/** Extract headings directly from ProseMirror doc with positions. */
-function extractHeadingsFromDoc(editor: Editor): HeadingResult[] {
-  const headings: HeadingResult[] = [];
-  editor.state.doc.descendants((node, pos) => {
-    if (node.type.name === "heading") {
-      headings.push({
-        level: node.attrs.level,
-        text: node.textContent,
-        pmPos: pos + 1, // inside the heading (after opening tag)
-      });
-    }
-  });
-  return headings;
-}
-
-/** Find the Nth heading in ProseMirror doc matching level + text. */
-function findHeadingPos(
-  editor: Editor,
-  level: number,
-  text: string,
-  targetIndex: number,
-): number | null {
-  let matchCount = 0;
-  let found: number | null = null;
-  editor.state.doc.descendants((node, pos) => {
-    if (found !== null) return false;
-    if (node.type.name === "heading" && node.attrs.level === level) {
-      // For markdown-extracted headings, text may include formatting markers.
-      // Use textContent (plain) for comparison — strip markdown from search text too.
-      const nodeText = node.textContent;
-      if (nodeText === text || text.includes(nodeText)) {
-        if (matchCount === targetIndex) {
-          found = pos + 1;
-          return false;
-        }
-        matchCount++;
-      }
-    }
-  });
-  return found;
+  type: "create" | "file" | "heading";
 }
 
 export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
@@ -411,7 +373,7 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
         const scrollToHeading = () => {
           if (!editor) return;
           requestAnimationFrame(() => {
-            let pos: number | null;
+            let pos: null | number;
             if (isCurrentFile) {
               // Current file: pmPos is the actual ProseMirror position
               pos = heading.pmPos;
@@ -495,15 +457,15 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
             </span>
           )}
           <input
-            ref={inputRef}
             className="quick-switcher-input"
-            type="text"
-            placeholder="Type a file name, # for headings, n:/d:/j: for journal, ns: for namespace..."
-            value={query}
             onChange={(e) => {
               setQuery(e.target.value);
               setSelectedIndex(0);
             }}
+            placeholder="Type a file name, # for headings, n:/d:/j: for journal, ns: for namespace..."
+            ref={inputRef}
+            type="text"
+            value={query}
           />
         </div>
         <div className="quick-switcher-list">
@@ -512,6 +474,7 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
           )}
           {results.map((item, idx) => (
             <div
+              className={`quick-switcher-item ${idx === selectedIndex ? "quick-switcher-item-selected" : ""}`}
               key={
                 item.type === "create"
                   ? "create"
@@ -519,10 +482,9 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
                     ? `h-${item.heading?.pmPos}`
                     : (item.file?.path ?? idx)
               }
-              ref={idx === selectedIndex ? selectedRef : null}
-              className={`quick-switcher-item ${idx === selectedIndex ? "quick-switcher-item-selected" : ""}`}
               onClick={() => executeResult(item)}
               onMouseEnter={() => setSelectedIndex(idx)}
+              ref={idx === selectedIndex ? selectedRef : null}
             >
               <span className="quick-switcher-icon">
                 {item.type === "heading"
@@ -541,4 +503,46 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
       </div>
     </div>
   );
+}
+
+/** Extract headings directly from ProseMirror doc with positions. */
+function extractHeadingsFromDoc(editor: Editor): HeadingResult[] {
+  const headings: HeadingResult[] = [];
+  editor.state.doc.descendants((node, pos) => {
+    if (node.type.name === "heading") {
+      headings.push({
+        level: node.attrs.level,
+        text: node.textContent,
+        pmPos: pos + 1, // inside the heading (after opening tag)
+      });
+    }
+  });
+  return headings;
+}
+
+/** Find the Nth heading in ProseMirror doc matching level + text. */
+function findHeadingPos(
+  editor: Editor,
+  level: number,
+  text: string,
+  targetIndex: number,
+): null | number {
+  let matchCount = 0;
+  let found: null | number = null;
+  editor.state.doc.descendants((node, pos) => {
+    if (found !== null) return false;
+    if (node.type.name === "heading" && node.attrs.level === level) {
+      // For markdown-extracted headings, text may include formatting markers.
+      // Use textContent (plain) for comparison — strip markdown from search text too.
+      const nodeText = node.textContent;
+      if (nodeText === text || text.includes(nodeText)) {
+        if (matchCount === targetIndex) {
+          found = pos + 1;
+          return false;
+        }
+        matchCount++;
+      }
+    }
+  });
+  return found;
 }

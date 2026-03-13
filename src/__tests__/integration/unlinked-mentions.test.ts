@@ -1,11 +1,12 @@
-// §34 Unlinked Mentions — integration tests
-import { describe, test, expect } from "vitest";
 import type { UnlinkedMention } from "../../ipc/types";
+
+// §34 Unlinked Mentions — integration tests
+import { describe, expect, test } from "vitest";
 
 /** Group unlinked mentions by source file — mirrors Backlinks.tsx logic */
 function groupUnlinkedByFile(
   entries: UnlinkedMention[],
-): { sourcePath: string; entries: UnlinkedMention[] }[] {
+): { entries: UnlinkedMention[]; sourcePath: string }[] {
   if (entries.length === 0) return [];
 
   const map = new Map<string, UnlinkedMention[]>();

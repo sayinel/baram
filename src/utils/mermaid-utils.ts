@@ -3,7 +3,7 @@
 /** Diagram type templates for Phase 2 supported types */
 export const MERMAID_TEMPLATES: Record<
   string,
-  { label: string; code: string }
+  { code: string; label: string }
 > = {
   flowchart: {
     label: "Flowchart",
@@ -50,35 +50,6 @@ export const MERMAID_TEMPLATES: Record<
     code: "gitGraph\n  commit\n  branch develop\n  commit\n  checkout main\n  merge develop\n  commit",
   },
 };
-
-/** Detect diagram type from mermaid source code */
-export function detectMermaidType(code: string): string | null {
-  const trimmed = code.trim();
-  if (/^flowchart\b/i.test(trimmed) || /^graph\b/i.test(trimmed))
-    return "flowchart";
-  if (/^sequenceDiagram\b/i.test(trimmed)) return "sequence";
-  if (/^classDiagram\b/i.test(trimmed)) return "class";
-  if (/^stateDiagram/i.test(trimmed)) return "state";
-  if (/^erDiagram\b/i.test(trimmed)) return "er";
-  if (/^gantt\b/i.test(trimmed)) return "gantt";
-  if (/^pie\b/i.test(trimmed)) return "pie";
-  if (/^mindmap\b/i.test(trimmed)) return "mindmap";
-  if (/^timeline\b/i.test(trimmed)) return "timeline";
-  if (/^journey\b/i.test(trimmed)) return "journey";
-  if (/^gitGraph\b/i.test(trimmed) || /^gitgraph\b/i.test(trimmed))
-    return "gitgraph";
-  return null;
-}
-
-/** Copy mermaid source code to clipboard */
-export async function copyMermaidSource(code: string): Promise<void> {
-  await navigator.clipboard.writeText(code);
-}
-
-/** Copy rendered SVG markup to clipboard as text */
-export async function copyMermaidSvg(svgHtml: string): Promise<void> {
-  await navigator.clipboard.writeText(svgHtml);
-}
 
 /** Copy rendered SVG as PNG to clipboard */
 export async function copyMermaidPng(svgHtml: string): Promise<void> {
@@ -155,4 +126,33 @@ export async function copyMermaidPng(svgHtml: string): Promise<void> {
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+/** Copy mermaid source code to clipboard */
+export async function copyMermaidSource(code: string): Promise<void> {
+  await navigator.clipboard.writeText(code);
+}
+
+/** Copy rendered SVG markup to clipboard as text */
+export async function copyMermaidSvg(svgHtml: string): Promise<void> {
+  await navigator.clipboard.writeText(svgHtml);
+}
+
+/** Detect diagram type from mermaid source code */
+export function detectMermaidType(code: string): null | string {
+  const trimmed = code.trim();
+  if (/^flowchart\b/i.test(trimmed) || /^graph\b/i.test(trimmed))
+    return "flowchart";
+  if (/^sequenceDiagram\b/i.test(trimmed)) return "sequence";
+  if (/^classDiagram\b/i.test(trimmed)) return "class";
+  if (/^stateDiagram/i.test(trimmed)) return "state";
+  if (/^erDiagram\b/i.test(trimmed)) return "er";
+  if (/^gantt\b/i.test(trimmed)) return "gantt";
+  if (/^pie\b/i.test(trimmed)) return "pie";
+  if (/^mindmap\b/i.test(trimmed)) return "mindmap";
+  if (/^timeline\b/i.test(trimmed)) return "timeline";
+  if (/^journey\b/i.test(trimmed)) return "journey";
+  if (/^gitGraph\b/i.test(trimmed) || /^gitgraph\b/i.test(trimmed))
+    return "gitgraph";
+  return null;
 }

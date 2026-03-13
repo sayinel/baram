@@ -1,5 +1,5 @@
 // §41 Prompt Highlight — regex unit tests
-import { describe, test, expect } from "vitest";
+import { describe, expect, test } from "vitest";
 
 describe("§41 Prompt Highlight", () => {
   test("XML tag regex matches correctly", () => {

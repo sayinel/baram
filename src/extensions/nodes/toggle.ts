@@ -1,10 +1,12 @@
-// §5.1 Toggle Extension — <details><summary> collapsible block
-import { Node, mergeAttributes } from "@tiptap/core";
-import type { EditorState } from "@tiptap/pm/state";
-import { TextSelection } from "@tiptap/pm/state";
-import type { EditorView } from "@tiptap/pm/view";
 import type { ResolvedPos } from "@tiptap/pm/model";
+import type { EditorState } from "@tiptap/pm/state";
+import type { EditorView } from "@tiptap/pm/view";
+
+// §5.1 Toggle Extension — <details><summary> collapsible block
+import { mergeAttributes, Node } from "@tiptap/core";
+import { TextSelection } from "@tiptap/pm/state";
 import { ReactNodeViewRenderer } from "@tiptap/react";
+
 import { ToggleView } from "./toggle-view";
 
 export interface ToggleOptions {
@@ -15,9 +17,9 @@ declare module "@tiptap/core" {
   interface Commands<ReturnType> {
     toggle: {
       setToggle: (attrs?: {
+        level?: number;
         open?: boolean;
         summaryType?: "heading";
-        level?: number;
       }) => ReturnType;
       toggleToggle: () => ReturnType;
       unsetToggle: () => ReturnType;

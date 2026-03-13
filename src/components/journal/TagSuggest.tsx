@@ -1,14 +1,15 @@
 // §56l — Tag autocomplete dropdown for journal captures
 import { useEffect, useRef } from "react";
+
 import { filterTags } from "../../utils/journal-tags";
 
 interface TagSuggestProps {
+  activeIndex: number;
+  onSelect: (tag: string) => void;
+  position?: { left: number; top: number };
   query: string;
   tags: Map<string, number>;
-  onSelect: (tag: string) => void;
   visible: boolean;
-  activeIndex: number;
-  position?: { top: number; left: number };
 }
 
 export function TagSuggest({
@@ -39,22 +40,22 @@ export function TagSuggest({
 
   return (
     <ul
-      className="tag-suggest"
-      style={style}
-      role="listbox"
       aria-label="Tag suggestions"
+      className="tag-suggest"
+      role="listbox"
+      style={style}
     >
       {suggestions.map((tag, i) => (
         <li
-          key={tag}
-          className={`tag-suggest-item${i === activeIndex ? " tag-suggest-item-active" : ""}`}
-          role="option"
           aria-selected={i === activeIndex}
+          className={`tag-suggest-item${i === activeIndex ? "tag-suggest-item-active" : ""}`}
+          key={tag}
           onMouseDown={(e) => {
             // Prevent input blur before selection
             e.preventDefault();
             onSelect(tag);
           }}
+          role="option"
         >
           <span className="tag-suggest-name">#{tag}</span>
           <span className="tag-suggest-count">{tags.get(tag) ?? 0}</span>

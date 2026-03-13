@@ -1,7 +1,9 @@
 // §5.1 Toggle NodeView — collapsible <details>/<summary> block
 import React, { useCallback } from "react";
-import { NodeViewWrapper, NodeViewContent } from "@tiptap/react";
+
 import type { NodeViewProps } from "@tiptap/react";
+
+import { NodeViewContent, NodeViewWrapper } from "@tiptap/react";
 
 export const ToggleView: React.FC<NodeViewProps> = ({
   node,
@@ -27,8 +29,8 @@ export const ToggleView: React.FC<NodeViewProps> = ({
 
   return (
     <NodeViewWrapper
-      data-type="toggle"
       data-open={isOpen ? "true" : "false"}
+      data-type="toggle"
       {...(isHeadingSummary
         ? {
             "data-summary-type": "heading",
@@ -38,18 +40,18 @@ export const ToggleView: React.FC<NodeViewProps> = ({
       className="toggle"
     >
       <div
+        aria-expanded={isOpen}
+        aria-label={isOpen ? "Collapse" : "Expand"}
         className="toggle-indicator"
         contentEditable={false}
         onClick={handleToggle}
         role="button"
         tabIndex={-1}
-        aria-expanded={isOpen}
-        aria-label={isOpen ? "Collapse" : "Expand"}
       >
         <span className={`toggle-arrow ${isOpen ? "toggle-arrow-open" : ""}`} />
       </div>
       <NodeViewContent
-        className={`toggle-body${!isOpen ? " toggle-body-collapsed" : ""}`}
+        className={`toggle-body${!isOpen ? "toggle-body-collapsed" : ""}`}
       />
     </NodeViewWrapper>
   );

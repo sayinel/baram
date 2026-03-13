@@ -1,21 +1,22 @@
 // §56j AI Reflection Panel — generates AI-powered journal insights
-import { useState, useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
+
 import { useLLMStream } from "../../hooks/use-llm-stream";
+import { createDir, listDir, readFile, writeFile } from "../../ipc/invoke";
 import { useAIStore } from "../../stores/ai-store";
+import { useEditorStore } from "../../stores/editor-store";
+import { useFileStore } from "../../stores/file-store";
 import { useSettingsStore } from "../../stores/settings-store";
+import { formatAIError } from "../../utils/format-error";
+import { resolveJournalDir } from "../../utils/journal";
+import { renderSimpleMarkdown } from "../../utils/journal-memories";
 import {
   buildReflectionPrompt,
   extractReflectionEntries,
   formatReflectionMarkdown,
 } from "../../utils/journal-reflection";
-import { renderSimpleMarkdown } from "../../utils/journal-memories";
-import { readFile, writeFile, createDir, listDir } from "../../ipc/invoke";
-import { formatAIError } from "../../utils/format-error";
-import { resolveJournalDir } from "../../utils/journal";
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
 
-type Period = "week" | "month";
+type Period = "month" | "week";
 
 interface Props {
   onClose?: () => void;
@@ -23,7 +24,7 @@ interface Props {
 
 export function ReflectionPanel({ onClose }: Props) {
   const [period, setPeriod] = useState<Period>("week");
-  const [savedPath, setSavedPath] = useState<string | null>(null);
+  const [savedPath, setSavedPath] = useState<null | string>(null);
   const [saving, setSaving] = useState(false);
   const [loadingEntries, setLoadingEntries] = useState(false);
 
@@ -72,7 +73,7 @@ export function ReflectionPanel({ onClose }: Props) {
       }
 
       // Filter files by date range
-      const journalEntries: { date: string; content: string }[] = [];
+      const journalEntries: { content: string; date: string }[] = [];
 
       for (const entry of fileEntries) {
         const match =
@@ -246,16 +247,16 @@ export function ReflectionPanel({ onClose }: Props) {
 
       <div className="reflection-period-btns">
         <button
-          className={`reflection-period-btn${period === "week" ? " reflection-period-btn-active" : ""}`}
-          onClick={() => setPeriod("week")}
+          className={`reflection-period-btn${period === "week" ? "reflection-period-btn-active" : ""}`}
           disabled={isStreaming || loadingEntries}
+          onClick={() => setPeriod("week")}
         >
           This Week
         </button>
         <button
-          className={`reflection-period-btn${period === "month" ? " reflection-period-btn-active" : ""}`}
-          onClick={() => setPeriod("month")}
+          className={`reflection-period-btn${period === "month" ? "reflection-period-btn-active" : ""}`}
           disabled={isStreaming || loadingEntries}
+          onClick={() => setPeriod("month")}
         >
           This Month
         </button>
@@ -300,8 +301,8 @@ export function ReflectionPanel({ onClose }: Props) {
         ) : (
           <button
             className="reflection-btn reflection-btn-generate"
-            onClick={handleGenerate}
             disabled={loadingEntries}
+            onClick={handleGenerate}
           >
             {loadingEntries ? "로딩 중..." : "Generate Reflection"}
           </button>
@@ -309,8 +310,8 @@ export function ReflectionPanel({ onClose }: Props) {
         {text && !isStreaming && (
           <button
             className="reflection-btn reflection-btn-save"
-            onClick={handleSave}
             disabled={saving}
+            onClick={handleSave}
           >
             {saving ? "저장 중..." : savedPath ? "저장됨 ✓" : "Save as Note"}
           </button>

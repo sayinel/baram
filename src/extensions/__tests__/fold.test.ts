@@ -2,19 +2,21 @@
 // Tests fold range detection, toggle, selection safety, position remapping,
 // fold all / unfold all, no doc mutation, and anchor persistence.
 
-import { describe, test, expect } from "vitest";
+import type { Transaction } from "@tiptap/pm/state";
+
 import { Schema } from "@tiptap/pm/model";
 import { EditorState, Plugin } from "@tiptap/pm/state";
-import type { Transaction } from "@tiptap/pm/state";
 import { DecorationSet } from "@tiptap/pm/view";
+import { describe, expect, test } from "vitest";
+
 import {
+  anchorsToPositions,
+  findAllFoldables,
   findFoldableHeadings,
   findFoldableListItems,
-  findAllFoldables,
-  positionsToAnchors,
-  anchorsToPositions,
-  foldPluginKey,
   type FoldMeta,
+  foldPluginKey,
+  positionsToAnchors,
 } from "../plugins/fold";
 
 // ── Minimal schema for unit tests ────────────────────────────────────
@@ -50,24 +52,24 @@ const schema = new Schema({
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function h(level: number, text: string) {
-  return schema.node("heading", { level }, text ? [schema.text(text)] : []);
+function doc(...children: ReturnType<typeof h | typeof p | typeof ul>[]) {
+  return schema.node("doc", null, children);
 }
 
-function p(text: string) {
-  return schema.node("paragraph", null, text ? [schema.text(text)] : []);
+function h(level: number, text: string) {
+  return schema.node("heading", { level }, text ? [schema.text(text)] : []);
 }
 
 function li(...children: ReturnType<typeof p | typeof schema.node>[]) {
   return schema.node("listItem", null, children);
 }
 
-function ul(...items: ReturnType<typeof li>[]) {
-  return schema.node("bulletList", null, items);
+function p(text: string) {
+  return schema.node("paragraph", null, text ? [schema.text(text)] : []);
 }
 
-function doc(...children: ReturnType<typeof h | typeof p | typeof ul>[]) {
-  return schema.node("doc", null, children);
+function ul(...items: ReturnType<typeof li>[]) {
+  return schema.node("bulletList", null, items);
 }
 
 // ── Heading fold range detection ─────────────────────────────────────
@@ -202,12 +204,21 @@ describe("Fold plugin state (via meta)", () => {
         },
         apply(
           tr: Transaction,
-          value: { foldedPositions: Set<number>; decorations: unknown },
+          value: { decorations: unknown; foldedPositions: Set<number> },
         ) {
           const meta = tr.getMeta(foldPluginKey) as FoldMeta | undefined;
           if (!meta) return value;
 
           switch (meta.type) {
+            case "foldAll": {
+              const foldables = findAllFoldables(tr.doc);
+              return {
+                ...value,
+                foldedPositions: new Set(foldables.map((f) => f.pos)),
+              };
+            }
+            case "restore":
+              return { ...value, foldedPositions: new Set(meta.positions) };
             case "toggle": {
               const newFolded = new Set(value.foldedPositions);
               if (newFolded.has(meta.pos)) {
@@ -217,17 +228,8 @@ describe("Fold plugin state (via meta)", () => {
               }
               return { ...value, foldedPositions: newFolded };
             }
-            case "foldAll": {
-              const foldables = findAllFoldables(tr.doc);
-              return {
-                ...value,
-                foldedPositions: new Set(foldables.map((f) => f.pos)),
-              };
-            }
             case "unfoldAll":
               return { ...value, foldedPositions: new Set<number>() };
-            case "restore":
-              return { ...value, foldedPositions: new Set(meta.positions) };
           }
         },
       },

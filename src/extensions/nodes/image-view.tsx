@@ -1,38 +1,13 @@
 // §3.3 Image NodeView — hover toolbar (resize, caption editing)
-import { useState, useCallback, useRef, useMemo } from "react";
-import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
+import { useCallback, useMemo, useRef, useState } from "react";
+
 import { convertFileSrc } from "@tauri-apps/api/core";
+
+import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
+
 import { useEditorStore } from "../../stores/editor-store";
 
 const RESIZE_PRESETS = [25, 50, 75, 100];
-
-/** Check if src is a remote URL or data URI (no conversion needed) */
-function isRemoteOrData(src: string): boolean {
-  return /^https?:\/\/|^data:/i.test(src);
-}
-
-/** Resolve image src for Tauri webview.
- *  - Remote URLs and data URIs pass through unchanged.
- *  - Local paths (absolute or relative) are converted via Tauri's asset protocol.
- */
-function resolveImageSrc(src: string): string {
-  if (!src || isRemoteOrData(src)) return src;
-
-  // Resolve relative path against the current file's directory
-  let absolutePath = src;
-  if (!src.startsWith("/")) {
-    const activeTabId = useEditorStore.getState().activeTabId;
-    const tabs = useEditorStore.getState().tabs;
-    const activeTab = tabs.find((t) => t.id === activeTabId);
-    const filePath = activeTab?.filePath;
-    if (filePath) {
-      const dir = filePath.substring(0, filePath.lastIndexOf("/"));
-      absolutePath = `${dir}/${src}`;
-    }
-  }
-
-  return convertFileSrc(absolutePath);
-}
 
 export function ImageView({ node, updateAttributes, selected }: NodeViewProps) {
   const rawSrc = node.attrs.src as string;
@@ -129,11 +104,11 @@ export function ImageView({ node, updateAttributes, selected }: NodeViewProps) {
         style={{ width: `${widthPercent}%` }}
       >
         <img
-          src={src}
           alt={alt}
-          title={title || undefined}
-          draggable={false}
           data-drag-handle=""
+          draggable={false}
+          src={src}
+          title={title || undefined}
         />
 
         {/* Hover toolbar */}
@@ -141,8 +116,8 @@ export function ImageView({ node, updateAttributes, selected }: NodeViewProps) {
           <div className="image-toolbar" contentEditable={false}>
             {RESIZE_PRESETS.map((pct) => (
               <button
-                key={pct}
                 className={`image-toolbar-btn ${widthPercent === pct ? "image-toolbar-btn-active" : ""}`}
+                key={pct}
                 onClick={() => handleResize(pct)}
                 type="button"
               >
@@ -153,12 +128,10 @@ export function ImageView({ node, updateAttributes, selected }: NodeViewProps) {
             {editingSize ? (
               <span className="image-size-input-wrap">
                 <input
-                  ref={sizeInputRef}
                   className="image-size-input"
-                  type="number"
-                  min={10}
                   max={100}
-                  value={sizeInput}
+                  min={10}
+                  onBlur={commitSizeInput}
                   onChange={(e) => setSizeInput(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
@@ -171,7 +144,9 @@ export function ImageView({ node, updateAttributes, selected }: NodeViewProps) {
                       setSizeInput(String(widthPercent));
                     }
                   }}
-                  onBlur={commitSizeInput}
+                  ref={sizeInputRef}
+                  type="number"
+                  value={sizeInput}
                 />
                 <span className="image-size-unit">%</span>
               </span>
@@ -179,8 +154,8 @@ export function ImageView({ node, updateAttributes, selected }: NodeViewProps) {
               <button
                 className={`image-toolbar-btn ${!RESIZE_PRESETS.includes(widthPercent) ? "image-toolbar-btn-active" : ""}`}
                 onClick={startSizeEdit}
-                type="button"
                 title="커스텀 크기 입력"
+                type="button"
               >
                 {RESIZE_PRESETS.includes(widthPercent)
                   ? "Custom"
@@ -202,28 +177,28 @@ export function ImageView({ node, updateAttributes, selected }: NodeViewProps) {
         {editingCaption ? (
           <figcaption className="image-caption image-caption-editing">
             <input
-              ref={captionRef}
               className="image-caption-input"
-              value={captionText}
+              onBlur={handleCaptionSave}
               onChange={(e) => setCaptionText(e.target.value)}
               onKeyDown={handleCaptionKeyDown}
-              onBlur={handleCaptionSave}
               placeholder="Add caption..."
+              ref={captionRef}
+              value={captionText}
             />
           </figcaption>
         ) : alt ? (
           <figcaption
             className="image-caption"
-            onClick={startCaptionEdit}
             contentEditable={false}
+            onClick={startCaptionEdit}
           >
             {alt}
           </figcaption>
         ) : isJournalAsset ? (
           <figcaption
             className="image-caption image-caption-placeholder"
-            onClick={startCaptionEdit}
             contentEditable={false}
+            onClick={startCaptionEdit}
           >
             캡션 추가...
           </figcaption>
@@ -231,4 +206,32 @@ export function ImageView({ node, updateAttributes, selected }: NodeViewProps) {
       </figure>
     </NodeViewWrapper>
   );
+}
+
+/** Check if src is a remote URL or data URI (no conversion needed) */
+function isRemoteOrData(src: string): boolean {
+  return /^https?:\/\/|^data:/i.test(src);
+}
+
+/** Resolve image src for Tauri webview.
+ *  - Remote URLs and data URIs pass through unchanged.
+ *  - Local paths (absolute or relative) are converted via Tauri's asset protocol.
+ */
+function resolveImageSrc(src: string): string {
+  if (!src || isRemoteOrData(src)) return src;
+
+  // Resolve relative path against the current file's directory
+  let absolutePath = src;
+  if (!src.startsWith("/")) {
+    const activeTabId = useEditorStore.getState().activeTabId;
+    const tabs = useEditorStore.getState().tabs;
+    const activeTab = tabs.find((t) => t.id === activeTabId);
+    const filePath = activeTab?.filePath;
+    if (filePath) {
+      const dir = filePath.substring(0, filePath.lastIndexOf("/"));
+      absolutePath = `${dir}/${src}`;
+    }
+  }
+
+  return convertFileSrc(absolutePath);
 }

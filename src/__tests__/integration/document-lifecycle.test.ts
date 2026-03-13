@@ -1,12 +1,13 @@
 // Integration: Document Lifecycle — MD open → PM convert → edit simulation → MD save
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 import {
-  FIXTURE_SIMPLE,
-  FIXTURE_RICH,
-  FIXTURE_LONG,
   createTestSchema,
+  FIXTURE_LONG,
+  FIXTURE_RICH,
+  FIXTURE_SIMPLE,
 } from "./fixtures";
 
 const schema = createTestSchema();

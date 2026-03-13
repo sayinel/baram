@@ -1,17 +1,18 @@
 // §56j Periodic Insight Banner — auto AI analysis for weekly/monthly notes
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import { useLLMStream } from "../../hooks/use-llm-stream";
+import { listDir, readFile } from "../../ipc/invoke";
 import { useAIStore } from "../../stores/ai-store";
 import { useSettingsStore } from "../../stores/settings-store";
-import {
-  buildWeeklyPatternPrompt,
-  buildMonthlySummaryPrompt,
-} from "../../utils/journal-reflection";
-import { renderSimpleMarkdown } from "../../utils/journal-memories";
-import { readFile, listDir } from "../../ipc/invoke";
 import { resolveJournalDir } from "../../utils/journal";
+import { renderSimpleMarkdown } from "../../utils/journal-memories";
+import {
+  buildMonthlySummaryPrompt,
+  buildWeeklyPatternPrompt,
+} from "../../utils/journal-reflection";
 
-type InsightType = "weekly" | "monthly";
+type InsightType = "monthly" | "weekly";
 
 interface Props {
   filePath: string;
@@ -22,6 +23,7 @@ interface Props {
  * Detect if a file path is a weekly or monthly periodic note.
  * Returns null if it's neither.
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function detectPeriodicType(filePath: string): InsightType | null {
   if (/\/weekly\//.test(filePath)) return "weekly";
   if (/\/monthly\//.test(filePath)) return "monthly";
@@ -114,7 +116,7 @@ export function PeriodicInsightBanner({ filePath, type }: Props) {
         // directory may not exist
       }
 
-      const journalEntries: { date: string; content: string }[] = [];
+      const journalEntries: { content: string; date: string }[] = [];
       for (const entry of fileEntries) {
         const match = entry.name.match(/^(\d{4})-(\d{2})-(\d{2})\.md$/);
         if (!match) continue;

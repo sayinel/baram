@@ -1,8 +1,8 @@
 // §5.3 KaTeX error message parser — user-friendly error messages
 
 const errorPatterns: Array<{
-  pattern: RegExp;
   message: (match: RegExpMatchArray) => string;
+  pattern: RegExp;
 }> = [
   {
     pattern: /Undefined control sequence:?\s*\\?([\w]+)/i,

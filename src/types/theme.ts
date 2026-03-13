@@ -5,26 +5,26 @@
 // ---------------------------------------------------------------------------
 
 export interface ThemeColors {
-  "--color-bg-primary": string;
-  "--color-bg-secondary": string;
-  "--color-bg-sidebar": string;
-  "--color-bg-tertiary": string;
-
-  "--color-text-primary": string;
-  "--color-text-secondary": string;
-  "--color-text-muted": string;
-
-  "--color-border": string;
-  "--color-border-light": string;
-
   "--color-accent": string;
   "--color-accent-hover": string;
+  "--color-bg-primary": string;
+  "--color-bg-secondary": string;
 
+  "--color-bg-sidebar": string;
+  "--color-bg-tertiary": string;
+  "--color-border": string;
+
+  "--color-border-light": string;
   "--color-editor-bg": string;
-  "--color-editor-text": string;
-  "--color-editor-selection": string;
+
   "--color-editor-cursor": string;
   "--color-editor-line-highlight": string;
+
+  "--color-editor-selection": string;
+  "--color-editor-text": string;
+  "--color-text-muted": string;
+  "--color-text-primary": string;
+  "--color-text-secondary": string;
 }
 
 // ---------------------------------------------------------------------------
@@ -32,11 +32,11 @@ export interface ThemeColors {
 // ---------------------------------------------------------------------------
 
 export interface ThemeDef {
+  base: "dark" | "light";
+  builtIn: boolean;
+  colors: ThemeColors;
   id: string;
   name: string;
-  base: "light" | "dark";
-  colors: ThemeColors;
-  builtIn: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -44,9 +44,9 @@ export interface ThemeDef {
 // ---------------------------------------------------------------------------
 
 export const THEME_COLOR_KEYS: {
+  category: string;
   key: keyof ThemeColors;
   label: string;
-  category: string;
 }[] = [
   // Background
   {

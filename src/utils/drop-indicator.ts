@@ -10,52 +10,19 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorView } from "@tiptap/pm/view";
 
 export interface InsertTarget {
-  pos: number;
-  indicatorY: number;
   indicatorLeft: number;
   indicatorWidth: number;
+  indicatorY: number;
+  pos: number;
 }
 
 let indicatorEl: HTMLDivElement | null = null;
-
-function getIndicator(): HTMLDivElement {
-  if (!indicatorEl) {
-    indicatorEl = document.createElement("div");
-    indicatorEl.className = "drop-indicator-bar";
-    // Dot is rendered via ::before pseudo-element in CSS
-    document.body.appendChild(indicatorEl);
-  }
-  return indicatorEl;
-}
-
-export function showDropIndicator(target: InsertTarget) {
-  const el = getIndicator();
-  el.style.top = `${target.indicatorY - 1}px`;
-  el.style.left = `${target.indicatorLeft}px`;
-  el.style.width = `${target.indicatorWidth}px`;
-  el.style.display = "block";
-}
 
 export function hideDropIndicator() {
   if (indicatorEl) {
     indicatorEl.style.display = "none";
   }
 }
-
-export function removeDropIndicator() {
-  if (indicatorEl) {
-    indicatorEl.remove();
-    indicatorEl = null;
-  }
-}
-
-// --- List detection ---
-
-function isListNode(node: PMNode): boolean {
-  return /^(bulletList|orderedList|taskList)$/.test(node.type.name);
-}
-
-// --- Insert helper (handles list splitting) ---
 
 /**
  * Insert a node at the given position, splitting lists if the position
@@ -103,7 +70,12 @@ export function insertNodeAtPos(
   return pos + node.nodeSize;
 }
 
-// --- Resolution ---
+export function removeDropIndicator() {
+  if (indicatorEl) {
+    indicatorEl.remove();
+    indicatorEl = null;
+  }
+}
 
 /**
  * Resolve cursor coordinates to the nearest block boundary for image insertion.
@@ -125,66 +97,35 @@ export function resolveInsertTarget(
   return scanBlocksByRect(view, doc, y);
 }
 
-// --- Internal helpers ---
+// --- List detection ---
 
-/**
- * Scan all top-level blocks by DOM rect to find the nearest boundary.
- * Drills into list nodes recursively for list-item granularity.
- */
-function scanBlocksByRect(
-  view: EditorView,
-  doc: PMNode,
-  y: number,
-): InsertTarget | null {
-  let offset = 0;
-  let best: InsertTarget | null = null;
-  let bestDist = Infinity;
-
-  for (let i = 0; i < doc.childCount; i++) {
-    const child = doc.child(i);
-    try {
-      const dom = view.nodeDOM(offset);
-      if (dom instanceof HTMLElement) {
-        const rect = dom.getBoundingClientRect();
-
-        // Drill into lists when cursor is within the list's rect
-        if (isListNode(child) && y >= rect.top && y <= rect.bottom) {
-          const result = resolveInsideList(view, offset, child, y);
-          if (result) return result;
-        }
-
-        // Top boundary
-        const topDist = Math.abs(y - rect.top);
-        if (topDist < bestDist) {
-          bestDist = topDist;
-          best = {
-            pos: offset,
-            indicatorY: rect.top,
-            indicatorLeft: rect.left,
-            indicatorWidth: rect.width,
-          };
-        }
-
-        // Bottom boundary
-        const botDist = Math.abs(y - rect.bottom);
-        if (botDist < bestDist) {
-          bestDist = botDist;
-          best = {
-            pos: offset + child.nodeSize,
-            indicatorY: rect.bottom,
-            indicatorLeft: rect.left,
-            indicatorWidth: rect.width,
-          };
-        }
-      }
-    } catch {
-      /* ignore */
-    }
-    offset += child.nodeSize;
-  }
-
-  return best;
+export function showDropIndicator(target: InsertTarget) {
+  const el = getIndicator();
+  el.style.top = `${target.indicatorY - 1}px`;
+  el.style.left = `${target.indicatorLeft}px`;
+  el.style.width = `${target.indicatorWidth}px`;
+  el.style.display = "block";
 }
+
+// --- Insert helper (handles list splitting) ---
+
+function getIndicator(): HTMLDivElement {
+  if (!indicatorEl) {
+    indicatorEl = document.createElement("div");
+    indicatorEl.className = "drop-indicator-bar";
+    // Dot is rendered via ::before pseudo-element in CSS
+    document.body.appendChild(indicatorEl);
+  }
+  return indicatorEl;
+}
+
+// --- Resolution ---
+
+function isListNode(node: PMNode): boolean {
+  return /^(bulletList|orderedList|taskList)$/.test(node.type.name);
+}
+
+// --- Internal helpers ---
 
 /**
  * Resolve inside a list node to find the nearest list-item boundary.
@@ -254,6 +195,65 @@ function resolveInsideList(
       /* ignore */
     }
     offset += item.nodeSize;
+  }
+
+  return best;
+}
+
+/**
+ * Scan all top-level blocks by DOM rect to find the nearest boundary.
+ * Drills into list nodes recursively for list-item granularity.
+ */
+function scanBlocksByRect(
+  view: EditorView,
+  doc: PMNode,
+  y: number,
+): InsertTarget | null {
+  let offset = 0;
+  let best: InsertTarget | null = null;
+  let bestDist = Infinity;
+
+  for (let i = 0; i < doc.childCount; i++) {
+    const child = doc.child(i);
+    try {
+      const dom = view.nodeDOM(offset);
+      if (dom instanceof HTMLElement) {
+        const rect = dom.getBoundingClientRect();
+
+        // Drill into lists when cursor is within the list's rect
+        if (isListNode(child) && y >= rect.top && y <= rect.bottom) {
+          const result = resolveInsideList(view, offset, child, y);
+          if (result) return result;
+        }
+
+        // Top boundary
+        const topDist = Math.abs(y - rect.top);
+        if (topDist < bestDist) {
+          bestDist = topDist;
+          best = {
+            pos: offset,
+            indicatorY: rect.top,
+            indicatorLeft: rect.left,
+            indicatorWidth: rect.width,
+          };
+        }
+
+        // Bottom boundary
+        const botDist = Math.abs(y - rect.bottom);
+        if (botDist < bestDist) {
+          bestDist = botDist;
+          best = {
+            pos: offset + child.nodeSize,
+            indicatorY: rect.bottom,
+            indicatorLeft: rect.left,
+            indicatorWidth: rect.width,
+          };
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    offset += child.nodeSize;
   }
 
   return best;

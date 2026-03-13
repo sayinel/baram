@@ -41,36 +41,6 @@ console.log(x);
 /** 100-line mixed document */
 export const FIXTURE_LONG = generateLongFixture();
 
-function generateLongFixture(): string {
-  const lines: string[] = [];
-  lines.push("# Long Document");
-  lines.push("");
-
-  for (let i = 1; i <= 20; i++) {
-    lines.push(`## Section ${i}`);
-    lines.push("");
-    lines.push(`Paragraph ${i} with some **bold** text and \`inline code\`.`);
-    lines.push("");
-  }
-
-  // Add a table
-  lines.push("| Col A | Col B |");
-  lines.push("| --- | --- |");
-  lines.push("| row1 | data1 |");
-  lines.push("| row2 | data2 |");
-  lines.push("");
-
-  // Add a code block
-  lines.push("```javascript");
-  lines.push("function hello() {");
-  lines.push('  return "world";');
-  lines.push("}");
-  lines.push("```");
-  lines.push("");
-
-  return lines.join("\n");
-}
-
 /** Full M2+M3 schema for integration tests (extracted from roundtrip-m3.test.ts) */
 export function createTestSchema(): Schema {
   return new Schema({
@@ -167,4 +137,34 @@ export function createTestSchema(): Schema {
       },
     },
   });
+}
+
+function generateLongFixture(): string {
+  const lines: string[] = [];
+  lines.push("# Long Document");
+  lines.push("");
+
+  for (let i = 1; i <= 20; i++) {
+    lines.push(`## Section ${i}`);
+    lines.push("");
+    lines.push(`Paragraph ${i} with some **bold** text and \`inline code\`.`);
+    lines.push("");
+  }
+
+  // Add a table
+  lines.push("| Col A | Col B |");
+  lines.push("| --- | --- |");
+  lines.push("| row1 | data1 |");
+  lines.push("| row2 | data2 |");
+  lines.push("");
+
+  // Add a code block
+  lines.push("```javascript");
+  lines.push("function hello() {");
+  lines.push('  return "world";');
+  lines.push("}");
+  lines.push("```");
+  lines.push("");
+
+  return lines.join("\n");
 }

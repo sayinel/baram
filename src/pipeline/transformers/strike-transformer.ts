@@ -1,12 +1,12 @@
+import type { MarkTransformerEntry } from "../types";
 // strike-transformer.ts — §5.1 Strikethrough mark mdast ↔ ProseMirror
 import type { Mark } from "@tiptap/pm/model";
-import type { Node as MdastNode, PhrasingContent } from "mdast";
-import type { MarkTransformerEntry } from "../types";
 import type { Schema } from "@tiptap/pm/model";
+import type { Node as MdastNode, PhrasingContent } from "mdast";
 
 interface Delete extends MdastNode {
-  type: "delete";
   children: PhrasingContent[];
+  type: "delete";
 }
 
 export const strikeTransformer: MarkTransformerEntry = {

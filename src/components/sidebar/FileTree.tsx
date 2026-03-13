@@ -1,42 +1,45 @@
 // §4.3 File tree sidebar — directory browsing + file opening
 // §33 Inline rename with wikilink auto-update
 // File management: context menu, inline creation, delete, drag-and-drop
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import { open } from "@tauri-apps/plugin-dialog";
+
+import type { Editor } from "@tiptap/react";
+
 import {
-  useFileStore,
-  openFolder,
-  type FileEntry,
-} from "../../stores/file-store";
-import { useEditorStore } from "../../stores/editor-store";
-import { useLinkStore } from "../../stores/link-store";
-import {
-  readFile,
-  writeFile,
-  deleteFile,
   createDir,
   deleteDir,
+  deleteFile,
+  getFilesByTag,
+  readFile,
   renameFile,
   renameFileWithLinks,
   renameNamespace,
-  getFilesByTag,
+  writeFile,
 } from "../../ipc/invoke";
+import { useEditorStore } from "../../stores/editor-store";
+import {
+  type FileEntry,
+  openFolder,
+  useFileStore,
+} from "../../stores/file-store";
+import { useLinkStore } from "../../stores/link-store";
+import { showConfirm } from "../../utils/confirm-dialog";
+import {
+  hideDropIndicator,
+  insertNodeAtPos,
+  resolveInsertTarget,
+  showDropIndicator,
+} from "../../utils/drop-indicator";
 import {
   flattenFileTree,
   fuzzyMatch,
   fuzzyScore,
-  isGlobPattern,
   globMatch,
+  isGlobPattern,
 } from "../../utils/file-search";
-import { showConfirm } from "../../utils/confirm-dialog";
-import { isImageFile, getRelativePath } from "../../utils/path-utils";
-import {
-  showDropIndicator,
-  hideDropIndicator,
-  resolveInsertTarget,
-  insertNodeAtPos,
-} from "../../utils/drop-indicator";
-import type { Editor } from "@tiptap/react";
+import { getRelativePath, isImageFile } from "../../utils/path-utils";
 
 // --- Mono-style SVG Icons (Lucide-based, 24x24 viewBox) ---
 const S = {
@@ -50,347 +53,17 @@ const S = {
   strokeLinecap: "round" as const,
 };
 
-function IconFolder() {
-  return (
-    <svg {...S}>
-      <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
-    </svg>
-  );
-}
-
-function IconFile({ label, color }: { label?: string; color?: string }) {
-  const props = color ? { ...S, stroke: color } : S;
-  return (
-    <svg {...props}>
-      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-      <polyline points="14 2 14 8 20 8" />
-      {label && (
-        <text
-          x="12"
-          y="19"
-          textAnchor="middle"
-          fontSize="8"
-          fill={color ?? "currentColor"}
-          stroke="none"
-          fontFamily="system-ui,sans-serif"
-          fontWeight="700"
-        >
-          {label}
-        </text>
-      )}
-    </svg>
-  );
-}
-
-function IconNewFile() {
-  return (
-    <svg {...S}>
-      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-      <polyline points="14 2 14 8 20 8" />
-      <line x1="12" y1="18" x2="12" y2="12" />
-      <line x1="9" y1="15" x2="15" y2="15" />
-    </svg>
-  );
-}
-
-function IconNewFolder() {
-  return (
-    <svg {...S}>
-      <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
-      <line x1="12" y1="11" x2="12" y2="17" />
-      <line x1="9" y1="14" x2="15" y2="14" />
-    </svg>
-  );
-}
-
-function getFileIcon(name: string) {
-  const ext = name.includes(".")
-    ? name.split(".").pop()?.toLowerCase() || ""
-    : "";
-  switch (ext) {
-    case "md":
-    case "mdx":
-      return <IconFile label="M" color="#519aba" />;
-    case "ts":
-    case "tsx":
-      return <IconFile label="TS" color="#3178c6" />;
-    case "js":
-    case "jsx":
-    case "mjs":
-    case "cjs":
-      return <IconFile label="JS" color="#e8d44d" />;
-    case "json":
-      return <IconFile label="{}" color="#cbcb41" />;
-    case "css":
-    case "scss":
-    case "less":
-      return <IconFile label="#" color="#56b6c2" />;
-    case "html":
-    case "htm":
-      return <IconFile label="&lt;&gt;" color="#e37933" />;
-    case "rs":
-      return <IconFile label="RS" color="#dea584" />;
-    case "toml":
-      return <IconFile label="T" color="#9c4221" />;
-    case "yaml":
-    case "yml":
-      return <IconFile label="Y" color="#cb171e" />;
-    case "py":
-      return <IconFile label="PY" color="#3572a5" />;
-    case "go":
-      return <IconFile label="GO" color="#00add8" />;
-    case "sh":
-    case "bash":
-    case "zsh":
-      return <IconFile label="$" color="#89e051" />;
-    case "svg":
-    case "png":
-    case "jpg":
-    case "jpeg":
-    case "gif":
-    case "webp":
-    case "ico":
-      return <IconFile label="img" color="#a074c4" />;
-    default:
-      return <IconFile />;
-  }
-}
-
 // --- Types ---
 interface ContextMenuState {
+  targetIsDir: boolean;
+  targetPath: null | string;
   x: number;
   y: number;
-  targetPath: string | null;
-  targetIsDir: boolean;
 }
 
 interface CreatingEntryState {
-  parentPath: string;
   isDir: boolean;
-}
-
-// --- FileTreeNode ---
-// Mouse-based DnD: files have data-file-path, folders have data-drop-path.
-// All DnD logic is handled at the root FileTree level via document mouse events.
-function FileTreeNode({
-  entry,
-  depth,
-  expandedDirs,
-  onToggleDir,
-  onFileClick,
-  selectedPath,
-  renamingPath,
-  onStartRename,
-  onConfirmRename,
-  onCancelRename,
-  onContextMenu,
-  creatingEntry,
-  onConfirmCreate,
-  onCancelCreate,
-  dragOverPath,
-  dragSourcePath,
-}: {
-  entry: FileEntry;
-  depth: number;
-  expandedDirs: Set<string>;
-  onToggleDir: (path: string) => void;
-  onFileClick: (entry: FileEntry) => void;
-  selectedPath: string | null;
-  renamingPath: string | null;
-  onStartRename: (path: string) => void;
-  onConfirmRename: (oldPath: string, newName: string) => void;
-  onCancelRename: () => void;
-  onContextMenu: (e: React.MouseEvent, path: string, isDir: boolean) => void;
-  creatingEntry: CreatingEntryState | null;
-  onConfirmCreate: (name: string) => void;
-  onCancelCreate: () => void;
-  dragOverPath: string | null;
-  dragSourcePath: string | null;
-}) {
-  const paddingLeft = `${depth * 16 + 8}px`;
-  const isExpanded = expandedDirs.has(entry.path);
-  const isRenaming = renamingPath === entry.path;
-  const isSelected = selectedPath === entry.path;
-  const isDragOver = dragOverPath === entry.path;
-  const isDragSource = dragSourcePath === entry.path;
-  const inputRef = useRef<HTMLInputElement>(null);
-  const createInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (isRenaming && inputRef.current) {
-      inputRef.current.focus();
-      const name = entry.name;
-      const dotIdx = name.lastIndexOf(".");
-      inputRef.current.setSelectionRange(0, dotIdx > 0 ? dotIdx : name.length);
-    }
-  }, [isRenaming, entry.name]);
-
-  const showCreateInput =
-    creatingEntry && creatingEntry.parentPath === entry.path;
-  useEffect(() => {
-    if (showCreateInput && createInputRef.current) {
-      createInputRef.current.focus();
-    }
-  }, [showCreateInput]);
-
-  if (entry.isDir) {
-    return (
-      <div
-        data-drop-path={entry.path}
-        className={isDragOver ? "file-tree-drop-target" : ""}
-      >
-        <div
-          className="file-tree-item file-tree-dir"
-          style={{ paddingLeft }}
-          onClick={() => onToggleDir(entry.path)}
-          onContextMenu={(e) => onContextMenu(e, entry.path, true)}
-        >
-          <span
-            className={`file-tree-icon file-tree-chevron ${isExpanded ? "file-tree-chevron-open" : ""}`}
-          >
-            {"\u25B6"}
-          </span>
-          <span className="file-tree-icon">
-            <IconFolder />
-          </span>
-          {isRenaming ? (
-            <input
-              ref={inputRef}
-              className="file-tree-rename-input"
-              defaultValue={entry.name}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  onConfirmRename(
-                    entry.path,
-                    (e.target as HTMLInputElement).value,
-                  );
-                } else if (e.key === "Escape") {
-                  e.preventDefault();
-                  onCancelRename();
-                }
-                e.stopPropagation();
-              }}
-              onBlur={(e) => onConfirmRename(entry.path, e.target.value)}
-              onClick={(e) => e.stopPropagation()}
-            />
-          ) : (
-            <span
-              className="file-tree-name"
-              onDoubleClick={(e) => {
-                e.stopPropagation();
-                onStartRename(entry.path);
-              }}
-            >
-              {entry.name}
-            </span>
-          )}
-        </div>
-        {isExpanded && (
-          <>
-            {showCreateInput && (
-              <div
-                className="file-tree-item"
-                style={{ paddingLeft: `${(depth + 1) * 16 + 8}px` }}
-              >
-                <span className="file-tree-icon">
-                  {creatingEntry!.isDir ? <IconFolder /> : <IconFile />}
-                </span>
-                <input
-                  ref={createInputRef}
-                  className="file-tree-rename-input"
-                  placeholder={
-                    creatingEntry!.isDir ? "folder name" : "file name"
-                  }
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      onConfirmCreate((e.target as HTMLInputElement).value);
-                    } else if (e.key === "Escape") {
-                      e.preventDefault();
-                      onCancelCreate();
-                    }
-                    e.stopPropagation();
-                  }}
-                  onBlur={(e) => {
-                    if (e.target.value.trim()) {
-                      onConfirmCreate(e.target.value);
-                    } else {
-                      onCancelCreate();
-                    }
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                />
-              </div>
-            )}
-            {entry.children?.map((child) => (
-              <FileTreeNode
-                key={child.path}
-                entry={child}
-                depth={depth + 1}
-                expandedDirs={expandedDirs}
-                onToggleDir={onToggleDir}
-                onFileClick={onFileClick}
-                selectedPath={selectedPath}
-                renamingPath={renamingPath}
-                onStartRename={onStartRename}
-                onConfirmRename={onConfirmRename}
-                onCancelRename={onCancelRename}
-                onContextMenu={onContextMenu}
-                creatingEntry={creatingEntry}
-                onConfirmCreate={onConfirmCreate}
-                onCancelCreate={onCancelCreate}
-                dragOverPath={dragOverPath}
-                dragSourcePath={dragSourcePath}
-              />
-            ))}
-          </>
-        )}
-      </div>
-    );
-  }
-
-  // File item — drag source (detected by data-file-path via mouse events at root)
-  return (
-    <div
-      className={`file-tree-item file-tree-file ${isSelected ? "file-tree-item-active" : ""} ${isDragSource ? "file-tree-drag-source" : ""}`}
-      style={{ paddingLeft }}
-      data-file-path={entry.path}
-      onClick={() => !isRenaming && onFileClick(entry)}
-      onContextMenu={(e) => onContextMenu(e, entry.path, false)}
-    >
-      <span className="file-tree-icon">{getFileIcon(entry.name)}</span>
-      {isRenaming ? (
-        <input
-          ref={inputRef}
-          className="file-tree-rename-input"
-          defaultValue={entry.name}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              onConfirmRename(entry.path, (e.target as HTMLInputElement).value);
-            } else if (e.key === "Escape") {
-              e.preventDefault();
-              onCancelRename();
-            }
-            e.stopPropagation();
-          }}
-          onBlur={(e) => onConfirmRename(entry.path, e.target.value)}
-          onClick={(e) => e.stopPropagation()}
-        />
-      ) : (
-        <span
-          className="file-tree-name"
-          onDoubleClick={(e) => {
-            e.stopPropagation();
-            onStartRename(entry.path);
-          }}
-        >
-          {entry.name}
-        </span>
-      )}
-    </div>
-  );
+  parentPath: string;
 }
 
 // --- FileTree (main component) ---
@@ -410,26 +83,26 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
   const toggleExpandedDir = useFileStore((s) => s.toggleExpandedDir);
   const expandDir = useFileStore((s) => s.expandDir);
   const { openTab, tabs, activeTabId, closeTab, renameTab } = useEditorStore();
-  const [renamingPath, setRenamingPath] = useState<string | null>(null);
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [renamingPath, setRenamingPath] = useState<null | string>(null);
+  const [selectedPath, setSelectedPath] = useState<null | string>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [creatingEntry, setCreatingEntry] = useState<CreatingEntryState | null>(
     null,
   );
-  const [dragOverPath, setDragOverPath] = useState<string | null>(null);
-  const [dragSourcePath, setDragSourcePath] = useState<string | null>(null);
+  const [dragOverPath, setDragOverPath] = useState<null | string>(null);
+  const [dragSourcePath, setDragSourcePath] = useState<null | string>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [filteredPaths, setFilteredPaths] = useState<Set<string> | null>(null);
+  const [filteredPaths, setFilteredPaths] = useState<null | Set<string>>(null);
   const treeRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const dragRef = useRef<{
-    sourcePath: string;
+  const dragRef = useRef<null | {
+    active: boolean;
     sourceName: string;
+    sourcePath: string;
     startX: number;
     startY: number;
-    active: boolean;
-  } | null>(null);
+  }>(null);
   const dragGhostRef = useRef<HTMLDivElement | null>(null);
   const suppressClickRef = useRef(false);
 
@@ -983,6 +656,9 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
           : target.targetPath.substring(0, target.targetPath.lastIndexOf("/"))
         : rootPath;
       switch (action) {
+        case "delete":
+          if (target.targetPath) handleDelete(target.targetPath);
+          break;
         case "newFile":
           handleStartCreate(parentPath, false);
           break;
@@ -991,9 +667,6 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
           break;
         case "rename":
           if (target.targetPath) setRenamingPath(target.targetPath);
-          break;
-        case "delete":
-          if (target.targetPath) handleDelete(target.targetPath);
           break;
       }
     },
@@ -1013,20 +686,16 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
 
   return (
     <div
-      ref={treeRef}
       className={`file-tree ${isDragging ? "file-tree-dragging" : ""}`}
-      tabIndex={0}
-      onKeyDown={handleTreeKeyDown}
       onContextMenu={handleEmptyAreaContextMenu}
+      onKeyDown={handleTreeKeyDown}
       onMouseDown={handleTreeMouseDown}
+      ref={treeRef}
+      tabIndex={0}
     >
       <div className="file-tree-header">
         <input
-          ref={searchInputRef}
-          type="text"
           className="file-tree-search-input"
-          placeholder="Filter files…"
-          value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Escape") {
@@ -1036,18 +705,22 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
             }
             e.stopPropagation();
           }}
+          placeholder="Filter files…"
+          ref={searchInputRef}
+          type="text"
+          value={searchQuery}
         />
         <button
           className="file-tree-action-btn"
-          title="New File"
           onClick={() => handleStartCreate(rootPath, false)}
+          title="New File"
         >
           <IconNewFile />
         </button>
         <button
           className="file-tree-action-btn"
-          title="New Folder"
           onClick={() => handleStartCreate(rootPath, true)}
+          title="New Folder"
         >
           <IconNewFolder />
         </button>
@@ -1071,9 +744,8 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
         <div className="file-tree-results">
           {searchResults.map((file) => (
             <div
-              key={file.path}
               className={`file-tree-item file-tree-file ${selectedPath === file.path ? "file-tree-item-active" : ""}`}
-              style={{ paddingLeft: "8px" }}
+              key={file.path}
               onClick={() => {
                 handleFileClick({
                   name: file.name,
@@ -1082,6 +754,7 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
                 });
                 setSearchQuery("");
               }}
+              style={{ paddingLeft: "8px" }}
             >
               <span className="file-tree-icon">{getFileIcon(file.name)}</span>
               <span className="file-tree-name">
@@ -1109,9 +782,14 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
                 {creatingEntry.isDir ? <IconFolder /> : <IconFile />}
               </span>
               <input
-                className="file-tree-rename-input"
-                placeholder={creatingEntry.isDir ? "folder name" : "file name"}
                 autoFocus
+                className="file-tree-rename-input"
+                onBlur={(e) => {
+                  if (e.target.value.trim())
+                    handleConfirmCreate(e.target.value);
+                  else handleCancelCreate();
+                }}
+                onClick={(e) => e.stopPropagation()}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
@@ -1122,12 +800,7 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
                   }
                   e.stopPropagation();
                 }}
-                onBlur={(e) => {
-                  if (e.target.value.trim())
-                    handleConfirmCreate(e.target.value);
-                  else handleCancelCreate();
-                }}
-                onClick={(e) => e.stopPropagation()}
+                placeholder={creatingEntry.isDir ? "folder name" : "file name"}
               />
             </div>
           )}
@@ -1138,23 +811,23 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
             : fileTree
           ).map((entry) => (
             <FileTreeNode
-              key={entry.path}
-              entry={entry}
-              depth={0}
-              expandedDirs={expandedDirs}
-              onToggleDir={handleToggleDir}
-              onFileClick={handleFileClick}
-              selectedPath={selectedPath}
-              renamingPath={renamingPath}
-              onStartRename={handleStartRename}
-              onConfirmRename={handleConfirmRename}
-              onCancelRename={handleCancelRename}
-              onContextMenu={handleContextMenu}
               creatingEntry={creatingEntry}
-              onConfirmCreate={handleConfirmCreate}
-              onCancelCreate={handleCancelCreate}
+              depth={0}
               dragOverPath={dragOverPath}
               dragSourcePath={dragSourcePath}
+              entry={entry}
+              expandedDirs={expandedDirs}
+              key={entry.path}
+              onCancelCreate={handleCancelCreate}
+              onCancelRename={handleCancelRename}
+              onConfirmCreate={handleConfirmCreate}
+              onConfirmRename={handleConfirmRename}
+              onContextMenu={handleContextMenu}
+              onFileClick={handleFileClick}
+              onStartRename={handleStartRename}
+              onToggleDir={handleToggleDir}
+              renamingPath={renamingPath}
+              selectedPath={selectedPath}
             />
           ))}
         </>
@@ -1163,8 +836,8 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
       {contextMenu && (
         <div
           className="file-tree-context-menu"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}
+          style={{ left: contextMenu.x, top: contextMenu.y }}
         >
           {(contextMenu.targetPath === null || contextMenu.targetIsDir) && (
             <>
@@ -1204,5 +877,335 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
         </div>
       )}
     </div>
+  );
+}
+
+// --- FileTreeNode ---
+// Mouse-based DnD: files have data-file-path, folders have data-drop-path.
+// All DnD logic is handled at the root FileTree level via document mouse events.
+function FileTreeNode({
+  entry,
+  depth,
+  expandedDirs,
+  onToggleDir,
+  onFileClick,
+  selectedPath,
+  renamingPath,
+  onStartRename,
+  onConfirmRename,
+  onCancelRename,
+  onContextMenu,
+  creatingEntry,
+  onConfirmCreate,
+  onCancelCreate,
+  dragOverPath,
+  dragSourcePath,
+}: {
+  creatingEntry: CreatingEntryState | null;
+  depth: number;
+  dragOverPath: null | string;
+  dragSourcePath: null | string;
+  entry: FileEntry;
+  expandedDirs: Set<string>;
+  onCancelCreate: () => void;
+  onCancelRename: () => void;
+  onConfirmCreate: (name: string) => void;
+  onConfirmRename: (oldPath: string, newName: string) => void;
+  onContextMenu: (e: React.MouseEvent, path: string, isDir: boolean) => void;
+  onFileClick: (entry: FileEntry) => void;
+  onStartRename: (path: string) => void;
+  onToggleDir: (path: string) => void;
+  renamingPath: null | string;
+  selectedPath: null | string;
+}) {
+  const paddingLeft = `${depth * 16 + 8}px`;
+  const isExpanded = expandedDirs.has(entry.path);
+  const isRenaming = renamingPath === entry.path;
+  const isSelected = selectedPath === entry.path;
+  const isDragOver = dragOverPath === entry.path;
+  const isDragSource = dragSourcePath === entry.path;
+  const inputRef = useRef<HTMLInputElement>(null);
+  const createInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isRenaming && inputRef.current) {
+      inputRef.current.focus();
+      const name = entry.name;
+      const dotIdx = name.lastIndexOf(".");
+      inputRef.current.setSelectionRange(0, dotIdx > 0 ? dotIdx : name.length);
+    }
+  }, [isRenaming, entry.name]);
+
+  const showCreateInput =
+    creatingEntry && creatingEntry.parentPath === entry.path;
+  useEffect(() => {
+    if (showCreateInput && createInputRef.current) {
+      createInputRef.current.focus();
+    }
+  }, [showCreateInput]);
+
+  if (entry.isDir) {
+    return (
+      <div
+        className={isDragOver ? "file-tree-drop-target" : ""}
+        data-drop-path={entry.path}
+      >
+        <div
+          className="file-tree-item file-tree-dir"
+          onClick={() => onToggleDir(entry.path)}
+          onContextMenu={(e) => onContextMenu(e, entry.path, true)}
+          style={{ paddingLeft }}
+        >
+          <span
+            className={`file-tree-icon file-tree-chevron ${isExpanded ? "file-tree-chevron-open" : ""}`}
+          >
+            {"\u25B6"}
+          </span>
+          <span className="file-tree-icon">
+            <IconFolder />
+          </span>
+          {isRenaming ? (
+            <input
+              className="file-tree-rename-input"
+              defaultValue={entry.name}
+              onBlur={(e) => onConfirmRename(entry.path, e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  onConfirmRename(
+                    entry.path,
+                    (e.target as HTMLInputElement).value,
+                  );
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  onCancelRename();
+                }
+                e.stopPropagation();
+              }}
+              ref={inputRef}
+            />
+          ) : (
+            <span
+              className="file-tree-name"
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                onStartRename(entry.path);
+              }}
+            >
+              {entry.name}
+            </span>
+          )}
+        </div>
+        {isExpanded && (
+          <>
+            {showCreateInput && (
+              <div
+                className="file-tree-item"
+                style={{ paddingLeft: `${(depth + 1) * 16 + 8}px` }}
+              >
+                <span className="file-tree-icon">
+                  {creatingEntry!.isDir ? <IconFolder /> : <IconFile />}
+                </span>
+                <input
+                  className="file-tree-rename-input"
+                  onBlur={(e) => {
+                    if (e.target.value.trim()) {
+                      onConfirmCreate(e.target.value);
+                    } else {
+                      onCancelCreate();
+                    }
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      onConfirmCreate((e.target as HTMLInputElement).value);
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      onCancelCreate();
+                    }
+                    e.stopPropagation();
+                  }}
+                  placeholder={
+                    creatingEntry!.isDir ? "folder name" : "file name"
+                  }
+                  ref={createInputRef}
+                />
+              </div>
+            )}
+            {entry.children?.map((child) => (
+              <FileTreeNode
+                creatingEntry={creatingEntry}
+                depth={depth + 1}
+                dragOverPath={dragOverPath}
+                dragSourcePath={dragSourcePath}
+                entry={child}
+                expandedDirs={expandedDirs}
+                key={child.path}
+                onCancelCreate={onCancelCreate}
+                onCancelRename={onCancelRename}
+                onConfirmCreate={onConfirmCreate}
+                onConfirmRename={onConfirmRename}
+                onContextMenu={onContextMenu}
+                onFileClick={onFileClick}
+                onStartRename={onStartRename}
+                onToggleDir={onToggleDir}
+                renamingPath={renamingPath}
+                selectedPath={selectedPath}
+              />
+            ))}
+          </>
+        )}
+      </div>
+    );
+  }
+
+  // File item — drag source (detected by data-file-path via mouse events at root)
+  return (
+    <div
+      className={`file-tree-item file-tree-file ${isSelected ? "file-tree-item-active" : ""} ${isDragSource ? "file-tree-drag-source" : ""}`}
+      data-file-path={entry.path}
+      onClick={() => !isRenaming && onFileClick(entry)}
+      onContextMenu={(e) => onContextMenu(e, entry.path, false)}
+      style={{ paddingLeft }}
+    >
+      <span className="file-tree-icon">{getFileIcon(entry.name)}</span>
+      {isRenaming ? (
+        <input
+          className="file-tree-rename-input"
+          defaultValue={entry.name}
+          onBlur={(e) => onConfirmRename(entry.path, e.target.value)}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              onConfirmRename(entry.path, (e.target as HTMLInputElement).value);
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              onCancelRename();
+            }
+            e.stopPropagation();
+          }}
+          ref={inputRef}
+        />
+      ) : (
+        <span
+          className="file-tree-name"
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            onStartRename(entry.path);
+          }}
+        >
+          {entry.name}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function getFileIcon(name: string) {
+  const ext = name.includes(".")
+    ? name.split(".").pop()?.toLowerCase() || ""
+    : "";
+  switch (ext) {
+    case "bash":
+    case "sh":
+    case "zsh":
+      return <IconFile color="#89e051" label="$" />;
+    case "cjs":
+    case "js":
+    case "jsx":
+    case "mjs":
+      return <IconFile color="#e8d44d" label="JS" />;
+    case "css":
+    case "less":
+    case "scss":
+      return <IconFile color="#56b6c2" label="#" />;
+    case "gif":
+    case "ico":
+    case "jpeg":
+    case "jpg":
+    case "png":
+    case "svg":
+    case "webp":
+      return <IconFile color="#a074c4" label="img" />;
+    case "go":
+      return <IconFile color="#00add8" label="GO" />;
+    case "htm":
+    case "html":
+      return <IconFile color="#e37933" label="&lt;&gt;" />;
+    case "json":
+      return <IconFile color="#cbcb41" label="{}" />;
+    case "md":
+    case "mdx":
+      return <IconFile color="#519aba" label="M" />;
+    case "py":
+      return <IconFile color="#3572a5" label="PY" />;
+    case "rs":
+      return <IconFile color="#dea584" label="RS" />;
+    case "toml":
+      return <IconFile color="#9c4221" label="T" />;
+    case "ts":
+    case "tsx":
+      return <IconFile color="#3178c6" label="TS" />;
+    case "yaml":
+    case "yml":
+      return <IconFile color="#cb171e" label="Y" />;
+    default:
+      return <IconFile />;
+  }
+}
+
+function IconFile({ label, color }: { color?: string; label?: string }) {
+  const props = color ? { ...S, stroke: color } : S;
+  return (
+    <svg {...props}>
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      {label && (
+        <text
+          fill={color ?? "currentColor"}
+          fontFamily="system-ui,sans-serif"
+          fontSize="8"
+          fontWeight="700"
+          stroke="none"
+          textAnchor="middle"
+          x="12"
+          y="19"
+        >
+          {label}
+        </text>
+      )}
+    </svg>
+  );
+}
+
+function IconFolder() {
+  return (
+    <svg {...S}>
+      <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
+    </svg>
+  );
+}
+
+function IconNewFile() {
+  return (
+    <svg {...S}>
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="12" x2="12" y1="18" y2="12" />
+      <line x1="9" x2="15" y1="15" y2="15" />
+    </svg>
+  );
+}
+
+function IconNewFolder() {
+  return (
+    <svg {...S}>
+      <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
+      <line x1="12" x2="12" y1="11" y2="17" />
+      <line x1="9" x2="15" y1="14" y2="14" />
+    </svg>
   );
 }

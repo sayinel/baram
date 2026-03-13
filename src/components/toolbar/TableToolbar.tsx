@@ -1,13 +1,16 @@
 // §5.5 Table Toolbar — floating toolbar shown when cursor is in a table cell
 import {
-  useState,
+  type ReactNode,
+  useCallback,
   useEffect,
   useRef,
-  useCallback,
-  type ReactNode,
+  useState,
 } from "react";
+
 import type { Editor } from "@tiptap/react";
+
 import { CellSelection } from "@tiptap/pm/tables";
+
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 
 // Mono-style inline SVG icons (16×16, stroke-based)
@@ -25,121 +28,121 @@ const S = {
 
 const AlignLeftIcon = (): ReactNode => (
   <svg {...S}>
-    <line x1="2" y1="4" x2="14" y2="4" />
-    <line x1="2" y1="8" x2="10" y2="8" />
-    <line x1="2" y1="12" x2="12" y2="12" />
+    <line x1="2" x2="14" y1="4" y2="4" />
+    <line x1="2" x2="10" y1="8" y2="8" />
+    <line x1="2" x2="12" y1="12" y2="12" />
   </svg>
 );
 const AlignCenterIcon = (): ReactNode => (
   <svg {...S}>
-    <line x1="2" y1="4" x2="14" y2="4" />
-    <line x1="4" y1="8" x2="12" y2="8" />
-    <line x1="3" y1="12" x2="13" y2="12" />
+    <line x1="2" x2="14" y1="4" y2="4" />
+    <line x1="4" x2="12" y1="8" y2="8" />
+    <line x1="3" x2="13" y1="12" y2="12" />
   </svg>
 );
 const AlignRightIcon = (): ReactNode => (
   <svg {...S}>
-    <line x1="2" y1="4" x2="14" y2="4" />
-    <line x1="6" y1="8" x2="14" y2="8" />
-    <line x1="4" y1="12" x2="14" y2="12" />
+    <line x1="2" x2="14" y1="4" y2="4" />
+    <line x1="6" x2="14" y1="8" y2="8" />
+    <line x1="4" x2="14" y1="12" y2="12" />
   </svg>
 );
 const TrashIcon = (): ReactNode => (
   <svg {...S}>
     <polyline points="3,5 4,14 12,14 13,5" />
-    <line x1="2" y1="5" x2="14" y2="5" />
-    <line x1="6" y1="3" x2="10" y2="3" />
+    <line x1="2" x2="14" y1="5" y2="5" />
+    <line x1="6" x2="10" y1="3" y2="3" />
   </svg>
 );
 // Header Row icon: table grid with bold top row
 const HeaderRowIcon = (): ReactNode => (
   <svg {...S} strokeWidth={1.4}>
-    <rect x="2" y="2" width="12" height="12" rx="1" />
-    <line x1="2" y1="6" x2="14" y2="6" />
-    <line x1="2" y1="10" x2="14" y2="10" />
+    <rect height="12" rx="1" width="12" x="2" y="2" />
+    <line x1="2" x2="14" y1="6" y2="6" />
+    <line x1="2" x2="14" y1="10" y2="10" />
     <rect
+      fill="currentColor"
+      height="4"
+      opacity="0.25"
+      rx="1"
+      stroke="none"
+      width="12"
       x="2"
       y="2"
-      width="12"
-      height="4"
-      rx="1"
-      fill="currentColor"
-      opacity="0.25"
-      stroke="none"
     />
   </svg>
 );
 // Header Column icon: table grid with bold left column
 const HeaderColIcon = (): ReactNode => (
   <svg {...S} strokeWidth={1.4}>
-    <rect x="2" y="2" width="12" height="12" rx="1" />
-    <line x1="6" y1="2" x2="6" y2="14" />
-    <line x1="10" y1="2" x2="10" y2="14" />
+    <rect height="12" rx="1" width="12" x="2" y="2" />
+    <line x1="6" x2="6" y1="2" y2="14" />
+    <line x1="10" x2="10" y1="2" y2="14" />
     <rect
+      fill="currentColor"
+      height="12"
+      opacity="0.25"
+      rx="1"
+      stroke="none"
+      width="4"
       x="2"
       y="2"
-      width="4"
-      height="12"
-      rx="1"
-      fill="currentColor"
-      opacity="0.25"
-      stroke="none"
     />
   </svg>
 );
 // Merge cells icon: two cells becoming one
 const MergeCellsIcon = (): ReactNode => (
   <svg {...S} strokeWidth={1.4}>
-    <rect x="2" y="3" width="5" height="10" rx="0.5" />
-    <rect x="9" y="3" width="5" height="10" rx="0.5" />
-    <line x1="7" y1="6" x2="9" y2="8" />
-    <line x1="7" y1="10" x2="9" y2="8" />
+    <rect height="10" rx="0.5" width="5" x="2" y="3" />
+    <rect height="10" rx="0.5" width="5" x="9" y="3" />
+    <line x1="7" x2="9" y1="6" y2="8" />
+    <line x1="7" x2="9" y1="10" y2="8" />
   </svg>
 );
 // Split cell icon: one cell becoming two
 const SplitCellsIcon = (): ReactNode => (
   <svg {...S} strokeWidth={1.4}>
-    <rect x="3" y="3" width="10" height="10" rx="0.5" />
-    <line x1="8" y1="3" x2="8" y2="13" strokeDasharray="2 1.5" />
+    <rect height="10" rx="0.5" width="10" x="3" y="3" />
+    <line strokeDasharray="2 1.5" x1="8" x2="8" y1="3" y2="13" />
   </svg>
 );
 // Copy as Markdown icon: two overlapping rectangles with "MD" label
 const CopyMdIcon = (): ReactNode => (
   <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="22"
+    fill="none"
     height="16"
     viewBox="0 0 22 16"
-    fill="none"
+    width="22"
+    xmlns="http://www.w3.org/2000/svg"
   >
     <rect
+      height="10"
+      rx="1.5"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      width="13"
       x="1"
       y="1"
-      width="13"
-      height="10"
-      rx="1.5"
-      stroke="currentColor"
-      strokeWidth="1.3"
     />
     <rect
-      x="8"
-      y="5"
-      width="13"
+      fill="var(--color-bg-primary)"
       height="10"
       rx="1.5"
       stroke="currentColor"
       strokeWidth="1.3"
-      fill="var(--color-bg-primary)"
+      width="13"
+      x="8"
+      y="5"
     />
     <text
-      x="14.5"
-      y="12.5"
-      textAnchor="middle"
       fill="currentColor"
+      fontFamily="system-ui, sans-serif"
       fontSize="7"
       fontWeight="700"
-      fontFamily="system-ui, sans-serif"
       stroke="none"
+      textAnchor="middle"
+      x="14.5"
+      y="12.5"
     >
       MD
     </text>
@@ -148,59 +151,45 @@ const CopyMdIcon = (): ReactNode => (
 // Copy as HTML icon: two overlapping rectangles with "</>" label
 const CopyHtmlIcon = (): ReactNode => (
   <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="22"
+    fill="none"
     height="16"
     viewBox="0 0 22 16"
-    fill="none"
+    width="22"
+    xmlns="http://www.w3.org/2000/svg"
   >
     <rect
+      height="10"
+      rx="1.5"
+      stroke="currentColor"
+      strokeWidth="1.3"
+      width="13"
       x="1"
       y="1"
-      width="13"
-      height="10"
-      rx="1.5"
-      stroke="currentColor"
-      strokeWidth="1.3"
     />
     <rect
-      x="8"
-      y="5"
-      width="13"
+      fill="var(--color-bg-primary)"
       height="10"
       rx="1.5"
       stroke="currentColor"
       strokeWidth="1.3"
-      fill="var(--color-bg-primary)"
+      width="13"
+      x="8"
+      y="5"
     />
     <text
-      x="14.5"
-      y="12.5"
-      textAnchor="middle"
       fill="currentColor"
+      fontFamily="system-ui, sans-serif"
       fontSize="6.5"
       fontWeight="700"
-      fontFamily="system-ui, sans-serif"
       stroke="none"
+      textAnchor="middle"
+      x="14.5"
+      y="12.5"
     >
       &lt;/&gt;
     </text>
   </svg>
 );
-
-/** Walk up from $from to find the enclosing table node */
-function findTable(
-  editor: Editor,
-): { pos: number; node: ReturnType<typeof editor.state.doc.nodeAt> } | null {
-  const { $from } = editor.state.selection;
-  for (let d = $from.depth; d >= 0; d--) {
-    const node = $from.node(d);
-    if (node.type.name === "table") {
-      return { node, pos: $from.before(d) };
-    }
-  }
-  return null;
-}
 
 interface TableToolbarProps {
   editor: Editor;
@@ -208,11 +197,11 @@ interface TableToolbarProps {
 
 export function TableToolbar({ editor }: TableToolbarProps) {
   const [visible, setVisible] = useState(false);
-  const [position, setPosition] = useState<{ top: number; left: number }>({
+  const [position, setPosition] = useState<{ left: number; top: number }>({
     top: 0,
     left: 0,
   });
-  const [currentAlign, setCurrentAlign] = useState<string | null>(null);
+  const [currentAlign, setCurrentAlign] = useState<null | string>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
 
   const updatePosition = useCallback(() => {
@@ -255,7 +244,7 @@ export function TableToolbar({ editor }: TableToolbarProps) {
     for (let d = $pos.depth; d >= 0; d--) {
       const n = $pos.node(d);
       if (n.type.name === "tableCell" || n.type.name === "tableHeader") {
-        setCurrentAlign((n.attrs.alignment as string | null) ?? null);
+        setCurrentAlign((n.attrs.alignment as null | string) ?? null);
         break;
       }
     }
@@ -288,7 +277,7 @@ export function TableToolbar({ editor }: TableToolbarProps) {
   }, [editor, updatePosition]);
 
   const setAlign = useCallback(
-    (align: string | null) => {
+    (align: null | string) => {
       editor.chain().focus().setCellAttribute("alignment", align).run();
     },
     [editor],
@@ -315,27 +304,27 @@ export function TableToolbar({ editor }: TableToolbarProps) {
 
   return (
     <div
-      ref={toolbarRef}
       className="table-toolbar"
-      style={{ top: position.top, left: position.left }}
       onMouseDown={(e) => e.preventDefault()}
+      ref={toolbarRef}
+      style={{ top: position.top, left: position.left }}
     >
       <button
-        className={`table-toolbar-btn${currentAlign === "left" ? " table-toolbar-btn-active" : ""}`}
+        className={`table-toolbar-btn${currentAlign === "left" ? "table-toolbar-btn-active" : ""}`}
         onClick={() => setAlign(currentAlign === "left" ? null : "left")}
         title="Align Left"
       >
         <AlignLeftIcon />
       </button>
       <button
-        className={`table-toolbar-btn${currentAlign === "center" ? " table-toolbar-btn-active" : ""}`}
+        className={`table-toolbar-btn${currentAlign === "center" ? "table-toolbar-btn-active" : ""}`}
         onClick={() => setAlign(currentAlign === "center" ? null : "center")}
         title="Align Center"
       >
         <AlignCenterIcon />
       </button>
       <button
-        className={`table-toolbar-btn${currentAlign === "right" ? " table-toolbar-btn-active" : ""}`}
+        className={`table-toolbar-btn${currentAlign === "right" ? "table-toolbar-btn-active" : ""}`}
         onClick={() => setAlign(currentAlign === "right" ? null : "right")}
         title="Align Right"
       >
@@ -359,16 +348,16 @@ export function TableToolbar({ editor }: TableToolbarProps) {
       <div className="table-toolbar-separator" />
       <button
         className="table-toolbar-btn"
-        onClick={() => editor.chain().focus().mergeCells().run()}
         disabled={!editor.can().mergeCells()}
+        onClick={() => editor.chain().focus().mergeCells().run()}
         title="Merge Cells (⌘M)"
       >
         <MergeCellsIcon />
       </button>
       <button
         className="table-toolbar-btn"
-        onClick={() => editor.chain().focus().splitCell().run()}
         disabled={!editor.can().splitCell()}
+        onClick={() => editor.chain().focus().splitCell().run()}
         title="Split Cell"
       >
         <SplitCellsIcon />
@@ -398,4 +387,18 @@ export function TableToolbar({ editor }: TableToolbarProps) {
       </button>
     </div>
   );
+}
+
+/** Walk up from $from to find the enclosing table node */
+function findTable(
+  editor: Editor,
+): null | { node: ReturnType<typeof editor.state.doc.nodeAt>; pos: number } {
+  const { $from } = editor.state.selection;
+  for (let d = $from.depth; d >= 0; d--) {
+    const node = $from.node(d);
+    if (node.type.name === "table") {
+      return { node, pos: $from.before(d) };
+    }
+  }
+  return null;
 }

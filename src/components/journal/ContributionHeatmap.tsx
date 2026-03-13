@@ -1,5 +1,6 @@
 // §56g Contribution Heatmap — GitHub-style 12-month grid
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
+
 import { useEditorStore } from "../../stores/editor-store";
 
 export interface HeatmapEntry {
@@ -9,10 +10,11 @@ export interface HeatmapEntry {
 
 interface ContributionHeatmapProps {
   entries: HeatmapEntry[];
-  year: number;
   onDateClick?: (date: string) => void;
+  year: number;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function getHeatmapLevel(wordCount: number): 0 | 1 | 2 | 3 | 4 {
   if (wordCount === 0) return 0;
   if (wordCount < 100) return 1;
@@ -21,31 +23,8 @@ export function getHeatmapLevel(wordCount: number): 0 | 1 | 2 | 3 | 4 {
   return 4;
 }
 
-// Returns an array of {date, dayOfWeek (0=Sun..6=Sat), weekIndex} for each day in the year.
-// weekIndex is 0-based, determined by the ISO week column position.
-export function getWeekColumns(
-  year: number,
-): { date: string; dayOfWeek: number; weekIndex: number }[] {
-  const result: { date: string; dayOfWeek: number; weekIndex: number }[] = [];
-  const jan1 = new Date(year, 0, 1);
-  // GitHub-style: column 0 starts on Jan 1, each column is a week (Sun-Sat).
-  // weekIndex = floor(dayOfYear / 7) based on offset from Jan 1's weekday.
-  const jan1DayOfWeek = jan1.getDay(); // 0=Sun
-  const isLeap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
-  const totalDays = isLeap ? 366 : 365;
-
-  for (let d = 0; d < totalDays; d++) {
-    const date = new Date(year, 0, 1 + d);
-    const dayOfWeek = date.getDay();
-    const weekIndex = Math.floor((d + jan1DayOfWeek) / 7);
-    const mm = String(date.getMonth() + 1).padStart(2, "0");
-    const dd = String(date.getDate()).padStart(2, "0");
-    result.push({ date: `${year}-${mm}-${dd}`, dayOfWeek, weekIndex });
-  }
-  return result;
-}
-
 // Returns month label positions: {month (short name), weekIndex of the first day of that month}.
+// eslint-disable-next-line react-refresh/only-export-components
 export function getMonthLabels(
   year: number,
 ): { month: string; weekIndex: number }[] {
@@ -77,6 +56,31 @@ export function getMonthLabels(
   return labels;
 }
 
+// Returns an array of {date, dayOfWeek (0=Sun..6=Sat), weekIndex} for each day in the year.
+// weekIndex is 0-based, determined by the ISO week column position.
+// eslint-disable-next-line react-refresh/only-export-components
+export function getWeekColumns(
+  year: number,
+): { date: string; dayOfWeek: number; weekIndex: number }[] {
+  const result: { date: string; dayOfWeek: number; weekIndex: number }[] = [];
+  const jan1 = new Date(year, 0, 1);
+  // GitHub-style: column 0 starts on Jan 1, each column is a week (Sun-Sat).
+  // weekIndex = floor(dayOfYear / 7) based on offset from Jan 1's weekday.
+  const jan1DayOfWeek = jan1.getDay(); // 0=Sun
+  const isLeap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  const totalDays = isLeap ? 366 : 365;
+
+  for (let d = 0; d < totalDays; d++) {
+    const date = new Date(year, 0, 1 + d);
+    const dayOfWeek = date.getDay();
+    const weekIndex = Math.floor((d + jan1DayOfWeek) / 7);
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    result.push({ date: `${year}-${mm}-${dd}`, dayOfWeek, weekIndex });
+  }
+  return result;
+}
+
 const DAY_LABEL_MAP: Record<number, string> = { 1: "Mon", 3: "Wed", 5: "Fri" };
 
 export function ContributionHeatmap({
@@ -85,12 +89,12 @@ export function ContributionHeatmap({
   onDateClick,
 }: ContributionHeatmapProps) {
   const [collapsed, setCollapsed] = useState(false);
-  const [tooltip, setTooltip] = useState<{
+  const [tooltip, setTooltip] = useState<null | {
     date: string;
     wordCount: number;
     x: number;
     y: number;
-  } | null>(null);
+  }>(null);
 
   const wordCountMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -124,9 +128,9 @@ export function ContributionHeatmap({
   return (
     <div className="contribution-heatmap-wrapper">
       <button
+        aria-expanded={!collapsed}
         className="contribution-heatmap-toggle"
         onClick={() => setCollapsed((c) => !c)}
-        aria-expanded={!collapsed}
       >
         <span>기여 히트맵</span>
         <span className="contribution-heatmap-toggle-arrow">
@@ -199,14 +203,9 @@ export function ContributionHeatmap({
                 const level = getHeatmapLevel(wc);
                 return (
                   <div
-                    key={date}
                     className="contribution-heatmap-cell"
                     data-level={level}
-                    style={{
-                      gridColumn: weekIndex + 1,
-                      gridRow: dayOfWeek + 1,
-                    }}
-                    title={`${date}: ${wc} words`}
+                    key={date}
                     onClick={() => handleCellClick(date)}
                     onMouseEnter={(e) => {
                       const rect = (
@@ -220,6 +219,11 @@ export function ContributionHeatmap({
                       });
                     }}
                     onMouseLeave={() => setTooltip(null)}
+                    style={{
+                      gridColumn: weekIndex + 1,
+                      gridRow: dayOfWeek + 1,
+                    }}
+                    title={`${date}: ${wc} words`}
                   />
                 );
               })}

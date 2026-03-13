@@ -1,34 +1,37 @@
 // §4.7 Floating Toolbar — BubbleMenu on text selection
-import { useState, useRef, useEffect, useCallback } from "react";
-import { BubbleMenu } from "@tiptap/react/menus";
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import type { Editor } from "@tiptap/react";
+
 import { CellSelection } from "@tiptap/pm/tables";
+import { BubbleMenu } from "@tiptap/react/menus";
+
+import {
+  AI_EXPAND,
+  AI_EXPLAIN,
+  AI_FIX_GRAMMAR,
+  AI_IMPROVE,
+  AI_SHORTEN,
+  AI_SUMMARIZE,
+  AI_TONE_CHANGE,
+  AI_TRANSLATE,
+} from "../../utils/ai-command-prompts";
 import {
   executeAICommand,
   getSelectedText,
   showPrompt,
 } from "../../utils/ai-commands";
 import { showFieldDialog } from "../../utils/field-dialog";
-import {
-  AI_TRANSLATE,
-  AI_SUMMARIZE,
-  AI_EXPAND,
-  AI_FIX_GRAMMAR,
-  AI_EXPLAIN,
-  AI_IMPROVE,
-  AI_SHORTEN,
-  AI_TONE_CHANGE,
-} from "../../utils/ai-command-prompts";
 
 interface FloatingToolbarProps {
   editor: Editor;
 }
 
 interface ToolbarButtonProps {
-  label: string;
-  title: string;
   isActive: boolean;
+  label: string;
   onClick: () => void;
+  title: string;
 }
 
 function ToolbarButton({
@@ -40,8 +43,8 @@ function ToolbarButton({
   return (
     <button
       className={`floating-toolbar-btn ${isActive ? "floating-toolbar-btn-active" : ""}`}
-      onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
+      onMouseDown={(e) => e.preventDefault()}
       title={title}
     >
       {label}
@@ -201,56 +204,55 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
 
   return (
     <BubbleMenu
-      editor={editor}
       className="floating-toolbar"
+      editor={editor}
       shouldShow={shouldShow}
     >
       <ToolbarButton
-        label="B"
-        title="Bold (Cmd+B)"
         isActive={editor.isActive("bold")}
+        label="B"
         onClick={() => editor.chain().focus().toggleBold().run()}
+        title="Bold (Cmd+B)"
       />
       <ToolbarButton
-        label="I"
-        title="Italic (Cmd+I)"
         isActive={editor.isActive("italic")}
+        label="I"
         onClick={() => editor.chain().focus().toggleItalic().run()}
+        title="Italic (Cmd+I)"
       />
       <ToolbarButton
-        label="S"
-        title="Strikethrough (Cmd+Shift+X)"
         isActive={editor.isActive("strike")}
+        label="S"
         onClick={() => editor.chain().focus().toggleStrike().run()}
+        title="Strikethrough (Cmd+Shift+X)"
       />
       <ToolbarButton
-        label="H"
-        title="Highlight (Cmd+Shift+H)"
         isActive={editor.isActive("highlight")}
+        label="H"
         onClick={() => editor.chain().focus().toggleHighlight().run()}
+        title="Highlight (Cmd+Shift+H)"
       />
       <ToolbarButton
-        label="X²"
-        title="Superscript"
         isActive={editor.isActive("superscript")}
+        label="X²"
         onClick={() => editor.chain().focus().toggleSuperscript().run()}
+        title="Superscript"
       />
       <ToolbarButton
-        label="X₂"
-        title="Subscript"
         isActive={editor.isActive("subscript")}
+        label="X₂"
         onClick={() => editor.chain().focus().toggleSubscript().run()}
+        title="Subscript"
       />
       <ToolbarButton
-        label="<>"
-        title="Inline Code (Cmd+E)"
         isActive={editor.isActive("code")}
+        label="<>"
         onClick={() => editor.chain().focus().toggleCode().run()}
+        title="Inline Code (Cmd+E)"
       />
       <ToolbarButton
-        label="Lk"
-        title="Link"
         isActive={editor.isActive("link")}
+        label="Lk"
         onClick={async () => {
           if (editor.isActive("link")) {
             editor.chain().focus().unsetLink().run();
@@ -266,38 +268,39 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
           }
           editor.chain().focus().setLink({ href: result.url }).run();
         }}
+        title="Link"
       />
       <div className="floating-toolbar-separator" />
       <ToolbarButton
-        label="H1"
-        title="Heading 1"
         isActive={editor.isActive("heading", { level: 1 })}
+        label="H1"
         onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+        title="Heading 1"
       />
       <ToolbarButton
-        label="H2"
-        title="Heading 2"
         isActive={editor.isActive("heading", { level: 2 })}
+        label="H2"
         onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+        title="Heading 2"
       />
       <div className="floating-toolbar-separator" />
       <ToolbarButton
-        label="Q"
-        title="Blockquote"
         isActive={editor.isActive("blockquote")}
+        label="Q"
         onClick={() => editor.chain().focus().toggleBlockquote().run()}
+        title="Blockquote"
       />
       <ToolbarButton
-        label="UL"
-        title="Bullet List"
         isActive={editor.isActive("bulletList")}
+        label="UL"
         onClick={() => editor.chain().focus().toggleBulletList().run()}
+        title="Bullet List"
       />
       <ToolbarButton
-        label="OL"
-        title="Ordered List"
         isActive={editor.isActive("orderedList")}
+        label="OL"
         onClick={() => editor.chain().focus().toggleOrderedList().run()}
+        title="Ordered List"
       />
       <div className="floating-toolbar-separator" />
       <div className="floating-toolbar-ai-wrapper" ref={aiRef}>
@@ -310,14 +313,14 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         </button>
         {aiOpen && (
           <div
-            ref={dropdownRef}
             className={`floating-toolbar-ai-dropdown ${dropUp ? "floating-toolbar-ai-dropdown-up" : ""}`}
+            ref={dropdownRef}
             style={dropReady ? undefined : { visibility: "hidden" }}
           >
             {AI_COMMANDS.map((cmd) => (
               <button
-                key={cmd.id}
                 className="floating-toolbar-ai-item"
+                key={cmd.id}
                 onClick={() => handleAICommand(cmd)}
               >
                 {cmd.label}

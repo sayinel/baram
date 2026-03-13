@@ -1,5 +1,6 @@
 // §72 LLM 관점 미리보기 — 스킬 파일을 LLM이 받는 형태로 프리뷰
 import { useMemo } from "react";
+
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { extractSkillPrompt } from "../../utils/skill-test-runner";
@@ -9,8 +10,8 @@ import {
 } from "../../utils/token-counter";
 
 interface SkillPreviewPanelProps {
-  visible: boolean;
   onClose: () => void;
+  visible: boolean;
 }
 
 export function SkillPreviewPanel({
@@ -57,7 +58,7 @@ export function SkillPreviewPanel({
           <div className="skill-preview-variables">
             Variables:{" "}
             {preview.variables.map((v) => (
-              <span key={v} className="skill-preview-var">{`{{${v}}}`}</span>
+              <span className="skill-preview-var" key={v}>{`{{${v}}}`}</span>
             ))}
           </div>
         )}

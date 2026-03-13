@@ -1,5 +1,6 @@
 // §30d block-replace utility tests
-import { describe, test, expect } from "vitest";
+import { describe, expect, test } from "vitest";
+
 import { replaceBlockInContent } from "../block-replace";
 
 describe("replaceBlockInContent", () => {

@@ -1,61 +1,64 @@
 // Settings Modal — 9-tab settings (General, Editor, Appearance, Markdown, AI, ActivityBar, Language, Keybindings, Plugins)
 // Obsidian-style layout: label + description per row, section headers for grouping
-import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { useUIStore } from "../../stores/ui-store";
-import { useSettingsStore } from "../../stores/settings-store";
-import { useAIStore, type AIProvider } from "../../stores/ai-store";
-import { CustomAICommandEditor } from "./CustomAICommandEditor";
-import { llmListModels } from "../../ipc/invoke";
-import { formatAIError } from "../../utils/format-error";
-import type { ModelInfo } from "../../ipc/types";
-import { ThemeEditor } from "./ThemeEditor";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import { open } from "@tauri-apps/plugin-dialog";
+
+import type { Locale } from "../../i18n";
+import type { ModelInfo } from "../../ipc/types";
+import type { ActivityBarItemConfig } from "../../stores/settings-store";
+import type { WorkspacePreset } from "../../stores/workspace-store";
+import type { ThemeDef } from "../../types/theme";
+
+import registry from "../../extensions/registry.json";
+import { AVAILABLE_LOCALES, LOCALE_LABELS } from "../../i18n";
+import { useTranslation } from "../../i18n/useTranslation";
+import { llmListModels } from "../../ipc/invoke";
 import { readFile } from "../../ipc/invoke";
+import {
+  formatKeyForDisplay,
+  normalizeKeyEvent,
+} from "../../keybindings/key-utils";
+import {
+  CATEGORY_LABELS,
+  KEYBINDING_CATEGORIES,
+} from "../../keybindings/keybinding-registry";
+import {
+  findConflict,
+  getMergedKeybindings,
+  type MergedKeybinding,
+} from "../../keybindings/use-keybindings";
+import { type AIProvider, useAIStore } from "../../stores/ai-store";
+import { useSettingsStore } from "../../stores/settings-store";
+import { useUIStore } from "../../stores/ui-store";
+import {
+  BUILTIN_PRESETS,
+  useWorkspaceStore,
+} from "../../stores/workspace-store";
+import { BUILT_IN_THEMES } from "../../types/theme";
+import { THEME_COLOR_KEYS } from "../../types/theme";
+import { formatAIError } from "../../utils/format-error";
+import { initJournalTemplatesDir } from "../../utils/journal-templates";
 import {
   MigrationDialog,
   type MigrationDirection,
 } from "../journal/MigrationDialog";
-import { initJournalTemplatesDir } from "../../utils/journal-templates";
-import { BUILT_IN_THEMES } from "../../types/theme";
-import type { ThemeDef } from "../../types/theme";
-import { THEME_COLOR_KEYS } from "../../types/theme";
-import registry from "../../extensions/registry.json";
-import {
-  useWorkspaceStore,
-  BUILTIN_PRESETS,
-} from "../../stores/workspace-store";
-import type { WorkspacePreset } from "../../stores/workspace-store";
-import type { ActivityBarItemConfig } from "../../stores/settings-store";
-import { useTranslation } from "../../i18n/useTranslation";
-import { AVAILABLE_LOCALES, LOCALE_LABELS } from "../../i18n";
-import type { Locale } from "../../i18n";
-import {
-  normalizeKeyEvent,
-  formatKeyForDisplay,
-} from "../../keybindings/key-utils";
-import {
-  KEYBINDING_CATEGORIES,
-  CATEGORY_LABELS,
-} from "../../keybindings/keybinding-registry";
-import {
-  getMergedKeybindings,
-  findConflict,
-  type MergedKeybinding,
-} from "../../keybindings/use-keybindings";
 import { PluginMarketplace } from "../plugins/PluginMarketplace";
+import { CustomAICommandEditor } from "./CustomAICommandEditor";
+import { ThemeEditor } from "./ThemeEditor";
 
 type SettingsTab =
-  | "general"
-  | "editor"
-  | "appearance"
-  | "markdown"
-  | "ai"
   | "activitybar"
-  | "language"
+  | "ai"
+  | "appearance"
+  | "editor"
+  | "general"
   | "keybindings"
+  | "language"
+  | "markdown"
   | "plugins";
 
-const TABS: { id: SettingsTab; label: string; icon: string }[] = [
+const TABS: { icon: string; id: SettingsTab; label: string }[] = [
   { id: "general", label: "General", icon: "\u2699" },
   { id: "editor", label: "Editor", icon: "\u270E" },
   { id: "appearance", label: "Appearance", icon: "\u25D1" },
@@ -68,12 +71,12 @@ const TABS: { id: SettingsTab; label: string; icon: string }[] = [
 ];
 
 interface SearchableSetting {
-  id: string;
-  label: string;
-  description: string;
   category: SettingsTab;
-  section: string;
+  description: string;
+  id: string;
   keywords?: string[];
+  label: string;
+  section: string;
 }
 
 const SETTINGS_REGISTRY: SearchableSetting[] = [
@@ -350,12 +353,12 @@ export function SettingsModal() {
           <h2 className="settings-title">{t("settings.title")}</h2>
           <div className="settings-search-wrapper">
             <input
-              type="text"
               className="settings-search"
-              placeholder={t("settings.search.placeholder")}
-              value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={t("settings.search.placeholder")}
               spellCheck={false}
+              type="text"
+              value={searchQuery}
             />
             {searchQuery && (
               <button
@@ -378,8 +381,8 @@ export function SettingsModal() {
           <nav className="settings-nav">
             {TABS.map((tab) => (
               <button
-                key={tab.id}
                 className={`settings-nav-item ${activeTab === tab.id ? "settings-nav-active" : ""}`}
+                key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
               >
                 <span className="settings-nav-icon">{tab.icon}</span>
@@ -391,11 +394,11 @@ export function SettingsModal() {
             {searchQuery.trim() ? (
               <SettingsSearchResults
                 grouped={groupedResults}
-                query={searchQuery}
                 onNavigate={(tab) => {
                   setActiveTab(tab);
                   setSearchQuery("");
                 }}
+                query={searchQuery}
               />
             ) : (
               <>
@@ -422,626 +425,6 @@ export function SettingsModal() {
 }
 
 // ─── General Tab ────────────────────────────────────────
-
-function GeneralTab() {
-  const { t } = useTranslation();
-  const [migrationOpen, setMigrationOpen] = useState(false);
-  const [migrationDirection, setMigrationDirection] =
-    useState<MigrationDirection>("toHierarchy");
-  const [templatesInitMsg, setTemplatesInitMsg] = useState<string | null>(null);
-  const {
-    onLaunch,
-    setOnLaunch,
-    autoSave,
-    setAutoSave,
-    autoSaveDelay,
-    setAutoSaveDelay,
-    spellCheck,
-    setSpellCheck,
-    wikilinkFormat,
-    setWikilinkFormat,
-    autoUpdateLinks,
-    setAutoUpdateLinks,
-    snapshotInterval,
-    setSnapshotInterval,
-    snapshotMaxCount,
-    setSnapshotMaxCount,
-    journalEnabled,
-    setJournalEnabled,
-    journalDirectory,
-    setJournalDirectory,
-    journalFilenameFormat,
-    setJournalFilenameFormat,
-    journalTemplatePath,
-    setJournalTemplatePath,
-    journalStartupBehavior,
-    setJournalStartupBehavior,
-    journalUseHierarchy,
-    setJournalUseHierarchy,
-    journalWeeklyTemplate,
-    setJournalWeeklyTemplate,
-    journalMonthlyTemplate,
-    setJournalMonthlyTemplate,
-    journalYearlyTemplate,
-    setJournalYearlyTemplate,
-  } = useSettingsStore();
-
-  return (
-    <div className="settings-section">
-      <SettingsSectionHeader title={t("settings.general.startup")} />
-
-      <SettingsRow
-        label={t("settings.general.onLaunch")}
-        description={t("settings.general.onLaunch.desc")}
-      >
-        <select
-          className="settings-select"
-          value={onLaunch}
-          onChange={(e) =>
-            setOnLaunch(
-              e.target.value as
-                | "newFile"
-                | "restoreLastFolder"
-                | "restoreLastFile",
-            )
-          }
-        >
-          <option value="restoreLastFolder">
-            {t("settings.general.onLaunch.restoreLastFolder")}
-          </option>
-          <option value="restoreLastFile">
-            {t("settings.general.onLaunch.restoreLastFile")}
-          </option>
-          <option value="newFile">
-            {t("settings.general.onLaunch.newFile")}
-          </option>
-        </select>
-      </SettingsRow>
-
-      <SettingsSectionHeader title={t("settings.general.saving")} />
-
-      <SettingsRow
-        label={t("settings.general.autoSave")}
-        description={t("settings.general.autoSave.desc")}
-      >
-        <ToggleSwitch checked={autoSave} onChange={setAutoSave} />
-      </SettingsRow>
-
-      {autoSave && (
-        <SettingsRow
-          label={t("settings.general.saveDelay")}
-          description={t("settings.general.saveDelay.desc").replace(
-            "{value}",
-            (autoSaveDelay / 1000).toFixed(1),
-          )}
-        >
-          <input
-            type="range"
-            className="settings-range"
-            min={500}
-            max={10000}
-            step={500}
-            value={autoSaveDelay}
-            onChange={(e) => setAutoSaveDelay(Number(e.target.value))}
-          />
-        </SettingsRow>
-      )}
-
-      <SettingsSectionHeader title={t("settings.general.system")} />
-
-      <SettingsRow
-        label={t("settings.general.spellCheck")}
-        description={t("settings.general.spellCheck.desc")}
-      >
-        <ToggleSwitch checked={spellCheck} onChange={setSpellCheck} />
-      </SettingsRow>
-
-      <SettingsSectionHeader title={t("settings.general.links")} />
-
-      <SettingsRow
-        label={t("settings.general.linkFormat")}
-        description={t("settings.general.linkFormat.desc")}
-      >
-        <select
-          className="settings-select"
-          value={wikilinkFormat}
-          onChange={(e) =>
-            setWikilinkFormat(e.target.value as "wikilink" | "markdown")
-          }
-        >
-          <option value="wikilink">[[Wikilink]]</option>
-          <option value="markdown">[Markdown](link)</option>
-        </select>
-      </SettingsRow>
-
-      <SettingsRow
-        label={t("settings.general.autoUpdateLinks")}
-        description={t("settings.general.autoUpdateLinks.desc")}
-      >
-        <ToggleSwitch checked={autoUpdateLinks} onChange={setAutoUpdateLinks} />
-      </SettingsRow>
-
-      <SettingsSectionHeader title={t("settings.general.snapshots")} />
-
-      <SettingsRow
-        label={t("settings.general.snapshotInterval")}
-        description={t("settings.general.snapshotInterval.desc").replace(
-          "{value}",
-          String(snapshotInterval),
-        )}
-      >
-        <input
-          type="range"
-          className="settings-range"
-          min={0}
-          max={120}
-          step={5}
-          value={snapshotInterval}
-          onChange={(e) => setSnapshotInterval(Number(e.target.value))}
-        />
-      </SettingsRow>
-
-      <SettingsRow
-        label={t("settings.general.snapshotMaxCount")}
-        description={t("settings.general.snapshotMaxCount.desc").replace(
-          "{value}",
-          String(snapshotMaxCount),
-        )}
-      >
-        <input
-          type="range"
-          className="settings-range"
-          min={5}
-          max={200}
-          step={5}
-          value={snapshotMaxCount}
-          onChange={(e) => setSnapshotMaxCount(Number(e.target.value))}
-        />
-      </SettingsRow>
-
-      <SettingsSectionHeader title={t("settings.general.journal")} />
-
-      <SettingsRow
-        label={t("settings.general.journalEnabled")}
-        description={t("settings.general.journalEnabled.desc")}
-      >
-        <ToggleSwitch checked={journalEnabled} onChange={setJournalEnabled} />
-      </SettingsRow>
-
-      {journalEnabled && (
-        <>
-          <SettingsRow
-            label={t("settings.general.journalDirectory")}
-            description={t("settings.general.journalDirectory.desc")}
-          >
-            <div className="settings-key-row">
-              <input
-                type="text"
-                className="settings-input settings-input-key"
-                value={journalDirectory}
-                readOnly
-                placeholder={t("settings.general.journalDirectory.placeholder")}
-              />
-              <button
-                className="settings-key-toggle"
-                onClick={async () => {
-                  const selected = await open({ directory: true });
-                  if (selected) setJournalDirectory(selected);
-                }}
-              >
-                {t("common.browse")}
-              </button>
-            </div>
-          </SettingsRow>
-
-          <SettingsRow
-            label={t("settings.general.journalFilenameFormat")}
-            description={t("settings.general.journalFilenameFormat.desc")}
-          >
-            <select
-              className="settings-select"
-              value={journalFilenameFormat}
-              onChange={(e) => setJournalFilenameFormat(e.target.value)}
-            >
-              <option value="YYYY-MM-DD.md">YYYY-MM-DD.md</option>
-              <option value="YYYYMMDD.md">YYYYMMDD.md</option>
-            </select>
-          </SettingsRow>
-
-          <SettingsRow
-            label={t("settings.general.journalTemplate")}
-            description={t("settings.general.journalTemplate.desc")}
-          >
-            <div className="settings-key-row">
-              <input
-                type="text"
-                className="settings-input settings-input-key"
-                value={journalTemplatePath}
-                readOnly
-                placeholder={t("settings.general.journalTemplate.placeholder")}
-              />
-              <button
-                className="settings-key-toggle"
-                onClick={async () => {
-                  const selected = await open({
-                    filters: [{ name: "Markdown", extensions: ["md"] }],
-                  });
-                  if (selected) setJournalTemplatePath(selected);
-                }}
-              >
-                {t("common.browse")}
-              </button>
-              {journalTemplatePath && (
-                <button
-                  className="settings-key-toggle"
-                  onClick={() => setJournalTemplatePath("")}
-                >
-                  {t("common.clear")}
-                </button>
-              )}
-            </div>
-          </SettingsRow>
-
-          <SettingsRow
-            label={t("settings.general.journalStartup")}
-            description={t("settings.general.journalStartup.desc")}
-          >
-            <select
-              className="settings-select"
-              value={journalStartupBehavior}
-              onChange={(e) =>
-                setJournalStartupBehavior(
-                  e.target.value as "openJournal" | "nothing",
-                )
-              }
-            >
-              <option value="openJournal">
-                {t("settings.general.journalStartup.openJournal")}
-              </option>
-              <option value="nothing">
-                {t("settings.general.journalStartup.nothing")}
-              </option>
-            </select>
-          </SettingsRow>
-
-          <SettingsRow
-            label={t("settings.general.journalHierarchy")}
-            description={t("settings.general.journalHierarchy.desc")}
-          >
-            <ToggleSwitch
-              checked={journalUseHierarchy}
-              onChange={setJournalUseHierarchy}
-            />
-          </SettingsRow>
-
-          {journalDirectory && (
-            <SettingsRow
-              label={
-                journalUseHierarchy
-                  ? t("settings.general.journalMigrate")
-                  : t("settings.general.journalFlatten")
-              }
-              description={
-                journalUseHierarchy
-                  ? t("settings.general.journalMigrate.desc")
-                  : t("settings.general.journalFlatten.desc")
-              }
-            >
-              <button
-                className="settings-key-toggle"
-                onClick={() => {
-                  setMigrationDirection(
-                    journalUseHierarchy ? "toHierarchy" : "toFlat",
-                  );
-                  setMigrationOpen(true);
-                }}
-              >
-                {journalUseHierarchy
-                  ? t("settings.general.journalMigrate.button")
-                  : t("settings.general.journalFlatten.button")}
-              </button>
-            </SettingsRow>
-          )}
-
-          <SettingsSectionHeader
-            title={t("settings.general.periodicTemplates")}
-          />
-
-          <SettingsRow
-            label={t("settings.general.weeklyTemplate")}
-            description={t("settings.general.weeklyTemplate.desc")}
-          >
-            <div className="settings-key-row">
-              <input
-                type="text"
-                className="settings-input settings-input-key"
-                value={journalWeeklyTemplate}
-                readOnly
-                placeholder={t("settings.general.journalTemplate.placeholder")}
-              />
-              <button
-                className="settings-key-toggle"
-                onClick={async () => {
-                  const selected = await open({
-                    filters: [{ name: "Markdown", extensions: ["md"] }],
-                  });
-                  if (selected) setJournalWeeklyTemplate(selected);
-                }}
-              >
-                {t("common.browse")}
-              </button>
-              {journalWeeklyTemplate && (
-                <button
-                  className="settings-key-toggle"
-                  onClick={() => setJournalWeeklyTemplate("")}
-                >
-                  {t("common.clear")}
-                </button>
-              )}
-            </div>
-          </SettingsRow>
-
-          <SettingsRow
-            label={t("settings.general.monthlyTemplate")}
-            description={t("settings.general.monthlyTemplate.desc")}
-          >
-            <div className="settings-key-row">
-              <input
-                type="text"
-                className="settings-input settings-input-key"
-                value={journalMonthlyTemplate}
-                readOnly
-                placeholder={t("settings.general.journalTemplate.placeholder")}
-              />
-              <button
-                className="settings-key-toggle"
-                onClick={async () => {
-                  const selected = await open({
-                    filters: [{ name: "Markdown", extensions: ["md"] }],
-                  });
-                  if (selected) setJournalMonthlyTemplate(selected);
-                }}
-              >
-                {t("common.browse")}
-              </button>
-              {journalMonthlyTemplate && (
-                <button
-                  className="settings-key-toggle"
-                  onClick={() => setJournalMonthlyTemplate("")}
-                >
-                  {t("common.clear")}
-                </button>
-              )}
-            </div>
-          </SettingsRow>
-
-          <SettingsRow
-            label={t("settings.general.yearlyTemplate")}
-            description={t("settings.general.yearlyTemplate.desc")}
-          >
-            <div className="settings-key-row">
-              <input
-                type="text"
-                className="settings-input settings-input-key"
-                value={journalYearlyTemplate}
-                readOnly
-                placeholder={t("settings.general.journalTemplate.placeholder")}
-              />
-              <button
-                className="settings-key-toggle"
-                onClick={async () => {
-                  const selected = await open({
-                    filters: [{ name: "Markdown", extensions: ["md"] }],
-                  });
-                  if (selected) setJournalYearlyTemplate(selected);
-                }}
-              >
-                {t("common.browse")}
-              </button>
-              {journalYearlyTemplate && (
-                <button
-                  className="settings-key-toggle"
-                  onClick={() => setJournalYearlyTemplate("")}
-                >
-                  {t("common.clear")}
-                </button>
-              )}
-            </div>
-          </SettingsRow>
-
-          {journalDirectory && (
-            <SettingsRow
-              label={t("settings.general.createTemplateFiles")}
-              description={t("settings.general.createTemplateFiles.desc")}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "flex-end",
-                  gap: 4,
-                }}
-              >
-                <button
-                  className="settings-key-toggle"
-                  onClick={async () => {
-                    try {
-                      await initJournalTemplatesDir(journalDirectory);
-                      setTemplatesInitMsg(
-                        t("settings.general.createTemplateFiles.success"),
-                      );
-                    } catch {
-                      setTemplatesInitMsg(
-                        t("settings.general.createTemplateFiles.error"),
-                      );
-                    }
-                    setTimeout(() => setTemplatesInitMsg(null), 3000);
-                  }}
-                >
-                  {t("settings.general.createTemplateFiles.button")}
-                </button>
-                {templatesInitMsg && (
-                  <span className="settings-row-description">
-                    {templatesInitMsg}
-                  </span>
-                )}
-              </div>
-            </SettingsRow>
-          )}
-
-          <SettingsSectionHeader title={t("settings.general.journalAI")} />
-
-          <SettingsRow
-            label={t("settings.general.journalAIAutoSuggest")}
-            description={t("settings.general.journalAIAutoSuggest.desc")}
-          >
-            <ToggleSwitch
-              checked={useSettingsStore.getState().journalAIAutoSuggest}
-              onChange={(v) =>
-                useSettingsStore.getState().setJournalAIAutoSuggest(v)
-              }
-            />
-          </SettingsRow>
-        </>
-      )}
-
-      <MigrationDialog
-        open={migrationOpen}
-        onClose={() => setMigrationOpen(false)}
-        journalDir={journalDirectory}
-        direction={migrationDirection}
-      />
-    </div>
-  );
-}
-
-// ─── Editor Tab ─────────────────────────────────────────
-
-function EditorTab() {
-  const { t } = useTranslation();
-  const {
-    fontFamily,
-    setFontFamily,
-    fontSize,
-    setFontSize,
-    lineHeight,
-    setLineHeight,
-    tabSize,
-    setTabSize,
-    lineNumbers,
-    setLineNumbers,
-    autoPairBrackets,
-    setAutoPairBrackets,
-    editorMaxWidth,
-    setEditorMaxWidth,
-  } = useSettingsStore();
-
-  return (
-    <div className="settings-section">
-      <SettingsSectionHeader title={t("settings.editor.font")} />
-
-      <SettingsRow
-        label={t("settings.editor.fontFamily")}
-        description={t("settings.editor.fontFamily.desc")}
-      >
-        <FontFamilyPicker value={fontFamily} onChange={setFontFamily} />
-      </SettingsRow>
-
-      <SettingsRow
-        label={t("settings.editor.fontSize")}
-        description={t("settings.editor.fontSize.desc").replace(
-          "{value}",
-          String(fontSize),
-        )}
-      >
-        <input
-          type="range"
-          className="settings-range"
-          min={8}
-          max={32}
-          step={1}
-          value={fontSize}
-          onChange={(e) => setFontSize(Number(e.target.value))}
-        />
-      </SettingsRow>
-
-      <SettingsRow
-        label={t("settings.editor.lineHeight")}
-        description={t("settings.editor.lineHeight.desc").replace(
-          "{value}",
-          lineHeight.toFixed(2),
-        )}
-      >
-        <input
-          type="range"
-          className="settings-range"
-          min={1.0}
-          max={3.0}
-          step={0.05}
-          value={lineHeight}
-          onChange={(e) => setLineHeight(Number(e.target.value))}
-        />
-      </SettingsRow>
-
-      <SettingsSectionHeader title={t("settings.editor.behavior")} />
-
-      <SettingsRow
-        label={t("settings.editor.tabSize")}
-        description={t("settings.editor.tabSize.desc")}
-      >
-        <select
-          className="settings-select"
-          value={tabSize}
-          onChange={(e) => setTabSize(Number(e.target.value))}
-        >
-          <option value={2}>{t("settings.editor.tabSize.2spaces")}</option>
-          <option value={4}>{t("settings.editor.tabSize.4spaces")}</option>
-        </select>
-      </SettingsRow>
-
-      <SettingsRow
-        label={t("settings.editor.autoPairBrackets")}
-        description={t("settings.editor.autoPairBrackets.desc")}
-      >
-        <ToggleSwitch
-          checked={autoPairBrackets}
-          onChange={setAutoPairBrackets}
-        />
-      </SettingsRow>
-
-      <SettingsSectionHeader title={t("settings.editor.display")} />
-
-      <SettingsRow
-        label={t("settings.editor.lineNumbers")}
-        description={t("settings.editor.lineNumbers.desc")}
-      >
-        <ToggleSwitch checked={lineNumbers} onChange={setLineNumbers} />
-      </SettingsRow>
-
-      <SettingsRow
-        label={t("settings.editor.maxWidth")}
-        description={t("settings.editor.maxWidth.desc").replace(
-          "{value}",
-          editorMaxWidth === 0
-            ? t("settings.editor.maxWidth.noLimit")
-            : editorMaxWidth + "px",
-        )}
-      >
-        <input
-          type="range"
-          className="settings-range"
-          min={0}
-          max={2048}
-          step={50}
-          value={editorMaxWidth}
-          onChange={(e) => setEditorMaxWidth(Number(e.target.value))}
-        />
-      </SettingsRow>
-    </div>
-  );
-}
-
-// ─── Appearance Tab ─────────────────────────────────────
 
 function AppearanceTab() {
   const { t } = useTranslation();
@@ -1183,8 +566,8 @@ function AppearanceTab() {
         {/* All themes */}
         {allThemes.map((theme) => (
           <button
-            key={theme.id}
             className={`theme-card ${activeThemeId === theme.id ? "theme-card-active" : ""}`}
+            key={theme.id}
             onClick={() => setActiveTheme(theme.id)}
             style={
               activeThemeId === theme.id
@@ -1235,7 +618,769 @@ function AppearanceTab() {
   );
 }
 
+// ─── Editor Tab ─────────────────────────────────────────
+
+function EditorTab() {
+  const { t } = useTranslation();
+  const {
+    fontFamily,
+    setFontFamily,
+    fontSize,
+    setFontSize,
+    lineHeight,
+    setLineHeight,
+    tabSize,
+    setTabSize,
+    lineNumbers,
+    setLineNumbers,
+    autoPairBrackets,
+    setAutoPairBrackets,
+    editorMaxWidth,
+    setEditorMaxWidth,
+  } = useSettingsStore();
+
+  return (
+    <div className="settings-section">
+      <SettingsSectionHeader title={t("settings.editor.font")} />
+
+      <SettingsRow
+        description={t("settings.editor.fontFamily.desc")}
+        label={t("settings.editor.fontFamily")}
+      >
+        <FontFamilyPicker onChange={setFontFamily} value={fontFamily} />
+      </SettingsRow>
+
+      <SettingsRow
+        description={t("settings.editor.fontSize.desc").replace(
+          "{value}",
+          String(fontSize),
+        )}
+        label={t("settings.editor.fontSize")}
+      >
+        <input
+          className="settings-range"
+          max={32}
+          min={8}
+          onChange={(e) => setFontSize(Number(e.target.value))}
+          step={1}
+          type="range"
+          value={fontSize}
+        />
+      </SettingsRow>
+
+      <SettingsRow
+        description={t("settings.editor.lineHeight.desc").replace(
+          "{value}",
+          lineHeight.toFixed(2),
+        )}
+        label={t("settings.editor.lineHeight")}
+      >
+        <input
+          className="settings-range"
+          max={3.0}
+          min={1.0}
+          onChange={(e) => setLineHeight(Number(e.target.value))}
+          step={0.05}
+          type="range"
+          value={lineHeight}
+        />
+      </SettingsRow>
+
+      <SettingsSectionHeader title={t("settings.editor.behavior")} />
+
+      <SettingsRow
+        description={t("settings.editor.tabSize.desc")}
+        label={t("settings.editor.tabSize")}
+      >
+        <select
+          className="settings-select"
+          onChange={(e) => setTabSize(Number(e.target.value))}
+          value={tabSize}
+        >
+          <option value={2}>{t("settings.editor.tabSize.2spaces")}</option>
+          <option value={4}>{t("settings.editor.tabSize.4spaces")}</option>
+        </select>
+      </SettingsRow>
+
+      <SettingsRow
+        description={t("settings.editor.autoPairBrackets.desc")}
+        label={t("settings.editor.autoPairBrackets")}
+      >
+        <ToggleSwitch
+          checked={autoPairBrackets}
+          onChange={setAutoPairBrackets}
+        />
+      </SettingsRow>
+
+      <SettingsSectionHeader title={t("settings.editor.display")} />
+
+      <SettingsRow
+        description={t("settings.editor.lineNumbers.desc")}
+        label={t("settings.editor.lineNumbers")}
+      >
+        <ToggleSwitch checked={lineNumbers} onChange={setLineNumbers} />
+      </SettingsRow>
+
+      <SettingsRow
+        description={t("settings.editor.maxWidth.desc").replace(
+          "{value}",
+          editorMaxWidth === 0
+            ? t("settings.editor.maxWidth.noLimit")
+            : editorMaxWidth + "px",
+        )}
+        label={t("settings.editor.maxWidth")}
+      >
+        <input
+          className="settings-range"
+          max={2048}
+          min={0}
+          onChange={(e) => setEditorMaxWidth(Number(e.target.value))}
+          step={50}
+          type="range"
+          value={editorMaxWidth}
+        />
+      </SettingsRow>
+    </div>
+  );
+}
+
+// ─── Appearance Tab ─────────────────────────────────────
+
+function GeneralTab() {
+  const { t } = useTranslation();
+  const [migrationOpen, setMigrationOpen] = useState(false);
+  const [migrationDirection, setMigrationDirection] =
+    useState<MigrationDirection>("toHierarchy");
+  const [templatesInitMsg, setTemplatesInitMsg] = useState<null | string>(null);
+  const {
+    onLaunch,
+    setOnLaunch,
+    autoSave,
+    setAutoSave,
+    autoSaveDelay,
+    setAutoSaveDelay,
+    spellCheck,
+    setSpellCheck,
+    wikilinkFormat,
+    setWikilinkFormat,
+    autoUpdateLinks,
+    setAutoUpdateLinks,
+    snapshotInterval,
+    setSnapshotInterval,
+    snapshotMaxCount,
+    setSnapshotMaxCount,
+    journalEnabled,
+    setJournalEnabled,
+    journalDirectory,
+    setJournalDirectory,
+    journalFilenameFormat,
+    setJournalFilenameFormat,
+    journalTemplatePath,
+    setJournalTemplatePath,
+    journalStartupBehavior,
+    setJournalStartupBehavior,
+    journalUseHierarchy,
+    setJournalUseHierarchy,
+    journalWeeklyTemplate,
+    setJournalWeeklyTemplate,
+    journalMonthlyTemplate,
+    setJournalMonthlyTemplate,
+    journalYearlyTemplate,
+    setJournalYearlyTemplate,
+  } = useSettingsStore();
+
+  return (
+    <div className="settings-section">
+      <SettingsSectionHeader title={t("settings.general.startup")} />
+
+      <SettingsRow
+        description={t("settings.general.onLaunch.desc")}
+        label={t("settings.general.onLaunch")}
+      >
+        <select
+          className="settings-select"
+          onChange={(e) =>
+            setOnLaunch(
+              e.target.value as
+                | "newFile"
+                | "restoreLastFile"
+                | "restoreLastFolder",
+            )
+          }
+          value={onLaunch}
+        >
+          <option value="restoreLastFolder">
+            {t("settings.general.onLaunch.restoreLastFolder")}
+          </option>
+          <option value="restoreLastFile">
+            {t("settings.general.onLaunch.restoreLastFile")}
+          </option>
+          <option value="newFile">
+            {t("settings.general.onLaunch.newFile")}
+          </option>
+        </select>
+      </SettingsRow>
+
+      <SettingsSectionHeader title={t("settings.general.saving")} />
+
+      <SettingsRow
+        description={t("settings.general.autoSave.desc")}
+        label={t("settings.general.autoSave")}
+      >
+        <ToggleSwitch checked={autoSave} onChange={setAutoSave} />
+      </SettingsRow>
+
+      {autoSave && (
+        <SettingsRow
+          description={t("settings.general.saveDelay.desc").replace(
+            "{value}",
+            (autoSaveDelay / 1000).toFixed(1),
+          )}
+          label={t("settings.general.saveDelay")}
+        >
+          <input
+            className="settings-range"
+            max={10000}
+            min={500}
+            onChange={(e) => setAutoSaveDelay(Number(e.target.value))}
+            step={500}
+            type="range"
+            value={autoSaveDelay}
+          />
+        </SettingsRow>
+      )}
+
+      <SettingsSectionHeader title={t("settings.general.system")} />
+
+      <SettingsRow
+        description={t("settings.general.spellCheck.desc")}
+        label={t("settings.general.spellCheck")}
+      >
+        <ToggleSwitch checked={spellCheck} onChange={setSpellCheck} />
+      </SettingsRow>
+
+      <SettingsSectionHeader title={t("settings.general.links")} />
+
+      <SettingsRow
+        description={t("settings.general.linkFormat.desc")}
+        label={t("settings.general.linkFormat")}
+      >
+        <select
+          className="settings-select"
+          onChange={(e) =>
+            setWikilinkFormat(e.target.value as "markdown" | "wikilink")
+          }
+          value={wikilinkFormat}
+        >
+          <option value="wikilink">[[Wikilink]]</option>
+          <option value="markdown">[Markdown](link)</option>
+        </select>
+      </SettingsRow>
+
+      <SettingsRow
+        description={t("settings.general.autoUpdateLinks.desc")}
+        label={t("settings.general.autoUpdateLinks")}
+      >
+        <ToggleSwitch checked={autoUpdateLinks} onChange={setAutoUpdateLinks} />
+      </SettingsRow>
+
+      <SettingsSectionHeader title={t("settings.general.snapshots")} />
+
+      <SettingsRow
+        description={t("settings.general.snapshotInterval.desc").replace(
+          "{value}",
+          String(snapshotInterval),
+        )}
+        label={t("settings.general.snapshotInterval")}
+      >
+        <input
+          className="settings-range"
+          max={120}
+          min={0}
+          onChange={(e) => setSnapshotInterval(Number(e.target.value))}
+          step={5}
+          type="range"
+          value={snapshotInterval}
+        />
+      </SettingsRow>
+
+      <SettingsRow
+        description={t("settings.general.snapshotMaxCount.desc").replace(
+          "{value}",
+          String(snapshotMaxCount),
+        )}
+        label={t("settings.general.snapshotMaxCount")}
+      >
+        <input
+          className="settings-range"
+          max={200}
+          min={5}
+          onChange={(e) => setSnapshotMaxCount(Number(e.target.value))}
+          step={5}
+          type="range"
+          value={snapshotMaxCount}
+        />
+      </SettingsRow>
+
+      <SettingsSectionHeader title={t("settings.general.journal")} />
+
+      <SettingsRow
+        description={t("settings.general.journalEnabled.desc")}
+        label={t("settings.general.journalEnabled")}
+      >
+        <ToggleSwitch checked={journalEnabled} onChange={setJournalEnabled} />
+      </SettingsRow>
+
+      {journalEnabled && (
+        <>
+          <SettingsRow
+            description={t("settings.general.journalDirectory.desc")}
+            label={t("settings.general.journalDirectory")}
+          >
+            <div className="settings-key-row">
+              <input
+                className="settings-input settings-input-key"
+                placeholder={t("settings.general.journalDirectory.placeholder")}
+                readOnly
+                type="text"
+                value={journalDirectory}
+              />
+              <button
+                className="settings-key-toggle"
+                onClick={async () => {
+                  const selected = await open({ directory: true });
+                  if (selected) setJournalDirectory(selected);
+                }}
+              >
+                {t("common.browse")}
+              </button>
+            </div>
+          </SettingsRow>
+
+          <SettingsRow
+            description={t("settings.general.journalFilenameFormat.desc")}
+            label={t("settings.general.journalFilenameFormat")}
+          >
+            <select
+              className="settings-select"
+              onChange={(e) => setJournalFilenameFormat(e.target.value)}
+              value={journalFilenameFormat}
+            >
+              <option value="YYYY-MM-DD.md">YYYY-MM-DD.md</option>
+              <option value="YYYYMMDD.md">YYYYMMDD.md</option>
+            </select>
+          </SettingsRow>
+
+          <SettingsRow
+            description={t("settings.general.journalTemplate.desc")}
+            label={t("settings.general.journalTemplate")}
+          >
+            <div className="settings-key-row">
+              <input
+                className="settings-input settings-input-key"
+                placeholder={t("settings.general.journalTemplate.placeholder")}
+                readOnly
+                type="text"
+                value={journalTemplatePath}
+              />
+              <button
+                className="settings-key-toggle"
+                onClick={async () => {
+                  const selected = await open({
+                    filters: [{ name: "Markdown", extensions: ["md"] }],
+                  });
+                  if (selected) setJournalTemplatePath(selected);
+                }}
+              >
+                {t("common.browse")}
+              </button>
+              {journalTemplatePath && (
+                <button
+                  className="settings-key-toggle"
+                  onClick={() => setJournalTemplatePath("")}
+                >
+                  {t("common.clear")}
+                </button>
+              )}
+            </div>
+          </SettingsRow>
+
+          <SettingsRow
+            description={t("settings.general.journalStartup.desc")}
+            label={t("settings.general.journalStartup")}
+          >
+            <select
+              className="settings-select"
+              onChange={(e) =>
+                setJournalStartupBehavior(
+                  e.target.value as "nothing" | "openJournal",
+                )
+              }
+              value={journalStartupBehavior}
+            >
+              <option value="openJournal">
+                {t("settings.general.journalStartup.openJournal")}
+              </option>
+              <option value="nothing">
+                {t("settings.general.journalStartup.nothing")}
+              </option>
+            </select>
+          </SettingsRow>
+
+          <SettingsRow
+            description={t("settings.general.journalHierarchy.desc")}
+            label={t("settings.general.journalHierarchy")}
+          >
+            <ToggleSwitch
+              checked={journalUseHierarchy}
+              onChange={setJournalUseHierarchy}
+            />
+          </SettingsRow>
+
+          {journalDirectory && (
+            <SettingsRow
+              description={
+                journalUseHierarchy
+                  ? t("settings.general.journalMigrate.desc")
+                  : t("settings.general.journalFlatten.desc")
+              }
+              label={
+                journalUseHierarchy
+                  ? t("settings.general.journalMigrate")
+                  : t("settings.general.journalFlatten")
+              }
+            >
+              <button
+                className="settings-key-toggle"
+                onClick={() => {
+                  setMigrationDirection(
+                    journalUseHierarchy ? "toHierarchy" : "toFlat",
+                  );
+                  setMigrationOpen(true);
+                }}
+              >
+                {journalUseHierarchy
+                  ? t("settings.general.journalMigrate.button")
+                  : t("settings.general.journalFlatten.button")}
+              </button>
+            </SettingsRow>
+          )}
+
+          <SettingsSectionHeader
+            title={t("settings.general.periodicTemplates")}
+          />
+
+          <SettingsRow
+            description={t("settings.general.weeklyTemplate.desc")}
+            label={t("settings.general.weeklyTemplate")}
+          >
+            <div className="settings-key-row">
+              <input
+                className="settings-input settings-input-key"
+                placeholder={t("settings.general.journalTemplate.placeholder")}
+                readOnly
+                type="text"
+                value={journalWeeklyTemplate}
+              />
+              <button
+                className="settings-key-toggle"
+                onClick={async () => {
+                  const selected = await open({
+                    filters: [{ name: "Markdown", extensions: ["md"] }],
+                  });
+                  if (selected) setJournalWeeklyTemplate(selected);
+                }}
+              >
+                {t("common.browse")}
+              </button>
+              {journalWeeklyTemplate && (
+                <button
+                  className="settings-key-toggle"
+                  onClick={() => setJournalWeeklyTemplate("")}
+                >
+                  {t("common.clear")}
+                </button>
+              )}
+            </div>
+          </SettingsRow>
+
+          <SettingsRow
+            description={t("settings.general.monthlyTemplate.desc")}
+            label={t("settings.general.monthlyTemplate")}
+          >
+            <div className="settings-key-row">
+              <input
+                className="settings-input settings-input-key"
+                placeholder={t("settings.general.journalTemplate.placeholder")}
+                readOnly
+                type="text"
+                value={journalMonthlyTemplate}
+              />
+              <button
+                className="settings-key-toggle"
+                onClick={async () => {
+                  const selected = await open({
+                    filters: [{ name: "Markdown", extensions: ["md"] }],
+                  });
+                  if (selected) setJournalMonthlyTemplate(selected);
+                }}
+              >
+                {t("common.browse")}
+              </button>
+              {journalMonthlyTemplate && (
+                <button
+                  className="settings-key-toggle"
+                  onClick={() => setJournalMonthlyTemplate("")}
+                >
+                  {t("common.clear")}
+                </button>
+              )}
+            </div>
+          </SettingsRow>
+
+          <SettingsRow
+            description={t("settings.general.yearlyTemplate.desc")}
+            label={t("settings.general.yearlyTemplate")}
+          >
+            <div className="settings-key-row">
+              <input
+                className="settings-input settings-input-key"
+                placeholder={t("settings.general.journalTemplate.placeholder")}
+                readOnly
+                type="text"
+                value={journalYearlyTemplate}
+              />
+              <button
+                className="settings-key-toggle"
+                onClick={async () => {
+                  const selected = await open({
+                    filters: [{ name: "Markdown", extensions: ["md"] }],
+                  });
+                  if (selected) setJournalYearlyTemplate(selected);
+                }}
+              >
+                {t("common.browse")}
+              </button>
+              {journalYearlyTemplate && (
+                <button
+                  className="settings-key-toggle"
+                  onClick={() => setJournalYearlyTemplate("")}
+                >
+                  {t("common.clear")}
+                </button>
+              )}
+            </div>
+          </SettingsRow>
+
+          {journalDirectory && (
+            <SettingsRow
+              description={t("settings.general.createTemplateFiles.desc")}
+              label={t("settings.general.createTemplateFiles")}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "flex-end",
+                  gap: 4,
+                }}
+              >
+                <button
+                  className="settings-key-toggle"
+                  onClick={async () => {
+                    try {
+                      await initJournalTemplatesDir(journalDirectory);
+                      setTemplatesInitMsg(
+                        t("settings.general.createTemplateFiles.success"),
+                      );
+                    } catch {
+                      setTemplatesInitMsg(
+                        t("settings.general.createTemplateFiles.error"),
+                      );
+                    }
+                    setTimeout(() => setTemplatesInitMsg(null), 3000);
+                  }}
+                >
+                  {t("settings.general.createTemplateFiles.button")}
+                </button>
+                {templatesInitMsg && (
+                  <span className="settings-row-description">
+                    {templatesInitMsg}
+                  </span>
+                )}
+              </div>
+            </SettingsRow>
+          )}
+
+          <SettingsSectionHeader title={t("settings.general.journalAI")} />
+
+          <SettingsRow
+            description={t("settings.general.journalAIAutoSuggest.desc")}
+            label={t("settings.general.journalAIAutoSuggest")}
+          >
+            <ToggleSwitch
+              checked={useSettingsStore.getState().journalAIAutoSuggest}
+              onChange={(v) =>
+                useSettingsStore.getState().setJournalAIAutoSuggest(v)
+              }
+            />
+          </SettingsRow>
+        </>
+      )}
+
+      <MigrationDialog
+        direction={migrationDirection}
+        journalDir={journalDirectory}
+        onClose={() => setMigrationOpen(false)}
+        open={migrationOpen}
+      />
+    </div>
+  );
+}
+
 // ─── Workspace Section (merged from WorkspaceTab) ────────
+
+function LayoutDiagram({ preset }: { preset: WorkspacePreset }) {
+  const { layout } = preset;
+  return (
+    <div className="workspace-diagram">
+      {layout.sidebarOpen && (
+        <div className="workspace-diagram-panel workspace-diagram-sidebar" />
+      )}
+      <div className="workspace-diagram-panel workspace-diagram-editor" />
+      {layout.rightPanelOpen && layout.rightPanelMode !== "none" && (
+        <div className="workspace-diagram-panel workspace-diagram-right" />
+      )}
+    </div>
+  );
+}
+
+function MarkdownTab() {
+  const { t } = useTranslation();
+  const {
+    inlineMath,
+    setInlineMath,
+    highlight,
+    setHighlight,
+    strikethrough,
+    setStrikethrough,
+    smartPunctuation,
+    setSmartPunctuation,
+  } = useSettingsStore();
+
+  return (
+    <div className="settings-section">
+      <SettingsSectionHeader title={t("settings.markdown.extendedSyntax")} />
+
+      <SettingsRow
+        description={t("settings.markdown.inlineMath.desc")}
+        label={t("settings.markdown.inlineMath")}
+      >
+        <ToggleSwitch checked={inlineMath} onChange={setInlineMath} />
+      </SettingsRow>
+
+      <SettingsRow
+        description={t("settings.markdown.highlight.desc")}
+        label={t("settings.markdown.highlight")}
+      >
+        <ToggleSwitch checked={highlight} onChange={setHighlight} />
+      </SettingsRow>
+
+      <SettingsRow
+        description={t("settings.markdown.strikethrough.desc")}
+        label={t("settings.markdown.strikethrough")}
+      >
+        <ToggleSwitch checked={strikethrough} onChange={setStrikethrough} />
+      </SettingsRow>
+
+      <SettingsSectionHeader title={t("settings.markdown.typography")} />
+
+      <SettingsRow
+        description={t("settings.markdown.smartPunctuation.desc")}
+        label={t("settings.markdown.smartPunctuation")}
+      >
+        <ToggleSwitch
+          checked={smartPunctuation}
+          onChange={setSmartPunctuation}
+        />
+      </SettingsRow>
+
+      {/* Extension Settings (merged from ExtensionsTab) */}
+      {getExtensionsWithSettings().map((ext) => (
+        <div key={ext.name}>
+          <SettingsSectionHeader title={formatExtName(ext.name)} />
+          {ext.settings.map((s) => (
+            <ExtensionSettingRow key={s.key} setting={s} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PresetCard({
+  preset,
+  isActive,
+  onApply,
+  onDelete,
+}: {
+  isActive: boolean;
+  onApply: (id: string) => void;
+  onDelete?: (id: string) => void;
+  preset: WorkspacePreset;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div
+      className={`workspace-card ${isActive ? "workspace-card-active" : ""}`}
+      onClick={() => onApply(preset.id)}
+    >
+      {isActive && (
+        <span aria-label="Active" className="workspace-card-check">
+          &#10003;
+        </span>
+      )}
+      {onDelete && (
+        <button
+          className="workspace-card-delete"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(preset.id);
+          }}
+          title={t("settings.workspace.deletePreset")}
+        >
+          {"\u00D7"}
+        </button>
+      )}
+
+      <div className="workspace-card-layout">
+        <LayoutDiagram preset={preset} />
+      </div>
+
+      <span className="workspace-card-name">
+        {preset.builtIn
+          ? t(`settings.workspace.preset.${preset.id}`)
+          : preset.name}
+      </span>
+      {preset.description && (
+        <span className="workspace-card-desc">
+          {preset.builtIn
+            ? t(`settings.workspace.preset.${preset.id}.desc`)
+            : preset.description}
+        </span>
+      )}
+      <span className="workspace-card-summary">
+        {workspaceLayoutSummary(preset, t)}
+      </span>
+
+      {preset.builtIn && (
+        <span className="workspace-card-badge">
+          {t("settings.workspace.builtIn")}
+        </span>
+      )}
+    </div>
+  );
+}
 
 function workspaceLayoutSummary(
   preset: WorkspacePreset,
@@ -1252,6 +1397,8 @@ function workspaceLayoutSummary(
   }
   return parts.join(" + ");
 }
+
+// ─── Markdown Tab ───────────────────────────────────────
 
 function WorkspaceSection() {
   const { t } = useTranslation();
@@ -1300,11 +1447,11 @@ function WorkspaceSection() {
       <div className="workspace-gallery">
         {allPresets.map((preset) => (
           <PresetCard
-            key={preset.id}
-            preset={preset}
             isActive={activePresetId === preset.id}
+            key={preset.id}
             onApply={handleApply}
             onDelete={!preset.builtIn ? deleteCustomPreset : undefined}
+            preset={preset}
           />
         ))}
       </div>
@@ -1313,18 +1460,18 @@ function WorkspaceSection() {
         {savingNew ? (
           <div className="workspace-save-form">
             <input
-              type="text"
+              autoFocus
               className="workspace-save-input"
-              value={newName}
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={handleSaveKeyDown}
               placeholder={t("settings.workspace.presetName")}
-              autoFocus
+              type="text"
+              value={newName}
             />
             <button
               className="workspace-save-confirm"
-              onClick={handleSave}
               disabled={!newName.trim()}
+              onClick={handleSave}
             >
               {t("common.save")}
             </button>
@@ -1351,150 +1498,6 @@ function WorkspaceSection() {
   );
 }
 
-function PresetCard({
-  preset,
-  isActive,
-  onApply,
-  onDelete,
-}: {
-  preset: WorkspacePreset;
-  isActive: boolean;
-  onApply: (id: string) => void;
-  onDelete?: (id: string) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div
-      className={`workspace-card ${isActive ? "workspace-card-active" : ""}`}
-      onClick={() => onApply(preset.id)}
-    >
-      {isActive && (
-        <span className="workspace-card-check" aria-label="Active">
-          &#10003;
-        </span>
-      )}
-      {onDelete && (
-        <button
-          className="workspace-card-delete"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete(preset.id);
-          }}
-          title={t("settings.workspace.deletePreset")}
-        >
-          {"\u00D7"}
-        </button>
-      )}
-
-      <div className="workspace-card-layout">
-        <LayoutDiagram preset={preset} />
-      </div>
-
-      <span className="workspace-card-name">
-        {preset.builtIn
-          ? t(`settings.workspace.preset.${preset.id}`)
-          : preset.name}
-      </span>
-      {preset.description && (
-        <span className="workspace-card-desc">
-          {preset.builtIn
-            ? t(`settings.workspace.preset.${preset.id}.desc`)
-            : preset.description}
-        </span>
-      )}
-      <span className="workspace-card-summary">
-        {workspaceLayoutSummary(preset, t)}
-      </span>
-
-      {preset.builtIn && (
-        <span className="workspace-card-badge">
-          {t("settings.workspace.builtIn")}
-        </span>
-      )}
-    </div>
-  );
-}
-
-function LayoutDiagram({ preset }: { preset: WorkspacePreset }) {
-  const { layout } = preset;
-  return (
-    <div className="workspace-diagram">
-      {layout.sidebarOpen && (
-        <div className="workspace-diagram-panel workspace-diagram-sidebar" />
-      )}
-      <div className="workspace-diagram-panel workspace-diagram-editor" />
-      {layout.rightPanelOpen && layout.rightPanelMode !== "none" && (
-        <div className="workspace-diagram-panel workspace-diagram-right" />
-      )}
-    </div>
-  );
-}
-
-// ─── Markdown Tab ───────────────────────────────────────
-
-function MarkdownTab() {
-  const { t } = useTranslation();
-  const {
-    inlineMath,
-    setInlineMath,
-    highlight,
-    setHighlight,
-    strikethrough,
-    setStrikethrough,
-    smartPunctuation,
-    setSmartPunctuation,
-  } = useSettingsStore();
-
-  return (
-    <div className="settings-section">
-      <SettingsSectionHeader title={t("settings.markdown.extendedSyntax")} />
-
-      <SettingsRow
-        label={t("settings.markdown.inlineMath")}
-        description={t("settings.markdown.inlineMath.desc")}
-      >
-        <ToggleSwitch checked={inlineMath} onChange={setInlineMath} />
-      </SettingsRow>
-
-      <SettingsRow
-        label={t("settings.markdown.highlight")}
-        description={t("settings.markdown.highlight.desc")}
-      >
-        <ToggleSwitch checked={highlight} onChange={setHighlight} />
-      </SettingsRow>
-
-      <SettingsRow
-        label={t("settings.markdown.strikethrough")}
-        description={t("settings.markdown.strikethrough.desc")}
-      >
-        <ToggleSwitch checked={strikethrough} onChange={setStrikethrough} />
-      </SettingsRow>
-
-      <SettingsSectionHeader title={t("settings.markdown.typography")} />
-
-      <SettingsRow
-        label={t("settings.markdown.smartPunctuation")}
-        description={t("settings.markdown.smartPunctuation.desc")}
-      >
-        <ToggleSwitch
-          checked={smartPunctuation}
-          onChange={setSmartPunctuation}
-        />
-      </SettingsRow>
-
-      {/* Extension Settings (merged from ExtensionsTab) */}
-      {getExtensionsWithSettings().map((ext) => (
-        <div key={ext.name}>
-          <SettingsSectionHeader title={formatExtName(ext.name)} />
-          {ext.settings.map((s) => (
-            <ExtensionSettingRow key={s.key} setting={s} />
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-}
-
 // ─── Task Model Selector ────────────────────────────────
 // Provider + Model dropdowns for per-task auto model selection
 
@@ -1504,97 +1507,6 @@ const PROVIDER_LABELS: Record<AIProvider, string> = {
   gemini: "Gemini",
   ollama: "Ollama",
 };
-
-function TaskModelSelector({
-  label,
-  description,
-  taskProvider,
-  taskModel,
-  onProviderChange,
-  onModelChange,
-  configuredProviders,
-  defaultProvider,
-  defaultModel,
-  fetchModelsForProvider,
-}: {
-  label: string;
-  description: string;
-  taskProvider: AIProvider | "";
-  taskModel: string;
-  onProviderChange: (provider: AIProvider | "") => void;
-  onModelChange: (model: string) => void;
-  configuredProviders: AIProvider[];
-  defaultProvider: AIProvider;
-  defaultModel: string;
-  fetchModelsForProvider: (provider: AIProvider) => Promise<ModelInfo[]>;
-}) {
-  const { t } = useTranslation();
-  const [taskModels, setTaskModels] = useState<ModelInfo[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const effectiveProvider = taskProvider || defaultProvider;
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    fetchModelsForProvider(effectiveProvider).then((result) => {
-      if (!cancelled) {
-        setTaskModels(result);
-        setLoading(false);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [effectiveProvider, fetchModelsForProvider]);
-
-  return (
-    <SettingsRow label={label} description={description}>
-      <div className="settings-task-model-row">
-        <select
-          className="settings-select settings-select-task-provider"
-          value={taskProvider}
-          onChange={(e) => {
-            const val = e.target.value as AIProvider | "";
-            onProviderChange(val);
-            if (val) onModelChange("");
-          }}
-        >
-          <option value="">
-            {t("settings.ai.useDefault")} ({PROVIDER_LABELS[defaultProvider]})
-          </option>
-          {configuredProviders.map((p) => (
-            <option key={p} value={p}>
-              {PROVIDER_LABELS[p]}
-            </option>
-          ))}
-        </select>
-        {loading ? (
-          <span className="settings-model-spinner" />
-        ) : (
-          <select
-            className="settings-select settings-select-task-model"
-            value={taskModel}
-            onChange={(e) => onModelChange(e.target.value)}
-          >
-            {!taskProvider && !taskModel ? (
-              <option value="">{defaultModel}</option>
-            ) : (
-              <option value="">{t("settings.ai.selectModel")}</option>
-            )}
-            {taskModels.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
-    </SettingsRow>
-  );
-}
-
-// ─── AI Tab ─────────────────────────────────────────────
 
 function AITab() {
   const { t } = useTranslation();
@@ -1633,7 +1545,7 @@ function AITab() {
   const [showKey, setShowKey] = useState(false);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
-  const [modelsError, setModelsError] = useState<string | null>(null);
+  const [modelsError, setModelsError] = useState<null | string>(null);
   const [customMode, setCustomMode] = useState(false);
 
   // Model cache for task-specific selectors (avoids redundant API calls)
@@ -1666,7 +1578,7 @@ function AITab() {
   }, [apiKeys]);
 
   const handleProviderChange = useCallback(
-    (newProvider: "claude" | "openai" | "ollama" | "gemini") => {
+    (newProvider: "claude" | "gemini" | "ollama" | "openai") => {
       setProvider(newProvider);
       if (newProvider === "claude") setModel("claude-sonnet-4-5-20250929");
       else if (newProvider === "openai") setModel("gpt-4o");
@@ -1705,17 +1617,17 @@ function AITab() {
       <SettingsSectionHeader title={t("settings.ai.provider")} />
 
       <SettingsRow
-        label={t("settings.ai.aiProvider")}
         description={t("settings.ai.aiProvider.desc")}
+        label={t("settings.ai.aiProvider")}
       >
         <select
           className="settings-select"
-          value={provider}
           onChange={(e) =>
             handleProviderChange(
-              e.target.value as "claude" | "openai" | "ollama" | "gemini",
+              e.target.value as "claude" | "gemini" | "ollama" | "openai",
             )
           }
+          value={provider}
         >
           <option value="claude">{t("settings.ai.provider.claude")}</option>
           <option value="openai">{t("settings.ai.provider.openai")}</option>
@@ -1726,25 +1638,25 @@ function AITab() {
 
       {showApiKey && (
         <SettingsRow
-          label={t("settings.ai.apiKey")}
           description={
             keychainReady
               ? t("settings.ai.apiKey.desc.ready")
               : t("settings.ai.apiKey.desc.loading")
           }
+          label={t("settings.ai.apiKey")}
         >
           <div className="settings-key-row">
             <input
-              type={showKey ? "text" : "password"}
               className="settings-input settings-input-key"
-              value={apiKey}
+              disabled={!keychainReady}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder={
                 keychainReady
                   ? t("settings.ai.apiKey.placeholder")
                   : t("settings.ai.apiKey.loading")
               }
-              disabled={!keychainReady}
+              type={showKey ? "text" : "password"}
+              value={apiKey}
             />
             <button
               className="settings-key-toggle"
@@ -1765,36 +1677,35 @@ function AITab() {
 
       {provider === "ollama" && (
         <SettingsRow
-          label={t("settings.ai.ollamaUrl")}
           description={t("settings.ai.ollamaUrl.desc")}
+          label={t("settings.ai.ollamaUrl")}
         >
           <input
-            type="text"
             className="settings-input"
-            value={ollamaUrl}
             onChange={(e) => setOllamaUrl(e.target.value)}
             placeholder={t("settings.ai.ollamaUrl.placeholder")}
+            type="text"
+            value={ollamaUrl}
           />
         </SettingsRow>
       )}
 
       <SettingsRow
-        label={t("settings.ai.model")}
         description={t("settings.ai.model.desc")}
+        label={t("settings.ai.model")}
       >
         <div className="settings-model-row">
           {customMode || (models.length === 0 && !modelsLoading) ? (
             <input
-              type="text"
               className="settings-input settings-input-model"
-              value={model}
               onChange={(e) => setModel(e.target.value)}
               placeholder={t("settings.ai.model.placeholder")}
+              type="text"
+              value={model}
             />
           ) : (
             <select
               className="settings-select settings-select-model"
-              value={model}
               onChange={(e) => {
                 if (e.target.value === "__custom__") {
                   setCustomMode(true);
@@ -1802,6 +1713,7 @@ function AITab() {
                   setModel(e.target.value);
                 }
               }}
+              value={model}
             >
               {models.map((m) => (
                 <option key={m.id} value={m.id}>
@@ -1813,8 +1725,8 @@ function AITab() {
           )}
           <button
             className="settings-model-refresh"
-            onClick={fetchModels}
             disabled={!canFetchModels || modelsLoading}
+            onClick={fetchModels}
             title={
               !canFetchModels
                 ? t("settings.ai.model.keyFirst")
@@ -1844,8 +1756,8 @@ function AITab() {
       <SettingsSectionHeader title={t("settings.ai.modelSelection")} />
 
       <SettingsRow
-        label={t("settings.ai.autoModel")}
         description={t("settings.ai.autoModel.desc")}
+        label={t("settings.ai.autoModel")}
       >
         <ToggleSwitch
           checked={autoModelEnabled}
@@ -1856,52 +1768,52 @@ function AITab() {
       {autoModelEnabled && (
         <>
           <TaskModelSelector
-            label={t("settings.ai.ghostTextModel")}
+            configuredProviders={configuredProviders}
+            defaultModel={model}
+            defaultProvider={provider}
             description={t("settings.ai.ghostTextModel.desc")}
-            taskProvider={providerForGhostText}
-            taskModel={modelForGhostText}
-            onProviderChange={(p) => setProviderForTask("ghost-text", p)}
+            fetchModelsForProvider={fetchModelsForProvider}
+            label={t("settings.ai.ghostTextModel")}
             onModelChange={(m) => setModelForTask("ghost-text", m)}
-            configuredProviders={configuredProviders}
-            defaultProvider={provider}
-            defaultModel={model}
-            fetchModelsForProvider={fetchModelsForProvider}
+            onProviderChange={(p) => setProviderForTask("ghost-text", p)}
+            taskModel={modelForGhostText}
+            taskProvider={providerForGhostText}
           />
           <TaskModelSelector
-            label={t("settings.ai.inlineEditModel")}
+            configuredProviders={configuredProviders}
+            defaultModel={model}
+            defaultProvider={provider}
             description={t("settings.ai.inlineEditModel.desc")}
-            taskProvider={providerForInlineEdit}
-            taskModel={modelForInlineEdit}
-            onProviderChange={(p) => setProviderForTask("inline-edit", p)}
+            fetchModelsForProvider={fetchModelsForProvider}
+            label={t("settings.ai.inlineEditModel")}
             onModelChange={(m) => setModelForTask("inline-edit", m)}
-            configuredProviders={configuredProviders}
-            defaultProvider={provider}
-            defaultModel={model}
-            fetchModelsForProvider={fetchModelsForProvider}
+            onProviderChange={(p) => setProviderForTask("inline-edit", p)}
+            taskModel={modelForInlineEdit}
+            taskProvider={providerForInlineEdit}
           />
           <TaskModelSelector
-            label={t("settings.ai.chatModel")}
+            configuredProviders={configuredProviders}
+            defaultModel={model}
+            defaultProvider={provider}
             description={t("settings.ai.chatModel.desc")}
-            taskProvider={providerForChat}
-            taskModel={modelForChat}
-            onProviderChange={(p) => setProviderForTask("chat", p)}
-            onModelChange={(m) => setModelForTask("chat", m)}
-            configuredProviders={configuredProviders}
-            defaultProvider={provider}
-            defaultModel={model}
             fetchModelsForProvider={fetchModelsForProvider}
+            label={t("settings.ai.chatModel")}
+            onModelChange={(m) => setModelForTask("chat", m)}
+            onProviderChange={(p) => setProviderForTask("chat", p)}
+            taskModel={modelForChat}
+            taskProvider={providerForChat}
           />
           <TaskModelSelector
-            label={t("settings.ai.agentModel")}
-            description={t("settings.ai.agentModel.desc")}
-            taskProvider={providerForAgent}
-            taskModel={modelForAgent}
-            onProviderChange={(p) => setProviderForTask("agent", p)}
-            onModelChange={(m) => setModelForTask("agent", m)}
             configuredProviders={configuredProviders}
-            defaultProvider={provider}
             defaultModel={model}
+            defaultProvider={provider}
+            description={t("settings.ai.agentModel.desc")}
             fetchModelsForProvider={fetchModelsForProvider}
+            label={t("settings.ai.agentModel")}
+            onModelChange={(m) => setModelForTask("agent", m)}
+            onProviderChange={(p) => setProviderForTask("agent", p)}
+            taskModel={modelForAgent}
+            taskProvider={providerForAgent}
           />
         </>
       )}
@@ -1909,8 +1821,8 @@ function AITab() {
       <SettingsSectionHeader title={t("settings.ai.privacy")} />
 
       <SettingsRow
-        label={t("settings.ai.privacyMode")}
         description={t("settings.ai.privacyMode.desc")}
+        label={t("settings.ai.privacyMode")}
       >
         <ToggleSwitch checked={privacyMode} onChange={setPrivacyMode} />
       </SettingsRow>
@@ -1918,8 +1830,8 @@ function AITab() {
       <SettingsSectionHeader title={t("settings.ai.ghostText")} />
 
       <SettingsRow
-        label={t("settings.ai.ghostTextEnabled")}
         description={t("settings.ai.ghostTextEnabled.desc")}
+        label={t("settings.ai.ghostTextEnabled")}
       >
         <ToggleSwitch
           checked={ghostTextEnabled}
@@ -1930,38 +1842,38 @@ function AITab() {
       {ghostTextEnabled && (
         <>
           <SettingsRow
-            label={t("settings.ai.debounce")}
             description={t("settings.ai.debounce.desc").replace(
               "{value}",
               String(ghostTextDebounceMs),
             )}
+            label={t("settings.ai.debounce")}
           >
             <input
-              type="range"
               className="settings-range"
-              min={200}
               max={2000}
-              step={100}
-              value={ghostTextDebounceMs}
+              min={200}
               onChange={(e) => setGhostTextDebounceMs(Number(e.target.value))}
+              step={100}
+              type="range"
+              value={ghostTextDebounceMs}
             />
           </SettingsRow>
 
           <SettingsRow
-            label={t("settings.ai.maxLength")}
             description={t("settings.ai.maxLength.desc").replace(
               "{value}",
               String(maxSuggestionLength),
             )}
+            label={t("settings.ai.maxLength")}
           >
             <input
-              type="range"
               className="settings-range"
-              min={20}
               max={500}
-              step={10}
-              value={maxSuggestionLength}
+              min={20}
               onChange={(e) => setMaxSuggestionLength(Number(e.target.value))}
+              step={10}
+              type="range"
+              value={maxSuggestionLength}
             />
           </SettingsRow>
         </>
@@ -1970,6 +1882,97 @@ function AITab() {
       <SettingsSectionHeader title={t("settings.ai.customCommands")} />
       <CustomAICommandEditor />
     </div>
+  );
+}
+
+// ─── AI Tab ─────────────────────────────────────────────
+
+function TaskModelSelector({
+  label,
+  description,
+  taskProvider,
+  taskModel,
+  onProviderChange,
+  onModelChange,
+  configuredProviders,
+  defaultProvider,
+  defaultModel,
+  fetchModelsForProvider,
+}: {
+  configuredProviders: AIProvider[];
+  defaultModel: string;
+  defaultProvider: AIProvider;
+  description: string;
+  fetchModelsForProvider: (provider: AIProvider) => Promise<ModelInfo[]>;
+  label: string;
+  onModelChange: (model: string) => void;
+  onProviderChange: (provider: "" | AIProvider) => void;
+  taskModel: string;
+  taskProvider: "" | AIProvider;
+}) {
+  const { t } = useTranslation();
+  const [taskModels, setTaskModels] = useState<ModelInfo[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const effectiveProvider = taskProvider || defaultProvider;
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetchModelsForProvider(effectiveProvider).then((result) => {
+      if (!cancelled) {
+        setTaskModels(result);
+        setLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveProvider, fetchModelsForProvider]);
+
+  return (
+    <SettingsRow description={description} label={label}>
+      <div className="settings-task-model-row">
+        <select
+          className="settings-select settings-select-task-provider"
+          onChange={(e) => {
+            const val = e.target.value as "" | AIProvider;
+            onProviderChange(val);
+            if (val) onModelChange("");
+          }}
+          value={taskProvider}
+        >
+          <option value="">
+            {t("settings.ai.useDefault")} ({PROVIDER_LABELS[defaultProvider]})
+          </option>
+          {configuredProviders.map((p) => (
+            <option key={p} value={p}>
+              {PROVIDER_LABELS[p]}
+            </option>
+          ))}
+        </select>
+        {loading ? (
+          <span className="settings-model-spinner" />
+        ) : (
+          <select
+            className="settings-select settings-select-task-model"
+            onChange={(e) => onModelChange(e.target.value)}
+            value={taskModel}
+          >
+            {!taskProvider && !taskModel ? (
+              <option value="">{defaultModel}</option>
+            ) : (
+              <option value="">{t("settings.ai.selectModel")}</option>
+            )}
+            {taskModels.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+    </SettingsRow>
   );
 }
 
@@ -1992,295 +1995,42 @@ const FONT_OPTIONS = [
   { value: "Nanum Gothic", label: "Nanum Gothic" },
 ];
 
-function FontFamilyPicker({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  const filtered = search
-    ? FONT_OPTIONS.filter((f) =>
-        f.label.toLowerCase().includes(search.toLowerCase()),
-      )
-    : FONT_OPTIONS;
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    if (!open) return;
-    const handleClick = (e: MouseEvent) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
-      ) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
-
-  const handleSelect = (fontValue: string) => {
-    onChange(fontValue);
-    setSearch("");
-    setOpen(false);
-  };
-
-  return (
-    <div className="settings-font-picker" ref={containerRef}>
-      <input
-        type="text"
-        className="settings-input"
-        value={open ? search : value}
-        onChange={(e) => {
-          setSearch(e.target.value);
-          if (!open) setOpen(true);
-        }}
-        onFocus={() => {
-          setSearch("");
-          setOpen(true);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && search) {
-            // Allow custom font name
-            onChange(search);
-            setSearch("");
-            setOpen(false);
-          } else if (e.key === "Escape") {
-            setOpen(false);
-          }
-        }}
-        placeholder={t("settings.editor.fontPicker.placeholder")}
-      />
-      {open && (
-        <div className="settings-font-dropdown">
-          {filtered.map((font) => (
-            <button
-              key={font.value}
-              className={`settings-font-option ${font.value === value ? "settings-font-option-active" : ""}`}
-              style={{ fontFamily: font.value }}
-              onClick={() => handleSelect(font.value)}
-            >
-              {font.value === "system-ui"
-                ? t("settings.editor.fontPicker.systemDefault")
-                : font.label}
-            </button>
-          ))}
-          {filtered.length === 0 && search && (
-            <button
-              className="settings-font-option"
-              onClick={() => handleSelect(search)}
-            >
-              {t("settings.editor.fontPicker.useCustom").replace(
-                "{font}",
-                search,
-              )}
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Extension Settings Helpers (merged from ExtensionsTab) ──
-
-interface SettingOption {
-  value: string;
-  label: string;
-}
-interface SettingDef {
-  key: string;
-  type: "boolean" | "select" | "number" | "string";
-  label: string;
-  description: string;
-  default: unknown;
-  options?: SettingOption[];
-  min?: number;
-  max?: number;
-  step?: number;
-  placeholder?: string;
-}
 interface RegistryEntry {
   name: string;
   settings?: SettingDef[];
 }
 
-function getExtensionsWithSettings() {
-  const allEntries: RegistryEntry[] = [
-    ...(registry.nodes as RegistryEntry[]),
-    ...(registry.marks as RegistryEntry[]),
-    ...(registry.plugins as RegistryEntry[]),
-  ];
-  return allEntries
-    .filter(
-      (e): e is RegistryEntry & { settings: SettingDef[] } =>
-        Array.isArray(e.settings) && e.settings.length > 0,
-    )
-    .map((e) => ({ name: e.name, settings: e.settings }));
+// ─── Extension Settings Helpers (merged from ExtensionsTab) ──
+
+interface SettingDef {
+  default: unknown;
+  description: string;
+  key: string;
+  label: string;
+  max?: number;
+  min?: number;
+  options?: SettingOption[];
+  placeholder?: string;
+  step?: number;
+  type: "boolean" | "number" | "select" | "string";
 }
-
-function formatExtName(name: string): string {
-  const spaced = name.replace(/([A-Z])/g, " $1");
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+interface SettingOption {
+  label: string;
+  value: string;
 }
-
-function ExtensionSettingRow({ setting }: { setting: SettingDef }) {
-  const { extensionSettings, setExtensionSetting } = useSettingsStore();
-  const value = extensionSettings[setting.key] ?? setting.default;
-  switch (setting.type) {
-    case "boolean":
-      return (
-        <SettingsRow label={setting.label} description={setting.description}>
-          <ToggleSwitch
-            checked={!!value}
-            onChange={(v) => setExtensionSetting(setting.key, v)}
-          />
-        </SettingsRow>
-      );
-    case "select":
-      return (
-        <SettingsRow label={setting.label} description={setting.description}>
-          <select
-            className="settings-select"
-            value={value as string}
-            onChange={(e) => setExtensionSetting(setting.key, e.target.value)}
-          >
-            {(setting.options ?? []).map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </SettingsRow>
-      );
-    case "number":
-      return (
-        <SettingsRow
-          label={setting.label}
-          description={`${setting.description} (${value})`}
-        >
-          <input
-            type="range"
-            className="settings-range"
-            min={setting.min ?? 0}
-            max={setting.max ?? 100}
-            step={setting.step ?? 1}
-            value={value as number}
-            onChange={(e) =>
-              setExtensionSetting(setting.key, Number(e.target.value))
-            }
-          />
-        </SettingsRow>
-      );
-    case "string":
-      return (
-        <SettingsRow label={setting.label} description={setting.description}>
-          <input
-            type="text"
-            className="settings-input"
-            value={value as string}
-            onChange={(e) => setExtensionSetting(setting.key, e.target.value)}
-            placeholder={setting.placeholder ?? ""}
-          />
-        </SettingsRow>
-      );
-    default:
-      return null;
-  }
-}
-
-// ─── Shared Components ──────────────────────────────────
-
-function ThemeMiniPreview({ theme }: { theme: ThemeDef }) {
-  const c = theme.colors;
-  return (
-    <div
-      className="theme-preview"
-      style={{ background: c["--color-bg-primary"] }}
-    >
-      <div
-        className="theme-preview-sidebar"
-        style={{
-          background: c["--color-bg-sidebar"],
-          borderRight: `1px solid ${c["--color-border"]}`,
-        }}
-      >
-        <div
-          className="theme-preview-sidebar-item"
-          style={{ background: c["--color-bg-tertiary"] }}
-        />
-        <div
-          className="theme-preview-sidebar-item"
-          style={{ background: c["--color-bg-tertiary"] }}
-        />
-        <div
-          className="theme-preview-sidebar-item"
-          style={{ background: c["--color-bg-tertiary"] }}
-        />
-      </div>
-      <div
-        className="theme-preview-editor"
-        style={{ background: c["--color-editor-bg"] }}
-      >
-        <div
-          className="theme-preview-heading"
-          style={{ color: c["--color-editor-text"] }}
-        >
-          Heading
-        </div>
-        <div
-          className="theme-preview-text"
-          style={{ color: c["--color-editor-text"] }}
-        >
-          Some{" "}
-          <span style={{ color: c["--color-accent"], fontWeight: 600 }}>
-            bold
-          </span>{" "}
-          text
-        </div>
-        <div
-          className="theme-preview-quote"
-          style={{
-            borderLeft: `2px solid ${c["--color-accent"]}`,
-            color: c["--color-text-secondary"],
-            paddingLeft: 6,
-          }}
-        >
-          blockquote
-        </div>
-        <div
-          className="theme-preview-code"
-          style={{
-            background: c["--color-bg-tertiary"],
-            color: c["--color-editor-text"],
-          }}
-        >
-          code
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function ActivityBarTab() {
   const { activityBarConfig, setActivityBarConfig, resetActivityBarConfig } =
     useSettingsStore();
   const { t } = useTranslation();
 
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [dropIndicator, setDropIndicator] = useState<{
+  const [draggingId, setDraggingId] = useState<null | string>(null);
+  const [dropIndicator, setDropIndicator] = useState<null | {
     id: string;
-    position: "before" | "after";
-  } | null>(null);
+    position: "after" | "before";
+  }>(null);
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const dragRef = useRef<{ id: string; section: string } | null>(null);
-  const dropRef = useRef<{ id: string; position: "before" | "after" } | null>(
+  const dragRef = useRef<null | { id: string; section: string }>(null);
+  const dropRef = useRef<null | { id: string; position: "after" | "before" }>(
     null,
   );
   const configRef = useRef(activityBarConfig);
@@ -2307,8 +2057,8 @@ function ActivityBarTab() {
         const state = dragRef.current;
         if (!state) return;
 
-        let closestId: string | null = null;
-        let closestPos: "before" | "after" = "before";
+        let closestId: null | string = null;
+        let closestPos: "after" | "before" = "before";
         let closestDist = Infinity;
 
         for (const [rowId, el] of rowRefs.current.entries()) {
@@ -2379,15 +2129,15 @@ function ActivityBarTab() {
       <SettingsSectionHeader title={title} />
       {items.map((item) => (
         <div
-          key={item.id}
-          ref={(el) => setRowRef(item.id, el)}
           className={`settings-row activity-bar-config-row${
-            draggingId === item.id ? " activity-bar-dragging" : ""
+            draggingId === item.id ? "activity-bar-dragging" : ""
           }${
             dropIndicator?.id === item.id
               ? ` activity-bar-drop-${dropIndicator.position}`
               : ""
           }`}
+          key={item.id}
+          ref={(el) => setRowRef(item.id, el)}
         >
           <div className="activity-bar-config-left">
             <div
@@ -2429,41 +2179,186 @@ function ActivityBarTab() {
   );
 }
 
-// ─── Language Tab ──────────────────────────────────────
+function ExtensionSettingRow({ setting }: { setting: SettingDef }) {
+  const { extensionSettings, setExtensionSetting } = useSettingsStore();
+  const value = extensionSettings[setting.key] ?? setting.default;
+  switch (setting.type) {
+    case "boolean":
+      return (
+        <SettingsRow description={setting.description} label={setting.label}>
+          <ToggleSwitch
+            checked={!!value}
+            onChange={(v) => setExtensionSetting(setting.key, v)}
+          />
+        </SettingsRow>
+      );
+    case "number":
+      return (
+        <SettingsRow
+          description={`${setting.description} (${value})`}
+          label={setting.label}
+        >
+          <input
+            className="settings-range"
+            max={setting.max ?? 100}
+            min={setting.min ?? 0}
+            onChange={(e) =>
+              setExtensionSetting(setting.key, Number(e.target.value))
+            }
+            step={setting.step ?? 1}
+            type="range"
+            value={value as number}
+          />
+        </SettingsRow>
+      );
+    case "select":
+      return (
+        <SettingsRow description={setting.description} label={setting.label}>
+          <select
+            className="settings-select"
+            onChange={(e) => setExtensionSetting(setting.key, e.target.value)}
+            value={value as string}
+          >
+            {(setting.options ?? []).map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </SettingsRow>
+      );
+    case "string":
+      return (
+        <SettingsRow description={setting.description} label={setting.label}>
+          <input
+            className="settings-input"
+            onChange={(e) => setExtensionSetting(setting.key, e.target.value)}
+            placeholder={setting.placeholder ?? ""}
+            type="text"
+            value={value as string}
+          />
+        </SettingsRow>
+      );
+    default:
+      return null;
+  }
+}
 
-function LanguageTab() {
-  const { locale, setLocale } = useSettingsStore();
+function FontFamilyPicker({
+  value,
+  onChange,
+}: {
+  onChange: (v: string) => void;
+  value: string;
+}) {
   const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const filtered = search
+    ? FONT_OPTIONS.filter((f) =>
+        f.label.toLowerCase().includes(search.toLowerCase()),
+      )
+    : FONT_OPTIONS;
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!open) return;
+    const handleClick = (e: MouseEvent) => {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  const handleSelect = (fontValue: string) => {
+    onChange(fontValue);
+    setSearch("");
+    setOpen(false);
+  };
 
   return (
-    <div className="settings-section">
-      <SettingsSectionHeader title={t("settings.language.title")} />
-
-      <SettingsRow
-        label={t("settings.language.interface")}
-        description={t("settings.language.interface.desc")}
-      >
-        <select
-          className="settings-select"
-          value={locale}
-          onChange={(e) => setLocale(e.target.value)}
-        >
-          {AVAILABLE_LOCALES.map((loc: Locale) => (
-            <option key={loc} value={loc}>
-              {LOCALE_LABELS[loc]}
-            </option>
+    <div className="settings-font-picker" ref={containerRef}>
+      <input
+        className="settings-input"
+        onChange={(e) => {
+          setSearch(e.target.value);
+          if (!open) setOpen(true);
+        }}
+        onFocus={() => {
+          setSearch("");
+          setOpen(true);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && search) {
+            // Allow custom font name
+            onChange(search);
+            setSearch("");
+            setOpen(false);
+          } else if (e.key === "Escape") {
+            setOpen(false);
+          }
+        }}
+        placeholder={t("settings.editor.fontPicker.placeholder")}
+        type="text"
+        value={open ? search : value}
+      />
+      {open && (
+        <div className="settings-font-dropdown">
+          {filtered.map((font) => (
+            <button
+              className={`settings-font-option ${font.value === value ? "settings-font-option-active" : ""}`}
+              key={font.value}
+              onClick={() => handleSelect(font.value)}
+              style={{ fontFamily: font.value }}
+            >
+              {font.value === "system-ui"
+                ? t("settings.editor.fontPicker.systemDefault")
+                : font.label}
+            </button>
           ))}
-        </select>
-      </SettingsRow>
-
-      <div
-        className="settings-row-description"
-        style={{ marginTop: 12, fontStyle: "italic" }}
-      >
-        {t("settings.language.reloadNotice")}
-      </div>
+          {filtered.length === 0 && search && (
+            <button
+              className="settings-font-option"
+              onClick={() => handleSelect(search)}
+            >
+              {t("settings.editor.fontPicker.useCustom").replace(
+                "{font}",
+                search,
+              )}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
+}
+
+function formatExtName(name: string): string {
+  const spaced = name.replace(/([A-Z])/g, " $1");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+// ─── Shared Components ──────────────────────────────────
+
+function getExtensionsWithSettings() {
+  const allEntries: RegistryEntry[] = [
+    ...(registry.nodes as RegistryEntry[]),
+    ...(registry.marks as RegistryEntry[]),
+    ...(registry.plugins as RegistryEntry[]),
+  ];
+  return allEntries
+    .filter(
+      (e): e is RegistryEntry & { settings: SettingDef[] } =>
+        Array.isArray(e.settings) && e.settings.length > 0,
+    )
+    .map((e) => ({ name: e.name, settings: e.settings }));
 }
 
 function KeybindingsTab() {
@@ -2476,8 +2371,8 @@ function KeybindingsTab() {
   } = useSettingsStore();
   const merged = getMergedKeybindings(keybindingOverrides);
   const [filter, setFilter] = useState("");
-  const [capturingId, setCapturingId] = useState<string | null>(null);
-  const [capturedKey, setCapturedKey] = useState<string | null>(null);
+  const [capturingId, setCapturingId] = useState<null | string>(null);
+  const [capturedKey, setCapturedKey] = useState<null | string>(null);
   const [conflict, setConflict] = useState<MergedKeybinding | null>(null);
 
   const isMac = navigator.platform.includes("Mac");
@@ -2518,7 +2413,7 @@ function KeybindingsTab() {
         return;
       }
 
-      if (["Meta", "Control", "Shift", "Alt"].includes(e.key)) return;
+      if (["Alt", "Control", "Meta", "Shift"].includes(e.key)) return;
 
       const normalized = normalizeKeyEvent(e, isMac);
       if (!normalized) return;
@@ -2557,11 +2452,11 @@ function KeybindingsTab() {
     <div className="settings-section">
       <div className="keybindings-filter">
         <input
-          type="text"
-          placeholder={t("keybindings.search.placeholder")}
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
           className="settings-search-input"
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder={t("keybindings.search.placeholder")}
+          type="text"
+          value={filter}
         />
       </div>
 
@@ -2576,8 +2471,8 @@ function KeybindingsTab() {
           <SettingsSectionHeader title={t(CATEGORY_LABELS[cat])} />
           {grouped.get(cat)!.map((entry) => (
             <div
+              className={`keybinding-row${entry.isOverridden ? "keybinding-overridden" : ""}${!entry.customizable ? "keybinding-readonly-row" : ""}`}
               key={entry.id}
-              className={`keybinding-row${entry.isOverridden ? " keybinding-overridden" : ""}${!entry.customizable ? " keybinding-readonly-row" : ""}`}
             >
               <span className="keybinding-label">{t(entry.label)}</span>
               <span className="keybinding-key">
@@ -2661,8 +2556,354 @@ function KeybindingsTab() {
   );
 }
 
-function SettingsSectionHeader({ title }: { title: string }) {
-  return <div className="settings-section-header">{title}</div>;
+// ─── Language Tab ──────────────────────────────────────
+
+function LanguageTab() {
+  const { locale, setLocale } = useSettingsStore();
+  const { t } = useTranslation();
+
+  return (
+    <div className="settings-section">
+      <SettingsSectionHeader title={t("settings.language.title")} />
+
+      <SettingsRow
+        description={t("settings.language.interface.desc")}
+        label={t("settings.language.interface")}
+      >
+        <select
+          className="settings-select"
+          onChange={(e) => setLocale(e.target.value)}
+          value={locale}
+        >
+          {AVAILABLE_LOCALES.map((loc: Locale) => (
+            <option key={loc} value={loc}>
+              {LOCALE_LABELS[loc]}
+            </option>
+          ))}
+        </select>
+      </SettingsRow>
+
+      <div
+        className="settings-row-description"
+        style={{ marginTop: 12, fontStyle: "italic" }}
+      >
+        {t("settings.language.reloadNotice")}
+      </div>
+    </div>
+  );
+}
+
+/** Renders the actual control for a setting in search results. */
+function SearchSettingControl({
+  id,
+  onNavigate,
+}: {
+  id: string;
+  onNavigate: () => void;
+}) {
+  const { t } = useTranslation();
+  const settings = useSettingsStore();
+  const ai = useAIStore();
+
+  switch (id) {
+    // ── Complex settings: navigate to tab ──
+    case "activeThemeId":
+    case "activityBarConfig":
+    case "apiKey":
+    case "fontFamily":
+    // falls through
+    case "model":
+      return (
+        <button className="theme-action-btn" onClick={onNavigate}>
+          {t("settings.search.open")}
+        </button>
+      );
+    case "autoPairBrackets":
+      return (
+        <ToggleSwitch
+          checked={settings.autoPairBrackets}
+          onChange={settings.setAutoPairBrackets}
+        />
+      );
+
+    // ── General toggles ──
+    case "autoSave":
+      return (
+        <ToggleSwitch
+          checked={settings.autoSave}
+          onChange={settings.setAutoSave}
+        />
+      );
+    // ── General ranges ──
+    case "autoSaveDelay":
+      return (
+        <input
+          className="settings-range"
+          max={10000}
+          min={500}
+          onChange={(e) => settings.setAutoSaveDelay(Number(e.target.value))}
+          step={500}
+          type="range"
+          value={settings.autoSaveDelay}
+        />
+      );
+    case "autoUpdateLinks":
+      return (
+        <ToggleSwitch
+          checked={settings.autoUpdateLinks}
+          onChange={settings.setAutoUpdateLinks}
+        />
+      );
+
+    case "editorMaxWidth":
+      return (
+        <input
+          className="settings-range"
+          max={2048}
+          min={0}
+          onChange={(e) => settings.setEditorMaxWidth(Number(e.target.value))}
+          step={50}
+          type="range"
+          value={settings.editorMaxWidth}
+        />
+      );
+    // ── Editor ranges ──
+    case "fontSize":
+      return (
+        <input
+          className="settings-range"
+          max={32}
+          min={8}
+          onChange={(e) => settings.setFontSize(Number(e.target.value))}
+          step={1}
+          type="range"
+          value={settings.fontSize}
+        />
+      );
+    // ── AI toggles ──
+    case "ghostTextEnabled":
+      return (
+        <ToggleSwitch
+          checked={ai.ghostTextEnabled}
+          onChange={ai.setGhostTextEnabled}
+        />
+      );
+
+    case "highlight":
+      return (
+        <ToggleSwitch
+          checked={settings.highlight}
+          onChange={settings.setHighlight}
+        />
+      );
+    // ── Markdown toggles ──
+    case "inlineMath":
+      return (
+        <ToggleSwitch
+          checked={settings.inlineMath}
+          onChange={settings.setInlineMath}
+        />
+      );
+
+    case "journalEnabled":
+      return (
+        <ToggleSwitch
+          checked={settings.journalEnabled}
+          onChange={settings.setJournalEnabled}
+        />
+      );
+
+    case "keybindings":
+      return (
+        <button className="settings-btn" onClick={onNavigate}>
+          {t("settings.search.open")}
+        </button>
+      );
+    case "lineHeight":
+      return (
+        <input
+          className="settings-range"
+          max={3.0}
+          min={1.0}
+          onChange={(e) => settings.setLineHeight(Number(e.target.value))}
+          step={0.05}
+          type="range"
+          value={settings.lineHeight}
+        />
+      );
+    // ── Editor toggles ──
+    case "lineNumbers":
+      return (
+        <ToggleSwitch
+          checked={settings.lineNumbers}
+          onChange={settings.setLineNumbers}
+        />
+      );
+    // ── Language ──
+    case "locale":
+      return (
+        <select
+          className="settings-select"
+          onChange={(e) => settings.setLocale(e.target.value)}
+          value={settings.locale}
+        >
+          {AVAILABLE_LOCALES.map((loc) => (
+            <option key={loc} value={loc}>
+              {LOCALE_LABELS[loc]}
+            </option>
+          ))}
+        </select>
+      );
+
+    // ── General selects ──
+    case "onLaunch":
+      return (
+        <select
+          className="settings-select"
+          onChange={(e) =>
+            settings.setOnLaunch(
+              e.target.value as
+                | "newFile"
+                | "restoreLastFile"
+                | "restoreLastFolder",
+            )
+          }
+          value={settings.onLaunch}
+        >
+          <option value="restoreLastFolder">
+            {t("settings.general.onLaunch.restoreLastFolder")}
+          </option>
+          <option value="restoreLastFile">
+            {t("settings.general.onLaunch.restoreLastFile")}
+          </option>
+          <option value="newFile">
+            {t("settings.general.onLaunch.newFile")}
+          </option>
+        </select>
+      );
+    case "privacyMode":
+      return (
+        <ToggleSwitch checked={ai.privacyMode} onChange={ai.setPrivacyMode} />
+      );
+
+    // ── AI selects ──
+    case "provider":
+      return (
+        <select
+          className="settings-select"
+          onChange={(e) =>
+            ai.setProvider(
+              e.target.value as "claude" | "gemini" | "ollama" | "openai",
+            )
+          }
+          value={ai.provider}
+        >
+          <option value="claude">{t("settings.ai.provider.claude")}</option>
+          <option value="openai">{t("settings.ai.provider.openai")}</option>
+          <option value="gemini">{t("settings.ai.provider.gemini")}</option>
+          <option value="ollama">{t("settings.ai.provider.ollama")}</option>
+        </select>
+      );
+
+    case "smartPunctuation":
+      return (
+        <ToggleSwitch
+          checked={settings.smartPunctuation}
+          onChange={settings.setSmartPunctuation}
+        />
+      );
+
+    case "snapshotInterval":
+      return (
+        <input
+          className="settings-range"
+          max={120}
+          min={0}
+          onChange={(e) => settings.setSnapshotInterval(Number(e.target.value))}
+          step={5}
+          type="range"
+          value={settings.snapshotInterval}
+        />
+      );
+    case "snapshotMaxCount":
+      return (
+        <input
+          className="settings-range"
+          max={200}
+          min={5}
+          onChange={(e) => settings.setSnapshotMaxCount(Number(e.target.value))}
+          step={5}
+          type="range"
+          value={settings.snapshotMaxCount}
+        />
+      );
+    case "spellCheck":
+      return (
+        <ToggleSwitch
+          checked={settings.spellCheck}
+          onChange={settings.setSpellCheck}
+        />
+      );
+    case "strikethrough":
+      return (
+        <ToggleSwitch
+          checked={settings.strikethrough}
+          onChange={settings.setStrikethrough}
+        />
+      );
+    // ── Editor selects ──
+    case "tabSize":
+      return (
+        <select
+          className="settings-select"
+          onChange={(e) => settings.setTabSize(Number(e.target.value))}
+          value={settings.tabSize}
+        >
+          <option value={2}>{t("settings.editor.tabSize.2spaces")}</option>
+          <option value={4}>{t("settings.editor.tabSize.4spaces")}</option>
+        </select>
+      );
+    case "wikilinkFormat":
+      return (
+        <select
+          className="settings-select"
+          onChange={(e) =>
+            settings.setWikilinkFormat(
+              e.target.value as "markdown" | "wikilink",
+            )
+          }
+          value={settings.wikilinkFormat}
+        >
+          <option value="wikilink">{"[[Wikilink]]"}</option>
+          <option value="markdown">[Markdown](link)</option>
+        </select>
+      );
+
+    default:
+      return null;
+  }
+}
+
+function SettingsRow({
+  label,
+  description,
+  children,
+}: {
+  children: React.ReactNode;
+  description?: string;
+  label: string;
+}) {
+  return (
+    <div className="settings-row">
+      <div className="settings-row-info">
+        <span className="settings-row-label">{label}</span>
+        {description && (
+          <span className="settings-row-description">{description}</span>
+        )}
+      </div>
+      <div className="settings-row-control">{children}</div>
+    </div>
+  );
 }
 
 function SettingsSearchResults({
@@ -2671,8 +2912,8 @@ function SettingsSearchResults({
   onNavigate,
 }: {
   grouped: Map<SettingsTab, SearchableSetting[]> | null;
-  query: string;
   onNavigate: (tab: SettingsTab) => void;
+  query: string;
 }) {
   const { t } = useTranslation();
 
@@ -2690,7 +2931,7 @@ function SettingsSearchResults({
         <div key={category}>
           <SettingsSectionHeader title={t(`settings.tab.${category}`)} />
           {items.map((item) => (
-            <div key={item.id} className="settings-search-result-row">
+            <div className="settings-search-result-row" key={item.id}>
               <div className="settings-row-info">
                 <span className="settings-row-label">{t(item.label)}</span>
                 <span className="settings-row-description">
@@ -2711,315 +2952,77 @@ function SettingsSearchResults({
   );
 }
 
-/** Renders the actual control for a setting in search results. */
-function SearchSettingControl({
-  id,
-  onNavigate,
-}: {
-  id: string;
-  onNavigate: () => void;
-}) {
-  const { t } = useTranslation();
-  const settings = useSettingsStore();
-  const ai = useAIStore();
-
-  switch (id) {
-    // ── General toggles ──
-    case "autoSave":
-      return (
-        <ToggleSwitch
-          checked={settings.autoSave}
-          onChange={settings.setAutoSave}
-        />
-      );
-    case "spellCheck":
-      return (
-        <ToggleSwitch
-          checked={settings.spellCheck}
-          onChange={settings.setSpellCheck}
-        />
-      );
-    case "autoUpdateLinks":
-      return (
-        <ToggleSwitch
-          checked={settings.autoUpdateLinks}
-          onChange={settings.setAutoUpdateLinks}
-        />
-      );
-    case "journalEnabled":
-      return (
-        <ToggleSwitch
-          checked={settings.journalEnabled}
-          onChange={settings.setJournalEnabled}
-        />
-      );
-
-    // ── General selects ──
-    case "onLaunch":
-      return (
-        <select
-          className="settings-select"
-          value={settings.onLaunch}
-          onChange={(e) =>
-            settings.setOnLaunch(
-              e.target.value as
-                | "newFile"
-                | "restoreLastFolder"
-                | "restoreLastFile",
-            )
-          }
-        >
-          <option value="restoreLastFolder">
-            {t("settings.general.onLaunch.restoreLastFolder")}
-          </option>
-          <option value="restoreLastFile">
-            {t("settings.general.onLaunch.restoreLastFile")}
-          </option>
-          <option value="newFile">
-            {t("settings.general.onLaunch.newFile")}
-          </option>
-        </select>
-      );
-    case "wikilinkFormat":
-      return (
-        <select
-          className="settings-select"
-          value={settings.wikilinkFormat}
-          onChange={(e) =>
-            settings.setWikilinkFormat(
-              e.target.value as "wikilink" | "markdown",
-            )
-          }
-        >
-          <option value="wikilink">{"[[Wikilink]]"}</option>
-          <option value="markdown">[Markdown](link)</option>
-        </select>
-      );
-
-    // ── General ranges ──
-    case "autoSaveDelay":
-      return (
-        <input
-          type="range"
-          className="settings-range"
-          min={500}
-          max={10000}
-          step={500}
-          value={settings.autoSaveDelay}
-          onChange={(e) => settings.setAutoSaveDelay(Number(e.target.value))}
-        />
-      );
-    case "snapshotInterval":
-      return (
-        <input
-          type="range"
-          className="settings-range"
-          min={0}
-          max={120}
-          step={5}
-          value={settings.snapshotInterval}
-          onChange={(e) => settings.setSnapshotInterval(Number(e.target.value))}
-        />
-      );
-    case "snapshotMaxCount":
-      return (
-        <input
-          type="range"
-          className="settings-range"
-          min={5}
-          max={200}
-          step={5}
-          value={settings.snapshotMaxCount}
-          onChange={(e) => settings.setSnapshotMaxCount(Number(e.target.value))}
-        />
-      );
-
-    // ── Editor ranges ──
-    case "fontSize":
-      return (
-        <input
-          type="range"
-          className="settings-range"
-          min={8}
-          max={32}
-          step={1}
-          value={settings.fontSize}
-          onChange={(e) => settings.setFontSize(Number(e.target.value))}
-        />
-      );
-    case "lineHeight":
-      return (
-        <input
-          type="range"
-          className="settings-range"
-          min={1.0}
-          max={3.0}
-          step={0.05}
-          value={settings.lineHeight}
-          onChange={(e) => settings.setLineHeight(Number(e.target.value))}
-        />
-      );
-    case "editorMaxWidth":
-      return (
-        <input
-          type="range"
-          className="settings-range"
-          min={0}
-          max={2048}
-          step={50}
-          value={settings.editorMaxWidth}
-          onChange={(e) => settings.setEditorMaxWidth(Number(e.target.value))}
-        />
-      );
-
-    // ── Editor toggles ──
-    case "lineNumbers":
-      return (
-        <ToggleSwitch
-          checked={settings.lineNumbers}
-          onChange={settings.setLineNumbers}
-        />
-      );
-    case "autoPairBrackets":
-      return (
-        <ToggleSwitch
-          checked={settings.autoPairBrackets}
-          onChange={settings.setAutoPairBrackets}
-        />
-      );
-
-    // ── Editor selects ──
-    case "tabSize":
-      return (
-        <select
-          className="settings-select"
-          value={settings.tabSize}
-          onChange={(e) => settings.setTabSize(Number(e.target.value))}
-        >
-          <option value={2}>{t("settings.editor.tabSize.2spaces")}</option>
-          <option value={4}>{t("settings.editor.tabSize.4spaces")}</option>
-        </select>
-      );
-
-    // ── Markdown toggles ──
-    case "inlineMath":
-      return (
-        <ToggleSwitch
-          checked={settings.inlineMath}
-          onChange={settings.setInlineMath}
-        />
-      );
-    case "highlight":
-      return (
-        <ToggleSwitch
-          checked={settings.highlight}
-          onChange={settings.setHighlight}
-        />
-      );
-    case "strikethrough":
-      return (
-        <ToggleSwitch
-          checked={settings.strikethrough}
-          onChange={settings.setStrikethrough}
-        />
-      );
-    case "smartPunctuation":
-      return (
-        <ToggleSwitch
-          checked={settings.smartPunctuation}
-          onChange={settings.setSmartPunctuation}
-        />
-      );
-
-    // ── AI toggles ──
-    case "ghostTextEnabled":
-      return (
-        <ToggleSwitch
-          checked={ai.ghostTextEnabled}
-          onChange={ai.setGhostTextEnabled}
-        />
-      );
-    case "privacyMode":
-      return (
-        <ToggleSwitch checked={ai.privacyMode} onChange={ai.setPrivacyMode} />
-      );
-
-    // ── AI selects ──
-    case "provider":
-      return (
-        <select
-          className="settings-select"
-          value={ai.provider}
-          onChange={(e) =>
-            ai.setProvider(
-              e.target.value as "claude" | "openai" | "ollama" | "gemini",
-            )
-          }
-        >
-          <option value="claude">{t("settings.ai.provider.claude")}</option>
-          <option value="openai">{t("settings.ai.provider.openai")}</option>
-          <option value="gemini">{t("settings.ai.provider.gemini")}</option>
-          <option value="ollama">{t("settings.ai.provider.ollama")}</option>
-        </select>
-      );
-
-    // ── Language ──
-    case "locale":
-      return (
-        <select
-          className="settings-select"
-          value={settings.locale}
-          onChange={(e) => settings.setLocale(e.target.value)}
-        >
-          {AVAILABLE_LOCALES.map((loc) => (
-            <option key={loc} value={loc}>
-              {LOCALE_LABELS[loc]}
-            </option>
-          ))}
-        </select>
-      );
-
-    // ── Complex settings: navigate to tab ──
-    case "fontFamily":
-    case "activeThemeId":
-    case "activityBarConfig":
-    case "apiKey":
-    case "model":
-      return (
-        <button className="theme-action-btn" onClick={onNavigate}>
-          {t("settings.search.open")}
-        </button>
-      );
-    case "keybindings":
-      return (
-        <button className="settings-btn" onClick={onNavigate}>
-          {t("settings.search.open")}
-        </button>
-      );
-
-    default:
-      return null;
-  }
+function SettingsSectionHeader({ title }: { title: string }) {
+  return <div className="settings-section-header">{title}</div>;
 }
 
-function SettingsRow({
-  label,
-  description,
-  children,
-}: {
-  label: string;
-  description?: string;
-  children: React.ReactNode;
-}) {
+function ThemeMiniPreview({ theme }: { theme: ThemeDef }) {
+  const c = theme.colors;
   return (
-    <div className="settings-row">
-      <div className="settings-row-info">
-        <span className="settings-row-label">{label}</span>
-        {description && (
-          <span className="settings-row-description">{description}</span>
-        )}
+    <div
+      className="theme-preview"
+      style={{ background: c["--color-bg-primary"] }}
+    >
+      <div
+        className="theme-preview-sidebar"
+        style={{
+          background: c["--color-bg-sidebar"],
+          borderRight: `1px solid ${c["--color-border"]}`,
+        }}
+      >
+        <div
+          className="theme-preview-sidebar-item"
+          style={{ background: c["--color-bg-tertiary"] }}
+        />
+        <div
+          className="theme-preview-sidebar-item"
+          style={{ background: c["--color-bg-tertiary"] }}
+        />
+        <div
+          className="theme-preview-sidebar-item"
+          style={{ background: c["--color-bg-tertiary"] }}
+        />
       </div>
-      <div className="settings-row-control">{children}</div>
+      <div
+        className="theme-preview-editor"
+        style={{ background: c["--color-editor-bg"] }}
+      >
+        <div
+          className="theme-preview-heading"
+          style={{ color: c["--color-editor-text"] }}
+        >
+          Heading
+        </div>
+        <div
+          className="theme-preview-text"
+          style={{ color: c["--color-editor-text"] }}
+        >
+          Some{" "}
+          <span style={{ color: c["--color-accent"], fontWeight: 600 }}>
+            bold
+          </span>{" "}
+          text
+        </div>
+        <div
+          className="theme-preview-quote"
+          style={{
+            borderLeft: `2px solid ${c["--color-accent"]}`,
+            color: c["--color-text-secondary"],
+            paddingLeft: 6,
+          }}
+        >
+          blockquote
+        </div>
+        <div
+          className="theme-preview-code"
+          style={{
+            background: c["--color-bg-tertiary"],
+            color: c["--color-editor-text"],
+          }}
+        >
+          code
+        </div>
+      </div>
     </div>
   );
 }
@@ -3033,10 +3036,10 @@ function ToggleSwitch({
 }) {
   return (
     <button
+      aria-checked={checked}
       className={`settings-toggle ${checked ? "settings-toggle-on" : ""}`}
       onClick={() => onChange(!checked)}
       role="switch"
-      aria-checked={checked}
     >
       <span className="settings-toggle-thumb" />
     </button>

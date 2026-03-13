@@ -1,11 +1,13 @@
 // §4.2 3-Column resizable layout
-import { Suspense, lazy, useCallback } from "react";
-import { useUIStore } from "../../stores/ui-store";
-import { useFileStore } from "../../stores/file-store";
-import { Splitter } from "./Splitter";
-import { Sidebar } from "./Sidebar";
-import { ActivityBar } from "./ActivityBar";
+import { lazy, Suspense, useCallback } from "react";
+
 import type { Editor } from "@tiptap/react";
+
+import { useFileStore } from "../../stores/file-store";
+import { useUIStore } from "../../stores/ui-store";
+import { ActivityBar } from "./ActivityBar";
+import { Sidebar } from "./Sidebar";
+import { Splitter } from "./Splitter";
 
 const AIChatPanel = lazy(() =>
   import("../ai/AIChatPanel").then((m) => ({
@@ -34,8 +36,8 @@ const PropertiesPanel = lazy(() =>
 );
 
 interface AppLayoutProps {
-  editor: Editor | null;
   children: React.ReactNode;
+  editor: Editor | null;
   statusBar?: React.ReactNode;
 }
 

@@ -1,8 +1,10 @@
 // §30c Block Reference NodeView — renders ((target#^blockId)) as inline chip
 import { useCallback } from "react";
-import { NodeViewWrapper } from "@tiptap/react";
-import type { NodeViewProps } from "@tiptap/react";
+
 import type { BlockReferenceOptions } from "./block-reference";
+import type { NodeViewProps } from "@tiptap/react";
+
+import { NodeViewWrapper } from "@tiptap/react";
 
 export function BlockReferenceView({
   node,
@@ -10,9 +12,9 @@ export function BlockReferenceView({
   extension,
 }: NodeViewProps) {
   const { target, blockId, display } = node.attrs as {
-    target: string;
     blockId: string;
-    display: string | null;
+    display: null | string;
+    target: string;
   };
 
   // Display text priority: display > "target > ^blockId" > "^blockId"
@@ -36,8 +38,8 @@ export function BlockReferenceView({
     <NodeViewWrapper
       as="span"
       className={`block-reference ${selected ? "block-reference-selected" : ""}`}
-      data-target={target}
       data-block-id={blockId}
+      data-target={target}
       onClick={handleClick}
     >
       {text}

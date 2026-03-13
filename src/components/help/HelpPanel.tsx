@@ -1,19 +1,21 @@
 // Help Panel — User Guide, Keyboard Shortcuts, FAQ
 // Renders docs/*.md as single source of truth via MarkdownRenderer
 // Preprocesses markdown for panel fit + intercepts links
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { useUIStore } from "../../stores/ui-store";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import { openUrl } from "@tauri-apps/plugin-opener";
+
+import faqRaw from "../../../docs/faq.md?raw";
+import shortcutsRaw from "../../../docs/keyboard-shortcuts.md?raw";
+import userGuideRaw from "../../../docs/user-guide.md?raw";
+import { useTranslation } from "../../i18n/useTranslation";
+import { useUIStore } from "../../stores/ui-store";
 import MarkdownRenderer from "../ai/MarkdownRenderer";
 import { prepareHelpMarkdown } from "./prepare-help-markdown";
-import { useTranslation } from "../../i18n/useTranslation";
-import userGuideRaw from "../../../docs/user-guide.md?raw";
-import shortcutsRaw from "../../../docs/keyboard-shortcuts.md?raw";
-import faqRaw from "../../../docs/faq.md?raw";
 
-type HelpTab = "guide" | "shortcuts" | "faq";
+type HelpTab = "faq" | "guide" | "shortcuts";
 
-const TAB_IDS: { id: HelpTab; i18nKey: string }[] = [
+const TAB_IDS: { i18nKey: string; id: HelpTab }[] = [
   { id: "guide", i18nKey: "help.tab.guide" },
   { id: "shortcuts", i18nKey: "help.tab.shortcuts" },
   { id: "faq", i18nKey: "help.tab.faq" },
@@ -30,16 +32,6 @@ const HELP_SCHEME_TO_TAB: Record<string, HelpTab> = {
   "help:shortcuts": "shortcuts",
   "help:faq": "faq",
 };
-
-/** Slugify a heading text for use as an id attribute */
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
 
 export function HelpPanel() {
   const { rightPanelOpen, rightPanelMode } = useUIStore();
@@ -135,8 +127,8 @@ export function HelpPanel() {
         <div className="help-panel-tabs">
           {TAB_IDS.map((tab) => (
             <button
-              key={tab.id}
               className={`help-tab ${activeTab === tab.id ? "help-tab-active" : ""}`}
+              key={tab.id}
               onClick={() => setActiveTab(tab.id)}
             >
               {t(tab.i18nKey)}
@@ -145,12 +137,22 @@ export function HelpPanel() {
         </div>
       </div>
       <div
-        ref={contentRef}
         className="help-panel-content"
         onClick={handleContentClick}
+        ref={contentRef}
       >
         <MarkdownRenderer content={processedContent} />
       </div>
     </div>
   );
+}
+
+/** Slugify a heading text for use as an id attribute */
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
 }

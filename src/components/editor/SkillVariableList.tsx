@@ -1,16 +1,16 @@
 // §72c Skill variable autocomplete menu — {{variable}} suggestion popup
 import {
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
   forwardRef,
+  useCallback,
+  useEffect,
   useImperativeHandle,
+  useRef,
+  useState,
 } from "react";
 
 export interface SkillVariableItem {
-  name: string;
   description: string;
+  name: string;
 }
 
 export interface SkillVariableListRef {
@@ -18,8 +18,8 @@ export interface SkillVariableListRef {
 }
 
 interface SkillVariableListProps {
-  items: SkillVariableItem[];
   command: (item: SkillVariableItem) => void;
+  items: SkillVariableItem[];
 }
 
 export const SkillVariableList = forwardRef<
@@ -76,8 +76,8 @@ export const SkillVariableList = forwardRef<
     <div className="skill-var-list" ref={listRef}>
       {items.map((item, idx) => (
         <div
-          key={item.name}
           className={`skill-var-item ${idx === selectedIndex ? "skill-var-item--selected" : ""}`}
+          key={item.name}
           onClick={() => selectItem(idx)}
           onMouseEnter={() => setSelectedIndex(idx)}
         >

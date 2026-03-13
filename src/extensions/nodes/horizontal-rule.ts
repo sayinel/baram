@@ -1,5 +1,5 @@
 // §5.1 Horizontal Rule Extension
-import { Node, mergeAttributes } from "@tiptap/core";
+import { mergeAttributes, Node } from "@tiptap/core";
 import { InputRule } from "@tiptap/core";
 
 export interface HorizontalRuleOptions {

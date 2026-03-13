@@ -1,6 +1,7 @@
-// §5.5 Mermaid Block roundtrip tests
-import { describe, it, expect } from "vitest";
 import { Schema } from "@tiptap/pm/model";
+// §5.5 Mermaid Block roundtrip tests
+import { describe, expect, it } from "vitest";
+
 import { markdownToProsemirror } from "../md-to-pm";
 import { prosemirrorToMarkdown } from "../pm-to-md";
 

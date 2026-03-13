@@ -1,17 +1,29 @@
-// §31 Wikilink autocomplete — utility functions
-import { fuzzyScore, extractHeadings } from "../../utils/file-search";
-import { useFileStore } from "../../stores/file-store";
-import { readFile } from "../../ipc/invoke";
 import type { HeadingEntry } from "../../utils/file-search";
 
+import { readFile } from "../../ipc/invoke";
+import { useFileStore } from "../../stores/file-store";
+// §31 Wikilink autocomplete — utility functions
+import { extractHeadings, fuzzyScore } from "../../utils/file-search";
+
 export interface WikilinkSuggestionItem {
-  id: string;
-  target: string;
-  label: string;
-  path: string;
-  kind?: "file" | "heading" | "create";
   heading?: string;
   headingLevel?: number;
+  id: string;
+  kind?: "create" | "file" | "heading";
+  label: string;
+  path: string;
+  target: string;
+}
+
+/** Remove .md or .markdown extension from a filename */
+export function fileNameWithoutExtension(name: string): string {
+  if (name.endsWith(".markdown")) {
+    return name.slice(0, -9);
+  }
+  if (name.endsWith(".md")) {
+    return name.slice(0, -3);
+  }
+  return name;
 }
 
 /** Filter and rank files by fuzzy query. Returns sorted results. */
@@ -74,15 +86,4 @@ export function longestCommonPrefix(strings: string[]): string {
     if (len === 0) return "";
   }
   return first.slice(0, len);
-}
-
-/** Remove .md or .markdown extension from a filename */
-export function fileNameWithoutExtension(name: string): string {
-  if (name.endsWith(".markdown")) {
-    return name.slice(0, -9);
-  }
-  if (name.endsWith(".md")) {
-    return name.slice(0, -3);
-  }
-  return name;
 }

@@ -1,7 +1,7 @@
+import type { NodeTransformerEntry } from "../types";
 // frontmatter-transformer.ts — §5.8 YAML Frontmatter mdast ↔ ProseMirror
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
 import type { Node as MdastNode } from "mdast";
-import type { NodeTransformerEntry } from "../types";
 
 interface MdastYaml extends MdastNode {
   type: "yaml";

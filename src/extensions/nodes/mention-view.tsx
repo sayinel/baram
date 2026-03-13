@@ -1,8 +1,10 @@
 // §57 Mention NodeView — renders @[[value]] as styled inline chip
 import { useCallback } from "react";
-import { NodeViewWrapper } from "@tiptap/react";
-import type { NodeViewProps } from "@tiptap/react";
+
 import type { MentionOptions } from "./mention";
+import type { NodeViewProps } from "@tiptap/react";
+
+import { NodeViewWrapper } from "@tiptap/react";
 
 export function MentionView({ node, selected, extension }: NodeViewProps) {
   const { type: mentionType, value } = node.attrs as {
@@ -28,7 +30,7 @@ export function MentionView({ node, selected, extension }: NodeViewProps) {
   return (
     <NodeViewWrapper
       as="span"
-      className={`mention mention-${mentionType}${selected ? " mention-selected" : ""}`}
+      className={`mention mention-${mentionType}${selected ? "mention-selected" : ""}`}
       data-mention-type={mentionType}
       data-value={value}
       onClick={handleClick}

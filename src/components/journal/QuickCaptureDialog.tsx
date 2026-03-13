@@ -1,32 +1,26 @@
 // §56l Quick Capture Dialog — Cmd+Shift+N
-import { useState, useRef, useEffect, useCallback } from "react";
-import { useUIStore } from "../../stores/ui-store";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import { createDir, listDir, readFile, writeFile } from "../../ipc/invoke";
+import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { useSettingsStore } from "../../stores/settings-store";
-import { useEditorStore } from "../../stores/editor-store";
+import { useUIStore } from "../../stores/ui-store";
 import {
-  CAPTURE_TYPES,
-  CAPTURE_ICONS,
-  type CaptureType,
-  type CaptureItem,
-  insertCaptureIntoContent,
-} from "../../utils/journal-capture";
-import {
-  getHierarchicalJournalPath,
+  applyJournalTemplate,
   formatJournalFilename,
   generateDefaultJournal,
-  applyJournalTemplate,
+  getHierarchicalJournalPath,
 } from "../../utils/journal";
-import { readFile, writeFile, createDir, listDir } from "../../ipc/invoke";
+import {
+  CAPTURE_ICONS,
+  CAPTURE_TYPES,
+  type CaptureItem,
+  type CaptureType,
+  insertCaptureIntoContent,
+} from "../../utils/journal-capture";
 import { buildTagIndex, filterTags } from "../../utils/journal-tags";
 import { TagSuggest } from "./TagSuggest";
-
-/** Extract the current #tag prefix being typed at the cursor position */
-function getCurrentTagQuery(value: string, cursorPos: number): string | null {
-  const textBefore = value.slice(0, cursorPos);
-  const match = textBefore.match(/#([\w가-힣]*)$/);
-  return match ? match[1] : null;
-}
 
 export function QuickCaptureDialog() {
   const { quickCaptureOpen, quickCaptureType, toggleQuickCapture } =
@@ -41,7 +35,7 @@ export function QuickCaptureDialog() {
 
   // Tag autocomplete state
   const [tagIndex, setTagIndex] = useState<Map<string, number>>(new Map());
-  const [tagQuery, setTagQuery] = useState<string | null>(null);
+  const [tagQuery, setTagQuery] = useState<null | string>(null);
   const [tagSuggestVisible, setTagSuggestVisible] = useState(false);
   const [tagActiveIndex, setTagActiveIndex] = useState(0);
   const tagsInputRef = useRef<HTMLInputElement>(null);
@@ -90,7 +84,7 @@ export function QuickCaptureDialog() {
         );
 
         const validFiles = fileContents.filter(
-          (f): f is { path: string; content: string } => f !== null,
+          (f): f is { content: string; path: string } => f !== null,
         );
         setTagIndex(buildTagIndex(validFiles));
       } catch (err) {
@@ -309,8 +303,8 @@ export function QuickCaptureDialog() {
         <div className="quick-capture-types">
           {CAPTURE_TYPES.map((type) => (
             <button
-              key={type}
               className={`quick-capture-type-btn ${captureType === type ? "quick-capture-type-active" : ""}`}
+              key={type}
               onClick={() => setCaptureType(type)}
             >
               {CAPTURE_ICONS[type]}{" "}
@@ -322,29 +316,29 @@ export function QuickCaptureDialog() {
         {/* Title (for idea/link) */}
         {(captureType === "idea" || captureType === "link") && (
           <input
-            type="text"
             className="quick-capture-input"
-            placeholder={captureType === "link" ? "링크 제목" : "아이디어 제목"}
-            value={title}
             onChange={(e) => setTitle(e.target.value)}
+            placeholder={captureType === "link" ? "링크 제목" : "아이디어 제목"}
+            type="text"
+            value={title}
           />
         )}
 
         {/* URL (for link) */}
         {captureType === "link" && (
           <input
-            type="text"
             className="quick-capture-input"
-            placeholder="https://..."
-            value={url}
             onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://..."
+            type="text"
+            value={url}
           />
         )}
 
         {/* Body */}
         <textarea
-          ref={inputRef}
           className="quick-capture-textarea"
+          onChange={(e) => setBody(e.target.value)}
           placeholder={
             captureType === "quote"
               ? "인용문을 입력하세요..."
@@ -352,32 +346,32 @@ export function QuickCaptureDialog() {
                 ? "메모를 입력하세요..."
                 : "내용을 입력하세요..."
           }
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
+          ref={inputRef}
           rows={3}
+          value={body}
         />
 
         {/* Tags with autocomplete */}
         <div className="quick-capture-tags-wrap">
           <input
-            ref={tagsInputRef}
-            type="text"
             className="quick-capture-input"
-            placeholder="#태그1 #태그2"
-            value={tags}
-            onChange={handleTagsChange}
-            onKeyDown={handleTagsKeyDown}
             onBlur={() => {
               // Delay hide so onMouseDown on suggestion fires first
               setTimeout(() => setTagSuggestVisible(false), 150);
             }}
+            onChange={handleTagsChange}
+            onKeyDown={handleTagsKeyDown}
+            placeholder="#태그1 #태그2"
+            ref={tagsInputRef}
+            type="text"
+            value={tags}
           />
           <TagSuggest
+            activeIndex={tagActiveIndex}
+            onSelect={handleTagSelect}
             query={tagQuery ?? ""}
             tags={tagIndex}
-            onSelect={handleTagSelect}
             visible={tagSuggestVisible}
-            activeIndex={tagActiveIndex}
           />
         </div>
 
@@ -391,8 +385,8 @@ export function QuickCaptureDialog() {
           </button>
           <button
             className="quick-capture-save"
-            onClick={handleSave}
             disabled={!body.trim() && !title.trim()}
+            onClick={handleSave}
           >
             저장 (Enter)
           </button>
@@ -400,4 +394,11 @@ export function QuickCaptureDialog() {
       </div>
     </div>
   );
+}
+
+/** Extract the current #tag prefix being typed at the cursor position */
+function getCurrentTagQuery(value: string, cursorPos: number): null | string {
+  const textBefore = value.slice(0, cursorPos);
+  const match = textBefore.match(/#([\w가-힣]*)$/);
+  return match ? match[1] : null;
 }

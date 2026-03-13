@@ -1,9 +1,11 @@
 // §48 Custom AI Command Editor — manage custom commands in Settings
-import { useState, useCallback } from "react";
+import { useCallback, useState } from "react";
+
+import type { CustomAICommand } from "../../stores/ai-store";
+
+import { useTranslation } from "../../i18n/useTranslation";
 import { useAIStore } from "../../stores/ai-store";
 import { generateCommandId } from "../../utils/custom-ai-commands";
-import type { CustomAICommand } from "../../stores/ai-store";
-import { useTranslation } from "../../i18n/useTranslation";
 
 export function CustomAICommandEditor() {
   const { t } = useTranslation();
@@ -14,7 +16,7 @@ export function CustomAICommandEditor() {
     updateCustomCommand,
   } = useAIStore();
   const [isAdding, setIsAdding] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<null | string>(null);
   const [newName, setNewName] = useState("");
   const [newPrompt, setNewPrompt] = useState("");
 
@@ -56,38 +58,38 @@ export function CustomAICommandEditor() {
 
       {customCommands.map((cmd) => (
         <CustomCommandRow
-          key={cmd.id}
           command={cmd}
           isEditing={editingId === cmd.id}
-          onEdit={() => setEditingId(cmd.id)}
-          onSave={(name, prompt) => handleUpdate(cmd.id, name, prompt)}
+          key={cmd.id}
           onCancel={() => setEditingId(null)}
           onDelete={() => handleDelete(cmd.id)}
+          onEdit={() => setEditingId(cmd.id)}
+          onSave={(name, prompt) => handleUpdate(cmd.id, name, prompt)}
         />
       ))}
 
       {isAdding ? (
         <div className="custom-ai-form">
           <input
-            type="text"
-            className="settings-input"
-            placeholder={t("settings.ai.customCommands.namePlaceholder")}
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
             autoFocus
+            className="settings-input"
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder={t("settings.ai.customCommands.namePlaceholder")}
+            type="text"
+            value={newName}
           />
           <textarea
             className="custom-ai-prompt-input"
-            placeholder={t("settings.ai.customCommands.promptPlaceholder")}
-            value={newPrompt}
             onChange={(e) => setNewPrompt(e.target.value)}
+            placeholder={t("settings.ai.customCommands.promptPlaceholder")}
             rows={4}
+            value={newPrompt}
           />
           <div className="custom-ai-form-actions">
             <button
               className="custom-ai-btn custom-ai-btn-primary"
-              onClick={handleAdd}
               disabled={!newName.trim() || !newPrompt.trim()}
+              onClick={handleAdd}
             >
               {t("settings.ai.customCommands.add")}
             </button>
@@ -125,10 +127,10 @@ function CustomCommandRow({
 }: {
   command: CustomAICommand;
   isEditing: boolean;
-  onEdit: () => void;
-  onSave: (name: string, prompt: string) => void;
   onCancel: () => void;
   onDelete: () => void;
+  onEdit: () => void;
+  onSave: (name: string, prompt: string) => void;
 }) {
   const { t } = useTranslation();
   const [name, setName] = useState(command.name);
@@ -138,23 +140,23 @@ function CustomCommandRow({
     return (
       <div className="custom-ai-form">
         <input
-          type="text"
-          className="settings-input"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
           autoFocus
+          className="settings-input"
+          onChange={(e) => setName(e.target.value)}
+          type="text"
+          value={name}
         />
         <textarea
           className="custom-ai-prompt-input"
-          value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           rows={4}
+          value={prompt}
         />
         <div className="custom-ai-form-actions">
           <button
             className="custom-ai-btn custom-ai-btn-primary"
-            onClick={() => onSave(name, prompt)}
             disabled={!name.trim() || !prompt.trim()}
+            onClick={() => onSave(name, prompt)}
           >
             {t("common.save")}
           </button>

@@ -1,22 +1,24 @@
 // §69 Plugin Marketplace — Main sidebar panel with Browse / Installed / Updates tabs
-import { useState, useEffect, useCallback } from "react";
-import { usePluginStore } from "../../stores/plugin-store";
-import { pluginInstall, pluginUninstall } from "../../ipc/plugin-invoke";
+import { useCallback, useEffect, useState } from "react";
+
+import type {
+  InstalledPlugin,
+  PluginCapability,
+  RegistryEntry,
+  RegistryIndex,
+} from "../../plugins/types";
+
 import { readFile } from "../../ipc/invoke";
+import { pluginInstall, pluginUninstall } from "../../ipc/plugin-invoke";
+import { pluginLoader } from "../../plugins/plugin-loader";
 import {
   fetchRegistryIndex,
   searchRegistry,
 } from "../../plugins/registry-client";
-import { pluginLoader } from "../../plugins/plugin-loader";
+import { CAPABILITY_DESCRIPTIONS } from "../../plugins/types";
+import { usePluginStore } from "../../stores/plugin-store";
 import { PluginCard } from "./PluginCard";
 import { PluginDetail } from "./PluginDetail";
-import type {
-  RegistryEntry,
-  RegistryIndex,
-  InstalledPlugin,
-  PluginCapability,
-} from "../../plugins/types";
-import { CAPABILITY_DESCRIPTIONS } from "../../plugins/types";
 
 type MarketplaceTab = "browse" | "installed" | "updates";
 
@@ -35,16 +37,16 @@ export function PluginMarketplace() {
   } = usePluginStore();
 
   const [activeTab, setActiveTab] = useState<MarketplaceTab>("browse");
-  const [registryIndex, setRegistryIndex] = useState<RegistryIndex | null>(
+  const [registryIndex, setRegistryIndex] = useState<null | RegistryIndex>(
     null,
   );
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedEntry, setSelectedEntry] = useState<RegistryEntry | null>(
+  const [selectedEntry, setSelectedEntry] = useState<null | RegistryEntry>(
     null,
   );
   const [loading, setLoading] = useState(false);
-  const [error, setFetchError] = useState<string | null>(null);
-  const [readme, setReadme] = useState<string | null>(null);
+  const [error, setFetchError] = useState<null | string>(null);
+  const [readme, setReadme] = useState<null | string>(null);
 
   // Load README for selected installed plugin
   useEffect(() => {
@@ -201,18 +203,18 @@ export function PluginMarketplace() {
     const plugin = installedPlugins[selectedEntry.id];
     return (
       <PluginDetail
+        enabled={plugin?.enabled}
         entry={selectedEntry}
+        error={pluginErrors[selectedEntry.id]}
         installed={!!plugin}
         installing={!!installing[selectedEntry.id]}
-        enabled={plugin?.enabled}
-        updateAvailable={updateAvailable[selectedEntry.id]}
-        error={pluginErrors[selectedEntry.id]}
-        readme={readme}
+        onBack={() => setSelectedEntry(null)}
         onInstall={() => handleInstall(selectedEntry)}
+        onToggleEnabled={() => handleToggleEnabled(selectedEntry.id)}
         onUninstall={() => handleUninstall(selectedEntry.id)}
         onUpdate={() => handleUpdate(selectedEntry)}
-        onToggleEnabled={() => handleToggleEnabled(selectedEntry.id)}
-        onBack={() => setSelectedEntry(null)}
+        readme={readme}
+        updateAvailable={updateAvailable[selectedEntry.id]}
       />
     );
   }
@@ -280,8 +282,6 @@ export function PluginMarketplace() {
         {/* Search (browse tab only) */}
         {activeTab === "browse" && (
           <input
-            type="text"
-            value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search plugins..."
             style={{
@@ -296,6 +296,8 @@ export function PluginMarketplace() {
               boxSizing: "border-box",
               marginBottom: "8px",
             }}
+            type="text"
+            value={searchQuery}
           />
         )}
       </div>
@@ -370,15 +372,15 @@ export function PluginMarketplace() {
           ) : (
             filteredPlugins.map((entry) => (
               <PluginCard
-                key={entry.id}
                 entry={entry}
                 installed={!!installedPlugins[entry.id]}
                 installing={!!installing[entry.id]}
-                updateAvailable={updateAvailable[entry.id]}
+                key={entry.id}
                 onInstall={() => handleInstall(entry)}
+                onSelect={() => setSelectedEntry(entry)}
                 onUninstall={() => handleUninstall(entry.id)}
                 onUpdate={() => handleUpdate(entry)}
-                onSelect={() => setSelectedEntry(entry)}
+                updateAvailable={updateAvailable[entry.id]}
               />
             ))
           ))}
@@ -498,12 +500,12 @@ export function PluginMarketplace() {
                         }}
                       >
                         <input
-                          type="checkbox"
                           checked={plugin.enabled}
                           onChange={() =>
                             handleToggleEnabled(plugin.manifest.id)
                           }
                           style={{ marginRight: "4px" }}
+                          type="checkbox"
                         />
                         <span
                           style={{
@@ -556,15 +558,15 @@ export function PluginMarketplace() {
               if (!entry) return null;
               return (
                 <PluginCard
-                  key={id}
                   entry={entry}
                   installed
                   installing={!!installing[id]}
-                  updateAvailable={version}
+                  key={id}
                   onInstall={() => {}}
+                  onSelect={() => setSelectedEntry(entry)}
                   onUninstall={() => handleUninstall(id)}
                   onUpdate={() => handleUpdate(entry)}
-                  onSelect={() => setSelectedEntry(entry)}
+                  updateAvailable={version}
                 />
               );
             })

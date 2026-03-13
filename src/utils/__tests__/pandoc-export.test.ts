@@ -1,15 +1,16 @@
 // §55 Pandoc Extended Export — convertForPandoc() preprocessing tests
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import {
-  convertForPandoc,
-  convertWikilinksForPandoc,
   convertCalloutsForPandoc,
-  convertToggleForPandoc,
-  stripTocForPandoc,
-  stripBlockRefsForPandoc,
+  convertForPandoc,
   convertHighlightForPandoc,
   convertSubscriptForPandoc,
   convertSuperscriptForPandoc,
+  convertToggleForPandoc,
+  convertWikilinksForPandoc,
+  stripBlockRefsForPandoc,
+  stripTocForPandoc,
 } from "../pandoc-export";
 
 describe("§55 convertWikilinksForPandoc", () => {

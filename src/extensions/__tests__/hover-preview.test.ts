@@ -1,12 +1,13 @@
-// §32 Hover Preview — unit + DOM contract + integration tests
-import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
 import { Editor } from "@tiptap/core";
+// §32 Hover Preview — unit + DOM contract + integration tests
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+
+import {
+  calcPosition,
+  truncatePreview,
+} from "../../components/editor/HoverPreview";
 import { createBaramExtensions } from "../../extensions";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
-import {
-  truncatePreview,
-  calcPosition,
-} from "../../components/editor/HoverPreview";
 
 // ── Helpers ──
 
@@ -121,7 +122,7 @@ describe("§32 Hover Preview", () => {
 
       const doc = editor.state.doc;
       const para = doc.firstChild!;
-      let wikilinkNode = null as ReturnType<typeof doc.nodeAt> | null;
+      let wikilinkNode = null as null | ReturnType<typeof doc.nodeAt>;
 
       para.forEach((child) => {
         if (child.type.name === "wikilink") {
@@ -138,9 +139,9 @@ describe("§32 Hover Preview", () => {
       const editor = createEditor();
       loadMarkdown(editor, "See [[architecture|아키텍처]] docs\n");
 
-      let wikilinkNode = null as ReturnType<
+      let wikilinkNode = null as null | ReturnType<
         typeof editor.state.doc.nodeAt
-      > | null;
+      >;
       editor.state.doc.descendants((node) => {
         if (node.type.name === "wikilink") wikilinkNode = node;
       });
@@ -155,9 +156,9 @@ describe("§32 Hover Preview", () => {
       const editor = createEditor();
       loadMarkdown(editor, "See [[architecture#overview]] here\n");
 
-      let wikilinkNode = null as ReturnType<
+      let wikilinkNode = null as null | ReturnType<
         typeof editor.state.doc.nodeAt
-      > | null;
+      >;
       editor.state.doc.descendants((node) => {
         if (node.type.name === "wikilink") wikilinkNode = node;
       });

@@ -1,10 +1,20 @@
+import type { NodeTransformerEntry } from "../types";
 // toggle-transformer.ts — §5.1 Toggle (Details/Summary) mdast ↔ ProseMirror
 // HTML <details><summary>Title</summary> body </details>
 // remark-parse produces sequence: html(<details>...) + block* + html(</details>)
 // Pattern detection is in md-to-pm.ts; this file provides parsing helpers.
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
 import type { Node as MdastNode } from "mdast";
-import type { NodeTransformerEntry } from "../types";
+
+/** Check if an HTML value is a </details> closing tag */
+export function isDetailsClosing(htmlValue: string): boolean {
+  return htmlValue.trim().toLowerCase() === "</details>";
+}
+
+/** Check if an HTML value starts a <details> block */
+export function isDetailsOpening(htmlValue: string): boolean {
+  return /^<details[\s>]/i.test(htmlValue.trim());
+}
 
 /**
  * Parse a <details...> opening HTML value.
@@ -12,7 +22,7 @@ import type { NodeTransformerEntry } from "../types";
  */
 export function parseDetailsOpening(
   htmlValue: string,
-): { isOpen: boolean; summary: string } | null {
+): null | { isOpen: boolean; summary: string } {
   const trimmed = htmlValue.trim();
   if (!/^<details[\s>]/i.test(trimmed)) return null;
 
@@ -25,16 +35,6 @@ export function parseDetailsOpening(
   const summary = summaryMatch ? summaryMatch[1].trim() : "";
 
   return { isOpen, summary };
-}
-
-/** Check if an HTML value is a </details> closing tag */
-export function isDetailsClosing(htmlValue: string): boolean {
-  return htmlValue.trim().toLowerCase() === "</details>";
-}
-
-/** Check if an HTML value starts a <details> block */
-export function isDetailsOpening(htmlValue: string): boolean {
-  return /^<details[\s>]/i.test(htmlValue.trim());
 }
 
 export const toggleTransformer: NodeTransformerEntry = {

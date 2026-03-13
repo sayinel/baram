@@ -1,37 +1,20 @@
 // §footnote FootnoteRef NodeView — superscript with hover preview + click navigation
-import { useCallback, useState, useRef, useEffect } from "react";
-import { NodeViewWrapper } from "@tiptap/react";
-import type { NodeViewProps } from "@tiptap/react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import type { Editor } from "@tiptap/core";
 import type { Node as PmNode } from "@tiptap/pm/model";
+import type { NodeViewProps } from "@tiptap/react";
+
+import { NodeViewWrapper } from "@tiptap/react";
 
 // §perf-large-file: Shared cache — one doc walk per doc change, all instances read from it
-let _cachedDoc: PmNode | null = null;
+let _cachedDoc: null | PmNode = null;
 let _footnoteOrder: Map<string, number> = new Map(); // identifier → 1-based number
-
-function getFootnoteNumber(editor: Editor, identifier: string): number {
-  const doc = editor.state.doc;
-  if (doc !== _cachedDoc) {
-    _cachedDoc = doc;
-    _footnoteOrder = new Map();
-    let count = 0;
-    doc.descendants((node) => {
-      if (node.type.name === "footnoteRef") {
-        const id = node.attrs.identifier as string;
-        if (!_footnoteOrder.has(id)) {
-          count++;
-          _footnoteOrder.set(id, count);
-        }
-      }
-    });
-  }
-  return _footnoteOrder.get(identifier) ?? 0;
-}
 
 export function FootnoteRefView({ node, editor, selected }: NodeViewProps) {
   const identifier = node.attrs.identifier as string;
   const displayNumber = getFootnoteNumber(editor, identifier);
-  const [tooltipText, setTooltipText] = useState<string | null>(null);
+  const [tooltipText, setTooltipText] = useState<null | string>(null);
   const [showTooltip, setShowTooltip] = useState(false);
   const wrapperRef = useRef<HTMLElement>(null);
 
@@ -106,18 +89,18 @@ export function FootnoteRefView({ node, editor, selected }: NodeViewProps) {
   return (
     <NodeViewWrapper
       as="sup"
-      ref={wrapperRef}
       className={`footnote-ref ${selected ? "footnote-ref-selected" : ""}`}
       onClick={handleClick}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
+      ref={wrapperRef}
     >
       {displayNumber || identifier}
       {showTooltip && tooltipText && (
         <div
-          ref={tooltipRef}
           className="footnote-ref-tooltip"
           contentEditable={false}
+          ref={tooltipRef}
         >
           {tooltipText.length > 200
             ? tooltipText.slice(0, 200) + "…"
@@ -126,4 +109,23 @@ export function FootnoteRefView({ node, editor, selected }: NodeViewProps) {
       )}
     </NodeViewWrapper>
   );
+}
+
+function getFootnoteNumber(editor: Editor, identifier: string): number {
+  const doc = editor.state.doc;
+  if (doc !== _cachedDoc) {
+    _cachedDoc = doc;
+    _footnoteOrder = new Map();
+    let count = 0;
+    doc.descendants((node) => {
+      if (node.type.name === "footnoteRef") {
+        const id = node.attrs.identifier as string;
+        if (!_footnoteOrder.has(id)) {
+          count++;
+          _footnoteOrder.set(id, count);
+        }
+      }
+    });
+  }
+  return _footnoteOrder.get(identifier) ?? 0;
 }

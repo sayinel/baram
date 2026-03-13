@@ -3,6 +3,7 @@
 import { Node } from "@tiptap/core";
 import { Plugin } from "@tiptap/pm/state";
 import { ReactNodeViewRenderer } from "@tiptap/react";
+
 import { BlockReferenceView } from "./block-reference-view";
 
 export interface BlockReferenceOptions {
@@ -13,9 +14,9 @@ declare module "@tiptap/core" {
   interface Commands<ReturnType> {
     blockReference: {
       insertBlockReference: (attrs: {
-        target: string;
         blockId: string;
-        display?: string | null;
+        display?: null | string;
+        target: string;
       }) => ReturnType;
     };
   }

@@ -3,12 +3,13 @@
 // Extracted from md-to-pm.ts so this module can be imported by both
 // the main thread and a Web Worker without pulling in DOM/PM dependencies.
 
-import { unified } from "unified";
-import remarkParse from "remark-parse";
+import type { Content, Root } from "mdast";
+
+import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import remarkFrontmatter from "remark-frontmatter";
-import type { Root, Content } from "mdast";
+import remarkParse from "remark-parse";
+import { unified } from "unified";
 
 /** remark parser — markdown string → mdast */
 const parser = unified()
@@ -16,11 +17,6 @@ const parser = unified()
   .use(remarkGfm, { singleTilde: false })
   .use(remarkMath)
   .use(remarkFrontmatter, ["yaml"]);
-
-/** Parse markdown string to mdast tree */
-export function parseMdast(markdown: string): Root {
-  return parser.parse(markdown) as Root;
-}
 
 /**
  * Detect extra blank lines between top-level blocks in the original markdown
@@ -62,4 +58,9 @@ export function enrichWithEmptyParagraphs(root: Root, markdown: string): Root {
   }
 
   return { ...root, children: enriched };
+}
+
+/** Parse markdown string to mdast tree */
+export function parseMdast(markdown: string): Root {
+  return parser.parse(markdown) as Root;
 }

@@ -1,7 +1,8 @@
 // §43 Ghost Text — Unit tests for plugin key, prompt builder, and privacy integration
-import { describe, test, expect } from "vitest";
-import { ghostTextPluginKey } from "../plugins/ghost-text";
+import { describe, expect, test } from "vitest";
+
 import { isLLMAllowed } from "../../utils/privacy-check";
+import { ghostTextPluginKey } from "../plugins/ghost-text";
 
 describe("§43 Ghost Text — plugin key", () => {
   test("ghostTextPluginKey is defined and named correctly", () => {

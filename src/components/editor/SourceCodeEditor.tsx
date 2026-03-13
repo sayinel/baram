@@ -1,41 +1,43 @@
 // §5.1 Source Code Mode — CodeMirror 6 editor (markdown + non-MD languages)
-import { useEffect, useRef, forwardRef, useImperativeHandle } from "react";
-import {
-  EditorView,
-  keymap,
-  lineNumbers,
-  drawSelection,
-} from "@codemirror/view";
-import { EditorState, EditorSelection, Compartment } from "@codemirror/state";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+
+import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import {
   defaultKeymap,
+  history,
   historyKeymap,
   indentWithTab,
-  history,
 } from "@codemirror/commands";
 import { markdown } from "@codemirror/lang-markdown";
 import {
   bracketMatching,
-  syntaxHighlighting,
   indentUnit,
+  syntaxHighlighting,
 } from "@codemirror/language";
-import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
-import { getLanguageExtension } from "../../extensions/nodes/code-block-languages";
+import { Compartment, EditorSelection, EditorState } from "@codemirror/state";
+import {
+  drawSelection,
+  EditorView,
+  keymap,
+  lineNumbers,
+} from "@codemirror/view";
+
 import { getHighlightStyle } from "../../extensions/nodes/code-block-highlight";
+import { getLanguageExtension } from "../../extensions/nodes/code-block-languages";
 import { useSettingsStore } from "../../stores/settings-store";
 
 export interface SourceCodeEditorRef {
-  getCursorOffset(): number;
   getContent(): string;
+  getCursorOffset(): number;
   hasUserEdited(): boolean;
 }
 
 interface SourceCodeEditorProps {
   content: string;
-  onChange: (content: string) => void;
   initialCursorOffset?: number;
   /** CodeMirror language name (e.g. "json", "python"). Omit or "markdown" for markdown. */
   language?: string;
+  onChange: (content: string) => void;
 }
 
 export const SourceCodeEditor = forwardRef<
@@ -199,8 +201,8 @@ export const SourceCodeEditor = forwardRef<
 
   return (
     <div
-      ref={containerRef}
       className="source-code-editor"
+      ref={containerRef}
       style={{ height: "100%", overflow: "auto" }}
     />
   );

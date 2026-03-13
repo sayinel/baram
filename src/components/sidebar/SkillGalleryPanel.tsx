@@ -1,9 +1,12 @@
 // §72c SkillGalleryPanel — browse and search workspace skills
-import { useState, useEffect, useMemo } from "react";
-import { useSkillStore } from "../../stores/skill-store";
+import { useEffect, useMemo, useState } from "react";
+
+import type { SkillMeta } from "../../utils/skill-dependency-analyzer";
+
+import { readFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
-import type { SkillMeta } from "../../utils/skill-dependency-analyzer";
+import { useSkillStore } from "../../stores/skill-store";
 
 export function SkillGalleryPanel() {
   const allSkills = useSkillStore((s) => s.allSkills);
@@ -45,7 +48,6 @@ export function SkillGalleryPanel() {
       return;
     }
     try {
-      const { readFile } = await import("../../ipc/invoke");
       const content = await readFile(skill.filePath);
       useFileStore.getState().setFileContent(skill.filePath, content);
       const tabId = `tab-${skill.filePath}`;
@@ -72,17 +74,17 @@ export function SkillGalleryPanel() {
       <div className="skill-gallery-toolbar">
         <input
           className="skill-gallery-search"
-          type="text"
-          placeholder="Search skills..."
-          value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search skills..."
+          type="text"
+          value={searchQuery}
         />
         {outputFormats.length > 0 && (
           <div className="skill-gallery-tags">
             {outputFormats.map((fmt) => (
               <span
-                key={fmt}
                 className={`skill-gallery-tag ${searchQuery === fmt ? "skill-gallery-tag--active" : ""}`}
+                key={fmt}
                 onClick={() => setSearchQuery(searchQuery === fmt ? "" : fmt)}
               >
                 {fmt}
@@ -109,8 +111,8 @@ export function SkillGalleryPanel() {
 
         {filtered.map((skill) => (
           <div
-            key={skill.filePath}
             className="skill-gallery-card"
+            key={skill.filePath}
             onClick={() => handleOpenSkill(skill)}
           >
             <div className="skill-gallery-card-name">{skill.name}</div>

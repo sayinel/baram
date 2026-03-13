@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import { t, type Locale } from "../i18n";
+
+import { type Locale, t } from "../i18n";
 
 /**
  * Mapping of Rust menu item/submenu IDs → i18n keys.

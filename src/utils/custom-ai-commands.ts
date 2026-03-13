@@ -1,25 +1,16 @@
 // §48 Custom AI Commands — CRUD operations + template variable substitution
 
 export interface CustomAICommandContext {
-  selection?: string;
-  document?: string;
   clipboard?: string;
+  document?: string;
+  selection?: string;
 }
 
 /**
- * Substitute template variables in a prompt string.
- * Supported variables: {{selection}}, {{document}}, {{input}}, {{clipboard}}
- * Note: {{input}} is handled separately via resolveInputVariable — it is NOT substituted here.
+ * Generate a unique ID for a custom AI command.
  */
-export function substituteVariables(
-  template: string,
-  context: CustomAICommandContext,
-): string {
-  let result = template;
-  result = result.replace(/\{\{selection\}\}/g, context.selection ?? "");
-  result = result.replace(/\{\{document\}\}/g, context.document ?? "");
-  result = result.replace(/\{\{clipboard\}\}/g, context.clipboard ?? "");
-  return result;
+export function generateCommandId(): string {
+  return `custom_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 /**
@@ -60,8 +51,17 @@ export function substituteInput(template: string, input: string): string {
 }
 
 /**
- * Generate a unique ID for a custom AI command.
+ * Substitute template variables in a prompt string.
+ * Supported variables: {{selection}}, {{document}}, {{input}}, {{clipboard}}
+ * Note: {{input}} is handled separately via resolveInputVariable — it is NOT substituted here.
  */
-export function generateCommandId(): string {
-  return `custom_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+export function substituteVariables(
+  template: string,
+  context: CustomAICommandContext,
+): string {
+  let result = template;
+  result = result.replace(/\{\{selection\}\}/g, context.selection ?? "");
+  result = result.replace(/\{\{document\}\}/g, context.document ?? "");
+  result = result.replace(/\{\{clipboard\}\}/g, context.clipboard ?? "");
+  return result;
 }

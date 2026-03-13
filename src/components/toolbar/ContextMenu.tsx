@@ -1,54 +1,40 @@
 // §4.8 Context Menu — right-click with node-type detection
 import {
-  useState,
+  useCallback,
   useEffect,
   useLayoutEffect,
-  useCallback,
   useRef,
+  useState,
 } from "react";
+
 import type { Editor } from "@tiptap/react";
-import { copyMathToPNG } from "../../utils/katex-to-png";
-import {
-  copyMermaidSvg,
-  copyMermaidPng,
-  copyMermaidSource,
-} from "../../utils/mermaid-utils";
-import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
+
 import {
   addBlockId,
+  copyBlockId,
   editBlockId,
   removeBlockId,
-  copyBlockId,
 } from "../../extensions/plugins/block-id-decoration";
+import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
+import { copyMathToPNG } from "../../utils/katex-to-png";
+import {
+  copyMermaidPng,
+  copyMermaidSource,
+  copyMermaidSvg,
+} from "../../utils/mermaid-utils";
 
 interface ContextMenuProps {
   editor: Editor;
 }
 
 interface MenuItem {
-  label: string;
   action: () => void;
+  label: string;
   separator?: boolean;
 }
 
-/** Walk up from resolved position to find the enclosing table node */
-function findTableAtCursor(editor: Editor): {
-  node: ReturnType<typeof editor.state.doc.nodeAt>;
-  pos: number;
-  depth: number;
-} | null {
-  const { $from } = editor.state.selection;
-  for (let d = $from.depth; d >= 0; d--) {
-    const node = $from.node(d);
-    if (node.type.name === "table") {
-      return { node, pos: $from.before(d), depth: d };
-    }
-  }
-  return null;
-}
-
 export function ContextMenu({ editor }: ContextMenuProps) {
-  const [position, setPosition] = useState<{ x: number; y: number } | null>(
+  const [position, setPosition] = useState<null | { x: number; y: number }>(
     null,
   );
   const [items, setItems] = useState<MenuItem[]>([]);
@@ -360,7 +346,7 @@ export function ContextMenu({ editor }: ContextMenuProps) {
       }
       if (tableCell) {
         const currentAlign =
-          (tableCell.attrs.alignment as string | null) ?? null;
+          (tableCell.attrs.alignment as null | string) ?? null;
         return [
           ...baseItems,
           { label: "", action: () => {}, separator: true },
@@ -512,7 +498,7 @@ export function ContextMenu({ editor }: ContextMenuProps) {
         const blockPos = resolved.before();
         const blockNode = editor.state.doc.nodeAt(blockPos);
         if (blockNode) {
-          const existingId = blockNode.attrs.blockId as string | null;
+          const existingId = blockNode.attrs.blockId as null | string;
           blockIdItems.push({ label: "", action: () => {}, separator: true });
           if (existingId) {
             blockIdItems.push(
@@ -630,10 +616,10 @@ export function ContextMenu({ editor }: ContextMenuProps) {
   ]);
 
   // Clamp menu position so it stays within the viewport
-  const [adjustedPos, setAdjustedPos] = useState<{
+  const [adjustedPos, setAdjustedPos] = useState<null | {
     x: number;
     y: number;
-  } | null>(null);
+  }>(null);
   useLayoutEffect(() => {
     if (!position || !menuRef.current) {
       setAdjustedPos(null);
@@ -658,17 +644,17 @@ export function ContextMenu({ editor }: ContextMenuProps) {
 
   return (
     <div
-      ref={menuRef}
       className="context-menu"
+      ref={menuRef}
       style={{ left: displayPos.x, top: displayPos.y }}
     >
       {items.map((item, i) =>
         item.separator ? (
-          <div key={i} className="context-menu-separator" />
+          <div className="context-menu-separator" key={i} />
         ) : (
           <button
-            key={i}
             className="context-menu-item"
+            key={i}
             onClick={() => {
               item.action();
               closeMenu();
@@ -680,4 +666,20 @@ export function ContextMenu({ editor }: ContextMenuProps) {
       )}
     </div>
   );
+}
+
+/** Walk up from resolved position to find the enclosing table node */
+function findTableAtCursor(editor: Editor): null | {
+  depth: number;
+  node: ReturnType<typeof editor.state.doc.nodeAt>;
+  pos: number;
+} {
+  const { $from } = editor.state.selection;
+  for (let d = $from.depth; d >= 0; d--) {
+    const node = $from.node(d);
+    if (node.type.name === "table") {
+      return { node, pos: $from.before(d), depth: d };
+    }
+  }
+  return null;
 }

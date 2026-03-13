@@ -1,8 +1,11 @@
 // §30d Block Embed NodeView — editable transclusion with bidirectional sync
-import { useState, useEffect, useRef, useCallback } from "react";
-import { NodeViewWrapper } from "@tiptap/react";
-import type { NodeViewProps } from "@tiptap/react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import type { BlockEmbedOptions } from "./block-embed";
+import type { NodeViewProps } from "@tiptap/react";
+
+import { NodeViewWrapper } from "@tiptap/react";
+
 import { useEmbedSync } from "../../hooks/use-embed-sync";
 
 export function BlockEmbedView({
@@ -13,8 +16,8 @@ export function BlockEmbedView({
   getPos,
 }: NodeViewProps) {
   const { target, blockId } = node.attrs as {
-    target: string;
     blockId: string;
+    target: string;
   };
 
   const {
@@ -57,7 +60,7 @@ export function BlockEmbedView({
 
   // Exit block: commit and move cursor
   const exitBlock = useCallback(
-    (direction: "up" | "down") => {
+    (direction: "down" | "up") => {
       const pos = getPos();
       if (typeof pos !== "number") return;
 
@@ -178,13 +181,13 @@ export function BlockEmbedView({
           {headerText}
         </div>
         <textarea
-          ref={textareaRef}
           className="block-embed-textarea"
-          value={localText}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
+          ref={textareaRef}
           rows={1}
           spellCheck={false}
+          value={localText}
         />
       </NodeViewWrapper>
     );

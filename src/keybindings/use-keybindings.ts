@@ -4,31 +4,16 @@
  */
 
 import { useMemo } from "react";
+
+import { useSettingsStore } from "../stores/settings-store";
 import {
   KEYBINDING_REGISTRY,
   type KeybindingEntry,
 } from "./keybinding-registry";
-import { useSettingsStore } from "../stores/settings-store";
 
 export interface MergedKeybinding extends KeybindingEntry {
   activeKey: string; // override value if exists, else defaultKey
   isOverridden: boolean; // true if user has overridden this key
-}
-
-/**
- * Pure function — maps KEYBINDING_REGISTRY entries, applying overrides where allowed.
- */
-export function getMergedKeybindings(
-  overrides: Record<string, string>,
-): MergedKeybinding[] {
-  return KEYBINDING_REGISTRY.map((entry) => {
-    const hasOverride = entry.customizable && overrides[entry.id] !== undefined;
-    return {
-      ...entry,
-      activeKey: hasOverride ? overrides[entry.id] : entry.defaultKey,
-      isOverridden: hasOverride,
-    };
-  });
 }
 
 /**
@@ -61,6 +46,22 @@ export function findConflict(
     if (entry.activeKey === newKey) return entry;
   }
   return null;
+}
+
+/**
+ * Pure function — maps KEYBINDING_REGISTRY entries, applying overrides where allowed.
+ */
+export function getMergedKeybindings(
+  overrides: Record<string, string>,
+): MergedKeybinding[] {
+  return KEYBINDING_REGISTRY.map((entry) => {
+    const hasOverride = entry.customizable && overrides[entry.id] !== undefined;
+    return {
+      ...entry,
+      activeKey: hasOverride ? overrides[entry.id] : entry.defaultKey,
+      isOverridden: hasOverride,
+    };
+  });
 }
 
 /**

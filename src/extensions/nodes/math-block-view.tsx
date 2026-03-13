@@ -1,31 +1,19 @@
 // §5.3 Math Block NodeView — selected: textarea + preview, unselected: KaTeX only
-import { useState, useEffect, useRef, useCallback } from "react";
-import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
-import { TextSelection } from "@tiptap/pm/state";
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import type { Node as PmNode } from "@tiptap/pm/model";
+
+import { TextSelection } from "@tiptap/pm/state";
+import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 import katex from "katex";
+
 import { parseKaTeXError } from "../../utils/katex-error";
 import { preprocessNotionFormula } from "../../utils/notion-katex-compat";
 import { mathBlockEntryKey } from "./math-block";
 
 // §perf-large-file: Shared cache — one doc walk per doc change, all instances read from it
-let _cachedDoc: PmNode | null = null;
+let _cachedDoc: null | PmNode = null;
 let _mathPositions: Map<number, number> = new Map(); // pos → 1-based eq number
-
-function getMathBlockNumber(doc: PmNode, pos: number): number {
-  if (doc !== _cachedDoc) {
-    _cachedDoc = doc;
-    _mathPositions = new Map();
-    let count = 0;
-    doc.descendants((n, nPos) => {
-      if (n.type.name === "mathBlock") {
-        count++;
-        _mathPositions.set(nPos, count);
-      }
-    });
-  }
-  return _mathPositions.get(pos) ?? 1;
-}
 
 export function MathBlockView({
   node,
@@ -39,7 +27,7 @@ export function MathBlockView({
   const [localFormula, setLocalFormula] = useState(formula);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<null | string>(null);
   const [eqNumber, setEqNumber] = useState(1);
 
   // §perf-large-file: Use shared cache — O(1) per instance, O(n) total per doc change
@@ -143,7 +131,7 @@ export function MathBlockView({
   // Exit block: save formula and move focus to target position
   // If exiting downward and no next node exists, insert a new paragraph
   const exitBlock = useCallback(
-    (direction: "up" | "down") => {
+    (direction: "down" | "up") => {
       const pos = getPos();
       if (typeof pos !== "number") return;
 
@@ -249,13 +237,13 @@ export function MathBlockView({
     return (
       <NodeViewWrapper
         className="math-block math-block-preview"
-        data-math-size={mathSize}
         contentEditable={false}
-        spellCheck={false}
+        data-math-size={mathSize}
         onClick={handlePreviewClick}
+        spellCheck={false}
       >
         <div className="math-block-row">
-          <div ref={previewRef} className="math-block-katex" />
+          <div className="math-block-katex" ref={previewRef} />
           <span className="math-block-eq-number">{eqLabel}</span>
         </div>
       </NodeViewWrapper>
@@ -266,28 +254,28 @@ export function MathBlockView({
   return (
     <NodeViewWrapper
       className="math-block math-block-editing"
-      data-math-size={mathSize}
       contentEditable={false}
+      data-math-size={mathSize}
       spellCheck={false}
     >
       <textarea
-        ref={textareaRef}
+        autoCapitalize="off"
+        autoCorrect="off"
         className="math-block-textarea"
-        value={localFormula}
+        data-gramm="false"
         onChange={(e) => setLocalFormula(e.target.value)}
         onKeyDown={handleKeyDown}
-        rows={1}
         placeholder="LaTeX formula..."
+        ref={textareaRef}
+        rows={1}
         spellCheck={false}
-        autoCorrect="off"
-        autoCapitalize="off"
-        data-gramm="false"
+        value={localFormula}
       />
       <div className="math-block-row">
         <div
-          ref={previewRef}
           className="math-block-katex"
           contentEditable={false}
+          ref={previewRef}
         />
         <span className="math-block-eq-number" contentEditable={false}>
           {eqLabel}
@@ -300,4 +288,19 @@ export function MathBlockView({
       )}
     </NodeViewWrapper>
   );
+}
+
+function getMathBlockNumber(doc: PmNode, pos: number): number {
+  if (doc !== _cachedDoc) {
+    _cachedDoc = doc;
+    _mathPositions = new Map();
+    let count = 0;
+    doc.descendants((n, nPos) => {
+      if (n.type.name === "mathBlock") {
+        count++;
+        _mathPositions.set(nPos, count);
+      }
+    });
+  }
+  return _mathPositions.get(pos) ?? 1;
 }

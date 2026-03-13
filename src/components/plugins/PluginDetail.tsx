@@ -1,20 +1,21 @@
+import type { PluginCapability, RegistryEntry } from "../../plugins/types";
+
 // §69 Plugin Detail Panel — Full info view for a selected plugin
 import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
-import type { RegistryEntry, PluginCapability } from "../../plugins/types";
 
 interface PluginDetailProps {
+  enabled?: boolean;
   entry: RegistryEntry;
+  error?: string;
   installed: boolean;
   installing: boolean;
-  enabled?: boolean;
-  updateAvailable?: string;
-  error?: string;
-  readme?: string | null;
+  onBack: () => void;
   onInstall: () => void;
+  onToggleEnabled: () => void;
   onUninstall: () => void;
   onUpdate: () => void;
-  onToggleEnabled: () => void;
-  onBack: () => void;
+  readme?: null | string;
+  updateAvailable?: string;
 }
 
 export function PluginDetail({
@@ -294,8 +295,8 @@ export function PluginDetail({
         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
           {entry.capabilities.map((cap) => (
             <PluginCapabilityBadge
-              key={cap}
               capability={cap as PluginCapability}
+              key={cap}
               showDescription
             />
           ))}
@@ -328,12 +329,12 @@ export function PluginDetail({
           {entry.repository && (
             <a
               href={entry.repository}
-              target="_blank"
               rel="noopener noreferrer"
               style={{
                 fontSize: "13px",
                 color: "var(--color-accent, #3b82f6)",
               }}
+              target="_blank"
             >
               Repository
             </a>
@@ -341,12 +342,12 @@ export function PluginDetail({
           {entry.homepage && (
             <a
               href={entry.homepage}
-              target="_blank"
               rel="noopener noreferrer"
               style={{
                 fontSize: "13px",
                 color: "var(--color-accent, #3b82f6)",
               }}
+              target="_blank"
             >
               Homepage
             </a>

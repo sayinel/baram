@@ -2,14 +2,15 @@
  * §56c Phase B — Memories View utility tests
  * TDD Red Phase: all tests should FAIL before implementation
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import {
-  extractOneLine,
   extractDiarySection,
-  renderSimpleMarkdown,
   extractImages,
-  updateOneLineFrontmatter,
+  extractOneLine,
   groupMemoriesByYear,
+  renderSimpleMarkdown,
+  updateOneLineFrontmatter,
 } from "../journal-memories";
 
 describe("§56c extractOneLine", () => {

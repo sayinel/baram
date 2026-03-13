@@ -1,6 +1,7 @@
-// §28 Wikilink — roundtrip + parsing tests
-import { describe, it, expect } from "vitest";
 import { Schema } from "@tiptap/pm/model";
+// §28 Wikilink — roundtrip + parsing tests
+import { describe, expect, it } from "vitest";
+
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 import {
@@ -100,15 +101,15 @@ const schema = new Schema({
   },
 });
 
+/** Helper: parse markdown and inspect the PM doc */
+function parse(input: string) {
+  return markdownToProsemirror(input, schema);
+}
+
 /** Helper: roundtrip a markdown string and compare */
 function roundtrip(input: string): string {
   const doc = markdownToProsemirror(input, schema);
   return prosemirrorToMarkdown(doc);
-}
-
-/** Helper: parse markdown and inspect the PM doc */
-function parse(input: string) {
-  return markdownToProsemirror(input, schema);
 }
 
 // --- Utility function tests ---

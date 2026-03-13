@@ -1,38 +1,39 @@
 // §56 Calendar sidebar panel — mini calendar for journal navigation
-import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { useSettingsStore } from "../../stores/settings-store";
-import { getJournalTheme } from "../../utils/journal-themes";
-import {
-  formatJournalDate,
-  getMonthDays,
-  getFirstDayOfWeek,
-  getJournalFilePath,
-  getHierarchicalJournalPath,
-  getWeeklyJournalPath,
-  getISOWeekNumber,
-  resolveJournalDir,
-  generateDefaultJournal,
-  applyJournalTemplate,
-} from "../../utils/journal";
-import {
-  generateDefaultWeekly,
-  applyPeriodicTemplate,
-} from "../../utils/journal-periodic";
-import {
-  parseMoodFromFrontmatter,
-  getMoodColors,
-} from "../../utils/journal-mood";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+
 import type { MoodValue } from "../../utils/journal-mood";
-import { readFile, writeFile, createDir, listDir } from "../../ipc/invoke";
+
+import { createDir, listDir, readFile, writeFile } from "../../ipc/invoke";
+import { useAIStore } from "../../stores/ai-store";
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
-import { YearInPixels } from "../journal/YearInPixels";
-import { MoodTrend30 } from "../journal/MoodTrend30";
-import { StatsPanel } from "../journal/StatsPanel";
-
+import { useSettingsStore } from "../../stores/settings-store";
+import {
+  applyJournalTemplate,
+  formatJournalDate,
+  generateDefaultJournal,
+  getFirstDayOfWeek,
+  getHierarchicalJournalPath,
+  getISOWeekNumber,
+  getJournalFilePath,
+  getMonthDays,
+  getWeeklyJournalPath,
+  resolveJournalDir,
+} from "../../utils/journal";
+import {
+  getMoodColors,
+  parseMoodFromFrontmatter,
+} from "../../utils/journal-mood";
+import {
+  applyPeriodicTemplate,
+  generateDefaultWeekly,
+} from "../../utils/journal-periodic";
+import { getJournalTheme } from "../../utils/journal-themes";
 import { JournalSearchPanel } from "../journal/JournalSearchPanel";
+import { MoodTrend30 } from "../journal/MoodTrend30";
 import { ReflectionPanel } from "../journal/ReflectionPanel";
-import { useAIStore } from "../../stores/ai-store";
+import { StatsPanel } from "../journal/StatsPanel";
+import { YearInPixels } from "../journal/YearInPixels";
 
 const DAY_NAMES = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const MONTH_NAMES = [
@@ -83,7 +84,7 @@ export function CalendarPanel() {
   );
 
   // §56e Mood colors — theme-aware palette
-  const effectiveBase = useMemo<"light" | "dark">(() => {
+  const effectiveBase = useMemo<"dark" | "light">(() => {
     if (theme === "light" || theme === "dark") return theme;
     return window.matchMedia("(prefers-color-scheme: dark)").matches
       ? "dark"
@@ -427,19 +428,19 @@ export function CalendarPanel() {
           &gt;
         </button>
         <button
-          className={`calendar-nav-btn calendar-search-btn${showSearch ? " calendar-search-btn-active" : ""}`}
+          aria-label="Toggle journal search"
+          className={`calendar-nav-btn calendar-search-btn${showSearch ? "calendar-search-btn-active" : ""}`}
           onClick={() => setShowSearch((v) => !v)}
           title="Search journal"
-          aria-label="Toggle journal search"
         >
           &#128269;
         </button>
         {(provider === "ollama" || (apiKey && apiKey.length > 0)) && (
           <button
-            className={`calendar-nav-btn calendar-reflection-btn${showReflection ? " calendar-reflection-btn-active" : ""}`}
+            aria-label="Toggle AI reflection"
+            className={`calendar-nav-btn calendar-reflection-btn${showReflection ? "calendar-reflection-btn-active" : ""}`}
             onClick={() => setShowReflection((v) => !v)}
             title="AI Reflection"
-            aria-label="Toggle AI reflection"
           >
             ✨
           </button>
@@ -447,13 +448,13 @@ export function CalendarPanel() {
       </div>
       {calView === "days" && (
         <div
-          className={`calendar-grid${journalWeeklyEnabled ? " calendar-grid-with-weeks" : ""}`}
+          className={`calendar-grid${journalWeeklyEnabled ? "calendar-grid-with-weeks" : ""}`}
         >
           {journalWeeklyEnabled && (
             <div className="calendar-week-header">W</div>
           )}
           {DAY_NAMES.map((d) => (
-            <div key={d} className="calendar-day-name">
+            <div className="calendar-day-name" key={d}>
               {d}
             </div>
           ))}
@@ -466,13 +467,13 @@ export function CalendarPanel() {
                 {journalWeeklyEnabled && (
                   <button
                     className="calendar-week-num"
+                    disabled={!firstDate}
                     onClick={() => firstDate && openWeeklyNote(firstDate)}
                     title={
                       weekNum !== null
                         ? `Open W${String(weekNum).padStart(2, "0")} note`
                         : undefined
                     }
-                    disabled={!firstDate}
                   >
                     {weekNum !== null ? weekNum : ""}
                   </button>
@@ -481,8 +482,8 @@ export function CalendarPanel() {
                   if (!date) {
                     return (
                       <div
-                        key={`empty-${rowIdx}-${cellIdx}`}
                         className="calendar-cell calendar-cell-empty"
+                        key={`empty-${rowIdx}-${cellIdx}`}
                       />
                     );
                   }
@@ -491,8 +492,8 @@ export function CalendarPanel() {
                   const hasJournal = journalDates.has(dateStr);
                   return (
                     <button
+                      className={`calendar-cell${isToday ? "calendar-cell-today" : ""}${hasJournal ? "calendar-cell-has-journal" : ""}`}
                       key={dateStr}
-                      className={`calendar-cell${isToday ? " calendar-cell-today" : ""}${hasJournal ? " calendar-cell-has-journal" : ""}`}
                       onClick={() => openOrCreateJournal(date)}
                       title={dateStr}
                     >
@@ -522,8 +523,8 @@ export function CalendarPanel() {
         <div className="calendar-picker calendar-months-picker">
           {MONTH_NAMES.map((name, idx) => (
             <button
+              className={`calendar-pick-btn${idx === viewMonth ? "calendar-pick-btn-selected" : ""}${idx === today.getMonth() && viewYear === today.getFullYear() ? "calendar-pick-btn-today" : ""}`}
               key={name}
-              className={`calendar-pick-btn${idx === viewMonth ? " calendar-pick-btn-selected" : ""}${idx === today.getMonth() && viewYear === today.getFullYear() ? " calendar-pick-btn-today" : ""}`}
               onClick={() => {
                 setViewMonth(idx);
                 setCalView("days");
@@ -539,8 +540,8 @@ export function CalendarPanel() {
           {Array.from({ length: 12 }, (_, i) => yearRangeStart + i).map(
             (yr) => (
               <button
+                className={`calendar-pick-btn${yr === viewYear ? "calendar-pick-btn-selected" : ""}${yr === today.getFullYear() ? "calendar-pick-btn-today" : ""}`}
                 key={yr}
-                className={`calendar-pick-btn${yr === viewYear ? " calendar-pick-btn-selected" : ""}${yr === today.getFullYear() ? " calendar-pick-btn-today" : ""}`}
                 onClick={() => {
                   setViewYear(yr);
                   setCalView("months");
@@ -562,8 +563,8 @@ export function CalendarPanel() {
       <MoodTrend30 moodMap={moodMap} />
       <YearInPixels
         journalDir={resolvedDir}
-        year={viewYear}
         useHierarchy={journalUseHierarchy}
+        year={viewYear}
       />
     </div>
   );

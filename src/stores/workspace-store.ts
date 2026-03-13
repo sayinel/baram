@@ -1,54 +1,55 @@
 // §52 Workspace 프리셋 스토어
 import { create } from "zustand";
-import { persist, createJSONStorage } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
+
+import { createDir, listDir, readFile, writeFile } from "../ipc/invoke";
+import {
+  applyJournalTemplate,
+  generateDefaultJournal,
+  getHierarchicalJournalPath,
+  getJournalFilePath,
+  resolveJournalDir,
+} from "../utils/journal";
+import { useEditorStore } from "./editor-store";
+import { useFileStore } from "./file-store";
+import { buildFileTree } from "./file-store";
+import { useSettingsStore } from "./settings-store";
 import { tauriStorage } from "./tauri-storage";
 import { useUIStore } from "./ui-store";
-import { useSettingsStore } from "./settings-store";
-import { useFileStore } from "./file-store";
-import { useEditorStore } from "./editor-store";
-import { readFile, writeFile, createDir, listDir } from "../ipc/invoke";
-import {
-  getJournalFilePath,
-  getHierarchicalJournalPath,
-  resolveJournalDir,
-  generateDefaultJournal,
-  applyJournalTemplate,
-} from "../utils/journal";
-import { buildFileTree } from "./file-store";
 
 // --- Types ---
 
 export interface WorkspaceLayout {
-  sidebarOpen: boolean;
-  sidebarPanel:
-    | "files"
-    | "outline"
-    | "search"
-    | "backlinks"
-    | "bookmarks"
-    | "graph"
-    | "git"
-    | "calendar"
-    | "tags"
-    | "snapshots"
-    | "skills-gallery"
-    | "plugins";
-  rightPanelOpen: boolean;
   rightPanelMode:
     | "chat"
     | "help"
     | "memories"
+    | "none"
     | "photo-gallery"
-    | "properties"
-    | "none";
+    | "properties";
+  rightPanelOpen: boolean;
+  sidebarOpen: boolean;
+  sidebarPanel:
+    | "backlinks"
+    | "bookmarks"
+    | "calendar"
+    | "files"
+    | "git"
+    | "graph"
+    | "outline"
+    | "plugins"
+    | "search"
+    | "skills-gallery"
+    | "snapshots"
+    | "tags";
 }
 
 export interface WorkspacePreset {
-  id: string;
-  name: string;
-  description: string;
   builtIn: boolean;
+  description: string;
+  id: string;
   layout: WorkspaceLayout;
+  name: string;
 }
 
 // --- Built-in Presets (§4.3) ---
@@ -95,15 +96,15 @@ export const BUILTIN_PRESETS: WorkspacePreset[] = [
 // --- Store ---
 
 interface WorkspaceState {
-  activePresetId: string | null;
-  customPresets: WorkspacePreset[];
-
+  activePresetId: null | string;
   applyPreset: (id: string) => void;
-  saveCustomPreset: (name: string, description?: string) => string;
+
+  customPresets: WorkspacePreset[];
   deleteCustomPreset: (id: string) => void;
-  renameCustomPreset: (id: string, name: string) => void;
   getAllPresets: () => WorkspacePreset[];
-  getPreset: (id: string) => WorkspacePreset | undefined;
+  getPreset: (id: string) => undefined | WorkspacePreset;
+  renameCustomPreset: (id: string, name: string) => void;
+  saveCustomPreset: (name: string, description?: string) => string;
 }
 
 export const useWorkspaceStore = create<WorkspaceState>()(

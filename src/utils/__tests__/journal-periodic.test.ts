@@ -1,13 +1,14 @@
 /**
  * §56f Periodic note utility tests
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+
 import {
-  getWeekEndDate,
-  generateDefaultWeekly,
-  generateDefaultMonthly,
-  generateDefaultYearly,
   applyPeriodicTemplate,
+  generateDefaultMonthly,
+  generateDefaultWeekly,
+  generateDefaultYearly,
+  getWeekEndDate,
 } from "../journal-periodic";
 
 describe("§56f getWeekEndDate", () => {

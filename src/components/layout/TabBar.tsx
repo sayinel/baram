@@ -1,25 +1,12 @@
 // §4.3 Multi-file tab bar with overflow scroll + VS Code-style drag reorder
 // §38 Tab Pin — context menu, pinned rendering, drag boundary clamping
-import { useCallback, useRef, useState, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import { ask } from "@tauri-apps/plugin-dialog";
-import { useEditorStore, isFileTab } from "../../stores/editor-store";
+
+import { isFileTab, useEditorStore } from "../../stores/editor-store";
 
 const DRAG_THRESHOLD = 3; // px before drag activates
-
-/** SVG pin icon — 14×14 */
-function PinIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 16 16"
-      width="14"
-      height="14"
-      fill="currentColor"
-    >
-      <path d="M10.97 2.29a1 1 0 0 0-1.41 0L7.44 4.4 5.03 3.03a1 1 0 0 0-1.2.15L2.79 4.22a1 1 0 0 0 .15 1.2l1.37 2.41L2.2 9.94a1 1 0 0 0 0 1.41l2.44 2.44a1 1 0 0 0 1.41 0l2.12-2.12 2.41 1.37a1 1 0 0 0 1.2-.15l1.04-1.04a1 1 0 0 0 .15-1.2L11.6 8.56l2.12-2.12a1 1 0 0 0 0-1.41L10.97 2.29z" />
-    </svg>
-  );
-}
 
 interface ContextMenuState {
   tabId: string;
@@ -43,13 +30,13 @@ export function TabBar() {
   const [canScrollRight, setCanScrollRight] = useState(false);
 
   // Drag state
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const [dropSlot, setDropSlot] = useState<number | null>(null);
-  const dragState = useRef<{
+  const [dragIndex, setDragIndex] = useState<null | number>(null);
+  const [dropSlot, setDropSlot] = useState<null | number>(null);
+  const dragState = useRef<null | {
+    active: boolean;
     index: number;
     startX: number;
-    active: boolean;
-  } | null>(null);
+  }>(null);
 
   // §38 Context menu state
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -236,14 +223,14 @@ export function TabBar() {
     <div className="tab-bar">
       {canScrollLeft && (
         <button
+          aria-label="Scroll tabs left"
           className="tab-scroll-btn tab-scroll-left"
           onClick={() => scroll(-1)}
-          aria-label="Scroll tabs left"
         >
           ‹
         </button>
       )}
-      <div className="tab-scroll-area" ref={scrollRef} onWheel={handleWheel}>
+      <div className="tab-scroll-area" onWheel={handleWheel} ref={scrollRef}>
         {tabs.map((tab, index) => {
           const showDivider =
             tab.isPinned &&
@@ -253,7 +240,6 @@ export function TabBar() {
           return (
             <div key={tab.id} style={{ display: "contents" }}>
               <div
-                data-tab-id={tab.id}
                 className={[
                   "tab-item",
                   tab.id === activeTabId && "tab-active",
@@ -268,8 +254,9 @@ export function TabBar() {
                 ]
                   .filter(Boolean)
                   .join(" ")}
-                onMouseDown={(e) => handleTabMouseDown(e, index)}
+                data-tab-id={tab.id}
                 onContextMenu={(e) => handleContextMenu(e, tab.id)}
+                onMouseDown={(e) => handleTabMouseDown(e, index)}
               >
                 {tab.isPinned && <PinIcon className="tab-pin-icon" />}
                 <span className="tab-title">
@@ -300,9 +287,9 @@ export function TabBar() {
       </div>
       {canScrollRight && (
         <button
+          aria-label="Scroll tabs right"
           className="tab-scroll-btn tab-scroll-right"
           onClick={() => scroll(1)}
-          aria-label="Scroll tabs right"
         >
           ›
         </button>
@@ -316,8 +303,8 @@ export function TabBar() {
           return (
             <div
               className="tab-context-menu"
-              style={{ left: contextMenu.x, top: contextMenu.y }}
               onClick={(e) => e.stopPropagation()}
+              style={{ left: contextMenu.x, top: contextMenu.y }}
             >
               <div
                 className="tab-context-item"
@@ -329,7 +316,7 @@ export function TabBar() {
                 {tab.isPinned ? "Unpin Tab" : "Pin Tab"}
               </div>
               <div
-                className={`tab-context-item${tab.isPinned ? " tab-context-item--disabled" : ""}`}
+                className={`tab-context-item${tab.isPinned ? "tab-context-item--disabled" : ""}`}
                 onClick={() => {
                   if (!tab.isPinned) {
                     handleClose(tab.id);
@@ -361,5 +348,20 @@ export function TabBar() {
           );
         })()}
     </div>
+  );
+}
+
+/** SVG pin icon — 14×14 */
+function PinIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      fill="currentColor"
+      height="14"
+      viewBox="0 0 16 16"
+      width="14"
+    >
+      <path d="M10.97 2.29a1 1 0 0 0-1.41 0L7.44 4.4 5.03 3.03a1 1 0 0 0-1.2.15L2.79 4.22a1 1 0 0 0 .15 1.2l1.37 2.41L2.2 9.94a1 1 0 0 0 0 1.41l2.44 2.44a1 1 0 0 0 1.41 0l2.12-2.12 2.41 1.37a1 1 0 0 0 1.2-.15l1.04-1.04a1 1 0 0 0 .15-1.2L11.6 8.56l2.12-2.12a1 1 0 0 0 0-1.41L10.97 2.29z" />
+    </svg>
   );
 }

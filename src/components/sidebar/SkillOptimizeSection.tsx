@@ -1,13 +1,14 @@
 // §72c Skill Optimize Section — LLM-powered prompt optimization suggestions
-import { useState, useCallback } from "react";
-import { useSkillStore } from "../../stores/skill-store";
+import { useCallback, useState } from "react";
+
+import { useLLMStream } from "../../hooks/use-llm-stream";
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
-import { useLLMStream } from "../../hooks/use-llm-stream";
+import { useSkillStore } from "../../stores/skill-store";
 import {
   buildOptimizePrompt,
-  parseOptimizeResponse,
   type OptimizeSuggestion,
+  parseOptimizeResponse,
 } from "../../utils/skill-optimize-prompt";
 import { registerSkillSection } from "./skill-panel-registry";
 
@@ -21,52 +22,6 @@ const CATEGORY_ICONS: Record<string, string> = {
 };
 
 // ─── SuggestionCard ──────────────────────────────────────────────────────────
-
-function SuggestionCard({ suggestion }: { suggestion: OptimizeSuggestion }) {
-  const handleApply = useCallback(() => {
-    if (!suggestion.before || !suggestion.after) return;
-    const { activeTabId, tabs, markDirty, requestContentRefresh } =
-      useEditorStore.getState();
-    const activeTab = tabs.find((t) => t.id === activeTabId);
-    if (!activeTab?.filePath) return;
-    const content = useFileStore.getState().openFiles.get(activeTab.filePath);
-    if (!content) return;
-    const newContent = content.replace(suggestion.before, suggestion.after);
-    if (newContent === content) return; // not found
-    useFileStore.getState().setFileContent(activeTab.filePath, newContent);
-    if (activeTabId) markDirty(activeTabId, true);
-    requestContentRefresh();
-  }, [suggestion]);
-
-  return (
-    <div className="skill-optimize-card">
-      <div className="skill-optimize-card-header">
-        <span className="skill-optimize-category">
-          {CATEGORY_ICONS[suggestion.category] ?? ""} {suggestion.category}
-        </span>
-        <span className="skill-optimize-title">{suggestion.title}</span>
-      </div>
-      <div className="skill-optimize-desc">{suggestion.description}</div>
-      {(suggestion.before || suggestion.after) && (
-        <div className="skill-optimize-diff">
-          {suggestion.before && (
-            <div className="skill-optimize-before">- {suggestion.before}</div>
-          )}
-          {suggestion.after && (
-            <div className="skill-optimize-after">+ {suggestion.after}</div>
-          )}
-        </div>
-      )}
-      {suggestion.before && suggestion.after && (
-        <button className="skill-optimize-apply" onClick={handleApply}>
-          Apply
-        </button>
-      )}
-    </div>
-  );
-}
-
-// ─── SkillOptimizeSection ────────────────────────────────────────────────────
 
 export function SkillOptimizeSection() {
   const isSkill = useSkillStore((s) => s.isSkill);
@@ -132,8 +87,8 @@ export function SkillOptimizeSection() {
             {!isStreaming ? (
               <button
                 className="skill-optimize-btn"
-                onClick={handleOptimize}
                 disabled={isStreaming}
+                onClick={handleOptimize}
               >
                 {hasRun ? "Re-analyze" : "Analyze Prompt"}
               </button>
@@ -170,6 +125,52 @@ export function SkillOptimizeSection() {
               </div>
             )}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ─── SkillOptimizeSection ────────────────────────────────────────────────────
+
+function SuggestionCard({ suggestion }: { suggestion: OptimizeSuggestion }) {
+  const handleApply = useCallback(() => {
+    if (!suggestion.before || !suggestion.after) return;
+    const { activeTabId, tabs, markDirty, requestContentRefresh } =
+      useEditorStore.getState();
+    const activeTab = tabs.find((t) => t.id === activeTabId);
+    if (!activeTab?.filePath) return;
+    const content = useFileStore.getState().openFiles.get(activeTab.filePath);
+    if (!content) return;
+    const newContent = content.replace(suggestion.before, suggestion.after);
+    if (newContent === content) return; // not found
+    useFileStore.getState().setFileContent(activeTab.filePath, newContent);
+    if (activeTabId) markDirty(activeTabId, true);
+    requestContentRefresh();
+  }, [suggestion]);
+
+  return (
+    <div className="skill-optimize-card">
+      <div className="skill-optimize-card-header">
+        <span className="skill-optimize-category">
+          {CATEGORY_ICONS[suggestion.category] ?? ""} {suggestion.category}
+        </span>
+        <span className="skill-optimize-title">{suggestion.title}</span>
+      </div>
+      <div className="skill-optimize-desc">{suggestion.description}</div>
+      {(suggestion.before || suggestion.after) && (
+        <div className="skill-optimize-diff">
+          {suggestion.before && (
+            <div className="skill-optimize-before">- {suggestion.before}</div>
+          )}
+          {suggestion.after && (
+            <div className="skill-optimize-after">+ {suggestion.after}</div>
+          )}
+        </div>
+      )}
+      {suggestion.before && suggestion.after && (
+        <button className="skill-optimize-apply" onClick={handleApply}>
+          Apply
+        </button>
       )}
     </div>
   );

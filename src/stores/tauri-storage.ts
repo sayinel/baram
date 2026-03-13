@@ -2,14 +2,15 @@
 // Stores config in app_data_dir/config.json via Rust IPC instead of localStorage.
 
 import type { StateStorage } from "zustand/middleware";
-import { getConfig, setConfig, removeConfig } from "../ipc/invoke";
+
+import { getConfig, removeConfig, setConfig } from "../ipc/invoke";
 
 /**
  * Custom StateStorage that delegates to Tauri's config module.
  * Zustand persist calls getItem/setItem/removeItem with serialized JSON strings.
  */
 export const tauriStorage: StateStorage = {
-  getItem: async (name: string): Promise<string | null> => {
+  getItem: async (name: string): Promise<null | string> => {
     try {
       return await getConfig(name);
     } catch (e) {

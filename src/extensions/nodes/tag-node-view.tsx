@@ -1,8 +1,11 @@
 // §56m Tag NodeView — renders #tag as styled inline pill
 // Single-click → search by tag, Double-click → inline edit
 import { useCallback, useRef, useState } from "react";
-import { NodeViewWrapper } from "@tiptap/react";
+
 import type { NodeViewProps } from "@tiptap/react";
+
+import { NodeViewWrapper } from "@tiptap/react";
+
 import { useSettingsStore } from "../../stores/settings-store";
 import { useUIStore } from "../../stores/ui-store";
 
@@ -17,7 +20,7 @@ export function TagNodeView({
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(tag);
   const inputRef = useRef<HTMLInputElement>(null);
-  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clickTimerRef = useRef<null | ReturnType<typeof setTimeout>>(null);
 
   const triggerSearch = useCallback(() => {
     const store = useUIStore.getState();
@@ -110,13 +113,13 @@ export function TagNodeView({
       >
         <span className="tag-node-hash">#</span>
         <input
-          ref={inputRef}
           className="tag-node-input"
-          value={editValue}
+          onBlur={commitEdit}
           onChange={(e) => setEditValue(e.target.value)}
           onKeyDown={handleInputKeyDown}
-          onBlur={commitEdit}
+          ref={inputRef}
           spellCheck={false}
+          value={editValue}
         />
       </NodeViewWrapper>
     );
@@ -128,8 +131,8 @@ export function TagNodeView({
       className={`tag-node ${selected ? "tag-node-selected" : ""}`}
       data-tag={tag}
       onMouseDown={handleMouseDown}
-      title={`#${tag} — 더블 클릭으로 편집`}
       style={{ color: tagColor || undefined }}
+      title={`#${tag} — 더블 클릭으로 편집`}
     >
       <span className="tag-node-hash">#</span>
       {tag}

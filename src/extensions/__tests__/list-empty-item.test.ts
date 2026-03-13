@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
 import { Schema } from "@tiptap/pm/model";
+import { describe, expect, it } from "vitest";
+
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 

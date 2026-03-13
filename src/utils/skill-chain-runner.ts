@@ -2,26 +2,11 @@
 // Executes a sequence of skills in dependency order and validates output flow.
 
 import type { SkillMeta } from "./skill-dependency-analyzer";
+
 import {
   buildDependencyGraph,
   detectCycles,
 } from "./skill-dependency-analyzer";
-
-export type ChainStepStatus =
-  | "pending"
-  | "running"
-  | "passed"
-  | "failed"
-  | "skipped";
-
-export interface ChainStep {
-  skillName: string;
-  status: ChainStepStatus;
-  input?: string;
-  output?: string;
-  error?: string;
-  durationMs?: number;
-}
 
 export interface ChainResult {
   steps: ChainStep[];
@@ -29,36 +14,21 @@ export interface ChainResult {
   totalDurationMs: number;
 }
 
-/**
- * Topological sort: returns execution order for a skill and its transitive deps.
- * Throws if cycles are found.
- */
-export function resolveExecutionOrder(
-  skills: SkillMeta[],
-  targetName: string,
-): string[] {
-  const graph = buildDependencyGraph(skills);
-  const cycles = detectCycles(graph);
-  if (cycles.length > 0) {
-    throw new Error(`Circular dependency detected: ${cycles[0].join(" → ")}`);
-  }
-
-  // Collect transitive deps via DFS
-  const visited = new Set<string>();
-  const order: string[] = [];
-
-  function dfs(name: string) {
-    if (visited.has(name)) return;
-    visited.add(name);
-    for (const dep of graph.get(name) ?? []) {
-      dfs(dep);
-    }
-    order.push(name); // Post-order: deps before dependents
-  }
-
-  dfs(targetName);
-  return order;
+export interface ChainStep {
+  durationMs?: number;
+  error?: string;
+  input?: string;
+  output?: string;
+  skillName: string;
+  status: ChainStepStatus;
 }
+
+export type ChainStepStatus =
+  | "failed"
+  | "passed"
+  | "pending"
+  | "running"
+  | "skipped";
 
 /**
  * Run a chain test (dry run) — validates that the dependency chain is resolvable
@@ -131,4 +101,35 @@ export function dryRunChain(
     success: !chainBroken,
     totalDurationMs: Date.now() - start,
   };
+}
+
+/**
+ * Topological sort: returns execution order for a skill and its transitive deps.
+ * Throws if cycles are found.
+ */
+export function resolveExecutionOrder(
+  skills: SkillMeta[],
+  targetName: string,
+): string[] {
+  const graph = buildDependencyGraph(skills);
+  const cycles = detectCycles(graph);
+  if (cycles.length > 0) {
+    throw new Error(`Circular dependency detected: ${cycles[0].join(" → ")}`);
+  }
+
+  // Collect transitive deps via DFS
+  const visited = new Set<string>();
+  const order: string[] = [];
+
+  function dfs(name: string) {
+    if (visited.has(name)) return;
+    visited.add(name);
+    for (const dep of graph.get(name) ?? []) {
+      dfs(dep);
+    }
+    order.push(name); // Post-order: deps before dependents
+  }
+
+  dfs(targetName);
+  return order;
 }

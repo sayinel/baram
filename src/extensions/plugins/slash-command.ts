@@ -1,39 +1,47 @@
-// §4.6 Slash Commands — Tiptap Extension using Suggestion API
-import { Extension } from "@tiptap/core";
-import { Suggestion } from "@tiptap/suggestion";
 import { open } from "@tauri-apps/plugin-dialog";
-import { ReactRenderer } from "@tiptap/react";
+
 import type { Editor } from "@tiptap/core";
 import type {
-  SuggestionProps,
   SuggestionKeyDownProps,
+  SuggestionProps,
 } from "@tiptap/suggestion";
+
+// §4.6 Slash Commands — Tiptap Extension using Suggestion API
+import { Extension } from "@tiptap/core";
+import { ReactRenderer } from "@tiptap/react";
+import { Suggestion } from "@tiptap/suggestion";
+
 import {
-  SlashMenuList,
   type SlashMenuItem,
+  SlashMenuList,
   type SlashMenuRef,
 } from "../../components/command/SlashMenu";
+import { copyFile, createDir } from "../../ipc/invoke";
 import { useAIStore } from "../../stores/ai-store";
+import { useEditorStore } from "../../stores/editor-store";
+import { useFileStore } from "../../stores/file-store";
+import { useSettingsStore } from "../../stores/settings-store";
 import { useUIStore } from "../../stores/ui-store";
 import {
-  substituteVariables,
-  resolveInputVariable,
-  substituteInput,
-} from "../../utils/custom-ai-commands";
+  AI_EXPAND,
+  AI_EXPLAIN,
+  AI_FIX_GRAMMAR,
+  AI_SUMMARIZE,
+  AI_TRANSLATE,
+} from "../../utils/ai-command-prompts";
 import {
   executeAICommand,
   getSelectionOrParagraph,
   showPrompt,
 } from "../../utils/ai-commands";
-import { showFieldDialog } from "../../utils/field-dialog";
-import { showTableGridPicker } from "../../utils/table-grid-picker";
 import {
-  AI_TRANSLATE,
-  AI_SUMMARIZE,
-  AI_EXPAND,
-  AI_FIX_GRAMMAR,
-  AI_EXPLAIN,
-} from "../../utils/ai-command-prompts";
+  resolveInputVariable,
+  substituteInput,
+  substituteVariables,
+} from "../../utils/custom-ai-commands";
+import { showFieldDialog } from "../../utils/field-dialog";
+import { generatePhotoFilename, getAssetsDir } from "../../utils/journal-photo";
+import { showTableGridPicker } from "../../utils/table-grid-picker";
 
 export function buildSlashItems(editor: Editor): SlashMenuItem[] {
   const items: SlashMenuItem[] = [
@@ -461,11 +469,6 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
           const paths = Array.isArray(selected) ? selected : [selected];
 
           // Check journal context
-          const { useEditorStore } = await import("../../stores/editor-store");
-          const { useFileStore } = await import("../../stores/file-store");
-          const { useSettingsStore } =
-            await import("../../stores/settings-store");
-
           const activeTabId = useEditorStore.getState().activeTabId;
           const tabs = useEditorStore.getState().tabs;
           const activeTab = tabs.find(
@@ -482,10 +485,6 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
           for (const p of paths) {
             if (isJournal && rootPath && journalDir) {
               // Copy file to assets directory using helpers + copyFile IPC
-              const { generatePhotoFilename, getAssetsDir } =
-                await import("../../utils/journal-photo");
-              const { createDir, copyFile } = await import("../../ipc/invoke");
-
               const now = new Date();
               const fileName = p.split("/").pop() ?? "photo.jpg";
               const assetsRelDir = getAssetsDir(journalDir, now);
@@ -609,8 +608,8 @@ export const SlashCommands = Extension.create({
           props,
         }: {
           editor: Editor;
-          range: { from: number; to: number };
           props: SlashMenuItem;
+          range: { from: number; to: number };
         }) => {
           ed.chain().focus().deleteRange(range).run();
           props.action();
@@ -629,7 +628,7 @@ export const SlashCommands = Extension.create({
           );
         },
         render: () => {
-          let component: ReactRenderer<SlashMenuRef> | null = null;
+          let component: null | ReactRenderer<SlashMenuRef> = null;
           let popup: HTMLDivElement | null = null;
 
           return {

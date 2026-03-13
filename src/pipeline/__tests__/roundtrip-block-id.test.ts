@@ -1,6 +1,7 @@
-// §30a Block ID roundtrip tests — MD → ProseMirror → MD
-import { describe, it, expect } from "vitest";
 import { Schema } from "@tiptap/pm/model";
+// §30a Block ID roundtrip tests — MD → ProseMirror → MD
+import { describe, expect, it } from "vitest";
+
 import { markdownToProsemirror } from "../md-to-pm";
 import { prosemirrorToMarkdown } from "../pm-to-md";
 

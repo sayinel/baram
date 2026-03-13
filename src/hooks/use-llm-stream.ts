@@ -1,45 +1,48 @@
-import { useState, useRef, useCallback } from "react";
+import { useCallback, useRef, useState } from "react";
+
 import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
-import { llmComplete, llmCancel } from "../ipc/invoke";
-import { useAIStore } from "../stores/ai-store";
-import type { AITask } from "../stores/ai-store";
-import { isLLMAllowed } from "../utils/privacy-check";
-import { getConfigForTask } from "../utils/model-selection";
+
 import type {
-  LLMTokenPayload,
   LLMDonePayload,
   LLMErrorPayload,
+  LLMTokenPayload,
 } from "../ipc/types";
+import type { AITask } from "../stores/ai-store";
+
+import { llmCancel, llmComplete } from "../ipc/invoke";
+import { useAIStore } from "../stores/ai-store";
+import { getConfigForTask } from "../utils/model-selection";
+import { isLLMAllowed } from "../utils/privacy-check";
 
 interface UseLLMStreamOptions {
-  model?: string;
-  maxTokens?: number;
-  provider?: string;
   baseUrl?: string;
+  maxTokens?: number;
+  model?: string;
+  provider?: string;
   task?: AITask;
 }
 
 interface UseLLMStreamReturn {
+  cancel: () => void;
+  error: null | string;
+  isStreaming: boolean;
   send: (
     prompt: string,
     systemPrompt?: string,
     opts?: UseLLMStreamOptions,
   ) => void;
-  cancel: () => void;
-  isStreaming: boolean;
   text: string;
-  error: string | null;
   totalTokens: number;
 }
 
 export function useLLMStream(): UseLLMStreamReturn {
   const [text, setText] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<null | string>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [totalTokens, setTotalTokens] = useState(0);
   const unlistenRefs = useRef<UnlistenFn[]>([]);
-  const requestIdRef = useRef<string | null>(null);
+  const requestIdRef = useRef<null | string>(null);
 
   const cleanup = useCallback(async () => {
     for (const unlisten of unlistenRefs.current) {

@@ -1,29 +1,32 @@
+import type { LintResult } from "../utils/prompt-linter";
+import type {
+  DependencyWarning,
+  SkillMeta,
+} from "../utils/skill-dependency-analyzer";
+import type { FileEntry } from "./file-store";
+
 // §72c Skill Store — shared state for skill mode features
 import { create } from "zustand";
-import type {
-  SkillMeta,
-  DependencyWarning,
-} from "../utils/skill-dependency-analyzer";
-import type { LintResult } from "../utils/prompt-linter";
+
+import { readFile } from "../ipc/invoke";
 import {
-  parseSkillFrontmatter,
   analyzeSkillDependencies,
+  parseSkillFrontmatter,
 } from "../utils/skill-dependency-analyzer";
 import { isSkillFrontmatter } from "../utils/skill-frontmatter";
-import type { FileEntry } from "./file-store";
 import { useFileStore } from "./file-store";
 
 interface SkillState {
-  isSkill: boolean;
-  currentSkill: SkillMeta | null;
   allSkills: SkillMeta[];
-  lintResults: LintResult[];
+  currentSkill: null | SkillMeta;
   dependencyWarnings: DependencyWarning[];
+  isSkill: boolean;
+  lintResults: LintResult[];
   scanning: boolean;
 
-  updateCurrentFile: (yaml: string, filePath: string) => void;
   scanWorkspace: () => Promise<void>;
   setLintResults: (results: LintResult[]) => void;
+  updateCurrentFile: (yaml: string, filePath: string) => void;
 }
 
 /** Recursively collect .md files from the file tree */
@@ -58,7 +61,6 @@ export const useSkillStore = create<SkillState>()((set, get) => ({
     try {
       const { fileTree } = useFileStore.getState();
       const mdFiles = collectMdFiles(fileTree);
-      const { readFile } = await import("../ipc/invoke");
 
       const skills: SkillMeta[] = [];
       for (const file of mdFiles) {
