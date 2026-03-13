@@ -163,15 +163,21 @@ function App() {
     toggleSettings,
     setSidebarPanel,
   } = useUIStore();
-  const { activeTabId, tabs, markDirty } = useEditorStore();
+  const activeTabId = useEditorStore((s) => s.activeTabId);
+  const activeTabFilePath = useEditorStore((s) => {
+    const tab = s.tabs.find((t) => t.id === s.activeTabId);
+    return tab && isFileTab(tab) ? tab.filePath : null;
+  });
+  const isGraphTabActive = useEditorStore((s) =>
+    isGraphTab(s.tabs.find((t) => t.id === s.activeTabId)),
+  );
+  const markDirty = useEditorStore((s) => s.markDirty);
   const rootPath = useFileStore((s) => s.rootPath);
 
   // Derived: non-markdown code file detection for rendering branch
-  const activeTab = tabs.find((t) => t.id === activeTabId);
-  const isCodeFile =
-    !!activeTab && isFileTab(activeTab) && !isMarkdownFile(activeTab.filePath);
-  const codeLanguage = activeTab?.filePath
-    ? getLanguageForFile(activeTab.filePath)
+  const isCodeFile = !!activeTabFilePath && !isMarkdownFile(activeTabFilePath);
+  const codeLanguage = activeTabFilePath
+    ? getLanguageForFile(activeTabFilePath)
     : null;
 
   // §5.6 Find/Replace state
@@ -360,7 +366,9 @@ function App() {
   // Cmd+/ toggle between WYSIWYG and Source Code mode (§5.1 cursor preservation)
   const toggleSourceMode = useCallback(() => {
     if (!editor) return;
-    const currentTab = tabs.find((t) => t.id === activeTabId);
+    const { tabs: currentTabs, activeTabId: currentTabId } =
+      useEditorStore.getState();
+    const currentTab = currentTabs.find((t) => t.id === currentTabId);
     // Graph tab / non-MD file — source mode not applicable
     if (isGraphTab(currentTab)) return;
     if (
@@ -414,14 +422,14 @@ function App() {
 
       // Cache state with correct selection for tab-switching safety
       const targetPos = clampedPos;
-      if (activeTabId) {
+      if (currentTabId) {
         const sel = TextSelection.near(newDoc.resolve(clampedPos));
         const cachedState = EditorState.create({
           doc: newDoc,
           plugins: editor.state.plugins,
           selection: sel,
         });
-        editorStateCache.current.set(activeTabId, cachedState);
+        editorStateCache.current.set(currentTabId, cachedState);
       }
 
       setIsSourceMode(false);
@@ -468,7 +476,7 @@ function App() {
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- editorStateCache is a stable ref
-  }, [editor, isSourceMode, tabs, activeTabId]);
+  }, [editor, isSourceMode]);
 
   // §56 Journal — auto-create today's journal on startup
   useJournal(handleOpenFilePath);
@@ -605,8 +613,6 @@ function App() {
     toggleSourceMode,
   });
 
-  const isGraphTabActive = isGraphTab(tabs.find((t) => t.id === activeTabId));
-
   return (
     <>
       <AppLayout
@@ -682,13 +688,12 @@ function App() {
               )}
               <MoodBar editor={editor} />
               <FollowUpCard editor={editor} />
-              {activeTab?.filePath &&
-                detectPeriodicType(activeTab.filePath) && (
-                  <PeriodicInsightBanner
-                    filePath={activeTab.filePath}
-                    type={detectPeriodicType(activeTab.filePath)!}
-                  />
-                )}
+              {activeTabFilePath && detectPeriodicType(activeTabFilePath) && (
+                <PeriodicInsightBanner
+                  filePath={activeTabFilePath}
+                  type={detectPeriodicType(activeTabFilePath)!}
+                />
+              )}
               <div className="editor-area-scroll" data-editor-scroll>
                 {/* §perf-large-file B2: Loading skeleton while Worker parses */}
                 {isParsing && (

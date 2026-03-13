@@ -52,8 +52,7 @@ export function useTabSwitching({
   setSourceContent,
   sourceContentRef,
 }: UseTabSwitchingParams) {
-  const { activeTabId, tabs } = useEditorStore();
-  const { openFiles } = useFileStore();
+  const activeTabId = useEditorStore((s) => s.activeTabId);
 
   // Track previously active tab to save its content on switch
   const prevTabRef = useRef<null | string>(null);
@@ -69,6 +68,9 @@ export function useTabSwitching({
   // --- Tab switching: swap editor content when activeTabId changes ---
   useEffect(() => {
     if (!editor) return;
+
+    const tabs = useEditorStore.getState().tabs;
+    const { openFiles } = useFileStore.getState();
 
     const prevTabId = prevTabRef.current;
     prevTabRef.current = activeTabId;

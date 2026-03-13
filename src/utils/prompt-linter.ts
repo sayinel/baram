@@ -20,6 +20,11 @@ const AMBIGUOUS_WORDS = [
   "adequate",
 ];
 
+// Pre-compiled RegExp patterns for ambiguous words (avoid re-creating in loop)
+const AMBIGUOUS_PATTERNS: ReadonlyMap<string, RegExp> = new Map(
+  AMBIGUOUS_WORDS.map((word) => [word, new RegExp(`\\b${word}\\b`, "gi")]),
+);
+
 // Conflicting instruction pairs
 const CONFLICTING_PAIRS: [RegExp, RegExp, string][] = [
   [
@@ -65,8 +70,8 @@ function checkAmbiguousInstruction(text: string): LintResult[] {
   const { bodyStart } = parseFrontmatter(text);
   const body = text.slice(bodyStart);
 
-  for (const word of AMBIGUOUS_WORDS) {
-    const regex = new RegExp(`\\b${word}\\b`, "gi");
+  for (const [, regex] of AMBIGUOUS_PATTERNS) {
+    regex.lastIndex = 0;
     let match;
     while ((match = regex.exec(body)) !== null) {
       results.push({

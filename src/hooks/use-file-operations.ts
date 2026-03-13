@@ -27,7 +27,8 @@ export function useFileOperations({
   isSourceMode,
   sourceContentRef,
 }: UseFileOperationsParams) {
-  const { openTab, markDirty, tabs, activeTabId } = useEditorStore();
+  const openTab = useEditorStore((s) => s.openTab);
+  const markDirty = useEditorStore((s) => s.markDirty);
   const { setFileContent } = useFileStore();
 
   const handleNewFile = useCallback(
@@ -37,14 +38,15 @@ export function useFileOperations({
       if (name) {
         title = name;
       } else {
+        const { tabs: currentTabs } = useEditorStore.getState();
         const tabNumber =
-          tabs.filter((t) => t.title.startsWith("Untitled")).length + 1;
+          currentTabs.filter((t) => t.title.startsWith("Untitled")).length + 1;
         title = tabNumber === 1 ? "Untitled" : `Untitled ${tabNumber}`;
       }
       useFileStore.getState().setFileContent(id, "");
       openTab({ id, filePath: "", title, isDirty: false, isPinned: false });
     },
-    [tabs, openTab],
+    [openTab],
   );
 
   const handleOpenFile = useCallback(async () => {
@@ -58,7 +60,8 @@ export function useFileOperations({
     if (!selected) return;
 
     // Check if already open
-    const existing = tabs.find((t) => t.filePath === selected);
+    const { tabs: currentTabs } = useEditorStore.getState();
+    const existing = currentTabs.find((t) => t.filePath === selected);
     if (existing) {
       useEditorStore.getState().setActiveTab(existing.id);
       return;
@@ -78,11 +81,12 @@ export function useFileOperations({
     } catch (err) {
       logger.error("[App] Failed to open file:", err);
     }
-  }, [tabs, setFileContent, openTab]);
+  }, [setFileContent, openTab]);
 
   const handleSave = useCallback(async () => {
     if (!editor) return;
-    const saveTab = tabs.find((t) => t.id === activeTabId);
+    const { tabs: currentTabs, activeTabId: tabId } = useEditorStore.getState();
+    const saveTab = currentTabs.find((t) => t.id === tabId);
     if (!saveTab) return;
     if (isGraphTab(saveTab)) return;
 
@@ -143,11 +147,12 @@ export function useFileOperations({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- sourceContentRef is a stable ref
-  }, [editor, tabs, activeTabId, isSourceMode, setFileContent, markDirty]);
+  }, [editor, isSourceMode, setFileContent, markDirty]);
 
   const handleSaveAs = useCallback(async () => {
     if (!editor) return;
-    const saveAsTab = tabs.find((t) => t.id === activeTabId);
+    const { tabs: currentTabs, activeTabId: tabId } = useEditorStore.getState();
+    const saveAsTab = currentTabs.find((t) => t.id === tabId);
     if (!saveAsTab) return;
     if (isGraphTab(saveAsTab)) return;
 
@@ -187,12 +192,13 @@ export function useFileOperations({
       logger.error("[App] Failed to save as:", err);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- sourceContentRef is a stable ref
-  }, [editor, tabs, activeTabId, isSourceMode, setFileContent]);
+  }, [editor, isSourceMode, setFileContent]);
 
   const handleCloseTab = useCallback(() => {
-    if (!activeTabId) return;
-    useEditorStore.getState().closeTab(activeTabId);
-  }, [activeTabId]);
+    const { activeTabId: tabId } = useEditorStore.getState();
+    if (!tabId) return;
+    useEditorStore.getState().closeTab(tabId);
+  }, []);
 
   const handleOpenFolder = useCallback(async () => {
     const selected = await open({ directory: true });
