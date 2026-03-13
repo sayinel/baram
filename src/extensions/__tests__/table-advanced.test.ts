@@ -328,6 +328,45 @@ describe("Table Advanced — cell merge (§5.5 M10)", () => {
     });
   });
 
+  describe("MD→PM merge markers: colspan", () => {
+    it("'<' marker creates colspan=2 on preceding cell", () => {
+      const md = "| A | < | C |\n| --- | --- | --- |\n| 1 | 2 | 3 |";
+      const doc = markdownToProsemirror(md, schema);
+      const table = doc.firstChild!;
+      const headerRow = table.firstChild!;
+
+      // Header row should have 2 PM cells (A with colspan=2, C with colspan=1)
+      expect(headerRow.childCount).toBe(2);
+      expect(headerRow.child(0).attrs.colspan).toBe(2);
+      expect(headerRow.child(0).textContent).toBe("A");
+      expect(headerRow.child(1).attrs.colspan).toBe(1);
+      expect(headerRow.child(1).textContent).toBe("C");
+    });
+
+    it("consecutive '<' markers create colspan=3", () => {
+      const md = "| Wide | < | < |\n| --- | --- | --- |\n| 1 | 2 | 3 |";
+      const doc = markdownToProsemirror(md, schema);
+      const table = doc.firstChild!;
+      const headerRow = table.firstChild!;
+
+      expect(headerRow.childCount).toBe(1);
+      expect(headerRow.child(0).attrs.colspan).toBe(3);
+      expect(headerRow.child(0).textContent).toBe("Wide");
+    });
+
+    it("'<' in first column is treated as plain text", () => {
+      const md = "| < | B |\n| --- | --- |\n| 1 | 2 |";
+      const doc = markdownToProsemirror(md, schema);
+      const table = doc.firstChild!;
+      const headerRow = table.firstChild!;
+
+      // Both cells should exist with colspan=1
+      expect(headerRow.childCount).toBe(2);
+      expect(headerRow.child(0).attrs.colspan).toBe(1);
+      expect(headerRow.child(0).textContent).toBe("<");
+    });
+  });
+
   describe("Roundtrip stability", () => {
     it("normal GFM table round-trips with stable cell count and content", () => {
       const input = "| A | B |\n| --- | --- |\n| 1 | 2 |";
