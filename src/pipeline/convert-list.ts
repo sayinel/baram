@@ -5,46 +5,6 @@ import type { ConvertBlockFn } from "./convert-block-special";
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
 import type { Content } from "mdast";
 
-/** Convert list item children (ensure listItem wrapping) */
-export function convertListItemChildren(
-  children: Content[],
-  schema: Schema,
-  convertBlockChildren: ConvertBlockFn,
-): PmNode[] {
-  const result: PmNode[] = [];
-
-  for (const child of children) {
-    if (child.type === "listItem") {
-      const item = child as { checked?: boolean | null; children: Content[] };
-
-      if (item.checked != null) {
-        // Task item
-        let innerChildren = convertBlockChildren(item.children, schema);
-        // Empty task items must have at least one paragraph for cursor placement
-        if (innerChildren.length === 0) {
-          innerChildren = [schema.nodes.paragraph.create()];
-        }
-        result.push(
-          schema.nodes.taskItem.create(
-            { checked: item.checked ?? false },
-            innerChildren,
-          ),
-        );
-      } else {
-        // Regular list item
-        let innerChildren = convertBlockChildren(item.children, schema);
-        // Empty list items must have at least one paragraph for cursor placement
-        if (innerChildren.length === 0) {
-          innerChildren = [schema.nodes.paragraph.create()];
-        }
-        result.push(schema.nodes.listItem.create(null, innerChildren));
-      }
-    }
-  }
-
-  return result;
-}
-
 /** Convert an mdast list node to PM list node (bulletList/orderedList/taskList) */
 export function convertListNode(
   node: Content,
@@ -88,4 +48,44 @@ export function convertListNode(
   }
 
   return schema.nodes.bulletList.create(null, items);
+}
+
+/** Convert list item children (ensure listItem wrapping) */
+function convertListItemChildren(
+  children: Content[],
+  schema: Schema,
+  convertBlockChildren: ConvertBlockFn,
+): PmNode[] {
+  const result: PmNode[] = [];
+
+  for (const child of children) {
+    if (child.type === "listItem") {
+      const item = child as { checked?: boolean | null; children: Content[] };
+
+      if (item.checked != null) {
+        // Task item
+        let innerChildren = convertBlockChildren(item.children, schema);
+        // Empty task items must have at least one paragraph for cursor placement
+        if (innerChildren.length === 0) {
+          innerChildren = [schema.nodes.paragraph.create()];
+        }
+        result.push(
+          schema.nodes.taskItem.create(
+            { checked: item.checked ?? false },
+            innerChildren,
+          ),
+        );
+      } else {
+        // Regular list item
+        let innerChildren = convertBlockChildren(item.children, schema);
+        // Empty list items must have at least one paragraph for cursor placement
+        if (innerChildren.length === 0) {
+          innerChildren = [schema.nodes.paragraph.create()];
+        }
+        result.push(schema.nodes.listItem.create(null, innerChildren));
+      }
+    }
+  }
+
+  return result;
 }
