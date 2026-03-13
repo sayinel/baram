@@ -6,6 +6,8 @@ import {
   mergeAttributes,
 } from "@tiptap/core";
 
+import { resolveShortcut } from "../utils/shortcut-resolver";
+
 export interface HighlightOptions {
   HTMLAttributes: Record<string, string>;
 }
@@ -60,7 +62,8 @@ export const Highlight = Mark.create<HighlightOptions>({
   },
 
   addKeyboardShortcuts() {
-    return { "Mod-Shift-h": () => this.editor.commands.toggleHighlight() };
+    const key = resolveShortcut("formatting.highlight", "Mod-Shift-h");
+    return { [key]: () => this.editor.commands.toggleHighlight() };
   },
 
   addInputRules() {
