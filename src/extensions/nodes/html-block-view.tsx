@@ -88,6 +88,7 @@ export function HtmlBlockView({
     }
   }, [localContent, content, updateAttributes]);
 
+  const isEmpty = useCallback(() => !localContent, [localContent]);
   const { handleKeyDown } = useAtomBlockBehavior({
     editor,
     getPos,
@@ -95,7 +96,7 @@ export function HtmlBlockView({
     textareaRef,
     onSaveBeforeExit,
     keyboard: { backspaceOnEmpty: true, horizontalArrowExit: false },
-    isEmpty: useCallback(() => !localContent, [localContent]),
+    isEmpty,
   });
 
   const handlePreviewClick = useCallback((): void => {

@@ -2,6 +2,7 @@
 import { InputRule, mergeAttributes, Node } from "@tiptap/core";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
+import { htmlAttributesOptions } from "../utils/html-attributes-options";
 import { TagNodeView } from "./tag-node-view";
 
 declare module "@tiptap/core" {
@@ -23,9 +24,7 @@ export const TagNode = Node.create<TagNodeOptions>({
   atom: true,
   marks: "",
 
-  addOptions() {
-    return { HTMLAttributes: {} };
-  },
+  ...htmlAttributesOptions,
 
   addAttributes() {
     return {

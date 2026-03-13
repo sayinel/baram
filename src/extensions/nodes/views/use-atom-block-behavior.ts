@@ -42,6 +42,11 @@ interface UseAtomBlockBehaviorParams {
   /** Keyboard handler configuration. */
   keyboard?: KeyboardOptions;
 
+  /**
+   * Size of the atom block node in the ProseMirror document.
+   * Atom blocks (`atom: true`) have a fixed nodeSize that does not change
+   * while the node exists, so capturing this as a primitive is safe.
+   */
   nodeSize: number;
 
   /**

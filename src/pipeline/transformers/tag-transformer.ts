@@ -5,7 +5,7 @@ import type { Node as MdastNode, Parent as MdastParent } from "mdast";
 
 /** Regex to detect #tag patterns in text.
  *  Matches #tag at start of string or after whitespace.
- *  Uses alternation instead of lookbehind for broadest compatibility. */
+ *  Uses positive lookbehind (?<=[\s]) for whitespace boundary detection. */
 export const TAG_NODE_RE =
   /(?:^|(?<=[\s]))#([\w\uAC00-\uD7A3]+(?:\/[\w\uAC00-\uD7A3]+)*)/g;
 

@@ -1,5 +1,24 @@
+import type {
+  HighlightNode,
+  MentionNode,
+  SubscriptNode,
+  SuperscriptNode,
+  TagNode,
+  WikiLinkNode,
+} from "./types";
 import type { Mark, Node as PmNode } from "@tiptap/pm/model";
-import type { Content, PhrasingContent, Root, Text } from "mdast";
+import type {
+  Content,
+  Delete,
+  Emphasis,
+  FootnoteReference,
+  Link,
+  PhrasingContent,
+  Root,
+  Strong,
+  Text,
+} from "mdast";
+import type { InlineMath } from "mdast-util-math";
 
 // pm-to-md.ts — §3.3 ProseMirror Document → Markdown 변환 파이프라인
 //
@@ -21,6 +40,72 @@ import { serializeWikilink } from "./transformers/wikilink-transformer";
 
 // Re-export mdastToMarkdown so existing imports from pm-to-md continue to work
 export { mdastToMarkdown } from "./serializer";
+
+// ---------------------------------------------------------------------------
+// INLINE_SERIALIZERS — map-based dispatch for inline PM node types
+// ---------------------------------------------------------------------------
+
+// Deliberate: attrs is Record<string, any> from ProseMirror, so the generic is erased at
+// map level. Each entry's serialize() still receives typed attrs via its own generic param.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type InlineSerializerEntry = InlineTransformerEntry | InlineValueNodeEntry<any>;
+
+interface InlineTransformerEntry {
+  kind: "transformer";
+}
+
+interface InlineValueNodeEntry<TAttrs> {
+  kind: "value-node";
+  mdastType: string;
+  serialize: (attrs: TAttrs) => string;
+}
+
+const INLINE_SERIALIZERS = new Map<string, InlineSerializerEntry>([
+  [
+    "blockReference",
+    {
+      kind: "value-node",
+      mdastType: "blockReference",
+      serialize: (attrs: {
+        blockId: string;
+        display?: null | string;
+        target: string;
+      }) => serializeBlockRef(attrs),
+    },
+  ],
+  ["image", { kind: "transformer" }],
+  ["mathInline", { kind: "transformer" }],
+  [
+    "mention",
+    {
+      kind: "value-node",
+      mdastType: "mention",
+      serialize: (attrs: { type: string; value: string }) =>
+        serializeMention(attrs),
+    },
+  ],
+  [
+    "tagNode",
+    {
+      kind: "value-node",
+      mdastType: "tagNode",
+      serialize: (attrs: { tag: string }) => serializeTag(attrs),
+    },
+  ],
+  [
+    "wikilink",
+    {
+      kind: "value-node",
+      mdastType: "wikiLink",
+      serialize: (attrs: {
+        blockId?: null | string;
+        display?: null | string;
+        heading?: null | string;
+        target: string;
+      }) => serializeWikilink(attrs),
+    },
+  ],
+]);
 
 /** Full pipeline: ProseMirror document → markdown string */
 export function prosemirrorToMarkdown(doc: PmNode): string {
@@ -76,10 +161,14 @@ function coalesceCustomMarkNodes(nodes: PhrasingContent[]): PhrasingContent[] {
 
     if (delim) {
       // Collect adjacent nodes of the same type
-      let merged = (node as unknown as { value: string }).value;
+      // Custom mark nodes (highlight, subscript, superscript) are Literal nodes with value
+      let merged = (node as HighlightNode | SubscriptNode | SuperscriptNode)
+        .value;
       while (i + 1 < nodes.length && nodes[i + 1].type === node.type) {
         i++;
-        const next = (nodes[i] as unknown as { value: string }).value;
+        const next = (
+          nodes[i] as HighlightNode | SubscriptNode | SuperscriptNode
+        ).value;
         // Strip close+open delimiters at boundary: ==a== + ==b== → ==ab==
         merged =
           merged.slice(0, -delim.close.length) + next.slice(delim.open.length);
@@ -87,7 +176,7 @@ function coalesceCustomMarkNodes(nodes: PhrasingContent[]): PhrasingContent[] {
       result.push({
         type: node.type,
         value: merged,
-      } as unknown as PhrasingContent);
+      } as HighlightNode | SubscriptNode | SuperscriptNode);
     } else {
       result.push(node);
     }
@@ -145,68 +234,27 @@ function convertPmInlineChildren(node: PmNode): PhrasingContent[] {
       result.push(...textNode);
     } else if (child.type.name === "hardBreak") {
       result.push({ type: "break" } as PhrasingContent);
-    } else if (child.type.name === "mathInline") {
-      const transformer = pmNodeTransformers.get("mathInline");
-      if (transformer) {
-        const mathNode = transformer.pmToMdast(child, () => []);
-        if (mathNode) result.push(mathNode as PhrasingContent);
-      }
-    } else if (child.type.name === "image") {
-      const transformer = pmNodeTransformers.get("image");
-      if (transformer) {
-        const imgNode = transformer.pmToMdast(child, () => []);
-        if (imgNode) result.push(imgNode as PhrasingContent);
-      }
-    } else if (child.type.name === "wikilink") {
-      // §28: Custom wikiLink mdast node — handler in serializer outputs verbatim
-      const text = serializeWikilink(
-        child.attrs as {
-          blockId?: null | string;
-          display?: null | string;
-          heading?: null | string;
-          target: string;
-        },
-      );
-      result.push({
-        type: "wikiLink",
-        value: text,
-      } as unknown as PhrasingContent);
     } else if (child.type.name === "footnoteRef") {
       // §footnote: footnoteReference mdast node — remark-gfm handles serialization
       result.push({
         type: "footnoteReference",
         identifier: child.attrs.identifier as string,
         label: child.attrs.identifier as string,
-      } as unknown as PhrasingContent);
-    } else if (child.type.name === "blockReference") {
-      // §30b: Custom blockReference mdast node — handler in serializer outputs verbatim
-      const text = serializeBlockRef(
-        child.attrs as {
-          blockId: string;
-          display?: null | string;
-          target: string;
-        },
-      );
-      result.push({
-        type: "blockReference",
-        value: text,
-      } as unknown as PhrasingContent);
-    } else if (child.type.name === "mention") {
-      // §57: Custom mention mdast node — handler in serializer outputs verbatim
-      const text = serializeMention(
-        child.attrs as { type: string; value: string },
-      );
-      result.push({
-        type: "mention",
-        value: text,
-      } as unknown as PhrasingContent);
-    } else if (child.type.name === "tagNode") {
-      // §56m: Custom tagNode mdast node — handler in serializer outputs verbatim
-      const text = serializeTag(child.attrs as { tag: string });
-      result.push({
-        type: "tagNode",
-        value: text,
-      } as unknown as PhrasingContent);
+      } satisfies FootnoteReference);
+    } else {
+      const entry = INLINE_SERIALIZERS.get(child.type.name);
+      if (entry?.kind === "transformer") {
+        const transformer = pmNodeTransformers.get(child.type.name);
+        if (transformer) {
+          const node = transformer.pmToMdast(child, () => []);
+          if (node) result.push(node as PhrasingContent);
+        }
+      } else if (entry?.kind === "value-node") {
+        result.push({
+          type: entry.mdastType,
+          value: entry.serialize(child.attrs),
+        } as PhrasingContent);
+      }
     }
   });
 
@@ -359,7 +407,7 @@ function convertTextWithMarks(
 
   // Process marks in consistent order for deterministic output
   const sortedMarks = [...otherMarks].sort((a, b) =>
-    a.type.name.localeCompare(b.type.name),
+    a.type.name < b.type.name ? -1 : a.type.name > b.type.name ? 1 : 0,
   );
 
   for (const mark of sortedMarks) {
@@ -378,13 +426,13 @@ function convertTextWithMarks(
       {
         type: "highlight",
         value: `==${inner}==`,
-      } as unknown as PhrasingContent,
+      } satisfies HighlightNode,
     ];
   }
   if (subscriptMark) {
     const inner = extractTextFromPhrasing(current);
     current = [
-      { type: "subscript", value: `~${inner}~` } as unknown as PhrasingContent,
+      { type: "subscript", value: `~${inner}~` } satisfies SubscriptNode,
     ];
   }
   if (superscriptMark) {
@@ -393,7 +441,7 @@ function convertTextWithMarks(
       {
         type: "superscript",
         value: `^${inner}^`,
-      } as unknown as PhrasingContent,
+      } satisfies SuperscriptNode,
     ];
   }
 
@@ -416,37 +464,25 @@ function extractTextFromPhrasing(nodes: PhrasingContent[]): string {
     .map((node) => {
       if (node.type === "text") return (node as Text).value;
       if (node.type === "strong") {
-        const inner = extractTextFromPhrasing(
-          (node as unknown as { children: PhrasingContent[] }).children,
-        );
+        const inner = extractTextFromPhrasing((node as Strong).children);
         return `**${inner}**`;
       }
       if (node.type === "emphasis") {
-        const inner = extractTextFromPhrasing(
-          (node as unknown as { children: PhrasingContent[] }).children,
-        );
+        const inner = extractTextFromPhrasing((node as Emphasis).children);
         return `*${inner}*`;
       }
       if (node.type === "delete") {
-        const inner = extractTextFromPhrasing(
-          (node as unknown as { children: PhrasingContent[] }).children,
-        );
+        const inner = extractTextFromPhrasing((node as Delete).children);
         return `~~${inner}~~`;
       }
       if (node.type === "inlineCode")
         return `\`${(node as { value: string }).value}\``;
       if (node.type === "link")
-        return extractTextFromPhrasing(
-          (node as unknown as { children: PhrasingContent[] }).children,
-        );
-      if (node.type === "inlineMath")
-        return (node as unknown as { value: string }).value || "";
-      if ((node as unknown as { type: string }).type === "wikiLink")
-        return (node as unknown as { value: string }).value || "";
-      if ((node as unknown as { type: string }).type === "mention")
-        return (node as unknown as { value: string }).value || "";
-      if ((node as unknown as { type: string }).type === "tagNode")
-        return (node as unknown as { value: string }).value || "";
+        return extractTextFromPhrasing((node as Link).children);
+      if (node.type === "inlineMath") return (node as InlineMath).value || "";
+      if (node.type === "wikiLink") return (node as WikiLinkNode).value || "";
+      if (node.type === "mention") return (node as MentionNode).value || "";
+      if (node.type === "tagNode") return (node as TagNode).value || "";
       return "";
     })
     .join("");

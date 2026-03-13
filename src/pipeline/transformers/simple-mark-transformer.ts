@@ -22,6 +22,8 @@ export function createSimpleMarkTransformer(
     },
 
     markToMdast(_mark, children: MdastNode[]): MdastNode {
+      // mdastType is a runtime string (e.g. "strong", "emphasis") — cannot narrow
+      // to a specific mdast literal type. Parent → Node is safe since Parent extends Node.
       return {
         type: mdastType,
         children: children as PhrasingContent[],

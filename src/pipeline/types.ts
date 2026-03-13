@@ -1,6 +1,93 @@
 // Pipeline types — mdast ↔ ProseMirror 변환 공통 타입
 import type { Mark, Node as PmNode, Schema } from "@tiptap/pm/model";
-import type { Node as MdastNode, Parent as MdastParent } from "mdast";
+import type {
+  Literal as MdastLiteral,
+  Node as MdastNode,
+  Parent as MdastParent,
+  PhrasingContent,
+} from "mdast";
+
+// ---------------------------------------------------------------------------
+// Custom mdast node types for Baram-specific inline nodes.
+// Uses mdast's official module augmentation to register custom nodes into
+// PhrasingContentMap, making them valid PhrasingContent without double casts.
+// ---------------------------------------------------------------------------
+
+/** §30b: Block reference inline node — `![[target#^blockId]]` */
+export interface BlockReferenceNode extends MdastLiteral {
+  type: "blockReference";
+}
+
+/** Union of all Baram custom inline nodes */
+export type CustomInlineNode =
+  | BlockReferenceNode
+  | HighlightNode
+  | MentionNode
+  | SubscriptNode
+  | SuperscriptNode
+  | TagNode
+  | WikiLinkNode;
+
+/** PhrasingContent extended with custom inline nodes */
+export type CustomPhrasingContent = CustomInlineNode | PhrasingContent;
+
+/** Highlight inline mark node — `==text==` (value-based, pre-serialized) */
+export interface HighlightNode extends MdastLiteral {
+  type: "highlight";
+}
+
+/** §57: @mention inline node — `@user` or `@file` */
+export interface MentionNode extends MdastLiteral {
+  type: "mention";
+}
+
+/** Subscript inline mark node — `~text~` (value-based, pre-serialized) */
+export interface SubscriptNode extends MdastLiteral {
+  type: "subscript";
+}
+
+/** Superscript inline mark node — `^text^` (value-based, pre-serialized) */
+export interface SuperscriptNode extends MdastLiteral {
+  type: "superscript";
+}
+
+/** §56m: Tag inline node — `#tag` */
+export interface TagNode extends MdastLiteral {
+  type: "tagNode";
+}
+
+/** §28: Wiki-link inline node — `[[target]]` or `[[target|display]]` */
+export interface WikiLinkNode extends MdastLiteral {
+  type: "wikiLink";
+}
+
+// Register custom inline nodes into mdast's PhrasingContentMap and RootContentMap.
+// This makes them valid members of the PhrasingContent and RootContent unions automatically.
+declare module "mdast" {
+  interface PhrasingContentMap {
+    blockReference: BlockReferenceNode;
+    highlight: HighlightNode;
+    mention: MentionNode;
+    subscript: SubscriptNode;
+    superscript: SuperscriptNode;
+    tagNode: TagNode;
+    wikiLink: WikiLinkNode;
+  }
+
+  interface RootContentMap {
+    blockReference: BlockReferenceNode;
+    highlight: HighlightNode;
+    mention: MentionNode;
+    subscript: SubscriptNode;
+    superscript: SuperscriptNode;
+    tagNode: TagNode;
+    wikiLink: WikiLinkNode;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Transformer types
+// ---------------------------------------------------------------------------
 
 /** Mark → mdast 래핑 함수 */
 export type MarkToMdastTransformer = (

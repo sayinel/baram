@@ -2,6 +2,7 @@
 import { mergeAttributes, Node } from "@tiptap/core";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
+import { htmlAttributesOptions } from "../utils/html-attributes-options";
 import { MathInlineView } from "./math-inline-view";
 
 export interface MathInlineOptions {
@@ -22,11 +23,7 @@ export const MathInline = Node.create<MathInlineOptions>({
   inline: true,
   atom: true,
 
-  addOptions() {
-    return {
-      HTMLAttributes: {},
-    };
-  },
+  ...htmlAttributesOptions,
 
   addAttributes() {
     return {

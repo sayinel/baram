@@ -2,6 +2,7 @@
 import { mergeAttributes, Node } from "@tiptap/core";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
+import { htmlAttributesOptions } from "../utils/html-attributes-options";
 import { TableOfContentsView } from "./table-of-contents-view";
 
 declare module "@tiptap/core" {
@@ -21,9 +22,7 @@ export const TableOfContents = Node.create<TableOfContentsOptions>({
   group: "block",
   atom: true,
 
-  addOptions() {
-    return { HTMLAttributes: {} };
-  },
+  ...htmlAttributesOptions,
 
   parseHTML() {
     return [{ tag: 'div[data-type="table-of-contents"]' }];

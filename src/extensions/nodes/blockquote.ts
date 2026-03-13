@@ -1,6 +1,7 @@
 // §5.1 Blockquote Extension
 import { mergeAttributes, Node, wrappingInputRule } from "@tiptap/core";
 
+import { htmlAttributesOptions } from "../utils/html-attributes-options";
 import { resolveShortcut } from "../utils/shortcut-resolver";
 
 export interface BlockquoteOptions {
@@ -23,11 +24,7 @@ export const Blockquote = Node.create<BlockquoteOptions>({
   content: "block+",
   defining: true,
 
-  addOptions() {
-    return {
-      HTMLAttributes: {},
-    };
-  },
+  ...htmlAttributesOptions,
 
   parseHTML() {
     return [{ tag: "blockquote" }];

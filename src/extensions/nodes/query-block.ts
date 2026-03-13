@@ -2,6 +2,7 @@
 import { mergeAttributes, Node } from "@tiptap/core";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
+import { htmlAttributesOptions } from "../utils/html-attributes-options";
 import { QueryBlockView } from "./query-block-view";
 
 declare module "@tiptap/core" {
@@ -22,9 +23,7 @@ export const QueryBlock = Node.create<QueryBlockOptions>({
   atom: true,
   defining: true,
 
-  addOptions() {
-    return { HTMLAttributes: {} };
-  },
+  ...htmlAttributesOptions,
 
   addAttributes() {
     return {

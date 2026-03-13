@@ -15,7 +15,10 @@ export const taskListTransformer: NodeTransformerEntry = {
     if (!isTaskList) return null;
 
     const pmChildren = children.map((child) => {
-      const itemChildren = convertChildren(child);
+      let itemChildren = convertChildren(child);
+      if (itemChildren.length === 0) {
+        itemChildren = [schema.nodes.paragraph.create()];
+      }
       return schema.nodes.taskItem.create(
         { checked: child.checked ?? false },
         itemChildren,
