@@ -345,7 +345,12 @@ export function MermaidBlockView({
               <div className="mermaid-fullscreen-preview">
                 {fullscreenSvg ? (
                   <div
-                    className={`mermaid-block-svg${fullscreenError ? "mermaid-block-svg-faded" : ""}`}
+                    className={[
+                      "mermaid-block-svg",
+                      fullscreenError && "mermaid-block-svg-faded",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
                     dangerouslySetInnerHTML={{ __html: fullscreenSvg }}
                   />
                 ) : null}
@@ -560,7 +565,12 @@ export function MermaidBlockView({
               <div className="mermaid-template-dropdown">
                 {Object.entries(MERMAID_TEMPLATES).map(([key, tmpl]) => (
                   <button
-                    className={`mermaid-template-dropdown-item${detectedType === key ? "mermaid-template-active" : ""}`}
+                    className={[
+                      "mermaid-template-dropdown-item",
+                      detectedType === key && "mermaid-template-active",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
                     key={key}
                     onClick={() => applyTemplate(key)}
                   >
@@ -599,7 +609,9 @@ export function MermaidBlockView({
       />
       {svgHtml ? (
         <div
-          className={`mermaid-block-svg${error ? "mermaid-block-svg-faded" : ""}`}
+          className={["mermaid-block-svg", error && "mermaid-block-svg-faded"]
+            .filter(Boolean)
+            .join(" ")}
           dangerouslySetInnerHTML={{ __html: svgHtml }}
           ref={renderRef}
         />

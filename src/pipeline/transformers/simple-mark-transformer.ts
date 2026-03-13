@@ -12,7 +12,13 @@ export function createSimpleMarkTransformer(
     pmMarkType,
 
     mdastToMark(_node: MdastNode, schema: Schema) {
-      return schema.marks[pmMarkType].create();
+      const markType = schema.marks[pmMarkType];
+      if (!markType) {
+        throw new Error(
+          `Mark type "${pmMarkType}" not found in schema. Is the extension registered?`,
+        );
+      }
+      return markType.create();
     },
 
     markToMdast(_mark, children: MdastNode[]): MdastNode {
