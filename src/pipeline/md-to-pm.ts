@@ -211,11 +211,6 @@ function convertBlockNode(
     }
   }
 
-  // Table — needs special child conversion: cell inline content → wrapped in paragraph
-  if (node.type === "table") {
-    return convertTableNode(node, schema);
-  }
-
   // §5.5 Mermaid: code block with lang="mermaid" → mermaidBlock (if schema supports it)
   if (
     node.type === "code" &&
