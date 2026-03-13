@@ -7,6 +7,7 @@ import { readFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { useSkillStore } from "../../stores/skill-store";
+import { logger } from "../../utils/logger";
 
 export function SkillGalleryPanel() {
   const allSkills = useSkillStore((s) => s.allSkills);
@@ -61,7 +62,7 @@ export function SkillGalleryPanel() {
       });
       setActiveTab(tabId);
     } catch (err) {
-      console.error("Failed to open skill file:", err);
+      logger.error("Failed to open skill file:", err);
     }
   };
 

@@ -8,6 +8,7 @@ import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { useLinkStore } from "../../stores/link-store";
 import { useUIStore } from "../../stores/ui-store";
+import { logger } from "../../utils/logger";
 import { extractFileNameFromPath } from "./backlink-utils";
 
 interface FileGroup {
@@ -37,6 +38,10 @@ export function GlobalSearch() {
 
   const debounceRef = useRef<null | ReturnType<typeof setTimeout>>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Ref so the toggle-change effect always reads the latest query without adding
+  // it as a dep (adding query would re-run the effect on every keystroke).
+  const queryRef = useRef(query);
+  queryRef.current = query;
 
   // Focus input on mount
   useEffect(() => {
@@ -108,14 +113,15 @@ export function GlobalSearch() {
     [doSearch],
   );
 
-  // Re-search when toggle options change
+  // Re-search when toggle options change. doSearch already captures the toggles
+  // in its own deps, so when any toggle changes doSearch gets a new identity and
+  // this effect re-runs. queryRef.current holds the latest query without being a dep.
   useEffect(() => {
-    if (query.trim()) {
+    if (queryRef.current.trim()) {
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => doSearch(query), 300);
+      debounceRef.current = setTimeout(() => doSearch(queryRef.current), 300);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [caseSensitive, wholeWord, useRegex, includeFilter, excludeFilter]);
+  }, [doSearch]);
 
   const toggleCollapse = (filePath: string) => {
     setCollapsedFiles((prev) => {
@@ -155,7 +161,7 @@ export function GlobalSearch() {
             isPinned: false,
           });
         } catch (err) {
-          console.error("[GlobalSearch] Failed to open file:", err);
+          logger.error("[GlobalSearch] Failed to open file:", err);
         }
       })();
     },
@@ -195,7 +201,7 @@ export function GlobalSearch() {
         useUIStore.getState().triggerContentReload();
         await doSearch(query);
       } catch (err) {
-        console.error("[GlobalSearch] Replace failed:", err);
+        logger.error("[GlobalSearch] Replace failed:", err);
       } finally {
         setReplacing(false);
       }
@@ -233,7 +239,7 @@ export function GlobalSearch() {
       useUIStore.getState().triggerContentReload();
       await doSearch(query);
     } catch (err) {
-      console.error("[GlobalSearch] Replace All failed:", err);
+      logger.error("[GlobalSearch] Replace All failed:", err);
     } finally {
       setReplacing(false);
     }

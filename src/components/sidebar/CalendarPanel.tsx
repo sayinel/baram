@@ -29,6 +29,7 @@ import {
   generateDefaultWeekly,
 } from "../../utils/journal-periodic";
 import { getJournalTheme } from "../../utils/journal-themes";
+import { logger } from "../../utils/logger";
 import { JournalSearchPanel } from "../journal/JournalSearchPanel";
 import { MoodTrend30 } from "../journal/MoodTrend30";
 import { ReflectionPanel } from "../journal/ReflectionPanel";
@@ -263,7 +264,7 @@ export function CalendarPanel() {
             isPinned: false,
           });
         } catch (err) {
-          console.error("[CalendarPanel] Failed to open journal:", err);
+          logger.error("[CalendarPanel] Failed to open journal:", err);
         }
       }
     },

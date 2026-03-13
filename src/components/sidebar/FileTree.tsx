@@ -39,6 +39,7 @@ import {
   globMatch,
   isGlobPattern,
 } from "../../utils/file-search";
+import { logger } from "../../utils/logger";
 import { getRelativePath, isImageFile } from "../../utils/path-utils";
 
 // --- Mono-style SVG Icons (Lucide-based, 24x24 viewBox) ---
@@ -146,7 +147,7 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
         setFilteredPaths(absSet);
       })
       .catch((err) => {
-        console.error("[FileTree] getFilesByTag failed:", err);
+        logger.error("[FileTree] getFilesByTag failed:", err);
         setFilteredPaths(null);
       });
   }, [tagFilter, rootPath]);
@@ -234,7 +235,7 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
           isPinned: false,
         });
       } catch (err) {
-        console.error("[FileTree] Failed to read file:", err);
+        logger.error("[FileTree] Failed to read file:", err);
       }
     },
     [tabs, setFileContent, openTab],
@@ -317,7 +318,7 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
           useLinkStore.getState().invalidate();
         }
       } catch (err) {
-        console.error("[FileTree] Rename failed:", err);
+        logger.error("[FileTree] Rename failed:", err);
       }
     },
     [renameFileEntry, renameTab, fileTree, rootPath],
@@ -386,7 +387,7 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
         removeFileEntry(path);
         useLinkStore.getState().invalidate();
       } catch (err) {
-        console.error("[FileTree] Delete failed:", err);
+        logger.error("[FileTree] Delete failed:", err);
       }
     },
     [rootPath, closeTab, removeFileEntry],
@@ -438,7 +439,7 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
           });
         }
       } catch (err) {
-        console.error("[FileTree] Create failed:", err);
+        logger.error("[FileTree] Create failed:", err);
       }
     },
     [creatingEntry, addFileEntry, setFileContent, openTab],
@@ -602,7 +603,7 @@ export function FileTree({ editor }: { editor?: Editor | null }) {
         if (openedTab) renameTab(sourcePath, newPath, fileName);
         useLinkStore.getState().invalidate();
       } catch (err) {
-        console.error("[FileTree] Move failed:", err);
+        logger.error("[FileTree] Move failed:", err);
       }
     };
 

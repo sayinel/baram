@@ -4,6 +4,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { InputRule, Mark, markPasteRule, mergeAttributes } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 
+import { logger } from "../../utils/logger";
 import { syntaxRevealKey } from "../plugins/syntax-reveal";
 
 export interface LinkOptions {
@@ -148,7 +149,7 @@ export const Link = Mark.create<LinkOptions>({
       if (isLocalFileLink(href)) {
         onNavigateLocal(href);
       } else {
-        openUrl(href).catch(console.error);
+        openUrl(href).catch((e) => logger.error(e));
       }
     };
 

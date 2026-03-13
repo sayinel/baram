@@ -4,6 +4,7 @@ import type { FileEntry as IpcFileEntry } from "../ipc/types";
 import { create } from "zustand";
 
 import { listDir, refreshIndex } from "../ipc/invoke";
+import { logger } from "../utils/logger";
 import { useEditorStore } from "./editor-store";
 import { useLinkStore } from "./link-store";
 import { useSettingsStore } from "./settings-store";
@@ -110,7 +111,7 @@ export async function openFolder(path: string): Promise<void> {
   // Build link index in background so Graph View / Backlinks have data immediately
   refreshIndex(path)
     .then(() => useLinkStore.getState().invalidate())
-    .catch((err) => console.warn("§30 openFolder: index build failed", err));
+    .catch((err) => logger.warn("§30 openFolder: index build failed", err));
 }
 
 export const useFileStore = create<FileState>((set, get) => ({

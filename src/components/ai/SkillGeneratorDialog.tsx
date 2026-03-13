@@ -6,6 +6,7 @@ import { writeFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { formatAIError } from "../../utils/format-error";
+import { logger } from "../../utils/logger";
 import { buildSkillGenPrompts } from "../../utils/skill-generator-prompt";
 
 interface SkillGeneratorDialogProps {
@@ -83,7 +84,7 @@ export function SkillGeneratorDialog({
       });
       onClose();
     } catch (err) {
-      console.error("[SkillGenerator] Failed to create skill file:", err);
+      logger.error("[SkillGenerator] Failed to create skill file:", err);
     }
   }, [preview, text, description, onClose]);
 

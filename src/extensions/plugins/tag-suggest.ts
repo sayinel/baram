@@ -18,6 +18,7 @@ import {
 import { getVaultTags } from "../../ipc/invoke";
 import { useFileStore } from "../../stores/file-store";
 import { filterTags } from "../../utils/journal-tags";
+import { logger } from "../../utils/logger";
 
 const MENU_HEIGHT = 200;
 
@@ -55,7 +56,7 @@ async function getTagIndex(): Promise<Map<string, number>> {
     cachedTagIndex = index;
     cacheTimestamp = now;
   } catch (err) {
-    console.error("[TagSuggest] Failed to build tag index:", err);
+    logger.error("[TagSuggest] Failed to build tag index:", err);
   }
 
   return cachedTagIndex;

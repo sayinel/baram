@@ -7,6 +7,7 @@ import { readFile } from "../../ipc/invoke";
 import { getGroups, useBookmarkStore } from "../../stores/bookmark-store";
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
+import { logger } from "../../utils/logger";
 import { extractFileNameFromPath } from "./backlink-utils";
 
 export function BookmarkPanel() {
@@ -88,7 +89,7 @@ export function BookmarkPanel() {
           setTimeout(() => scrollToHeading(bookmark), 100);
         }
       } catch (err) {
-        console.error("[BookmarkPanel] Failed to open file:", err);
+        logger.error("[BookmarkPanel] Failed to open file:", err);
       }
     })();
   }, []);

@@ -15,6 +15,7 @@ import {
   extractReflectionEntries,
   formatReflectionMarkdown,
 } from "../../utils/journal-reflection";
+import { logger } from "../../utils/logger";
 
 type Period = "month" | "week";
 
@@ -109,7 +110,7 @@ export function ReflectionPanel({ onClose }: Props) {
       );
       send(userPrompt, systemPrompt);
     } catch (e) {
-      console.error("[ReflectionPanel] Error collecting entries:", e);
+      logger.error("[ReflectionPanel] Error collecting entries:", e);
       setLoadingEntries(false);
     }
   }, [resolvedDir, period, journalUseHierarchy, send]);
@@ -163,7 +164,7 @@ export function ReflectionPanel({ onClose }: Props) {
 
       onClose?.();
     } catch (e) {
-      console.error("[ReflectionPanel] Failed to save reflection:", e);
+      logger.error("[ReflectionPanel] Failed to save reflection:", e);
     } finally {
       setSaving(false);
     }

@@ -5,6 +5,7 @@ import type { Editor } from "@tiptap/core";
 
 import { llmComplete } from "../ipc/invoke";
 import { useAIStore } from "../stores/ai-store";
+import { logger } from "./logger";
 import { getConfigForTask } from "./model-selection";
 
 export interface AICommandOptions {
@@ -30,7 +31,7 @@ export async function executeAICommand(
   const inlineCfg = getConfigForTask("inline-edit");
 
   if (!inlineCfg.apiKey && inlineCfg.provider !== "ollama") {
-    console.error("AI command: no API key configured");
+    logger.error("AI command: no API key configured");
     return;
   }
 
@@ -77,7 +78,7 @@ export async function executeAICommand(
     "llm:error",
     (event) => {
       if (event.payload.requestId !== requestId) return;
-      console.error("AI command error:", event.payload.error);
+      logger.error("AI command error:", event.payload.error);
       tokenUn();
       doneUn();
       errorUn();
@@ -95,7 +96,7 @@ export async function executeAICommand(
     inlineCfg.provider,
     inlineCfg.baseUrl,
     store.privacyMode,
-  ).catch(console.error);
+  ).catch((e) => logger.error(e));
 }
 
 // Get only the selected text (empty string if no selection)
