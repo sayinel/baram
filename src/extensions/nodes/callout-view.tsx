@@ -138,7 +138,9 @@ export function CalloutView({ editor, node, updateAttributes }: NodeViewProps) {
                 const def = CALLOUT_TYPES[key];
                 return (
                   <button
-                    className={`callout-type-option${key === type ? "active" : ""}`}
+                    className={["callout-type-option", key === type && "active"]
+                      .filter(Boolean)
+                      .join(" ")}
                     key={key}
                     onClick={() => handleTypeSelect(key)}
                     title={def.label}
