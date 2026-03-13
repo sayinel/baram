@@ -1,8 +1,8 @@
 // §5.1 Code Block Extension (fenced code blocks)
 import { mergeAttributes, Node, textblockTypeInputRule } from "@tiptap/core";
 
-import { CodeBlockNodeView } from "./code-block-node-view";
 import { JournalBlockNodeView } from "./journal-block-node-view";
+import { CodeBlockNodeView } from "./views/code-block-node-view";
 
 export interface CodeBlockOptions {
   HTMLAttributes: Record<string, string>;
