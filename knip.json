@@ -1,7 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "entry": [
-    "src/main.tsx",
     "src/extensions/index.ts",
     "src/extensions/marks/index.ts",
     "src/extensions/nodes/index.ts",
@@ -10,35 +9,22 @@
     "src/keybindings/*.ts",
     "src/stores/*.ts",
     "src/**/__tests__/**/*.{ts,tsx}",
-    "src/**/*.test.{ts,tsx}",
-    "vite.config.ts",
-    "vitest.config.ts",
-    "eslint.config.js",
-    "stylelint.config.mjs"
+    "src/**/*.test.{ts,tsx}"
   ],
   "project": ["src/**/*.{ts,tsx}"],
   "ignore": ["src/ipc/**"],
   "ignoreDependencies": [
-    "stylelint-config-standard",
-    "stylelint-config-recess-order",
-    "prettier-plugin-tailwindcss",
-    "@commitlint/config-conventional",
-    "eslint-config-prettier",
     "@floating-ui/dom",
     "@tiptap/core",
-    "@tiptap/pm",
-    "@tiptap/starter-kit",
     "@codemirror/autocomplete",
     "@lezer/highlight",
     "micromark-extension-gfm",
     "tailwindcss",
-    "js-yaml",
     "mdast-util-to-markdown",
     "mdast-util-to-string",
     "unist-util-visit",
     "@testing-library/react",
     "@types/cytoscape",
-    "@types/js-yaml",
     "@types/katex"
   ],
   "ignoreExportsUsedInFile": true
