@@ -7,7 +7,7 @@ import { TableHeader } from "@tiptap/extension-table-header";
 import { TableRow } from "@tiptap/extension-table-row";
 import { TextSelection } from "@tiptap/pm/state";
 
-import { createVirtualScrollPlugin } from "./table-virtual-scroll";
+import { createVirtualScrollPlugin } from "./plugins/table-virtual-scroll";
 
 // §5.5 Tier 3: Table.extend() with resizable columns + pipe-input auto creation
 export const BaramTable = Table.extend({
