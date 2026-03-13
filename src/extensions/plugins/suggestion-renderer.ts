@@ -81,6 +81,11 @@ export function createSuggestionRenderer<TItem>(
 
     return {
       onStart: (props: SuggestionProps) => {
+        // Clean up any leftover popup/component from a previous cycle
+        // (e.g. if onExit was skipped due to a rapid re-trigger)
+        state.popup?.remove();
+        state.component?.destroy();
+
         state.items = props.items as TItem[];
         state.range = { from: props.range.from, to: props.range.to };
         onItemsUpdate?.(state.items, state.range);
