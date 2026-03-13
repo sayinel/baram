@@ -20,10 +20,10 @@
       }
     ],
     "security": {
-      "csp": null,
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: data: blob:; font-src 'self' data:; connect-src 'self' https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com http://localhost:* https://localhost:*; worker-src 'self' blob:",
       "assetProtocol": {
         "enable": true,
-        "scope": ["**/*"]
+        "scope": ["$APPDATA/**", "$DOCUMENT/**", "$DOWNLOAD/**"]
       }
     }
   },
