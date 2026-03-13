@@ -1,8 +1,15 @@
 import type { NodeTransformerEntry } from "../types";
-// §30b Block Embed transformer — stub
-// Actual conversion is handled directly in md-to-pm.ts (paragraph detection) and pm-to-md.ts
+// §30b Block Embed transformer
+// md-to-pm: paragraph detection is handled directly in md-to-pm.ts
+// pm-to-md: serialize as paragraph with embed text
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
-import type { Node as MdastNode, Parent as MdastParent } from "mdast";
+import type {
+  Node as MdastNode,
+  Parent as MdastParent,
+  Paragraph,
+} from "mdast";
+
+import { serializeBlockEmbed } from "../block-id";
 
 export const blockEmbedTransformer: NodeTransformerEntry = {
   mdastType: "blockEmbed",
@@ -16,10 +23,13 @@ export const blockEmbedTransformer: NodeTransformerEntry = {
     return null;
   },
 
-  pmToMdast(
-    _node: PmNode,
-    _convertChildren: (node: PmNode) => MdastNode[],
-  ): MdastNode | null {
-    return null;
+  pmToMdast(node: PmNode): MdastNode {
+    const text = serializeBlockEmbed(
+      node.attrs as { blockId: string; target: string },
+    );
+    return {
+      type: "paragraph",
+      children: [{ type: "text", value: text }],
+    } as Paragraph;
   },
 };
