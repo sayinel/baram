@@ -8,6 +8,7 @@ use tauri::command;
 use tokio::sync::Mutex;
 
 use crate::embedding::chunker::{chunk_markdown, Chunk};
+use crate::embedding::hybrid_ranker::{self, RankedChunk};
 use crate::embedding::vector_store::VectorStore;
 use crate::embedding::EmbedConfig;
 
@@ -61,12 +62,14 @@ pub async fn embed_text(
         .ok_or_else(|| "No embedding returned".to_string())
 }
 
-/// Search the knowledge base using a query.
+/// Search the knowledge base using hybrid ranking (BM25 + vector + graph).
 #[command]
 pub async fn search_knowledge(
     state: tauri::State<'_, EmbeddingState>,
+    link_state: tauri::State<'_, super::index_cmd::LinkIndexState>,
     query: String,
     top_k: Option<usize>,
+    current_file: Option<String>,
     provider: String,
     model: String,
     api_key: Option<String>,
@@ -91,15 +94,65 @@ pub async fn search_knowledge(
         .next()
         .ok_or_else(|| "No query embedding returned".to_string())?;
 
-    // Search vector store
+    // Vector search — fetch more candidates for re-ranking
+    let candidate_k = (k * 3).max(15);
     let store = state.vector_store.lock().await;
-    let results = store.search(&query_vec, k);
+    let vector_results = store.search(&query_vec, candidate_k);
     drop(store);
 
-    // Enrich results with chunk metadata
+    if vector_results.is_empty() {
+        return Ok(vec![]);
+    }
+
+    // Build data structures for hybrid ranking
+    let chunk_index = state.chunk_index.lock().await;
+
+    let mut ranked_chunks: Vec<RankedChunk> = Vec::new();
+    let mut vector_scores: Vec<f32> = Vec::new();
+    let mut chunk_contents: HashMap<String, String> = HashMap::new();
+
+    for result in &vector_results {
+        if let Some(chunk) = chunk_index.get(&result.id) {
+            ranked_chunks.push(RankedChunk {
+                id: result.id.clone(),
+                file_path: chunk.file_path.clone(),
+                score: result.score,
+            });
+            vector_scores.push(result.score);
+            chunk_contents.insert(result.id.clone(), chunk.content.clone());
+        }
+    }
+    drop(chunk_index);
+
+    // Build outgoing link map from LinkIndex for graph proximity
+    let outgoing = {
+        let link_index = link_state.0.lock().await;
+        let graph = link_index.get_link_graph();
+        let mut out_map: HashMap<String, Vec<String>> = HashMap::new();
+        for edge in &graph.edges {
+            out_map
+                .entry(edge.from.clone())
+                .or_default()
+                .push(edge.to.clone());
+        }
+        out_map
+    };
+
+    // Apply hybrid ranking: BM25 + vector + graph → combined score → diversity
+    let final_results = hybrid_ranker::hybrid_rank(
+        &query,
+        ranked_chunks,
+        &vector_scores,
+        &chunk_contents,
+        current_file.as_deref(),
+        &outgoing,
+        k,
+    );
+
+    // Build response payloads
     let chunk_index = state.chunk_index.lock().await;
     let mut payloads = Vec::new();
-    for result in results {
+    for result in final_results {
         if let Some(chunk) = chunk_index.get(&result.id) {
             payloads.push(SearchResultPayload {
                 chunk_id: result.id,

@@ -82,12 +82,14 @@ export async function searchKnowledge(
   provider: string,
   model: string,
   topK?: number,
+  currentFile?: string,
   apiKey?: string,
   baseUrl?: string,
 ): Promise<KnowledgeSearchResult[]> {
   return invoke<KnowledgeSearchResult[]>("search_knowledge", {
     query,
     topK: topK ?? null,
+    currentFile: currentFile ?? null,
     provider,
     model,
     apiKey: apiKey ?? null,
