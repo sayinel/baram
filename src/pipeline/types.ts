@@ -4,7 +4,6 @@ import type {
   Literal as MdastLiteral,
   Node as MdastNode,
   Parent as MdastParent,
-  PhrasingContent,
 } from "mdast";
 
 // ---------------------------------------------------------------------------
@@ -17,19 +16,6 @@ import type {
 export interface BlockReferenceNode extends MdastLiteral {
   type: "blockReference";
 }
-
-/** Union of all Baram custom inline nodes */
-export type CustomInlineNode =
-  | BlockReferenceNode
-  | HighlightNode
-  | MentionNode
-  | SubscriptNode
-  | SuperscriptNode
-  | TagNode
-  | WikiLinkNode;
-
-/** PhrasingContent extended with custom inline nodes */
-export type CustomPhrasingContent = CustomInlineNode | PhrasingContent;
 
 /** Highlight inline mark node — `==text==` (value-based, pre-serialized) */
 export interface HighlightNode extends MdastLiteral {
