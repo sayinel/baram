@@ -1,4 +1,5 @@
 // §4.8 Block Handle — drag handle + menu on block hover
+// §11.2.3 BlockHandle AI submenu — contextual AI actions per block type
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Editor } from "@tiptap/react";
@@ -7,6 +8,15 @@ import {
   addBlockId,
   editBlockId,
 } from "../../extensions/plugins/block-id-decoration";
+import { executeAICommand, showPrompt } from "../../utils/ai-commands";
+import {
+  getBlockContentMode,
+  getBlockTextContent,
+} from "../../utils/block-ai-utils";
+import {
+  type AIAction,
+  getActionsForMode,
+} from "../../utils/contextual-ai-actions";
 
 interface BlockHandleProps {
   editor: Editor;
@@ -26,7 +36,9 @@ interface HandlePosition {
 export function BlockHandle({ editor }: BlockHandleProps) {
   const [handle, setHandle] = useState<HandlePosition | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [aiSubOpen, setAiSubOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const aiSubRef = useRef<HTMLDivElement>(null);
 
   // Track which block the mouse is hovering over
   useEffect(() => {
@@ -90,6 +102,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
     const handler = () => {
       setHandle(null);
       setMenuOpen(false);
+      setAiSubOpen(false);
     };
     editor.on("update", handler);
     return () => {
@@ -103,21 +116,129 @@ export function BlockHandle({ editor }: BlockHandleProps) {
     const handleClick = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
+        setAiSubOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [menuOpen]);
 
+  // Reposition AI submenu to avoid going off-screen
+  useEffect(() => {
+    if (!aiSubOpen || !aiSubRef.current || !menuRef.current) return;
+    const menuRect = menuRef.current.getBoundingClientRect();
+    const subRect = aiSubRef.current.getBoundingClientRect();
+    // If submenu goes off right edge, flip to left side
+    if (menuRect.right + subRect.width > window.innerWidth - 8) {
+      aiSubRef.current.style.left = "auto";
+      aiSubRef.current.style.right = "100%";
+    }
+    // If submenu goes off bottom edge, align to bottom of parent
+    if (subRect.bottom > window.innerHeight - 8) {
+      const overflow = subRect.bottom - window.innerHeight + 8;
+      aiSubRef.current.style.marginTop = `-${overflow}px`;
+    }
+  }, [aiSubOpen]);
+
   const handleMenuAction = useCallback((action: () => void) => {
     action();
     setMenuOpen(false);
+    setAiSubOpen(false);
   }, []);
+
+  const handleAIAction = useCallback(
+    (action: AIAction) => {
+      if (!handle) return;
+      const node = editor.state.doc.nodeAt(handle.pos);
+      if (!node) return;
+
+      const blockText = getBlockTextContent(node);
+      if (!blockText.trim()) return;
+
+      setMenuOpen(false);
+      setAiSubOpen(false);
+
+      // Handle placeholder-based actions
+      if (action.id === "translate") {
+        showPrompt("Target language:", "", {
+          presets: ["English", "Korean"],
+        }).then((lang) => {
+          if (lang) {
+            executeAICommand(
+              editor,
+              blockText,
+              action.systemPrompt.replace("{language}", lang),
+              { afterSelection: true },
+            );
+          }
+        });
+      } else if (action.id === "tone") {
+        showPrompt("Select tone:", "", {
+          presets: ["Formal", "Casual", "Professional", "Friendly"],
+        }).then((tone) => {
+          if (tone) {
+            executeAICommand(
+              editor,
+              blockText,
+              action.systemPrompt.replace("{tone}", tone),
+              { afterSelection: true },
+            );
+          }
+        });
+      } else if (action.id === "convert-lang") {
+        showPrompt("Target language:", "", {
+          presets: ["Python", "JavaScript", "TypeScript", "Rust"],
+        }).then((lang) => {
+          if (lang) {
+            executeAICommand(
+              editor,
+              blockText,
+              action.systemPrompt.replace("{language}", lang),
+              { afterSelection: true },
+            );
+          }
+        });
+      } else {
+        executeAICommand(editor, blockText, action.systemPrompt, {
+          afterSelection: true,
+        });
+      }
+    },
+    [editor, handle],
+  );
+
+  const handleCustomInstruction = useCallback(() => {
+    if (!handle) return;
+    const node = editor.state.doc.nodeAt(handle.pos);
+    if (!node) return;
+
+    const blockText = getBlockTextContent(node);
+    if (!blockText.trim()) return;
+
+    setMenuOpen(false);
+    setAiSubOpen(false);
+
+    showPrompt("Custom instruction:").then((instruction) => {
+      if (instruction) {
+        executeAICommand(editor, blockText, instruction, {
+          afterSelection: true,
+        });
+      }
+    });
+  }, [editor, handle]);
 
   if (!handle) return null;
 
   // Guard: stale position after document change
   if (handle.pos >= editor.state.doc.content.size) return null;
+
+  // Determine AI actions for the current block
+  const currentNode = editor.state.doc.nodeAt(handle.pos);
+  const aiMode = currentNode ? getBlockContentMode(currentNode) : null;
+  const aiActions = aiMode ? getActionsForMode(aiMode) : [];
+  const blockHasContent = currentNode
+    ? getBlockTextContent(currentNode).trim().length > 0
+    : false;
 
   // Build block ID menu item for paragraph/heading nodes
   const blockIdItem: DropdownItem | null = (() => {
@@ -257,6 +378,44 @@ export function BlockHandle({ editor }: BlockHandleProps) {
               </button>
             </div>
           ))}
+
+          {/* AI Submenu */}
+          {blockHasContent && (
+            <>
+              <div className="block-handle-separator" />
+              <div
+                className="block-handle-ai-trigger"
+                onMouseEnter={() => setAiSubOpen(true)}
+                onMouseLeave={() => setAiSubOpen(false)}
+              >
+                <button className="block-handle-menu-item block-handle-ai-item">
+                  <span>AI</span>
+                  <span className="block-handle-ai-arrow">{"\u25B8"}</span>
+                </button>
+
+                {aiSubOpen && (
+                  <div className="block-handle-ai-submenu" ref={aiSubRef}>
+                    {aiActions.map((action) => (
+                      <button
+                        className="block-handle-menu-item"
+                        key={action.id}
+                        onClick={() => handleAIAction(action)}
+                      >
+                        {action.label}
+                      </button>
+                    ))}
+                    <div className="block-handle-separator" />
+                    <button
+                      className="block-handle-menu-item"
+                      onClick={handleCustomInstruction}
+                    >
+                      Custom Instruction
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
     </>
