@@ -48,8 +48,8 @@ export function BlockHandle({ editor }: BlockHandleProps) {
       if (menuOpen) return;
 
       const editorRect = editorDom.getBoundingClientRect();
-      // Only show when mouse is near the left margin
-      if (e.clientX > editorRect.left + 60) {
+      // Only show when mouse is near the left margin (within editor padding area)
+      if (e.clientX > editorRect.left + 120) {
         setHandle(null);
         return;
       }
