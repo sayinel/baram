@@ -8,7 +8,7 @@ import {
   groupSearchResults,
   hasActiveFilters,
   highlightSearchMatch,
-} from "../journal-search";
+} from "../journal/journal-search";
 
 const DIR = "/home/user/journal";
 

@@ -7,7 +7,7 @@ import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { formatAIError } from "../../utils/format-error";
 import { logger } from "../../utils/logger";
-import { buildSkillGenPrompts } from "../../utils/skill-generator-prompt";
+import { buildSkillGenPrompts } from "../../utils/skill/skill-generator-prompt";
 
 interface SkillGeneratorDialogProps {
   onClose: () => void;

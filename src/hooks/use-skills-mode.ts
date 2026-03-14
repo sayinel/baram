@@ -5,7 +5,7 @@ import { useEditorStore } from "../stores/editor-store";
 import { useFileStore } from "../stores/file-store";
 import { useSkillStore } from "../stores/skill-store";
 import { useUIStore } from "../stores/ui-store";
-import { isSkillFrontmatter } from "../utils/skill-frontmatter";
+import { isSkillFrontmatter } from "../utils/skill/skill-frontmatter";
 // Re-export for backward compatibility
 export { isSkillFrontmatter };
 

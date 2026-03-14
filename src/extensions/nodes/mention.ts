@@ -3,7 +3,7 @@ import { mergeAttributes, Node } from "@tiptap/core";
 import { Plugin } from "@tiptap/pm/state";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
-import { isDateString } from "../../utils/journal";
+import { isDateString } from "../../utils/journal/journal";
 import { MentionView } from "./mention-view";
 
 export interface MentionOptions {

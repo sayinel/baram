@@ -10,7 +10,7 @@ import {
 } from "../../components/command/TagMenu";
 import { getVaultTags } from "../../ipc/invoke";
 import { useFileStore } from "../../stores/file-store";
-import { filterTags } from "../../utils/journal-tags";
+import { filterTags } from "../../utils/journal/journal-tags";
 import { logger } from "../../utils/logger";
 import { createSuggestionRenderer } from "./suggestion-renderer";
 

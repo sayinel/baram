@@ -14,7 +14,7 @@ import {
   buildMigrationPlan,
   detectFlatJournalFiles,
   detectHierarchicalJournalFiles,
-} from "../../utils/journal";
+} from "../../utils/journal/journal";
 import { logger } from "../../utils/logger";
 
 export type MigrationDirection = "toFlat" | "toHierarchy";

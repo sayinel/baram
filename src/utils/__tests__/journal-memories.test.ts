@@ -11,7 +11,7 @@ import {
   groupMemoriesByYear,
   renderSimpleMarkdown,
   updateOneLineFrontmatter,
-} from "../journal-memories";
+} from "../journal/journal-memories";
 
 describe("§56c extractOneLine", () => {
   it("returns frontmatter oneline field if present", () => {

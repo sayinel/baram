@@ -11,7 +11,7 @@ import {
   convertWikilinksForPandoc,
   stripBlockRefsForPandoc,
   stripTocForPandoc,
-} from "../pandoc-export";
+} from "../export/pandoc-export";
 
 describe("§55 convertWikilinksForPandoc", () => {
   it("converts simple wikilink", () => {

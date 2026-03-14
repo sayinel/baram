@@ -2,7 +2,7 @@
  * §56a — Journal templates/ folder management
  * Creates and initialises the templates/ subdirectory inside the journal directory.
  */
-import { createDir, writeFile } from "../ipc/invoke";
+import { createDir, writeFile } from "../../ipc/invoke";
 
 const DAILY_TEMPLATE = `---
 type: daily

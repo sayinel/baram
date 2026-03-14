@@ -10,7 +10,7 @@ import {
   extractOneLine,
   renderSimpleMarkdown,
   updateOneLineFrontmatter,
-} from "../../utils/journal-memories";
+} from "../../utils/journal/journal-memories";
 import { MemoryEntry, OneLineEditor } from "./OneLineEditor";
 import { resolveImageSrcs, resolveJournalBase } from "./utils";
 

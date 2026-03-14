@@ -1,11 +1,11 @@
 import { save } from "@tauri-apps/plugin-dialog";
 
-import type { PandocFormat, PdfOptions } from "../ipc/types";
+import type { PandocFormat, PdfOptions } from "../../ipc/types";
 // §5.12 Export — HTML file save + PDF via headless Chrome backend + §53 Notion + §55 Pandoc
 import type { Editor } from "@tiptap/core";
 
-import { exportPandoc, exportPdf, writeFile } from "../ipc/invoke";
-import { prosemirrorToMarkdown } from "../pipeline/pm-to-md";
+import { exportPandoc, exportPdf, writeFile } from "../../ipc/invoke";
+import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 import { captureEditorHTML, generateStandaloneHTML } from "./export-html";
 import { convertForNotion } from "./notion-export";
 import { convertForPandoc } from "./pandoc-export";

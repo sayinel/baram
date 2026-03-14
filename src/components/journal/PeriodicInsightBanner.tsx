@@ -5,12 +5,12 @@ import { useLLMStream } from "../../hooks/use-llm-stream";
 import { listDir, readFile } from "../../ipc/invoke";
 import { useAIStore } from "../../stores/ai-store";
 import { useSettingsStore } from "../../stores/settings-store";
-import { resolveJournalDir } from "../../utils/journal";
-import { renderSimpleMarkdown } from "../../utils/journal-memories";
+import { resolveJournalDir } from "../../utils/journal/journal";
+import { renderSimpleMarkdown } from "../../utils/journal/journal-memories";
 import {
   buildMonthlySummaryPrompt,
   buildWeeklyPatternPrompt,
-} from "../../utils/journal-reflection";
+} from "../../utils/journal/journal-reflection";
 import { logger } from "../../utils/logger";
 
 type InsightType = "monthly" | "weekly";

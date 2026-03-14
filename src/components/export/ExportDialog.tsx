@@ -15,7 +15,7 @@ import {
   exportAsPDF,
   exportForNotion,
   exportWithPandoc,
-} from "../../utils/export";
+} from "../../utils/export/export";
 import { logger } from "../../utils/logger";
 
 interface ExportDialogProps {

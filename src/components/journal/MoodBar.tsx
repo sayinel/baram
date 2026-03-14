@@ -18,15 +18,15 @@ import {
   type EnergyValue,
   MOOD_VALUES,
   type MoodValue,
-} from "../../utils/journal-mood";
+} from "../../utils/journal/journal-mood";
 import {
   buildEmotionInferencePrompt,
   parseEmotionResponse,
-} from "../../utils/journal-reflection";
+} from "../../utils/journal/journal-reflection";
 import {
   buildTagSuggestionPrompt,
   parseTagSuggestions,
-} from "../../utils/journal-tags";
+} from "../../utils/journal/journal-tags";
 
 interface MoodBarProps {
   editor: Editor | null;

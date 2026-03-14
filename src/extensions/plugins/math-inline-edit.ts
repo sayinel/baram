@@ -37,7 +37,7 @@ function loadKatex(): void {
     });
 }
 loadKatex();
-import { preprocessNotionFormula } from "../../utils/notion-katex-compat";
+import { preprocessNotionFormula } from "../../utils/export/notion-katex-compat";
 
 // ── Plugin state ──────────────────────────────────────────────────────
 interface MathEditState {

@@ -9,7 +9,7 @@ import { useFileStore } from "../../stores/file-store";
 import { useLinkStore } from "../../stores/link-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useUIStore } from "../../stores/ui-store";
-import { resolveJournalDir } from "../../utils/journal";
+import { resolveJournalDir } from "../../utils/journal/journal";
 import {
   CATEGORY_LABELS,
   filterByFrontmatter,
@@ -18,7 +18,7 @@ import {
   highlightSearchMatch,
   type JournalCategory,
   type JournalSearchFilters,
-} from "../../utils/journal-search";
+} from "../../utils/journal/journal-search";
 import { logger } from "../../utils/logger";
 
 const MAX_PER_CATEGORY = 5;

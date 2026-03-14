@@ -13,8 +13,8 @@ import {
   type CaptureItem,
   type CaptureType,
   insertCaptureIntoContent,
-} from "../../utils/journal-capture";
-import { buildTagIndex, filterTags } from "../../utils/journal-tags";
+} from "../../utils/journal/journal-capture";
+import { buildTagIndex, filterTags } from "../../utils/journal/journal-tags";
 import { logger } from "../../utils/logger";
 import { TagSuggest } from "./TagSuggest";
 

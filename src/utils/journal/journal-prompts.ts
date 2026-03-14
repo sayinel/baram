@@ -3,7 +3,7 @@
  * Expanded to 120 structured prompts across 5 categories.
  */
 
-import { listDir, readFile } from "../ipc/invoke";
+import { listDir, readFile } from "../../ipc/invoke";
 
 export interface DailyPrompt {
   category: "creative" | "goals" | "gratitude" | "reflection" | "relationships";

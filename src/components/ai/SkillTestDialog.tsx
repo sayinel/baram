@@ -8,7 +8,7 @@ import { formatAIError } from "../../utils/format-error";
 import {
   extractSkillPrompt,
   runSkillTest,
-} from "../../utils/skill-test-runner";
+} from "../../utils/skill/skill-test-runner";
 
 interface SkillTestDialogProps {
   onClose: () => void;

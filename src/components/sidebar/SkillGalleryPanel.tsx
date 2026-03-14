@@ -1,7 +1,7 @@
 // §72c SkillGalleryPanel — browse and search workspace skills
 import { useEffect, useMemo, useState } from "react";
 
-import type { SkillMeta } from "../../utils/skill-dependency-analyzer";
+import type { SkillMeta } from "../../utils/skill/skill-dependency-analyzer";
 
 import { readFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor-store";

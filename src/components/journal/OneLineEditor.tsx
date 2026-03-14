@@ -1,7 +1,7 @@
 // §56c OneLineEditor — inline one-line editing for current year journal entry
 import { useEffect, useState } from "react";
 
-import { renderSimpleMarkdown } from "../../utils/journal-memories";
+import { renderSimpleMarkdown } from "../../utils/journal/journal-memories";
 import { resolveImageSrcs } from "./utils";
 
 export interface MemoryEntry {

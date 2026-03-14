@@ -3,7 +3,7 @@ import { InputRule, mergeAttributes, Node } from "@tiptap/core";
 import { Plugin } from "@tiptap/pm/state";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
-import { isDateString } from "../../utils/journal";
+import { isDateString } from "../../utils/journal/journal";
 import { WikilinkView } from "./wikilink-view";
 
 export interface WikilinkOptions {

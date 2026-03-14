@@ -10,7 +10,7 @@ import {
   extractReflectionEntries,
   formatReflectionMarkdown,
   parseEmotionResponse,
-} from "../journal-reflection";
+} from "../journal/journal-reflection";
 
 // ─── buildReflectionPrompt ──────────────────────────────────────────────────
 

@@ -8,7 +8,7 @@ import { isExternalFileDrag } from "../../hooks/use-external-drop";
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { useSettingsStore } from "../../stores/settings-store";
-import { savePhotoToAssets } from "../../utils/journal-photo";
+import { savePhotoToAssets } from "../../utils/journal/journal-photo";
 
 /** Create the drop handler ProseMirror plugin */
 function createDropHandlerPlugin(): Plugin {

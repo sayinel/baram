@@ -12,7 +12,7 @@ import {
   groupPhotosByDate,
   type PhotoGalleryEntry,
   scanJournalPhotos,
-} from "../../utils/journal-photo";
+} from "../../utils/journal/journal-photo";
 
 type GroupMode = "day" | "month" | "year";
 

@@ -17,7 +17,7 @@ import {
   stripTocForNotion,
   toUnicodeSubscript,
   toUnicodeSuperscript,
-} from "../notion-export";
+} from "../export/notion-export";
 
 // ---------------------------------------------------------------------------
 // 1. toUnicodeSubscript

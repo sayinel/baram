@@ -8,13 +8,13 @@ import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { formatAIError } from "../../utils/format-error";
-import { resolveJournalDir } from "../../utils/journal";
-import { renderSimpleMarkdown } from "../../utils/journal-memories";
+import { resolveJournalDir } from "../../utils/journal/journal";
+import { renderSimpleMarkdown } from "../../utils/journal/journal-memories";
 import {
   buildReflectionPrompt,
   extractReflectionEntries,
   formatReflectionMarkdown,
-} from "../../utils/journal-reflection";
+} from "../../utils/journal/journal-reflection";
 import { logger } from "../../utils/logger";
 
 type Period = "month" | "week";
