@@ -4,6 +4,7 @@ pub mod chunker;
 pub mod gemini_embed;
 pub mod ollama_embed;
 pub mod openai_embed;
+pub mod vector_store;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
