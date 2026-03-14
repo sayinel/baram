@@ -21,6 +21,7 @@ import {
 import { llmCancel, llmComplete } from "../ipc/invoke";
 import { useAIStore } from "../stores/ai-store";
 import { useEditorStore } from "../stores/editor-store";
+import { useWritingFlowStore } from "../stores/writing-flow-store";
 import { GhostTextCache } from "../utils/ghost-text-cache";
 import { buildGhostTextConfig } from "../utils/ghost-text-prompt";
 import { getConfigForTask } from "../utils/model-selection";
@@ -192,13 +193,21 @@ export function useGhostText(editor: Editor | null) {
           );
           unlistenRefs.current.push(errorUn);
 
+          // §11.3 Append Writing Flow context to system prompt
+          const flowContext = useWritingFlowStore
+            .getState()
+            .compositePromptContext();
+          const systemPrompt = flowContext
+            ? `${ghostConfig.systemPrompt}\n\n${flowContext}`
+            : ghostConfig.systemPrompt;
+
           const taskCfg = getConfigForTask("ghost-text");
           await llmComplete(
             taskCfg.apiKey,
             ghostConfig.contextText,
             taskCfg.model,
             requestId,
-            ghostConfig.systemPrompt,
+            systemPrompt,
             storeSnapshot.maxSuggestionLength,
             taskCfg.provider,
             taskCfg.baseUrl,
