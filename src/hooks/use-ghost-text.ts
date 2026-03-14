@@ -14,23 +14,36 @@ import type {
 } from "../ipc/types";
 import type { Editor } from "@tiptap/core";
 
-import { ghostTextPluginKey } from "../extensions/plugins/ghost-text";
+import {
+  ghostTextPluginKey,
+  registerGhostTextAcceptedCallback,
+} from "../extensions/plugins/ghost-text";
 import { llmCancel, llmComplete } from "../ipc/invoke";
 import { useAIStore } from "../stores/ai-store";
 import { useEditorStore } from "../stores/editor-store";
+import { useWritingFlowStore } from "../stores/writing-flow-store";
+import { GhostTextCache } from "../utils/ghost-text-cache";
 import { buildGhostTextConfig } from "../utils/ghost-text-prompt";
 import { getConfigForTask } from "../utils/model-selection";
 import { getFilePrivacy, isLLMAllowed } from "../utils/privacy-check";
 
-// Simple prefix cache (last 5 suggestions)
-const prefixCache = new Map<string, string>();
-const MAX_CACHE_SIZE = 5;
+// §11.2.2 Module-level cache singleton with TTL and file invalidation
+const ghostCache = new GhostTextCache();
+
+// §11.2.2 Prefetch trigger: true when text ends with sentence punctuation and has >= 2 sentences
+// Exported for use in ghost text acceptance handler (Tab key path)
+export function shouldPrefetch(text: string): boolean {
+  if (!/[.!?。]$/.test(text.trim())) return false;
+  const sentenceCount = (text.match(/[.!?。]+/g) || []).length;
+  return sentenceCount >= 2;
+}
 
 export function useGhostText(editor: Editor | null) {
   const debounceRef = useRef<null | ReturnType<typeof setTimeout>>(null);
   const unlistenRefs = useRef<UnlistenFn[]>([]);
   const activeRequestRef = useRef<null | string>(null);
   const accumulatedRef = useRef("");
+  const lastFilePathRef = useRef<string | undefined>(undefined);
 
   const cleanup = useCallback(async () => {
     if (debounceRef.current) {
@@ -73,11 +86,17 @@ export function useGhostText(editor: Editor | null) {
       const activeTab = editorState.tabs.find(
         (t) => t.id === editorState.activeTabId,
       );
-      const ghostConfig = buildGhostTextConfig(
-        editor,
-        from,
-        activeTab?.filePath,
-      );
+      // §11.2.2 Invalidate cache when switching files
+      const currentFilePath = activeTab?.filePath;
+      if (
+        lastFilePathRef.current &&
+        currentFilePath !== lastFilePathRef.current
+      ) {
+        ghostCache.invalidateFile(lastFilePathRef.current);
+      }
+      lastFilePathRef.current = currentFilePath;
+
+      const ghostConfig = buildGhostTextConfig(editor, from, currentFilePath);
       if (ghostConfig.skip) return;
 
       // Get text before cursor for cache key + min length check
@@ -90,8 +109,7 @@ export function useGhostText(editor: Editor | null) {
       if (!textBefore || textBefore.length < 3) return;
 
       // Check cache first
-      const cacheKey = getCacheKey(textBefore);
-      const cached = prefixCache.get(cacheKey);
+      const cached = ghostCache.get(textBefore);
       if (cached) {
         editor.view.dispatch(
           editor.state.tr.setMeta(ghostTextPluginKey, {
@@ -138,24 +156,23 @@ export function useGhostText(editor: Editor | null) {
               }
             },
           );
+          unlistenRefs.current.push(tokenUn);
 
           const doneUn = await listen<LLMDonePayload>("llm:done", (event) => {
             if (event.payload.requestId !== requestId) return;
-            // Cache the result
+            // Cache the result with file path for invalidation
             if (accumulatedRef.current) {
-              if (prefixCache.size >= MAX_CACHE_SIZE) {
-                const firstKey = prefixCache.keys().next().value;
-                if (firstKey) prefixCache.delete(firstKey);
-              }
-              prefixCache.set(
-                cacheKey,
+              ghostCache.set(
+                textBefore,
                 accumulatedRef.current.slice(
                   0,
                   storeSnapshot.maxSuggestionLength,
                 ),
+                currentFilePath,
               );
             }
           });
+          unlistenRefs.current.push(doneUn);
 
           const errorUn = await listen<LLMErrorPayload>(
             "llm:error",
@@ -174,8 +191,15 @@ export function useGhostText(editor: Editor | null) {
               }
             },
           );
+          unlistenRefs.current.push(errorUn);
 
-          unlistenRefs.current = [tokenUn, doneUn, errorUn];
+          // §11.3 Append Writing Flow context to system prompt
+          const flowContext = useWritingFlowStore
+            .getState()
+            .compositePromptContext();
+          const systemPrompt = flowContext
+            ? `${ghostConfig.systemPrompt}\n\n${flowContext}`
+            : ghostConfig.systemPrompt;
 
           const taskCfg = getConfigForTask("ghost-text");
           await llmComplete(
@@ -183,7 +207,7 @@ export function useGhostText(editor: Editor | null) {
             ghostConfig.contextText,
             taskCfg.model,
             requestId,
-            ghostConfig.systemPrompt,
+            systemPrompt,
             storeSnapshot.maxSuggestionLength,
             taskCfg.provider,
             taskCfg.baseUrl,
@@ -196,13 +220,46 @@ export function useGhostText(editor: Editor | null) {
     };
 
     editor.on("update", handleUpdate);
+
+    // §11.2.2 Register prefetch callback triggered after Tab-acceptance
+    registerGhostTextAcceptedCallback((acceptedText, pos) => {
+      const store = useAIStore.getState();
+      if (!store.ghostTextEnabled) return;
+
+      // Build the text that will be before the cursor after acceptance
+      const { state } = editor;
+      const $from = state.doc.resolve(pos);
+      const textBefore =
+        $from.parent.textBetween(0, $from.parentOffset, undefined, "\ufffc") +
+        acceptedText;
+
+      if (!shouldPrefetch(textBefore)) return;
+
+      // Fire background prefetch — result stored in cache for next keystroke
+      const taskCfg = getConfigForTask("ghost-text");
+      const ghostConfig = buildGhostTextConfig(editor, pos, undefined);
+      if (ghostConfig.skip) return;
+
+      const requestId = `prefetch_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      llmComplete(
+        taskCfg.apiKey,
+        textBefore,
+        taskCfg.model,
+        requestId,
+        ghostConfig.systemPrompt,
+        store.maxSuggestionLength,
+        taskCfg.provider,
+        taskCfg.baseUrl,
+        store.privacyMode,
+      ).catch(() => {
+        // prefetch is best-effort — ignore errors silently
+      });
+    });
+
     return () => {
       editor.off("update", handleUpdate);
+      registerGhostTextAcceptedCallback(null);
       cleanup();
     };
   }, [editor, cleanup]);
-}
-
-function getCacheKey(textBefore: string): string {
-  return textBefore.slice(-200);
 }

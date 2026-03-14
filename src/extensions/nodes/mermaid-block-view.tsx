@@ -6,6 +6,7 @@ import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 // §5.5 Mermaid Block NodeView — selected: textarea + preview, unselected: SVG render
 // §50 Enhanced: template picker + full-screen edit
 import DOMPurify from "dompurify";
+import { Sparkles } from "lucide-react";
 
 import {
   copyMermaidPng,
@@ -14,6 +15,7 @@ import {
   detectMermaidType,
   MERMAID_TEMPLATES,
 } from "../../utils/mermaid-utils";
+import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
 import { mermaidBlockEntryKey } from "./mermaid-block";
 
 // Unique ID counter for mermaid rendering
@@ -486,8 +488,29 @@ export function MermaidBlockView({
         {svgHtml && (
           <div
             className="mermaid-hover-toolbar"
-            onMouseDown={(e) => e.stopPropagation()}
+            ref={(el) => {
+              if (el) el.onmousedown = (e) => e.stopPropagation();
+            }}
           >
+            <button
+              className="mermaid-hover-toolbar-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!code.trim()) return;
+                const pos = getPos();
+                if (typeof pos !== "number") return;
+                showNodeViewAIMenu(
+                  e.currentTarget,
+                  "diagram",
+                  code,
+                  editor,
+                  pos,
+                );
+              }}
+              title="AI Commands"
+            >
+              <Sparkles size={14} />
+            </button>
             <button
               className="mermaid-hover-toolbar-btn"
               onClick={(e) => {

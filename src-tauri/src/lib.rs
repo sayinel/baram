@@ -2,6 +2,7 @@
 
 mod commands;
 mod config;
+mod embedding;
 mod export;
 mod fs;
 mod git;
@@ -17,8 +18,8 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use commands::{
-    config_cmd, export_cmd, fs_cmd, git_cmd, index_cmd, keyring_cmd, llm_cmd, plugin_cmd,
-    search_cmd, snapshot_cmd, tag_cmd,
+    config_cmd, embedding_cmd, export_cmd, fs_cmd, git_cmd, index_cmd, keyring_cmd, llm_cmd,
+    plugin_cmd, search_cmd, snapshot_cmd, tag_cmd,
 };
 use tauri::{Emitter, Manager};
 
@@ -71,6 +72,7 @@ pub fn run() {
             index::LinkIndex::new(),
         )))
         .manage(llm::cancel::CancelRegistry::new())
+        .manage(embedding_cmd::EmbeddingState::new())
         .invoke_handler(tauri::generate_handler![
             fs_cmd::read_file,
             fs_cmd::write_file,
@@ -143,6 +145,11 @@ pub fn run() {
             plugin_cmd::plugin_read_manifest,
             plugin_cmd::plugin_fetch_registry,
             plugin_cmd::plugin_get_dir,
+            embedding_cmd::embed_text,
+            embedding_cmd::search_knowledge,
+            embedding_cmd::index_vault,
+            embedding_cmd::index_status,
+            embedding_cmd::index_file,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

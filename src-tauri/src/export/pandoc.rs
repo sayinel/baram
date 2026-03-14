@@ -168,7 +168,7 @@ pub fn run_pandoc(
     for arg in &options.extra_args {
         let flag = arg.split('=').next().unwrap_or(arg);
         let flag_base = flag.split(' ').next().unwrap_or(flag);
-        if !ALLOWED_PANDOC_FLAGS.iter().any(|a| *a == flag_base) {
+        if !ALLOWED_PANDOC_FLAGS.contains(&flag_base) {
             return Err(ExportError::PandocFailed(format!(
                 "Disallowed pandoc argument: {}",
                 flag_base

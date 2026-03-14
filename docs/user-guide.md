@@ -590,16 +590,44 @@ Baram has built-in AI writing assistance powered by Claude, OpenAI, Google Gemin
 4. Enter your API key (each provider has its own key field; Ollama requires no key)
 5. Choose your preferred model (models are loaded dynamically from the provider)
 
-### Inline AI Editing
+### Inline AI Editing (`Cmd+J`)
 
-1. **Select text** in the editor
-2. Click the **AI button** in the Floating Toolbar, or use a slash AI command
-3. Type your instruction (e.g., "make this more concise", "translate to Korean")
-4. The AI processes your request with real-time streaming
-5. Review the suggestion with **character-level diff** highlighting:
+Press `Cmd+J` (macOS) or `Ctrl+J` (Windows/Linux) to open the inline AI prompt:
+
+1. Type your instruction (e.g., "make this more concise", "translate to Korean")
+2. The AI processes your request with real-time streaming
+3. Review the suggestion with **character-level diff** highlighting:
    - Green text = additions
    - Red text = deletions
-6. Click **Accept** to apply or **Reject** to discard
+4. Click **Accept** to apply or **Reject** to discard
+
+### Contextual AI Actions (✨ Sparkles Button)
+
+AI actions adapt to the content you're working with. Look for the ✨ button:
+
+#### Floating Toolbar (Text Selection)
+Select text and click the ✨ button in the floating toolbar to see actions tailored to your content type:
+
+| Content Type | Available Actions |
+|-------------|-------------------|
+| **Text** | Improve, Shorten, Expand, Translate, Tone Change, Explain |
+| **Code** | Add Comments, Optimize, Find Bugs, Convert Language, Generate Tests |
+| **Math** | Show Steps, Fix LaTeX, Explain, Related Formulas |
+| **Table** | Analyze Data, Fill Cells, Suggest Rows, To CSV |
+| **Structure** | Generate TOC, Improve Structure, Split Sections, Summarize |
+
+#### Block Handle (⋮ Menu)
+Hover near the left edge of any block to reveal the ⋮ handle. Click it, then hover over the ✨ item to access block-level AI actions. Actions match the block's content type automatically.
+
+#### NodeView AI Buttons
+Hover over specialized blocks to reveal a ✨ button directly on the block:
+
+- **Code Block** — Add Comments, Optimize, Find Bugs, Convert, Generate Tests
+- **Math Block** — Show Steps, Fix LaTeX, Explain, Related Formulas
+- **Table** — Analyze Data, Fill Cells, Suggest Rows, To CSV
+- **Image** — Generate Alt Text, Generate Caption, Describe
+- **Mermaid Diagram** — Improve Diagram, Explain, Suggest Nodes, Change Style, Convert Type
+- **Callout** — Improve, Shorten, Expand, Translate
 
 ### Ghost Text (AI Autocomplete)
 
@@ -626,7 +654,15 @@ Chat with AI about your documents using **@references** for context:
 | `@file` | Content of any file in your workspace |
 | `@clipboard` | Current clipboard contents |
 
-The chat panel supports streaming responses with markdown rendering.
+The chat panel supports streaming responses with markdown rendering. Use **Apply to Editor** to insert AI responses directly into the editor as formatted WYSIWYG content.
+
+### Smart Templates
+
+Type `/ai-template` in the slash menu to generate structured content from AI-powered templates:
+
+- Choose from template categories (e.g., Meeting Notes, Project Plan, Technical Spec)
+- Or write a custom description for any document type
+- Generated content is inserted as fully rendered WYSIWYG blocks (headings, lists, tables, etc.)
 
 ### Slash AI Commands
 
@@ -634,13 +670,14 @@ Type `/` in the editor to access AI commands:
 
 | Command | Description |
 |---------|-------------|
+| `/ai-write` | Write or continue from current context |
+| `/ai-brainstorm` | Brainstorm ideas from current context |
 | `/ai-summarize` | Summarize selected text |
 | `/ai-expand` | Expand and elaborate on selected text |
-| `/ai-grammar` | Fix grammar and spelling |
+| `/ai-fix-grammar` | Fix grammar and spelling |
 | `/ai-translate` | Translate to another language |
-| `/ai-tone` | Change writing tone |
-| `/ai-simplify` | Simplify complex text |
-| `/ai-continue` | Continue writing from cursor position |
+| `/ai-explain` | Explain selected text in simple terms |
+| `/ai-template` | Generate content from AI templates |
 
 ### Custom AI Commands
 

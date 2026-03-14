@@ -155,6 +155,7 @@ baram/
 | AI 통합 | `docs/design/part6-ai-integration.md` | §6.1 전략, §6.2 5-Level, §6.3 Provider |
 | 데이터 모델 | `docs/design/part7-data-models.md` | §7.1 MD 규격, §7.2 PM 스키마, §7.3~§7.5 DB |
 | 로드맵 | `docs/design/part8-roadmap.md` | §8.1 Phase, §8.2 마일스톤, §8.4 품질, §8.6 의존성 |
+| AI 고도화 | `docs/design/part11-ai-enhancement.md` | §11.2 빠른 개선, §11.3 Writing Flow, §11.4 Knowledge Q&A, §11.5 Semantic Wikilink, §11.6 Agent Mode, §11.7 Authorship, §11.8 Smart Templates |
 
 ## 성능 기준 (Part 8 §8.4)
 

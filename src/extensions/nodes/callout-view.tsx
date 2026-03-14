@@ -19,7 +19,10 @@ import {
   OctagonAlert,
   Pencil,
   Quote,
+  Sparkles,
 } from "lucide-react";
+
+import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
 
 /** Callout type definition with Lucide icon and display label */
 interface CalloutTypeDef {
@@ -46,7 +49,12 @@ const CALLOUT_TYPES: Record<string, CalloutTypeDef> = {
 
 const CALLOUT_TYPE_KEYS = Object.keys(CALLOUT_TYPES);
 
-export function CalloutView({ editor, node, updateAttributes }: NodeViewProps) {
+export function CalloutView({
+  editor,
+  getPos,
+  node,
+  updateAttributes,
+}: NodeViewProps) {
   const type = (node.attrs.type as string) || "info";
   const title = (node.attrs.title as string) || "";
   const collapsed = node.attrs.collapsed as boolean;
@@ -175,6 +183,24 @@ export function CalloutView({ editor, node, updateAttributes }: NodeViewProps) {
           </span>
         )}
 
+        <button
+          className="callout-ai-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            const text = node.textContent || "";
+            if (!text.trim()) return;
+            const pos = getPos();
+            if (typeof pos !== "number") return;
+            showNodeViewAIMenu(e.currentTarget, "text", text, editor, pos);
+          }}
+          ref={(el) => {
+            if (el) el.onmousedown = (e) => e.stopPropagation();
+          }}
+          title="AI Commands"
+          type="button"
+        >
+          <Sparkles size={14} />
+        </button>
         <button
           className="callout-collapse-btn"
           onClick={toggleCollapsed}
