@@ -164,6 +164,8 @@ export function useSourceMode({
         });
       });
     }
+    // editorStateCache, sourceContentRef, sourceEditorRef are stable refs (useRef) —
+    // intentionally omitted from deps; they never change identity across renders.
   }, [editor, isSourceMode]);
 
   return {

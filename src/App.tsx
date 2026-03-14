@@ -354,7 +354,10 @@ function App() {
       const { activeTabId: tabId } = useEditorStore.getState();
       if (tabId) markDirty(tabId, true);
     },
-    [markDirty, setSourceContent, sourceContentRef],
+    // setSourceContent (useState setter) and sourceContentRef (useRef) are stable —
+    // intentionally omitted from deps for consistency with toggleSourceMode pattern.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [markDirty],
   );
 
   // §56 Journal — auto-create today's journal on startup
