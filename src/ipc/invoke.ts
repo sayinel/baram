@@ -2,6 +2,7 @@
 // Re-export facade: 도메인별 모듈에서 모든 함수를 재수출하여 기존 import 경로 호환성을 유지한다.
 
 export * from "./config";
+export * from "./embedding";
 export * from "./export";
 export * from "./fs";
 export * from "./git";
