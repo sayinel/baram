@@ -1,7 +1,7 @@
 import type { NodeTransformerEntry } from "../types";
 // image-transformer.ts — §5.1 Image mdast ↔ ProseMirror
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
-import type { Image, Node as MdastNode, Paragraph } from "mdast";
+import type { Html, Image, Node as MdastNode, Paragraph } from "mdast";
 
 /** Parse an <img .../> HTML tag into ProseMirror image attributes.
  *  Returns null if the string is not an img tag. */
@@ -17,7 +17,8 @@ export function parseImgHtml(html: string): null | {
   const attrStr = match[1];
 
   const getAttr = (name: string): null | string => {
-    const re = new RegExp(`${name}="([^"]*)"`, "i");
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`${escaped}="([^"]*)"`, "i");
     const m = attrStr.match(re);
     return m ? unescapeHtmlAttr(m[1]) : null;
   };
@@ -107,7 +108,7 @@ export const imageTransformer: NodeTransformerEntry = {
       return {
         type: "html",
         value: buildImgHtml(node.attrs),
-      } as unknown as MdastNode;
+      } satisfies Html as MdastNode;
     }
 
     return {

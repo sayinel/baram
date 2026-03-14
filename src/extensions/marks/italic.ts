@@ -6,7 +6,9 @@ import {
   mergeAttributes,
 } from "@tiptap/core";
 
+import { htmlAttributesOptions } from "../utils/html-attributes-options";
 import { resolveShortcut } from "../utils/shortcut-resolver";
+import { makeMarkCommands } from "./make-mark-commands";
 
 export interface ItalicOptions {
   HTMLAttributes: Record<string, string>;
@@ -28,9 +30,7 @@ const starPasteRegex = /(?:^|\s)(\*(?!\s+\*)((?:[^*]+))\*)/g;
 export const Italic = Mark.create<ItalicOptions>({
   name: "italic",
 
-  addOptions() {
-    return { HTMLAttributes: {} };
-  },
+  ...htmlAttributesOptions,
 
   parseHTML() {
     return [
@@ -53,20 +53,7 @@ export const Italic = Mark.create<ItalicOptions>({
   },
 
   addCommands() {
-    return {
-      setItalic:
-        () =>
-        ({ commands }) =>
-          commands.setMark(this.name),
-      toggleItalic:
-        () =>
-        ({ commands }) =>
-          commands.toggleMark(this.name),
-      unsetItalic:
-        () =>
-        ({ commands }) =>
-          commands.unsetMark(this.name),
-    };
+    return makeMarkCommands(this.name);
   },
 
   addKeyboardShortcuts() {

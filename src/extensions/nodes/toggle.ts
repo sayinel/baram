@@ -7,6 +7,8 @@ import { mergeAttributes, Node } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
+import { htmlAttributesOptions } from "../utils/html-attributes-options";
+import { resolveShortcut } from "../utils/shortcut-resolver";
 import { ToggleView } from "./toggle-view";
 
 export interface ToggleOptions {
@@ -69,11 +71,7 @@ export const Toggle = Node.create<ToggleOptions>({
   content: "(paragraph | heading) block*",
   defining: true,
 
-  addOptions() {
-    return {
-      HTMLAttributes: {},
-    };
-  },
+  ...htmlAttributesOptions,
 
   addAttributes() {
     return {
@@ -276,7 +274,7 @@ export const Toggle = Node.create<ToggleOptions>({
       },
 
       // Cmd+Enter: toggle open/close
-      "Mod-Enter": () => {
+      [resolveShortcut("formatting.toggleBlock", "Mod-Enter")]: () => {
         const { state, view } = this.editor;
         const { $from } = state.selection;
 

@@ -25,14 +25,11 @@ export function convertListNode(
   );
 
   if (hasTaskItems) {
-    const items = list.children.map((child) => {
-      const item = child as { checked?: boolean | null; children: Content[] };
-      const innerChildren = convertBlockChildren(item.children, schema);
-      return schema.nodes.taskItem.create(
-        { checked: item.checked ?? false },
-        innerChildren,
-      );
-    });
+    const items = convertListItemChildren(
+      list.children,
+      schema,
+      convertBlockChildren,
+    );
     return schema.nodes.taskList.create(null, items);
   }
 

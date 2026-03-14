@@ -1,12 +1,13 @@
 // §footnote FootnoteRef Node Extension — [^id] inline reference (superscript)
 import { InputRule, mergeAttributes, Node } from "@tiptap/core";
+import { ReactNodeViewRenderer } from "@tiptap/react";
+
+import { htmlAttributesOptions } from "../utils/html-attributes-options";
+import { FootnoteRefView } from "./footnote-ref-view";
 
 export interface FootnoteRefOptions {
   HTMLAttributes: Record<string, string>;
 }
-import { ReactNodeViewRenderer } from "@tiptap/react";
-
-import { FootnoteRefView } from "./footnote-ref-view";
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -26,9 +27,7 @@ export const FootnoteRef = Node.create<FootnoteRefOptions>({
   atom: true,
   marks: "",
 
-  addOptions() {
-    return { HTMLAttributes: {} };
-  },
+  ...htmlAttributesOptions,
 
   addAttributes() {
     return {

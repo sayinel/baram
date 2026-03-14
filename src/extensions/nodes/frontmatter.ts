@@ -2,6 +2,7 @@
 import { mergeAttributes, Node } from "@tiptap/core";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
+import { htmlAttributesOptions } from "../utils/html-attributes-options";
 import { FrontmatterView } from "./frontmatter-view";
 
 export interface FrontmatterOptions {
@@ -16,11 +17,7 @@ export const Frontmatter = Node.create<FrontmatterOptions>({
   code: true,
   defining: true,
 
-  addOptions() {
-    return {
-      HTMLAttributes: {},
-    };
-  },
+  ...htmlAttributesOptions,
 
   addAttributes() {
     return {

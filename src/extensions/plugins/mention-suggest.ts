@@ -1,25 +1,16 @@
 import type { Editor } from "@tiptap/core";
-import type {
-  SuggestionKeyDownProps,
-  SuggestionProps,
-} from "@tiptap/suggestion";
 
 // §57 Mention autocomplete — Tiptap Extension using Suggestion API
 // Triggers on @ and shows Quick Dates + page search popup
 import { Extension } from "@tiptap/core";
 import { PluginKey } from "@tiptap/pm/state";
-import { ReactRenderer } from "@tiptap/react";
 import { Suggestion } from "@tiptap/suggestion";
 
-import {
-  MentionMenuList,
-  type MentionMenuRef,
-} from "../../components/command/MentionMenu";
+import { MentionMenuList } from "../../components/command/MentionMenu";
 import { useFileStore } from "../../stores/file-store";
 import { flattenFileTree, fuzzyScore } from "../../utils/file-search";
 import { resolveDateAlias } from "../../utils/journal";
-
-const MENU_HEIGHT = 300;
+import { createSuggestionRenderer } from "./suggestion-renderer";
 
 export interface MentionSuggestionItem {
   category: "date" | "page";
@@ -78,16 +69,6 @@ function getQuickDates(): MentionSuggestionItem[] {
       category: "date",
     },
   ];
-}
-
-function positionPopup(popup: HTMLDivElement, coords: DOMRect) {
-  const spaceBelow = window.innerHeight - coords.bottom - 4;
-  popup.style.left = `${coords.left}px`;
-  if (spaceBelow < MENU_HEIGHT) {
-    popup.style.top = `${coords.top - MENU_HEIGHT - 4}px`;
-  } else {
-    popup.style.top = `${coords.bottom + 4}px`;
-  }
 }
 
 export const MentionSuggest = Extension.create({
@@ -169,60 +150,11 @@ export const MentionSuggest = Extension.create({
 
           return [...customDateItems, ...filteredDates, ...filteredPages];
         },
-        render: () => {
-          let component: null | ReactRenderer<MentionMenuRef> = null;
-          let popup: HTMLDivElement | null = null;
-
-          return {
-            onStart: (props: SuggestionProps) => {
-              component = new ReactRenderer(MentionMenuList, {
-                props: {
-                  items: props.items as MentionSuggestionItem[],
-                  command: props.command,
-                },
-                editor: props.editor,
-              });
-
-              popup = document.createElement("div");
-              popup.className = "mention-menu-popup";
-              document.body.appendChild(popup);
-              popup.appendChild(component.element);
-
-              const coords = props.clientRect?.();
-              if (coords && popup) {
-                positionPopup(popup, coords);
-              }
-            },
-            onUpdate: (props: SuggestionProps) => {
-              component?.updateProps({
-                items: props.items as MentionSuggestionItem[],
-                command: props.command,
-              });
-
-              const coords = props.clientRect?.();
-              if (coords && popup) {
-                positionPopup(popup, coords);
-              }
-            },
-            onKeyDown: (props: SuggestionKeyDownProps) => {
-              if (props.event.key === "Escape") {
-                popup?.remove();
-                component?.destroy();
-                popup = null;
-                component = null;
-                return true;
-              }
-
-              return component?.ref?.onKeyDown(props.event) ?? false;
-            },
-            onExit: () => {
-              popup?.remove();
-              component?.destroy();
-              popup = null;
-              component = null;
-            },
-          };
-        },
+        render: createSuggestionRenderer<MentionSuggestionItem>({
+          component: MentionMenuList,
+          popupClass: "mention-menu-popup",
+          menuHeight: 300,
+        }),
       }),
     ];
   },

@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { TextSelection } from "@tiptap/pm/state";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 // §5.5 Mermaid Block NodeView — selected: textarea + preview, unselected: SVG render
 // §50 Enhanced: template picker + full-screen edit
@@ -15,6 +14,8 @@ import {
   MERMAID_TEMPLATES,
 } from "../../utils/mermaid-utils";
 import { mermaidBlockEntryKey } from "./mermaid-block";
+import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
+import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
 
 // Unique ID counter for mermaid rendering
 let mermaidIdCounter = 0;
@@ -119,13 +120,7 @@ export function MermaidBlockView({
   }, [selected]);
 
   // Auto-resize textarea
-  useEffect(() => {
-    if (selected && textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height =
-        textareaRef.current.scrollHeight + "px";
-    }
-  }, [localCode, selected]);
+  useTextareaAutoResize(textareaRef, localCode, selected);
 
   // Close template dropdown on outside click
   useEffect(() => {
@@ -207,105 +202,23 @@ export function MermaidBlockView({
     }
   }, [fullscreenCode, fullscreen]);
 
-  const deleteBlock = useCallback(() => {
-    const pos = getPos();
-    if (typeof pos !== "number") return;
-    const { tr } = editor.state;
-    tr.delete(pos, pos + node.nodeSize);
-    const $pos = tr.doc.resolve(Math.min(pos, tr.doc.content.size));
-    tr.setSelection(TextSelection.near($pos, -1));
-    editor.view.dispatch(tr);
-    editor.view.focus();
-  }, [editor, getPos, node.nodeSize]);
+  // Common atom-block behavior: deleteBlock, exitBlock, handleKeyDown
+  const onSaveBeforeExit = useCallback(() => {
+    if (localCode !== code) {
+      updateAttributes({ code: localCode });
+    }
+  }, [localCode, code, updateAttributes]);
 
-  const exitBlock = useCallback(
-    (direction: "down" | "up") => {
-      const pos = getPos();
-      if (typeof pos !== "number") return;
-
-      if (localCode !== code) {
-        updateAttributes({ code: localCode });
-      }
-
-      if (direction === "up") {
-        editor.chain().setTextSelection(pos).focus().run();
-      } else {
-        const afterPos = pos + node.nodeSize;
-        const { doc } = editor.state;
-        const $after = doc.resolve(afterPos);
-        if ($after.parentOffset >= $after.parent.content.size) {
-          editor
-            .chain()
-            .insertContentAt(afterPos, { type: "paragraph" })
-            .setTextSelection(afterPos + 1)
-            .focus()
-            .run();
-        } else {
-          editor.chain().setTextSelection(afterPos).focus().run();
-        }
-      }
-    },
-    [editor, getPos, localCode, code, updateAttributes, node.nodeSize],
-  );
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      const ta = textareaRef.current;
-      if (!ta) return;
-
-      if (e.key === "Escape") {
-        e.preventDefault();
-        exitBlock("down");
-        return;
-      }
-
-      if (
-        e.key === "Backspace" &&
-        ta.selectionStart === 0 &&
-        ta.selectionEnd === 0 &&
-        !localCode
-      ) {
-        e.preventDefault();
-        deleteBlock();
-        return;
-      }
-
-      if (
-        e.key === "ArrowLeft" &&
-        ta.selectionStart === 0 &&
-        ta.selectionEnd === 0
-      ) {
-        e.preventDefault();
-        exitBlock("up");
-        return;
-      }
-
-      if (e.key === "ArrowRight" && ta.selectionStart === ta.value.length) {
-        e.preventDefault();
-        exitBlock("down");
-        return;
-      }
-
-      if (e.key === "ArrowUp") {
-        const before = ta.value.substring(0, ta.selectionStart);
-        if (!before.includes("\n")) {
-          e.preventDefault();
-          exitBlock("up");
-          return;
-        }
-      }
-
-      if (e.key === "ArrowDown") {
-        const after = ta.value.substring(ta.selectionStart);
-        if (!after.includes("\n")) {
-          e.preventDefault();
-          exitBlock("down");
-          return;
-        }
-      }
-    },
-    [exitBlock, deleteBlock, localCode],
-  );
+  const isEmpty = useCallback(() => !localCode, [localCode]);
+  const { deleteBlock, handleKeyDown } = useAtomBlockBehavior({
+    editor,
+    getPos,
+    nodeSize: node.nodeSize,
+    textareaRef,
+    onSaveBeforeExit,
+    keyboard: { backspaceOnEmpty: true, horizontalArrowExit: true },
+    isEmpty,
+  });
 
   const handlePreviewClick = useCallback(() => {
     const pos = getPos();
@@ -433,7 +346,12 @@ export function MermaidBlockView({
               <div className="mermaid-fullscreen-preview">
                 {fullscreenSvg ? (
                   <div
-                    className={`mermaid-block-svg${fullscreenError ? "mermaid-block-svg-faded" : ""}`}
+                    className={[
+                      "mermaid-block-svg",
+                      fullscreenError && "mermaid-block-svg-faded",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
                     dangerouslySetInnerHTML={{ __html: fullscreenSvg }}
                   />
                 ) : null}
@@ -648,7 +566,12 @@ export function MermaidBlockView({
               <div className="mermaid-template-dropdown">
                 {Object.entries(MERMAID_TEMPLATES).map(([key, tmpl]) => (
                   <button
-                    className={`mermaid-template-dropdown-item${detectedType === key ? "mermaid-template-active" : ""}`}
+                    className={[
+                      "mermaid-template-dropdown-item",
+                      detectedType === key && "mermaid-template-active",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
                     key={key}
                     onClick={() => applyTemplate(key)}
                   >
@@ -687,7 +610,9 @@ export function MermaidBlockView({
       />
       {svgHtml ? (
         <div
-          className={`mermaid-block-svg${error ? "mermaid-block-svg-faded" : ""}`}
+          className={["mermaid-block-svg", error && "mermaid-block-svg-faded"]
+            .filter(Boolean)
+            .join(" ")}
           dangerouslySetInnerHTML={{ __html: svgHtml }}
           ref={renderRef}
         />

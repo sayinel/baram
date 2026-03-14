@@ -3,12 +3,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Node as PmNode } from "@tiptap/pm/model";
 
-import { TextSelection } from "@tiptap/pm/state";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 
 import { parseKaTeXError } from "../../utils/katex-error";
 import { preprocessNotionFormula } from "../../utils/notion-katex-compat";
 import { mathBlockEntryKey } from "./math-block";
+import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
+import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
 
 // §perf-large-file: Per-doc cache via WeakMap — avoids cross-tab equation number bleed
 const mathPositionCache = new WeakMap<PmNode, Map<number, number>>();
@@ -81,13 +82,7 @@ export function MathBlockView({
   }, [selected]);
 
   // Auto-resize textarea
-  useEffect(() => {
-    if (selected && textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height =
-        textareaRef.current.scrollHeight + "px";
-    }
-  }, [localFormula, selected]);
+  useTextareaAutoResize(textareaRef, localFormula, selected);
 
   // Render KaTeX preview
   useEffect(() => {
@@ -129,112 +124,23 @@ export function MathBlockView({
     });
   }, [localFormula, formula, selected]);
 
-  // Delete this math block and move cursor to nearest valid position
-  const deleteBlock = useCallback(() => {
-    const pos = getPos();
-    if (typeof pos !== "number") return;
-    const { tr } = editor.state;
-    tr.delete(pos, pos + node.nodeSize);
-    const $pos = tr.doc.resolve(Math.min(pos, tr.doc.content.size));
-    tr.setSelection(TextSelection.near($pos, -1));
-    editor.view.dispatch(tr);
-    editor.view.focus();
-  }, [editor, getPos, node.nodeSize]);
+  // Common atom-block behavior: deleteBlock, exitBlock, handleKeyDown
+  const onSaveBeforeExit = useCallback(() => {
+    if (localFormula !== formula) {
+      updateAttributes({ formula: localFormula });
+    }
+  }, [localFormula, formula, updateAttributes]);
 
-  // Exit block: save formula and move focus to target position
-  // If exiting downward and no next node exists, insert a new paragraph
-  const exitBlock = useCallback(
-    (direction: "down" | "up") => {
-      const pos = getPos();
-      if (typeof pos !== "number") return;
-
-      if (localFormula !== formula) {
-        updateAttributes({ formula: localFormula });
-      }
-
-      if (direction === "up") {
-        editor.chain().setTextSelection(pos).focus().run();
-      } else {
-        const afterPos = pos + node.nodeSize;
-        const { doc } = editor.state;
-        // Check if there's a node after this block
-        const $after = doc.resolve(afterPos);
-        if ($after.parentOffset >= $after.parent.content.size) {
-          // No content after — insert a new paragraph, then move into it
-          editor
-            .chain()
-            .insertContentAt(afterPos, { type: "paragraph" })
-            .setTextSelection(afterPos + 1)
-            .focus()
-            .run();
-        } else {
-          editor.chain().setTextSelection(afterPos).focus().run();
-        }
-      }
-    },
-    [editor, getPos, localFormula, formula, updateAttributes, node.nodeSize],
-  );
-
-  // Keyboard navigation within textarea
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      const ta = textareaRef.current;
-      if (!ta) return;
-
-      if (e.key === "Escape") {
-        e.preventDefault();
-        exitBlock("down");
-        return;
-      }
-
-      // Backspace on empty formula at cursor position 0 → delete block
-      if (
-        e.key === "Backspace" &&
-        ta.selectionStart === 0 &&
-        ta.selectionEnd === 0 &&
-        !localFormula
-      ) {
-        e.preventDefault();
-        deleteBlock();
-        return;
-      }
-
-      if (
-        e.key === "ArrowLeft" &&
-        ta.selectionStart === 0 &&
-        ta.selectionEnd === 0
-      ) {
-        e.preventDefault();
-        exitBlock("up");
-        return;
-      }
-
-      if (e.key === "ArrowRight" && ta.selectionStart === ta.value.length) {
-        e.preventDefault();
-        exitBlock("down");
-        return;
-      }
-
-      if (e.key === "ArrowUp") {
-        const before = ta.value.substring(0, ta.selectionStart);
-        if (!before.includes("\n")) {
-          e.preventDefault();
-          exitBlock("up");
-          return;
-        }
-      }
-
-      if (e.key === "ArrowDown") {
-        const after = ta.value.substring(ta.selectionStart);
-        if (!after.includes("\n")) {
-          e.preventDefault();
-          exitBlock("down");
-          return;
-        }
-      }
-    },
-    [exitBlock, deleteBlock, localFormula],
-  );
+  const isEmpty = useCallback(() => !localFormula, [localFormula]);
+  const { handleKeyDown } = useAtomBlockBehavior({
+    editor,
+    getPos,
+    nodeSize: node.nodeSize,
+    textareaRef,
+    onSaveBeforeExit,
+    keyboard: { backspaceOnEmpty: true, horizontalArrowExit: true },
+    isEmpty,
+  });
 
   // Click on preview → enter edit
   const handlePreviewClick = useCallback(() => {

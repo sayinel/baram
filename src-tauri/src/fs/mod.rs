@@ -17,7 +17,7 @@ pub enum FsError {
     WatchError(String),
 }
 
-/// Directories to skip during recursive file collection.
+/// Directories excluded from markdown file collection.
 pub const SKIP_DIRS: &[&str] = &["node_modules", ".git", ".obsidian", ".baram"];
 
 /// Recursively collect all .md file paths under root, skipping hidden dirs and SKIP_DIRS.
@@ -113,8 +113,8 @@ async fn list_dir_inner(
             continue;
         }
 
-        // 무거운 디렉토리 제외
-        const SKIP_DIRS: &[&str] = &[
+        // Build/cache dirs excluded from directory listing.
+        const SKIP_HEAVY_DIRS: &[&str] = &[
             "node_modules",
             "target",
             "build",
@@ -123,7 +123,7 @@ async fn list_dir_inner(
             ".next",
             ".git",
         ];
-        if metadata.is_dir() && SKIP_DIRS.contains(&name.as_str()) {
+        if metadata.is_dir() && SKIP_HEAVY_DIRS.contains(&name.as_str()) {
             continue;
         }
 
