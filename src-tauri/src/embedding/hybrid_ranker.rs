@@ -1,6 +1,6 @@
 // §11.4.3 Hybrid Ranker — BM25 + vector + graph scoring with diversity enforcement
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 /// Configuration for hybrid ranking weights.
 #[derive(Debug, Clone)]
@@ -122,6 +122,159 @@ pub fn auto_weights(query: &str) -> RankConfig {
     }
 }
 
+/// Simple BM25-like TF score for a query against chunk content.
+/// Uses term frequency normalized by document length.
+/// Not a full BM25 (no IDF across corpus), but sufficient for re-ranking.
+pub fn bm25_score_chunk(query: &str, chunk_content: &str) -> f32 {
+    let query_terms: Vec<String> = query.split_whitespace().map(|t| t.to_lowercase()).collect();
+    if query_terms.is_empty() {
+        return 0.0;
+    }
+
+    let content_lower = chunk_content.to_lowercase();
+    let content_words: Vec<&str> = content_lower.split_whitespace().collect();
+    let doc_len = content_words.len() as f32;
+    if doc_len == 0.0 {
+        return 0.0;
+    }
+
+    // BM25 parameters
+    let k1: f32 = 1.2;
+    let b: f32 = 0.75;
+    let avg_dl: f32 = 200.0; // approximate average chunk length in words
+
+    let mut score = 0.0;
+    for term in &query_terms {
+        let tf = content_words
+            .iter()
+            .filter(|w| w.contains(term.as_str()))
+            .count() as f32;
+        if tf > 0.0 {
+            // Simplified BM25 term score (IDF=1 since we don't have corpus stats)
+            let numerator = tf * (k1 + 1.0);
+            let denominator = tf + k1 * (1.0 - b + b * (doc_len / avg_dl));
+            score += numerator / denominator;
+        }
+    }
+
+    score / query_terms.len() as f32
+}
+
+/// Compute hop distance from `current_file` to each `target_file` using BFS on the link graph.
+/// `outgoing` maps source_path → list of target_paths.
+/// Returns a map of file_path → hop_distance (u32). Files not reachable return None.
+pub fn compute_hop_distances(
+    current_file: &str,
+    target_files: &[String],
+    outgoing: &HashMap<String, Vec<String>>,
+) -> HashMap<String, u32> {
+    let target_set: HashSet<&String> = target_files.iter().collect();
+    let mut distances: HashMap<String, u32> = HashMap::new();
+    let mut visited: HashSet<String> = HashSet::new();
+    let mut queue: VecDeque<(String, u32)> = VecDeque::new();
+
+    queue.push_back((current_file.to_string(), 0));
+    visited.insert(current_file.to_string());
+
+    // BFS with max 3 hops to limit search scope
+    while let Some((file, depth)) = queue.pop_front() {
+        if depth > 3 {
+            break;
+        }
+
+        if target_set.contains(&file) {
+            distances.insert(file.clone(), depth);
+        }
+
+        if let Some(neighbors) = outgoing.get(&file) {
+            for neighbor in neighbors {
+                if !visited.contains(neighbor) {
+                    visited.insert(neighbor.clone());
+                    queue.push_back((neighbor.clone(), depth + 1));
+                }
+            }
+        }
+    }
+
+    distances
+}
+
+/// Perform full hybrid ranking on vector search results.
+/// Enriches vector results with BM25 and graph proximity scores, then combines.
+pub fn hybrid_rank(
+    query: &str,
+    vector_results: Vec<RankedChunk>,
+    vector_scores: &[f32],
+    chunk_contents: &HashMap<String, String>,
+    current_file: Option<&str>,
+    outgoing: &HashMap<String, Vec<String>>,
+    top_k: usize,
+) -> Vec<RankedChunk> {
+    if vector_results.is_empty() {
+        return vec![];
+    }
+
+    let config = auto_weights(query);
+
+    // Compute BM25 scores for each result
+    let raw_bm25: Vec<f32> = vector_results
+        .iter()
+        .map(|r| {
+            chunk_contents
+                .get(&r.id)
+                .map(|content| bm25_score_chunk(query, content))
+                .unwrap_or(0.0)
+        })
+        .collect();
+    let norm_bm25 = normalize_min_max(&raw_bm25);
+
+    // Normalize vector scores
+    let norm_vector = normalize_min_max(vector_scores);
+
+    // Compute graph proximity scores
+    let target_files: Vec<String> = vector_results.iter().map(|r| r.file_path.clone()).collect();
+    let hop_distances = if let Some(cf) = current_file {
+        compute_hop_distances(cf, &target_files, outgoing)
+    } else {
+        HashMap::new()
+    };
+    let raw_graph: Vec<f32> = vector_results
+        .iter()
+        .map(|r| {
+            hop_distances
+                .get(&r.file_path)
+                .map(|&d| graph_proximity(d))
+                .unwrap_or(0.0)
+        })
+        .collect();
+    let norm_graph = normalize_min_max(&raw_graph);
+
+    // Combine scores
+    let mut ranked: Vec<RankedChunk> = vector_results
+        .into_iter()
+        .enumerate()
+        .map(|(i, mut chunk)| {
+            let bm25 = norm_bm25.get(i).copied().unwrap_or(0.0);
+            let vector = norm_vector.get(i).copied().unwrap_or(0.0);
+            let graph = norm_graph.get(i).copied().unwrap_or(0.0);
+            chunk.score = combine_scores(bm25, vector, graph, &config);
+            chunk
+        })
+        .collect();
+
+    // Sort by combined score descending
+    ranked.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    // Enforce diversity (max 3 chunks per file)
+    let diverse = enforce_diversity(ranked, 3);
+
+    diverse.into_iter().take(top_k).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -211,6 +364,81 @@ mod tests {
     fn test_normalize_single_value() {
         let normalized = normalize_min_max(&[5.0]);
         assert_eq!(normalized, vec![0.0]);
+    }
+
+    #[test]
+    fn test_bm25_score_chunk_basic() {
+        let score = bm25_score_chunk("JWT token", "The JWT token is used for authentication.");
+        assert!(score > 0.0);
+    }
+
+    #[test]
+    fn test_bm25_score_chunk_no_match() {
+        let score = bm25_score_chunk("quantum physics", "How to bake a chocolate cake.");
+        assert!((score - 0.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_bm25_score_chunk_empty() {
+        assert!((bm25_score_chunk("test", "") - 0.0).abs() < 1e-6);
+        assert!((bm25_score_chunk("", "content") - 0.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_compute_hop_distances() {
+        let mut outgoing: HashMap<String, Vec<String>> = HashMap::new();
+        outgoing.insert("a.md".into(), vec!["b.md".into(), "c.md".into()]);
+        outgoing.insert("b.md".into(), vec!["d.md".into()]);
+
+        let targets = vec![
+            "a.md".into(),
+            "b.md".into(),
+            "c.md".into(),
+            "d.md".into(),
+            "e.md".into(),
+        ];
+        let distances = compute_hop_distances("a.md", &targets, &outgoing);
+
+        assert_eq!(distances.get("a.md"), Some(&0)); // self
+        assert_eq!(distances.get("b.md"), Some(&1)); // 1-hop
+        assert_eq!(distances.get("c.md"), Some(&1)); // 1-hop
+        assert_eq!(distances.get("d.md"), Some(&2)); // 2-hop via b
+        assert_eq!(distances.get("e.md"), None); // unreachable
+    }
+
+    #[test]
+    fn test_hybrid_rank_combines_scores() {
+        let vector_results = vec![
+            RankedChunk {
+                id: "c1".into(),
+                file_path: "auth.md".into(),
+                score: 0.9,
+            },
+            RankedChunk {
+                id: "c2".into(),
+                file_path: "config.md".into(),
+                score: 0.7,
+            },
+        ];
+        let vector_scores = vec![0.9, 0.7];
+        let mut contents = HashMap::new();
+        contents.insert("c1".into(), "JWT token authentication middleware".into());
+        contents.insert("c2".into(), "Application configuration settings".into());
+        let outgoing = HashMap::new();
+
+        let ranked = hybrid_rank(
+            "JWT token",
+            vector_results,
+            &vector_scores,
+            &contents,
+            None,
+            &outgoing,
+            10,
+        );
+
+        assert_eq!(ranked.len(), 2);
+        // c1 should rank higher (matches query in both vector and BM25)
+        assert_eq!(ranked[0].id, "c1");
     }
 
     #[test]
