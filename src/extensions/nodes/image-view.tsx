@@ -6,10 +6,16 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 
 import { useEditorStore } from "../../stores/editor-store";
+import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
 
 const RESIZE_PRESETS = [25, 50, 75, 100];
 
-export function ImageView({ node, updateAttributes, selected }: NodeViewProps) {
+export function ImageView({
+  node,
+  updateAttributes,
+  selected,
+  editor,
+}: NodeViewProps) {
   const rawSrc = node.attrs.src as string;
   const alt = (node.attrs.alt as string) || "";
   const title = (node.attrs.title as string) || "";
@@ -169,6 +175,24 @@ export function ImageView({ node, updateAttributes, selected }: NodeViewProps) {
               type="button"
             >
               Caption
+            </button>
+            <span className="image-toolbar-sep" />
+            <button
+              className="image-toolbar-btn"
+              onClick={(e) => {
+                const context =
+                  [
+                    alt && `Alt: ${alt}`,
+                    title && `Title: ${title}`,
+                    rawSrc && `Source: ${rawSrc}`,
+                  ]
+                    .filter(Boolean)
+                    .join("\n") || "image";
+                showNodeViewAIMenu(e.currentTarget, "image", context, editor);
+              }}
+              type="button"
+            >
+              AI
             </button>
           </div>
         )}

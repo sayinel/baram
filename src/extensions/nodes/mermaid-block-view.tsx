@@ -14,6 +14,7 @@ import {
   detectMermaidType,
   MERMAID_TEMPLATES,
 } from "../../utils/mermaid-utils";
+import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
 import { mermaidBlockEntryKey } from "./mermaid-block";
 
 // Unique ID counter for mermaid rendering
@@ -488,6 +489,17 @@ export function MermaidBlockView({
             className="mermaid-hover-toolbar"
             onMouseDown={(e) => e.stopPropagation()}
           >
+            <button
+              className="mermaid-hover-toolbar-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!code.trim()) return;
+                showNodeViewAIMenu(e.currentTarget, "diagram", code, editor);
+              }}
+              title="AI Commands"
+            >
+              AI
+            </button>
             <button
               className="mermaid-hover-toolbar-btn"
               onClick={(e) => {
