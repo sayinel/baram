@@ -112,7 +112,9 @@ export class CodeBlockNodeView implements NodeView {
       if (!code.trim()) return;
       const lang = (this.node.attrs.language as string) || "";
       const blockText = lang ? `\`\`\`${lang}\n${code}\n\`\`\`` : code;
-      showNodeViewAIMenu(aiBtn, "code", blockText, this.tiptapEditor);
+      const pos = this.getPos();
+      if (typeof pos !== "number") return;
+      showNodeViewAIMenu(aiBtn, "code", blockText, this.tiptapEditor, pos);
     });
     header.appendChild(aiBtn);
 

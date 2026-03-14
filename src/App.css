@@ -5757,6 +5757,173 @@ body {
   background-color: var(--color-border-light);
 }
 
+/* §11.2.3 Block AI Diff Panel */
+.block-ai-diff-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgb(0 0 0 / 25%);
+}
+
+.block-ai-diff-panel {
+  position: fixed;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 90vw);
+  max-height: 60vh;
+  overflow: hidden;
+  font-size: 0.85rem;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgb(0 0 0 / 18%);
+}
+
+.block-ai-diff-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.block-ai-diff-streaming {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--color-accent);
+  animation: block-ai-diff-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes block-ai-diff-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.block-ai-diff-content {
+  flex: 1;
+  padding: 12px;
+  overflow-y: auto;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+.block-ai-diff-equal {
+  color: var(--color-text-primary);
+}
+
+.block-ai-diff-delete {
+  color: #ef4444;
+  text-decoration: line-through;
+  background: rgb(239 68 68 / 8%);
+  border-radius: 2px;
+}
+
+.block-ai-diff-insert {
+  color: #22c55e;
+  background: rgb(34 197 94 / 8%);
+  border-radius: 2px;
+}
+
+.block-ai-diff-original {
+  color: var(--color-text-muted);
+}
+
+.block-ai-diff-error {
+  padding: 8px 12px;
+  font-size: 0.78rem;
+  color: #ef4444;
+  background: rgb(239 68 68 / 6%);
+}
+
+.block-ai-diff-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 8px 12px;
+  border-top: 1px solid var(--color-border-light);
+}
+
+.block-ai-diff-btn {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 5px 14px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.block-ai-diff-btn kbd {
+  padding: 1px 4px;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.7rem;
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border-light);
+  border-radius: 3px;
+  opacity: 0.7;
+}
+
+.block-ai-diff-btn-reject {
+  color: var(--color-text-secondary);
+  background: var(--color-bg-secondary);
+}
+
+.block-ai-diff-btn-reject:hover {
+  background: var(--color-bg-tertiary);
+}
+
+.block-ai-diff-btn-accept {
+  color: #fff;
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.block-ai-diff-btn-accept:hover {
+  opacity: 0.9;
+}
+
+/* Callout AI button */
+.callout-ai-btn {
+  padding: 2px 8px;
+  margin-left: auto;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--color-border-light);
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.callout:hover .callout-ai-btn {
+  opacity: 1;
+}
+
+.callout-ai-btn:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-secondary);
+}
+
 /* ============================================
    §4.8 Context Menu
    ============================================ */

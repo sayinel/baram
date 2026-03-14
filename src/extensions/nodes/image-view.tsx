@@ -15,6 +15,7 @@ export function ImageView({
   updateAttributes,
   selected,
   editor,
+  getPos,
 }: NodeViewProps) {
   const rawSrc = node.attrs.src as string;
   const alt = (node.attrs.alt as string) || "";
@@ -188,7 +189,15 @@ export function ImageView({
                   ]
                     .filter(Boolean)
                     .join("\n") || "image";
-                showNodeViewAIMenu(e.currentTarget, "image", context, editor);
+                const pos = getPos();
+                if (typeof pos !== "number") return;
+                showNodeViewAIMenu(
+                  e.currentTarget,
+                  "image",
+                  context,
+                  editor,
+                  pos,
+                );
               }}
               type="button"
             >

@@ -253,9 +253,11 @@ export function MathBlockView({
       e.stopPropagation();
       const f = formula || localFormula;
       if (!f.trim()) return;
-      showNodeViewAIMenu(e.currentTarget, "math", f, editor);
+      const pos = getPos();
+      if (typeof pos !== "number") return;
+      showNodeViewAIMenu(e.currentTarget, "math", f, editor, pos);
     },
-    [formula, localFormula, editor],
+    [formula, localFormula, editor, getPos],
   );
 
   // Non-editing: KaTeX render only
