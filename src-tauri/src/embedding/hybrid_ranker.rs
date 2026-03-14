@@ -201,6 +201,7 @@ pub fn compute_hop_distances(
 
 /// Perform full hybrid ranking on vector search results.
 /// Enriches vector results with BM25 and graph proximity scores, then combines.
+#[allow(clippy::too_many_arguments)]
 pub fn hybrid_rank(
     query: &str,
     vector_results: Vec<RankedChunk>,

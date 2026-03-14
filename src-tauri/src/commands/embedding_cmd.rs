@@ -64,6 +64,7 @@ pub async fn embed_text(
 
 /// Search the knowledge base using hybrid ranking (BM25 + vector + graph).
 #[command]
+#[allow(clippy::too_many_arguments)]
 pub async fn search_knowledge(
     state: tauri::State<'_, EmbeddingState>,
     link_state: tauri::State<'_, super::index_cmd::LinkIndexState>,
@@ -273,6 +274,7 @@ pub async fn index_status(state: tauri::State<'_, EmbeddingState>) -> Result<Ind
 
 /// Index a single file (incremental update).
 #[command]
+#[allow(clippy::too_many_arguments)]
 pub async fn index_file(
     state: tauri::State<'_, EmbeddingState>,
     file_path: String,
