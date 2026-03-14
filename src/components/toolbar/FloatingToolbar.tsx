@@ -7,20 +7,18 @@ import { CellSelection } from "@tiptap/pm/tables";
 import { BubbleMenu } from "@tiptap/react/menus";
 
 import {
-  AI_EXPAND,
-  AI_EXPLAIN,
-  AI_FIX_GRAMMAR,
-  AI_IMPROVE,
-  AI_SHORTEN,
-  AI_SUMMARIZE,
-  AI_TONE_CHANGE,
-  AI_TRANSLATE,
-} from "../../utils/ai-command-prompts";
-import {
   executeAICommand,
   getSelectedText,
   showPrompt,
 } from "../../utils/ai-commands";
+import {
+  type ContentMode,
+  detectContentType,
+} from "../../utils/content-type-detector";
+import {
+  type AIAction,
+  getActionsForMode,
+} from "../../utils/contextual-ai-actions";
 import { showFieldDialog } from "../../utils/field-dialog";
 
 interface FloatingToolbarProps {
@@ -52,98 +50,14 @@ function ToolbarButton({
   );
 }
 
-// §6.2 Selection-based AI commands in FloatingToolbar dropdown
+// §6.2 / §11.2.3 Selection-based contextual AI commands in FloatingToolbar dropdown
 const AFTER_SEL = { afterSelection: true } as const;
-
-const AI_COMMANDS = [
-  {
-    id: "ai-translate",
-    label: "Translate",
-    needsSelection: true,
-    execute: async (editor: Editor, selection: string) => {
-      const lang = await showPrompt("Target language:", "", {
-        presets: ["English", "Korean"],
-      });
-      if (!lang) return;
-      executeAICommand(
-        editor,
-        selection,
-        AI_TRANSLATE.replace("{language}", lang),
-        AFTER_SEL,
-      );
-    },
-  },
-  {
-    id: "ai-summarize",
-    label: "Summarize",
-    needsSelection: true,
-    execute: (editor: Editor, selection: string) => {
-      executeAICommand(editor, selection, AI_SUMMARIZE, AFTER_SEL);
-    },
-  },
-  {
-    id: "ai-expand",
-    label: "Expand",
-    needsSelection: true,
-    execute: (editor: Editor, selection: string) => {
-      executeAICommand(editor, selection, AI_EXPAND, AFTER_SEL);
-    },
-  },
-  {
-    id: "ai-fix-grammar",
-    label: "Fix Grammar",
-    needsSelection: true,
-    execute: (editor: Editor, selection: string) => {
-      executeAICommand(editor, selection, AI_FIX_GRAMMAR, AFTER_SEL);
-    },
-  },
-  {
-    id: "ai-explain",
-    label: "Explain",
-    needsSelection: true,
-    execute: (editor: Editor, selection: string) => {
-      executeAICommand(editor, selection, AI_EXPLAIN, AFTER_SEL);
-    },
-  },
-  {
-    id: "ai-improve",
-    label: "Improve",
-    needsSelection: true,
-    execute: (editor: Editor, selection: string) => {
-      executeAICommand(editor, selection, AI_IMPROVE, AFTER_SEL);
-    },
-  },
-  {
-    id: "ai-shorten",
-    label: "Shorten",
-    needsSelection: true,
-    execute: (editor: Editor, selection: string) => {
-      executeAICommand(editor, selection, AI_SHORTEN, AFTER_SEL);
-    },
-  },
-  {
-    id: "ai-tone-change",
-    label: "Tone Change",
-    needsSelection: true,
-    execute: async (editor: Editor, selection: string) => {
-      const tone = await showPrompt("Select tone:", "", {
-        presets: ["Formal", "Casual", "Professional", "Friendly"],
-      });
-      if (!tone) return;
-      executeAICommand(
-        editor,
-        selection,
-        AI_TONE_CHANGE.replace("{tone}", tone),
-        AFTER_SEL,
-      );
-    },
-  },
-];
 
 export function FloatingToolbar({ editor }: FloatingToolbarProps) {
   const [aiOpen, setAiOpen] = useState(false);
   const [dropUp, setDropUp] = useState(false);
   const [dropReady, setDropReady] = useState(false);
+  const [contentMode, setContentMode] = useState<ContentMode>("text");
   const aiRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -180,16 +94,68 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
     return () => cancelAnimationFrame(raf);
   }, [aiOpen]);
 
-  const handleAICommand = useCallback(
-    (cmd: (typeof AI_COMMANDS)[number]) => {
+  const handleAIOpen = useCallback(() => {
+    const { from, to } = editor.state.selection;
+    const nodeTypes: { type: string }[] = [];
+    editor.state.doc.nodesBetween(from, to, (node) => {
+      if (node.isBlock) {
+        nodeTypes.push({ type: node.type.name });
+      }
+    });
+    setContentMode(detectContentType(nodeTypes));
+    setAiOpen((v) => !v);
+  }, [editor]);
+
+  const handleContextualAction = useCallback(
+    (action: AIAction) => {
       const selection = getSelectedText(editor);
-      if (cmd.needsSelection && !selection) {
-        window.alert("Please select text first.");
+      if (!selection) {
         setAiOpen(false);
         return;
       }
       setAiOpen(false);
-      cmd.execute(editor, selection);
+      if (action.id === "translate") {
+        showPrompt("Target language:", "", {
+          presets: ["English", "Korean"],
+        }).then((lang) => {
+          if (lang) {
+            executeAICommand(
+              editor,
+              selection,
+              action.systemPrompt.replace("{language}", lang),
+              AFTER_SEL,
+            );
+          }
+        });
+      } else if (action.id === "tone") {
+        showPrompt("Select tone:", "", {
+          presets: ["Formal", "Casual", "Professional", "Friendly"],
+        }).then((tone) => {
+          if (tone) {
+            executeAICommand(
+              editor,
+              selection,
+              action.systemPrompt.replace("{tone}", tone),
+              AFTER_SEL,
+            );
+          }
+        });
+      } else if (action.id === "convert-lang") {
+        showPrompt("Target language:", "", {
+          presets: ["Python", "JavaScript", "TypeScript", "Rust"],
+        }).then((lang) => {
+          if (lang) {
+            executeAICommand(
+              editor,
+              selection,
+              action.systemPrompt.replace("{language}", lang),
+              AFTER_SEL,
+            );
+          }
+        });
+      } else {
+        executeAICommand(editor, selection, action.systemPrompt, AFTER_SEL);
+      }
     },
     [editor],
   );
@@ -306,7 +272,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
       <div className="floating-toolbar-ai-wrapper" ref={aiRef}>
         <button
           className={`floating-toolbar-btn ${aiOpen ? "floating-toolbar-btn-active" : ""}`}
-          onClick={() => setAiOpen((v) => !v)}
+          onClick={handleAIOpen}
           title="AI Commands"
         >
           AI
@@ -317,13 +283,13 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
             ref={dropdownRef}
             style={dropReady ? undefined : { visibility: "hidden" }}
           >
-            {AI_COMMANDS.map((cmd) => (
+            {getActionsForMode(contentMode).map((action) => (
               <button
                 className="floating-toolbar-ai-item"
-                key={cmd.id}
-                onClick={() => handleAICommand(cmd)}
+                key={action.id}
+                onClick={() => handleContextualAction(action)}
               >
-                {cmd.label}
+                {action.label}
               </button>
             ))}
           </div>

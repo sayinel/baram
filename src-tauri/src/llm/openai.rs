@@ -85,6 +85,8 @@ struct OpenAIRequest {
     messages: Vec<OpenAIMessage>,
     stream: bool,
     max_tokens: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    store: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -125,6 +127,7 @@ pub async fn complete_stream(
     max_tokens: u32,
     request_id: &str,
     base_url: &str,
+    privacy_mode: bool,
     mut cancel_rx: oneshot::Receiver<()>,
     app_handle: &tauri::AppHandle,
 ) -> Result<(), LlmError> {
@@ -157,6 +160,7 @@ pub async fn complete_stream(
         messages,
         stream: true,
         max_tokens,
+        store: if privacy_mode { Some(false) } else { None },
     };
 
     let url = format!("{}/v1/chat/completions", base_url.trim_end_matches('/'));
@@ -318,6 +322,7 @@ mod tests {
             ],
             stream: true,
             max_tokens: 1024,
+            store: None,
         };
         let json = serde_json::to_value(&body).unwrap();
         assert_eq!(json["messages"].as_array().unwrap().len(), 2);
@@ -336,6 +341,7 @@ mod tests {
             }],
             stream: true,
             max_tokens: 512,
+            store: None,
         };
         let json = serde_json::to_value(&body).unwrap();
         assert_eq!(json["messages"].as_array().unwrap().len(), 1);

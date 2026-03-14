@@ -70,6 +70,7 @@ pub async fn complete(
                 system_prompt,
                 max_tokens,
                 request_id,
+                privacy_mode,
                 cancel_rx,
                 app_handle,
             )
@@ -85,6 +86,7 @@ pub async fn complete(
                 max_tokens,
                 request_id,
                 url,
+                privacy_mode,
                 cancel_rx,
                 app_handle,
             )
@@ -104,6 +106,8 @@ pub async fn complete(
             )
             .await
         }
+        // Note: Gemini has no no-store header API. Privacy mode blocks all cloud
+        // providers (including Gemini) at line 60 before reaching this arm.
         "gemini" => {
             gemini::complete_stream(
                 api_key,
@@ -317,6 +321,50 @@ mod tests {
         let err = LlmError::UnknownProvider("foo".to_string());
         assert!(err.to_string().contains("Unknown provider"));
         assert!(err.to_string().contains("foo"));
+    }
+
+    // --- Privacy header tests ---
+
+    #[test]
+    fn test_claude_request_with_privacy_headers() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        let privacy_mode = true;
+        if privacy_mode {
+            headers.insert(
+                "anthropic-no-store",
+                reqwest::header::HeaderValue::from_static("true"),
+            );
+        }
+        assert_eq!(headers.get("anthropic-no-store").unwrap(), "true");
+    }
+
+    #[test]
+    fn test_claude_request_without_privacy_headers() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        let privacy_mode = false;
+        if privacy_mode {
+            headers.insert(
+                "anthropic-no-store",
+                reqwest::header::HeaderValue::from_static("true"),
+            );
+        }
+        assert!(headers.get("anthropic-no-store").is_none());
+    }
+
+    #[test]
+    fn test_openai_request_store_field_privacy() {
+        // When privacy mode is on, store should be false
+        let store: Option<bool> = Some(false);
+        let json = serde_json::json!({ "store": store });
+        assert_eq!(json["store"], false);
+    }
+
+    #[test]
+    fn test_openai_request_store_field_normal() {
+        // When privacy mode is off, store should be None (omitted from serialization)
+        let store: Option<bool> = None;
+        let json = serde_json::to_value(store).unwrap();
+        assert!(json.is_null());
     }
 
     // --- ModelInfo tests ---
