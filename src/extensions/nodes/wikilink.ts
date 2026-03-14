@@ -44,10 +44,26 @@ export const Wikilink = Node.create<WikilinkOptions>({
 
   addAttributes() {
     return {
-      target: { default: "" },
-      display: { default: null },
-      heading: { default: null },
-      blockId: { default: null },
+      target: {
+        default: "",
+        renderHTML: (attrs) => ({ "data-target": attrs.target }),
+        parseHTML: (el) => el.getAttribute("data-target") ?? "",
+      },
+      display: {
+        default: null,
+        renderHTML: (attrs) => ({ "data-display": attrs.display ?? "" }),
+        parseHTML: (el) => el.getAttribute("data-display") || null,
+      },
+      heading: {
+        default: null,
+        renderHTML: (attrs) => ({ "data-heading": attrs.heading ?? "" }),
+        parseHTML: (el) => el.getAttribute("data-heading") || null,
+      },
+      blockId: {
+        default: null,
+        renderHTML: (attrs) => ({ "data-block-id": attrs.blockId ?? "" }),
+        parseHTML: (el) => el.getAttribute("data-block-id") || null,
+      },
     };
   },
 
