@@ -8,15 +8,15 @@ import {
   addBlockId,
   editBlockId,
 } from "../../extensions/plugins/block-id-decoration";
-import { executeAICommand, showPrompt } from "../../utils/ai-commands";
+import {
+  dispatchAIAction,
+  dispatchCustomInstruction,
+} from "../../utils/ai-action-dispatcher";
 import {
   getBlockContentMode,
   getBlockTextContent,
 } from "../../utils/block-ai-utils";
-import {
-  type AIAction,
-  getActionsForMode,
-} from "../../utils/contextual-ai-actions";
+import { getActionsForMode } from "../../utils/contextual-ai-actions";
 
 interface BlockHandleProps {
   editor: Editor;
@@ -147,103 +147,20 @@ export function BlockHandle({ editor }: BlockHandleProps) {
   }, []);
 
   const handleAIAction = useCallback(
-    (action: AIAction) => {
+    (action: Parameters<typeof dispatchAIAction>[0]) => {
       if (!handle) return;
-      const node = editor.state.doc.nodeAt(handle.pos);
-      if (!node) return;
-
-      const blockText = getBlockTextContent(node);
-      if (!blockText.trim()) return;
-
       setMenuOpen(false);
       setAiSubOpen(false);
-
-      // Handle placeholder-based actions
-      if (action.id === "translate") {
-        showPrompt("Target language:", "", {
-          presets: ["English", "Korean"],
-        }).then((lang) => {
-          if (lang) {
-            executeAICommand(
-              editor,
-              blockText,
-              action.systemPrompt.replace("{language}", lang),
-              { afterSelection: true },
-            );
-          }
-        });
-      } else if (action.id === "tone") {
-        showPrompt("Select tone:", "", {
-          presets: ["Formal", "Casual", "Professional", "Friendly"],
-        }).then((tone) => {
-          if (tone) {
-            executeAICommand(
-              editor,
-              blockText,
-              action.systemPrompt.replace("{tone}", tone),
-              { afterSelection: true },
-            );
-          }
-        });
-      } else if (action.id === "convert-lang") {
-        showPrompt("Target language:", "", {
-          presets: ["Python", "JavaScript", "TypeScript", "Rust"],
-        }).then((lang) => {
-          if (lang) {
-            executeAICommand(
-              editor,
-              blockText,
-              action.systemPrompt.replace("{language}", lang),
-              { afterSelection: true },
-            );
-          }
-        });
-      } else if (action.id === "convert-diagram") {
-        showPrompt("Target diagram type:", "", {
-          presets: [
-            "flowchart",
-            "sequence",
-            "classDiagram",
-            "stateDiagram",
-            "erDiagram",
-          ],
-        }).then((type) => {
-          if (type) {
-            executeAICommand(
-              editor,
-              blockText,
-              action.systemPrompt.replace("{language}", type),
-              { afterSelection: true },
-            );
-          }
-        });
-      } else {
-        executeAICommand(editor, blockText, action.systemPrompt, {
-          afterSelection: true,
-        });
-      }
+      dispatchAIAction(action, editor, handle.pos);
     },
     [editor, handle],
   );
 
   const handleCustomInstruction = useCallback(() => {
     if (!handle) return;
-    const node = editor.state.doc.nodeAt(handle.pos);
-    if (!node) return;
-
-    const blockText = getBlockTextContent(node);
-    if (!blockText.trim()) return;
-
     setMenuOpen(false);
     setAiSubOpen(false);
-
-    showPrompt("Custom instruction:").then((instruction) => {
-      if (instruction) {
-        executeAICommand(editor, blockText, instruction, {
-          afterSelection: true,
-        });
-      }
-    });
+    dispatchCustomInstruction(editor, handle.pos);
   }, [editor, handle]);
 
   if (!handle) return null;

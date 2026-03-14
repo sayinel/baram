@@ -494,7 +494,15 @@ export function MermaidBlockView({
               onClick={(e) => {
                 e.stopPropagation();
                 if (!code.trim()) return;
-                showNodeViewAIMenu(e.currentTarget, "diagram", code, editor);
+                const pos = getPos();
+                if (typeof pos !== "number") return;
+                showNodeViewAIMenu(
+                  e.currentTarget,
+                  "diagram",
+                  code,
+                  editor,
+                  pos,
+                );
               }}
               title="AI Commands"
             >

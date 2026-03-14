@@ -3,18 +3,25 @@ import type { ContentMode } from "./content-type-detector";
 // Works in both React NodeViews and plain ProseMirror NodeViews
 import type { Editor } from "@tiptap/core";
 
-import { executeAICommand, showPrompt } from "./ai-commands";
-import { type AIAction, getActionsForMode } from "./contextual-ai-actions";
+import {
+  dispatchAIAction,
+  dispatchCustomInstruction,
+} from "./ai-action-dispatcher";
+import { getActionsForMode } from "./contextual-ai-actions";
 
 /**
  * Show a DOM-based AI action dropdown menu anchored to the given button element.
  * Returns a cleanup function to remove the menu.
+ *
+ * @param targetPos  Position of the target block in the document.
+ *                   When provided, actions use the correct block for result placement.
  */
 export function showNodeViewAIMenu(
   anchorEl: HTMLElement,
   mode: ContentMode,
-  blockText: string,
+  _blockText: string,
   editor: Editor,
+  targetPos?: number,
 ): () => void {
   // Remove any existing menu
   const existing = document.querySelector(".nodeview-ai-menu");
@@ -32,7 +39,9 @@ export function showNodeViewAIMenu(
       e.preventDefault();
       e.stopPropagation();
       menu.remove();
-      handleAction(action, blockText, editor);
+      if (targetPos != null) {
+        dispatchAIAction(action, editor, targetPos);
+      }
     });
     menu.appendChild(btn);
   }
@@ -49,13 +58,9 @@ export function showNodeViewAIMenu(
     e.preventDefault();
     e.stopPropagation();
     menu.remove();
-    showPrompt("Custom instruction:").then((instruction) => {
-      if (instruction) {
-        executeAICommand(editor, blockText, instruction, {
-          afterSelection: true,
-        });
-      }
-    });
+    if (targetPos != null) {
+      dispatchCustomInstruction(editor, targetPos);
+    }
   });
   menu.appendChild(customBtn);
 
@@ -75,76 +80,23 @@ export function showNodeViewAIMenu(
     document.addEventListener("mousedown", closeHandler);
   });
 
+  // Close on Escape
+  const keyHandler = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      menu.remove();
+      document.removeEventListener("keydown", keyHandler);
+      document.removeEventListener("mousedown", closeHandler);
+    }
+  };
+  requestAnimationFrame(() => {
+    document.addEventListener("keydown", keyHandler);
+  });
+
   return () => {
     menu.remove();
     document.removeEventListener("mousedown", closeHandler);
+    document.removeEventListener("keydown", keyHandler);
   };
-}
-
-function handleAction(action: AIAction, blockText: string, editor: Editor) {
-  if (action.id === "translate") {
-    showPrompt("Target language:", "", {
-      presets: ["English", "Korean"],
-    }).then((lang) => {
-      if (lang) {
-        executeAICommand(
-          editor,
-          blockText,
-          action.systemPrompt.replace("{language}", lang),
-          { afterSelection: true },
-        );
-      }
-    });
-  } else if (action.id === "tone") {
-    showPrompt("Select tone:", "", {
-      presets: ["Formal", "Casual", "Professional", "Friendly"],
-    }).then((tone) => {
-      if (tone) {
-        executeAICommand(
-          editor,
-          blockText,
-          action.systemPrompt.replace("{tone}", tone),
-          { afterSelection: true },
-        );
-      }
-    });
-  } else if (action.id === "convert-lang") {
-    showPrompt("Target language:", "", {
-      presets: ["Python", "JavaScript", "TypeScript", "Rust"],
-    }).then((lang) => {
-      if (lang) {
-        executeAICommand(
-          editor,
-          blockText,
-          action.systemPrompt.replace("{language}", lang),
-          { afterSelection: true },
-        );
-      }
-    });
-  } else if (action.id === "convert-diagram") {
-    showPrompt("Target diagram type:", "", {
-      presets: [
-        "flowchart",
-        "sequence",
-        "classDiagram",
-        "stateDiagram",
-        "erDiagram",
-      ],
-    }).then((type) => {
-      if (type) {
-        executeAICommand(
-          editor,
-          blockText,
-          action.systemPrompt.replace("{language}", type),
-          { afterSelection: true },
-        );
-      }
-    });
-  } else {
-    executeAICommand(editor, blockText, action.systemPrompt, {
-      afterSelection: true,
-    });
-  }
 }
 
 function positionMenu(menu: HTMLElement, anchor: HTMLElement) {

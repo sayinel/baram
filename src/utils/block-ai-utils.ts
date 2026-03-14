@@ -19,6 +19,32 @@ export function getBlockContentMode(node: PmNode): ContentMode {
 }
 
 /**
+ * Get the raw content of a block node — the value the AI is expected to return
+ * for replace-mode actions. Unlike getBlockTextContent (which wraps code in
+ * fences for context), this returns the bare storable content.
+ */
+export function getBlockRawContent(node: PmNode): string {
+  const typeName = node.type.name;
+
+  // CodeBlock: raw code without fences
+  if (typeName === "codeBlock") return node.textContent || "";
+
+  // MathBlock: formula stored in attribute
+  if (typeName === "mathBlock")
+    return (node.attrs.formula as string) || node.textContent || "";
+
+  // MermaidBlock: diagram code stored in attribute
+  if (typeName === "mermaidBlock")
+    return (node.attrs.code as string) || node.textContent || "";
+
+  // Image: alt text (primary replaceable content)
+  if (typeName === "image") return (node.attrs.alt as string) || "";
+
+  // Default: text content
+  return node.textContent || "";
+}
+
+/**
  * Extract text content from a block node for use as AI prompt input.
  * Handles atom nodes that may store content in attrs rather than textContent.
  */

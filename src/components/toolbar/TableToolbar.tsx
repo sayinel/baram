@@ -387,7 +387,7 @@ export function TableToolbar({ editor }: TableToolbarProps) {
           const tempDoc = editor.schema.nodes.doc.create(null, [table.node]);
           const md = prosemirrorToMarkdown(tempDoc).trim();
           if (!md) return;
-          showNodeViewAIMenu(e.currentTarget, "table", md, editor);
+          showNodeViewAIMenu(e.currentTarget, "table", md, editor, table.pos);
         }}
         title="AI Commands"
       >
