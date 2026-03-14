@@ -205,6 +205,9 @@
 | 2026-03-14 | use-source-mode.ts double RAF race condition (HIGH) | `1622bd2` |
 | 2026-03-14 | wikilink-view.tsx CSS 클래스 공백 누락 (CSS) | `1622bd2` |
 | 2026-03-14 | settings-store.ts migration 순서 역전 (MEDIUM) | `1622bd2` |
-| 2026-03-14 | gemini.rs API 키 URL 쿼리 파라미터 노출 (HIGH) → x-goog-api-key 헤더로 전환 | pending |
-| 2026-03-14 | snapshot/io.rs restore_files 경로 순회 취약점 (HIGH) → is_safe_relative_path 검증 추가 | pending |
-| 2026-03-14 | fs/mod.rs write_file 동시 쓰기 tmp 파일 충돌 (ARCH) → 고유 uuid tmp 경로 사용 | pending |
+| 2026-03-14 | gemini.rs API 키 URL 쿼리 파라미터 노출 (HIGH) → x-goog-api-key 헤더로 전환 | `7df7646` |
+| 2026-03-14 | snapshot/io.rs restore_files 경로 순회 취약점 (HIGH) → is_safe_relative_path 검증 추가 | `7df7646` |
+| 2026-03-14 | fs/mod.rs write_file 동시 쓰기 tmp 파일 충돌 (ARCH) → 고유 uuid tmp 경로 사용 | `7df7646` |
+| 2026-03-14 | fs_cmd.rs write_binary_file 동일 tmp 충돌 (ARCH) → uuid tmp 경로 통일 | `92c0378` |
+| 2026-03-14 | gemini.rs list_models 헤더 삽입 패닉 가능성 + 에러 타입 불일치 (MEDIUM) | `4fac079` |
+| 2026-03-14 | llm/mod.rs stale comment (query params → x-goog-api-key header) | `4fac079` |
