@@ -1,5 +1,5 @@
 // §28 Wikilink Node Extension — [[page]], [[page|display]], [[page#heading]]
-import { InputRule, Node } from "@tiptap/core";
+import { InputRule, mergeAttributes, Node } from "@tiptap/core";
 import { Plugin } from "@tiptap/pm/state";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
@@ -7,6 +7,7 @@ import { isDateString } from "../../utils/journal";
 import { WikilinkView } from "./wikilink-view";
 
 export interface WikilinkOptions {
+  HTMLAttributes: Record<string, unknown>;
   onNavigate: (target: string, heading?: null | string) => void;
 }
 
@@ -36,6 +37,7 @@ export const Wikilink = Node.create<WikilinkOptions>({
 
   addOptions() {
     return {
+      HTMLAttributes: {},
       onNavigate: () => {},
     };
   },
@@ -57,14 +59,10 @@ export const Wikilink = Node.create<WikilinkOptions>({
     const display = HTMLAttributes.display || HTMLAttributes.target || "";
     return [
       "span",
-      {
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
         "data-type": "wikilink",
-        "data-target": HTMLAttributes.target,
-        "data-display": HTMLAttributes.display || "",
-        "data-heading": HTMLAttributes.heading || "",
-        "data-block-id": HTMLAttributes.blockId || "",
         class: "wikilink",
-      },
+      }),
       display,
     ];
   },

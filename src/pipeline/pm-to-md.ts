@@ -263,10 +263,15 @@ function convertPmInlineChildren(node: PmNode): PhrasingContent[] {
 }
 
 /** Convert a single PM node to mdast node */
+// Intentional special cases below — these nodes need custom converter callbacks
+// or post-processing that the standard transformer.pmToMdast(node, convertPmChildren)
+// path cannot express. Unifying these into the registry would require extending the
+// NodeTransformer interface with metadata (converterType, wrapInParagraph, appendBlockId).
+// See refactoring-plan.md C6 for the full design rationale.
 function convertPmNode(node: PmNode): Content | null {
   const typeName = node.type.name;
 
-  // Special handling for nodes that need inline children
+  // paragraph/heading: needs convertPmInlineChildren (not convertPmChildren) + blockId append
   if (typeName === "paragraph" || typeName === "heading") {
     const transformer = pmNodeTransformers.get(typeName);
     if (transformer) {
