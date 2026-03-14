@@ -5,6 +5,7 @@
  * JOURNAL_HIDDEN_ENTRIES so it won't appear in the FileTree.
  */
 import { listDir, readFile, writeFile } from "../ipc/invoke";
+import { extractFrontmatter } from "./frontmatter";
 
 // ---- Types ----------------------------------------------------------------
 
@@ -199,21 +200,51 @@ function daysDiff(a: string, b: string): number {
   return (parseDate(b).getTime() - parseDate(a).getTime()) / 86400000;
 }
 
+function formatToday(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function parseDate(dateStr: string): Date {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
 /**
- * Extract YAML frontmatter block and body from markdown content.
+ * Parse a journal file's content to extract word count and frontmatter fields.
+ */
+function parseEntryContent(content: string): JournalEntryMeta {
+  const fmResult = extractFrontmatter(content);
+  const frontmatter = fmResult ? parseRawYaml(fmResult.yaml) : {};
+  const body = fmResult ? fmResult.rest : content;
+
+  // Word count: body text only, strip headings (#…) and count tokens
+  const bodyText = body
+    .split("\n")
+    .filter((line) => !line.startsWith("#"))
+    .join(" ");
+  const words = bodyText.split(/\s+/).filter(Boolean).length;
+
+  const hasPhotos = content.includes("![");
+
+  return {
+    words,
+    mood: frontmatter.mood,
+    energy:
+      frontmatter.energy !== undefined ? Number(frontmatter.energy) : undefined,
+    hasPhotos: hasPhotos || undefined,
+    tags: frontmatter.tags,
+  };
+}
+
+/**
+ * Parse the raw YAML string (without --- delimiters) into a ParsedFrontmatter.
  * Only handles simple key: value and tags as YAML list.
  */
-function extractFrontmatter(content: string): {
-  body: string;
-  frontmatter: ParsedFrontmatter;
-} {
-  const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
-  if (!fmMatch) {
-    return { frontmatter: {}, body: content };
-  }
-
-  const rawYaml = fmMatch[1];
-  const body = content.slice(fmMatch[0].length);
+function parseRawYaml(rawYaml: string): ParsedFrontmatter {
   const fm: ParsedFrontmatter = {};
 
   // Parse simple key: value pairs
@@ -268,54 +299,11 @@ function extractFrontmatter(content: string): {
   }
 
   return {
-    frontmatter: {
-      mood: typeof fm.mood === "string" ? fm.mood : undefined,
-      energy: typeof fm.energy === "number" ? fm.energy : undefined,
-      tags: Array.isArray(fm.tags)
-        ? (fm.tags as string[]).filter(
-            (t): t is string => typeof t === "string",
-          )
-        : undefined,
-    },
-    body,
-  };
-}
-
-function formatToday(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function parseDate(dateStr: string): Date {
-  const [y, m, d] = dateStr.split("-").map(Number);
-  return new Date(y, m - 1, d);
-}
-
-/**
- * Parse a journal file's content to extract word count and frontmatter fields.
- */
-function parseEntryContent(content: string): JournalEntryMeta {
-  const { frontmatter, body } = extractFrontmatter(content);
-
-  // Word count: body text only, strip headings (#…) and count tokens
-  const bodyText = body
-    .split("\n")
-    .filter((line) => !line.startsWith("#"))
-    .join(" ");
-  const words = bodyText.split(/\s+/).filter(Boolean).length;
-
-  const hasPhotos = content.includes("![");
-
-  return {
-    words,
-    mood: frontmatter.mood,
-    energy:
-      frontmatter.energy !== undefined ? Number(frontmatter.energy) : undefined,
-    hasPhotos: hasPhotos || undefined,
-    tags: frontmatter.tags,
+    mood: typeof fm.mood === "string" ? fm.mood : undefined,
+    energy: typeof fm.energy === "number" ? fm.energy : undefined,
+    tags: Array.isArray(fm.tags)
+      ? (fm.tags as string[]).filter((t): t is string => typeof t === "string")
+      : undefined,
   };
 }
 

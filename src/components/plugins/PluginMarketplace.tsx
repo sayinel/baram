@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type {
   InstalledPlugin,
   PluginCapability,
+  PluginStatus,
   RegistryEntry,
   RegistryIndex,
 } from "../../plugins/types";
@@ -201,15 +202,11 @@ export function PluginMarketplace() {
   // If detail view is showing
   if (selectedEntry) {
     const plugin = installedPlugins[selectedEntry.id];
-    const detailStatus: import("../../plugins/types").PluginStatus = installing[
-      selectedEntry.id
-    ]
-      ? "installing"
-      : !plugin
-        ? "not-installed"
-        : plugin.enabled
-          ? "enabled"
-          : "disabled";
+    const detailStatus: PluginStatus = getPluginStatus(
+      selectedEntry.id,
+      installing,
+      plugin,
+    );
     return (
       <PluginDetail
         entry={selectedEntry}
@@ -379,14 +376,11 @@ export function PluginMarketplace() {
           ) : (
             filteredPlugins.map((entry) => {
               const cardPlugin = installedPlugins[entry.id];
-              const cardStatus: import("../../plugins/types").PluginStatus =
-                installing[entry.id]
-                  ? "installing"
-                  : !cardPlugin
-                    ? "not-installed"
-                    : cardPlugin.enabled
-                      ? "enabled"
-                      : "disabled";
+              const cardStatus: PluginStatus = getPluginStatus(
+                entry.id,
+                installing,
+                cardPlugin,
+              );
               return (
                 <PluginCard
                   entry={entry}
@@ -573,12 +567,11 @@ export function PluginMarketplace() {
               if (!plugin) return null;
               const entry = registryIndex?.plugins.find((p) => p.id === id);
               if (!entry) return null;
-              const updateCardStatus: import("../../plugins/types").PluginStatus =
-                installing[id]
-                  ? "installing"
-                  : plugin.enabled
-                    ? "enabled"
-                    : "disabled";
+              const updateCardStatus: PluginStatus = getPluginStatus(
+                id,
+                installing,
+                plugin,
+              );
               return (
                 <PluginCard
                   entry={entry}
@@ -596,4 +589,14 @@ export function PluginMarketplace() {
       </div>
     </div>
   );
+}
+
+function getPluginStatus(
+  id: string,
+  installing: Record<string, boolean>,
+  plugin: undefined | { enabled: boolean },
+): PluginStatus {
+  if (installing[id]) return "installing";
+  if (!plugin) return "not-installed";
+  return plugin.enabled ? "enabled" : "disabled";
 }

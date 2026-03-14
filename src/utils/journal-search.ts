@@ -1,4 +1,5 @@
 // §56k Journal Search utilities — categorize, group, and highlight journal search results
+import { extractFrontmatter } from "./frontmatter";
 
 export type JournalCategory =
   | "daily"
@@ -92,10 +93,10 @@ export function extractFrontmatterFields(content: string): {
   tags?: string[];
 } {
   const hasPhotos = content.includes("![");
-  const fm = content.match(/^---\n([\s\S]*?)\n---/);
+  const fm = extractFrontmatter(content);
   if (!fm) return { hasPhotos };
 
-  const yaml = fm[1];
+  const yaml = fm.yaml;
   const date = yaml.match(/^date:\s*(\d{4}-\d{2}-\d{2})/m)?.[1];
   const mood = yaml.match(/^mood:\s*(\w+)/m)?.[1];
   const energyStr = yaml.match(/^energy:\s*(\d)/m)?.[1];

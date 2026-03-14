@@ -2,16 +2,13 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { createDir, listDir, readFile, writeFile } from "../ipc/invoke";
+import { listDir } from "../ipc/invoke";
 import {
-  applyJournalTemplate,
-  generateDefaultJournal,
-  getHierarchicalJournalPath,
-  getJournalFilePath,
-  resolveJournalDir,
-} from "../utils/journal";
+  ensureJournalFile,
+  openFileInTab,
+} from "../services/journal-file-service";
+import { resolveJournalDir } from "../utils/journal";
 import { logger } from "../utils/logger";
-import { useEditorStore } from "./editor-store";
 import { useFileStore } from "./file-store";
 import { buildFileTree } from "./file-store";
 import { useSettingsStore } from "./settings-store";
@@ -159,65 +156,17 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           const { rootPath } = useFileStore.getState();
           const resolvedDir = resolveJournalDir(rootPath, journalDirectory);
           if (journalEnabled && resolvedDir) {
-            const date = new Date();
-            const journalPath = journalUseHierarchy
-              ? getHierarchicalJournalPath(
-                  resolvedDir,
-                  date,
-                  journalFilenameFormat,
-                )
-              : getJournalFilePath(
-                  rootPath,
-                  journalDirectory,
-                  date,
-                  journalFilenameFormat,
-                );
-            if (!journalPath) return;
             (async () => {
               try {
-                let exists = true;
-                try {
-                  await readFile(journalPath);
-                } catch {
-                  exists = false;
-                }
-                if (!exists) {
-                  const parentDir = journalPath.substring(
-                    0,
-                    journalPath.lastIndexOf("/"),
-                  );
-                  await createDir(parentDir);
-                  let content: string;
-                  if (journalTemplatePath) {
-                    try {
-                      const tpl = await readFile(journalTemplatePath);
-                      content = applyJournalTemplate(tpl, date);
-                    } catch {
-                      content = generateDefaultJournal(date);
-                    }
-                  } else {
-                    content = generateDefaultJournal(date);
-                  }
-                  await writeFile(journalPath, content);
-                }
-                // Open the journal file
-                const { tabs } = useEditorStore.getState();
-                const existing = tabs.find(
-                  (t: { filePath?: string }) => t.filePath === journalPath,
-                );
-                if (existing) {
-                  useEditorStore.getState().setActiveTab(existing.id);
-                } else {
-                  const content = await readFile(journalPath);
-                  const fileName = journalPath.split("/").pop() ?? "Unknown";
-                  useFileStore.getState().setFileContent(journalPath, content);
-                  useEditorStore.getState().openTab({
-                    id: crypto.randomUUID(),
-                    filePath: journalPath,
-                    title: fileName,
-                    isDirty: false,
-                    isPinned: false,
-                  });
+                const result = await ensureJournalFile(new Date(), {
+                  journalDirectory,
+                  journalFilenameFormat,
+                  journalTemplatePath,
+                  journalUseHierarchy,
+                  rootPath,
+                });
+                if (result) {
+                  await openFileInTab(result.path, result.content);
                 }
 
                 // §56 Scope FileTree to journal directory

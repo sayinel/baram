@@ -1,14 +1,7 @@
 // §55 Pandoc Extended Export — Baram MD → standard Pandoc-compatible MD preprocessing
 // Pure utility functions (no external dependencies)
 
-// ---------------------------------------------------------------------------
-// Helper: protect code blocks and inline code from regex transforms
-// ---------------------------------------------------------------------------
-
-interface CodeRegion {
-  end: number;
-  start: number;
-}
+import { replaceOutsideCode } from "./markdown-code-regions";
 
 /** Convert Baram callouts to simple blockquotes.
  *  `> [!tip] Title` → `> **Tip**: Title` */
@@ -186,57 +179,4 @@ export function stripBlockRefsForPandoc(md: string): string {
 /** Remove [TOC] lines */
 export function stripTocForPandoc(md: string): string {
   return md.replace(/^\[TOC\]\s*$/gim, "").replace(/\n{3,}/g, "\n\n");
-}
-
-/** Collect all protected regions (code blocks, inline code, math blocks) */
-function collectCodeRegions(md: string): CodeRegion[] {
-  const regions: CodeRegion[] = [];
-
-  // Fenced code blocks: ``` or ~~~
-  const fencedRe = /^(`{3,}|~{3,})[^\n]*\n[\s\S]*?\n\1\s*$/gm;
-  let m: null | RegExpExecArray;
-  while ((m = fencedRe.exec(md)) !== null) {
-    regions.push({ start: m.index, end: m.index + m[0].length });
-  }
-
-  // Block math: $$...$$ (multiline)
-  const blockMathRe = /\$\$[\s\S]*?\$\$/g;
-  while ((m = blockMathRe.exec(md)) !== null) {
-    regions.push({ start: m.index, end: m.index + m[0].length });
-  }
-
-  // Inline code: `...`
-  const inlineCodeRe = /`[^`\n]+`/g;
-  while ((m = inlineCodeRe.exec(md)) !== null) {
-    regions.push({ start: m.index, end: m.index + m[0].length });
-  }
-
-  return regions;
-}
-
-function isInCodeRegion(pos: number, regions: CodeRegion[]): boolean {
-  return regions.some((r) => pos >= r.start && pos < r.end);
-}
-
-// ---------------------------------------------------------------------------
-// Main orchestrator
-// ---------------------------------------------------------------------------
-
-function replaceOutsideCode(
-  md: string,
-  pattern: RegExp,
-  replacer: (match: string, ...groups: string[]) => string,
-): string {
-  const regions = collectCodeRegions(md);
-  const globalRe = new RegExp(
-    pattern.source,
-    pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g",
-  );
-  return md.replace(globalRe, (match: string, ...args: unknown[]) => {
-    const offset = args[args.length - 2] as number;
-    if (isInCodeRegion(offset, regions)) {
-      return match;
-    }
-    return replacer(match, ...(args.slice(0, -2) as string[]));
-  });
 }

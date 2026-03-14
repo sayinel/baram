@@ -3,7 +3,7 @@ import type { FileEntry as IpcFileEntry } from "../ipc/types";
 // §3.5 파일 시스템 스토어
 import { create } from "zustand";
 
-import { listDir, refreshIndex } from "../ipc/invoke";
+import { listDir, refreshIndex, setVaultRoot } from "../ipc/invoke";
 import { logger } from "../utils/logger";
 import { useEditorStore } from "./editor-store";
 import { useLinkStore } from "./link-store";
@@ -103,6 +103,7 @@ export function buildFileTree(
  * Open a folder: list its contents recursively, build tree, update store.
  */
 export async function openFolder(path: string): Promise<void> {
+  await setVaultRoot(path);
   const entries = await listDir(path, true);
   const tree = buildFileTree(entries, path);
   useFileStore.getState().setRootPath(path);

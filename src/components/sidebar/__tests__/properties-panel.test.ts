@@ -1,7 +1,7 @@
 import {
   parseYamlProperties,
   serializeYamlProperties,
-} from "../PropertiesPanel";
+} from "../../../utils/yaml-properties";
 
 describe("parseYamlProperties", () => {
   it("parses string fields", () => {

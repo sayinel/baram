@@ -4,18 +4,18 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import type { MoodValue } from "../../utils/journal-mood";
 
 import { createDir, listDir, readFile, writeFile } from "../../ipc/invoke";
+import {
+  ensureJournalFile,
+  openFileInTab,
+} from "../../services/journal-file-service";
 import { useAIStore } from "../../stores/ai-store";
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import {
-  applyJournalTemplate,
   formatJournalDate,
-  generateDefaultJournal,
   getFirstDayOfWeek,
-  getHierarchicalJournalPath,
   getISOWeekNumber,
-  getJournalFilePath,
   getMonthDays,
   getWeeklyJournalPath,
   resolveJournalDir,
@@ -206,66 +206,18 @@ export function CalendarPanel() {
   const openOrCreateJournal = useCallback(
     async (date: Date) => {
       if (!journalEnabled || !resolvedDir) return;
-      const journalPath = journalUseHierarchy
-        ? getHierarchicalJournalPath(resolvedDir, date, journalFilenameFormat)
-        : getJournalFilePath(
-            null,
-            journalDirectory,
-            date,
-            journalFilenameFormat,
-          );
-      if (!journalPath) return;
-
-      // Check if file exists
-      let exists = true;
       try {
-        await readFile(journalPath);
-      } catch {
-        exists = false;
-      }
-
-      if (!exists) {
-        // Create the journal file (and parent dirs for hierarchical layout)
-        const parentDir = journalPath.substring(
-          0,
-          journalPath.lastIndexOf("/"),
-        );
-        await createDir(parentDir);
-
-        let content: string;
-        if (journalTemplatePath) {
-          try {
-            const tpl = await readFile(journalTemplatePath);
-            content = applyJournalTemplate(tpl, date);
-          } catch {
-            content = generateDefaultJournal(date);
-          }
-        } else {
-          content = generateDefaultJournal(date);
-        }
-        await writeFile(journalPath, content);
-      }
-
-      // Open the file
-      const { tabs } = useEditorStore.getState();
-      const existing = tabs.find((t) => t.filePath === journalPath);
-      if (existing) {
-        useEditorStore.getState().setActiveTab(existing.id);
-      } else {
-        try {
-          const content = await readFile(journalPath);
-          const fileName = journalPath.split("/").pop() ?? "Unknown";
-          useFileStore.getState().setFileContent(journalPath, content);
-          useEditorStore.getState().openTab({
-            id: crypto.randomUUID(),
-            filePath: journalPath,
-            title: fileName,
-            isDirty: false,
-            isPinned: false,
-          });
-        } catch (err) {
-          logger.error("[CalendarPanel] Failed to open journal:", err);
-        }
+        const result = await ensureJournalFile(date, {
+          journalDirectory,
+          journalFilenameFormat,
+          journalTemplatePath,
+          journalUseHierarchy,
+          rootPath: null,
+        });
+        if (!result) return;
+        await openFileInTab(result.path, result.content);
+      } catch (err) {
+        logger.error("[CalendarPanel] Failed to open journal:", err);
       }
     },
     [

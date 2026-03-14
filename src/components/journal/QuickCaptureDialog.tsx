@@ -1,17 +1,12 @@
 // §56l Quick Capture Dialog — Cmd+Shift+N
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { createDir, listDir, readFile, writeFile } from "../../ipc/invoke";
+import { listDir, readFile, writeFile } from "../../ipc/invoke";
+import { ensureJournalFile } from "../../services/journal-file-service";
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useUIStore } from "../../stores/ui-store";
-import {
-  applyJournalTemplate,
-  formatJournalFilename,
-  generateDefaultJournal,
-  getHierarchicalJournalPath,
-} from "../../utils/journal";
 import {
   CAPTURE_ICONS,
   CAPTURE_TYPES,
@@ -136,36 +131,18 @@ export function QuickCaptureDialog() {
       }
 
       const date = new Date();
-      // Resolve journal dir: absolute paths pass through, relative paths join with rootPath
-      const resolvedDir =
-        journalDirectory.startsWith("/") || /^[A-Z]:\\/.test(journalDirectory)
-          ? journalDirectory
-          : `${rootPath}/${journalDirectory}`;
-      const journalPath = journalUseHierarchy
-        ? getHierarchicalJournalPath(resolvedDir, date, journalFilenameFormat)
-        : `${resolvedDir}/${formatJournalFilename(date, journalFilenameFormat)}`;
-
-      // Ensure daily directory exists
-      const dirPath = journalPath.substring(0, journalPath.lastIndexOf("/"));
-      await createDir(dirPath).catch(() => {});
-
-      // Read or create today's journal
-      let content: string;
-      try {
-        content = await readFile(journalPath);
-      } catch {
-        // Journal doesn't exist — create it
-        if (journalTemplatePath) {
-          try {
-            const tpl = await readFile(journalTemplatePath);
-            content = applyJournalTemplate(tpl, date);
-          } catch {
-            content = generateDefaultJournal(date);
-          }
-        } else {
-          content = generateDefaultJournal(date);
-        }
+      const result = await ensureJournalFile(date, {
+        journalDirectory,
+        journalFilenameFormat,
+        journalTemplatePath,
+        journalUseHierarchy,
+        rootPath,
+      });
+      if (!result) {
+        setSaveError("저널 파일 경로를 확인할 수 없습니다.");
+        return;
       }
+      const { path: journalPath, content } = result;
 
       // Insert capture and save
       const updated = insertCaptureIntoContent(content, item);
