@@ -1,9 +1,11 @@
-// AI error message formatting utility
+// IPC / AI error message formatting utilities
 
 export interface FormattedError {
   detail: string;
   title: string;
 }
+
+// AI error message formatting utility
 
 /**
  * Parse raw AI error strings into a user-friendly title + detail.
@@ -30,6 +32,30 @@ export function formatAIError(raw: string): FormattedError {
   }
 
   return { title: "Error", detail: raw };
+}
+
+/**
+ * Convert any thrown value from a Tauri IPC call into a user-friendly string.
+ *
+ * Rust commands return `Result<T, String>`, so the rejection value is
+ * typically a plain string.  JS Error objects and arbitrary objects are
+ * also handled gracefully.
+ */
+export function formatError(error: unknown): string {
+  if (typeof error === "string") {
+    return error;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (error !== null && typeof error === "object") {
+    try {
+      return JSON.stringify(error);
+    } catch {
+      // ignore — fall through to default
+    }
+  }
+  return "알 수 없는 오류가 발생했습니다";
 }
 
 /**

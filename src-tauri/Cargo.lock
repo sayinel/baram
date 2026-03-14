@@ -255,6 +255,7 @@ dependencies = [
  "git2",
  "headless_chrome",
  "keyring",
+ "log",
  "notify",
  "regex",
  "reqwest 0.12.28",
