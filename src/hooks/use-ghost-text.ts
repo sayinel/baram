@@ -14,7 +14,10 @@ import type {
 } from "../ipc/types";
 import type { Editor } from "@tiptap/core";
 
-import { ghostTextPluginKey } from "../extensions/plugins/ghost-text";
+import {
+  ghostTextPluginKey,
+  registerGhostTextAcceptedCallback,
+} from "../extensions/plugins/ghost-text";
 import { llmCancel, llmComplete } from "../ipc/invoke";
 import { useAIStore } from "../stores/ai-store";
 import { useEditorStore } from "../stores/editor-store";
@@ -208,8 +211,45 @@ export function useGhostText(editor: Editor | null) {
     };
 
     editor.on("update", handleUpdate);
+
+    // §11.2.2 Register prefetch callback triggered after Tab-acceptance
+    registerGhostTextAcceptedCallback((acceptedText, pos) => {
+      const store = useAIStore.getState();
+      if (!store.ghostTextEnabled) return;
+
+      // Build the text that will be before the cursor after acceptance
+      const { state } = editor;
+      const $from = state.doc.resolve(pos);
+      const textBefore =
+        $from.parent.textBetween(0, $from.parentOffset, undefined, "\ufffc") +
+        acceptedText;
+
+      if (!shouldPrefetch(textBefore)) return;
+
+      // Fire background prefetch — result stored in cache for next keystroke
+      const taskCfg = getConfigForTask("ghost-text");
+      const ghostConfig = buildGhostTextConfig(editor, pos, undefined);
+      if (ghostConfig.skip) return;
+
+      const requestId = `prefetch_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      llmComplete(
+        taskCfg.apiKey,
+        textBefore,
+        taskCfg.model,
+        requestId,
+        ghostConfig.systemPrompt,
+        store.maxSuggestionLength,
+        taskCfg.provider,
+        taskCfg.baseUrl,
+        store.privacyMode,
+      ).catch(() => {
+        // prefetch is best-effort — ignore errors silently
+      });
+    });
+
     return () => {
       editor.off("update", handleUpdate);
+      registerGhostTextAcceptedCallback(null);
       cleanup();
     };
   }, [editor, cleanup]);
