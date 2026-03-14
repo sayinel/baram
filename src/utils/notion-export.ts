@@ -1,6 +1,8 @@
 // notion-export.ts — Convert Baram markdown to Notion-compatible markdown
 // Pure utility functions (no external dependencies)
 
+import { replaceOutsideCode } from "./markdown-code-regions";
+
 // ---------------------------------------------------------------------------
 // Unicode subscript / superscript mappings
 // ---------------------------------------------------------------------------
@@ -87,11 +89,6 @@ const SUPERSCRIPT_MAP: Record<string, string> = {
 // Unicode helpers
 // ---------------------------------------------------------------------------
 
-interface CodeRegion {
-  end: number;
-  start: number;
-}
-
 /** Convert text to Unicode subscript characters.
  *  Returns { text, complete } where complete=true if all chars mapped. */
 export function toUnicodeSubscript(text: string): {
@@ -112,10 +109,6 @@ export function toUnicodeSubscript(text: string): {
   return { text: result, complete };
 }
 
-// ---------------------------------------------------------------------------
-// Helper: protect code blocks and inline code from regex transforms
-// ---------------------------------------------------------------------------
-
 /** Convert text to Unicode superscript characters.
  *  Returns { text, complete } where complete=true if all chars mapped. */
 export function toUnicodeSuperscript(text: string): {
@@ -134,65 +127,6 @@ export function toUnicodeSuperscript(text: string): {
     }
   }
   return { text: result, complete };
-}
-
-/** Collect all protected regions (code blocks, inline code, math blocks) in the markdown */
-function collectCodeRegions(md: string): CodeRegion[] {
-  const regions: CodeRegion[] = [];
-
-  // Fenced code blocks: ``` or ~~~
-  const fencedRe = /^(`{3,}|~{3,})[^\n]*\n[\s\S]*?\n\1\s*$/gm;
-  let m: null | RegExpExecArray;
-  while ((m = fencedRe.exec(md)) !== null) {
-    regions.push({ start: m.index, end: m.index + m[0].length });
-  }
-
-  // Block math: $$...$$ (multiline)
-  const blockMathRe = /\$\$[\s\S]*?\$\$/g;
-  while ((m = blockMathRe.exec(md)) !== null) {
-    regions.push({ start: m.index, end: m.index + m[0].length });
-  }
-
-  // Inline code: `...`
-  const inlineCodeRe = /`[^`\n]+`/g;
-  while ((m = inlineCodeRe.exec(md)) !== null) {
-    regions.push({ start: m.index, end: m.index + m[0].length });
-  }
-
-  return regions;
-}
-
-/** Check if a position falls within a code region */
-function isInCodeRegion(pos: number, regions: CodeRegion[]): boolean {
-  return regions.some((r) => pos >= r.start && pos < r.end);
-}
-
-/**
- * Apply a regex replacement only outside of code blocks/inline code.
- * The replacer receives the same arguments as String.replace callback.
- */
-function replaceOutsideCode(
-  md: string,
-  pattern: RegExp,
-  replacer: (match: string, ...groups: string[]) => string,
-): string {
-  const regions = collectCodeRegions(md);
-  // Use a global regex
-  const globalRe = new RegExp(
-    pattern.source,
-    pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g",
-  );
-  return md.replace(globalRe, (match: string, ...args: unknown[]) => {
-    // The last two args from replace are: offset, original string
-    // But args also include groups. We need to find the offset.
-    // String.replace passes: match, ...groups, offset, originalString
-    // offset is the second-to-last argument and is a number
-    const offset = args[args.length - 2] as number;
-    if (isInCodeRegion(offset, regions)) {
-      return match;
-    }
-    return replacer(match, ...(args.slice(0, -2) as string[]));
-  });
 }
 
 // ---------------------------------------------------------------------------
