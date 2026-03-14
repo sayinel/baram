@@ -11,6 +11,7 @@ import {
 import type { EditorTab } from "./stores/editor-store";
 
 import { EditorContent, useEditor } from "@tiptap/react";
+import { useShallow } from "zustand/shallow";
 
 import { InlineAIPrompt } from "./components/ai/InlineAIPrompt";
 import { PromptLintPanel } from "./components/ai/PromptLintPanel";
@@ -150,7 +151,15 @@ function App() {
     toggleQuickSwitcher,
     toggleSettings,
     setSidebarPanel,
-  } = useUIStore();
+  } = useUIStore(
+    useShallow((s) => ({
+      toggleSidebar: s.toggleSidebar,
+      toggleCommandPalette: s.toggleCommandPalette,
+      toggleQuickSwitcher: s.toggleQuickSwitcher,
+      toggleSettings: s.toggleSettings,
+      setSidebarPanel: s.setSidebarPanel,
+    })),
+  );
   const activeTabId = useEditorStore((s) => s.activeTabId);
   const activeTabFilePath = useEditorStore((s) => {
     const tab = s.tabs.find((t) => t.id === s.activeTabId);
@@ -221,6 +230,11 @@ function App() {
   // §72 Skills mode — auto-detect skill files and switch right panel
   const { isSkill } = useSkillsMode();
 
+  // Compute once per render to avoid double-calling detectPeriodicType in JSX
+  const periodicType = activeTabFilePath
+    ? detectPeriodicType(activeTabFilePath)
+    : null;
+
   // Auto-save hook (markdown files — Tiptap editor.on("update") based)
   useAutoSave(editor);
 
@@ -259,7 +273,12 @@ function App() {
   } = useSourceMode({ editor });
 
   // Auto-save for non-MD code files (debounced write when dirty)
-  const { autoSave, autoSaveDelay } = useSettingsStore();
+  const { autoSave, autoSaveDelay } = useSettingsStore(
+    useShallow((s) => ({
+      autoSave: s.autoSave,
+      autoSaveDelay: s.autoSaveDelay,
+    })),
+  );
   const { setFileContent } = useFileStore();
   const codeAutoSaveTimer = useRef<null | ReturnType<typeof setTimeout>>(null);
   useEffect(() => {
@@ -515,10 +534,10 @@ function App() {
               )}
               <MoodBar editor={editor} />
               <FollowUpCard editor={editor} />
-              {activeTabFilePath && detectPeriodicType(activeTabFilePath) && (
+              {periodicType && activeTabFilePath && (
                 <PeriodicInsightBanner
                   filePath={activeTabFilePath}
-                  type={detectPeriodicType(activeTabFilePath)!}
+                  type={periodicType}
                 />
               )}
               <div className="editor-area-scroll" data-editor-scroll>
@@ -628,7 +647,12 @@ function AppWithErrorBoundary() {
 }
 
 function SkillGeneratorDialogWrapper() {
-  const { skillGeneratorDialogOpen, toggleSkillGeneratorDialog } = useUIStore();
+  const { skillGeneratorDialogOpen, toggleSkillGeneratorDialog } = useUIStore(
+    useShallow((s) => ({
+      skillGeneratorDialogOpen: s.skillGeneratorDialogOpen,
+      toggleSkillGeneratorDialog: s.toggleSkillGeneratorDialog,
+    })),
+  );
   return (
     <SkillGeneratorDialog
       onClose={toggleSkillGeneratorDialog}
@@ -638,7 +662,12 @@ function SkillGeneratorDialogWrapper() {
 }
 
 function SkillTestDialogWrapper() {
-  const { skillTestDialogOpen, toggleSkillTestDialog } = useUIStore();
+  const { skillTestDialogOpen, toggleSkillTestDialog } = useUIStore(
+    useShallow((s) => ({
+      skillTestDialogOpen: s.skillTestDialogOpen,
+      toggleSkillTestDialog: s.toggleSkillTestDialog,
+    })),
+  );
   return (
     <SkillTestDialog
       onClose={toggleSkillTestDialog}

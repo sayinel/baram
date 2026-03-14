@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef } from "react";
 
 import type { Editor } from "@tiptap/core";
 
+import { useShallow } from "zustand/shallow";
+
 import { updateFileIndex, writeFile } from "../ipc/invoke";
 import { prosemirrorToMarkdown } from "../pipeline";
 import { useEditorStore } from "../stores/editor-store";
@@ -20,7 +22,12 @@ export function useAutoSave(editor: Editor | null) {
   // Capture which tab scheduled the save; prevents writing tab B's content to tab A's
   // file when the user switches tabs during the debounce window.
   const pendingTabRef = useRef<null | { filePath: string; id: string }>(null);
-  const { autoSave, autoSaveDelay } = useSettingsStore();
+  const { autoSave, autoSaveDelay } = useSettingsStore(
+    useShallow((s) => ({
+      autoSave: s.autoSave,
+      autoSaveDelay: s.autoSaveDelay,
+    })),
+  );
 
   const save = useCallback(async () => {
     if (!editor) return;

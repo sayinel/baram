@@ -3,6 +3,8 @@ import { useMemo } from "react";
 
 import type { Editor } from "@tiptap/react";
 
+import { useShallow } from "zustand/shallow";
+
 import { useGitStore } from "../../stores/git-store";
 import { useSettingsStore } from "../../stores/settings-store";
 
@@ -57,7 +59,13 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
     return { words, chars, line, col };
   }, [editor]);
 
-  const { isRepo, branch, changes } = useGitStore();
+  const { isRepo, branch, changes } = useGitStore(
+    useShallow((s) => ({
+      isRepo: s.isRepo,
+      branch: s.branch,
+      changes: s.changes,
+    })),
+  );
   const hasChanges = changes.length > 0;
   const zoomLevel = useSettingsStore((s) => s.zoomLevel);
   const zoomPercent = Math.round(zoomLevel * 100);

@@ -8,6 +8,8 @@ import { open } from "@tauri-apps/plugin-dialog";
 import type { ContextMenuState } from "./file-tree-types";
 import type { FileTreeContextValue } from "./FileTreeContext";
 
+import { useShallow } from "zustand/shallow";
+
 import { useEditorContext } from "../../contexts/editor-context";
 import { readFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor-store";
@@ -34,13 +36,25 @@ import { useFileTreeSearch } from "./hooks/use-file-tree-search";
 
 export function FileTree(): React.JSX.Element {
   const editor = useEditorContext();
-  const { fileTree, rootPath, setFileContent } = useFileStore();
+  const { fileTree, rootPath, setFileContent } = useFileStore(
+    useShallow((s) => ({
+      fileTree: s.fileTree,
+      rootPath: s.rootPath,
+      setFileContent: s.setFileContent,
+    })),
+  );
   const tagFilter = useFileStore((s) => s.tagFilter);
   const setTagFilter = useFileStore((s) => s.setTagFilter);
   const expandedDirs = useFileStore((s) => s.expandedDirs);
   const toggleExpandedDir = useFileStore((s) => s.toggleExpandedDir);
   const expandDir = useFileStore((s) => s.expandDir);
-  const { openTab, tabs, activeTabId } = useEditorStore();
+  const { openTab, tabs, activeTabId } = useEditorStore(
+    useShallow((s) => ({
+      openTab: s.openTab,
+      tabs: s.tabs,
+      activeTabId: s.activeTabId,
+    })),
+  );
   const [selectedPath, setSelectedPath] = useState<null | string>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const treeRef = useRef<HTMLDivElement>(null);

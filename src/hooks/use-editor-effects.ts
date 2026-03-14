@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import type { Editor } from "@tiptap/core";
 
 import { EditorState, TextSelection } from "@tiptap/pm/state";
+import { useShallow } from "zustand/shallow";
 
 import { dispatchSetSearchTerm } from "../extensions/plugins/find-replace";
 import { markdownToProsemirror } from "../pipeline/md-to-pm";
@@ -29,7 +30,9 @@ export function useEditorEffects({
   setFindReplaceMode,
   setFindReplaceOpen,
 }: UseEditorEffectsParams) {
-  const { activeTabId, tabs } = useEditorStore();
+  const { activeTabId, tabs } = useEditorStore(
+    useShallow((s) => ({ activeTabId: s.activeTabId, tabs: s.tabs })),
+  );
 
   // §44 Track editor selection text for @selection reference
   useEffect(() => {
