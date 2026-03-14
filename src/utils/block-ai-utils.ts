@@ -58,9 +58,9 @@ export function getBlockTextContent(node: PmNode): string {
     return lang ? `\`\`\`${lang}\n${code}\n\`\`\`` : code;
   }
 
-  // MathBlock: LaTeX stored in textContent
+  // MathBlock: formula stored in attrs (atom node — textContent is empty)
   if (typeName === "mathBlock") {
-    return node.textContent || "";
+    return (node.attrs.formula as string) || node.textContent || "";
   }
 
   // Table: serialize to simple markdown-like representation
