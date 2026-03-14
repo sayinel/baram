@@ -6,7 +6,9 @@ import {
   mergeAttributes,
 } from "@tiptap/core";
 
+import { htmlAttributesOptions } from "../utils/html-attributes-options";
 import { resolveShortcut } from "../utils/shortcut-resolver";
+import { makeMarkCommands } from "./make-mark-commands";
 
 export interface HighlightOptions {
   HTMLAttributes: Record<string, string>;
@@ -28,9 +30,7 @@ const pasteRegex = /(?:^|\s)(==(?!\s+==)((?:[^=]+))==)/g;
 export const Highlight = Mark.create<HighlightOptions>({
   name: "highlight",
 
-  addOptions() {
-    return { HTMLAttributes: {} };
-  },
+  ...htmlAttributesOptions,
 
   parseHTML() {
     return [{ tag: "mark" }];
@@ -45,20 +45,7 @@ export const Highlight = Mark.create<HighlightOptions>({
   },
 
   addCommands() {
-    return {
-      setHighlight:
-        () =>
-        ({ commands }) =>
-          commands.setMark(this.name),
-      toggleHighlight:
-        () =>
-        ({ commands }) =>
-          commands.toggleMark(this.name),
-      unsetHighlight:
-        () =>
-        ({ commands }) =>
-          commands.unsetMark(this.name),
-    };
+    return makeMarkCommands(this.name);
   },
 
   addKeyboardShortcuts() {

@@ -11,7 +11,8 @@
 // - 1 blank line between block elements
 // - Single newline at file end
 
-import type { Root } from "mdast";
+import type { Parents, Root } from "mdast";
+import type { Info, State } from "mdast-util-to-markdown";
 
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
@@ -25,54 +26,30 @@ function remarkWikiLink(this: any) {
   const data = this.data();
   const key = "toMarkdownExtensions";
   const list: unknown[] = data[key] || (data[key] = []);
+
+  // All custom inline nodes return their pre-serialized value verbatim
+
+  const verbatimHandler = (
+    node: { value: string },
+    _parent: Parents | undefined,
+    state: State,
+    info: Info,
+  ) => state.createTracker(info).move(node.value);
+
+  const verbatimTypes = [
+    "blockReference",
+    "highlight",
+    "mention",
+    "subscript",
+    "superscript",
+    "tagNode",
+    "wikiLink",
+  ] as const;
+
   list.push({
-    handlers: {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      wikiLink(node: { value: string }, _parent: any, state: any, info: any) {
-        const tracker = state.createTracker(info);
-        return tracker.move(node.value);
-      },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      mention(node: { value: string }, _parent: any, state: any, info: any) {
-        const tracker = state.createTracker(info);
-        return tracker.move(node.value);
-      },
-      blockReference(
-        node: { value: string },
-        _parent: any, // eslint-disable-line @typescript-eslint/no-explicit-any
-        state: any, // eslint-disable-line @typescript-eslint/no-explicit-any
-        info: any, // eslint-disable-line @typescript-eslint/no-explicit-any
-      ) {
-        const tracker = state.createTracker(info);
-        return tracker.move(node.value);
-      },
-      // Custom inline marks — return pre-serialized value verbatim
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      highlight(node: { value: string }, _parent: any, state: any, info: any) {
-        const tracker = state.createTracker(info);
-        return tracker.move(node.value);
-      },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      subscript(node: { value: string }, _parent: any, state: any, info: any) {
-        const tracker = state.createTracker(info);
-        return tracker.move(node.value);
-      },
-      superscript(
-        node: { value: string },
-        _parent: any, // eslint-disable-line @typescript-eslint/no-explicit-any
-        state: any, // eslint-disable-line @typescript-eslint/no-explicit-any
-        info: any, // eslint-disable-line @typescript-eslint/no-explicit-any
-      ) {
-        const tracker = state.createTracker(info);
-        return tracker.move(node.value);
-      },
-      // §56m: Tag node — output verbatim #tag string
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      tagNode(node: { value: string }, _parent: any, state: any, info: any) {
-        const tracker = state.createTracker(info);
-        return tracker.move(node.value);
-      },
-    },
+    handlers: Object.fromEntries(
+      verbatimTypes.map((name) => [name, verbatimHandler]),
+    ),
   });
 }
 

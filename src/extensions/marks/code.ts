@@ -6,7 +6,9 @@ import {
   mergeAttributes,
 } from "@tiptap/core";
 
+import { htmlAttributesOptions } from "../utils/html-attributes-options";
 import { resolveShortcut } from "../utils/shortcut-resolver";
+import { makeMarkCommands } from "./make-mark-commands";
 
 export interface CodeOptions {
   HTMLAttributes: Record<string, string>;
@@ -29,9 +31,7 @@ export const Code = Mark.create<CodeOptions>({
   name: "code",
   excludes: "_", // §7.2: code는 모든 다른 mark와 배타적
 
-  addOptions() {
-    return { HTMLAttributes: {} };
-  },
+  ...htmlAttributesOptions,
 
   parseHTML() {
     return [{ tag: "code" }];
@@ -46,20 +46,7 @@ export const Code = Mark.create<CodeOptions>({
   },
 
   addCommands() {
-    return {
-      setCode:
-        () =>
-        ({ commands }) =>
-          commands.setMark(this.name),
-      toggleCode:
-        () =>
-        ({ commands }) =>
-          commands.toggleMark(this.name),
-      unsetCode:
-        () =>
-        ({ commands }) =>
-          commands.unsetMark(this.name),
-    };
+    return makeMarkCommands(this.name);
   },
 
   addKeyboardShortcuts() {

@@ -7,6 +7,7 @@ import { TableHeader } from "@tiptap/extension-table-header";
 import { TableRow } from "@tiptap/extension-table-row";
 import { TextSelection } from "@tiptap/pm/state";
 
+import { resolveShortcut } from "../utils/shortcut-resolver";
 import { createVirtualScrollPlugin } from "./plugins/table-virtual-scroll";
 
 // §5.5 Tier 3: Table.extend() with resizable columns + pipe-input auto creation
@@ -27,7 +28,8 @@ export const BaramTable = Table.extend({
     return {
       ...this.parent?.(),
       // §5.5 M10: Merge or split cells (Cmd+M)
-      "Mod-m": () => this.editor.commands.mergeOrSplit(),
+      [resolveShortcut("formatting.tableMerge", "Mod-m")]: () =>
+        this.editor.commands.mergeOrSplit(),
       // §5.5 Tier 3: Markdown pipe input auto table creation
       // `| Header 1 | Header 2 |` + Enter → auto-create table
       Enter: () => {

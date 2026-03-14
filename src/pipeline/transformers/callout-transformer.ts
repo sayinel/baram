@@ -8,6 +8,7 @@ import type { Node as PmNode, Schema } from "@tiptap/pm/model";
 import type {
   Blockquote,
   Content,
+  Html,
   Node as MdastNode,
   Paragraph,
   PhrasingContent,
@@ -137,6 +138,6 @@ export const calloutTransformer: NodeTransformerEntry = {
     }
 
     // Return as html flow node (remark-stringify passes through verbatim)
-    return { type: "html", value: lines.join("\n") } as unknown as MdastNode;
+    return { type: "html", value: lines.join("\n") } as Html;
   },
 };

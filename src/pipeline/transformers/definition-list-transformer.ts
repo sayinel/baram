@@ -47,12 +47,14 @@ export const definitionListTransformer: NodeTransformerEntry = {
   pmType: "definitionList",
 
   mdastToPm(_node: MdastNode, _schema: Schema, _convertChildren) {
-    // Actual conversion is handled directly in md-to-pm.ts tryConvertDefinitionList()
+    // Actual conversion handled by tryConvertDefinitionList() in md-to-pm.ts.
+    // This entry exists only to register the transformer key in the registry.
     return null;
   },
 
-  pmToMdast(_node: PmNode, _convertChildren): MdastNode {
-    // Actual serialization is handled directly in pm-to-md.ts
-    return null as unknown as MdastNode;
+  pmToMdast(_node: PmNode, _convertChildren): MdastNode | null {
+    // Actual serialization handled by the hardcoded definitionList block in pm-to-md.ts
+    // (search for `typeName === "definitionList"` around line 283).
+    return null;
   },
 };

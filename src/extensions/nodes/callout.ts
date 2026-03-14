@@ -4,6 +4,7 @@ import { mergeAttributes, Node } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
+import { htmlAttributesOptions } from "../utils/html-attributes-options";
 import { CalloutView } from "./callout-view";
 
 export interface CalloutOptions {
@@ -30,11 +31,7 @@ export const Callout = Node.create<CalloutOptions>({
   content: "block+",
   defining: true,
 
-  addOptions() {
-    return {
-      HTMLAttributes: {},
-    };
-  },
+  ...htmlAttributesOptions,
 
   addAttributes() {
     return {

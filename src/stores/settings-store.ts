@@ -4,6 +4,10 @@ import { createJSONStorage, persist } from "zustand/middleware";
 
 import { findThemeById } from "../types/theme";
 import {
+  type ActivityBarItemConfig,
+  DEFAULT_ACTIVITY_BAR_CONFIG,
+} from "./settings/activity-bar-config";
+import {
   type AppearanceSettingsSlice,
   createAppearanceSettingsSlice,
 } from "./settings/appearance-settings";
@@ -20,33 +24,8 @@ import {
   type JournalSettingsSlice,
 } from "./settings/journal-settings";
 import { tauriStorage } from "./tauri-storage";
-
-export interface ActivityBarItemConfig {
-  id: string;
-  section: "bottom" | "top";
-  visible: boolean;
-}
-
-export const DEFAULT_ACTIVITY_BAR_CONFIG: ActivityBarItemConfig[] = [
-  // Top section — sidebar panels
-  { id: "files", visible: true, section: "top" },
-  { id: "search", visible: true, section: "top" },
-  { id: "outline", visible: true, section: "top" },
-  { id: "backlinks", visible: true, section: "top" },
-  { id: "bookmarks", visible: true, section: "top" },
-  { id: "graph", visible: true, section: "top" },
-  { id: "git", visible: true, section: "top" },
-  { id: "calendar", visible: true, section: "top" },
-  { id: "tags", visible: true, section: "top" },
-  { id: "skills-gallery", visible: true, section: "top" },
-  { id: "plugins", visible: true, section: "top" },
-  // Bottom section — right panels + utilities
-  { id: "chat", visible: true, section: "bottom" },
-  { id: "memories", visible: true, section: "bottom" },
-  { id: "photo-gallery", visible: true, section: "bottom" },
-  { id: "snapshots", visible: true, section: "bottom" },
-  { id: "help", visible: true, section: "bottom" },
-];
+export type { ActivityBarItemConfig };
+export { DEFAULT_ACTIVITY_BAR_CONFIG };
 
 export type SettingsState = AppearanceSettingsSlice &
   EditorSettingsSlice &
@@ -156,6 +135,17 @@ export const useSettingsStore = create<SettingsState>()(
           state.extensionSettings = ext;
         }
 
+        // v0/v1 → v2: theme migration
+        if (version < 2) {
+          const oldTheme = state.theme as string | undefined;
+          if (!state.activeThemeId) {
+            if (oldTheme === "light") state.activeThemeId = "default-light";
+            else if (oldTheme === "dark") state.activeThemeId = "default-dark";
+            else state.activeThemeId = "system";
+          }
+          if (!state.customThemes) state.customThemes = [];
+        }
+
         // v0/v1/v2 → v3: §55 Pandoc export settings
         if (version < 3) {
           if (!state.pandocPath) state.pandocPath = "pandoc";
@@ -227,17 +217,6 @@ export const useSettingsStore = create<SettingsState>()(
           };
           const oldId = state.journalThemeId as string | undefined;
           if (oldId && themeMap[oldId]) state.journalThemeId = themeMap[oldId];
-        }
-
-        // v0/v1 → v2: theme migration
-        if (version < 2) {
-          const oldTheme = state.theme as string | undefined;
-          if (!state.activeThemeId) {
-            if (oldTheme === "light") state.activeThemeId = "default-light";
-            else if (oldTheme === "dark") state.activeThemeId = "default-dark";
-            else state.activeThemeId = "system";
-          }
-          if (!state.customThemes) state.customThemes = [];
         }
 
         // v7 → v8: Keybinding overrides

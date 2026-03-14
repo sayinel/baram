@@ -6,6 +6,9 @@ import {
   mergeAttributes,
 } from "@tiptap/core";
 
+import { htmlAttributesOptions } from "../utils/html-attributes-options";
+import { makeMarkCommands } from "./make-mark-commands";
+
 export interface SuperscriptOptions {
   HTMLAttributes: Record<string, string>;
 }
@@ -26,9 +29,7 @@ const pasteRegex = /(\^([^^]+)\^)/g;
 export const Superscript = Mark.create<SuperscriptOptions>({
   name: "superscript",
 
-  addOptions() {
-    return { HTMLAttributes: {} };
-  },
+  ...htmlAttributesOptions,
 
   parseHTML() {
     return [{ tag: "sup" }];
@@ -43,20 +44,7 @@ export const Superscript = Mark.create<SuperscriptOptions>({
   },
 
   addCommands() {
-    return {
-      setSuperscript:
-        () =>
-        ({ commands }) =>
-          commands.setMark(this.name),
-      toggleSuperscript:
-        () =>
-        ({ commands }) =>
-          commands.toggleMark(this.name),
-      unsetSuperscript:
-        () =>
-        ({ commands }) =>
-          commands.unsetMark(this.name),
-    };
+    return makeMarkCommands(this.name);
   },
 
   addInputRules() {

@@ -1,6 +1,7 @@
 // §5.1 Horizontal Rule Extension
-import { mergeAttributes, Node } from "@tiptap/core";
-import { InputRule } from "@tiptap/core";
+import { InputRule, mergeAttributes, Node } from "@tiptap/core";
+
+import { htmlAttributesOptions } from "../utils/html-attributes-options";
 
 export interface HorizontalRuleOptions {
   HTMLAttributes: Record<string, string>;
@@ -19,11 +20,7 @@ export const HorizontalRule = Node.create<HorizontalRuleOptions>({
   group: "block",
   atom: true,
 
-  addOptions() {
-    return {
-      HTMLAttributes: {},
-    };
-  },
+  ...htmlAttributesOptions,
 
   parseHTML() {
     return [{ tag: "hr" }];
