@@ -113,6 +113,7 @@ pub async fn complete_stream(
     system_prompt: Option<&str>,
     max_tokens: u32,
     request_id: &str,
+    privacy_mode: bool,
     mut cancel_rx: oneshot::Receiver<()>,
     app_handle: &tauri::AppHandle,
 ) -> Result<(), LlmError> {
@@ -127,6 +128,9 @@ pub async fn complete_stream(
         HeaderValue::from_str(api_key).map_err(|e| LlmError::RequestFailed(e.to_string()))?,
     );
     headers.insert("anthropic-version", HeaderValue::from_static("2023-06-01"));
+    if privacy_mode {
+        headers.insert("anthropic-no-store", HeaderValue::from_static("true"));
+    }
 
     let body = ClaudeRequest {
         model: model.to_string(),
