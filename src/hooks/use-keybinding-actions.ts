@@ -10,7 +10,7 @@ import {
   dispatchUnfoldAll,
   toggleFoldAtCursor,
 } from "../extensions/plugins/fold";
-import { createDir, readFile, writeFile } from "../ipc/invoke";
+import { createDir, writeFile } from "../ipc/invoke";
 import { normalizeKeyEvent } from "../keybindings/key-utils";
 import {
   clearActions,
@@ -19,6 +19,10 @@ import {
 } from "../keybindings/keybinding-actions";
 import { findCommandByKey } from "../keybindings/use-keybindings";
 import { prosemirrorToMarkdown } from "../pipeline/pm-to-md";
+import {
+  ensureJournalFile,
+  openFileInTab,
+} from "../services/journal-file-service";
 import { useAIStore } from "../stores/ai-store";
 import { useBookmarkStore } from "../stores/bookmark-store";
 import { useEditorStore } from "../stores/editor-store";
@@ -27,14 +31,7 @@ import { useSettingsStore } from "../stores/settings-store";
 import { useUIStore } from "../stores/ui-store";
 import { useWorkspaceStore } from "../stores/workspace-store";
 import { mdLineToPmBlockStart } from "../utils/cursor-mapper";
-import {
-  applyJournalTemplate,
-  generateDefaultJournal,
-  getHierarchicalJournalPath,
-  getJournalFilePath,
-  isDateString,
-  resolveJournalDir,
-} from "../utils/journal";
+import { isDateString, resolveJournalDir } from "../utils/journal";
 import {
   buildNoteFromCapture,
   buildPromotedCaptureLink,
@@ -183,62 +180,15 @@ export function useGlobalKeyboard({
           (async () => {
             try {
               const { rootPath } = useFileStore.getState();
-              const resolved = resolveJournalDir(rootPath, journalDirectory);
-              if (!resolved) return;
-              const journalPath = journalUseHierarchy
-                ? getHierarchicalJournalPath(
-                    resolved,
-                    target,
-                    journalFilenameFormat,
-                  )
-                : getJournalFilePath(
-                    rootPath,
-                    journalDirectory,
-                    target,
-                    journalFilenameFormat,
-                  );
-              if (!journalPath) return;
-
-              let fileContent: string;
-              try {
-                fileContent = await readFile(journalPath);
-              } catch {
-                const parentDir = journalPath.substring(
-                  0,
-                  journalPath.lastIndexOf("/"),
-                );
-                await createDir(parentDir);
-                if (journalTemplatePath) {
-                  try {
-                    const tpl = await readFile(journalTemplatePath);
-                    fileContent = applyJournalTemplate(tpl, target);
-                  } catch {
-                    fileContent = generateDefaultJournal(target);
-                  }
-                } else {
-                  fileContent = generateDefaultJournal(target);
-                }
-                await writeFile(journalPath, fileContent);
-              }
-
-              const edStore = useEditorStore.getState();
-              const existing = edStore.tabs.find(
-                (t) => t.filePath === journalPath,
-              );
-              if (existing) {
-                edStore.setActiveTab(existing.id);
-              } else {
-                useFileStore
-                  .getState()
-                  .setFileContent(journalPath, fileContent);
-                edStore.openTab({
-                  id: crypto.randomUUID(),
-                  filePath: journalPath,
-                  title: journalPath.split("/").pop() ?? "Journal",
-                  isDirty: false,
-                  isPinned: false,
-                });
-              }
+              const result = await ensureJournalFile(target, {
+                journalDirectory,
+                journalFilenameFormat,
+                journalTemplatePath,
+                journalUseHierarchy,
+                rootPath,
+              });
+              if (!result) return;
+              await openFileInTab(result.path, result.content);
             } catch (err) {
               logger.error("[JournalNav] Failed:", err);
             }
@@ -433,6 +383,12 @@ export function useKeybindingActions({
           const captures = parseCapturesFromMarkdown(content);
           if (captures.length === 0) return;
 
+          const iconMap: Record<string, string> = {
+            idea: "\u2726",
+            link: "\u2197",
+            quote: "\u275D",
+            note: "\u2630",
+          };
           // Find the capture at cursor position (fall back to last capture)
           let capture = captures[captures.length - 1];
           if (editor) {
@@ -451,12 +407,6 @@ export function useKeybindingActions({
             }
             const cursorLineText = lines[cursorLine] ?? "";
             // Match cursor line against capture icons
-            const iconMap: Record<string, string> = {
-              idea: "\u2726",
-              link: "\u2197",
-              quote: "\u275D",
-              note: "\u2630",
-            };
             for (const c of captures) {
               const icon = iconMap[c.type];
               if (
@@ -490,22 +440,18 @@ export function useKeybindingActions({
           // Replace the capture line in journal with a wikilink
           const noteName = filename.replace(/\.md$/, "");
           const linkLine = buildPromotedCaptureLink(capture, noteName);
-          const originalLine = content.split("\n").find((line) => {
-            const icon =
-              capture.type === "idea"
-                ? "\u2726"
-                : capture.type === "link"
-                  ? "\u2197"
-                  : capture.type === "quote"
-                    ? "\u275D"
-                    : "\u2630";
+          const lines = content.split("\n");
+          const lineIndex = lines.findIndex((line) => {
+            const icon = iconMap[capture.type] ?? "\u2630";
             return (
               line.startsWith(`- ${icon}`) &&
               (capture.title ? line.includes(capture.title) : true)
             );
           });
-          if (originalLine) {
-            const updated = content.replace(originalLine, linkLine);
+          if (lineIndex !== -1) {
+            // Replace by index to avoid clobbering an earlier duplicate line
+            lines[lineIndex] = linkLine;
+            const updated = lines.join("\n");
             await writeFile(tab.filePath, updated);
             useFileStore.getState().setFileContent(tab.filePath, updated);
           }
@@ -537,57 +483,15 @@ export function useKeybindingActions({
           } = useSettingsStore.getState();
           if (!journalEnabled || !journalDirectory) return;
           const { rootPath } = useFileStore.getState();
-          const resolved = resolveJournalDir(rootPath, journalDirectory);
-          if (!resolved) return;
-          const today = new Date();
-          const journalPath = journalUseHierarchy
-            ? getHierarchicalJournalPath(resolved, today, journalFilenameFormat)
-            : getJournalFilePath(
-                rootPath,
-                journalDirectory,
-                today,
-                journalFilenameFormat,
-              );
-          if (!journalPath) return;
-
-          // Ensure file exists
-          let fileContent: string;
-          try {
-            fileContent = await readFile(journalPath);
-          } catch {
-            const parentDir = journalPath.substring(
-              0,
-              journalPath.lastIndexOf("/"),
-            );
-            await createDir(parentDir);
-            if (journalTemplatePath) {
-              try {
-                const tpl = await readFile(journalTemplatePath);
-                fileContent = applyJournalTemplate(tpl, today);
-              } catch {
-                fileContent = generateDefaultJournal(today);
-              }
-            } else {
-              fileContent = generateDefaultJournal(today);
-            }
-            await writeFile(journalPath, fileContent);
-          }
-
-          // Open the file
-          const edStore = useEditorStore.getState();
-          const existing = edStore.tabs.find((t) => t.filePath === journalPath);
-          if (existing) {
-            edStore.setActiveTab(existing.id);
-          } else {
-            useFileStore.getState().setFileContent(journalPath, fileContent);
-            edStore.openTab({
-              id: crypto.randomUUID(),
-              filePath: journalPath,
-              title: journalPath.split("/").pop() ?? "Journal",
-              isDirty: false,
-              isPinned: false,
-            });
-          }
+          const result = await ensureJournalFile(new Date(), {
+            journalDirectory,
+            journalFilenameFormat,
+            journalTemplatePath,
+            journalUseHierarchy,
+            rootPath,
+          });
+          if (!result) return;
+          await openFileInTab(result.path, result.content);
         } catch (err) {
           logger.error("[JournalShortcut] Failed:", err);
         }

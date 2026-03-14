@@ -3,21 +3,15 @@ import { useCallback, useEffect, useRef } from "react";
 
 import type { Editor } from "@tiptap/core";
 
-import { readFile, writeFile } from "../ipc/invoke";
+import { writeFile } from "../ipc/invoke";
+import { ensureJournalFile } from "../services/journal-file-service";
 import { useEditorStore } from "../stores/editor-store";
 import { useFileStore } from "../stores/file-store";
 import { useLinkStore } from "../stores/link-store";
 import { useNavigationStore } from "../stores/navigation-store";
 import { useSettingsStore } from "../stores/settings-store";
-import { findBlockPosById } from "../utils/block-nav";
-import {
-  applyJournalTemplate,
-  generateDefaultJournal,
-  getHierarchicalJournalPath,
-  getJournalFilePath,
-  isDateString,
-  resolveJournalDir,
-} from "../utils/journal";
+import { findBlockPosById, findHeadingPosByText } from "../utils/block-nav";
+import { isDateString, resolveJournalDir } from "../utils/journal";
 import { logger } from "../utils/logger";
 import { resolveWikilinkTarget } from "../utils/wikilink-nav";
 
@@ -61,48 +55,18 @@ export function useNavigation({
         } = useSettingsStore.getState();
         if (!journalEnabled) return;
         const { rootPath } = useFileStore.getState();
-        const resolvedDir = resolveJournalDir(rootPath, journalDirectory);
-        if (!resolvedDir) return;
         const date = new Date(target + "T00:00:00");
-        const journalPath = journalUseHierarchy
-          ? getHierarchicalJournalPath(resolvedDir, date, journalFilenameFormat)
-          : getJournalFilePath(
-              rootPath,
-              journalDirectory,
-              date,
-              journalFilenameFormat,
-            );
-        if (!journalPath) return;
         (async () => {
           try {
-            // Check if file exists
-            let exists = true;
-            try {
-              await readFile(journalPath);
-            } catch {
-              exists = false;
-            }
-            if (!exists) {
-              const { createDir } = await import("../ipc/invoke");
-              const parentDir = journalPath.substring(
-                0,
-                journalPath.lastIndexOf("/"),
-              );
-              await createDir(parentDir);
-              let content: string;
-              if (journalTemplatePath) {
-                try {
-                  const tpl = await readFile(journalTemplatePath);
-                  content = applyJournalTemplate(tpl, date);
-                } catch {
-                  content = generateDefaultJournal(date);
-                }
-              } else {
-                content = generateDefaultJournal(date);
-              }
-              await writeFile(journalPath, content);
-            }
-            await handleOpenFilePath(journalPath);
+            const result = await ensureJournalFile(date, {
+              journalDirectory,
+              journalFilenameFormat,
+              journalTemplatePath,
+              journalUseHierarchy,
+              rootPath,
+            });
+            if (!result) return;
+            await handleOpenFilePath(result.path);
           } catch (err) {
             logger.error("[App] Failed to open journal:", err);
           }
@@ -154,35 +118,33 @@ export function useNavigation({
       }
 
       // Open the file (reuses existing tab if already open)
-      handleOpenFilePath(resolved.path).then(() => {
-        if (!heading || !editor) return;
-
-        // Wait for editor state to settle after tab switch
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            if (!editor) return;
-            const headingLower = heading.toLowerCase();
-            let targetPos: null | number = null;
-
-            editor.state.doc.descendants((node, pos) => {
-              if (targetPos !== null) return false;
-              if (
-                node.type.name === "heading" &&
-                node.textContent.toLowerCase() === headingLower
-              ) {
-                targetPos = pos;
-                return false;
-              }
-              return true;
-            });
-
-            if (targetPos !== null) {
+      if (heading && editor) {
+        // Same-file: doc is already loaded — scroll synchronously to avoid stale-state race.
+        // Cross-file: set pending so afterDocLoad() in use-tab-switching can scroll after
+        // the document finishes loading (handles async parse timing for large files).
+        const { activeTabId: curTabId, tabs: curTabs } =
+          useEditorStore.getState();
+        const currentTab = curTabs.find((t) => t.id === curTabId);
+        if (currentTab?.filePath === resolved.path) {
+          // Clear any stale pending heading from a previous cross-file navigation
+          // that may not have completed yet, to avoid it firing after this same-file scroll.
+          useLinkStore.getState().setPendingScrollHeading(null);
+          const targetPos = findHeadingPosByText(editor.state.doc, heading);
+          if (targetPos !== null) {
+            try {
               editor.commands.setTextSelection(targetPos + 1);
               editor.commands.scrollIntoView();
+            } catch {
+              // ignore invalid position
             }
-          });
-        });
-      });
+          }
+        } else {
+          useLinkStore.getState().setPendingScrollHeading(heading);
+        }
+      }
+      handleOpenFilePath(resolved.path).catch((err) =>
+        logger.error("[App] Failed to open file:", err),
+      );
     },
     [handleOpenFilePath, editor],
   );
@@ -237,19 +199,8 @@ export function useNavigation({
       // Same-doc heading link: #heading
       if (href.startsWith("#")) {
         if (!editor) return;
-        const headingLower = href.slice(1).replace(/-/g, " ").toLowerCase();
-        let targetPos: null | number = null;
-        editor.state.doc.descendants((node, pos) => {
-          if (targetPos !== null) return false;
-          if (
-            node.type.name === "heading" &&
-            node.textContent.toLowerCase() === headingLower
-          ) {
-            targetPos = pos;
-            return false;
-          }
-          return true;
-        });
+        const heading = href.slice(1).replace(/-/g, " ");
+        const targetPos = findHeadingPosByText(editor.state.doc, heading);
         if (targetPos !== null) {
           editor.commands.setTextSelection(targetPos + 1);
           editor.commands.scrollIntoView();
@@ -276,32 +227,14 @@ export function useNavigation({
       // Normalize simple relative path (handles ../ and ./)
       const resolvedPath = `${currentDir}/${filePart}`;
 
-      handleOpenFilePath(resolvedPath).then(() => {
-        if (!heading || !editor) return;
-
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            if (!editor) return;
-            const headingLower = heading.toLowerCase();
-            let targetPos: null | number = null;
-            editor.state.doc.descendants((node, pos) => {
-              if (targetPos !== null) return false;
-              if (
-                node.type.name === "heading" &&
-                node.textContent.toLowerCase() === headingLower
-              ) {
-                targetPos = pos;
-                return false;
-              }
-              return true;
-            });
-            if (targetPos !== null) {
-              editor.commands.setTextSelection(targetPos + 1);
-              editor.commands.scrollIntoView();
-            }
-          });
-        });
-      });
+      // Cross-file navigation: set pending heading for afterDocLoad() to consume
+      // after the document finishes loading (avoids stale-state race with async parse).
+      if (heading) {
+        useLinkStore.getState().setPendingScrollHeading(heading);
+      }
+      handleOpenFilePath(resolvedPath).catch((err) =>
+        logger.error("[App] Failed to open file:", err),
+      );
     },
     [handleOpenFilePath, editor],
   );
