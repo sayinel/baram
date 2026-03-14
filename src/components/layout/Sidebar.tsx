@@ -1,7 +1,5 @@
 import { lazy, Suspense } from "react";
 
-import type { Editor } from "@tiptap/react";
-
 // §4.3 Left sidebar container — panel switching via ActivityBar
 import { useUIStore } from "../../stores/ui-store";
 
@@ -66,20 +64,16 @@ const VersionHistoryPanel = lazy(() =>
   })),
 );
 
-interface SidebarProps {
-  editor: Editor | null;
-}
-
-export function Sidebar({ editor }: SidebarProps) {
+export function Sidebar() {
   const { sidebarPanel } = useUIStore();
 
   return (
     <div className="sidebar">
       <Suspense fallback={<div className="sidebar-content" />}>
         <div className="sidebar-content">
-          {sidebarPanel === "files" && <FileTree editor={editor} />}
+          {sidebarPanel === "files" && <FileTree />}
           {sidebarPanel === "search" && <GlobalSearch />}
-          {sidebarPanel === "outline" && <Outline editor={editor} />}
+          {sidebarPanel === "outline" && <Outline />}
           {sidebarPanel === "backlinks" && <Backlinks />}
           {sidebarPanel === "bookmarks" && <BookmarkPanel />}
           {sidebarPanel === "graph" && <GraphView />}
