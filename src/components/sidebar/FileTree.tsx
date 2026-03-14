@@ -7,8 +7,8 @@ import { open } from "@tauri-apps/plugin-dialog";
 
 import type { ContextMenuState } from "./file-tree-types";
 import type { FileTreeContextValue } from "./FileTreeContext";
-import type { Editor } from "@tiptap/react";
 
+import { useEditorContext } from "../../contexts/editor-context";
 import { readFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor-store";
 import {
@@ -32,11 +32,8 @@ import { useFileTreeDnD } from "./hooks/use-file-tree-dnd";
 import { useFileTreeRename } from "./hooks/use-file-tree-rename";
 import { useFileTreeSearch } from "./hooks/use-file-tree-search";
 
-export function FileTree({
-  editor,
-}: {
-  editor?: Editor | null;
-}): React.JSX.Element {
+export function FileTree(): React.JSX.Element {
+  const editor = useEditorContext();
   const { fileTree, rootPath, setFileContent } = useFileStore();
   const tagFilter = useFileStore((s) => s.tagFilter);
   const setTagFilter = useFileStore((s) => s.setTagFilter);

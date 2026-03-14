@@ -31,6 +31,7 @@ import { ContextMenu } from "./components/toolbar/ContextMenu";
 import { FloatingToolbar } from "./components/toolbar/FloatingToolbar";
 import { TableInsertButtons } from "./components/toolbar/TableInsertButtons";
 import { TableToolbar } from "./components/toolbar/TableToolbar";
+import { EditorProvider } from "./contexts/editor-context";
 import { createBaramExtensions } from "./extensions";
 import { useAppStartup } from "./hooks/use-app-startup";
 import { useAutoSave } from "./hooks/use-auto-save";
@@ -440,9 +441,8 @@ function App() {
   });
 
   return (
-    <>
+    <EditorProvider value={editor}>
       <AppLayout
-        editor={editor}
         statusBar={
           rootPath ? (
             <StatusBar
@@ -602,7 +602,7 @@ function App() {
           selectedIndex={tabSwitcherIndex}
         />
       )}
-    </>
+    </EditorProvider>
   );
 }
 

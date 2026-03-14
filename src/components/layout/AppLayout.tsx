@@ -1,8 +1,6 @@
 // §4.2 3-Column resizable layout
 import { lazy, Suspense, useCallback } from "react";
 
-import type { Editor } from "@tiptap/react";
-
 import { useFileStore } from "../../stores/file-store";
 import { useUIStore } from "../../stores/ui-store";
 import { ActivityBar } from "./ActivityBar";
@@ -37,7 +35,6 @@ const PropertiesPanel = lazy(() =>
 
 interface AppLayoutProps {
   children: React.ReactNode;
-  editor: Editor | null;
   statusBar?: React.ReactNode;
 }
 
@@ -46,7 +43,7 @@ const MAX_SIDEBAR = 480;
 const MIN_RIGHT_PANEL = 200;
 const MAX_RIGHT_PANEL = 500;
 
-export function AppLayout({ editor, children, statusBar }: AppLayoutProps) {
+export function AppLayout({ children, statusBar }: AppLayoutProps) {
   const {
     sidebarOpen,
     sidebarWidth,
@@ -95,7 +92,7 @@ export function AppLayout({ editor, children, statusBar }: AppLayoutProps) {
               className="app-sidebar"
               style={{ width: `${sidebarWidth}px` }}
             >
-              <Sidebar editor={editor} />
+              <Sidebar />
             </aside>
             <Splitter direction="horizontal" onResize={handleSidebarResize} />
           </>
