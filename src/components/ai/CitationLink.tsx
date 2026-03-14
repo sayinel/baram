@@ -22,7 +22,8 @@ export function CitationLink({ index, filePath, heading }: CitationLinkProps) {
       id: filePath,
       title,
       filePath,
-      dirty: false,
+      isDirty: false,
+      isPinned: false,
     });
   };
 
