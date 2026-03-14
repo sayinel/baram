@@ -102,7 +102,7 @@ pub async fn extract_zip(zip_path: String, output_dir: String) -> Result<Vec<Str
 #[tauri::command]
 pub async fn write_binary_file(path: String, data: Vec<u8>) -> Result<(), String> {
     check(&path)?;
-    let tmp_path = format!("{}.tmp", path);
+    let tmp_path = format!("{}.{}.tmp", path, uuid::Uuid::new_v4().as_simple());
     tokio::fs::write(&tmp_path, &data)
         .await
         .map_err(|e| e.to_string())?;
