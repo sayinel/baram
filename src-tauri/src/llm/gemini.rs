@@ -48,10 +48,18 @@ pub async fn list_models(api_key: &str) -> Result<Vec<ModelInfo>, LlmError> {
 
     let url = format!("{}/models", GEMINI_BASE_URL);
 
+    let mut list_headers = HeaderMap::new();
+    list_headers.insert(
+        reqwest::header::HeaderName::from_static("x-goog-api-key"),
+        reqwest::header::HeaderValue::from_str(api_key).map_err(|_| {
+            LlmError::RequestFailed("API key contains invalid characters".to_string())
+        })?,
+    );
+
     let client = reqwest::Client::new();
     let response = client
         .get(&url)
-        .header("x-goog-api-key", api_key)
+        .headers(list_headers)
         .send()
         .await
         .map_err(|e| LlmError::RequestFailed(redact_api_key(&e.to_string(), api_key)))?;
@@ -198,7 +206,9 @@ pub async fn complete_stream(
     // accidental exposure in logs, network traces, and error messages.
     headers.insert(
         reqwest::header::HeaderName::from_static("x-goog-api-key"),
-        reqwest::header::HeaderValue::from_str(api_key).map_err(|_| LlmError::NoApiKey)?,
+        reqwest::header::HeaderValue::from_str(api_key).map_err(|_| {
+            LlmError::RequestFailed("API key contains invalid characters".to_string())
+        })?,
     );
 
     let client = reqwest::Client::new();
