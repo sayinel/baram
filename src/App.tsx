@@ -56,7 +56,7 @@ import { useSkillsMode } from "./hooks/use-skills-mode";
 import { useTabSwitching } from "./hooks/use-tab-switching";
 import { useZoom } from "./hooks/use-zoom";
 import { useTranslation } from "./i18n/useTranslation";
-import { getOpenedUrls, writeFile } from "./ipc/invoke";
+import { getOpenedUrls, llmComplete, writeFile } from "./ipc/invoke";
 import { markdownToProsemirror } from "./pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "./pipeline/pm-to-md";
 import {
@@ -69,16 +69,17 @@ import {
   startUpdateChecker,
   stopUpdateChecker,
 } from "./plugins/update-checker";
+import { useAIStore } from "./stores/ai-store";
 import { useEditorStore } from "./stores/editor-store";
 import { isFileTab, isGraphTab } from "./stores/editor-store";
 import { openFolder, useFileStore } from "./stores/file-store";
 import { useSettingsStore } from "./stores/settings-store";
 import { migrateFromLocalStorage } from "./stores/tauri-storage";
 import { useUIStore } from "./stores/ui-store";
-import { executeAICommand } from "./utils/ai-commands";
 import { mdOffsetToPmPos, pmPosToMdOffset } from "./utils/cursor-mapper";
 import { getLanguageForFile, isMarkdownFile } from "./utils/file-type";
 import { logger } from "./utils/logger";
+import { getConfigForTask } from "./utils/model-selection";
 import { logAppReady } from "./utils/perf";
 import { buildTemplatePrompt } from "./utils/smart-templates";
 import "./App.css";
@@ -846,7 +847,64 @@ function SmartTemplateDialogWrapper({
       const systemPrompt = isCustom
         ? "Generate a well-structured markdown document based on the user's description. Include headings, sections, and placeholder content."
         : "Generate a complete markdown document based on the template structure. Fill each section with relevant placeholder content.";
-      void executeAICommand(editor, prompt, systemPrompt);
+
+      // Accumulate all tokens, then insert parsed markdown (not raw text)
+      const inlineCfg = getConfigForTask("inline-edit");
+      if (!inlineCfg.apiKey && inlineCfg.provider !== "ollama") {
+        logger.error("SmartTemplate: no API key configured");
+        return;
+      }
+      const store = useAIStore.getState();
+      const requestId = `ai_template_${Date.now()}`;
+      let accumulated = "";
+
+      void (async () => {
+        const tokenUn = await listen<{ requestId: string; token: string }>(
+          "llm:token",
+          (event) => {
+            if (event.payload.requestId !== requestId) return;
+            accumulated += event.payload.token;
+          },
+        );
+        const doneUn = await listen<{ requestId: string }>(
+          "llm:done",
+          (event) => {
+            if (event.payload.requestId !== requestId) return;
+            tokenUn();
+            doneUn();
+            errorUn();
+            if (accumulated.trim()) {
+              const doc = markdownToProsemirror(accumulated, editor.schema);
+              const { from } = editor.state.selection;
+              editor.view.dispatch(
+                editor.state.tr.insert(from, doc.content).scrollIntoView(),
+              );
+              editor.view.focus();
+            }
+          },
+        );
+        const errorUn = await listen<{ error: string; requestId: string }>(
+          "llm:error",
+          (event) => {
+            if (event.payload.requestId !== requestId) return;
+            logger.error("SmartTemplate error:", event.payload.error);
+            tokenUn();
+            doneUn();
+            errorUn();
+          },
+        );
+        await llmComplete(
+          inlineCfg.apiKey,
+          prompt,
+          inlineCfg.model,
+          requestId,
+          systemPrompt,
+          undefined,
+          inlineCfg.provider,
+          inlineCfg.baseUrl,
+          store.privacyMode,
+        ).catch((e) => logger.error(e));
+      })();
     },
     [editor, toggleSmartTemplateDialog],
   );
