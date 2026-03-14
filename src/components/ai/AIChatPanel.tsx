@@ -8,6 +8,7 @@ import { useChatStore } from "../../stores/chat-store";
 import { useUIStore } from "../../stores/ui-store";
 import {
   buildContextPrompt,
+  isVaultQuery,
   parseReferences,
   resolveReference,
 } from "../../utils/chat-context";
@@ -232,6 +233,9 @@ export function AIChatPanel() {
     [handleSend, refQuery],
   );
 
+  // §11.4 Detect vault-wide Knowledge Q&A mode from current input
+  const vaultMode = isVaultQuery(input);
+
   if (!rightPanelOpen || rightPanelMode !== "chat") return null;
 
   const activeSession = getActiveSession();
@@ -326,6 +330,9 @@ export function AIChatPanel() {
         })()}
 
       <div className="ai-chat-input-area" ref={inputAreaRef}>
+        {vaultMode && (
+          <div className="ai-chat-vault-badge">Vault 검색 모드</div>
+        )}
         {refQuery !== null && (
           <ReferenceAutocomplete
             onClose={() => setRefQuery(null)}
