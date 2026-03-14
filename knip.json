@@ -20,7 +20,7 @@
     "@lezer/highlight",
     "micromark-extension-gfm",
     "tailwindcss",
-    "mdast-util-to-markdown",
+    "mdast-util-math",
     "mdast-util-to-string",
     "unist-util-visit",
     "@testing-library/react",
