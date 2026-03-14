@@ -28,6 +28,7 @@ import { useUIStore } from "../stores/ui-store";
 import { findBlockPosById } from "../utils/block-nav";
 import { mdLineToPmBlockStart } from "../utils/cursor-mapper";
 import { isMarkdownFile } from "../utils/file-type";
+import { logger } from "../utils/logger";
 
 interface UseTabSwitchingParams {
   editor: Editor | null;
@@ -125,8 +126,13 @@ export function useTabSwitching({
                 ? sourceContentRef.current
                 : prosemirrorToMarkdown(editor.state.doc);
             useFileStore.getState().setFileContent(prevTab.filePath, md);
-          } catch {
-            // ignore serialization errors for outgoing tab
+          } catch (err) {
+            // Serialization failed — mark tab dirty so unsaved edits are visible
+            useEditorStore.getState().markDirty(prevTabId, true);
+            logger.error(
+              "tab-switching: serialization failed for outgoing tab",
+              err,
+            );
           }
         }
       }
@@ -252,50 +258,55 @@ export function useTabSwitching({
         progressiveLoadRef.current = loadToken;
         setIsParsing(true);
 
-        parseMdastAsync(content).then((mdast) => {
-          if (loadToken.cancelled) {
-            setIsParsing(false);
-            return;
-          }
-          if (useEditorStore.getState().activeTabId !== activeTabId) {
-            setIsParsing(false);
-            return;
-          }
-
-          const allNodes = mdastBlocksToPmNodes(mdast, editor.schema);
-          const doc = editor.schema.nodes.doc.create(null, allNodes);
-          const newState = EditorState.create({
-            doc,
-            plugins: editor.state.plugins,
-            selection: TextSelection.atStart(doc),
-          });
-          editor.view.updateState(newState);
-          setIsParsing(false);
-          // Reset scroll to top for freshly opened documents
-          requestAnimationFrame(() => {
-            const scrollContainer = document.querySelector(
-              ".editor-area-scroll",
-            );
-            if (scrollContainer) {
-              scrollContainer.scrollTop = 0;
+        parseMdastAsync(content)
+          .then((mdast) => {
+            if (loadToken.cancelled) {
+              setIsParsing(false);
+              return;
             }
-          });
-          afterDocLoad();
+            if (useEditorStore.getState().activeTabId !== activeTabId) {
+              setIsParsing(false);
+              return;
+            }
 
-          // Restore fold state from persistence
-          const inTab = tabs.find((t) => t.id === activeTabId);
-          if (inTab?.filePath) {
-            const savedAnchors = useFoldStore
-              .getState()
-              .getFolds(inTab.filePath);
-            if (savedAnchors.length > 0) {
-              const positions = anchorsToPositions(doc, savedAnchors);
-              if (positions.length > 0) {
-                dispatchRestoreFolds(editor.view, positions);
+            const allNodes = mdastBlocksToPmNodes(mdast, editor.schema);
+            const doc = editor.schema.nodes.doc.create(null, allNodes);
+            const newState = EditorState.create({
+              doc,
+              plugins: editor.state.plugins,
+              selection: TextSelection.atStart(doc),
+            });
+            editor.view.updateState(newState);
+            setIsParsing(false);
+            // Reset scroll to top for freshly opened documents
+            requestAnimationFrame(() => {
+              const scrollContainer = document.querySelector(
+                ".editor-area-scroll",
+              );
+              if (scrollContainer) {
+                scrollContainer.scrollTop = 0;
+              }
+            });
+            afterDocLoad();
+
+            // Restore fold state from persistence
+            const inTab = tabs.find((t) => t.id === activeTabId);
+            if (inTab?.filePath) {
+              const savedAnchors = useFoldStore
+                .getState()
+                .getFolds(inTab.filePath);
+              if (savedAnchors.length > 0) {
+                const positions = anchorsToPositions(doc, savedAnchors);
+                if (positions.length > 0) {
+                  dispatchRestoreFolds(editor.view, positions);
+                }
               }
             }
-          }
-        });
+          })
+          .catch((err: unknown) => {
+            setIsParsing(false);
+            logger.error("tab-switching: parse failed", err);
+          });
       }
 
       // Clean up cache for closed tabs

@@ -82,37 +82,51 @@ export function useFileWatcher() {
       logger.warn("useFileWatcher: watchDir failed", err),
     );
 
-    // Listen for events
-    listen<CreatedPayload>("file:created", (event) => {
-      const p = event.payload.path;
-      if (shouldSkip(p)) return;
-      // If there's a pending "deleted" for the same path, cancel it (rename = delete + create)
-      const existing = pendingRef.current.get(p);
-      if (existing?.kind === "deleted") {
-        pendingRef.current.delete(p);
-      } else {
-        pendingRef.current.set(p, {
-          kind: "created",
-          isDir: event.payload.isDir,
-        });
-      }
-      scheduleFlush();
-    }).then((fn) => unlistenFns.push(fn));
+    // Listen for events — use async IIFE so unlistenFns is populated before
+    // cleanup can run, closing the race window when rootPath changes quickly.
+    let cleanedUp = false;
+    (async () => {
+      const [unlistenCreated, unlistenDeleted] = await Promise.all([
+        listen<CreatedPayload>("file:created", (event) => {
+          const p = event.payload.path;
+          if (shouldSkip(p)) return;
+          // If there's a pending "deleted" for the same path, cancel it (rename = delete + create)
+          const existing = pendingRef.current.get(p);
+          if (existing?.kind === "deleted") {
+            pendingRef.current.delete(p);
+          } else {
+            pendingRef.current.set(p, {
+              kind: "created",
+              isDir: event.payload.isDir,
+            });
+          }
+          scheduleFlush();
+        }),
+        listen<DeletedPayload>("file:deleted", (event) => {
+          const p = event.payload.path;
+          if (shouldSkip(p)) return;
+          // If there's a pending "created" for the same path, cancel it
+          const existing = pendingRef.current.get(p);
+          if (existing?.kind === "created") {
+            pendingRef.current.delete(p);
+          } else {
+            pendingRef.current.set(p, { kind: "deleted" });
+          }
+          scheduleFlush();
+        }),
+      ]);
 
-    listen<DeletedPayload>("file:deleted", (event) => {
-      const p = event.payload.path;
-      if (shouldSkip(p)) return;
-      // If there's a pending "created" for the same path, cancel it
-      const existing = pendingRef.current.get(p);
-      if (existing?.kind === "created") {
-        pendingRef.current.delete(p);
+      if (cleanedUp) {
+        // Cleanup already ran before listeners resolved — unlisten immediately
+        unlistenCreated();
+        unlistenDeleted();
       } else {
-        pendingRef.current.set(p, { kind: "deleted" });
+        unlistenFns.push(unlistenCreated, unlistenDeleted);
       }
-      scheduleFlush();
-    }).then((fn) => unlistenFns.push(fn));
+    })();
 
     return () => {
+      cleanedUp = true;
       if (debounceRef.current) clearTimeout(debounceRef.current);
       for (const fn of unlistenFns) fn();
     };

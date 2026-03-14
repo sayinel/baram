@@ -195,10 +195,18 @@ export function useFileOperations({
   }, [editor, isSourceMode, setFileContent]);
 
   const handleCloseTab = useCallback(() => {
-    const { activeTabId: tabId } = useEditorStore.getState();
+    const { activeTabId: tabId, tabs } = useEditorStore.getState();
     if (!tabId) return;
+    const tab = tabs.find((t) => t.id === tabId);
+    if (tab?.isDirty && tab.filePath) {
+      // Auto-save may not have fired yet — flush before closing
+      handleSave().finally(() => {
+        useEditorStore.getState().closeTab(tabId);
+      });
+      return;
+    }
     useEditorStore.getState().closeTab(tabId);
-  }, []);
+  }, [handleSave]);
 
   const handleOpenFolder = useCallback(async () => {
     const selected = await open({ directory: true });

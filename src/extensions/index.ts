@@ -48,6 +48,7 @@ import { Mention } from "./nodes/mention";
 import { MermaidBlock } from "./nodes/mermaid-block";
 import { OrderedList } from "./nodes/ordered-list";
 import { Paragraph } from "./nodes/paragraph";
+import { QueryBlock } from "./nodes/query-block";
 import {
   BaramTable,
   BaramTableCell,
@@ -116,6 +117,9 @@ export function createBaramExtensions(
 
     // Nodes — §5.5 Mermaid
     MermaidBlock,
+
+    // Nodes — §5.13 Query Block
+    QueryBlock,
     MathInline,
     MathInlineEdit,
 
@@ -299,6 +303,7 @@ export {
   MermaidBlock,
   OrderedList,
   Paragraph,
+  QueryBlock,
   Strike,
   Subscript,
   Superscript,

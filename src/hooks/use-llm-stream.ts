@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
@@ -141,6 +141,17 @@ export function useLLMStream(): UseLLMStreamReturn {
     },
     [cleanup],
   );
+
+  // Unmount cleanup — unlisten any active event listeners if component is torn down mid-stream
+  useEffect(() => {
+    return () => {
+      for (const unlisten of unlistenRefs.current) {
+        unlisten();
+      }
+      unlistenRefs.current = [];
+      requestIdRef.current = null;
+    };
+  }, []);
 
   return { send, cancel, isStreaming, text, error, totalTokens };
 }

@@ -39,9 +39,12 @@ pub async fn export_document(
             .map_err(|e| format!("Task join error: {}", e))?
             .map_err(|e| e.to_string())
         }
-        "html" => tokio::fs::write(&output_path, html_content.as_bytes())
-            .await
-            .map_err(|e| format!("HTML 저장 실패: {}", e)),
+        "html" => {
+            crate::fs::validate_path(&output_path).map_err(|e| e.to_string())?;
+            tokio::fs::write(&output_path, html_content.as_bytes())
+                .await
+                .map_err(|e| format!("HTML 저장 실패: {}", e))
+        }
         _ => Err(format!("지원하지 않는 형식: {}", format)),
     }
 }

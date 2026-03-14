@@ -202,14 +202,19 @@ export function useEmbedSync({
     setIsEditing(false);
   }, [syncToSource]);
 
-  // Cleanup debounce on unmount
+  // Cleanup debounce on unmount — flush any pending write synchronously
   useEffect(() => {
     return () => {
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+      if (pendingTextRef.current !== null) {
+        syncToSource(pendingTextRef.current);
+        pendingTextRef.current = null;
       }
     };
-  }, []);
+  }, [syncToSource]);
 
   return {
     content,
