@@ -8,7 +8,7 @@ import {
   getHierarchicalJournalPath,
   getJournalFilePath,
   resolveJournalDir,
-} from "../utils/journal";
+} from "../utils/journal/journal";
 
 export interface JournalFileOptions {
   journalDirectory: string;

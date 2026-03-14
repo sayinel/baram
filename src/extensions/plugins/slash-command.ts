@@ -40,7 +40,10 @@ import {
   substituteVariables,
 } from "../../utils/custom-ai-commands";
 import { showFieldDialog } from "../../utils/field-dialog";
-import { generatePhotoFilename, getAssetsDir } from "../../utils/journal-photo";
+import {
+  generatePhotoFilename,
+  getAssetsDir,
+} from "../../utils/journal/journal-photo";
 import { showTableGridPicker } from "../../utils/table-grid-picker";
 
 export function buildSlashItems(editor: Editor): SlashMenuItem[] {

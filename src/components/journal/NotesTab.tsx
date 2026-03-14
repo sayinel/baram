@@ -5,7 +5,7 @@ import { getBacklinks, listDir, readFile, writeFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { useSettingsStore } from "../../stores/settings-store";
-import { extractOneLine } from "../../utils/journal-memories";
+import { extractOneLine } from "../../utils/journal/journal-memories";
 import { logger } from "../../utils/logger";
 import { resolveJournalBase } from "./utils";
 

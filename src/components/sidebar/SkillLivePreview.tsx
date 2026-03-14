@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { useSkillStore } from "../../stores/skill-store";
-import { extractSkillPrompt } from "../../utils/skill-test-runner";
+import { extractSkillPrompt } from "../../utils/skill/skill-test-runner";
 import {
   estimateTokenCount,
   formatTokenCount,

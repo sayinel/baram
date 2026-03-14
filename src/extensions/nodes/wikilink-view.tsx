@@ -6,7 +6,7 @@ import type { NodeViewProps } from "@tiptap/react";
 
 import { NodeViewWrapper } from "@tiptap/react";
 
-import { isDateString } from "../../utils/journal";
+import { isDateString } from "../../utils/journal/journal";
 
 export function WikilinkView({ node, selected, extension }: NodeViewProps) {
   const { target, display, heading } = node.attrs as {

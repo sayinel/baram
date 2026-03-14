@@ -4,7 +4,7 @@ import { useEditorStore } from "../stores/editor-store";
 import { useFileStore } from "../stores/file-store";
 import { useSettingsStore } from "../stores/settings-store";
 import { flattenFileTree } from "./file-search";
-import { isDateString, resolveJournalDir } from "./journal";
+import { isDateString, resolveJournalDir } from "./journal/journal";
 
 /**
  * §61 Resolve a relative wikilink target (starting with ./ or ../)

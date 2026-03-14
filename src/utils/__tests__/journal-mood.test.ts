@@ -13,7 +13,7 @@ import {
   parseMoodFromFrontmatter,
   updateFrontmatterEnergy,
   updateFrontmatterMood,
-} from "../journal-mood";
+} from "../journal/journal-mood";
 
 describe("§56e Mood types and constants", () => {
   it("MOOD_VALUES has 5 entries", () => {

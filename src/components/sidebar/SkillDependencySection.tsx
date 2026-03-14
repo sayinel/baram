@@ -7,7 +7,10 @@ import { readFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
 import { useSkillStore } from "../../stores/skill-store";
-import { type ChainResult, dryRunChain } from "../../utils/skill-chain-runner";
+import {
+  type ChainResult,
+  dryRunChain,
+} from "../../utils/skill/skill-chain-runner";
 import {
   analyzeSkillDependencies,
   buildDependencyGraph,
@@ -16,8 +19,8 @@ import {
   getReverseDependencies,
   parseSkillFrontmatter,
   type SkillMeta,
-} from "../../utils/skill-dependency-analyzer";
-import { isSkillFrontmatter } from "../../utils/skill-frontmatter";
+} from "../../utils/skill/skill-dependency-analyzer";
+import { isSkillFrontmatter } from "../../utils/skill/skill-frontmatter";
 import { registerSkillSection } from "./skill-panel-registry";
 
 export function SkillDependencySection() {

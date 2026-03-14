@@ -7,7 +7,7 @@ import {
   createEmptyCache,
   type JournalStatsCache,
   updateCacheEntry,
-} from "../journal-stats-cache";
+} from "../journal/journal-stats-cache";
 
 // ============================================================
 // createEmptyCache

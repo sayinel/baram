@@ -8,7 +8,7 @@ import {
   getRandomPrompt,
   HISTORY_SIZE,
   loadCustomPrompts,
-} from "../journal-prompts";
+} from "../journal/journal-prompts";
 
 // ── DAILY_PROMPTS structure ─────────────────────────────────────────────────
 

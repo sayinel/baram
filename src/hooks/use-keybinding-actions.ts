@@ -31,12 +31,12 @@ import { useSettingsStore } from "../stores/settings-store";
 import { useUIStore } from "../stores/ui-store";
 import { useWorkspaceStore } from "../stores/workspace-store";
 import { mdLineToPmBlockStart } from "../utils/cursor-mapper";
-import { isDateString, resolveJournalDir } from "../utils/journal";
+import { isDateString, resolveJournalDir } from "../utils/journal/journal";
 import {
   buildNoteFromCapture,
   buildPromotedCaptureLink,
   parseCapturesFromMarkdown,
-} from "../utils/journal-capture";
+} from "../utils/journal/journal-capture";
 import { logger } from "../utils/logger";
 import { showTableGridPicker } from "../utils/table-grid-picker";
 

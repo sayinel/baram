@@ -4,8 +4,8 @@
  * The cache file lives at {journalDir}/.journal.json and is already in
  * JOURNAL_HIDDEN_ENTRIES so it won't appear in the FileTree.
  */
-import { listDir, readFile, writeFile } from "../ipc/invoke";
-import { extractFrontmatter } from "./frontmatter";
+import { listDir, readFile, writeFile } from "../../ipc/invoke";
+import { extractFrontmatter } from "../frontmatter";
 
 // ---- Types ----------------------------------------------------------------
 

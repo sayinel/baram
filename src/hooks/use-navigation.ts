@@ -11,7 +11,7 @@ import { useLinkStore } from "../stores/link-store";
 import { useNavigationStore } from "../stores/navigation-store";
 import { useSettingsStore } from "../stores/settings-store";
 import { findBlockPosById, findHeadingPosByText } from "../utils/block-nav";
-import { isDateString, resolveJournalDir } from "../utils/journal";
+import { isDateString, resolveJournalDir } from "../utils/journal/journal";
 import { logger } from "../utils/logger";
 import { resolveWikilinkTarget } from "../utils/wikilink-nav";
 

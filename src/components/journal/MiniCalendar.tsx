@@ -1,7 +1,7 @@
 // §56c MiniCalendar — date picker calendar for MemoriesPanel
 import { useEffect, useRef, useState } from "react";
 
-import { getFirstDayOfWeek, getMonthDays } from "../../utils/journal";
+import { getFirstDayOfWeek, getMonthDays } from "../../utils/journal/journal";
 
 const MINI_CAL_DAY_NAMES = ["일", "월", "화", "수", "목", "금", "토"];
 const MINI_CAL_MONTH_NAMES = [

@@ -9,7 +9,7 @@ import {
   generateDefaultWeekly,
   generateDefaultYearly,
   getWeekEndDate,
-} from "../journal-periodic";
+} from "../journal/journal-periodic";
 
 describe("§56f getWeekEndDate", () => {
   it("returns Sunday for a Wednesday", () => {

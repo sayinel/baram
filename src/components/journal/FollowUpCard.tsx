@@ -7,7 +7,7 @@ import { useLLMStream } from "../../hooks/use-llm-stream";
 import { useTranslation } from "../../i18n/useTranslation";
 import { useEditorStore } from "../../stores/editor-store";
 import { useSettingsStore } from "../../stores/settings-store";
-import { buildFollowUpPrompt } from "../../utils/journal-reflection";
+import { buildFollowUpPrompt } from "../../utils/journal/journal-reflection";
 
 interface FollowUpCardProps {
   editor: Editor | null;

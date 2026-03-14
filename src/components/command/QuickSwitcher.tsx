@@ -15,7 +15,7 @@ import {
   fuzzyMatch,
   fuzzyScore,
 } from "../../utils/file-search";
-import { resolveJournalDir } from "../../utils/journal";
+import { resolveJournalDir } from "../../utils/journal/journal";
 import { logger } from "../../utils/logger";
 import { extractNamespace } from "../../utils/path-utils";
 

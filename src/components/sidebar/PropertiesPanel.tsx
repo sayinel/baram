@@ -13,7 +13,7 @@ import { useUIStore } from "../../stores/ui-store";
 import { showPrompt } from "../../utils/ai-commands";
 import { extractFrontmatter } from "../../utils/frontmatter";
 import { logger } from "../../utils/logger";
-import { isSkillFrontmatter } from "../../utils/skill-frontmatter";
+import { isSkillFrontmatter } from "../../utils/skill/skill-frontmatter";
 import {
   ARRAY_KEYS,
   ENUM_KEYS,

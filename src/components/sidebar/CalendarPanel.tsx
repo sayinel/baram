@@ -1,7 +1,7 @@
 // §56 Calendar sidebar panel — mini calendar for journal navigation
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
-import type { MoodValue } from "../../utils/journal-mood";
+import type { MoodValue } from "../../utils/journal/journal-mood";
 
 import { useShallow } from "zustand/shallow";
 
@@ -21,16 +21,16 @@ import {
   getMonthDays,
   getWeeklyJournalPath,
   resolveJournalDir,
-} from "../../utils/journal";
+} from "../../utils/journal/journal";
 import {
   getMoodColors,
   parseMoodFromFrontmatter,
-} from "../../utils/journal-mood";
+} from "../../utils/journal/journal-mood";
 import {
   applyPeriodicTemplate,
   generateDefaultWeekly,
-} from "../../utils/journal-periodic";
-import { getJournalTheme } from "../../utils/journal-themes";
+} from "../../utils/journal/journal-periodic";
+import { getJournalTheme } from "../../utils/journal/journal-themes";
 import { logger } from "../../utils/logger";
 import { JournalSearchPanel } from "../journal/JournalSearchPanel";
 import { MoodTrend30 } from "../journal/MoodTrend30";

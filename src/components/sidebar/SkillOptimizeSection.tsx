@@ -9,7 +9,7 @@ import {
   buildOptimizePrompt,
   type OptimizeSuggestion,
   parseOptimizeResponse,
-} from "../../utils/skill-optimize-prompt";
+} from "../../utils/skill/skill-optimize-prompt";
 import { registerSkillSection } from "./skill-panel-registry";
 
 // ─── Category icons ──────────────────────────────────────────────────────────

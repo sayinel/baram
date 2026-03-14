@@ -1,6 +1,11 @@
 // §56d Journal Photo — asset utility functions
 
-import { createDir, listDir, readFile, writeBinaryFile } from "../ipc/invoke";
+import {
+  createDir,
+  listDir,
+  readFile,
+  writeBinaryFile,
+} from "../../ipc/invoke";
 
 export interface PhotoGalleryEntry {
   absolutePath: string;

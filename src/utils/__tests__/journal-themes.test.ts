@@ -4,7 +4,7 @@ import {
   getJournalTheme,
   getStreakIcon,
   JOURNAL_THEMES,
-} from "../journal-themes";
+} from "../journal/journal-themes";
 
 describe("JOURNAL_THEMES", () => {
   it("has exactly 6 themes", () => {

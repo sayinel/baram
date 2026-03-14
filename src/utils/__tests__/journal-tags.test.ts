@@ -6,7 +6,7 @@ import {
   extractTagsFromContent,
   filterTags,
   parseTagSuggestions,
-} from "../journal-tags";
+} from "../journal/journal-tags";
 
 describe("extractTagsFromContent", () => {
   it("extracts inline #tags from body text", () => {

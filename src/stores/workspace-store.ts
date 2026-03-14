@@ -7,7 +7,7 @@ import {
   ensureJournalFile,
   openFileInTab,
 } from "../services/journal-file-service";
-import { resolveJournalDir } from "../utils/journal";
+import { resolveJournalDir } from "../utils/journal/journal";
 import { logger } from "../utils/logger";
 import { useFileStore } from "./file-store";
 import { buildFileTree } from "./file-store";
