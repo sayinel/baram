@@ -6,6 +6,7 @@ import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 // §5.5 Mermaid Block NodeView — selected: textarea + preview, unselected: SVG render
 // §50 Enhanced: template picker + full-screen edit
 import DOMPurify from "dompurify";
+import { Sparkles } from "lucide-react";
 
 import {
   copyMermaidPng,
@@ -508,7 +509,7 @@ export function MermaidBlockView({
               }}
               title="AI Commands"
             >
-              AI
+              <Sparkles size={14} />
             </button>
             <button
               className="mermaid-hover-toolbar-btn"
