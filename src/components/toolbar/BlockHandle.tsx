@@ -27,49 +27,54 @@ export function BlockHandle({ editor }: BlockHandleProps) {
   const [handle, setHandle] = useState<HandlePosition | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const rafRef = useRef<null | number>(null);
 
   // Track which block the mouse is hovering over
   useEffect(() => {
     const editorDom = editor.view.dom;
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (menuOpen) return;
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        if (menuOpen) return;
 
-      const editorRect = editorDom.getBoundingClientRect();
-      // Only show when mouse is near the left margin
-      if (e.clientX > editorRect.left + 60) {
-        setHandle(null);
-        return;
-      }
-
-      // Find the block-level node under the cursor
-      try {
-        const pos = editor.view.posAtCoords({
-          left: editorRect.left + 80,
-          top: e.clientY,
-        });
-        if (!pos) {
+        const editorRect = editorDom.getBoundingClientRect();
+        // Only show when mouse is near the left margin
+        if (e.clientX > editorRect.left + 60) {
           setHandle(null);
           return;
         }
 
-        const resolved = editor.state.doc.resolve(pos.pos);
-        if (resolved.depth < 1) {
-          setHandle(null);
-          return;
-        }
-        const blockPos = resolved.before(1);
-        const dom = editor.view.nodeDOM(blockPos);
-        if (!dom || !(dom instanceof HTMLElement)) {
-          setHandle(null);
-          return;
-        }
+        // Find the block-level node under the cursor
+        try {
+          const pos = editor.view.posAtCoords({
+            left: editorRect.left + 80,
+            top: e.clientY,
+          });
+          if (!pos) {
+            setHandle(null);
+            return;
+          }
 
-        const domRect = dom.getBoundingClientRect();
-        setHandle({ top: domRect.top, pos: blockPos });
-      } catch {
-        setHandle(null);
-      }
+          const resolved = editor.state.doc.resolve(pos.pos);
+          if (resolved.depth < 1) {
+            setHandle(null);
+            return;
+          }
+          const blockPos = resolved.before(1);
+          const dom = editor.view.nodeDOM(blockPos);
+          if (!dom || !(dom instanceof HTMLElement)) {
+            setHandle(null);
+            return;
+          }
+
+          const domRect = dom.getBoundingClientRect();
+          setHandle({ top: domRect.top, pos: blockPos });
+        } catch {
+          setHandle(null);
+        }
+      });
     };
 
     const handleMouseLeave = () => {
@@ -82,6 +87,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
     return () => {
       editorDom.removeEventListener("mousemove", handleMouseMove);
       editorDom.removeEventListener("mouseleave", handleMouseLeave);
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     };
   }, [editor, menuOpen]);
 

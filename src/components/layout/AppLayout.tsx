@@ -1,6 +1,8 @@
 // §4.2 3-Column resizable layout
 import { lazy, Suspense, useCallback } from "react";
 
+import { useShallow } from "zustand/shallow";
+
 import { useFileStore } from "../../stores/file-store";
 import { useUIStore } from "../../stores/ui-store";
 import { ActivityBar } from "./ActivityBar";
@@ -51,7 +53,16 @@ export function AppLayout({ children, statusBar }: AppLayoutProps) {
     rightPanelOpen,
     rightPanelWidth,
     setRightPanelWidth,
-  } = useUIStore();
+  } = useUIStore(
+    useShallow((s) => ({
+      sidebarOpen: s.sidebarOpen,
+      sidebarWidth: s.sidebarWidth,
+      setSidebarWidth: s.setSidebarWidth,
+      rightPanelOpen: s.rightPanelOpen,
+      rightPanelWidth: s.rightPanelWidth,
+      setRightPanelWidth: s.setRightPanelWidth,
+    })),
+  );
   const rootPath = useFileStore((s) => s.rootPath);
 
   // Hide sidebar & activity bar when no folder is open (HomeScreen state)

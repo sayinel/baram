@@ -30,7 +30,9 @@ export function QuickCaptureDialog() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Tag autocomplete state
-  const [tagIndex, setTagIndex] = useState<Map<string, number>>(new Map());
+  const [tagIndex, setTagIndex] = useState<Map<string, number>>(
+    () => new Map(),
+  );
   const [tagQuery, setTagQuery] = useState<null | string>(null);
   const [tagSuggestVisible, setTagSuggestVisible] = useState(false);
   const [tagActiveIndex, setTagActiveIndex] = useState(0);

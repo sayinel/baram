@@ -3,6 +3,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { MoodValue } from "../../utils/journal-mood";
 
+import { useShallow } from "zustand/shallow";
+
 import { createDir, listDir, readFile, writeFile } from "../../ipc/invoke";
 import {
   ensureJournalFile,
@@ -52,15 +54,20 @@ const MONTH_NAMES = [
   "December",
 ];
 
+const JOURNAL_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})\.md$/;
+const JOURNAL_DATE_COMPACT_RE = /^(\d{4})(\d{2})(\d{2})\.md$/;
+
 export function CalendarPanel() {
-  const today = new Date();
+  const today = useMemo(() => new Date(), []);
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
   const [calView, setCalView] = useState<"days" | "months" | "years">("days");
   const [showSearch, setShowSearch] = useState(false);
   const [showReflection, setShowReflection] = useState(false);
 
-  const { provider, apiKey } = useAIStore();
+  const { provider, apiKey } = useAIStore(
+    useShallow((s) => ({ provider: s.provider, apiKey: s.apiKey })),
+  );
 
   const {
     journalEnabled,
@@ -72,7 +79,19 @@ export function CalendarPanel() {
     journalWeeklyTemplate,
     journalThemeId,
     theme,
-  } = useSettingsStore();
+  } = useSettingsStore(
+    useShallow((s) => ({
+      journalEnabled: s.journalEnabled,
+      journalDirectory: s.journalDirectory,
+      journalFilenameFormat: s.journalFilenameFormat,
+      journalTemplatePath: s.journalTemplatePath,
+      journalUseHierarchy: s.journalUseHierarchy,
+      journalWeeklyEnabled: s.journalWeeklyEnabled,
+      journalWeeklyTemplate: s.journalWeeklyTemplate,
+      journalThemeId: s.journalThemeId,
+      theme: s.theme,
+    })),
+  );
 
   const journalTheme = useMemo(
     () => getJournalTheme(journalThemeId),
@@ -124,8 +143,8 @@ export function CalendarPanel() {
         const moods = new Map<string, MoodValue>();
         const reads = fileEntries.slice(0, 62).map(async (entry) => {
           const match =
-            entry.name.match(/^(\d{4})-(\d{2})-(\d{2})\.md$/) ||
-            entry.name.match(/^(\d{4})(\d{2})(\d{2})\.md$/);
+            entry.name.match(JOURNAL_DATE_RE) ||
+            entry.name.match(JOURNAL_DATE_COMPACT_RE);
           if (!match) return;
           const dateStr = `${match[1]}-${match[2]}-${match[3]}`;
           try {
@@ -156,8 +175,8 @@ export function CalendarPanel() {
     if (!journalEnabled) return dates;
     for (const filename of dirFiles) {
       const match =
-        filename.match(/^(\d{4})-(\d{2})-(\d{2})\.md$/) ||
-        filename.match(/^(\d{4})(\d{2})(\d{2})\.md$/);
+        filename.match(JOURNAL_DATE_RE) ||
+        filename.match(JOURNAL_DATE_COMPACT_RE);
       if (match) {
         dates.add(`${match[1]}-${match[2]}-${match[3]}`);
       }

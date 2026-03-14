@@ -1,8 +1,10 @@
 // §72 Properties Panel — YAML frontmatter GUI editor
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import type { FileEntry } from "../../stores/file-store";
 import type { PropertyEntry, PropertyType } from "../../utils/yaml-properties";
+
+import { useShallow } from "zustand/shallow";
 
 import { readFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor-store";
@@ -30,9 +32,18 @@ import "./SkillOptimizeSection";
 // (types and parse/serialize functions now live in ../../utils/yaml-properties)
 
 export function PropertiesPanel() {
-  const { rightPanelOpen, rightPanelMode } = useUIStore();
-  const { activeTabId, tabs } = useEditorStore();
-  const { openFiles, fileTree } = useFileStore();
+  const { rightPanelOpen, rightPanelMode } = useUIStore(
+    useShallow((s) => ({
+      rightPanelOpen: s.rightPanelOpen,
+      rightPanelMode: s.rightPanelMode,
+    })),
+  );
+  const { activeTabId, tabs } = useEditorStore(
+    useShallow((s) => ({ activeTabId: s.activeTabId, tabs: s.tabs })),
+  );
+  const { openFiles, fileTree } = useFileStore(
+    useShallow((s) => ({ openFiles: s.openFiles, fileTree: s.fileTree })),
+  );
 
   const [sourceMode, setSourceMode] = useState(false);
   const [sourceText, setSourceText] = useState("");
@@ -41,14 +52,24 @@ export function PropertiesPanel() {
   const redoStackRef = useRef<string[]>([]);
   const [, forceRender] = useState(0);
 
-  const activeTab = tabs.find((t) => t.id === activeTabId);
+  const activeTab = useMemo(
+    () => tabs.find((t) => t.id === activeTabId),
+    [tabs, activeTabId],
+  );
   const filePath = activeTab?.filePath ?? null;
   const content = filePath ? (openFiles.get(filePath) ?? null) : null;
 
-  const parsed = content ? extractFrontmatter(content) : null;
-  const yaml = parsed?.yaml ?? null;
-  const entries: PropertyEntry[] =
-    yaml !== null ? parseYamlProperties(yaml) : [];
+  const { yaml, entries, parsed } = useMemo(() => {
+    if (!content)
+      return { yaml: null, entries: [] as PropertyEntry[], parsed: null };
+    const p = extractFrontmatter(content);
+    const y = p?.yaml ?? null;
+    return {
+      yaml: y,
+      entries: y !== null ? parseYamlProperties(y) : ([] as PropertyEntry[]),
+      parsed: p ?? null,
+    };
+  }, [content]);
 
   // ── write-back helpers ───────────────────────────────────────────────────
 
