@@ -20,6 +20,7 @@ import { GraphSettingsPanel } from "./GraphSettingsPanel";
 export function GraphView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
+  const [cyReady, setCyReady] = useState(false);
   const rootPath = useFileStore((s) => s.rootPath);
   // Detect if rendered inside editor tab (vs sidebar)
   const isInEditorTab = useEditorStore((s) => {
@@ -90,6 +91,7 @@ export function GraphView() {
       });
 
       cyRef.current = cy;
+      setCyReady(true);
     })();
 
     return () => {
@@ -98,6 +100,7 @@ export function GraphView() {
         cy.destroy();
       }
       cyRef.current = null;
+      setCyReady(false);
     };
     // Intentionally mount-only: creates the Cytoscape instance once. Style
     // settings (linkThickness, showArrows, colorByNamespace) passed here are only
@@ -217,7 +220,7 @@ export function GraphView() {
     // omitted: adding them would re-fetch all graph data on every settings tweak,
     // but dedicated effects (Effect 3, node-size effect) handle those updates.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rootPath, indexVersion, handleNodeTap, colorByNamespace]);
+  }, [rootPath, indexVersion, handleNodeTap, colorByNamespace, cyReady]);
 
   // Effect 3: Re-layout on force settings change
   useEffect(() => {
