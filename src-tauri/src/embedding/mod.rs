@@ -2,6 +2,7 @@
 
 pub mod chunker;
 pub mod gemini_embed;
+pub mod hybrid_ranker;
 pub mod ollama_embed;
 pub mod openai_embed;
 pub mod vector_store;
