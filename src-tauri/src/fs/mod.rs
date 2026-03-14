@@ -282,7 +282,14 @@ pub async fn extract_zip(zip_path: &str, output_dir: &str) -> Result<Vec<String>
 
 /// 디렉토리 감시 시작 — notify crate 기반
 /// file:changed, file:created, file:deleted 이벤트를 프론트엔드로 emit
-pub fn watch_dir(path: &str, app_handle: tauri::AppHandle) -> Result<(), FsError> {
+///
+/// Returns the watcher, which must be kept alive by the caller.
+/// Dropping the returned watcher closes the internal channel, causing the
+/// background thread to exit naturally (RAII cleanup — no thread leak).
+pub fn start_watching(
+    path: &str,
+    app_handle: tauri::AppHandle,
+) -> Result<RecommendedWatcher, FsError> {
     let path = path.to_string();
     let (tx, rx) = mpsc::channel::<notify::Result<Event>>();
 
@@ -293,10 +300,11 @@ pub fn watch_dir(path: &str, app_handle: tauri::AppHandle) -> Result<(), FsError
         .watch(Path::new(&path), RecursiveMode::Recursive)
         .map_err(|e| FsError::WatchError(e.to_string()))?;
 
-    // Spawn a thread to receive file system events and emit to frontend
+    // Spawn a thread to receive file system events and emit to frontend.
+    // The watcher is NOT moved here; it is returned to the caller who stores it
+    // in managed state. When the managed state drops the watcher, the internal
+    // tx is dropped, rx becomes disconnected, and this thread exits on its own.
     std::thread::spawn(move || {
-        // Keep watcher alive for the duration of this thread
-        let _watcher = watcher;
         for event in rx.into_iter().flatten() {
             for event_path in &event.paths {
                 let path_str = event_path.to_string_lossy().to_string();
@@ -344,5 +352,5 @@ pub fn watch_dir(path: &str, app_handle: tauri::AppHandle) -> Result<(), FsError
         }
     });
 
-    Ok(())
+    Ok(watcher)
 }

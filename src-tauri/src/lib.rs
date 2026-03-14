@@ -25,6 +25,14 @@ use tauri::{Emitter, Manager};
 /// Pending file paths from macOS file open events (cold start).
 struct PendingOpenFiles(Mutex<Vec<String>>);
 
+/// Currently open vault root path — used to confine fs IPC commands to the vault.
+/// None means no vault is open yet (cold start); all paths are allowed until set.
+pub struct VaultRootState(pub tokio::sync::RwLock<Option<std::path::PathBuf>>);
+
+/// Active directory watcher. Replacing the value drops the old watcher, which closes
+/// the internal event channel and causes the watcher thread to exit naturally (RAII).
+pub struct WatcherState(pub std::sync::Mutex<Option<notify::RecommendedWatcher>>);
+
 #[tauri::command]
 fn get_opened_urls(state: tauri::State<'_, PendingOpenFiles>) -> Result<Vec<String>, String> {
     let mut pending = state.0.lock().map_err(|e| e.to_string())?;
@@ -67,11 +75,14 @@ pub fn run() {
             Ok(())
         })
         .manage(PendingOpenFiles(Mutex::new(Vec::new())))
+        .manage(VaultRootState(tokio::sync::RwLock::new(None)))
+        .manage(WatcherState(std::sync::Mutex::new(None)))
         .manage(index_cmd::LinkIndexState(tokio::sync::Mutex::new(
             index::LinkIndex::new(),
         )))
         .manage(llm::cancel::CancelRegistry::new())
         .invoke_handler(tauri::generate_handler![
+            fs_cmd::set_vault_root,
             fs_cmd::read_file,
             fs_cmd::write_file,
             fs_cmd::list_dir,
