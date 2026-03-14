@@ -57,3 +57,27 @@ export function findBlockPosById(doc: PmNode, blockId: string): null | number {
   });
   return found;
 }
+
+/**
+ * Find ProseMirror position of the first heading node matching the given text.
+ * Comparison is case-insensitive. Returns the node position (not +1 inside).
+ */
+export function findHeadingPosByText(
+  doc: PmNode,
+  heading: string,
+): null | number {
+  const headingLower = heading.toLowerCase();
+  let found: null | number = null;
+  doc.descendants((node, pos) => {
+    if (found !== null) return false;
+    if (
+      node.type.name === "heading" &&
+      node.textContent.toLowerCase() === headingLower
+    ) {
+      found = pos;
+      return false;
+    }
+    return true;
+  });
+  return found;
+}

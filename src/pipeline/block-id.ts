@@ -36,9 +36,10 @@ export function generateBlockId(): string {
 
 // --- §30b: Block Reference ---
 
-/** Matches ((target#^blockId)) or ((target#^blockId|display)) or ((#^blockId)) */
+/** Matches ((target#^blockId)) or ((target#^blockId|display)) or ((#^blockId)).
+ * No `g` flag — use as `.source` to create stateful regex instances per call site. */
 export const BLOCK_REF_RE =
-  /\(\(([^)#|]*?)#\^([a-zA-Z0-9][\w-]*)(?:\|([^)]+))?\)\)/g;
+  /\(\(([^)#|]*?)#\^([a-zA-Z0-9][\w-]*)(?:\|([^)]+))?\)\)/;
 
 /** Parse block reference attributes from a regex match */
 export function parseBlockRefMatch(match: RegExpMatchArray): {

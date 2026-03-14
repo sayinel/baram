@@ -17,22 +17,29 @@ import { isMarkdownFile } from "../utils/file-type";
  */
 export function useAutoSave(editor: Editor | null) {
   const timerRef = useRef<null | ReturnType<typeof setTimeout>>(null);
+  // Capture which tab scheduled the save; prevents writing tab B's content to tab A's
+  // file when the user switches tabs during the debounce window.
+  const pendingTabRef = useRef<null | { filePath: string; id: string }>(null);
   const { autoSave, autoSaveDelay } = useSettingsStore();
 
   const save = useCallback(async () => {
     if (!editor) return;
-    // Read current tab from store at save time — avoids stale closure
-    const { activeTabId, tabs, markDirty } = useEditorStore.getState();
-    const tab = tabs.find((t) => t.id === activeTabId);
-    if (!tab || !tab.filePath) return;
+    const pending = pendingTabRef.current;
+    if (!pending) return;
+
+    // Guard: if the active tab changed since the save was scheduled, editor.state.doc
+    // now belongs to the new tab — writing it to pending.filePath would corrupt data.
+    const { activeTabId, markDirty } = useEditorStore.getState();
+    if (activeTabId !== pending.id) return;
+
     // Non-MD files don't use ProseMirror — skip (handled by App.tsx code auto-save)
-    if (!isMarkdownFile(tab.filePath)) return;
+    if (!isMarkdownFile(pending.filePath)) return;
 
     try {
       const markdown = prosemirrorToMarkdown(editor.state.doc);
-      await writeFile(tab.filePath, markdown);
-      markDirty(tab.id, false);
-      updateFileIndex(tab.filePath)
+      await writeFile(pending.filePath, markdown);
+      markDirty(pending.id, false);
+      updateFileIndex(pending.filePath)
         .then(() => useLinkStore.getState().invalidate())
         .catch(() => {});
     } catch {
@@ -50,6 +57,8 @@ export function useAutoSave(editor: Editor | null) {
       if (!tab?.filePath) return;
 
       markDirty(tab.id, true);
+      // Record which tab triggered this save so save() can detect a mid-debounce tab switch
+      pendingTabRef.current = { id: tab.id, filePath: tab.filePath };
 
       if (timerRef.current) {
         clearTimeout(timerRef.current);

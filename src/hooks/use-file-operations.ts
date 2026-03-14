@@ -1,7 +1,7 @@
 // §3.6 File operation hooks — new, open, save, saveAs, close, openFolder
 import { useCallback } from "react";
 
-import { open, save } from "@tauri-apps/plugin-dialog";
+import { ask, open, save } from "@tauri-apps/plugin-dialog";
 
 import type { Editor } from "@tiptap/core";
 
@@ -194,7 +194,7 @@ export function useFileOperations({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- sourceContentRef is a stable ref
   }, [editor, isSourceMode, setFileContent]);
 
-  const handleCloseTab = useCallback(() => {
+  const handleCloseTab = useCallback(async () => {
     const { activeTabId: tabId, tabs } = useEditorStore.getState();
     if (!tabId) return;
     const tab = tabs.find((t) => t.id === tabId);
@@ -204,6 +204,14 @@ export function useFileOperations({
         useEditorStore.getState().closeTab(tabId);
       });
       return;
+    }
+    if (tab?.isDirty && !tab.filePath) {
+      // Untitled dirty tab — prompt before discarding (no file to auto-save to)
+      const confirmed = await ask(
+        "You have unsaved changes. Close without saving?",
+        { title: "Unsaved Changes", kind: "warning" },
+      );
+      if (!confirmed) return;
     }
     useEditorStore.getState().closeTab(tabId);
   }, [handleSave]);

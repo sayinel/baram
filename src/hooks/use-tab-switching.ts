@@ -25,7 +25,7 @@ import { useFoldStore } from "../stores/fold-store";
 import { useLinkStore } from "../stores/link-store";
 import { useNavigationStore } from "../stores/navigation-store";
 import { useUIStore } from "../stores/ui-store";
-import { findBlockPosById } from "../utils/block-nav";
+import { findBlockPosById, findHeadingPosByText } from "../utils/block-nav";
 import { mdLineToPmBlockStart } from "../utils/cursor-mapper";
 import { isMarkdownFile } from "../utils/file-type";
 import { logger } from "../utils/logger";
@@ -175,6 +175,7 @@ export function useTabSwitching({
         // §29 Check if navigating from backlinks — compute scroll position
         const pendingLine = useLinkStore.getState().pendingScrollLine;
         const pendingBlockId = useLinkStore.getState().pendingScrollBlockId;
+        const pendingHeading = useLinkStore.getState().pendingScrollHeading;
         let scrollPos: null | number = null;
         const doc = editor.view.state.doc;
         if (pendingBlockId) {
@@ -187,6 +188,12 @@ export function useTabSwitching({
           useLinkStore.getState().setPendingScrollLine(null);
           const pmPos = mdLineToPmBlockStart(doc, content, pendingLine);
           scrollPos = Math.min(Math.max(pmPos, 0), doc.content.size);
+        } else if (pendingHeading) {
+          useLinkStore.getState().setPendingScrollHeading(null);
+          const headingPos = findHeadingPosByText(doc, pendingHeading);
+          if (headingPos !== null) {
+            scrollPos = Math.min(Math.max(headingPos + 1, 0), doc.content.size);
+          }
         }
 
         // Dispatch a proper transaction for selection + scroll, then

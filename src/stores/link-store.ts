@@ -22,6 +22,8 @@ interface LinkState {
   loading: boolean;
   /** §30c Block ID to scroll to after block ref navigation */
   pendingScrollBlockId: null | string;
+  /** Heading text to scroll to after cross-file navigation (consumed by afterDocLoad) */
+  pendingScrollHeading: null | string;
   /** Markdown line number to scroll to after backlink navigation (1-based) */
   pendingScrollLine: null | number;
   /** Set backlinks data (called after IPC response) */
@@ -32,6 +34,8 @@ interface LinkState {
   setLoading: (loading: boolean) => void;
   /** Set pending scroll block ID (consumed by App.tsx after tab switch) */
   setPendingScrollBlockId: (id: null | string) => void;
+  /** Set pending scroll heading (consumed by afterDocLoad after tab switch) */
+  setPendingScrollHeading: (heading: null | string) => void;
   /** Set pending scroll line (consumed by App.tsx after tab switch) */
   setPendingScrollLine: (line: null | number) => void;
   /** §34 Set unlinked mentions data */
@@ -72,4 +76,6 @@ export const useLinkStore = create<LinkState>((set, get) => ({
   setPendingScrollLine: (line) => set({ pendingScrollLine: line }),
   pendingScrollBlockId: null,
   setPendingScrollBlockId: (id) => set({ pendingScrollBlockId: id }),
+  pendingScrollHeading: null,
+  setPendingScrollHeading: (heading) => set({ pendingScrollHeading: heading }),
 }));
