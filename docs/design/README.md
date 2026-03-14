@@ -34,7 +34,9 @@ baram-design/
 ├── part6-ai-integration.md  ← AI 통합 설계
 ├── part7-data-models.md     ← 데이터 모델 및 파일 규격
 ├── part8-roadmap.md         ← 개발 로드맵 및 일정
-└── part9-appendix.md        ← 부록
+├── part9-appendix.md        ← 부록
+├── part10-namespace.md      ← 네임스페이스 설계
+└── part11-ai-enhancement.md ← AI 고도화 설계
 ```
 
 ---
@@ -181,6 +183,26 @@ Phase별 계획과 마일스톤.
 | 9.3 단축키 전체 맵 | macOS / Windows / Linux 단축키 Quick Reference |
 | 9.4 참고 자료 및 링크 | 기술 문서, 라이브러리, 디자인 참고 |
 | 9.5 설계 문서 전체 구조 요약 | 9부 체계 및 섹션 간 참조 관계 |
+
+---
+
+### [Part 11. AI 고도화 설계](part11-ai-enhancement.md)
+
+Part 6의 확장. Level 4~5 구현 + Baram 고유 AI 차별화 기능.
+
+| 섹션 | 내용 |
+|------|------|
+| 11.1 AI 고도화 개요 | 현황 요약, 경쟁 분석, 확장 원칙 3가지 |
+| 11.2 Phase 3A: 빠른 개선 | Per-task 모델 라우팅, Ghost Text 캐싱, Contextual AI Toolbar, Privacy 강화 |
+| 11.3 Writing Flow Awareness | 글쓰기 모드 감지, 편집 세션 컨텍스트, 세션 메모리 |
+| 11.4 Knowledge Q&A | 하이브리드 검색 (BM25+벡터+그래프), 임베딩 파이프라인, Citation |
+| 11.5 Semantic Wikilink | AI 기반 양방향 링크 제안, Ghost Link UI |
+| 11.6 Agent Mode | 문서 리팩토링 에이전트, 계획→실행→검토 파이프라인 |
+| 11.7 Authorship Visualization | AI 기여 추적, 사이드카 파일, 통계 패널 |
+| 11.8 Smart Templates | AI 기반 문서 생성, Writing Flow 연동 |
+| 11.9 구현 로드맵 | Phase 3A/3B/3C 일정, 의존 관계, 성능 기준 |
+| 11.10 기술 리스크 및 대응 | 9개 리스크 항목 + 대응 전략 |
+| 11.11 차별화 포지셔닝 | Baram AI 정체성, 경쟁자 대비 포지션 |
 
 ---
 
