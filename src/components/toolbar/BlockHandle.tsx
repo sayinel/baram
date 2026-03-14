@@ -39,17 +39,36 @@ export function BlockHandle({ editor }: BlockHandleProps) {
   const [aiSubOpen, setAiSubOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const aiSubRef = useRef<HTMLDivElement>(null);
+  const handleRef = useRef<HTMLDivElement>(null);
+  const hideTimeoutRef = useRef<null | ReturnType<typeof setTimeout>>(null);
+
+  // Cancel any pending hide timeout
+  const cancelHideTimeout = useCallback(() => {
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
+  }, []);
 
   // Track which block the mouse is hovering over
   useEffect(() => {
     const editorDom = editor.view.dom;
+    // Listen on scroll container for wider event surface (includes gutter area)
+    const scrollContainer = (editorDom.closest("[data-editor-scroll]") ??
+      editorDom.parentElement ??
+      editorDom) as HTMLElement;
 
     const handleMouseMove = (e: MouseEvent) => {
       if (menuOpen) return;
+      cancelHideTimeout();
 
       const editorRect = editorDom.getBoundingClientRect();
-      // Only show when mouse is near the left margin (within editor padding area)
-      if (e.clientX > editorRect.left + 120) {
+      // Show handle when mouse is near the left gutter of the editor
+      // Accept from slightly left of editor to ~120px inside
+      if (
+        e.clientX < editorRect.left - 10 ||
+        e.clientX > editorRect.left + 120
+      ) {
         setHandle(null);
         return;
       }
@@ -85,17 +104,22 @@ export function BlockHandle({ editor }: BlockHandleProps) {
     };
 
     const handleMouseLeave = () => {
-      if (!menuOpen) setHandle(null);
+      if (menuOpen) return;
+      // Delay hide so user can move cursor to the handle element
+      hideTimeoutRef.current = setTimeout(() => {
+        setHandle(null);
+      }, 300);
     };
 
-    editorDom.addEventListener("mousemove", handleMouseMove);
-    editorDom.addEventListener("mouseleave", handleMouseLeave);
+    scrollContainer.addEventListener("mousemove", handleMouseMove);
+    scrollContainer.addEventListener("mouseleave", handleMouseLeave);
 
     return () => {
-      editorDom.removeEventListener("mousemove", handleMouseMove);
-      editorDom.removeEventListener("mouseleave", handleMouseLeave);
+      scrollContainer.removeEventListener("mousemove", handleMouseMove);
+      scrollContainer.removeEventListener("mouseleave", handleMouseLeave);
+      cancelHideTimeout();
     };
-  }, [editor, menuOpen]);
+  }, [editor, menuOpen, cancelHideTimeout]);
 
   // Reset handle when document changes (e.g. tab switch, wikilink navigation)
   useEffect(() => {
@@ -280,9 +304,18 @@ export function BlockHandle({ editor }: BlockHandleProps) {
     <>
       <div
         className="block-handle"
+        onMouseEnter={cancelHideTimeout}
+        onMouseLeave={() => {
+          if (!menuOpen) {
+            hideTimeoutRef.current = setTimeout(() => {
+              setHandle(null);
+            }, 300);
+          }
+        }}
+        ref={handleRef}
         style={{
           top: `${handle.top}px`,
-          left: `${editorRect.left - 30}px`,
+          left: `${editorRect.left + 14}px`,
         }}
       >
         <button
@@ -300,7 +333,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
           ref={menuRef}
           style={{
             top: `${handle.top}px`,
-            left: `${editorRect.left - 24}px`,
+            left: `${editorRect.left + 14}px`,
           }}
         >
           {menuItems.map((item, i) => (
