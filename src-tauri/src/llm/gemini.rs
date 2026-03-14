@@ -46,11 +46,12 @@ pub async fn list_models(api_key: &str) -> Result<Vec<ModelInfo>, LlmError> {
         return Err(LlmError::NoApiKey);
     }
 
-    let url = format!("{}/models?key={}", GEMINI_BASE_URL, api_key);
+    let url = format!("{}/models", GEMINI_BASE_URL);
 
     let client = reqwest::Client::new();
     let response = client
         .get(&url)
+        .header("x-goog-api-key", api_key)
         .send()
         .await
         .map_err(|e| LlmError::RequestFailed(redact_api_key(&e.to_string(), api_key)))?;
@@ -189,8 +190,15 @@ pub async fn complete_stream(
     };
 
     let url = format!(
-        "{}/models/{}:streamGenerateContent?alt=sse&key={}",
-        GEMINI_BASE_URL, model, api_key
+        "{}/models/{}:streamGenerateContent?alt=sse",
+        GEMINI_BASE_URL, model
+    );
+
+    // Pass API key as header instead of URL query parameter to prevent
+    // accidental exposure in logs, network traces, and error messages.
+    headers.insert(
+        reqwest::header::HeaderName::from_static("x-goog-api-key"),
+        reqwest::header::HeaderValue::from_str(api_key).map_err(|_| LlmError::NoApiKey)?,
     );
 
     let client = reqwest::Client::new();
