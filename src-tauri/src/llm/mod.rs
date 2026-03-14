@@ -34,7 +34,7 @@ pub enum LlmError {
 /// Default base URLs for each provider
 const OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com";
 const OLLAMA_DEFAULT_BASE_URL: &str = "http://localhost:11434";
-// Note: Gemini uses API key in query params, not a configurable base URL
+// Note: Gemini uses x-goog-api-key header for authentication, not a configurable base URL
 
 /// Multi-provider LLM streaming dispatch.
 ///
