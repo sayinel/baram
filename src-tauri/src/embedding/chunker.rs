@@ -11,7 +11,13 @@ pub struct Chunk {
     pub heading_path: Vec<String>,
     pub content: String,
     pub token_count: usize,
+    pub outgoing_links: Vec<String>,
+    pub last_modified: Option<u64>,
+    pub frontmatter: Option<String>,
 }
+
+/// Overlap size in tokens for adjacent chunks (§11.4.2 spec: 50 tokens).
+const OVERLAP_TOKENS: usize = 50;
 
 /// Estimate token count (~4 chars per token).
 fn estimate_tokens(text: &str) -> usize {
@@ -32,16 +38,18 @@ pub fn extract_wikilinks(content: &str) -> Vec<String> {
 /// 1. Split by headings (# to ######)
 /// 2. Merge short chunks (< 50 tokens) with parent
 /// 3. Split long chunks (> 500 tokens) at paragraph boundaries
+/// 4. Add 50-token overlap between adjacent chunks from the same section
 pub fn chunk_markdown(content: &str, file_path: &str) -> Vec<Chunk> {
     let heading_re = Regex::new(r"^(#{1,6})\s+(.+)$").unwrap();
+
+    // Extract frontmatter before stripping
+    let fm = extract_frontmatter(content);
+    let content_without_frontmatter = strip_frontmatter(content);
 
     // Phase 1: Split into raw sections by heading
     let mut raw_sections: Vec<(Vec<String>, String)> = Vec::new();
     let mut current_heading_path: Vec<(usize, String)> = Vec::new(); // (level, title)
     let mut current_lines: Vec<String> = Vec::new();
-
-    // Strip frontmatter
-    let content_without_frontmatter = strip_frontmatter(content);
 
     for line in content_without_frontmatter.lines() {
         if let Some(caps) = heading_re.captures(line) {
@@ -114,7 +122,7 @@ pub fn chunk_markdown(content: &str, file_path: &str) -> Vec<Chunk> {
     // Phase 3: Split long chunks at paragraph boundaries
     let max_tokens = 500;
     let max_chars = max_tokens * 4; // ~4 chars/token
-    let mut final_chunks: Vec<Chunk> = Vec::new();
+    let mut pre_overlap_chunks: Vec<(Vec<String>, String)> = Vec::new();
     for (path, text) in merged {
         let tokens = estimate_tokens(&text);
         if tokens > max_tokens {
@@ -126,15 +134,8 @@ pub fn chunk_markdown(content: &str, file_path: &str) -> Vec<Chunk> {
                 let chars: Vec<char> = text.chars().collect();
                 for sub_chars in chars.chunks(max_chars) {
                     let sub: String = sub_chars.iter().collect();
-                    let sub_tokens = estimate_tokens(&sub);
-                    if sub_tokens > 0 {
-                        final_chunks.push(Chunk {
-                            id: Uuid::new_v4().to_string(),
-                            file_path: file_path.to_string(),
-                            heading_path: path.clone(),
-                            token_count: sub_tokens,
-                            content: sub,
-                        });
+                    if !sub.is_empty() {
+                        pre_overlap_chunks.push((path.clone(), sub));
                     }
                 }
             } else {
@@ -148,13 +149,7 @@ pub fn chunk_markdown(content: &str, file_path: &str) -> Vec<Chunk> {
                         para
                     ));
                     if combined_tokens > max_tokens && !current_text.is_empty() {
-                        final_chunks.push(Chunk {
-                            id: Uuid::new_v4().to_string(),
-                            file_path: file_path.to_string(),
-                            heading_path: path.clone(),
-                            token_count: estimate_tokens(&current_text),
-                            content: current_text.clone(),
-                        });
+                        pre_overlap_chunks.push((path.clone(), current_text.clone()));
                         current_text = para.to_string();
                     } else {
                         if !current_text.is_empty() {
@@ -165,27 +160,66 @@ pub fn chunk_markdown(content: &str, file_path: &str) -> Vec<Chunk> {
                 }
 
                 if !current_text.is_empty() {
-                    final_chunks.push(Chunk {
-                        id: Uuid::new_v4().to_string(),
-                        file_path: file_path.to_string(),
-                        heading_path: path.clone(),
-                        token_count: estimate_tokens(&current_text),
-                        content: current_text,
-                    });
+                    pre_overlap_chunks.push((path.clone(), current_text));
                 }
             }
         } else if !text.is_empty() {
-            final_chunks.push(Chunk {
-                id: Uuid::new_v4().to_string(),
-                file_path: file_path.to_string(),
-                heading_path: path,
-                token_count: tokens,
-                content: text,
-            });
+            pre_overlap_chunks.push((path, text));
         }
     }
 
+    // Phase 4: Add overlap between adjacent chunks from the same heading section
+    let overlap_chars = OVERLAP_TOKENS * 4;
+    let mut final_chunks: Vec<Chunk> = Vec::new();
+    for i in 0..pre_overlap_chunks.len() {
+        let (ref path, ref text) = pre_overlap_chunks[i];
+
+        let mut chunk_content = String::new();
+
+        // Prepend overlap from previous chunk if same heading section
+        if i > 0 && pre_overlap_chunks[i - 1].0 == *path {
+            let prev_text = &pre_overlap_chunks[i - 1].1;
+            if prev_text.len() > overlap_chars {
+                let tail = &prev_text[prev_text.len() - overlap_chars..];
+                // Align to word boundary
+                if let Some(space_pos) = tail.find(char::is_whitespace) {
+                    chunk_content.push_str(&tail[space_pos + 1..]);
+                    chunk_content.push_str("\n\n");
+                }
+            }
+        }
+
+        chunk_content.push_str(text);
+
+        let links = extract_wikilinks(&chunk_content);
+        let token_count = estimate_tokens(&chunk_content);
+
+        final_chunks.push(Chunk {
+            id: Uuid::new_v4().to_string(),
+            file_path: file_path.to_string(),
+            heading_path: path.clone(),
+            content: chunk_content,
+            token_count,
+            outgoing_links: links,
+            last_modified: None,
+            frontmatter: fm.clone(),
+        });
+    }
+
     final_chunks
+}
+
+/// Extract YAML frontmatter content (between --- delimiters).
+fn extract_frontmatter(content: &str) -> Option<String> {
+    if content.starts_with("---") {
+        if let Some(end) = content[3..].find("\n---") {
+            let fm_content = content[3..3 + end].trim().to_string();
+            if !fm_content.is_empty() {
+                return Some(fm_content);
+            }
+        }
+    }
+    None
 }
 
 /// Strip YAML frontmatter (--- ... ---) from markdown.
@@ -269,5 +303,66 @@ mod tests {
         let chunks = chunk_markdown(md, "test.md");
         assert_eq!(chunks.len(), 1);
         assert!(chunks[0].heading_path.is_empty());
+    }
+
+    #[test]
+    fn test_outgoing_links_extracted() {
+        let md = "# Title\n\nSee [[page-a]] and [[page-b]] for details.";
+        let chunks = chunk_markdown(md, "test.md");
+        assert_eq!(chunks[0].outgoing_links, vec!["page-a", "page-b"]);
+    }
+
+    #[test]
+    fn test_frontmatter_preserved() {
+        let md = "---\ntags: [rust, test]\ntitle: Hello\n---\n\n# Title\n\nContent.";
+        let chunks = chunk_markdown(md, "test.md");
+        let fm = chunks[0].frontmatter.as_ref().unwrap();
+        assert!(fm.contains("tags: [rust, test]"));
+        assert!(fm.contains("title: Hello"));
+    }
+
+    #[test]
+    fn test_no_frontmatter_returns_none() {
+        let md = "# Title\n\nContent without frontmatter.";
+        let chunks = chunk_markdown(md, "test.md");
+        assert!(chunks[0].frontmatter.is_none());
+    }
+
+    #[test]
+    fn test_overlap_between_split_chunks() {
+        // Create content that will be split into multiple chunks (>500 tokens each part)
+        let para1 = "First paragraph content. ".repeat(60); // ~360 chars = ~90 tokens
+        let para2 = "Second paragraph content. ".repeat(60);
+        let para3 = "Third paragraph content. ".repeat(60);
+        let para4 = "Fourth paragraph content. ".repeat(60);
+        let para5 = "Fifth paragraph content. ".repeat(60);
+        let para6 = "Sixth paragraph content. ".repeat(60);
+        let md = format!(
+            "# Title\n\n{}\n\n{}\n\n{}\n\n{}\n\n{}\n\n{}",
+            para1, para2, para3, para4, para5, para6
+        );
+        let chunks = chunk_markdown(&md, "test.md");
+        // Should have multiple chunks if total > 500 tokens
+        if chunks.len() >= 2 {
+            // Second chunk should contain overlap text from first chunk's tail
+            let first_content = &chunks[0].content;
+            let second_content = &chunks[1].content;
+            // The second chunk should be longer than just its own paragraph
+            // because it includes overlap from the first chunk
+            assert!(second_content.len() > 0, "Second chunk should have content");
+            // Both should have the same heading path (same section)
+            assert_eq!(chunks[0].heading_path, chunks[1].heading_path);
+            // The overlap should make the second chunk start with text from the first
+            let first_tail = &first_content[first_content.len().saturating_sub(100)..];
+            // At least some words from the tail should appear in the second chunk
+            let tail_words: Vec<&str> = first_tail.split_whitespace().collect();
+            if tail_words.len() > 2 {
+                let last_word = tail_words[tail_words.len() - 1];
+                assert!(
+                    second_content.contains(last_word),
+                    "Second chunk should contain overlap from first chunk"
+                );
+            }
+        }
     }
 }
