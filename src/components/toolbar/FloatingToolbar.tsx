@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Editor } from "@tiptap/react";
 
+import { NodeSelection } from "@tiptap/pm/state";
 import { CellSelection } from "@tiptap/pm/tables";
 import { BubbleMenu } from "@tiptap/react/menus";
 
@@ -161,10 +162,13 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
   );
 
   const shouldShow = useCallback(() => {
+    const { selection } = editor.state;
     // Hide for CellSelection — TableToolbar handles table multi-cell selection
-    if (editor.state.selection instanceof CellSelection) return false;
+    if (selection instanceof CellSelection) return false;
+    // Hide for NodeSelection — atom NodeViews (math, mermaid, image) have their own UI
+    if (selection instanceof NodeSelection) return false;
     // Default BubbleMenu behavior for text selections
-    const { from, to } = editor.state.selection;
+    const { from, to } = selection;
     return from !== to;
   }, [editor]);
 
