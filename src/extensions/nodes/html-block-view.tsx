@@ -33,12 +33,11 @@ const SANITIZE_CONFIG = {
     "width",
     "height",
     "href",
-    "target",
     "class",
-    "style",
     "colspan",
     "rowspan",
   ],
+  FORBID_ATTR: ["style", "onerror", "onload", "onclick"],
 };
 
 export function HtmlBlockView({
