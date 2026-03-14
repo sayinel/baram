@@ -119,10 +119,10 @@ describe("§6.2 AI Slash Commands (post-UX refactor)", () => {
         item.category.toLowerCase().includes(q) ||
         item.description.toLowerCase().includes(q),
     );
-    // 7 built-in AI + 1 custom (category "AI")
+    // 7 built-in AI + 1 AI Template + 1 custom (category "AI")
     // + "Mermaid Diagram" (label "mermaid" contains "ai")
     // + "Toggle" (description "Collapsible details block" — "details" contains "ai")
-    expect(filtered.length).toBe(10);
+    expect(filtered.length).toBe(11);
   });
 
   test("custom AI commands are still included", () => {

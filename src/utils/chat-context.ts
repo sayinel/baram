@@ -10,7 +10,8 @@ export type ReferenceType =
   | "@current"
   | "@file"
   | "@folder"
-  | "@selection";
+  | "@selection"
+  | "@vault";
 
 export interface ResolvedReference {
   content: string;
@@ -31,7 +32,8 @@ export function buildContextPrompt(
 
 export function parseReferences(text: string): string[] {
   const refs: string[] = [];
-  const regex = /@(selection|current|clipboard|file:[^\s]+|folder:[^\s]+)/g;
+  const regex =
+    /@(selection|current|clipboard|vault|file:[^\s]+|folder:[^\s]+)/g;
   let match;
   while ((match = regex.exec(text)) !== null) {
     refs.push(`@${match[1]}`);
@@ -84,6 +86,16 @@ export function resolveReference(ref: string): null | ResolvedReference {
     };
   }
 
+  // @vault — placeholder that signals vault-wide knowledge search
+  // Actual content is resolved asynchronously via resolveVaultReference()
+  if (ref === "@vault") {
+    return {
+      type: "@vault",
+      label: "Vault Search",
+      content: "[vault search pending]",
+    };
+  }
+
   // @folder:path — collect all file paths in the folder
   if (ref.startsWith("@folder:")) {
     const dirPath = ref.slice(8);
@@ -131,6 +143,28 @@ function collectAllFiles(entries: FileEntry[], result: string[]): void {
       result.push(entry.path);
     }
   }
+}
+
+/** Korean keyword heuristics that suggest a vault-wide knowledge query */
+const VAULT_QUERY_KEYWORDS = [
+  "이 프로젝트에서",
+  "어디에",
+  "찾아줘",
+  "검색해",
+  "vault에서",
+  "전체에서",
+  "프로젝트 전체",
+];
+
+/**
+ * Detect whether a message implies a vault-wide knowledge Q&A query.
+ * Returns true if @vault reference is present or Korean keyword heuristics match.
+ */
+export function isVaultQuery(text: string): boolean {
+  const refs = parseReferences(text);
+  if (refs.includes("@vault")) return true;
+  const lower = text.toLowerCase();
+  return VAULT_QUERY_KEYWORDS.some((kw) => lower.includes(kw));
 }
 
 /** Collect all file paths under a directory from the file tree */

@@ -1244,6 +1244,7 @@ body {
 
 /* §5.3 Math Block — atom:true, selected=textarea+preview, unselected=KaTeX only */
 .tiptap .math-block {
+  position: relative;
   margin: 1em 0;
 }
 
@@ -2741,6 +2742,15 @@ body {
   height: 6px;
   background: var(--color-accent);
   border-radius: 50%;
+}
+
+.status-privacy {
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--bg-primary, #1a1b26);
+  background: var(--accent-warning, #f59e0b);
+  border-radius: 3px;
 }
 
 /* ============================================
@@ -5573,7 +5583,7 @@ body {
   z-index: 30;
   display: flex;
   gap: 2px;
-  opacity: 0.4;
+  opacity: 0.7;
   transition: opacity 0.15s;
 }
 
@@ -5596,8 +5606,8 @@ body {
 }
 
 .block-handle-btn:hover {
-  color: var(--color-text-secondary);
-  background-color: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-tertiary, var(--color-bg-secondary));
 }
 
 .block-handle-menu {
@@ -5632,6 +5642,287 @@ body {
   height: 1px;
   margin: 4px 0;
   background-color: var(--color-border-light);
+}
+
+/* §11.2.3 BlockHandle AI submenu */
+.block-handle-ai-trigger {
+  position: relative;
+}
+
+.block-handle-ai-item {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between !important;
+}
+
+.block-handle-ai-arrow {
+  margin-left: 8px;
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+}
+
+.block-handle-ai-submenu {
+  position: absolute;
+  top: -4px;
+  left: 100%;
+  z-index: 50;
+  min-width: 150px;
+  padding: 4px 0;
+  background-color: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
+}
+
+/* §11.2.3 NodeView AI button — shared by math, code, table */
+.nodeview-ai-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 10;
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-light);
+  border-radius: 4px;
+  opacity: 0;
+  transition:
+    opacity 0.15s,
+    background-color 0.15s;
+}
+
+/* Show on hover of parent block */
+.math-block:hover .nodeview-ai-btn,
+.code-block-wrapper:hover .code-block-ai-btn {
+  opacity: 1;
+}
+
+.nodeview-ai-btn:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-tertiary);
+  border-color: var(--color-border);
+}
+
+/* Code block AI button: positioned in header, not absolute */
+.code-block-ai-btn {
+  position: static;
+  margin-left: auto;
+  opacity: 0;
+}
+
+.code-block-header {
+  display: flex;
+  align-items: center;
+}
+
+/* Table toolbar AI button styling */
+.table-toolbar-btn-ai {
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+/* NodeView AI dropdown menu (DOM-based) */
+.nodeview-ai-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 150px;
+  padding: 4px 0;
+  background-color: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
+}
+
+.nodeview-ai-menu-item {
+  display: block;
+  width: 100%;
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+}
+
+.nodeview-ai-menu-item:hover {
+  background-color: var(--color-bg-secondary);
+}
+
+.nodeview-ai-menu-separator {
+  height: 1px;
+  margin: 4px 0;
+  background-color: var(--color-border-light);
+}
+
+/* §11.2.3 Block AI Diff Panel */
+.block-ai-diff-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgb(0 0 0 / 25%);
+}
+
+.block-ai-diff-panel {
+  position: fixed;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 90vw);
+  max-height: 60vh;
+  overflow: hidden;
+  font-size: 0.85rem;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgb(0 0 0 / 18%);
+}
+
+.block-ai-diff-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.block-ai-diff-streaming {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--color-accent);
+  animation: block-ai-diff-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes block-ai-diff-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.block-ai-diff-content {
+  flex: 1;
+  padding: 12px;
+  overflow-y: auto;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+.block-ai-diff-equal {
+  color: var(--color-text-primary);
+}
+
+.block-ai-diff-delete {
+  color: #ef4444;
+  text-decoration: line-through;
+  background: rgb(239 68 68 / 8%);
+  border-radius: 2px;
+}
+
+.block-ai-diff-insert {
+  color: #22c55e;
+  background: rgb(34 197 94 / 8%);
+  border-radius: 2px;
+}
+
+.block-ai-diff-original {
+  color: var(--color-text-muted);
+}
+
+.block-ai-diff-error {
+  padding: 8px 12px;
+  font-size: 0.78rem;
+  color: #ef4444;
+  background: rgb(239 68 68 / 6%);
+}
+
+.block-ai-diff-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 8px 12px;
+  border-top: 1px solid var(--color-border-light);
+}
+
+.block-ai-diff-btn {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 5px 14px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.block-ai-diff-btn kbd {
+  padding: 1px 4px;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.7rem;
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border-light);
+  border-radius: 3px;
+  opacity: 0.7;
+}
+
+.block-ai-diff-btn-reject {
+  color: var(--color-text-secondary);
+  background: var(--color-bg-secondary);
+}
+
+.block-ai-diff-btn-reject:hover {
+  background: var(--color-bg-tertiary);
+}
+
+.block-ai-diff-btn-accept {
+  color: #fff;
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.block-ai-diff-btn-accept:hover {
+  opacity: 0.9;
+}
+
+/* Callout AI button */
+.callout-ai-btn {
+  padding: 2px 8px;
+  margin-left: auto;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--color-border-light);
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.callout:hover .callout-ai-btn {
+  opacity: 1;
+}
+
+.callout-ai-btn:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-secondary);
 }
 
 /* ============================================
@@ -14035,6 +14326,157 @@ body {
 .keybinding-reset-all {
   margin-top: 16px;
   text-align: center;
+}
+
+/* ============================================
+   §11.8 Smart Template Dialog
+   ============================================ */
+
+.smart-template-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 350;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 40%);
+}
+
+.smart-template-dialog {
+  width: 520px;
+  max-width: 92vw;
+  max-height: 80vh;
+  overflow-y: auto;
+  background-color: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgb(0 0 0 / 20%);
+}
+
+.smart-template-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.smart-template-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.smart-template-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  font-size: 1.2rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+}
+
+.smart-template-close:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-secondary);
+}
+
+.smart-template-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  padding: 16px 20px;
+}
+
+.smart-template-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  text-align: left;
+  cursor: pointer;
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-light);
+  border-radius: 8px;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s;
+}
+
+.smart-template-card:hover {
+  background-color: var(--color-bg-tertiary, var(--color-bg-secondary));
+  border-color: var(--color-accent, #3b82f6);
+}
+
+.smart-template-card-name {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.smart-template-card-sections {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.smart-template-custom {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--color-border-light);
+}
+
+.smart-template-custom-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.smart-template-custom-row {
+  display: flex;
+  gap: 8px;
+}
+
+.smart-template-custom-input {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  color: var(--color-text-primary);
+  outline: none;
+  background-color: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+.smart-template-custom-input:focus {
+  border-color: var(--color-accent, #3b82f6);
+}
+
+.smart-template-custom-btn {
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #fff;
+  cursor: pointer;
+  background-color: var(--color-accent, #3b82f6);
+  border: none;
+  border-radius: 6px;
+}
+
+.smart-template-custom-btn:hover {
+  opacity: 0.9;
+}
+
+.smart-template-custom-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
 }
 
 /* §a11y: Visible focus indicator for keyboard navigation */

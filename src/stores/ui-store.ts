@@ -70,6 +70,7 @@ interface UIState {
   sidebarWidth: number;
   skillGeneratorDialogOpen: boolean;
   skillTestDialogOpen: boolean;
+  smartTemplateDialogOpen: boolean;
   toggleAbout: () => void;
   toggleCommandPalette: () => void;
   toggleQuickCapture: () => void;
@@ -79,6 +80,7 @@ interface UIState {
   toggleSidebar: () => void;
   toggleSkillGeneratorDialog: () => void;
   toggleSkillTestDialog: () => void;
+  toggleSmartTemplateDialog: () => void;
   triggerContentReload: (cursorEnd?: boolean) => void;
 }
 
@@ -97,6 +99,7 @@ export const useUIStore = create<UIState>((set) => ({
   exportFormat: "html" as ExportFormat,
   skillGeneratorDialogOpen: false,
   skillTestDialogOpen: false,
+  smartTemplateDialogOpen: false,
   pendingApplyContent: null,
   quickCaptureOpen: false,
   quickCaptureType: "note" as const,
@@ -139,6 +142,11 @@ export const useUIStore = create<UIState>((set) => ({
 
   toggleSkillTestDialog: () =>
     set((state) => ({ skillTestDialogOpen: !state.skillTestDialogOpen })),
+
+  toggleSmartTemplateDialog: () =>
+    set((state) => ({
+      smartTemplateDialogOpen: !state.smartTemplateDialogOpen,
+    })),
 
   toggleQuickCapture: () =>
     set((state) => ({ quickCaptureOpen: !state.quickCaptureOpen })),

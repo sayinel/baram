@@ -135,6 +135,10 @@ pub fn build_menu(
         .build(app)?;
 
     // Right panels
+    let view_inline_ai = MenuItemBuilder::new("Inline AI")
+        .id("view_inline_ai")
+        .accelerator("CmdOrCtrl+J")
+        .build(app)?;
     let view_ai_chat = MenuItemBuilder::new("AI Chat")
         .id("view_ai_chat")
         .accelerator("CmdOrCtrl+Shift+A")
@@ -159,6 +163,7 @@ pub fn build_menu(
         .item(&view_version_history)
         .item(&view_skills_gallery)
         .separator()
+        .item(&view_inline_ai)
         .item(&view_ai_chat)
         .separator()
         .item(&view_fullscreen)

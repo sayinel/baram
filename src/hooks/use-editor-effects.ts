@@ -56,8 +56,13 @@ export function useEditorEffects({
         // Selection exists — show diff preview via AI Diff plugin
         inlineAI.applyContent(content);
       } else {
-        // No selection — insert at cursor directly
-        editor.chain().focus().insertContentAt(from, content).run();
+        // No selection — parse markdown and insert as ProseMirror nodes
+        const doc = markdownToProsemirror(content, editor.schema);
+        const slice = doc.content;
+        editor.view.dispatch(
+          editor.state.tr.insert(from, slice).scrollIntoView(),
+        );
+        editor.view.focus();
       }
       useUIStore.getState().setPendingApplyContent(null);
     });

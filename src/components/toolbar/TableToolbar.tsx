@@ -12,6 +12,7 @@ import type { Editor } from "@tiptap/react";
 import { CellSelection } from "@tiptap/pm/tables";
 
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
+import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
 
 // Mono-style inline SVG icons (16×16, stroke-based)
 const ICON_SIZE = 16;
@@ -376,6 +377,21 @@ export function TableToolbar({ editor }: TableToolbarProps) {
         title="Copy as HTML"
       >
         <CopyHtmlIcon />
+      </button>
+      <div className="table-toolbar-separator" />
+      <button
+        className="table-toolbar-btn table-toolbar-btn-ai"
+        onClick={(e) => {
+          const table = findTable(editor);
+          if (!table || !table.node) return;
+          const tempDoc = editor.schema.nodes.doc.create(null, [table.node]);
+          const md = prosemirrorToMarkdown(tempDoc).trim();
+          if (!md) return;
+          showNodeViewAIMenu(e.currentTarget, "table", md, editor, table.pos);
+        }}
+        title="AI Commands"
+      >
+        AI
       </button>
       <div className="table-toolbar-separator" />
       <button
