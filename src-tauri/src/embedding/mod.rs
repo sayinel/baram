@@ -1,4 +1,6 @@
 // §11.4 Knowledge Q&A — Embedding module
+// Many items are not yet wired into IPC commands; suppress until editor integration.
+#![allow(dead_code)]
 
 pub mod chunker;
 pub mod gemini_embed;
