@@ -106,6 +106,24 @@
 - **권장 수정**: non-MD 조기 return 경로에도 캐시 정리 로직 포함
 - **재검토 조건**: non-MD 파일이 많은 워크스페이스에서 메모리 증가 관찰 시
 
+### 🟡 MEDIUM — formatError 유틸 소비처 미연결
+
+- **위치**: `src/utils/format-error.ts:44`
+- **문제**: `formatError(error: unknown): string` 함수가 export되어 있으나 임포트하는 파일이 없음 (5개 파일이 `formatAIError`만 사용)
+- **권장 수정**: `catch(e) { ... e.toString() }` 패턴을 `formatError(e)`로 교체
+- **재검토 조건**: 에러 핸들링 리팩토링 시
+
+### 🟡 MEDIUM — GraphView cytoscape.use() 중복 호출 경고 가능성
+
+- **위치**: `src/components/sidebar/GraphView.tsx:79`
+- **문제**: `GraphView` 언마운트/재마운트 시 `cytoscape.use(fcose)` 재호출 — 버전에 따라 console 경고 발생 가능
+- **권장 수정**: module-level `fcoseRegistered` 플래그로 guard
+  ```typescript
+  let fcoseRegistered = false;
+  if (!fcoseRegistered) { cytoscape.use(fcose); fcoseRegistered = true; }
+  ```
+- **재검토 조건**: cytoscape 버전 업그레이드 시 또는 경고 실제 발생 시
+
 ---
 
 ## 파이프라인 설계 결정 보류 (C6 Backlog)
