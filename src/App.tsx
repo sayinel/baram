@@ -75,10 +75,12 @@ import { openFolder, useFileStore } from "./stores/file-store";
 import { useSettingsStore } from "./stores/settings-store";
 import { migrateFromLocalStorage } from "./stores/tauri-storage";
 import { useUIStore } from "./stores/ui-store";
+import { executeAICommand } from "./utils/ai-commands";
 import { mdOffsetToPmPos, pmPosToMdOffset } from "./utils/cursor-mapper";
 import { getLanguageForFile, isMarkdownFile } from "./utils/file-type";
 import { logger } from "./utils/logger";
 import { logAppReady } from "./utils/perf";
+import { buildTemplatePrompt } from "./utils/smart-templates";
 import "./App.css";
 
 // §8.4 Lazy-loaded components — split into separate chunks, loaded on first use
@@ -130,6 +132,11 @@ const GraphViewTab = lazy(() =>
 const SkillGeneratorDialog = lazy(() =>
   import("./components/ai/SkillGeneratorDialog").then((m) => ({
     default: m.SkillGeneratorDialog,
+  })),
+);
+const SmartTemplateDialog = lazy(() =>
+  import("./components/ai/SmartTemplateDialog").then((m) => ({
+    default: m.SmartTemplateDialog,
   })),
 );
 const SkillTestDialog = lazy(() =>
@@ -768,6 +775,7 @@ function App() {
         <HoverPreview />
         <SkillGeneratorDialogWrapper />
         <SkillTestDialogWrapper />
+        <SmartTemplateDialogWrapper editor={editor} />
         <QuickCaptureDialog />
       </Suspense>
       {tabSwitcherOpen && (
@@ -817,6 +825,36 @@ function SkillTestDialogWrapper() {
     <SkillTestDialog
       onClose={toggleSkillTestDialog}
       open={skillTestDialogOpen}
+    />
+  );
+}
+
+function SmartTemplateDialogWrapper({
+  editor,
+}: {
+  editor: null | ReturnType<typeof useEditor>;
+}) {
+  const { smartTemplateDialogOpen, toggleSmartTemplateDialog } = useUIStore();
+  const handleGenerate = useCallback(
+    (templateId: string) => {
+      if (!editor) return;
+      toggleSmartTemplateDialog();
+      const isCustom = templateId.startsWith("custom:");
+      const prompt = isCustom
+        ? templateId.slice("custom:".length)
+        : buildTemplatePrompt(templateId);
+      const systemPrompt = isCustom
+        ? "Generate a well-structured markdown document based on the user's description. Include headings, sections, and placeholder content."
+        : "Generate a complete markdown document based on the template structure. Fill each section with relevant placeholder content.";
+      void executeAICommand(editor, prompt, systemPrompt);
+    },
+    [editor, toggleSmartTemplateDialog],
+  );
+  return (
+    <SmartTemplateDialog
+      isOpen={smartTemplateDialogOpen}
+      onClose={toggleSmartTemplateDialog}
+      onGenerate={handleGenerate}
     />
   );
 }
