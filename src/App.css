@@ -5643,6 +5643,36 @@ body {
   background-color: var(--color-border-light);
 }
 
+/* §11.2.3 BlockHandle AI submenu */
+.block-handle-ai-trigger {
+  position: relative;
+}
+
+.block-handle-ai-item {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between !important;
+}
+
+.block-handle-ai-arrow {
+  margin-left: 8px;
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+}
+
+.block-handle-ai-submenu {
+  position: absolute;
+  top: -4px;
+  left: 100%;
+  z-index: 50;
+  min-width: 150px;
+  padding: 4px 0;
+  background-color: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
+}
+
 /* ============================================
    §4.8 Context Menu
    ============================================ */
