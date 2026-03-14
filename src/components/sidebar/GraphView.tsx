@@ -3,9 +3,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Core, EventObject, StylesheetStyle } from "cytoscape";
 
-import cytoscape from "cytoscape";
-import fcose from "cytoscape-fcose";
-
 import { getLinkIndex, readFile, refreshIndex } from "../../ipc/invoke";
 import { isGraphTab, useEditorStore } from "../../stores/editor-store";
 import { useFileStore } from "../../stores/file-store";
@@ -19,9 +16,6 @@ import {
   toGraphElements,
 } from "./graph-utils";
 import { GraphSettingsPanel } from "./GraphSettingsPanel";
-
-// Register fcose layout
-cytoscape.use(fcose);
 
 export function GraphView() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -68,23 +62,41 @@ export function GraphView() {
     useEditorStore.getState().openGraphTab();
   }, []);
 
-  // Effect 1: Create Cytoscape instance
+  // Effect 1: Create Cytoscape instance (lazy-loaded to keep it out of the initial bundle)
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const cy = cytoscape({
-      container: containerRef.current,
-      style: buildGraphStyle({ linkThickness, showArrows, colorByNamespace }),
-      layout: { name: "grid" },
-      minZoom: 0.1,
-      maxZoom: 5,
-      wheelSensitivity: 0.3,
-    });
+    let cy: Core | null = null;
+    let destroyed = false;
 
-    cyRef.current = cy;
+    (async () => {
+      const [{ default: cytoscape }, { default: fcose }] = await Promise.all([
+        import("cytoscape"),
+        import("cytoscape-fcose"),
+      ]);
+
+      // Register fcose layout (idempotent — safe to call multiple times)
+      cytoscape.use(fcose);
+
+      if (destroyed || !containerRef.current) return;
+
+      cy = cytoscape({
+        container: containerRef.current,
+        style: buildGraphStyle({ linkThickness, showArrows, colorByNamespace }),
+        layout: { name: "grid" },
+        minZoom: 0.1,
+        maxZoom: 5,
+        wheelSensitivity: 0.3,
+      });
+
+      cyRef.current = cy;
+    })();
 
     return () => {
-      cy.destroy();
+      destroyed = true;
+      if (cy) {
+        cy.destroy();
+      }
       cyRef.current = null;
     };
     // Intentionally mount-only: creates the Cytoscape instance once. Style

@@ -15,6 +15,7 @@ import {
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 
 import { parseKaTeXError } from "../../utils/katex-error";
+import { logger } from "../../utils/logger";
 
 // Lazily loaded katex — populated on first use, null until then
 let _katex: null | typeof KatexType = null;
@@ -28,10 +29,10 @@ function loadKatex(): void {
     .catch((err) => {
       _katexRetries++;
       if (_katexRetries <= MAX_KATEX_RETRIES) {
-        console.error(`Failed to load KaTeX (attempt ${_katexRetries}):`, err);
+        logger.error(`Failed to load KaTeX (attempt ${_katexRetries}):`, err);
         setTimeout(loadKatex, 2000 * _katexRetries);
       } else {
-        console.error("KaTeX failed to load after max retries:", err);
+        logger.error("KaTeX failed to load after max retries:", err);
       }
     });
 }
