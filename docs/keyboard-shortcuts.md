@@ -105,6 +105,7 @@ Complete list of keyboard shortcuts available in Baram.
 
 | Action | macOS | Windows / Linux |
 |--------|-------|-----------------|
+| Inline AI Prompt | `Cmd+J` | `Ctrl+J` |
 | AI Chat Panel | `Cmd+Shift+A` | `Ctrl+Shift+A` |
 | Skill Test | `Cmd+Shift+T` | `Ctrl+Shift+T` |
 
