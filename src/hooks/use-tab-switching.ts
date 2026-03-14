@@ -31,6 +31,8 @@ import { isMarkdownFile } from "../utils/file-type";
 
 interface UseTabSwitchingParams {
   editor: Editor | null;
+  /** Per-tab EditorState cache — owned by useSourceMode, shared here */
+  editorStateCache: React.MutableRefObject<Map<string, EditorState>>;
   isNavBackForwardRef: React.RefObject<boolean>;
   isSourceMode: boolean;
   setFindReplaceMode: (mode: "find" | "replace") => void;
@@ -43,6 +45,7 @@ interface UseTabSwitchingParams {
 
 export function useTabSwitching({
   editor,
+  editorStateCache,
   isNavBackForwardRef,
   isSourceMode,
   setFindReplaceMode,
@@ -56,8 +59,6 @@ export function useTabSwitching({
 
   // Track previously active tab to save its content on switch
   const prevTabRef = useRef<null | string>(null);
-  // Per-tab EditorState cache — preserves undo/redo history across tab switches
-  const editorStateCache = useRef(new Map<string, EditorState>());
   // Per-tab scroll position cache — preserves view position across tab switches
   const scrollTopCache = useRef(new Map<string, number>());
   // §perf-large-file B2/C2: Loading state for async parse + progressive loading
@@ -304,6 +305,4 @@ export function useTabSwitching({
     // tabs, openFiles, etc.) are read from store state or refs to avoid
     // re-registering the effect on every keystroke.
   }, [activeTabId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  return { editorStateCache };
 }

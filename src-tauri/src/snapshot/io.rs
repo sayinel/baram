@@ -105,7 +105,8 @@ fn scan_dir_recursive(
         if name.starts_with('.') {
             continue;
         }
-        const SKIP_DIRS: &[&str] = &[
+        // Build/cache dirs excluded from snapshot scan (hidden dirs already filtered above).
+        const SKIP_BUILD_DIRS: &[&str] = &[
             "node_modules",
             "target",
             "build",
@@ -113,7 +114,7 @@ fn scan_dir_recursive(
             "__pycache__",
             ".next",
         ];
-        if path.is_dir() && SKIP_DIRS.contains(&name.as_str()) {
+        if path.is_dir() && SKIP_BUILD_DIRS.contains(&name.as_str()) {
             continue;
         }
 
