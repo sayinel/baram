@@ -21,7 +21,7 @@ const OVERLAP_TOKENS: usize = 50;
 
 /// Estimate token count (~4 chars per token).
 fn estimate_tokens(text: &str) -> usize {
-    (text.len() + 3) / 4
+    text.len().div_ceil(4)
 }
 
 /// Extract wikilinks from markdown content.
@@ -211,9 +211,9 @@ pub fn chunk_markdown(content: &str, file_path: &str) -> Vec<Chunk> {
 
 /// Extract YAML frontmatter content (between --- delimiters).
 fn extract_frontmatter(content: &str) -> Option<String> {
-    if content.starts_with("---") {
-        if let Some(end) = content[3..].find("\n---") {
-            let fm_content = content[3..3 + end].trim().to_string();
+    if let Some(rest) = content.strip_prefix("---") {
+        if let Some(end) = rest.find("\n---") {
+            let fm_content = rest[..end].trim().to_string();
             if !fm_content.is_empty() {
                 return Some(fm_content);
             }
@@ -224,11 +224,11 @@ fn extract_frontmatter(content: &str) -> Option<String> {
 
 /// Strip YAML frontmatter (--- ... ---) from markdown.
 fn strip_frontmatter(content: &str) -> &str {
-    if content.starts_with("---") {
-        if let Some(end) = content[3..].find("\n---") {
-            let after = end + 3 + 4; // skip past closing ---
-            if after < content.len() {
-                return content[after..].trim_start_matches('\n');
+    if let Some(rest) = content.strip_prefix("---") {
+        if let Some(end) = rest.find("\n---") {
+            let after = end + 4; // skip past "\n---"
+            if after < rest.len() {
+                return rest[after..].trim_start_matches('\n');
             }
             return "";
         }
@@ -349,7 +349,10 @@ mod tests {
             let second_content = &chunks[1].content;
             // The second chunk should be longer than just its own paragraph
             // because it includes overlap from the first chunk
-            assert!(second_content.len() > 0, "Second chunk should have content");
+            assert!(
+                !second_content.is_empty(),
+                "Second chunk should have content"
+            );
             // Both should have the same heading path (same section)
             assert_eq!(chunks[0].heading_path, chunks[1].heading_path);
             // The overlap should make the second chunk start with text from the first
