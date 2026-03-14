@@ -121,6 +121,25 @@ function handleAction(action: AIAction, blockText: string, editor: Editor) {
         );
       }
     });
+  } else if (action.id === "convert-diagram") {
+    showPrompt("Target diagram type:", "", {
+      presets: [
+        "flowchart",
+        "sequence",
+        "classDiagram",
+        "stateDiagram",
+        "erDiagram",
+      ],
+    }).then((type) => {
+      if (type) {
+        executeAICommand(
+          editor,
+          blockText,
+          action.systemPrompt.replace("{language}", type),
+          { afterSelection: true },
+        );
+      }
+    });
   } else {
     executeAICommand(editor, blockText, action.systemPrompt, {
       afterSelection: true,

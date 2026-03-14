@@ -21,6 +21,8 @@ import {
   Quote,
 } from "lucide-react";
 
+import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
+
 /** Callout type definition with Lucide icon and display label */
 interface CalloutTypeDef {
   color: string;
@@ -175,6 +177,19 @@ export function CalloutView({ editor, node, updateAttributes }: NodeViewProps) {
           </span>
         )}
 
+        <button
+          className="callout-ai-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            const text = node.textContent || "";
+            if (!text.trim()) return;
+            showNodeViewAIMenu(e.currentTarget, "text", text, editor);
+          }}
+          title="AI Commands"
+          type="button"
+        >
+          AI
+        </button>
         <button
           className="callout-collapse-btn"
           onClick={toggleCollapsed}

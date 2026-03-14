@@ -95,6 +95,14 @@ describe("getBlockContentMode", () => {
     expect(getBlockContentMode(mockNode("bulletList", ""))).toBe("text");
   });
 
+  it("returns 'diagram' for mermaidBlock", () => {
+    expect(getBlockContentMode(mockNode("mermaidBlock", ""))).toBe("diagram");
+  });
+
+  it("returns 'image' for image", () => {
+    expect(getBlockContentMode(mockNode("image", ""))).toBe("image");
+  });
+
   it("returns 'text' for unknown types", () => {
     expect(getBlockContentMode(mockNode("someCustomBlock", ""))).toBe("text");
   });
@@ -163,5 +171,34 @@ describe("getBlockTextContent", () => {
   it("extracts blockquote text content", () => {
     const node = mockNode("blockquote", "A wise quote");
     expect(getBlockTextContent(node)).toBe("A wise quote");
+  });
+
+  it("extracts mermaid block code from attrs", () => {
+    const node = mockNode("mermaidBlock", "", {
+      code: "graph TD\n  A --> B",
+    });
+    expect(getBlockTextContent(node)).toBe("graph TD\n  A --> B");
+  });
+
+  it("falls back to textContent for mermaid without code attr", () => {
+    const node = mockNode("mermaidBlock", "flowchart LR\n  X --> Y", {});
+    expect(getBlockTextContent(node)).toBe("flowchart LR\n  X --> Y");
+  });
+
+  it("extracts image context from attrs", () => {
+    const node = mockNode("image", "", {
+      alt: "A cat",
+      title: "My cat photo",
+      src: "/images/cat.png",
+    });
+    const result = getBlockTextContent(node);
+    expect(result).toContain("Alt: A cat");
+    expect(result).toContain("Title: My cat photo");
+    expect(result).toContain("Source: /images/cat.png");
+  });
+
+  it("returns 'image' for image node with no attrs", () => {
+    const node = mockNode("image", "", { alt: "", title: "", src: "" });
+    expect(getBlockTextContent(node)).toBe("image");
   });
 });

@@ -155,12 +155,68 @@ const STRUCTURE_ACTIONS: AIAction[] = [
   },
 ];
 
+const DIAGRAM_ACTIONS: AIAction[] = [
+  {
+    id: "improve-diagram",
+    label: "Improve Diagram",
+    systemPrompt:
+      "Improve the following Mermaid diagram for clarity and readability. Output only the improved Mermaid code.",
+  },
+  {
+    id: "explain-diagram",
+    label: "Explain",
+    systemPrompt:
+      "Explain the following Mermaid diagram in plain language. Describe the flow, entities, and relationships.",
+  },
+  {
+    id: "add-nodes",
+    label: "Suggest Nodes",
+    systemPrompt:
+      "Suggest additional nodes or connections for the following Mermaid diagram. Output only the improved Mermaid code.",
+  },
+  {
+    id: "change-style",
+    label: "Change Style",
+    systemPrompt:
+      "Add styling (colors, shapes, line styles) to the following Mermaid diagram. Output only the styled Mermaid code.",
+  },
+  {
+    id: "convert-diagram",
+    label: "Convert Type",
+    systemPrompt:
+      "Convert the following Mermaid diagram to a {language} diagram type. Output only the converted Mermaid code.",
+  },
+];
+
+const IMAGE_ACTIONS: AIAction[] = [
+  {
+    id: "gen-alt",
+    label: "Generate Alt Text",
+    systemPrompt:
+      "Generate a concise, descriptive alt text for an image with this context. Output only the alt text.",
+  },
+  {
+    id: "gen-caption",
+    label: "Generate Caption",
+    systemPrompt:
+      "Write a descriptive caption for an image with this context. Output only the caption.",
+  },
+  {
+    id: "describe-image",
+    label: "Describe",
+    systemPrompt:
+      "Describe the content and context of this image based on available metadata. Provide a detailed description.",
+  },
+];
+
 const MODE_ACTIONS: Record<ContentMode, AIAction[]> = {
-  text: TEXT_ACTIONS,
   code: CODE_ACTIONS,
+  diagram: DIAGRAM_ACTIONS,
+  image: IMAGE_ACTIONS,
   math: MATH_ACTIONS,
-  table: TABLE_ACTIONS,
   structure: STRUCTURE_ACTIONS,
+  table: TABLE_ACTIONS,
+  text: TEXT_ACTIONS,
 };
 
 export function getActionsForMode(mode: ContentMode): AIAction[] {

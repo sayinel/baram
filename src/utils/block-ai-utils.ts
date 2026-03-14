@@ -11,6 +11,8 @@ export function getBlockContentMode(node: PmNode): ContentMode {
   if (typeName === "codeBlock") return "code";
   if (typeName === "mathBlock" || typeName === "mathInline") return "math";
   if (typeName === "table") return "table";
+  if (typeName === "mermaidBlock") return "diagram";
+  if (typeName === "image") return "image";
   if (typeName === "heading") return "structure";
 
   return "text";
@@ -38,6 +40,23 @@ export function getBlockTextContent(node: PmNode): string {
   // Table: serialize to simple markdown-like representation
   if (typeName === "table") {
     return serializeTableNode(node);
+  }
+
+  // MermaidBlock: diagram code stored in attrs.code
+  if (typeName === "mermaidBlock") {
+    return (node.attrs.code as string) || node.textContent || "";
+  }
+
+  // Image: build context from alt, title, src
+  if (typeName === "image") {
+    const alt = (node.attrs.alt as string) || "";
+    const title = (node.attrs.title as string) || "";
+    const src = (node.attrs.src as string) || "";
+    const parts: string[] = [];
+    if (alt) parts.push(`Alt: ${alt}`);
+    if (title) parts.push(`Title: ${title}`);
+    if (src) parts.push(`Source: ${src}`);
+    return parts.join("\n") || "image";
   }
 
   // Default: textContent
