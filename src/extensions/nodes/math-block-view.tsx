@@ -279,6 +279,7 @@ export function MathBlockView({
             className="nodeview-ai-btn"
             contentEditable={false}
             onClick={handleAIClick}
+            onMouseDown={(e) => e.stopPropagation()}
             title="AI Commands"
           >
             AI

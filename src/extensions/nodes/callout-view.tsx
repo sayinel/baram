@@ -192,6 +192,7 @@ export function CalloutView({
             if (typeof pos !== "number") return;
             showNodeViewAIMenu(e.currentTarget, "text", text, editor, pos);
           }}
+          onMouseDown={(e) => e.stopPropagation()}
           title="AI Commands"
           type="button"
         >

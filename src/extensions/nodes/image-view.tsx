@@ -199,6 +199,7 @@ export function ImageView({
                   pos,
                 );
               }}
+              onMouseDown={(e) => e.stopPropagation()}
               type="button"
             >
               AI

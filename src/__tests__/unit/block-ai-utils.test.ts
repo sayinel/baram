@@ -121,9 +121,15 @@ describe("getBlockTextContent", () => {
     expect(getBlockTextContent(node)).toBe("echo hello");
   });
 
-  it("extracts math block LaTeX content", () => {
-    const node = mockNode("mathBlock", "E = mc^2");
+  it("extracts math block LaTeX from attrs.formula (atom node)", () => {
+    // Real mathBlock is atom — textContent is empty, formula is in attrs
+    const node = mockNode("mathBlock", "", { formula: "E = mc^2" });
     expect(getBlockTextContent(node)).toBe("E = mc^2");
+  });
+
+  it("falls back to textContent for mathBlock without formula attr", () => {
+    const node = mockNode("mathBlock", "x^2 + y^2");
+    expect(getBlockTextContent(node)).toBe("x^2 + y^2");
   });
 
   it("serializes table node to markdown", () => {
