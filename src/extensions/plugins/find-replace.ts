@@ -33,6 +33,9 @@ export interface FindReplaceState {
 
 // ── Match computation ─────────────────────────────────────────────────
 
+/** Maximum character length for user-supplied regex patterns (ReDoS mitigation) */
+const MAX_REGEX_PATTERN_LENGTH = 500;
+
 /** Build a regex from the search options */
 export function buildSearchRegex(
   term: string,
@@ -44,6 +47,8 @@ export function buildSearchRegex(
 
   let pattern: string;
   if (useRegex) {
+    // Reject overly long patterns to prevent ReDoS (catastrophic backtracking)
+    if (term.length > MAX_REGEX_PATTERN_LENGTH) return null;
     try {
       // Validate the regex by trying to compile it
       new RegExp(term);
