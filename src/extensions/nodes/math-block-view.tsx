@@ -260,6 +260,11 @@ export function MathBlockView({
     [formula, localFormula, editor, getPos],
   );
 
+  // Native mousedown stop — React onMouseDown fires at root (too late to block PM)
+  const aiButtonRef = useCallback((el: HTMLButtonElement | null) => {
+    if (el) el.onmousedown = (e) => e.stopPropagation();
+  }, []);
+
   // Non-editing: KaTeX render only
   if (!selected) {
     return (
@@ -279,7 +284,7 @@ export function MathBlockView({
             className="nodeview-ai-btn"
             contentEditable={false}
             onClick={handleAIClick}
-            onMouseDown={(e) => e.stopPropagation()}
+            ref={aiButtonRef}
             title="AI Commands"
           >
             AI

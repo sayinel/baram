@@ -199,7 +199,9 @@ export function ImageView({
                   pos,
                 );
               }}
-              onMouseDown={(e) => e.stopPropagation()}
+              ref={(el) => {
+                if (el) el.onmousedown = (e) => e.stopPropagation();
+              }}
               type="button"
             >
               AI

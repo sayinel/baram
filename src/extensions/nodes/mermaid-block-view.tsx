@@ -487,7 +487,9 @@ export function MermaidBlockView({
         {svgHtml && (
           <div
             className="mermaid-hover-toolbar"
-            onMouseDown={(e) => e.stopPropagation()}
+            ref={(el) => {
+              if (el) el.onmousedown = (e) => e.stopPropagation();
+            }}
           >
             <button
               className="mermaid-hover-toolbar-btn"
