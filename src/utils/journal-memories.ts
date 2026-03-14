@@ -324,17 +324,28 @@ function inlineMarkdown(text: string): string {
     // Images: ![alt](src)
     .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_m, alt, src) => {
       // Strip backslash escapes in alt text
-      const cleanAlt = alt.replace(/\\(.)/g, "$1");
+      const cleanAlt = alt.replace(/\\(.)/g, "$1").replace(/"/g, "&quot;");
+      const safeSrc = sanitizeUrl(
+        src,
+        [/^https?:\/\//, /^data:image\//, /^\.\//, /^\/[^/]/],
+        "",
+      );
       const idx = placeholders.length;
-      placeholders.push(`<img alt="${cleanAlt}" src="${src}"/>`);
+      placeholders.push(`<img alt="${cleanAlt}" src="${safeSrc}"/>`);
       return `\x00PH${idx}\x00`;
     })
     // Links: [text](url)
     .replace(
       /\[([^\]]+)\]\(([^)]+)\)/g,
       (_m: string, linkText: string, href: string) => {
+        const safeHref = sanitizeUrl(
+          href,
+          [/^https?:\/\//, /^mailto:/, /^#/],
+          "#",
+        );
+        const safeText = linkText.replace(/"/g, "&quot;");
         const idx = placeholders.length;
-        placeholders.push(`<a href="${href}">${linkText}</a>`);
+        placeholders.push(`<a href="${safeHref}">${safeText}</a>`);
         return `\x00PH${idx}\x00`;
       },
     );
@@ -363,4 +374,16 @@ function inlineMarkdown(text: string): string {
   );
 
   return processed;
+}
+
+/** Sanitize a URL for use in src/href attributes, and HTML-escape the result */
+function sanitizeUrl(
+  url: string,
+  allowedPrefixes: RegExp[],
+  fallback: string,
+): string {
+  const trimmed = url.trim();
+  const allowed = allowedPrefixes.some((re) => re.test(trimmed));
+  const safe = allowed ? trimmed : fallback;
+  return safe.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 }

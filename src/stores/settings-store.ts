@@ -135,6 +135,17 @@ export const useSettingsStore = create<SettingsState>()(
           state.extensionSettings = ext;
         }
 
+        // v0/v1 → v2: theme migration
+        if (version < 2) {
+          const oldTheme = state.theme as string | undefined;
+          if (!state.activeThemeId) {
+            if (oldTheme === "light") state.activeThemeId = "default-light";
+            else if (oldTheme === "dark") state.activeThemeId = "default-dark";
+            else state.activeThemeId = "system";
+          }
+          if (!state.customThemes) state.customThemes = [];
+        }
+
         // v0/v1/v2 → v3: §55 Pandoc export settings
         if (version < 3) {
           if (!state.pandocPath) state.pandocPath = "pandoc";
@@ -206,17 +217,6 @@ export const useSettingsStore = create<SettingsState>()(
           };
           const oldId = state.journalThemeId as string | undefined;
           if (oldId && themeMap[oldId]) state.journalThemeId = themeMap[oldId];
-        }
-
-        // v0/v1 → v2: theme migration
-        if (version < 2) {
-          const oldTheme = state.theme as string | undefined;
-          if (!state.activeThemeId) {
-            if (oldTheme === "light") state.activeThemeId = "default-light";
-            else if (oldTheme === "dark") state.activeThemeId = "default-dark";
-            else state.activeThemeId = "system";
-          }
-          if (!state.customThemes) state.customThemes = [];
         }
 
         // v7 → v8: Keybinding overrides

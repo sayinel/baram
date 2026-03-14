@@ -44,13 +44,13 @@ export function useAppStartup({
         } catch {
           /* folder may have been deleted */
         }
-      } else if (onLaunch === "restoreLastFile" && lastOpenedFolder) {
+      } else if (onLaunch === "restoreLastFile" && lastOpenedFile) {
         try {
-          await openFolder(lastOpenedFolder);
-          useSettingsStore.getState().addRecentFolder(lastOpenedFolder);
-          if (lastOpenedFile) {
-            await handleOpenFilePath(lastOpenedFile);
+          if (lastOpenedFolder) {
+            await openFolder(lastOpenedFolder);
+            useSettingsStore.getState().addRecentFolder(lastOpenedFolder);
           }
+          await handleOpenFilePath(lastOpenedFile);
         } catch {
           /* ignore */
         }
