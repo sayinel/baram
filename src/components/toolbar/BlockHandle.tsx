@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Editor } from "@tiptap/react";
 
+import { Sparkles } from "lucide-react";
+
 import {
   addBlockId,
   editBlockId,
@@ -358,7 +360,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
                 onMouseLeave={() => setAiSubOpen(false)}
               >
                 <button className="block-handle-menu-item block-handle-ai-item">
-                  <span>AI</span>
+                  <Sparkles size={14} />
                   <span className="block-handle-ai-arrow">{"\u25B8"}</span>
                 </button>
 

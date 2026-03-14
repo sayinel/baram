@@ -4,6 +4,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
+import { Sparkles } from "lucide-react";
 
 import { useEditorStore } from "../../stores/editor-store";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
@@ -204,7 +205,7 @@ export function ImageView({
               }}
               type="button"
             >
-              AI
+              <Sparkles size={14} />
             </button>
           </div>
         )}

@@ -6,6 +6,7 @@ import type { Node as PmNode } from "@tiptap/pm/model";
 
 import { TextSelection } from "@tiptap/pm/state";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
+import { Sparkles } from "lucide-react";
 
 import { parseKaTeXError } from "../../utils/katex-error";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
@@ -287,7 +288,7 @@ export function MathBlockView({
             ref={aiButtonRef}
             title="AI Commands"
           >
-            AI
+            <Sparkles size={14} />
           </button>
         )}
       </NodeViewWrapper>

@@ -6,6 +6,7 @@ import type { Editor } from "@tiptap/react";
 import { NodeSelection } from "@tiptap/pm/state";
 import { CellSelection } from "@tiptap/pm/tables";
 import { BubbleMenu } from "@tiptap/react/menus";
+import { Sparkles } from "lucide-react";
 
 import {
   executeAICommand,
@@ -279,7 +280,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
           onClick={handleAIOpen}
           title="AI Commands"
         >
-          AI
+          <Sparkles size={14} />
         </button>
         {aiOpen && (
           <div

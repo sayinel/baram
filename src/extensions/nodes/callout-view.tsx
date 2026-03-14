@@ -19,6 +19,7 @@ import {
   OctagonAlert,
   Pencil,
   Quote,
+  Sparkles,
 } from "lucide-react";
 
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
@@ -198,7 +199,7 @@ export function CalloutView({
           title="AI Commands"
           type="button"
         >
-          AI
+          <Sparkles size={14} />
         </button>
         <button
           className="callout-collapse-btn"
