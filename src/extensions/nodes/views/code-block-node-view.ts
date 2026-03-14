@@ -24,6 +24,7 @@ import { redo, undo } from "@tiptap/pm/history";
 import { TextSelection } from "@tiptap/pm/state";
 
 import { useSettingsStore } from "../../../stores/settings-store";
+import { showNodeViewAIMenu } from "../../../utils/nodeview-ai-menu";
 import { getHighlightStyle } from "../code-block-highlight";
 import {
   getLanguageExtension,
@@ -39,13 +40,20 @@ export class CodeBlockNodeView implements NodeView {
   private langSelect: HTMLSelectElement;
   private node: PMNode;
   private settingsUnsub: (() => void) | null = null;
+  private tiptapEditor: import("@tiptap/core").Editor;
   private updating = false;
   private view: PMView;
 
-  constructor(node: PMNode, view: PMView, getPos: () => number | undefined) {
+  constructor(
+    node: PMNode,
+    view: PMView,
+    getPos: () => number | undefined,
+    tiptapEditor?: import("@tiptap/core").Editor,
+  ) {
     this.node = node;
     this.view = view;
     this.getPos = getPos;
+    this.tiptapEditor = tiptapEditor as import("@tiptap/core").Editor;
 
     // Build DOM
     const wrapper = document.createElement("div");
@@ -90,6 +98,23 @@ export class CodeBlockNodeView implements NodeView {
 
     header.appendChild(select);
     this.langSelect = select;
+
+    // §11.2.3 AI button
+    const aiBtn = document.createElement("button");
+    aiBtn.classList.add("nodeview-ai-btn", "code-block-ai-btn");
+    aiBtn.textContent = "AI";
+    aiBtn.title = "AI Commands";
+    aiBtn.contentEditable = "false";
+    aiBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const code = this.node.textContent || "";
+      if (!code.trim()) return;
+      const lang = (this.node.attrs.language as string) || "";
+      const blockText = lang ? `\`\`\`${lang}\n${code}\n\`\`\`` : code;
+      showNodeViewAIMenu(aiBtn, "code", blockText, this.tiptapEditor);
+    });
+    header.appendChild(aiBtn);
 
     // CodeMirror container
     const cmContainer = document.createElement("div");

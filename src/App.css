@@ -5673,6 +5673,90 @@ body {
   box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
 }
 
+/* §11.2.3 NodeView AI button — shared by math, code, table */
+.nodeview-ai-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 10;
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-light);
+  border-radius: 4px;
+  opacity: 0;
+  transition:
+    opacity 0.15s,
+    background-color 0.15s;
+}
+
+/* Show on hover of parent block */
+.math-block:hover .nodeview-ai-btn,
+.code-block-wrapper:hover .code-block-ai-btn {
+  opacity: 1;
+}
+
+.nodeview-ai-btn:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-tertiary);
+  border-color: var(--color-border);
+}
+
+/* Code block AI button: positioned in header, not absolute */
+.code-block-ai-btn {
+  position: static;
+  margin-left: auto;
+  opacity: 0;
+}
+
+.code-block-header {
+  display: flex;
+  align-items: center;
+}
+
+/* Table toolbar AI button styling */
+.table-toolbar-btn-ai {
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+/* NodeView AI dropdown menu (DOM-based) */
+.nodeview-ai-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 150px;
+  padding: 4px 0;
+  background-color: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
+}
+
+.nodeview-ai-menu-item {
+  display: block;
+  width: 100%;
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+}
+
+.nodeview-ai-menu-item:hover {
+  background-color: var(--color-bg-secondary);
+}
+
+.nodeview-ai-menu-separator {
+  height: 1px;
+  margin: 4px 0;
+  background-color: var(--color-border-light);
+}
+
 /* ============================================
    §4.8 Context Menu
    ============================================ */
