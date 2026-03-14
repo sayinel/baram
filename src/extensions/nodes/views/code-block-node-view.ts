@@ -67,6 +67,7 @@ export class CodeBlockNodeView implements NodeView {
     const autoOpt = document.createElement("option");
     autoOpt.value = "";
     autoOpt.textContent = "auto";
+    autoOpt.defaultSelected = true;
     select.appendChild(autoOpt);
 
     // Language options
