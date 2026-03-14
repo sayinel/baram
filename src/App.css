@@ -1244,6 +1244,7 @@ body {
 
 /* §5.3 Math Block — atom:true, selected=textarea+preview, unselected=KaTeX only */
 .tiptap .math-block {
+  position: relative;
   margin: 1em 0;
 }
 
