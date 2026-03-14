@@ -76,8 +76,10 @@ pub async fn read_file(path: &str) -> Result<String, FsError> {
 }
 
 /// 원자적 파일 쓰기 (§3.6: tmp → rename)
+/// Unique tmp suffix per call prevents concurrent writes from overwriting
+/// each other's tmp file (auto-save vs manual-save race).
 pub async fn write_file(path: &str, content: &str) -> Result<(), FsError> {
-    let tmp_path = format!("{}.tmp", path);
+    let tmp_path = format!("{}.{}.tmp", path, uuid::Uuid::new_v4().as_simple());
     tokio::fs::write(&tmp_path, content).await?;
     tokio::fs::rename(&tmp_path, path).await.map_err(|e| {
         // 실패 시 임시 파일 삭제 시도

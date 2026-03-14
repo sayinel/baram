@@ -124,6 +124,41 @@
   ```
 - **재검토 조건**: cytoscape 버전 업그레이드 시 또는 경고 실제 발생 시
 
+### 🟡 MEDIUM — MarkdownRenderer URL scheme 미검증
+
+- **위치**: AI 채팅 패널 (MarkdownRenderer, AIPanel)
+- **문제**: AI 응답 마크다운에서 링크/이미지 URL scheme을 검증하지 않아 `javascript:`, `data:` 등 위험 scheme이 렌더링될 수 있음
+- **권장 수정**: `href`/`src` 속성에 `javascript:`, `data:`, `vbscript:` scheme 필터링 또는 DOMPurify `ALLOWED_URI_REGEXP` 설정
+- **재검토 조건**: AI 응답 렌더링 리팩토링 시
+
+### 🟡 MEDIUM — use-file-watcher.ts shouldSkip 과도한 dotfile 필터
+
+- **위치**: `src/hooks/use-file-watcher.ts:146-149`
+- **문제**: `.`으로 시작하는 모든 파일/디렉토리를 무시 → 사용자가 `.env.md`, `.notes.md` 같은 점으로 시작하는 MD 파일을 Vault에 두면 감시 대상에서 제외됨
+- **권장 수정**: `.baram/`, `.git/` 등 알려진 시스템 디렉토리만 명시적 제외
+- **재검토 조건**: 점으로 시작하는 파일 지원 요청 시
+
+### 🟡 MEDIUM — updateFileIndex 실패 시 silent swallow
+
+- **위치**: `src/hooks/use-auto-save.ts:36`, `src/hooks/use-file-operations.ts:108,128,175`
+- **문제**: `updateFileIndex(...).catch(() => {})` — 인덱스 갱신 실패가 완전히 무시되어 백링크/그래프가 stale 상태로 유지됨을 사용자가 알 수 없음
+- **권장 수정**: `.catch((e) => logger.warn("index update failed", e))` 로 교체
+- **재검토 조건**: 링크 인덱스 오류 디버깅 필요 시
+
+### 🟡 MEDIUM — search_cmd.rs max_results 상한 없음
+
+- **위치**: `src-tauri/src/commands/search_cmd.rs`
+- **문제**: 프론트엔드가 전달하는 `max_results` 값에 상한이 없어 매우 큰 값 전달 시 메모리/CPU 과다 사용
+- **권장 수정**: `let capped = max_results.min(500);` 형태로 서버 측 상한 적용
+- **재검토 조건**: 전문 검색 성능 튜닝 시
+
+### 🟡 MEDIUM — settings-store.ts migration path 필드 타입 가드 없음
+
+- **위치**: `src/stores/settings-store.ts` (migration 함수들)
+- **문제**: 마이그레이션 시 `state.vaultPath` 등 path 필드를 `string`으로 가정하나 실제로는 `null | undefined`일 수 있음 — `null.split(...)` TypeError 위험
+- **권장 수정**: `typeof state.vaultPath === "string"` 체크 추가
+- **재검토 조건**: 설정 마이그레이션 추가 시
+
 ---
 
 ## 파이프라인 설계 결정 보류 (C6 Backlog)
@@ -170,3 +205,6 @@
 | 2026-03-14 | use-source-mode.ts double RAF race condition (HIGH) | `1622bd2` |
 | 2026-03-14 | wikilink-view.tsx CSS 클래스 공백 누락 (CSS) | `1622bd2` |
 | 2026-03-14 | settings-store.ts migration 순서 역전 (MEDIUM) | `1622bd2` |
+| 2026-03-14 | gemini.rs API 키 URL 쿼리 파라미터 노출 (HIGH) → x-goog-api-key 헤더로 전환 | pending |
+| 2026-03-14 | snapshot/io.rs restore_files 경로 순회 취약점 (HIGH) → is_safe_relative_path 검증 추가 | pending |
+| 2026-03-14 | fs/mod.rs write_file 동시 쓰기 tmp 파일 충돌 (ARCH) → 고유 uuid tmp 경로 사용 | pending |
