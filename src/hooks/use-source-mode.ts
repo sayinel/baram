@@ -128,6 +128,8 @@ export function useSourceMode({
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           try {
+            if (editor.view.isDestroyed) return;
+            if (useEditorStore.getState().activeTabId !== currentTabId) return;
             const doc = editor.view.state.doc;
             const pos = Math.min(targetPos, doc.content.size);
             const resolvedSel = TextSelection.near(doc.resolve(pos));

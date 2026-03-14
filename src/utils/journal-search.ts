@@ -218,16 +218,29 @@ export function hasActiveFilters(filters: JournalSearchFilters): boolean {
  * Wrap all occurrences of `query` in the text with `<mark>` tags.
  * Returns the modified string. Case-insensitive match.
  * If query starts with `#`, treats it as a tag search (still highlights).
+ * Text is HTML-escaped before wrapping to prevent XSS.
  */
 export function highlightSearchMatch(text: string, query: string): string {
-  if (!query.trim()) return text;
+  if (!query.trim()) return escapeHtml(text);
 
   // Strip leading `#` for tag search matching
   const searchTerm = query.startsWith("#") ? query.slice(1) : query;
-  if (!searchTerm.trim()) return text;
+  if (!searchTerm.trim()) return escapeHtml(text);
 
-  // Escape regex special chars
-  const escaped = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const re = new RegExp(`(${escaped})`, "gi");
-  return text.replace(re, "<mark>$1</mark>");
+  // Escape regex special chars in the search term
+  const escapedTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`(${escapedTerm})`, "gi");
+
+  // HTML-escape the text first, then apply highlight
+  const escapedText = escapeHtml(text);
+  return escapedText.replace(re, "<mark>$1</mark>");
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }

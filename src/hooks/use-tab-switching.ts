@@ -253,8 +253,14 @@ export function useTabSwitching({
         setIsParsing(true);
 
         parseMdastAsync(content).then((mdast) => {
-          if (loadToken.cancelled) return;
-          if (useEditorStore.getState().activeTabId !== activeTabId) return;
+          if (loadToken.cancelled) {
+            setIsParsing(false);
+            return;
+          }
+          if (useEditorStore.getState().activeTabId !== activeTabId) {
+            setIsParsing(false);
+            return;
+          }
 
           const allNodes = mdastBlocksToPmNodes(mdast, editor.schema);
           const doc = editor.schema.nodes.doc.create(null, allNodes);
