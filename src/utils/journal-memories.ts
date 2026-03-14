@@ -327,7 +327,13 @@ function inlineMarkdown(text: string): string {
       const cleanAlt = alt.replace(/\\(.)/g, "$1").replace(/"/g, "&quot;");
       const safeSrc = sanitizeUrl(
         src,
-        [/^https?:\/\//, /^data:image\//, /^\.\//, /^\/[^/]/],
+        [
+          /^https?:\/\//,
+          /^data:image\//,
+          /^\.\//,
+          /^\/[^/]/,
+          /^(?!\/\/)(?![a-zA-Z][a-zA-Z0-9+\-.]*:)./,
+        ],
         "",
       );
       const idx = placeholders.length;
