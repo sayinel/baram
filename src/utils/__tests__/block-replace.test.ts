@@ -1,7 +1,7 @@
 // §30d block-replace utility tests
 import { describe, expect, test } from "vitest";
 
-import { replaceBlockInContent } from "../block-replace";
+import { replaceBlockInContent } from "../editor/block-replace";
 
 describe("replaceBlockInContent", () => {
   test("replaces paragraph text", () => {

@@ -6,7 +6,7 @@ import type { Node as PmNode } from "@tiptap/pm/model";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 
 import { preprocessNotionFormula } from "../../utils/export/notion-katex-compat";
-import { parseKaTeXError } from "../../utils/katex-error";
+import { parseKaTeXError } from "../../utils/katex/katex-error";
 import { mathBlockEntryKey } from "./math-block";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
 import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";

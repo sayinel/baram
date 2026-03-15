@@ -1,7 +1,7 @@
 // notion-export.ts — Convert Baram markdown to Notion-compatible markdown
 // Pure utility functions (no external dependencies)
 
-import { replaceOutsideCode } from "../markdown-code-regions";
+import { replaceOutsideCode } from "../markdown/markdown-code-regions";
 
 // ---------------------------------------------------------------------------
 // Unicode subscript / superscript mappings

@@ -16,7 +16,7 @@ import {
   insertNodeAtPos,
   resolveInsertTarget,
   showDropIndicator,
-} from "../../../utils/drop-indicator";
+} from "../../../utils/editor/drop-indicator";
 import { logger } from "../../../utils/logger";
 import { getRelativePath, isImageFile } from "../../../utils/path-utils";
 import {

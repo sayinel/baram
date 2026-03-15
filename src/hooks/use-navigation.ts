@@ -10,10 +10,13 @@ import { useLinkStore } from "../stores/editor/link";
 import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
 import { useNavigationStore } from "../stores/ui/navigation";
-import { findBlockPosById, findHeadingPosByText } from "../utils/block-nav";
+import {
+  findBlockPosById,
+  findHeadingPosByText,
+} from "../utils/editor/block-nav";
+import { resolveWikilinkTarget } from "../utils/editor/wikilink-nav";
 import { isDateString, resolveJournalDir } from "../utils/journal/journal";
 import { logger } from "../utils/logger";
-import { resolveWikilinkTarget } from "../utils/wikilink-nav";
 
 interface UseNavigationParams {
   editor: Editor | null;

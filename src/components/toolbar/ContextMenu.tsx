@@ -16,12 +16,12 @@ import {
   removeBlockId,
 } from "../../extensions/plugins/block-id-decoration";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
-import { copyMathToPNG } from "../../utils/katex-to-png";
+import { copyMathToPNG } from "../../utils/katex/katex-to-png";
 import {
   copyMermaidPng,
   copyMermaidSource,
   copyMermaidSvg,
-} from "../../utils/mermaid-utils";
+} from "../../utils/markdown/mermaid-utils";
 
 interface ContextMenuProps {
   editor: Editor;

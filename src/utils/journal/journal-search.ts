@@ -1,5 +1,5 @@
 // §56k Journal Search utilities — categorize, group, and highlight journal search results
-import { extractFrontmatter } from "../frontmatter";
+import { extractFrontmatter } from "../markdown/frontmatter";
 
 export type JournalCategory =
   | "daily"

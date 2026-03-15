@@ -14,7 +14,7 @@ import {
 } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 
-import { parseKaTeXError } from "../../utils/katex-error";
+import { parseKaTeXError } from "../../utils/katex/katex-error";
 import { logger } from "../../utils/logger";
 
 // Lazily loaded katex — populated on first use, null until then

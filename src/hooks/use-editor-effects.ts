@@ -13,7 +13,7 @@ import { useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
 import { useFileStore } from "../stores/file/file";
 import { useUIStore } from "../stores/ui/ui";
-import { mdLineToPmBlockStart } from "../utils/cursor-mapper";
+import { mdLineToPmBlockStart } from "../utils/editor/cursor-mapper";
 
 interface UseEditorEffectsParams {
   editor: Editor | null;
