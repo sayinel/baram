@@ -24,7 +24,7 @@ import {
 
 import { getHighlightStyle } from "../../extensions/nodes/code-block-highlight";
 import { getLanguageExtension } from "../../extensions/nodes/code-block-languages";
-import { useSettingsStore } from "../../stores/settings-store";
+import { useSettingsStore } from "../../stores/settings/store";
 
 export interface SourceCodeEditorRef {
   getContent(): string;

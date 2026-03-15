@@ -1,4 +1,4 @@
-import type { FileEntry } from "../../stores/file-store";
+import type { FileEntry } from "../../stores/file/file";
 
 // §35 Quick Switcher — file search utility tests
 import { describe, expect, it } from "vitest";

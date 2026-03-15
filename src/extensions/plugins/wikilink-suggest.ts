@@ -8,8 +8,8 @@ import { Suggestion } from "@tiptap/suggestion";
 
 import { WikilinkMenuList } from "../../components/command/WikilinkMenu";
 import { listDir, refreshIndex, writeFile } from "../../ipc/invoke";
-import { useEditorStore } from "../../stores/editor-store";
-import { buildFileTree, useFileStore } from "../../stores/file-store";
+import { useEditorStore } from "../../stores/editor/editor";
+import { buildFileTree, useFileStore } from "../../stores/file/file";
 import { flattenFileTree, fuzzyScore } from "../../utils/file-search";
 import {
   createSuggestionRenderer,

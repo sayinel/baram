@@ -22,20 +22,6 @@ interface BookmarkState {
   saveBookmarks: (rootPath: string) => void;
 }
 
-/** Find heading pos by text+level */
-export function findHeadingPos(
-  headings: Array<{ level: number; pos: number; text: string }>,
-  headingText: string,
-  headingLevel?: number,
-): null | number {
-  const match = headings.find(
-    (h) =>
-      h.text === headingText &&
-      (headingLevel === undefined || h.level === headingLevel),
-  );
-  return match?.pos ?? null;
-}
-
 /** Get unique groups from bookmarks list */
 export function getGroups(bookmarks: BookmarkItem[]): string[] {
   const groups = new Set<string>();

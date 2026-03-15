@@ -171,7 +171,7 @@ import {
   searchRegistry,
 } from "../../plugins/registry-client";
 import { CAPABILITY_DESCRIPTIONS } from "../../plugins/types";
-import { usePluginStore } from "../../stores/plugin-store";
+import { usePluginStore } from "../../stores/system/plugin";
 import { PluginCard } from "./PluginCard";
 import { PluginDetail } from "./PluginDetail";
 

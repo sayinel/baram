@@ -2,18 +2,18 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { listDir } from "../ipc/invoke";
+import { listDir } from "../../ipc/invoke";
 import {
   ensureJournalFile,
   openFileInTab,
-} from "../services/journal-file-service";
-import { resolveJournalDir } from "../utils/journal/journal";
-import { logger } from "../utils/logger";
-import { useFileStore } from "./file-store";
-import { buildFileTree } from "./file-store";
-import { useSettingsStore } from "./settings-store";
-import { tauriStorage } from "./tauri-storage";
-import { useUIStore } from "./ui-store";
+} from "../../services/journal-file-service";
+import { resolveJournalDir } from "../../utils/journal/journal";
+import { logger } from "../../utils/logger";
+import { useSettingsStore } from "../settings/store";
+import { tauriStorage } from "../system/tauri-storage";
+import { useUIStore } from "../ui/ui";
+import { useFileStore } from "./file";
+import { buildFileTree } from "./file";
 
 // --- Types ---
 

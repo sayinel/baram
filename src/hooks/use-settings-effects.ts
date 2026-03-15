@@ -6,7 +6,7 @@ import type { Editor } from "@tiptap/core";
 
 import { useShallow } from "zustand/shallow";
 
-import { useSettingsStore } from "../stores/settings-store";
+import { useSettingsStore } from "../stores/settings/store";
 import { findThemeById } from "../types/theme";
 import { logger } from "../utils/logger";
 

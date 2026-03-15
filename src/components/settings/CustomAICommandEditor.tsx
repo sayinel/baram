@@ -1,10 +1,10 @@
 // §48 Custom AI Command Editor — manage custom commands in Settings
 import { useCallback, useState } from "react";
 
-import type { CustomAICommand } from "../../stores/ai-store";
+import type { CustomAICommand } from "../../stores/ai/ai";
 
 import { useTranslation } from "../../i18n/useTranslation";
-import { useAIStore } from "../../stores/ai-store";
+import { useAIStore } from "../../stores/ai/ai";
 import { generateCommandId } from "../../utils/custom-ai-commands";
 
 export function CustomAICommandEditor() {

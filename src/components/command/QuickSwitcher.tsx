@@ -5,10 +5,10 @@ import type { FlatFile } from "../../utils/file-search";
 import type { Editor } from "@tiptap/react";
 
 import { readFile } from "../../ipc/invoke";
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
-import { useSettingsStore } from "../../stores/settings-store";
-import { useUIStore } from "../../stores/ui-store";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
+import { useSettingsStore } from "../../stores/settings/store";
+import { useUIStore } from "../../stores/ui/ui";
 import {
   extractHeadings,
   flattenFileTree,

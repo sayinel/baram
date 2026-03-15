@@ -1,10 +1,10 @@
 // §72 Skills 전용 모드 — 활성 파일의 frontmatter 감지, UI 자동 전환
 import { useEffect, useRef } from "react";
 
-import { useEditorStore } from "../stores/editor-store";
-import { useFileStore } from "../stores/file-store";
-import { useSkillStore } from "../stores/skill-store";
-import { useUIStore } from "../stores/ui-store";
+import { useSkillStore } from "../stores/ai/skill";
+import { useEditorStore } from "../stores/editor/editor";
+import { useFileStore } from "../stores/file/file";
+import { useUIStore } from "../stores/ui/ui";
 import { isSkillFrontmatter } from "../utils/skill/skill-frontmatter";
 // Re-export for backward compatibility
 export { isSkillFrontmatter };

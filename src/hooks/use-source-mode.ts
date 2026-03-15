@@ -11,7 +11,7 @@ import { EditorState, TextSelection } from "@tiptap/pm/state";
 import { forceCollapseSyntaxReveal } from "../extensions/plugins/syntax-reveal";
 import { markdownToProsemirror } from "../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../pipeline/pm-to-md";
-import { isFileTab, isGraphTab, useEditorStore } from "../stores/editor-store";
+import { isFileTab, isGraphTab, useEditorStore } from "../stores/editor/editor";
 import { mdOffsetToPmPos, pmPosToMdOffset } from "../utils/cursor-mapper";
 import { isMarkdownFile } from "../utils/file-type";
 

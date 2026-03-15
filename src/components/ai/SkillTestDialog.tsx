@@ -2,8 +2,8 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { useLLMStream } from "../../hooks/use-llm-stream";
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
 import { formatAIError } from "../../utils/format-error";
 import {
   extractSkillPrompt,

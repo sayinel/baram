@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import type { Editor } from "@tiptap/core";
 
 import { llmComplete } from "../ipc/invoke";
-import { useAIStore } from "../stores/ai-store";
+import { useAIStore } from "../stores/ai/ai";
 import { logger } from "./logger";
 import { getConfigForTask } from "./model-selection";
 

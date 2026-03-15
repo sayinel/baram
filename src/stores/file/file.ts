@@ -1,13 +1,13 @@
-import type { FileEntry as IpcFileEntry } from "../ipc/types";
+import type { FileEntry as IpcFileEntry } from "../../ipc/types";
 
 // §3.5 파일 시스템 스토어
 import { create } from "zustand";
 
-import { listDir, refreshIndex, setVaultRoot } from "../ipc/invoke";
-import { logger } from "../utils/logger";
-import { useEditorStore } from "./editor-store";
-import { useLinkStore } from "./link-store";
-import { useSettingsStore } from "./settings-store";
+import { listDir, refreshIndex, setVaultRoot } from "../../ipc/invoke";
+import { logger } from "../../utils/logger";
+import { useEditorStore } from "../editor/editor";
+import { useLinkStore } from "../editor/link";
+import { useSettingsStore } from "../settings/store";
 
 export interface FileEntry {
   children?: FileEntry[];

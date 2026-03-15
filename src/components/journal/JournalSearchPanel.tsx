@@ -4,11 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { SearchResult } from "../../ipc/types";
 
 import { readFile, searchFiles } from "../../ipc/invoke";
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
-import { useLinkStore } from "../../stores/link-store";
-import { useSettingsStore } from "../../stores/settings-store";
-import { useUIStore } from "../../stores/ui-store";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useLinkStore } from "../../stores/editor/link";
+import { useFileStore } from "../../stores/file/file";
+import { useSettingsStore } from "../../stores/settings/store";
+import { useUIStore } from "../../stores/ui/ui";
 import { resolveJournalDir } from "../../utils/journal/journal";
 import {
   CATEGORY_LABELS,

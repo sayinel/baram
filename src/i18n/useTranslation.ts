@@ -2,7 +2,7 @@ import { useCallback } from "react";
 
 import type { Locale } from "./index";
 
-import { useSettingsStore } from "../stores/settings-store";
+import { useSettingsStore } from "../stores/settings/store";
 import { t } from "./index";
 
 /**

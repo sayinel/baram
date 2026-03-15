@@ -7,7 +7,7 @@ import type {
   GitRemoteInfo,
   GitStashEntry,
   GitStatusInfo,
-} from "../ipc/types";
+} from "../../ipc/types";
 
 // §57b Git 상태 관리 스토어
 import { create } from "zustand";
@@ -33,7 +33,7 @@ import {
   gitStatus,
   gitSwitchBranch,
   gitUnstage,
-} from "../ipc/invoke";
+} from "../../ipc/invoke";
 
 interface GitState {
   // Diff

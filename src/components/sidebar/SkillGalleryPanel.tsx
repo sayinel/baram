@@ -4,9 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import type { SkillMeta } from "../../utils/skill/skill-dependency-analyzer";
 
 import { readFile } from "../../ipc/invoke";
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
-import { useSkillStore } from "../../stores/skill-store";
+import { useSkillStore } from "../../stores/ai/skill";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
 import { logger } from "../../utils/logger";
 
 export function SkillGalleryPanel() {

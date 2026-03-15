@@ -5,7 +5,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 
-import { useEditorStore } from "../../stores/editor-store";
+import { useEditorStore } from "../../stores/editor/editor";
 
 const RESIZE_PRESETS = [25, 50, 75, 100];
 

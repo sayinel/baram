@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useTranslation } from "../../../i18n/useTranslation";
-import { useSettingsStore } from "../../../stores/settings-store";
+import { useSettingsStore } from "../../../stores/settings/store";
 import {
   SettingsRow,
   SettingsSectionHeader,

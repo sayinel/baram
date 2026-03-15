@@ -7,9 +7,9 @@
 
 import type { Editor } from "@tiptap/core";
 
-import { useAIStore } from "../stores/ai-store";
-import { useEditorStore } from "../stores/editor-store";
-import { useFileStore } from "../stores/file-store";
+import { useAIStore } from "../stores/ai/ai";
+import { useEditorStore } from "../stores/editor/editor";
+import { useFileStore } from "../stores/file/file";
 
 /** Configuration returned by buildGhostTextConfig */
 export interface GhostTextConfig {

@@ -3,8 +3,8 @@ import { lazy, Suspense, useCallback } from "react";
 
 import { useShallow } from "zustand/shallow";
 
-import { useFileStore } from "../../stores/file-store";
-import { useUIStore } from "../../stores/ui-store";
+import { useFileStore } from "../../stores/file/file";
+import { useUIStore } from "../../stores/ui/ui";
 import { ActivityBar } from "./ActivityBar";
 import { Sidebar } from "./Sidebar";
 import { Splitter } from "./Splitter";

@@ -2,28 +2,28 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { findThemeById } from "../types/theme";
+import { findThemeById } from "../../types/theme";
+import { tauriStorage } from "../system/tauri-storage";
 import {
   type ActivityBarItemConfig,
   DEFAULT_ACTIVITY_BAR_CONFIG,
-} from "./settings/activity-bar-config";
+} from "./activity-bar-config";
 import {
   type AppearanceSettingsSlice,
   createAppearanceSettingsSlice,
-} from "./settings/appearance-settings";
+} from "./appearance-settings";
 import {
   createEditorSettingsSlice,
   type EditorSettingsSlice,
-} from "./settings/editor-settings";
+} from "./editor-settings";
 import {
   createGeneralSettingsSlice,
   type GeneralSettingsSlice,
-} from "./settings/general-settings";
+} from "./general-settings";
 import {
   createJournalSettingsSlice,
   type JournalSettingsSlice,
-} from "./settings/journal-settings";
-import { tauriStorage } from "./tauri-storage";
+} from "./journal-settings";
 export type { ActivityBarItemConfig };
 export { DEFAULT_ACTIVITY_BAR_CONFIG };
 

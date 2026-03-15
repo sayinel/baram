@@ -5,8 +5,8 @@ import type { Editor } from "@tiptap/react";
 
 import { useShallow } from "zustand/shallow";
 
-import { useGitStore } from "../../stores/git-store";
-import { useSettingsStore } from "../../stores/settings-store";
+import { useSettingsStore } from "../../stores/settings/store";
+import { useGitStore } from "../../stores/system/git";
 
 export type EditorMode = "graph" | "source" | "wysiwyg";
 

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { MoodValue } from "../../utils/journal/journal-mood";
 
 import { listDir, readFile } from "../../ipc/invoke";
-import { useSettingsStore } from "../../stores/settings-store";
+import { useSettingsStore } from "../../stores/settings/store";
 import {
   getMoodColors,
   MOOD_VALUES,

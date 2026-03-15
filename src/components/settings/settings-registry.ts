@@ -5,8 +5,8 @@ import type React from "react";
 import type { Locale } from "../../i18n";
 
 import { AVAILABLE_LOCALES, LOCALE_LABELS } from "../../i18n";
-import { useAIStore } from "../../stores/ai-store";
-import { useSettingsStore } from "../../stores/settings-store";
+import { useAIStore } from "../../stores/ai/ai";
+import { useSettingsStore } from "../../stores/settings/store";
 
 export interface SearchableSetting {
   category: SettingsTab;

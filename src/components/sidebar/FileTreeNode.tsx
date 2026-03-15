@@ -2,7 +2,7 @@
 // Reads 6 shared states from FileTreeContext; receives only 10 handler props.
 import { useEffect, useRef } from "react";
 
-import type { FileEntry } from "../../stores/file-store";
+import type { FileEntry } from "../../stores/file/file";
 import type { CreatingEntryState } from "./file-tree-types";
 
 import { getFileIcon } from "./file-icon";

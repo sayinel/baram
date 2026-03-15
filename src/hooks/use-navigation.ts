@@ -5,11 +5,11 @@ import type { Editor } from "@tiptap/core";
 
 import { writeFile } from "../ipc/invoke";
 import { ensureJournalFile } from "../services/journal-file-service";
-import { useEditorStore } from "../stores/editor-store";
-import { useFileStore } from "../stores/file-store";
-import { useLinkStore } from "../stores/link-store";
-import { useNavigationStore } from "../stores/navigation-store";
-import { useSettingsStore } from "../stores/settings-store";
+import { useEditorStore } from "../stores/editor/editor";
+import { useLinkStore } from "../stores/editor/link";
+import { useFileStore } from "../stores/file/file";
+import { useSettingsStore } from "../stores/settings/store";
+import { useNavigationStore } from "../stores/ui/navigation";
 import { findBlockPosById, findHeadingPosByText } from "../utils/block-nav";
 import { isDateString, resolveJournalDir } from "../utils/journal/journal";
 import { logger } from "../utils/logger";
@@ -104,7 +104,7 @@ export function useNavigation({
 
             await writeFile(newPath, `# ${target}\n`);
             const { refreshIndex, listDir } = await import("../ipc/invoke");
-            const { buildFileTree } = await import("../stores/file-store");
+            const { buildFileTree } = await import("../stores/file/file");
             await refreshIndex(rootPath);
             const entries = await listDir(rootPath, true);
             const tree = buildFileTree(entries, rootPath);

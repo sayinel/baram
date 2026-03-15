@@ -2,7 +2,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { tauriStorage } from "./tauri-storage";
+import { tauriStorage } from "../system/tauri-storage";
 
 export interface ChatMessage {
   content: string;

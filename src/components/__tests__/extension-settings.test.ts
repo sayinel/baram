@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import registry from "../../extensions/registry.json";
-import { useSettingsStore } from "../../stores/settings-store";
+import { useSettingsStore } from "../../stores/settings/store";
 
 // ─── Types (mirrors ExtensionsTab.tsx) ───────────────────────────────────────
 

@@ -4,9 +4,9 @@ import { useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 
 import { getOpenedUrls } from "../ipc/invoke";
-import { openFolder } from "../stores/file-store";
-import { useSettingsStore } from "../stores/settings-store";
-import { migrateFromLocalStorage } from "../stores/tauri-storage";
+import { openFolder } from "../stores/file/file";
+import { useSettingsStore } from "../stores/settings/store";
+import { migrateFromLocalStorage } from "../stores/system/tauri-storage";
 
 interface UseAppStartupParams {
   handleNewFile: () => void;

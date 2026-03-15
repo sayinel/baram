@@ -5,7 +5,7 @@
 
 import { useMemo } from "react";
 
-import { useSettingsStore } from "../stores/settings-store";
+import { useSettingsStore } from "../stores/settings/store";
 import {
   KEYBINDING_REGISTRY,
   type KeybindingEntry,

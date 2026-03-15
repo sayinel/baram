@@ -1,9 +1,9 @@
 // §72c Skill Live Preview — auto-updating LLM prompt preview in PropertiesPanel
 import { useEffect, useMemo, useState } from "react";
 
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
-import { useSkillStore } from "../../stores/skill-store";
+import { useSkillStore } from "../../stores/ai/skill";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
 import { extractSkillPrompt } from "../../utils/skill/skill-test-runner";
 import {
   estimateTokenCount,

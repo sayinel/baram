@@ -5,7 +5,7 @@
 
 import { useEffect } from "react";
 
-import { useSettingsStore } from "../stores/settings-store";
+import { useSettingsStore } from "../stores/settings/store";
 
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 2.0;

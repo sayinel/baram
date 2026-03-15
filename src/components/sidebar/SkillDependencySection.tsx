@@ -1,12 +1,12 @@
 // §72b Skill Dependency Section — dependency analysis UI for PropertiesPanel
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { FileEntry } from "../../stores/file-store";
+import type { FileEntry } from "../../stores/file/file";
 
 import { readFile } from "../../ipc/invoke";
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
-import { useSkillStore } from "../../stores/skill-store";
+import { useSkillStore } from "../../stores/ai/skill";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
 import {
   type ChainResult,
   dryRunChain,

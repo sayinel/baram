@@ -18,35 +18,29 @@ DRY_RUN = "--dry-run" in sys.argv
 
 # All file moves: src-relative source -> src-relative dest
 MOVES = {
-    # Group: journal (14 files)
-    "utils/journal.ts": "utils/journal/journal.ts",
-    "utils/journal-capture.ts": "utils/journal/journal-capture.ts",
-    "utils/journal-memories.ts": "utils/journal/journal-memories.ts",
-    "utils/journal-mood.ts": "utils/journal/journal-mood.ts",
-    "utils/journal-periodic.ts": "utils/journal/journal-periodic.ts",
-    "utils/journal-photo.ts": "utils/journal/journal-photo.ts",
-    "utils/journal-prompts.ts": "utils/journal/journal-prompts.ts",
-    "utils/journal-reflection.ts": "utils/journal/journal-reflection.ts",
-    "utils/journal-search.ts": "utils/journal/journal-search.ts",
-    "utils/journal-stats-cache.ts": "utils/journal/journal-stats-cache.ts",
-    "utils/journal-stats.ts": "utils/journal/journal-stats.ts",
-    "utils/journal-tags.ts": "utils/journal/journal-tags.ts",
-    "utils/journal-templates.ts": "utils/journal/journal-templates.ts",
-    "utils/journal-themes.ts": "utils/journal/journal-themes.ts",
-    # Group: skill (7 files)
-    "utils/skill-chain-runner.ts": "utils/skill/skill-chain-runner.ts",
-    "utils/skill-compatibility-prompt.ts": "utils/skill/skill-compatibility-prompt.ts",
-    "utils/skill-dependency-analyzer.ts": "utils/skill/skill-dependency-analyzer.ts",
-    "utils/skill-frontmatter.ts": "utils/skill/skill-frontmatter.ts",
-    "utils/skill-generator-prompt.ts": "utils/skill/skill-generator-prompt.ts",
-    "utils/skill-optimize-prompt.ts": "utils/skill/skill-optimize-prompt.ts",
-    "utils/skill-test-runner.ts": "utils/skill/skill-test-runner.ts",
-    # Group: export (5 files)
-    "utils/export-html.ts": "utils/export/export-html.ts",
-    "utils/export.ts": "utils/export/export.ts",
-    "utils/notion-export.ts": "utils/export/notion-export.ts",
-    "utils/notion-katex-compat.ts": "utils/export/notion-katex-compat.ts",
-    "utils/pandoc-export.ts": "utils/export/pandoc-export.ts",
+    # stores/editor (4 files)
+    "stores/editor-store.ts": "stores/editor/editor.ts",
+    "stores/fold-store.ts": "stores/editor/fold.ts",
+    "stores/snapshot-store.ts": "stores/editor/snapshot.ts",
+    "stores/link-store.ts": "stores/editor/link.ts",
+    # stores/file (3 files)
+    "stores/file-store.ts": "stores/file/file.ts",
+    "stores/workspace-store.ts": "stores/file/workspace.ts",
+    "stores/bookmark-store.ts": "stores/file/bookmark.ts",
+    # stores/ai (3 files)
+    "stores/ai-store.ts": "stores/ai/ai.ts",
+    "stores/chat-store.ts": "stores/ai/chat.ts",
+    "stores/skill-store.ts": "stores/ai/skill.ts",
+    # stores/ui (3 files)
+    "stores/ui-store.ts": "stores/ui/ui.ts",
+    "stores/navigation-store.ts": "stores/ui/navigation.ts",
+    "stores/graph-settings-store.ts": "stores/ui/graph-settings.ts",
+    # stores/system (3 files)
+    "stores/git-store.ts": "stores/system/git.ts",
+    "stores/plugin-store.ts": "stores/system/plugin.ts",
+    "stores/tauri-storage.ts": "stores/system/tauri-storage.ts",
+    # stores/settings (merge into existing subfolder)
+    "stores/settings-store.ts": "stores/settings/store.ts",
 }
 
 # Build absolute path lookup
@@ -90,7 +84,8 @@ def effective_from_dir(file_abs: Path) -> Path:
     return file_abs.parent
 
 
-IMPORT_RE = re.compile(r"""((?:from|import)\s+['"])(\.[^'"]+)(['"])""")
+# Matches static imports/exports AND dynamic import("...") calls
+IMPORT_RE = re.compile(r"""((?:from|import)\s+['"]|import\s*\(['"])(\.[^'"]+)(['"])""")
 
 
 def update_file_imports(file_abs: Path) -> list[tuple[str, str]]:

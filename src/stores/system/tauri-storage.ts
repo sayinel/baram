@@ -3,8 +3,8 @@
 
 import type { StateStorage } from "zustand/middleware";
 
-import { getConfig, removeConfig, setConfig } from "../ipc/invoke";
-import { logger } from "../utils/logger";
+import { getConfig, removeConfig, setConfig } from "../../ipc/invoke";
+import { logger } from "../../utils/logger";
 
 /**
  * Custom StateStorage that delegates to Tauri's config module.

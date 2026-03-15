@@ -9,7 +9,7 @@ import {
   type TagSuggestionItem,
 } from "../../components/command/TagMenu";
 import { getVaultTags } from "../../ipc/invoke";
-import { useFileStore } from "../../stores/file-store";
+import { useFileStore } from "../../stores/file/file";
 import { filterTags } from "../../utils/journal/journal-tags";
 import { logger } from "../../utils/logger";
 import { createSuggestionRenderer } from "./suggestion-renderer";

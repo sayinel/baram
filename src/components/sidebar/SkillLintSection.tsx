@@ -3,7 +3,7 @@ import { useState } from "react";
 
 import type { LintResult } from "../../utils/prompt-linter";
 
-import { useSkillStore } from "../../stores/skill-store";
+import { useSkillStore } from "../../stores/ai/skill";
 import { registerSkillSection } from "./skill-panel-registry";
 
 // ─── LintItem ────────────────────────────────────────────────────────────────

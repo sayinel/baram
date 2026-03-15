@@ -5,7 +5,7 @@
  * Registry notation:  "Mod+Shift+X"  (plus-separated, uppercase key)
  * ProseMirror format: "Mod-Shift-x"  (dash-separated, lowercase key)
  */
-import { useSettingsStore } from "../../stores/settings-store";
+import { useSettingsStore } from "../../stores/settings/store";
 
 const MODIFIERS = new Set(["Alt", "Ctrl", "Mod", "Shift"]);
 

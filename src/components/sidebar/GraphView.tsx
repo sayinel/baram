@@ -4,10 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Core, EventObject, StylesheetStyle } from "cytoscape";
 
 import { getLinkIndex, readFile, refreshIndex } from "../../ipc/invoke";
-import { isGraphTab, useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
-import { useGraphSettingsStore } from "../../stores/graph-settings-store";
-import { useLinkStore } from "../../stores/link-store";
+import { isGraphTab, useEditorStore } from "../../stores/editor/editor";
+import { useLinkStore } from "../../stores/editor/link";
+import { useFileStore } from "../../stores/file/file";
+import { useGraphSettingsStore } from "../../stores/ui/graph-settings";
 import { logger } from "../../utils/logger";
 import {
   assignNamespaceColors,

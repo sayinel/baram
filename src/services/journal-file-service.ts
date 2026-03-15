@@ -1,7 +1,7 @@
 // §56 Journal file service — shared open/create logic across journal entry points
 import { createDir, readFile, writeFile } from "../ipc/invoke";
-import { useEditorStore } from "../stores/editor-store";
-import { useFileStore } from "../stores/file-store";
+import { useEditorStore } from "../stores/editor/editor";
+import { useFileStore } from "../stores/file/file";
 import {
   applyJournalTemplate,
   generateDefaultJournal,
