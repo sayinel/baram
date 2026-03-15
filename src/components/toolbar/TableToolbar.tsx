@@ -10,7 +10,13 @@ import {
 import type { Editor } from "@tiptap/react";
 
 import { CellSelection } from "@tiptap/pm/tables";
-import { Sparkles } from "lucide-react";
+import {
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
@@ -28,34 +34,7 @@ const S = {
   strokeLinecap: "round" as const,
 };
 
-const AlignLeftIcon = (): ReactNode => (
-  <svg {...S}>
-    <line x1="2" x2="14" y1="4" y2="4" />
-    <line x1="2" x2="10" y1="8" y2="8" />
-    <line x1="2" x2="12" y1="12" y2="12" />
-  </svg>
-);
-const AlignCenterIcon = (): ReactNode => (
-  <svg {...S}>
-    <line x1="2" x2="14" y1="4" y2="4" />
-    <line x1="4" x2="12" y1="8" y2="8" />
-    <line x1="3" x2="13" y1="12" y2="12" />
-  </svg>
-);
-const AlignRightIcon = (): ReactNode => (
-  <svg {...S}>
-    <line x1="2" x2="14" y1="4" y2="4" />
-    <line x1="6" x2="14" y1="8" y2="8" />
-    <line x1="4" x2="14" y1="12" y2="12" />
-  </svg>
-);
-const TrashIcon = (): ReactNode => (
-  <svg {...S}>
-    <polyline points="3,5 4,14 12,14 13,5" />
-    <line x1="2" x2="14" y1="5" y2="5" />
-    <line x1="6" x2="10" y1="3" y2="3" />
-  </svg>
-);
+const TABLE_ICON = { size: 16, strokeWidth: 1.5 } as const;
 // Header Row icon: table grid with bold top row
 const HeaderRowIcon = (): ReactNode => (
   <svg {...S} strokeWidth={1.4}>
@@ -316,21 +295,21 @@ export function TableToolbar({ editor }: TableToolbarProps) {
         onClick={() => setAlign(currentAlign === "left" ? null : "left")}
         title="Align Left"
       >
-        <AlignLeftIcon />
+        <AlignLeft {...TABLE_ICON} />
       </button>
       <button
         className={`table-toolbar-btn${currentAlign === "center" ? "table-toolbar-btn-active" : ""}`}
         onClick={() => setAlign(currentAlign === "center" ? null : "center")}
         title="Align Center"
       >
-        <AlignCenterIcon />
+        <AlignCenter {...TABLE_ICON} />
       </button>
       <button
         className={`table-toolbar-btn${currentAlign === "right" ? "table-toolbar-btn-active" : ""}`}
         onClick={() => setAlign(currentAlign === "right" ? null : "right")}
         title="Align Right"
       >
-        <AlignRightIcon />
+        <AlignRight {...TABLE_ICON} />
       </button>
       <div className="table-toolbar-separator" />
       <button
@@ -400,7 +379,7 @@ export function TableToolbar({ editor }: TableToolbarProps) {
         onClick={() => editor.chain().focus().deleteTable().run()}
         title="Delete Table"
       >
-        <TrashIcon />
+        <Trash2 {...TABLE_ICON} />
       </button>
     </div>
   );
