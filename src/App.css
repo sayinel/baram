@@ -7627,6 +7627,8 @@ body {
 }
 
 .settings-nav-item {
+  display: flex;
+  align-items: center;
   padding: 7px 16px;
   font-size: 0.85rem;
   color: var(--color-text-secondary);
@@ -7653,11 +7655,13 @@ body {
 }
 
 .settings-nav-icon {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 20px;
   margin-right: 6px;
   font-size: 0.8rem;
-  text-align: center;
+  vertical-align: middle;
 }
 
 /* Content area */
