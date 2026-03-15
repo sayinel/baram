@@ -12,7 +12,16 @@
       "status": "implemented",
       "hasNodeView": false,
       "inputRules": ["# ", "## ", "### ", "#### ", "##### ", "###### "],
-      "shortcuts": { "Mod-1": "H1", "Mod-2": "H2", "Mod-3": "H3", "Mod-4": "H4", "Mod-5": "H5", "Mod-6": "H6", "Mod-=": "increase level", "Mod--": "decrease level" }
+      "shortcuts": {
+        "Mod-1": "H1",
+        "Mod-2": "H2",
+        "Mod-3": "H3",
+        "Mod-4": "H4",
+        "Mod-5": "H5",
+        "Mod-6": "H6",
+        "Mod-=": "increase level",
+        "Mod--": "decrease level"
+      }
     },
     {
       "name": "paragraph",
@@ -154,7 +163,10 @@
       "status": "implemented",
       "hasNodeView": false,
       "inputRules": ["| H1 | H2 | + Enter"],
-      "shortcuts": { "Mod-t": "insert table (grid picker)", "Mod-m": "merge or split cells" },
+      "shortcuts": {
+        "Mod-t": "insert table (grid picker)",
+        "Mod-m": "merge or split cells"
+      },
       "notes": "Tier 3: resizable columns (session only), pipe-input auto creation, context menu, hover insert buttons, TSV paste, CellSelection toolbar. M10: cell merge/split (colspan/rowspan → GFM decomposition), virtual scroll (content-visibility: auto) for 50+ row tables"
     },
     {
@@ -218,8 +230,26 @@
       "hasNodeView": true,
       "inputRules": [],
       "shortcuts": { "Mod-Shift-d": "insert mermaid diagram" },
-      "contextMenu": ["Copy as SVG", "Copy as PNG", "Copy Source", "Edit Full-screen", "Delete"],
-      "templates": ["flowchart", "sequence", "class", "state", "er", "gantt", "pie", "mindmap", "timeline", "journey", "gitgraph"],
+      "contextMenu": [
+        "Copy as SVG",
+        "Copy as PNG",
+        "Copy Source",
+        "Edit Full-screen",
+        "Delete"
+      ],
+      "templates": [
+        "flowchart",
+        "sequence",
+        "class",
+        "state",
+        "er",
+        "gantt",
+        "pie",
+        "mindmap",
+        "timeline",
+        "journey",
+        "gitgraph"
+      ],
       "settings": [
         {
           "key": "diagrams",
@@ -580,7 +610,11 @@
       "phase": 2,
       "milestone": "M8",
       "status": "implemented",
-      "shortcuts": { "Tab": "accept full suggestion", "Mod-Right": "accept first word", "Escape": "dismiss" },
+      "shortcuts": {
+        "Tab": "accept full suggestion",
+        "Mod-Right": "accept first word",
+        "Escape": "dismiss"
+      },
       "_note": "ProseMirror Plugin that shows dimmed inline text completions via LLM streaming. Orchestrated by useGhostText hook."
     },
     {
@@ -680,7 +714,11 @@
       "phase": 3,
       "milestone": "M10",
       "status": "implemented",
-      "shortcuts": { "Mod-Shift-[": "toggle fold", "Mod-Shift-Alt-[": "fold all", "Mod-Shift-Alt-]": "unfold all" },
+      "shortcuts": {
+        "Mod-Shift-[": "toggle fold",
+        "Mod-Shift-Alt-[": "fold all",
+        "Mod-Shift-Alt-]": "unfold all"
+      },
       "_note": "Obsidian-style heading & list folding. ProseMirror Plugin with DecorationSet — view-only, no doc mutation. Gutter arrows + CSS fold-hidden + ellipsis indicator."
     },
     {

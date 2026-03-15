@@ -38,7 +38,7 @@ export function MentionView({ node, selected, extension }: NodeViewProps) {
       <span className="mention-icon">
         {isDate ? "\uD83D\uDCC5" : "\uD83D\uDCC4"}
       </span>
-      <span className="mention-label">{value}</span>
+      <span className="mention-label text-truncate">{value}</span>
     </NodeViewWrapper>
   );
 }

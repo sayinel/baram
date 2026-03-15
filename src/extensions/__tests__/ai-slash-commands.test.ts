@@ -60,7 +60,7 @@ function createMockEditor() {
   } as never;
 }
 
-import { buildSlashItems } from "../plugins/slash-command";
+import { buildSlashItems } from "../plugins/slash-command-items";
 
 // All AI commands in slash menu (input-based + selection-based)
 const SLASH_AI_IDS = [
