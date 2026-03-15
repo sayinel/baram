@@ -159,6 +159,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           if (journalEnabled && resolvedDir) {
             (async () => {
               try {
+                // Set vault root to journal directory BEFORE any file operations
+                await setVaultRoot(resolvedDir);
+
                 const result = await ensureJournalFile(new Date(), {
                   journalDirectory,
                   journalFilenameFormat,
@@ -171,7 +174,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
                 }
 
                 // §56 Scope FileTree to journal directory
-                await setVaultRoot(resolvedDir);
                 useFileStore.getState().enterJournalScope(resolvedDir);
                 const entries = await listDir(resolvedDir, true);
                 const tree = buildFileTree(entries, resolvedDir);
