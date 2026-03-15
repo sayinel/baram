@@ -9,7 +9,7 @@ vi.mock("../../ipc/invoke", async (importOriginal) => {
   };
 });
 
-vi.mock("../../stores/ai-store", () => ({
+vi.mock("../../stores/ai/ai", () => ({
   useAIStore: {
     getState: () => ({
       apiKey: "test-key",
