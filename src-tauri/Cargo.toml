@@ -26,7 +26,7 @@ futures = "0.3"
 uuid = { version = "1", features = ["v4"] }
 headless_chrome = "1"
 tempfile = "3"
-notify = "7"
+notify = "8"
 regex = "1"
 keyring = { version = "3", features = ["apple-native"] }
 git2 = "0.19"

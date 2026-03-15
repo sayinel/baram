@@ -1,7 +1,7 @@
 {
   "_comment": "Baram 개발 진행 상황 추적. 슬래시 커맨드가 자동으로 업데이트한다.",
   "project": "baram",
-  "lastUpdated": "2026-03-09",
+  "lastUpdated": "2026-03-13",
   "currentPhase": 3,
   "currentMilestone": "M10",
 
@@ -326,7 +326,7 @@
       "status": "completed",
       "completedAt": "2026-03-01",
       "features": {
-        "§5.5-cell-merge": { "status": "completed", "tests": "10/10 vitest pass (grid decomposition + roundtrip)", "spec": "§5.5", "details": "mergeCells/splitCell/mergeOrSplit commands, renderHTML colspan/rowspan attrs, 2D grid pmToMdast decomposition, Mod-M shortcut, TableToolbar + ContextMenu buttons" },
+        "§5.5-cell-merge": { "status": "completed", "tests": "27/27 vitest pass (grid decomposition + merge markers + roundtrip + inline marks + backward compat)", "spec": "§5.5", "details": "mergeCells/splitCell/mergeOrSplit commands, renderHTML colspan/rowspan attrs, 2D grid pmToMdast decomposition, Mod-M shortcut, TableToolbar + ContextMenu buttons, merge marker persistence (<, ^) for colspan/rowspan roundtrip in markdown" },
         "§5.5-virtual-scroll": { "status": "completed", "tests": "4/4 vitest pass (threshold + utility)", "spec": "§5.5", "details": "content-visibility: auto on 50+ row tables, ProseMirror plugin, graceful degradation for unsupported browsers" },
         "§71-file-snapshots": { "status": "completed", "tests": "34 cargo tests pass (index 5, io 8, diff 10, policy 6, integration 5)", "spec": "§71", "details": "Rust snapshot module (index, io, diff, policy) + 6 IPC commands + Zustand store + VersionHistoryPanel sidebar + ActivityBar icon + settings (snapshotInterval, snapshotMaxCount)" },
         "§61-namespace": { "status": "completed", "tests": "20 vitest pass (9 roundtrip + 5 suggest + 6 extractNamespace) + 5 cargo test (resolve + make_relative + rewrite)", "spec": "§61", "details": "P0: relative wikilink resolve (./  ../), wikilink-suggest namespace filter, Quick Switcher ns: filter + namespace detail, Rust resolve_relative_path + make_relative_path + rewrite_relative_wikilinks + rename_namespace IPC. P1: Graph View colorByNamespace + namespaceFilter, Backlinks groupByNamespace. P2 자동 prefix 삽입은 YAGNI — 필요 시 구현 예정" },
@@ -368,11 +368,11 @@
   },
 
   "testSummary": {
-    "vitest": "1928/1928 pass (110 test files)",
+    "vitest": "1940/1940 pass (110 test files)",
     "cargoTest": "163/163 pass (4 ignored)",
     "note": "All medium+low+info spec-check issues resolved. Coverage 99%. Only §8.4 manual perf measurements remain.",
     "breakdown": {
-      "_comment": "110 test files, 1928 tests total (2026-03-11 spec-check verified)",
+      "_comment": "110 test files, 1940 tests total (2026-03-13 spec-check verified)",
       "integration/ai-edit-workflow": 5,
       "integration/auto-rename": 11,
       "integration/backlink-panel": 5,
@@ -456,7 +456,7 @@
       "extensions/table-virtual-scroll": 4,
       "extensions/frontmatter-tags": 13,
       "extensions/image": 12,
-      "extensions/table-advanced": 16,
+      "extensions/table-advanced": 27,
       "extensions/tag-node": 14,
       "keybindings/key-utils": 25,
       "keybindings/keybinding-registry": 18,

@@ -84,7 +84,7 @@ export const CodeBlock = Node.create<CodeBlockOptions>({
   },
 
   addNodeView() {
-    return ({ node, view, getPos }) => {
+    return ({ node, view, getPos, editor }) => {
       const lang = (node.attrs.language as string) ?? "";
       if (lang.startsWith("journal-")) {
         return new JournalBlockNodeView(
@@ -97,6 +97,7 @@ export const CodeBlock = Node.create<CodeBlockOptions>({
         node,
         view,
         getPos as () => number | undefined,
+        editor,
       );
     };
   },

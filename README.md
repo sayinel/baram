@@ -346,13 +346,24 @@ Baram has built-in AI writing assistance powered by Claude, OpenAI, Google Gemin
 4. Enter your API key (per-provider — each provider has its own key field; Ollama requires no key)
 5. Choose your preferred model (models are loaded dynamically from the provider)
 
-### Inline AI Editing
+### Inline AI Editing (`Cmd+J`)
 
-1. Select text in the editor
-2. Click the AI button in the **Floating Toolbar** or type a custom prompt
-3. Type your instruction (e.g., "make this more concise", "translate to Korean")
-4. Review the AI suggestion with **character-level diff** highlighting
-5. **Accept** or **Reject** the changes
+Press `Cmd+J` to open the inline AI prompt anywhere in your document:
+
+1. Type your instruction (e.g., "make this more concise", "translate to Korean")
+2. The AI processes your request with real-time streaming
+3. Review the suggestion with **character-level diff** highlighting
+4. **Accept** or **Reject** the changes
+
+### Contextual AI Actions (✨ Sparkles)
+
+AI actions appear contextually throughout the editor via the ✨ button:
+
+- **Floating Toolbar** — Select text and click ✨ for actions like Improve, Shorten, Expand, Translate, Tone Change, Explain
+- **Block Handle** — Hover near the left gutter, click ⋮, then ✨ for block-level AI actions
+- **NodeView Buttons** — Hover over code blocks, math blocks, tables, images, callouts, and Mermaid diagrams for specialized AI actions
+
+Actions are content-aware — code blocks show "Add Comments", "Optimize", "Find Bugs"; math blocks show "Show Steps", "Fix LaTeX"; tables show "Analyze Data", "Fill Cells", etc.
 
 ### Ghost Text (AI Autocomplete)
 
@@ -369,8 +380,17 @@ Enable or disable Ghost Text in **Settings > AI**.
 A dedicated chat panel for conversing with AI about your documents:
 
 - **@references** — Mention context: `@selection`, `@current` (current file), `@file` (any file), `@clipboard`
+- **Apply to Editor** — Insert AI responses directly into the editor as WYSIWYG content
 - Streaming responses with markdown rendering
 - Conversation history per session
+
+### Smart Templates (`/ai-template`)
+
+Type `/ai-template` in the slash menu to generate document content from AI-powered templates:
+
+- Choose from template categories (e.g., Meeting Notes, Project Plan, Technical Spec)
+- Or write a custom description for any template
+- Generated content is inserted as fully rendered WYSIWYG blocks
 
 ### Slash AI Commands
 
@@ -378,13 +398,14 @@ Type `/` to open the slash menu. AI-powered commands include:
 
 | Command | Description |
 |---------|-------------|
+| `/ai-write` | Write or continue from current context |
+| `/ai-brainstorm` | Brainstorm ideas from current context |
 | `/ai-summarize` | Summarize selected text |
 | `/ai-expand` | Expand and elaborate on selected text |
-| `/ai-grammar` | Fix grammar and spelling |
+| `/ai-fix-grammar` | Fix grammar and spelling |
 | `/ai-translate` | Translate to another language |
-| `/ai-tone` | Change writing tone |
-| `/ai-simplify` | Simplify complex text |
-| `/ai-continue` | Continue writing from cursor position |
+| `/ai-explain` | Explain selected text in simple terms |
+| `/ai-template` | Generate content from AI templates |
 
 ### Custom AI Commands
 

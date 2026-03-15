@@ -11,6 +11,8 @@ import { getConfigForTask } from "./model-selection";
 export interface AICommandOptions {
   // When true, insert response on a new line after the block containing the selection end
   afterSelection?: boolean;
+  // Explicit document position to insert after (overrides afterSelection)
+  insertAfterPos?: number;
 }
 
 // Custom prompt dialog — replaces window.prompt() which doesn't work in Tauri WKWebView
@@ -39,7 +41,15 @@ export async function executeAICommand(
 
   let currentPos: number;
 
-  if (options?.afterSelection) {
+  if (options?.insertAfterPos != null) {
+    // Insert a new paragraph at the explicit position (after a specific block)
+    editor
+      .chain()
+      .focus()
+      .insertContentAt(options.insertAfterPos, { type: "paragraph" })
+      .run();
+    currentPos = options.insertAfterPos + 1; // inside the new paragraph
+  } else if (options?.afterSelection) {
     // Insert a new paragraph after the block that contains the selection end
     const { to } = editor.state.selection;
     const $to = editor.state.doc.resolve(to);

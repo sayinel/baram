@@ -416,6 +416,18 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
     },
   );
 
+  // §11.8 Smart Template
+  items.push({
+    id: "ai-template",
+    label: "AI Template",
+    category: "AI",
+    description: "Generate from a smart template",
+    mdHint: "AI",
+    action: () => {
+      useUIStore.getState().toggleSmartTemplateDialog();
+    },
+  });
+
   // §56l Journal capture commands
   items.push(
     {

@@ -1,12 +1,24 @@
 // §4.8 Block Handle — drag handle + menu on block hover
+// §11.2.3 BlockHandle AI submenu — contextual AI actions per block type
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Editor } from "@tiptap/react";
+
+import { Sparkles } from "lucide-react";
 
 import {
   addBlockId,
   editBlockId,
 } from "../../extensions/plugins/block-id-decoration";
+import {
+  dispatchAIAction,
+  dispatchCustomInstruction,
+} from "../../utils/ai-action-dispatcher";
+import {
+  getBlockContentMode,
+  getBlockTextContent,
+} from "../../utils/block-ai-utils";
+import { getActionsForMode } from "../../utils/contextual-ai-actions";
 
 interface BlockHandleProps {
   editor: Editor;
@@ -26,76 +38,97 @@ interface HandlePosition {
 export function BlockHandle({ editor }: BlockHandleProps) {
   const [handle, setHandle] = useState<HandlePosition | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [aiSubOpen, setAiSubOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const rafRef = useRef<null | number>(null);
+  const aiSubRef = useRef<HTMLDivElement>(null);
+  const handleRef = useRef<HTMLDivElement>(null);
+  const hideTimeoutRef = useRef<null | ReturnType<typeof setTimeout>>(null);
+
+  // Cancel any pending hide timeout
+  const cancelHideTimeout = useCallback(() => {
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
+  }, []);
 
   // Track which block the mouse is hovering over
   useEffect(() => {
     const editorDom = editor.view.dom;
+    // Listen on scroll container for wider event surface (includes gutter area)
+    const scrollContainer = (editorDom.closest("[data-editor-scroll]") ??
+      editorDom.parentElement ??
+      editorDom) as HTMLElement;
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-      rafRef.current = requestAnimationFrame(() => {
-        rafRef.current = null;
-        if (menuOpen) return;
+      if (menuOpen) return;
+      cancelHideTimeout();
 
-        const editorRect = editorDom.getBoundingClientRect();
-        // Only show when mouse is near the left margin
-        if (e.clientX > editorRect.left + 60) {
+      const editorRect = editorDom.getBoundingClientRect();
+      // Show handle when mouse is near the left gutter of the editor
+      // Accept from slightly left of editor to ~120px inside
+      if (
+        e.clientX < editorRect.left - 10 ||
+        e.clientX > editorRect.left + 120
+      ) {
+        setHandle(null);
+        return;
+      }
+
+      // Find the block-level node under the cursor
+      try {
+        const pos = editor.view.posAtCoords({
+          left: editorRect.left + 80,
+          top: e.clientY,
+        });
+        if (!pos) {
           setHandle(null);
           return;
         }
 
-        // Find the block-level node under the cursor
-        try {
-          const pos = editor.view.posAtCoords({
-            left: editorRect.left + 80,
-            top: e.clientY,
-          });
-          if (!pos) {
-            setHandle(null);
-            return;
-          }
-
-          const resolved = editor.state.doc.resolve(pos.pos);
-          if (resolved.depth < 1) {
-            setHandle(null);
-            return;
-          }
-          const blockPos = resolved.before(1);
-          const dom = editor.view.nodeDOM(blockPos);
-          if (!dom || !(dom instanceof HTMLElement)) {
-            setHandle(null);
-            return;
-          }
-
-          const domRect = dom.getBoundingClientRect();
-          setHandle({ top: domRect.top, pos: blockPos });
-        } catch {
+        const resolved = editor.state.doc.resolve(pos.pos);
+        if (resolved.depth < 1) {
           setHandle(null);
+          return;
         }
-      });
+        const blockPos = resolved.before(1);
+        const dom = editor.view.nodeDOM(blockPos);
+        if (!dom || !(dom instanceof HTMLElement)) {
+          setHandle(null);
+          return;
+        }
+
+        const domRect = dom.getBoundingClientRect();
+        setHandle({ top: domRect.top, pos: blockPos });
+      } catch {
+        setHandle(null);
+      }
     };
 
     const handleMouseLeave = () => {
-      if (!menuOpen) setHandle(null);
+      if (menuOpen) return;
+      // Delay hide so user can move cursor to the handle element
+      hideTimeoutRef.current = setTimeout(() => {
+        setHandle(null);
+      }, 300);
     };
 
-    editorDom.addEventListener("mousemove", handleMouseMove);
-    editorDom.addEventListener("mouseleave", handleMouseLeave);
+    scrollContainer.addEventListener("mousemove", handleMouseMove);
+    scrollContainer.addEventListener("mouseleave", handleMouseLeave);
 
     return () => {
-      editorDom.removeEventListener("mousemove", handleMouseMove);
-      editorDom.removeEventListener("mouseleave", handleMouseLeave);
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      scrollContainer.removeEventListener("mousemove", handleMouseMove);
+      scrollContainer.removeEventListener("mouseleave", handleMouseLeave);
+      cancelHideTimeout();
     };
-  }, [editor, menuOpen]);
+  }, [editor, menuOpen, cancelHideTimeout]);
 
   // Reset handle when document changes (e.g. tab switch, wikilink navigation)
   useEffect(() => {
     const handler = () => {
       setHandle(null);
       setMenuOpen(false);
+      setAiSubOpen(false);
     };
     editor.on("update", handler);
     return () => {
@@ -109,21 +142,65 @@ export function BlockHandle({ editor }: BlockHandleProps) {
     const handleClick = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
+        setAiSubOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [menuOpen]);
 
+  // Reposition AI submenu to avoid going off-screen
+  useEffect(() => {
+    if (!aiSubOpen || !aiSubRef.current || !menuRef.current) return;
+    const menuRect = menuRef.current.getBoundingClientRect();
+    const subRect = aiSubRef.current.getBoundingClientRect();
+    // If submenu goes off right edge, flip to left side
+    if (menuRect.right + subRect.width > window.innerWidth - 8) {
+      aiSubRef.current.style.left = "auto";
+      aiSubRef.current.style.right = "100%";
+    }
+    // If submenu goes off bottom edge, align to bottom of parent
+    if (subRect.bottom > window.innerHeight - 8) {
+      const overflow = subRect.bottom - window.innerHeight + 8;
+      aiSubRef.current.style.marginTop = `-${overflow}px`;
+    }
+  }, [aiSubOpen]);
+
   const handleMenuAction = useCallback((action: () => void) => {
     action();
     setMenuOpen(false);
+    setAiSubOpen(false);
   }, []);
+
+  const handleAIAction = useCallback(
+    (action: Parameters<typeof dispatchAIAction>[0]) => {
+      if (!handle) return;
+      setMenuOpen(false);
+      setAiSubOpen(false);
+      dispatchAIAction(action, editor, handle.pos);
+    },
+    [editor, handle],
+  );
+
+  const handleCustomInstruction = useCallback(() => {
+    if (!handle) return;
+    setMenuOpen(false);
+    setAiSubOpen(false);
+    dispatchCustomInstruction(editor, handle.pos);
+  }, [editor, handle]);
 
   if (!handle) return null;
 
   // Guard: stale position after document change
   if (handle.pos >= editor.state.doc.content.size) return null;
+
+  // Determine AI actions for the current block
+  const currentNode = editor.state.doc.nodeAt(handle.pos);
+  const aiMode = currentNode ? getBlockContentMode(currentNode) : null;
+  const aiActions = aiMode ? getActionsForMode(aiMode) : [];
+  const blockHasContent = currentNode
+    ? getBlockTextContent(currentNode).trim().length > 0
+    : false;
 
   // Build block ID menu item for paragraph/heading nodes
   const blockIdItem: DropdownItem | null = (() => {
@@ -229,9 +306,18 @@ export function BlockHandle({ editor }: BlockHandleProps) {
     <>
       <div
         className="block-handle"
+        onMouseEnter={cancelHideTimeout}
+        onMouseLeave={() => {
+          if (!menuOpen) {
+            hideTimeoutRef.current = setTimeout(() => {
+              setHandle(null);
+            }, 300);
+          }
+        }}
+        ref={handleRef}
         style={{
           top: `${handle.top}px`,
-          left: `${editorRect.left - 30}px`,
+          left: `${editorRect.left + 14}px`,
         }}
       >
         <button
@@ -249,7 +335,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
           ref={menuRef}
           style={{
             top: `${handle.top}px`,
-            left: `${editorRect.left - 24}px`,
+            left: `${editorRect.left + 14}px`,
           }}
         >
           {menuItems.map((item, i) => (
@@ -263,6 +349,44 @@ export function BlockHandle({ editor }: BlockHandleProps) {
               </button>
             </div>
           ))}
+
+          {/* AI Submenu */}
+          {blockHasContent && (
+            <>
+              <div className="block-handle-separator" />
+              <div
+                className="block-handle-ai-trigger"
+                onMouseEnter={() => setAiSubOpen(true)}
+                onMouseLeave={() => setAiSubOpen(false)}
+              >
+                <button className="block-handle-menu-item block-handle-ai-item">
+                  <Sparkles size={14} />
+                  <span className="block-handle-ai-arrow">{"\u25B8"}</span>
+                </button>
+
+                {aiSubOpen && (
+                  <div className="block-handle-ai-submenu" ref={aiSubRef}>
+                    {aiActions.map((action) => (
+                      <button
+                        className="block-handle-menu-item"
+                        key={action.id}
+                        onClick={() => handleAIAction(action)}
+                      >
+                        {action.label}
+                      </button>
+                    ))}
+                    <div className="block-handle-separator" />
+                    <button
+                      className="block-handle-menu-item"
+                      onClick={handleCustomInstruction}
+                    >
+                      Custom Instruction
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
     </>

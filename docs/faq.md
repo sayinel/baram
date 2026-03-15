@@ -112,6 +112,14 @@ Four ways:
 
 Once created, navigate cells with `Tab` and `Shift+Tab`. Drag column borders to resize (session only). Hover over the table to see ⊕ buttons for adding rows and columns. Right-click for alignment, header toggle, and copy options.
 
+### How do I merge table cells?
+
+1. Select the cells you want to merge by clicking and dragging across them
+2. Press `Cmd+M` (macOS) / `Ctrl+M` (Windows/Linux), or right-click and select **Merge Cells**
+3. To split a merged cell back, place your cursor in it and press `Cmd+M` again
+
+**Persistence:** Cell merges are saved in your markdown file using `<` (colspan) and `^` (rowspan) markers inside the pipe table. This means merges survive source mode toggle (`Cmd+/`), file close/reopen, and are compatible with Obsidian Sheets Extended. In non-supporting markdown viewers, the markers simply appear as cell text.
+
 ### How do I insert math formulas?
 
 - **Block math**: Type `$$` and press Enter, or use `Cmd+Shift+M`
@@ -245,11 +253,19 @@ AI usage is billed by your API provider. Baram itself does not charge for AI fea
 
 ### How do I use the AI inline editing?
 
-1. Select text in the editor
-2. Click the **AI button** in the Floating Toolbar, or use a slash AI command
-3. Type a natural language instruction (e.g., "translate to English", "fix grammar")
-4. Review the diff: green = added text, red = removed text
-5. Accept or reject the changes
+Press `Cmd+J` (macOS) / `Ctrl+J` (Windows/Linux) to open the inline AI prompt. Type a natural language instruction (e.g., "translate to English", "fix grammar"), review the diff (green = added, red = removed), then accept or reject the changes.
+
+### What is the ✨ (Sparkles) button?
+
+The ✨ button provides contextual AI actions that adapt to the content you're working with. It appears in three places:
+
+1. **Floating Toolbar** — Select text and click ✨ for text-aware actions (Improve, Shorten, Translate, etc.)
+2. **Block Handle** — Hover near the left edge of a block, click ⋮, then hover ✨ for block-level actions
+3. **NodeView Buttons** — Hover over code blocks, math blocks, tables, images, callouts, or Mermaid diagrams to see a ✨ button with specialized actions (e.g., "Find Bugs" for code, "Fix LaTeX" for math)
+
+### What are Smart Templates?
+
+Type `/ai-template` in the slash menu to generate structured documents from AI. Choose a preset template (Meeting Notes, Project Plan, etc.) or write a custom description. The AI generates formatted content (headings, lists, tables) and inserts it directly as WYSIWYG blocks.
 
 ### What is Ghost Text?
 
@@ -257,7 +273,7 @@ Ghost Text is AI-powered autocomplete that shows suggestions as faded text ahead
 
 ### What is the AI Chat Panel?
 
-Press `Cmd+Shift+A` (macOS) or `Ctrl+Shift+A` (Windows/Linux) to open a chat panel where you can converse with AI about your documents. Use `@references` to provide context: `@selection` (selected text), `@current` (current file), `@file` (any file), `@clipboard` (clipboard contents).
+Press `Cmd+Shift+A` (macOS) or `Ctrl+Shift+A` (Windows/Linux) to open a chat panel where you can converse with AI about your documents. Use `@references` to provide context: `@selection` (selected text), `@current` (current file), `@file` (any file), `@clipboard` (clipboard contents). Use **Apply to Editor** to insert AI responses directly into your document as formatted content.
 
 ### What are Custom AI Commands?
 
@@ -265,7 +281,7 @@ Create your own reusable AI commands in **Settings > AI > Custom Commands**. Eac
 
 ### What are Slash AI commands?
 
-Type `/` to open the slash menu and scroll to the AI section, or type `/ai-` to filter. Available commands: summarize, expand, grammar fix, translate, tone change, simplify, and continue writing. Custom AI commands also appear here.
+Type `/` to open the slash menu and scroll to the AI section, or type `/ai-` to filter. Available commands: write, brainstorm, summarize, expand, fix grammar, translate, explain, and smart templates. Custom AI commands also appear here.
 
 ### Can I use AI without sending data to the cloud?
 
