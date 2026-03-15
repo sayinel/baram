@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { useAIStore } from "../../stores/ai-store";
+import { useAIStore } from "../../stores/ai/ai";
 import { getConfigForTask } from "../model-selection";
 
 describe("getConfigForTask — full config", () => {
