@@ -5,7 +5,7 @@ import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 // §5.5 Mermaid Block NodeView — selected: textarea + preview, unselected: SVG render
 // §50 Enhanced: template picker + full-screen edit
 import DOMPurify from "dompurify";
-import { Sparkles } from "lucide-react";
+import { Copy, Maximize2, Sparkles } from "lucide-react";
 
 import {
   copyMermaidPng,
@@ -437,19 +437,7 @@ export function MermaidBlockView({
               }}
               title="Copy source code"
             >
-              <svg
-                fill="none"
-                height="16"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                viewBox="0 0 24 24"
-                width="16"
-              >
-                <rect height="13" rx="2" width="13" x="9" y="9" />
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-              </svg>
+              <Copy size={16} strokeWidth={2} />
             </button>
             <button
               className="mermaid-hover-toolbar-btn"
@@ -459,21 +447,7 @@ export function MermaidBlockView({
               }}
               title="Fullscreen view"
             >
-              <svg
-                fill="none"
-                height="16"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                viewBox="0 0 24 24"
-                width="16"
-              >
-                <path d="M8 3H5a2 2 0 0 0-2 2v3" />
-                <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
-                <path d="M3 16v3a2 2 0 0 0 2 2h3" />
-                <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
-              </svg>
+              <Maximize2 size={16} strokeWidth={2} />
             </button>
           </div>
         )}
