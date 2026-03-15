@@ -55,7 +55,7 @@ export function Outline() {
           style={{ paddingLeft: `${(h.level - 1) * 12 + 8}px` }}
         >
           <span className="outline-level">H{h.level}</span>
-          <span className="outline-text">{h.text}</span>
+          <span className="outline-text text-truncate">{h.text}</span>
         </div>
       ))}
     </div>

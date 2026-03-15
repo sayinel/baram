@@ -2,11 +2,13 @@
 
 interface AgentProgressBarProps {
   completedSteps: number;
+  label?: string;
   totalSteps: number;
 }
 
 export function AgentProgressBar({
   completedSteps,
+  label = "실행 중...",
   totalSteps,
 }: AgentProgressBarProps) {
   const percent = totalSteps > 0 ? (completedSteps / totalSteps) * 100 : 0;
@@ -14,7 +16,7 @@ export function AgentProgressBar({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between text-sm">
-        <span>실행 중...</span>
+        <span>{label}</span>
         <span>
           {completedSteps}/{totalSteps}
         </span>

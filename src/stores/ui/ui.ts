@@ -1,6 +1,14 @@
 // §3.5 UI 레이아웃 스토어
 import { create } from "zustand";
 
+export type RightPanelMode =
+  | "chat"
+  | "help"
+  | "memories"
+  | "none"
+  | "photo-gallery"
+  | "properties";
+
 export type SidebarPanel =
   | "backlinks"
   | "bookmarks"
@@ -14,6 +22,7 @@ export type SidebarPanel =
   | "skills-gallery"
   | "snapshots"
   | "tags";
+
 type ExportFormat =
   | "docx"
   | "epub"
@@ -40,26 +49,12 @@ interface UIState {
   quickCaptureOpen: boolean;
   quickCaptureType: "idea" | "link" | "note" | "quote";
   quickSwitcherOpen: boolean;
-  rightPanelMode:
-    | "chat"
-    | "help"
-    | "memories"
-    | "none"
-    | "photo-gallery"
-    | "properties";
+  rightPanelMode: RightPanelMode;
   rightPanelOpen: boolean;
   rightPanelWidth: number;
   setPendingApplyContent: (content: null | string) => void;
   setPendingSearchHighlight: (term: null | string) => void;
-  setRightPanelMode: (
-    mode:
-      | "chat"
-      | "help"
-      | "memories"
-      | "none"
-      | "photo-gallery"
-      | "properties",
-  ) => void;
+  setRightPanelMode: (mode: RightPanelMode) => void;
 
   setRightPanelWidth: (width: number) => void;
   setSidebarPanel: (panel: SidebarPanel) => void;

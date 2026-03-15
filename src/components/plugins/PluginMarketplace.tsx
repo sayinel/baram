@@ -18,7 +18,7 @@ const STYLES = {
   tabBar: {
     display: "flex",
     gap: "0",
-    borderBottom: "1px solid var(--color-border, #e5e7eb)",
+    borderBottom: "1px solid var(--color-border-default, #e5e7eb)",
     marginBottom: "8px",
   } as React.CSSProperties,
   searchInput: {
@@ -26,7 +26,7 @@ const STYLES = {
     padding: "8px 12px",
     borderRadius: "6px",
     fontSize: "13px",
-    border: "1px solid var(--color-border, #e5e7eb)",
+    border: "1px solid var(--color-border-default, #e5e7eb)",
     backgroundColor: "var(--color-bg, #fff)",
     color: "var(--color-text, #111)",
     outline: "none",
@@ -53,7 +53,7 @@ const STYLES = {
     borderRadius: "6px",
     fontSize: "12px",
     cursor: "pointer",
-    backgroundColor: "var(--color-accent, #3b82f6)",
+    backgroundColor: "var(--color-accent-default, #3b82f6)",
     color: "#fff",
     border: "none",
   } as React.CSSProperties,
@@ -64,7 +64,7 @@ const STYLES = {
     fontSize: "13px",
   } as React.CSSProperties,
   installedRow: {
-    borderBottom: "1px solid var(--color-border, #e5e7eb)",
+    borderBottom: "1px solid var(--color-border-default, #e5e7eb)",
   } as React.CSSProperties,
   installedRowInner: {
     display: "flex",
@@ -135,11 +135,11 @@ const STYLES = {
     padding: "6px 12px",
     fontSize: "13px",
     fontWeight: 600,
-    color: "var(--color-accent, #3b82f6)",
+    color: "var(--color-accent-default, #3b82f6)",
     backgroundColor: "transparent",
     border: "none",
     cursor: "pointer",
-    borderBottom: "2px solid var(--color-accent, #3b82f6)",
+    borderBottom: "2px solid var(--color-accent-default, #3b82f6)",
     marginBottom: "-1px",
   } as React.CSSProperties,
   tabButtonInactive: {

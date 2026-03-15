@@ -516,7 +516,7 @@ export function GraphView() {
         </span>
         <div className="graph-view-header-actions">
           <button
-            className="graph-view-settings-btn"
+            className="graph-view-settings-btn btn-unstyled"
             onClick={() => setShowSettings((v) => !v)}
             title="Graph settings"
           >
@@ -527,7 +527,7 @@ export function GraphView() {
           </button>
           {!isInEditorTab && (
             <button
-              className="graph-view-expand-btn"
+              className="graph-view-expand-btn btn-unstyled"
               onClick={handleOpenInTab}
               title="Open in editor tab"
             >

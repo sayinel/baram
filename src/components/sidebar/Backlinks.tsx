@@ -287,8 +287,8 @@ export function Backlinks() {
                           padding: "0 4px",
                           borderRadius: "3px",
                           background:
-                            "color-mix(in srgb, var(--color-accent) 15%, transparent)",
-                          color: "var(--color-accent)",
+                            "color-mix(in srgb, var(--color-accent-default) 15%, transparent)",
+                          color: "var(--color-accent-default)",
                         }}
                       >
                         ^{entry.blockId}

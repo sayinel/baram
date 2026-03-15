@@ -124,15 +124,15 @@ export function SourceCodeEditor({
             fontSize: "14px",
           },
           ".cm-content": {
-            fontFamily: "var(--font-mono)",
+            fontFamily: "var(--font-family-mono)",
             padding: "1rem 2rem",
           },
           ".cm-cursor, .cm-dropCursor": {
             borderLeftColor: "var(--color-editor-cursor)",
           },
           ".cm-gutters": {
-            backgroundColor: "var(--color-bg-secondary)",
-            borderRight: "1px solid var(--color-border-light)",
+            backgroundColor: "var(--color-bg-subtle)",
+            borderRight: "1px solid var(--color-border-subtle)",
           },
         }),
       ],

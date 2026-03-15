@@ -92,7 +92,7 @@ export function FileTreeNode({
             />
           ) : (
             <span
-              className="file-tree-name"
+              className="file-tree-name text-truncate"
               onDoubleClick={(e) => {
                 e.stopPropagation();
                 onStartRename(entry.path);
@@ -136,7 +136,7 @@ export function FileTreeNode({
   // File item -- drag source (detected by data-file-path via mouse events at root)
   return (
     <div
-      className={`file-tree-item file-tree-file ${isSelected ? "file-tree-item-active" : ""} ${isDragSource ? "file-tree-drag-source" : ""}`}
+      className={`file-tree-item file-tree-file ${isSelected ? "file-tree-item-active" : ""} ${isDragSource ? "opacity-40" : ""}`}
       data-file-path={entry.path}
       onClick={() => !isRenaming && onFileClick(entry)}
       onContextMenu={(e) => onContextMenu(e, entry.path, false)}
@@ -152,7 +152,7 @@ export function FileTreeNode({
         />
       ) : (
         <span
-          className="file-tree-name"
+          className="file-tree-name text-truncate"
           onDoubleClick={(e) => {
             e.stopPropagation();
             onStartRename(entry.path);

@@ -184,15 +184,17 @@ export function useFileOperations({
       useEditorStore.setState((state) => ({
         tabs: state.tabs.map((t) =>
           t.id === saveAsTab.id
-            ? { ...t, filePath: savePath, title: fileName, isDirty: false }
+            ? { ...t, filePath: savePath, title: fileName }
             : t,
         ),
       }));
+      markDirty(saveAsTab.id, false);
+      notifyFileSave(savePath);
     } catch (err) {
       logger.error("[App] Failed to save as:", err);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- sourceContentRef is a stable ref
-  }, [editor, isSourceMode, setFileContent]);
+  }, [editor, isSourceMode, setFileContent, markDirty]);
 
   const handleCloseTab = useCallback(async () => {
     const { activeTabId: tabId, tabs } = useEditorStore.getState();
@@ -200,9 +202,14 @@ export function useFileOperations({
     const tab = tabs.find((t) => t.id === tabId);
     if (tab?.isDirty && tab.filePath) {
       // Auto-save may not have fired yet — flush before closing
-      handleSave().finally(() => {
-        useEditorStore.getState().closeTab(tabId);
-      });
+      handleSave().then(
+        () => {
+          useEditorStore.getState().closeTab(tabId);
+        },
+        () => {
+          // save failed — keep tab open, user retains their changes
+        },
+      );
       return;
     }
     if (tab?.isDirty && !tab.filePath) {
@@ -219,14 +226,23 @@ export function useFileOperations({
   const handleOpenFolder = useCallback(async () => {
     const selected = await open({ directory: true });
     if (selected) {
-      await openFolder(selected);
-      useSettingsStore.getState().addRecentFolder(selected);
+      try {
+        await openFolder(selected);
+        useSettingsStore.getState().addRecentFolder(selected);
+      } catch (err) {
+        logger.error("[App] Failed to open folder:", err);
+      }
     }
   }, []);
 
   const handleOpenRecentFolder = useCallback(async (path: string) => {
-    await openFolder(path);
-    useSettingsStore.getState().addRecentFolder(path);
+    // Called at app startup — errors must not crash the app; vault stays uninitialized
+    try {
+      await openFolder(path);
+      useSettingsStore.getState().addRecentFolder(path);
+    } catch (err) {
+      logger.error("[App] Failed to open recent folder:", err);
+    }
   }, []);
 
   // Open file by path — used by macOS file association (Finder → Baram)

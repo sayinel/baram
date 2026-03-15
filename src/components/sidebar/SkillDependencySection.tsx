@@ -326,13 +326,13 @@ function DependencyGraph({
     // Resolve CSS variables for Cytoscape (doesn't support var())
     const computed = getComputedStyle(document.documentElement);
     const accent =
-      computed.getPropertyValue("--color-accent").trim() || "#6366f1";
+      computed.getPropertyValue("--color-accent-default").trim() || "#6366f1";
     const borderColor =
-      computed.getPropertyValue("--color-border").trim() || "#d1d5db";
+      computed.getPropertyValue("--color-border-default").trim() || "#d1d5db";
     const textColor =
-      computed.getPropertyValue("--color-text").trim() || "#1f2937";
+      computed.getPropertyValue("--color-text-primary").trim() || "#1f2937";
     const bgSecondary =
-      computed.getPropertyValue("--color-bg-secondary").trim() || "#f3f4f6";
+      computed.getPropertyValue("--color-bg-subtle").trim() || "#f3f4f6";
 
     let cancelled = false;
 
