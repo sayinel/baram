@@ -1,7 +1,7 @@
 import {
   parseYamlProperties,
   serializeYamlProperties,
-} from "../../../utils/yaml-properties";
+} from "../../../utils/markdown/yaml-properties";
 
 describe("parseYamlProperties", () => {
   it("parses string fields", () => {

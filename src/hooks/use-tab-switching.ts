@@ -25,8 +25,11 @@ import { useLinkStore } from "../stores/editor/link";
 import { useFileStore } from "../stores/file/file";
 import { useNavigationStore } from "../stores/ui/navigation";
 import { useUIStore } from "../stores/ui/ui";
-import { findBlockPosById, findHeadingPosByText } from "../utils/block-nav";
-import { mdLineToPmBlockStart } from "../utils/cursor-mapper";
+import {
+  findBlockPosById,
+  findHeadingPosByText,
+} from "../utils/editor/block-nav";
+import { mdLineToPmBlockStart } from "../utils/editor/cursor-mapper";
 import { isMarkdownFile } from "../utils/file-type";
 import { logger } from "../utils/logger";
 

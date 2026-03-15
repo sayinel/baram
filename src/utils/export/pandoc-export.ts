@@ -1,7 +1,7 @@
 // §55 Pandoc Extended Export — Baram MD → standard Pandoc-compatible MD preprocessing
 // Pure utility functions (no external dependencies)
 
-import { replaceOutsideCode } from "../markdown-code-regions";
+import { replaceOutsideCode } from "../markdown/markdown-code-regions";
 
 /** Convert Baram callouts to simple blockquotes.
  *  `> [!tip] Title` → `> **Tip**: Title` */

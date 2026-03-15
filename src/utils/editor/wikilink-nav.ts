@@ -1,10 +1,10 @@
-import { useEditorStore } from "../stores/editor/editor";
+import { useEditorStore } from "../../stores/editor/editor";
 // §28 Wikilink navigation — resolve target to file path
 // §61 Namespace — relative path resolution (./  ../)
-import { useFileStore } from "../stores/file/file";
-import { useSettingsStore } from "../stores/settings/store";
-import { flattenFileTree } from "./file-search";
-import { isDateString, resolveJournalDir } from "./journal/journal";
+import { useFileStore } from "../../stores/file/file";
+import { useSettingsStore } from "../../stores/settings/store";
+import { flattenFileTree } from "../file-search";
+import { isDateString, resolveJournalDir } from "../journal/journal";
 
 /**
  * §61 Resolve a relative wikilink target (starting with ./ or ../)

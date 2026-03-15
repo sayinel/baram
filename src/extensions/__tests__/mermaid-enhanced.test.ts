@@ -7,7 +7,7 @@ import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 import {
   detectMermaidType,
   MERMAID_TEMPLATES,
-} from "../../utils/mermaid-utils";
+} from "../../utils/markdown/mermaid-utils";
 
 describe("Mermaid Templates", () => {
   it("has 7 Phase 2 diagram types (original)", () => {

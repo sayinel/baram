@@ -12,7 +12,7 @@ import {
   copyMermaidSvg,
   detectMermaidType,
   MERMAID_TEMPLATES,
-} from "../../utils/mermaid-utils";
+} from "../../utils/markdown/mermaid-utils";
 import { mermaidBlockEntryKey } from "./mermaid-block";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
 import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";

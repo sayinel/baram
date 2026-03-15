@@ -2,7 +2,10 @@
 // §61 Namespace — relative path resolution tests
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { resolveRelativeTarget, resolveWikilinkTarget } from "../wikilink-nav";
+import {
+  resolveRelativeTarget,
+  resolveWikilinkTarget,
+} from "../editor/wikilink-nav";
 
 // Mock file store
 vi.mock("../../stores/file-store", () => ({

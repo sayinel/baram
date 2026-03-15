@@ -18,6 +18,20 @@ DRY_RUN = "--dry-run" in sys.argv
 
 # All file moves: src-relative source -> src-relative dest
 MOVES = {
+    # utils/editor (5 files)
+    "utils/block-nav.ts": "utils/editor/block-nav.ts",
+    "utils/block-replace.ts": "utils/editor/block-replace.ts",
+    "utils/cursor-mapper.ts": "utils/editor/cursor-mapper.ts",
+    "utils/drop-indicator.ts": "utils/editor/drop-indicator.ts",
+    "utils/wikilink-nav.ts": "utils/editor/wikilink-nav.ts",
+    # utils/markdown (4 files)
+    "utils/frontmatter.ts": "utils/markdown/frontmatter.ts",
+    "utils/yaml-properties.ts": "utils/markdown/yaml-properties.ts",
+    "utils/markdown-code-regions.ts": "utils/markdown/markdown-code-regions.ts",
+    "utils/mermaid-utils.ts": "utils/markdown/mermaid-utils.ts",
+    # utils/katex (2 files)
+    "utils/katex-error.ts": "utils/katex/katex-error.ts",
+    "utils/katex-to-png.ts": "utils/katex/katex-to-png.ts",
     # stores/editor (4 files)
     "stores/editor-store.ts": "stores/editor/editor.ts",
     "stores/fold-store.ts": "stores/editor/fold.ts",

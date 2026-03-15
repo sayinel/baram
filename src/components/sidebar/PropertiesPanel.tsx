@@ -2,7 +2,10 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 
 import type { FileEntry } from "../../stores/file/file";
-import type { PropertyEntry, PropertyType } from "../../utils/yaml-properties";
+import type {
+  PropertyEntry,
+  PropertyType,
+} from "../../utils/markdown/yaml-properties";
 
 import { useShallow } from "zustand/shallow";
 
@@ -11,16 +14,16 @@ import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useUIStore } from "../../stores/ui/ui";
 import { showPrompt } from "../../utils/ai-commands";
-import { extractFrontmatter } from "../../utils/frontmatter";
 import { logger } from "../../utils/logger";
-import { isSkillFrontmatter } from "../../utils/skill/skill-frontmatter";
+import { extractFrontmatter } from "../../utils/markdown/frontmatter";
 import {
   ARRAY_KEYS,
   ENUM_KEYS,
   ENUM_VALUES,
   parseYamlProperties,
   serializeYamlProperties,
-} from "../../utils/yaml-properties";
+} from "../../utils/markdown/yaml-properties";
+import { isSkillFrontmatter } from "../../utils/skill/skill-frontmatter";
 import { getSkillSections } from "./skill-panel-registry";
 // §72c Side-effect imports: sections self-register into the registry
 import "./SkillDependencySection";

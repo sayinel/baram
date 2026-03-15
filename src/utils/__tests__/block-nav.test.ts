@@ -7,7 +7,7 @@ import {
   findBlockContent,
   findBlockLine,
   findBlockPosById,
-} from "../block-nav";
+} from "../editor/block-nav";
 
 // Minimal schema with blockId attribute on paragraph and heading
 const schema = new Schema({

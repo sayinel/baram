@@ -30,7 +30,7 @@ import { useFileStore } from "../stores/file/file";
 import { useWorkspaceStore } from "../stores/file/workspace";
 import { useSettingsStore } from "../stores/settings/store";
 import { useUIStore } from "../stores/ui/ui";
-import { mdLineToPmBlockStart } from "../utils/cursor-mapper";
+import { mdLineToPmBlockStart } from "../utils/editor/cursor-mapper";
 import { isDateString, resolveJournalDir } from "../utils/journal/journal";
 import {
   buildNoteFromCapture,
