@@ -782,6 +782,61 @@
       "milestone": "M10",
       "status": "implemented",
       "description": "플러그인 설치 디렉토리 경로 조회"
+    },
+    {
+      "name": "embed_text",
+      "input": { "text": "string", "provider": "string", "model": "string", "api_key": "string?", "base_url": "string?" },
+      "output": "number[]",
+      "module": "embedding",
+      "spec": "§11.4",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "텍스트 임베딩 벡터 생성 (단일)"
+    },
+    {
+      "name": "search_knowledge",
+      "input": { "query": "string", "top_k": "number?", "current_file": "string?", "provider": "string", "model": "string", "api_key": "string?", "base_url": "string?" },
+      "output": "SearchResultPayload[]",
+      "module": "embedding",
+      "spec": "§11.4",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "Knowledge Q&A 지식 검색 (BM25 + vector + graph 하이브리드 랭킹)"
+    },
+    {
+      "name": "index_vault",
+      "input": { "vault_path": "string", "provider": "string", "model": "string", "api_key": "string?", "base_url": "string?" },
+      "output": "IndexStatus",
+      "module": "embedding",
+      "spec": "§11.4",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "전체 Vault 임베딩 인덱싱 (전체 재인덱스)"
+    },
+    {
+      "name": "index_status",
+      "input": {},
+      "output": "IndexStatus",
+      "module": "embedding",
+      "spec": "§11.4",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "임베딩 인덱스 상태 조회 (파일 수, 청크 수, 인덱싱 중 여부)"
+    },
+    {
+      "name": "index_file",
+      "input": { "file_path": "string", "relative_path": "string", "provider": "string", "model": "string", "api_key": "string?", "base_url": "string?" },
+      "output": "number",
+      "module": "embedding",
+      "spec": "§11.4",
+      "phase": 3,
+      "milestone": "M11",
+      "status": "implemented",
+      "description": "단일 파일 임베딩 인덱싱 (증분 업데이트, 청크 수 반환)"
     }
   ],
   "events": [
