@@ -1,6 +1,8 @@
 // §56j AI Reflection Panel — generates AI-powered journal insights
 import { useCallback, useEffect, useState } from "react";
 
+import { Sparkles } from "lucide-react";
+
 import { useLLMStream } from "../../hooks/use-llm-stream";
 import { createDir, listDir, readFile, writeFile } from "../../ipc/invoke";
 import { useAIStore } from "../../stores/ai/ai";
@@ -234,7 +236,9 @@ export function ReflectionPanel({ onClose }: Props) {
   return (
     <div className="reflection-panel">
       <div className="reflection-header">
-        <span className="reflection-title">✨ AI Reflection</span>
+        <span className="reflection-title">
+          <Sparkles size={14} /> AI Reflection
+        </span>
         {onClose && (
           <button
             className="reflection-close-btn"

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ask } from "@tauri-apps/plugin-dialog";
 
+import { Pin } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { isFileTab, useEditorStore } from "../../stores/editor/editor";
@@ -271,7 +272,7 @@ export function TabBar() {
                 onContextMenu={(e) => handleContextMenu(e, tab.id)}
                 onMouseDown={(e) => handleTabMouseDown(e, index)}
               >
-                {tab.isPinned && <PinIcon className="tab-pin-icon" />}
+                {tab.isPinned && <Pin className="tab-pin-icon" size={12} />}
                 <span className="tab-title">
                   {tab.isDirty && isFileTab(tab) ? "\u25CF " : ""}
                   {tab.title}
@@ -361,20 +362,5 @@ export function TabBar() {
           );
         })()}
     </div>
-  );
-}
-
-/** SVG pin icon — 14×14 */
-function PinIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      fill="currentColor"
-      height="14"
-      viewBox="0 0 16 16"
-      width="14"
-    >
-      <path d="M10.97 2.29a1 1 0 0 0-1.41 0L7.44 4.4 5.03 3.03a1 1 0 0 0-1.2.15L2.79 4.22a1 1 0 0 0 .15 1.2l1.37 2.41L2.2 9.94a1 1 0 0 0 0 1.41l2.44 2.44a1 1 0 0 0 1.41 0l2.12-2.12 2.41 1.37a1 1 0 0 0 1.2-.15l1.04-1.04a1 1 0 0 0 .15-1.2L11.6 8.56l2.12-2.12a1 1 0 0 0 0-1.41L10.97 2.29z" />
-    </svg>
   );
 }

@@ -1,8 +1,19 @@
 // Settings Modal — 9-tab settings (General, Editor, Appearance, Markdown, AI, ActivityBar, Language, Keybindings, Plugins)
 // Obsidian-style layout: label + description per row, section headers for grouping
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 
 import type { SearchableSetting, SettingsTab } from "./settings-registry";
+
+import {
+  Globe,
+  Keyboard,
+  Palette,
+  PanelLeft,
+  Pencil,
+  Puzzle,
+  Settings,
+  Sparkles,
+} from "lucide-react";
 
 import { useTranslation } from "../../i18n/useTranslation";
 import { useUIStore } from "../../stores/ui/ui";
@@ -18,16 +29,69 @@ import { KeybindingsTab } from "./tabs/KeybindingsTab";
 import { LanguageTab } from "./tabs/LanguageTab";
 import { MarkdownTab } from "./tabs/MarkdownTab";
 
-const TABS: { icon: string; id: SettingsTab; label: string }[] = [
-  { id: "general", label: "General", icon: "\u2699" },
-  { id: "editor", label: "Editor", icon: "\u270E" },
-  { id: "appearance", label: "Appearance", icon: "\u25D1" },
-  { id: "markdown", label: "Markdown", icon: "M\u2193" },
-  { id: "ai", label: "AI", icon: "\u2726" },
-  { id: "activitybar", label: "Activity Bar", icon: "\u25A4" },
-  { id: "language", label: "Language", icon: "\uD83C\uDF10" },
-  { id: "keybindings", label: "Keybindings", icon: "\u2328" },
-  { id: "plugins", label: "Plugins", icon: "\uD83E\uDDE9" },
+const SETTINGS_ICON_PROPS = { size: 16, strokeWidth: 1.5 } as const;
+
+const MarkdownTabIcon = (
+  <svg
+    fill="none"
+    height="16"
+    stroke="currentColor"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    strokeWidth="1.3"
+    viewBox="0 0 16 16"
+    width="16"
+  >
+    <rect height="11" rx="2" width="13" x="1.5" y="2.5" />
+    <text
+      fill="currentColor"
+      fontFamily="system-ui, sans-serif"
+      fontSize="5.5"
+      fontWeight="700"
+      stroke="none"
+      textAnchor="middle"
+      x="8"
+      y="10"
+    >
+      M{"\u2193"}
+    </text>
+  </svg>
+);
+
+const TABS: { icon: ReactNode; id: SettingsTab; label: string }[] = [
+  {
+    id: "general",
+    label: "General",
+    icon: <Settings {...SETTINGS_ICON_PROPS} />,
+  },
+  { id: "editor", label: "Editor", icon: <Pencil {...SETTINGS_ICON_PROPS} /> },
+  {
+    id: "appearance",
+    label: "Appearance",
+    icon: <Palette {...SETTINGS_ICON_PROPS} />,
+  },
+  { id: "markdown", label: "Markdown", icon: MarkdownTabIcon },
+  { id: "ai", label: "AI", icon: <Sparkles {...SETTINGS_ICON_PROPS} /> },
+  {
+    id: "activitybar",
+    label: "Activity Bar",
+    icon: <PanelLeft {...SETTINGS_ICON_PROPS} />,
+  },
+  {
+    id: "language",
+    label: "Language",
+    icon: <Globe {...SETTINGS_ICON_PROPS} />,
+  },
+  {
+    id: "keybindings",
+    label: "Keybindings",
+    icon: <Keyboard {...SETTINGS_ICON_PROPS} />,
+  },
+  {
+    id: "plugins",
+    label: "Plugins",
+    icon: <Puzzle {...SETTINGS_ICON_PROPS} />,
+  },
 ];
 
 export function SettingsModal() {

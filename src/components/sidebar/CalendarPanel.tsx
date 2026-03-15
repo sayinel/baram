@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { MoodValue } from "../../utils/journal/journal-mood";
 
+import { Sparkles } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { createDir, listDir, readFile, writeFile } from "../../ipc/invoke";
@@ -414,7 +415,7 @@ export function CalendarPanel() {
             onClick={() => setShowReflection((v) => !v)}
             title="AI Reflection"
           >
-            ✨
+            <Sparkles size={14} />
           </button>
         )}
       </div>
