@@ -1,7 +1,7 @@
 import type { HeadingEntry } from "../../utils/file-search";
 
 import { readFile } from "../../ipc/invoke";
-import { useFileStore } from "../../stores/file-store";
+import { useFileStore } from "../../stores/file/file";
 // §31 Wikilink autocomplete — utility functions
 import { extractHeadings, fuzzyScore } from "../../utils/file-search";
 

@@ -1,7 +1,6 @@
 // §55 Pandoc Extended Export — Pandoc 감지, 실행, 커스텀 Export
 
 use serde::{Deserialize, Serialize};
-use shell_escape;
 use std::collections::HashMap;
 use std::process::Command;
 use tempfile::tempdir;
@@ -190,7 +189,30 @@ pub fn run_pandoc(
     Ok(())
 }
 
+/// Characters disallowed in variable values to prevent shell injection.
+const DANGEROUS_CHARS: &[char] = &[';', '&', '|', '`', '$', '(', ')', '\n', '\r'];
+
+/// Expand `${key}` placeholders in `template` with values from `vars`.
+/// Returns an error if any variable value contains shell metacharacters.
+fn expand_variables(template: &str, vars: &HashMap<String, String>) -> Result<String, ExportError> {
+    let mut result = template.to_string();
+    for (key, value) in vars {
+        if value.chars().any(|c| DANGEROUS_CHARS.contains(&c)) {
+            return Err(ExportError::CustomExportFailed(format!(
+                "Variable '{}' contains disallowed characters",
+                key
+            )));
+        }
+        result = result.replace(&format!("${{{}}}", key), value);
+    }
+    Ok(result)
+}
+
 /// Run a custom export command with variable substitution.
+///
+/// Security: uses `shlex` to parse the expanded command into argv tokens and
+/// executes directly via `Command::new` — no shell (`sh -c` / `cmd /C`) is
+/// involved, preventing command injection.
 ///
 /// Supported variables:
 /// - `${file}` — full path of the source file
@@ -198,32 +220,33 @@ pub fn run_pandoc(
 /// - `${output_dir}` — directory of the output path
 /// - `${vault_dir}` — workspace root directory
 pub fn run_custom_export(command: &str, vars: &HashMap<String, String>) -> Result<(), ExportError> {
-    let mut expanded = command.to_string();
-    for (key, value) in vars {
-        let escaped = shell_escape::escape(std::borrow::Cow::Borrowed(value));
-        expanded = expanded.replace(&format!("${{{}}}", key), &escaped);
+    let expanded = expand_variables(command, vars)?;
+
+    let parts = shlex::split(&expanded).ok_or_else(|| {
+        ExportError::CustomExportFailed("Invalid command syntax (mismatched quotes)".into())
+    })?;
+    if parts.is_empty() {
+        return Err(ExportError::CustomExportFailed(
+            "Empty command after expansion".into(),
+        ));
     }
 
-    let output = if cfg!(target_os = "windows") {
-        Command::new("cmd").arg("/C").arg(&expanded).output()
-    } else {
-        Command::new("sh").arg("-c").arg(&expanded).output()
-    };
+    let output = Command::new(&parts[0])
+        .args(&parts[1..])
+        .output()
+        .map_err(|e| {
+            ExportError::CustomExportFailed(format!("Failed to execute command: {}", e))
+        })?;
 
-    match output {
-        Ok(result) if result.status.success() => Ok(()),
-        Ok(result) => {
-            let stderr = String::from_utf8_lossy(&result.stderr);
-            Err(ExportError::CustomExportFailed(format!(
-                "Command failed (exit {}): {}",
-                result.status.code().unwrap_or(-1),
-                stderr
-            )))
-        }
-        Err(e) => Err(ExportError::CustomExportFailed(format!(
-            "Failed to execute command: {}",
-            e
-        ))),
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(ExportError::CustomExportFailed(format!(
+            "Command failed (exit {}): {}",
+            output.status.code().unwrap_or(-1),
+            stderr
+        )))
     }
 }
 
@@ -310,23 +333,57 @@ mod tests {
     }
 
     #[test]
-    fn test_variable_substitution_escapes_shell_chars() {
+    fn test_expand_variables_rejects_shell_metacharacters() {
         let mut vars = HashMap::new();
         vars.insert("file".to_string(), "test`rm -rf /`.md".to_string());
-        let cmd = "echo ${file}";
-        let mut expanded = cmd.to_string();
-        for (key, value) in &vars {
-            let escaped = shell_escape::escape(std::borrow::Cow::Borrowed(value));
-            expanded = expanded.replace(&format!("${{{}}}", key), &escaped);
-        }
-        // shell_escape wraps in single quotes on Unix, neutralising backticks and
-        // other metacharacters — the value must be quoted so the shell cannot
-        // interpret the backtick as a command substitution.
+        let result = expand_variables("echo ${file}", &vars);
         assert!(
-            expanded.contains('\''),
-            "value must be single-quoted to neutralise shell metacharacters: {}",
-            expanded
+            result.is_err(),
+            "backtick in variable value must be rejected"
         );
+
+        let mut vars2 = HashMap::new();
+        vars2.insert("file".to_string(), "foo;rm -rf /".to_string());
+        let result2 = expand_variables("echo ${file}", &vars2);
+        assert!(
+            result2.is_err(),
+            "semicolon in variable value must be rejected"
+        );
+
+        let mut vars3 = HashMap::new();
+        vars3.insert("file".to_string(), "foo|cat /etc/passwd".to_string());
+        let result3 = expand_variables("echo ${file}", &vars3);
+        assert!(result3.is_err(), "pipe in variable value must be rejected");
+
+        let mut vars4 = HashMap::new();
+        vars4.insert("file".to_string(), "$(whoami).md".to_string());
+        let result4 = expand_variables("echo ${file}", &vars4);
+        assert!(
+            result4.is_err(),
+            "dollar sign in variable value must be rejected"
+        );
+    }
+
+    #[test]
+    fn test_expand_variables_allows_safe_paths() {
+        let mut vars = HashMap::new();
+        vars.insert("file".to_string(), "/home/user/my doc.md".to_string());
+        vars.insert("basename".to_string(), "my doc".to_string());
+        let result = expand_variables("pandoc ${file} -o ${basename}.docx", &vars);
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            "pandoc /home/user/my doc.md -o my doc.docx"
+        );
+    }
+
+    #[test]
+    fn test_run_custom_export_rejects_mismatched_quotes() {
+        let vars = HashMap::new();
+        let result = run_custom_export("echo \"unclosed", &vars);
+        assert!(result.is_err());
+        let err_msg = format!("{:?}", result.unwrap_err());
+        assert!(err_msg.contains("mismatched quotes"));
     }
 
     #[test]

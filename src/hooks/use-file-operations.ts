@@ -1,18 +1,18 @@
 // §3.6 File operation hooks — new, open, save, saveAs, close, openFolder
 import { useCallback } from "react";
 
-import { open, save } from "@tauri-apps/plugin-dialog";
+import { ask, open, save } from "@tauri-apps/plugin-dialog";
 
 import type { Editor } from "@tiptap/core";
 
 import { readFile, updateFileIndex, writeFile } from "../ipc/invoke";
 import { prosemirrorToMarkdown } from "../pipeline/pm-to-md";
 import { notifyFileOpen, notifyFileSave } from "../plugins/plugin-lifecycle";
-import { isGraphTab } from "../stores/editor-store";
-import { useEditorStore } from "../stores/editor-store";
-import { openFolder, useFileStore } from "../stores/file-store";
-import { useLinkStore } from "../stores/link-store";
-import { useSettingsStore } from "../stores/settings-store";
+import { isGraphTab } from "../stores/editor/editor";
+import { useEditorStore } from "../stores/editor/editor";
+import { useLinkStore } from "../stores/editor/link";
+import { openFolder, useFileStore } from "../stores/file/file";
+import { useSettingsStore } from "../stores/settings/store";
 import { isMarkdownFile } from "../utils/file-type";
 import { logger } from "../utils/logger";
 
@@ -194,11 +194,27 @@ export function useFileOperations({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- sourceContentRef is a stable ref
   }, [editor, isSourceMode, setFileContent]);
 
-  const handleCloseTab = useCallback(() => {
-    const { activeTabId: tabId } = useEditorStore.getState();
+  const handleCloseTab = useCallback(async () => {
+    const { activeTabId: tabId, tabs } = useEditorStore.getState();
     if (!tabId) return;
+    const tab = tabs.find((t) => t.id === tabId);
+    if (tab?.isDirty && tab.filePath) {
+      // Auto-save may not have fired yet — flush before closing
+      handleSave().finally(() => {
+        useEditorStore.getState().closeTab(tabId);
+      });
+      return;
+    }
+    if (tab?.isDirty && !tab.filePath) {
+      // Untitled dirty tab — prompt before discarding (no file to auto-save to)
+      const confirmed = await ask(
+        "You have unsaved changes. Close without saving?",
+        { title: "Unsaved Changes", kind: "warning" },
+      );
+      if (!confirmed) return;
+    }
     useEditorStore.getState().closeTab(tabId);
-  }, []);
+  }, [handleSave]);
 
   const handleOpenFolder = useCallback(async () => {
     const selected = await open({ directory: true });

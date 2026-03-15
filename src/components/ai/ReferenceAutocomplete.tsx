@@ -1,10 +1,10 @@
 // §44 @ Reference autocomplete dropdown for AI Chat
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { FileEntry } from "../../stores/file-store";
+import type { FileEntry } from "../../stores/file/file";
 
-import { useAIStore } from "../../stores/ai-store";
-import { useFileStore } from "../../stores/file-store";
+import { useAIStore } from "../../stores/ai/ai";
+import { useFileStore } from "../../stores/file/file";
 
 interface ReferenceAutocompleteProps {
   onClose: () => void;

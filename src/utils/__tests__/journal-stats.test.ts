@@ -7,7 +7,7 @@ import {
   calculateMonthStats,
   calculateStreak,
   calculateYearStats,
-} from "../journal-stats";
+} from "../journal/journal-stats";
 
 // ============================================================
 // calculateStreak

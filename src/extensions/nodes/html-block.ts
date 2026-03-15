@@ -2,6 +2,7 @@
 import { mergeAttributes, Node } from "@tiptap/core";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
+import { htmlAttributesOptions } from "../utils/html-attributes-options";
 import { HtmlBlockView } from "./html-block-view";
 
 export interface HtmlBlockOptions {
@@ -14,11 +15,7 @@ export const HtmlBlock = Node.create<HtmlBlockOptions>({
   atom: true,
   defining: true,
 
-  addOptions() {
-    return {
-      HTMLAttributes: {},
-    };
-  },
+  ...htmlAttributesOptions,
 
   addAttributes() {
     return {

@@ -16,7 +16,7 @@ import {
   getYearlyJournalPath,
   isJournalHiddenEntry,
   JOURNAL_HIDDEN_ENTRIES,
-} from "../journal";
+} from "../journal/journal";
 
 describe("§56a Hierarchical journal paths", () => {
   const date = new Date(2026, 1, 28); // 2026-02-28

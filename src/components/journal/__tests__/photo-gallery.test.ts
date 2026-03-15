@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   groupPhotosByDate,
   type PhotoGalleryEntry,
-} from "../../../utils/journal-photo";
+} from "../../../utils/journal/journal-photo";
 
 function makeEntry(dateStr: string, caption = ""): PhotoGalleryEntry {
   return {

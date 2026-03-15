@@ -3,9 +3,11 @@ import { useMemo } from "react";
 
 import type { Editor } from "@tiptap/react";
 
-import { useAIStore } from "../../stores/ai-store";
-import { useGitStore } from "../../stores/git-store";
-import { useSettingsStore } from "../../stores/settings-store";
+import { useShallow } from "zustand/shallow";
+
+import { useAIStore } from "../../stores/ai/ai";
+import { useSettingsStore } from "../../stores/settings/store";
+import { useGitStore } from "../../stores/system/git";
 
 export type EditorMode = "graph" | "source" | "wysiwyg";
 
@@ -58,7 +60,13 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
     return { words, chars, line, col };
   }, [editor]);
 
-  const { isRepo, branch, changes } = useGitStore();
+  const { isRepo, branch, changes } = useGitStore(
+    useShallow((s) => ({
+      isRepo: s.isRepo,
+      branch: s.branch,
+      changes: s.changes,
+    })),
+  );
   const hasChanges = changes.length > 0;
   const privacyMode = useAIStore((s) => s.privacyMode);
   const zoomLevel = useSettingsStore((s) => s.zoomLevel);

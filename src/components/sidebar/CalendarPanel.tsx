@@ -1,34 +1,36 @@
 // §56 Calendar sidebar panel — mini calendar for journal navigation
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
-import type { MoodValue } from "../../utils/journal-mood";
+import type { MoodValue } from "../../utils/journal/journal-mood";
+
+import { useShallow } from "zustand/shallow";
 
 import { createDir, listDir, readFile, writeFile } from "../../ipc/invoke";
-import { useAIStore } from "../../stores/ai-store";
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
-import { useSettingsStore } from "../../stores/settings-store";
 import {
-  applyJournalTemplate,
+  ensureJournalFile,
+  openFileInTab,
+} from "../../services/journal-file-service";
+import { useAIStore } from "../../stores/ai/ai";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
+import { useSettingsStore } from "../../stores/settings/store";
+import {
   formatJournalDate,
-  generateDefaultJournal,
   getFirstDayOfWeek,
-  getHierarchicalJournalPath,
   getISOWeekNumber,
-  getJournalFilePath,
   getMonthDays,
   getWeeklyJournalPath,
   resolveJournalDir,
-} from "../../utils/journal";
+} from "../../utils/journal/journal";
 import {
   getMoodColors,
   parseMoodFromFrontmatter,
-} from "../../utils/journal-mood";
+} from "../../utils/journal/journal-mood";
 import {
   applyPeriodicTemplate,
   generateDefaultWeekly,
-} from "../../utils/journal-periodic";
-import { getJournalTheme } from "../../utils/journal-themes";
+} from "../../utils/journal/journal-periodic";
+import { getJournalTheme } from "../../utils/journal/journal-themes";
 import { logger } from "../../utils/logger";
 import { JournalSearchPanel } from "../journal/JournalSearchPanel";
 import { MoodTrend30 } from "../journal/MoodTrend30";
@@ -52,15 +54,20 @@ const MONTH_NAMES = [
   "December",
 ];
 
+const JOURNAL_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})\.md$/;
+const JOURNAL_DATE_COMPACT_RE = /^(\d{4})(\d{2})(\d{2})\.md$/;
+
 export function CalendarPanel() {
-  const today = new Date();
+  const today = useMemo(() => new Date(), []);
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
   const [calView, setCalView] = useState<"days" | "months" | "years">("days");
   const [showSearch, setShowSearch] = useState(false);
   const [showReflection, setShowReflection] = useState(false);
 
-  const { provider, apiKey } = useAIStore();
+  const { provider, apiKey } = useAIStore(
+    useShallow((s) => ({ provider: s.provider, apiKey: s.apiKey })),
+  );
 
   const {
     journalEnabled,
@@ -72,7 +79,19 @@ export function CalendarPanel() {
     journalWeeklyTemplate,
     journalThemeId,
     theme,
-  } = useSettingsStore();
+  } = useSettingsStore(
+    useShallow((s) => ({
+      journalEnabled: s.journalEnabled,
+      journalDirectory: s.journalDirectory,
+      journalFilenameFormat: s.journalFilenameFormat,
+      journalTemplatePath: s.journalTemplatePath,
+      journalUseHierarchy: s.journalUseHierarchy,
+      journalWeeklyEnabled: s.journalWeeklyEnabled,
+      journalWeeklyTemplate: s.journalWeeklyTemplate,
+      journalThemeId: s.journalThemeId,
+      theme: s.theme,
+    })),
+  );
 
   const journalTheme = useMemo(
     () => getJournalTheme(journalThemeId),
@@ -124,8 +143,8 @@ export function CalendarPanel() {
         const moods = new Map<string, MoodValue>();
         const reads = fileEntries.slice(0, 62).map(async (entry) => {
           const match =
-            entry.name.match(/^(\d{4})-(\d{2})-(\d{2})\.md$/) ||
-            entry.name.match(/^(\d{4})(\d{2})(\d{2})\.md$/);
+            entry.name.match(JOURNAL_DATE_RE) ||
+            entry.name.match(JOURNAL_DATE_COMPACT_RE);
           if (!match) return;
           const dateStr = `${match[1]}-${match[2]}-${match[3]}`;
           try {
@@ -156,8 +175,8 @@ export function CalendarPanel() {
     if (!journalEnabled) return dates;
     for (const filename of dirFiles) {
       const match =
-        filename.match(/^(\d{4})-(\d{2})-(\d{2})\.md$/) ||
-        filename.match(/^(\d{4})(\d{2})(\d{2})\.md$/);
+        filename.match(JOURNAL_DATE_RE) ||
+        filename.match(JOURNAL_DATE_COMPACT_RE);
       if (match) {
         dates.add(`${match[1]}-${match[2]}-${match[3]}`);
       }
@@ -206,66 +225,18 @@ export function CalendarPanel() {
   const openOrCreateJournal = useCallback(
     async (date: Date) => {
       if (!journalEnabled || !resolvedDir) return;
-      const journalPath = journalUseHierarchy
-        ? getHierarchicalJournalPath(resolvedDir, date, journalFilenameFormat)
-        : getJournalFilePath(
-            null,
-            journalDirectory,
-            date,
-            journalFilenameFormat,
-          );
-      if (!journalPath) return;
-
-      // Check if file exists
-      let exists = true;
       try {
-        await readFile(journalPath);
-      } catch {
-        exists = false;
-      }
-
-      if (!exists) {
-        // Create the journal file (and parent dirs for hierarchical layout)
-        const parentDir = journalPath.substring(
-          0,
-          journalPath.lastIndexOf("/"),
-        );
-        await createDir(parentDir);
-
-        let content: string;
-        if (journalTemplatePath) {
-          try {
-            const tpl = await readFile(journalTemplatePath);
-            content = applyJournalTemplate(tpl, date);
-          } catch {
-            content = generateDefaultJournal(date);
-          }
-        } else {
-          content = generateDefaultJournal(date);
-        }
-        await writeFile(journalPath, content);
-      }
-
-      // Open the file
-      const { tabs } = useEditorStore.getState();
-      const existing = tabs.find((t) => t.filePath === journalPath);
-      if (existing) {
-        useEditorStore.getState().setActiveTab(existing.id);
-      } else {
-        try {
-          const content = await readFile(journalPath);
-          const fileName = journalPath.split("/").pop() ?? "Unknown";
-          useFileStore.getState().setFileContent(journalPath, content);
-          useEditorStore.getState().openTab({
-            id: crypto.randomUUID(),
-            filePath: journalPath,
-            title: fileName,
-            isDirty: false,
-            isPinned: false,
-          });
-        } catch (err) {
-          logger.error("[CalendarPanel] Failed to open journal:", err);
-        }
+        const result = await ensureJournalFile(date, {
+          journalDirectory,
+          journalFilenameFormat,
+          journalTemplatePath,
+          journalUseHierarchy,
+          rootPath: null,
+        });
+        if (!result) return;
+        await openFileInTab(result.path, result.content);
+      } catch (err) {
+        logger.error("[CalendarPanel] Failed to open journal:", err);
       }
     },
     [

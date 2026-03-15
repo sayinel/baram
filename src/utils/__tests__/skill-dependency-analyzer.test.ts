@@ -7,7 +7,7 @@ import {
   getReverseDependencies,
   parseSkillFrontmatter,
   type SkillMeta,
-} from "../skill-dependency-analyzer";
+} from "../skill/skill-dependency-analyzer";
 
 describe("parseSkillFrontmatter", () => {
   it("parses name, requires, output_format", () => {

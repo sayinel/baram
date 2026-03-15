@@ -4,7 +4,7 @@ import type { EditorView } from "@tiptap/pm/view";
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 
-import { useUIStore } from "../../stores/ui-store";
+import { useUIStore } from "../../stores/ui/ui";
 
 const TAG_REGEX = /#([\w가-힣]+(?:\/[\w가-힣]+)*)/g;
 

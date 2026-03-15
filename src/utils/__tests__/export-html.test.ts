@@ -1,7 +1,7 @@
 // §5.12 Export HTML — generateStandaloneHTML unit tests
 import { describe, expect, it } from "vitest";
 
-import { generateStandaloneHTML } from "../export-html";
+import { generateStandaloneHTML } from "../export/export-html";
 
 describe("generateStandaloneHTML", () => {
   it("produces valid HTML5 document with DOCTYPE and charset", () => {

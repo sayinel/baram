@@ -6,6 +6,9 @@ import {
   mergeAttributes,
 } from "@tiptap/core";
 
+import { htmlAttributesOptions } from "../utils/html-attributes-options";
+import { makeMarkCommands } from "./make-mark-commands";
+
 export interface SubscriptOptions {
   HTMLAttributes: Record<string, string>;
 }
@@ -28,9 +31,7 @@ const pasteRegex = /(?<!~)(~([^~\s][^~]*)~)/g;
 export const Subscript = Mark.create<SubscriptOptions>({
   name: "subscript",
 
-  addOptions() {
-    return { HTMLAttributes: {} };
-  },
+  ...htmlAttributesOptions,
 
   parseHTML() {
     return [{ tag: "sub" }];
@@ -45,20 +46,7 @@ export const Subscript = Mark.create<SubscriptOptions>({
   },
 
   addCommands() {
-    return {
-      setSubscript:
-        () =>
-        ({ commands }) =>
-          commands.setMark(this.name),
-      toggleSubscript:
-        () =>
-        ({ commands }) =>
-          commands.toggleMark(this.name),
-      unsetSubscript:
-        () =>
-        ({ commands }) =>
-          commands.unsetMark(this.name),
-    };
+    return makeMarkCommands(this.name);
   },
 
   addInputRules() {

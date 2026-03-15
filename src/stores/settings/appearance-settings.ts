@@ -1,5 +1,5 @@
 import type { ThemeDef } from "../../types/theme";
-import type { ActivityBarItemConfig } from "../settings-store";
+import type { ActivityBarItemConfig } from "./activity-bar-config";
 import type { StateCreator } from "zustand";
 
 import { findThemeById } from "../../types/theme";

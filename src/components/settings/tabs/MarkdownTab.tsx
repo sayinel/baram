@@ -1,6 +1,6 @@
 import registry from "../../../extensions/registry.json";
 import { useTranslation } from "../../../i18n/useTranslation";
-import { useSettingsStore } from "../../../stores/settings-store";
+import { useSettingsStore } from "../../../stores/settings/store";
 import {
   SettingsRow,
   SettingsSectionHeader,

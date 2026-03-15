@@ -1,13 +1,16 @@
 // §72b Skill Dependency Section — dependency analysis UI for PropertiesPanel
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { FileEntry } from "../../stores/file-store";
+import type { FileEntry } from "../../stores/file/file";
 
 import { readFile } from "../../ipc/invoke";
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
-import { useSkillStore } from "../../stores/skill-store";
-import { type ChainResult, dryRunChain } from "../../utils/skill-chain-runner";
+import { useSkillStore } from "../../stores/ai/skill";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
+import {
+  type ChainResult,
+  dryRunChain,
+} from "../../utils/skill/skill-chain-runner";
 import {
   analyzeSkillDependencies,
   buildDependencyGraph,
@@ -16,8 +19,8 @@ import {
   getReverseDependencies,
   parseSkillFrontmatter,
   type SkillMeta,
-} from "../../utils/skill-dependency-analyzer";
-import { isSkillFrontmatter } from "../../utils/skill-frontmatter";
+} from "../../utils/skill/skill-dependency-analyzer";
+import { isSkillFrontmatter } from "../../utils/skill/skill-frontmatter";
 import { registerSkillSection } from "./skill-panel-registry";
 
 export function SkillDependencySection() {

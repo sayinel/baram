@@ -1,16 +1,10 @@
 // §56 Journal — startup auto-creation hook
 import { useEffect, useRef } from "react";
 
-import { createDir, readFile, writeFile } from "../ipc/invoke";
-import { useFileStore } from "../stores/file-store";
-import { useSettingsStore } from "../stores/settings-store";
-import {
-  applyJournalTemplate,
-  generateDefaultJournal,
-  getHierarchicalJournalPath,
-  getJournalFilePath,
-  resolveJournalDir,
-} from "../utils/journal";
+import { ensureJournalFile } from "../services/journal-file-service";
+import { useFileStore } from "../stores/file/file";
+import { useSettingsStore } from "../stores/settings/store";
+import { resolveJournalDir } from "../utils/journal/journal";
 import { logger } from "../utils/logger";
 
 /**
@@ -43,53 +37,20 @@ export function useJournal(
     didRunRef.current = resolvedDir;
 
     const today = new Date();
-    const journalPath = journalUseHierarchy
-      ? getHierarchicalJournalPath(resolvedDir, today, journalFilenameFormat)
-      : getJournalFilePath(
-          rootPath,
-          journalDirectory,
-          today,
-          journalFilenameFormat,
-        );
-    if (!journalPath) return;
 
     (async () => {
       try {
-        // Ensure journal directory exists — for hierarchical paths,
-        // create the full parent directory (e.g. daily/YYYY/MM/)
-        const fileDir = journalUseHierarchy
-          ? journalPath.substring(0, journalPath.lastIndexOf("/"))
-          : resolvedDir;
-        await createDir(fileDir);
-
-        // Check if today's journal already exists
-        let exists = true;
-        try {
-          await readFile(journalPath);
-        } catch {
-          exists = false;
-        }
-
-        // Create journal if it doesn't exist
-        if (!exists) {
-          let content: string;
-          if (journalTemplatePath) {
-            try {
-              const tpl = await readFile(journalTemplatePath);
-              content = applyJournalTemplate(tpl, today);
-            } catch {
-              // Template read failed — use default
-              content = generateDefaultJournal(today);
-            }
-          } else {
-            content = generateDefaultJournal(today);
-          }
-          await writeFile(journalPath, content);
-        }
+        const result = await ensureJournalFile(today, {
+          journalDirectory,
+          journalFilenameFormat,
+          journalTemplatePath,
+          journalUseHierarchy,
+          rootPath,
+        });
 
         // Open journal if configured
-        if (journalStartupBehavior === "openJournal") {
-          await handleOpenFilePath(journalPath);
+        if (result && journalStartupBehavior === "openJournal") {
+          await handleOpenFilePath(result.path);
         }
       } catch (err) {
         logger.error("[useJournal] Failed to create/open journal:", err);

@@ -7,15 +7,15 @@ import type { PandocInfo } from "../../ipc/types";
 import type { Editor } from "@tiptap/react";
 
 import { detectPandoc } from "../../ipc/invoke";
-import { useEditorStore } from "../../stores/editor-store";
-import { useSettingsStore } from "../../stores/settings-store";
-import { useUIStore } from "../../stores/ui-store";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useSettingsStore } from "../../stores/settings/store";
+import { useUIStore } from "../../stores/ui/ui";
 import {
   exportAsHTML,
   exportAsPDF,
   exportForNotion,
   exportWithPandoc,
-} from "../../utils/export";
+} from "../../utils/export/export";
 import { logger } from "../../utils/logger";
 
 interface ExportDialogProps {

@@ -1,4 +1,4 @@
-import type { JournalTheme } from "../../utils/journal-themes";
+import type { JournalTheme } from "../../utils/journal/journal-themes";
 import type { StateCreator } from "zustand";
 
 export interface JournalSettingsSlice {

@@ -3,9 +3,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { readFile } from "../../ipc/invoke";
-import { useFileStore } from "../../stores/file-store";
-import { findBlockContent } from "../../utils/block-nav";
-import { resolveWikilinkTarget } from "../../utils/wikilink-nav";
+import { useFileStore } from "../../stores/file/file";
+import { findBlockContent } from "../../utils/editor/block-nav";
+import { resolveWikilinkTarget } from "../../utils/editor/wikilink-nav";
 
 const MAX_LINES = 20;
 const POPUP_MAX_WIDTH = 400;

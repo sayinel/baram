@@ -18,19 +18,25 @@ import {
 } from "../pipeline/md-to-pm";
 import { parseMdastAsync } from "../pipeline/parse-async";
 import { prosemirrorToMarkdown } from "../pipeline/pm-to-md";
-import { isFileTab, isGraphTab } from "../stores/editor-store";
-import { useEditorStore } from "../stores/editor-store";
-import { useFileStore } from "../stores/file-store";
-import { useFoldStore } from "../stores/fold-store";
-import { useLinkStore } from "../stores/link-store";
-import { useNavigationStore } from "../stores/navigation-store";
-import { useUIStore } from "../stores/ui-store";
-import { findBlockPosById } from "../utils/block-nav";
-import { mdLineToPmBlockStart } from "../utils/cursor-mapper";
+import { isFileTab, isGraphTab } from "../stores/editor/editor";
+import { useEditorStore } from "../stores/editor/editor";
+import { useFoldStore } from "../stores/editor/fold";
+import { useLinkStore } from "../stores/editor/link";
+import { useFileStore } from "../stores/file/file";
+import { useNavigationStore } from "../stores/ui/navigation";
+import { useUIStore } from "../stores/ui/ui";
+import {
+  findBlockPosById,
+  findHeadingPosByText,
+} from "../utils/editor/block-nav";
+import { mdLineToPmBlockStart } from "../utils/editor/cursor-mapper";
 import { isMarkdownFile } from "../utils/file-type";
+import { logger } from "../utils/logger";
 
 interface UseTabSwitchingParams {
   editor: Editor | null;
+  /** Per-tab EditorState cache — owned by useSourceMode, shared here */
+  editorStateCache: React.MutableRefObject<Map<string, EditorState>>;
   isNavBackForwardRef: React.RefObject<boolean>;
   isSourceMode: boolean;
   setFindReplaceMode: (mode: "find" | "replace") => void;
@@ -43,6 +49,7 @@ interface UseTabSwitchingParams {
 
 export function useTabSwitching({
   editor,
+  editorStateCache,
   isNavBackForwardRef,
   isSourceMode,
   setFindReplaceMode,
@@ -56,8 +63,6 @@ export function useTabSwitching({
 
   // Track previously active tab to save its content on switch
   const prevTabRef = useRef<null | string>(null);
-  // Per-tab EditorState cache — preserves undo/redo history across tab switches
-  const editorStateCache = useRef(new Map<string, EditorState>());
   // Per-tab scroll position cache — preserves view position across tab switches
   const scrollTopCache = useRef(new Map<string, number>());
   // §perf-large-file B2/C2: Loading state for async parse + progressive loading
@@ -124,8 +129,13 @@ export function useTabSwitching({
                 ? sourceContentRef.current
                 : prosemirrorToMarkdown(editor.state.doc);
             useFileStore.getState().setFileContent(prevTab.filePath, md);
-          } catch {
-            // ignore serialization errors for outgoing tab
+          } catch (err) {
+            // Serialization failed — mark tab dirty so unsaved edits are visible
+            useEditorStore.getState().markDirty(prevTabId, true);
+            logger.error(
+              "tab-switching: serialization failed for outgoing tab",
+              err,
+            );
           }
         }
       }
@@ -168,6 +178,7 @@ export function useTabSwitching({
         // §29 Check if navigating from backlinks — compute scroll position
         const pendingLine = useLinkStore.getState().pendingScrollLine;
         const pendingBlockId = useLinkStore.getState().pendingScrollBlockId;
+        const pendingHeading = useLinkStore.getState().pendingScrollHeading;
         let scrollPos: null | number = null;
         const doc = editor.view.state.doc;
         if (pendingBlockId) {
@@ -180,6 +191,12 @@ export function useTabSwitching({
           useLinkStore.getState().setPendingScrollLine(null);
           const pmPos = mdLineToPmBlockStart(doc, content, pendingLine);
           scrollPos = Math.min(Math.max(pmPos, 0), doc.content.size);
+        } else if (pendingHeading) {
+          useLinkStore.getState().setPendingScrollHeading(null);
+          const headingPos = findHeadingPosByText(doc, pendingHeading);
+          if (headingPos !== null) {
+            scrollPos = Math.min(Math.max(headingPos + 1, 0), doc.content.size);
+          }
         }
 
         // Dispatch a proper transaction for selection + scroll, then
@@ -251,44 +268,55 @@ export function useTabSwitching({
         progressiveLoadRef.current = loadToken;
         setIsParsing(true);
 
-        parseMdastAsync(content).then((mdast) => {
-          if (loadToken.cancelled) return;
-          if (useEditorStore.getState().activeTabId !== activeTabId) return;
-
-          const allNodes = mdastBlocksToPmNodes(mdast, editor.schema);
-          const doc = editor.schema.nodes.doc.create(null, allNodes);
-          const newState = EditorState.create({
-            doc,
-            plugins: editor.state.plugins,
-            selection: TextSelection.atStart(doc),
-          });
-          editor.view.updateState(newState);
-          setIsParsing(false);
-          // Reset scroll to top for freshly opened documents
-          requestAnimationFrame(() => {
-            const scrollContainer = document.querySelector(
-              ".editor-area-scroll",
-            );
-            if (scrollContainer) {
-              scrollContainer.scrollTop = 0;
+        parseMdastAsync(content)
+          .then((mdast) => {
+            if (loadToken.cancelled) {
+              setIsParsing(false);
+              return;
             }
-          });
-          afterDocLoad();
+            if (useEditorStore.getState().activeTabId !== activeTabId) {
+              setIsParsing(false);
+              return;
+            }
 
-          // Restore fold state from persistence
-          const inTab = tabs.find((t) => t.id === activeTabId);
-          if (inTab?.filePath) {
-            const savedAnchors = useFoldStore
-              .getState()
-              .getFolds(inTab.filePath);
-            if (savedAnchors.length > 0) {
-              const positions = anchorsToPositions(doc, savedAnchors);
-              if (positions.length > 0) {
-                dispatchRestoreFolds(editor.view, positions);
+            const allNodes = mdastBlocksToPmNodes(mdast, editor.schema);
+            const doc = editor.schema.nodes.doc.create(null, allNodes);
+            const newState = EditorState.create({
+              doc,
+              plugins: editor.state.plugins,
+              selection: TextSelection.atStart(doc),
+            });
+            editor.view.updateState(newState);
+            setIsParsing(false);
+            // Reset scroll to top for freshly opened documents
+            requestAnimationFrame(() => {
+              const scrollContainer = document.querySelector(
+                ".editor-area-scroll",
+              );
+              if (scrollContainer) {
+                scrollContainer.scrollTop = 0;
+              }
+            });
+            afterDocLoad();
+
+            // Restore fold state from persistence
+            const inTab = tabs.find((t) => t.id === activeTabId);
+            if (inTab?.filePath) {
+              const savedAnchors = useFoldStore
+                .getState()
+                .getFolds(inTab.filePath);
+              if (savedAnchors.length > 0) {
+                const positions = anchorsToPositions(doc, savedAnchors);
+                if (positions.length > 0) {
+                  dispatchRestoreFolds(editor.view, positions);
+                }
               }
             }
-          }
-        });
+          })
+          .catch((err: unknown) => {
+            setIsParsing(false);
+            logger.error("tab-switching: parse failed", err);
+          });
       }
 
       // Clean up cache for closed tabs
@@ -304,6 +332,4 @@ export function useTabSwitching({
     // tabs, openFiles, etc.) are read from store state or refs to avoid
     // re-registering the effect on every keystroke.
   }, [activeTabId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  return { editorStateCache };
 }

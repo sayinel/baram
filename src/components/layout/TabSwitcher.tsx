@@ -1,7 +1,7 @@
 // §39 Tab Switcher — Ctrl+Tab MRU popup
 import { useEffect, useRef } from "react";
 
-import type { EditorTab } from "../../stores/editor-store";
+import type { EditorTab } from "../../stores/editor/editor";
 
 interface TabSwitcherProps {
   mruTabs: EditorTab[];

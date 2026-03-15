@@ -1,7 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useAIStore } from "../../stores/ai-store";
+import { useAIStore } from "../../stores/ai/ai";
 import { useLLMStream } from "../use-llm-stream";
 
 // Mock Tauri IPC — provide all exports consumed by tauri-storage + ai-store + use-llm-stream

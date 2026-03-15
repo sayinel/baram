@@ -1,7 +1,7 @@
 // §4.3 File tree — delete + inline creation hook
 import { useCallback, useState } from "react";
 
-import type { FileEntry } from "../../../stores/file-store";
+import type { FileEntry } from "../../../stores/file/file";
 import type { CreatingEntryState } from "../file-tree-types";
 
 import {
@@ -10,9 +10,9 @@ import {
   deleteFile,
   writeFile,
 } from "../../../ipc/invoke";
-import { useEditorStore } from "../../../stores/editor-store";
-import { useFileStore } from "../../../stores/file-store";
-import { useLinkStore } from "../../../stores/link-store";
+import { useEditorStore } from "../../../stores/editor/editor";
+import { useLinkStore } from "../../../stores/editor/link";
+import { useFileStore } from "../../../stores/file/file";
 import { showConfirm } from "../../../utils/confirm-dialog";
 import { logger } from "../../../utils/logger";
 

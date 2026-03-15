@@ -1,8 +1,8 @@
 // §56c Memories View — right panel component
 import { useState } from "react";
 
-import { useSettingsStore } from "../../stores/settings-store";
-import { useUIStore } from "../../stores/ui-store";
+import { useSettingsStore } from "../../stores/settings/store";
+import { useUIStore } from "../../stores/ui/ui";
 import { JournalTab } from "./JournalTab";
 import { MiniCalendar } from "./MiniCalendar";
 import { NotesTab } from "./NotesTab";

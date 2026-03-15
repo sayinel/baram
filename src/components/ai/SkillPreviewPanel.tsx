@@ -1,9 +1,9 @@
 // §72 LLM 관점 미리보기 — 스킬 파일을 LLM이 받는 형태로 프리뷰
 import { useMemo } from "react";
 
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
-import { extractSkillPrompt } from "../../utils/skill-test-runner";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
+import { extractSkillPrompt } from "../../utils/skill/skill-test-runner";
 import {
   estimateTokenCount,
   formatTokenCount,

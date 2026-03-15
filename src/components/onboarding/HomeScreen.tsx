@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 
 import { useTranslation } from "../../i18n/useTranslation";
-import { useSettingsStore } from "../../stores/settings-store";
+import { useSettingsStore } from "../../stores/settings/store";
 
 interface HomeScreenProps {
   onNewFile: () => void;

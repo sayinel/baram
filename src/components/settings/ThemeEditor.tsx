@@ -7,7 +7,7 @@ import type { ThemeColors, ThemeDef } from "../../types/theme";
 
 import { useTranslation } from "../../i18n/useTranslation";
 import { writeFile } from "../../ipc/invoke";
-import { useSettingsStore } from "../../stores/settings-store";
+import { useSettingsStore } from "../../stores/settings/store";
 import {
   BUILT_IN_THEMES,
   findThemeById,

@@ -10,7 +10,7 @@ import type { Editor } from "@tiptap/core";
 import diff from "fast-diff";
 
 import { llmCancel, llmComplete } from "../ipc/invoke";
-import { useAIStore } from "../stores/ai-store";
+import { useAIStore } from "../stores/ai/ai";
 import { logger } from "./logger";
 import { getConfigForTask } from "./model-selection";
 

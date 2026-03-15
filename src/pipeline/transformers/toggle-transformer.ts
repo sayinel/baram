@@ -4,7 +4,7 @@ import type { NodeTransformerEntry } from "../types";
 // remark-parse produces sequence: html(<details>...) + block* + html(</details>)
 // Pattern detection is in md-to-pm.ts; this file provides parsing helpers.
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
-import type { Content, Node as MdastNode, Root } from "mdast";
+import type { Content, Html, Node as MdastNode, Root } from "mdast";
 
 import { mdastToMarkdown } from "../serializer";
 
@@ -37,6 +37,16 @@ export function parseDetailsOpening(
   const summary = summaryMatch ? summaryMatch[1].trim() : "";
 
   return { isOpen, summary };
+}
+
+/** Escape HTML special characters for safe insertion into tag content */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;");
 }
 
 export const toggleTransformer: NodeTransformerEntry = {
@@ -85,7 +95,7 @@ export const toggleTransformer: NodeTransformerEntry = {
     // Build the complete HTML block
     const parts: string[] = [];
     if (summaryText) {
-      parts.push(`${openTag}\n<summary>${summaryText}</summary>`);
+      parts.push(`${openTag}\n<summary>${escapeHtml(summaryText)}</summary>`);
     } else {
       parts.push(openTag);
     }
@@ -96,6 +106,9 @@ export const toggleTransformer: NodeTransformerEntry = {
     parts.push(""); // blank line before closing tag
     parts.push("</details>");
 
-    return { type: "html", value: parts.join("\n") } as unknown as MdastNode;
+    return {
+      type: "html",
+      value: parts.join("\n"),
+    } satisfies Html as MdastNode;
   },
 };

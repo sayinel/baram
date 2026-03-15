@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import type { SearchableSetting, SettingsTab } from "./settings-registry";
 
 import { useTranslation } from "../../i18n/useTranslation";
-import { useUIStore } from "../../stores/ui-store";
+import { useUIStore } from "../../stores/ui/ui";
 import { PluginMarketplace } from "../plugins/PluginMarketplace";
 import { useSettingsRegistry } from "./settings-registry";
 import { SettingsSearchResults } from "./SettingsSearchResults";

@@ -1,9 +1,9 @@
 import { useCallback, useRef, useState } from "react";
 
-import type { ActivityBarItemConfig } from "../../../stores/settings-store";
+import type { ActivityBarItemConfig } from "../../../stores/settings/store";
 
 import { useTranslation } from "../../../i18n/useTranslation";
-import { useSettingsStore } from "../../../stores/settings-store";
+import { useSettingsStore } from "../../../stores/settings/store";
 import { SettingsSectionHeader, ToggleSwitch } from "../settings-shared";
 
 export function ActivityBarTab() {

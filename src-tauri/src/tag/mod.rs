@@ -340,7 +340,7 @@ pub async fn rename_tag(
         if new_content != content {
             if let Err(e) = crate::fs::write_file(&file_path.to_string_lossy(), &new_content).await
             {
-                eprintln!(
+                log::warn!(
                     "[rename_tag] Failed to write {}: {}",
                     file_path.display(),
                     e

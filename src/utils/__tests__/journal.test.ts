@@ -13,7 +13,7 @@ import {
   isDateString,
   resolveDateAlias,
   resolveJournalDir,
-} from "../journal";
+} from "../journal/journal";
 
 describe("journal utilities", () => {
   const date = new Date(2026, 1, 27); // 2026-02-27 Friday

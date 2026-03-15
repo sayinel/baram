@@ -4,6 +4,8 @@ import type { Node as PmNode, Schema } from "@tiptap/pm/model";
 import { InputRule, mergeAttributes, Node } from "@tiptap/core";
 import { TextSelection } from "@tiptap/pm/state";
 
+import { htmlAttributesOptions } from "../utils/html-attributes-options";
+
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
     definitionList: {
@@ -39,9 +41,7 @@ export const DefinitionList = Node.create<DefinitionListOptions>({
   content: "(definitionTerm definitionDescription+)+",
   defining: true,
 
-  addOptions() {
-    return { HTMLAttributes: {} };
-  },
+  ...htmlAttributesOptions,
 
   parseHTML() {
     return [{ tag: "dl.definition-list" }];
@@ -76,9 +76,7 @@ export const DefinitionTerm = Node.create<DefinitionTermOptions>({
   content: "inline*",
   marks: "_",
 
-  addOptions() {
-    return { HTMLAttributes: {} };
-  },
+  ...htmlAttributesOptions,
 
   parseHTML() {
     return [{ tag: "dt" }];
@@ -183,9 +181,7 @@ export const DefinitionDescription = Node.create<DefinitionDescriptionOptions>({
   content: "inline*",
   marks: "_",
 
-  addOptions() {
-    return { HTMLAttributes: {} };
-  },
+  ...htmlAttributesOptions,
 
   parseHTML() {
     return [{ tag: "dd" }];

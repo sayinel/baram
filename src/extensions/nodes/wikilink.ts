@@ -1,12 +1,13 @@
 // §28 Wikilink Node Extension — [[page]], [[page|display]], [[page#heading]]
-import { InputRule, Node } from "@tiptap/core";
+import { InputRule, mergeAttributes, Node } from "@tiptap/core";
 import { Plugin } from "@tiptap/pm/state";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
-import { isDateString } from "../../utils/journal";
+import { isDateString } from "../../utils/journal/journal";
 import { WikilinkView } from "./wikilink-view";
 
 export interface WikilinkOptions {
+  HTMLAttributes: Record<string, unknown>;
   onNavigate: (target: string, heading?: null | string) => void;
 }
 
@@ -36,16 +37,33 @@ export const Wikilink = Node.create<WikilinkOptions>({
 
   addOptions() {
     return {
+      HTMLAttributes: {},
       onNavigate: () => {},
     };
   },
 
   addAttributes() {
     return {
-      target: { default: "" },
-      display: { default: null },
-      heading: { default: null },
-      blockId: { default: null },
+      target: {
+        default: "",
+        renderHTML: (attrs) => ({ "data-target": attrs.target }),
+        parseHTML: (el) => el.getAttribute("data-target") ?? "",
+      },
+      display: {
+        default: null,
+        renderHTML: (attrs) => ({ "data-display": attrs.display ?? "" }),
+        parseHTML: (el) => el.getAttribute("data-display") || null,
+      },
+      heading: {
+        default: null,
+        renderHTML: (attrs) => ({ "data-heading": attrs.heading ?? "" }),
+        parseHTML: (el) => el.getAttribute("data-heading") || null,
+      },
+      blockId: {
+        default: null,
+        renderHTML: (attrs) => ({ "data-block-id": attrs.blockId ?? "" }),
+        parseHTML: (el) => el.getAttribute("data-block-id") || null,
+      },
     };
   },
 
@@ -57,14 +75,10 @@ export const Wikilink = Node.create<WikilinkOptions>({
     const display = HTMLAttributes.display || HTMLAttributes.target || "";
     return [
       "span",
-      {
+      mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, {
         "data-type": "wikilink",
-        "data-target": HTMLAttributes.target,
-        "data-display": HTMLAttributes.display || "",
-        "data-heading": HTMLAttributes.heading || "",
-        "data-block-id": HTMLAttributes.blockId || "",
         class: "wikilink",
-      },
+      }),
       display,
     ];
   },

@@ -2,16 +2,16 @@ import { useCallback, useState } from "react";
 
 import { open } from "@tauri-apps/plugin-dialog";
 
-import type { WorkspacePreset } from "../../../stores/workspace-store";
+import type { WorkspacePreset } from "../../../stores/file/workspace";
 import type { ThemeDef } from "../../../types/theme";
 
 import { useTranslation } from "../../../i18n/useTranslation";
 import { readFile } from "../../../ipc/invoke";
-import { useSettingsStore } from "../../../stores/settings-store";
 import {
   BUILTIN_PRESETS,
   useWorkspaceStore,
-} from "../../../stores/workspace-store";
+} from "../../../stores/file/workspace";
+import { useSettingsStore } from "../../../stores/settings/store";
 import { BUILT_IN_THEMES } from "../../../types/theme";
 import { THEME_COLOR_KEYS } from "../../../types/theme";
 import { logger } from "../../../utils/logger";

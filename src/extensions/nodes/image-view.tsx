@@ -6,7 +6,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 import { Sparkles } from "lucide-react";
 
-import { useEditorStore } from "../../stores/editor-store";
+import { useEditorStore } from "../../stores/editor/editor";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
 
 const RESIZE_PRESETS = [25, 50, 75, 100];

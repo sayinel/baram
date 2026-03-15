@@ -14,7 +14,7 @@ import {
   insertCaptureIntoContent,
   parseCapturesFromMarkdown,
   serializeCaptureToMarkdown,
-} from "../journal-capture";
+} from "../journal/journal-capture";
 
 describe("§56l Capture types and constants", () => {
   it("has 4 capture types", () => {

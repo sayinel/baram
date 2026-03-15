@@ -4,7 +4,7 @@ import type { ThemeDef } from "../../types/theme";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { BUILT_IN_THEMES, findThemeById } from "../../types/theme";
-import { useSettingsStore } from "../settings-store";
+import { useSettingsStore } from "../settings/store";
 
 // Reset store state before each test
 beforeEach(() => {

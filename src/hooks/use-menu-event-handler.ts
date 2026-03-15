@@ -7,8 +7,8 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 
 import type { Editor } from "@tiptap/react";
 
-import { useUIStore } from "../stores/ui-store";
-import { useWorkspaceStore } from "../stores/workspace-store";
+import { useWorkspaceStore } from "../stores/file/workspace";
+import { useUIStore } from "../stores/ui/ui";
 import { showPrompt } from "../utils/ai-commands";
 
 interface MenuEventHandlerDeps {

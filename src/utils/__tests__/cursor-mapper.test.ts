@@ -5,7 +5,7 @@ import { describe, expect, test } from "vitest";
 import { createBaramExtensions } from "../../extensions";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
-import { mdOffsetToPmPos, pmPosToMdOffset } from "../cursor-mapper";
+import { mdOffsetToPmPos, pmPosToMdOffset } from "../editor/cursor-mapper";
 
 function createEditor(): Editor {
   return new Editor({

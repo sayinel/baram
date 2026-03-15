@@ -1,8 +1,11 @@
-import type { SkillMeta } from "../skill-dependency-analyzer";
+import type { SkillMeta } from "../skill/skill-dependency-analyzer";
 
 import { describe, expect, it } from "vitest";
 
-import { dryRunChain, resolveExecutionOrder } from "../skill-chain-runner";
+import {
+  dryRunChain,
+  resolveExecutionOrder,
+} from "../skill/skill-chain-runner";
 
 const skills: SkillMeta[] = [
   {

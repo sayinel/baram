@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ResolvedReference } from "../../utils/chat-context";
 
 import { useLLMStream } from "../../hooks/use-llm-stream";
-import { useChatStore } from "../../stores/chat-store";
-import { useUIStore } from "../../stores/ui-store";
+import { useChatStore } from "../../stores/ai/chat";
+import { useUIStore } from "../../stores/ui/ui";
 import {
   buildContextPrompt,
   isVaultQuery,

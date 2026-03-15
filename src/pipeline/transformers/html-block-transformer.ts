@@ -1,7 +1,7 @@
 import type { NodeTransformerEntry } from "../types";
 // html-block-transformer.ts — §5.1 HTML Block mdast ↔ ProseMirror
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
-import type { Node as MdastNode } from "mdast";
+import type { Html, Node as MdastNode } from "mdast";
 
 export const htmlBlockTransformer: NodeTransformerEntry = {
   // Note: mdastType "html" conflicts with inline html handling.
@@ -12,7 +12,7 @@ export const htmlBlockTransformer: NodeTransformerEntry = {
   pmType: "htmlBlock",
 
   mdastToPm(node: MdastNode, schema: Schema): PmNode {
-    const html = (node as unknown as { value: string }).value;
+    const html = (node as Html).value;
     return schema.nodes.htmlBlock.create({ content: html });
   },
 
@@ -20,6 +20,6 @@ export const htmlBlockTransformer: NodeTransformerEntry = {
     return {
       type: "html",
       value: node.attrs.content as string,
-    } as unknown as MdastNode;
+    } satisfies Html as MdastNode;
   },
 };

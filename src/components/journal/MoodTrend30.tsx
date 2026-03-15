@@ -1,9 +1,9 @@
 // §56e 30-day Mood Trend — dot chart showing recent mood pattern
 import { useMemo } from "react";
 
-import type { MoodValue } from "../../utils/journal-mood";
+import type { MoodValue } from "../../utils/journal/journal-mood";
 
-import { MOOD_VALUES } from "../../utils/journal-mood";
+import { MOOD_VALUES } from "../../utils/journal/journal-mood";
 
 const MOOD_COLORS: Record<MoodValue, string> = {
   deep: "#64748B",

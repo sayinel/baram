@@ -37,6 +37,13 @@ import {
 } from "./transformers/image-transformer";
 import { isDetailsOpening } from "./transformers/toggle-transformer";
 
+// §5.5 Mermaid / §5.13 Query: code block lang → dedicated block node mapping
+// Moved to module scope to avoid per-call allocation inside convertBlockNode
+const CODE_LANG_MAP = [
+  { lang: "mermaid", schemaNode: "mermaidBlock", transformerKey: "mermaid" },
+  { lang: "query", schemaNode: "queryBlock", transformerKey: "query" },
+] as const;
+
 // §perf-large-file: Set for O(1) inline type check (replaces per-call array allocation)
 const INLINE_TYPES = new Set([
   "break",
@@ -241,27 +248,16 @@ function convertBlockNode(
     }
   }
 
-  // §5.5 Mermaid: code block with lang="mermaid" → mermaidBlock (if schema supports it)
-  if (
-    node.type === "code" &&
-    (node as { lang?: string }).lang === "mermaid" &&
-    schema.nodes.mermaidBlock
-  ) {
-    const mermaidTransformer = nodeTransformers.get("mermaid");
-    if (mermaidTransformer) {
-      return mermaidTransformer.mdastToPm(node, schema, () => []);
-    }
-  }
-
-  // §5.13 Query: code block with lang="query" → queryBlock (if schema supports it)
-  if (
-    node.type === "code" &&
-    (node as { lang?: string }).lang === "query" &&
-    schema.nodes.queryBlock
-  ) {
-    const queryTransformer = nodeTransformers.get("query");
-    if (queryTransformer) {
-      return queryTransformer.mdastToPm(node, schema, () => []);
+  // §5.5 Mermaid / §5.13 Query: code block with specific lang → dedicated block node
+  if (node.type === "code") {
+    const codeLang = (node as { lang?: string }).lang;
+    for (const { lang, schemaNode, transformerKey } of CODE_LANG_MAP) {
+      if (codeLang === lang && schema.nodes[schemaNode]) {
+        const transformer = nodeTransformers.get(transformerKey);
+        if (transformer) {
+          return transformer.mdastToPm(node, schema, () => []);
+        }
+      }
     }
   }
 

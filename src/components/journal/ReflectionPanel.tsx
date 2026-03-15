@@ -3,18 +3,18 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useLLMStream } from "../../hooks/use-llm-stream";
 import { createDir, listDir, readFile, writeFile } from "../../ipc/invoke";
-import { useAIStore } from "../../stores/ai-store";
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
-import { useSettingsStore } from "../../stores/settings-store";
+import { useAIStore } from "../../stores/ai/ai";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
+import { useSettingsStore } from "../../stores/settings/store";
 import { formatAIError } from "../../utils/format-error";
-import { resolveJournalDir } from "../../utils/journal";
-import { renderSimpleMarkdown } from "../../utils/journal-memories";
+import { resolveJournalDir } from "../../utils/journal/journal";
+import { renderSimpleMarkdown } from "../../utils/journal/journal-memories";
 import {
   buildReflectionPrompt,
   extractReflectionEntries,
   formatReflectionMarkdown,
-} from "../../utils/journal-reflection";
+} from "../../utils/journal/journal-reflection";
 import { logger } from "../../utils/logger";
 
 type Period = "month" | "week";

@@ -1,7 +1,7 @@
 // §56l — Tag autocomplete dropdown for journal captures
 import { useEffect, useRef } from "react";
 
-import { filterTags } from "../../utils/journal-tags";
+import { filterTags } from "../../utils/journal/journal-tags";
 
 interface TagSuggestProps {
   activeIndex: number;

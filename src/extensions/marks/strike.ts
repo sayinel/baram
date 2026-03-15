@@ -6,7 +6,9 @@ import {
   mergeAttributes,
 } from "@tiptap/core";
 
+import { htmlAttributesOptions } from "../utils/html-attributes-options";
 import { resolveShortcut } from "../utils/shortcut-resolver";
+import { makeMarkCommands } from "./make-mark-commands";
 
 export interface StrikeOptions {
   HTMLAttributes: Record<string, string>;
@@ -28,9 +30,7 @@ const pasteRegex = /(?:^|\s)(~~(?!\s+~~)((?:[^~]+))~~)/g;
 export const Strike = Mark.create<StrikeOptions>({
   name: "strike",
 
-  addOptions() {
-    return { HTMLAttributes: {} };
-  },
+  ...htmlAttributesOptions,
 
   parseHTML() {
     return [
@@ -54,20 +54,7 @@ export const Strike = Mark.create<StrikeOptions>({
   },
 
   addCommands() {
-    return {
-      setStrike:
-        () =>
-        ({ commands }) =>
-          commands.setMark(this.name),
-      toggleStrike:
-        () =>
-        ({ commands }) =>
-          commands.toggleMark(this.name),
-      unsetStrike:
-        () =>
-        ({ commands }) =>
-          commands.unsetMark(this.name),
-    };
+    return makeMarkCommands(this.name);
   },
 
   addKeyboardShortcuts() {

@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { useAgentStore } from "../../stores/agent-store";
-import { useAIStore } from "../../stores/ai-store";
+import { useAIStore } from "../../stores/ai/ai";
 import { useAuthorshipStore } from "../../stores/authorship-store";
 import { useKnowledgeStore } from "../../stores/knowledge-store";
 import { useWritingFlowStore } from "../../stores/writing-flow-store";

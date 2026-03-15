@@ -7,15 +7,17 @@ import { open } from "@tauri-apps/plugin-dialog";
 
 import type { ContextMenuState } from "./file-tree-types";
 import type { FileTreeContextValue } from "./FileTreeContext";
-import type { Editor } from "@tiptap/react";
 
+import { useShallow } from "zustand/shallow";
+
+import { useEditorContext } from "../../contexts/editor-context";
 import { readFile } from "../../ipc/invoke";
-import { useEditorStore } from "../../stores/editor-store";
+import { useEditorStore } from "../../stores/editor/editor";
 import {
   type FileEntry,
   openFolder,
   useFileStore,
-} from "../../stores/file-store";
+} from "../../stores/file/file";
 import { logger } from "../../utils/logger";
 import { getFileIcon } from "./file-icon";
 import {
@@ -32,18 +34,27 @@ import { useFileTreeDnD } from "./hooks/use-file-tree-dnd";
 import { useFileTreeRename } from "./hooks/use-file-tree-rename";
 import { useFileTreeSearch } from "./hooks/use-file-tree-search";
 
-export function FileTree({
-  editor,
-}: {
-  editor?: Editor | null;
-}): React.JSX.Element {
-  const { fileTree, rootPath, setFileContent } = useFileStore();
+export function FileTree(): React.JSX.Element {
+  const editor = useEditorContext();
+  const { fileTree, rootPath, setFileContent } = useFileStore(
+    useShallow((s) => ({
+      fileTree: s.fileTree,
+      rootPath: s.rootPath,
+      setFileContent: s.setFileContent,
+    })),
+  );
   const tagFilter = useFileStore((s) => s.tagFilter);
   const setTagFilter = useFileStore((s) => s.setTagFilter);
   const expandedDirs = useFileStore((s) => s.expandedDirs);
   const toggleExpandedDir = useFileStore((s) => s.toggleExpandedDir);
   const expandDir = useFileStore((s) => s.expandDir);
-  const { openTab, tabs, activeTabId } = useEditorStore();
+  const { openTab, tabs, activeTabId } = useEditorStore(
+    useShallow((s) => ({
+      openTab: s.openTab,
+      tabs: s.tabs,
+      activeTabId: s.activeTabId,
+    })),
+  );
   const [selectedPath, setSelectedPath] = useState<null | string>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const treeRef = useRef<HTMLDivElement>(null);

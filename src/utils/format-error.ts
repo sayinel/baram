@@ -1,9 +1,11 @@
-// AI error message formatting utility
+// IPC / AI error message formatting utilities
 
 export interface FormattedError {
   detail: string;
   title: string;
 }
+
+// AI error message formatting utility
 
 /**
  * Parse raw AI error strings into a user-friendly title + detail.

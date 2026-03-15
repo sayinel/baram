@@ -48,6 +48,11 @@ export async function renameFile(from: string, to: string): Promise<void> {
   return invoke<void>("rename_file", { from, to });
 }
 
+/** Register the open vault root with the Rust backend for path confinement. */
+export async function setVaultRoot(path: string): Promise<void> {
+  return invoke<void>("set_vault_root", { path });
+}
+
 export async function watchDir(path: string): Promise<void> {
   return invoke<void>("watch_dir", { path });
 }

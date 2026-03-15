@@ -1,34 +1,25 @@
 import type { NodeTransformerEntry } from "../types";
 // table-transformer.ts — §5.5 GFM Table mdast ↔ ProseMirror
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
-import type { Node as MdastNode } from "mdast";
-
-interface MdastTable extends MdastNode {
-  align?: (null | string)[];
-  children: MdastTableRow[];
-  type: "table";
-}
-
-interface MdastTableCell extends MdastNode {
-  children: MdastNode[];
-  type: "tableCell";
-}
-
-interface MdastTableRow extends MdastNode {
-  children: MdastTableCell[];
-  type: "tableRow";
-}
+import type {
+  AlignType,
+  Literal as MdastLiteral,
+  Node as MdastNode,
+  Parent as MdastParent,
+  Paragraph,
+  Table,
+  TableCell,
+  TableRow,
+  Text,
+} from "mdast";
 
 /** Extract plain text from mdast table cell children (for marker detection) */
-function extractCellText(cell: MdastTableCell): string {
+function extractCellText(cell: TableCell): string {
   let text = "";
   function walk(node: MdastNode) {
-    if ((node as unknown as { value?: string }).value)
-      text += (node as unknown as { value: string }).value;
-    if ((node as unknown as { children?: MdastNode[] }).children) {
-      for (const child of (node as unknown as { children: MdastNode[] })
-        .children)
-        walk(child);
+    if ("value" in node) text += (node as MdastLiteral).value;
+    if ("children" in node) {
+      for (const child of (node as MdastParent).children) walk(child);
     }
   }
   for (const child of cell.children) walk(child);
@@ -40,13 +31,13 @@ export const tableTransformer: NodeTransformerEntry = {
   pmType: "table",
 
   mdastToPm(node: MdastNode, schema: Schema, convertChildren) {
-    const table = node as MdastTable;
+    const table = node as Table;
     const align = table.align || [];
     const rowCount = table.children.length;
 
     // Pass 1: Build 2D content array and check for merge markers
     const content: string[][] = [];
-    const rawCells: MdastTableCell[][] = [];
+    const rawCells: TableCell[][] = [];
     let hasMergeMarkers = false;
 
     for (let r = 0; r < rowCount; r++) {
@@ -70,13 +61,12 @@ export const tableTransformer: NodeTransformerEntry = {
       table.children.forEach((row, rowIndex) => {
         const cells: PmNode[] = [];
         row.children.forEach((cell, colIndex) => {
-          const cellChildren =
-            (cell as unknown as { children: MdastNode[] }).children || [];
+          const cellChildren = cell.children;
           const cellContent =
             cellChildren.length > 0
               ? convertChildren({
                   children: cellChildren,
-                } as unknown as import("mdast").Parent)
+                } as MdastParent)
               : [];
           const pmContent =
             cellContent.length > 0
@@ -157,13 +147,12 @@ export const tableTransformer: NodeTransformerEntry = {
       for (let c = 0; c < (content[r]?.length || 0); c++) {
         if (!attrs[r][c].consumed) {
           const cell = rawCells[r][c];
-          const cellChildren =
-            (cell as unknown as { children: MdastNode[] }).children || [];
+          const cellChildren = cell.children;
           const cellContent =
             cellChildren.length > 0
               ? convertChildren({
                   children: cellChildren,
-                } as unknown as import("mdast").Parent)
+                } as MdastParent)
               : [];
           const pmContent =
             cellContent.length > 0
@@ -242,12 +231,12 @@ export const tableTransformer: NodeTransformerEntry = {
     });
 
     // Step 4: Serialize grid to GFM mdast rows
-    const rows: MdastTableRow[] = [];
-    const align: (null | string)[] = [];
+    const rows: TableRow[] = [];
+    const alignArr: AlignType[] = [];
     let alignCollected = false;
 
     for (let r = 0; r < rowCount; r++) {
-      const cells: MdastTableCell[] = [];
+      const cells: TableCell[] = [];
       for (let c = 0; c < maxCols; c++) {
         const entry = grid[r][c];
         if (entry && entry.isMain) {
@@ -255,37 +244,37 @@ export const tableTransformer: NodeTransformerEntry = {
           const children = convertChildren(entry.cell);
           const cellChildren =
             children.length === 1 && children[0].type === "paragraph"
-              ? (children[0] as unknown as { children: MdastNode[] }).children
+              ? (children[0] as Paragraph).children
               : children;
           cells.push({
             type: "tableCell",
             children: cellChildren.length > 0 ? cellChildren : [],
-          } as MdastTableCell);
+          } as TableCell);
 
           if (!alignCollected) {
-            align.push((entry.cell.attrs.alignment as string) || null);
+            alignArr.push((entry.cell.attrs.alignment as AlignType) || null);
           }
         } else if (hasMerge && entry) {
           // Merge marker cell
           const marker = entry.mainRow === r ? "<" : "^";
           cells.push({
             type: "tableCell",
-            children: [{ type: "text", value: marker } as unknown as MdastNode],
-          } as MdastTableCell);
+            children: [{ type: "text", value: marker } satisfies Text],
+          } as TableCell);
 
           if (!alignCollected) {
-            align.push((entry.cell.attrs.alignment as string) || null);
+            alignArr.push((entry.cell.attrs.alignment as AlignType) || null);
           }
         } else {
           // Spanned or empty cell (no merge) — emit empty content
           cells.push({
             type: "tableCell",
             children: [],
-          } as MdastTableCell);
+          } as TableCell);
 
           if (!alignCollected) {
-            align.push(
-              entry ? (entry.cell.attrs.alignment as string) || null : null,
+            alignArr.push(
+              entry ? (entry.cell.attrs.alignment as AlignType) || null : null,
             );
           }
         }
@@ -294,13 +283,13 @@ export const tableTransformer: NodeTransformerEntry = {
       rows.push({
         type: "tableRow",
         children: cells,
-      } as MdastTableRow);
+      } satisfies TableRow);
     }
 
     return {
       type: "table",
-      align: align.some((a) => a !== null) ? align : undefined,
+      align: alignArr.some((a) => a !== null) ? alignArr : undefined,
       children: rows,
-    } as unknown as MdastNode;
+    } satisfies Table as MdastNode;
   },
 };

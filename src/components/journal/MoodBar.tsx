@@ -11,22 +11,22 @@ import {
 } from "../../extensions/nodes/frontmatter-view";
 import { useLLMStream } from "../../hooks/use-llm-stream";
 import { getVaultTags } from "../../ipc/invoke";
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
-import { useSettingsStore } from "../../stores/settings-store";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
+import { useSettingsStore } from "../../stores/settings/store";
 import {
   type EnergyValue,
   MOOD_VALUES,
   type MoodValue,
-} from "../../utils/journal-mood";
+} from "../../utils/journal/journal-mood";
 import {
   buildEmotionInferencePrompt,
   parseEmotionResponse,
-} from "../../utils/journal-reflection";
+} from "../../utils/journal/journal-reflection";
 import {
   buildTagSuggestionPrompt,
   parseTagSuggestions,
-} from "../../utils/journal-tags";
+} from "../../utils/journal/journal-tags";
 
 interface MoodBarProps {
   editor: Editor | null;

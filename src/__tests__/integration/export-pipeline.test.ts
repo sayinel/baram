@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
-import { generateStandaloneHTML } from "../../utils/export-html";
+import { generateStandaloneHTML } from "../../utils/export/export-html";
 import { createTestSchema, FIXTURE_RICH } from "./fixtures";
 
 const schema = createTestSchema();

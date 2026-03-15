@@ -243,7 +243,7 @@ export function tryConvertToggle(
  * remark-parse combines `Term\n: Def` into one paragraph with text "Term\n: Def".
  * Returns array of [definitionTerm, definitionDescription, ...] PM nodes, or null.
  */
-export function tryParseInlineDefinition(
+function tryParseInlineDefinition(
   paraChildren: PhrasingContent[],
   schema: Schema,
   convertInlineChildren: ConvertInlineFn,

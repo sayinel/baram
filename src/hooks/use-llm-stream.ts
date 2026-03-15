@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
@@ -8,10 +8,10 @@ import type {
   LLMErrorPayload,
   LLMTokenPayload,
 } from "../ipc/types";
-import type { AITask } from "../stores/ai-store";
+import type { AITask } from "../stores/ai/ai";
 
 import { llmCancel, llmComplete } from "../ipc/invoke";
-import { useAIStore } from "../stores/ai-store";
+import { useAIStore } from "../stores/ai/ai";
 import { getConfigForTask } from "../utils/model-selection";
 import { isLLMAllowed } from "../utils/privacy-check";
 
@@ -141,6 +141,17 @@ export function useLLMStream(): UseLLMStreamReturn {
     },
     [cleanup],
   );
+
+  // Unmount cleanup — unlisten any active event listeners if component is torn down mid-stream
+  useEffect(() => {
+    return () => {
+      for (const unlisten of unlistenRefs.current) {
+        unlisten();
+      }
+      unlistenRefs.current = [];
+      requestIdRef.current = null;
+    };
+  }, []);
 
   return { send, cancel, isStreaming, text, error, totalTokens };
 }
