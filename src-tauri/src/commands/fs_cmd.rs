@@ -37,16 +37,31 @@ async fn check_vault(
             Ok(p) => p,
             Err(_) => {
                 // Path does not exist yet (e.g., write_file / create_dir target).
-                // Canonicalize the parent to resolve symlinks in the parent chain.
-                let parent = std::path::Path::new(path)
-                    .parent()
-                    .ok_or_else(|| "Access denied: path is outside vault root".to_string())?;
-                let canonical_parent = std::fs::canonicalize(parent)
-                    .map_err(|_| "Access denied: path is outside vault root".to_string())?;
-                let file_name = std::path::Path::new(path)
-                    .file_name()
-                    .ok_or_else(|| "Access denied: path is outside vault root".to_string())?;
-                canonical_parent.join(file_name)
+                // Walk up the ancestor chain to find the nearest existing directory,
+                // canonicalize it, then append the remaining (non-existent) components.
+                let target = std::path::Path::new(path);
+                let mut pending: Vec<std::ffi::OsString> = Vec::new();
+                let mut current = target;
+                loop {
+                    match std::fs::canonicalize(current) {
+                        Ok(canonical) => {
+                            let mut result = canonical;
+                            for component in pending.into_iter().rev() {
+                                result = result.join(component);
+                            }
+                            break result;
+                        }
+                        Err(_) => {
+                            let name = current.file_name().ok_or_else(|| {
+                                "Access denied: path is outside vault root".to_string()
+                            })?;
+                            pending.push(name.to_os_string());
+                            current = current.parent().ok_or_else(|| {
+                                "Access denied: path is outside vault root".to_string()
+                            })?;
+                        }
+                    }
+                }
             }
         };
 
