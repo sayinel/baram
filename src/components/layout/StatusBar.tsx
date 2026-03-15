@@ -138,7 +138,7 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
                 const Icon = SPACE_ICONS[preset.id] || Pencil;
                 return (
                   <button
-                    className={`status-space-menu-item${activePresetId === preset.id ? "status-space-menu-active" : ""}`}
+                    className={`status-space-menu-item ${activePresetId === preset.id ? "status-space-menu-active" : ""}`}
                     key={preset.id}
                     onClick={() => handleSpaceSelect(preset.id)}
                   >
