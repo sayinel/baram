@@ -1,0 +1,753 @@
+/* ============================================
+   §4.5 Command Palette
+   ============================================ */
+
+.command-palette-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  padding-top: 15vh;
+  background: rgb(0 0 0 / 30%);
+}
+
+.command-palette {
+  display: flex;
+  flex-direction: column;
+  width: 520px;
+  max-height: 400px;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background-color: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  box-shadow: 0 8px 30px rgb(0 0 0 / 20%);
+}
+
+.command-palette-input {
+  padding: 12px 16px;
+  font-family: var(--font-family-sans);
+  font-size: 0.95rem;
+  color: var(--color-text-primary);
+  outline: none;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.command-palette-input::placeholder {
+  color: var(--color-text-disabled);
+}
+
+.command-palette-list {
+  flex: 1;
+  padding: 4px 0;
+  overflow-y: auto;
+}
+
+.command-palette-empty {
+  padding: 20px;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.command-palette-group {
+  padding: 2px 0;
+}
+
+.command-palette-category {
+  padding: 6px 16px 2px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.command-palette-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 16px;
+  cursor: pointer;
+  transition: background-color 0.05s;
+}
+
+.command-palette-item:hover,
+.command-palette-item-selected {
+  background-color: var(--color-bg-subtle);
+}
+
+.command-item-label {
+  font-size: 0.875rem;
+  color: var(--color-text-primary);
+}
+
+.command-item-shortcut {
+  padding: 1px 6px;
+  font-family: var(--font-family-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  background-color: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 3px;
+}
+
+/* ============================================
+   §4.6 Slash Menu
+   ============================================ */
+
+.slash-menu-popup {
+  position: fixed;
+  z-index: 50;
+}
+
+.slash-menu {
+  width: 280px;
+  max-height: 320px;
+  padding: 4px 0;
+  overflow-y: auto;
+  background-color: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
+}
+
+.slash-menu-empty {
+  padding: 16px;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.slash-menu-group {
+  padding: 2px 0;
+}
+
+.slash-menu-category {
+  padding: 6px 12px 2px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.slash-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background-color 0.05s;
+}
+
+.slash-menu-item:hover,
+.slash-item-selected {
+  background-color: var(--color-bg-subtle);
+}
+
+.slash-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.slash-item-label {
+  font-size: 0.875rem;
+  color: var(--color-text-primary);
+}
+
+.slash-item-desc {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.slash-item-hint {
+  padding: 1px 6px;
+  font-family: var(--font-family-mono);
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  background-color: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 3px;
+}
+
+/* ============================================
+   §4.7 Floating Toolbar
+   ============================================ */
+
+.floating-toolbar {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  padding: 4px 6px;
+  background-color: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
+}
+
+.floating-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  font-family: var(--font-family-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  transition:
+    background-color 0.1s,
+    color 0.1s;
+}
+
+.floating-toolbar-btn:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-subtle);
+}
+
+.floating-toolbar-btn-active {
+  color: white;
+  background-color: var(--color-accent-default);
+}
+
+.floating-toolbar-btn-active:hover {
+  color: white;
+  background-color: var(--color-accent-hover);
+}
+
+.floating-toolbar-separator {
+  width: 1px;
+  height: 20px;
+  margin: 0 2px;
+  background-color: var(--color-border-subtle);
+}
+
+/* §6.2 AI dropdown in FloatingToolbar */
+.floating-toolbar-ai-wrapper {
+  position: relative;
+}
+
+.floating-toolbar-ai-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 100;
+  min-width: 140px;
+  padding: 4px;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
+}
+
+.floating-toolbar-ai-dropdown-up {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+
+.floating-toolbar-ai-item {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+}
+
+.floating-toolbar-ai-item:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-subtle);
+}
+
+/* §6.2 Custom prompt dialog (replaces window.prompt for Tauri WKWebView) */
+.ai-prompt-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 40%);
+}
+
+.ai-prompt-dialog {
+  min-width: 340px;
+  max-width: 460px;
+  padding: 20px;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgb(0 0 0 / 25%);
+}
+
+.ai-prompt-label {
+  margin: 0 0 12px;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--color-text-primary);
+}
+
+.ai-prompt-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.ai-prompt-preset-btn {
+  padding: 5px 14px;
+  font-size: 13px;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  transition:
+    background-color 0.1s,
+    color 0.1s,
+    border-color 0.1s;
+}
+
+.ai-prompt-preset-btn:hover {
+  color: white;
+  background: var(--color-accent-default);
+  border-color: var(--color-accent-default);
+}
+
+.ai-prompt-input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 14px;
+  color: var(--color-text-primary);
+  outline: none;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+}
+
+.ai-prompt-input:focus {
+  border-color: var(--color-accent-default);
+  box-shadow: 0 0 0 2px rgb(99 102 241 / 20%);
+}
+
+.ai-prompt-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.ai-prompt-btn {
+  padding: 6px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+}
+
+.ai-prompt-btn-cancel {
+  color: var(--color-text-secondary);
+  background: var(--color-bg-subtle);
+}
+
+.ai-prompt-btn-cancel:hover {
+  background: var(--color-bg-elevated, var(--color-bg-subtle));
+}
+
+.ai-prompt-btn-ok {
+  color: white;
+  background: var(--color-accent-default);
+  border-color: var(--color-accent-default);
+}
+
+.ai-prompt-btn-ok:hover {
+  background: var(--color-accent-hover);
+}
+
+.confirm-dialog-btn-danger {
+  color: white;
+  background: #dc2626;
+  border-color: #dc2626;
+}
+
+.confirm-dialog-btn-danger:hover {
+  background: #b91c1c;
+}
+
+.field-dialog-label {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.field-dialog-label .ai-prompt-input {
+  margin-top: 4px;
+}
+
+/* ============================================
+   §4.8 Block Handle
+   ============================================ */
+
+.block-handle {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  gap: 2px;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+
+.block-handle:hover {
+  opacity: 1;
+}
+
+.block-handle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 24px;
+  font-size: 14px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+}
+
+.block-handle-btn:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-elevated, var(--color-bg-subtle));
+}
+
+.block-handle-menu {
+  position: fixed;
+  z-index: 40;
+  min-width: 140px;
+  padding: 4px 0;
+  margin-top: 24px;
+  background-color: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
+}
+
+.block-handle-menu-item {
+  display: block;
+  width: 100%;
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+}
+
+.block-handle-menu-item:hover {
+  background-color: var(--color-bg-subtle);
+}
+
+.block-handle-separator {
+  height: 1px;
+  margin: 4px 0;
+  background-color: var(--color-border-subtle);
+}
+
+/* §11.2.3 BlockHandle AI submenu */
+.block-handle-ai-trigger {
+  position: relative;
+}
+
+.block-handle-ai-item {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between !important;
+}
+
+.block-handle-ai-arrow {
+  margin-left: 8px;
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+}
+
+.block-handle-ai-submenu {
+  position: absolute;
+  top: -4px;
+  left: 100%;
+  z-index: 50;
+  min-width: 150px;
+  padding: 4px 0;
+  background-color: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
+}
+
+/* §11.2.3 NodeView AI button — shared by math, code, table */
+.nodeview-ai-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 10;
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+  opacity: 0;
+  transition:
+    opacity 0.15s,
+    background-color 0.15s;
+}
+
+/* Show on hover of parent block */
+.math-block:hover .nodeview-ai-btn,
+.code-block-wrapper:hover .code-block-ai-btn {
+  opacity: 1;
+}
+
+.nodeview-ai-btn:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-elevated);
+  border-color: var(--color-border-default);
+}
+
+/* Code block AI button: positioned in header, not absolute */
+.code-block-ai-btn {
+  position: static;
+  margin-left: auto;
+  opacity: 0;
+}
+
+.code-block-header {
+  display: flex;
+  align-items: center;
+}
+
+/* Table toolbar AI button styling */
+.table-toolbar-btn-ai {
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+/* NodeView AI dropdown menu (DOM-based) */
+.nodeview-ai-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 150px;
+  padding: 4px 0;
+  background-color: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
+}
+
+.nodeview-ai-menu-item {
+  display: block;
+  width: 100%;
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+}
+
+.nodeview-ai-menu-item:hover {
+  background-color: var(--color-bg-subtle);
+}
+
+.nodeview-ai-menu-separator {
+  height: 1px;
+  margin: 4px 0;
+  background-color: var(--color-border-subtle);
+}
+
+/* §11.2.3 Block AI Diff Panel */
+.block-ai-diff-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgb(0 0 0 / 25%);
+}
+
+.block-ai-diff-panel {
+  position: fixed;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 90vw);
+  max-height: 60vh;
+  overflow: hidden;
+  font-size: 0.85rem;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgb(0 0 0 / 18%);
+}
+
+.block-ai-diff-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.block-ai-diff-streaming {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--color-accent-default);
+  animation: block-ai-diff-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes block-ai-diff-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.block-ai-diff-content {
+  flex: 1;
+  padding: 12px;
+  overflow-y: auto;
+  font-family: var(--font-family-mono, monospace);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+.block-ai-diff-equal {
+  color: var(--color-text-primary);
+}
+
+.block-ai-diff-delete {
+  color: #ef4444;
+  text-decoration: line-through;
+  background: rgb(239 68 68 / 8%);
+  border-radius: 2px;
+}
+
+.block-ai-diff-insert {
+  color: #22c55e;
+  background: rgb(34 197 94 / 8%);
+  border-radius: 2px;
+}
+
+.block-ai-diff-original {
+  color: var(--color-text-muted);
+}
+
+.block-ai-diff-error {
+  padding: 8px 12px;
+  font-size: 0.78rem;
+  color: #ef4444;
+  background: rgb(239 68 68 / 6%);
+}
+
+.block-ai-diff-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 8px 12px;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.block-ai-diff-btn {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 5px 14px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--color-border-default);
+  border-radius: 5px;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.block-ai-diff-btn kbd {
+  padding: 1px 4px;
+  font-family: var(--font-family-mono, monospace);
+  font-size: 0.7rem;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 3px;
+  opacity: 0.7;
+}
+
+.block-ai-diff-btn-reject {
+  color: var(--color-text-secondary);
+  background: var(--color-bg-subtle);
+}
+
+.block-ai-diff-btn-reject:hover {
+  background: var(--color-bg-elevated);
+}
+
+.block-ai-diff-btn-accept {
+  color: #fff;
+  background: var(--color-accent-default);
+  border-color: var(--color-accent-default);
+}
+
+.block-ai-diff-btn-accept:hover {
+  opacity: 0.9;
+}
+
+/* Callout AI button */
+.callout-ai-btn {
+  padding: 2px 8px;
+  margin-left: auto;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.callout:hover .callout-ai-btn {
+  opacity: 1;
+}
+
+.callout-ai-btn:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-subtle);
+}
