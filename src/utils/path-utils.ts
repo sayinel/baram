@@ -12,6 +12,14 @@ const IMAGE_EXTENSIONS = new Set([
   "webp",
 ]);
 
+/**
+ * Return the last path segment (filename) from an absolute or relative path.
+ * @platform unix paths only (forward slashes)
+ */
+export function basename(path: string): string {
+  return path.split("/").pop() ?? "";
+}
+
 /** §61 Extract namespace (directory path) from a vault-relative file path.
  *  e.g. "notes/ai/prompt.md" → "notes/ai", "readme.md" → undefined */
 export function extractNamespace(relativePath: string): string | undefined {

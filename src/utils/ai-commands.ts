@@ -1,12 +1,12 @@
 // §6.2 Shared AI command utilities — used by slash menu, FloatingToolbar, CommandPalette
-import { listen } from "@tauri-apps/api/event";
-
 import type { Editor } from "@tiptap/core";
 
 import { llmComplete } from "../ipc/invoke";
 import { useAIStore } from "../stores/ai/ai";
+import { createLLMStream } from "./llm-stream";
 import { logger } from "./logger";
 import { getConfigForTask } from "./model-selection";
+import { getFilePrivacy, isLLMAllowed } from "./privacy-check";
 
 export interface AICommandOptions {
   // When true, insert response on a new line after the block containing the selection end
@@ -37,7 +37,13 @@ export async function executeAICommand(
     return;
   }
 
-  const requestId = `ai_slash_${Date.now()}`;
+  const filePrivacy = getFilePrivacy(editor);
+  if (!isLLMAllowed(store.privacyMode, inlineCfg.provider, filePrivacy)) {
+    logger.error("AI command: blocked by privacy settings");
+    return;
+  }
+
+  const requestId = `ai_slash_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
   let currentPos: number;
 
@@ -67,46 +73,32 @@ export async function executeAICommand(
     currentPos = insertPos;
   }
 
-  const tokenUn = await listen<{ requestId: string; token: string }>(
-    "llm:token",
-    (event) => {
-      if (event.payload.requestId !== requestId) return;
-      const token = event.payload.token;
+  const cleanupStream = await createLLMStream(requestId, {
+    onToken: (token) => {
       editor.chain().focus().insertContentAt(currentPos, token).run();
       currentPos += token.length;
     },
-  );
-
-  const doneUn = await listen<{ requestId: string }>("llm:done", (event) => {
-    if (event.payload.requestId !== requestId) return;
-    tokenUn();
-    doneUn();
-    errorUn();
+    onError: (error) => logger.error("AI command error:", error),
   });
 
-  const errorUn = await listen<{ error: string; requestId: string }>(
-    "llm:error",
-    (event) => {
-      if (event.payload.requestId !== requestId) return;
-      logger.error("AI command error:", event.payload.error);
-      tokenUn();
-      doneUn();
-      errorUn();
-    },
-  );
-
-  // Fire LLM request
-  await llmComplete(
-    inlineCfg.apiKey,
-    prompt,
-    inlineCfg.model,
-    requestId,
-    systemPrompt,
-    undefined,
-    inlineCfg.provider,
-    inlineCfg.baseUrl,
-    store.privacyMode,
-  ).catch((e) => logger.error(e));
+  // Fire LLM request; cleanup listeners always to prevent leaks
+  try {
+    await llmComplete(
+      inlineCfg.apiKey,
+      prompt,
+      inlineCfg.model,
+      requestId,
+      systemPrompt,
+      undefined,
+      inlineCfg.provider,
+      inlineCfg.baseUrl,
+      store.privacyMode,
+    );
+  } catch {
+    logger.error("LLM request failed");
+  } finally {
+    cleanupStream();
+  }
 }
 
 // Get only the selected text (empty string if no selection)

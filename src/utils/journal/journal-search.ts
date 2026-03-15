@@ -1,5 +1,6 @@
 // §56k Journal Search utilities — categorize, group, and highlight journal search results
 import { extractFrontmatter } from "../markdown/frontmatter";
+import { JOURNAL_FILENAME_COMPACT_RE, JOURNAL_FILENAME_RE } from "./journal";
 
 export type JournalCategory =
   | "daily"
@@ -41,7 +42,8 @@ export function categorizeJournalResult(
 
   // Flat layout: YYYY-MM-DD.md directly in journalDir
   const flatDaily =
-    /^\d{4}-\d{2}-\d{2}\.md$/.test(relative) || /^\d{8}\.md$/.test(relative);
+    JOURNAL_FILENAME_RE.test(relative) ||
+    JOURNAL_FILENAME_COMPACT_RE.test(relative);
   if (flatDaily) return "daily";
 
   return "other";
@@ -239,7 +241,7 @@ export function highlightSearchMatch(text: string, query: string): string {
 
 function escapeHtml(s: string): string {
   return s
-    .replace(/&/g, "&amp;")
+    .replace(/&(?!amp;|lt;|gt;|quot;|#\d+;|#x[\da-fA-F]+;)/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
