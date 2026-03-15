@@ -14,12 +14,3 @@ export const AI_FIX_GRAMMAR =
 
 export const AI_EXPLAIN =
   "Explain the following text in simple, clear language.";
-
-export const AI_IMPROVE =
-  "Improve the following text for clarity, conciseness, and readability while preserving the original meaning.";
-
-export const AI_SHORTEN =
-  "Shorten the following text while preserving the key information and meaning. Be concise.";
-
-export const AI_TONE_CHANGE =
-  "Rewrite the following text in a {tone} tone while preserving the original meaning.";

@@ -14,6 +14,19 @@ export interface GhostTextState {
   text: null | string;
 }
 
+// §11.2.2 Prefetch trigger callback — registered by useGhostText hook.
+// Called after Tab-acceptance so the hook can schedule a background LLM prefetch.
+// acceptedText: the ghost text that was inserted; pos: insertion position.
+export let onGhostTextAccepted:
+  | ((acceptedText: string, pos: number) => void)
+  | null = null;
+
+export function registerGhostTextAcceptedCallback(
+  cb: ((acceptedText: string, pos: number) => void) | null,
+): void {
+  onGhostTextAccepted = cb;
+}
+
 export const GhostText = Extension.create({
   name: "ghostText",
 
@@ -75,6 +88,10 @@ export const GhostText = Extension.create({
                 .insertText(text!, pos)
                 .setMeta(ghostTextPluginKey, { text: null, pos: 0 });
               view.dispatch(tr);
+              // §11.2.2 Notify hook so it can schedule a background prefetch
+              if (onGhostTextAccepted) {
+                onGhostTextAccepted(text!, pos);
+              }
               return true;
             }
 

@@ -1,12 +1,15 @@
 // §5.3 Math Block NodeView — selected: textarea + preview, unselected: KaTeX only
+// §11.2.3 AI button on hover
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Node as PmNode } from "@tiptap/pm/model";
 
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
+import { Sparkles } from "lucide-react";
 
 import { preprocessNotionFormula } from "../../utils/export/notion-katex-compat";
 import { parseKaTeXError } from "../../utils/katex/katex-error";
+import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
 import { mathBlockEntryKey } from "./math-block";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
 import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
@@ -151,6 +154,24 @@ export function MathBlockView({
 
   const eqLabel = `(${eqNumber})`;
 
+  // AI button handler
+  const handleAIClick = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      e.stopPropagation();
+      const f = formula || localFormula;
+      if (!f.trim()) return;
+      const pos = getPos();
+      if (typeof pos !== "number") return;
+      showNodeViewAIMenu(e.currentTarget, "math", f, editor, pos);
+    },
+    [formula, localFormula, editor, getPos],
+  );
+
+  // Native mousedown stop — React onMouseDown fires at root (too late to block PM)
+  const aiButtonRef = useCallback((el: HTMLButtonElement | null) => {
+    if (el) el.onmousedown = (e) => e.stopPropagation();
+  }, []);
+
   // Non-editing: KaTeX render only
   if (!selected) {
     return (
@@ -165,6 +186,17 @@ export function MathBlockView({
           <div className="math-block-katex" ref={previewRef} />
           <span className="math-block-eq-number">{eqLabel}</span>
         </div>
+        {formula.trim() && (
+          <button
+            className="nodeview-ai-btn"
+            contentEditable={false}
+            onClick={handleAIClick}
+            ref={aiButtonRef}
+            title="AI Commands"
+          >
+            <Sparkles size={14} />
+          </button>
+        )}
       </NodeViewWrapper>
     );
   }

@@ -55,6 +55,7 @@ const MENU_I18N_MAP: Record<string, string> = {
   view_tags: "menu.view.tags",
   view_version_history: "menu.view.versionHistory",
   view_skills_gallery: "menu.view.skillsGallery",
+  view_inline_ai: "menu.view.inlineAI",
   view_ai_chat: "menu.view.aiChat",
   view_fullscreen: "menu.view.fullscreen",
 

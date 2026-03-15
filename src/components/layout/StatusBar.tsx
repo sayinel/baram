@@ -5,6 +5,7 @@ import type { Editor } from "@tiptap/react";
 
 import { useShallow } from "zustand/shallow";
 
+import { useAIStore } from "../../stores/ai/ai";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useGitStore } from "../../stores/system/git";
 
@@ -67,6 +68,7 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
     })),
   );
   const hasChanges = changes.length > 0;
+  const privacyMode = useAIStore((s) => s.privacyMode);
   const zoomLevel = useSettingsStore((s) => s.zoomLevel);
   const zoomPercent = Math.round(zoomLevel * 100);
 
@@ -81,6 +83,15 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
           >
             ⎇ {branch}
             {hasChanges && <span className="status-git-dot" />}
+          </span>
+        )}
+        {privacyMode && (
+          <span
+            className="status-privacy"
+            data-testid="privacy-indicator"
+            title="Privacy Mode: Only local models (Ollama) allowed"
+          >
+            Privacy
           </span>
         )}
       </div>
