@@ -1,0 +1,143 @@
+[data-theme="dark"] {
+  --color-git-modified: #e69500; /** Git modified file dark (no exact primitive match) */
+  --color-bg-default: var(
+    --color-navy-800
+  ); /** Main background dark (was --color-bg-primary: #1a1a2e) */
+
+  --color-bg-subtle: var(
+    --color-navy-850
+  ); /** Secondary background dark (was --color-bg-secondary: #16213e) */
+
+  --color-bg-panel: var(
+    --color-slate-900
+  ); /** Sidebar/panel background dark (was --color-bg-sidebar: #0f172a) */
+
+  --color-bg-elevated: var(
+    --color-navy-750
+  ); /** Tertiary/elevated background dark (was --color-bg-tertiary: #1e2a45) */
+
+  --color-text-primary: var(
+    --color-slate-200
+  ); /** Primary text dark (was --color-text-primary: #e2e8f0) */
+
+  --color-text-secondary: var(
+    --color-slate-400
+  ); /** Secondary text dark (was --color-text-secondary: #94a3b8) */
+
+  --color-text-disabled: var(
+    --color-slate-500
+  ); /** Muted/disabled text dark (was --color-text-muted: #64748b) */
+
+  --color-border-default: var(
+    --color-slate-700
+  ); /** Default border dark (was --color-border: #334155) */
+
+  --color-border-subtle: var(
+    --color-slate-800
+  ); /** Subtle border dark (was --color-border-light: #1e293b) */
+
+  --color-accent-default: var(
+    --color-blue-400
+  ); /** Primary accent dark (was --color-accent: #60a5fa) */
+
+  --color-accent-hover: var(
+    --color-blue-500
+  ); /** Accent hover state dark (was --color-accent-hover: #3b82f6) */
+
+  --color-accent-subtle: var(
+    --color-blue-950
+  ); /** Subtle accent background dark */
+
+  --color-editor-bg: var(
+    --color-navy-800
+  ); /** Editor background dark (was --color-editor-bg: #1a1a2e) */
+
+  --color-editor-text: var(
+    --color-slate-200
+  ); /** Editor text dark (was --color-editor-text: #e2e8f0) */
+
+  --color-editor-selection: var(
+    --color-navy-selection
+  ); /** Editor selection highlight dark (was --color-editor-selection: #1e3a5f) */
+
+  --color-editor-cursor: var(
+    --color-slate-200
+  ); /** Editor cursor dark (was --color-editor-cursor: #e2e8f0) */
+
+  --color-editor-line-highlight: var(
+    --color-navy-850
+  ); /** Editor current line highlight dark (was --color-editor-line-highlight: #16213e) */
+
+  --color-status-danger: var(--color-red-500); /** Danger/error status dark */
+  --color-status-warning: var(--color-yellow-500); /** Warning status dark */
+  --color-status-success: var(--color-emerald-500); /** Success status dark */
+  --color-status-info: var(--color-blue-400); /** Informational status dark */
+  --color-callout-tip: var(--color-emerald-400); /** Tip callout accent dark */
+  --color-callout-info: var(--color-blue-400); /** Info callout accent dark */
+  --color-callout-warning: var(
+    --color-yellow-400
+  ); /** Warning callout accent dark */
+
+  --color-callout-danger: var(
+    --color-red-400
+  ); /** Danger callout accent dark */
+
+  --color-callout-note: var(--color-gray-400); /** Note callout accent dark */
+  --color-callout-abstract: var(
+    --color-violet-400
+  ); /** Abstract callout accent dark */
+
+  --color-callout-todo: var(--color-cyan-400); /** Todo callout accent dark */
+  --color-callout-example: var(
+    --color-teal-400
+  ); /** Example callout accent dark */
+
+  --color-callout-question: var(
+    --color-yellow-400
+  ); /** Question callout accent dark */
+
+  --color-callout-bug: var(--color-red-400); /** Bug callout accent dark */
+  --color-callout-success: var(
+    --color-green-400
+  ); /** Success callout accent dark */
+
+  --color-callout-failure: var(
+    --color-red-500
+  ); /** Failure callout accent dark */
+
+  --color-callout-quote: var(--color-gray-500); /** Quote callout accent dark */
+  --color-graph-node: var(
+    --color-gray-500
+  ); /** Default graph node color dark */
+
+  --color-graph-active: var(
+    --color-blue-400
+  ); /** Active/selected graph node dark */
+
+  --color-graph-active-border: var(
+    --color-blue-300
+  ); /** Active graph node border dark */
+
+  --color-graph-neighbor: var(
+    --color-violet-400
+  ); /** Neighbor graph node dark (#a78bfa) */
+
+  --color-graph-orphan: var(
+    --color-gray-600
+  ); /** Orphan graph node dark (#4b5563) */
+
+  --color-graph-edge: var(
+    --color-gray-700
+  ); /** Graph edge/link line dark (#374151) */
+
+  --color-graph-label: var(
+    --color-gray-300
+  ); /** Graph node label text dark (#d1d5db) */
+
+  --color-git-added: var(--color-green-400); /** Git added/new file dark */
+  --color-git-deleted: var(--color-red-400); /** Git deleted file dark */
+  --color-git-staged: var(--color-blue-400); /** Git staged file dark */
+  --color-text-muted: var(
+    --color-text-disabled
+  ); /** Low-emphasis text dark — follows disabled token for theme consistency */
+}

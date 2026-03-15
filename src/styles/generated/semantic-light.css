@@ -1,0 +1,107 @@
+:root {
+  --color-bg-elevated: #f0f0f3; /** Tertiary/elevated background (was --color-bg-tertiary: #f0f0f3, no exact primitive match) */
+  --color-text-primary: #1a1a1a; /** Primary text (was --color-text-primary: #1a1a1a, not exactly gray.900 #111827) */
+  --color-git-modified: #e69500; /** Git modified file (no exact primitive match) */
+  --color-bg-default: var(
+    --color-white
+  ); /** Main background (was --color-bg-primary: #fff) */
+
+  --color-bg-subtle: var(
+    --color-slate-50
+  ); /** Secondary background (was --color-bg-secondary: #f8f9fa) */
+
+  --color-bg-panel: var(
+    --color-slate-100
+  ); /** Sidebar/panel background (was --color-bg-sidebar: #f1f3f5) */
+
+  --color-text-secondary: var(
+    --color-gray-500
+  ); /** Secondary text (was --color-text-secondary: #6b7280) */
+
+  --color-text-disabled: var(
+    --color-gray-400
+  ); /** Muted/disabled text (was --color-text-muted: #9ca3af) */
+
+  --color-border-default: var(
+    --color-gray-200
+  ); /** Default border (was --color-border: #e5e7eb) */
+
+  --color-border-subtle: var(
+    --color-gray-100
+  ); /** Subtle border (was --color-border-light: #f3f4f6) */
+
+  --color-accent-default: var(
+    --color-blue-500
+  ); /** Primary accent (was --color-accent: #3b82f6) */
+
+  --color-accent-hover: var(
+    --color-blue-600
+  ); /** Accent hover state (was --color-accent-hover: #2563eb) */
+
+  --color-accent-subtle: var(--color-blue-50); /** Subtle accent background */
+  --color-editor-bg: var(
+    --color-white
+  ); /** Editor background (was --color-editor-bg: #fff) */
+
+  --color-editor-text: var(
+    --color-text-primary
+  ); /** Editor text (alias of color.text.primary, was --color-editor-text: #1a1a1a) */
+
+  --color-editor-selection: var(
+    --color-blue-200
+  ); /** Editor selection highlight (was --color-editor-selection: #bfdbfe) */
+
+  --color-editor-cursor: var(
+    --color-text-primary
+  ); /** Editor cursor (alias of color.text.primary, was --color-editor-cursor: #1a1a1a) */
+
+  --color-status-danger: var(--color-red-500); /** Danger/error status */
+  --color-status-warning: var(--color-yellow-500); /** Warning status */
+  --color-status-success: var(--color-emerald-500); /** Success status */
+  --color-status-info: var(--color-blue-500); /** Informational status */
+  --color-callout-tip: var(--color-emerald-500); /** Tip callout accent */
+  --color-callout-info: var(--color-blue-500); /** Info callout accent */
+  --color-callout-warning: var(
+    --color-yellow-500
+  ); /** Warning callout accent */
+
+  --color-callout-danger: var(--color-red-500); /** Danger callout accent */
+  --color-callout-note: var(--color-gray-500); /** Note callout accent */
+  --color-callout-abstract: var(
+    --color-violet-500
+  ); /** Abstract callout accent */
+
+  --color-callout-todo: var(--color-cyan-500); /** Todo callout accent */
+  --color-callout-example: var(--color-teal-500); /** Example callout accent */
+  --color-callout-question: var(
+    --color-yellow-500
+  ); /** Question callout accent */
+
+  --color-callout-bug: var(--color-red-500); /** Bug callout accent */
+  --color-callout-success: var(--color-green-500); /** Success callout accent */
+  --color-callout-failure: var(--color-red-600); /** Failure callout accent */
+  --color-callout-quote: var(--color-gray-400); /** Quote callout accent */
+  --color-graph-node: var(--color-gray-500); /** Default graph node color */
+  --color-graph-active: var(--color-blue-500); /** Active/selected graph node */
+  --color-graph-active-border: var(
+    --color-blue-400
+  ); /** Active graph node border */
+
+  --color-graph-neighbor: var(--color-violet-500); /** Neighbor graph node */
+  --color-graph-orphan: var(
+    --color-gray-300
+  ); /** Orphan graph node (no links) */
+
+  --color-graph-edge: var(--color-gray-400); /** Graph edge/link line */
+  --color-graph-label: var(--color-gray-700); /** Graph node label text */
+  --color-git-added: var(--color-green-500); /** Git added/new file */
+  --color-git-deleted: var(--color-red-500); /** Git deleted file */
+  --color-git-staged: var(--color-blue-500); /** Git staged file */
+  --color-text-muted: var(
+    --color-text-disabled
+  ); /** Low-emphasis text (labels, metadata, timestamps) — follows disabled token for theme consistency */
+
+  --color-editor-line-highlight: var(
+    --color-bg-subtle
+  ); /** Editor current line highlight (alias of color.bg.subtle, was --color-editor-line-highlight: #f8f9fa) */
+}

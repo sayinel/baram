@@ -1,0 +1,275 @@
+/* ─── §30 Graph View ─── */
+
+.graph-view-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.graph-view-header {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+.graph-view-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.graph-view-stats {
+  font-size: 10px;
+  color: var(--color-text-muted);
+}
+
+.graph-view-expand-btn {
+  display: flex;
+  align-items: center;
+  padding: 2px 4px;
+  color: var(--color-text-muted);
+  border-radius: 3px;
+}
+
+.graph-view-expand-btn:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-subtle);
+}
+
+/* Graph View rendered in editor area (tab) */
+.editor-area-scroll > .graph-view-container {
+  height: 100%;
+}
+
+.graph-view-canvas {
+  flex: 1;
+  min-height: 0;
+  background: var(--color-bg-default);
+}
+
+.graph-view-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 16px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+/* Graph color variables — light theme */
+:root {
+  --graph-node-color: #6b7280;
+  --graph-active-color: #3b82f6;
+  --graph-active-border: #60a5fa;
+  --graph-neighbor-color: #8b5cf6;
+  --graph-orphan-color: #d1d5db;
+  --graph-edge-color: #9ca3af;
+  --graph-label-color: #374151;
+}
+
+/* Graph color variables — dark theme */
+[data-theme="dark"] {
+  --graph-node-color: #6b7280;
+  --graph-active-color: #60a5fa;
+  --graph-active-border: #93c5fd;
+  --graph-neighbor-color: #a78bfa;
+  --graph-orphan-color: #4b5563;
+  --graph-edge-color: #374151;
+  --graph-label-color: #d1d5db;
+}
+
+/* Graph settings button */
+.graph-view-settings-btn {
+  display: flex;
+  align-items: center;
+  padding: 2px 4px;
+  color: var(--color-text-muted);
+  border-radius: 3px;
+}
+
+.graph-view-settings-btn:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-subtle);
+}
+
+/* Graph header actions (gear + expand buttons) */
+.graph-view-header-actions {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  margin-left: auto;
+}
+
+/* Graph settings panel overlay */
+.graph-settings-panel {
+  position: absolute;
+  top: 36px;
+  right: 4px;
+  z-index: 20;
+  width: 260px;
+  max-height: 80%;
+  padding: 8px 0;
+  overflow: hidden auto;
+  font-size: 12px;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
+}
+
+.graph-settings-section {
+  padding: 0 10px;
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+.graph-settings-section:last-child {
+  border-bottom: none;
+}
+
+.graph-settings-section-title {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  width: 100%;
+  padding: 6px 0;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+.graph-settings-section-title:hover {
+  color: var(--color-text-primary);
+}
+
+.graph-settings-disclosure {
+  display: inline-block;
+  font-size: 8px;
+  transition: transform 0.15s ease;
+}
+
+.graph-settings-disclosure.open {
+  transform: rotate(90deg);
+}
+
+.graph-settings-section-body {
+  padding-bottom: 8px;
+}
+
+.graph-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 28px;
+  padding: 2px 0;
+}
+
+.graph-settings-label {
+  flex-shrink: 0;
+  width: 70px;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.graph-settings-slider-group {
+  display: flex;
+  flex: 1;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.graph-settings-slider {
+  flex: 1;
+  height: 3px;
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+  background: var(--color-border-default);
+  border-radius: 2px;
+}
+
+.graph-settings-slider::-webkit-slider-thumb {
+  width: 12px;
+  height: 12px;
+  -webkit-appearance: none;
+  cursor: pointer;
+  background: var(--color-text-secondary);
+  border-radius: 50%;
+}
+
+.graph-settings-slider::-webkit-slider-thumb:hover {
+  background: var(--color-text-primary);
+}
+
+.graph-settings-value {
+  flex-shrink: 0;
+  width: 32px;
+  font-size: 10px;
+  color: var(--color-text-muted);
+  text-align: right;
+}
+
+.graph-settings-search {
+  flex: 1;
+  padding: 3px 6px;
+  font-size: 11px;
+  color: var(--color-text-primary);
+  outline: none;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+}
+
+.graph-settings-search:focus {
+  border-color: var(--color-accent-default);
+}
+
+.graph-settings-search::placeholder {
+  color: var(--color-text-disabled);
+}
+
+/* Toggle switch */
+.graph-settings-toggle {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  padding: 0;
+  cursor: pointer;
+  background: var(--color-bg-elevated, #374151);
+  border: none;
+  border-radius: 9px;
+  transition: background 0.15s ease;
+}
+
+.graph-settings-toggle.on {
+  background: var(--color-accent-default, #3b82f6);
+}
+
+.graph-settings-toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.15s ease;
+}
+
+.graph-settings-toggle.on .graph-settings-toggle-knob {
+  transform: translateX(14px);
+}

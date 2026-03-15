@@ -1,0 +1,43 @@
+/* Baram Design System — Master CSS Entry Point */
+
+/* 1. Base: tokens, reset, utilities, dark mode */
+@import "./base.css";
+
+/* 2. Editor */
+@import "./editor.css";
+
+/* 3. Layout */
+@import "./layout.css";
+@import "./file-tree.css";
+
+/* 4. Toolbar */
+@import "./toolbar.css";
+
+/* 5. Dialogs */
+@import "./dialogs.css";
+
+/* 6. Settings */
+@import "./settings.css";
+
+/* 7. Git */
+@import "./git.css";
+
+/* 8. Journal */
+@import "./journal-calendar.css";
+@import "./journal-mood.css";
+@import "./journal-notes.css";
+@import "./journal-extras.css";
+
+/* 9. AI */
+@import "./ai.css";
+
+/* 10. Skills */
+@import "./skills.css";
+
+/* 11. Links & navigation */
+@import "./links.css";
+@import "./graph.css";
+@import "./panels.css";
+
+/* 12. Remaining components */
+@import "./components.css";

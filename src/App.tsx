@@ -8,8 +8,6 @@ import {
   useState,
 } from "react";
 
-import { listen } from "@tauri-apps/api/event";
-
 import type { EditorTab } from "./stores/editor/editor";
 
 import { EditorContent, useEditor } from "@tiptap/react";
@@ -76,11 +74,12 @@ import { useFileStore } from "./stores/file/file";
 import { useSettingsStore } from "./stores/settings/store";
 import { useUIStore } from "./stores/ui/ui";
 import { getLanguageForFile, isMarkdownFile } from "./utils/file-type";
+import { createLLMStream } from "./utils/llm-stream";
 import { logger } from "./utils/logger";
 import { getConfigForTask } from "./utils/model-selection";
 import { logAppReady } from "./utils/perf";
 import { buildTemplatePrompt } from "./utils/smart-templates";
-import "./App.css";
+import "./styles/index.css";
 
 // §8.4 Lazy-loaded components — split into separate chunks, loaded on first use
 const SourceCodeEditor = lazy(() =>
@@ -713,24 +712,15 @@ function SmartTemplateDialogWrapper({
         return;
       }
       const store = useAIStore.getState();
-      const requestId = `ai_template_${Date.now()}`;
+      const requestId = `ai_template_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       let accumulated = "";
 
       void (async () => {
-        const tokenUn = await listen<{ requestId: string; token: string }>(
-          "llm:token",
-          (event) => {
-            if (event.payload.requestId !== requestId) return;
-            accumulated += event.payload.token;
+        const cleanupFn = await createLLMStream(requestId, {
+          onToken: (token) => {
+            accumulated += token;
           },
-        );
-        const doneUn = await listen<{ requestId: string }>(
-          "llm:done",
-          (event) => {
-            if (event.payload.requestId !== requestId) return;
-            tokenUn();
-            doneUn();
-            errorUn();
+          onDone: () => {
             if (accumulated.trim()) {
               const doc = markdownToProsemirror(accumulated, editor.schema);
               const { from } = editor.state.selection;
@@ -740,28 +730,27 @@ function SmartTemplateDialogWrapper({
               editor.view.focus();
             }
           },
-        );
-        const errorUn = await listen<{ error: string; requestId: string }>(
-          "llm:error",
-          (event) => {
-            if (event.payload.requestId !== requestId) return;
-            logger.error("SmartTemplate error:", event.payload.error);
-            tokenUn();
-            doneUn();
-            errorUn();
+          onError: (error) => {
+            logger.error("SmartTemplate error:", error);
           },
-        );
-        await llmComplete(
-          inlineCfg.apiKey,
-          prompt,
-          inlineCfg.model,
-          requestId,
-          systemPrompt,
-          undefined,
-          inlineCfg.provider,
-          inlineCfg.baseUrl,
-          store.privacyMode,
-        ).catch((e) => logger.error(e));
+        });
+        try {
+          await llmComplete(
+            inlineCfg.apiKey,
+            prompt,
+            inlineCfg.model,
+            requestId,
+            systemPrompt,
+            undefined,
+            inlineCfg.provider,
+            inlineCfg.baseUrl,
+            store.privacyMode,
+          );
+        } catch (e) {
+          logger.error(e);
+        } finally {
+          cleanupFn();
+        }
       })();
     },
     [editor, toggleSmartTemplateDialog],
