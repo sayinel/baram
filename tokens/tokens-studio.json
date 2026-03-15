@@ -1,0 +1,1139 @@
+{
+  "primitive": {
+    "color": {
+      "white": {
+        "value": "#ffffff",
+        "type": "color"
+      },
+      "black": {
+        "value": "#000000",
+        "type": "color"
+      },
+      "blue": {
+        "50": {
+          "value": "#eff6ff",
+          "type": "color"
+        },
+        "100": {
+          "value": "#dbeafe",
+          "type": "color"
+        },
+        "200": {
+          "value": "#bfdbfe",
+          "type": "color"
+        },
+        "300": {
+          "value": "#93c5fd",
+          "type": "color"
+        },
+        "400": {
+          "value": "#60a5fa",
+          "type": "color"
+        },
+        "500": {
+          "value": "#3b82f6",
+          "type": "color"
+        },
+        "600": {
+          "value": "#2563eb",
+          "type": "color"
+        },
+        "700": {
+          "value": "#1d4ed8",
+          "type": "color"
+        },
+        "800": {
+          "value": "#1e40af",
+          "type": "color"
+        },
+        "900": {
+          "value": "#1e3a8a",
+          "type": "color"
+        },
+        "950": {
+          "value": "#172554",
+          "type": "color"
+        }
+      },
+      "gray": {
+        "50": {
+          "value": "#f9fafb",
+          "type": "color"
+        },
+        "100": {
+          "value": "#f3f4f6",
+          "type": "color"
+        },
+        "200": {
+          "value": "#e5e7eb",
+          "type": "color"
+        },
+        "300": {
+          "value": "#d1d5db",
+          "type": "color"
+        },
+        "400": {
+          "value": "#9ca3af",
+          "type": "color"
+        },
+        "500": {
+          "value": "#6b7280",
+          "type": "color"
+        },
+        "600": {
+          "value": "#4b5563",
+          "type": "color"
+        },
+        "700": {
+          "value": "#374151",
+          "type": "color"
+        },
+        "800": {
+          "value": "#1f2937",
+          "type": "color"
+        },
+        "900": {
+          "value": "#111827",
+          "type": "color"
+        },
+        "950": {
+          "value": "#030712",
+          "type": "color"
+        }
+      },
+      "slate": {
+        "50": {
+          "value": "#f8f9fa",
+          "type": "color"
+        },
+        "100": {
+          "value": "#f1f3f5",
+          "type": "color"
+        },
+        "200": {
+          "value": "#e2e8f0",
+          "type": "color"
+        },
+        "300": {
+          "value": "#dee2e6",
+          "type": "color"
+        },
+        "400": {
+          "value": "#94a3b8",
+          "type": "color"
+        },
+        "500": {
+          "value": "#64748b",
+          "type": "color"
+        },
+        "600": {
+          "value": "#6c757d",
+          "type": "color"
+        },
+        "700": {
+          "value": "#334155",
+          "type": "color"
+        },
+        "800": {
+          "value": "#1e293b",
+          "type": "color"
+        },
+        "900": {
+          "value": "#0f172a",
+          "type": "color"
+        },
+        "950": {
+          "value": "#0f1117",
+          "type": "color"
+        }
+      },
+      "red": {
+        "50": {
+          "value": "#fef2f2",
+          "type": "color"
+        },
+        "100": {
+          "value": "#fee2e2",
+          "type": "color"
+        },
+        "400": {
+          "value": "#f87171",
+          "type": "color"
+        },
+        "500": {
+          "value": "#ef4444",
+          "type": "color"
+        },
+        "600": {
+          "value": "#dc2626",
+          "type": "color"
+        },
+        "700": {
+          "value": "#b91c1c",
+          "type": "color"
+        },
+        "800": {
+          "value": "#7f1d1d",
+          "type": "color"
+        },
+        "900": {
+          "value": "#450a0a",
+          "type": "color"
+        }
+      },
+      "orange": {
+        "50": {
+          "value": "#fff7ed",
+          "type": "color"
+        },
+        "400": {
+          "value": "#fb923c",
+          "type": "color"
+        },
+        "500": {
+          "value": "#f97316",
+          "type": "color"
+        },
+        "600": {
+          "value": "#e69500",
+          "type": "color"
+        }
+      },
+      "yellow": {
+        "50": {
+          "value": "#fffbeb",
+          "type": "color"
+        },
+        "100": {
+          "value": "#fef3c7",
+          "type": "color"
+        },
+        "200": {
+          "value": "#fde68a",
+          "type": "color"
+        },
+        "400": {
+          "value": "#fbbf24",
+          "type": "color"
+        },
+        "500": {
+          "value": "#f59e0b",
+          "type": "color"
+        },
+        "600": {
+          "value": "#d97706",
+          "type": "color"
+        },
+        "700": {
+          "value": "#b45309",
+          "type": "color"
+        },
+        "800": {
+          "value": "#854d0e",
+          "type": "color"
+        }
+      },
+      "green": {
+        "50": {
+          "value": "#f0fdf4",
+          "type": "color"
+        },
+        "400": {
+          "value": "#4ade80",
+          "type": "color"
+        },
+        "500": {
+          "value": "#22c55e",
+          "type": "color"
+        },
+        "600": {
+          "value": "#16a34a",
+          "type": "color"
+        },
+        "700": {
+          "value": "#15803d",
+          "type": "color"
+        }
+      },
+      "emerald": {
+        "50": {
+          "value": "#ecfdf5",
+          "type": "color"
+        },
+        "400": {
+          "value": "#34d399",
+          "type": "color"
+        },
+        "500": {
+          "value": "#10b981",
+          "type": "color"
+        },
+        "600": {
+          "value": "#059669",
+          "type": "color"
+        }
+      },
+      "teal": {
+        "50": {
+          "value": "#f0fdfa",
+          "type": "color"
+        },
+        "400": {
+          "value": "#2dd4bf",
+          "type": "color"
+        },
+        "500": {
+          "value": "#14b8a6",
+          "type": "color"
+        },
+        "600": {
+          "value": "#0d9488",
+          "type": "color"
+        }
+      },
+      "cyan": {
+        "50": {
+          "value": "#ecfeff",
+          "type": "color"
+        },
+        "400": {
+          "value": "#22d3ee",
+          "type": "color"
+        },
+        "500": {
+          "value": "#06b6d4",
+          "type": "color"
+        },
+        "600": {
+          "value": "#0891b2",
+          "type": "color"
+        }
+      },
+      "purple": {
+        "50": {
+          "value": "#faf5ff",
+          "type": "color"
+        },
+        "500": {
+          "value": "#a855f6",
+          "type": "color"
+        },
+        "600": {
+          "value": "#9333ea",
+          "type": "color"
+        }
+      },
+      "violet": {
+        "50": {
+          "value": "#f5f3ff",
+          "type": "color"
+        },
+        "400": {
+          "value": "#a78bfa",
+          "type": "color"
+        },
+        "500": {
+          "value": "#8b5cf6",
+          "type": "color"
+        },
+        "600": {
+          "value": "#7c3aed",
+          "type": "color"
+        }
+      },
+      "pink": {
+        "50": {
+          "value": "#fdf2f8",
+          "type": "color"
+        },
+        "500": {
+          "value": "#ec4899",
+          "type": "color"
+        }
+      },
+      "navy": {
+        "750": {
+          "value": "#1e2a45",
+          "type": "color"
+        },
+        "800": {
+          "value": "#1a1a2e",
+          "type": "color"
+        },
+        "850": {
+          "value": "#16213e",
+          "type": "color"
+        },
+        "selection": {
+          "value": "#1e3a5f",
+          "type": "color"
+        }
+      },
+      "catppuccin": {
+        "text": {
+          "value": "#cdd6f4",
+          "type": "color"
+        },
+        "base": {
+          "value": "#1e1e2e",
+          "type": "color"
+        },
+        "surface0": {
+          "value": "#313244",
+          "type": "color"
+        },
+        "surface1": {
+          "value": "#45475a",
+          "type": "color"
+        },
+        "overlay0": {
+          "value": "#6c7086",
+          "type": "color"
+        },
+        "mantle": {
+          "value": "#181825",
+          "type": "color"
+        },
+        "rosewater": {
+          "value": "#f5e0dc",
+          "type": "color"
+        },
+        "lavender": {
+          "value": "#b4befe",
+          "type": "color"
+        }
+      }
+    },
+    "space": {
+      "0": {
+        "value": "0px",
+        "type": "dimension"
+      },
+      "1": {
+        "value": "4px",
+        "type": "dimension"
+      },
+      "2": {
+        "value": "8px",
+        "type": "dimension"
+      },
+      "3": {
+        "value": "12px",
+        "type": "dimension"
+      },
+      "4": {
+        "value": "16px",
+        "type": "dimension"
+      },
+      "5": {
+        "value": "20px",
+        "type": "dimension"
+      },
+      "6": {
+        "value": "24px",
+        "type": "dimension"
+      },
+      "8": {
+        "value": "32px",
+        "type": "dimension"
+      },
+      "10": {
+        "value": "40px",
+        "type": "dimension"
+      },
+      "12": {
+        "value": "48px",
+        "type": "dimension"
+      },
+      "16": {
+        "value": "64px",
+        "type": "dimension"
+      },
+      "20": {
+        "value": "80px",
+        "type": "dimension"
+      },
+      "24": {
+        "value": "96px",
+        "type": "dimension"
+      },
+      "px": {
+        "value": "1px",
+        "type": "dimension"
+      },
+      "0-5": {
+        "value": "2px",
+        "type": "dimension"
+      },
+      "1-5": {
+        "value": "6px",
+        "type": "dimension"
+      }
+    },
+    "radius": {
+      "none": {
+        "value": "0px",
+        "type": "dimension"
+      },
+      "sm": {
+        "value": "2px",
+        "type": "dimension"
+      },
+      "default": {
+        "value": "4px",
+        "type": "dimension"
+      },
+      "md": {
+        "value": "6px",
+        "type": "dimension"
+      },
+      "lg": {
+        "value": "8px",
+        "type": "dimension"
+      },
+      "xl": {
+        "value": "12px",
+        "type": "dimension"
+      },
+      "2xl": {
+        "value": "16px",
+        "type": "dimension"
+      },
+      "full": {
+        "value": "9999px",
+        "type": "dimension"
+      }
+    },
+    "font": {
+      "family": {
+        "sans": {
+          "value": "Inter, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif",
+          "type": "fontFamily"
+        },
+        "mono": {
+          "value": "JetBrains Mono, Fira Code, SF Mono, ui-monospace, monospace",
+          "type": "fontFamily"
+        },
+        "editor": {
+          "value": "Pretendard, Inter, -apple-system, system-ui, sans-serif",
+          "type": "fontFamily"
+        }
+      },
+      "size": {
+        "2xs": {
+          "value": "10px",
+          "type": "dimension"
+        },
+        "xs": {
+          "value": "11px",
+          "type": "dimension"
+        },
+        "sm": {
+          "value": "12px",
+          "type": "dimension"
+        },
+        "base": {
+          "value": "14px",
+          "type": "dimension"
+        },
+        "md": {
+          "value": "15px",
+          "type": "dimension"
+        },
+        "lg": {
+          "value": "16px",
+          "type": "dimension"
+        },
+        "xl": {
+          "value": "18px",
+          "type": "dimension"
+        },
+        "2xl": {
+          "value": "20px",
+          "type": "dimension"
+        },
+        "3xl": {
+          "value": "24px",
+          "type": "dimension"
+        },
+        "4xl": {
+          "value": "30px",
+          "type": "dimension"
+        },
+        "5xl": {
+          "value": "36px",
+          "type": "dimension"
+        }
+      },
+      "weight": {
+        "normal": {
+          "value": 400,
+          "type": "fontWeight"
+        },
+        "medium": {
+          "value": 500,
+          "type": "fontWeight"
+        },
+        "semibold": {
+          "value": 600,
+          "type": "fontWeight"
+        },
+        "bold": {
+          "value": 700,
+          "type": "fontWeight"
+        }
+      },
+      "lineHeight": {
+        "none": {
+          "value": 1,
+          "type": "number"
+        },
+        "tight": {
+          "value": 1.25,
+          "type": "number"
+        },
+        "snug": {
+          "value": 1.375,
+          "type": "number"
+        },
+        "normal": {
+          "value": 1.5,
+          "type": "number"
+        },
+        "relaxed": {
+          "value": 1.625,
+          "type": "number"
+        },
+        "loose": {
+          "value": 2,
+          "type": "number"
+        }
+      }
+    }
+  },
+  "semantic/light": {
+    "color": {
+      "bg": {
+        "default": {
+          "value": "{color.white}",
+          "type": "color",
+          "description": "Main background (was --color-bg-primary: #fff)"
+        },
+        "subtle": {
+          "value": "{color.slate.50}",
+          "type": "color",
+          "description": "Secondary background (was --color-bg-secondary: #f8f9fa)"
+        },
+        "panel": {
+          "value": "{color.slate.100}",
+          "type": "color",
+          "description": "Sidebar/panel background (was --color-bg-sidebar: #f1f3f5)"
+        },
+        "elevated": {
+          "value": "#f0f0f3",
+          "type": "color",
+          "description": "Tertiary/elevated background (was --color-bg-tertiary: #f0f0f3, no exact primitive match)"
+        }
+      },
+      "text": {
+        "primary": {
+          "value": "#1a1a1a",
+          "type": "color",
+          "description": "Primary text (was --color-text-primary: #1a1a1a, not exactly gray.900 #111827)"
+        },
+        "secondary": {
+          "value": "{color.gray.500}",
+          "type": "color",
+          "description": "Secondary text (was --color-text-secondary: #6b7280)"
+        },
+        "disabled": {
+          "value": "{color.gray.400}",
+          "type": "color",
+          "description": "Muted/disabled text (was --color-text-muted: #9ca3af)"
+        },
+        "muted": {
+          "value": "{color.text.disabled}",
+          "type": "color",
+          "description": "Low-emphasis text (labels, metadata, timestamps) — follows disabled token for theme consistency"
+        }
+      },
+      "border": {
+        "default": {
+          "value": "{color.gray.200}",
+          "type": "color",
+          "description": "Default border (was --color-border: #e5e7eb)"
+        },
+        "subtle": {
+          "value": "{color.gray.100}",
+          "type": "color",
+          "description": "Subtle border (was --color-border-light: #f3f4f6)"
+        }
+      },
+      "accent": {
+        "default": {
+          "value": "{color.blue.500}",
+          "type": "color",
+          "description": "Primary accent (was --color-accent: #3b82f6)"
+        },
+        "hover": {
+          "value": "{color.blue.600}",
+          "type": "color",
+          "description": "Accent hover state (was --color-accent-hover: #2563eb)"
+        },
+        "subtle": {
+          "value": "{color.blue.50}",
+          "type": "color",
+          "description": "Subtle accent background"
+        }
+      },
+      "editor": {
+        "bg": {
+          "value": "{color.white}",
+          "type": "color",
+          "description": "Editor background (was --color-editor-bg: #fff)"
+        },
+        "text": {
+          "value": "{color.text.primary}",
+          "type": "color",
+          "description": "Editor text (alias of color.text.primary, was --color-editor-text: #1a1a1a)"
+        },
+        "selection": {
+          "value": "{color.blue.200}",
+          "type": "color",
+          "description": "Editor selection highlight (was --color-editor-selection: #bfdbfe)"
+        },
+        "cursor": {
+          "value": "{color.text.primary}",
+          "type": "color",
+          "description": "Editor cursor (alias of color.text.primary, was --color-editor-cursor: #1a1a1a)"
+        },
+        "lineHighlight": {
+          "value": "{color.bg.subtle}",
+          "type": "color",
+          "description": "Editor current line highlight (alias of color.bg.subtle, was --color-editor-line-highlight: #f8f9fa)"
+        }
+      },
+      "status": {
+        "danger": {
+          "value": "{color.red.500}",
+          "type": "color",
+          "description": "Danger/error status"
+        },
+        "warning": {
+          "value": "{color.yellow.500}",
+          "type": "color",
+          "description": "Warning status"
+        },
+        "success": {
+          "value": "{color.emerald.500}",
+          "type": "color",
+          "description": "Success status"
+        },
+        "info": {
+          "value": "{color.blue.500}",
+          "type": "color",
+          "description": "Informational status"
+        }
+      },
+      "callout": {
+        "tip": {
+          "value": "{color.emerald.500}",
+          "type": "color",
+          "description": "Tip callout accent"
+        },
+        "info": {
+          "value": "{color.blue.500}",
+          "type": "color",
+          "description": "Info callout accent"
+        },
+        "warning": {
+          "value": "{color.yellow.500}",
+          "type": "color",
+          "description": "Warning callout accent"
+        },
+        "danger": {
+          "value": "{color.red.500}",
+          "type": "color",
+          "description": "Danger callout accent"
+        },
+        "note": {
+          "value": "{color.gray.500}",
+          "type": "color",
+          "description": "Note callout accent"
+        },
+        "abstract": {
+          "value": "{color.violet.500}",
+          "type": "color",
+          "description": "Abstract callout accent"
+        },
+        "todo": {
+          "value": "{color.cyan.500}",
+          "type": "color",
+          "description": "Todo callout accent"
+        },
+        "example": {
+          "value": "{color.teal.500}",
+          "type": "color",
+          "description": "Example callout accent"
+        },
+        "question": {
+          "value": "{color.yellow.500}",
+          "type": "color",
+          "description": "Question callout accent"
+        },
+        "bug": {
+          "value": "{color.red.500}",
+          "type": "color",
+          "description": "Bug callout accent"
+        },
+        "success": {
+          "value": "{color.green.500}",
+          "type": "color",
+          "description": "Success callout accent"
+        },
+        "failure": {
+          "value": "{color.red.600}",
+          "type": "color",
+          "description": "Failure callout accent"
+        },
+        "quote": {
+          "value": "{color.gray.400}",
+          "type": "color",
+          "description": "Quote callout accent"
+        }
+      },
+      "graph": {
+        "node": {
+          "value": "{color.gray.500}",
+          "type": "color",
+          "description": "Default graph node color"
+        },
+        "active": {
+          "value": "{color.blue.500}",
+          "type": "color",
+          "description": "Active/selected graph node"
+        },
+        "activeBorder": {
+          "value": "{color.blue.400}",
+          "type": "color",
+          "description": "Active graph node border"
+        },
+        "neighbor": {
+          "value": "{color.violet.500}",
+          "type": "color",
+          "description": "Neighbor graph node"
+        },
+        "orphan": {
+          "value": "{color.gray.300}",
+          "type": "color",
+          "description": "Orphan graph node (no links)"
+        },
+        "edge": {
+          "value": "{color.gray.400}",
+          "type": "color",
+          "description": "Graph edge/link line"
+        },
+        "label": {
+          "value": "{color.gray.700}",
+          "type": "color",
+          "description": "Graph node label text"
+        }
+      },
+      "git": {
+        "modified": {
+          "value": "#e69500",
+          "type": "color",
+          "description": "Git modified file (no exact primitive match)"
+        },
+        "added": {
+          "value": "{color.green.500}",
+          "type": "color",
+          "description": "Git added/new file"
+        },
+        "deleted": {
+          "value": "{color.red.500}",
+          "type": "color",
+          "description": "Git deleted file"
+        },
+        "staged": {
+          "value": "{color.blue.500}",
+          "type": "color",
+          "description": "Git staged file"
+        }
+      }
+    }
+  },
+  "semantic/dark": {
+    "color": {
+      "bg": {
+        "default": {
+          "value": "{color.navy.800}",
+          "type": "color",
+          "description": "Main background dark (was --color-bg-primary: #1a1a2e)"
+        },
+        "subtle": {
+          "value": "{color.navy.850}",
+          "type": "color",
+          "description": "Secondary background dark (was --color-bg-secondary: #16213e)"
+        },
+        "panel": {
+          "value": "{color.slate.900}",
+          "type": "color",
+          "description": "Sidebar/panel background dark (was --color-bg-sidebar: #0f172a)"
+        },
+        "elevated": {
+          "value": "{color.navy.750}",
+          "type": "color",
+          "description": "Tertiary/elevated background dark (was --color-bg-tertiary: #1e2a45)"
+        }
+      },
+      "text": {
+        "primary": {
+          "value": "{color.slate.200}",
+          "type": "color",
+          "description": "Primary text dark (was --color-text-primary: #e2e8f0)"
+        },
+        "secondary": {
+          "value": "{color.slate.400}",
+          "type": "color",
+          "description": "Secondary text dark (was --color-text-secondary: #94a3b8)"
+        },
+        "disabled": {
+          "value": "{color.slate.500}",
+          "type": "color",
+          "description": "Muted/disabled text dark (was --color-text-muted: #64748b)"
+        },
+        "muted": {
+          "value": "{color.text.disabled}",
+          "type": "color",
+          "description": "Low-emphasis text dark — follows disabled token for theme consistency"
+        }
+      },
+      "border": {
+        "default": {
+          "value": "{color.slate.700}",
+          "type": "color",
+          "description": "Default border dark (was --color-border: #334155)"
+        },
+        "subtle": {
+          "value": "{color.slate.800}",
+          "type": "color",
+          "description": "Subtle border dark (was --color-border-light: #1e293b)"
+        }
+      },
+      "accent": {
+        "default": {
+          "value": "{color.blue.400}",
+          "type": "color",
+          "description": "Primary accent dark (was --color-accent: #60a5fa)"
+        },
+        "hover": {
+          "value": "{color.blue.500}",
+          "type": "color",
+          "description": "Accent hover state dark (was --color-accent-hover: #3b82f6)"
+        },
+        "subtle": {
+          "value": "{color.blue.950}",
+          "type": "color",
+          "description": "Subtle accent background dark"
+        }
+      },
+      "editor": {
+        "bg": {
+          "value": "{color.navy.800}",
+          "type": "color",
+          "description": "Editor background dark (was --color-editor-bg: #1a1a2e)"
+        },
+        "text": {
+          "value": "{color.slate.200}",
+          "type": "color",
+          "description": "Editor text dark (was --color-editor-text: #e2e8f0)"
+        },
+        "selection": {
+          "value": "{color.navy.selection}",
+          "type": "color",
+          "description": "Editor selection highlight dark (was --color-editor-selection: #1e3a5f)"
+        },
+        "cursor": {
+          "value": "{color.slate.200}",
+          "type": "color",
+          "description": "Editor cursor dark (was --color-editor-cursor: #e2e8f0)"
+        },
+        "lineHighlight": {
+          "value": "{color.navy.850}",
+          "type": "color",
+          "description": "Editor current line highlight dark (was --color-editor-line-highlight: #16213e)"
+        }
+      },
+      "status": {
+        "danger": {
+          "value": "{color.red.500}",
+          "type": "color",
+          "description": "Danger/error status dark"
+        },
+        "warning": {
+          "value": "{color.yellow.500}",
+          "type": "color",
+          "description": "Warning status dark"
+        },
+        "success": {
+          "value": "{color.emerald.500}",
+          "type": "color",
+          "description": "Success status dark"
+        },
+        "info": {
+          "value": "{color.blue.400}",
+          "type": "color",
+          "description": "Informational status dark"
+        }
+      },
+      "callout": {
+        "tip": {
+          "value": "{color.emerald.400}",
+          "type": "color",
+          "description": "Tip callout accent dark"
+        },
+        "info": {
+          "value": "{color.blue.400}",
+          "type": "color",
+          "description": "Info callout accent dark"
+        },
+        "warning": {
+          "value": "{color.yellow.400}",
+          "type": "color",
+          "description": "Warning callout accent dark"
+        },
+        "danger": {
+          "value": "{color.red.400}",
+          "type": "color",
+          "description": "Danger callout accent dark"
+        },
+        "note": {
+          "value": "{color.gray.400}",
+          "type": "color",
+          "description": "Note callout accent dark"
+        },
+        "abstract": {
+          "value": "{color.violet.400}",
+          "type": "color",
+          "description": "Abstract callout accent dark"
+        },
+        "todo": {
+          "value": "{color.cyan.400}",
+          "type": "color",
+          "description": "Todo callout accent dark"
+        },
+        "example": {
+          "value": "{color.teal.400}",
+          "type": "color",
+          "description": "Example callout accent dark"
+        },
+        "question": {
+          "value": "{color.yellow.400}",
+          "type": "color",
+          "description": "Question callout accent dark"
+        },
+        "bug": {
+          "value": "{color.red.400}",
+          "type": "color",
+          "description": "Bug callout accent dark"
+        },
+        "success": {
+          "value": "{color.green.400}",
+          "type": "color",
+          "description": "Success callout accent dark"
+        },
+        "failure": {
+          "value": "{color.red.500}",
+          "type": "color",
+          "description": "Failure callout accent dark"
+        },
+        "quote": {
+          "value": "{color.gray.500}",
+          "type": "color",
+          "description": "Quote callout accent dark"
+        }
+      },
+      "graph": {
+        "node": {
+          "value": "{color.gray.500}",
+          "type": "color",
+          "description": "Default graph node color dark"
+        },
+        "active": {
+          "value": "{color.blue.400}",
+          "type": "color",
+          "description": "Active/selected graph node dark"
+        },
+        "activeBorder": {
+          "value": "{color.blue.300}",
+          "type": "color",
+          "description": "Active graph node border dark"
+        },
+        "neighbor": {
+          "value": "{color.violet.400}",
+          "type": "color",
+          "description": "Neighbor graph node dark (#a78bfa)"
+        },
+        "orphan": {
+          "value": "{color.gray.600}",
+          "type": "color",
+          "description": "Orphan graph node dark (#4b5563)"
+        },
+        "edge": {
+          "value": "{color.gray.700}",
+          "type": "color",
+          "description": "Graph edge/link line dark (#374151)"
+        },
+        "label": {
+          "value": "{color.gray.300}",
+          "type": "color",
+          "description": "Graph node label text dark (#d1d5db)"
+        }
+      },
+      "git": {
+        "modified": {
+          "value": "#e69500",
+          "type": "color",
+          "description": "Git modified file dark (no exact primitive match)"
+        },
+        "added": {
+          "value": "{color.green.400}",
+          "type": "color",
+          "description": "Git added/new file dark"
+        },
+        "deleted": {
+          "value": "{color.red.400}",
+          "type": "color",
+          "description": "Git deleted file dark"
+        },
+        "staged": {
+          "value": "{color.blue.400}",
+          "type": "color",
+          "description": "Git staged file dark"
+        }
+      }
+    }
+  },
+  "$metadata": {
+    "tokenSetOrder": ["primitive", "semantic/light", "semantic/dark"]
+  },
+  "$themes": [
+    {
+      "id": "light",
+      "name": "Light",
+      "selectedTokenSets": {
+        "primitive": "source",
+        "semantic/light": "enabled"
+      }
+    },
+    {
+      "id": "dark",
+      "name": "Dark",
+      "selectedTokenSets": {
+        "primitive": "source",
+        "semantic/dark": "enabled"
+      }
+    }
+  ]
+}
