@@ -106,7 +106,7 @@ const CopyMdIcon = (): ReactNode => (
       y="1"
     />
     <rect
-      fill="var(--color-bg-primary)"
+      fill="var(--color-bg-default)"
       height="10"
       rx="1.5"
       stroke="currentColor"
@@ -148,7 +148,7 @@ const CopyHtmlIcon = (): ReactNode => (
       y="1"
     />
     <rect
-      fill="var(--color-bg-primary)"
+      fill="var(--color-bg-default)"
       height="10"
       rx="1.5"
       stroke="currentColor"
@@ -291,7 +291,7 @@ export function TableToolbar({ editor }: TableToolbarProps) {
       style={{ top: position.top, left: position.left }}
     >
       <button
-        className={`table-toolbar-btn${currentAlign === "left" ? "table-toolbar-btn-active" : ""}`}
+        className={`table-toolbar-btn icon-btn${currentAlign === "left" ? "table-toolbar-btn-active" : ""}`}
         onClick={() => setAlign(currentAlign === "left" ? null : "left")}
         title="Align Left"
       >
