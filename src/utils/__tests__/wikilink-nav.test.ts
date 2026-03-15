@@ -8,14 +8,14 @@ import {
 } from "../editor/wikilink-nav";
 
 // Mock file store
-vi.mock("../../stores/file-store", () => ({
+vi.mock("../../stores/file/file", () => ({
   useFileStore: {
     getState: vi.fn(),
   },
 }));
 
 // Mock editor store
-vi.mock("../../stores/editor-store", () => ({
+vi.mock("../../stores/editor/editor", () => ({
   useEditorStore: {
     getState: vi.fn(),
   },
