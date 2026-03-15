@@ -2,7 +2,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { listDir } from "../../ipc/invoke";
+import { listDir, setVaultRoot } from "../../ipc/invoke";
 import {
   ensureJournalFile,
   openFileInTab,
@@ -132,6 +132,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           if (originalRoot) {
             (async () => {
               try {
+                await setVaultRoot(originalRoot);
                 const entries = await listDir(originalRoot, true);
                 const tree = buildFileTree(entries, originalRoot);
                 useFileStore.getState().setFileTree(tree);
@@ -158,6 +159,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           if (journalEnabled && resolvedDir) {
             (async () => {
               try {
+                // Set vault root to journal directory BEFORE any file operations
+                await setVaultRoot(resolvedDir);
+
                 const result = await ensureJournalFile(new Date(), {
                   journalDirectory,
                   journalFilenameFormat,
