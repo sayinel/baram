@@ -36,7 +36,7 @@
       "status": "implemented",
       "hasNodeView": false,
       "inputRules": ["> "],
-      "shortcuts": { "Mod-Shift->": "toggle blockquote" }
+      "shortcuts": { "Mod-Shift-b": "toggle blockquote" }
     },
     {
       "name": "bulletList",
@@ -72,7 +72,7 @@
       "status": "implemented",
       "hasNodeView": false,
       "inputRules": ["- [ ] ", "- [x] "],
-      "shortcuts": {}
+      "shortcuts": { "Mod-Shift-9": "toggle task list" }
     },
     {
       "name": "horizontalRule",
@@ -108,7 +108,7 @@
       "status": "implemented",
       "hasNodeView": true,
       "inputRules": ["```"],
-      "shortcuts": { "Mod-Shift-c": "toggle code block" },
+      "shortcuts": { "Mod-Alt-c": "toggle code block" },
       "settings": [
         {
           "key": "codeBlockLineNumbers",
@@ -328,7 +328,7 @@
       "status": "implemented",
       "hasNodeView": true,
       "inputRules": [],
-      "shortcuts": {},
+      "shortcuts": { "Mod-Enter": "toggle collapse" },
       "_note": "Collapsible toggle block using HTML details/summary. Slash command /toggle."
     },
     {

@@ -23,7 +23,7 @@ import {
 import { redo, undo } from "@tiptap/pm/history";
 import { TextSelection } from "@tiptap/pm/state";
 
-import { useSettingsStore } from "../../../stores/settings-store";
+import { useSettingsStore } from "../../../stores/settings/store";
 import { showNodeViewAIMenu } from "../../../utils/nodeview-ai-menu";
 import { getHighlightStyle } from "../code-block-highlight";
 import {
@@ -75,6 +75,7 @@ export class CodeBlockNodeView implements NodeView {
     const autoOpt = document.createElement("option");
     autoOpt.value = "";
     autoOpt.textContent = "auto";
+    autoOpt.defaultSelected = true;
     select.appendChild(autoOpt);
 
     // Language options

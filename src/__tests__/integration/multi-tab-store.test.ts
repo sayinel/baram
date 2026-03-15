@@ -1,8 +1,8 @@
 // Integration: Multi-tab + Store — tab open/switch/close + dirty state + store sync
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { type EditorTab, useEditorStore } from "../../stores/editor-store";
-import { useUIStore } from "../../stores/ui-store";
+import { type EditorTab, useEditorStore } from "../../stores/editor/editor";
+import { useUIStore } from "../../stores/ui/ui";
 
 function makeTab(id: string, filePath: string): EditorTab {
   return {

@@ -1,7 +1,9 @@
 // §5.1 Underline Mark Extension — <u>text</u>
 import { Mark, markInputRule, mergeAttributes } from "@tiptap/core";
 
+import { htmlAttributesOptions } from "../utils/html-attributes-options";
 import { resolveShortcut } from "../utils/shortcut-resolver";
+import { makeMarkCommands } from "./make-mark-commands";
 
 export interface UnderlineOptions {
   HTMLAttributes: Record<string, string>;
@@ -20,9 +22,7 @@ declare module "@tiptap/core" {
 export const Underline = Mark.create<UnderlineOptions>({
   name: "underline",
 
-  addOptions() {
-    return { HTMLAttributes: {} };
-  },
+  ...htmlAttributesOptions,
 
   parseHTML() {
     return [
@@ -45,20 +45,7 @@ export const Underline = Mark.create<UnderlineOptions>({
   },
 
   addCommands() {
-    return {
-      setUnderline:
-        () =>
-        ({ commands }) =>
-          commands.setMark(this.name),
-      toggleUnderline:
-        () =>
-        ({ commands }) =>
-          commands.toggleMark(this.name),
-      unsetUnderline:
-        () =>
-        ({ commands }) =>
-          commands.unsetMark(this.name),
-    };
+    return makeMarkCommands(this.name);
   },
 
   addInputRules() {

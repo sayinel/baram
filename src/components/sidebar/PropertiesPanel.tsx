@@ -1,15 +1,29 @@
 // §72 Properties Panel — YAML frontmatter GUI editor
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
-import type { FileEntry } from "../../stores/file-store";
+import type { FileEntry } from "../../stores/file/file";
+import type {
+  PropertyEntry,
+  PropertyType,
+} from "../../utils/markdown/yaml-properties";
+
+import { useShallow } from "zustand/shallow";
 
 import { readFile } from "../../ipc/invoke";
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
-import { useUIStore } from "../../stores/ui-store";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
+import { useUIStore } from "../../stores/ui/ui";
 import { showPrompt } from "../../utils/ai-commands";
 import { logger } from "../../utils/logger";
-import { isSkillFrontmatter } from "../../utils/skill-frontmatter";
+import { extractFrontmatter } from "../../utils/markdown/frontmatter";
+import {
+  ARRAY_KEYS,
+  ENUM_KEYS,
+  ENUM_VALUES,
+  parseYamlProperties,
+  serializeYamlProperties,
+} from "../../utils/markdown/yaml-properties";
+import { isSkillFrontmatter } from "../../utils/skill/skill-frontmatter";
 import { getSkillSections } from "./skill-panel-registry";
 // §72c Side-effect imports: sections self-register into the registry
 import "./SkillDependencySection";
@@ -17,84 +31,22 @@ import "./SkillLintSection";
 import "./SkillLivePreview";
 import "./SkillOptimizeSection";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-export interface PropertyEntry {
-  key: string;
-  type: PropertyType;
-  value: string | string[];
-}
-
-export type PropertyType = "array" | "enum" | "string";
-
-// Keys that are always treated as arrays
-const ARRAY_KEYS = new Set(["requires", "tags"]);
-
-// Keys that are treated as enums
-const ENUM_KEYS = new Set(["status"]);
-const ENUM_VALUES: Record<string, string[]> = {
-  status: ["draft", "active", "deprecated"],
-};
-
-// ─── Parse / Serialize ────────────────────────────────────────────────────────
-
-/**
- * Parse a YAML frontmatter string (without --- delimiters) into PropertyEntry[].
- * Exported for testing.
- */
-// eslint-disable-next-line react-refresh/only-export-components
-export function parseYamlProperties(yaml: string): PropertyEntry[] {
-  if (!yaml || !yaml.trim()) return [];
-
-  const entries: PropertyEntry[] = [];
-  const lines = yaml.split("\n");
-
-  for (const line of lines) {
-    const colonIdx = line.indexOf(":");
-    if (colonIdx === -1) continue;
-
-    const key = line.slice(0, colonIdx).trim();
-    if (!key) continue;
-
-    const rawValue = line.slice(colonIdx + 1).trim();
-
-    if (ENUM_KEYS.has(key)) {
-      entries.push({ key, value: rawValue, type: "enum" });
-      continue;
-    }
-
-    if (ARRAY_KEYS.has(key)) {
-      // bracket syntax: [a, b] or []
-      const bracketMatch = rawValue.match(/^\[(.*)\]$/);
-      if (bracketMatch) {
-        const inner = bracketMatch[1].trim();
-        const items =
-          inner === ""
-            ? []
-            : inner
-                .split(",")
-                .map((s) => s.trim())
-                .filter(Boolean);
-        entries.push({ key, value: items, type: "array" });
-      } else {
-        // single value without brackets — still treat as array
-        const items = rawValue ? [rawValue] : [];
-        entries.push({ key, value: items, type: "array" });
-      }
-      continue;
-    }
-
-    // default: string
-    entries.push({ key, value: rawValue, type: "string" });
-  }
-
-  return entries;
-}
+// ─── Types re-exported for backward compatibility ─────────────────────────────
+// (types and parse/serialize functions now live in ../../utils/yaml-properties)
 
 export function PropertiesPanel() {
-  const { rightPanelOpen, rightPanelMode } = useUIStore();
-  const { activeTabId, tabs } = useEditorStore();
-  const { openFiles, fileTree } = useFileStore();
+  const { rightPanelOpen, rightPanelMode } = useUIStore(
+    useShallow((s) => ({
+      rightPanelOpen: s.rightPanelOpen,
+      rightPanelMode: s.rightPanelMode,
+    })),
+  );
+  const { activeTabId, tabs } = useEditorStore(
+    useShallow((s) => ({ activeTabId: s.activeTabId, tabs: s.tabs })),
+  );
+  const { openFiles, fileTree } = useFileStore(
+    useShallow((s) => ({ openFiles: s.openFiles, fileTree: s.fileTree })),
+  );
 
   const [sourceMode, setSourceMode] = useState(false);
   const [sourceText, setSourceText] = useState("");
@@ -103,14 +55,24 @@ export function PropertiesPanel() {
   const redoStackRef = useRef<string[]>([]);
   const [, forceRender] = useState(0);
 
-  const activeTab = tabs.find((t) => t.id === activeTabId);
+  const activeTab = useMemo(
+    () => tabs.find((t) => t.id === activeTabId),
+    [tabs, activeTabId],
+  );
   const filePath = activeTab?.filePath ?? null;
   const content = filePath ? (openFiles.get(filePath) ?? null) : null;
 
-  const parsed = content ? extractFrontmatter(content) : null;
-  const yaml = parsed?.yaml ?? null;
-  const entries: PropertyEntry[] =
-    yaml !== null ? parseYamlProperties(yaml) : [];
+  const { yaml, entries, parsed } = useMemo(() => {
+    if (!content)
+      return { yaml: null, entries: [] as PropertyEntry[], parsed: null };
+    const p = extractFrontmatter(content);
+    const y = p?.yaml ?? null;
+    return {
+      yaml: y,
+      entries: y !== null ? parseYamlProperties(y) : ([] as PropertyEntry[]),
+      parsed: p ?? null,
+    };
+  }, [content]);
 
   // ── write-back helpers ───────────────────────────────────────────────────
 
@@ -444,26 +406,6 @@ export function PropertiesPanel() {
   );
 }
 
-// ─── Frontmatter helpers ──────────────────────────────────────────────────────
-
-/**
- * Serialize PropertyEntry[] back to a YAML string (without --- delimiters).
- * Exported for testing.
- */
-// eslint-disable-next-line react-refresh/only-export-components
-export function serializeYamlProperties(entries: PropertyEntry[]): string {
-  return entries
-    .map((entry) => {
-      if (entry.type === "array") {
-        const arr = entry.value as string[];
-        const bracketList = arr.join(", ");
-        return `${entry.key}: [${bracketList}]`;
-      }
-      return `${entry.key}: ${entry.value as string}`;
-    })
-    .join("\n");
-}
-
 function AddPropertyButton({ onAdd }: { onAdd: (key: string) => void }) {
   const [adding, setAdding] = useState(false);
   const [newKey, setNewKey] = useState("");
@@ -503,14 +445,6 @@ function AddPropertyButton({ onAdd }: { onAdd: (key: string) => void }) {
 }
 
 // ─── File tree search ─────────────────────────────────────────────────────────
-
-function extractFrontmatter(
-  content: string,
-): null | { rest: string; yaml: string } {
-  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (!match) return null;
-  return { yaml: match[1], rest: content.slice(match[0].length) };
-}
 
 // ─── AddPropertyButton ────────────────────────────────────────────────────────
 

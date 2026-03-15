@@ -3,17 +3,16 @@ import type { Editor } from "@tiptap/react";
 // §4.3 Outline sidebar — heading hierarchy from editor
 import { useEditorState } from "@tiptap/react";
 
+import { useEditorContext } from "../../contexts/editor-context";
+
 interface HeadingItem {
   level: number;
   pos: number;
   text: string;
 }
 
-interface OutlineProps {
-  editor: Editor | null;
-}
-
-export function Outline({ editor }: OutlineProps) {
+export function Outline() {
+  const editor = useEditorContext();
   // Re-extract headings on every document change via useEditorState
   const headings = useEditorState({
     editor,

@@ -1,7 +1,7 @@
 // §39 MRU (Most Recently Used) tab order tests
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { useEditorStore } from "../editor-store";
+import { useEditorStore } from "../editor/editor";
 
 beforeEach(() => {
   useEditorStore.setState({

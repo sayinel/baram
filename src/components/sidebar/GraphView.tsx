@@ -3,14 +3,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Core, EventObject, StylesheetStyle } from "cytoscape";
 
-import cytoscape from "cytoscape";
-import fcose from "cytoscape-fcose";
-
 import { getLinkIndex, readFile, refreshIndex } from "../../ipc/invoke";
-import { isGraphTab, useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
-import { useGraphSettingsStore } from "../../stores/graph-settings-store";
-import { useLinkStore } from "../../stores/link-store";
+import { isGraphTab, useEditorStore } from "../../stores/editor/editor";
+import { useLinkStore } from "../../stores/editor/link";
+import { useFileStore } from "../../stores/file/file";
+import { useGraphSettingsStore } from "../../stores/ui/graph-settings";
 import { logger } from "../../utils/logger";
 import {
   assignNamespaceColors,
@@ -20,12 +17,10 @@ import {
 } from "./graph-utils";
 import { GraphSettingsPanel } from "./GraphSettingsPanel";
 
-// Register fcose layout
-cytoscape.use(fcose);
-
 export function GraphView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
+  const [cyReady, setCyReady] = useState(false);
   const rootPath = useFileStore((s) => s.rootPath);
   // Detect if rendered inside editor tab (vs sidebar)
   const isInEditorTab = useEditorStore((s) => {
@@ -68,24 +63,44 @@ export function GraphView() {
     useEditorStore.getState().openGraphTab();
   }, []);
 
-  // Effect 1: Create Cytoscape instance
+  // Effect 1: Create Cytoscape instance (lazy-loaded to keep it out of the initial bundle)
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const cy = cytoscape({
-      container: containerRef.current,
-      style: buildGraphStyle({ linkThickness, showArrows, colorByNamespace }),
-      layout: { name: "grid" },
-      minZoom: 0.1,
-      maxZoom: 5,
-      wheelSensitivity: 0.3,
-    });
+    let cy: Core | null = null;
+    let destroyed = false;
 
-    cyRef.current = cy;
+    (async () => {
+      const [{ default: cytoscape }, { default: fcose }] = await Promise.all([
+        import("cytoscape"),
+        import("cytoscape-fcose"),
+      ]);
+
+      // Register fcose layout (idempotent — safe to call multiple times)
+      cytoscape.use(fcose);
+
+      if (destroyed || !containerRef.current) return;
+
+      cy = cytoscape({
+        container: containerRef.current,
+        style: buildGraphStyle({ linkThickness, showArrows, colorByNamespace }),
+        layout: { name: "grid" },
+        minZoom: 0.1,
+        maxZoom: 5,
+        wheelSensitivity: 0.3,
+      });
+
+      cyRef.current = cy;
+      setCyReady(true);
+    })();
 
     return () => {
-      cy.destroy();
+      destroyed = true;
+      if (cy) {
+        cy.destroy();
+      }
       cyRef.current = null;
+      setCyReady(false);
     };
     // Intentionally mount-only: creates the Cytoscape instance once. Style
     // settings (linkThickness, showArrows, colorByNamespace) passed here are only
@@ -205,7 +220,7 @@ export function GraphView() {
     // omitted: adding them would re-fetch all graph data on every settings tweak,
     // but dedicated effects (Effect 3, node-size effect) handle those updates.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rootPath, indexVersion, handleNodeTap, colorByNamespace]);
+  }, [rootPath, indexVersion, handleNodeTap, colorByNamespace, cyReady]);
 
   // Effect 3: Re-layout on force settings change
   useEffect(() => {

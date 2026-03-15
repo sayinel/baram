@@ -54,6 +54,11 @@ const nodeEntries: NodeTransformerEntry[] = [
   headingTransformer,
   paragraphTransformer,
   blockquoteTransformer,
+  // NOTE: bulletList, orderedList, taskList all share mdastType "list".
+  // In the nodeTransformers map only the last one registered wins the key,
+  // but this is harmless: the mdast→PM standard path uses convertListNode
+  // (convert-list.ts) which dispatches directly, bypassing the map lookup.
+  // The pmNodeTransformers (PM→mdast) map uses distinct pmType keys so no collision occurs.
   bulletListTransformer,
   orderedListTransformer,
   listItemTransformer,

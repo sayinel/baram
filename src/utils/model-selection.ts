@@ -1,7 +1,7 @@
-import type { AIProvider, AITask } from "../stores/ai-store";
+import type { AIProvider, AITask } from "../stores/ai/ai";
 
 // §6.3 Auto Model Selection — returns the appropriate model/provider for a given AI task
-import { useAIStore } from "../stores/ai-store";
+import { useAIStore } from "../stores/ai/ai";
 
 export interface TaskConfig {
   apiKey: string;

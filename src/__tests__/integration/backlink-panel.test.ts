@@ -8,7 +8,7 @@ import {
   extractFileNameFromPath,
   groupBacklinksByFile,
 } from "../../components/sidebar/backlink-utils";
-import { useLinkStore } from "../../stores/link-store";
+import { useLinkStore } from "../../stores/editor/link";
 
 describe("Backlink panel integration", () => {
   beforeEach(() => {

@@ -1,6 +1,6 @@
 import type { InstalledPlugin } from "./types";
 
-import { usePluginStore } from "../stores/plugin-store";
+import { usePluginStore } from "../stores/system/plugin";
 import { logger } from "../utils/logger";
 import { emitPluginEvent } from "./extension-context";
 // §69 Plugin Lifecycle — App-level plugin management

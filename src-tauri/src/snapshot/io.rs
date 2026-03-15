@@ -105,7 +105,8 @@ fn scan_dir_recursive(
         if name.starts_with('.') {
             continue;
         }
-        const SKIP_DIRS: &[&str] = &[
+        // Build/cache dirs excluded from snapshot scan (hidden dirs already filtered above).
+        const SKIP_BUILD_DIRS: &[&str] = &[
             "node_modules",
             "target",
             "build",
@@ -113,7 +114,7 @@ fn scan_dir_recursive(
             "__pycache__",
             ".next",
         ];
-        if path.is_dir() && SKIP_DIRS.contains(&name.as_str()) {
+        if path.is_dir() && SKIP_BUILD_DIRS.contains(&name.as_str()) {
             continue;
         }
 
@@ -221,6 +222,24 @@ pub fn create_snapshot(
     Ok(snapshot_id)
 }
 
+/// Validate that a relative path is safe — no `..`, no absolute paths, no
+/// root/prefix components. Prevents path traversal when joining with vault root.
+fn is_safe_relative_path(path: &str) -> bool {
+    let p = Path::new(path);
+    if p.is_absolute() {
+        return false;
+    }
+    for component in p.components() {
+        match component {
+            std::path::Component::ParentDir
+            | std::path::Component::Prefix(_)
+            | std::path::Component::RootDir => return false,
+            _ => {}
+        }
+    }
+    true
+}
+
 /// Restore files from a snapshot.
 ///
 /// 1. Create auto snapshot of current state first
@@ -260,6 +279,14 @@ pub fn restore_files(
     let vault = Path::new(vault_path);
 
     for file_path in &files_to_restore {
+        // Reject path traversal attempts before joining with vault root
+        if !is_safe_relative_path(file_path) {
+            return Err(SnapshotError::General(format!(
+                "안전하지 않은 경로: {}",
+                file_path
+            )));
+        }
+
         // Walk backwards from the target snapshot to find the file data
         let mut restored = false;
         for i in (0..=target_idx).rev() {

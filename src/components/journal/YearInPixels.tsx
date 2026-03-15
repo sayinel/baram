@@ -1,15 +1,15 @@
 // §56e Year in Pixels — 365-dot grid showing mood per day
 import { useEffect, useMemo, useState } from "react";
 
-import type { MoodValue } from "../../utils/journal-mood";
+import type { MoodValue } from "../../utils/journal/journal-mood";
 
 import { listDir, readFile } from "../../ipc/invoke";
-import { useSettingsStore } from "../../stores/settings-store";
+import { useSettingsStore } from "../../stores/settings/store";
 import {
   getMoodColors,
   MOOD_VALUES,
   parseMoodFromFrontmatter,
-} from "../../utils/journal-mood";
+} from "../../utils/journal/journal-mood";
 
 const MONTH_LABELS = [
   "J",

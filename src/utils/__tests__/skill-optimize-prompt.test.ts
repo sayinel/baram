@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildOptimizePrompt,
   parseOptimizeResponse,
-} from "../skill-optimize-prompt";
+} from "../skill/skill-optimize-prompt";
 
 describe("buildOptimizePrompt", () => {
   it("includes skill content in the output", () => {

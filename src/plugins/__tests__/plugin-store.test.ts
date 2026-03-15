@@ -3,7 +3,7 @@ import type { InstalledPlugin } from "../types";
 // §69 Plugin Store state transition tests
 import { beforeEach, describe, expect, test } from "vitest";
 
-import { usePluginStore } from "../../stores/plugin-store";
+import { usePluginStore } from "../../stores/system/plugin";
 
 function makePlugin(id: string, version = "1.0.0"): InstalledPlugin {
   return {

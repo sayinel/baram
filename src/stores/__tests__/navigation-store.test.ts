@@ -1,7 +1,7 @@
 // §37 Navigation History Store — unit tests
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { useNavigationStore } from "../navigation-store";
+import { useNavigationStore } from "../ui/navigation";
 
 // Reset store before each test
 beforeEach(() => {

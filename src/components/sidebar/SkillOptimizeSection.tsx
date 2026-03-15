@@ -2,14 +2,14 @@
 import { useCallback, useState } from "react";
 
 import { useLLMStream } from "../../hooks/use-llm-stream";
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
-import { useSkillStore } from "../../stores/skill-store";
+import { useSkillStore } from "../../stores/ai/skill";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
 import {
   buildOptimizePrompt,
   type OptimizeSuggestion,
   parseOptimizeResponse,
-} from "../../utils/skill-optimize-prompt";
+} from "../../utils/skill/skill-optimize-prompt";
 import { registerSkillSection } from "./skill-panel-registry";
 
 // ─── Category icons ──────────────────────────────────────────────────────────

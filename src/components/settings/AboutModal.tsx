@@ -3,7 +3,7 @@ import { useCallback, useEffect } from "react";
 
 import baramLogo from "../../assets/baram-logo.png";
 import { useTranslation } from "../../i18n/useTranslation";
-import { useUIStore } from "../../stores/ui-store";
+import { useUIStore } from "../../stores/ui/ui";
 
 export function AboutModal() {
   const { t } = useTranslation();

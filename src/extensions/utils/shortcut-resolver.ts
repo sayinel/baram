@@ -5,7 +5,9 @@
  * Registry notation:  "Mod+Shift+X"  (plus-separated, uppercase key)
  * ProseMirror format: "Mod-Shift-x"  (dash-separated, lowercase key)
  */
-import { useSettingsStore } from "../../stores/settings-store";
+import { useSettingsStore } from "../../stores/settings/store";
+
+const MODIFIERS = new Set(["Alt", "Ctrl", "Mod", "Shift"]);
 
 /**
  * Resolve a ProseMirror keyboard shortcut for a given command ID.
@@ -29,7 +31,6 @@ export function resolveShortcut(commandId: string, defaultKey: string): string {
  * preserved as-is; the final key token is lowercased.
  */
 function registryToProseMirror(notation: string): string {
-  const MODIFIERS = new Set(["Alt", "Ctrl", "Mod", "Shift"]);
   const tokens = notation.split("+");
   const result: string[] = [];
   for (let i = 0; i < tokens.length; i++) {

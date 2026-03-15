@@ -5,10 +5,10 @@ import { Extension } from "@tiptap/core";
 import { Plugin } from "@tiptap/pm/state";
 
 import { isExternalFileDrag } from "../../hooks/use-external-drop";
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
-import { useSettingsStore } from "../../stores/settings-store";
-import { savePhotoToAssets } from "../../utils/journal-photo";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
+import { useSettingsStore } from "../../stores/settings/store";
+import { savePhotoToAssets } from "../../utils/journal/journal-photo";
 
 /** Create the drop handler ProseMirror plugin */
 function createDropHandlerPlugin(): Plugin {

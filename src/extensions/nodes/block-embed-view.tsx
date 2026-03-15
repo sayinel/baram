@@ -7,6 +7,8 @@ import type { NodeViewProps } from "@tiptap/react";
 import { NodeViewWrapper } from "@tiptap/react";
 
 import { useEmbedSync } from "../../hooks/use-embed-sync";
+import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
+import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
 
 export function BlockEmbedView({
   node,
@@ -50,91 +52,17 @@ export function BlockEmbedView({
   }, [selected, status, content, isEditing, startEditing, commitEdit]);
 
   // Auto-resize textarea
-  useEffect(() => {
-    if (isEditing && textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height =
-        textareaRef.current.scrollHeight + "px";
-    }
-  }, [localText, isEditing]);
+  useTextareaAutoResize(textareaRef, localText, isEditing);
 
-  // Exit block: commit and move cursor
-  const exitBlock = useCallback(
-    (direction: "down" | "up") => {
-      const pos = getPos();
-      if (typeof pos !== "number") return;
-
-      commitEdit();
-
-      if (direction === "up") {
-        editor.chain().setTextSelection(pos).focus().run();
-      } else {
-        const afterPos = pos + node.nodeSize;
-        const { doc } = editor.state;
-        const $after = doc.resolve(afterPos);
-        if ($after.parentOffset >= $after.parent.content.size) {
-          editor
-            .chain()
-            .insertContentAt(afterPos, { type: "paragraph" })
-            .setTextSelection(afterPos + 1)
-            .focus()
-            .run();
-        } else {
-          editor.chain().setTextSelection(afterPos).focus().run();
-        }
-      }
-    },
-    [editor, getPos, commitEdit, node.nodeSize],
-  );
-
-  // Keyboard navigation (MathBlockView pattern)
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      const ta = textareaRef.current;
-      if (!ta) return;
-
-      if (e.key === "Escape") {
-        e.preventDefault();
-        exitBlock("down");
-        return;
-      }
-
-      if (
-        e.key === "ArrowLeft" &&
-        ta.selectionStart === 0 &&
-        ta.selectionEnd === 0
-      ) {
-        e.preventDefault();
-        exitBlock("up");
-        return;
-      }
-
-      if (e.key === "ArrowRight" && ta.selectionStart === ta.value.length) {
-        e.preventDefault();
-        exitBlock("down");
-        return;
-      }
-
-      if (e.key === "ArrowUp") {
-        const before = ta.value.substring(0, ta.selectionStart);
-        if (!before.includes("\n")) {
-          e.preventDefault();
-          exitBlock("up");
-          return;
-        }
-      }
-
-      if (e.key === "ArrowDown") {
-        const after = ta.value.substring(ta.selectionStart);
-        if (!after.includes("\n")) {
-          e.preventDefault();
-          exitBlock("down");
-          return;
-        }
-      }
-    },
-    [exitBlock],
-  );
+  // Common atom-block behavior: exitBlock, handleKeyDown
+  const { handleKeyDown } = useAtomBlockBehavior({
+    editor,
+    getPos,
+    nodeSize: node.nodeSize,
+    textareaRef,
+    onSaveBeforeExit: commitEdit,
+    keyboard: { backspaceOnEmpty: false, horizontalArrowExit: true },
+  });
 
   // Navigate to source on header click
   const handleHeaderClick = useCallback(

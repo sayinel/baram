@@ -1,7 +1,7 @@
 // §56g Contribution Heatmap — GitHub-style 12-month grid
 import { useMemo, useState } from "react";
 
-import { useEditorStore } from "../../stores/editor-store";
+import { useEditorStore } from "../../stores/editor/editor";
 
 export interface HeatmapEntry {
   date: string; // YYYY-MM-DD

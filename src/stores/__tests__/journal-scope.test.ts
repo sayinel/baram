@@ -4,10 +4,10 @@
  */
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { useFileStore } from "../file-store";
-import { useSettingsStore } from "../settings-store";
-import { useUIStore } from "../ui-store";
-import { BUILTIN_PRESETS, useWorkspaceStore } from "../workspace-store";
+import { useFileStore } from "../file/file";
+import { BUILTIN_PRESETS, useWorkspaceStore } from "../file/workspace";
+import { useSettingsStore } from "../settings/store";
+import { useUIStore } from "../ui/ui";
 
 describe("§56b FileStore journal scoping", () => {
   beforeEach(async () => {

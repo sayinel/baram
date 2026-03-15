@@ -1,36 +1,18 @@
-import type {
-  SuggestionKeyDownProps,
-  SuggestionProps,
-} from "@tiptap/suggestion";
-
 // §56m Tag autocomplete — Tiptap Extension using Suggestion API
 // Triggers on # and shows tag suggestions from vault-wide Rust index
 import { Extension } from "@tiptap/core";
 import { PluginKey } from "@tiptap/pm/state";
-import { ReactRenderer } from "@tiptap/react";
 import { Suggestion } from "@tiptap/suggestion";
 
 import {
   TagMenuList,
-  type TagMenuRef,
   type TagSuggestionItem,
 } from "../../components/command/TagMenu";
 import { getVaultTags } from "../../ipc/invoke";
-import { useFileStore } from "../../stores/file-store";
-import { filterTags } from "../../utils/journal-tags";
+import { useFileStore } from "../../stores/file/file";
+import { filterTags } from "../../utils/journal/journal-tags";
 import { logger } from "../../utils/logger";
-
-const MENU_HEIGHT = 200;
-
-function positionPopup(popup: HTMLDivElement, coords: DOMRect) {
-  const spaceBelow = window.innerHeight - coords.bottom - 4;
-  popup.style.left = `${coords.left}px`;
-  if (spaceBelow < MENU_HEIGHT) {
-    popup.style.top = `${coords.top - MENU_HEIGHT - 4}px`;
-  } else {
-    popup.style.top = `${coords.bottom + 4}px`;
-  }
-}
+import { createSuggestionRenderer } from "./suggestion-renderer";
 
 /** Cached tag index — rebuilt lazily via Rust IPC when stale */
 let cachedTagIndex: Map<string, number> = new Map();
@@ -114,59 +96,11 @@ export const TagSuggest = Extension.create({
             count: tagIndex.get(tag) ?? 0,
           }));
         },
-        render: () => {
-          let component: null | ReactRenderer<TagMenuRef> = null;
-          let popup: HTMLDivElement | null = null;
-
-          return {
-            onStart: (props: SuggestionProps) => {
-              component = new ReactRenderer(TagMenuList, {
-                props: {
-                  items: props.items as TagSuggestionItem[],
-                  command: props.command,
-                },
-                editor: props.editor,
-              });
-
-              popup = document.createElement("div");
-              popup.className = "tag-menu-popup";
-              document.body.appendChild(popup);
-              popup.appendChild(component.element);
-
-              const coords = props.clientRect?.();
-              if (coords && popup) {
-                positionPopup(popup, coords);
-              }
-            },
-            onUpdate: (props: SuggestionProps) => {
-              component?.updateProps({
-                items: props.items as TagSuggestionItem[],
-                command: props.command,
-              });
-
-              const coords = props.clientRect?.();
-              if (coords && popup) {
-                positionPopup(popup, coords);
-              }
-            },
-            onKeyDown: (props: SuggestionKeyDownProps) => {
-              if (props.event.key === "Escape") {
-                popup?.remove();
-                component?.destroy();
-                popup = null;
-                component = null;
-                return true;
-              }
-              return component?.ref?.onKeyDown(props.event) ?? false;
-            },
-            onExit: () => {
-              popup?.remove();
-              component?.destroy();
-              popup = null;
-              component = null;
-            },
-          };
-        },
+        render: createSuggestionRenderer<TagSuggestionItem>({
+          component: TagMenuList,
+          popupClass: "tag-menu-popup",
+          menuHeight: 200,
+        }),
       }),
     ];
   },

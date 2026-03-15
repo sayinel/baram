@@ -1,25 +1,20 @@
 // §56l Quick Capture Dialog — Cmd+Shift+N
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { createDir, listDir, readFile, writeFile } from "../../ipc/invoke";
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
-import { useSettingsStore } from "../../stores/settings-store";
-import { useUIStore } from "../../stores/ui-store";
-import {
-  applyJournalTemplate,
-  formatJournalFilename,
-  generateDefaultJournal,
-  getHierarchicalJournalPath,
-} from "../../utils/journal";
+import { listDir, readFile, writeFile } from "../../ipc/invoke";
+import { ensureJournalFile } from "../../services/journal-file-service";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
+import { useSettingsStore } from "../../stores/settings/store";
+import { useUIStore } from "../../stores/ui/ui";
 import {
   CAPTURE_ICONS,
   CAPTURE_TYPES,
   type CaptureItem,
   type CaptureType,
   insertCaptureIntoContent,
-} from "../../utils/journal-capture";
-import { buildTagIndex, filterTags } from "../../utils/journal-tags";
+} from "../../utils/journal/journal-capture";
+import { buildTagIndex, filterTags } from "../../utils/journal/journal-tags";
 import { logger } from "../../utils/logger";
 import { TagSuggest } from "./TagSuggest";
 
@@ -35,7 +30,9 @@ export function QuickCaptureDialog() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Tag autocomplete state
-  const [tagIndex, setTagIndex] = useState<Map<string, number>>(new Map());
+  const [tagIndex, setTagIndex] = useState<Map<string, number>>(
+    () => new Map(),
+  );
   const [tagQuery, setTagQuery] = useState<null | string>(null);
   const [tagSuggestVisible, setTagSuggestVisible] = useState(false);
   const [tagActiveIndex, setTagActiveIndex] = useState(0);
@@ -136,36 +133,18 @@ export function QuickCaptureDialog() {
       }
 
       const date = new Date();
-      // Resolve journal dir: absolute paths pass through, relative paths join with rootPath
-      const resolvedDir =
-        journalDirectory.startsWith("/") || /^[A-Z]:\\/.test(journalDirectory)
-          ? journalDirectory
-          : `${rootPath}/${journalDirectory}`;
-      const journalPath = journalUseHierarchy
-        ? getHierarchicalJournalPath(resolvedDir, date, journalFilenameFormat)
-        : `${resolvedDir}/${formatJournalFilename(date, journalFilenameFormat)}`;
-
-      // Ensure daily directory exists
-      const dirPath = journalPath.substring(0, journalPath.lastIndexOf("/"));
-      await createDir(dirPath).catch(() => {});
-
-      // Read or create today's journal
-      let content: string;
-      try {
-        content = await readFile(journalPath);
-      } catch {
-        // Journal doesn't exist — create it
-        if (journalTemplatePath) {
-          try {
-            const tpl = await readFile(journalTemplatePath);
-            content = applyJournalTemplate(tpl, date);
-          } catch {
-            content = generateDefaultJournal(date);
-          }
-        } else {
-          content = generateDefaultJournal(date);
-        }
+      const result = await ensureJournalFile(date, {
+        journalDirectory,
+        journalFilenameFormat,
+        journalTemplatePath,
+        journalUseHierarchy,
+        rootPath,
+      });
+      if (!result) {
+        setSaveError("저널 파일 경로를 확인할 수 없습니다.");
+        return;
       }
+      const { path: journalPath, content } = result;
 
       // Insert capture and save
       const updated = insertCaptureIntoContent(content, item);

@@ -14,7 +14,7 @@ import {
   getMergedKeybindings,
   type MergedKeybinding,
 } from "../../../keybindings/use-keybindings";
-import { useSettingsStore } from "../../../stores/settings-store";
+import { useSettingsStore } from "../../../stores/settings/store";
 import { SettingsSectionHeader } from "../settings-shared";
 
 export function KeybindingsTab() {

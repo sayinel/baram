@@ -19,8 +19,8 @@ import {
   registerGhostTextAcceptedCallback,
 } from "../extensions/plugins/ghost-text";
 import { llmCancel, llmComplete } from "../ipc/invoke";
-import { useAIStore } from "../stores/ai-store";
-import { useEditorStore } from "../stores/editor-store";
+import { useAIStore } from "../stores/ai/ai";
+import { useEditorStore } from "../stores/editor/editor";
 import { useWritingFlowStore } from "../stores/writing-flow-store";
 import { GhostTextCache } from "../utils/ghost-text-cache";
 import { buildGhostTextConfig } from "../utils/ghost-text-prompt";

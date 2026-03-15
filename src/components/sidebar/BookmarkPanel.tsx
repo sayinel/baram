@@ -1,12 +1,12 @@
 // §36 북마크 패널 — 사이드바에서 북마크 목록 표시 및 관리
 import { useCallback, useEffect } from "react";
 
-import type { BookmarkItem } from "../../stores/bookmark-store";
+import type { BookmarkItem } from "../../stores/file/bookmark";
 
 import { readFile } from "../../ipc/invoke";
-import { getGroups, useBookmarkStore } from "../../stores/bookmark-store";
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
+import { useEditorStore } from "../../stores/editor/editor";
+import { getGroups, useBookmarkStore } from "../../stores/file/bookmark";
+import { useFileStore } from "../../stores/file/file";
 import { logger } from "../../utils/logger";
 import { extractFileNameFromPath } from "./backlink-utils";
 

@@ -10,7 +10,7 @@ import {
 import {
   extractSkillPrompt,
   runSkillTest,
-} from "../../utils/skill-test-runner";
+} from "../../utils/skill/skill-test-runner";
 
 describe("§48 Custom AI Commands", () => {
   // --- substituteVariables ---

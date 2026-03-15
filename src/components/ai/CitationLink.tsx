@@ -1,5 +1,5 @@
 // §11.4 Citation link — shows a numbered citation badge linking to a knowledge search result
-import { useEditorStore } from "../../stores/editor-store";
+import { useEditorStore } from "../../stores/editor/editor";
 
 interface CitationLinkProps {
   /** File path relative to vault root */

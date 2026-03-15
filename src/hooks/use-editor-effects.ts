@@ -4,15 +4,16 @@ import { useEffect } from "react";
 import type { Editor } from "@tiptap/core";
 
 import { EditorState, TextSelection } from "@tiptap/pm/state";
+import { useShallow } from "zustand/shallow";
 
 import { dispatchSetSearchTerm } from "../extensions/plugins/find-replace";
 import { markdownToProsemirror } from "../pipeline/md-to-pm";
-import { isFileTab } from "../stores/editor-store";
-import { useEditorStore } from "../stores/editor-store";
-import { useFileStore } from "../stores/file-store";
-import { useLinkStore } from "../stores/link-store";
-import { useUIStore } from "../stores/ui-store";
-import { mdLineToPmBlockStart } from "../utils/cursor-mapper";
+import { isFileTab } from "../stores/editor/editor";
+import { useEditorStore } from "../stores/editor/editor";
+import { useLinkStore } from "../stores/editor/link";
+import { useFileStore } from "../stores/file/file";
+import { useUIStore } from "../stores/ui/ui";
+import { mdLineToPmBlockStart } from "../utils/editor/cursor-mapper";
 
 interface UseEditorEffectsParams {
   editor: Editor | null;
@@ -29,7 +30,9 @@ export function useEditorEffects({
   setFindReplaceMode,
   setFindReplaceOpen,
 }: UseEditorEffectsParams) {
-  const { activeTabId, tabs } = useEditorStore();
+  const { activeTabId, tabs } = useEditorStore(
+    useShallow((s) => ({ activeTabId: s.activeTabId, tabs: s.tabs })),
+  );
 
   // §44 Track editor selection text for @selection reference
   useEffect(() => {

@@ -10,11 +10,10 @@ import {
 
 import { listen } from "@tauri-apps/api/event";
 
-import type { SourceCodeEditorRef } from "./components/editor/SourceCodeEditor";
-import type { EditorTab } from "./stores/editor-store";
+import type { EditorTab } from "./stores/editor/editor";
 
-import { EditorState, TextSelection } from "@tiptap/pm/state";
 import { EditorContent, useEditor } from "@tiptap/react";
+import { useShallow } from "zustand/shallow";
 
 import { InlineAIPrompt } from "./components/ai/InlineAIPrompt";
 import { PromptLintPanel } from "./components/ai/PromptLintPanel";
@@ -35,8 +34,9 @@ import { ContextMenu } from "./components/toolbar/ContextMenu";
 import { FloatingToolbar } from "./components/toolbar/FloatingToolbar";
 import { TableInsertButtons } from "./components/toolbar/TableInsertButtons";
 import { TableToolbar } from "./components/toolbar/TableToolbar";
+import { EditorProvider } from "./contexts/editor-context";
 import { createBaramExtensions } from "./extensions";
-import { forceCollapseSyntaxReveal } from "./extensions/plugins/syntax-reveal";
+import { useAppStartup } from "./hooks/use-app-startup";
 import { useAutoSave } from "./hooks/use-auto-save";
 import { useEditorEffects } from "./hooks/use-editor-effects";
 import { useExternalDrop } from "./hooks/use-external-drop";
@@ -53,12 +53,12 @@ import { useMenuEventHandler } from "./hooks/use-menu-event-handler";
 import { useNavigation } from "./hooks/use-navigation";
 import { useSettingsEffects } from "./hooks/use-settings-effects";
 import { useSkillsMode } from "./hooks/use-skills-mode";
+import { useSourceMode } from "./hooks/use-source-mode";
 import { useTabSwitching } from "./hooks/use-tab-switching";
 import { useZoom } from "./hooks/use-zoom";
 import { useTranslation } from "./i18n/useTranslation";
-import { getOpenedUrls, llmComplete, writeFile } from "./ipc/invoke";
+import { llmComplete, writeFile } from "./ipc/invoke";
 import { markdownToProsemirror } from "./pipeline/md-to-pm";
-import { prosemirrorToMarkdown } from "./pipeline/pm-to-md";
 import {
   initializePlugins,
   notifyEditorReady,
@@ -69,14 +69,12 @@ import {
   startUpdateChecker,
   stopUpdateChecker,
 } from "./plugins/update-checker";
-import { useAIStore } from "./stores/ai-store";
-import { useEditorStore } from "./stores/editor-store";
-import { isFileTab, isGraphTab } from "./stores/editor-store";
-import { openFolder, useFileStore } from "./stores/file-store";
-import { useSettingsStore } from "./stores/settings-store";
-import { migrateFromLocalStorage } from "./stores/tauri-storage";
-import { useUIStore } from "./stores/ui-store";
-import { mdOffsetToPmPos, pmPosToMdOffset } from "./utils/cursor-mapper";
+import { useAIStore } from "./stores/ai/ai";
+import { useEditorStore } from "./stores/editor/editor";
+import { isFileTab, isGraphTab } from "./stores/editor/editor";
+import { useFileStore } from "./stores/file/file";
+import { useSettingsStore } from "./stores/settings/store";
+import { useUIStore } from "./stores/ui/ui";
 import { getLanguageForFile, isMarkdownFile } from "./utils/file-type";
 import { logger } from "./utils/logger";
 import { getConfigForTask } from "./utils/model-selection";
@@ -158,19 +156,21 @@ const QuickCaptureDialog = lazy(() =>
 
 function App() {
   const { t } = useTranslation();
-  const [isSourceMode, setIsSourceMode] = useState(false);
-  const [sourceContent, setSourceContent] = useState("");
-  const [sourceCursorOffset, setSourceCursorOffset] = useState(0);
-  const sourceEditorRef = useRef<SourceCodeEditorRef>(null);
-  // Ref mirrors sourceContent state — always has the latest value, immune to stale closures
-  const sourceContentRef = useRef("");
   const {
     toggleSidebar,
     toggleCommandPalette,
     toggleQuickSwitcher,
     toggleSettings,
     setSidebarPanel,
-  } = useUIStore();
+  } = useUIStore(
+    useShallow((s) => ({
+      toggleSidebar: s.toggleSidebar,
+      toggleCommandPalette: s.toggleCommandPalette,
+      toggleQuickSwitcher: s.toggleQuickSwitcher,
+      toggleSettings: s.toggleSettings,
+      setSidebarPanel: s.setSidebarPanel,
+    })),
+  );
   const activeTabId = useEditorStore((s) => s.activeTabId);
   const activeTabFilePath = useEditorStore((s) => {
     const tab = s.tabs.find((t) => t.id === s.activeTabId);
@@ -241,11 +241,55 @@ function App() {
   // §72 Skills mode — auto-detect skill files and switch right panel
   const { isSkill } = useSkillsMode();
 
+  // Compute once per render to avoid double-calling detectPeriodicType in JSX
+  const periodicType = activeTabFilePath
+    ? detectPeriodicType(activeTabFilePath)
+    : null;
+
   // Auto-save hook (markdown files — Tiptap editor.on("update") based)
   useAutoSave(editor);
 
+  // File system watcher — auto-refresh FileTree on external changes
+  useFileWatcher();
+
+  // Page zoom — trackpad pinch + Cmd+/Cmd-/Cmd+0
+  useZoom();
+
+  // External file drag & drop — Tauri OS-level file drop (Feature 1 & 2)
+  useExternalDrop({ editor });
+
+  // §43 Ghost Text — inline AI completion
+  useGhostText(editor);
+
+  // §6.2 Inline AI — Cmd+J editing
+  const inlineAI = useInlineAI(editor);
+
+  // Apply settings to DOM (theme, font, spellcheck, locale)
+  useSettingsEffects(editor);
+
+  // --- Source mode (WYSIWYG ↔ raw markdown toggle) ---
+  // Must be called before useFileOperations and useTabSwitching because it owns
+  // editorStateCache and exposes isSourceMode / sourceContentRef they need.
+  const {
+    isSourceMode,
+    setIsSourceMode,
+    sourceContent,
+    setSourceContent,
+    sourceCursorOffset,
+    sourceEditorRef,
+    sourceContentRef,
+    editorStateCache,
+    toggleSourceMode,
+    handleSourceChange,
+  } = useSourceMode({ editor });
+
   // Auto-save for non-MD code files (debounced write when dirty)
-  const { autoSave, autoSaveDelay } = useSettingsStore();
+  const { autoSave, autoSaveDelay } = useSettingsStore(
+    useShallow((s) => ({
+      autoSave: s.autoSave,
+      autoSaveDelay: s.autoSaveDelay,
+    })),
+  );
   const { setFileContent } = useFileStore();
   const codeAutoSaveTimer = useRef<null | ReturnType<typeof setTimeout>>(null);
   useEffect(() => {
@@ -275,30 +319,8 @@ function App() {
     sourceContent,
     markDirty,
     setFileContent,
+    sourceContentRef,
   ]);
-
-  // File system watcher — auto-refresh FileTree on external changes
-  useFileWatcher();
-
-  // Page zoom — trackpad pinch + Cmd+/Cmd-/Cmd+0
-  useZoom();
-
-  // External file drag & drop — Tauri OS-level file drop (Feature 1 & 2)
-  useExternalDrop({ editor });
-
-  // §43 Ghost Text — inline AI completion
-  useGhostText(editor);
-
-  // §6.2 Inline AI — Cmd+J editing
-  const inlineAI = useInlineAI(editor);
-
-  // §3.2 One-time migration: localStorage → Tauri app_data_dir
-  useEffect(() => {
-    migrateFromLocalStorage().catch(() => {});
-  }, []);
-
-  // Apply settings to DOM (theme, font, spellcheck, locale)
-  useSettingsEffects(editor);
 
   // --- File operations ---
   const {
@@ -333,8 +355,9 @@ function App() {
   });
 
   // --- Tab switching ---
-  const { editorStateCache } = useTabSwitching({
+  useTabSwitching({
     editor,
+    editorStateCache,
     isNavBackForwardRef,
     isSourceMode,
     setFindReplaceMode,
@@ -354,12 +377,6 @@ function App() {
     setFindReplaceOpen,
   });
 
-  // Stable onChange for SourceCodeEditor — updates both ref and state
-  const handleSourceChange = useCallback((content: string) => {
-    sourceContentRef.current = content;
-    setSourceContent(content);
-  }, []);
-
   // onChange for non-MD code files — same as source but also marks dirty
   const handleCodeFileChange = useCallback(
     (content: string) => {
@@ -368,185 +385,17 @@ function App() {
       const { activeTabId: tabId } = useEditorStore.getState();
       if (tabId) markDirty(tabId, true);
     },
+    // setSourceContent (useState setter) and sourceContentRef (useRef) are stable —
+    // intentionally omitted from deps for consistency with toggleSourceMode pattern.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [markDirty],
   );
-
-  // Cmd+/ toggle between WYSIWYG and Source Code mode (§5.1 cursor preservation)
-  const toggleSourceMode = useCallback(() => {
-    if (!editor) return;
-    const { tabs: currentTabs, activeTabId: currentTabId } =
-      useEditorStore.getState();
-    const currentTab = currentTabs.find((t) => t.id === currentTabId);
-    // Graph tab / non-MD file — source mode not applicable
-    if (isGraphTab(currentTab)) return;
-    if (
-      currentTab &&
-      isFileTab(currentTab) &&
-      !isMarkdownFile(currentTab.filePath)
-    )
-      return;
-
-    if (!isSourceMode) {
-      // WYSIWYG → Source: collapse any active syntax reveal expansion first
-      // (SyntaxReveal replaces marks with literal delimiter text, which would
-      // cause remark-stringify to escape angle brackets like \<u>)
-      forceCollapseSyntaxReveal(editor.view);
-      const md = prosemirrorToMarkdown(editor.state.doc);
-      const pmPos = editor.state.selection.from;
-      const mdOffset = pmPosToMdOffset(editor.state.doc, pmPos, md);
-
-      sourceContentRef.current = md;
-      setSourceContent(md);
-      setSourceCursorOffset(mdOffset);
-      setIsSourceMode(true);
-    } else {
-      // Source → WYSIWYG
-      // Use original markdown unless the user actually edited in Source mode.
-      // WebKit injects "<!--  -->" into CodeMirror on focus — getContent()
-      // would return corrupted content if the user didn't edit.
-      const userEdited = sourceEditorRef.current?.hasUserEdited() ?? false;
-      const currentSource = userEdited
-        ? (sourceEditorRef.current?.getContent() ?? sourceContentRef.current)
-        : sourceContentRef.current;
-      const mdOffset = sourceEditorRef.current?.getCursorOffset() ?? 0;
-
-      const newDoc = markdownToProsemirror(currentSource, editor.schema);
-      const pmPos = mdOffsetToPmPos(newDoc, mdOffset, currentSource);
-
-      const clampedPos = Math.min(Math.max(pmPos, 0), newDoc.content.size);
-
-      // Update the document immediately so EditorContent renders correct
-      // content when it mounts. Use a temporary selection (atStart) because
-      // the DOM is detached — ProseMirror's selectionToDOM fails silently
-      // with detached DOM, and DOMObserver can overwrite our selection when
-      // the DOM re-attaches. The real cursor is set via dispatch in the RAF
-      // below, after EditorContent has mounted and DOM is attached.
-      const tempState = EditorState.create({
-        doc: newDoc,
-        plugins: editor.state.plugins,
-        selection: TextSelection.atStart(newDoc),
-      });
-      editor.view.updateState(tempState);
-
-      // Cache state with correct selection for tab-switching safety
-      const targetPos = clampedPos;
-      if (currentTabId) {
-        const sel = TextSelection.near(newDoc.resolve(clampedPos));
-        const cachedState = EditorState.create({
-          doc: newDoc,
-          plugins: editor.state.plugins,
-          selection: sel,
-        });
-        editorStateCache.current.set(currentTabId, cachedState);
-      }
-
-      setIsSourceMode(false);
-
-      // Apply cursor AFTER EditorContent mounts (DOM attached).
-      // Double RAF: first waits for React render, second for layout.
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          try {
-            const doc = editor.view.state.doc;
-            const pos = Math.min(targetPos, doc.content.size);
-            const resolvedSel = TextSelection.near(doc.resolve(pos));
-
-            // Suppress DOMObserver during focus+dispatch to prevent it
-            // from reading a stale native selection (from the previous
-            // EditorState) and overwriting our target cursor position.
-            // ProseMirror's view.focus() triggers DOMObserver flush which
-            // dispatches a transaction based on native selection — this
-            // races with our setSelection dispatch.
-            const domObserver = (
-              editor.view as { domObserver?: { start(): void; stop(): void } }
-            ).domObserver;
-            domObserver?.stop();
-            try {
-              editor.view.dispatch(
-                editor.view.state.tr.setSelection(resolvedSel).scrollIntoView(),
-              );
-              editor.view.focus();
-            } finally {
-              domObserver?.start();
-            }
-
-            // DOM-level scroll fallback for .editor-area-scroll
-            const domInfo = editor.view.domAtPos(resolvedSel.from);
-            const el =
-              domInfo.node instanceof HTMLElement
-                ? domInfo.node
-                : domInfo.node.parentElement;
-            el?.scrollIntoView({ block: "center" });
-          } catch {
-            // ignore focus errors
-          }
-        });
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- editorStateCache is a stable ref
-  }, [editor, isSourceMode]);
 
   // §56 Journal — auto-create today's journal on startup
   useJournal(handleOpenFilePath);
 
-  // onLaunch — restore folder/file on startup
-  const onLaunchDone = useRef(false);
-  // Capture latest handleNewFile in a ref so the mount-only effect does not need
-  // it as a dep (handleNewFile changes identity when `tabs` changes, which would
-  // incorrectly re-run the startup restore logic on every tab mutation).
-  const handleNewFileRef = useRef(handleNewFile);
-  handleNewFileRef.current = handleNewFile;
-  useEffect(() => {
-    if (onLaunchDone.current) return;
-    onLaunchDone.current = true;
-
-    const { onLaunch, lastOpenedFolder, lastOpenedFile } =
-      useSettingsStore.getState();
-
-    (async () => {
-      if (onLaunch === "restoreLastFolder" && lastOpenedFolder) {
-        try {
-          await openFolder(lastOpenedFolder);
-          useSettingsStore.getState().addRecentFolder(lastOpenedFolder);
-        } catch {
-          /* folder may have been deleted */
-        }
-      } else if (onLaunch === "restoreLastFile" && lastOpenedFolder) {
-        try {
-          await openFolder(lastOpenedFolder);
-          useSettingsStore.getState().addRecentFolder(lastOpenedFolder);
-          if (lastOpenedFile) {
-            await handleOpenFilePath(lastOpenedFile);
-          }
-        } catch {
-          /* ignore */
-        }
-      } else if (onLaunch === "newFile") {
-        handleNewFileRef.current();
-      }
-    })();
-  }, [handleOpenFilePath]);
-
-  // Listen for file open events from macOS (Finder "Open With" / double-click)
-  useEffect(() => {
-    // Cold start: check for files queued before frontend was ready
-    getOpenedUrls()
-      .then((paths) => {
-        for (const path of paths) {
-          handleOpenFilePath(path);
-        }
-      })
-      .catch(() => {});
-
-    // Hot open: listen for files opened while app is running
-    const unlisten = listen<string>("file:open-request", (event) => {
-      handleOpenFilePath(event.payload);
-    });
-
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, [handleOpenFilePath]);
+  // App startup side effects — migration, onLaunch restore, file open events
+  useAppStartup({ handleOpenFilePath, handleNewFile });
 
   // §39 Ctrl keyup — commit tab switcher selection
   useEffect(() => {
@@ -622,9 +471,8 @@ function App() {
   });
 
   return (
-    <>
+    <EditorProvider value={editor}>
       <AppLayout
-        editor={editor}
         statusBar={
           rootPath ? (
             <StatusBar
@@ -697,10 +545,10 @@ function App() {
               )}
               <MoodBar editor={editor} />
               <FollowUpCard editor={editor} />
-              {activeTabFilePath && detectPeriodicType(activeTabFilePath) && (
+              {periodicType && activeTabFilePath && (
                 <PeriodicInsightBanner
                   filePath={activeTabFilePath}
-                  type={detectPeriodicType(activeTabFilePath)!}
+                  type={periodicType}
                 />
               )}
               <div className="editor-area-scroll" data-editor-scroll>
@@ -785,7 +633,7 @@ function App() {
           selectedIndex={tabSwitcherIndex}
         />
       )}
-    </>
+    </EditorProvider>
   );
 }
 
@@ -811,7 +659,12 @@ function AppWithErrorBoundary() {
 }
 
 function SkillGeneratorDialogWrapper() {
-  const { skillGeneratorDialogOpen, toggleSkillGeneratorDialog } = useUIStore();
+  const { skillGeneratorDialogOpen, toggleSkillGeneratorDialog } = useUIStore(
+    useShallow((s) => ({
+      skillGeneratorDialogOpen: s.skillGeneratorDialogOpen,
+      toggleSkillGeneratorDialog: s.toggleSkillGeneratorDialog,
+    })),
+  );
   return (
     <SkillGeneratorDialog
       onClose={toggleSkillGeneratorDialog}
@@ -821,7 +674,12 @@ function SkillGeneratorDialogWrapper() {
 }
 
 function SkillTestDialogWrapper() {
-  const { skillTestDialogOpen, toggleSkillTestDialog } = useUIStore();
+  const { skillTestDialogOpen, toggleSkillTestDialog } = useUIStore(
+    useShallow((s) => ({
+      skillTestDialogOpen: s.skillTestDialogOpen,
+      toggleSkillTestDialog: s.toggleSkillTestDialog,
+    })),
+  );
   return (
     <SkillTestDialog
       onClose={toggleSkillTestDialog}

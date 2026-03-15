@@ -1,5 +1,5 @@
 // §35 Quick Switcher — file search utilities
-import type { FileEntry } from "../stores/file-store";
+import type { FileEntry } from "../stores/file/file";
 
 export interface FlatFile {
   name: string;

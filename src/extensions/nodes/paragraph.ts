@@ -1,6 +1,8 @@
 // §5.1 Paragraph Extension (default block)
 import { mergeAttributes, Node } from "@tiptap/core";
 
+import { htmlAttributesOptions } from "../utils/html-attributes-options";
+
 export interface ParagraphOptions {
   HTMLAttributes: Record<string, string>;
 }
@@ -11,11 +13,7 @@ export const Paragraph = Node.create<ParagraphOptions>({
   content: "inline*",
   priority: 1000,
 
-  addOptions() {
-    return {
-      HTMLAttributes: {},
-    };
-  },
+  ...htmlAttributesOptions,
 
   addAttributes() {
     return {

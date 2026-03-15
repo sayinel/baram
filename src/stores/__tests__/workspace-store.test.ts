@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { useUIStore } from "../ui-store";
-import { BUILTIN_PRESETS, useWorkspaceStore } from "../workspace-store";
+import { BUILTIN_PRESETS, useWorkspaceStore } from "../file/workspace";
+import { useUIStore } from "../ui/ui";
 
 describe("§52 Workspace Store", () => {
   beforeEach(async () => {

@@ -28,7 +28,7 @@ import {
   dispatchAIDiffStart,
 } from "../extensions/plugins/ai-diff";
 import { llmCancel, llmComplete } from "../ipc/invoke";
-import { useAIStore } from "../stores/ai-store";
+import { useAIStore } from "../stores/ai/ai";
 import { getConfigForTask } from "../utils/model-selection";
 import { getFilePrivacy, isLLMAllowed } from "../utils/privacy-check";
 

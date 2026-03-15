@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ask } from "@tauri-apps/plugin-dialog";
 
-import { isFileTab, useEditorStore } from "../../stores/editor-store";
+import { useShallow } from "zustand/shallow";
+
+import { isFileTab, useEditorStore } from "../../stores/editor/editor";
 
 const DRAG_THRESHOLD = 3; // px before drag activates
 
@@ -24,7 +26,18 @@ export function TabBar() {
     togglePinTab,
     closeOtherTabs,
     closeTabsToRight,
-  } = useEditorStore();
+  } = useEditorStore(
+    useShallow((s) => ({
+      tabs: s.tabs,
+      activeTabId: s.activeTabId,
+      setActiveTab: s.setActiveTab,
+      closeTab: s.closeTab,
+      reorderTab: s.reorderTab,
+      togglePinTab: s.togglePinTab,
+      closeOtherTabs: s.closeOtherTabs,
+      closeTabsToRight: s.closeTabsToRight,
+    })),
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);

@@ -1,7 +1,7 @@
 import type { NodeTransformerEntry } from "../types";
 // table-of-contents-transformer.ts — [TOC] mdast ↔ ProseMirror
 import type { Node as PmNode, Schema } from "@tiptap/pm/model";
-import type { Node as MdastNode } from "mdast";
+import type { Html, Node as MdastNode } from "mdast";
 
 export const tableOfContentsTransformer: NodeTransformerEntry = {
   mdastType: "tableOfContents",
@@ -12,6 +12,6 @@ export const tableOfContentsTransformer: NodeTransformerEntry = {
   },
 
   pmToMdast(_node: PmNode): MdastNode {
-    return { type: "html", value: "[TOC]" } as unknown as MdastNode;
+    return { type: "html", value: "[TOC]" } satisfies Html as MdastNode;
   },
 };

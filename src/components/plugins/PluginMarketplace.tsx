@@ -1,9 +1,164 @@
 // §69 Plugin Marketplace — Main sidebar panel with Browse / Installed / Updates tabs
-import { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
+
+// Module-level style constants — avoids creating new object references on every render
+const STYLES = {
+  container: {
+    display: "flex",
+    flexDirection: "column",
+    height: "100%",
+  } as React.CSSProperties,
+  header: { padding: "12px 16px 0" } as React.CSSProperties,
+  title: {
+    margin: "0 0 12px",
+    fontSize: "14px",
+    fontWeight: 600,
+    color: "var(--color-text, #111)",
+  } as React.CSSProperties,
+  tabBar: {
+    display: "flex",
+    gap: "0",
+    borderBottom: "1px solid var(--color-border, #e5e7eb)",
+    marginBottom: "8px",
+  } as React.CSSProperties,
+  searchInput: {
+    width: "100%",
+    padding: "8px 12px",
+    borderRadius: "6px",
+    fontSize: "13px",
+    border: "1px solid var(--color-border, #e5e7eb)",
+    backgroundColor: "var(--color-bg, #fff)",
+    color: "var(--color-text, #111)",
+    outline: "none",
+    boxSizing: "border-box",
+    marginBottom: "8px",
+  } as React.CSSProperties,
+  content: { flex: 1, overflowY: "auto" } as React.CSSProperties,
+  centeredMessage: {
+    padding: "32px 16px",
+    textAlign: "center",
+    color: "var(--color-text-muted, #9ca3af)",
+    fontSize: "13px",
+  } as React.CSSProperties,
+  errorMessage: {
+    padding: "16px",
+    textAlign: "center",
+    color: "var(--color-text-muted, #6b7280)",
+    fontSize: "13px",
+  } as React.CSSProperties,
+  errorSubtext: { fontSize: "12px", opacity: 0.7 } as React.CSSProperties,
+  retryButton: {
+    marginTop: "8px",
+    padding: "6px 12px",
+    borderRadius: "6px",
+    fontSize: "12px",
+    cursor: "pointer",
+    backgroundColor: "var(--color-accent, #3b82f6)",
+    color: "#fff",
+    border: "none",
+  } as React.CSSProperties,
+  loadingMessage: {
+    padding: "32px 16px",
+    textAlign: "center",
+    color: "var(--color-text-muted, #6b7280)",
+    fontSize: "13px",
+  } as React.CSSProperties,
+  installedRow: {
+    borderBottom: "1px solid var(--color-border, #e5e7eb)",
+  } as React.CSSProperties,
+  installedRowInner: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "12px 16px",
+  } as React.CSSProperties,
+  installedRowInfo: { flex: 1, minWidth: 0 } as React.CSSProperties,
+  installedRowNameRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+  } as React.CSSProperties,
+  installedPluginName: {
+    fontWeight: 600,
+    fontSize: "14px",
+    color: "var(--color-text, #111)",
+  } as React.CSSProperties,
+  installedPluginVersion: {
+    fontSize: "12px",
+    color: "var(--color-text-muted, #6b7280)",
+  } as React.CSSProperties,
+  installedPluginError: {
+    fontSize: "11px",
+    color: "var(--color-error, #dc2626)",
+    fontWeight: 500,
+  } as React.CSSProperties,
+  installedPluginDescription: {
+    margin: "2px 0 0",
+    fontSize: "12px",
+    color: "var(--color-text-secondary, #4b5563)",
+  } as React.CSSProperties,
+  installedRowActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    flexShrink: 0,
+  } as React.CSSProperties,
+  updateButton: {
+    padding: "4px 12px",
+    borderRadius: "4px",
+    fontSize: "12px",
+    backgroundColor: "#f59e0b",
+    color: "#fff",
+    border: "none",
+    cursor: "pointer",
+  } as React.CSSProperties,
+  toggleLabel: {
+    display: "flex",
+    alignItems: "center",
+    cursor: "pointer",
+  } as React.CSSProperties,
+  toggleCheckbox: { marginRight: "4px" } as React.CSSProperties,
+  toggleText: {
+    fontSize: "12px",
+    color: "var(--color-text-muted, #6b7280)",
+  } as React.CSSProperties,
+  removeButton: {
+    padding: "4px 8px",
+    borderRadius: "4px",
+    fontSize: "12px",
+    backgroundColor: "transparent",
+    color: "var(--color-error, #dc2626)",
+    border: "1px solid var(--color-error, #dc2626)",
+    cursor: "pointer",
+  } as React.CSSProperties,
+  tabButtonActive: {
+    padding: "6px 12px",
+    fontSize: "13px",
+    fontWeight: 600,
+    color: "var(--color-accent, #3b82f6)",
+    backgroundColor: "transparent",
+    border: "none",
+    cursor: "pointer",
+    borderBottom: "2px solid var(--color-accent, #3b82f6)",
+    marginBottom: "-1px",
+  } as React.CSSProperties,
+  tabButtonInactive: {
+    padding: "6px 12px",
+    fontSize: "13px",
+    fontWeight: 400,
+    color: "var(--color-text-muted, #6b7280)",
+    backgroundColor: "transparent",
+    border: "none",
+    cursor: "pointer",
+    borderBottom: "2px solid transparent",
+    marginBottom: "-1px",
+  } as React.CSSProperties,
+};
 
 import type {
   InstalledPlugin,
   PluginCapability,
+  PluginStatus,
   RegistryEntry,
   RegistryIndex,
 } from "../../plugins/types";
@@ -16,7 +171,7 @@ import {
   searchRegistry,
 } from "../../plugins/registry-client";
 import { CAPABILITY_DESCRIPTIONS } from "../../plugins/types";
-import { usePluginStore } from "../../stores/plugin-store";
+import { usePluginStore } from "../../stores/system/plugin";
 import { PluginCard } from "./PluginCard";
 import { PluginDetail } from "./PluginDetail";
 
@@ -201,15 +356,11 @@ export function PluginMarketplace() {
   // If detail view is showing
   if (selectedEntry) {
     const plugin = installedPlugins[selectedEntry.id];
-    const detailStatus: import("../../plugins/types").PluginStatus = installing[
-      selectedEntry.id
-    ]
-      ? "installing"
-      : !plugin
-        ? "not-installed"
-        : plugin.enabled
-          ? "enabled"
-          : "disabled";
+    const detailStatus: PluginStatus = getPluginStatus(
+      selectedEntry.id,
+      installing,
+      plugin,
+    );
     return (
       <PluginDetail
         entry={selectedEntry}
@@ -227,54 +378,23 @@ export function PluginMarketplace() {
   }
 
   return (
-    <div
-      className="plugin-marketplace"
-      style={{ display: "flex", flexDirection: "column", height: "100%" }}
-    >
+    <div className="plugin-marketplace" style={STYLES.container}>
       {/* Header */}
-      <div style={{ padding: "12px 16px 0" }}>
-        <h2
-          style={{
-            margin: "0 0 12px",
-            fontSize: "14px",
-            fontWeight: 600,
-            color: "var(--color-text, #111)",
-          }}
-        >
-          Plugins
-        </h2>
+      <div style={STYLES.header}>
+        <h2 style={STYLES.title}>Plugins</h2>
 
         {/* Tabs */}
-        <div
-          style={{
-            display: "flex",
-            gap: "0",
-            borderBottom: "1px solid var(--color-border, #e5e7eb)",
-            marginBottom: "8px",
-          }}
-        >
+        <div style={STYLES.tabBar}>
           {(["browse", "installed", "updates"] as MarketplaceTab[]).map(
             (tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                style={{
-                  padding: "6px 12px",
-                  fontSize: "13px",
-                  fontWeight: activeTab === tab ? 600 : 400,
-                  color:
-                    activeTab === tab
-                      ? "var(--color-accent, #3b82f6)"
-                      : "var(--color-text-muted, #6b7280)",
-                  backgroundColor: "transparent",
-                  border: "none",
-                  cursor: "pointer",
-                  borderBottom:
-                    activeTab === tab
-                      ? "2px solid var(--color-accent, #3b82f6)"
-                      : "2px solid transparent",
-                  marginBottom: "-1px",
-                }}
+                style={
+                  activeTab === tab
+                    ? STYLES.tabButtonActive
+                    : STYLES.tabButtonInactive
+                }
               >
                 {tab === "browse"
                   ? "Browse"
@@ -291,18 +411,7 @@ export function PluginMarketplace() {
           <input
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search plugins..."
-            style={{
-              width: "100%",
-              padding: "8px 12px",
-              borderRadius: "6px",
-              fontSize: "13px",
-              border: "1px solid var(--color-border, #e5e7eb)",
-              backgroundColor: "var(--color-bg, #fff)",
-              color: "var(--color-text, #111)",
-              outline: "none",
-              boxSizing: "border-box",
-              marginBottom: "8px",
-            }}
+            style={STYLES.searchInput}
             type="text"
             value={searchQuery}
           />
@@ -310,19 +419,12 @@ export function PluginMarketplace() {
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflowY: "auto" }}>
+      <div style={STYLES.content}>
         {/* Error state */}
         {error && activeTab === "browse" && (
-          <div
-            style={{
-              padding: "16px",
-              textAlign: "center",
-              color: "var(--color-text-muted, #6b7280)",
-              fontSize: "13px",
-            }}
-          >
+          <div style={STYLES.errorMessage}>
             <p>Failed to load registry</p>
-            <p style={{ fontSize: "12px", opacity: 0.7 }}>{error}</p>
+            <p style={STYLES.errorSubtext}>{error}</p>
             <button
               onClick={() => {
                 setLoading(true);
@@ -331,16 +433,7 @@ export function PluginMarketplace() {
                   .catch((e) => setFetchError(String(e)))
                   .finally(() => setLoading(false));
               }}
-              style={{
-                marginTop: "8px",
-                padding: "6px 12px",
-                borderRadius: "6px",
-                fontSize: "12px",
-                cursor: "pointer",
-                backgroundColor: "var(--color-accent, #3b82f6)",
-                color: "#fff",
-                border: "none",
-              }}
+              style={STYLES.retryButton}
             >
               Retry
             </button>
@@ -349,16 +442,7 @@ export function PluginMarketplace() {
 
         {/* Loading state */}
         {loading && activeTab === "browse" && (
-          <div
-            style={{
-              padding: "32px 16px",
-              textAlign: "center",
-              color: "var(--color-text-muted, #6b7280)",
-              fontSize: "13px",
-            }}
-          >
-            Loading plugins...
-          </div>
+          <div style={STYLES.loadingMessage}>Loading plugins...</div>
         )}
 
         {/* Browse tab */}
@@ -366,27 +450,17 @@ export function PluginMarketplace() {
           !loading &&
           !error &&
           (filteredPlugins.length === 0 ? (
-            <div
-              style={{
-                padding: "32px 16px",
-                textAlign: "center",
-                color: "var(--color-text-muted, #9ca3af)",
-                fontSize: "13px",
-              }}
-            >
+            <div style={STYLES.centeredMessage}>
               {searchQuery ? "No plugins found" : "No plugins available"}
             </div>
           ) : (
             filteredPlugins.map((entry) => {
               const cardPlugin = installedPlugins[entry.id];
-              const cardStatus: import("../../plugins/types").PluginStatus =
-                installing[entry.id]
-                  ? "installing"
-                  : !cardPlugin
-                    ? "not-installed"
-                    : cardPlugin.enabled
-                      ? "enabled"
-                      : "disabled";
+              const cardStatus: PluginStatus = getPluginStatus(
+                entry.id,
+                installing,
+                cardPlugin,
+              );
               return (
                 <PluginCard
                   entry={entry}
@@ -405,16 +479,7 @@ export function PluginMarketplace() {
         {/* Installed tab */}
         {activeTab === "installed" &&
           (installedList.length === 0 ? (
-            <div
-              style={{
-                padding: "32px 16px",
-                textAlign: "center",
-                color: "var(--color-text-muted, #9ca3af)",
-                fontSize: "13px",
-              }}
-            >
-              No plugins installed
-            </div>
+            <div style={STYLES.centeredMessage}>No plugins installed</div>
           ) : (
             installedList.map((plugin) => {
               const entry: RegistryEntry = {
@@ -424,126 +489,49 @@ export function PluginMarketplace() {
                 downloads: undefined,
               };
               return (
-                <div
-                  key={plugin.manifest.id}
-                  style={{
-                    borderBottom: "1px solid var(--color-border, #e5e7eb)",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      padding: "12px 16px",
-                    }}
-                  >
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontWeight: 600,
-                            fontSize: "14px",
-                            color: "var(--color-text, #111)",
-                          }}
-                        >
+                <div key={plugin.manifest.id} style={STYLES.installedRow}>
+                  <div style={STYLES.installedRowInner}>
+                    <div style={STYLES.installedRowInfo}>
+                      <div style={STYLES.installedRowNameRow}>
+                        <span style={STYLES.installedPluginName}>
                           {plugin.manifest.name}
                         </span>
-                        <span
-                          style={{
-                            fontSize: "12px",
-                            color: "var(--color-text-muted, #6b7280)",
-                          }}
-                        >
+                        <span style={STYLES.installedPluginVersion}>
                           v{plugin.manifest.version}
                         </span>
                         {pluginErrors[plugin.manifest.id] && (
-                          <span
-                            style={{
-                              fontSize: "11px",
-                              color: "var(--color-error, #dc2626)",
-                              fontWeight: 500,
-                            }}
-                          >
-                            Error
-                          </span>
+                          <span style={STYLES.installedPluginError}>Error</span>
                         )}
                       </div>
-                      <p
-                        style={{
-                          margin: "2px 0 0",
-                          fontSize: "12px",
-                          color: "var(--color-text-secondary, #4b5563)",
-                        }}
-                      >
+                      <p style={STYLES.installedPluginDescription}>
                         {plugin.manifest.description}
                       </p>
                     </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        flexShrink: 0,
-                      }}
-                    >
+                    <div style={STYLES.installedRowActions}>
                       {updateAvailable[plugin.manifest.id] && (
                         <button
                           onClick={() => handleUpdate(entry)}
-                          style={{
-                            padding: "4px 12px",
-                            borderRadius: "4px",
-                            fontSize: "12px",
-                            backgroundColor: "#f59e0b",
-                            color: "#fff",
-                            border: "none",
-                            cursor: "pointer",
-                          }}
+                          style={STYLES.updateButton}
                         >
                           Update
                         </button>
                       )}
-                      <label
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          cursor: "pointer",
-                        }}
-                      >
+                      <label style={STYLES.toggleLabel}>
                         <input
                           checked={plugin.enabled}
                           onChange={() =>
                             handleToggleEnabled(plugin.manifest.id)
                           }
-                          style={{ marginRight: "4px" }}
+                          style={STYLES.toggleCheckbox}
                           type="checkbox"
                         />
-                        <span
-                          style={{
-                            fontSize: "12px",
-                            color: "var(--color-text-muted, #6b7280)",
-                          }}
-                        >
+                        <span style={STYLES.toggleText}>
                           {plugin.enabled ? "On" : "Off"}
                         </span>
                       </label>
                       <button
                         onClick={() => handleUninstall(plugin.manifest.id)}
-                        style={{
-                          padding: "4px 8px",
-                          borderRadius: "4px",
-                          fontSize: "12px",
-                          backgroundColor: "transparent",
-                          color: "var(--color-error, #dc2626)",
-                          border: "1px solid var(--color-error, #dc2626)",
-                          cursor: "pointer",
-                        }}
+                        style={STYLES.removeButton}
                       >
                         Remove
                       </button>
@@ -557,28 +545,18 @@ export function PluginMarketplace() {
         {/* Updates tab */}
         {activeTab === "updates" &&
           (updatesCount === 0 ? (
-            <div
-              style={{
-                padding: "32px 16px",
-                textAlign: "center",
-                color: "var(--color-text-muted, #9ca3af)",
-                fontSize: "13px",
-              }}
-            >
-              All plugins are up to date
-            </div>
+            <div style={STYLES.centeredMessage}>All plugins are up to date</div>
           ) : (
             Object.entries(updateAvailable).map(([id, version]) => {
               const plugin = installedPlugins[id];
               if (!plugin) return null;
               const entry = registryIndex?.plugins.find((p) => p.id === id);
               if (!entry) return null;
-              const updateCardStatus: import("../../plugins/types").PluginStatus =
-                installing[id]
-                  ? "installing"
-                  : plugin.enabled
-                    ? "enabled"
-                    : "disabled";
+              const updateCardStatus: PluginStatus = getPluginStatus(
+                id,
+                installing,
+                plugin,
+              );
               return (
                 <PluginCard
                   entry={entry}
@@ -596,4 +574,14 @@ export function PluginMarketplace() {
       </div>
     </div>
   );
+}
+
+function getPluginStatus(
+  id: string,
+  installing: Record<string, boolean>,
+  plugin: undefined | { enabled: boolean },
+): PluginStatus {
+  if (installing[id]) return "installing";
+  if (!plugin) return "not-installed";
+  return plugin.enabled ? "enabled" : "disabled";
 }

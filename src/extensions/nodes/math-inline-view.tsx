@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 
-import { preprocessNotionFormula } from "../../utils/notion-katex-compat";
+import { preprocessNotionFormula } from "../../utils/export/notion-katex-compat";
 
 export function MathInlineView({ node, selected }: NodeViewProps) {
   const formula = (node.attrs.formula as string) || "";

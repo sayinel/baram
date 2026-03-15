@@ -2,21 +2,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { readFile } from "../../ipc/invoke";
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
-import { useSettingsStore } from "../../stores/settings-store";
-import { resolveJournalDir } from "../../utils/journal";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
+import { useSettingsStore } from "../../stores/settings/store";
+import { resolveJournalDir } from "../../utils/journal/journal";
 import {
   calculateMonthStats,
   calculateStreak,
-} from "../../utils/journal-stats";
+} from "../../utils/journal/journal-stats";
 import {
   buildFullCache,
   type JournalStatsCache,
   readStatsCache,
   updateCacheEntry,
   writeStatsCache,
-} from "../../utils/journal-stats-cache";
+} from "../../utils/journal/journal-stats-cache";
 import { ContributionHeatmap, type HeatmapEntry } from "./ContributionHeatmap";
 
 /** One day in milliseconds — cache is considered fresh if lastFullScan is within this. */

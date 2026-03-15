@@ -4,7 +4,9 @@ import { useEffect } from "react";
 import type { ThemeColors } from "../types/theme";
 import type { Editor } from "@tiptap/core";
 
-import { useSettingsStore } from "../stores/settings-store";
+import { useShallow } from "zustand/shallow";
+
+import { useSettingsStore } from "../stores/settings/store";
 import { findThemeById } from "../types/theme";
 import { logger } from "../utils/logger";
 
@@ -17,7 +19,17 @@ export function useSettingsEffects(editor: Editor | null) {
     lineHeight,
     spellCheck,
     editorMaxWidth,
-  } = useSettingsStore();
+  } = useSettingsStore(
+    useShallow((s) => ({
+      activeThemeId: s.activeThemeId,
+      customThemes: s.customThemes,
+      fontSize: s.fontSize,
+      fontFamily: s.fontFamily,
+      lineHeight: s.lineHeight,
+      spellCheck: s.spellCheck,
+      editorMaxWidth: s.editorMaxWidth,
+    })),
+  );
 
   useEffect(() => {
     const root = document.documentElement;

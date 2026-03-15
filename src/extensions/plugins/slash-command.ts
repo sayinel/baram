@@ -17,11 +17,11 @@ import {
   type SlashMenuRef,
 } from "../../components/command/SlashMenu";
 import { copyFile, createDir } from "../../ipc/invoke";
-import { useAIStore } from "../../stores/ai-store";
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
-import { useSettingsStore } from "../../stores/settings-store";
-import { useUIStore } from "../../stores/ui-store";
+import { useAIStore } from "../../stores/ai/ai";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
+import { useSettingsStore } from "../../stores/settings/store";
+import { useUIStore } from "../../stores/ui/ui";
 import {
   AI_EXPAND,
   AI_EXPLAIN,
@@ -40,7 +40,10 @@ import {
   substituteVariables,
 } from "../../utils/custom-ai-commands";
 import { showFieldDialog } from "../../utils/field-dialog";
-import { generatePhotoFilename, getAssetsDir } from "../../utils/journal-photo";
+import {
+  generatePhotoFilename,
+  getAssetsDir,
+} from "../../utils/journal/journal-photo";
 import { showTableGridPicker } from "../../utils/table-grid-picker";
 
 export function buildSlashItems(editor: Editor): SlashMenuItem[] {

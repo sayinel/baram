@@ -5,11 +5,11 @@ import type { NodeViewProps } from "@tiptap/react";
 
 import { readFile, updateFileIndex, writeFile } from "../ipc/invoke";
 import { prosemirrorToMarkdown } from "../pipeline/pm-to-md";
-import { useEditorStore } from "../stores/editor-store";
-import { useFileStore } from "../stores/file-store";
-import { findBlockContent, findBlockPosById } from "../utils/block-nav";
-import { replaceBlockInContent } from "../utils/block-replace";
-import { resolveWikilinkTarget } from "../utils/wikilink-nav";
+import { useEditorStore } from "../stores/editor/editor";
+import { useFileStore } from "../stores/file/file";
+import { findBlockContent, findBlockPosById } from "../utils/editor/block-nav";
+import { replaceBlockInContent } from "../utils/editor/block-replace";
+import { resolveWikilinkTarget } from "../utils/editor/wikilink-nav";
 
 type EmbedStatus =
   | "block-not-found"
@@ -202,14 +202,19 @@ export function useEmbedSync({
     setIsEditing(false);
   }, [syncToSource]);
 
-  // Cleanup debounce on unmount
+  // Cleanup debounce on unmount — flush any pending write synchronously
   useEffect(() => {
     return () => {
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+      if (pendingTextRef.current !== null) {
+        syncToSource(pendingTextRef.current);
+        pendingTextRef.current = null;
       }
     };
-  }, []);
+  }, [syncToSource]);
 
   return {
     content,

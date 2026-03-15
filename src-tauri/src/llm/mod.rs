@@ -29,12 +29,24 @@ pub enum LlmError {
     UnknownProvider(String),
     #[error("Request cancelled")]
     Cancelled,
+    #[error("Invalid base_url '{0}': must start with http:// or https://")]
+    InvalidBaseUrl(String),
+}
+
+/// Validate that a user-supplied base URL uses only http/https schemes.
+/// Prevents SSRF via file://, ftp://, or other non-HTTP protocols.
+/// localhost/127.0.0.1 are intentionally allowed (needed for Ollama).
+fn validate_base_url(url: &str) -> Result<(), LlmError> {
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        return Err(LlmError::InvalidBaseUrl(url.to_string()));
+    }
+    Ok(())
 }
 
 /// Default base URLs for each provider
 const OPENAI_DEFAULT_BASE_URL: &str = "https://api.openai.com";
 const OLLAMA_DEFAULT_BASE_URL: &str = "http://localhost:11434";
-// Note: Gemini uses API key in query params, not a configurable base URL
+// Note: Gemini uses x-goog-api-key header for authentication, not a configurable base URL
 
 /// Multi-provider LLM streaming dispatch.
 ///
@@ -61,6 +73,13 @@ pub async fn complete(
         return Err(LlmError::PrivacyBlocked(provider.to_string()));
     }
 
+    // Validate base_url up-front for all providers (SSRF prevention).
+    // Individual provider branches may also validate, but this ensures any
+    // future provider that adds base_url support is protected by default.
+    if let Some(url) = base_url {
+        validate_base_url(url)?;
+    }
+
     match provider {
         "claude" => {
             claude::complete_stream(
@@ -78,6 +97,7 @@ pub async fn complete(
         }
         "openai" => {
             let url = base_url.unwrap_or(OPENAI_DEFAULT_BASE_URL);
+            validate_base_url(url)?;
             openai::complete_stream(
                 api_key,
                 prompt,
@@ -94,6 +114,7 @@ pub async fn complete(
         }
         "ollama" => {
             let url = base_url.unwrap_or(OLLAMA_DEFAULT_BASE_URL);
+            validate_base_url(url)?;
             ollama::complete_stream(
                 prompt,
                 model,
@@ -131,14 +152,21 @@ pub async fn list_models(
     api_key: &str,
     base_url: Option<&str>,
 ) -> Result<Vec<ModelInfo>, LlmError> {
+    // Validate base_url up-front for all providers (SSRF prevention).
+    if let Some(url) = base_url {
+        validate_base_url(url)?;
+    }
+
     match provider {
         "claude" => claude::list_models(api_key).await,
         "openai" => {
             let url = base_url.unwrap_or(OPENAI_DEFAULT_BASE_URL);
+            validate_base_url(url)?;
             openai::list_models(api_key, url).await
         }
         "ollama" => {
             let url = base_url.unwrap_or(OLLAMA_DEFAULT_BASE_URL);
+            validate_base_url(url)?;
             ollama::list_models(url).await
         }
         "gemini" => gemini::list_models(api_key).await,

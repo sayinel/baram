@@ -1,9 +1,9 @@
 // Integration: AI Edit Workflow — store state transitions + ghost text + provider settings
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { useAIStore } from "../../stores/ai-store";
-import { useEditorStore } from "../../stores/editor-store";
-import { useSettingsStore } from "../../stores/settings-store";
+import { useAIStore } from "../../stores/ai/ai";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useSettingsStore } from "../../stores/settings/store";
 
 describe("Integration: AI Edit Workflow", () => {
   beforeEach(() => {

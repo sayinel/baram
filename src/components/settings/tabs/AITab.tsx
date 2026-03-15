@@ -4,7 +4,7 @@ import type { ModelInfo } from "../../../ipc/types";
 
 import { useTranslation } from "../../../i18n/useTranslation";
 import { llmListModels } from "../../../ipc/invoke";
-import { type AIProvider, useAIStore } from "../../../stores/ai-store";
+import { type AIProvider, useAIStore } from "../../../stores/ai/ai";
 import { formatAIError } from "../../../utils/format-error";
 import { CustomAICommandEditor } from "../CustomAICommandEditor";
 import {

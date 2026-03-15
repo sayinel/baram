@@ -6,7 +6,9 @@ import {
   mergeAttributes,
 } from "@tiptap/core";
 
+import { htmlAttributesOptions } from "../utils/html-attributes-options";
 import { resolveShortcut } from "../utils/shortcut-resolver";
+import { makeMarkCommands } from "./make-mark-commands";
 
 export interface BoldOptions {
   HTMLAttributes: Record<string, string>;
@@ -29,9 +31,7 @@ const starPasteRegex = /(?:^|\s)(\*\*(?!\s+\*\*)((?:[^*]+))\*\*)/g;
 export const Bold = Mark.create<BoldOptions>({
   name: "bold",
 
-  addOptions() {
-    return { HTMLAttributes: {} };
-  },
+  ...htmlAttributesOptions,
 
   parseHTML() {
     return [
@@ -55,20 +55,7 @@ export const Bold = Mark.create<BoldOptions>({
   },
 
   addCommands() {
-    return {
-      setBold:
-        () =>
-        ({ commands }) =>
-          commands.setMark(this.name),
-      toggleBold:
-        () =>
-        ({ commands }) =>
-          commands.toggleMark(this.name),
-      unsetBold:
-        () =>
-        ({ commands }) =>
-          commands.unsetMark(this.name),
-    };
+    return makeMarkCommands(this.name);
   },
 
   addKeyboardShortcuts() {
