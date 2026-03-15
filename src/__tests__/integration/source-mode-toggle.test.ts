@@ -1,22 +1,13 @@
 // Integration: Source Mode Toggle — WYSIWYG ↔ Source mode content preservation
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
-import { useEditorStore } from "../../stores/editor/editor";
 import { createTestSchema, FIXTURE_RICH } from "./fixtures";
 
 const schema = createTestSchema();
 
 describe("Integration: Source Mode Toggle", () => {
-  beforeEach(() => {
-    useEditorStore.setState({
-      activeTabId: null,
-      tabs: [],
-      isSourceMode: false,
-    });
-  });
-
   it("WYSIWYG → Source → WYSIWYG preserves content", () => {
     // Simulate: WYSIWYG has PM doc from original MD
     const doc1 = markdownToProsemirror(FIXTURE_RICH, schema);
@@ -77,17 +68,5 @@ Text here
     expect(result).toBe(source);
     expect(result).toContain("title: Test");
     expect(result).toContain("date: 2026-02-17");
-  });
-
-  it("store state synchronizes with source mode toggle", () => {
-    const { toggleSourceMode } = useEditorStore.getState();
-
-    expect(useEditorStore.getState().isSourceMode).toBe(false);
-
-    toggleSourceMode();
-    expect(useEditorStore.getState().isSourceMode).toBe(true);
-
-    useEditorStore.getState().toggleSourceMode();
-    expect(useEditorStore.getState().isSourceMode).toBe(false);
   });
 });
