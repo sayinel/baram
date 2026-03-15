@@ -18,8 +18,8 @@ beforeEach(() => {
 // ─── Built-in themes ─────────────────────────────────────────────────────────
 
 describe("Built-in themes", () => {
-  it("has exactly 6 built-in themes", () => {
-    expect(BUILT_IN_THEMES).toHaveLength(6);
+  it("has exactly 8 built-in themes", () => {
+    expect(BUILT_IN_THEMES).toHaveLength(8);
   });
 
   it("includes default-light and default-dark", () => {

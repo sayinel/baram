@@ -5,16 +5,16 @@
 // ---------------------------------------------------------------------------
 
 export interface ThemeColors {
-  "--color-accent": string;
+  "--color-accent-default": string;
   "--color-accent-hover": string;
-  "--color-bg-primary": string;
-  "--color-bg-secondary": string;
+  "--color-bg-default": string;
+  "--color-bg-elevated": string;
 
-  "--color-bg-sidebar": string;
-  "--color-bg-tertiary": string;
-  "--color-border": string;
+  "--color-bg-panel": string;
+  "--color-bg-subtle": string;
+  "--color-border-default": string;
 
-  "--color-border-light": string;
+  "--color-border-subtle": string;
   "--color-editor-bg": string;
 
   "--color-editor-cursor": string;
@@ -22,7 +22,7 @@ export interface ThemeColors {
 
   "--color-editor-selection": string;
   "--color-editor-text": string;
-  "--color-text-muted": string;
+  "--color-text-disabled": string;
   "--color-text-primary": string;
   "--color-text-secondary": string;
 }
@@ -50,22 +50,22 @@ export const THEME_COLOR_KEYS: {
 }[] = [
   // Background
   {
-    key: "--color-bg-primary",
+    key: "--color-bg-default",
     label: "Primary Background",
     category: "Background",
   },
   {
-    key: "--color-bg-secondary",
+    key: "--color-bg-subtle",
     label: "Secondary Background",
     category: "Background",
   },
   {
-    key: "--color-bg-sidebar",
+    key: "--color-bg-panel",
     label: "Sidebar Background",
     category: "Background",
   },
   {
-    key: "--color-bg-tertiary",
+    key: "--color-bg-elevated",
     label: "Tertiary Background",
     category: "Background",
   },
@@ -73,14 +73,14 @@ export const THEME_COLOR_KEYS: {
   // Text
   { key: "--color-text-primary", label: "Primary Text", category: "Text" },
   { key: "--color-text-secondary", label: "Secondary Text", category: "Text" },
-  { key: "--color-text-muted", label: "Muted Text", category: "Text" },
+  { key: "--color-text-disabled", label: "Muted Text", category: "Text" },
 
   // Border
-  { key: "--color-border", label: "Border", category: "Border" },
-  { key: "--color-border-light", label: "Light Border", category: "Border" },
+  { key: "--color-border-default", label: "Border", category: "Border" },
+  { key: "--color-border-subtle", label: "Light Border", category: "Border" },
 
   // Accent
-  { key: "--color-accent", label: "Accent", category: "Accent" },
+  { key: "--color-accent-default", label: "Accent", category: "Accent" },
   { key: "--color-accent-hover", label: "Accent Hover", category: "Accent" },
 
   // Editor
@@ -100,7 +100,50 @@ export const THEME_COLOR_KEYS: {
 ];
 
 // ---------------------------------------------------------------------------
-// 4. BUILT_IN_THEMES — 6 shipped themes
+// 4. Theme key migration map (v9 → v10)
+// ---------------------------------------------------------------------------
+
+/** Old CSS variable key → new key. Used by settings migration v10. */
+export const THEME_KEY_MIGRATION_V10: Record<string, keyof ThemeColors> = {
+  "--color-accent": "--color-accent-default",
+  "--color-bg-primary": "--color-bg-default",
+  "--color-bg-secondary": "--color-bg-subtle",
+  "--color-bg-sidebar": "--color-bg-panel",
+  "--color-bg-tertiary": "--color-bg-elevated",
+  "--color-border": "--color-border-default",
+  "--color-border-light": "--color-border-subtle",
+  "--color-text-muted": "--color-text-disabled",
+};
+
+/**
+ * Migrate a ThemeColors object from old key names to new key names.
+ * Keys that don't need migration are passed through unchanged.
+ * Missing keys are filled from `fallback` (defaults to Default Light).
+ */
+export function migrateThemeColors(
+  old: Record<string, string>,
+  fallback?: ThemeColors,
+): ThemeColors {
+  const migrated: Record<string, string> = {};
+
+  for (const [key, value] of Object.entries(old)) {
+    const newKey = THEME_KEY_MIGRATION_V10[key] ?? key;
+    migrated[newKey] = value;
+  }
+
+  // Fill any missing keys from fallback
+  const defaults = fallback ?? BUILT_IN_THEMES[0].colors;
+  for (const key of Object.keys(defaults)) {
+    if (!(key in migrated)) {
+      migrated[key] = defaults[key as keyof ThemeColors];
+    }
+  }
+
+  return migrated as unknown as ThemeColors;
+}
+
+// ---------------------------------------------------------------------------
+// 5. BUILT_IN_THEMES — 6 shipped themes
 // ---------------------------------------------------------------------------
 
 export const BUILT_IN_THEMES: ThemeDef[] = [
@@ -111,19 +154,19 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
     base: "light",
     builtIn: true,
     colors: {
-      "--color-bg-primary": "#ffffff",
-      "--color-bg-secondary": "#f8f9fa",
-      "--color-bg-sidebar": "#f1f3f5",
-      "--color-bg-tertiary": "#f0f0f3",
+      "--color-bg-default": "#ffffff",
+      "--color-bg-subtle": "#f8f9fa",
+      "--color-bg-panel": "#f1f3f5",
+      "--color-bg-elevated": "#f0f0f3",
 
       "--color-text-primary": "#1a1a1a",
       "--color-text-secondary": "#6b7280",
-      "--color-text-muted": "#9ca3af",
+      "--color-text-disabled": "#9ca3af",
 
-      "--color-border": "#e5e7eb",
-      "--color-border-light": "#f3f4f6",
+      "--color-border-default": "#e5e7eb",
+      "--color-border-subtle": "#f3f4f6",
 
-      "--color-accent": "#3b82f6",
+      "--color-accent-default": "#3b82f6",
       "--color-accent-hover": "#2563eb",
 
       "--color-editor-bg": "#ffffff",
@@ -141,19 +184,19 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
     base: "dark",
     builtIn: true,
     colors: {
-      "--color-bg-primary": "#1a1a2e",
-      "--color-bg-secondary": "#16213e",
-      "--color-bg-sidebar": "#0f172a",
-      "--color-bg-tertiary": "#1e2a45",
+      "--color-bg-default": "#1a1a2e",
+      "--color-bg-subtle": "#16213e",
+      "--color-bg-panel": "#0f172a",
+      "--color-bg-elevated": "#1e2a45",
 
       "--color-text-primary": "#e2e8f0",
       "--color-text-secondary": "#94a3b8",
-      "--color-text-muted": "#64748b",
+      "--color-text-disabled": "#64748b",
 
-      "--color-border": "#334155",
-      "--color-border-light": "#1e293b",
+      "--color-border-default": "#334155",
+      "--color-border-subtle": "#1e293b",
 
-      "--color-accent": "#60a5fa",
+      "--color-accent-default": "#60a5fa",
       "--color-accent-hover": "#3b82f6",
 
       "--color-editor-bg": "#1a1a2e",
@@ -171,19 +214,19 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
     base: "dark",
     builtIn: true,
     colors: {
-      "--color-bg-primary": "#1a1b26",
-      "--color-bg-secondary": "#16161e",
-      "--color-bg-sidebar": "#13131a",
-      "--color-bg-tertiary": "#1f2335",
+      "--color-bg-default": "#1a1b26",
+      "--color-bg-subtle": "#16161e",
+      "--color-bg-panel": "#13131a",
+      "--color-bg-elevated": "#1f2335",
 
       "--color-text-primary": "#a9b1d6",
       "--color-text-secondary": "#787c99",
-      "--color-text-muted": "#565a6e",
+      "--color-text-disabled": "#565a6e",
 
-      "--color-border": "#292e42",
-      "--color-border-light": "#1f2335",
+      "--color-border-default": "#292e42",
+      "--color-border-subtle": "#1f2335",
 
-      "--color-accent": "#7aa2f7",
+      "--color-accent-default": "#7aa2f7",
       "--color-accent-hover": "#5d8ffa",
 
       "--color-editor-bg": "#1a1b26",
@@ -201,19 +244,19 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
     base: "light",
     builtIn: true,
     colors: {
-      "--color-bg-primary": "#fdf6e3",
-      "--color-bg-secondary": "#eee8d5",
-      "--color-bg-sidebar": "#eee8d5",
-      "--color-bg-tertiary": "#e8e1cb",
+      "--color-bg-default": "#fdf6e3",
+      "--color-bg-subtle": "#eee8d5",
+      "--color-bg-panel": "#eee8d5",
+      "--color-bg-elevated": "#e8e1cb",
 
       "--color-text-primary": "#657b83",
       "--color-text-secondary": "#839496",
-      "--color-text-muted": "#93a1a1",
+      "--color-text-disabled": "#93a1a1",
 
-      "--color-border": "#d3cbb7",
-      "--color-border-light": "#eee8d5",
+      "--color-border-default": "#d3cbb7",
+      "--color-border-subtle": "#eee8d5",
 
-      "--color-accent": "#268bd2",
+      "--color-accent-default": "#268bd2",
       "--color-accent-hover": "#1a6fb5",
 
       "--color-editor-bg": "#fdf6e3",
@@ -231,19 +274,19 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
     base: "dark",
     builtIn: true,
     colors: {
-      "--color-bg-primary": "#002b36",
-      "--color-bg-secondary": "#073642",
-      "--color-bg-sidebar": "#001e27",
-      "--color-bg-tertiary": "#0a3d4e",
+      "--color-bg-default": "#002b36",
+      "--color-bg-subtle": "#073642",
+      "--color-bg-panel": "#001e27",
+      "--color-bg-elevated": "#0a3d4e",
 
       "--color-text-primary": "#839496",
       "--color-text-secondary": "#657b83",
-      "--color-text-muted": "#586e75",
+      "--color-text-disabled": "#586e75",
 
-      "--color-border": "#094a5c",
-      "--color-border-light": "#073642",
+      "--color-border-default": "#094a5c",
+      "--color-border-subtle": "#073642",
 
-      "--color-accent": "#268bd2",
+      "--color-accent-default": "#268bd2",
       "--color-accent-hover": "#2aa0e8",
 
       "--color-editor-bg": "#002b36",
@@ -261,19 +304,19 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
     base: "dark",
     builtIn: true,
     colors: {
-      "--color-bg-primary": "#2e3440",
-      "--color-bg-secondary": "#3b4252",
-      "--color-bg-sidebar": "#282e3a",
-      "--color-bg-tertiary": "#434c5e",
+      "--color-bg-default": "#2e3440",
+      "--color-bg-subtle": "#3b4252",
+      "--color-bg-panel": "#282e3a",
+      "--color-bg-elevated": "#434c5e",
 
       "--color-text-primary": "#d8dee9",
       "--color-text-secondary": "#a4aebb",
-      "--color-text-muted": "#7b88a1",
+      "--color-text-disabled": "#7b88a1",
 
-      "--color-border": "#4c566a",
-      "--color-border-light": "#3b4252",
+      "--color-border-default": "#4c566a",
+      "--color-border-subtle": "#3b4252",
 
-      "--color-accent": "#88c0d0",
+      "--color-accent-default": "#88c0d0",
       "--color-accent-hover": "#81a1c1",
 
       "--color-editor-bg": "#2e3440",
@@ -281,6 +324,66 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
       "--color-editor-selection": "#434c5e",
       "--color-editor-cursor": "#d8dee9",
       "--color-editor-line-highlight": "#3b4252",
+    },
+  },
+
+  // ── Baram Garden Light ─────────────────────────────────────────────────
+  {
+    id: "baram-garden-light",
+    name: "Baram Garden Light",
+    base: "light",
+    builtIn: true,
+    colors: {
+      "--color-bg-default": "#fffef8",
+      "--color-bg-subtle": "#fdf6ee",
+      "--color-bg-panel": "#f9e8f0",
+      "--color-bg-elevated": "#fdf8e1",
+
+      "--color-text-primary": "#123d96",
+      "--color-text-secondary": "#5a6f8c",
+      "--color-text-disabled": "#a0aec0",
+
+      "--color-border-default": "#eec2da",
+      "--color-border-subtle": "#f5dce8",
+
+      "--color-accent-default": "#123d96",
+      "--color-accent-hover": "#f6b26b",
+
+      "--color-editor-bg": "#fffef8",
+      "--color-editor-text": "#123d96",
+      "--color-editor-selection": "#d8e6b3",
+      "--color-editor-cursor": "#123d96",
+      "--color-editor-line-highlight": "#f7fae8",
+    },
+  },
+
+  // ── Baram Garden Dark ──────────────────────────────────────────────────
+  {
+    id: "baram-garden-dark",
+    name: "Baram Garden Dark",
+    base: "dark",
+    builtIn: true,
+    colors: {
+      "--color-bg-default": "#1a1d2e",
+      "--color-bg-subtle": "#232740",
+      "--color-bg-panel": "#161830",
+      "--color-bg-elevated": "#2a2d42",
+
+      "--color-text-primary": "#eec2da",
+      "--color-text-secondary": "#a0aec0",
+      "--color-text-disabled": "#5a6f8c",
+
+      "--color-border-default": "#3d3562",
+      "--color-border-subtle": "#2e2a4a",
+
+      "--color-accent-default": "#b4d156",
+      "--color-accent-hover": "#edd841",
+
+      "--color-editor-bg": "#1a1d2e",
+      "--color-editor-text": "#eec2da",
+      "--color-editor-selection": "#2e4a28",
+      "--color-editor-cursor": "#b4d156",
+      "--color-editor-line-highlight": "#232740",
     },
   },
 ];
