@@ -129,7 +129,7 @@ export function SettingsModal() {
   return (
     <div className="settings-overlay" onClick={toggleSettings}>
       <div className="settings-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="settings-header">
+        <div className="settings-header flex-header">
           <h2 className="settings-title">{t("settings.title")}</h2>
           <div className="settings-search-wrapper">
             <input
@@ -150,7 +150,7 @@ export function SettingsModal() {
             )}
           </div>
           <button
-            className="settings-close"
+            className="settings-close icon-btn"
             onClick={toggleSettings}
             title={t("common.close")}
           >

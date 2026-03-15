@@ -33,7 +33,6 @@ interface EditorState {
     currentId: string,
     direction: "backward" | "forward",
   ) => null | string;
-  isSourceMode: boolean;
   markDirty: (tabId: string, dirty: boolean) => void;
   /** §39 MRU tab order — index 0 is most recently used */
   mruOrder: string[];
@@ -56,7 +55,6 @@ interface EditorState {
   tabs: EditorTab[];
   /** §38 Toggle pin state */
   togglePinTab: (tabId: string) => void;
-  toggleSourceMode: () => void;
   /** §39 Move tabId to front of MRU list */
   touchMru: (tabId: string) => void;
   /** §38 Unpin a tab — moves to start of unpinned group */
@@ -73,7 +71,6 @@ export function isGraphTab(tab: EditorTab | undefined): boolean {
 export const useEditorStore = create<EditorState>((set, get) => ({
   activeTabId: null,
   tabs: [],
-  isSourceMode: false,
   mruOrder: [],
   currentSelection: "",
   contentRefreshKey: 0,
@@ -127,9 +124,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         t.id === tabId ? { ...t, isDirty: dirty } : t,
       ),
     })),
-
-  toggleSourceMode: () =>
-    set((state) => ({ isSourceMode: !state.isSourceMode })),
 
   touchMru: (tabId) =>
     set((state) => {

@@ -52,7 +52,7 @@ export function MemoriesPanel() {
 
   return (
     <div className="memories-panel">
-      <div className="memories-header">
+      <div className="memories-header flex-header">
         <span className="memories-header-title">Memories</span>
         <div className="memories-date-nav">
           <button

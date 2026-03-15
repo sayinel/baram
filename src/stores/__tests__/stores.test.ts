@@ -11,7 +11,6 @@ describe("Zustand stores smoke test", () => {
     const state = useEditorStore.getState();
     expect(state.activeTabId).toBeNull();
     expect(state.tabs).toEqual([]);
-    expect(state.isSourceMode).toBe(false);
   });
 
   it("file store has default state", () => {

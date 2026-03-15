@@ -8,14 +8,15 @@ import { AgentProgressBar } from "./AgentProgressBar";
 
 export function AgentPanel() {
   const {
-    status,
-    plan,
-    completedSteps,
-    totalSteps,
-    results,
+    acceptAll,
     approvePlan,
     cancel,
+    completedSteps,
+    plan,
+    results,
     startPlanning,
+    status,
+    totalSteps,
   } = useAgentStore();
   const [goalInput, setGoalInput] = useState("");
 
@@ -38,9 +39,8 @@ export function AgentPanel() {
   );
 
   const handleAcceptAll = useCallback(() => {
-    // Mark all results as accepted (future: apply changes to files)
-    cancel();
-  }, [cancel]);
+    acceptAll();
+  }, [acceptAll]);
 
   return (
     <div className="flex flex-col gap-4 p-3">
@@ -100,6 +100,7 @@ export function AgentPanel() {
           </div>
           <AgentProgressBar
             completedSteps={completedSteps}
+            label="일시 중지됨"
             totalSteps={totalSteps}
           />
         </div>

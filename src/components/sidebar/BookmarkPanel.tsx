@@ -107,10 +107,10 @@ export function BookmarkPanel() {
 
   return (
     <div className="bookmark-panel">
-      <div className="bookmark-header">
+      <div className="bookmark-header flex-header">
         <span>Bookmarks ({bookmarks.length})</span>
         <button
-          className={`bookmark-add-btn ${isCurrentFileBookmarked ? "bookmark-added" : ""}`}
+          className={`bookmark-add-btn btn-unstyled ${isCurrentFileBookmarked ? "bookmark-added" : ""}`}
           disabled={!filePath || isCurrentFileBookmarked}
           onClick={handleBookmarkFile}
           title={
@@ -152,7 +152,7 @@ export function BookmarkPanel() {
                     {bookmark.label}
                   </span>
                   <button
-                    className="bookmark-remove-btn"
+                    className="bookmark-remove-btn btn-unstyled"
                     onClick={(e) => {
                       e.stopPropagation();
                       removeBookmark(bookmark.id);

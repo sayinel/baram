@@ -24,6 +24,7 @@ import { useEditorStore } from "../stores/editor/editor";
 import { useWritingFlowStore } from "../stores/writing-flow-store";
 import { GhostTextCache } from "../utils/ghost-text-cache";
 import { buildGhostTextConfig } from "../utils/ghost-text-prompt";
+import { createLLMStream } from "../utils/llm-stream";
 import { getConfigForTask } from "../utils/model-selection";
 import { getFilePrivacy, isLLMAllowed } from "../utils/privacy-check";
 
@@ -130,6 +131,17 @@ export function useGhostText(editor: Editor | null) {
 
         const storeSnapshot = useAIStore.getState();
 
+        // Re-check privacy — privacyMode may have changed during debounce wait
+        const taskCfg = getConfigForTask("ghost-text");
+        if (
+          !isLLMAllowed(
+            storeSnapshot.privacyMode,
+            taskCfg.provider,
+            getFilePrivacy(editor),
+          )
+        )
+          return;
+
         try {
           const tokenUn = await listen<LLMTokenPayload>(
             "llm:token",
@@ -201,7 +213,6 @@ export function useGhostText(editor: Editor | null) {
             ? `${ghostConfig.systemPrompt}\n\n${flowContext}`
             : ghostConfig.systemPrompt;
 
-          const taskCfg = getConfigForTask("ghost-text");
           await llmComplete(
             taskCfg.apiKey,
             ghostConfig.contextText,
@@ -225,6 +236,10 @@ export function useGhostText(editor: Editor | null) {
     registerGhostTextAcceptedCallback((acceptedText, pos) => {
       const store = useAIStore.getState();
       if (!store.ghostTextEnabled) return;
+      const taskCfg = getConfigForTask("ghost-text");
+      const filePrivacy = getFilePrivacy(editor);
+      if (!isLLMAllowed(store.privacyMode, taskCfg.provider, filePrivacy))
+        return;
 
       // Build the text that will be before the cursor after acceptance
       const { state } = editor;
@@ -236,24 +251,42 @@ export function useGhostText(editor: Editor | null) {
       if (!shouldPrefetch(textBefore)) return;
 
       // Fire background prefetch — result stored in cache for next keystroke
-      const taskCfg = getConfigForTask("ghost-text");
       const ghostConfig = buildGhostTextConfig(editor, pos, undefined);
       if (ghostConfig.skip) return;
 
       const requestId = `prefetch_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-      llmComplete(
-        taskCfg.apiKey,
-        textBefore,
-        taskCfg.model,
-        requestId,
-        ghostConfig.systemPrompt,
-        store.maxSuggestionLength,
-        taskCfg.provider,
-        taskCfg.baseUrl,
-        store.privacyMode,
-      ).catch(() => {
-        // prefetch is best-effort — ignore errors silently
-      });
+
+      // Set up listeners before firing — accumulate tokens and cache on done
+      (async () => {
+        let prefetchText = "";
+        await createLLMStream(requestId, {
+          onToken: (token) => {
+            prefetchText += token;
+          },
+          onDone: () => {
+            if (prefetchText) {
+              ghostCache.set(
+                textBefore,
+                prefetchText.slice(0, store.maxSuggestionLength),
+                lastFilePathRef.current,
+              );
+            }
+          },
+        });
+        llmComplete(
+          taskCfg.apiKey,
+          textBefore,
+          taskCfg.model,
+          requestId,
+          ghostConfig.systemPrompt,
+          store.maxSuggestionLength,
+          taskCfg.provider,
+          taskCfg.baseUrl,
+          store.privacyMode,
+        ).catch(() => {
+          // prefetch is best-effort — ignore errors silently
+        });
+      })().catch(() => {});
     });
 
     return () => {

@@ -21,6 +21,8 @@ import {
   getISOWeekNumber,
   getMonthDays,
   getWeeklyJournalPath,
+  JOURNAL_DATE_PARTS_RE,
+  JOURNAL_FILENAME_COMPACT_RE,
   resolveJournalDir,
 } from "../../utils/journal/journal";
 import {
@@ -54,9 +56,6 @@ const MONTH_NAMES = [
   "November",
   "December",
 ];
-
-const JOURNAL_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})\.md$/;
-const JOURNAL_DATE_COMPACT_RE = /^(\d{4})(\d{2})(\d{2})\.md$/;
 
 export function CalendarPanel() {
   const today = useMemo(() => new Date(), []);
@@ -143,11 +142,13 @@ export function CalendarPanel() {
         // Read frontmatter for mood colors (batch, non-blocking)
         const moods = new Map<string, MoodValue>();
         const reads = fileEntries.slice(0, 62).map(async (entry) => {
-          const match =
-            entry.name.match(JOURNAL_DATE_RE) ||
-            entry.name.match(JOURNAL_DATE_COMPACT_RE);
-          if (!match) return;
-          const dateStr = `${match[1]}-${match[2]}-${match[3]}`;
+          const matchStd = entry.name.match(JOURNAL_DATE_PARTS_RE);
+          const matchCompact =
+            !matchStd && JOURNAL_FILENAME_COMPACT_RE.test(entry.name);
+          if (!matchStd && !matchCompact) return;
+          const dateStr = matchStd
+            ? `${matchStd[1]}-${matchStd[2]}-${matchStd[3]}`
+            : `${entry.name.slice(0, 4)}-${entry.name.slice(4, 6)}-${entry.name.slice(6, 8)}`;
           try {
             const content = await readFile(entry.path);
             const mood = parseMoodFromFrontmatter(content);
@@ -175,11 +176,13 @@ export function CalendarPanel() {
     const dates = new Set<string>();
     if (!journalEnabled) return dates;
     for (const filename of dirFiles) {
-      const match =
-        filename.match(JOURNAL_DATE_RE) ||
-        filename.match(JOURNAL_DATE_COMPACT_RE);
-      if (match) {
-        dates.add(`${match[1]}-${match[2]}-${match[3]}`);
+      const matchStd = filename.match(JOURNAL_DATE_PARTS_RE);
+      if (matchStd) {
+        dates.add(`${matchStd[1]}-${matchStd[2]}-${matchStd[3]}`);
+      } else if (JOURNAL_FILENAME_COMPACT_RE.test(filename)) {
+        dates.add(
+          `${filename.slice(0, 4)}-${filename.slice(4, 6)}-${filename.slice(6, 8)}`,
+        );
       }
     }
     return dates;

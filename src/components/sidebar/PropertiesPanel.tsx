@@ -261,7 +261,7 @@ export function PropertiesPanel() {
 
   return (
     <div className="properties-panel">
-      <div className="properties-header">
+      <div className="properties-header flex-header">
         <span>Properties</span>
         <div className="properties-header-actions">
           <button

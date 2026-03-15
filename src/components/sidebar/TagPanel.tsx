@@ -198,7 +198,7 @@ export function TagPanel() {
 
   return (
     <div className="tag-panel">
-      <div className="tag-panel-header">
+      <div className="tag-panel-header flex-header">
         <span>Tags ({totalTags})</span>
         <div className="tag-panel-actions">
           {viewMode === "tree" && (
@@ -518,7 +518,7 @@ function TagTreeItem({
           />
         ) : (
           <span
-            className="tag-tree-name"
+            className="tag-tree-name text-truncate"
             style={{ color: tagColor || undefined }}
           >
             {node.name}
