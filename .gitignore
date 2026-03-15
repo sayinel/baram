@@ -558,3 +558,4 @@ blob-report/
 *.dSYM/
 
 # End of https://www.toptal.com/developers/gitignore/api/osx,windows,linux,git,python,vim,emacs,jetbrains+all,visualstudiocode,node,rust,rust-analyzer
+.idea/
