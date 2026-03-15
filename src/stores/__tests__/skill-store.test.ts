@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { useSkillStore } from "../skill-store";
+import { useSkillStore } from "../ai/skill";
 
 describe("skill-store", () => {
   beforeEach(() => {

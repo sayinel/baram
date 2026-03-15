@@ -5,7 +5,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import type { MigrationDirection } from "../../journal/MigrationDialog";
 
 import { useTranslation } from "../../../i18n/useTranslation";
-import { useSettingsStore } from "../../../stores/settings-store";
+import { useSettingsStore } from "../../../stores/settings/store";
 import { initJournalTemplatesDir } from "../../../utils/journal/journal-templates";
 import { MigrationDialog } from "../../journal/MigrationDialog";
 import {

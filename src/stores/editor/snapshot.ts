@@ -1,4 +1,4 @@
-import type { DiffResult, SnapshotEntry } from "../ipc/types";
+import type { DiffResult, SnapshotEntry } from "../../ipc/types";
 
 // §71 스냅샷 상태 관리 스토어
 import { create } from "zustand";
@@ -11,9 +11,9 @@ import {
   listSnapshots,
   readFile,
   restoreSnapshot,
-} from "../ipc/invoke";
-import { useEditorStore } from "./editor-store";
-import { useFileStore } from "./file-store";
+} from "../../ipc/invoke";
+import { useFileStore } from "../file/file";
+import { useEditorStore } from "./editor";
 
 interface SnapshotState {
   // Diff

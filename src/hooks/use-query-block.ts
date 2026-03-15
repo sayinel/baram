@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 import type { FileEntry } from "../ipc/types";
 
 import { listDir, readFile } from "../ipc/invoke";
-import { useFileStore } from "../stores/file-store";
+import { useFileStore } from "../stores/file/file";
 import { executeQuery, type VaultFile } from "../utils/query-executor";
 import { parseQueryDSL } from "../utils/query-parser";
 

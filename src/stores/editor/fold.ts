@@ -1,12 +1,12 @@
 // Fold state persistence — content-based anchors per file
 // Pattern: settings-store.ts (Zustand + persist middleware)
 
-import type { FoldAnchor } from "../extensions/plugins/fold";
+import type { FoldAnchor } from "../../extensions/plugins/fold";
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { tauriStorage } from "./tauri-storage";
+import { tauriStorage } from "../system/tauri-storage";
 
 interface FoldStoreState {
   clearAll: () => void;

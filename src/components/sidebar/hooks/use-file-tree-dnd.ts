@@ -8,9 +8,9 @@ import type { DragState } from "../file-tree-types";
 import type { Editor } from "@tiptap/react";
 
 import { renameFile } from "../../../ipc/invoke";
-import { useEditorStore } from "../../../stores/editor-store";
-import { useFileStore } from "../../../stores/file-store";
-import { useLinkStore } from "../../../stores/link-store";
+import { useEditorStore } from "../../../stores/editor/editor";
+import { useLinkStore } from "../../../stores/editor/link";
+import { useFileStore } from "../../../stores/file/file";
 import {
   hideDropIndicator,
   insertNodeAtPos,

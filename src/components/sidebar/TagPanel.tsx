@@ -4,9 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TagEntry } from "../../ipc/invoke";
 
 import { getVaultTags, renameTag } from "../../ipc/invoke";
-import { useFileStore } from "../../stores/file-store";
-import { useSettingsStore } from "../../stores/settings-store";
-import { useUIStore } from "../../stores/ui-store";
+import { useFileStore } from "../../stores/file/file";
+import { useSettingsStore } from "../../stores/settings/store";
+import { useUIStore } from "../../stores/ui/ui";
 import { logger } from "../../utils/logger";
 
 const TAG_COLOR_PRESETS = [

@@ -1,4 +1,4 @@
-import type { BacklinkEntry, UnlinkedMention } from "../ipc/types";
+import type { BacklinkEntry, UnlinkedMention } from "../../ipc/types";
 
 // §29 링크 인덱스 스토어 — 백링크, 링크 그래프 프론트엔드 캐시
 // §34 언링크드 멘션 상태 추가

@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 
-import type { EditorTab } from "./stores/editor-store";
+import type { EditorTab } from "./stores/editor/editor";
 
 import { EditorContent, useEditor } from "@tiptap/react";
 import { useShallow } from "zustand/shallow";
@@ -66,11 +66,11 @@ import {
   startUpdateChecker,
   stopUpdateChecker,
 } from "./plugins/update-checker";
-import { useEditorStore } from "./stores/editor-store";
-import { isFileTab, isGraphTab } from "./stores/editor-store";
-import { useFileStore } from "./stores/file-store";
-import { useSettingsStore } from "./stores/settings-store";
-import { useUIStore } from "./stores/ui-store";
+import { useEditorStore } from "./stores/editor/editor";
+import { isFileTab, isGraphTab } from "./stores/editor/editor";
+import { useFileStore } from "./stores/file/file";
+import { useSettingsStore } from "./stores/settings/store";
+import { useUIStore } from "./stores/ui/ui";
 import { getLanguageForFile, isMarkdownFile } from "./utils/file-type";
 import { logger } from "./utils/logger";
 import { logAppReady } from "./utils/perf";

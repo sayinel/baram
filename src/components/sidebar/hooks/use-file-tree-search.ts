@@ -1,10 +1,10 @@
 // §4.3 File tree — fuzzy/glob/tag search hook
 import { useEffect, useMemo, useState } from "react";
 
-import type { FileEntry } from "../../../stores/file-store";
+import type { FileEntry } from "../../../stores/file/file";
 
 import { getFilesByTag } from "../../../ipc/invoke";
-import { useFileStore } from "../../../stores/file-store";
+import { useFileStore } from "../../../stores/file/file";
 import {
   flattenFileTree,
   fuzzyMatch,

@@ -10,10 +10,10 @@ import {
   ensureJournalFile,
   openFileInTab,
 } from "../../services/journal-file-service";
-import { useAIStore } from "../../stores/ai-store";
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
-import { useSettingsStore } from "../../stores/settings-store";
+import { useAIStore } from "../../stores/ai/ai";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
+import { useSettingsStore } from "../../stores/settings/store";
 import {
   formatJournalDate,
   getFirstDayOfWeek,

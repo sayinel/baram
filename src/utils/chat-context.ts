@@ -1,9 +1,9 @@
-import type { FileEntry } from "../stores/file-store";
+import type { FileEntry } from "../stores/file/file";
 
-import { useAIStore } from "../stores/ai-store";
+import { useAIStore } from "../stores/ai/ai";
 // §44 AI Chat @reference resolver
-import { useEditorStore } from "../stores/editor-store";
-import { useFileStore } from "../stores/file-store";
+import { useEditorStore } from "../stores/editor/editor";
+import { useFileStore } from "../stores/file/file";
 
 export type ReferenceType =
   | "@clipboard"

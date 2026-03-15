@@ -4,10 +4,10 @@ import { useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
-import type { FileEntry } from "../stores/file-store";
+import type { FileEntry } from "../stores/file/file";
 
 import { watchDir } from "../ipc/invoke";
-import { useFileStore } from "../stores/file-store";
+import { useFileStore } from "../stores/file/file";
 import { logger } from "../utils/logger";
 
 /** Directories and patterns to ignore (mirrors list_dir skip logic in Rust) */

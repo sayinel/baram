@@ -7,7 +7,7 @@ import { PluginKey } from "@tiptap/pm/state";
 import { Suggestion } from "@tiptap/suggestion";
 
 import { MentionMenuList } from "../../components/command/MentionMenu";
-import { useFileStore } from "../../stores/file-store";
+import { useFileStore } from "../../stores/file/file";
 import { flattenFileTree, fuzzyScore } from "../../utils/file-search";
 import { resolveDateAlias } from "../../utils/journal/journal";
 import { createSuggestionRenderer } from "./suggestion-renderer";

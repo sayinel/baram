@@ -6,7 +6,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 
 import { useShallow } from "zustand/shallow";
 
-import { isFileTab, useEditorStore } from "../../stores/editor-store";
+import { isFileTab, useEditorStore } from "../../stores/editor/editor";
 
 const DRAG_THRESHOLD = 3; // px before drag activates
 

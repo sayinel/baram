@@ -16,8 +16,8 @@ import type { Editor } from "@tiptap/core";
 
 import { ghostTextPluginKey } from "../extensions/plugins/ghost-text";
 import { llmCancel, llmComplete } from "../ipc/invoke";
-import { useAIStore } from "../stores/ai-store";
-import { useEditorStore } from "../stores/editor-store";
+import { useAIStore } from "../stores/ai/ai";
+import { useEditorStore } from "../stores/editor/editor";
 import { buildGhostTextConfig } from "../utils/ghost-text-prompt";
 import { getConfigForTask } from "../utils/model-selection";
 import { getFilePrivacy, isLLMAllowed } from "../utils/privacy-check";

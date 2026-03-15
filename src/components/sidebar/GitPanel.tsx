@@ -4,13 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 // file-store uses rootPath for the vault directory
 import type { GitChange } from "../../ipc/types";
 
-import { useFileStore } from "../../stores/file-store";
+import { useFileStore } from "../../stores/file/file";
 import {
   groupChanges,
   statusColorClass,
   statusIcon,
   useGitStore,
-} from "../../stores/git-store";
+} from "../../stores/system/git";
 
 export function GitPanel() {
   const {

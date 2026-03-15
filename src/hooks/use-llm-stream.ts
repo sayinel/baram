@@ -8,10 +8,10 @@ import type {
   LLMErrorPayload,
   LLMTokenPayload,
 } from "../ipc/types";
-import type { AITask } from "../stores/ai-store";
+import type { AITask } from "../stores/ai/ai";
 
 import { llmCancel, llmComplete } from "../ipc/invoke";
-import { useAIStore } from "../stores/ai-store";
+import { useAIStore } from "../stores/ai/ai";
 import { getConfigForTask } from "../utils/model-selection";
 import { isLLMAllowed } from "../utils/privacy-check";
 

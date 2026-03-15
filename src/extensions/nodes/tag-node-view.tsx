@@ -6,8 +6,8 @@ import type { NodeViewProps } from "@tiptap/react";
 
 import { NodeViewWrapper } from "@tiptap/react";
 
-import { useSettingsStore } from "../../stores/settings-store";
-import { useUIStore } from "../../stores/ui-store";
+import { useSettingsStore } from "../../stores/settings/store";
+import { useUIStore } from "../../stores/ui/ui";
 
 export function TagNodeView({
   node,

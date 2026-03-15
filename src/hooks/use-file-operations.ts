@@ -8,11 +8,11 @@ import type { Editor } from "@tiptap/core";
 import { readFile, updateFileIndex, writeFile } from "../ipc/invoke";
 import { prosemirrorToMarkdown } from "../pipeline/pm-to-md";
 import { notifyFileOpen, notifyFileSave } from "../plugins/plugin-lifecycle";
-import { isGraphTab } from "../stores/editor-store";
-import { useEditorStore } from "../stores/editor-store";
-import { openFolder, useFileStore } from "../stores/file-store";
-import { useLinkStore } from "../stores/link-store";
-import { useSettingsStore } from "../stores/settings-store";
+import { isGraphTab } from "../stores/editor/editor";
+import { useEditorStore } from "../stores/editor/editor";
+import { useLinkStore } from "../stores/editor/link";
+import { openFolder, useFileStore } from "../stores/file/file";
+import { useSettingsStore } from "../stores/settings/store";
 import { isMarkdownFile } from "../utils/file-type";
 import { logger } from "../utils/logger";
 

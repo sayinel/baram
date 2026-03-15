@@ -11,9 +11,9 @@ import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 
 import { readFile, renameBlockId, updateFileIndex } from "../../ipc/invoke";
 import { generateBlockId } from "../../pipeline/block-id";
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
-import { useLinkStore } from "../../stores/link-store";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useLinkStore } from "../../stores/editor/link";
+import { useFileStore } from "../../stores/file/file";
 import { logger } from "../../utils/logger";
 
 // ── Plugin state ──────────────────────────────────────────────────────

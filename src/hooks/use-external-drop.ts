@@ -19,8 +19,8 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { Editor } from "@tiptap/core";
 
 import { copyFile, createDir, listDir } from "../ipc/invoke";
-import { useEditorStore } from "../stores/editor-store";
-import { useFileStore } from "../stores/file-store";
+import { useEditorStore } from "../stores/editor/editor";
+import { useFileStore } from "../stores/file/file";
 import {
   hideDropIndicator,
   insertNodeAtPos,

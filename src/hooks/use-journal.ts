@@ -2,8 +2,8 @@
 import { useEffect, useRef } from "react";
 
 import { ensureJournalFile } from "../services/journal-file-service";
-import { useFileStore } from "../stores/file-store";
-import { useSettingsStore } from "../stores/settings-store";
+import { useFileStore } from "../stores/file/file";
+import { useSettingsStore } from "../stores/settings/store";
 import { resolveJournalDir } from "../utils/journal/journal";
 import { logger } from "../utils/logger";
 

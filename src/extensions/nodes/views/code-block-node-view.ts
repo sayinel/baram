@@ -23,7 +23,7 @@ import {
 import { redo, undo } from "@tiptap/pm/history";
 import { TextSelection } from "@tiptap/pm/state";
 
-import { useSettingsStore } from "../../../stores/settings-store";
+import { useSettingsStore } from "../../../stores/settings/store";
 import { getHighlightStyle } from "../code-block-highlight";
 import {
   getLanguageExtension,

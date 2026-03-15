@@ -1,8 +1,8 @@
 // Activity Bar — VS Code style vertical icon bar
 import type { ReactNode } from "react";
 
-import { useSettingsStore } from "../../stores/settings-store";
-import { useUIStore } from "../../stores/ui-store";
+import { useSettingsStore } from "../../stores/settings/store";
+import { useUIStore } from "../../stores/ui/ui";
 
 type PanelId =
   | "backlinks"

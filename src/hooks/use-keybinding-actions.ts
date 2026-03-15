@@ -1,8 +1,8 @@
 // §settings Keybinding actions hook — register command handlers + global keyboard shortcuts
 import { useEffect } from "react";
 
-import type { EditorTab } from "../stores/editor-store";
-import type { SidebarPanel } from "../stores/ui-store";
+import type { EditorTab } from "../stores/editor/editor";
+import type { SidebarPanel } from "../stores/ui/ui";
 import type { Editor } from "@tiptap/core";
 
 import {
@@ -23,13 +23,13 @@ import {
   ensureJournalFile,
   openFileInTab,
 } from "../services/journal-file-service";
-import { useAIStore } from "../stores/ai-store";
-import { useBookmarkStore } from "../stores/bookmark-store";
-import { useEditorStore } from "../stores/editor-store";
-import { useFileStore } from "../stores/file-store";
-import { useSettingsStore } from "../stores/settings-store";
-import { useUIStore } from "../stores/ui-store";
-import { useWorkspaceStore } from "../stores/workspace-store";
+import { useAIStore } from "../stores/ai/ai";
+import { useEditorStore } from "../stores/editor/editor";
+import { useBookmarkStore } from "../stores/file/bookmark";
+import { useFileStore } from "../stores/file/file";
+import { useWorkspaceStore } from "../stores/file/workspace";
+import { useSettingsStore } from "../stores/settings/store";
+import { useUIStore } from "../stores/ui/ui";
 import { mdLineToPmBlockStart } from "../utils/cursor-mapper";
 import { isDateString, resolveJournalDir } from "../utils/journal/journal";
 import {

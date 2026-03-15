@@ -1,7 +1,7 @@
 // §30 Graph View — inline settings panel overlay
 import { useState } from "react";
 
-import { useGraphSettingsStore } from "../../stores/graph-settings-store";
+import { useGraphSettingsStore } from "../../stores/ui/graph-settings";
 
 export function GraphSettingsPanel() {
   const s = useGraphSettingsStore();

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { useAIStore } from "../ai-store";
-import { useEditorStore } from "../editor-store";
-import { useFileStore } from "../file-store";
-import { useSettingsStore } from "../settings-store";
-import { useUIStore } from "../ui-store";
+import { useAIStore } from "../ai/ai";
+import { useEditorStore } from "../editor/editor";
+import { useFileStore } from "../file/file";
+import { useSettingsStore } from "../settings/store";
+import { useUIStore } from "../ui/ui";
 
 describe("Zustand stores smoke test", () => {
   it("editor store has default state", () => {

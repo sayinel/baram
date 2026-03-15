@@ -1,7 +1,7 @@
 import { lazy, Suspense } from "react";
 
 // §4.3 Left sidebar container — panel switching via ActivityBar
-import { useUIStore } from "../../stores/ui-store";
+import { useUIStore } from "../../stores/ui/ui";
 
 const PluginMarketplace = lazy(() =>
   import("../plugins/PluginMarketplace").then((m) => ({

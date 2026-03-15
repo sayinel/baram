@@ -2,7 +2,7 @@ import type { Locale } from "../../../i18n";
 
 import { AVAILABLE_LOCALES, LOCALE_LABELS } from "../../../i18n";
 import { useTranslation } from "../../../i18n/useTranslation";
-import { useSettingsStore } from "../../../stores/settings-store";
+import { useSettingsStore } from "../../../stores/settings/store";
 import { SettingsRow, SettingsSectionHeader } from "../settings-shared";
 
 export function LanguageTab() {

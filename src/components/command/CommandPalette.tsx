@@ -3,11 +3,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { Editor } from "@tiptap/react";
 
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
-import { useGitStore } from "../../stores/git-store";
-import { useUIStore } from "../../stores/ui-store";
-import { useWorkspaceStore } from "../../stores/workspace-store";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
+import { useWorkspaceStore } from "../../stores/file/workspace";
+import { useGitStore } from "../../stores/system/git";
+import { useUIStore } from "../../stores/ui/ui";
 import {
   executeAICommand,
   getSelectedText,

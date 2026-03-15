@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { readFile } from "../../ipc/invoke";
-import { useFileStore } from "../../stores/file-store";
+import { useFileStore } from "../../stores/file/file";
 import { findBlockContent } from "../../utils/block-nav";
 import { resolveWikilinkTarget } from "../../utils/wikilink-nav";
 

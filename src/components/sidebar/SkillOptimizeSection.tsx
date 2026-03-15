@@ -2,9 +2,9 @@
 import { useCallback, useState } from "react";
 
 import { useLLMStream } from "../../hooks/use-llm-stream";
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
-import { useSkillStore } from "../../stores/skill-store";
+import { useSkillStore } from "../../stores/ai/skill";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
 import {
   buildOptimizePrompt,
   type OptimizeSuggestion,

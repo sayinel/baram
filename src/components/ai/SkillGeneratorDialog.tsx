@@ -3,8 +3,8 @@ import { useCallback, useState } from "react";
 
 import { useLLMStream } from "../../hooks/use-llm-stream";
 import { writeFile } from "../../ipc/invoke";
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
 import { formatAIError } from "../../utils/format-error";
 import { logger } from "../../utils/logger";
 import { buildSkillGenPrompts } from "../../utils/skill/skill-generator-prompt";

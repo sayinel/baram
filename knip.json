@@ -7,7 +7,7 @@
     "src/pipeline/index.ts",
     "src/plugins/*.ts",
     "src/keybindings/*.ts",
-    "src/stores/*.ts",
+    "src/stores/**/*.ts",
     "src/**/__tests__/**/*.{ts,tsx}",
     "src/**/*.test.{ts,tsx}"
   ],

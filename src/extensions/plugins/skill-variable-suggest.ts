@@ -8,7 +8,7 @@ import {
   type SkillVariableItem,
   SkillVariableList,
 } from "../../components/editor/SkillVariableList";
-import { useSkillStore } from "../../stores/skill-store";
+import { useSkillStore } from "../../stores/ai/skill";
 import { createSuggestionRenderer } from "./suggestion-renderer";
 
 /** Default skill template variables */

@@ -18,8 +18,8 @@ vi.mock("../../stores/editor-store", () => ({
   },
 }));
 
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
 
 const mockFileTree = [
   {

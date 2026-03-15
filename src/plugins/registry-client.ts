@@ -2,7 +2,7 @@ import type { RegistryEntry, RegistryIndex } from "./types";
 
 import { pluginFetchRegistry } from "../ipc/plugin-invoke";
 // §69 Plugin Registry Client — GitHub-based registry with 24h cache
-import { usePluginStore } from "../stores/plugin-store";
+import { usePluginStore } from "../stores/system/plugin";
 import { logger } from "../utils/logger";
 
 const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours

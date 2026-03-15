@@ -3,7 +3,7 @@ import type { GitChange } from "../../ipc/types";
 // §57b Git Store — utility function tests
 import { describe, expect, it } from "vitest";
 
-import { groupChanges, statusColorClass, statusIcon } from "../git-store";
+import { groupChanges, statusColorClass, statusIcon } from "../system/git";
 
 describe("groupChanges", () => {
   it("separates staged and unstaged changes", () => {

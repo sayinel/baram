@@ -1,20 +1,20 @@
-import type { LintResult } from "../utils/prompt-linter";
+import type { LintResult } from "../../utils/prompt-linter";
 import type {
   DependencyWarning,
   SkillMeta,
-} from "../utils/skill/skill-dependency-analyzer";
-import type { FileEntry } from "./file-store";
+} from "../../utils/skill/skill-dependency-analyzer";
+import type { FileEntry } from "../file/file";
 
 // §72c Skill Store — shared state for skill mode features
 import { create } from "zustand";
 
-import { readFile } from "../ipc/invoke";
+import { readFile } from "../../ipc/invoke";
 import {
   analyzeSkillDependencies,
   parseSkillFrontmatter,
-} from "../utils/skill/skill-dependency-analyzer";
-import { isSkillFrontmatter } from "../utils/skill/skill-frontmatter";
-import { useFileStore } from "./file-store";
+} from "../../utils/skill/skill-dependency-analyzer";
+import { isSkillFrontmatter } from "../../utils/skill/skill-frontmatter";
+import { useFileStore } from "../file/file";
 
 interface SkillState {
   allSkills: SkillMeta[];

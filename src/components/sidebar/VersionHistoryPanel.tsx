@@ -3,8 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import type { DiffResult, SnapshotEntry } from "../../ipc/types";
 
-import { useFileStore } from "../../stores/file-store";
-import { useSnapshotStore } from "../../stores/snapshot-store";
+import { useSnapshotStore } from "../../stores/editor/snapshot";
+import { useFileStore } from "../../stores/file/file";
 
 export function VersionHistoryPanel() {
   const rootPath = useFileStore((s) => s.rootPath);

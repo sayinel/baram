@@ -1,4 +1,4 @@
-import type { InstalledPlugin, RegistryIndex } from "../plugins/types";
+import type { InstalledPlugin, RegistryIndex } from "../../plugins/types";
 
 // §69 Plugin Marketplace — Plugin State Store
 import { create } from "zustand";

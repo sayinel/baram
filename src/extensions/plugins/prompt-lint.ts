@@ -6,7 +6,7 @@ import { Extension } from "@tiptap/core";
 import { EditorState, Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
-import { useSkillStore } from "../../stores/skill-store";
+import { useSkillStore } from "../../stores/ai/skill";
 import { lintPrompt } from "../../utils/prompt-linter";
 
 export const promptLintKey = new PluginKey("promptLint");

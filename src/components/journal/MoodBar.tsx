@@ -11,9 +11,9 @@ import {
 } from "../../extensions/nodes/frontmatter-view";
 import { useLLMStream } from "../../hooks/use-llm-stream";
 import { getVaultTags } from "../../ipc/invoke";
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
-import { useSettingsStore } from "../../stores/settings-store";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
+import { useSettingsStore } from "../../stores/settings/store";
 import {
   type EnergyValue,
   MOOD_VALUES,

@@ -9,7 +9,7 @@ import faqRaw from "../../../docs/faq.md?raw";
 import shortcutsRaw from "../../../docs/keyboard-shortcuts.md?raw";
 import userGuideRaw from "../../../docs/user-guide.md?raw";
 import { useTranslation } from "../../i18n/useTranslation";
-import { useUIStore } from "../../stores/ui-store";
+import { useUIStore } from "../../stores/ui/ui";
 import MarkdownRenderer from "../ai/MarkdownRenderer";
 import { prepareHelpMarkdown } from "./prepare-help-markdown";
 

@@ -2,9 +2,9 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { keyringGet, keyringStore } from "../ipc/invoke";
-import { logger } from "../utils/logger";
-import { tauriStorage } from "./tauri-storage";
+import { keyringGet, keyringStore } from "../../ipc/invoke";
+import { logger } from "../../utils/logger";
+import { tauriStorage } from "../system/tauri-storage";
 
 export type AIProvider = "claude" | "gemini" | "ollama" | "openai";
 export type AITask = "agent" | "chat" | "ghost-text" | "inline-edit";

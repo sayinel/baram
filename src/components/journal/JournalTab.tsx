@@ -2,9 +2,9 @@
 import { useCallback, useEffect } from "react";
 
 import { readFile, writeFile } from "../../ipc/invoke";
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
-import { useSettingsStore } from "../../stores/settings-store";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
+import { useSettingsStore } from "../../stores/settings/store";
 import {
   extractDiarySection,
   extractOneLine,

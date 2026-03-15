@@ -7,9 +7,9 @@ import { useShallow } from "zustand/shallow";
 
 import { updateFileIndex, writeFile } from "../ipc/invoke";
 import { prosemirrorToMarkdown } from "../pipeline";
-import { useEditorStore } from "../stores/editor-store";
-import { useLinkStore } from "../stores/link-store";
-import { useSettingsStore } from "../stores/settings-store";
+import { useEditorStore } from "../stores/editor/editor";
+import { useLinkStore } from "../stores/editor/link";
+import { useSettingsStore } from "../stores/settings/store";
 import { isMarkdownFile } from "../utils/file-type";
 
 /**

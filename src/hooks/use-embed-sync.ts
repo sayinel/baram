@@ -5,8 +5,8 @@ import type { NodeViewProps } from "@tiptap/react";
 
 import { readFile, updateFileIndex, writeFile } from "../ipc/invoke";
 import { prosemirrorToMarkdown } from "../pipeline/pm-to-md";
-import { useEditorStore } from "../stores/editor-store";
-import { useFileStore } from "../stores/file-store";
+import { useEditorStore } from "../stores/editor/editor";
+import { useFileStore } from "../stores/file/file";
 import { findBlockContent, findBlockPosById } from "../utils/block-nav";
 import { replaceBlockInContent } from "../utils/block-replace";
 import { resolveWikilinkTarget } from "../utils/wikilink-nav";

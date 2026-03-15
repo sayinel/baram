@@ -1,15 +1,15 @@
 // §72 Properties Panel — YAML frontmatter GUI editor
 import { useCallback, useMemo, useRef, useState } from "react";
 
-import type { FileEntry } from "../../stores/file-store";
+import type { FileEntry } from "../../stores/file/file";
 import type { PropertyEntry, PropertyType } from "../../utils/yaml-properties";
 
 import { useShallow } from "zustand/shallow";
 
 import { readFile } from "../../ipc/invoke";
-import { useEditorStore } from "../../stores/editor-store";
-import { useFileStore } from "../../stores/file-store";
-import { useUIStore } from "../../stores/ui-store";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
+import { useUIStore } from "../../stores/ui/ui";
 import { showPrompt } from "../../utils/ai-commands";
 import { extractFrontmatter } from "../../utils/frontmatter";
 import { logger } from "../../utils/logger";
