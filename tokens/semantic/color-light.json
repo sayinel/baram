@@ -1,0 +1,207 @@
+{
+  "color": {
+    "$type": "color",
+    "bg": {
+      "default": {
+        "$value": "{color.white}",
+        "$description": "Main background (was --color-bg-primary: #fff)"
+      },
+      "subtle": {
+        "$value": "{color.slate.50}",
+        "$description": "Secondary background (was --color-bg-secondary: #f8f9fa)"
+      },
+      "panel": {
+        "$value": "{color.slate.100}",
+        "$description": "Sidebar/panel background (was --color-bg-sidebar: #f1f3f5)"
+      },
+      "elevated": {
+        "$value": "#f0f0f3",
+        "$description": "Tertiary/elevated background (was --color-bg-tertiary: #f0f0f3, no exact primitive match)"
+      }
+    },
+    "text": {
+      "primary": {
+        "$value": "#1a1a1a",
+        "$description": "Primary text (was --color-text-primary: #1a1a1a, not exactly gray.900 #111827)"
+      },
+      "secondary": {
+        "$value": "{color.gray.500}",
+        "$description": "Secondary text (was --color-text-secondary: #6b7280)"
+      },
+      "disabled": {
+        "$value": "{color.gray.400}",
+        "$description": "Muted/disabled text (was --color-text-muted: #9ca3af)"
+      },
+      "muted": {
+        "$value": "{color.text.disabled}",
+        "$description": "Low-emphasis text (labels, metadata, timestamps) — follows disabled token for theme consistency"
+      }
+    },
+    "border": {
+      "default": {
+        "$value": "{color.gray.200}",
+        "$description": "Default border (was --color-border: #e5e7eb)"
+      },
+      "subtle": {
+        "$value": "{color.gray.100}",
+        "$description": "Subtle border (was --color-border-light: #f3f4f6)"
+      }
+    },
+    "accent": {
+      "default": {
+        "$value": "{color.blue.500}",
+        "$description": "Primary accent (was --color-accent: #3b82f6)"
+      },
+      "hover": {
+        "$value": "{color.blue.600}",
+        "$description": "Accent hover state (was --color-accent-hover: #2563eb)"
+      },
+      "subtle": {
+        "$value": "{color.blue.50}",
+        "$description": "Subtle accent background"
+      }
+    },
+    "editor": {
+      "bg": {
+        "$value": "{color.white}",
+        "$description": "Editor background (was --color-editor-bg: #fff)"
+      },
+      "text": {
+        "$value": "{color.text.primary}",
+        "$description": "Editor text (alias of color.text.primary, was --color-editor-text: #1a1a1a)"
+      },
+      "selection": {
+        "$value": "{color.blue.200}",
+        "$description": "Editor selection highlight (was --color-editor-selection: #bfdbfe)"
+      },
+      "cursor": {
+        "$value": "{color.text.primary}",
+        "$description": "Editor cursor (alias of color.text.primary, was --color-editor-cursor: #1a1a1a)"
+      },
+      "lineHighlight": {
+        "$value": "{color.bg.subtle}",
+        "$description": "Editor current line highlight (alias of color.bg.subtle, was --color-editor-line-highlight: #f8f9fa)"
+      }
+    },
+    "status": {
+      "danger": {
+        "$value": "{color.red.500}",
+        "$description": "Danger/error status"
+      },
+      "warning": {
+        "$value": "{color.yellow.500}",
+        "$description": "Warning status"
+      },
+      "success": {
+        "$value": "{color.emerald.500}",
+        "$description": "Success status"
+      },
+      "info": {
+        "$value": "{color.blue.500}",
+        "$description": "Informational status"
+      }
+    },
+    "callout": {
+      "tip": {
+        "$value": "{color.emerald.500}",
+        "$description": "Tip callout accent"
+      },
+      "info": {
+        "$value": "{color.blue.500}",
+        "$description": "Info callout accent"
+      },
+      "warning": {
+        "$value": "{color.yellow.500}",
+        "$description": "Warning callout accent"
+      },
+      "danger": {
+        "$value": "{color.red.500}",
+        "$description": "Danger callout accent"
+      },
+      "note": {
+        "$value": "{color.gray.500}",
+        "$description": "Note callout accent"
+      },
+      "abstract": {
+        "$value": "{color.violet.500}",
+        "$description": "Abstract callout accent"
+      },
+      "todo": {
+        "$value": "{color.cyan.500}",
+        "$description": "Todo callout accent"
+      },
+      "example": {
+        "$value": "{color.teal.500}",
+        "$description": "Example callout accent"
+      },
+      "question": {
+        "$value": "{color.yellow.500}",
+        "$description": "Question callout accent"
+      },
+      "bug": {
+        "$value": "{color.red.500}",
+        "$description": "Bug callout accent"
+      },
+      "success": {
+        "$value": "{color.green.500}",
+        "$description": "Success callout accent"
+      },
+      "failure": {
+        "$value": "{color.red.600}",
+        "$description": "Failure callout accent"
+      },
+      "quote": {
+        "$value": "{color.gray.400}",
+        "$description": "Quote callout accent"
+      }
+    },
+    "graph": {
+      "node": {
+        "$value": "{color.gray.500}",
+        "$description": "Default graph node color"
+      },
+      "active": {
+        "$value": "{color.blue.500}",
+        "$description": "Active/selected graph node"
+      },
+      "activeBorder": {
+        "$value": "{color.blue.400}",
+        "$description": "Active graph node border"
+      },
+      "neighbor": {
+        "$value": "{color.violet.500}",
+        "$description": "Neighbor graph node"
+      },
+      "orphan": {
+        "$value": "{color.gray.300}",
+        "$description": "Orphan graph node (no links)"
+      },
+      "edge": {
+        "$value": "{color.gray.400}",
+        "$description": "Graph edge/link line"
+      },
+      "label": {
+        "$value": "{color.gray.700}",
+        "$description": "Graph node label text"
+      }
+    },
+    "git": {
+      "modified": {
+        "$value": "#e69500",
+        "$description": "Git modified file (no exact primitive match)"
+      },
+      "added": {
+        "$value": "{color.green.500}",
+        "$description": "Git added/new file"
+      },
+      "deleted": {
+        "$value": "{color.red.500}",
+        "$description": "Git deleted file"
+      },
+      "staged": {
+        "$value": "{color.blue.500}",
+        "$description": "Git staged file"
+      }
+    }
+  }
+}
