@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 
+import type { MenuItem } from "./context-menu-types";
 import type { Editor } from "@tiptap/react";
 
 import {
@@ -15,22 +16,12 @@ import {
   editBlockId,
   removeBlockId,
 } from "../../extensions/plugins/block-id-decoration";
-import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
-import { copyMathToPNG } from "../../utils/katex/katex-to-png";
-import {
-  copyMermaidPng,
-  copyMermaidSource,
-  copyMermaidSvg,
-} from "../../utils/markdown/mermaid-utils";
+import { buildMathBlockMenu, buildMathInlineMenu } from "./context-menu-math";
+import { buildMermaidBlockMenu } from "./context-menu-mermaid";
+import { buildTableMenu } from "./context-menu-table";
 
 interface ContextMenuProps {
   editor: Editor;
-}
-
-interface MenuItem {
-  action: () => void;
-  label: string;
-  separator?: boolean;
 }
 
 export function ContextMenu({ editor }: ContextMenuProps) {
@@ -68,247 +59,6 @@ export function ContextMenu({ editor }: ContextMenuProps) {
     [editor],
   );
 
-  // Build math block context menu
-  const buildMathBlockMenu = useCallback(
-    (pos: number): MenuItem[] => {
-      const resolved = editor.state.doc.resolve(pos);
-      // atom:true — find the mathBlock node via nodeAt or nodeAfter
-      let mathNode = editor.state.doc.nodeAt(pos);
-      let mathPos = pos;
-      if (!mathNode || mathNode.type.name !== "mathBlock") {
-        mathNode = resolved.nodeAfter;
-        mathPos = pos;
-      }
-      if (!mathNode || mathNode.type.name !== "mathBlock") {
-        mathNode = resolved.parent;
-        mathPos = resolved.before();
-      }
-
-      const formula = (mathNode.attrs.formula as string) || "";
-      const currentSize = (mathNode.attrs.mathSize as string) || "normal";
-
-      return [
-        {
-          label: "Copy LaTeX Source",
-          action: () => navigator.clipboard.writeText(formula),
-        },
-        {
-          label: "Copy as Image",
-          action: () => {
-            copyMathToPNG(formula, true);
-          },
-        },
-        { label: "", action: () => {}, separator: true },
-        {
-          label: `Size: Small${currentSize === "small" ? " \u2713" : ""}`,
-          action: () => {
-            const tr = editor.state.tr;
-            tr.setNodeMarkup(mathPos, undefined, {
-              ...mathNode.attrs,
-              mathSize: "small",
-            });
-            editor.view.dispatch(tr);
-          },
-        },
-        {
-          label: `Size: Normal${currentSize === "normal" ? " \u2713" : ""}`,
-          action: () => {
-            const tr = editor.state.tr;
-            tr.setNodeMarkup(mathPos, undefined, {
-              ...mathNode.attrs,
-              mathSize: "normal",
-            });
-            editor.view.dispatch(tr);
-          },
-        },
-        {
-          label: `Size: Large${currentSize === "large" ? " \u2713" : ""}`,
-          action: () => {
-            const tr = editor.state.tr;
-            tr.setNodeMarkup(mathPos, undefined, {
-              ...mathNode.attrs,
-              mathSize: "large",
-            });
-            editor.view.dispatch(tr);
-          },
-        },
-        { label: "", action: () => {}, separator: true },
-        {
-          label: "Convert to Inline Math",
-          action: () => {
-            const tr = editor.state.tr;
-            const mathInlineType = editor.schema.nodes.mathInline;
-            if (!mathInlineType) return;
-            const inlineNode = mathInlineType.create({ formula });
-            tr.replaceWith(mathPos, mathPos + mathNode.nodeSize, inlineNode);
-            editor.view.dispatch(tr);
-          },
-        },
-        {
-          label: "Delete Equation",
-          action: () => {
-            const tr = editor.state.tr;
-            tr.delete(mathPos, mathPos + mathNode.nodeSize);
-            editor.view.dispatch(tr);
-          },
-        },
-      ];
-    },
-    [editor],
-  );
-
-  // Build math inline context menu
-  const buildMathInlineMenu = useCallback(
-    (target: HTMLElement): MenuItem[] => {
-      // Find the inline math node by walking the DOM to get ProseMirror position
-      const nodeViewWrapper = target.closest(
-        "[data-type='mathInline']",
-      ) as HTMLElement | null;
-      if (!nodeViewWrapper) return [];
-
-      const pmPos = editor.view.posAtDOM(nodeViewWrapper, 0);
-      const resolved = editor.state.doc.resolve(pmPos);
-      // For atom inline nodes, check nodeAfter at the resolved position
-      const inlineNode = resolved.nodeAfter ?? resolved.parent;
-      const isInlineAtom = inlineNode.type.name === "mathInline";
-      const mathNode = isInlineAtom ? inlineNode : resolved.parent;
-      const nodePos = isInlineAtom ? pmPos : resolved.before();
-
-      const formula = (mathNode.attrs.formula as string) || "";
-      const currentSize = (mathNode.attrs.mathSize as string) || "normal";
-
-      return [
-        {
-          label: "Copy LaTeX Source",
-          action: () => navigator.clipboard.writeText(formula),
-        },
-        {
-          label: "Copy as Image",
-          action: () => {
-            copyMathToPNG(formula, false);
-          },
-        },
-        { label: "", action: () => {}, separator: true },
-        {
-          label: `Size: Small${currentSize === "small" ? " \u2713" : ""}`,
-          action: () => {
-            const tr = editor.state.tr;
-            tr.setNodeMarkup(nodePos, undefined, {
-              ...mathNode.attrs,
-              mathSize: "small",
-            });
-            editor.view.dispatch(tr);
-          },
-        },
-        {
-          label: `Size: Normal${currentSize === "normal" ? " \u2713" : ""}`,
-          action: () => {
-            const tr = editor.state.tr;
-            tr.setNodeMarkup(nodePos, undefined, {
-              ...mathNode.attrs,
-              mathSize: "normal",
-            });
-            editor.view.dispatch(tr);
-          },
-        },
-        {
-          label: `Size: Large${currentSize === "large" ? " \u2713" : ""}`,
-          action: () => {
-            const tr = editor.state.tr;
-            tr.setNodeMarkup(nodePos, undefined, {
-              ...mathNode.attrs,
-              mathSize: "large",
-            });
-            editor.view.dispatch(tr);
-          },
-        },
-        { label: "", action: () => {}, separator: true },
-        {
-          label: "Convert to Block Math",
-          action: () => {
-            const tr = editor.state.tr;
-            const mathBlockType = editor.schema.nodes.mathBlock;
-            if (!mathBlockType) return;
-            // atom:true — formula in attrs, no text children
-            const blockNode = mathBlockType.create({ formula });
-            tr.replaceWith(nodePos, nodePos + mathNode.nodeSize, blockNode);
-            editor.view.dispatch(tr);
-          },
-        },
-        {
-          label: "Delete Equation",
-          action: () => {
-            const tr = editor.state.tr;
-            tr.delete(nodePos, nodePos + mathNode.nodeSize);
-            editor.view.dispatch(tr);
-          },
-        },
-      ];
-    },
-    [editor],
-  );
-
-  // Build mermaid block context menu
-  const buildMermaidBlockMenu = useCallback(
-    (target: Element): MenuItem[] => {
-      // Find the mermaid NodeView wrapper (target may be SVGElement inside the diagram)
-      const wrapper = target.closest(
-        "[data-type='mermaidBlock']",
-      ) as HTMLElement | null;
-      if (!wrapper) return [];
-
-      const pmPos = editor.view.posAtDOM(wrapper, 0);
-      const node = editor.state.doc.nodeAt(pmPos);
-      if (!node || node.type.name !== "mermaidBlock") return [];
-
-      const code = (node.attrs.code as string) || "";
-
-      // Extract rendered SVG from the NodeView DOM
-      const svgContainer = wrapper.querySelector(".mermaid-block-svg");
-      const svgHtml = svgContainer?.innerHTML || "";
-
-      return [
-        {
-          label: "Copy as SVG",
-          action: () => {
-            if (svgHtml) copyMermaidSvg(svgHtml);
-          },
-        },
-        {
-          label: "Copy as PNG",
-          action: () => {
-            if (svgHtml) copyMermaidPng(svgHtml);
-          },
-        },
-        {
-          label: "Copy Mermaid Source",
-          action: () => copyMermaidSource(code),
-        },
-        { label: "", action: () => {}, separator: true },
-        {
-          label: "Edit Full-screen",
-          action: () => {
-            editor.commands.setNodeSelection(pmPos);
-            // Dispatch custom event for full-screen editing
-            wrapper.dispatchEvent(
-              new CustomEvent("mermaid-fullscreen", { bubbles: true }),
-            );
-          },
-        },
-        { label: "", action: () => {}, separator: true },
-        {
-          label: "Delete Diagram",
-          action: () => {
-            const { tr } = editor.state;
-            tr.delete(pmPos, pmPos + node.nodeSize);
-            editor.view.dispatch(tr);
-          },
-        },
-      ];
-    },
-    [editor],
-  );
-
   // Build menu items based on the node type at the click position
   const buildMenuItems = useCallback(
     (pos: number): MenuItem[] => {
@@ -335,140 +85,13 @@ export function ContextMenu({ editor }: ContextMenuProps) {
         },
       ];
 
-      // Table-specific items — walk up from resolved pos to find cell
-      let tableCell = null;
-      for (let d = resolved.depth; d >= 0; d--) {
-        const n = resolved.node(d);
-        if (n.type.name === "tableCell" || n.type.name === "tableHeader") {
-          tableCell = n;
-          break;
-        }
-      }
-      if (tableCell) {
-        const currentAlign =
-          (tableCell.attrs.alignment as null | string) ?? null;
-        return [
-          ...baseItems,
-          { label: "", action: () => {}, separator: true },
-          {
-            label: "Add Row Above",
-            action: () => editor.chain().focus().addRowBefore().run(),
-          },
-          {
-            label: "Add Row Below",
-            action: () => editor.chain().focus().addRowAfter().run(),
-          },
-          {
-            label: "Add Column Left",
-            action: () => editor.chain().focus().addColumnBefore().run(),
-          },
-          {
-            label: "Add Column Right",
-            action: () => editor.chain().focus().addColumnAfter().run(),
-          },
-          { label: "", action: () => {}, separator: true },
-          {
-            label: `Align Left${currentAlign === "left" ? " \u2713" : ""}`,
-            action: () =>
-              editor
-                .chain()
-                .focus()
-                .setCellAttribute("alignment", "left")
-                .run(),
-          },
-          {
-            label: `Align Center${currentAlign === "center" ? " \u2713" : ""}`,
-            action: () =>
-              editor
-                .chain()
-                .focus()
-                .setCellAttribute("alignment", "center")
-                .run(),
-          },
-          {
-            label: `Align Right${currentAlign === "right" ? " \u2713" : ""}`,
-            action: () =>
-              editor
-                .chain()
-                .focus()
-                .setCellAttribute("alignment", "right")
-                .run(),
-          },
-          {
-            label: `No Alignment${currentAlign === null ? " \u2713" : ""}`,
-            action: () =>
-              editor.chain().focus().setCellAttribute("alignment", null).run(),
-          },
-          ...(editor.can().mergeCells() || editor.can().splitCell()
-            ? [{ label: "", action: () => {}, separator: true }]
-            : []),
-          ...(editor.can().mergeCells()
-            ? [
-                {
-                  label: "Merge Cells",
-                  action: () => editor.chain().focus().mergeCells().run(),
-                },
-              ]
-            : []),
-          ...(editor.can().splitCell()
-            ? [
-                {
-                  label: "Split Cell",
-                  action: () => editor.chain().focus().splitCell().run(),
-                },
-              ]
-            : []),
-          { label: "", action: () => {}, separator: true },
-          {
-            label: "Delete Row",
-            action: () => editor.chain().focus().deleteRow().run(),
-          },
-          {
-            label: "Delete Column",
-            action: () => editor.chain().focus().deleteColumn().run(),
-          },
-          {
-            label: "Delete Table",
-            action: () => editor.chain().focus().deleteTable().run(),
-          },
-          { label: "", action: () => {}, separator: true },
-          {
-            label: "Toggle Header Row",
-            action: () => editor.chain().focus().toggleHeaderRow().run(),
-          },
-          {
-            label: "Toggle Header Column",
-            action: () => editor.chain().focus().toggleHeaderColumn().run(),
-          },
-          {
-            label: "Copy as Markdown",
-            action: () => {
-              const table = findTableAtCursor(editor);
-              if (!table || !table.node) return;
-              const tempDoc = editor.schema.nodes.doc.create(null, [
-                table.node,
-              ]);
-              const md = prosemirrorToMarkdown(tempDoc);
-              navigator.clipboard.writeText(md.trim());
-            },
-          },
-          {
-            label: "Copy as HTML",
-            action: () => {
-              const table = findTableAtCursor(editor);
-              if (!table) return;
-              const dom = editor.view.nodeDOM(table.pos);
-              if (dom && dom instanceof HTMLElement) {
-                navigator.clipboard.writeText(dom.outerHTML);
-              }
-            },
-          },
-        ];
-      }
+      // Table-specific items
+      const tableMenu = buildTableMenu(editor, resolved, baseItems);
+      if (tableMenu) return tableMenu;
 
       // Math block items
       if (node.type.name === "mathBlock") {
-        return buildMathBlockMenu(pos);
+        return buildMathBlockMenu(editor, pos);
       }
 
       // Code block items
@@ -547,7 +170,7 @@ export function ContextMenu({ editor }: ContextMenuProps) {
         ...blockIdItems,
       ];
     },
-    [editor, buildMathBlockMenu],
+    [editor],
   );
 
   useEffect(() => {
@@ -561,13 +184,13 @@ export function ContextMenu({ editor }: ContextMenuProps) {
       const specialType = findSpecialNode(e.target);
 
       if (specialType === "mathInline") {
-        setItems(buildMathInlineMenu(e.target as HTMLElement));
+        setItems(buildMathInlineMenu(editor, e.target as HTMLElement));
         setPosition({ x: e.clientX, y: e.clientY });
         return;
       }
 
       if (specialType === "mermaidBlock") {
-        setItems(buildMermaidBlockMenu(e.target as Element));
+        setItems(buildMermaidBlockMenu(editor, e.target as Element));
         setPosition({ x: e.clientX, y: e.clientY });
         return;
       }
@@ -579,7 +202,7 @@ export function ContextMenu({ editor }: ContextMenuProps) {
       if (!pos) return;
 
       if (specialType === "mathBlock") {
-        setItems(buildMathBlockMenu(pos.pos));
+        setItems(buildMathBlockMenu(editor, pos.pos));
       } else {
         setItems(buildMenuItems(pos.pos));
       }
@@ -605,15 +228,7 @@ export function ContextMenu({ editor }: ContextMenuProps) {
       document.removeEventListener("mousedown", handleClick);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [
-    editor,
-    buildMenuItems,
-    buildMathBlockMenu,
-    buildMathInlineMenu,
-    buildMermaidBlockMenu,
-    findSpecialNode,
-    closeMenu,
-  ]);
+  }, [editor, buildMenuItems, findSpecialNode, closeMenu]);
 
   // Clamp menu position so it stays within the viewport
   const [adjustedPos, setAdjustedPos] = useState<null | {
@@ -666,20 +281,4 @@ export function ContextMenu({ editor }: ContextMenuProps) {
       )}
     </div>
   );
-}
-
-/** Walk up from resolved position to find the enclosing table node */
-function findTableAtCursor(editor: Editor): null | {
-  depth: number;
-  node: ReturnType<typeof editor.state.doc.nodeAt>;
-  pos: number;
-} {
-  const { $from } = editor.state.selection;
-  for (let d = $from.depth; d >= 0; d--) {
-    const node = $from.node(d);
-    if (node.type.name === "table") {
-      return { node, pos: $from.before(d), depth: d };
-    }
-  }
-  return null;
 }
