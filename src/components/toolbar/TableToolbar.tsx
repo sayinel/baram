@@ -10,6 +10,7 @@ import {
 import type { Editor } from "@tiptap/react";
 
 import { CellSelection } from "@tiptap/pm/tables";
+import { Sparkles } from "lucide-react";
 
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
@@ -391,7 +392,7 @@ export function TableToolbar({ editor }: TableToolbarProps) {
         }}
         title="AI Commands"
       >
-        AI
+        <Sparkles size={14} />
       </button>
       <div className="table-toolbar-separator" />
       <button
