@@ -304,7 +304,7 @@ function SnapshotDetail({
                 type="checkbox"
               />
               <span
-                className="snapshot-file-name"
+                className="snapshot-file-name text-truncate"
                 onClick={() => loadDiff(vaultPath, snapshot.id, file.path)}
                 title="Click to view diff"
               >

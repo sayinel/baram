@@ -20,7 +20,6 @@ describe("Integration: Multi-tab + Store", () => {
     useEditorStore.setState({
       activeTabId: null,
       tabs: [],
-      isSourceMode: false,
     });
     useUIStore.setState({
       sidebarOpen: true,
@@ -96,18 +95,6 @@ describe("Integration: Multi-tab + Store", () => {
     const state = useEditorStore.getState();
     expect(state.tabs).toHaveLength(1);
     expect(state.activeTabId).toBe("t1"); // existing tab activated
-  });
-
-  it("toggles source mode", () => {
-    const { toggleSourceMode } = useEditorStore.getState();
-
-    expect(useEditorStore.getState().isSourceMode).toBe(false);
-
-    toggleSourceMode();
-    expect(useEditorStore.getState().isSourceMode).toBe(true);
-
-    useEditorStore.getState().toggleSourceMode();
-    expect(useEditorStore.getState().isSourceMode).toBe(false);
   });
 
   it("UI store sidebar and command palette sync independently", () => {

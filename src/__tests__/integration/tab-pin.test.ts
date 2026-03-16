@@ -18,7 +18,6 @@ describe("§38 Tab Pin", () => {
     useEditorStore.setState({
       activeTabId: null,
       tabs: [],
-      isSourceMode: false,
       mruOrder: [],
     });
   });

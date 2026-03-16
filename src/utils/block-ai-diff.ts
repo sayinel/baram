@@ -2,17 +2,16 @@
 // Shows original vs AI text with inline diff, Accept/Reject controls.
 // DOM-based (like showPrompt) so it works from both React and plain PM NodeViews.
 
-import { listen } from "@tauri-apps/api/event";
-import type { UnlistenFn } from "@tauri-apps/api/event";
-
 import type { Editor } from "@tiptap/core";
 
 import diff from "fast-diff";
 
 import { llmCancel, llmComplete } from "../ipc/invoke";
 import { useAIStore } from "../stores/ai/ai";
+import { createLLMStream } from "./llm-stream";
 import { logger } from "./logger";
 import { getConfigForTask } from "./model-selection";
+import { getFilePrivacy, isLLMAllowed } from "./privacy-check";
 
 // ── Apply result to the target block ────────────────────────────────
 
@@ -113,6 +112,12 @@ export async function executeBlockAIWithDiff(
     return;
   }
 
+  const filePrivacy = getFilePrivacy(editor);
+  if (!isLLMAllowed(store.privacyMode, inlineCfg.provider, filePrivacy)) {
+    logger.error("Block AI diff: blocked by privacy settings");
+    return;
+  }
+
   // Position the panel near the target block
   const blockDom = editor.view.nodeDOM(targetPos);
   const anchorRect =
@@ -123,41 +128,27 @@ export async function executeBlockAIWithDiff(
   // Create the diff panel
   const panel = createDiffPanel(originalText, anchorRect);
 
-  const requestId = `block_ai_${Date.now()}`;
+  const requestId = `block_ai_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   let aiText = "";
   let completed = false;
-  const unlistens: UnlistenFn[] = [];
 
-  // Set up streaming listeners
-  const tokenUn = await listen<{ requestId: string; token: string }>(
-    "llm:token",
-    (event) => {
-      if (event.payload.requestId !== requestId) return;
-      aiText += event.payload.token;
+  const cleanupStream = await createLLMStream(requestId, {
+    onToken: (token) => {
+      aiText += token;
       panel.updateDiff(originalText, aiText);
     },
-  );
-  unlistens.push(tokenUn);
-
-  const doneUn = await listen<{ requestId: string }>("llm:done", (event) => {
-    if (event.payload.requestId !== requestId) return;
-    completed = true;
-    panel.updateDiff(originalText, aiText);
-    panel.showActions();
-  });
-  unlistens.push(doneUn);
-
-  const errorUn = await listen<{ error: string; requestId: string }>(
-    "llm:error",
-    (event) => {
-      if (event.payload.requestId !== requestId) return;
-      logger.error("Block AI diff error:", event.payload.error);
+    onDone: () => {
       completed = true;
-      panel.setError(event.payload.error);
+      panel.updateDiff(originalText, aiText);
       panel.showActions();
     },
-  );
-  unlistens.push(errorUn);
+    onError: (error) => {
+      logger.error("Block AI diff error:", error);
+      completed = true;
+      panel.setError(error);
+      panel.showActions();
+    },
+  });
 
   // Fire LLM request
   llmComplete(
@@ -170,13 +161,13 @@ export async function executeBlockAIWithDiff(
     inlineCfg.provider,
     inlineCfg.baseUrl,
     store.privacyMode,
-  ).catch((e) => logger.error(e));
+  ).catch(() => logger.error("LLM request failed"));
 
   // Wait for user decision
   const decision = await panel.waitForDecision();
 
   // Cleanup listeners
-  for (const un of unlistens) un();
+  cleanupStream();
 
   // Cancel if still streaming
   if (!completed) {

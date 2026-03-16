@@ -138,7 +138,7 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
                 const Icon = SPACE_ICONS[preset.id] || Pencil;
                 return (
                   <button
-                    className={`status-space-menu-item${activePresetId === preset.id ? "status-space-menu-active" : ""}`}
+                    className={`status-space-menu-item ${activePresetId === preset.id ? "status-space-menu-active" : ""}`}
                     key={preset.id}
                     onClick={() => handleSpaceSelect(preset.id)}
                   >
@@ -172,11 +172,14 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
       </div>
       {mode !== "graph" && (
         <div className="status-bar-right">
-          <span className="status-words" title={`${stats.chars} characters`}>
+          <span
+            className="status-words cursor-default"
+            title={`${stats.chars} characters`}
+          >
             {stats.words} words
           </span>
           <span className="status-separator">|</span>
-          <span className="status-position">
+          <span className="status-position cursor-default">
             Ln {stats.line}, Col {stats.col}
           </span>
           {zoomPercent !== 100 && (

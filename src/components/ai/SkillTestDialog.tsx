@@ -113,8 +113,8 @@ export function SkillTestDialog({ open, onClose }: SkillTestDialogProps) {
             <label className="custom-ai-label">Result</label>
             <pre
               style={{
-                background: "var(--color-bg-secondary)",
-                border: "1px solid var(--color-border)",
+                background: "var(--color-bg-subtle)",
+                border: "1px solid var(--color-border-default)",
                 borderRadius: 6,
                 padding: 12,
                 fontSize: 12,

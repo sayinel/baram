@@ -6,6 +6,7 @@
  */
 import { listDir, readFile, writeFile } from "../../ipc/invoke";
 import { extractFrontmatter } from "../markdown/frontmatter";
+import { JOURNAL_FILENAME_RE } from "./journal";
 
 // ---- Types ----------------------------------------------------------------
 
@@ -72,9 +73,7 @@ export async function buildFullCache(
 
   const mdFiles = entries.filter(
     (e) =>
-      !e.isDir &&
-      e.name.endsWith(".md") &&
-      /^\d{4}-\d{2}-\d{2}\.md$/.test(e.name),
+      !e.isDir && e.name.endsWith(".md") && JOURNAL_FILENAME_RE.test(e.name),
   );
 
   const entriesByDate: Record<string, JournalEntryMeta> = {};

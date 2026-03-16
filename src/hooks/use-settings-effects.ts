@@ -34,16 +34,16 @@ export function useSettingsEffects(editor: Editor | null) {
   useEffect(() => {
     const root = document.documentElement;
     const cssKeys: (keyof ThemeColors)[] = [
-      "--color-bg-primary",
-      "--color-bg-secondary",
-      "--color-bg-sidebar",
-      "--color-bg-tertiary",
+      "--color-bg-default",
+      "--color-bg-subtle",
+      "--color-bg-panel",
+      "--color-bg-elevated",
       "--color-text-primary",
       "--color-text-secondary",
-      "--color-text-muted",
-      "--color-border",
-      "--color-border-light",
-      "--color-accent",
+      "--color-text-disabled",
+      "--color-border-default",
+      "--color-border-subtle",
+      "--color-accent-default",
       "--color-accent-hover",
       "--color-editor-bg",
       "--color-editor-text",
@@ -86,7 +86,7 @@ export function useSettingsEffects(editor: Editor | null) {
     if (!tiptap) return;
     tiptap.style.fontSize = `${fontSize}px`;
     tiptap.style.fontFamily = fontFamily
-      ? `${fontFamily}, var(--font-editor)`
+      ? `${fontFamily}, var(--font-family-editor)`
       : "";
     tiptap.style.lineHeight = String(lineHeight);
     tiptap.style.maxWidth = editorMaxWidth > 0 ? `${editorMaxWidth}px` : "";

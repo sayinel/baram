@@ -1,0 +1,552 @@
+/* §4.3 File Tree */
+.file-tree {
+  padding: 4px 0;
+}
+
+.file-tree-header {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+.file-tree-search-input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  color: var(--color-text-primary);
+  outline: none;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+}
+
+.file-tree-search-input:focus {
+  border-color: var(--color-accent-default);
+}
+
+.file-tree-action-btn {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+}
+
+.file-tree-action-btn:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-default);
+  border-color: var(--color-border-default);
+}
+
+.file-tree-results {
+  padding: 4px 0;
+}
+
+.file-tree-result-path {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.file-tree-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.file-tree-open-btn {
+  padding: 6px 16px;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+}
+
+.file-tree-open-btn:hover {
+  color: white;
+  background: var(--color-accent-default);
+  border-color: var(--color-accent-default);
+}
+
+.file-tree-item {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 3px 8px;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: background-color 0.1s;
+}
+
+.file-tree-item:hover {
+  background-color: var(--color-bg-default);
+}
+
+.file-tree-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+}
+
+.file-tree-icon svg {
+  display: block;
+}
+
+.file-tree-item-active {
+  font-weight: 500;
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-default);
+}
+
+.file-tree-chevron {
+  font-size: 0.55rem;
+  transition: transform 0.15s ease;
+}
+
+.file-tree-chevron-open {
+  transform: rotate(90deg);
+}
+
+/* Drag-and-drop */
+.file-tree-file {
+  cursor: grab;
+}
+
+.file-tree-dragging {
+  cursor: grabbing;
+}
+
+.file-tree-drag-ghost {
+  position: fixed;
+  z-index: 100;
+  max-width: 200px;
+  padding: 2px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: inherit;
+  font-size: 0.75rem;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  pointer-events: none;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 15%);
+}
+
+/* §33 File tree inline rename */
+.file-tree-rename-input {
+  flex: 1;
+  min-width: 0;
+  padding: 1px 4px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  color: var(--color-text-primary);
+  outline: none;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-accent-default);
+  border-radius: 3px;
+}
+
+/* File tree context menu */
+.file-tree-context-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 140px;
+  padding: 4px 0;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
+}
+
+.file-tree-context-menu-item {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.file-tree-context-menu-item:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-default);
+}
+
+.file-tree-context-menu-item-danger:hover {
+  color: #e53e3e;
+  background: #e53e3e20;
+}
+
+.file-tree-context-menu-separator {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--color-border-default);
+}
+
+/* Drag and drop */
+.file-tree-drop-target {
+  outline: 1px dashed var(--color-accent-default);
+  background: var(--color-accent-light, rgb(59 130 246 / 10%));
+  border-radius: 3px;
+}
+
+/* External file drop (Tauri onDragDropEvent) visual feedback */
+.file-tree-ext-drop-target {
+  outline: 2px dashed var(--color-accent-default);
+  background: var(--color-accent-light, rgb(59 130 246 / 15%));
+  border-radius: 3px;
+}
+
+/* Editor drop indicator bar — shows the exact insertion line */
+.drop-indicator-bar {
+  position: fixed;
+  z-index: 50;
+  display: none;
+  height: 2px;
+  pointer-events: none;
+  background: var(--color-accent-default);
+}
+
+.drop-indicator-bar::before {
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  width: 8px;
+  height: 8px;
+  content: "";
+  background: var(--color-accent-default);
+  border-radius: 50%;
+}
+
+/* §4.3 Outline */
+.outline {
+  padding: 4px 0;
+}
+
+.outline-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100px;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.outline-item {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 3px 8px;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background-color 0.1s;
+}
+
+.outline-item:hover {
+  background-color: var(--color-bg-default);
+}
+
+.outline-level {
+  flex-shrink: 0;
+  width: 20px;
+  font-family: var(--font-family-mono);
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+/* ============================================
+   §4.8 Status Bar
+   ============================================ */
+
+.status-bar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  height: 28px;
+  padding: 0 12px;
+  font-family: var(--font-family-mono);
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  background-color: var(--color-bg-subtle);
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.status-bar-left,
+.status-bar-right {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.status-mode {
+  padding: 1px 6px;
+  background-color: var(--color-bg-default);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 3px;
+}
+
+.status-separator {
+  color: var(--color-border-default);
+}
+
+.status-git-branch {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  padding: 1px 6px;
+  background-color: var(--color-bg-default);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 3px;
+}
+
+.status-git-dirty {
+  color: var(--color-text-secondary);
+}
+
+.status-git-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background: var(--color-accent-default);
+  border-radius: 50%;
+}
+
+.status-privacy {
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--bg-primary, #1a1b26);
+  background: var(--accent-warning, #f59e0b);
+  border-radius: 3px;
+}
+
+/* ============================================
+   §57b Git Source Control Panel
+   ============================================ */
+
+.git-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+  font-size: 0.8rem;
+}
+
+.git-panel-empty {
+  padding: 1.5em;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.git-branch-bar {
+  display: flex;
+  gap: 0.4em;
+  align-items: center;
+  padding: 0.5em 0.75em;
+  font-family: var(--font-family-mono);
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.git-branch-icon {
+  font-size: 1em;
+}
+
+.git-branch-name {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.git-commit-area {
+  padding: 0.5em 0.75em;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.git-commit-input {
+  display: block;
+  width: 100%;
+  padding: 0.4em;
+  font-family: var(--font-family-mono);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--color-text-primary);
+  resize: vertical;
+  outline: none;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+}
+
+.git-commit-input:focus {
+  border-color: var(--color-accent-default);
+}
+
+.git-commit-btn {
+  display: block;
+  width: 100%;
+  padding: 0.35em;
+  margin-top: 0.4em;
+  font-family: var(--font-family-mono);
+  font-size: 0.8rem;
+  color: #fff;
+  cursor: pointer;
+  background: var(--color-accent-default);
+  border: none;
+  border-radius: 4px;
+}
+
+.git-commit-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.git-commit-btn:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.git-error {
+  padding: 0.4em 0.75em;
+  font-size: 0.75rem;
+  color: #ef4444;
+  background: rgb(239 68 68 / 8%);
+}
+
+.git-section {
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.git-section-header {
+  display: flex;
+  gap: 0.4em;
+  align-items: center;
+  padding: 0.35em 0.75em;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--color-bg-subtle);
+}
+
+.git-section-count {
+  padding: 0 0.3em;
+  font-size: 0.7rem;
+  font-weight: 400;
+  background: var(--color-bg-default);
+  border-radius: 3px;
+}
+
+.git-section-header .git-action-btn {
+  margin-left: auto;
+}
+
+.git-change-list {
+  padding: 0.15em 0;
+}
+
+.git-change-item {
+  display: flex;
+  gap: 0.4em;
+  align-items: center;
+  padding: 0.2em 0.75em;
+  cursor: pointer;
+  user-select: none;
+}
+
+.git-change-item:hover {
+  background: var(--color-bg-subtle);
+}
+
+.git-change-icon {
+  flex-shrink: 0;
+  width: 1.2em;
+  font-family: var(--font-family-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.git-status-modified {
+  color: #e69500;
+}
+
+.git-status-added {
+  color: #22c55e;
+}
+
+.git-status-deleted {
+  color: #ef4444;
+}
+
+.git-status-renamed {
+  color: #3b82f6;
+}
+
+.git-change-name {
+  flex: 1;
+  font-size: 0.8rem;
+}
+
+.git-change-dir {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+}
+
+.git-change-actions {
+  display: none;
+  gap: 0.2em;
+}
+
+.git-change-item:hover .git-change-actions {
+  display: flex;
+}
+
+.git-action-btn {
+  padding: 0 0.3em;
+  font-family: var(--font-family-mono);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: none;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 3px;
+}
+
+.git-action-btn:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-accent-default);
+}

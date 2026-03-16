@@ -173,7 +173,7 @@ export function PeriodicInsightBanner({ filePath, type }: Props) {
             분석하기
           </button>
           <button
-            className="periodic-insight-dismiss"
+            className="periodic-insight-dismiss btn-unstyled"
             onClick={handleDismiss}
             title="닫기"
           >
@@ -196,7 +196,7 @@ export function PeriodicInsightBanner({ filePath, type }: Props) {
           {isStreaming && <span className="reflection-cursor">&#x258b;</span>}
           {!isStreaming && text && (
             <button
-              className="periodic-insight-dismiss"
+              className="periodic-insight-dismiss btn-unstyled"
               onClick={handleDismiss}
               title="닫기"
             >

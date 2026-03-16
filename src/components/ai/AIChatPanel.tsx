@@ -243,7 +243,7 @@ export function AIChatPanel() {
 
   return (
     <div className="ai-chat-panel">
-      <div className="ai-chat-header">
+      <div className="ai-chat-header flex-header">
         <div className="ai-chat-session-dropdown">
           <button
             className="ai-chat-session-trigger"

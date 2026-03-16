@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { Editor } from "@tiptap/react";
 
+import { useShallow } from "zustand/shallow";
+
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useWorkspaceStore } from "../../stores/file/workspace";
@@ -14,6 +16,7 @@ import {
   getSelectionOrParagraph,
   showPrompt,
 } from "../../utils/ai-commands";
+import { fuzzyMatch } from "../../utils/file-search";
 
 export interface CommandItem {
   action: (editor: Editor | null) => void;
@@ -45,7 +48,13 @@ export function CommandPalette({
   onCloseFolder,
 }: CommandPaletteProps) {
   const { commandPaletteOpen, toggleCommandPalette, toggleSidebar } =
-    useUIStore();
+    useUIStore(
+      useShallow((s) => ({
+        commandPaletteOpen: s.commandPaletteOpen,
+        toggleCommandPalette: s.toggleCommandPalette,
+        toggleSidebar: s.toggleSidebar,
+      })),
+    );
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -131,17 +140,20 @@ export function CommandPalette({
     [filtered, selectedIndex, executeCommand, toggleCommandPalette],
   );
 
+  // Group by category and assign stable flat indices — outside render body to avoid
+  // mutation during React Strict Mode double-render.
+  const { groups, flatItems } = useMemo(() => {
+    const groupMap = new Map<string, { cmd: CommandItem; idx: number }[]>();
+    let index = 0;
+    for (const cmd of filtered) {
+      const list = groupMap.get(cmd.category) || [];
+      list.push({ cmd, idx: index++ });
+      groupMap.set(cmd.category, list);
+    }
+    return { groups: groupMap, flatItems: filtered };
+  }, [filtered]);
+
   if (!commandPaletteOpen) return null;
-
-  // Group by category
-  const groups = new Map<string, CommandItem[]>();
-  for (const cmd of filtered) {
-    const list = groups.get(cmd.category) || [];
-    list.push(cmd);
-    groups.set(cmd.category, list);
-  }
-
-  let flatIndex = 0;
 
   return (
     <div className="command-palette-overlay" onClick={toggleCommandPalette}>
@@ -162,30 +174,27 @@ export function CommandPalette({
           value={query}
         />
         <div className="command-palette-list">
-          {filtered.length === 0 && (
+          {flatItems.length === 0 && (
             <div className="command-palette-empty">No commands found</div>
           )}
           {Array.from(groups.entries()).map(([category, items]) => (
             <div className="command-palette-group" key={category}>
               <div className="command-palette-category">{category}</div>
-              {items.map((cmd) => {
-                const idx = flatIndex++;
-                return (
-                  <div
-                    className={`command-palette-item ${idx === selectedIndex ? "command-palette-item-selected" : ""}`}
-                    key={cmd.id}
-                    onClick={() => executeCommand(cmd)}
-                    onMouseEnter={() => setSelectedIndex(idx)}
-                  >
-                    <span className="command-item-label">{cmd.label}</span>
-                    {cmd.shortcut && (
-                      <span className="command-item-shortcut">
-                        {cmd.shortcut}
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
+              {items.map(({ cmd, idx }) => (
+                <div
+                  className={`command-palette-item ${idx === selectedIndex ? "command-palette-item-selected" : ""}`}
+                  key={cmd.id}
+                  onClick={() => executeCommand(cmd)}
+                  onMouseEnter={() => setSelectedIndex(idx)}
+                >
+                  <span className="command-item-label">{cmd.label}</span>
+                  {cmd.shortcut && (
+                    <span className="command-item-shortcut">
+                      {cmd.shortcut}
+                    </span>
+                  )}
+                </div>
+              ))}
             </div>
           ))}
         </div>
@@ -594,14 +603,4 @@ function buildCommands(
       action: () => useWorkspaceStore.getState().applyPreset("journal"),
     },
   ];
-}
-
-function fuzzyMatch(query: string, text: string): boolean {
-  const q = query.toLowerCase();
-  const t = text.toLowerCase();
-  let qi = 0;
-  for (let ti = 0; ti < t.length && qi < q.length; ti++) {
-    if (t[ti] === q[qi]) qi++;
-  }
-  return qi === q.length;
 }

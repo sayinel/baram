@@ -5,6 +5,7 @@ import type { FileEntry } from "../../stores/file/file";
 
 import { useAIStore } from "../../stores/ai/ai";
 import { useFileStore } from "../../stores/file/file";
+import { fuzzyMatch } from "../../utils/file-search";
 
 interface ReferenceAutocompleteProps {
   onClose: () => void;
@@ -210,15 +211,4 @@ function flattenFiles(entries: FileEntry[]): { name: string; path: string }[] {
     }
   }
   return result;
-}
-
-/** Simple fuzzy match: all query chars must appear in order within target */
-function fuzzyMatch(query: string, target: string): boolean {
-  const q = query.toLowerCase();
-  const t = target.toLowerCase();
-  let qi = 0;
-  for (let ti = 0; ti < t.length && qi < q.length; ti++) {
-    if (t[ti] === q[qi]) qi++;
-  }
-  return qi === q.length;
 }

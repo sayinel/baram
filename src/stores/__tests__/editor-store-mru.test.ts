@@ -8,7 +8,6 @@ beforeEach(() => {
     activeTabId: null,
     tabs: [],
     mruOrder: [],
-    isSourceMode: false,
   });
 });
 

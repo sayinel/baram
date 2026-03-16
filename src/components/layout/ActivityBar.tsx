@@ -20,27 +20,18 @@ import {
   Tag,
   Zap,
 } from "lucide-react";
+import { useShallow } from "zustand/shallow";
 
 import { useSettingsStore } from "../../stores/settings/store";
-import { useUIStore } from "../../stores/ui/ui";
-
-type PanelId =
-  | "backlinks"
-  | "bookmarks"
-  | "calendar"
-  | "files"
-  | "git"
-  | "graph"
-  | "outline"
-  | "plugins"
-  | "search"
-  | "skills-gallery"
-  | "snapshots"
-  | "tags";
+import {
+  type RightPanelMode,
+  type SidebarPanel,
+  useUIStore,
+} from "../../stores/ui/ui";
 
 const ICON_PROPS = { size: 22, strokeWidth: 1.5 } as const;
 
-const PANEL_ICONS: { icon: ReactNode; id: PanelId; label: string }[] = [
+const PANEL_ICONS: { icon: ReactNode; id: SidebarPanel; label: string }[] = [
   { id: "files", label: "Files", icon: <Folder {...ICON_PROPS} /> },
   { id: "search", label: "Search", icon: <Search {...ICON_PROPS} /> },
   { id: "outline", label: "Outline", icon: <List {...ICON_PROPS} /> },
@@ -68,17 +59,9 @@ const SnapshotsIcon = <Clock {...ICON_PROPS} />;
 interface BottomItemDef {
   icon: ReactNode;
   mode?: RightPanelMode;
-  panelId?: PanelId;
+  panelId?: SidebarPanel;
   title: string;
 }
-
-type RightPanelMode =
-  | "chat"
-  | "help"
-  | "memories"
-  | "none"
-  | "photo-gallery"
-  | "properties";
 
 const BOTTOM_ITEMS: Record<string, BottomItemDef> = {
   chat: { icon: AIChatIcon, title: "AI Chat (\u2318\u21E7A)", mode: "chat" },
@@ -107,10 +90,22 @@ export function ActivityBar() {
     rightPanelMode,
     toggleRightPanel,
     setRightPanelMode,
-  } = useUIStore();
+  } = useUIStore(
+    useShallow((s) => ({
+      sidebarOpen: s.sidebarOpen,
+      sidebarPanel: s.sidebarPanel,
+      toggleSidebar: s.toggleSidebar,
+      setSidebarPanel: s.setSidebarPanel,
+      toggleSettings: s.toggleSettings,
+      rightPanelOpen: s.rightPanelOpen,
+      rightPanelMode: s.rightPanelMode,
+      toggleRightPanel: s.toggleRightPanel,
+      setRightPanelMode: s.setRightPanelMode,
+    })),
+  );
   const { activityBarConfig } = useSettingsStore();
 
-  const handlePanelClick = (panelId: PanelId) => {
+  const handlePanelClick = (panelId: SidebarPanel) => {
     if (!sidebarOpen) {
       setSidebarPanel(panelId);
       toggleSidebar();
@@ -135,7 +130,7 @@ export function ActivityBar() {
   const visibleTopItems = activityBarConfig
     .filter((c) => c.section === "top" && c.visible)
     .map((c) => PANEL_ICONS.find((p) => p.id === c.id))
-    .filter(Boolean) as { icon: ReactNode; id: PanelId; label: string }[];
+    .filter(Boolean) as { icon: ReactNode; id: SidebarPanel; label: string }[];
 
   const visibleBottomItems = activityBarConfig
     .filter((c) => c.section === "bottom" && c.visible)

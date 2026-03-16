@@ -37,10 +37,10 @@ export function SmartTemplateDialog({
         className="smart-template-dialog"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="smart-template-header">
+        <div className="smart-template-header flex-header">
           <h2 className="smart-template-title">Smart Templates</h2>
           <button
-            className="smart-template-close"
+            className="smart-template-close icon-btn"
             onClick={onClose}
             type="button"
           >

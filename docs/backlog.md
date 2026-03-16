@@ -1,6 +1,6 @@
 # Baram — 기술 부채 & 백로그
 
-> 최종 업데이트: 2026-03-14
+> 최종 업데이트: 2026-03-15
 > 이 문서는 즉시 구현하지 않기로 결정한 항목들을 추적한다.
 > 기능 로드맵은 `docs/next-steps.md`, 리팩토링 계획은 `.omc/plans/refactoring-plan.md` 참고.
 
@@ -15,6 +15,15 @@
 - **현황**: `keyring_cmd.rs`가 이미 구현되어 있음
 - **권장 수정**: `api_key` 파라미터 제거 → 백엔드에서 `keyring::Entry::new("baram", &provider).get_password()` 직접 조회
 - **재검토 조건**: LLM 기능 리팩토링 시
+
+### 🟠 HIGH — Vault Root Bypass on Cold Start
+
+- **위치**: `src-tauri/src/fs/mod.rs` (check_vault), `src/hooks/use-app-startup.ts` (handleOpenFilePath)
+- **문제**: `check_vault`가 `VaultRootState::None`일 때 no-op이어서 앱 시작부터 사용자가 폴더를 열기 전까지 모든 FS IPC 커맨드가 임의 절대 경로를 허용함. `handleOpenFilePath`(OS 파일 연결) 경로에서 발생 가능
+- **권장 수정**:
+  - 옵션 A: vault root 미설정 시 FS IPC deny-by-default로 변경
+  - 옵션 B: OS 파일 연결 시 부모 디렉토리를 즉시 vault root로 설정
+- **재검토 조건**: 보안 감사 완료 시 우선 수정
 
 ### 🟡 MEDIUM — assetProtocol scope 과다
 
@@ -59,6 +68,46 @@
 - **문제**: 절대 경로 체크만 하고 `../../etc/passwd` 같은 traverse 패턴 미차단. ZIP 추출은 canonicalize 적용 중이나 일반 읽기/쓰기는 미적용
 - **권장 수정**: `Path::new(path).exists()` 시 `canonicalize` 후 vault root 범위 검증
 - **재검토 조건**: 경로 traversal 취약점 보안 감사 시
+
+---
+
+## AI 기능 (AI Features)
+
+### 🟡 MEDIUM — block-ai-diff 동시 호출 시 waitForDecision hung promise
+
+- **위치**: `src/utils/block-ai-diff.ts:192`, `createDiffPanel()`
+- **문제**: 두 번째 `executeBlockAIWithDiff` 호출이 `document.querySelector(".block-ai-diff-overlay")?.remove()`로 기존 패널의 DOM을 직접 제거 → 첫 번째 `await panel.waitForDecision()`이 영원히 미해결 → `cleanupStream()` 미호출, `keydown` 이벤트 리스너 영구 누출
+- **조건**: 동일 블록에 빠르게 두 번 AI 명령 실행하는 경우(드문 엣지케이스)
+- **권장 수정**: `createDiffPanel` 진입 시 모듈 레벨에서 기존 패널의 `resolveDecision`을 `"reject"`로 먼저 resolve 후 DOM 제거
+  ```typescript
+  let activeResolve: ((d: "accept" | "reject") => void) | null = null;
+  // 패널 생성 시: activeResolve?.("reject"); activeResolve = null;
+  // waitForDecision 시: activeResolve = resolve;
+  ```
+- **재검토 조건**: 블록 AI 기능 UX 개선 시
+
+### 🟠 HIGH (PM 결정 필요) — AgentPanel `acceptAll()` 파일 적용 미구현
+
+- **위치**: `src/stores/agent-store.ts:133`, `src/components/ai/AgentPanel.tsx:40`
+- **문제**: `acceptAll()` 호출 시 results에 `accepted: true` 마킹 후 idle로 리셋되지만, 실제 파일에 변경사항을 적용하는 코드가 없음. 수락 신호가 소비되지 않고 사라짐
+- **현황**: `handleAcceptAll`의 원래 주석도 "future: apply changes to files"로 명시되어 있음
+- **PM 결정 사항**: Agent Mode에서 diff를 수락하면 실제로 어떤 동작을 해야 하는지 정의 필요
+  - 옵션 A: `applyBlockAIResult`를 재사용하여 accepted results를 즉시 에디터에 적용
+  - 옵션 B: 별도 "Apply to Files" 워크플로우 (파일 쓰기 포함)
+  - 옵션 C: Agent Mode 자체가 이미 실행 중 파일을 수정하므로 diff는 확인용(review-only)
+- **재검토 조건**: Agent Mode 기능 완성 단계에서 PM 결정 후 구현
+
+---
+
+## UI/UX (UI/UX Bugs)
+
+### 🟡 MEDIUM — CommandPalette `journal:open-today` 동작 불일치
+
+- **위치**: `src/components/command/CommandPalette.tsx`, `src/hooks/use-keybinding-actions.ts`
+- **문제**: 커맨드 레이블은 "오늘 저널 열기"이나 실제 동작은 `applyPreset("journal")` (레이아웃 프리셋만 적용). 저널이 설정되지 않거나 루트 폴더가 없으면 파일이 열리지 않고 레이아웃만 변경됨
+- **권장 수정**: `applyPreset` 대신 저널 파일 서비스를 직접 호출하여 오늘 날짜의 저널 파일을 실제로 열도록 구현
+- **기대 동작**: 커맨드 실행 시 `journal/YYYY-MM-DD.md` 파일을 생성 후 에디터에서 활성화
+- **재검토 조건**: 저널 기능 개선 시
 
 ---
 
@@ -176,6 +225,42 @@
   - `wrapInParagraph?: boolean`
   - `appendBlockId?: boolean`
 - **재검토 조건**: 새로운 특수 직렬화 노드 타입 추가 시
+
+---
+
+## 성능 (Performance)
+
+### 🟡 MEDIUM — UIStore bare selector 최적화
+
+- **위치**: `src/components/sidebar/ActivityBar.tsx`, `src/components/command/CommandPalette.tsx`, `src/components/journal/QuickCaptureDialog.tsx`
+- **문제**: ActivityBar, CommandPalette, QuickCaptureDialog에서 `useUIStore()` 전체 구독 중. UIState 변경 시 불필요한 re-render 발생. UIState의 9개 필드 중 일부만 소비하나 전체 구독으로 인해 렌더링 성능 저하
+- **권장 수정**: `useShallow` 셀렉터 또는 명시적 필드 선택으로 세분화. ActivityBar 우선 (persistent layout, 9개 필드 소비)
+  ```typescript
+  // Before
+  const { sidebarOpen, activePanel, ... } = useUIStore();
+
+  // After
+  const { sidebarOpen, activePanel } = useUIStore(
+    useShallow((state) => ({ sidebarOpen: state.sidebarOpen, activePanel: state.activePanel }))
+  );
+  ```
+- **성능 영향**: UIState 변경(예: 패널 전환) 시 ActivityBar 불필요 리렌더 방지 → 타이핑 레이턴시 개선
+- **재검토 조건**: UI 반응성 개선 시
+
+### 🟡 MEDIUM — ReferenceAutocomplete 트리 워크 분리
+
+- **위치**: `src/components/editor/ReferenceAutocomplete.tsx`
+- **문제**: `flattenFiles()`/`flattenDirs()`가 query 변경마다 재실행. fileTree 의존 memo와 query 의존 memo로 분리 필요. n>2000 파일 워크스페이스에서 keystroke 레이턴시 영향 (1000ms+ 지연 관찰 가능)
+- **권장 수정**: 두 단계로 분리
+  ```typescript
+  // Stage 1: fileTree → flatList (변경 시에만)
+  const flatList = useMemo(() => flattenFiles(fileTree), [fileTree]);
+
+  // Stage 2: flatList + query → filtered (query 변경 시에만)
+  const filtered = useMemo(() => flatList.filter(f => f.name.includes(query)), [flatList, query]);
+  ```
+- **성능 영향**: 대규모 워크스페이스에서 keystroke 레이턴시 50-200ms 개선
+- **재검토 조건**: autocomplete 성능 튜닝 시 또는 워크스페이스 크기 증가 시
 
 ---
 

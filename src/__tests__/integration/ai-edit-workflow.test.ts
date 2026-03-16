@@ -17,7 +17,6 @@ describe("Integration: AI Edit Workflow", () => {
     useEditorStore.setState({
       activeTabId: null,
       tabs: [],
-      isSourceMode: false,
     });
   });
 

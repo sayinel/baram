@@ -1,0 +1,124 @@
+@import "tailwindcss";
+@import "katex/dist/katex.min.css";
+
+/* Generated design token imports */
+@import "./generated/primitives.css";
+@import "./generated/semantic-light.css";
+@import "./generated/semantic-dark.css";
+@import "./generated/system-dark.css";
+
+/* Component-level tokens (not in semantic JSON — layout/spacing) */
+:root {
+  --editor-padding: 4rem;
+  --sidebar-width: 260px;
+
+  /* Legacy aliases — resolve pre-existing shorthand references */
+  --color-text: var(--color-text-primary);
+  --color-bg: var(--color-bg-default);
+  --color-text-tertiary: var(--color-text-muted);
+  --color-bg-hover: var(--color-bg-subtle);
+  --color-danger: var(--color-status-danger);
+  --color-error: var(--color-status-danger);
+  --text-primary: var(--color-text-primary);
+  --text-secondary: var(--color-text-secondary);
+  --border: var(--color-border-default);
+  --bg-primary: var(--color-bg-default);
+  --bg-secondary: var(--color-bg-subtle);
+  --hover: var(--color-bg-subtle);
+
+  /* Shadow scale */
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 10%);
+  --shadow-md: 0 4px 12px rgb(0 0 0 / 15%);
+  --shadow-lg: 0 8px 24px rgb(0 0 0 / 20%);
+  --shadow-xl: 0 8px 32px rgb(0 0 0 / 30%);
+}
+
+/* ============================================
+   Shared Utility Classes
+   ============================================ */
+
+/* Unstyled button reset — use when a <button> should look like plain content */
+.btn-unstyled {
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+/* Flex row with space-between — common panel header pattern */
+.flex-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Text truncation — single-line with ellipsis */
+.text-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Flex-centered icon button */
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+/* Flex column stack */
+.flex-col {
+  display: flex;
+  flex-direction: column;
+}
+
+/* §4.1 디자인 원칙: 에디터 중심, 최소 크롬 */
+
+/* Base styles */
+html,
+body,
+#root {
+  height: 100%;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-family-sans);
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-default);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* §perf-large-file B2: Loading skeleton + progress bar */
+.editor-loading-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 2rem 3rem;
+}
+
+.skeleton-line {
+  height: 1.1em;
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-subtle) 25%,
+    var(--color-bg-elevated) 50%,
+    var(--color-bg-subtle) 75%
+  );
+  background-size: 200% 100%;
+  border-radius: 4px;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}

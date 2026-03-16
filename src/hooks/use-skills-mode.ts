@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { useSkillStore } from "../stores/ai/skill";
 import { useEditorStore } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
-import { useUIStore } from "../stores/ui/ui";
+import { type RightPanelMode, useUIStore } from "../stores/ui/ui";
 import { isSkillFrontmatter } from "../utils/skill/skill-frontmatter";
 // Re-export for backward compatibility
 export { isSkillFrontmatter };
@@ -17,7 +17,9 @@ export function useSkillsMode() {
   const content = useFileStore((s) =>
     filePath ? (s.openFiles.get(filePath) ?? "") : "",
   );
-  const prevModeRef = useRef<null | { mode: string; open: boolean }>(null);
+  const prevModeRef = useRef<null | { mode: RightPanelMode; open: boolean }>(
+    null,
+  );
 
   // Extract YAML from frontmatter
   const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
@@ -49,15 +51,7 @@ export function useSkillsMode() {
     } else if (prevModeRef.current) {
       // Restore previous state
       const prev = prevModeRef.current;
-      ui.setRightPanelMode(
-        prev.mode as
-          | "chat"
-          | "help"
-          | "memories"
-          | "none"
-          | "photo-gallery"
-          | "properties",
-      );
+      ui.setRightPanelMode(prev.mode);
       if (ui.rightPanelOpen !== prev.open) {
         ui.toggleRightPanel();
       }

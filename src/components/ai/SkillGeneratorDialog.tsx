@@ -175,8 +175,8 @@ export function SkillGeneratorDialog({
             <pre
               className="skill-gen-preview"
               style={{
-                background: "var(--color-bg-secondary)",
-                border: "1px solid var(--color-border)",
+                background: "var(--color-bg-subtle)",
+                border: "1px solid var(--color-border-default)",
                 borderRadius: 6,
                 padding: 12,
                 fontSize: 12,

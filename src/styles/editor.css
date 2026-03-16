@@ -1,0 +1,1911 @@
+/* Tiptap editor styles */
+.tiptap {
+  min-height: 100%;
+  padding: 2rem var(--editor-padding);
+  font-family: var(--font-family-editor);
+  font-size: 1rem;
+  line-height: 1.75;
+  color: var(--color-editor-text);
+  outline: none;
+}
+
+/* §4.9 Empty document placeholder */
+.tiptap p.is-editor-empty:first-child::before {
+  float: left;
+  height: 0;
+  color: var(--color-text-disabled);
+  pointer-events: none;
+  content: "/ 를 입력하여 블록을 추가하거나, 바로 타이핑을 시작하세요.";
+}
+
+.tiptap:focus {
+  outline: none;
+}
+
+/* Override default ProseMirror gapcursor — vertical caret instead of '__' */
+.tiptap .ProseMirror-gapcursor::after {
+  width: 1px;
+  height: 1.2em;
+  background-color: var(--color-editor-cursor);
+  border-top: none;
+}
+
+/* Mode indicator */
+.mode-indicator {
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px 12px;
+  background-color: var(--color-bg-subtle);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.mode-toggle-btn {
+  padding: 2px 10px;
+  font-family: var(--font-family-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+  transition:
+    background-color 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.mode-toggle-btn:hover {
+  color: white;
+  background: var(--color-accent-default);
+  border-color: var(--color-accent-default);
+}
+
+/* Source code editor */
+.source-code-editor {
+  background: var(--color-bg-default);
+}
+
+.source-code-editor .cm-editor {
+  height: 100%;
+}
+
+/* ── Fold — Obsidian-style heading & list folding ─────────────────── */
+
+/* Headings and list items need position: relative for absolute fold arrow */
+.tiptap h1,
+.tiptap h2,
+.tiptap h3,
+.tiptap h4,
+.tiptap h5,
+.tiptap h6 {
+  position: relative;
+}
+
+.tiptap li {
+  position: relative;
+}
+
+/* Fold arrow — gutter positioned, hidden by default */
+.fold-arrow {
+  position: absolute;
+  top: 50%;
+  left: -24px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: opacity 0.15s ease;
+}
+
+/* Show arrow on heading/li hover */
+.tiptap h1:hover > .fold-arrow,
+.tiptap h2:hover > .fold-arrow,
+.tiptap h3:hover > .fold-arrow,
+.tiptap h4:hover > .fold-arrow,
+.tiptap h5:hover > .fold-arrow,
+.tiptap h6:hover > .fold-arrow,
+.tiptap li:hover > .fold-arrow {
+  opacity: 0.5;
+}
+
+/* List items: align arrow with first line, clear of bullet/number markers */
+.tiptap li > .fold-arrow {
+  top: 0.3em;
+  transform: none;
+}
+
+/* Unordered lists: position left of bullet (disc sits ~1.2em from li edge) */
+.tiptap ul > li > .fold-arrow {
+  top: 0.4em;
+  left: -2.6em;
+}
+
+/* Ordered lists: wider clearance for 2-digit numbers */
+.tiptap ol > li > .fold-arrow {
+  left: -3.2em;
+}
+
+.fold-arrow:hover {
+  opacity: 1 !important;
+}
+
+/* Always visible when folded */
+.fold-arrow-folded {
+  opacity: 0.7 !important;
+}
+
+/* Triangle via border trick (same as toggle-arrow) */
+.fold-arrow::before {
+  display: block;
+  width: 0;
+  height: 0;
+  content: "";
+  border-color: transparent transparent transparent currentcolor;
+  border-style: solid;
+  border-width: 4px 0 4px 6px;
+  transition: transform 0.2s ease;
+}
+
+.fold-arrow-open::before {
+  transform: rotate(90deg);
+}
+
+.fold-arrow-folded::before {
+  transform: rotate(0deg);
+}
+
+/* Hidden content */
+.fold-hidden {
+  display: none !important;
+}
+
+/* Ellipsis indicator */
+.fold-ellipsis {
+  display: inline-block;
+  padding: 0 6px;
+  margin-left: 4px;
+  font-size: 0.85em;
+  line-height: 1.4;
+  vertical-align: middle;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  user-select: none;
+  background: var(--color-bg-subtle);
+  border-radius: 3px;
+}
+
+.fold-ellipsis:hover {
+  color: var(--color-text-secondary);
+  background: var(--color-bg-elevated);
+}
+
+/* §5.1 Heading styles */
+.tiptap h1 {
+  margin: 1.4em 0 0.6em;
+  font-size: 2em;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.tiptap h2 {
+  margin: 1.2em 0 0.5em;
+  font-size: 1.5em;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.tiptap h3 {
+  margin: 1em 0 0.4em;
+  font-size: 1.25em;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.tiptap h4 {
+  margin: 0.8em 0 0.3em;
+  font-size: 1.1em;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.tiptap h5 {
+  margin: 0.6em 0 0.25em;
+  font-size: 1em;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.tiptap h6 {
+  margin: 0.5em 0 0.2em;
+  font-size: 0.9em;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+.tiptap h1:first-child,
+.tiptap h2:first-child,
+.tiptap h3:first-child,
+.tiptap h4:first-child,
+.tiptap h5:first-child,
+.tiptap h6:first-child {
+  margin-top: 0;
+}
+
+/* Tighten gap: heading → list (both sides needed to defeat margin collapsing) */
+.tiptap :is(h1, h2, h3, h4, h5, h6):has(+ ul),
+.tiptap :is(h1, h2, h3, h4, h5, h6):has(+ ol) {
+  margin-bottom: 0.1em;
+}
+
+.tiptap :is(h1, h2, h3, h4, h5, h6) + ul,
+.tiptap :is(h1, h2, h3, h4, h5, h6) + ol {
+  margin-top: 0;
+}
+
+/* Moderate gap: consecutive headings (empty sections like ## Notes → ## Captures) */
+.tiptap :is(h1, h2, h3, h4, h5, h6):has(+ :is(h1, h2, h3, h4, h5, h6)) {
+  margin-bottom: 0.2em;
+}
+
+.tiptap :is(h1, h2, h3, h4, h5, h6) + :is(h1, h2, h3, h4, h5, h6) {
+  margin-top: 0.4em;
+}
+
+/* Paragraph */
+.tiptap p {
+  margin: 0.5em 0;
+}
+
+/* §5.1 Blockquote */
+.tiptap blockquote {
+  padding-left: 1em;
+  margin: 0.5em 0;
+  color: var(--color-text-secondary);
+  border-left: 3px solid var(--color-border-default);
+}
+
+.tiptap blockquote p {
+  margin: 0.25em 0;
+}
+
+/* §5.9 Callout */
+.tiptap .callout {
+  padding: 0;
+  margin: 0.5em 0;
+  background: var(--color-bg-subtle);
+  border-left: 4px solid var(--color-accent-default);
+  border-radius: 4px;
+}
+
+.tiptap .callout-header {
+  display: flex;
+  gap: 0.4em;
+  align-items: center;
+  padding: 0.5em 0.75em;
+  font-size: 0.95em;
+  font-weight: 600;
+  cursor: default;
+  user-select: none;
+}
+
+.tiptap .callout-icon-wrapper {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.tiptap .callout-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  cursor: pointer;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.tiptap .callout-icon-btn:hover {
+  background: rgb(0 0 0 / 6%);
+  border-color: var(--color-border-subtle);
+}
+
+[data-theme="dark"] .tiptap .callout-icon-btn:hover {
+  background: rgb(255 255 255 / 10%);
+}
+
+.tiptap .callout-icon-btn svg {
+  flex-shrink: 0;
+}
+
+/* Callout type picker popover */
+.tiptap .callout-type-picker {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  width: 280px;
+  padding: 6px;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  box-shadow:
+    0 4px 16px rgb(0 0 0 / 12%),
+    0 1px 3px rgb(0 0 0 / 8%);
+}
+
+[data-theme="dark"] .tiptap .callout-type-picker {
+  box-shadow:
+    0 4px 16px rgb(0 0 0 / 40%),
+    0 1px 3px rgb(0 0 0 / 20%);
+}
+
+.tiptap .callout-type-option {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 4px;
+  cursor: pointer;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
+}
+
+.tiptap .callout-type-option:hover {
+  background: var(--color-bg-subtle);
+  border-color: var(--color-border-subtle);
+}
+
+.tiptap .callout-type-option.active {
+  background: var(--color-bg-subtle);
+  border-color: var(--color-accent-default);
+}
+
+.tiptap .callout-type-label {
+  font-size: 0.65em;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.tiptap .callout-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.tiptap .callout-title-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.1em 0.3em;
+  font: inherit;
+  font-weight: 600;
+  outline: none;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 3px;
+}
+
+.tiptap .callout-collapse-btn {
+  flex-shrink: 0;
+  padding: 0.2em 0.3em;
+  font-size: 0.7em;
+  line-height: 1;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-radius: 3px;
+}
+
+.tiptap .callout-collapse-btn:hover {
+  color: var(--color-text-secondary);
+  background: var(--color-border-subtle);
+}
+
+.tiptap .callout-body {
+  padding: 0 0.75em 0.5em;
+}
+
+.tiptap .callout-body p {
+  margin: 0.25em 0;
+}
+
+.tiptap .callout-body-collapsed {
+  display: none;
+}
+
+/* Callout type colors */
+.tiptap .callout-tip {
+  border-left-color: #10b981;
+}
+
+.tiptap .callout-info {
+  border-left-color: #3b82f6;
+}
+
+.tiptap .callout-warning {
+  border-left-color: #f59e0b;
+}
+
+.tiptap .callout-danger {
+  border-left-color: #ef4444;
+}
+
+.tiptap .callout-note {
+  border-left-color: #6b7280;
+}
+
+.tiptap .callout-abstract {
+  border-left-color: #8b5cf6;
+}
+
+.tiptap .callout-todo {
+  border-left-color: #06b6d4;
+}
+
+.tiptap .callout-example {
+  border-left-color: #14b8a6;
+}
+
+.tiptap .callout-quote {
+  border-left-color: #9ca3af;
+}
+
+.tiptap .callout-bug {
+  border-left-color: #ef4444;
+}
+
+.tiptap .callout-success {
+  border-left-color: #22c55e;
+}
+
+.tiptap .callout-failure {
+  border-left-color: #ef4444;
+}
+
+.tiptap .callout-question {
+  border-left-color: #eab308;
+}
+
+/* Callout type backgrounds (subtle tint) */
+.tiptap .callout-tip {
+  background: #ecfdf5;
+}
+
+.tiptap .callout-info {
+  background: #eff6ff;
+}
+
+.tiptap .callout-warning {
+  background: #fffbeb;
+}
+
+.tiptap .callout-danger {
+  background: #fef2f2;
+}
+
+.tiptap .callout-note {
+  background: #f9fafb;
+}
+
+.tiptap .callout-abstract {
+  background: #f5f3ff;
+}
+
+.tiptap .callout-todo {
+  background: #ecfeff;
+}
+
+.tiptap .callout-example {
+  background: #f0fdfa;
+}
+
+.tiptap .callout-quote {
+  background: #f9fafb;
+}
+
+.tiptap .callout-bug {
+  background: #fef2f2;
+}
+
+.tiptap .callout-success {
+  background: #f0fdf4;
+}
+
+.tiptap .callout-failure {
+  background: #fef2f2;
+}
+
+.tiptap .callout-question {
+  background: #fefce8;
+}
+
+/* Dark mode callout overrides */
+[data-theme="dark"] .tiptap .callout {
+  background: rgb(255 255 255 / 5%);
+}
+
+[data-theme="dark"] .tiptap .callout-tip {
+  background: rgb(16 185 129 / 10%);
+}
+
+[data-theme="dark"] .tiptap .callout-info {
+  background: rgb(59 130 246 / 10%);
+}
+
+[data-theme="dark"] .tiptap .callout-warning {
+  background: rgb(245 158 11 / 10%);
+}
+
+[data-theme="dark"] .tiptap .callout-danger {
+  background: rgb(239 68 68 / 10%);
+}
+
+[data-theme="dark"] .tiptap .callout-note {
+  background: rgb(107 114 128 / 10%);
+}
+
+[data-theme="dark"] .tiptap .callout-abstract {
+  background: rgb(139 92 246 / 10%);
+}
+
+[data-theme="dark"] .tiptap .callout-todo {
+  background: rgb(6 182 212 / 10%);
+}
+
+[data-theme="dark"] .tiptap .callout-example {
+  background: rgb(20 184 166 / 10%);
+}
+
+[data-theme="dark"] .tiptap .callout-quote {
+  background: rgb(156 163 175 / 10%);
+}
+
+[data-theme="dark"] .tiptap .callout-bug {
+  background: rgb(239 68 68 / 10%);
+}
+
+[data-theme="dark"] .tiptap .callout-success {
+  background: rgb(34 197 94 / 10%);
+}
+
+[data-theme="dark"] .tiptap .callout-failure {
+  background: rgb(239 68 68 / 10%);
+}
+
+[data-theme="dark"] .tiptap .callout-question {
+  background: rgb(234 179 8 / 10%);
+}
+
+[data-theme="dark"] .tiptap .callout-title-input {
+  color: var(--color-text-primary);
+  background: var(--color-bg-default);
+  border-color: var(--color-border-default);
+}
+
+/* §footnote Footnote reference — inline superscript */
+.tiptap .footnote-ref {
+  position: relative;
+  padding: 0 1px;
+  font-size: 0.75em;
+  font-weight: 600;
+  line-height: 0;
+  vertical-align: super;
+  color: var(--color-accent-default);
+  cursor: pointer;
+}
+
+.tiptap .footnote-ref:hover {
+  color: var(--color-accent-hover);
+  text-decoration: underline;
+}
+
+.tiptap .footnote-ref-selected {
+  background: var(--color-editor-selection);
+  border-radius: 2px;
+}
+
+/* Footnote hover tooltip */
+.tiptap .footnote-ref-tooltip {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  z-index: 50;
+  width: max-content;
+  max-width: 320px;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  font-weight: 400;
+  line-height: 1.4;
+  vertical-align: baseline;
+  color: var(--color-text-primary);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+  transform: translateX(-50%);
+}
+
+/* §footnote Footnote definition — inline N. content ↩ layout */
+.tiptap .footnote-definition {
+  display: flex;
+  gap: 4px;
+  align-items: baseline;
+  padding: 0.5em 0 0.25em;
+  margin: 1em 0 0.5em;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.tiptap .footnote-definition-label {
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-accent-default);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tiptap .footnote-definition-label:hover {
+  text-decoration: underline;
+}
+
+.tiptap .footnote-definition-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.tiptap .footnote-definition-body p {
+  margin: 0;
+}
+
+.tiptap .footnote-definition-back {
+  flex-shrink: 0;
+  padding: 0 2px;
+  margin-left: auto;
+  font-size: 0.85rem;
+  line-height: 1;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+.tiptap .footnote-definition-back:hover {
+  color: var(--color-accent-default);
+}
+
+/* Dark mode footnote overrides */
+[data-theme="dark"] .tiptap .footnote-ref-tooltip {
+  background: var(--color-bg-subtle);
+  border-color: var(--color-border-default);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 30%);
+}
+
+[data-theme="dark"] .tiptap .footnote-definition-label {
+  color: var(--color-accent-default);
+}
+
+/* Definition List — <dl><dt><dd> */
+.tiptap dl.definition-list {
+  padding: 0;
+  margin: 0.5em 0;
+}
+
+.tiptap dl.definition-list dt {
+  margin-top: 0.5em;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.tiptap dl.definition-list dt:first-child {
+  margin-top: 0;
+}
+
+.tiptap dl.definition-list dd {
+  padding-left: 0.5em;
+  margin-top: 0.15em;
+  margin-left: 1.5em;
+  color: var(--color-text-secondary);
+  border-left: 2px solid var(--color-border-default);
+}
+
+[data-theme="dark"] .tiptap dl.definition-list dd {
+  border-left-color: var(--color-border-default);
+}
+
+/* §5.1 Toggle (Details/Summary) — Notion-style minimal */
+.tiptap .toggle {
+  display: flex;
+  padding: 0.1em 0;
+  margin: 0.5em 0;
+  margin-left: -1.2em; /* indicator sits in editor padding area */
+}
+
+.tiptap .toggle-indicator {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  align-self: flex-start;
+  justify-content: center;
+  width: 1.2em;
+  height: 1.75em;
+  margin-top: 0.2em;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  user-select: none;
+  border-radius: 3px;
+  transition: background 0.15s ease;
+}
+
+.tiptap .toggle-indicator:hover {
+  color: var(--color-text-secondary);
+  background: rgb(55 53 47 / 8%);
+}
+
+[data-theme="dark"] .tiptap .toggle-indicator:hover {
+  background: rgb(255 255 255 / 8%);
+}
+
+.tiptap .toggle-arrow {
+  display: block;
+  width: 0;
+  height: 0;
+  border-color: transparent transparent transparent currentcolor;
+  border-style: solid;
+  border-width: 4px 0 4px 5px;
+  transition: transform 0.2s ease;
+}
+
+.tiptap .toggle-arrow-open {
+  transform: rotate(90deg);
+}
+
+.tiptap .toggle-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.tiptap .toggle-body p {
+  margin: 0.2em 0;
+}
+
+/* Collapse: hide everything except summary */
+.tiptap .toggle-body-collapsed > :not(:first-child),
+.tiptap .toggle-body-collapsed > div > :not(:first-child) {
+  display: none;
+}
+
+/* Toggle Heading — summary is a heading node */
+.tiptap .toggle-body > h1:first-child,
+.tiptap .toggle-body > h2:first-child,
+.tiptap .toggle-body > h3:first-child,
+.tiptap .toggle-body > div > h1:first-child,
+.tiptap .toggle-body > div > h2:first-child,
+.tiptap .toggle-body > div > h3:first-child {
+  margin: 0.1em 0;
+}
+
+/* H1 summary: font-size 2em × line-height 1.2 = 2.4em */
+.tiptap .toggle[data-summary-level="1"] .toggle-indicator {
+  height: 2.4em;
+  margin-top: 0.1em;
+}
+
+.tiptap .toggle[data-summary-level="1"] .toggle-arrow {
+  border-width: 5px 0 5px 7px;
+}
+
+/* H2 summary: font-size 1.5em × line-height 1.3 = 1.95em */
+.tiptap .toggle[data-summary-level="2"] .toggle-indicator {
+  height: 1.95em;
+  margin-top: 0.1em;
+}
+
+.tiptap .toggle[data-summary-level="2"] .toggle-arrow {
+  border-width: 5px 0 5px 6px;
+}
+
+/* H3 summary: font-size 1.25em × line-height 1.4 = 1.75em */
+.tiptap .toggle[data-summary-level="3"] .toggle-indicator {
+  height: 1.75em;
+  margin-top: 0.1em;
+}
+
+/* §5.1 Lists */
+.tiptap ul {
+  padding-left: 1.6em;
+  margin: 0.5em 0;
+  list-style-type: disc;
+}
+
+.tiptap ol {
+  padding-left: 1.6em;
+  margin: 0.5em 0;
+  list-style-type: decimal;
+}
+
+.tiptap li {
+  padding-left: 0.2em;
+  margin: 0.15em 0;
+}
+
+.tiptap li p {
+  margin: 0;
+}
+
+/* List atom fix widget — provides an editable first line box for WebKit
+   ::marker alignment without adding visible height or affecting selection.
+   The actual zero-width space is inserted by ListAtomFix ProseMirror plugin. */
+.list-atom-fix {
+  font-size: 0;
+  line-height: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Nested lists */
+.tiptap ul ul,
+.tiptap ol ul {
+  list-style-type: circle;
+}
+
+.tiptap ul ul ul,
+.tiptap ol ul ul {
+  list-style-type: square;
+}
+
+/* §5.1 Task List */
+.tiptap ul[data-type="taskList"] {
+  padding-left: 0;
+  list-style: none;
+}
+
+.tiptap ul[data-type="taskList"] li[data-type="taskItem"] {
+  display: flex;
+  gap: 0.4em;
+  align-items: baseline;
+}
+
+.tiptap ul[data-type="taskList"] li[data-type="taskItem"] > label {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  height: 1.75em; /* match line-height of body text */
+  user-select: none;
+}
+
+.tiptap
+  ul[data-type="taskList"]
+  li[data-type="taskItem"]
+  > label
+  input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--color-accent-default);
+  cursor: pointer;
+}
+
+.tiptap ul[data-type="taskList"] li[data-type="taskItem"] > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.tiptap
+  ul[data-type="taskList"]
+  li[data-type="taskItem"][data-checked="true"]
+  > div {
+  color: var(--color-text-muted);
+  text-decoration: line-through;
+}
+
+/* §5.1 Horizontal Rule */
+.tiptap hr {
+  margin: 1.5em 0;
+  border: none;
+  border-top: 2px solid var(--color-border-default);
+}
+
+/* §5.1 Code Block */
+.tiptap pre {
+  padding: 0.75em 1em;
+  margin: 1em 0;
+  overflow-x: auto;
+  background-color: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+}
+
+.tiptap pre code {
+  padding: 0;
+  font-family: var(--font-family-mono);
+  font-size: 0.875em;
+  line-height: 1.6;
+  color: inherit;
+  background: none;
+  border: none;
+  border-radius: 0;
+}
+
+/* Inline code */
+.tiptap code {
+  padding: 0.1em 0.3em;
+  font-family: var(--font-family-mono);
+  font-size: 0.875em;
+  background-color: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 3px;
+}
+
+/* §5.1 Image + §3.3 Image NodeView */
+.tiptap .image-node-view {
+  margin: 0.5em 0;
+}
+
+.tiptap .image-figure {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  margin: 0;
+  transition: width 0.2s ease;
+}
+
+.tiptap .image-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
+.tiptap .image-figure.image-selected img {
+  outline: 2px solid var(--color-accent-default);
+  outline-offset: 2px;
+}
+
+.tiptap .image-toolbar {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  z-index: 10;
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  padding: 3px 6px;
+  background: rgb(0 0 0 / 70%);
+  border-radius: 6px;
+  transform: translateX(-50%);
+}
+
+.tiptap .image-toolbar-btn {
+  padding: 2px 8px;
+  font-family: var(--font-family-mono);
+  font-size: 0.7rem;
+  color: #e5e5e5;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+}
+
+.tiptap .image-toolbar-btn:hover {
+  color: #fff;
+  background: rgb(255 255 255 / 15%);
+}
+
+.tiptap .image-toolbar-btn-active {
+  color: #fff;
+  background: var(--color-accent-default);
+}
+
+.tiptap .image-toolbar-sep {
+  width: 1px;
+  height: 14px;
+  margin: 0 2px;
+  background: rgb(255 255 255 / 25%);
+}
+
+.tiptap .image-size-input-wrap {
+  display: inline-flex;
+  gap: 1px;
+  align-items: center;
+}
+
+.tiptap .image-size-input {
+  width: 40px;
+  padding: 1px 4px;
+  font-family: var(--font-family-mono);
+  font-size: 0.7rem;
+  color: #fff;
+  text-align: right;
+  -moz-appearance: textfield;
+  outline: none;
+  background: rgb(255 255 255 / 15%);
+  border: 1px solid rgb(255 255 255 / 30%);
+  border-radius: 3px;
+}
+
+.tiptap .image-size-input::-webkit-inner-spin-button,
+.tiptap .image-size-input::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+.tiptap .image-size-input:focus {
+  border-color: var(--color-accent-default);
+}
+
+.tiptap .image-size-unit {
+  font-size: 0.65rem;
+  color: #ccc;
+}
+
+.tiptap .image-caption {
+  margin-top: 4px;
+  font-size: 0.85em;
+  color: var(--color-text-secondary);
+  text-align: center;
+  cursor: pointer;
+}
+
+.tiptap .image-caption-input {
+  width: 100%;
+  padding: 2px 6px;
+  font-size: 0.85em;
+  color: var(--color-text-primary);
+  text-align: center;
+  outline: none;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 3px;
+}
+
+.tiptap .image-caption-input:focus {
+  border-color: var(--color-accent-default);
+}
+
+/* Inline marks */
+.tiptap strong {
+  font-weight: 700;
+}
+
+.tiptap em {
+  font-style: italic;
+}
+
+.tiptap del {
+  text-decoration: line-through;
+}
+
+.tiptap a {
+  color: var(--color-accent-default);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.tiptap a:hover {
+  color: var(--color-accent-hover);
+}
+
+/* §5.3 Math Block — atom:true, selected=textarea+preview, unselected=KaTeX only */
+.tiptap .math-block {
+  position: relative;
+  margin: 1em 0;
+}
+
+.tiptap .math-block-preview {
+  padding: 0.25em 0;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.tiptap .math-block-preview:hover {
+  background-color: var(--color-bg-subtle);
+}
+
+.tiptap .math-block-editing {
+  padding: 0.75em 1em;
+  background-color: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+}
+
+.tiptap .math-block-textarea {
+  display: block;
+  width: 100%;
+  padding: 0.5em;
+  margin-bottom: 0.5em;
+  overflow: hidden;
+  font-family: var(--font-family-mono);
+  font-size: 0.875em;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+  resize: none;
+  outline: none;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+}
+
+.tiptap .math-block-textarea:focus {
+  border-color: var(--color-accent-default);
+}
+
+.tiptap .math-block-row {
+  display: flex;
+  align-items: center;
+}
+
+.tiptap .math-block-katex {
+  flex: 1;
+  padding: 0.5em 0;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.tiptap .math-block-eq-number {
+  flex-shrink: 0;
+  padding-right: 0.25em;
+  font-size: 0.95em;
+  color: var(--color-text-secondary);
+  user-select: none;
+}
+
+.tiptap .math-block-katex-empty {
+  font-size: 0.875em;
+  font-style: italic;
+  color: var(--color-text-muted);
+}
+
+.tiptap .math-block-error {
+  padding: 0.35em 0.6em;
+  margin-top: 0.35em;
+  font-family: var(--font-family-mono);
+  font-size: 0.75em;
+  color: #dc2626;
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 4px;
+}
+
+[data-theme="dark"] .tiptap .math-block-error {
+  color: #fca5a5;
+  background-color: #450a0a;
+  border-color: #7f1d1d;
+}
+
+/* §5.3 Math size variants */
+.tiptap [data-math-size="small"] .math-block-katex,
+.tiptap [data-math-size="small"] .katex {
+  font-size: 0.85em;
+}
+
+.tiptap [data-math-size="large"] .math-block-katex,
+.tiptap [data-math-size="large"] .katex {
+  font-size: 1.4em;
+}
+
+/* §5.3 Math Inline — atom render-only */
+.tiptap .math-inline {
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.tiptap .math-inline-rendered {
+  padding: 0 0.15em;
+}
+
+.tiptap .math-inline-rendered:hover {
+  background-color: var(--color-bg-subtle);
+}
+
+.tiptap .math-inline-selected {
+  background-color: var(--color-editor-selection);
+}
+
+/* §5.3 Math Inline Edit — ProseMirror plugin delimiter decorations */
+.tiptap .math-delimiter {
+  font-family: var(--font-family-mono);
+  font-size: 0.85em;
+  color: var(--color-text-muted);
+}
+
+/* §5.3 Math Inline Preview Popover */
+.math-inline-preview-popover {
+  position: fixed;
+  z-index: 50;
+  max-width: 400px;
+  padding: 6px 10px;
+  overflow-x: auto;
+  pointer-events: none;
+  background-color: var(--color-bg-default, #fff);
+  border: 1px solid var(--color-border-default, #e5e7eb);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
+}
+
+.math-inline-preview-content {
+  min-height: 1em;
+  text-align: center;
+}
+
+.math-inline-preview-error {
+  padding-top: 4px;
+  margin-top: 4px;
+  font-family: var(--font-family-mono, monospace);
+  font-size: 0.7em;
+  color: #dc2626;
+  border-top: 1px solid #fecaca;
+}
+
+[data-theme="dark"] .math-inline-preview-popover {
+  background-color: var(--color-bg-default, #1a1a2e);
+  border-color: var(--color-border-default, #374151);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 30%);
+}
+
+[data-theme="dark"] .math-inline-preview-error {
+  color: #fca5a5;
+  border-color: #7f1d1d;
+}
+
+/* §5.5 Table */
+.tiptap .tableWrapper {
+  margin: 1em 0;
+  overflow-x: auto;
+}
+
+.tiptap table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.tiptap th,
+.tiptap td {
+  min-width: 60px;
+  padding: 0.4em 0.75em;
+  vertical-align: top;
+  border: 1px solid var(--color-border-default);
+}
+
+.tiptap th {
+  font-weight: 600;
+  background-color: var(--color-bg-subtle);
+}
+
+.tiptap th p,
+.tiptap td p {
+  margin: 0;
+}
+
+.tiptap .selectedCell {
+  background-color: var(--color-editor-selection);
+}
+
+/* §5.5 Tier 3: Column resize handle */
+.tiptap .column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  bottom: 0;
+  z-index: 20;
+  width: 4px;
+  pointer-events: none;
+  background-color: var(--color-accent-default, #3b82f6);
+}
+
+.tiptap.resize-cursor {
+  cursor: col-resize;
+}
+
+/* §5.5 M10: Virtual scroll for 50+ row tables */
+.tiptap table tr.baram-vscroll {
+  contain-intrinsic-height: 40px;
+  content-visibility: auto;
+}
+
+/* §5.8 Frontmatter */
+.tiptap .frontmatter {
+  padding: 0.5em 1em;
+  margin-bottom: 1em;
+  background-color: var(--color-bg-subtle);
+  border: 1px dashed var(--color-border-default);
+  border-radius: 6px;
+}
+
+.tiptap .frontmatter pre {
+  padding: 0;
+  margin: 0;
+  background: none;
+  border: none;
+}
+
+.tiptap .frontmatter pre code {
+  padding: 0;
+  font-family: var(--font-family-mono);
+  font-size: 0.8em;
+  color: var(--color-text-secondary);
+  background: none;
+  border: none;
+}
+
+/* §5.4 Code Block with language header */
+.code-block-wrapper {
+  margin: 0.5em 0;
+}
+
+.code-block-header {
+  display: flex;
+  justify-content: flex-start;
+  padding: 2px 8px;
+  background-color: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-subtle);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+}
+
+.code-block-lang-select {
+  padding: 1px 4px;
+  font-family: var(--font-family-mono);
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+}
+
+.code-block-editor .cm-editor {
+  font-size: 0.875em;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 0 0 6px 6px;
+}
+
+.code-block-editor .cm-editor .cm-content {
+  padding: 8px 12px;
+}
+
+.code-block-editor .cm-editor .cm-scroller {
+  overflow: hidden !important;
+}
+
+/* Code Block Style: Minimal — no background/border, bottom divider only */
+.code-block-wrapper[data-style="minimal"] .code-block-header {
+  padding: 2px 4px;
+  background: transparent;
+  border: none;
+}
+
+.code-block-wrapper[data-style="minimal"] .code-block-editor .cm-editor {
+  border: none;
+  border-bottom: 1px solid var(--color-border-subtle);
+  border-radius: 0;
+}
+
+/* Code Block Style: Contrast — dark background */
+.code-block-wrapper[data-style="contrast"] .code-block-header {
+  color: #cdd6f4;
+  background-color: #1e1e2e;
+  border-color: #1e1e2e;
+}
+
+.code-block-wrapper[data-style="contrast"] .code-block-lang-select {
+  color: #a6adc8;
+}
+
+.code-block-wrapper[data-style="contrast"] .code-block-editor .cm-editor {
+  background-color: #1e1e2e;
+  border-color: #313244;
+}
+
+.code-block-wrapper[data-style="contrast"]
+  .code-block-editor
+  .cm-editor
+  .cm-content {
+  color: #cdd6f4;
+  caret-color: #f5e0dc;
+}
+
+.code-block-wrapper[data-style="contrast"]
+  .code-block-editor
+  .cm-editor
+  .cm-gutters {
+  color: #6c7086;
+  background-color: #181825;
+  border-color: #313244;
+}
+
+.code-block-wrapper[data-style="contrast"]
+  .code-block-editor
+  .cm-editor
+  .cm-activeLine {
+  background-color: rgb(69 71 90 / 30%);
+}
+
+.code-block-wrapper[data-style="contrast"]
+  .code-block-editor
+  .cm-editor
+  .cm-selectionBackground {
+  background-color: rgb(137 180 250 / 20%) !important;
+}
+
+/* Code Block Style: Paper — light gray background, floating lang tab */
+.code-block-wrapper[data-style="paper"] {
+  position: relative;
+}
+
+.code-block-wrapper[data-style="paper"] .code-block-header {
+  position: absolute;
+  top: -2px;
+  right: 12px;
+  z-index: 1;
+  padding: 1px 6px;
+  background-color: var(--color-bg-elevated);
+  border: none;
+  border-radius: 4px 4px 0 0;
+  box-shadow: 0 -1px 3px rgb(0 0 0 / 6%);
+  transform: translateY(-100%);
+}
+
+.code-block-wrapper[data-style="paper"] .code-block-lang-select {
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+}
+
+.code-block-wrapper[data-style="paper"] .code-block-editor .cm-editor {
+  background-color: var(--color-bg-elevated);
+  border: none;
+  border-radius: 6px;
+}
+
+.code-block-wrapper[data-style="paper"]
+  .code-block-editor
+  .cm-editor
+  .cm-gutters {
+  color: var(--color-text-muted);
+  background-color: transparent;
+  border: none;
+}
+
+/* §5.5 Mermaid Block — dual mode (SVG / source edit) */
+.tiptap .mermaid-block {
+  margin: 1em 0;
+}
+
+.tiptap .mermaid-block-preview {
+  position: relative;
+  padding: 0.5em;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.tiptap .mermaid-block-preview:hover {
+  background-color: var(--color-bg-subtle);
+}
+
+.tiptap .mermaid-block-editing {
+  padding: 0.75em 1em;
+  background-color: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+}
+
+.tiptap .mermaid-block-label {
+  font-family: var(--font-family-mono);
+  font-size: 0.75em;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.tiptap .mermaid-block-textarea {
+  display: block;
+  width: 100%;
+  padding: 0.5em;
+  margin-bottom: 0.5em;
+  overflow: hidden;
+  font-family: var(--font-family-mono);
+  font-size: 0.875em;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+  resize: none;
+  outline: none;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+}
+
+.tiptap .mermaid-block-textarea:focus {
+  border-color: var(--color-accent-default);
+}
+
+.tiptap .mermaid-block-svg {
+  display: flex;
+  justify-content: center;
+  padding: 0.5em 0;
+  overflow-x: auto;
+}
+
+.tiptap .mermaid-block-svg svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.tiptap .mermaid-block-svg-faded {
+  opacity: 0.4;
+}
+
+.tiptap .mermaid-block-empty {
+  padding: 1em;
+  font-size: 0.875em;
+  font-style: italic;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.tiptap .mermaid-block-error {
+  padding: 0.35em 0.6em;
+  margin-top: 0.35em;
+  font-family: var(--font-family-mono);
+  font-size: 0.75em;
+  color: #dc2626;
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 4px;
+}
+
+[data-theme="dark"] .tiptap .mermaid-block-error {
+  color: #fca5a5;
+  background-color: #450a0a;
+  border-color: #7f1d1d;
+}
+
+/* §50 Mermaid Enhanced — type badge, template picker, fullscreen */
+
+.tiptap .mermaid-block-header {
+  display: flex;
+  gap: 0.5em;
+  align-items: center;
+  margin-bottom: 0.5em;
+}
+
+.tiptap .mermaid-block-type-badge {
+  padding: 0.1em 0.4em;
+  font-family: var(--font-family-mono);
+  font-size: 0.7em;
+  color: var(--color-text-muted);
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 3px;
+}
+
+.tiptap .mermaid-block-actions {
+  display: flex;
+  gap: 0.35em;
+  margin-left: auto;
+}
+
+.tiptap .mermaid-template-btn,
+.tiptap .mermaid-fullscreen-btn {
+  padding: 0.15em 0.5em;
+  font-family: var(--font-family-mono);
+  font-size: 0.7em;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 3px;
+}
+
+.tiptap .mermaid-template-btn:hover,
+.tiptap .mermaid-fullscreen-btn:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-accent-default);
+}
+
+.tiptap .mermaid-template-wrapper {
+  position: relative;
+}
+
+.tiptap .mermaid-template-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  min-width: 10em;
+  padding: 0.25em 0;
+  margin-top: 0.25em;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
+}
+
+.tiptap .mermaid-template-dropdown-item {
+  padding: 0.35em 0.75em;
+  font-family: var(--font-family-mono);
+  font-size: 0.75em;
+  color: var(--color-text-secondary);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+.tiptap .mermaid-template-dropdown-item:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-subtle);
+}
+
+.tiptap .mermaid-template-dropdown-item.mermaid-template-active {
+  color: var(--color-accent-default);
+}
+
+/* Mermaid Fullscreen Edit Modal */
+
+.mermaid-fullscreen-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 50%);
+}
+
+.mermaid-fullscreen-modal {
+  display: flex;
+  flex-direction: column;
+  width: 90vw;
+  height: 80vh;
+  overflow: hidden;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgb(0 0 0 / 20%);
+}
+
+.mermaid-fullscreen-header {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.75em;
+  align-items: center;
+  padding: 0.75em 1em;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.mermaid-fullscreen-type {
+  font-family: var(--font-family-mono);
+  font-size: 0.75em;
+  color: var(--color-text-muted);
+}
+
+.mermaid-fullscreen-close {
+  padding: 0.25em 0.75em;
+  margin-left: auto;
+  font-family: var(--font-family-mono);
+  font-size: 0.8em;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+}
+
+.mermaid-fullscreen-close:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-accent-default);
+}
+
+.mermaid-fullscreen-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.mermaid-fullscreen-editor {
+  flex: 1;
+  padding: 1em;
+  overflow-y: auto;
+  border-right: 1px solid var(--color-border-subtle);
+}
+
+.mermaid-fullscreen-editor .mermaid-block-textarea {
+  display: block;
+  width: 100%;
+  min-height: 100%;
+  padding: 0.5em;
+  overflow: hidden;
+  font-family: var(--font-family-mono);
+  font-size: 0.9em;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+  resize: none;
+  outline: none;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+}
+
+.mermaid-fullscreen-editor .mermaid-block-textarea:focus {
+  border-color: var(--color-accent-default);
+}
+
+.mermaid-fullscreen-preview {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 1em;
+  overflow: auto;
+}
+
+.mermaid-fullscreen-preview .mermaid-block-svg {
+  display: flex;
+  justify-content: center;
+  max-width: 100%;
+  padding: 1em 0;
+}
+
+.mermaid-fullscreen-preview .mermaid-block-svg svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* §50 Mermaid Context Menu */
+
+.mermaid-context-menu {
+  min-width: 160px;
+  padding: 4px 0;
+  font-size: 13px;
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border-primary, #e0e0e0);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
+}
+
+.mermaid-context-menu-item {
+  display: block;
+  width: 100%;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--text-primary, #333);
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+.mermaid-context-menu-item:hover {
+  background: var(--bg-hover, #f0f0f0);
+}
+
+.mermaid-context-menu-danger {
+  color: #e53e3e;
+}
+
+.mermaid-context-menu-danger:hover {
+  background: #fff5f5;
+}
+
+.mermaid-context-menu-divider {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border-primary, #e0e0e0);
+}
+
+/* Mermaid Hover Toolbar */
+
+.mermaid-hover-toolbar {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.tiptap .mermaid-block-preview:hover .mermaid-hover-toolbar {
+  pointer-events: auto;
+  opacity: 1;
+}
+
+.mermaid-hover-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 10%);
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.mermaid-hover-toolbar-btn:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-subtle);
+  border-color: var(--color-accent-default);
+}
+
+.mermaid-hover-toolbar-btn:active {
+  color: #fff;
+  background: var(--color-accent-default);
+  border-color: var(--color-accent-default);
+  transform: scale(0.85);
+  transition:
+    transform 0.08s ease,
+    background-color 0.08s ease,
+    color 0.08s ease;
+}
+
+/* Mermaid Fullscreen View Modal (read-only) */
+
+.mermaid-view-fullscreen-modal {
+  display: flex;
+  flex-direction: column;
+  width: calc(100vw - 2rem);
+  height: calc(100vh - 2rem);
+  overflow: hidden;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgb(0 0 0 / 20%);
+}
+
+.mermaid-view-fullscreen-body {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: 2em;
+  overflow: auto;
+}
+
+.mermaid-view-fullscreen-body .mermaid-block-svg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.mermaid-view-fullscreen-body .mermaid-block-svg svg {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  max-height: 100%;
+}

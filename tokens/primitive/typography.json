@@ -1,0 +1,40 @@
+{
+  "font": {
+    "family": {
+      "$type": "fontFamily",
+      "sans":   { "$value": "Inter, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif" },
+      "mono":   { "$value": "JetBrains Mono, Fira Code, SF Mono, ui-monospace, monospace" },
+      "editor": { "$value": "Pretendard, Inter, -apple-system, system-ui, sans-serif" }
+    },
+    "size": {
+      "$type": "dimension",
+      "2xs": { "$value": "10px" },
+      "xs":  { "$value": "11px" },
+      "sm":  { "$value": "12px" },
+      "base":{ "$value": "14px" },
+      "md":  { "$value": "15px" },
+      "lg":  { "$value": "16px" },
+      "xl":  { "$value": "18px" },
+      "2xl": { "$value": "20px" },
+      "3xl": { "$value": "24px" },
+      "4xl": { "$value": "30px" },
+      "5xl": { "$value": "36px" }
+    },
+    "weight": {
+      "$type": "fontWeight",
+      "normal":   { "$value": 400 },
+      "medium":   { "$value": 500 },
+      "semibold": { "$value": 600 },
+      "bold":     { "$value": 700 }
+    },
+    "lineHeight": {
+      "$type": "number",
+      "none":    { "$value": 1 },
+      "tight":   { "$value": 1.25 },
+      "snug":    { "$value": 1.375 },
+      "normal":  { "$value": 1.5 },
+      "relaxed": { "$value": 1.625 },
+      "loose":   { "$value": 2 }
+    }
+  }
+}

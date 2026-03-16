@@ -191,10 +191,10 @@ export function ReflectionPanel({ onClose }: Props) {
     return (
       <div className="reflection-panel">
         {onClose && (
-          <div className="reflection-header">
+          <div className="reflection-header flex-header">
             <span className="reflection-title">AI Reflection</span>
             <button
-              className="reflection-close-btn"
+              className="reflection-close-btn btn-unstyled"
               onClick={onClose}
               title="닫기"
             >
@@ -213,10 +213,10 @@ export function ReflectionPanel({ onClose }: Props) {
     return (
       <div className="reflection-panel">
         {onClose && (
-          <div className="reflection-header">
+          <div className="reflection-header flex-header">
             <span className="reflection-title">AI Reflection</span>
             <button
-              className="reflection-close-btn"
+              className="reflection-close-btn btn-unstyled"
               onClick={onClose}
               title="닫기"
             >
@@ -235,13 +235,13 @@ export function ReflectionPanel({ onClose }: Props) {
 
   return (
     <div className="reflection-panel">
-      <div className="reflection-header">
+      <div className="reflection-header flex-header">
         <span className="reflection-title">
           <Sparkles size={14} /> AI Reflection
         </span>
         {onClose && (
           <button
-            className="reflection-close-btn"
+            className="reflection-close-btn btn-unstyled"
             onClick={onClose}
             title="닫기"
           >

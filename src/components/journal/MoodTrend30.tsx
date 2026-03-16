@@ -66,7 +66,7 @@ export function MoodTrend30({ moodMap }: Props) {
         {MOOD_VALUES.map((v, i) => (
           <line
             key={v}
-            stroke="var(--color-border)"
+            stroke="var(--color-border-default)"
             strokeDasharray="2,2"
             strokeWidth={0.5}
             x1={padX}
