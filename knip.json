@@ -14,6 +14,7 @@
   ],
   "project": ["src/**/*.{ts,tsx}"],
   "ignore": ["src/ipc/**"],
+  "ignoreBinaries": ["tsx"],
   "ignoreDependencies": [
     "@floating-ui/dom",
     "@tiptap/core",
@@ -24,7 +25,6 @@
     "mdast-util-math",
     "mdast-util-to-string",
     "unist-util-visit",
-    "@testing-library/react",
     "@types/cytoscape",
     "@types/katex"
   ],
