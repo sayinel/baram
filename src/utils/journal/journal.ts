@@ -349,6 +349,15 @@ export function resolveJournalDir(
 
 // --- §56a Journal Hidden Entries ---
 
+/** Regex matching flat daily journal filenames: YYYY-MM-DD.md */
+export const JOURNAL_FILENAME_RE = /^\d{4}-\d{2}-\d{2}\.md$/;
+
+/** Capturing variant: groups are [year, month, day] */
+export const JOURNAL_DATE_PARTS_RE = /^(\d{4})-(\d{2})-(\d{2})\.md$/;
+
+/** Regex matching compact daily journal filenames: YYYYMMDD.md */
+export const JOURNAL_FILENAME_COMPACT_RE = /^\d{8}\.md$/;
+
 /** Entries hidden from FileTree when journal-scoped */
 export const JOURNAL_HIDDEN_ENTRIES = [".journal.json", "assets", "prompts"];
 

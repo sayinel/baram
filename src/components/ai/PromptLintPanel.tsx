@@ -48,7 +48,7 @@ export function PromptLintPanel({ editor }: PromptLintPanelProps) {
 
   return (
     <div className="prompt-lint-panel">
-      <div className="prompt-lint-header">
+      <div className="prompt-lint-header flex-header">
         <span className="prompt-lint-title">Prompt Issues</span>
         <span className="prompt-lint-count">{results.length}</span>
       </div>

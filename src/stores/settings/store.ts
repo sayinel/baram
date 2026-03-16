@@ -2,7 +2,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { findThemeById } from "../../types/theme";
+import { findThemeById, migrateThemeColors } from "../../types/theme";
 import { tauriStorage } from "../system/tauri-storage";
 import {
   type ActivityBarItemConfig,
@@ -113,7 +113,7 @@ export const useSettingsStore = create<SettingsState>()(
         locale: state.locale,
         keybindingOverrides: state.keybindingOverrides,
       }),
-      version: 9,
+      version: 10,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
 
@@ -231,6 +231,20 @@ export const useSettingsStore = create<SettingsState>()(
           if (state.lastOpenedFolder === undefined)
             state.lastOpenedFolder = null;
           if (state.lastOpenedFile === undefined) state.lastOpenedFile = null;
+        }
+
+        // v9 → v10: Design token CSS variable rename — migrate custom theme color keys
+        if (version < 10) {
+          const themes = state.customThemes as Array<{
+            [k: string]: unknown;
+            colors: Record<string, string>;
+          }>;
+          if (Array.isArray(themes)) {
+            state.customThemes = themes.map((theme) => ({
+              ...theme,
+              colors: migrateThemeColors(theme.colors),
+            }));
+          }
         }
 
         return state;

@@ -38,7 +38,7 @@ export function PluginCard({
       }
       style={{
         padding: "12px 16px",
-        borderBottom: "1px solid var(--color-border, #e5e7eb)",
+        borderBottom: "1px solid var(--color-border-default, #e5e7eb)",
         cursor: "pointer",
         transition: "background-color 0.15s",
       }}
@@ -159,9 +159,9 @@ export function PluginCard({
                 borderRadius: "6px",
                 fontSize: "12px",
                 fontWeight: 500,
-                backgroundColor: "var(--color-bg-secondary, #f3f4f6)",
-                color: "var(--color-text-muted, #9ca3af)",
-                border: "1px solid var(--color-border, #e5e7eb)",
+                backgroundColor: "var(--color-bg-subtle, #f3f4f6)",
+                color: "var(--color-text-disabled, #9ca3af)",
+                border: "1px solid var(--color-border-default, #e5e7eb)",
                 cursor: "not-allowed",
               }}
             >
@@ -207,7 +207,7 @@ export function PluginCard({
                 borderRadius: "6px",
                 fontSize: "12px",
                 fontWeight: 500,
-                backgroundColor: "var(--color-accent, #3b82f6)",
+                backgroundColor: "var(--color-accent-default, #3b82f6)",
                 color: "#fff",
                 border: "none",
                 cursor: "pointer",

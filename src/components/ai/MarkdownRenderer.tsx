@@ -42,7 +42,7 @@ function renderBlock(node: MdastBlockContent, key: number): ReactNode {
     case "blockquote":
       return (
         <blockquote
-          className="mb-2 border-l-2 border-[var(--color-border)] pl-3 italic"
+          className="mb-2 border-l-2 border-[var(--color-border-default)] pl-3 italic"
           key={key}
         >
           {node.children.map((child, i) =>
@@ -53,7 +53,7 @@ function renderBlock(node: MdastBlockContent, key: number): ReactNode {
     case "code":
       return (
         <pre
-          className="mb-2 overflow-x-auto rounded bg-[var(--color-bg-tertiary)] p-2 text-[0.85em]"
+          className="mb-2 overflow-x-auto rounded bg-[var(--color-bg-elevated)] p-2 text-[0.85em]"
           key={key}
         >
           <code className={node.lang ? `language-${node.lang}` : ""}>
@@ -113,7 +113,7 @@ function renderBlock(node: MdastBlockContent, key: number): ReactNode {
                   const CellTag = ri === 0 ? "th" : "td";
                   return (
                     <CellTag
-                      className="border border-[var(--color-border)] px-2 py-1"
+                      className="border border-[var(--color-border-default)] px-2 py-1"
                       key={ci}
                     >
                       {cell.children.map(renderInline)}
@@ -126,7 +126,9 @@ function renderBlock(node: MdastBlockContent, key: number): ReactNode {
         </table>
       );
     case "thematicBreak":
-      return <hr className="my-2 border-[var(--color-border)]" key={key} />;
+      return (
+        <hr className="my-2 border-[var(--color-border-default)]" key={key} />
+      );
     default:
       return null;
   }
@@ -165,7 +167,7 @@ function renderInline(node: PhrasingContent, key: number): ReactNode {
     case "inlineCode":
       return (
         <code
-          className="rounded bg-[var(--color-bg-tertiary)] px-1 py-0.5 font-mono text-[0.85em]"
+          className="rounded bg-[var(--color-bg-elevated)] px-1 py-0.5 font-mono text-[0.85em]"
           key={key}
         >
           {node.value}
@@ -174,7 +176,7 @@ function renderInline(node: PhrasingContent, key: number): ReactNode {
     case "link":
       return (
         <a
-          className="text-[var(--color-accent)] underline"
+          className="text-[var(--color-accent-default)] underline"
           href={node.url}
           key={key}
           rel="noopener noreferrer"

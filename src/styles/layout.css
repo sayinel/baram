@@ -1,0 +1,395 @@
+/* ============================================
+   §4.2 App Layout — 3-Column Resizable
+   ============================================ */
+
+.app-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-layout-body {
+  display: flex;
+  flex: 1;
+  flex-direction: row;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Activity Bar — 48px fixed vertical icon strip */
+.activity-bar {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 48px;
+  height: 100%;
+  background-color: var(--color-bg-panel);
+  border-right: 1px solid var(--color-border-subtle);
+}
+
+.activity-bar-top,
+.activity-bar-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+  padding: 4px 0;
+}
+
+.activity-bar-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  transition:
+    color 0.15s,
+    background-color 0.15s;
+}
+
+.activity-bar-btn:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-default);
+}
+
+.activity-bar-btn-active {
+  color: var(--color-text-primary);
+}
+
+.activity-bar-btn-active::before {
+  position: absolute;
+  top: 25%;
+  bottom: 25%;
+  left: -4px;
+  width: 2px;
+  content: "";
+  background-color: var(--color-accent-default);
+  border-radius: 1px;
+}
+
+.app-sidebar {
+  flex-shrink: 0;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--color-bg-panel);
+  border-right: 1px solid var(--color-border-subtle);
+}
+
+.app-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.app-right-panel {
+  flex-shrink: 0;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--color-bg-panel);
+  border-left: 1px solid var(--color-border-default);
+  box-shadow: -2px 0 8px rgb(0 0 0 / 8%);
+}
+
+.right-panel-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.editor-area {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.editor-area-scroll {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* §4.2 Splitter */
+.splitter {
+  flex-shrink: 0;
+  background: transparent;
+  transition: background-color 0.15s;
+}
+
+.splitter:hover {
+  background-color: var(--color-accent-default);
+}
+
+.splitter-horizontal {
+  width: 3px;
+  cursor: col-resize;
+}
+
+.splitter-vertical {
+  height: 3px;
+  cursor: row-resize;
+}
+
+/* ============================================
+   §4.3 Tab Bar
+   ============================================ */
+
+.tab-bar {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  align-items: stretch;
+  height: 34px;
+  background-color: var(--color-bg-subtle);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.tab-scroll-area {
+  display: flex;
+  flex: 1;
+  align-items: stretch;
+  min-width: 0;
+  overflow-x: auto;
+  scroll-behavior: auto;
+}
+
+.tab-scroll-area::-webkit-scrollbar {
+  height: 0;
+}
+
+.tab-scroll-btn {
+  z-index: 1;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  padding: 0;
+  font-size: 16px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  background-color: var(--color-bg-subtle);
+  border: none;
+}
+
+.tab-scroll-left {
+  border-right: 1px solid var(--color-border-subtle);
+}
+
+.tab-scroll-right {
+  border-left: 1px solid var(--color-border-subtle);
+}
+
+.tab-scroll-btn:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-default);
+}
+
+.tab-item {
+  display: flex;
+  flex: 0 1 180px;
+  gap: 6px;
+  align-items: center;
+  min-width: 60px;
+  padding: 0 12px;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  border-right: 1px solid var(--color-border-subtle);
+  transition: background-color 0.1s;
+}
+
+.tab-item:hover {
+  background-color: var(--color-bg-default);
+}
+
+.tab-active {
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-default);
+  border-bottom: 2px solid var(--color-accent-default);
+}
+
+/* Tab drag reorder — VS Code style */
+.tab-drop-before {
+  box-shadow: inset 2px 0 0 var(--color-accent-default);
+}
+
+.tab-drop-indicator-end {
+  flex-shrink: 0;
+  width: 2px;
+  background-color: var(--color-accent-default);
+}
+
+.tab-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+}
+
+.tab-close:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-border-default);
+}
+
+/* §38 Tab Pin */
+.tab-pinned .tab-close {
+  display: none;
+}
+
+.tab-pin-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--color-text-muted);
+}
+
+.tab-pinned .tab-pin-icon {
+  color: var(--color-accent-default);
+}
+
+.tab-pin-divider {
+  flex-shrink: 0;
+  width: 1px;
+  margin: 4px 0;
+  background: var(--color-border-default);
+}
+
+/* §38 Tab Context Menu */
+.tab-context-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 180px;
+  padding: 4px 0;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
+}
+
+.tab-context-item {
+  padding: 6px 24px;
+  font-size: 0.8rem;
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.tab-context-item:hover {
+  background: var(--color-bg-default);
+}
+
+.tab-context-item--disabled {
+  pointer-events: none;
+  opacity: 0.4;
+}
+
+/* ============================================
+   §4.3 Sidebar
+   ============================================ */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.sidebar-content {
+  flex: 1;
+  overflow: hidden auto;
+}
+
+/* Space indicator (StatusBar) — from PR #26 */
+
+.status-space-wrapper {
+  position: relative;
+}
+
+.status-space-btn {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  padding: 1px 6px;
+  font-family: var(--font-family-mono);
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background-color: var(--color-bg-default);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 3px;
+  transition: background-color 0.1s;
+}
+
+.status-space-btn:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-elevated);
+}
+
+.status-space-menu {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  min-width: max-content;
+  padding: 4px;
+  background-color: var(--color-bg-default);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  box-shadow: var(--shadow-md);
+}
+
+.status-space-menu-item {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 8px;
+  font-family: var(--font-family-mono);
+  font-size: 0.7rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-radius: 4px;
+}
+
+.status-space-menu-item:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-subtle);
+}
+
+.status-space-menu-active {
+  color: var(--color-accent-default);
+}

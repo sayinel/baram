@@ -149,7 +149,7 @@ export function renderSimpleMarkdown(md: string): string {
   if (!md.trim()) return "";
 
   const escaped = md
-    .replace(/&/g, "&amp;")
+    .replace(/&(?!amp;|lt;|gt;|quot;|#\d+;|#x[\da-fA-F]+;)/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 

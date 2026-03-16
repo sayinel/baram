@@ -191,11 +191,11 @@ export function ExportDialog({ editor }: ExportDialogProps) {
         onClick={(e) => e.stopPropagation()}
         onKeyDown={handleKeyDown}
       >
-        <div className="export-dialog-header">
+        <div className="export-dialog-header flex-header">
           <span className="export-dialog-title">Export Document</span>
           <button
             aria-label="Close"
-            className="export-dialog-close"
+            className="export-dialog-close icon-btn"
             onClick={closeExportDialog}
           >
             &times;
@@ -241,7 +241,7 @@ export function ExportDialog({ editor }: ExportDialogProps) {
                 <a
                   href="https://pandoc.org/installing.html"
                   rel="noreferrer"
-                  style={{ color: "var(--color-accent, #4a9eff)" }}
+                  style={{ color: "var(--color-accent-default, #4a9eff)" }}
                   target="_blank"
                 >
                   pandoc.org

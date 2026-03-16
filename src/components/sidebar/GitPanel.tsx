@@ -288,7 +288,7 @@ export function GitPanel() {
                   {formatRelativeTime(entry.timestamp)}
                 </span>
               </div>
-              <div className="git-log-message">
+              <div className="git-log-message text-truncate">
                 {entry.message.split("\n")[0]}
               </div>
               <div className="git-log-author">{entry.author}</div>
@@ -344,7 +344,9 @@ export function GitPanel() {
             )}
             {stashEntries.map((entry) => (
               <div className="git-stash-entry" key={entry.index}>
-                <div className="git-stash-message">{entry.message}</div>
+                <div className="git-stash-message text-truncate">
+                  {entry.message}
+                </div>
                 <div className="git-stash-actions">
                   <button
                     className="git-action-btn"
@@ -452,7 +454,7 @@ function ChangeItem({
       <span className={`git-change-icon ${statusColorClass(change.status)}`}>
         {statusIcon(change.status)}
       </span>
-      <span className="git-change-name" title={change.path}>
+      <span className="git-change-name text-truncate" title={change.path}>
         {fileName}
         {dirPath && <span className="git-change-dir"> {dirPath}</span>}
       </span>

@@ -330,7 +330,7 @@ export function FindReplaceBar({
           </button>
           <button
             aria-label="Close find"
-            className="find-replace-close-btn"
+            className="find-replace-close-btn icon-btn"
             onClick={handleClose}
             title="Close (Escape)"
           >

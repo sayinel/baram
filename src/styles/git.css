@@ -1,0 +1,267 @@
+/* Git Diff Viewer Modal */
+
+.git-diff-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 50%);
+}
+
+.git-diff-modal {
+  display: flex;
+  flex-direction: column;
+  width: 85vw;
+  height: 75vh;
+  overflow: hidden;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgb(0 0 0 / 20%);
+}
+
+.git-diff-header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  padding: 0.6em 1em;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.git-diff-filename {
+  font-family: var(--font-family-mono);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.git-diff-close {
+  padding: 0.2em 0.6em;
+  margin-left: auto;
+  font-family: var(--font-family-mono);
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+}
+
+.git-diff-close:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-accent-default);
+}
+
+.git-diff-body {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  font-family: var(--font-family-mono);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.git-diff-hunk-header {
+  padding: 0.3em 1em;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  background: var(--color-bg-subtle);
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.git-diff-line {
+  display: flex;
+  padding: 0 1em;
+  white-space: pre;
+}
+
+.git-diff-add {
+  color: #22c55e;
+  background: rgb(34 197 94 / 10%);
+}
+
+.git-diff-del {
+  color: #ef4444;
+  background: rgb(239 68 68 / 10%);
+}
+
+.git-diff-lineno {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 3.5em;
+  padding-right: 0.5em;
+  color: var(--color-text-muted);
+  text-align: right;
+  user-select: none;
+}
+
+.git-diff-origin {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 1.5em;
+  text-align: center;
+  user-select: none;
+}
+
+.git-diff-content {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.git-diff-loading,
+.git-diff-binary,
+.git-diff-empty {
+  padding: 2em;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+/* §67 Git Advanced — tabs, log, stash, remote */
+
+.git-tabs {
+  display: flex;
+  flex-shrink: 0;
+  background: var(--color-bg-subtle);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.git-tab {
+  flex: 1;
+  padding: 0.35em 0.5em;
+  font-family: var(--font-family-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  text-align: center;
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  transition:
+    color 0.1s,
+    border-color 0.1s;
+}
+
+.git-tab:hover {
+  color: var(--color-text-primary);
+}
+
+.git-tab.active {
+  font-weight: 600;
+  color: var(--color-accent-default);
+  border-bottom-color: var(--color-accent-default);
+}
+
+.git-ahead-behind {
+  display: flex;
+  gap: 0.3em;
+  margin-left: 0.3em;
+  font-family: var(--font-family-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.git-remote-bar {
+  display: flex;
+  gap: 0.2em;
+  margin-left: auto;
+}
+
+/* Commit log */
+
+.git-log-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.git-log-entry {
+  padding: 0.5em 0.75em;
+  cursor: default;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.git-log-entry:hover {
+  background: var(--color-bg-subtle);
+}
+
+.git-log-header {
+  display: flex;
+  gap: 0.5em;
+  align-items: center;
+  margin-bottom: 0.15em;
+}
+
+.git-log-oid {
+  flex-shrink: 0;
+  font-family: var(--font-family-mono);
+  font-size: 0.72rem;
+  color: var(--color-accent-default);
+}
+
+.git-log-date {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+}
+
+.git-log-message {
+  margin-bottom: 0.1em;
+  font-size: 0.8rem;
+  color: var(--color-text-primary);
+}
+
+.git-log-author {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+}
+
+/* Stash */
+
+.git-stash-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.git-stash-untracked-label {
+  display: flex;
+  gap: 0.3em;
+  align-items: center;
+  margin: 0.3em 0;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.git-stash-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.git-stash-entry {
+  display: flex;
+  gap: 0.5em;
+  align-items: center;
+  padding: 0.4em 0.75em;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.git-stash-entry:hover {
+  background: var(--color-bg-subtle);
+}
+
+.git-stash-message {
+  flex: 1;
+  font-size: 0.8rem;
+  color: var(--color-text-primary);
+}
+
+.git-stash-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.2em;
+}

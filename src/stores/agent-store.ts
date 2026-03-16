@@ -29,6 +29,8 @@ export interface StepResult {
 }
 
 interface AgentState {
+  /** Accept all results and return to idle */
+  acceptAll: () => void;
   /** Approve the plan and start executing */
   approvePlan: () => void;
   /** Cancel agent — returns to idle from any state */
@@ -127,6 +129,12 @@ export const useAgentStore = create<AgentState>()((set) => ({
     set({
       status: "completed",
     }),
+
+  acceptAll: () =>
+    set((state) => ({
+      ...initialState,
+      results: state.results.map((r) => ({ ...r, accepted: true })),
+    })),
 
   cancel: () =>
     set({

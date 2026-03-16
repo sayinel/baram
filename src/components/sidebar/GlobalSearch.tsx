@@ -382,7 +382,7 @@ export function GlobalSearch() {
                 <span className="global-search-chevron">
                   {collapsed ? "▸" : "▾"}
                 </span>
-                <span className="global-search-file-name">
+                <span className="global-search-file-name text-truncate">
                   {group.fileName}
                 </span>
                 <span className="global-search-file-count">
@@ -399,7 +399,7 @@ export function GlobalSearch() {
                     }
                   >
                     <span className="global-search-line">L{match.line}</span>
-                    <span className="global-search-snippet">
+                    <span className="global-search-snippet text-truncate">
                       {match.snippet}
                     </span>
                     {showReplace && (

@@ -11,35 +11,17 @@ import { resolveJournalDir } from "../../utils/journal/journal";
 import { logger } from "../../utils/logger";
 import { useSettingsStore } from "../settings/store";
 import { tauriStorage } from "../system/tauri-storage";
-import { useUIStore } from "../ui/ui";
+import { type RightPanelMode, type SidebarPanel, useUIStore } from "../ui/ui";
 import { useFileStore } from "./file";
 import { buildFileTree } from "./file";
 
 // --- Types ---
 
 export interface WorkspaceLayout {
-  rightPanelMode:
-    | "chat"
-    | "help"
-    | "memories"
-    | "none"
-    | "photo-gallery"
-    | "properties";
+  rightPanelMode: RightPanelMode;
   rightPanelOpen: boolean;
   sidebarOpen: boolean;
-  sidebarPanel:
-    | "backlinks"
-    | "bookmarks"
-    | "calendar"
-    | "files"
-    | "git"
-    | "graph"
-    | "outline"
-    | "plugins"
-    | "search"
-    | "skills-gallery"
-    | "snapshots"
-    | "tags";
+  sidebarPanel: SidebarPanel;
 }
 
 export interface WorkspacePreset {

@@ -258,7 +258,7 @@ export function TabBar() {
                   "tab-item",
                   tab.id === activeTabId && "tab-active",
                   tab.isPinned && "tab-pinned",
-                  dragIndex === index && "tab-dragging",
+                  dragIndex === index && "opacity-40",
                   // Show drop indicator on left edge of this tab
                   dropSlot === index &&
                     dragIndex !== null &&

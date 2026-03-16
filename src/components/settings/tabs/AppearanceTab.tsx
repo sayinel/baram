@@ -12,8 +12,11 @@ import {
   useWorkspaceStore,
 } from "../../../stores/file/workspace";
 import { useSettingsStore } from "../../../stores/settings/store";
-import { BUILT_IN_THEMES } from "../../../types/theme";
-import { THEME_COLOR_KEYS } from "../../../types/theme";
+import {
+  BUILT_IN_THEMES,
+  migrateThemeColors,
+  THEME_COLOR_KEYS,
+} from "../../../types/theme";
 import { logger } from "../../../utils/logger";
 import { SettingsSectionHeader } from "../settings-shared";
 import { ThemeEditor } from "../ThemeEditor";
@@ -51,6 +54,8 @@ export function AppearanceTab() {
       if (!data.colors || typeof data.colors !== "object") {
         throw new Error("Missing or invalid 'colors' object");
       }
+      // Migrate old key names (pre-v10) to current names
+      data.colors = migrateThemeColors(data.colors);
       // Validate all 16 color keys are present
       const requiredKeys = THEME_COLOR_KEYS.map((k) => k.key);
       for (const key of requiredKeys) {
@@ -165,7 +170,7 @@ export function AppearanceTab() {
             onClick={() => setActiveTheme(theme.id)}
             style={
               activeThemeId === theme.id
-                ? { borderColor: theme.colors["--color-accent"] }
+                ? { borderColor: theme.colors["--color-accent-default"] }
                 : undefined
             }
           >
@@ -302,26 +307,26 @@ function ThemeMiniPreview({ theme }: { theme: ThemeDef }) {
   return (
     <div
       className="theme-preview"
-      style={{ background: c["--color-bg-primary"] }}
+      style={{ background: c["--color-bg-default"] }}
     >
       <div
         className="theme-preview-sidebar"
         style={{
-          background: c["--color-bg-sidebar"],
-          borderRight: `1px solid ${c["--color-border"]}`,
+          background: c["--color-bg-panel"],
+          borderRight: `1px solid ${c["--color-border-default"]}`,
         }}
       >
         <div
           className="theme-preview-sidebar-item"
-          style={{ background: c["--color-bg-tertiary"] }}
+          style={{ background: c["--color-bg-elevated"] }}
         />
         <div
           className="theme-preview-sidebar-item"
-          style={{ background: c["--color-bg-tertiary"] }}
+          style={{ background: c["--color-bg-elevated"] }}
         />
         <div
           className="theme-preview-sidebar-item"
-          style={{ background: c["--color-bg-tertiary"] }}
+          style={{ background: c["--color-bg-elevated"] }}
         />
       </div>
       <div
@@ -339,7 +344,7 @@ function ThemeMiniPreview({ theme }: { theme: ThemeDef }) {
           style={{ color: c["--color-editor-text"] }}
         >
           Some{" "}
-          <span style={{ color: c["--color-accent"], fontWeight: 600 }}>
+          <span style={{ color: c["--color-accent-default"], fontWeight: 600 }}>
             bold
           </span>{" "}
           text
@@ -347,7 +352,7 @@ function ThemeMiniPreview({ theme }: { theme: ThemeDef }) {
         <div
           className="theme-preview-quote"
           style={{
-            borderLeft: `2px solid ${c["--color-accent"]}`,
+            borderLeft: `2px solid ${c["--color-accent-default"]}`,
             color: c["--color-text-secondary"],
             paddingLeft: 6,
           }}
@@ -357,7 +362,7 @@ function ThemeMiniPreview({ theme }: { theme: ThemeDef }) {
         <div
           className="theme-preview-code"
           style={{
-            background: c["--color-bg-tertiary"],
+            background: c["--color-bg-elevated"],
             color: c["--color-editor-text"],
           }}
         >

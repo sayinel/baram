@@ -351,7 +351,7 @@ export function FileTree(): React.JSX.Element {
                 style={{ paddingLeft: `${TREE_BASE_PADDING_PX}px` }}
               >
                 <span className="file-tree-icon">{getFileIcon(file.name)}</span>
-                <span className="file-tree-name">
+                <span className="file-tree-name text-truncate">
                   {file.name}
                   <span className="file-tree-result-path">
                     {file.relativePath}

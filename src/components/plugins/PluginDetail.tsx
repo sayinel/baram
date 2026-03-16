@@ -141,9 +141,9 @@ export function PluginDetail({
               borderRadius: "6px",
               fontSize: "13px",
               fontWeight: 500,
-              backgroundColor: "var(--color-bg-secondary, #f3f4f6)",
-              color: "var(--color-text-muted, #9ca3af)",
-              border: "1px solid var(--color-border, #e5e7eb)",
+              backgroundColor: "var(--color-bg-subtle, #f3f4f6)",
+              color: "var(--color-text-disabled, #9ca3af)",
+              border: "1px solid var(--color-border-default, #e5e7eb)",
             }}
           >
             Installing…
@@ -159,14 +159,14 @@ export function PluginDetail({
                 fontWeight: 500,
                 backgroundColor:
                   status === "enabled"
-                    ? "var(--color-accent, #3b82f6)"
-                    : "var(--color-bg-secondary, #f3f4f6)",
+                    ? "var(--color-accent-default, #3b82f6)"
+                    : "var(--color-bg-subtle, #f3f4f6)",
                 color:
                   status === "enabled" ? "#fff" : "var(--color-text, #111)",
                 border:
                   status === "enabled"
                     ? "none"
-                    : "1px solid var(--color-border, #e5e7eb)",
+                    : "1px solid var(--color-border-default, #e5e7eb)",
                 cursor: "pointer",
               }}
             >
@@ -213,7 +213,7 @@ export function PluginDetail({
               borderRadius: "6px",
               fontSize: "13px",
               fontWeight: 500,
-              backgroundColor: "var(--color-accent, #3b82f6)",
+              backgroundColor: "var(--color-accent-default, #3b82f6)",
               color: "#fff",
               border: "none",
               cursor: "pointer",
@@ -268,12 +268,12 @@ export function PluginDetail({
               borderRadius: "6px",
               fontSize: "13px",
               lineHeight: 1.6,
-              backgroundColor: "var(--color-bg-secondary, #f3f4f6)",
+              backgroundColor: "var(--color-bg-subtle, #f3f4f6)",
               color: "var(--color-text-secondary, #4b5563)",
               whiteSpace: "pre-wrap",
               wordBreak: "break-word",
               overflowX: "auto",
-              border: "1px solid var(--color-border, #e5e7eb)",
+              border: "1px solid var(--color-border-default, #e5e7eb)",
               maxHeight: "300px",
               overflowY: "auto",
             }}
@@ -335,7 +335,7 @@ export function PluginDetail({
               rel="noopener noreferrer"
               style={{
                 fontSize: "13px",
-                color: "var(--color-accent, #3b82f6)",
+                color: "var(--color-accent-default, #3b82f6)",
               }}
               target="_blank"
             >
@@ -348,7 +348,7 @@ export function PluginDetail({
               rel="noopener noreferrer"
               style={{
                 fontSize: "13px",
-                color: "var(--color-accent, #3b82f6)",
+                color: "var(--color-accent-default, #3b82f6)",
               }}
               target="_blank"
             >
@@ -389,7 +389,7 @@ export function PluginDetail({
                   padding: "2px 8px",
                   borderRadius: "4px",
                   fontSize: "12px",
-                  backgroundColor: "var(--color-bg-secondary, #f3f4f6)",
+                  backgroundColor: "var(--color-bg-subtle, #f3f4f6)",
                   color: "var(--color-text-secondary, #4b5563)",
                 }}
               >
