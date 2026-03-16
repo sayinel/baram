@@ -101,8 +101,8 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
-    "@commitlint/cli": "^20.4.3",
-    "@commitlint/config-conventional": "^20.4.3",
+    "@commitlint/cli": "^20.5.0",
+    "@commitlint/config-conventional": "^20.5.0",
     "@eslint/js": "^9.39.2",
     "@tauri-apps/cli": "^2",
     "@testing-library/jest-dom": "^6.9.1",
@@ -120,7 +120,7 @@
     "husky": "^9.1.7",
     "jsdom": "28.0.0",
     "knip": "^5.86.0",
-    "lint-staged": "^16.3.2",
+    "lint-staged": "^16.4.0",
     "prettier": "^3.8.1",
     "prettier-plugin-tailwindcss": "^0.7.2",
     "stylelint": "^17.4.0",
