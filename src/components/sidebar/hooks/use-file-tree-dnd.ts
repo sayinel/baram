@@ -82,6 +82,8 @@ export function useFileTreeDnD(
         setDragSourcePath(state.sourcePath);
         // Clear any text selection that started between mousedown and threshold
         window.getSelection()?.removeAllRanges();
+        // Suppress text selection in contenteditable during drag
+        document.body.classList.add("dragging-active");
         createDragGhost(state.sourceName, e.clientX, e.clientY);
       }
       // Prevent text selection -- must preventDefault on EVERY mousemove, not just once
@@ -109,7 +111,7 @@ export function useFileTreeDnD(
           e.clientY <= scrollRect.bottom
         ) {
           const target = resolveInsertTarget(editor, e.clientX, e.clientY);
-          if (target) showDropIndicator(target);
+          if (target) showDropIndicator(target, editor.view);
           else hideDropIndicator();
         } else {
           hideDropIndicator();
@@ -123,6 +125,8 @@ export function useFileTreeDnD(
       dragRef.current = null;
       removeDragGhost();
       hideDropIndicator();
+      // Restore text selection after drag
+      document.body.classList.remove("dragging-active");
 
       if (!state.active) {
         setIsDragging(false);

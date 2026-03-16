@@ -58,7 +58,7 @@ export function useExternalDrop({ editor }: UseExternalDropOptions) {
       clearAllHighlights();
       if (zone === "editor") {
         const target = resolveInsertTarget(editor, e.clientX, e.clientY);
-        if (target) showDropIndicator(target);
+        if (target) showDropIndicator(target, editor.view);
       } else if (zone === "filetree") {
         const el = document.elementFromPoint(e.clientX, e.clientY);
         const folderEl = el?.closest<HTMLElement>("[data-drop-path]");
@@ -115,7 +115,7 @@ export function useExternalDrop({ editor }: UseExternalDropOptions) {
           } else if (zone === "editor" && editor) {
             const target = resolveInsertTarget(editor, x, y);
             if (target) {
-              showDropIndicator(target);
+              showDropIndicator(target, editor.view);
             }
           }
         }
@@ -231,7 +231,7 @@ async function handleEditorDrop(
       await copyFile(sourcePath, destPath);
       existingNames.add(finalName);
 
-      const relativeSrc = "./assets/" + finalName;
+      const relativeSrc = "assets/" + finalName;
       const alt = finalName.replace(/\.[^.]+$/, "");
 
       const imageNode = editor.state.schema.nodes.image.create({

@@ -144,6 +144,12 @@
   cursor: grabbing;
 }
 
+/* Suppress text selection in contenteditable during file tree drag */
+body.dragging-active .ProseMirror {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
 .file-tree-drag-ghost {
   position: fixed;
   z-index: 100;
@@ -227,7 +233,7 @@
 
 /* Editor drop indicator bar — shows the exact insertion line */
 .drop-indicator-bar {
-  position: fixed;
+  position: absolute;
   z-index: 50;
   display: none;
   height: 2px;
