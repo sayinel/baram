@@ -174,6 +174,8 @@ pub async fn delete_dir(
 }
 
 #[tauri::command]
+/// Source path may be outside vault (e.g., image drag & drop from ~/Downloads).
+/// Only the destination is confined to the vault, matching extract_zip semantics.
 pub async fn copy_file(
     from: String,
     to: String,
@@ -181,7 +183,6 @@ pub async fn copy_file(
 ) -> Result<(), String> {
     check(&from)?;
     check(&to)?;
-    check_vault(&from, &state).await?;
     check_vault(&to, &state).await?;
     crate::fs::copy_file(&from, &to)
         .await
