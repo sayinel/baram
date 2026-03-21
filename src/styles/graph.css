@@ -65,26 +65,15 @@
   text-align: center;
 }
 
-/* Graph color variables — light theme */
+/* Graph color variables — point local aliases at semantic tokens */
 :root {
-  --graph-node-color: #6b7280;
-  --graph-active-color: #3b82f6;
-  --graph-active-border: #60a5fa;
-  --graph-neighbor-color: #8b5cf6;
-  --graph-orphan-color: #d1d5db;
-  --graph-edge-color: #9ca3af;
-  --graph-label-color: #374151;
-}
-
-/* Graph color variables — dark theme */
-[data-theme="dark"] {
-  --graph-node-color: #6b7280;
-  --graph-active-color: #60a5fa;
-  --graph-active-border: #93c5fd;
-  --graph-neighbor-color: #a78bfa;
-  --graph-orphan-color: #4b5563;
-  --graph-edge-color: #374151;
-  --graph-label-color: #d1d5db;
+  --graph-node-color: var(--color-graph-node);
+  --graph-active-color: var(--color-graph-active);
+  --graph-active-border: var(--color-graph-active-border);
+  --graph-neighbor-color: var(--color-graph-neighbor);
+  --graph-orphan-color: var(--color-graph-orphan);
+  --graph-edge-color: var(--color-graph-edge);
+  --graph-label-color: var(--color-graph-label);
 }
 
 /* Graph settings button */
@@ -249,7 +238,7 @@
   height: 18px;
   padding: 0;
   cursor: pointer;
-  background: var(--color-bg-elevated, #374151);
+  background: var(--color-bg-elevated);
   border: none;
   border-radius: 9px;
   transition: background 0.15s ease;

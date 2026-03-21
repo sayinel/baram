@@ -115,7 +115,7 @@
   margin: 6px 0;
   font-style: italic;
   color: var(--color-text-secondary);
-  border-left: 3px solid var(--color-accent-default, #5b7bd7);
+  border-left: 3px solid var(--color-accent-default);
 }
 
 .reflection-md-render strong {
@@ -231,13 +231,9 @@
   padding: 4px 8px;
   margin: 0 12px;
   font-size: 0.72rem;
-  color: var(--color-status-danger, #ef4444);
-  background: color-mix(
-    in srgb,
-    var(--color-status-danger, #ef4444) 10%,
-    transparent
-  );
-  border: 1px solid var(--color-status-danger, #ef4444);
+  color: var(--color-status-danger);
+  background: color-mix(in srgb, var(--color-status-danger) 10%, transparent);
+  border: 1px solid var(--color-status-danger);
   border-radius: 4px;
 }
 
@@ -279,17 +275,13 @@
 }
 
 .reflection-btn-stop {
-  color: var(--color-status-danger, #ef4444);
+  color: var(--color-status-danger);
   background: var(--color-bg-default);
-  border-color: var(--color-status-danger, #ef4444);
+  border-color: var(--color-status-danger);
 }
 
 .reflection-btn-stop:hover:not(:disabled) {
-  background: color-mix(
-    in srgb,
-    var(--color-status-danger, #ef4444) 10%,
-    transparent
-  );
+  background: color-mix(in srgb, var(--color-status-danger) 10%, transparent);
 }
 
 .reflection-btn-save {
