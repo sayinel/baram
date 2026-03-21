@@ -1,27 +1,32 @@
 // §54 Theme System — Type definitions and built-in theme data
 
 // ---------------------------------------------------------------------------
-// 1. ThemeColors — 16 CSS custom property keys
+// 1. ThemeColors — 25 CSS custom property keys
 // ---------------------------------------------------------------------------
 
 export interface ThemeColors {
+  "--color-accent-ai": string;
   "--color-accent-default": string;
   "--color-accent-hover": string;
+  "--color-accent-subtle": string;
   "--color-bg-default": string;
   "--color-bg-elevated": string;
-
+  "--color-bg-input": string;
   "--color-bg-panel": string;
   "--color-bg-subtle": string;
   "--color-border-default": string;
-
   "--color-border-subtle": string;
   "--color-editor-bg": string;
-
   "--color-editor-cursor": string;
   "--color-editor-line-highlight": string;
-
   "--color-editor-selection": string;
   "--color-editor-text": string;
+  "--color-graph-active": string;
+  "--color-graph-edge": string;
+  "--color-graph-node": string;
+  "--color-status-danger": string;
+  "--color-status-success": string;
+  "--color-status-warning": string;
   "--color-text-disabled": string;
   "--color-text-primary": string;
   "--color-text-secondary": string;
@@ -69,6 +74,11 @@ export const THEME_COLOR_KEYS: {
     label: "Tertiary Background",
     category: "Background",
   },
+  {
+    key: "--color-bg-input",
+    label: "Input Background",
+    category: "Background",
+  },
 
   // Text
   { key: "--color-text-primary", label: "Primary Text", category: "Text" },
@@ -82,6 +92,8 @@ export const THEME_COLOR_KEYS: {
   // Accent
   { key: "--color-accent-default", label: "Accent", category: "Accent" },
   { key: "--color-accent-hover", label: "Accent Hover", category: "Accent" },
+  { key: "--color-accent-subtle", label: "Accent Subtle", category: "Accent" },
+  { key: "--color-accent-ai", label: "AI Accent", category: "Accent" },
 
   // Editor
   { key: "--color-editor-bg", label: "Editor Background", category: "Editor" },
@@ -97,6 +109,16 @@ export const THEME_COLOR_KEYS: {
     label: "Editor Line Highlight",
     category: "Editor",
   },
+
+  // Status
+  { key: "--color-status-danger", label: "Danger", category: "Status" },
+  { key: "--color-status-warning", label: "Warning", category: "Status" },
+  { key: "--color-status-success", label: "Success", category: "Status" },
+
+  // Graph
+  { key: "--color-graph-node", label: "Graph Node", category: "Graph" },
+  { key: "--color-graph-active", label: "Graph Active", category: "Graph" },
+  { key: "--color-graph-edge", label: "Graph Edge", category: "Graph" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -174,6 +196,16 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
       "--color-editor-selection": "#bfdbfe",
       "--color-editor-cursor": "#1a1a1a",
       "--color-editor-line-highlight": "#f8f9fa",
+
+      "--color-status-danger": "#ef4444",
+      "--color-status-warning": "#eab308",
+      "--color-status-success": "#22c55e",
+      "--color-accent-subtle": "#eff6ff",
+      "--color-accent-ai": "#8b5cf6",
+      "--color-bg-input": "#ffffff",
+      "--color-graph-node": "#6b7280",
+      "--color-graph-active": "#3b82f6",
+      "--color-graph-edge": "#9ca3af",
     },
   },
 
@@ -204,6 +236,16 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
       "--color-editor-selection": "#1e3a5f",
       "--color-editor-cursor": "#e2e8f0",
       "--color-editor-line-highlight": "#16213e",
+
+      "--color-status-danger": "#ef4444",
+      "--color-status-warning": "#eab308",
+      "--color-status-success": "#22c55e",
+      "--color-accent-subtle": "#1e3a5f",
+      "--color-accent-ai": "#a78bfa",
+      "--color-bg-input": "#1e293b",
+      "--color-graph-node": "#6b7280",
+      "--color-graph-active": "#60a5fa",
+      "--color-graph-edge": "#374151",
     },
   },
 
@@ -234,6 +276,16 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
       "--color-editor-selection": "#283457",
       "--color-editor-cursor": "#c0caf5",
       "--color-editor-line-highlight": "#1e2030",
+
+      "--color-status-danger": "#f7768e",
+      "--color-status-warning": "#e0af68",
+      "--color-status-success": "#9ece6a",
+      "--color-accent-subtle": "#1f2335",
+      "--color-accent-ai": "#bb9af7",
+      "--color-bg-input": "#1f2335",
+      "--color-graph-node": "#565a6e",
+      "--color-graph-active": "#7aa2f7",
+      "--color-graph-edge": "#292e42",
     },
   },
 
@@ -264,6 +316,16 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
       "--color-editor-selection": "#e0dbc8",
       "--color-editor-cursor": "#586e75",
       "--color-editor-line-highlight": "#eee8d5",
+
+      "--color-status-danger": "#dc322f",
+      "--color-status-warning": "#b58900",
+      "--color-status-success": "#859900",
+      "--color-accent-subtle": "#eee8d5",
+      "--color-accent-ai": "#6c71c4",
+      "--color-bg-input": "#fdf6e3",
+      "--color-graph-node": "#839496",
+      "--color-graph-active": "#268bd2",
+      "--color-graph-edge": "#93a1a1",
     },
   },
 
@@ -294,6 +356,16 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
       "--color-editor-selection": "#094a5c",
       "--color-editor-cursor": "#93a1a1",
       "--color-editor-line-highlight": "#073642",
+
+      "--color-status-danger": "#dc322f",
+      "--color-status-warning": "#b58900",
+      "--color-status-success": "#859900",
+      "--color-accent-subtle": "#073642",
+      "--color-accent-ai": "#6c71c4",
+      "--color-bg-input": "#073642",
+      "--color-graph-node": "#657b83",
+      "--color-graph-active": "#268bd2",
+      "--color-graph-edge": "#094a5c",
     },
   },
 
@@ -324,6 +396,16 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
       "--color-editor-selection": "#434c5e",
       "--color-editor-cursor": "#d8dee9",
       "--color-editor-line-highlight": "#3b4252",
+
+      "--color-status-danger": "#bf616a",
+      "--color-status-warning": "#ebcb8b",
+      "--color-status-success": "#a3be8c",
+      "--color-accent-subtle": "#3b4252",
+      "--color-accent-ai": "#b48ead",
+      "--color-bg-input": "#3b4252",
+      "--color-graph-node": "#7b88a1",
+      "--color-graph-active": "#88c0d0",
+      "--color-graph-edge": "#4c566a",
     },
   },
 
@@ -354,6 +436,16 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
       "--color-editor-selection": "#d8e6b3",
       "--color-editor-cursor": "#123d96",
       "--color-editor-line-highlight": "#f7fae8",
+
+      "--color-status-danger": "#ef4444",
+      "--color-status-warning": "#eab308",
+      "--color-status-success": "#22c55e",
+      "--color-accent-subtle": "#fdf8e1",
+      "--color-accent-ai": "#7c3aed",
+      "--color-bg-input": "#fffef8",
+      "--color-graph-node": "#5a6f8c",
+      "--color-graph-active": "#123d96",
+      "--color-graph-edge": "#a0aec0",
     },
   },
 
@@ -384,6 +476,16 @@ export const BUILT_IN_THEMES: ThemeDef[] = [
       "--color-editor-selection": "#2e4a28",
       "--color-editor-cursor": "#b4d156",
       "--color-editor-line-highlight": "#232740",
+
+      "--color-status-danger": "#ef4444",
+      "--color-status-warning": "#eab308",
+      "--color-status-success": "#22c55e",
+      "--color-accent-subtle": "#2a2d42",
+      "--color-accent-ai": "#a78bfa",
+      "--color-bg-input": "#232740",
+      "--color-graph-node": "#5a6f8c",
+      "--color-graph-active": "#b4d156",
+      "--color-graph-edge": "#3d3562",
     },
   },
 ];
