@@ -36,9 +36,28 @@ describe("Built-in themes", () => {
     expect(ids).toContain("nord");
   });
 
-  it("every built-in theme has 16 color keys", () => {
+  it("every built-in theme has 25 color keys", () => {
     for (const theme of BUILT_IN_THEMES) {
-      expect(Object.keys(theme.colors)).toHaveLength(16);
+      expect(Object.keys(theme.colors)).toHaveLength(25);
+    }
+  });
+
+  it("every built-in theme has all required status and graph keys", () => {
+    const requiredKeys = [
+      "--color-status-danger",
+      "--color-status-warning",
+      "--color-status-success",
+      "--color-accent-subtle",
+      "--color-accent-ai",
+      "--color-bg-input",
+      "--color-graph-node",
+      "--color-graph-active",
+      "--color-graph-edge",
+    ];
+    for (const theme of BUILT_IN_THEMES) {
+      for (const key of requiredKeys) {
+        expect(theme.colors).toHaveProperty(key);
+      }
     }
   });
 
