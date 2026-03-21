@@ -381,12 +381,12 @@
 
 .confirm-dialog-btn-danger {
   color: white;
-  background: #dc2626;
-  border-color: #dc2626;
+  background: var(--color-status-danger);
+  border-color: var(--color-status-danger);
 }
 
 .confirm-dialog-btn-danger:hover {
-  background: #b91c1c;
+  background: color-mix(in srgb, var(--color-status-danger) 85%, black);
 }
 
 .field-dialog-label {
@@ -653,15 +653,15 @@
 }
 
 .block-ai-diff-delete {
-  color: #ef4444;
+  color: var(--color-status-danger);
   text-decoration: line-through;
-  background: rgb(239 68 68 / 8%);
+  background: color-mix(in srgb, var(--color-status-danger) 8%, transparent);
   border-radius: 2px;
 }
 
 .block-ai-diff-insert {
-  color: #22c55e;
-  background: rgb(34 197 94 / 8%);
+  color: var(--color-status-success);
+  background: color-mix(in srgb, var(--color-status-success) 8%, transparent);
   border-radius: 2px;
 }
 
@@ -672,8 +672,8 @@
 .block-ai-diff-error {
   padding: 8px 12px;
   font-size: 0.78rem;
-  color: #ef4444;
-  background: rgb(239 68 68 / 6%);
+  color: var(--color-status-danger);
+  background: color-mix(in srgb, var(--color-status-danger) 6%, transparent);
 }
 
 .block-ai-diff-actions {
@@ -719,7 +719,7 @@
 }
 
 .block-ai-diff-btn-accept {
-  color: #fff;
+  color: white;
   background: var(--color-accent-default);
   border-color: var(--color-accent-default);
 }

@@ -212,7 +212,7 @@
 }
 
 .tab-switcher-item--selected {
-  color: #fff;
+  color: white;
   background-color: var(--color-accent-default);
 }
 
@@ -559,7 +559,7 @@
 
 .workspace-card-delete:hover {
   color: white;
-  background: #e74c3c;
+  background: var(--color-status-danger);
 }
 
 .workspace-card-layout {
