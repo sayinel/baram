@@ -87,6 +87,7 @@ export const BaramTable = Table.extend({
   },
 }).configure({
   resizable: true, // §5.5 Tier 3: column width drag resize (session only)
+  handleWidth: 10, // wider detection zone (default 5 is too narrow with border-collapse)
   lastColumnResizable: true,
   allowTableNodeSelection: true,
 });
