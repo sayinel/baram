@@ -49,7 +49,7 @@ export function PluginDetail({
           borderRadius: "4px",
           fontSize: "13px",
           backgroundColor: "transparent",
-          color: "var(--color-text-muted, #6b7280)",
+          color: "var(--color-text-muted)",
           border: "none",
           cursor: "pointer",
         }}
@@ -73,7 +73,7 @@ export function PluginDetail({
               margin: 0,
               fontSize: "20px",
               fontWeight: 700,
-              color: "var(--color-text, #111)",
+              color: "var(--color-text-primary)",
             }}
           >
             {entry.name}
@@ -89,7 +89,7 @@ export function PluginDetail({
             <span
               style={{
                 fontSize: "13px",
-                color: "var(--color-text-muted, #6b7280)",
+                color: "var(--color-text-muted)",
               }}
             >
               {entry.author}
@@ -97,7 +97,7 @@ export function PluginDetail({
             <span
               style={{
                 fontSize: "13px",
-                color: "var(--color-text-muted, #9ca3af)",
+                color: "var(--color-text-muted)",
               }}
             >
               v{entry.version}
@@ -105,7 +105,7 @@ export function PluginDetail({
             <span
               style={{
                 fontSize: "12px",
-                color: "var(--color-text-muted, #9ca3af)",
+                color: "var(--color-text-muted)",
               }}
             >
               {entry.license}
@@ -121,10 +121,10 @@ export function PluginDetail({
             padding: "8px 12px",
             marginBottom: "12px",
             borderRadius: "6px",
-            backgroundColor: "var(--color-error-bg, #fef2f2)",
-            color: "var(--color-error, #dc2626)",
+            backgroundColor: "var(--color-status-error-bg)",
+            color: "var(--color-status-danger)",
             fontSize: "13px",
-            border: "1px solid var(--color-error-border, #fecaca)",
+            border: "1px solid var(--color-status-error-border)",
           }}
         >
           {error}
@@ -141,9 +141,9 @@ export function PluginDetail({
               borderRadius: "6px",
               fontSize: "13px",
               fontWeight: 500,
-              backgroundColor: "var(--color-bg-subtle, #f3f4f6)",
-              color: "var(--color-text-disabled, #9ca3af)",
-              border: "1px solid var(--color-border-default, #e5e7eb)",
+              backgroundColor: "var(--color-bg-subtle)",
+              color: "var(--color-text-disabled)",
+              border: "1px solid var(--color-border-default)",
             }}
           >
             Installing…
@@ -159,14 +159,14 @@ export function PluginDetail({
                 fontWeight: 500,
                 backgroundColor:
                   status === "enabled"
-                    ? "var(--color-accent-default, #3b82f6)"
-                    : "var(--color-bg-subtle, #f3f4f6)",
+                    ? "var(--color-accent-default)"
+                    : "var(--color-bg-subtle)",
                 color:
-                  status === "enabled" ? "#fff" : "var(--color-text, #111)",
+                  status === "enabled" ? "#fff" : "var(--color-text-primary)",
                 border:
                   status === "enabled"
                     ? "none"
-                    : "1px solid var(--color-border-default, #e5e7eb)",
+                    : "1px solid var(--color-border-default)",
                 cursor: "pointer",
               }}
             >
@@ -197,8 +197,8 @@ export function PluginDetail({
                 fontSize: "13px",
                 fontWeight: 500,
                 backgroundColor: "transparent",
-                color: "var(--color-error, #dc2626)",
-                border: "1px solid var(--color-error, #dc2626)",
+                color: "var(--color-status-danger)",
+                border: "1px solid var(--color-status-danger)",
                 cursor: "pointer",
               }}
             >
@@ -213,7 +213,7 @@ export function PluginDetail({
               borderRadius: "6px",
               fontSize: "13px",
               fontWeight: 500,
-              backgroundColor: "var(--color-accent-default, #3b82f6)",
+              backgroundColor: "var(--color-accent-default)",
               color: "#fff",
               border: "none",
               cursor: "pointer",
@@ -231,7 +231,7 @@ export function PluginDetail({
             fontSize: "14px",
             fontWeight: 600,
             marginBottom: "8px",
-            color: "var(--color-text, #111)",
+            color: "var(--color-text-primary)",
           }}
         >
           Description
@@ -241,7 +241,7 @@ export function PluginDetail({
             margin: 0,
             fontSize: "14px",
             lineHeight: 1.6,
-            color: "var(--color-text-secondary, #4b5563)",
+            color: "var(--color-text-secondary)",
           }}
         >
           {entry.description}
@@ -256,7 +256,7 @@ export function PluginDetail({
               fontSize: "14px",
               fontWeight: 600,
               marginBottom: "8px",
-              color: "var(--color-text, #111)",
+              color: "var(--color-text-primary)",
             }}
           >
             README
@@ -268,12 +268,12 @@ export function PluginDetail({
               borderRadius: "6px",
               fontSize: "13px",
               lineHeight: 1.6,
-              backgroundColor: "var(--color-bg-subtle, #f3f4f6)",
-              color: "var(--color-text-secondary, #4b5563)",
+              backgroundColor: "var(--color-bg-subtle)",
+              color: "var(--color-text-secondary)",
               whiteSpace: "pre-wrap",
               wordBreak: "break-word",
               overflowX: "auto",
-              border: "1px solid var(--color-border-default, #e5e7eb)",
+              border: "1px solid var(--color-border-default)",
               maxHeight: "300px",
               overflowY: "auto",
             }}
@@ -290,7 +290,7 @@ export function PluginDetail({
             fontSize: "14px",
             fontWeight: 600,
             marginBottom: "8px",
-            color: "var(--color-text, #111)",
+            color: "var(--color-text-primary)",
           }}
         >
           Capabilities
@@ -307,7 +307,7 @@ export function PluginDetail({
             <span
               style={{
                 fontSize: "13px",
-                color: "var(--color-text-muted, #9ca3af)",
+                color: "var(--color-text-muted)",
               }}
             >
               No special permissions required
@@ -323,7 +323,7 @@ export function PluginDetail({
             fontSize: "14px",
             fontWeight: 600,
             marginBottom: "8px",
-            color: "var(--color-text, #111)",
+            color: "var(--color-text-primary)",
           }}
         >
           Links
@@ -335,7 +335,7 @@ export function PluginDetail({
               rel="noopener noreferrer"
               style={{
                 fontSize: "13px",
-                color: "var(--color-accent-default, #3b82f6)",
+                color: "var(--color-accent-default)",
               }}
               target="_blank"
             >
@@ -348,7 +348,7 @@ export function PluginDetail({
               rel="noopener noreferrer"
               style={{
                 fontSize: "13px",
-                color: "var(--color-accent-default, #3b82f6)",
+                color: "var(--color-accent-default)",
               }}
               target="_blank"
             >
@@ -359,7 +359,7 @@ export function PluginDetail({
             <span
               style={{
                 fontSize: "13px",
-                color: "var(--color-text-muted, #9ca3af)",
+                color: "var(--color-text-muted)",
               }}
             >
               No links available
@@ -376,7 +376,7 @@ export function PluginDetail({
               fontSize: "14px",
               fontWeight: 600,
               marginBottom: "8px",
-              color: "var(--color-text, #111)",
+              color: "var(--color-text-primary)",
             }}
           >
             Keywords
@@ -389,8 +389,8 @@ export function PluginDetail({
                   padding: "2px 8px",
                   borderRadius: "4px",
                   fontSize: "12px",
-                  backgroundColor: "var(--color-bg-subtle, #f3f4f6)",
-                  color: "var(--color-text-secondary, #4b5563)",
+                  backgroundColor: "var(--color-bg-subtle)",
+                  color: "var(--color-text-secondary)",
                 }}
               >
                 {kw}

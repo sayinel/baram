@@ -101,7 +101,7 @@
 .quick-capture-error {
   padding: 4px 0;
   font-size: 12px;
-  color: #e53e3e;
+  color: var(--color-status-danger);
 }
 
 .quick-capture-actions {
@@ -122,7 +122,7 @@
 }
 
 .quick-capture-cancel:hover {
-  background: var(--color-bg-hover, rgb(128 128 128 / 8%));
+  background: var(--color-bg-subtle, rgb(128 128 128 / 8%));
 }
 
 .quick-capture-save {
@@ -216,11 +216,11 @@
 }
 
 .migration-dialog-error {
-  color: var(--color-error, #e85555);
+  color: var(--color-status-danger);
 }
 
 .migration-dialog-success {
-  color: var(--color-success, #4caf50);
+  color: var(--color-status-success);
 }
 
 .migration-dialog-list {
@@ -252,7 +252,7 @@
 
 .migration-dialog-arrow {
   flex-shrink: 0;
-  color: var(--color-text-tertiary, var(--color-text-secondary));
+  color: var(--color-text-muted, var(--color-text-secondary));
 }
 
 .migration-dialog-to {
@@ -265,7 +265,7 @@
   padding: 2px 8px;
   font-size: 12px;
   font-style: italic;
-  color: var(--color-text-tertiary, var(--color-text-secondary));
+  color: var(--color-text-muted, var(--color-text-secondary));
 }
 
 .migration-dialog-actions {
@@ -299,7 +299,7 @@
 }
 
 .migration-dialog-btn-secondary:not(:disabled):hover {
-  background: var(--color-bg-hover, rgb(128 128 128 / 8%));
+  background: var(--color-bg-subtle, rgb(128 128 128 / 8%));
 }
 
 .migration-dialog-btn-primary {
@@ -507,11 +507,11 @@
   margin: 4px 0 0;
   font-size: 0.8rem;
   line-height: 1.4;
-  color: #b45309;
+  color: var(--color-status-warning);
 }
 
 [data-theme="dark"] .export-pandoc-warning {
-  color: #fbbf24;
+  color: var(--color-status-warning);
 }
 
 .export-dialog-template-row {
@@ -624,17 +624,17 @@
   padding: 8px 12px;
   font-size: 0.8rem;
   line-height: 1.4;
-  color: #dc2626;
+  color: var(--color-status-danger);
   overflow-wrap: break-word;
-  background-color: #fef2f2;
-  border: 1px solid #fecaca;
+  background-color: var(--color-status-error-bg);
+  border: 1px solid var(--color-status-error-border);
   border-radius: 6px;
 }
 
 [data-theme="dark"] .export-dialog-error {
-  color: #fca5a5;
-  background-color: #450a0a;
-  border-color: #7f1d1d;
+  color: var(--color-status-danger);
+  background-color: var(--color-status-error-bg);
+  border-color: var(--color-status-error-border);
 }
 
 .export-dialog-notion-hint {
@@ -655,28 +655,20 @@
   padding: 0 5px;
   font-size: 0.9em;
   cursor: pointer;
-  background: color-mix(
-    in srgb,
-    var(--color-accent-default, #7c3aed) 10%,
-    transparent
-  );
+  background: color-mix(in srgb, var(--color-accent-default) 10%, transparent);
   border: 1px solid
-    color-mix(in srgb, var(--color-accent-default, #7c3aed) 25%, transparent);
+    color-mix(in srgb, var(--color-accent-default) 25%, transparent);
   border-radius: 4px;
   transition: background-color 0.15s ease;
 }
 
 .mention:hover {
-  background: color-mix(
-    in srgb,
-    var(--color-accent-default, #7c3aed) 18%,
-    transparent
-  );
+  background: color-mix(in srgb, var(--color-accent-default) 18%, transparent);
 }
 
 .mention-selected {
   outline: 2px solid
-    color-mix(in srgb, var(--color-accent-default, #7c3aed) 40%, transparent);
+    color-mix(in srgb, var(--color-accent-default) 40%, transparent);
   outline-offset: 1px;
 }
 
@@ -866,7 +858,7 @@
 .new-skill-create {
   padding: 6px 16px;
   font-size: 13px;
-  color: #fff;
+  color: white;
   cursor: pointer;
   background: var(--color-accent-default);
   border: none;
@@ -1073,7 +1065,7 @@
 }
 
 .find-replace-action-btn:hover:not(:disabled) {
-  color: #fff;
+  color: white;
   background: var(--color-accent-default);
   border-color: var(--color-accent-default);
 }
@@ -1085,7 +1077,7 @@
 
 /* Find match highlight decorations */
 .find-match {
-  background-color: #fde68a;
+  background-color: #fde68a; /* TODO: tokenize --color-find-match */
   border-radius: 2px;
 }
 
@@ -1094,12 +1086,12 @@
 }
 
 .find-match-active {
-  color: #fff;
-  background-color: #f97316;
+  color: white;
+  background-color: #f97316; /* TODO: tokenize --color-find-match-active */
   border-radius: 2px;
 }
 
 [data-theme="dark"] .find-match-active {
-  color: #fff;
+  color: white;
   background-color: rgb(249 115 22 / 70%);
 }

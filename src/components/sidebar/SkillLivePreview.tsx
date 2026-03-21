@@ -84,7 +84,10 @@ export function SkillLivePreview() {
 
       {expanded && !preview && (
         <div className="slp-content">
-          <div className="slp-text" style={{ color: "var(--text-secondary)" }}>
+          <div
+            className="slp-text"
+            style={{ color: "var(--color-text-secondary)" }}
+          >
             No &lt;system&gt; or &lt;user&gt; blocks found.
           </div>
         </div>

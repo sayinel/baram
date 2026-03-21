@@ -201,8 +201,8 @@
 }
 
 .file-tree-context-menu-item-danger:hover {
-  color: #e53e3e;
-  background: #e53e3e20;
+  color: var(--color-status-danger);
+  background: color-mix(in srgb, var(--color-status-danger) 10%, transparent);
 }
 
 .file-tree-context-menu-separator {
@@ -214,14 +214,14 @@
 /* Drag and drop */
 .file-tree-drop-target {
   outline: 1px dashed var(--color-accent-default);
-  background: var(--color-accent-light, rgb(59 130 246 / 10%));
+  background: var(--color-accent-subtle);
   border-radius: 3px;
 }
 
 /* External file drop (Tauri onDragDropEvent) visual feedback */
 .file-tree-ext-drop-target {
   outline: 2px dashed var(--color-accent-default);
-  background: var(--color-accent-light, rgb(59 130 246 / 15%));
+  background: var(--color-accent-subtle);
   border-radius: 3px;
 }
 
@@ -346,8 +346,8 @@
   padding: 0 6px;
   font-size: 11px;
   font-weight: 500;
-  color: var(--bg-primary, #1a1b26);
-  background: var(--accent-warning, #f59e0b);
+  color: var(--color-bg-default);
+  background: var(--color-status-warning);
   border-radius: 3px;
 }
 
@@ -421,7 +421,7 @@
   margin-top: 0.4em;
   font-family: var(--font-family-mono);
   font-size: 0.8rem;
-  color: #fff;
+  color: white;
   cursor: pointer;
   background: var(--color-accent-default);
   border: none;
@@ -440,8 +440,8 @@
 .git-error {
   padding: 0.4em 0.75em;
   font-size: 0.75rem;
-  color: #ef4444;
-  background: rgb(239 68 68 / 8%);
+  color: var(--color-status-danger);
+  background: color-mix(in srgb, var(--color-status-danger) 8%, transparent);
 }
 
 .git-section {
@@ -500,19 +500,19 @@
 }
 
 .git-status-modified {
-  color: #e69500;
+  color: var(--color-git-modified);
 }
 
 .git-status-added {
-  color: #22c55e;
+  color: var(--color-git-added);
 }
 
 .git-status-deleted {
-  color: #ef4444;
+  color: var(--color-git-deleted);
 }
 
 .git-status-renamed {
-  color: #3b82f6;
+  color: var(--color-accent-default);
 }
 
 .git-change-name {

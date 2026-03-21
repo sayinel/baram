@@ -170,7 +170,7 @@
 }
 
 .properties-undo-btn:hover {
-  background: var(--color-bg-hover);
+  background: var(--color-bg-subtle);
 }
 
 .properties-undo-btn:disabled {
@@ -189,7 +189,7 @@
 }
 
 .properties-source-toggle:hover {
-  background: var(--color-bg-hover);
+  background: var(--color-bg-subtle);
 }
 
 .properties-empty {
@@ -203,7 +203,7 @@
   padding: 8px;
   font-family: var(--font-family-mono);
   font-size: 0.8rem;
-  color: var(--color-text);
+  color: var(--color-text-primary);
   resize: none;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
@@ -248,13 +248,13 @@
 }
 
 .properties-key-delete:hover {
-  color: var(--color-danger);
+  color: var(--color-status-danger);
 }
 
 .properties-input {
   padding: 4px 8px;
   font-size: 0.82rem;
-  color: var(--color-text);
+  color: var(--color-text-primary);
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
   border-radius: 4px;
@@ -268,7 +268,7 @@
 .properties-select {
   padding: 4px 8px;
   font-size: 0.82rem;
-  color: var(--color-text);
+  color: var(--color-text-primary);
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
   border-radius: 4px;
@@ -287,7 +287,7 @@
   align-items: center;
   padding: 2px 8px;
   font-size: 0.78rem;
-  color: var(--color-text);
+  color: var(--color-text-primary);
   background: color-mix(in srgb, var(--color-accent-default) 12%, transparent);
   border-radius: 10px;
 }
@@ -311,7 +311,7 @@
 }
 
 .properties-chip-remove:hover {
-  color: var(--color-danger);
+  color: var(--color-status-danger);
 }
 
 .properties-chip-add {
@@ -359,7 +359,7 @@
   padding: 6px 12px;
   font-size: 0.82rem;
   font-weight: 600;
-  background: var(--color-bg);
+  background: var(--color-bg-default);
   border-bottom: 1px solid var(--color-border-default);
 }
 
@@ -379,7 +379,7 @@
 }
 
 .skill-preview-close:hover {
-  color: var(--color-text);
+  color: var(--color-text-primary);
 }
 
 .skill-preview-body {
@@ -401,12 +401,8 @@
   padding: 1px 6px;
   font-family: var(--font-family-mono);
   font-size: 0.75rem;
-  color: var(--accent-ai, var(--color-accent-default));
-  background: color-mix(
-    in srgb,
-    var(--accent-ai, var(--color-accent-default)) 15%,
-    transparent
-  );
+  color: var(--color-accent-ai);
+  background: color-mix(in srgb, var(--color-accent-ai) 15%, transparent);
   border-radius: 3px;
 }
 
@@ -415,7 +411,7 @@
   font-family: var(--font-family-mono);
   font-size: 0.78rem;
   line-height: 1.5;
-  color: var(--color-text);
+  color: var(--color-text-primary);
   overflow-wrap: break-word;
   white-space: pre-wrap;
 }
@@ -433,14 +429,14 @@
   justify-content: center;
   width: 16px;
   font-size: 14px;
-  color: var(--text-secondary, var(--color-text));
+  color: var(--color-text-secondary, var(--color-text-primary));
   transition: transform 0.15s ease;
 }
 
 /* §72b Skill Dependency Section */
 .dep-section {
   padding: 8px 12px;
-  border-top: 2px solid var(--color-border-default, var(--border));
+  border-top: 2px solid var(--color-border-default, var(--color-border-default));
 }
 
 .dep-section-header {
@@ -451,14 +447,14 @@
   padding: 4px 0;
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-secondary, var(--color-text));
+  color: var(--color-text-secondary, var(--color-text-primary));
   cursor: pointer;
   background: none;
   border: none;
 }
 
 .dep-section-header:hover {
-  color: var(--text-primary, var(--color-accent-default));
+  color: var(--color-text-primary, var(--color-accent-default));
 }
 
 .dep-badge {
@@ -470,8 +466,8 @@
 }
 
 .dep-badge--error {
-  color: var(--color-danger);
-  background: color-mix(in srgb, var(--color-danger) 15%, transparent);
+  color: var(--color-status-danger);
+  background: color-mix(in srgb, var(--color-status-danger) 15%, transparent);
 }
 
 .dep-loading {
@@ -514,17 +510,13 @@
 }
 
 .dep-warning--error {
-  color: var(--color-danger);
-  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+  color: var(--color-status-danger);
+  background: color-mix(in srgb, var(--color-status-danger) 10%, transparent);
 }
 
 .dep-warning--warning {
-  color: var(--color-warning, #f59e0b);
-  background: color-mix(
-    in srgb,
-    var(--color-warning, #f59e0b) 10%,
-    transparent
-  );
+  color: var(--color-status-warning);
+  background: color-mix(in srgb, var(--color-status-warning) 10%, transparent);
 }
 
 .dep-warning-icon {
@@ -569,15 +561,15 @@
 }
 
 .dep-list-item:hover {
-  background: var(--color-bg-hover);
+  background: var(--color-bg-subtle);
 }
 
 .dep-list-item--missing {
-  color: var(--color-danger);
+  color: var(--color-status-danger);
 }
 
 .dep-list-item--impact {
-  color: var(--color-warning, #f59e0b);
+  color: var(--color-status-warning);
 }
 
 .dep-list-icon {
@@ -651,7 +643,7 @@
   align-self: flex-start;
   padding: 4px 10px;
   font-size: 0.75rem;
-  color: var(--color-text);
+  color: var(--color-text-primary);
   cursor: pointer;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
@@ -676,11 +668,11 @@
 }
 
 .dep-chain-result--ok {
-  border-color: var(--color-success, #22c55e);
+  border-color: var(--color-status-success);
 }
 
 .dep-chain-result--fail {
-  border-color: var(--color-danger);
+  border-color: var(--color-status-danger);
 }
 
 .dep-chain-status {
@@ -689,11 +681,11 @@
 }
 
 .dep-chain-result--ok .dep-chain-status {
-  color: var(--color-success, #22c55e);
+  color: var(--color-status-success);
 }
 
 .dep-chain-result--fail .dep-chain-status {
-  color: var(--color-danger);
+  color: var(--color-status-danger);
 }
 
 .dep-chain-step {
@@ -710,11 +702,11 @@
 }
 
 .dep-chain-step--passed {
-  color: var(--color-success, #22c55e);
+  color: var(--color-status-success);
 }
 
 .dep-chain-step--failed {
-  color: var(--color-danger);
+  color: var(--color-status-danger);
 }
 
 .dep-chain-step--skipped {
@@ -725,13 +717,13 @@
 .dep-chain-step-err {
   margin-left: auto;
   font-size: 0.7rem;
-  color: var(--color-danger);
+  color: var(--color-status-danger);
 }
 
 /* ─── Skill Lint Section ──────────────────────────────────────── */
 .skill-lint-section {
   padding: 8px 12px;
-  border-top: 2px solid var(--border);
+  border-top: 2px solid var(--color-border-default);
 }
 
 .skill-lint-header {
@@ -742,7 +734,7 @@
   padding: 4px 0;
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   text-align: left;
   cursor: pointer;
   background: none;
@@ -750,7 +742,7 @@
 }
 
 .skill-lint-header:hover {
-  color: var(--text-primary);
+  color: var(--color-text-primary);
 }
 
 .skill-lint-header .skill-section-arrow {
@@ -771,11 +763,11 @@
 }
 
 .skill-lint-badge--error {
-  background: var(--red, #e53e3e);
+  background: var(--color-status-danger);
 }
 
 .skill-lint-badge--warning {
-  background: var(--yellow, #d69e2e);
+  background: var(--color-status-warning);
 }
 
 .skill-lint-items {
@@ -793,16 +785,16 @@
 }
 
 .skill-lint-item:hover {
-  background: var(--hover);
+  background: var(--color-bg-subtle);
 }
 
 .skill-lint-rule {
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
 }
 
 .skill-lint-message {
-  color: var(--text-primary);
+  color: var(--color-text-primary);
 }
 
 /* §72c — Skill Variable Suggestion ({{variable}} autocomplete) */
@@ -853,7 +845,7 @@
 /* ─── Skill Live Preview ──────────────────────────────────────── */
 .skill-live-preview {
   padding: 8px 12px;
-  border-top: 2px solid var(--border);
+  border-top: 2px solid var(--color-border-default);
 }
 
 .skill-live-preview .slp-header {
@@ -864,7 +856,7 @@
   padding: 4px 0;
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   text-align: left;
   cursor: pointer;
   background: none;
@@ -872,7 +864,7 @@
 }
 
 .skill-live-preview .slp-header:hover {
-  color: var(--text-primary, var(--color-accent-default));
+  color: var(--color-text-primary, var(--color-accent-default));
 }
 
 .skill-live-preview .slp-header .skill-section-arrow {
@@ -884,8 +876,8 @@
   margin-left: auto;
   font-size: 10px;
   font-weight: 500;
-  color: var(--text-secondary);
-  background: var(--bg-secondary);
+  color: var(--color-text-secondary);
+  background: var(--color-bg-subtle);
   border-radius: 8px;
 }
 
@@ -903,7 +895,7 @@
   margin-bottom: 4px;
   font-size: 10px;
   font-weight: 700;
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -913,16 +905,16 @@
   font-family: var(--font-family-mono, monospace);
   font-size: 12px;
   line-height: 1.5;
-  color: var(--text-primary);
+  color: var(--color-text-primary);
   overflow-wrap: break-word;
   white-space: pre-wrap;
-  background: var(--bg-secondary);
+  background: var(--color-bg-subtle);
   border-radius: 4px;
 }
 
 .skill-live-preview .slp-var {
   font-weight: 600;
-  color: var(--blue, #4299e1);
+  color: var(--color-accent-default);
 }
 
 /* ─── Skill Gallery ───────────────────────────────────────────── */
@@ -938,22 +930,22 @@
   flex-direction: column;
   gap: 6px;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--color-border-default);
 }
 
 .skill-gallery-search {
   width: 100%;
   padding: 6px 10px;
   font-size: 12px;
-  color: var(--text-primary);
+  color: var(--color-text-primary);
   outline: none;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
   border-radius: 6px;
 }
 
 .skill-gallery-search:focus {
-  border-color: var(--blue, #4299e1);
+  border-color: var(--color-accent-default);
 }
 
 .skill-gallery-tags {
@@ -965,17 +957,17 @@
 .skill-gallery-tag {
   padding: 2px 8px;
   font-size: 11px;
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   cursor: pointer;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
   border-radius: 12px;
 }
 
 .skill-gallery-tag--active {
   color: white;
-  background: var(--blue, #4299e1);
-  border-color: var(--blue, #4299e1);
+  background: var(--color-accent-default);
+  border-color: var(--color-accent-default);
 }
 
 .skill-gallery-list {
@@ -988,20 +980,20 @@
   padding: 10px 12px;
   margin-bottom: 6px;
   cursor: pointer;
-  border: 1px solid var(--border);
+  border: 1px solid var(--color-border-default);
   border-radius: 8px;
   transition: background 0.15s;
 }
 
 .skill-gallery-card:hover {
-  background: var(--hover);
+  background: var(--color-bg-subtle);
 }
 
 .skill-gallery-card-name {
   margin-bottom: 2px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--color-text-primary);
 }
 
 .skill-gallery-card-desc {
@@ -1010,7 +1002,7 @@
   overflow: hidden;
   -webkit-line-clamp: 2;
   font-size: 11px;
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   -webkit-box-orient: vertical;
 }
 
@@ -1024,8 +1016,8 @@
 .skill-gallery-chip {
   padding: 1px 6px;
   font-size: 10px;
-  color: var(--text-secondary);
-  background: var(--bg-secondary);
+  color: var(--color-text-secondary);
+  background: var(--color-bg-subtle);
   border-radius: 8px;
 }
 
@@ -1034,14 +1026,14 @@
   font-size: 10px;
   font-weight: 600;
   color: white;
-  background: var(--blue, #4299e1);
+  background: var(--color-accent-default);
   border-radius: 8px;
 }
 
 .skill-gallery-empty {
   padding: 24px;
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   text-align: center;
 }
 
@@ -1049,21 +1041,21 @@
   padding: 6px 16px;
   margin-top: 8px;
   font-size: 12px;
-  color: var(--text-primary);
+  color: var(--color-text-primary);
   cursor: pointer;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
   border-radius: 6px;
 }
 
 .skill-gallery-scan-btn:hover {
-  background: var(--hover);
+  background: var(--color-bg-subtle);
 }
 
 /* ─── Skill Optimize Section ──────────────────────────────────── */
 .skill-optimize {
   padding: 8px 12px;
-  border-top: 2px solid var(--border);
+  border-top: 2px solid var(--color-border-default);
 }
 
 .skill-optimize-header-btn {
@@ -1074,14 +1066,14 @@
   padding: 4px 0;
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   cursor: pointer;
   background: none;
   border: none;
 }
 
 .skill-optimize-header-btn:hover {
-  color: var(--text-primary, var(--color-accent-default));
+  color: var(--color-text-primary, var(--color-accent-default));
 }
 
 .skill-optimize-header-btn .skill-section-arrow {
@@ -1094,7 +1086,7 @@
   font-size: 10px;
   font-weight: 600;
   color: white;
-  background: var(--blue, #4299e1);
+  background: var(--color-accent-default);
   border-radius: 8px;
 }
 
@@ -1109,15 +1101,15 @@
 .skill-optimize-btn {
   padding: 4px 12px;
   font-size: 11px;
-  color: var(--text-primary);
+  color: var(--color-text-primary);
   cursor: pointer;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
   border-radius: 6px;
 }
 
 .skill-optimize-btn:hover {
-  background: var(--hover);
+  background: var(--color-bg-subtle);
 }
 
 .skill-optimize-btn:disabled {
@@ -1131,14 +1123,14 @@
   align-items: center;
   padding: 8px 0;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
 }
 
 .skill-optimize-spinner {
   display: inline-block;
   width: 12px;
   height: 12px;
-  border: 2px solid var(--border);
+  border: 2px solid var(--color-border-default);
   border-top-color: var(--color-accent-default);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
@@ -1147,13 +1139,13 @@
 .skill-optimize-error {
   padding: 4px 0;
   font-size: 11px;
-  color: var(--red, #e53e3e);
+  color: var(--color-status-danger);
 }
 
 .skill-optimize-empty {
   padding: 8px 0;
   font-size: 11px;
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
 }
 
 .skill-optimize-cards {
@@ -1165,7 +1157,7 @@
 
 .skill-optimize-card {
   padding: 8px 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--color-border-default);
   border-radius: 6px;
 }
 
@@ -1180,22 +1172,22 @@
   padding: 1px 6px;
   font-size: 10px;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   text-transform: uppercase;
-  background: var(--bg-secondary);
+  background: var(--color-bg-subtle);
   border-radius: 4px;
 }
 
 .skill-optimize-title {
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--color-text-primary);
 }
 
 .skill-optimize-desc {
   margin-bottom: 6px;
   font-size: 11px;
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
 }
 
 .skill-optimize-diff {
@@ -1206,29 +1198,29 @@
   font-size: 11px;
   overflow-wrap: break-word;
   white-space: pre-wrap;
-  background: var(--bg-secondary);
+  background: var(--color-bg-subtle);
   border-radius: 4px;
 }
 
 .skill-optimize-before {
-  color: var(--red, #e53e3e);
+  color: var(--color-status-danger);
   text-decoration: line-through;
 }
 
 .skill-optimize-after {
-  color: var(--green, #38a169);
+  color: var(--color-status-success);
 }
 
 .skill-optimize-apply {
   padding: 2px 10px;
   font-size: 11px;
-  color: var(--blue, #4299e1);
+  color: var(--color-accent-default);
   cursor: pointer;
   background: none;
-  border: 1px solid var(--border);
+  border: 1px solid var(--color-border-default);
   border-radius: 4px;
 }
 
 .skill-optimize-apply:hover {
-  background: var(--hover);
+  background: var(--color-bg-subtle);
 }

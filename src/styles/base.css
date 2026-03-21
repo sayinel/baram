@@ -12,20 +12,6 @@
   --editor-padding: 4rem;
   --sidebar-width: 260px;
 
-  /* Legacy aliases — resolve pre-existing shorthand references */
-  --color-text: var(--color-text-primary);
-  --color-bg: var(--color-bg-default);
-  --color-text-tertiary: var(--color-text-muted);
-  --color-bg-hover: var(--color-bg-subtle);
-  --color-danger: var(--color-status-danger);
-  --color-error: var(--color-status-danger);
-  --text-primary: var(--color-text-primary);
-  --text-secondary: var(--color-text-secondary);
-  --border: var(--color-border-default);
-  --bg-primary: var(--color-bg-default);
-  --bg-secondary: var(--color-bg-subtle);
-  --hover: var(--color-bg-subtle);
-
   /* Shadow scale */
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 10%);
   --shadow-md: 0 4px 12px rgb(0 0 0 / 15%);

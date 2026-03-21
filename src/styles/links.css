@@ -66,14 +66,14 @@
 }
 
 .block-id-input-invalid {
-  border-color: #dc2626;
+  border-color: var(--color-status-danger);
 }
 
 .wikilink {
   padding: 0 1px;
-  color: var(--color-accent-default, #7c3aed);
+  color: var(--color-accent-default);
   cursor: pointer;
-  border-bottom: 1px dashed var(--color-accent-default, #7c3aed);
+  border-bottom: 1px dashed var(--color-accent-default);
   border-radius: 2px;
   transition:
     background-color 0.15s ease,
@@ -83,18 +83,18 @@
 .wikilink:hover {
   background-color: color-mix(
     in srgb,
-    var(--color-accent-default, #7c3aed) 10%,
+    var(--color-accent-default) 10%,
     transparent
   );
 }
 
 .wikilink-selected {
   outline: 2px solid
-    color-mix(in srgb, var(--color-accent-default, #7c3aed) 40%, transparent);
+    color-mix(in srgb, var(--color-accent-default) 40%, transparent);
   outline-offset: 1px;
   background-color: color-mix(
     in srgb,
-    var(--color-accent-default, #7c3aed) 15%,
+    var(--color-accent-default) 15%,
     transparent
   );
   border-radius: 2px;
@@ -122,59 +122,51 @@
 .block-reference {
   padding: 0 4px;
   font-size: 0.9em;
-  color: var(--color-accent-default, #7c3aed);
+  color: var(--color-accent-default);
   cursor: pointer;
   background-color: color-mix(
     in srgb,
-    var(--color-accent-default, #7c3aed) 8%,
+    var(--color-accent-default) 8%,
     transparent
   );
   border: 1px solid
-    color-mix(in srgb, var(--color-accent-default, #7c3aed) 25%, transparent);
+    color-mix(in srgb, var(--color-accent-default) 25%, transparent);
   border-radius: 4px;
 }
 
 .block-reference:hover {
   background-color: color-mix(
     in srgb,
-    var(--color-accent-default, #7c3aed) 15%,
+    var(--color-accent-default) 15%,
     transparent
   );
 }
 
 .block-reference-selected {
   outline: 2px solid
-    color-mix(in srgb, var(--color-accent-default, #7c3aed) 40%, transparent);
+    color-mix(in srgb, var(--color-accent-default) 40%, transparent);
 }
 
 /* §30c Block Embed — bordered preview container */
 .block-embed {
   margin: 8px 0;
   overflow: hidden;
-  border: 1px solid var(--color-border-default, #313244);
-  border-left: 3px solid var(--color-accent-default, #7c3aed);
+  border: 1px solid var(--color-border-default);
+  border-left: 3px solid var(--color-accent-default);
   border-radius: 6px;
 }
 
 .block-embed-header {
   padding: 6px 12px;
   font-size: 0.75rem;
-  color: var(--color-accent-default, #7c3aed);
+  color: var(--color-accent-default);
   cursor: pointer;
-  background: color-mix(
-    in srgb,
-    var(--color-accent-default, #7c3aed) 5%,
-    transparent
-  );
-  border-bottom: 1px solid var(--color-border-default, #313244);
+  background: color-mix(in srgb, var(--color-accent-default) 5%, transparent);
+  border-bottom: 1px solid var(--color-border-default);
 }
 
 .block-embed-header:hover {
-  background: color-mix(
-    in srgb,
-    var(--color-accent-default, #7c3aed) 10%,
-    transparent
-  );
+  background: color-mix(in srgb, var(--color-accent-default) 10%, transparent);
 }
 
 .block-embed-content {
@@ -185,12 +177,12 @@
 
 .block-embed-selected {
   outline: 2px solid
-    color-mix(in srgb, var(--color-accent-default, #7c3aed) 40%, transparent);
+    color-mix(in srgb, var(--color-accent-default) 40%, transparent);
 }
 
 /* §30d Block Embed — editing mode */
 .block-embed-editing {
-  border-color: var(--color-accent-default, #7c3aed);
+  border-color: var(--color-accent-default);
 }
 
 .block-embed-textarea {
@@ -201,7 +193,7 @@
   font-family: inherit;
   font-size: 0.9rem;
   line-height: 1.5;
-  color: var(--color-text-primary, #cdd6f4);
+  color: var(--color-text-primary);
   resize: none;
   outline: none;
   background: transparent;
@@ -217,8 +209,8 @@
   max-width: 400px;
   max-height: 300px;
   overflow: hidden;
-  background: var(--color-bg-subtle, #1e1e2e);
-  border: 1px solid var(--color-border-default, #313244);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
   border-radius: 8px;
   box-shadow: 0 8px 24px rgb(0 0 0 / 30%);
 }
@@ -237,7 +229,7 @@
 .hover-preview-divider {
   flex-shrink: 0;
   height: 1px;
-  background: var(--color-border-default, #313244);
+  background: var(--color-border-default);
 }
 
 .hover-preview-content {
@@ -286,7 +278,7 @@
 }
 
 .backlinks-error {
-  color: var(--color-danger, #ef4444);
+  color: var(--color-status-danger);
 }
 
 .backlinks-ns-group {
@@ -296,7 +288,7 @@
 .backlinks-ns-header {
   padding: 6px 12px 2px;
   font-size: 0.7rem;
-  color: var(--color-text-muted, #6b7280);
+  color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   opacity: 0.7;
@@ -317,7 +309,7 @@
 }
 
 .backlinks-source:hover {
-  background-color: var(--color-bg-hover);
+  background-color: var(--color-bg-subtle);
 }
 
 .backlinks-context {

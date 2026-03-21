@@ -17,7 +17,7 @@
 .memories-header-title {
   font-size: 0.9rem;
   font-weight: 600;
-  color: var(--color-text);
+  color: var(--color-text-primary);
 }
 
 .memories-date-nav {
@@ -41,7 +41,7 @@
 }
 
 .memories-date-nav-btn:hover {
-  color: var(--color-text);
+  color: var(--color-text-primary);
   background: var(--color-bg-subtle);
 }
 
@@ -52,7 +52,7 @@
   padding: 2px 6px;
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--color-accent-default, #5b7bd7);
+  color: var(--color-accent-default);
   cursor: pointer;
   background: transparent;
   border: none;
@@ -69,8 +69,8 @@
   font-size: 0.6rem;
   font-weight: 500;
   line-height: 1.4;
-  color: var(--color-bg);
-  background: var(--color-accent-default, #5b7bd7);
+  color: var(--color-bg-default);
+  background: var(--color-accent-default);
   border-radius: 3px;
 }
 
@@ -80,7 +80,7 @@
   z-index: 10;
   padding: 8px;
   margin: 0 8px 4px;
-  background: var(--color-bg);
+  background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
   border-radius: 8px;
   box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
@@ -96,7 +96,7 @@
 .memories-mini-calendar-title {
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--color-text);
+  color: var(--color-text-primary);
 }
 
 .memories-mini-calendar-nav {
@@ -115,7 +115,7 @@
 }
 
 .memories-mini-calendar-nav:hover {
-  color: var(--color-text);
+  color: var(--color-text-primary);
   background: var(--color-bg-subtle);
 }
 
@@ -146,7 +146,7 @@
   padding: 0;
   margin: 0 auto;
   font-size: 0.68rem;
-  color: var(--color-text);
+  color: var(--color-text-primary);
   cursor: pointer;
   background: transparent;
   border: none;
@@ -159,17 +159,17 @@
 
 .memories-mini-calendar-day-today {
   font-weight: 700;
-  color: var(--color-accent-default, #5b7bd7);
+  color: var(--color-accent-default);
 }
 
 .memories-mini-calendar-day-selected {
   font-weight: 600;
   color: #fff;
-  background: var(--color-accent-default, #5b7bd7);
+  background: var(--color-accent-default);
 }
 
 .memories-mini-calendar-day-selected:hover {
-  background: var(--color-accent-default, #5b7bd7);
+  background: var(--color-accent-default);
   opacity: 0.9;
 }
 
@@ -177,7 +177,7 @@
   padding: 2px 4px;
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--color-text);
+  color: var(--color-text-primary);
   cursor: pointer;
   background: transparent;
   border: none;
@@ -185,14 +185,14 @@
 }
 
 .memories-mini-calendar-title-btn:hover {
-  color: var(--color-accent-default, #5b7bd7);
+  color: var(--color-accent-default);
   background: var(--color-bg-subtle);
 }
 
 .memories-mini-calendar-title-text {
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--color-text);
+  color: var(--color-text-primary);
 }
 
 .memories-mini-calendar-picker {
@@ -208,7 +208,7 @@
   justify-content: center;
   padding: 6px 4px;
   font-size: 0.7rem;
-  color: var(--color-text);
+  color: var(--color-text-primary);
   cursor: pointer;
   background: transparent;
   border: none;
@@ -221,17 +221,17 @@
 
 .memories-mini-calendar-pick-btn-today {
   font-weight: 700;
-  color: var(--color-accent-default, #5b7bd7);
+  color: var(--color-accent-default);
 }
 
 .memories-mini-calendar-pick-btn-selected {
   font-weight: 600;
   color: #fff;
-  background: var(--color-accent-default, #5b7bd7);
+  background: var(--color-accent-default);
 }
 
 .memories-mini-calendar-pick-btn-selected:hover {
-  background: var(--color-accent-default, #5b7bd7);
+  background: var(--color-accent-default);
   opacity: 0.9;
 }
 
@@ -239,12 +239,8 @@
   padding: 2px 8px;
   font-size: 0.7rem;
   font-weight: 500;
-  color: var(--color-accent-default, #5b7bd7);
-  background: color-mix(
-    in srgb,
-    var(--color-accent-default, #5b7bd7) 12%,
-    transparent
-  );
+  color: var(--color-accent-default);
+  background: color-mix(in srgb, var(--color-accent-default) 12%, transparent);
   border-radius: 10px;
 }
 
@@ -270,12 +266,12 @@
 }
 
 .memories-tabs-btn:hover {
-  color: var(--color-text);
+  color: var(--color-text-primary);
 }
 
 .memories-tabs-btn-active {
   color: #fff;
-  background: var(--color-accent-default, #5b7bd7);
+  background: var(--color-accent-default);
   box-shadow: 0 1px 3px rgb(0 0 0 / 12%);
 }
 
@@ -323,8 +319,8 @@
 }
 
 .memories-mode-btn-active {
-  color: var(--color-text);
-  background: var(--color-bg);
+  color: var(--color-text-primary);
+  background: var(--color-bg-default);
   box-shadow: 0 1px 2px rgb(0 0 0 / 10%);
 }
 
@@ -337,7 +333,7 @@
 }
 
 .memories-year-card-current {
-  border-left: 3px solid var(--color-accent-default, #5b7bd7);
+  border-left: 3px solid var(--color-accent-default);
 }
 
 .memories-year-card-header {
@@ -354,19 +350,15 @@
   align-items: center;
   font-size: 0.8rem;
   font-weight: 600;
-  color: var(--color-text);
+  color: var(--color-text-primary);
 }
 
 .memories-year-card-badge {
   padding: 1px 6px;
   font-size: 0.65rem;
   font-weight: 500;
-  color: var(--color-accent-default, #5b7bd7);
-  background: color-mix(
-    in srgb,
-    var(--color-accent-default, #5b7bd7) 12%,
-    transparent
-  );
+  color: var(--color-accent-default);
+  background: color-mix(in srgb, var(--color-accent-default) 12%, transparent);
   border-radius: 8px;
 }
 
@@ -385,12 +377,8 @@
 }
 
 .memories-year-card-open:hover {
-  color: var(--color-accent-default, #5b7bd7);
-  background: color-mix(
-    in srgb,
-    var(--color-accent-default, #5b7bd7) 8%,
-    transparent
-  );
+  color: var(--color-accent-default);
+  background: color-mix(in srgb, var(--color-accent-default) 8%, transparent);
 }
 
 .memories-year-card-body {
@@ -401,7 +389,7 @@
   margin: 0;
   font-size: 0.8rem;
   line-height: 1.5;
-  color: var(--color-text);
+  color: var(--color-text-primary);
 }
 
 .memories-oneline-editable {
@@ -413,7 +401,7 @@
 }
 
 .memories-oneline-editable:hover {
-  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+  background: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
 }
 
 .memories-oneline-input {
@@ -421,10 +409,10 @@
   padding: 4px 6px;
   font-size: 0.8rem;
   line-height: 1.5;
-  color: var(--color-text);
+  color: var(--color-text-primary);
   outline: none;
-  background: var(--color-bg);
-  border: 1px solid var(--color-accent-default, #5b7bd7);
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-accent-default);
   border-radius: 4px;
 }
 
@@ -435,7 +423,7 @@
   font-family: inherit;
   font-size: 0.78rem;
   line-height: 1.6;
-  color: var(--color-text);
+  color: var(--color-text-primary);
 }
 
 .memories-md-render img {
@@ -516,15 +504,15 @@
   width: 100%;
   padding: 5px 24px 5px 8px;
   font-size: 0.75rem;
-  color: var(--color-text);
+  color: var(--color-text-primary);
   outline: none;
-  background: var(--color-bg);
+  background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
   border-radius: 6px;
 }
 
 .notes-search-input:focus {
-  border-color: var(--color-accent-default, #5b7bd7);
+  border-color: var(--color-accent-default);
 }
 
 .notes-search-clear {
@@ -550,15 +538,15 @@
   height: 28px;
   font-size: 1rem;
   line-height: 1;
-  color: var(--color-text);
+  color: var(--color-text-primary);
   cursor: pointer;
-  background: var(--color-bg);
+  background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
   border-radius: 6px;
 }
 
 .notes-create-btn:hover {
-  color: var(--color-accent-default, #5b7bd7);
+  color: var(--color-accent-default);
   background: var(--color-bg-subtle);
 }
 
@@ -574,10 +562,10 @@
   flex: 1;
   padding: 4px 8px;
   font-size: 0.75rem;
-  color: var(--color-text);
+  color: var(--color-text-primary);
   outline: none;
-  background: var(--color-bg);
-  border: 1px solid var(--color-accent-default, #5b7bd7);
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-accent-default);
   border-radius: 6px;
 }
 
@@ -587,7 +575,7 @@
   color: #fff;
   white-space: nowrap;
   cursor: pointer;
-  background: var(--color-accent-default, #5b7bd7);
+  background: var(--color-accent-default);
   border: none;
   border-radius: 6px;
 }
@@ -615,20 +603,20 @@
   color: var(--color-text-secondary);
   white-space: nowrap;
   cursor: pointer;
-  background: var(--color-bg);
+  background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
   border-radius: 12px;
 }
 
 .notes-tag-chip:hover {
-  color: var(--color-text);
+  color: var(--color-text-primary);
   background: var(--color-bg-subtle);
 }
 
 .notes-tag-chip-active {
   color: #fff;
-  background: var(--color-accent-default, #5b7bd7);
-  border-color: var(--color-accent-default, #5b7bd7);
+  background: var(--color-accent-default);
+  border-color: var(--color-accent-default);
 }
 
 .notes-tag-chip-active:hover {
@@ -648,7 +636,7 @@
   padding: 8px 10px;
   text-align: left;
   cursor: pointer;
-  background: var(--color-bg);
+  background: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
   border-radius: 8px;
   transition:
@@ -657,7 +645,7 @@
 }
 
 .notes-card:hover {
-  border-color: var(--color-accent-default, #5b7bd7);
+  border-color: var(--color-accent-default);
   box-shadow: 0 1px 4px rgb(0 0 0 / 6%);
 }
 
@@ -674,7 +662,7 @@
   text-overflow: ellipsis;
   font-size: 0.8rem;
   font-weight: 600;
-  color: var(--color-text);
+  color: var(--color-text-primary);
   white-space: nowrap;
 }
 
@@ -690,7 +678,7 @@
   font-weight: 700;
   line-height: 1;
   color: #fff;
-  background: var(--color-accent-default, #5b7bd7);
+  background: var(--color-accent-default);
   border-radius: 9px;
 }
 
@@ -711,14 +699,14 @@
 
 .notes-card-tag {
   font-size: 0.6rem;
-  color: var(--color-accent-default, #5b7bd7);
+  color: var(--color-accent-default);
   opacity: 0.8;
 }
 
 .notes-card-time {
   flex-shrink: 0;
   font-size: 0.6rem;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-muted);
 }
 
 .notes-tag-count {
@@ -735,7 +723,7 @@
   padding: 4px 8px;
   margin-bottom: 4px;
   font-size: 0.72rem;
-  color: var(--color-accent-default, #5b7bd7);
+  color: var(--color-accent-default);
   cursor: pointer;
   background: none;
   border: none;
@@ -760,7 +748,7 @@
   width: 100%;
   padding: 6px 10px;
   font-size: 0.78rem;
-  color: var(--color-text);
+  color: var(--color-text-primary);
   text-align: left;
   cursor: pointer;
   background: none;
@@ -770,7 +758,7 @@
 }
 
 .notes-folder-item:hover {
-  border-color: var(--color-accent-default, #5b7bd7);
+  border-color: var(--color-accent-default);
 }
 
 .notes-folder-icon {
@@ -790,7 +778,7 @@
   flex-shrink: 0;
   padding: 1px 6px;
   font-size: 0.65rem;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-muted);
   background: var(--color-bg-subtle);
   border-radius: 8px;
 }
@@ -823,9 +811,9 @@
   flex: 1;
   padding: 4px 8px;
   font-size: 0.82rem;
-  color: var(--color-text);
+  color: var(--color-text-primary);
   outline: none;
-  background: var(--color-bg-input, var(--color-bg));
+  background: var(--color-bg-input, var(--color-bg-default));
   border: 1px solid var(--color-border-default);
   border-radius: 4px;
 }
@@ -847,8 +835,8 @@
 }
 
 .journal-search-close:hover {
-  color: var(--color-text);
-  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+  background: var(--color-bg-subtle);
 }
 
 .journal-search-status {
@@ -860,7 +848,7 @@
 .journal-search-error {
   padding: 2px 12px 4px;
   font-size: 0.78rem;
-  color: var(--color-danger, #ef4444);
+  color: var(--color-status-danger);
 }
 
 .journal-search-empty {
@@ -888,7 +876,7 @@
   color: var(--color-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  background: var(--color-bg-subtle, var(--color-bg));
+  background: var(--color-bg-subtle, var(--color-bg-default));
 }
 
 .journal-search-category-count {
@@ -897,7 +885,7 @@
   font-size: 0.65rem;
   color: var(--color-text-muted, var(--color-text-secondary));
   text-align: center;
-  background: var(--color-bg-hover);
+  background: var(--color-bg-subtle);
   border-radius: 8px;
 }
 
@@ -908,7 +896,7 @@
 }
 
 .journal-search-result:hover {
-  background: var(--color-bg-hover);
+  background: var(--color-bg-subtle);
 }
 
 .journal-search-result-filename {
@@ -917,7 +905,7 @@
   text-overflow: ellipsis;
   font-size: 0.78rem;
   font-weight: 500;
-  color: var(--color-text);
+  color: var(--color-text-primary);
   white-space: nowrap;
 }
 
@@ -959,8 +947,8 @@
 
 .journal-search-filter-toggle:hover,
 .journal-search-filter-toggle.active {
-  color: var(--color-text);
-  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+  background: var(--color-bg-subtle);
 }
 
 .journal-search-filter-toggle.has-filters {
@@ -994,8 +982,8 @@
   width: 128px;
   padding: 2px 4px;
   font-size: 0.82em;
-  color: var(--color-text);
-  background: var(--color-bg-input, var(--color-bg));
+  color: var(--color-text-primary);
+  background: var(--color-bg-input, var(--color-bg-default));
   border: 1px solid var(--color-border-default);
   border-radius: 4px;
 }
@@ -1004,8 +992,8 @@
   flex: 1;
   padding: 2px 6px;
   font-size: 0.82em;
-  color: var(--color-text);
-  background: var(--color-bg-input, var(--color-bg));
+  color: var(--color-text-primary);
+  background: var(--color-bg-input, var(--color-bg-default));
   border: 1px solid var(--color-border-default);
   border-radius: 4px;
 }
@@ -1013,8 +1001,8 @@
 .jsf-row select {
   padding: 2px 4px;
   font-size: 0.82em;
-  color: var(--color-text);
-  background: var(--color-bg-input, var(--color-bg));
+  color: var(--color-text-primary);
+  background: var(--color-bg-input, var(--color-bg-default));
   border: 1px solid var(--color-border-default);
   border-radius: 4px;
 }

@@ -628,7 +628,7 @@ function buildGraphStyle(settings: {
       selector: "node[?isTag]",
       style: {
         shape: "diamond",
-        "background-color": "var(--graph-tag-color, #f59e0b)",
+        "background-color": "var(--color-graph-tag, #f59e0b)",
         "font-size": 9,
         "text-valign": "bottom",
         "text-margin-y": 6,
