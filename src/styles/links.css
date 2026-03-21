@@ -286,7 +286,7 @@
 }
 
 .backlinks-error {
-  color: var(--color-danger, #ef4444);
+  color: var(--color-status-danger, #ef4444);
 }
 
 .backlinks-ns-group {
@@ -317,7 +317,7 @@
 }
 
 .backlinks-source:hover {
-  background-color: var(--color-bg-hover);
+  background-color: var(--color-bg-subtle);
 }
 
 .backlinks-context {

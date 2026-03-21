@@ -13,7 +13,7 @@ const STYLES = {
     margin: "0 0 12px",
     fontSize: "14px",
     fontWeight: 600,
-    color: "var(--color-text, #111)",
+    color: "var(--color-text-primary, #111)",
   } as React.CSSProperties,
   tabBar: {
     display: "flex",
@@ -27,8 +27,8 @@ const STYLES = {
     borderRadius: "6px",
     fontSize: "13px",
     border: "1px solid var(--color-border-default, #e5e7eb)",
-    backgroundColor: "var(--color-bg, #fff)",
-    color: "var(--color-text, #111)",
+    backgroundColor: "var(--color-bg-default, #fff)",
+    color: "var(--color-text-primary, #111)",
     outline: "none",
     boxSizing: "border-box",
     marginBottom: "8px",
@@ -81,7 +81,7 @@ const STYLES = {
   installedPluginName: {
     fontWeight: 600,
     fontSize: "14px",
-    color: "var(--color-text, #111)",
+    color: "var(--color-text-primary, #111)",
   } as React.CSSProperties,
   installedPluginVersion: {
     fontSize: "12px",
@@ -89,7 +89,7 @@ const STYLES = {
   } as React.CSSProperties,
   installedPluginError: {
     fontSize: "11px",
-    color: "var(--color-error, #dc2626)",
+    color: "var(--color-status-danger, #dc2626)",
     fontWeight: 500,
   } as React.CSSProperties,
   installedPluginDescription: {
@@ -127,8 +127,8 @@ const STYLES = {
     borderRadius: "4px",
     fontSize: "12px",
     backgroundColor: "transparent",
-    color: "var(--color-error, #dc2626)",
-    border: "1px solid var(--color-error, #dc2626)",
+    color: "var(--color-status-danger, #dc2626)",
+    border: "1px solid var(--color-status-danger, #dc2626)",
     cursor: "pointer",
   } as React.CSSProperties,
   tabButtonActive: {

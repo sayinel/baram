@@ -28,9 +28,9 @@
   width: 100%;
   padding: 5px 8px;
   font-size: 0.85rem;
-  color: var(--color-text);
+  color: var(--color-text-primary);
   outline: none;
-  background: var(--color-bg-input, var(--color-bg));
+  background: var(--color-bg-input, var(--color-bg-default));
   border: 1px solid var(--color-border-default);
   border-radius: 4px;
 }
@@ -57,7 +57,7 @@
 }
 
 .global-search-toggle:hover {
-  background: var(--color-bg-hover);
+  background: var(--color-bg-subtle);
 }
 
 .global-search-toggle-active {
@@ -75,7 +75,7 @@
 .global-search-error {
   padding: 4px 12px;
   font-size: 0.8rem;
-  color: var(--color-danger, #ef4444);
+  color: var(--color-status-danger, #ef4444);
 }
 
 .global-search-empty {
@@ -100,13 +100,13 @@
   padding: 5px 12px;
   font-size: 0.85rem;
   font-weight: 500;
-  color: var(--color-text);
+  color: var(--color-text-primary);
   cursor: pointer;
   user-select: none;
 }
 
 .global-search-file:hover {
-  background-color: var(--color-bg-hover);
+  background-color: var(--color-bg-subtle);
 }
 
 .global-search-chevron {
@@ -140,14 +140,14 @@
 }
 
 .global-search-match:hover {
-  background-color: var(--color-bg-hover);
+  background-color: var(--color-bg-subtle);
 }
 
 .global-search-line {
   flex-shrink: 0;
   min-width: 28px;
   font-size: 0.7rem;
-  color: var(--color-text-tertiary, var(--color-text-secondary));
+  color: var(--color-text-muted, var(--color-text-secondary));
 }
 
 .global-search-replace-row {
@@ -166,15 +166,15 @@
   flex: 1;
   padding: 3px 8px;
   font-size: 12px;
-  color: var(--color-text);
+  color: var(--color-text-primary);
   cursor: pointer;
-  background: var(--color-bg-subtle, var(--color-bg));
+  background: var(--color-bg-subtle, var(--color-bg-default));
   border: 1px solid var(--color-border-default);
   border-radius: 4px;
 }
 
 .global-search-replace-btn:hover:not(:disabled) {
-  background: var(--color-bg-hover);
+  background: var(--color-bg-subtle);
 }
 
 .global-search-replace-btn:disabled {
@@ -199,8 +199,8 @@
 }
 
 .global-search-replace-one:hover {
-  color: var(--color-text);
-  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+  background: var(--color-bg-subtle);
 }
 
 .global-search-filters {
@@ -215,9 +215,9 @@
   width: 100%;
   padding: 4px 8px;
   font-size: 12px;
-  color: var(--color-text);
+  color: var(--color-text-primary);
   outline: none;
-  background: var(--color-bg-input, var(--color-bg));
+  background: var(--color-bg-input, var(--color-bg-default));
   border: 1px solid var(--color-border-default);
   border-radius: 4px;
 }
@@ -294,7 +294,7 @@
 }
 
 .bookmark-item:hover {
-  background: var(--color-bg-hover);
+  background: var(--color-bg-subtle);
 }
 
 .bookmark-item-active {
@@ -334,7 +334,7 @@
 }
 
 .bookmark-remove-btn:hover {
-  color: var(--color-error);
+  color: var(--color-status-danger);
 }
 
 /* §40 Frontmatter Visual Editor */
@@ -502,7 +502,7 @@
 .tiptap .table-of-contents-empty {
   font-size: 13px;
   font-style: italic;
-  color: var(--color-text-tertiary, #9ca3af);
+  color: var(--color-text-muted, #9ca3af);
 }
 
 .tiptap .table-of-contents-list {
@@ -530,7 +530,7 @@
 
 .tiptap .table-of-contents-link:hover {
   text-decoration: underline;
-  background: var(--color-bg-hover, rgb(0 0 0 / 5%));
+  background: var(--color-bg-subtle, rgb(0 0 0 / 5%));
 }
 
 [data-theme="dark"] .tiptap .table-of-contents {
@@ -667,7 +667,7 @@
   padding: 0;
   color: var(--color-accent-default);
   cursor: pointer;
-  background: var(--color-bg);
+  background: var(--color-bg-default);
   border: 1.5px solid var(--color-accent-default);
   border-radius: 50%;
   box-shadow: 0 1px 4px rgb(0 0 0 / 10%);
@@ -721,7 +721,7 @@
 .tiptap .qb-count {
   margin-left: auto;
   font-size: 12px;
-  color: var(--color-text-tertiary, #999);
+  color: var(--color-text-muted, #999);
 }
 
 /* Builder */
@@ -747,7 +747,7 @@
 .tiptap .qb-section-label {
   font-size: 11px;
   font-weight: 600;
-  color: var(--color-text-tertiary, #999);
+  color: var(--color-text-muted, #999);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -807,7 +807,7 @@
 }
 
 .tiptap .qb-btn:hover {
-  background: var(--color-bg-hover, #f0f0f0);
+  background: var(--color-bg-subtle, #f0f0f0);
 }
 
 .tiptap .qb-add {
@@ -823,7 +823,7 @@
   width: 24px;
   height: 24px;
   padding: 0;
-  color: var(--color-text-tertiary, #999);
+  color: var(--color-text-muted, #999);
   border: none;
 }
 
@@ -851,7 +851,7 @@
 .tiptap .qb-empty {
   padding: 12px;
   font-size: 13px;
-  color: var(--color-text-tertiary, #999);
+  color: var(--color-text-muted, #999);
   text-align: center;
 }
 
@@ -873,7 +873,7 @@
 }
 
 .tiptap .qb-list-item:hover {
-  background: var(--color-bg-hover, #f5f5f5);
+  background: var(--color-bg-subtle, #f5f5f5);
 }
 
 .tiptap .qb-list-name {
@@ -883,7 +883,7 @@
 .tiptap .qb-list-path {
   margin-left: auto;
   font-size: 12px;
-  color: var(--color-text-tertiary, #999);
+  color: var(--color-text-muted, #999);
 }
 
 /* Table display */
@@ -909,7 +909,7 @@
 
 .tiptap .qb-path {
   font-size: 11px;
-  color: var(--color-text-tertiary, #999);
+  color: var(--color-text-muted, #999);
 }
 
 /* Card display */
@@ -940,7 +940,7 @@
 .tiptap .qb-card-path {
   margin-bottom: 4px;
   font-size: 11px;
-  color: var(--color-text-tertiary, #999);
+  color: var(--color-text-muted, #999);
 }
 
 .tiptap .qb-card-tags {

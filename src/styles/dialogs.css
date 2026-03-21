@@ -122,7 +122,7 @@
 }
 
 .quick-capture-cancel:hover {
-  background: var(--color-bg-hover, rgb(128 128 128 / 8%));
+  background: var(--color-bg-subtle, rgb(128 128 128 / 8%));
 }
 
 .quick-capture-save {
@@ -216,7 +216,7 @@
 }
 
 .migration-dialog-error {
-  color: var(--color-error, #e85555);
+  color: var(--color-status-danger, #e85555);
 }
 
 .migration-dialog-success {
@@ -252,7 +252,7 @@
 
 .migration-dialog-arrow {
   flex-shrink: 0;
-  color: var(--color-text-tertiary, var(--color-text-secondary));
+  color: var(--color-text-muted, var(--color-text-secondary));
 }
 
 .migration-dialog-to {
@@ -265,7 +265,7 @@
   padding: 2px 8px;
   font-size: 12px;
   font-style: italic;
-  color: var(--color-text-tertiary, var(--color-text-secondary));
+  color: var(--color-text-muted, var(--color-text-secondary));
 }
 
 .migration-dialog-actions {
@@ -299,7 +299,7 @@
 }
 
 .migration-dialog-btn-secondary:not(:disabled):hover {
-  background: var(--color-bg-hover, rgb(128 128 128 / 8%));
+  background: var(--color-bg-subtle, rgb(128 128 128 / 8%));
 }
 
 .migration-dialog-btn-primary {

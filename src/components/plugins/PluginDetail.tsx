@@ -73,7 +73,7 @@ export function PluginDetail({
               margin: 0,
               fontSize: "20px",
               fontWeight: 700,
-              color: "var(--color-text, #111)",
+              color: "var(--color-text-primary, #111)",
             }}
           >
             {entry.name}
@@ -122,7 +122,7 @@ export function PluginDetail({
             marginBottom: "12px",
             borderRadius: "6px",
             backgroundColor: "var(--color-error-bg, #fef2f2)",
-            color: "var(--color-error, #dc2626)",
+            color: "var(--color-status-danger, #dc2626)",
             fontSize: "13px",
             border: "1px solid var(--color-error-border, #fecaca)",
           }}
@@ -162,7 +162,9 @@ export function PluginDetail({
                     ? "var(--color-accent-default, #3b82f6)"
                     : "var(--color-bg-subtle, #f3f4f6)",
                 color:
-                  status === "enabled" ? "#fff" : "var(--color-text, #111)",
+                  status === "enabled"
+                    ? "#fff"
+                    : "var(--color-text-primary, #111)",
                 border:
                   status === "enabled"
                     ? "none"
@@ -197,8 +199,8 @@ export function PluginDetail({
                 fontSize: "13px",
                 fontWeight: 500,
                 backgroundColor: "transparent",
-                color: "var(--color-error, #dc2626)",
-                border: "1px solid var(--color-error, #dc2626)",
+                color: "var(--color-status-danger, #dc2626)",
+                border: "1px solid var(--color-status-danger, #dc2626)",
                 cursor: "pointer",
               }}
             >
@@ -231,7 +233,7 @@ export function PluginDetail({
             fontSize: "14px",
             fontWeight: 600,
             marginBottom: "8px",
-            color: "var(--color-text, #111)",
+            color: "var(--color-text-primary, #111)",
           }}
         >
           Description
@@ -256,7 +258,7 @@ export function PluginDetail({
               fontSize: "14px",
               fontWeight: 600,
               marginBottom: "8px",
-              color: "var(--color-text, #111)",
+              color: "var(--color-text-primary, #111)",
             }}
           >
             README
@@ -290,7 +292,7 @@ export function PluginDetail({
             fontSize: "14px",
             fontWeight: 600,
             marginBottom: "8px",
-            color: "var(--color-text, #111)",
+            color: "var(--color-text-primary, #111)",
           }}
         >
           Capabilities
@@ -323,7 +325,7 @@ export function PluginDetail({
             fontSize: "14px",
             fontWeight: 600,
             marginBottom: "8px",
-            color: "var(--color-text, #111)",
+            color: "var(--color-text-primary, #111)",
           }}
         >
           Links
@@ -376,7 +378,7 @@ export function PluginDetail({
               fontSize: "14px",
               fontWeight: 600,
               marginBottom: "8px",
-              color: "var(--color-text, #111)",
+              color: "var(--color-text-primary, #111)",
             }}
           >
             Keywords

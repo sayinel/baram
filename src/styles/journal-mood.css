@@ -102,7 +102,7 @@
 
 .journal-stats-icon {
   flex-shrink: 0;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-muted);
   opacity: 0.7;
 }
 
@@ -126,7 +126,7 @@
 .journal-stats-pct {
   margin-left: auto;
   font-size: 10px;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-muted);
 }
 
 .journal-stats-dim {
@@ -142,7 +142,7 @@
   align-items: center;
   justify-content: center;
   padding: 2px;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-muted);
   cursor: pointer;
   background: none;
   border: none;
@@ -208,7 +208,7 @@
   padding: 4px 10px;
   font-size: 11px;
   font-weight: 400;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-muted);
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
@@ -223,11 +223,7 @@
 }
 
 .mood-segment:hover {
-  background-color: color-mix(
-    in srgb,
-    var(--color-text-tertiary) 8%,
-    transparent
-  );
+  background-color: color-mix(in srgb, var(--color-text-muted) 8%, transparent);
 }
 
 .mood-segment-selected {
@@ -266,7 +262,7 @@
 .mood-bar-tag-suggest-btn:hover {
   background-color: color-mix(
     in srgb,
-    var(--color-text-tertiary) 10%,
+    var(--color-text-muted) 10%,
     transparent
   );
 }
@@ -283,7 +279,7 @@
   align-items: center;
   padding: 4px 48px;
   font-size: 11px;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-muted);
   border-top: 1px solid
     color-mix(in srgb, var(--color-border-default) 50%, transparent);
 }
@@ -297,7 +293,7 @@
   all: unset;
   padding: 1px 5px;
   font-size: 11px;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-muted);
   cursor: pointer;
   border-radius: 3px;
   transition:
@@ -317,7 +313,7 @@
 .mood-bar-ai-hint-dismiss:hover {
   background-color: color-mix(
     in srgb,
-    var(--color-text-tertiary) 12%,
+    var(--color-text-muted) 12%,
     transparent
   );
 }
@@ -330,14 +326,14 @@
   align-items: center;
   padding: 4px 48px;
   font-size: 11px;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-muted);
   border-top: 1px solid
     color-mix(in srgb, var(--color-border-default) 50%, transparent);
 }
 
 .mood-bar-ai-tags-label {
   font-weight: 500;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-muted);
   white-space: nowrap;
 }
 
@@ -410,13 +406,13 @@
 }
 
 .follow-up-card-btn-dismiss {
-  color: var(--color-text-tertiary);
+  color: var(--color-text-muted);
 }
 
 .follow-up-card-btn-dismiss:hover {
   background-color: color-mix(
     in srgb,
-    var(--color-text-tertiary) 10%,
+    var(--color-text-muted) 10%,
     transparent
   );
 }
@@ -435,7 +431,7 @@
   padding: 4px 12px;
   font-size: 11px;
   font-weight: 500;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-muted);
   cursor: pointer;
   border-radius: 4px;
   transition:
@@ -454,9 +450,9 @@
 
 .follow-up-card-loading {
   font-style: italic;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-muted);
 }
 
 .follow-up-card-error {
-  color: var(--color-danger, #ef4444);
+  color: var(--color-status-danger, #ef4444);
 }
