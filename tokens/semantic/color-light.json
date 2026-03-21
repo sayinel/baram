@@ -17,6 +17,14 @@
       "elevated": {
         "$value": "#f0f0f3",
         "$description": "Tertiary/elevated background (was --color-bg-tertiary: #f0f0f3, no exact primitive match)"
+      },
+      "input": {
+        "$value": "{color.white}",
+        "$description": "Input field background"
+      },
+      "selection": {
+        "$value": "{color.blue.100}",
+        "$description": "General selection background (non-editor)"
       }
     },
     "text": {
@@ -59,6 +67,10 @@
       "subtle": {
         "$value": "{color.blue.50}",
         "$description": "Subtle accent background"
+      },
+      "ai": {
+        "$value": "{color.violet.500}",
+        "$description": "AI feature accent color"
       }
     },
     "editor": {
@@ -99,6 +111,14 @@
       "info": {
         "$value": "{color.blue.500}",
         "$description": "Informational status"
+      },
+      "errorBg": {
+        "$value": "{color.red.50}",
+        "$description": "Error background (light tint for error containers)"
+      },
+      "errorBorder": {
+        "$value": "{color.red.200}",
+        "$description": "Error container border"
       }
     },
     "callout": {
@@ -183,6 +203,10 @@
       "label": {
         "$value": "{color.gray.700}",
         "$description": "Graph node label text"
+      },
+      "tag": {
+        "$value": "{color.emerald.500}",
+        "$description": "Tag node color in graph view"
       }
     },
     "git": {

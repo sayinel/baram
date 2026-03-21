@@ -14,6 +14,11 @@
     --color-slate-100
   ); /** Sidebar/panel background (was --color-bg-sidebar: #f1f3f5) */
 
+  --color-bg-input: var(--color-white); /** Input field background */
+  --color-bg-selection: var(
+    --color-blue-100
+  ); /** General selection background (non-editor) */
+
   --color-text-secondary: var(
     --color-gray-500
   ); /** Secondary text (was --color-text-secondary: #6b7280) */
@@ -39,6 +44,7 @@
   ); /** Accent hover state (was --color-accent-hover: #2563eb) */
 
   --color-accent-subtle: var(--color-blue-50); /** Subtle accent background */
+  --color-accent-ai: var(--color-violet-500); /** AI feature accent color */
   --color-editor-bg: var(
     --color-white
   ); /** Editor background (was --color-editor-bg: #fff) */
@@ -59,6 +65,14 @@
   --color-status-warning: var(--color-yellow-500); /** Warning status */
   --color-status-success: var(--color-emerald-500); /** Success status */
   --color-status-info: var(--color-blue-500); /** Informational status */
+  --color-status-error-bg: var(
+    --color-red-50
+  ); /** Error background (light tint for error containers) */
+
+  --color-status-error-border: var(
+    --color-red-200
+  ); /** Error container border */
+
   --color-callout-tip: var(--color-emerald-500); /** Tip callout accent */
   --color-callout-info: var(--color-blue-500); /** Info callout accent */
   --color-callout-warning: var(
@@ -94,6 +108,10 @@
 
   --color-graph-edge: var(--color-gray-400); /** Graph edge/link line */
   --color-graph-label: var(--color-gray-700); /** Graph node label text */
+  --color-graph-tag: var(
+    --color-emerald-500
+  ); /** Tag node color in graph view */
+
   --color-git-added: var(--color-green-500); /** Git added/new file */
   --color-git-deleted: var(--color-red-500); /** Git deleted file */
   --color-git-staged: var(--color-blue-500); /** Git staged file */
