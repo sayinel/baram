@@ -67,7 +67,7 @@ export function PluginCard({
               style={{
                 fontWeight: 600,
                 fontSize: "14px",
-                color: "var(--color-text, #111)",
+                color: "var(--color-text-primary, #111)",
               }}
             >
               {entry.name}
@@ -192,8 +192,8 @@ export function PluginCard({
                 fontSize: "12px",
                 fontWeight: 500,
                 backgroundColor: "transparent",
-                color: "var(--color-error, #dc2626)",
-                border: "1px solid var(--color-error, #dc2626)",
+                color: "var(--color-status-danger, #dc2626)",
+                border: "1px solid var(--color-status-danger, #dc2626)",
                 cursor: "pointer",
               }}
             >

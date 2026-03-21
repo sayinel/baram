@@ -1783,7 +1783,7 @@
   min-width: 160px;
   padding: 4px 0;
   font-size: 13px;
-  background: var(--bg-primary, #fff);
+  background: var(--color-bg-default, #fff);
   border: 1px solid var(--border-primary, #e0e0e0);
   border-radius: 6px;
   box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
@@ -1794,7 +1794,7 @@
   width: 100%;
   padding: 6px 12px;
   font-size: 13px;
-  color: var(--text-primary, #333);
+  color: var(--color-text-primary, #333);
   text-align: left;
   cursor: pointer;
   background: none;

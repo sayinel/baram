@@ -161,7 +161,7 @@
 }
 
 .ai-chat-dropdown-item-delete:hover {
-  color: var(--color-danger, #ef4444);
+  color: var(--color-status-danger, #ef4444);
   background: rgb(239 68 68 / 10%);
 }
 
@@ -472,7 +472,7 @@
 }
 
 .prompt-lint-item:hover {
-  background: var(--color-bg-hover, rgb(0 0 0 / 4%));
+  background: var(--color-bg-subtle, rgb(0 0 0 / 4%));
 }
 
 [data-theme="dark"] .prompt-lint-item:hover {
