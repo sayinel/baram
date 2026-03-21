@@ -214,14 +214,14 @@
 /* Drag and drop */
 .file-tree-drop-target {
   outline: 1px dashed var(--color-accent-default);
-  background: var(--color-accent-light, rgb(59 130 246 / 10%));
+  background: var(--color-accent-subtle);
   border-radius: 3px;
 }
 
 /* External file drop (Tauri onDragDropEvent) visual feedback */
 .file-tree-ext-drop-target {
   outline: 2px dashed var(--color-accent-default);
-  background: var(--color-accent-light, rgb(59 130 246 / 15%));
+  background: var(--color-accent-subtle);
   border-radius: 3px;
 }
 

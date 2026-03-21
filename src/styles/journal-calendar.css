@@ -43,7 +43,7 @@
 }
 
 .calendar-title:hover {
-  color: var(--cal-accent, var(--color-accent-default));
+  color: var(--color-accent-default);
 }
 
 .calendar-title-group {
@@ -83,17 +83,17 @@
 
 .calendar-pick-btn-today {
   font-weight: 700;
-  color: var(--cal-accent, var(--color-accent-default));
+  color: var(--color-accent-default);
 }
 
 .calendar-pick-btn-selected {
   font-weight: 600;
   color: #fff;
-  background: var(--cal-accent, var(--color-accent-default));
+  background: var(--color-accent-default);
 }
 
 .calendar-pick-btn-selected:hover {
-  background: var(--cal-accent, var(--color-accent-default));
+  background: var(--color-accent-default);
   opacity: 0.9;
 }
 
@@ -166,13 +166,13 @@
 
 .calendar-cell-today {
   font-weight: 700;
-  outline: 2px solid var(--cal-accent, var(--color-accent-default));
+  outline: 2px solid var(--color-accent-default);
   outline-offset: -2px;
 }
 
 .calendar-cell-has-journal {
   font-weight: 600;
-  color: var(--cal-accent, var(--color-accent-default));
+  color: var(--color-accent-default);
 }
 
 .calendar-dot {
@@ -181,7 +181,7 @@
   left: 50%;
   width: 4px;
   height: 4px;
-  background: var(--cal-accent, var(--color-accent-default));
+  background: var(--color-accent-default);
   border-radius: 50%;
   transform: translateX(-50%);
 }
@@ -348,7 +348,7 @@
 .contribution-heatmap-cell[data-level="1"] {
   background: color-mix(
     in srgb,
-    var(--cal-accent, #22c55e) 25%,
+    var(--color-accent-default) 25%,
     var(--color-bg-default)
   );
 }
@@ -356,7 +356,7 @@
 .contribution-heatmap-cell[data-level="2"] {
   background: color-mix(
     in srgb,
-    var(--cal-accent, #22c55e) 50%,
+    var(--color-accent-default) 50%,
     var(--color-bg-default)
   );
 }
@@ -364,13 +364,13 @@
 .contribution-heatmap-cell[data-level="3"] {
   background: color-mix(
     in srgb,
-    var(--cal-accent, #22c55e) 75%,
+    var(--color-accent-default) 75%,
     var(--color-bg-default)
   );
 }
 
 .contribution-heatmap-cell[data-level="4"] {
-  background: var(--cal-accent, #22c55e);
+  background: var(--color-accent-default);
 }
 
 .contribution-heatmap-day-labels {

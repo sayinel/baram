@@ -245,7 +245,7 @@
 }
 
 .graph-settings-toggle.on {
-  background: var(--color-accent-default, #3b82f6);
+  background: var(--color-accent-default);
 }
 
 .graph-settings-toggle-knob {
