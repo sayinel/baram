@@ -442,7 +442,7 @@
 
 .theme-card-delete:hover {
   color: white;
-  background: #e74c3c;
+  background: var(--color-status-danger);
 }
 
 /* Theme mini preview */
@@ -830,11 +830,11 @@
   overflow-y: auto;
   font-size: 0.75rem;
   line-height: 1.4;
-  color: #dc2626;
+  color: var(--color-status-danger);
   overflow-wrap: break-word;
   white-space: pre-wrap;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  background: var(--color-status-error-bg);
+  border: 1px solid var(--color-status-error-border);
   border-radius: 4px;
 }
 
@@ -845,9 +845,9 @@
 }
 
 [data-theme="dark"] .settings-model-error {
-  color: #fca5a5;
-  background: #450a0a;
-  border-color: #7f1d1d;
+  color: var(--color-status-danger);
+  background: var(--color-status-error-bg);
+  border-color: var(--color-status-error-border);
 }
 
 /* Font Family Picker */
@@ -986,7 +986,7 @@
 }
 
 .about-close:hover {
-  background: var(--color-bg-elevated, #e5e7eb);
+  background: var(--color-bg-elevated);
 }
 
 /* ── Keybindings Tab ── */
@@ -1105,7 +1105,7 @@
 
 .keybinding-conflict {
   font-size: 11px;
-  color: var(--color-warning, #f59e0b);
+  color: var(--color-status-warning);
 }
 
 .keybinding-reset-all {
@@ -1189,7 +1189,7 @@
 
 .smart-template-card:hover {
   background-color: var(--color-bg-elevated, var(--color-bg-subtle));
-  border-color: var(--color-accent-default, #3b82f6);
+  border-color: var(--color-accent-default);
 }
 
 .smart-template-card-name {
@@ -1234,16 +1234,16 @@
 }
 
 .smart-template-custom-input:focus {
-  border-color: var(--color-accent-default, #3b82f6);
+  border-color: var(--color-accent-default);
 }
 
 .smart-template-custom-btn {
   padding: 6px 14px;
   font-size: 0.8rem;
   font-weight: 500;
-  color: #fff;
+  color: white;
   cursor: pointer;
-  background-color: var(--color-accent-default, #3b82f6);
+  background-color: var(--color-accent-default);
   border: none;
   border-radius: 6px;
 }

@@ -434,108 +434,108 @@
 
 /* Callout type colors */
 .tiptap .callout-tip {
-  border-left-color: #10b981;
+  border-left-color: #10b981; /* TODO: tokenize --color-callout-tip */
 }
 
 .tiptap .callout-info {
-  border-left-color: #3b82f6;
+  border-left-color: var(--color-status-info);
 }
 
 .tiptap .callout-warning {
-  border-left-color: #f59e0b;
+  border-left-color: var(--color-status-warning);
 }
 
 .tiptap .callout-danger {
-  border-left-color: #ef4444;
+  border-left-color: var(--color-status-danger);
 }
 
 .tiptap .callout-note {
-  border-left-color: #6b7280;
+  border-left-color: var(--color-text-secondary);
 }
 
 .tiptap .callout-abstract {
-  border-left-color: #8b5cf6;
+  border-left-color: var(--color-accent-ai);
 }
 
 .tiptap .callout-todo {
-  border-left-color: #06b6d4;
+  border-left-color: #06b6d4; /* TODO: tokenize --color-callout-todo */
 }
 
 .tiptap .callout-example {
-  border-left-color: #14b8a6;
+  border-left-color: #14b8a6; /* TODO: tokenize --color-callout-example */
 }
 
 .tiptap .callout-quote {
-  border-left-color: #9ca3af;
+  border-left-color: var(--color-text-muted);
 }
 
 .tiptap .callout-bug {
-  border-left-color: #ef4444;
+  border-left-color: var(--color-status-danger);
 }
 
 .tiptap .callout-success {
-  border-left-color: #22c55e;
+  border-left-color: var(--color-status-success);
 }
 
 .tiptap .callout-failure {
-  border-left-color: #ef4444;
+  border-left-color: var(--color-status-danger);
 }
 
 .tiptap .callout-question {
-  border-left-color: #eab308;
+  border-left-color: var(--color-status-warning);
 }
 
 /* Callout type backgrounds (subtle tint) */
 .tiptap .callout-tip {
-  background: #ecfdf5;
+  background: color-mix(in srgb, #10b981 8%, transparent); /* TODO: tokenize */
 }
 
 .tiptap .callout-info {
-  background: #eff6ff;
+  background: color-mix(in srgb, var(--color-status-info) 8%, transparent);
 }
 
 .tiptap .callout-warning {
-  background: #fffbeb;
+  background: color-mix(in srgb, var(--color-status-warning) 8%, transparent);
 }
 
 .tiptap .callout-danger {
-  background: #fef2f2;
+  background: color-mix(in srgb, var(--color-status-danger) 8%, transparent);
 }
 
 .tiptap .callout-note {
-  background: #f9fafb;
+  background: var(--color-bg-subtle);
 }
 
 .tiptap .callout-abstract {
-  background: #f5f3ff;
+  background: color-mix(in srgb, var(--color-accent-ai) 8%, transparent);
 }
 
 .tiptap .callout-todo {
-  background: #ecfeff;
+  background: color-mix(in srgb, #06b6d4 8%, transparent); /* TODO: tokenize */
 }
 
 .tiptap .callout-example {
-  background: #f0fdfa;
+  background: color-mix(in srgb, #14b8a6 8%, transparent); /* TODO: tokenize */
 }
 
 .tiptap .callout-quote {
-  background: #f9fafb;
+  background: var(--color-bg-subtle);
 }
 
 .tiptap .callout-bug {
-  background: #fef2f2;
+  background: color-mix(in srgb, var(--color-status-danger) 8%, transparent);
 }
 
 .tiptap .callout-success {
-  background: #f0fdf4;
+  background: color-mix(in srgb, var(--color-status-success) 8%, transparent);
 }
 
 .tiptap .callout-failure {
-  background: #fef2f2;
+  background: color-mix(in srgb, var(--color-status-danger) 8%, transparent);
 }
 
 .tiptap .callout-question {
-  background: #fefce8;
+  background: color-mix(in srgb, var(--color-status-warning) 8%, transparent);
 }
 
 /* Dark mode callout overrides */
@@ -1184,16 +1184,16 @@
   margin-top: 0.35em;
   font-family: var(--font-family-mono);
   font-size: 0.75em;
-  color: #dc2626;
-  background-color: #fef2f2;
-  border: 1px solid #fecaca;
+  color: var(--color-status-danger);
+  background-color: var(--color-status-error-bg);
+  border: 1px solid var(--color-status-error-border);
   border-radius: 4px;
 }
 
 [data-theme="dark"] .tiptap .math-block-error {
-  color: #fca5a5;
-  background-color: #450a0a;
-  border-color: #7f1d1d;
+  color: var(--color-status-danger);
+  background-color: var(--color-status-error-bg);
+  border-color: var(--color-status-error-border);
 }
 
 /* §5.3 Math size variants */
@@ -1240,8 +1240,8 @@
   padding: 6px 10px;
   overflow-x: auto;
   pointer-events: none;
-  background-color: var(--color-bg-default, #fff);
-  border: 1px solid var(--color-border-default, #e5e7eb);
+  background-color: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
   border-radius: 6px;
   box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
 }
@@ -1256,19 +1256,19 @@
   margin-top: 4px;
   font-family: var(--font-family-mono, monospace);
   font-size: 0.7em;
-  color: #dc2626;
-  border-top: 1px solid #fecaca;
+  color: var(--color-status-danger);
+  border-top: 1px solid var(--color-status-error-border);
 }
 
 [data-theme="dark"] .math-inline-preview-popover {
-  background-color: var(--color-bg-default, #1a1a2e);
-  border-color: var(--color-border-default, #374151);
+  background-color: var(--color-bg-default);
+  border-color: var(--color-border-default);
   box-shadow: 0 4px 12px rgb(0 0 0 / 30%);
 }
 
 [data-theme="dark"] .math-inline-preview-error {
-  color: #fca5a5;
-  border-color: #7f1d1d;
+  color: var(--color-status-danger);
+  border-color: var(--color-status-error-border);
 }
 
 /* §5.5 Table */
@@ -1313,7 +1313,7 @@
   z-index: 20;
   width: 4px;
   pointer-events: none;
-  background-color: var(--color-accent-default, #3b82f6);
+  background-color: var(--color-accent-default);
 }
 
 .tiptap.resize-cursor {
@@ -1569,16 +1569,16 @@
   margin-top: 0.35em;
   font-family: var(--font-family-mono);
   font-size: 0.75em;
-  color: #dc2626;
-  background-color: #fef2f2;
-  border: 1px solid #fecaca;
+  color: var(--color-status-danger);
+  background-color: var(--color-status-error-bg);
+  border: 1px solid var(--color-status-error-border);
   border-radius: 4px;
 }
 
 [data-theme="dark"] .tiptap .mermaid-block-error {
-  color: #fca5a5;
-  background-color: #450a0a;
-  border-color: #7f1d1d;
+  color: var(--color-status-danger);
+  background-color: var(--color-status-error-bg);
+  border-color: var(--color-status-error-border);
 }
 
 /* §50 Mermaid Enhanced — type badge, template picker, fullscreen */
@@ -1783,8 +1783,8 @@
   min-width: 160px;
   padding: 4px 0;
   font-size: 13px;
-  background: var(--color-bg-default, #fff);
-  border: 1px solid var(--border-primary, #e0e0e0);
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
   border-radius: 6px;
   box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
 }
@@ -1794,7 +1794,7 @@
   width: 100%;
   padding: 6px 12px;
   font-size: 13px;
-  color: var(--color-text-primary, #333);
+  color: var(--color-text-primary);
   text-align: left;
   cursor: pointer;
   background: none;
@@ -1802,21 +1802,21 @@
 }
 
 .mermaid-context-menu-item:hover {
-  background: var(--bg-hover, #f0f0f0);
+  background: var(--color-bg-subtle);
 }
 
 .mermaid-context-menu-danger {
-  color: #e53e3e;
+  color: var(--color-status-danger);
 }
 
 .mermaid-context-menu-danger:hover {
-  background: #fff5f5;
+  background: var(--color-status-error-bg);
 }
 
 .mermaid-context-menu-divider {
   height: 1px;
   margin: 4px 0;
-  background: var(--border-primary, #e0e0e0);
+  background: var(--color-border-default);
 }
 
 /* Mermaid Hover Toolbar */
@@ -1862,7 +1862,7 @@
 }
 
 .mermaid-hover-toolbar-btn:active {
-  color: #fff;
+  color: white;
   background: var(--color-accent-default);
   border-color: var(--color-accent-default);
   transform: scale(0.85);
