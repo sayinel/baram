@@ -212,7 +212,7 @@
 }
 
 .tab-switcher-item--selected {
-  color: #fff;
+  color: white;
   background-color: var(--color-accent-default);
 }
 
@@ -559,7 +559,7 @@
 
 .workspace-card-delete:hover {
   color: white;
-  background: #e74c3c;
+  background: var(--color-status-danger);
 }
 
 .workspace-card-layout {
@@ -773,7 +773,7 @@
   min-width: 20px;
   padding: 1px 6px;
   font-size: 0.75rem;
-  color: var(--color-text-tertiary, var(--color-text-secondary));
+  color: var(--color-text-muted, var(--color-text-secondary));
   text-align: center;
   background: var(--color-bg-subtle);
   border-radius: 10px;
@@ -824,7 +824,7 @@
   min-width: 20px;
   padding: 1px 6px;
   font-size: 0.75rem;
-  color: var(--color-text-tertiary, var(--color-text-secondary));
+  color: var(--color-text-muted, var(--color-text-secondary));
   text-align: center;
   background: var(--color-bg-subtle);
   border-radius: 10px;

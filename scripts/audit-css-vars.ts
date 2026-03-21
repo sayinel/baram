@@ -59,10 +59,30 @@ for (const file of tsxFiles) {
 }
 
 // 3. Check for undefined references
+// Allowlist: Journal runtime variables injected by JS (not in CSS token source)
+const ALLOWLIST = new Set([
+  "--mood-deep",
+  "--mood-calm",
+  "--mood-neutral",
+  "--mood-warm",
+  "--mood-bright",
+  "--mood-accent-rgb",
+  "--journal-font-family",
+  "--journal-line-height",
+  "--journal-header-bg",
+  "--journal-prompt-bg",
+  "--journal-prompt-border",
+]);
+
 const undefinedVars: [string, string[]][] = [];
+const allowlistedVars: [string, string[]][] = [];
 for (const [name, files] of usedVars) {
   if (!definedVars.has(name)) {
-    undefinedVars.push([name, [...new Set(files)]]);
+    if (ALLOWLIST.has(name)) {
+      allowlistedVars.push([name, [...new Set(files)]]);
+    } else {
+      undefinedVars.push([name, [...new Set(files)]]);
+    }
   }
 }
 
@@ -70,6 +90,12 @@ console.log(
   `  Scanned: ${cssFiles.length} CSS + ${tsxFiles.length} TSX/TS files`,
 );
 console.log(`  Defined: ${definedVars.size} | Referenced: ${usedVars.size}`);
+
+if (allowlistedVars.length > 0) {
+  console.log(
+    `  Allowlisted (JS runtime): ${allowlistedVars.length} variables`,
+  );
+}
 
 if (undefinedVars.length > 0) {
   console.error(`\n  UNDEFINED CSS VARIABLES (${undefinedVars.length}):\n`);
@@ -79,5 +105,5 @@ if (undefinedVars.length > 0) {
   }
   process.exit(1);
 } else {
-  console.log(`  All CSS variables are defined.`);
+  console.log(`  All CSS variables are defined (or allowlisted).`);
 }

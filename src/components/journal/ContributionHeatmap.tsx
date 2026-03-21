@@ -164,7 +164,7 @@ export function ContributionHeatmap({
                     gridColumn: weekIndex + 1,
                     gridRow: 1,
                     fontSize: "0.7em",
-                    color: "var(--text-secondary)",
+                    color: "var(--color-text-secondary)",
                     whiteSpace: "nowrap",
                   }}
                 >
@@ -185,7 +185,7 @@ export function ContributionHeatmap({
                     height: 10,
                     lineHeight: "10px",
                     fontSize: "0.7em",
-                    color: "var(--text-secondary)",
+                    color: "var(--color-text-secondary)",
                   }}
                 >
                   {DAY_LABEL_MAP[dow] ?? ""}
@@ -239,8 +239,8 @@ export function ContributionHeatmap({
                 left: tooltip.x,
                 top: tooltip.y - 4,
                 transform: "translateX(-50%) translateY(-100%)",
-                background: "var(--bg-primary)",
-                border: "1px solid var(--border)",
+                background: "var(--color-bg-default)",
+                border: "1px solid var(--color-border-default)",
                 padding: "2px 6px",
                 borderRadius: 4,
                 fontSize: "0.75em",

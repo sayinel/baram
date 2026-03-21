@@ -16,6 +16,11 @@
     --color-navy-750
   ); /** Tertiary/elevated background dark (was --color-bg-tertiary: #1e2a45) */
 
+  --color-bg-input: var(--color-slate-800); /** Input field background */
+  --color-bg-selection: var(
+    --color-blue-900
+  ); /** General selection background (non-editor) */
+
   --color-text-primary: var(
     --color-slate-200
   ); /** Primary text dark (was --color-text-primary: #e2e8f0) */
@@ -48,6 +53,7 @@
     --color-blue-950
   ); /** Subtle accent background dark */
 
+  --color-accent-ai: var(--color-violet-400); /** AI feature accent color */
   --color-editor-bg: var(
     --color-navy-800
   ); /** Editor background dark (was --color-editor-bg: #1a1a2e) */
@@ -72,6 +78,14 @@
   --color-status-warning: var(--color-yellow-500); /** Warning status dark */
   --color-status-success: var(--color-emerald-500); /** Success status dark */
   --color-status-info: var(--color-blue-400); /** Informational status dark */
+  --color-status-error-bg: var(
+    --color-red-950
+  ); /** Error background (light tint for error containers) */
+
+  --color-status-error-border: var(
+    --color-red-800
+  ); /** Error container border */
+
   --color-callout-tip: var(--color-emerald-400); /** Tip callout accent dark */
   --color-callout-info: var(--color-blue-400); /** Info callout accent dark */
   --color-callout-warning: var(
@@ -133,6 +147,10 @@
   --color-graph-label: var(
     --color-gray-300
   ); /** Graph node label text dark (#d1d5db) */
+
+  --color-graph-tag: var(
+    --color-emerald-400
+  ); /** Tag node color in graph view */
 
   --color-git-added: var(--color-green-400); /** Git added/new file dark */
   --color-git-deleted: var(--color-red-400); /** Git deleted file dark */

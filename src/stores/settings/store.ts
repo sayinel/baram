@@ -113,7 +113,7 @@ export const useSettingsStore = create<SettingsState>()(
         locale: state.locale,
         keybindingOverrides: state.keybindingOverrides,
       }),
-      version: 10,
+      version: 11,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
 
@@ -235,6 +235,20 @@ export const useSettingsStore = create<SettingsState>()(
 
         // v9 → v10: Design token CSS variable rename — migrate custom theme color keys
         if (version < 10) {
+          const themes = state.customThemes as Array<{
+            [k: string]: unknown;
+            colors: Record<string, string>;
+          }>;
+          if (Array.isArray(themes)) {
+            state.customThemes = themes.map((theme) => ({
+              ...theme,
+              colors: migrateThemeColors(theme.colors),
+            }));
+          }
+        }
+
+        // v10 → v11: ThemeColors contract expansion (16 → 25 keys)
+        if (version < 11) {
           const themes = state.customThemes as Array<{
             [k: string]: unknown;
             colors: Record<string, string>;

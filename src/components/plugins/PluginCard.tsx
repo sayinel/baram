@@ -31,14 +31,14 @@ export function PluginCard({
       className="plugin-card"
       onClick={onSelect}
       onMouseEnter={(e) =>
-        (e.currentTarget.style.backgroundColor = "var(--color-hover, #f3f4f6)")
+        (e.currentTarget.style.backgroundColor = "var(--color-bg-subtle)")
       }
       onMouseLeave={(e) =>
         (e.currentTarget.style.backgroundColor = "transparent")
       }
       style={{
         padding: "12px 16px",
-        borderBottom: "1px solid var(--color-border-default, #e5e7eb)",
+        borderBottom: "1px solid var(--color-border-default)",
         cursor: "pointer",
         transition: "background-color 0.15s",
       }}
@@ -67,7 +67,7 @@ export function PluginCard({
               style={{
                 fontWeight: 600,
                 fontSize: "14px",
-                color: "var(--color-text, #111)",
+                color: "var(--color-text-primary)",
               }}
             >
               {entry.name}
@@ -75,7 +75,7 @@ export function PluginCard({
             <span
               style={{
                 fontSize: "12px",
-                color: "var(--color-text-muted, #6b7280)",
+                color: "var(--color-text-muted)",
               }}
             >
               v{entry.version}
@@ -85,7 +85,7 @@ export function PluginCard({
             style={{
               margin: "0 0 8px",
               fontSize: "13px",
-              color: "var(--color-text-secondary, #4b5563)",
+              color: "var(--color-text-secondary)",
               lineHeight: 1.4,
               overflow: "hidden",
               textOverflow: "ellipsis",
@@ -105,7 +105,7 @@ export function PluginCard({
             <span
               style={{
                 fontSize: "12px",
-                color: "var(--color-text-muted, #6b7280)",
+                color: "var(--color-text-muted)",
               }}
             >
               {entry.author}
@@ -114,7 +114,7 @@ export function PluginCard({
               <span
                 style={{
                   fontSize: "11px",
-                  color: "var(--color-text-muted, #9ca3af)",
+                  color: "var(--color-text-muted)",
                 }}
               >
                 {entry.downloads.toLocaleString()} downloads
@@ -140,7 +140,7 @@ export function PluginCard({
                 <span
                   style={{
                     fontSize: "11px",
-                    color: "var(--color-text-muted, #9ca3af)",
+                    color: "var(--color-text-muted)",
                     alignSelf: "center",
                   }}
                 >
@@ -159,9 +159,9 @@ export function PluginCard({
                 borderRadius: "6px",
                 fontSize: "12px",
                 fontWeight: 500,
-                backgroundColor: "var(--color-bg-subtle, #f3f4f6)",
-                color: "var(--color-text-disabled, #9ca3af)",
-                border: "1px solid var(--color-border-default, #e5e7eb)",
+                backgroundColor: "var(--color-bg-subtle)",
+                color: "var(--color-text-disabled)",
+                border: "1px solid var(--color-border-default)",
                 cursor: "not-allowed",
               }}
             >
@@ -192,8 +192,8 @@ export function PluginCard({
                 fontSize: "12px",
                 fontWeight: 500,
                 backgroundColor: "transparent",
-                color: "var(--color-error, #dc2626)",
-                border: "1px solid var(--color-error, #dc2626)",
+                color: "var(--color-status-danger)",
+                border: "1px solid var(--color-status-danger)",
                 cursor: "pointer",
               }}
             >
@@ -207,7 +207,7 @@ export function PluginCard({
                 borderRadius: "6px",
                 fontSize: "12px",
                 fontWeight: 500,
-                backgroundColor: "var(--color-accent-default, #3b82f6)",
+                backgroundColor: "var(--color-accent-default)",
                 color: "#fff",
                 border: "none",
                 cursor: "pointer",

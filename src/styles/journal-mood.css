@@ -102,7 +102,7 @@
 
 .journal-stats-icon {
   flex-shrink: 0;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-muted);
   opacity: 0.7;
 }
 
@@ -126,7 +126,7 @@
 .journal-stats-pct {
   margin-left: auto;
   font-size: 10px;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-muted);
 }
 
 .journal-stats-dim {
@@ -142,7 +142,7 @@
   align-items: center;
   justify-content: center;
   padding: 2px;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-muted);
   cursor: pointer;
   background: none;
   border: none;
@@ -153,7 +153,7 @@
 }
 
 .journal-stats-refresh:hover {
-  color: var(--color-accent-default, #5b7bd7);
+  color: var(--color-accent-default);
   opacity: 1;
 }
 
@@ -208,7 +208,7 @@
   padding: 4px 10px;
   font-size: 11px;
   font-weight: 400;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-muted);
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
@@ -223,11 +223,7 @@
 }
 
 .mood-segment:hover {
-  background-color: color-mix(
-    in srgb,
-    var(--color-text-tertiary) 8%,
-    transparent
-  );
+  background-color: color-mix(in srgb, var(--color-text-muted) 8%, transparent);
 }
 
 .mood-segment-selected {
@@ -266,7 +262,7 @@
 .mood-bar-tag-suggest-btn:hover {
   background-color: color-mix(
     in srgb,
-    var(--color-text-tertiary) 10%,
+    var(--color-text-muted) 10%,
     transparent
   );
 }
@@ -283,21 +279,21 @@
   align-items: center;
   padding: 4px 48px;
   font-size: 11px;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-muted);
   border-top: 1px solid
     color-mix(in srgb, var(--color-border-default) 50%, transparent);
 }
 
 .mood-bar-ai-hint-text {
   font-weight: 500;
-  color: var(--color-accent-default, #6366f1);
+  color: var(--color-accent-default);
 }
 
 .mood-bar-ai-hint-btn {
   all: unset;
   padding: 1px 5px;
   font-size: 11px;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-muted);
   cursor: pointer;
   border-radius: 3px;
   transition:
@@ -306,10 +302,10 @@
 }
 
 .mood-bar-ai-hint-accept:hover {
-  color: var(--color-accent-default, #6366f1);
+  color: var(--color-accent-default);
   background-color: color-mix(
     in srgb,
-    var(--color-accent-default, #6366f1) 15%,
+    var(--color-accent-default) 15%,
     transparent
   );
 }
@@ -317,7 +313,7 @@
 .mood-bar-ai-hint-dismiss:hover {
   background-color: color-mix(
     in srgb,
-    var(--color-text-tertiary) 12%,
+    var(--color-text-muted) 12%,
     transparent
   );
 }
@@ -330,14 +326,14 @@
   align-items: center;
   padding: 4px 48px;
   font-size: 11px;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-muted);
   border-top: 1px solid
     color-mix(in srgb, var(--color-border-default) 50%, transparent);
 }
 
 .mood-bar-ai-tags-label {
   font-weight: 500;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-muted);
   white-space: nowrap;
 }
 
@@ -346,24 +342,16 @@
   padding: 2px 8px;
   font-size: 11px;
   font-weight: 500;
-  color: var(--color-accent-default, #6366f1);
+  color: var(--color-accent-default);
   white-space: nowrap;
   cursor: pointer;
-  background: color-mix(
-    in srgb,
-    var(--color-accent-default, #6366f1) 10%,
-    transparent
-  );
+  background: color-mix(in srgb, var(--color-accent-default) 10%, transparent);
   border-radius: 10px;
   transition: background-color 0.15s;
 }
 
 .ai-tag-chip:hover {
-  background: color-mix(
-    in srgb,
-    var(--color-accent-default, #6366f1) 20%,
-    transparent
-  );
+  background: color-mix(in srgb, var(--color-accent-default) 20%, transparent);
 }
 
 /* §56j Follow-Up Question Card */
@@ -372,7 +360,7 @@
   font-size: 12px;
   background: color-mix(
     in srgb,
-    var(--color-accent-default, #6366f1) 4%,
+    var(--color-accent-default) 4%,
     var(--color-bg-default)
   );
   border-bottom: 1px solid var(--color-border-default);
@@ -402,7 +390,7 @@
 
 .follow-up-card-btn-insert {
   color: white;
-  background: var(--color-accent-default, #6366f1);
+  background: var(--color-accent-default);
 }
 
 .follow-up-card-btn-insert:hover {
@@ -410,13 +398,13 @@
 }
 
 .follow-up-card-btn-dismiss {
-  color: var(--color-text-tertiary);
+  color: var(--color-text-muted);
 }
 
 .follow-up-card-btn-dismiss:hover {
   background-color: color-mix(
     in srgb,
-    var(--color-text-tertiary) 10%,
+    var(--color-text-muted) 10%,
     transparent
   );
 }
@@ -435,7 +423,7 @@
   padding: 4px 12px;
   font-size: 11px;
   font-weight: 500;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-muted);
   cursor: pointer;
   border-radius: 4px;
   transition:
@@ -444,19 +432,19 @@
 }
 
 .follow-up-card-btn-ask:hover {
-  color: var(--color-accent-default, #6366f1);
+  color: var(--color-accent-default);
   background-color: color-mix(
     in srgb,
-    var(--color-accent-default, #6366f1) 10%,
+    var(--color-accent-default) 10%,
     transparent
   );
 }
 
 .follow-up-card-loading {
   font-style: italic;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-muted);
 }
 
 .follow-up-card-error {
-  color: var(--color-danger, #ef4444);
+  color: var(--color-status-danger);
 }
