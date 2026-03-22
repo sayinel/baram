@@ -81,6 +81,7 @@ const schema = new Schema({
         display: { default: null },
         heading: { default: null },
         blockId: { default: null },
+        vaultAlias: { default: null },
       },
     },
     hardBreak: { inline: true, group: "inline" },
@@ -121,6 +122,7 @@ describe("parseWikilinkMatch", () => {
     expect(m).not.toBeNull();
     const result = parseWikilinkMatch(m);
     expect(result).toEqual({
+      vaultAlias: null,
       target: "my page",
       heading: null,
       blockId: null,
@@ -133,6 +135,7 @@ describe("parseWikilinkMatch", () => {
     const m = WIKILINK_RE.exec("[[page|Display Text]]")!;
     const result = parseWikilinkMatch(m);
     expect(result).toEqual({
+      vaultAlias: null,
       target: "page",
       heading: null,
       blockId: null,
@@ -145,6 +148,7 @@ describe("parseWikilinkMatch", () => {
     const m = WIKILINK_RE.exec("[[page#Introduction]]")!;
     const result = parseWikilinkMatch(m);
     expect(result).toEqual({
+      vaultAlias: null,
       target: "page",
       heading: "Introduction",
       blockId: null,
@@ -157,6 +161,7 @@ describe("parseWikilinkMatch", () => {
     const m = WIKILINK_RE.exec("[[page^abc123]]")!;
     const result = parseWikilinkMatch(m);
     expect(result).toEqual({
+      vaultAlias: null,
       target: "page",
       heading: null,
       blockId: "abc123",
@@ -169,10 +174,52 @@ describe("parseWikilinkMatch", () => {
     const m = WIKILINK_RE.exec("[[page#Intro|Introduction]]")!;
     const result = parseWikilinkMatch(m);
     expect(result).toEqual({
+      vaultAlias: null,
       target: "page",
       heading: "Intro",
       blockId: null,
       display: "Introduction",
+    });
+  });
+
+  // §87 Cross-vault alias parsing
+  it("parses [[alias::target]]", () => {
+    WIKILINK_RE.lastIndex = 0;
+    const m = WIKILINK_RE.exec("[[journal::2026-03-22]]")!;
+    expect(m).not.toBeNull();
+    const result = parseWikilinkMatch(m);
+    expect(result).toEqual({
+      vaultAlias: "journal",
+      target: "2026-03-22",
+      heading: null,
+      blockId: null,
+      display: null,
+    });
+  });
+
+  it("parses [[alias::target#heading|display]]", () => {
+    WIKILINK_RE.lastIndex = 0;
+    const m = WIKILINK_RE.exec("[[work::doc#intro|Introduction]]")!;
+    const result = parseWikilinkMatch(m);
+    expect(result).toEqual({
+      vaultAlias: "work",
+      target: "doc",
+      heading: "intro",
+      blockId: null,
+      display: "Introduction",
+    });
+  });
+
+  it("parses [[alias::target^blockId]]", () => {
+    WIKILINK_RE.lastIndex = 0;
+    const m = WIKILINK_RE.exec("[[work::file^abc123]]")!;
+    const result = parseWikilinkMatch(m);
+    expect(result).toEqual({
+      vaultAlias: "work",
+      target: "file",
+      heading: null,
+      blockId: "abc123",
+      display: null,
     });
   });
 });
@@ -208,6 +255,61 @@ describe("serializeWikilink", () => {
         display: "Introduction",
       }),
     ).toBe("[[page#Intro|Introduction]]");
+  });
+
+  // §87 Cross-vault alias serialization
+  it("serializes cross-vault alias", () => {
+    expect(
+      serializeWikilink({ target: "2026-03-22", vaultAlias: "journal" }),
+    ).toBe("[[journal::2026-03-22]]");
+  });
+
+  it("serializes cross-vault with heading and display", () => {
+    expect(
+      serializeWikilink({
+        target: "doc",
+        vaultAlias: "work",
+        heading: "intro",
+        display: "Introduction",
+      }),
+    ).toBe("[[work::doc#intro|Introduction]]");
+  });
+
+  it("serializes cross-vault with blockId", () => {
+    expect(
+      serializeWikilink({
+        target: "file",
+        vaultAlias: "work",
+        blockId: "abc123",
+      }),
+    ).toBe("[[work::file^abc123]]");
+  });
+});
+
+// --- §87 Cross-vault roundtrip: parse + serialize ---
+
+describe("Cross-vault [[alias::target]] roundtrip (§87)", () => {
+  it.each([
+    ["basic cross-vault", "[[journal::2026-03-22]]"],
+    ["cross-vault with path", "[[work::skills/analyzer]]"],
+    ["cross-vault with heading", "[[work::file#section]]"],
+    ["cross-vault with display", "[[journal::note|My Note]]"],
+    [
+      "cross-vault with heading and display",
+      "[[work::doc#intro|Introduction]]",
+    ],
+    ["cross-vault with blockId", "[[work::file^abc123]]"],
+    ["regular wikilink unchanged", "[[normal-link]]"],
+    ["regular with display", "[[page|Display Text]]"],
+    ["regular with heading", "[[page#Section]]"],
+    ["hyphenated alias", "[[my-vault::page]]"],
+  ])("roundtrip: %s", (_, input) => {
+    WIKILINK_RE.lastIndex = 0;
+    const match = WIKILINK_RE.exec(input);
+    expect(match).not.toBeNull();
+    const attrs = parseWikilinkMatch(match!);
+    const output = serializeWikilink(attrs);
+    expect(output).toBe(input);
   });
 });
 
@@ -296,6 +398,55 @@ describe("Roundtrip: Wikilink (§28)", () => {
 
   it("wikilink with spaces in target", () => {
     const input = "See [[my long page name]] here\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+});
+
+// --- §87 Cross-vault: Full pipeline roundtrip tests ---
+
+describe("Roundtrip: Cross-vault wikilink (§87)", () => {
+  it("basic cross-vault link", () => {
+    const input = "See [[journal::2026-03-22]] for details\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  it("cross-vault with path", () => {
+    const input = "Check [[work::skills/analyzer]] here\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  it("cross-vault with heading", () => {
+    const input = "Read [[work::file#section]] section\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  it("cross-vault with display text", () => {
+    const input = "See [[journal::note|My Note]] here\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  it("cross-vault with heading and display", () => {
+    const input = "Read [[work::doc#intro|Introduction]] here\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  it("cross-vault with blockId", () => {
+    const input = "Reference [[work::file^abc123]] block\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  it("cross-vault mixed with regular wikilinks", () => {
+    const input = "Link [[journal::note]] and [[regular-page]] here\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  it("cross-vault in heading", () => {
+    const input = "# Title with [[work::doc]]\n";
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  it("cross-vault in list item", () => {
+    const input = "- Item with [[journal::2026-03-22]] link\n";
     expect(roundtrip(input)).toBe(input);
   });
 });
@@ -393,5 +544,32 @@ describe("Wikilink PM structure", () => {
     expect(para.child(1).text).toBe(" and ");
     expect(para.child(2).type.name).toBe("wikilink");
     expect(para.child(2).attrs.target).toBe("b");
+  });
+
+  // §87 Cross-vault PM structure
+  it("creates cross-vault wikilink with vaultAlias attr", () => {
+    const doc = parse("Link [[journal::2026-03-22]] here\n");
+    const para = doc.firstChild!;
+    expect(para.childCount).toBe(3);
+    const wl = para.child(1);
+    expect(wl.type.name).toBe("wikilink");
+    expect(wl.attrs.vaultAlias).toBe("journal");
+    expect(wl.attrs.target).toBe("2026-03-22");
+  });
+
+  it("creates cross-vault wikilink with all attrs", () => {
+    const doc = parse("[[work::doc#intro|Introduction]]\n");
+    const wl = doc.firstChild!.firstChild!;
+    expect(wl.type.name).toBe("wikilink");
+    expect(wl.attrs.vaultAlias).toBe("work");
+    expect(wl.attrs.target).toBe("doc");
+    expect(wl.attrs.heading).toBe("intro");
+    expect(wl.attrs.display).toBe("Introduction");
+  });
+
+  it("regular wikilink has null vaultAlias", () => {
+    const doc = parse("[[page]]\n");
+    const wl = doc.firstChild!.firstChild!;
+    expect(wl.attrs.vaultAlias).toBeNull();
   });
 });
