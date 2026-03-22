@@ -5,6 +5,7 @@ import { create } from "zustand";
 
 import { listDir, refreshIndex, setVaultRoot } from "../../ipc/invoke";
 import { logger } from "../../utils/logger";
+import { useContextStore } from "../context/context";
 import { useEditorStore } from "../editor/editor";
 import { useLinkStore } from "../editor/link";
 import { useSettingsStore } from "../settings/store";
@@ -104,6 +105,24 @@ export function buildFileTree(
  */
 export async function openFolder(path: string): Promise<void> {
   await setVaultRoot(path);
+
+  // §81 Register in frontend contextStore (M1: single context only)
+  const contextStore = useContextStore.getState();
+  // Remove any existing contexts (M1: only one at a time)
+  for (const ctx of [...contextStore.contexts]) {
+    await contextStore.removeContext(ctx.id).catch(() => {});
+  }
+  // Detect vault vs folder
+  const isVault = await listDir(path + "/.baram", false)
+    .then(() => true)
+    .catch(() => false);
+  await contextStore
+    .addContext(isVault ? "vault" : "folder", path)
+    .catch((err) => {
+      // Non-fatal: context registration is supplementary in M1
+      logger.warn("§81 openFolder: context registration failed", err);
+    });
+
   const entries = await listDir(path, true);
   const tree = buildFileTree(entries, path);
   useFileStore.getState().setRootPath(path);
