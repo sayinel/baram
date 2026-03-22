@@ -226,6 +226,32 @@
   border-color: var(--color-accent-default);
 }
 
+.global-search-scope {
+  display: flex;
+  gap: 2px;
+  padding: 0 8px 6px;
+}
+
+.global-search-scope__btn {
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+}
+
+.global-search-scope__btn:hover {
+  background: var(--color-bg-subtle);
+}
+
+.global-search-scope__btn--active {
+  color: white;
+  background: var(--color-accent-default);
+  border-color: var(--color-accent-default);
+}
+
 /* ============================================
    §36 Bookmark Panel
    ============================================ */
