@@ -31,9 +31,11 @@ struct PendingOpenFiles(Mutex<Vec<String>>);
 /// None means no vault is open yet (cold start); all paths are allowed until set.
 pub struct VaultRootState(pub tokio::sync::RwLock<Option<std::path::PathBuf>>);
 
-/// Active directory watcher. Replacing the value drops the old watcher, which closes
-/// the internal event channel and causes the watcher thread to exit naturally (RAII).
-pub struct WatcherState(pub std::sync::Mutex<Option<notify::RecommendedWatcher>>);
+/// Per-context directory watchers. Keyed by context id (or path as fallback).
+/// Dropping a value closes the internal event channel and causes the watcher thread to exit naturally (RAII).
+pub struct WatcherState(
+    pub std::sync::Mutex<std::collections::HashMap<String, notify::RecommendedWatcher>>,
+);
 
 #[tauri::command]
 fn get_opened_urls(state: tauri::State<'_, PendingOpenFiles>) -> Result<Vec<String>, String> {
@@ -78,10 +80,12 @@ pub fn run() {
         })
         .manage(PendingOpenFiles(Mutex::new(Vec::new())))
         .manage(VaultRootState(tokio::sync::RwLock::new(None)))
-        .manage(WatcherState(std::sync::Mutex::new(None)))
+        .manage(WatcherState(std::sync::Mutex::new(
+            std::collections::HashMap::new(),
+        )))
         .manage(context::ContextManager::new())
         .manage(index_cmd::LinkIndexState(tokio::sync::Mutex::new(
-            index::LinkIndex::new(),
+            std::collections::HashMap::new(),
         )))
         .manage(llm::cancel::CancelRegistry::new())
         .manage(embedding_cmd::EmbeddingState::new())
