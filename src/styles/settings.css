@@ -1256,3 +1256,145 @@
   cursor: not-allowed;
   opacity: 0.4;
 }
+
+/* §86 Vault Tab */
+.vault-tab-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.vault-tab-empty {
+  padding: 12px 0;
+  font-size: 13px;
+  color: var(--color-text-muted, #6b7280);
+}
+
+.vault-tab-item {
+  position: relative;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border-default, #e5e7eb);
+  border-radius: 6px;
+}
+
+.vault-tab-item__color {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  transition: border-color 0.15s;
+}
+
+.vault-tab-item__color:hover {
+  border-color: var(--color-text-default, #1a1a1a);
+}
+
+.vault-tab-item__info {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vault-tab-item__name {
+  font-size: 13px;
+  font-weight: 500;
+  cursor: default;
+}
+
+.vault-tab-item__name-input {
+  width: 100%;
+  padding: 2px 6px;
+  font-size: 13px;
+  outline: none;
+  border: 1px solid var(--color-accent-default, #3b82f6);
+  border-radius: 4px;
+}
+
+.vault-tab-item__meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  color: var(--color-text-muted, #6b7280);
+  white-space: nowrap;
+}
+
+.vault-tab-item__remove {
+  flex-shrink: 0;
+  color: var(--color-text-muted, #9ca3af);
+}
+
+.vault-tab-item__remove:hover {
+  color: var(--color-status-error, #ef4444);
+}
+
+.vault-tab-item__color-picker {
+  position: absolute;
+  top: 100%;
+  left: 12px;
+  z-index: 10;
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  margin-top: 4px;
+  background: var(--color-bg-elevated, #fff);
+  border: 1px solid var(--color-border-default, #e5e7eb);
+  border-radius: 6px;
+  box-shadow: var(--shadow-md, 0 4px 6px rgb(0 0 0 / 7%));
+}
+
+[data-theme="dark"] .vault-tab-item__color-picker {
+  background: var(--color-bg-elevated, #333);
+}
+
+.vault-tab-item__color-swatch {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  border-radius: 50%;
+}
+
+.vault-tab-item__color-swatch:hover {
+  border-color: var(--color-text-default, #1a1a1a);
+  transform: scale(1.15);
+}
+
+.vault-tab-actions {
+  margin-top: 12px;
+}
+
+.vault-tab-add-btn {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 14px;
+  font-size: 13px;
+  color: var(--color-text-default, #1a1a1a);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--color-border-default, #e5e7eb);
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.vault-tab-add-btn:hover {
+  background: var(--color-bg-hover, rgb(0 0 0 / 5%));
+}
+
+[data-theme="dark"] .vault-tab-add-btn {
+  color: var(--color-text-default, #e0e0e0);
+}
+
+.settings-section-desc {
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--color-text-muted, #6b7280);
+}

@@ -43,7 +43,8 @@ export type SettingsTab =
   | "keybindings"
   | "language"
   | "markdown"
-  | "plugins";
+  | "plugins"
+  | "vault";
 
 // Marker for settings that require navigation to their tab (no inline control)
 export const NAVIGATE_CONTROL: SettingControlMeta = {
