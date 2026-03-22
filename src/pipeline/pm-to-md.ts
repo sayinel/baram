@@ -215,6 +215,17 @@ function convertPmChildren(node: PmNode): Content[] {
   const result: Content[] = [];
 
   node.forEach((child) => {
+    // §5.5: Emit colwidths HTML comment before tables with user-resized columns
+    if (child.type.name === "table") {
+      const colwidths = extractTableColwidths(child);
+      if (colwidths) {
+        result.push({
+          type: "html",
+          value: `<!-- colwidths:${colwidths.join(",")} -->`,
+        } as Content);
+      }
+    }
+
     const mdastNode = convertPmNode(child);
     if (mdastNode) {
       result.push(mdastNode as Content);
@@ -460,6 +471,37 @@ function convertTextWithMarks(
   }
 
   return current;
+}
+
+/**
+ * §5.5: Extract colwidths from a table PM node if any cell has userResized: true.
+ * Returns the colwidths array (from the first row) or null if no user resize.
+ */
+function extractTableColwidths(tableNode: PmNode): null | number[] {
+  const firstRow = tableNode.firstChild;
+  if (!firstRow) return null;
+
+  let hasUserResize = false;
+  const colwidths: number[] = [];
+
+  for (let i = 0; i < firstRow.childCount; i++) {
+    const cell = firstRow.child(i);
+    if (cell.attrs.userResized && cell.attrs.colwidth) {
+      hasUserResize = true;
+    }
+    const cw = cell.attrs.colwidth as null | number[];
+    const colspan = (cell.attrs.colspan as number) || 1;
+    if (cw) {
+      colwidths.push(...cw);
+    } else {
+      for (let j = 0; j < colspan; j++) colwidths.push(0);
+    }
+  }
+
+  if (hasUserResize && colwidths.length > 0 && colwidths.some((w) => w > 0)) {
+    return colwidths;
+  }
+  return null;
 }
 
 /** Extract plain text from a phrasing content array (for wrapping in custom mark delimiters).

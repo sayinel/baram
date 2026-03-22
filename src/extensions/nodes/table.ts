@@ -8,7 +8,10 @@ import { TableRow } from "@tiptap/extension-table-row";
 import { TextSelection } from "@tiptap/pm/state";
 
 import { resolveShortcut } from "../utils/shortcut-resolver";
-import { createColResizePlugin } from "./plugins/table-col-resize";
+import {
+  createColResizePlugin,
+  createUserResizeTracker,
+} from "./plugins/table-col-resize";
 import { createVirtualScrollPlugin } from "./plugins/table-virtual-scroll";
 
 // §5.5 Tier 3: Table.extend() with resizable columns + pipe-input auto creation
@@ -28,6 +31,7 @@ export const BaramTable = Table.extend({
     return [
       ...(this.parent?.() || []),
       createColResizePlugin(),
+      createUserResizeTracker(),
       createVirtualScrollPlugin(),
     ];
   },
@@ -109,6 +113,7 @@ export const BaramTableCell = TableCell.extend({
     return {
       ...this.parent?.(),
       alignment: { default: null },
+      userResized: { default: false, rendered: false },
     };
   },
 
@@ -134,6 +139,7 @@ export const BaramTableHeader = TableHeader.extend({
     return {
       ...this.parent?.(),
       alignment: { default: null },
+      userResized: { default: false, rendered: false },
     };
   },
 

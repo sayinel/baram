@@ -100,13 +100,56 @@ export function mdastToProsemirror(root: Root, schema: Schema): PmNode {
   return schema.nodes.doc.create(null, children);
 }
 
+/** Regex for colwidths HTML comment: `<!-- colwidths:200,300,150 -->` */
+const COLWIDTHS_RE = /^<!--\s*colwidths:([\d,]+)\s*-->$/;
+
+/** Apply pending colwidths to a table PM node by setting colwidth + userResized on cells */
+function applyColwidthsToTable(tableNode: PmNode, colwidths: number[]): PmNode {
+  const rows: PmNode[] = [];
+  tableNode.forEach((row) => {
+    const cells: PmNode[] = [];
+    let colIdx = 0;
+    row.forEach((cell) => {
+      const colspan = (cell.attrs.colspan as number) || 1;
+      const colwidthArr = colwidths.slice(colIdx, colIdx + colspan);
+      colIdx += colspan;
+      // Only apply if the sliced array has valid widths matching colspan
+      if (colwidthArr.length === colspan && colwidthArr.every((w) => w > 0)) {
+        cells.push(
+          cell.type.create(
+            { ...cell.attrs, colwidth: colwidthArr, userResized: true },
+            cell.content,
+            cell.marks,
+          ),
+        );
+      } else {
+        cells.push(cell);
+      }
+    });
+    rows.push(row.type.create(row.attrs, cells, row.marks));
+  });
+  return tableNode.type.create(tableNode.attrs, rows, tableNode.marks);
+}
+
 /** Convert block-level mdast children to PM nodes */
 function convertBlockChildren(children: Content[], schema: Schema): PmNode[] {
   const result: PmNode[] = [];
   let i = 0;
+  let pendingColwidths: null | number[] = null;
 
   while (i < children.length) {
     const child = children[i];
+
+    // §5.5: Detect colwidths HTML comment → store for next table
+    if (child.type === "html") {
+      const htmlVal = (child as { value: string }).value;
+      const colMatch = COLWIDTHS_RE.exec(htmlVal);
+      if (colMatch) {
+        pendingColwidths = colMatch[1].split(",").map(Number);
+        i++;
+        continue;
+      }
+    }
 
     // §5.1: Detect <details> html pattern → toggle node
     if (child.type === "html" && schema.nodes.toggle) {
@@ -121,6 +164,7 @@ function convertBlockChildren(children: Content[], schema: Schema): PmNode[] {
         if (toggleResult) {
           result.push(toggleResult.node);
           i = toggleResult.endIndex + 1;
+          pendingColwidths = null;
           continue;
         }
       }
@@ -132,6 +176,7 @@ function convertBlockChildren(children: Content[], schema: Schema): PmNode[] {
       if (imgAttrs) {
         result.push(schema.nodes.image.create(imgAttrs));
         i++;
+        pendingColwidths = null;
         continue;
       }
     }
@@ -141,6 +186,7 @@ function convertBlockChildren(children: Content[], schema: Schema): PmNode[] {
       const htmlVal = (child as { value: string }).value;
       result.push(schema.nodes.htmlBlock.create({ content: htmlVal }));
       i++;
+      pendingColwidths = null;
       continue;
     }
 
@@ -166,6 +212,7 @@ function convertBlockChildren(children: Content[], schema: Schema): PmNode[] {
         if (dlResult) {
           result.push(dlResult.node);
           i = dlResult.endIndex + 1;
+          pendingColwidths = null;
           continue;
         }
       }
@@ -176,9 +223,38 @@ function convertBlockChildren(children: Content[], schema: Schema): PmNode[] {
       if (Array.isArray(node)) {
         result.push(...node);
       } else {
-        result.push(node);
+        // §5.5: Apply pending colwidths to table node
+        if (
+          pendingColwidths &&
+          child.type === "table" &&
+          !Array.isArray(node)
+        ) {
+          // Count logical columns from first row of the table
+          const firstRow = node.firstChild;
+          let logicalCols = 0;
+          if (firstRow) {
+            firstRow.forEach((cell) => {
+              logicalCols += (cell.attrs.colspan as number) || 1;
+            });
+          }
+          // Only apply if colwidths length matches column count
+          if (pendingColwidths.length === logicalCols) {
+            result.push(applyColwidthsToTable(node, pendingColwidths));
+          } else {
+            result.push(node);
+          }
+          pendingColwidths = null;
+        } else {
+          result.push(node);
+        }
       }
     }
+
+    // Clear pendingColwidths if the current child was not a table
+    if (child.type !== "table") {
+      pendingColwidths = null;
+    }
+
     i++;
   }
 

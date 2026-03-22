@@ -8,7 +8,7 @@ import type { EditorView } from "@tiptap/pm/view";
  * actual width, and writes colwidth attributes so that prosemirror-tables'
  * built-in columnResizing can manage them properly.
  */
-import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Plugin, PluginKey, type Transaction } from "@tiptap/pm/state";
 
 const pluginKey = new PluginKey("baramTableColwidthInit");
 
@@ -57,6 +57,7 @@ export function createColResizePlugin(): Plugin {
                   tr = tr.setNodeMarkup(cellPos, undefined, {
                     ...cell.attrs,
                     colwidth: colwidthArr,
+                    userResized: false,
                   });
                   changed = true;
                   cellInRowOffset += cell.nodeSize;
@@ -108,4 +109,62 @@ function tableHasColwidths(tableNode: any): boolean {
     if (!cw || cw.some((w: number) => !w)) return false;
   }
   return true;
+}
+
+/**
+ * Tracks user-initiated column resizes from prosemirror-tables' columnResizing
+ * plugin and marks affected cells with `userResized: true`.
+ *
+ * This distinguishes user-resized columns (which should be persisted to markdown
+ * as `<!-- colwidths:... -->`) from auto-measured columns (which should not).
+ */
+const userResizeTrackerKey = new PluginKey("baramUserResizeTracker");
+
+export function createUserResizeTracker(): Plugin {
+  return new Plugin({
+    key: userResizeTrackerKey,
+    appendTransaction(
+      transactions: readonly Transaction[],
+      _oldState,
+      newState,
+    ) {
+      // Detect columnResizing plugin activity (drag-to-resize)
+      const hasResizeMeta = transactions.some(
+        (tr) => tr.getMeta("tableColumnResizing$") != null,
+      );
+      if (!hasResizeMeta) return null;
+
+      // Mark all cells with colwidth as userResized
+      let tr = newState.tr;
+      let changed = false;
+      newState.doc.descendants((node, pos) => {
+        if (node.type.name !== "table") return true;
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        node.forEach((row: any, rowOffset: number) => {
+          let cellInRowOffset = 0;
+          for (let i = 0; i < row.childCount; i++) {
+            const cell = row.child(i);
+            const cw = cell.attrs.colwidth as null | number[];
+            if (cw && !cell.attrs.userResized) {
+              const cellPos = pos + 1 + rowOffset + 1 + cellInRowOffset;
+              tr = tr.setNodeMarkup(cellPos, undefined, {
+                ...cell.attrs,
+                userResized: true,
+              });
+              changed = true;
+            }
+            cellInRowOffset += cell.nodeSize;
+          }
+        });
+        return false;
+      });
+
+      if (changed) {
+        tr.setMeta("addToHistory", false);
+        return tr;
+      }
+      return null;
+    },
+  });
 }
