@@ -19,8 +19,8 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use commands::{
-    config_cmd, embedding_cmd, export_cmd, fs_cmd, git_cmd, index_cmd, keyring_cmd, llm_cmd,
-    plugin_cmd, search_cmd, snapshot_cmd, tag_cmd,
+    config_cmd, context_cmd, embedding_cmd, export_cmd, fs_cmd, git_cmd, index_cmd, keyring_cmd,
+    llm_cmd, plugin_cmd, search_cmd, snapshot_cmd, tag_cmd,
 };
 use tauri::{Emitter, Manager};
 
@@ -79,6 +79,7 @@ pub fn run() {
         .manage(PendingOpenFiles(Mutex::new(Vec::new())))
         .manage(VaultRootState(tokio::sync::RwLock::new(None)))
         .manage(WatcherState(std::sync::Mutex::new(None)))
+        .manage(context::ContextManager::new())
         .manage(index_cmd::LinkIndexState(tokio::sync::Mutex::new(
             index::LinkIndex::new(),
         )))
@@ -162,6 +163,12 @@ pub fn run() {
             embedding_cmd::index_vault,
             embedding_cmd::index_status,
             embedding_cmd::index_file,
+            context_cmd::add_context,
+            context_cmd::remove_context,
+            context_cmd::set_active_context,
+            context_cmd::get_contexts,
+            context_cmd::get_vault_config,
+            context_cmd::init_vault,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
