@@ -5,7 +5,8 @@ import { Table } from "@tiptap/extension-table";
 import { TableCell } from "@tiptap/extension-table-cell";
 import { TableHeader } from "@tiptap/extension-table-header";
 import { TableRow } from "@tiptap/extension-table-row";
-import { TextSelection } from "@tiptap/pm/state";
+import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
+import { selectionCell, TableMap } from "@tiptap/pm/tables";
 
 import { resolveShortcut } from "../utils/shortcut-resolver";
 import {
@@ -28,7 +29,41 @@ export const BaramTable = Table.extend({
     // Parent returns [columnResizing, tableEditing] when resizable: true.
     // columnResizing handles the actual drag-to-resize.
     // createColResizePlugin initializes colwidth on tables from markdown.
+
+    // Shift+Enter inside table cell → insert hardBreak.
+    // Uses a ProseMirror plugin with handleKeyDown (DOM-level) because
+    // Tiptap keyboard shortcuts may not fire for Shift-Enter in WKWebView.
+    // Shift+Enter inside table cell → insert hardBreak (line break).
+    // WKWebView does NOT fire beforeinput for Shift+Enter, so we use handleKeyDown.
+    const shiftEnterPlugin = new Plugin({
+      key: new PluginKey("tableShiftEnter"),
+      props: {
+        handleKeyDown: (view, event) => {
+          if (!event.shiftKey || event.key !== "Enter") return false;
+
+          const { $from } = view.state.selection;
+          let inCell = false;
+          for (let d = $from.depth; d > 0; d--) {
+            const name = $from.node(d).type.name;
+            if (name === "tableCell" || name === "tableHeader") {
+              inCell = true;
+              break;
+            }
+          }
+          if (!inCell) return false;
+
+          event.preventDefault();
+
+          const { tr, schema } = view.state;
+          tr.replaceSelectionWith(schema.nodes.hardBreak.create(), false);
+          view.dispatch(tr.scrollIntoView());
+          return true;
+        },
+      },
+    });
+
     return [
+      shiftEnterPlugin, // must be first to intercept before tableEditing
       ...(this.parent?.() || []),
       createColResizePlugin(),
       createUserResizeTracker(),
@@ -39,15 +74,51 @@ export const BaramTable = Table.extend({
   addKeyboardShortcuts() {
     return {
       ...this.parent?.(),
+      // Shift+Enter handled via ProseMirror plugin (see addProseMirrorPlugins)
       // §5.5 M10: Merge or split cells (Cmd+M)
       [resolveShortcut("formatting.tableMerge", "Mod-m")]: () =>
         this.editor.commands.mergeOrSplit(),
-      // §5.5 Tier 3: Markdown pipe input auto table creation
-      // `| Header 1 | Header 2 |` + Enter → auto-create table
+      // Inside table cell: Enter moves to the cell below (or adds row).
+      // Shift+Enter creates a hardBreak (line break) within the cell.
       Enter: () => {
         const { state, view } = this.editor;
         const { $from } = state.selection;
 
+        // Check if cursor is inside a table cell → move DOWN to the cell below
+        for (let d = $from.depth; d > 0; d--) {
+          const nodeType = $from.node(d).type.name;
+          if (nodeType === "tableCell" || nodeType === "tableHeader") {
+            // Find the cell below using TableMap
+            const $cell = selectionCell(state);
+            if (!$cell) return false;
+            const table = $cell.node(-1);
+            const tableStart = $cell.start(-1);
+            const map = TableMap.get(table);
+            const cellPos = $cell.pos - tableStart;
+            const cellIndex = map.map.indexOf(cellPos);
+            if (cellIndex === -1) return false;
+            const col = cellIndex % map.width;
+            const row = Math.floor(cellIndex / map.width);
+
+            if (row + 1 < map.height) {
+              // Move to cell below
+              const belowCellPos =
+                tableStart + map.map[(row + 1) * map.width + col];
+              const $below = state.doc.resolve(belowCellPos);
+              view.dispatch(
+                state.tr
+                  .setSelection(TextSelection.near($below, 1))
+                  .scrollIntoView(),
+              );
+              return true;
+            }
+            // At last row — add a new row and move into it
+            return this.editor.chain().addRowAfter().goToNextCell().run();
+          }
+        }
+
+        // §5.5 Tier 3: Markdown pipe input auto table creation
+        // `| Header 1 | Header 2 |` + Enter → auto-create table
         // Only trigger in a top-level paragraph (not inside table/other blocks)
         if ($from.parent.type.name !== "paragraph") return false;
         if ($from.depth > 1) return false;
@@ -109,6 +180,10 @@ export const BaramTableRow = TableRow.extend({
 });
 
 export const BaramTableCell = TableCell.extend({
+  // Restrict to paragraphs only — prevents lists, blockquotes, headings inside cells.
+  // Line breaks within a cell use hardBreak (Shift+Enter).
+  content: "paragraph+",
+
   addAttributes() {
     return {
       ...this.parent?.(),
@@ -135,6 +210,8 @@ export const BaramTableCell = TableCell.extend({
 });
 
 export const BaramTableHeader = TableHeader.extend({
+  content: "paragraph+",
+
   addAttributes() {
     return {
       ...this.parent?.(),
