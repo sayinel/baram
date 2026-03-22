@@ -212,7 +212,9 @@ export function CalloutView({
       </div>
 
       <NodeViewContent
-        className={`callout-body${collapsed ? "callout-body-collapsed" : ""}`}
+        className={
+          collapsed ? "callout-body callout-body-collapsed" : "callout-body"
+        }
       />
     </NodeViewWrapper>
   );

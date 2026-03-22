@@ -252,7 +252,7 @@ function App() {
   useFileWatcher();
 
   // Page zoom — trackpad pinch + Cmd+/Cmd-/Cmd+0
-  useZoom();
+  useZoom(editor);
 
   // External file drag & drop — Tauri OS-level file drop (Feature 1 & 2)
   useExternalDrop({ editor });

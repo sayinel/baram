@@ -8,6 +8,10 @@ import { TableRow } from "@tiptap/extension-table-row";
 import { TextSelection } from "@tiptap/pm/state";
 
 import { resolveShortcut } from "../utils/shortcut-resolver";
+import {
+  createColResizePlugin,
+  createUserResizeTracker,
+} from "./plugins/table-col-resize";
 import { createVirtualScrollPlugin } from "./plugins/table-virtual-scroll";
 
 // §5.5 Tier 3: Table.extend() with resizable columns + pipe-input auto creation
@@ -21,7 +25,15 @@ export const BaramTable = Table.extend({
   },
 
   addProseMirrorPlugins() {
-    return [...(this.parent?.() || []), createVirtualScrollPlugin()];
+    // Parent returns [columnResizing, tableEditing] when resizable: true.
+    // columnResizing handles the actual drag-to-resize.
+    // createColResizePlugin initializes colwidth on tables from markdown.
+    return [
+      ...(this.parent?.() || []),
+      createColResizePlugin(),
+      createUserResizeTracker(),
+      createVirtualScrollPlugin(),
+    ];
   },
 
   addKeyboardShortcuts() {
@@ -86,7 +98,8 @@ export const BaramTable = Table.extend({
     };
   },
 }).configure({
-  resizable: true, // §5.5 Tier 3: column width drag resize (session only)
+  resizable: true, // §5.5 Tier 3: columnResizing + TableView (colgroup)
+  handleWidth: 10, // wider detection zone (default 5 is too narrow with border-collapse)
   lastColumnResizable: true,
   allowTableNodeSelection: true,
 });
@@ -100,6 +113,7 @@ export const BaramTableCell = TableCell.extend({
     return {
       ...this.parent?.(),
       alignment: { default: null },
+      userResized: { default: false, rendered: false },
     };
   },
 
@@ -125,6 +139,7 @@ export const BaramTableHeader = TableHeader.extend({
     return {
       ...this.parent?.(),
       alignment: { default: null },
+      userResized: { default: false, rendered: false },
     };
   },
 
