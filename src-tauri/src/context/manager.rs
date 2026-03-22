@@ -13,9 +13,10 @@ use super::vault_config::{load_vault_config, VaultConfig};
 
 /// Internal state kept per registered context entry.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ContextState {
     pub info: ContextInfo,
-    /// Canonicalized path (symlink-resolved).
+    /// Canonicalized path (symlink-resolved). Used by validate_path (M2+).
     pub canonical_path: PathBuf,
     /// VaultConfig loaded from `.baram/config.json` (only for Vault contexts).
     pub config: Option<VaultConfig>,
@@ -144,6 +145,7 @@ impl ContextManager {
     /// - `Vault`/`Folder` context: path must start with the context root.
     ///
     /// Uses canonicalization on both sides to prevent symlink traversal.
+    #[allow(dead_code)] // M2: will be called from fs_cmd when contextId param is added
     pub async fn validate_path(&self, path: &str, context_id: &str) -> Result<(), String> {
         let map = self.contexts.read().await;
         let state = map
@@ -173,6 +175,7 @@ impl ContextManager {
     ///
     /// If no context is active, all paths are allowed (backward-compatibility with
     /// single-vault mode where `VaultRootState` already handles confinement).
+    #[allow(dead_code)] // M2: will replace check_vault in fs_cmd
     pub async fn validate_path_active(&self, path: &str) -> Result<(), String> {
         let active = self.active_id.read().await.clone();
         match active {
@@ -195,6 +198,7 @@ impl ContextManager {
     // ── Alias resolution ───────────────────────────────────────────────────────
 
     /// Resolve an alias string to a context id.
+    #[allow(dead_code)] // M3: cross-vault link resolution
     pub async fn resolve_alias(&self, alias: &str) -> Option<String> {
         self.aliases.read().await.get(alias).cloned()
     }

@@ -179,14 +179,16 @@ mod tests {
     #[test]
     fn save_and_load_roundtrip() {
         let dir = TempDir::new().unwrap();
-        let mut cfg = VaultConfig::default();
-        cfg.vault = Some(VaultSection {
-            vault_type: Some("journal".to_string()),
-            alias: Some("my-journal".to_string()),
-        });
-        cfg.appearance = Some(AppearanceSection {
-            theme: Some("dark".to_string()),
-        });
+        let cfg = VaultConfig {
+            vault: Some(VaultSection {
+                vault_type: Some("journal".to_string()),
+                alias: Some("my-journal".to_string()),
+            }),
+            appearance: Some(AppearanceSection {
+                theme: Some("dark".to_string()),
+            }),
+            ..Default::default()
+        };
         save_vault_config(dir.path(), &cfg).unwrap();
 
         let loaded = load_vault_config(dir.path()).unwrap();
