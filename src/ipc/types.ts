@@ -10,6 +10,20 @@ export interface BacklinkEntry {
   targetPath: string;
 }
 
+export interface ContextInfo {
+  addedAt: number;
+  alias?: string;
+  color: string;
+  contextType: ContextType;
+  id: string;
+  label: string;
+  path: string;
+  vaultType?: VaultType;
+}
+
+// §80 Context types
+export type ContextType = "file" | "folder" | "vault";
+
 export interface CustomExportItem {
   command: string;
   extension: string;
@@ -318,7 +332,6 @@ export interface TiptapExtensionDef {
   name: string;
   type: string; // "node" | "mark" | "plugin"
 }
-
 // §34 Unlinked Mentions
 export interface UnlinkedMention {
   context: string;
@@ -326,3 +339,31 @@ export interface UnlinkedMention {
   matchText: string;
   sourcePath: string;
 }
+
+export interface VaultConfig {
+  ai?: { contextScope?: string; model?: string; privacyMode?: boolean };
+  appearance?: { theme?: string };
+  crossVaultHints?: Record<string, { lastKnownPath: string }>;
+  editor?: {
+    dailyNotesFolder?: string;
+    defaultNewFileLocation?: string;
+    skillsFolder?: string;
+  };
+  extensions?: { disabled?: string[]; enabled?: string[] };
+  git?: { autoFetchInterval?: number; autoPushOnCommit?: boolean };
+  markdown?: {
+    enableMermaid?: boolean;
+    enableWikilink?: boolean;
+    serializationRules?: Record<string, unknown>;
+  };
+  snapshot?: { intervalMinutes?: number; maxCount?: number };
+  vault?: { alias: string; type: string };
+  workLog?: {
+    enabled?: boolean;
+    fileNameFormat?: string;
+    folder?: string;
+    template?: string;
+  };
+}
+
+export type VaultType = "general" | "journal";
