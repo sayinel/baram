@@ -46,6 +46,12 @@ interface ContextState {
     opts?: AddContextOpts,
   ) => Promise<ContextInfo>;
   contexts: ContextInfo[];
+
+  /**
+   * §85 M2b: Ensure a journal vault context exists and is active.
+   * Creates one if not present; activates it if not already active.
+   */
+  ensureJournalContext: (journalDir: string) => Promise<ContextInfo>;
   getContextForPath: (filePath: string) => ContextInfo | null;
   journalContext: () => ContextInfo | null;
   removeContext: (id: string) => Promise<void>;
@@ -92,6 +98,32 @@ export const useContextStore = create<ContextState>()(
             (c) => c.contextType === "vault" && c.vaultType === "journal",
           ) ?? null
         );
+      },
+
+      ensureJournalContext: async (journalDir: string) => {
+        const { contexts } = get();
+        // Check if journal context already exists
+        const existing = contexts.find(
+          (c) => c.contextType === "vault" && c.vaultType === "journal",
+        );
+        if (existing) {
+          // Activate if not active
+          if (get().activeContextId !== existing.id) {
+            await get().setActiveContext(existing.id);
+          }
+          return existing;
+        }
+        // Create new journal vault context
+        const created = await get().addContext("vault", journalDir, {
+          vaultType: "journal",
+          label: "journal",
+          color: "#10b981",
+        });
+        // Activate the newly created journal context
+        if (get().activeContextId !== created.id) {
+          await get().setActiveContext(created.id);
+        }
+        return created;
       },
 
       getContextForPath: (filePath: string) => {
