@@ -452,9 +452,8 @@ export const useFileStore = create<FileState>((set, get) => ({
 }));
 
 /**
- * §81 Cross-store sync: when contextStore's active context changes,
- * mirror the active context's path to fileStore.rootPath.
- * This establishes contextStore as the source of truth for rootPath.
+ * §81 Cross-store sync: when active context changes, switch file tree and index.
+ * contextStore is the source of truth; fileStore mirrors the active context.
  */
 useContextStore.subscribe((state, prevState) => {
   if (
@@ -462,10 +461,25 @@ useContextStore.subscribe((state, prevState) => {
     state.activeContextId
   ) {
     const ctx = state.contexts.find((c) => c.id === state.activeContextId);
-    if (ctx) {
+    if (ctx && ctx.contextType !== "file") {
       const fileStore = useFileStore.getState();
       if (fileStore.rootPath !== ctx.path) {
         fileStore.setRootPath(ctx.path);
+        // Reload file tree for the new context
+        listDir(ctx.path, true)
+          .then((entries) => {
+            const tree = buildFileTree(entries, ctx.path);
+            useFileStore.getState().setFileTree(tree);
+          })
+          .catch((err) =>
+            logger.warn("§81 context switch: listDir failed", err),
+          );
+        // Rebuild link index for the new context
+        refreshIndex(ctx.path)
+          .then(() => useLinkStore.getState().invalidate())
+          .catch((err) =>
+            logger.warn("§81 context switch: refreshIndex failed", err),
+          );
       }
     }
   }
