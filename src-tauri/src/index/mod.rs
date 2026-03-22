@@ -40,6 +40,8 @@ pub struct LinkEntry {
     pub link_type: String,
     /// Block ID for block refs/embeds (e.g., "abc123" from ^abc123)
     pub block_id: Option<String>,
+    /// §87 Vault alias for cross-vault links (e.g., "journal" from [[journal::note]])
+    pub target_vault_alias: Option<String>,
 }
 
 /// Backlink entry returned to the frontend
@@ -352,6 +354,7 @@ mod tests {
             context: "See [[architecture]] for details".to_string(),
             link_type: "wikilink".to_string(),
             block_id: None,
+            target_vault_alias: None,
         };
         index
             .outgoing
@@ -403,6 +406,7 @@ mod tests {
             context: "[[b]]".to_string(),
             link_type: "wikilink".to_string(),
             block_id: None,
+            target_vault_alias: None,
         };
         index
             .outgoing
@@ -562,6 +566,18 @@ mod tests {
         index.remove_file("/vault/notes/architecture.md");
 
         assert_eq!(index.resolve_target_from_map("architecture"), None);
+    }
+
+    // §87 Cross-vault alias in index
+    #[test]
+    fn test_cross_vault_link_indexed() {
+        let mut index = LinkIndex::new();
+        index.update_file_from_content("/vault/a.md", "See [[journal::2026-03-22]] here.");
+
+        let outgoing = index.outgoing.get("/vault/a.md").unwrap();
+        assert_eq!(outgoing.len(), 1);
+        assert_eq!(outgoing[0].target, "2026-03-22");
+        assert_eq!(outgoing[0].target_vault_alias, Some("journal".to_string()));
     }
 
     #[test]
