@@ -56,6 +56,52 @@ interface FileState {
 }
 
 /**
+ * §81 Open an additional folder as a new context without replacing the current one.
+ * Used by the "+" button in ContextTabBar.
+ */
+export async function addFolder(path: string): Promise<void> {
+  const contextStore = useContextStore.getState();
+
+  // Check if already open
+  const existing = contextStore.contexts.find((c) => c.path === path);
+  if (existing) {
+    await contextStore.setActiveContext(existing.id);
+    // Reload file tree for this context
+    const entries = await listDir(path, true);
+    const tree = buildFileTree(entries, path);
+    useFileStore.getState().setRootPath(path);
+    useFileStore.getState().setFileTree(tree);
+    return;
+  }
+
+  // Register in backend
+  await setVaultRoot(path);
+
+  // Register in frontend contextStore
+  const isVault = await listDir(path + "/.baram", false)
+    .then(() => true)
+    .catch(() => false);
+  await contextStore.addContext(isVault ? "vault" : "folder", path);
+
+  // Activate and load file tree
+  const activeCtx = contextStore.activeContext();
+  const rootPath = activeCtx?.path ?? path;
+
+  const entries = await listDir(rootPath, true);
+  const tree = buildFileTree(entries, rootPath);
+  useFileStore.getState().setRootPath(rootPath);
+  useFileStore.getState().setFileTree(tree);
+
+  // Update settings
+  useSettingsStore.getState().addRecentFolder(path);
+
+  // Build link index in background
+  refreshIndex(rootPath)
+    .then(() => useLinkStore.getState().invalidate())
+    .catch((err) => logger.warn("§30 addFolder: index build failed", err));
+}
+
+/**
  * Convert flat IPC FileEntry[] into nested tree structure.
  * Groups entries by parent directory, then recursively attaches children.
  * Directories sorted first, then alphabetical.
@@ -102,28 +148,31 @@ export function buildFileTree(
 
 /**
  * Open a folder: list its contents recursively, build tree, update store.
+ * §81 M2: Does NOT remove existing contexts — supports multi-context.
  */
 export async function openFolder(path: string): Promise<void> {
   await setVaultRoot(path);
 
-  // §81 Register in frontend contextStore (M1: single context only)
   const contextStore = useContextStore.getState();
-  // Remove any existing contexts (M1: only one at a time)
-  for (const ctx of [...contextStore.contexts]) {
-    await contextStore.removeContext(ctx.id).catch(() => {});
-  }
-  // Detect vault vs folder
-  const isVault = await listDir(path + "/.baram", false)
-    .then(() => true)
-    .catch(() => false);
-  await contextStore
-    .addContext(isVault ? "vault" : "folder", path)
-    .catch((err) => {
-      // Non-fatal: context registration is supplementary in M1
-      logger.warn("§81 openFolder: context registration failed", err);
-    });
 
-  // §81 Derive rootPath from contextStore's active context (delegation)
+  // Check if already open as a context — just activate it
+  const existing = contextStore.contexts.find((c) => c.path === path);
+  if (!existing) {
+    // Detect vault vs folder
+    const isVault = await listDir(path + "/.baram", false)
+      .then(() => true)
+      .catch(() => false);
+    await contextStore
+      .addContext(isVault ? "vault" : "folder", path)
+      .catch((err) => {
+        logger.warn("§81 openFolder: context registration failed", err);
+      });
+  } else {
+    // Activate existing context
+    await contextStore.setActiveContext(existing.id).catch(() => {});
+  }
+
+  // Derive rootPath from active context
   const activeCtx = contextStore.activeContext();
   const rootPath = activeCtx?.path ?? path;
 
@@ -132,8 +181,11 @@ export async function openFolder(path: string): Promise<void> {
   useFileStore.getState().setRootPath(rootPath);
   useFileStore.getState().setFileTree(tree);
 
-  // Build link index in background so Graph View / Backlinks have data immediately
-  refreshIndex(path)
+  // Update settings
+  useSettingsStore.getState().addRecentFolder(path);
+
+  // Build link index in background
+  refreshIndex(rootPath)
     .then(() => useLinkStore.getState().invalidate())
     .catch((err) => logger.warn("§30 openFolder: index build failed", err));
 }
