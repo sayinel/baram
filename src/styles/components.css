@@ -555,10 +555,15 @@
 }
 
 .table-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 28px;
   height: 28px;
+  padding: 0;
   font-size: 0.75rem;
   color: var(--color-text-secondary);
+  cursor: pointer;
   background: transparent;
   border: none;
   border-radius: 4px;
