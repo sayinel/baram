@@ -79,10 +79,47 @@ async fn check_vault(
 pub async fn set_vault_root(
     path: String,
     state: tauri::State<'_, crate::VaultRootState>,
+    ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
 ) -> Result<(), String> {
     check(&path)?;
+
+    // Keep old VaultRootState in sync (backward compat)
     let mut root = state.0.write().await;
     *root = Some(std::path::PathBuf::from(&path));
+    drop(root); // Release lock before async operations
+
+    // Also register/update in ContextManager
+    let dir_name = std::path::Path::new(&path)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "vault".to_string());
+
+    // Remove previous active context if any
+    if let Some(prev_id) = ctx_mgr.active_id().await {
+        let _ = ctx_mgr.remove(&prev_id).await;
+    }
+
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    let info = crate::context::ContextInfo {
+        id: format!(
+            "legacy-{:x}{:x}",
+            now_secs.as_secs(),
+            now_secs.subsec_nanos()
+        ),
+        context_type: crate::context::ContextType::Folder,
+        path: path.clone(),
+        label: dir_name,
+        color: "#3b82f6".to_string(),
+        alias: None,
+        vault_type: None,
+        added_at: now_secs.as_millis() as u64,
+    };
+
+    let added = ctx_mgr.add(info).await?;
+    ctx_mgr.set_active(&added.id).await?;
+
     Ok(())
 }
 
