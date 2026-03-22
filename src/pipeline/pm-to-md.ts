@@ -102,6 +102,7 @@ const INLINE_SERIALIZERS = new Map<string, InlineSerializerEntry>([
         display?: null | string;
         heading?: null | string;
         target: string;
+        vaultAlias?: null | string;
       }) => serializeWikilink(attrs),
     },
   ],
