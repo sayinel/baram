@@ -94,9 +94,13 @@ pub async fn set_vault_root(
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "vault".to_string());
 
-    // Remove previous active context if any
-    if let Some(prev_id) = ctx_mgr.active_id().await {
-        let _ = ctx_mgr.remove(&prev_id).await;
+    // M2: Check if this path is already registered — just activate it
+    {
+        let contexts = ctx_mgr.list().await;
+        if let Some(existing) = contexts.iter().find(|c| c.path == path) {
+            ctx_mgr.set_active(&existing.id).await?;
+            return Ok(());
+        }
     }
 
     let now_secs = std::time::SystemTime::now()
@@ -231,14 +235,15 @@ pub async fn watch_dir(
     app_handle: tauri::AppHandle,
     vault_state: tauri::State<'_, crate::VaultRootState>,
     watcher_state: tauri::State<'_, crate::WatcherState>,
+    ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
 ) -> Result<(), String> {
     check(&path)?;
     check_vault(&path, &vault_state).await?;
     let new_watcher = crate::fs::start_watching(&path, app_handle).map_err(|e| e.to_string())?;
-    // Replace old watcher — drops it, which closes the event channel,
-    // causing the previous watcher thread to exit naturally.
+    // M2: Store watcher per context (keyed by context id, falling back to path)
+    let watcher_key = ctx_mgr.active_id().await.unwrap_or_else(|| path.clone());
     let mut guard = watcher_state.0.lock().map_err(|e| e.to_string())?;
-    *guard = Some(new_watcher);
+    guard.insert(watcher_key, new_watcher);
     Ok(())
 }
 
