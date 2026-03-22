@@ -9,6 +9,7 @@
 /* 3. Layout */
 @import "./layout.css";
 @import "./file-tree.css";
+@import "./context-tab-bar.css";
 
 /* 4. Toolbar */
 @import "./toolbar.css";
