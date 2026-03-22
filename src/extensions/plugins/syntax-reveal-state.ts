@@ -98,6 +98,6 @@ export function findMarkRange(
   return null;
 }
 
-// Regex to parse expanded wikilink text: [[target#heading^blockId|display]]
+// Regex to parse expanded wikilink text: [[alias::target#heading^blockId|display]]
 export const WIKILINK_REGEX =
-  /^\[\[([^\]|#^]+)(?:#([^\]|^]+))?(?:\^([^\]|]+))?(?:\|([^\]]+))?\]\]$/;
+  /^\[\[(?:([a-zA-Z][\w-]*)::)?([^\]|#^]+)(?:#([^\]|^]+))?(?:\^([^\]|]+))?(?:\|([^\]]+))?\]\]$/;
