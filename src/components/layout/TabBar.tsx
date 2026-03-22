@@ -7,6 +7,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { Pin } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
+import { useContextStore } from "../../stores/context/context";
 import { isFileTab, useEditorStore } from "../../stores/editor/editor";
 
 const DRAG_THRESHOLD = 3; // px before drag activates
@@ -231,6 +232,8 @@ export function TabBar() {
     [],
   );
 
+  const getContextForPath = useContextStore.getState().getContextForPath;
+
   if (tabs.length === 0) return null;
 
   return (
@@ -273,6 +276,14 @@ export function TabBar() {
                 onMouseDown={(e) => handleTabMouseDown(e, index)}
               >
                 {tab.isPinned && <Pin className="tab-pin-icon" size={12} />}
+                <span
+                  className="tab-ctx-dot"
+                  style={{
+                    backgroundColor: isFileTab(tab)
+                      ? (getContextForPath(tab.filePath)?.color ?? "#9ca3af")
+                      : "#9ca3af",
+                  }}
+                />
                 <span className="tab-title">
                   {tab.isDirty && isFileTab(tab) ? "\u25CF " : ""}
                   {tab.title}
