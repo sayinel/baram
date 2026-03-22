@@ -5,6 +5,8 @@ import type { Editor } from "@tiptap/react";
 
 import { TextSelection } from "@tiptap/pm/state";
 
+import { viewportToContentCoords } from "../../utils/zoom-coords";
+
 interface ButtonState {
   /** Whether to insert before (true) or after (false) */
   before: boolean;
@@ -74,14 +76,16 @@ function findTablePos(
 }
 
 // Detection zone size around table edges
-const DETECT_OUTER = 24; // px outside the table edge
-const DETECT_INNER = 12; // px inside the table edge
+const DETECT_OUTER = 32; // px outside the table edge (wider for zoom tolerance)
+const DETECT_INNER = 16; // px inside the table edge
 
 export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
   const [button, setButton] = useState<ButtonState | null>(null);
   const rafRef = useRef(0);
   const hoveringBtnRef = useRef(false);
   const hideTimerRef = useRef(0);
+  // Lock: when a button is visible, keep it stable until mouse leaves the zone.
+  const lockedButtonRef = useRef<ButtonState | null>(null);
 
   const scheduleHide = useCallback(() => {
     if (hideTimerRef.current) return;
@@ -89,6 +93,7 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
       hideTimerRef.current = 0;
       if (!hoveringBtnRef.current) {
         setButton(null);
+        lockedButtonRef.current = null;
       }
     }, 100);
   }, []);
@@ -110,10 +115,13 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
         return;
       }
 
+      // Convert viewport mouse coords to content space (zoom-aware)
+      const mouse = viewportToContentCoords(e.clientX, e.clientY);
+
       const tableRect = tableEl.getBoundingClientRect();
       const nearTop =
-        e.clientY >= tableRect.top - DETECT_OUTER &&
-        e.clientY <= tableRect.top + DETECT_INNER;
+        mouse.y >= tableRect.top - DETECT_OUTER &&
+        mouse.y <= tableRect.top + DETECT_INNER;
 
       if (nearTop) {
         // Column insert mode: find nearest column boundary
@@ -126,23 +134,21 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
         let bestDist = Infinity;
 
         if (cells.length > 0) {
-          const dist = Math.abs(
-            e.clientX - cells[0].getBoundingClientRect().left,
-          );
+          const cellRect = cells[0].getBoundingClientRect();
+          const dist = Math.abs(mouse.x - cellRect.left);
           if (dist < bestDist) {
             bestDist = dist;
-            bestX = cells[0].getBoundingClientRect().left;
+            bestX = cellRect.left;
             bestColIdx = 0;
           }
         }
 
         for (let i = 0; i < cells.length; i++) {
-          const dist = Math.abs(
-            e.clientX - cells[i].getBoundingClientRect().right,
-          );
+          const cellRect = cells[i].getBoundingClientRect();
+          const dist = Math.abs(mouse.x - cellRect.right);
           if (dist < bestDist) {
             bestDist = dist;
-            bestX = cells[i].getBoundingClientRect().right;
+            bestX = cellRect.right;
             bestColIdx = i + 1;
           }
         }
@@ -152,13 +158,15 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
         const cellPos = findCellPos(editor, tablePos, 0, refCol);
         if (cellPos === null) return;
 
-        setButton({
+        const colBtn: ButtonState = {
           type: "col",
           x: bestX,
           y: tableRect.top,
           cellPos,
           before: isBeforeFirst,
-        });
+        };
+        setButton(colBtn);
+        lockedButtonRef.current = colBtn;
       } else {
         // Row insert mode: find nearest row boundary
         const rows = Array.from(
@@ -172,23 +180,21 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
         let bestDist = Infinity;
 
         if (rows.length > 0) {
-          const dist = Math.abs(
-            e.clientY - rows[0].getBoundingClientRect().top,
-          );
+          const rowRect = rows[0].getBoundingClientRect();
+          const dist = Math.abs(mouse.y - rowRect.top);
           if (dist < bestDist) {
             bestDist = dist;
-            bestY = rows[0].getBoundingClientRect().top;
+            bestY = rowRect.top;
             bestRowIdx = 0;
           }
         }
 
         for (let i = 0; i < rows.length; i++) {
-          const dist = Math.abs(
-            e.clientY - rows[i].getBoundingClientRect().bottom,
-          );
+          const rowRect = rows[i].getBoundingClientRect();
+          const dist = Math.abs(mouse.y - rowRect.bottom);
           if (dist < bestDist) {
             bestDist = dist;
-            bestY = rows[i].getBoundingClientRect().bottom;
+            bestY = rowRect.bottom;
             bestRowIdx = i + 1;
           }
         }
@@ -198,13 +204,15 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
         const cellPos = findCellPos(editor, tablePos, refRow, 0);
         if (cellPos === null) return;
 
-        setButton({
+        const rowBtn: ButtonState = {
           type: "row",
           x: tableRect.left,
           y: bestY,
           cellPos,
           before: isBeforeFirst,
-        });
+        };
+        setButton(rowBtn);
+        lockedButtonRef.current = rowBtn;
       }
     },
     [editor, cancelHide],
@@ -220,31 +228,68 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
         rafRef.current = 0;
         if (hoveringBtnRef.current) return;
 
+        // Convert viewport mouse coords to content space (zoom-aware)
+        const mouse = viewportToContentCoords(e.clientX, e.clientY);
+
         const target = e.target as HTMLElement;
         const tableEl = target.closest("table") as HTMLTableElement | null;
 
+        // If a button is already showing and mouse is OUTSIDE the table
+        // (in the outer zone, e.g. moving toward the button), keep it locked.
+        // But if mouse is INSIDE the table, allow free recomputation so the
+        // button follows the mouse to different column/row boundaries.
+        if (lockedButtonRef.current && !tableEl) {
+          const nearTable =
+            (document
+              .elementFromPoint(e.clientX + 20, e.clientY)
+              ?.closest("table") as HTMLTableElement | null) ??
+            (document
+              .elementFromPoint(e.clientX, e.clientY + 20)
+              ?.closest("table") as HTMLTableElement | null);
+
+          if (nearTable) {
+            const rect = nearTable.getBoundingClientRect();
+            const inZone =
+              mouse.x >= rect.left - DETECT_OUTER * 2 &&
+              mouse.x <= rect.right + DETECT_OUTER &&
+              mouse.y >= rect.top - DETECT_OUTER * 2 &&
+              mouse.y <= rect.bottom + DETECT_OUTER;
+            if (inZone) {
+              cancelHide();
+              return; // outside table, near it — keep button locked
+            }
+          }
+          // Too far from any table — clear and hide
+          lockedButtonRef.current = null;
+          scheduleHide();
+          return;
+        }
+
         if (!tableEl) {
           // Mouse left the table — check if we're in the outer detection zone
-          // by looking for tables near the cursor
           const elBelow = document.elementFromPoint(e.clientX + 20, e.clientY);
-          const elRight = document.elementFromPoint(e.clientX, e.clientY + 20);
+          const elAbove = document.elementFromPoint(e.clientX, e.clientY + 20);
+          const elLeft = document.elementFromPoint(
+            e.clientX + 20,
+            e.clientY + 20,
+          );
           const nearTable =
             (elBelow?.closest("table") as HTMLTableElement | null) ??
-            (elRight?.closest("table") as HTMLTableElement | null);
+            (elAbove?.closest("table") as HTMLTableElement | null) ??
+            (elLeft?.closest("table") as HTMLTableElement | null);
 
           if (!nearTable) {
             scheduleHide();
             return;
           }
 
-          // Check if we're in the outer zone of this nearby table
           const rect = nearTable.getBoundingClientRect();
           const inTopZone =
-            e.clientY >= rect.top - DETECT_OUTER &&
-            e.clientY <= rect.top + DETECT_INNER;
+            mouse.y >= rect.top - DETECT_OUTER &&
+            mouse.y <= rect.top + DETECT_INNER;
           const inLeftZone =
-            e.clientX >= rect.left - DETECT_OUTER &&
-            e.clientX <= rect.left + DETECT_INNER;
+            mouse.x >= rect.left - DETECT_OUTER &&
+            mouse.x <= rect.left + DETECT_INNER;
 
           if (!inTopZone && !inLeftZone) {
             scheduleHide();
@@ -257,11 +302,11 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
 
         const tableRect = tableEl.getBoundingClientRect();
         const nearTop =
-          e.clientY >= tableRect.top - DETECT_OUTER &&
-          e.clientY <= tableRect.top + DETECT_INNER;
+          mouse.y >= tableRect.top - DETECT_OUTER &&
+          mouse.y <= tableRect.top + DETECT_INNER;
         const nearLeft =
-          e.clientX >= tableRect.left - DETECT_OUTER &&
-          e.clientX <= tableRect.left + DETECT_INNER;
+          mouse.x >= tableRect.left - DETECT_OUTER &&
+          mouse.x <= tableRect.left + DETECT_INNER;
 
         if (!nearTop && !nearLeft) {
           scheduleHide();
@@ -271,7 +316,7 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
         computeButton(tableEl, e);
       });
     },
-    [scheduleHide, computeButton],
+    [cancelHide, scheduleHide, computeButton],
   );
 
   useEffect(() => {
@@ -346,7 +391,9 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
 
   if (!button) return null;
 
-  // Position: centered on the edge point
+  // Position: centered on the edge point.
+  // getBoundingClientRect() returns visual viewport coords even inside
+  // a CSS zoom container — use raw values for position:fixed.
   const isCol = button.type === "col";
   const style: React.CSSProperties = {
     left: isCol ? button.x - 10 : button.x - 22,
