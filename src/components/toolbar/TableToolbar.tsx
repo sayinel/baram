@@ -71,20 +71,93 @@ const HeaderColIcon = (): ReactNode => (
     />
   </svg>
 );
-// Merge cells icon: two cells becoming one
+// Merge cells icon: 3×2 grid, middle row merged into one cell
 const MergeCellsIcon = (): ReactNode => (
-  <svg {...S} strokeWidth={1.4}>
-    <rect height="10" rx="0.5" width="5" x="2" y="3" />
-    <rect height="10" rx="0.5" width="5" x="9" y="3" />
-    <line x1="7" x2="9" y1="6" y2="8" />
-    <line x1="7" x2="9" y1="10" y2="8" />
+  <svg {...S} strokeWidth={1.3}>
+    {/* Outer border */}
+    <rect height="12" rx="1" width="12" x="2" y="2" />
+    {/* Horizontal row dividers (3 rows) */}
+    <line x1="2" x2="14" y1="6" y2="6" />
+    <line x1="2" x2="14" y1="10" y2="10" />
+    {/* Vertical column divider — top and bottom rows only (middle row merged) */}
+    <line x1="8" x2="8" y1="2" y2="6" />
+    <line x1="8" x2="8" y1="10" y2="14" />
+    {/* Highlight merged middle row */}
+    <rect
+      fill="currentColor"
+      height="3.5"
+      opacity="0.25"
+      rx="0.3"
+      stroke="none"
+      width="11"
+      x="2.5"
+      y="6.3"
+    />
   </svg>
 );
-// Split cell icon: one cell becoming two
+// Split cell icon: 3×2 grid, middle row has dashed vertical divider
 const SplitCellsIcon = (): ReactNode => (
+  <svg {...S} strokeWidth={1.3}>
+    {/* Outer border */}
+    <rect height="12" rx="1" width="12" x="2" y="2" />
+    {/* Horizontal row dividers (3 rows) */}
+    <line x1="2" x2="14" y1="6" y2="6" />
+    <line x1="2" x2="14" y1="10" y2="10" />
+    {/* Vertical column divider — top and bottom rows solid */}
+    <line x1="8" x2="8" y1="2" y2="6" />
+    <line x1="8" x2="8" y1="10" y2="14" />
+    {/* Middle row: dashed divider (about to split) */}
+    <line strokeDasharray="1.5 1.5" x1="8" x2="8" y1="6" y2="10" />
+  </svg>
+);
+// Delete row icon: table row with X
+const DeleteRowIcon = (): ReactNode => (
   <svg {...S} strokeWidth={1.4}>
-    <rect height="10" rx="0.5" width="10" x="3" y="3" />
-    <line strokeDasharray="2 1.5" x1="8" x2="8" y1="3" y2="13" />
+    <rect height="12" rx="1" width="12" x="2" y="2" />
+    <line x1="2" x2="14" y1="6" y2="6" />
+    <line x1="2" x2="14" y1="10" y2="10" />
+    {/* X mark on middle row */}
+    <line
+      stroke="currentColor"
+      strokeWidth={1.8}
+      x1="5"
+      x2="11"
+      y1="6.5"
+      y2="9.5"
+    />
+    <line
+      stroke="currentColor"
+      strokeWidth={1.8}
+      x1="11"
+      x2="5"
+      y1="6.5"
+      y2="9.5"
+    />
+  </svg>
+);
+// Delete column icon: table column with X
+const DeleteColIcon = (): ReactNode => (
+  <svg {...S} strokeWidth={1.4}>
+    <rect height="12" rx="1" width="12" x="2" y="2" />
+    <line x1="6" x2="6" y1="2" y2="14" />
+    <line x1="10" x2="10" y1="2" y2="14" />
+    {/* X mark on middle column */}
+    <line
+      stroke="currentColor"
+      strokeWidth={1.8}
+      x1="6.5"
+      x2="9.5"
+      y1="5"
+      y2="11"
+    />
+    <line
+      stroke="currentColor"
+      strokeWidth={1.8}
+      x1="9.5"
+      x2="6.5"
+      y1="5"
+      y2="11"
+    />
   </svg>
 );
 // Copy as Markdown icon: two overlapping rectangles with "MD" label
@@ -342,6 +415,21 @@ export function TableToolbar({ editor }: TableToolbarProps) {
         title="Split Cell"
       >
         <SplitCellsIcon />
+      </button>
+      <div className="table-toolbar-separator" />
+      <button
+        className="table-toolbar-btn table-toolbar-btn-danger"
+        onClick={() => editor.chain().focus().deleteRow().run()}
+        title="Delete Row"
+      >
+        <DeleteRowIcon />
+      </button>
+      <button
+        className="table-toolbar-btn table-toolbar-btn-danger"
+        onClick={() => editor.chain().focus().deleteColumn().run()}
+        title="Delete Column"
+      >
+        <DeleteColIcon />
       </button>
       <div className="table-toolbar-separator" />
       <button
