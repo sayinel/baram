@@ -7,12 +7,29 @@ import {
   resolveWikilinkTarget,
 } from "../editor/wikilink-nav";
 
-// Mock file store
-vi.mock("../../stores/file/file", () => ({
-  useFileStore: {
-    getState: vi.fn(),
+// Mock context store (must be before file store mock since file.ts imports it)
+vi.mock("../../stores/context/context", () => ({
+  useContextStore: {
+    getState: vi.fn(() => ({
+      activeContext: () => null,
+    })),
+    subscribe: vi.fn(),
   },
 }));
+
+// Mock file store
+vi.mock("../../stores/file/file", async () => {
+  const { useContextStore } = await import("../../stores/context/context");
+  return {
+    useFileStore: {
+      getState: vi.fn(),
+    },
+    isActiveContextJournal: vi.fn(() => {
+      const ctx = useContextStore.getState().activeContext();
+      return ctx?.vaultType === "journal";
+    }),
+  };
+});
 
 // Mock editor store
 vi.mock("../../stores/editor/editor", () => ({

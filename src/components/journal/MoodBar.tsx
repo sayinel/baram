@@ -12,7 +12,7 @@ import {
 import { useLLMStream } from "../../hooks/use-llm-stream";
 import { getVaultTags } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor/editor";
-import { useFileStore } from "../../stores/file/file";
+import { isActiveContextJournal, useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import {
   type EnergyValue,
@@ -82,8 +82,8 @@ function findFrontmatter(editor: Editor): null | { node: PMNode; pos: number } {
 
 /** Check if the active file is a journal daily note */
 function isJournalDailyNote(): boolean {
-  const { isJournalScoped } = useFileStore.getState();
-  if (!isJournalScoped) return false;
+  // §85 M2b: Derive journal scope from context store
+  if (!isActiveContextJournal()) return false;
 
   const { tabs, activeTabId } = useEditorStore.getState();
   const activeTab = tabs.find((t) => t.id === activeTabId);
