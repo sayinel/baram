@@ -7,6 +7,7 @@ import type {
   Node as MdastNode,
   Parent as MdastParent,
   Paragraph,
+  PhrasingContent,
   Table,
   TableCell,
   TableRow,
@@ -61,7 +62,15 @@ export const tableTransformer: NodeTransformerEntry = {
       table.children.forEach((row, rowIndex) => {
         const cells: PmNode[] = [];
         row.children.forEach((cell, colIndex) => {
-          const cellChildren = cell.children;
+          // Preprocess: convert <br> HTML nodes to mdast "break" so the
+          // inline converter creates hardBreak ProseMirror nodes.
+          const cellChildren = cell.children.map((child) =>
+            child.type === "html" &&
+            typeof (child as { value?: string }).value === "string" &&
+            /^<br\s*\/?>$/i.test((child as { value: string }).value.trim())
+              ? ({ type: "break" } as unknown as typeof child)
+              : child,
+          );
           const cellContent =
             cellChildren.length > 0
               ? convertChildren({
@@ -242,10 +251,20 @@ export const tableTransformer: NodeTransformerEntry = {
         if (entry && entry.isMain) {
           // Main cell — serialize its content
           const children = convertChildren(entry.cell);
-          const cellChildren =
+          let cellChildren =
             children.length === 1 && children[0].type === "paragraph"
               ? (children[0] as Paragraph).children
               : children;
+
+          // Replace mdast "break" nodes with HTML "<br>" for GFM table cells.
+          // GFM cells are single-line; standard break (\ or trailing spaces)
+          // doesn't work. <br> HTML is preserved by remark-stringify.
+          cellChildren = cellChildren.map((child) =>
+            child.type === "break"
+              ? ({ type: "html", value: "<br>" } as unknown as PhrasingContent)
+              : child,
+          );
+
           cells.push({
             type: "tableCell",
             children: cellChildren.length > 0 ? cellChildren : [],
