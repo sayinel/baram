@@ -55,7 +55,7 @@ pub struct BacklinkResult {
 }
 
 /// Link graph for the frontend
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Default)]
 pub struct LinkGraph {
     pub nodes: Vec<String>,
     pub edges: Vec<LinkEdge>,
