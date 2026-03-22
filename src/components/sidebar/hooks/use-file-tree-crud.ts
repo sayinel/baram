@@ -101,6 +101,7 @@ export function useFileTreeCrud(): UseFileTreeCrudReturn {
           });
           setFileContent(fullPath, "");
           openTab({
+            contextId: "",
             id: crypto.randomUUID(),
             filePath: fullPath,
             title: name.trim(),

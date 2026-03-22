@@ -2,6 +2,8 @@
 import { create } from "zustand";
 
 export interface EditorTab {
+  /** §83 The context this tab belongs to */
+  contextId: string;
   filePath: string;
   id: string;
   isDirty: boolean;
@@ -260,6 +262,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       return;
     }
     open({
+      contextId: "",
       id: crypto.randomUUID(),
       filePath: "",
       title: "Graph View",

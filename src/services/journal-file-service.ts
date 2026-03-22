@@ -96,6 +96,7 @@ export async function openFileInTab(
   } else {
     useFileStore.getState().setFileContent(filePath, content);
     edStore.openTab({
+      contextId: "",
       id: crypto.randomUUID(),
       filePath,
       title: filePath.split("/").pop() ?? "Journal",

@@ -54,6 +54,7 @@ export function SkillGalleryPanel() {
       const tabId = `tab-${skill.filePath}`;
       const fileName = skill.filePath.split("/").pop() ?? skill.name;
       openTab({
+        contextId: "",
         id: tabId,
         filePath: skill.filePath,
         title: fileName,

@@ -44,7 +44,14 @@ export function useFileOperations({
         title = tabNumber === 1 ? "Untitled" : `Untitled ${tabNumber}`;
       }
       useFileStore.getState().setFileContent(id, "");
-      openTab({ id, filePath: "", title, isDirty: false, isPinned: false });
+      openTab({
+        contextId: "",
+        id,
+        filePath: "",
+        title,
+        isDirty: false,
+        isPinned: false,
+      });
     },
     [openTab],
   );
@@ -72,6 +79,7 @@ export function useFileOperations({
       const fileName = selected.split("/").pop() ?? "Unknown";
       setFileContent(selected, content);
       openTab({
+        contextId: "",
         id: crypto.randomUUID(),
         filePath: selected,
         title: fileName,
@@ -259,6 +267,7 @@ export function useFileOperations({
       const fileName = filePath.split("/").pop() ?? "Unknown";
       useFileStore.getState().setFileContent(filePath, content);
       useEditorStore.getState().openTab({
+        contextId: "",
         id: crypto.randomUUID(),
         filePath,
         title: fileName,

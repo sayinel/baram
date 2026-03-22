@@ -150,6 +150,7 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
           const fileName = filePath.split("/").pop() ?? filePath;
           useFileStore.getState().setFileContent(filePath, content);
           openTab({
+            contextId: "",
             id: crypto.randomUUID(),
             filePath,
             title: fileName,

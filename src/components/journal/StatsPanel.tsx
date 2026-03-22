@@ -269,6 +269,7 @@ export function StatsPanel({
         const fileName = filePath.split("/").pop() ?? dateBasename;
         useFileStore.getState().setFileContent(filePath, content);
         useEditorStore.getState().openTab({
+          contextId: "",
           id: crypto.randomUUID(),
           filePath,
           title: fileName,

@@ -19,6 +19,7 @@ export function CitationLink({ index, filePath, heading }: CitationLinkProps) {
     const { openTab } = useEditorStore.getState();
     const title = filePath.split("/").pop() ?? filePath;
     openTab({
+      contextId: "",
       id: filePath,
       title,
       filePath,
