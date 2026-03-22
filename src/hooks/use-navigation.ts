@@ -7,7 +7,7 @@ import { writeFile } from "../ipc/invoke";
 import { ensureJournalFile } from "../services/journal-file-service";
 import { useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
-import { useFileStore } from "../stores/file/file";
+import { isActiveContextJournal, useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
 import { useNavigationStore } from "../stores/ui/navigation";
 import {
@@ -81,10 +81,11 @@ export function useNavigation({
 
       // File doesn't exist → create it, refresh tree, then open
       if (!resolved) {
-        const { rootPath, isJournalScoped } = useFileStore.getState();
+        const { rootPath } = useFileStore.getState();
         if (!rootPath) return;
 
-        // §56l Journal scope: create new notes in {journalDir}/notes/
+        // §85 M2b: Journal scope — create new notes in {journalDir}/notes/
+        const isJournalScoped = isActiveContextJournal();
         let newPath: string;
         if (isJournalScoped) {
           const { journalDirectory } = useSettingsStore.getState();

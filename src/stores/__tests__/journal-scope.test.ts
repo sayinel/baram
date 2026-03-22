@@ -1,10 +1,11 @@
 /**
  * §56b Phase A — Journal Workspace Scoping & Layout Tests
- * TDD Red Phase: all tests should FAIL before implementation
+ * §85 M2b — Journal VaultContext migration tests
  */
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { useFileStore } from "../file/file";
+import { useContextStore } from "../context/context";
+import { isActiveContextJournal, useFileStore } from "../file/file";
 import { BUILTIN_PRESETS, useWorkspaceStore } from "../file/workspace";
 import { useSettingsStore } from "../settings/store";
 import { useUIStore } from "../ui/ui";
@@ -136,6 +137,89 @@ describe("§56b Journal workspace preset update", () => {
     expect(ui.sidebarPanel).toBe("calendar");
     expect(ui.rightPanelOpen).toBe(true);
     expect(ui.rightPanelMode).toBe("memories");
+  });
+});
+
+describe("§85 M2b isActiveContextJournal", () => {
+  beforeEach(async () => {
+    await new Promise((r) => setTimeout(r, 0));
+    useContextStore.setState({
+      contexts: [],
+      activeContextId: null,
+    });
+  });
+
+  it("returns false when no active context", () => {
+    expect(isActiveContextJournal()).toBe(false);
+  });
+
+  it("returns false when active context is a regular vault", () => {
+    useContextStore.setState({
+      contexts: [
+        {
+          id: "ctx-1",
+          contextType: "vault",
+          path: "/Users/test/vault",
+          label: "vault",
+          color: "#3b82f6",
+          addedAt: Date.now(),
+        },
+      ],
+      activeContextId: "ctx-1",
+    });
+    expect(isActiveContextJournal()).toBe(false);
+  });
+
+  it("returns true when active context is a journal vault", () => {
+    useContextStore.setState({
+      contexts: [
+        {
+          id: "ctx-1",
+          contextType: "vault",
+          path: "/Users/test/vault",
+          label: "vault",
+          color: "#3b82f6",
+          addedAt: Date.now(),
+        },
+        {
+          id: "ctx-j",
+          contextType: "vault",
+          path: "/Users/test/journals",
+          label: "journal",
+          color: "#10b981",
+          vaultType: "journal",
+          addedAt: Date.now(),
+        },
+      ],
+      activeContextId: "ctx-j",
+    });
+    expect(isActiveContextJournal()).toBe(true);
+  });
+
+  it("returns false when journal context exists but is not active", () => {
+    useContextStore.setState({
+      contexts: [
+        {
+          id: "ctx-1",
+          contextType: "vault",
+          path: "/Users/test/vault",
+          label: "vault",
+          color: "#3b82f6",
+          addedAt: Date.now(),
+        },
+        {
+          id: "ctx-j",
+          contextType: "vault",
+          path: "/Users/test/journals",
+          label: "journal",
+          color: "#10b981",
+          vaultType: "journal",
+          addedAt: Date.now(),
+        },
+      ],
+      activeContextId: "ctx-1",
+    });
+    expect(isActiveContextJournal()).toBe(false);
   });
 });
 

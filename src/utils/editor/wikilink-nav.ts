@@ -1,7 +1,7 @@
 import { useEditorStore } from "../../stores/editor/editor";
 // §28 Wikilink navigation — resolve target to file path
 // §61 Namespace — relative path resolution (./  ../)
-import { useFileStore } from "../../stores/file/file";
+import { isActiveContextJournal, useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { flattenFileTree } from "../file-search";
 import { isDateString, resolveJournalDir } from "../journal/journal";
@@ -50,8 +50,11 @@ export function resolveRelativeTarget(
 export function resolveWikilinkTarget(
   target: string,
 ): null | { name: string; path: string } {
-  const { rootPath, fileTree, isJournalScoped } = useFileStore.getState();
+  const { rootPath, fileTree } = useFileStore.getState();
   if (!rootPath || fileTree.length === 0) return null;
+
+  // §85 M2b: Derive journal scope from context store
+  const isJournalScoped = isActiveContextJournal();
 
   const flat = flattenFileTree(fileTree, rootPath);
 

@@ -22,21 +22,33 @@ interface FileState {
   addFileEntry: (parentPath: string, entry: FileEntry) => void;
   /** Close the current folder and return to home screen */
   closeFolder: () => void;
-  /** §56b Enter journal scope: save rootPath, switch to journal directory */
+  /**
+   * §56b Enter journal scope: save rootPath, switch to journal directory
+   * @deprecated Use contextStore.ensureJournalContext() instead (§85 M2b)
+   */
   enterJournalScope: (journalDir: string) => void;
 
-  /** §56b Exit journal scope: restore original rootPath */
+  /**
+   * §56b Exit journal scope: restore original rootPath
+   * @deprecated Use context switching instead (§85 M2b)
+   */
   exitJournalScope: () => void;
   expandDir: (path: string) => void;
 
   // FileTree expanded directories (persisted across sidebar tab switches)
   expandedDirs: Set<string>;
   fileTree: FileEntry[];
+  /**
+   * @deprecated Use isActiveContextJournal() instead (§85 M2b)
+   */
   isJournalScoped: boolean;
   /** Move a file/folder entry to a new parent directory */
   moveFileEntry: (oldPath: string, newParentPath: string) => void;
   openFiles: Map<string, string>; // path → content
-  // §56b Journal workspace scoping
+  /**
+   * §56b Journal workspace scoping
+   * @deprecated Use contextStore.ensureJournalContext() instead (§85 M2b)
+   */
   originalRootPath: null | string; // rootPath backup before journal scope
   removeFileContent: (path: string) => void;
   /** Remove a file/folder entry by path */
@@ -450,6 +462,15 @@ export const useFileStore = create<FileState>((set, get) => ({
     set({ rootPath: null, fileTree: [], expandedDirs: new Set() });
   },
 }));
+
+/**
+ * §85 M2b: Check if the active context is a journal vault.
+ * Replaces the old isJournalScoped flag.
+ */
+export function isActiveContextJournal(): boolean {
+  const ctx = useContextStore.getState().activeContext();
+  return ctx?.vaultType === "journal";
+}
 
 /**
  * §81 Cross-store sync: when active context changes, switch file tree and index.
