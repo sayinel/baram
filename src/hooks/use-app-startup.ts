@@ -5,9 +5,10 @@ import { listen } from "@tauri-apps/api/event";
 
 import { getOpenedUrls } from "../ipc/invoke";
 import { useContextStore } from "../stores/context/context";
-import { openFolder } from "../stores/file/file";
+import { openFolder, useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
 import { migrateFromLocalStorage } from "../stores/system/tauri-storage";
+import { resolveJournalDir } from "../utils/journal/journal";
 import { logger } from "../utils/logger";
 
 interface UseAppStartupParams {
@@ -51,6 +52,29 @@ export function useAppStartup({
             if (lastOpenedFile) {
               await handleOpenFilePath(lastOpenedFile);
             }
+            // §85 M2b: Journal startup behavior
+            const { journalEnabled, journalStartupBehavior, journalDirectory } =
+              useSettingsStore.getState();
+            if (
+              journalEnabled &&
+              journalStartupBehavior === "openJournal" &&
+              journalDirectory
+            ) {
+              const resolvedDir = resolveJournalDir(
+                useFileStore.getState().rootPath ?? "",
+                journalDirectory,
+              );
+              if (resolvedDir) {
+                try {
+                  await useContextStore
+                    .getState()
+                    .ensureJournalContext(resolvedDir);
+                } catch {
+                  // Non-fatal
+                }
+              }
+            }
+
             return; // Done — context restored
           } catch {
             // Path may be invalid; fall through to legacy restore
