@@ -5,6 +5,7 @@ import type { FlatFile } from "../../utils/file-search";
 import type { Editor } from "@tiptap/react";
 
 import { readFile } from "../../ipc/invoke";
+import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
@@ -93,6 +94,10 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
   const { fileTree, rootPath, setFileContent } = useFileStore();
   const { tabs, openTab } = useEditorStore();
   const { journalEnabled, journalDirectory } = useSettingsStore();
+  const { contexts, activeContext } = useContextStore();
+  const activeCtx = activeContext();
+  const contextLabel = activeCtx?.label ?? "";
+  const showContextBadge = contexts.length > 1;
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [currentFileHeadings, setCurrentFileHeadings] = useState<
@@ -496,8 +501,18 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
                     : "\u{1F4C4}"}
               </span>
               <span className="quick-switcher-label">{item.label}</span>
-              {item.detail && (
-                <span className="quick-switcher-detail">{item.detail}</span>
+              {(item.detail || (showContextBadge && item.type === "file")) && (
+                <span className="quick-switcher-detail">
+                  {showContextBadge && item.type === "file" && contextLabel && (
+                    <span
+                      className="qs-context-badge"
+                      style={{ color: activeCtx?.color }}
+                    >
+                      {contextLabel}
+                    </span>
+                  )}
+                  {item.detail && <span>{item.detail}</span>}
+                </span>
               )}
             </div>
           ))}
