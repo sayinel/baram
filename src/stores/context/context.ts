@@ -206,6 +206,9 @@ export const useContextStore = create<ContextState>()(
       },
     }),
     {
+      // §81 App workspace persistence — stored in app_data_dir as "baram:context".
+      // This serves the same role as app-workspace.json in the design spec (§12.3).
+      // Format: { contexts: ContextInfo[], activeContextId: string | null }
       name: "baram:context",
       storage: createJSONStorage(() => tauriStorage),
       partialize: (state) => ({

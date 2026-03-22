@@ -123,9 +123,13 @@ export async function openFolder(path: string): Promise<void> {
       logger.warn("§81 openFolder: context registration failed", err);
     });
 
-  const entries = await listDir(path, true);
-  const tree = buildFileTree(entries, path);
-  useFileStore.getState().setRootPath(path);
+  // §81 Derive rootPath from contextStore's active context (delegation)
+  const activeCtx = contextStore.activeContext();
+  const rootPath = activeCtx?.path ?? path;
+
+  const entries = await listDir(rootPath, true);
+  const tree = buildFileTree(entries, rootPath);
+  useFileStore.getState().setRootPath(rootPath);
   useFileStore.getState().setFileTree(tree);
 
   // Build link index in background so Graph View / Backlinks have data immediately
@@ -394,3 +398,23 @@ export const useFileStore = create<FileState>((set, get) => ({
     set({ rootPath: null, fileTree: [], expandedDirs: new Set() });
   },
 }));
+
+/**
+ * §81 Cross-store sync: when contextStore's active context changes,
+ * mirror the active context's path to fileStore.rootPath.
+ * This establishes contextStore as the source of truth for rootPath.
+ */
+useContextStore.subscribe((state, prevState) => {
+  if (
+    state.activeContextId !== prevState.activeContextId &&
+    state.activeContextId
+  ) {
+    const ctx = state.contexts.find((c) => c.id === state.activeContextId);
+    if (ctx) {
+      const fileStore = useFileStore.getState();
+      if (fileStore.rootPath !== ctx.path) {
+        fileStore.setRootPath(ctx.path);
+      }
+    }
+  }
+});
