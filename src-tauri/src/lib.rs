@@ -2,6 +2,7 @@
 
 mod commands;
 mod config;
+mod context;
 mod embedding;
 mod export;
 mod fs;
