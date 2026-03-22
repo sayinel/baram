@@ -121,6 +121,7 @@
 .editor-area-scroll {
   flex: 1;
   overflow-y: auto;
+  zoom: var(--editor-zoom, 1);
 }
 
 /* §4.2 Splitter */

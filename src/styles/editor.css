@@ -1278,12 +1278,12 @@
 }
 
 .tiptap table {
-  width: 100%;
   border-collapse: collapse;
 }
 
 .tiptap th,
 .tiptap td {
+  position: relative;
   min-width: 60px;
   padding: 0.4em 0.75em;
   vertical-align: top;
