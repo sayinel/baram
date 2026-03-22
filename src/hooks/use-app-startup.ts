@@ -4,9 +4,11 @@ import { useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 
 import { getOpenedUrls } from "../ipc/invoke";
+import { useContextStore } from "../stores/context/context";
 import { openFolder } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
 import { migrateFromLocalStorage } from "../stores/system/tauri-storage";
+import { logger } from "../utils/logger";
 
 interface UseAppStartupParams {
   handleNewFile: () => void;
@@ -37,6 +39,29 @@ export function useAppStartup({
       useSettingsStore.getState();
 
     (async () => {
+      // §81 Migration: if contextStore has persisted contexts from previous session,
+      // restore them in the backend. If not, fall through to lastOpenedFolder.
+      const contextStore = useContextStore.getState();
+      if (contextStore.contexts.length > 0 && contextStore.activeContextId) {
+        const activeCtx = contextStore.activeContext();
+        if (activeCtx) {
+          try {
+            await openFolder(activeCtx.path);
+            // Restore last opened file if available
+            if (lastOpenedFile) {
+              await handleOpenFilePath(lastOpenedFile);
+            }
+            return; // Done — context restored
+          } catch {
+            // Path may be invalid; fall through to legacy restore
+            logger.warn(
+              "§81 Context restore failed, falling back to lastOpenedFolder",
+            );
+          }
+        }
+      }
+
+      // Legacy restore path (also serves as first-run migration)
       if (onLaunch === "restoreLastFolder" && lastOpenedFolder) {
         try {
           await openFolder(lastOpenedFolder);
