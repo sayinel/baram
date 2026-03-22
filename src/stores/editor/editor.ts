@@ -1,6 +1,8 @@
 // §3.5 에디터 상태 스토어
 import { create } from "zustand";
 
+import { useContextStore } from "../context/context";
+
 export interface EditorTab {
   /** §83 The context this tab belongs to */
   contextId: string;
@@ -93,8 +95,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         ];
         return { activeTabId: existing.id, mruOrder };
       }
+      // §83 Auto-fill contextId from active context if empty
+      const contextId =
+        tab.contextId || useContextStore.getState().activeContextId || "";
       // §38 New tab always unpinned
-      const newTab = { ...tab, isPinned: false };
+      const newTab = { ...tab, contextId, isPinned: false };
       // §39 New tab goes to front of MRU
       const mruOrder = [newTab.id, ...state.mruOrder];
       return {
