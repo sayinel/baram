@@ -214,6 +214,7 @@ export function PropertiesPanel() {
         const fileContent = await readFile(found.path);
         useFileStore.getState().setFileContent(found.path, fileContent);
         openTab({
+          contextId: "",
           id: tabId,
           filePath: found.path,
           title: found.name,

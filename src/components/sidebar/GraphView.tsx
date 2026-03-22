@@ -129,6 +129,7 @@ export function GraphView() {
       useFileStore.getState().setFileContent(filePath, content);
       const fileName = filePath.split("/").pop() ?? filePath;
       openTab({
+        contextId: "",
         id: crypto.randomUUID(),
         filePath,
         title: fileName,

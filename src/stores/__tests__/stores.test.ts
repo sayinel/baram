@@ -43,6 +43,7 @@ describe("Zustand stores smoke test", () => {
   it("editor store can open and close tabs", () => {
     const store = useEditorStore;
     store.getState().openTab({
+      contextId: "",
       id: "tab-1",
       filePath: "/test.md",
       title: "test.md",

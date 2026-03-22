@@ -154,6 +154,7 @@ export function GlobalSearch() {
           const fileName = extractFileNameFromPath(filePath);
           useFileStore.getState().setFileContent(filePath, content);
           openTab({
+            contextId: "",
             id: crypto.randomUUID(),
             filePath,
             title: fileName,

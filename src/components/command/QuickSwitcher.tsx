@@ -338,6 +338,7 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
         const content = await readFile(file.path);
         setFileContent(file.path, content);
         openTab({
+          contextId: "",
           id: crypto.randomUUID(),
           filePath: file.path,
           title: file.name,

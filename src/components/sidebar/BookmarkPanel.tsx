@@ -77,6 +77,7 @@ export function BookmarkPanel() {
         const fileName = extractFileNameFromPath(bookmark.filePath);
         useFileStore.getState().setFileContent(bookmark.filePath, content);
         openTab({
+          contextId: "",
           id: crypto.randomUUID(),
           filePath: bookmark.filePath,
           title: fileName,
