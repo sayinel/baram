@@ -6,6 +6,7 @@ import { useShallow } from "zustand/shallow";
 import { useFileStore } from "../../stores/file/file";
 import { useUIStore } from "../../stores/ui/ui";
 import { ActivityBar } from "./ActivityBar";
+import { ContextTabBar } from "./ContextTabBar";
 import { Sidebar } from "./Sidebar";
 import { Splitter } from "./Splitter";
 
@@ -91,6 +92,8 @@ export function AppLayout({ children, statusBar }: AppLayoutProps) {
 
   return (
     <div className="app-layout">
+      {/* §82 Context Tab Bar — hidden when single context */}
+      <ContextTabBar />
       {/* Body: sidebar + main + right panel */}
       <div className="app-layout-body">
         {/* Activity Bar — hidden when no folder open */}
