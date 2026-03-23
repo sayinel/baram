@@ -9,6 +9,9 @@ import {
   getContexts as ipcGetContexts,
   removeContext as ipcRemoveContext,
   setActiveContext as ipcSetActiveContext,
+  updateContextAlias as ipcUpdateContextAlias,
+  updateContextColor as ipcUpdateContextColor,
+  updateContextLabel as ipcUpdateContextLabel,
 } from "../../ipc/context";
 import { logger } from "../../utils/logger";
 import { tauriStorage } from "../system/tauri-storage";
@@ -275,6 +278,8 @@ export const useContextStore = create<ContextState>()(
             c.id === id ? { ...c, alias } : c,
           ),
         }));
+        // §88 Sync to Rust (non-blocking, ignore failures for stale IDs)
+        ipcUpdateContextAlias(id, alias ?? "").catch(() => {});
       },
 
       updateContextLabel: (id, label) => {
@@ -283,6 +288,8 @@ export const useContextStore = create<ContextState>()(
             c.id === id ? { ...c, label } : c,
           ),
         }));
+        // §88 Sync to Rust
+        ipcUpdateContextLabel(id, label).catch(() => {});
       },
 
       updateContextColor: (id, color) => {
@@ -291,6 +298,8 @@ export const useContextStore = create<ContextState>()(
             c.id === id ? { ...c, color } : c,
           ),
         }));
+        // §88 Sync to Rust
+        ipcUpdateContextColor(id, color).catch(() => {});
       },
 
       restoreFromBackend: async () => {
