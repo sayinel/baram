@@ -231,6 +231,53 @@ impl ContextManager {
         Err("Access denied: path is outside all registered contexts".to_string())
     }
 
+    // ── Metadata updates ──────────────────────────────────────────────────────
+
+    /// Update the alias for a context. Also updates the aliases HashMap.
+    pub async fn update_alias(&self, context_id: &str, new_alias: String) -> Result<(), String> {
+        let mut contexts = self.contexts.write().await;
+        let state = contexts
+            .get_mut(context_id)
+            .ok_or_else(|| format!("Context not found: {}", context_id))?;
+
+        // Remove old alias mapping
+        if let Some(old_alias) = &state.info.alias {
+            let mut aliases = self.aliases.write().await;
+            aliases.remove(old_alias);
+        }
+
+        // Set new alias (or clear if empty)
+        if new_alias.is_empty() {
+            state.info.alias = None;
+        } else {
+            let mut aliases = self.aliases.write().await;
+            aliases.insert(new_alias.clone(), context_id.to_string());
+            state.info.alias = Some(new_alias);
+        }
+
+        Ok(())
+    }
+
+    /// Update label for a context.
+    pub async fn update_label(&self, context_id: &str, label: String) -> Result<(), String> {
+        let mut contexts = self.contexts.write().await;
+        let state = contexts
+            .get_mut(context_id)
+            .ok_or_else(|| format!("Context not found: {}", context_id))?;
+        state.info.label = label;
+        Ok(())
+    }
+
+    /// Update color for a context.
+    pub async fn update_color(&self, context_id: &str, color: String) -> Result<(), String> {
+        let mut contexts = self.contexts.write().await;
+        let state = contexts
+            .get_mut(context_id)
+            .ok_or_else(|| format!("Context not found: {}", context_id))?;
+        state.info.color = color;
+        Ok(())
+    }
+
     // ── Config access ──────────────────────────────────────────────────────────
 
     /// Return the `VaultConfig` for a context (only populated for Vault contexts).
