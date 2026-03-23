@@ -145,6 +145,14 @@ pub fn load_vault_config(vault_root: &Path) -> Result<VaultConfig, String> {
     if !path.exists() {
         return Ok(VaultConfig::default());
     }
+
+    // §86 Size limit: reject configs larger than 1MB to prevent DoS
+    let metadata = std::fs::metadata(&path)
+        .map_err(|e| format!("Failed to read vault config metadata: {e}"))?;
+    if metadata.len() > 1_048_576 {
+        return Err("Vault config file exceeds 1MB size limit".to_string());
+    }
+
     let raw =
         std::fs::read_to_string(&path).map_err(|e| format!("Failed to read vault config: {e}"))?;
     serde_json::from_str(&raw).map_err(|e| format!("Failed to parse vault config: {e}"))
@@ -212,5 +220,19 @@ mod tests {
         let cfg = VaultConfig::default();
         let json = serde_json::to_string(&cfg).unwrap();
         assert_eq!(json, "{}");
+    }
+
+    #[test]
+    fn load_rejects_oversized_config() {
+        let dir = TempDir::new().unwrap();
+        let baram = dir.path().join(".baram");
+        std::fs::create_dir_all(&baram).unwrap();
+        let config_path = baram.join("config.json");
+        // Write a file larger than 1MB
+        let big = vec![b' '; 1_048_577];
+        std::fs::write(&config_path, &big).unwrap();
+        let result = load_vault_config(dir.path());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("1MB size limit"));
     }
 }
