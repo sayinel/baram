@@ -58,6 +58,18 @@
   text-overflow: ellipsis;
 }
 
+/* Inline rename input on tab (double-click) */
+.context-tab__rename-input {
+  max-width: 120px;
+  padding: 0 4px;
+  font-size: inherit;
+  color: inherit;
+  outline: none;
+  background: transparent;
+  border: 1px solid var(--color-accent-default, #3b82f6);
+  border-radius: 3px;
+}
+
 /* Close button on tab */
 .context-tab__close {
   display: none;
@@ -143,7 +155,8 @@
 }
 
 /* Context menu separator */
-.context-ctx-menu__sep {
+.context-ctx-menu__sep,
+.context-add-menu__sep {
   height: 1px;
   margin: 4px 0;
   background: var(--color-border-default, #e5e7eb);

@@ -19,6 +19,7 @@ export function ContextTabBar() {
   );
 
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [renamingId, setRenamingId] = useState<null | string>(null);
   const addBtnRef = useRef<HTMLButtonElement>(null);
 
   // §82 Right-click context menu state
@@ -86,6 +87,10 @@ export function ContextTabBar() {
           key={ctx.id}
           onClick={() => switchContext(ctx.id)}
           onContextMenu={(e) => handleContextMenu(e, ctx.id)}
+          onDoubleClick={(e) => {
+            e.preventDefault();
+            setRenamingId(ctx.id);
+          }}
           onMouseDown={(e) => handleMiddleClick(e, ctx.id)}
           title={ctx.path}
         >
@@ -93,7 +98,31 @@ export function ContextTabBar() {
             className="context-tab__dot"
             style={{ backgroundColor: ctx.color }}
           />
-          <span className="context-tab__label">{ctx.label}</span>
+          {renamingId === ctx.id ? (
+            <input
+              autoFocus
+              className="context-tab__rename-input"
+              defaultValue={ctx.label}
+              onBlur={(e) => {
+                const val = e.currentTarget.value.trim();
+                if (val)
+                  useContextStore.getState().updateContextLabel(ctx.id, val);
+                setRenamingId(null);
+              }}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  const val = e.currentTarget.value.trim();
+                  if (val)
+                    useContextStore.getState().updateContextLabel(ctx.id, val);
+                  setRenamingId(null);
+                }
+                if (e.key === "Escape") setRenamingId(null);
+              }}
+            />
+          ) : (
+            <span className="context-tab__label">{ctx.label}</span>
+          )}
           <span
             className="context-tab__close"
             onClick={(e) => handleClose(e, ctx.id)}
