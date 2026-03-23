@@ -211,18 +211,32 @@ export async function switchContext(contextId: string): Promise<void> {
  * §81 Internal: Load file tree and index for a context path.
  * Shared by openFolder, addFolder, and switchContext.
  */
-async function _loadContextFileTree(path: string): Promise<void> {
-  const entries = await listDir(path, true);
-  const tree = buildFileTree(entries, path);
-  useFileStore.getState().setRootPath(path);
-  useFileStore.getState().setFileTree(tree);
+let _loadingPath: null | string = null;
 
-  // Build link index in background
-  refreshIndex(path)
-    .then(() => useLinkStore.getState().invalidate())
-    .catch((err) =>
-      logger.warn("§81 _loadContextFileTree: refreshIndex failed", err),
-    );
+async function _loadContextFileTree(path: string): Promise<void> {
+  // §81 Skip if already loaded or currently loading this path
+  const fileStore = useFileStore.getState();
+  if (fileStore.rootPath === path && fileStore.fileTree.length > 0) {
+    return;
+  }
+  if (_loadingPath === path) return;
+  _loadingPath = path;
+
+  try {
+    const entries = await listDir(path, true);
+    const tree = buildFileTree(entries, path);
+    useFileStore.getState().setRootPath(path);
+    useFileStore.getState().setFileTree(tree);
+
+    // Build link index in background
+    refreshIndex(path)
+      .then(() => useLinkStore.getState().invalidate())
+      .catch((err) =>
+        logger.warn("§81 _loadContextFileTree: refreshIndex failed", err),
+      );
+  } finally {
+    _loadingPath = null;
+  }
 }
 
 export const useFileStore = create<FileState>((set) => ({
