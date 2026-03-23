@@ -87,15 +87,13 @@ export function ContextTabBar() {
             style={{ backgroundColor: ctx.color }}
           />
           <span className="context-tab__label">{ctx.label}</span>
-          {contexts.length > 1 && (
-            <span
-              className="context-tab__close"
-              onClick={(e) => handleClose(e, ctx.id)}
-              title="Close"
-            >
-              <X size={12} />
-            </span>
-          )}
+          <span
+            className="context-tab__close"
+            onClick={(e) => handleClose(e, ctx.id)}
+            title="Close"
+          >
+            <X size={12} />
+          </span>
         </button>
       ))}
 

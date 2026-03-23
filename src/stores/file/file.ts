@@ -511,6 +511,12 @@ export const useFileStore = create<FileState>((set, get) => ({
     useSettingsStore.getState().setLastOpenedFolder(null);
     useSettingsStore.getState().setLastOpenedFile(null);
     set({ rootPath: null, fileTree: [], expandedDirs: new Set() });
+
+    // §81 Remove all contexts so the context tab bar clears
+    const ctxStore = useContextStore.getState();
+    for (const ctx of [...ctxStore.contexts]) {
+      ctxStore.removeContext(ctx.id).catch(() => {});
+    }
   },
 }));
 
