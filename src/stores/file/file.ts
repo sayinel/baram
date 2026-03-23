@@ -22,34 +22,14 @@ interface FileState {
   addFileEntry: (parentPath: string, entry: FileEntry) => void;
   /** Close the current folder and return to home screen */
   closeFolder: () => void;
-  /**
-   * §56b Enter journal scope: save rootPath, switch to journal directory
-   * @deprecated Use contextStore.ensureJournalContext() instead (§85 M2b)
-   */
-  enterJournalScope: (journalDir: string) => void;
-
-  /**
-   * §56b Exit journal scope: restore original rootPath
-   * @deprecated Use context switching instead (§85 M2b)
-   */
-  exitJournalScope: () => void;
   expandDir: (path: string) => void;
 
   // FileTree expanded directories (persisted across sidebar tab switches)
   expandedDirs: Set<string>;
   fileTree: FileEntry[];
-  /**
-   * @deprecated Use isActiveContextJournal() instead (§85 M2b)
-   */
-  isJournalScoped: boolean;
   /** Move a file/folder entry to a new parent directory */
   moveFileEntry: (oldPath: string, newParentPath: string) => void;
   openFiles: Map<string, string>; // path → content
-  /**
-   * §56b Journal workspace scoping
-   * @deprecated Use contextStore.ensureJournalContext() instead (§85 M2b)
-   */
-  originalRootPath: null | string; // rootPath backup before journal scope
   removeFileContent: (path: string) => void;
   /** Remove a file/folder entry by path */
   removeFileEntry: (path: string) => void;
@@ -235,14 +215,10 @@ async function _loadContextFileTree(path: string): Promise<void> {
     );
 }
 
-export const useFileStore = create<FileState>((set, get) => ({
+export const useFileStore = create<FileState>((set) => ({
   rootPath: null,
   fileTree: [],
   openFiles: new Map(),
-
-  // §56b Journal scoping
-  originalRootPath: null,
-  isJournalScoped: false,
 
   setRootPath: (path) => set({ rootPath: path }),
 
@@ -444,29 +420,6 @@ export const useFileStore = create<FileState>((set, get) => ({
 
       return { openFiles, fileTree: newTree };
     }),
-
-  enterJournalScope: (journalDir) => {
-    const state = get();
-    // Only save original if not already scoped
-    const originalRootPath = state.isJournalScoped
-      ? state.originalRootPath
-      : state.rootPath;
-    set({
-      originalRootPath,
-      rootPath: journalDir,
-      isJournalScoped: true,
-    });
-  },
-
-  exitJournalScope: () => {
-    const state = get();
-    if (!state.isJournalScoped) return;
-    set({
-      rootPath: state.originalRootPath,
-      originalRootPath: null,
-      isJournalScoped: false,
-    });
-  },
 
   tagFilter: null,
   setTagFilter: (tagFilter) => set({ tagFilter }),
