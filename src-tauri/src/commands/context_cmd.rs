@@ -44,17 +44,24 @@ pub async fn set_active_context(
     state: tauri::State<'_, ContextManager>,
     vault_root: tauri::State<'_, crate::VaultRootState>,
 ) -> Result<(), String> {
-    // Update ContextManager active id
-    state.set_active(&context_id).await?;
+    // §88 Atomic: resolve path BEFORE making any changes (eliminates TOCTOU window)
+    let ctx_path = {
+        let contexts = state.list().await;
+        contexts
+            .iter()
+            .find(|c| c.id == context_id)
+            .map(|c| c.path.clone())
+            .ok_or_else(|| format!("Context not found: {}", context_id))?
+    };
 
-    // §81 Also update VaultRootState so file IPC commands (check_vault) work
-    let contexts = state.list().await;
-    if let Some(ctx) = contexts.iter().find(|c| c.id == context_id) {
+    // Update VaultRootState FIRST so check_vault sees the new path immediately
+    {
         let mut root = vault_root.0.write().await;
-        *root = Some(std::path::PathBuf::from(&ctx.path));
+        *root = Some(std::path::PathBuf::from(&ctx_path));
     }
 
-    Ok(())
+    // Then update active_id
+    state.set_active(&context_id).await
 }
 
 #[tauri::command]
@@ -116,6 +123,36 @@ pub async fn set_vault_config_by_path(path: String, config: VaultConfig) -> Resu
     crate::context::vault_config::save_vault_config(std::path::Path::new(&path), &config)
 }
 
+/// §88 Update alias for a context (syncs to ContextManager alias map).
+#[tauri::command]
+pub async fn update_context_alias(
+    context_id: String,
+    alias: String,
+    state: tauri::State<'_, ContextManager>,
+) -> Result<(), String> {
+    state.update_alias(&context_id, alias).await
+}
+
+/// §88 Update label for a context.
+#[tauri::command]
+pub async fn update_context_label(
+    context_id: String,
+    label: String,
+    state: tauri::State<'_, ContextManager>,
+) -> Result<(), String> {
+    state.update_label(&context_id, label).await
+}
+
+/// §88 Update color for a context.
+#[tauri::command]
+pub async fn update_context_color(
+    context_id: String,
+    color: String,
+    state: tauri::State<'_, ContextManager>,
+) -> Result<(), String> {
+    state.update_color(&context_id, color).await
+}
+
 /// §87 Resolve a cross-vault link target by alias + target name.
 /// Returns the absolute file path if found, None if not resolvable.
 #[tauri::command]
@@ -124,6 +161,11 @@ pub async fn resolve_cross_vault_link(
     target: String,
     state: tauri::State<'_, ContextManager>,
 ) -> Result<Option<String>, String> {
+    // §87 Reject path traversal attempts upfront
+    if target.contains("..") {
+        return Ok(None);
+    }
+
     // Find context by alias
     let context_id = match state.resolve_alias(&alias).await {
         Some(id) => id,
@@ -142,7 +184,7 @@ pub async fn resolve_cross_vault_link(
     // Try exact match: root/target.md
     let candidate = root.join(format!("{}.md", target));
     if candidate.exists() {
-        return Ok(Some(candidate.to_string_lossy().to_string()));
+        return Ok(Some(verify_within_root(&candidate, root)?));
     }
 
     // Try with path separators: root/path/to/target.md
@@ -151,16 +193,33 @@ pub async fn resolve_cross_vault_link(
         target.replace('/', std::path::MAIN_SEPARATOR_STR)
     ));
     if candidate_with_path.exists() {
-        return Ok(Some(candidate_with_path.to_string_lossy().to_string()));
+        return Ok(Some(verify_within_root(&candidate_with_path, root)?));
     }
 
     // Try recursive file stem search (case-insensitive)
     let target_lower = target.to_lowercase();
     if let Ok(found) = find_file_by_stem(root, &target_lower) {
-        return Ok(Some(found));
+        // verify_within_root on the found path
+        let found_path = std::path::Path::new(&found);
+        return Ok(Some(verify_within_root(found_path, root)?));
     }
 
     Ok(None)
+}
+
+/// §87 Verify resolved path is canonically within the vault root (symlink protection).
+fn verify_within_root(
+    resolved: &std::path::Path,
+    root: &std::path::Path,
+) -> Result<String, String> {
+    let canonical =
+        std::fs::canonicalize(resolved).map_err(|e| format!("Failed to canonicalize: {}", e))?;
+    let canonical_root =
+        std::fs::canonicalize(root).map_err(|e| format!("Failed to canonicalize root: {}", e))?;
+    if !canonical.starts_with(&canonical_root) {
+        return Err("Access denied: resolved path is outside vault root".to_string());
+    }
+    Ok(canonical.to_string_lossy().to_string())
 }
 
 /// Recursively search for a file by stem (case-insensitive).
