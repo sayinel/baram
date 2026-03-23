@@ -485,44 +485,38 @@ export function isActiveContextJournal(): boolean {
  * contextStore is the source of truth; fileStore mirrors the active context.
  */
 useContextStore.subscribe((state, prevState) => {
-  if (
-    state.activeContextId !== prevState.activeContextId &&
-    state.activeContextId
-  ) {
-    const ctx = state.contexts.find((c) => c.id === state.activeContextId);
-    if (ctx && ctx.contextType === "file") {
-      // §89 FileContext: no file tree
-      useFileStore.getState().setFileTree([]);
-      return;
-    }
-    if (ctx && ctx.contextType !== "file") {
-      const fileStore = useFileStore.getState();
-      if (fileStore.rootPath !== ctx.path) {
-        fileStore.setRootPath(ctx.path);
-        // §81 Update Rust VaultRootState FIRST, then reload file tree + index
-        (async () => {
-          try {
-            await setVaultRoot(ctx.path);
-          } catch (err) {
-            logger.warn("§81 context switch: setVaultRoot failed", err);
-          }
-          // Reload file tree for the new context
-          listDir(ctx.path, true)
-            .then((entries) => {
-              const tree = buildFileTree(entries, ctx.path);
-              useFileStore.getState().setFileTree(tree);
-            })
-            .catch((err) =>
-              logger.warn("§81 context switch: listDir failed", err),
-            );
-          // Rebuild link index for the new context
-          refreshIndex(ctx.path)
-            .then(() => useLinkStore.getState().invalidate())
-            .catch((err) =>
-              logger.warn("§81 context switch: refreshIndex failed", err),
-            );
-        })();
-      }
-    }
+  if (state.activeContextId === prevState.activeContextId) return;
+
+  // §81 All contexts removed — clear file tree and rootPath
+  if (!state.activeContextId) {
+    const fileStore = useFileStore.getState();
+    fileStore.setRootPath(null as unknown as string);
+    fileStore.setFileTree([]);
+    return;
   }
+
+  const ctx = state.contexts.find((c) => c.id === state.activeContextId);
+  if (!ctx) return;
+
+  if (ctx.contextType === "file") {
+    // §89 FileContext: no file tree
+    useFileStore.getState().setFileTree([]);
+    return;
+  }
+
+  // §81 Vault/Folder context switch — reload file tree + index.
+  // VaultRootState is already updated by Rust set_active_context IPC.
+  const fileStore = useFileStore.getState();
+  fileStore.setRootPath(ctx.path);
+  listDir(ctx.path, true)
+    .then((entries) => {
+      const tree = buildFileTree(entries, ctx.path);
+      useFileStore.getState().setFileTree(tree);
+    })
+    .catch((err) => logger.warn("§81 context switch: listDir failed", err));
+  refreshIndex(ctx.path)
+    .then(() => useLinkStore.getState().invalidate())
+    .catch((err) =>
+      logger.warn("§81 context switch: refreshIndex failed", err),
+    );
 });
