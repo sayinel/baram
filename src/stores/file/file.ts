@@ -93,7 +93,11 @@ export async function addFolder(path: string): Promise<void> {
   const isVault = await listDir(path + "/.baram", false)
     .then(() => true)
     .catch(() => false);
-  await contextStore.addContext(isVault ? "vault" : "folder", path);
+  const folderName =
+    path.split("/").pop()?.toLowerCase().replace(/\s+/g, "-") ?? "vault";
+  await contextStore.addContext(isVault ? "vault" : "folder", path, {
+    alias: isVault ? folderName : undefined,
+  });
 
   // Activate and load file tree
   const activeCtx = contextStore.activeContext();
@@ -174,8 +178,12 @@ export async function openFolder(path: string): Promise<void> {
     const isVault = await listDir(path + "/.baram", false)
       .then(() => true)
       .catch(() => false);
+    const folderName =
+      path.split("/").pop()?.toLowerCase().replace(/\s+/g, "-") ?? "vault";
     await contextStore
-      .addContext(isVault ? "vault" : "folder", path)
+      .addContext(isVault ? "vault" : "folder", path, {
+        alias: isVault ? folderName : undefined,
+      })
       .catch((err) => {
         logger.warn("§81 openFolder: context registration failed", err);
       });
@@ -482,25 +490,38 @@ useContextStore.subscribe((state, prevState) => {
     state.activeContextId
   ) {
     const ctx = state.contexts.find((c) => c.id === state.activeContextId);
+    if (ctx && ctx.contextType === "file") {
+      // §89 FileContext: no file tree
+      useFileStore.getState().setFileTree([]);
+      return;
+    }
     if (ctx && ctx.contextType !== "file") {
       const fileStore = useFileStore.getState();
       if (fileStore.rootPath !== ctx.path) {
         fileStore.setRootPath(ctx.path);
-        // Reload file tree for the new context
-        listDir(ctx.path, true)
-          .then((entries) => {
-            const tree = buildFileTree(entries, ctx.path);
-            useFileStore.getState().setFileTree(tree);
-          })
-          .catch((err) =>
-            logger.warn("§81 context switch: listDir failed", err),
-          );
-        // Rebuild link index for the new context
-        refreshIndex(ctx.path)
-          .then(() => useLinkStore.getState().invalidate())
-          .catch((err) =>
-            logger.warn("§81 context switch: refreshIndex failed", err),
-          );
+        // §81 Update Rust VaultRootState FIRST, then reload file tree + index
+        (async () => {
+          try {
+            await setVaultRoot(ctx.path);
+          } catch (err) {
+            logger.warn("§81 context switch: setVaultRoot failed", err);
+          }
+          // Reload file tree for the new context
+          listDir(ctx.path, true)
+            .then((entries) => {
+              const tree = buildFileTree(entries, ctx.path);
+              useFileStore.getState().setFileTree(tree);
+            })
+            .catch((err) =>
+              logger.warn("§81 context switch: listDir failed", err),
+            );
+          // Rebuild link index for the new context
+          refreshIndex(ctx.path)
+            .then(() => useLinkStore.getState().invalidate())
+            .catch((err) =>
+              logger.warn("§81 context switch: refreshIndex failed", err),
+            );
+        })();
       }
     }
   }
