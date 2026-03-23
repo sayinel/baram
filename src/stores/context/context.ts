@@ -229,21 +229,19 @@ export const useContextStore = create<ContextState>()(
       },
 
       removeContext: async (id) => {
-        try {
-          await ipcRemoveContext(id);
-          set((state) => {
-            const next = state.contexts.filter((c) => c.id !== id);
-            let nextActiveId = state.activeContextId;
-            if (state.activeContextId === id) {
-              // Fall back to the first remaining context
-              nextActiveId = next[0]?.id ?? null;
-            }
-            return { contexts: next, activeContextId: nextActiveId };
-          });
-        } catch (err) {
-          logger.error("[contextStore] removeContext failed:", err);
-          throw err;
-        }
+        // Remove from Rust backend — ignore errors (context may not exist
+        // in Rust if it was persisted from a previous session)
+        await ipcRemoveContext(id).catch(() => {});
+
+        // Always remove from frontend state
+        set((state) => {
+          const next = state.contexts.filter((c) => c.id !== id);
+          let nextActiveId = state.activeContextId;
+          if (state.activeContextId === id) {
+            nextActiveId = next[0]?.id ?? null;
+          }
+          return { contexts: next, activeContextId: nextActiveId };
+        });
       },
 
       setActiveContext: async (id) => {
