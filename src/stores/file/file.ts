@@ -167,14 +167,15 @@ export function buildFileTree(
  * §81 M2: Does NOT remove existing contexts — supports multi-context.
  */
 export async function openFolder(path: string): Promise<void> {
+  // §81 Update Rust VaultRootState (always succeeds for valid paths)
   await setVaultRoot(path);
 
   const contextStore = useContextStore.getState();
 
-  // Check if already open as a context — just activate it
+  // Check if already open as a context
   const existing = contextStore.contexts.find((c) => c.path === path);
   if (!existing) {
-    // Detect vault vs folder
+    // New context — register in both Rust + frontend
     const isVault = await listDir(path + "/.baram", false)
       .then(() => true)
       .catch(() => false);
@@ -188,24 +189,22 @@ export async function openFolder(path: string): Promise<void> {
         logger.warn("§81 openFolder: context registration failed", err);
       });
   } else {
-    // Activate existing context
-    await contextStore.setActiveContext(existing.id).catch(() => {});
+    // Existing context (possibly persisted from previous session)
+    // Use local-only activation to avoid IPC failure for stale IDs
+    contextStore._setActiveContextLocal(existing.id);
   }
 
-  // Derive rootPath from active context
-  const activeCtx = contextStore.activeContext();
-  const rootPath = activeCtx?.path ?? path;
-
-  const entries = await listDir(rootPath, true);
-  const tree = buildFileTree(entries, rootPath);
-  useFileStore.getState().setRootPath(rootPath);
+  // Always use `path` directly — not activeCtx?.path which may be stale
+  const entries = await listDir(path, true);
+  const tree = buildFileTree(entries, path);
+  useFileStore.getState().setRootPath(path);
   useFileStore.getState().setFileTree(tree);
 
   // Update settings
   useSettingsStore.getState().addRecentFolder(path);
 
   // Build link index in background
-  refreshIndex(rootPath)
+  refreshIndex(path)
     .then(() => useLinkStore.getState().invalidate())
     .catch((err) => logger.warn("§30 openFolder: index build failed", err));
 }
