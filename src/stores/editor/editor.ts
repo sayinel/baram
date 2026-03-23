@@ -79,7 +79,20 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   currentSelection: "",
   contentRefreshKey: 0,
 
-  setActiveTab: (tabId) => set({ activeTabId: tabId }),
+  setActiveTab: (tabId) => {
+    set({ activeTabId: tabId });
+    // §81 Auto-switch context when selecting a tab from a different vault
+    const tab = get().tabs.find((t) => t.id === tabId);
+    if (tab?.contextId) {
+      const ctxStore = useContextStore.getState();
+      if (ctxStore.activeContextId !== tab.contextId) {
+        // Lazy import to avoid circular dependency at module load
+        import("../file/file").then(({ switchContext }) => {
+          switchContext(tab.contextId);
+        });
+      }
+    }
+  },
 
   openTab: (tab) =>
     set((state) => {
@@ -109,10 +122,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       };
     }),
 
-  closeTab: (tabId) =>
+  closeTab: (tabId) => {
+    // Capture info before mutation for §89 FileContext cleanup
+    const stateBefore = get();
+    const target = stateBefore.tabs.find((t) => t.id === tabId);
+
     set((state) => {
       // §38 Pinned tabs cannot be closed
-      const target = state.tabs.find((t) => t.id === tabId);
       if (target?.isPinned) return state;
 
       const tabs = state.tabs.filter((t) => t.id !== tabId);
@@ -123,7 +139,22 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       // §39 Remove closed tab from MRU
       const mruOrder = state.mruOrder.filter((id) => id !== tabId);
       return { tabs, activeTabId, mruOrder };
-    }),
+    });
+
+    // §89 Auto-remove FileContext when its last tab is closed
+    if (target && !target.isPinned && target.contextId) {
+      const contextStore = useContextStore.getState();
+      const ctx = contextStore.contexts.find(
+        (c) => c.id === target.contextId && c.contextType === "file",
+      );
+      if (ctx) {
+        const remainingTabs = get().tabs.filter((t) => t.contextId === ctx.id);
+        if (remainingTabs.length === 0) {
+          contextStore.removeContext(ctx.id).catch(() => {});
+        }
+      }
+    }
+  },
 
   markDirty: (tabId, dirty) =>
     set((state) => ({
