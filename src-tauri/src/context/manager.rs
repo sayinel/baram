@@ -13,7 +13,6 @@ use super::vault_config::{load_vault_config, VaultConfig};
 
 /// Internal state kept per registered context entry.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct ContextState {
     pub info: ContextInfo,
     /// Canonicalized path (symlink-resolved). Used by validate_path (M2+).
@@ -49,10 +48,25 @@ impl ContextManager {
     ///
     /// Validates that the path exists, canonicalizes it, loads `VaultConfig` for
     /// Vault-type contexts, and registers any alias.
+    ///
+    /// §88 Dedup by path: if a context with the same canonical path already exists,
+    /// returns the existing entry instead of creating a duplicate. This prevents
+    /// `setVaultRoot` (legacy-xxx) and `addContext` (ctx-xxx) from creating two
+    /// entries for the same directory.
     pub async fn add(&self, info: ContextInfo) -> Result<ContextInfo, String> {
         let canonical = resolve_canonical(&info.path)?;
         if !canonical.exists() {
             return Err(format!("Path does not exist: {}", info.path));
+        }
+
+        // §88 Dedup: return existing context if one already covers this path
+        {
+            let contexts = self.contexts.read().await;
+            for state in contexts.values() {
+                if state.canonical_path == canonical {
+                    return Ok(state.info.clone());
+                }
+            }
         }
 
         let vault_config = if info.context_type == ContextType::Vault {
@@ -145,7 +159,7 @@ impl ContextManager {
     /// - `Vault`/`Folder` context: path must start with the context root.
     ///
     /// Uses canonicalization on both sides to prevent symlink traversal.
-    #[allow(dead_code)] // M2: will be called from fs_cmd when contextId param is added
+    #[allow(dead_code)] // Public API for single-context validation (used by tests, future IPC with contextId param)
     pub async fn validate_path(&self, path: &str, context_id: &str) -> Result<(), String> {
         let map = self.contexts.read().await;
         let state = map
@@ -175,13 +189,46 @@ impl ContextManager {
     ///
     /// If no context is active, all paths are allowed (backward-compatibility with
     /// single-vault mode where `VaultRootState` already handles confinement).
-    #[allow(dead_code)] // M2: will replace check_vault in fs_cmd
+    #[allow(dead_code)] // Public API for active-context validation (future use when contextId is added to IPC)
     pub async fn validate_path_active(&self, path: &str) -> Result<(), String> {
         let active = self.active_id.read().await.clone();
         match active {
             None => Ok(()),
             Some(id) => self.validate_path(path, &id).await,
         }
+    }
+
+    /// §88 Validate that `path` is within ANY registered context.
+    ///
+    /// Used by file IPC commands to allow cross-context file access in multi-vault
+    /// scenarios (e.g., a tab from Vault A should still read its file even when
+    /// Vault B is the active context).
+    ///
+    /// If no contexts are registered, returns `Ok(())` for backward compatibility.
+    pub async fn validate_path_any(&self, path: &str) -> Result<(), String> {
+        let canonical_path = resolve_canonical(path)?;
+        let contexts = self.contexts.read().await;
+
+        if contexts.is_empty() {
+            return Ok(());
+        }
+
+        for state in contexts.values() {
+            match state.info.context_type {
+                ContextType::File => {
+                    if canonical_path == state.canonical_path {
+                        return Ok(());
+                    }
+                }
+                ContextType::Vault | ContextType::Folder => {
+                    if canonical_path.starts_with(&state.canonical_path) {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+
+        Err("Access denied: path is outside all registered contexts".to_string())
     }
 
     // ── Config access ──────────────────────────────────────────────────────────
@@ -198,7 +245,7 @@ impl ContextManager {
     // ── Alias resolution ───────────────────────────────────────────────────────
 
     /// Resolve an alias string to a context id.
-    #[allow(dead_code)] // M3: cross-vault link resolution
+    /// §87 Used by resolve_cross_vault_link IPC command.
     pub async fn resolve_alias(&self, alias: &str) -> Option<String> {
         self.aliases.read().await.get(alias).cloned()
     }
@@ -388,5 +435,115 @@ mod tests {
         mgr.add(info).await.unwrap();
         mgr.remove("v1").await.unwrap();
         assert!(mgr.resolve_alias("work").await.is_none());
+    }
+
+    // §88 Dedup by path tests
+
+    #[tokio::test]
+    async fn add_dedup_returns_existing() {
+        let dir = TempDir::new().unwrap();
+        let mgr = ContextManager::new();
+        let info1 = make_info(
+            "legacy-1",
+            dir.path().to_str().unwrap(),
+            ContextType::Folder,
+        );
+        let saved1 = mgr.add(info1).await.unwrap();
+        assert_eq!(saved1.id, "legacy-1");
+
+        // Adding with a different ID but same path should return the existing entry
+        let info2 = make_info("ctx-2", dir.path().to_str().unwrap(), ContextType::Folder);
+        let saved2 = mgr.add(info2).await.unwrap();
+        assert_eq!(saved2.id, "legacy-1"); // returns existing, not "ctx-2"
+
+        // Only one entry in the list
+        assert_eq!(mgr.list().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn add_different_paths_not_deduped() {
+        let dir1 = TempDir::new().unwrap();
+        let dir2 = TempDir::new().unwrap();
+        let mgr = ContextManager::new();
+        let info1 = make_info("v1", dir1.path().to_str().unwrap(), ContextType::Vault);
+        let info2 = make_info("v2", dir2.path().to_str().unwrap(), ContextType::Vault);
+        mgr.add(info1).await.unwrap();
+        mgr.add(info2).await.unwrap();
+        assert_eq!(mgr.list().await.len(), 2);
+    }
+
+    // §88 validate_path_any tests
+
+    #[tokio::test]
+    async fn validate_path_any_within_any_context() {
+        let dir1 = TempDir::new().unwrap();
+        let dir2 = TempDir::new().unwrap();
+        let mgr = ContextManager::new();
+        let info1 = make_info("v1", dir1.path().to_str().unwrap(), ContextType::Vault);
+        let info2 = make_info("v2", dir2.path().to_str().unwrap(), ContextType::Vault);
+        mgr.add(info1).await.unwrap();
+        mgr.add(info2).await.unwrap();
+        mgr.set_active("v1").await.unwrap();
+
+        // File inside v2 (non-active) should pass validate_path_any
+        let inner2 = dir2.path().join("notes.md");
+        std::fs::write(&inner2, "").unwrap();
+        mgr.validate_path_any(inner2.to_str().unwrap())
+            .await
+            .unwrap();
+
+        // File inside v1 (active) should also pass
+        let inner1 = dir1.path().join("doc.md");
+        std::fs::write(&inner1, "").unwrap();
+        mgr.validate_path_any(inner1.to_str().unwrap())
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn validate_path_any_outside_all_fails() {
+        let dir1 = TempDir::new().unwrap();
+        let other = TempDir::new().unwrap();
+        let mgr = ContextManager::new();
+        let info1 = make_info("v1", dir1.path().to_str().unwrap(), ContextType::Vault);
+        mgr.add(info1).await.unwrap();
+
+        let outside = other.path().join("secret.txt");
+        std::fs::write(&outside, "").unwrap();
+        assert!(mgr
+            .validate_path_any(outside.to_str().unwrap())
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn validate_path_any_no_contexts_allows_all() {
+        let mgr = ContextManager::new();
+        // No contexts registered — all paths allowed for backward compat
+        mgr.validate_path_any("/any/path").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn validate_path_any_file_context_exact_match() {
+        let dir = TempDir::new().unwrap();
+        let file_path = dir.path().join("single.md");
+        std::fs::write(&file_path, "hello").unwrap();
+
+        let mgr = ContextManager::new();
+        let info = make_info("f1", file_path.to_str().unwrap(), ContextType::File);
+        mgr.add(info).await.unwrap();
+
+        // Exact match passes
+        mgr.validate_path_any(file_path.to_str().unwrap())
+            .await
+            .unwrap();
+
+        // Different file in same dir fails (File context = exact match only)
+        let other_file = dir.path().join("other.md");
+        std::fs::write(&other_file, "").unwrap();
+        assert!(mgr
+            .validate_path_any(other_file.to_str().unwrap())
+            .await
+            .is_err());
     }
 }
