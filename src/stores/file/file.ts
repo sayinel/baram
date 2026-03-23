@@ -99,19 +99,10 @@ export async function addFolder(path: string): Promise<void> {
   // Explicitly activate the new context (addContext only auto-activates the first)
   contextStore._setActiveContextLocal(added.id);
 
-  // Always use `path` directly — not activeCtx which may be stale
-  const entries = await listDir(path, true);
-  const tree = buildFileTree(entries, path);
-  useFileStore.getState().setRootPath(path);
-  useFileStore.getState().setFileTree(tree);
+  await _loadContextFileTree(path);
 
   // Update settings
   useSettingsStore.getState().addRecentFolder(path);
-
-  // Build link index in background
-  refreshIndex(path)
-    .then(() => useLinkStore.getState().invalidate())
-    .catch((err) => logger.warn("§30 addFolder: index build failed", err));
 }
 
 /**
@@ -191,19 +182,10 @@ export async function openFolder(path: string): Promise<void> {
     contextStore._setActiveContextLocal(existing.id);
   }
 
-  // Always use `path` directly — not activeCtx?.path which may be stale
-  const entries = await listDir(path, true);
-  const tree = buildFileTree(entries, path);
-  useFileStore.getState().setRootPath(path);
-  useFileStore.getState().setFileTree(tree);
+  await _loadContextFileTree(path);
 
   // Update settings
   useSettingsStore.getState().addRecentFolder(path);
-
-  // Build link index in background
-  refreshIndex(path)
-    .then(() => useLinkStore.getState().invalidate())
-    .catch((err) => logger.warn("§30 openFolder: index build failed", err));
 }
 
 /**
@@ -226,27 +208,31 @@ export async function switchContext(contextId: string): Promise<void> {
       logger.warn("§81 switchContext: setVaultRoot failed", err);
     }
 
-    // 3. Reload file tree
-    try {
-      const entries = await listDir(ctx.path, true);
-      const tree = buildFileTree(entries, ctx.path);
-      useFileStore.getState().setRootPath(ctx.path);
-      useFileStore.getState().setFileTree(tree);
-    } catch (err) {
-      logger.warn("§81 switchContext: listDir failed", err);
-    }
-
-    // 4. Rebuild link index in background
-    refreshIndex(ctx.path)
-      .then(() => useLinkStore.getState().invalidate())
-      .catch((err) =>
-        logger.warn("§81 switchContext: refreshIndex failed", err),
-      );
+    // 3. Reload file tree + rebuild link index
+    await _loadContextFileTree(ctx.path);
   } else {
     // FileContext: clear file tree
     useFileStore.getState().setRootPath(null as unknown as string);
     useFileStore.getState().setFileTree([]);
   }
+}
+
+/**
+ * §81 Internal: Load file tree and index for a context path.
+ * Shared by openFolder, addFolder, and switchContext.
+ */
+async function _loadContextFileTree(path: string): Promise<void> {
+  const entries = await listDir(path, true);
+  const tree = buildFileTree(entries, path);
+  useFileStore.getState().setRootPath(path);
+  useFileStore.getState().setFileTree(tree);
+
+  // Build link index in background
+  refreshIndex(path)
+    .then(() => useLinkStore.getState().invalidate())
+    .catch((err) =>
+      logger.warn("§81 _loadContextFileTree: refreshIndex failed", err),
+    );
 }
 
 export const useFileStore = create<FileState>((set, get) => ({
