@@ -34,19 +34,28 @@ interface AddContextOpts {
 }
 
 interface ContextState {
+  /** §81 Set active context locally without IPC — used by switchContext */
+  _setActiveContextLocal: (id: string) => void;
   // Derived
   activeContext: () => ContextInfo | null;
+
   // State
   activeContextId: null | string;
-
   // Actions
   addContext: (
     type: ContextType,
     path: string,
     opts?: AddContextOpts,
   ) => Promise<ContextInfo>;
+
   contexts: ContextInfo[];
 
+  /**
+   * §89 Ensure a FileContext exists for the given file path.
+   * Returns existing vault/folder context if the file belongs to one.
+   * Creates a new FileContext otherwise (or returns the existing one for that path).
+   */
+  ensureFileContext: (filePath: string) => Promise<ContextInfo>;
   /**
    * §85 M2b: Ensure a journal vault context exists and is active.
    * Creates one if not present; activates it if not already active.
@@ -56,9 +65,10 @@ interface ContextState {
   journalContext: () => ContextInfo | null;
   removeContext: (id: string) => Promise<void>;
   reorderContexts: (ids: string[]) => void;
-  restoreFromBackend: () => Promise<void>;
 
+  restoreFromBackend: () => Promise<void>;
   setActiveContext: (id: string) => Promise<void>;
+  updateContextAlias: (id: string, alias: string) => void;
   updateContextColor: (id: string, color: string) => void;
   updateContextLabel: (id: string, label: string) => void;
   vaultContexts: () => ContextInfo[];
@@ -73,6 +83,23 @@ function generateId(): string {
 function labelFromPath(path: string): string {
   const parts = path.split("/").filter(Boolean);
   return parts[parts.length - 1] ?? path;
+}
+
+/**
+ * §85 Pin journal context to position 1 (right after the first non-journal context).
+ * Returns a reordered copy if journal exists at index > 1, otherwise returns null.
+ */
+function pinJournalToSecond(contexts: ContextInfo[]): ContextInfo[] | null {
+  const journalIdx = contexts.findIndex(
+    (c) => c.contextType === "vault" && c.vaultType === "journal",
+  );
+  if (journalIdx > 1) {
+    const reordered = [...contexts];
+    const [journal] = reordered.splice(journalIdx, 1);
+    reordered.splice(1, 0, journal);
+    return reordered;
+  }
+  return null;
 }
 
 // --- Store ---
@@ -100,6 +127,27 @@ export const useContextStore = create<ContextState>()(
         );
       },
 
+      ensureFileContext: async (filePath: string) => {
+        const { contexts } = get();
+
+        // Check if file belongs to an existing vault/folder context
+        const parent = get().getContextForPath(filePath);
+        if (parent && parent.contextType !== "file") return parent;
+
+        // Check if a FileContext already exists for this exact path
+        const existing = contexts.find(
+          (c) => c.contextType === "file" && c.path === filePath,
+        );
+        if (existing) return existing;
+
+        // Create new FileContext
+        const fileName = filePath.split("/").pop() ?? filePath;
+        return get().addContext("file", filePath, {
+          label: fileName,
+          color: "#9ca3af", // gray for standalone files
+        });
+      },
+
       ensureJournalContext: async (journalDir: string) => {
         const { contexts } = get();
         // Check if journal context already exists
@@ -119,6 +167,9 @@ export const useContextStore = create<ContextState>()(
           label: "journal",
           color: "#10b981",
         });
+        // §85 Pin journal context to position 1 (after first vault)
+        const pinned = pinJournalToSecond(get().contexts);
+        if (pinned) set({ contexts: pinned });
         // Activate the newly created journal context
         if (get().activeContextId !== created.id) {
           await get().setActiveContext(created.id);
@@ -167,6 +218,9 @@ export const useContextStore = create<ContextState>()(
                 : state.activeContextId,
             };
           });
+          // §85 Ensure journal stays at position 1 after any add
+          const pinned = pinJournalToSecond(get().contexts);
+          if (pinned) set({ contexts: pinned });
           return saved;
         } catch (err) {
           logger.error("[contextStore] addContext failed:", err);
@@ -202,6 +256,11 @@ export const useContextStore = create<ContextState>()(
         }
       },
 
+      /** §81 Set active context locally (no IPC) — used by switchContext in file.ts */
+      _setActiveContextLocal: (id: string) => {
+        set({ activeContextId: id });
+      },
+
       reorderContexts: (ids) => {
         set((state) => {
           const map = new Map(state.contexts.map((c) => [c.id, c]));
@@ -210,6 +269,14 @@ export const useContextStore = create<ContextState>()(
             .filter((c): c is ContextInfo => c !== undefined);
           return { contexts: reordered };
         });
+      },
+
+      updateContextAlias: (id, alias) => {
+        set((state) => ({
+          contexts: state.contexts.map((c) =>
+            c.id === id ? { ...c, alias } : c,
+          ),
+        }));
       },
 
       updateContextLabel: (id, label) => {
