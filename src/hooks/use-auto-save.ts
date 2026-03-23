@@ -22,7 +22,7 @@ let suppressDirtyUntil = 0;
 
 /** Call before setting editor content to suppress the next dirty mark */
 export function suppressNextDirtyMark() {
-  suppressDirtyUntil = Date.now() + 200; // 200ms window
+  suppressDirtyUntil = Date.now() + 500; // 500ms window for large file parsing
 }
 
 export function useAutoSave(editor: Editor | null) {
