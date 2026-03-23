@@ -74,19 +74,14 @@ interface FileState {
 export async function addFolder(path: string): Promise<void> {
   const contextStore = useContextStore.getState();
 
-  // Check if already open
+  // Check if already open — just switch to it
   const existing = contextStore.contexts.find((c) => c.path === path);
   if (existing) {
-    await contextStore.setActiveContext(existing.id);
-    // Reload file tree for this context
-    const entries = await listDir(path, true);
-    const tree = buildFileTree(entries, path);
-    useFileStore.getState().setRootPath(path);
-    useFileStore.getState().setFileTree(tree);
+    await switchContext(existing.id);
     return;
   }
 
-  // Register in backend
+  // §81 Update Rust VaultRootState
   await setVaultRoot(path);
 
   // Register in frontend contextStore
@@ -95,24 +90,26 @@ export async function addFolder(path: string): Promise<void> {
     .catch(() => false);
   const folderName =
     path.split("/").pop()?.toLowerCase().replace(/\s+/g, "-") ?? "vault";
-  await contextStore.addContext(isVault ? "vault" : "folder", path, {
-    alias: isVault ? folderName : undefined,
-  });
+  const added = await contextStore.addContext(
+    isVault ? "vault" : "folder",
+    path,
+    { alias: isVault ? folderName : undefined },
+  );
 
-  // Activate and load file tree
-  const activeCtx = contextStore.activeContext();
-  const rootPath = activeCtx?.path ?? path;
+  // Explicitly activate the new context (addContext only auto-activates the first)
+  contextStore._setActiveContextLocal(added.id);
 
-  const entries = await listDir(rootPath, true);
-  const tree = buildFileTree(entries, rootPath);
-  useFileStore.getState().setRootPath(rootPath);
+  // Always use `path` directly — not activeCtx which may be stale
+  const entries = await listDir(path, true);
+  const tree = buildFileTree(entries, path);
+  useFileStore.getState().setRootPath(path);
   useFileStore.getState().setFileTree(tree);
 
   // Update settings
   useSettingsStore.getState().addRecentFolder(path);
 
   // Build link index in background
-  refreshIndex(rootPath)
+  refreshIndex(path)
     .then(() => useLinkStore.getState().invalidate())
     .catch((err) => logger.warn("§30 addFolder: index build failed", err));
 }
