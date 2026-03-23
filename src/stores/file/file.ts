@@ -214,11 +214,7 @@ export async function switchContext(contextId: string): Promise<void> {
 let _loadingPath: null | string = null;
 
 async function _loadContextFileTree(path: string): Promise<void> {
-  // §81 Skip if already loaded or currently loading this path
-  const fileStore = useFileStore.getState();
-  if (fileStore.rootPath === path && fileStore.fileTree.length > 0) {
-    return;
-  }
+  // §81 Prevent concurrent loads for the same path only
   if (_loadingPath === path) return;
   _loadingPath = path;
 
