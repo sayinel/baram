@@ -60,3 +60,27 @@ export async function setVaultConfigByPath(
 ): Promise<void> {
   return invoke("set_vault_config_by_path", { path, config });
 }
+
+/** §88 Update alias for a context (syncs to Rust ContextManager). */
+export async function updateContextAlias(
+  contextId: string,
+  alias: string,
+): Promise<void> {
+  return invoke("update_context_alias", { contextId, alias });
+}
+
+/** §88 Update color for a context. */
+export async function updateContextColor(
+  contextId: string,
+  color: string,
+): Promise<void> {
+  return invoke("update_context_color", { contextId, color });
+}
+
+/** §88 Update label for a context. */
+export async function updateContextLabel(
+  contextId: string,
+  label: string,
+): Promise<void> {
+  return invoke("update_context_label", { contextId, label });
+}
