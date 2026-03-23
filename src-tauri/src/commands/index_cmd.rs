@@ -11,8 +11,21 @@ use std::path::Path;
 use tauri::State;
 use tokio::sync::Mutex;
 
-/// Managed state wrapping per-context in-memory link indexes (keyed by context id or root path)
+/// Managed state wrapping per-context in-memory link indexes (keyed by context **path**)
 pub struct LinkIndexState(pub Mutex<std::collections::HashMap<String, LinkIndex>>);
+
+/// §88 Derive a consistent HashMap key from the active context's **path**.
+/// Using path (not id) prevents key mismatch when legacy-xxx and ctx-xxx ids
+/// refer to the same vault. Falls back to empty string during cold start.
+async fn active_context_path(ctx_mgr: &State<'_, crate::context::ContextManager>) -> String {
+    if let Some(id) = ctx_mgr.active_id().await {
+        let contexts = ctx_mgr.list().await;
+        if let Some(ctx) = contexts.iter().find(|c| c.id == id) {
+            return ctx.path.clone();
+        }
+    }
+    String::new()
+}
 
 #[tauri::command]
 pub async fn get_backlinks(
@@ -21,7 +34,7 @@ pub async fn get_backlinks(
     ctx_mgr: State<'_, crate::context::ContextManager>,
 ) -> Result<Vec<BacklinkResult>, String> {
     let map = state.0.lock().await;
-    let key = ctx_mgr.active_id().await.unwrap_or_default();
+    let key = active_context_path(&ctx_mgr).await;
     match map.get(&key) {
         Some(index) => Ok(index.get_backlinks(&file_path)),
         None => Ok(vec![]),
@@ -34,7 +47,7 @@ pub async fn get_link_index(
     ctx_mgr: State<'_, crate::context::ContextManager>,
 ) -> Result<LinkGraph, String> {
     let map = state.0.lock().await;
-    let key = ctx_mgr.active_id().await.unwrap_or_default();
+    let key = active_context_path(&ctx_mgr).await;
     match map.get(&key) {
         Some(index) => Ok(index.get_link_graph()),
         None => Ok(LinkGraph::default()),
@@ -45,12 +58,10 @@ pub async fn get_link_index(
 pub async fn refresh_index(
     root_path: String,
     state: State<'_, LinkIndexState>,
-    ctx_mgr: State<'_, crate::context::ContextManager>,
+    _ctx_mgr: State<'_, crate::context::ContextManager>,
 ) -> Result<IndexStats, String> {
-    let key = ctx_mgr
-        .active_id()
-        .await
-        .unwrap_or_else(|| root_path.clone());
+    // §88 Always key by root_path (consistent with query commands via active_context_path)
+    let key = root_path.clone();
     // Build a new index outside the lock (async file I/O)
     let mut new_index = LinkIndex::new();
     let stats = new_index
@@ -76,7 +87,7 @@ pub async fn update_file_index(
         .unwrap_or_default();
 
     // Update index synchronously inside the lock
-    let key = ctx_mgr.active_id().await.unwrap_or_default();
+    let key = active_context_path(&ctx_mgr).await;
     let mut map = state.0.lock().await;
     if let Some(index) = map.get_mut(&key) {
         index.update_file_from_content(&file_path, &content);
@@ -119,7 +130,7 @@ pub async fn rename_file_with_links(
         .map(|s| s.to_string_lossy().to_string())
         .ok_or("Invalid new path")?;
 
-    let key = ctx_mgr.active_id().await.unwrap_or_default();
+    let key = active_context_path(&ctx_mgr).await;
 
     // 1. Get referencing files from the index (inside lock, quick read)
     let referring_files = {
@@ -196,7 +207,7 @@ pub async fn rename_block_id(
     state: State<'_, LinkIndexState>,
     ctx_mgr: State<'_, crate::context::ContextManager>,
 ) -> Result<RenameResult, String> {
-    let key = ctx_mgr.active_id().await.unwrap_or_default();
+    let key = active_context_path(&ctx_mgr).await;
 
     // 1. Get referring files from index (block_id == old_id, target == this file)
     let referring_files = {
@@ -267,7 +278,7 @@ pub async fn rename_namespace(
     new_dir: String,
     root_path: String,
     state: State<'_, LinkIndexState>,
-    ctx_mgr: State<'_, crate::context::ContextManager>,
+    _ctx_mgr: State<'_, crate::context::ContextManager>,
 ) -> Result<NamespaceRenameResult, String> {
     // 1. Collect all .md files in the vault
     let all_files = collect_md_files(&root_path)
@@ -316,10 +327,8 @@ pub async fn rename_namespace(
         .map_err(|e| e.to_string())?;
 
     // 4. Rebuild the index (full rebuild since many files moved)
-    let key = ctx_mgr
-        .active_id()
-        .await
-        .unwrap_or_else(|| root_path.clone());
+    // §88 Key by root_path (consistent with refresh_index and query commands)
+    let key = root_path.clone();
     let mut new_index = crate::index::LinkIndex::new();
     new_index
         .build(&root_path)
