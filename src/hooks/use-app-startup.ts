@@ -3,6 +3,10 @@ import { useEffect, useRef } from "react";
 
 import { listen } from "@tauri-apps/api/event";
 
+import {
+  addContext as ipcAddContext,
+  setActiveContext as ipcSetActiveContext,
+} from "../ipc/context";
 import { getOpenedUrls } from "../ipc/invoke";
 import { useContextStore } from "../stores/context/context";
 import { openFolder, useFileStore } from "../stores/file/file";
@@ -40,9 +44,33 @@ export function useAppStartup({
       useSettingsStore.getState();
 
     (async () => {
+      // §81 Re-register persisted contexts in Rust backend BEFORE any file operations.
+      // After app restart, Rust ContextManager is empty while Zustand has persisted
+      // contexts. Without this, check_vault (via validate_path_any) would fail because
+      // no contexts are registered in Rust.
+      const contextStore = useContextStore.getState();
+      if (contextStore.contexts.length > 0) {
+        for (const ctx of contextStore.contexts) {
+          try {
+            await ipcAddContext(ctx);
+          } catch {
+            // Path may no longer exist — stale context, skip silently.
+            // It will be cleaned up when user interacts with it.
+            logger.warn(
+              `§81 Startup re-registration failed for context ${ctx.id} (${ctx.path})`,
+            );
+          }
+        }
+        // Re-activate the active context in Rust
+        if (contextStore.activeContextId) {
+          await ipcSetActiveContext(contextStore.activeContextId).catch(() => {
+            logger.warn("§81 Startup re-activation of active context failed");
+          });
+        }
+      }
+
       // §81 Migration: if contextStore has persisted contexts from previous session,
       // restore them in the backend. If not, fall through to lastOpenedFolder.
-      const contextStore = useContextStore.getState();
       if (contextStore.contexts.length > 0 && contextStore.activeContextId) {
         const activeCtx = contextStore.activeContext();
         if (activeCtx) {
