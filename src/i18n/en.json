@@ -13,6 +13,7 @@
   "settings.tab.language": "Language",
   "settings.tab.keybindings": "Keybindings",
   "settings.tab.plugins": "Plugins",
+  "settings.tab.vault": "Vault",
 
   "settings.general.startup": "Startup",
   "settings.general.onLaunch": "On Launch",
