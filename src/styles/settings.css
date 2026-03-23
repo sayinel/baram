@@ -1277,8 +1277,19 @@
   gap: 10px;
   align-items: center;
   padding: 8px 12px;
+  cursor: pointer;
   border: 1px solid var(--color-border-default, #e5e7eb);
   border-radius: 6px;
+  transition: border-color 0.15s;
+}
+
+.vault-tab-item:hover {
+  border-color: var(--color-text-muted, #9ca3af);
+}
+
+.vault-tab-item--selected {
+  background: rgb(59 130 246 / 5%);
+  border-color: var(--color-accent-default, #3b82f6);
 }
 
 .vault-tab-item__color {
@@ -1314,6 +1325,31 @@
   padding: 2px 6px;
   font-size: 13px;
   outline: none;
+  border: 1px solid var(--color-accent-default, #3b82f6);
+  border-radius: 4px;
+}
+
+.vault-tab-item__alias {
+  display: block;
+  font-size: 11px;
+  color: var(--color-text-secondary, #9ca3af);
+}
+
+.vault-tab-item__alias-value {
+  cursor: pointer;
+}
+
+.vault-tab-item__alias-value:hover {
+  color: var(--color-text-primary);
+}
+
+.vault-tab-item__alias-input {
+  width: 120px;
+  padding: 1px 4px;
+  font-size: 11px;
+  color: var(--color-text-primary, #e5e7eb);
+  outline: none;
+  background: var(--color-bg-subtle, #1f2937);
   border: 1px solid var(--color-accent-default, #3b82f6);
   border-radius: 4px;
 }
@@ -1397,4 +1433,78 @@
   margin-bottom: 8px;
   font-size: 13px;
   color: var(--color-text-muted, #6b7280);
+}
+
+/* ─── §86 Vault Settings Override ─── */
+
+.vault-settings-loading {
+  padding: 8px 0;
+  font-size: 13px;
+  color: var(--color-text-muted, #6b7280);
+}
+
+.vault-settings-group {
+  padding: 12px;
+  margin: 16px 0;
+  border: 1px solid var(--color-border-default, #e5e7eb);
+  border-radius: 8px;
+}
+
+.vault-settings-group__title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary, #111827);
+}
+
+.vault-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+}
+
+.vault-settings-row__label {
+  font-size: 13px;
+  color: var(--color-text-default, #374151);
+}
+
+.vault-settings-row__control {
+  display: flex;
+  gap: 2px;
+}
+
+.vault-three-state-btn {
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--color-text-muted, #6b7280);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--color-border-default, #e5e7eb);
+  border-radius: 4px;
+}
+
+.vault-three-state-btn--active {
+  color: #fff;
+  background: var(--color-accent-default, #3b82f6);
+  border-color: var(--color-accent-default, #3b82f6);
+}
+
+.vault-settings-input {
+  width: 180px;
+  padding: 4px 8px;
+  font-size: 13px;
+  color: var(--color-text-default, #374151);
+  background: transparent;
+  border: 1px solid var(--color-border-default, #e5e7eb);
+  border-radius: 4px;
+}
+
+.vault-settings-select {
+  padding: 4px 8px;
+  font-size: 13px;
+  color: var(--color-text-default, #374151);
+  background: transparent;
+  border: 1px solid var(--color-border-default, #e5e7eb);
+  border-radius: 4px;
 }
