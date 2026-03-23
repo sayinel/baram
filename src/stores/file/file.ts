@@ -526,38 +526,28 @@ export function isActiveContextJournal(): boolean {
 }
 
 /**
- * §81 Cross-store sync: when active context changes, switch file tree and index.
- * contextStore is the source of truth; fileStore mirrors the active context.
+ * §81 Cross-store sync: keep fileStore.rootPath in sync with the active context.
+ *
+ * File tree reload and index rebuild are handled EXPLICITLY by:
+ * - switchContext() — called from ContextTabBar click
+ * - openFolder() / addFolder() — called from folder open flows
+ *
+ * This subscription only syncs rootPath for components that read it.
+ * It does NOT call listDir/setFileTree to avoid race conditions and
+ * unexpected FileTree refreshes during normal file operations.
  */
 useContextStore.subscribe((state, prevState) => {
   if (state.activeContextId === prevState.activeContextId) return;
-
-  // When activeContextId becomes null (all contexts removed), do nothing here.
-  // The ContextTabBar handleClose / closeFolder() handles cleanup explicitly.
   if (!state.activeContextId) return;
 
   const ctx = state.contexts.find((c) => c.id === state.activeContextId);
   if (!ctx) return;
 
-  if (ctx.contextType === "file") {
-    // §89 FileContext: no file tree
-    useFileStore.getState().setFileTree([]);
-    return;
+  // Sync rootPath only (no listDir, no refreshIndex)
+  if (ctx.contextType !== "file") {
+    const fileStore = useFileStore.getState();
+    if (fileStore.rootPath !== ctx.path) {
+      fileStore.setRootPath(ctx.path);
+    }
   }
-
-  // §81 Vault/Folder context switch — reload file tree + index.
-  // VaultRootState is already updated by Rust set_active_context IPC.
-  const fileStore = useFileStore.getState();
-  fileStore.setRootPath(ctx.path);
-  listDir(ctx.path, true)
-    .then((entries) => {
-      const tree = buildFileTree(entries, ctx.path);
-      useFileStore.getState().setFileTree(tree);
-    })
-    .catch((err) => logger.warn("§81 context switch: listDir failed", err));
-  refreshIndex(ctx.path)
-    .then(() => useLinkStore.getState().invalidate())
-    .catch((err) =>
-      logger.warn("§81 context switch: refreshIndex failed", err),
-    );
 });
