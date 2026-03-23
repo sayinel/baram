@@ -33,17 +33,24 @@ export function ContextTabBar() {
       e.stopPropagation();
       const wasActive =
         useContextStore.getState().activeContextId === contextId;
+
+      // Close editor tabs belonging to this context
+      const { useEditorStore } = await import("../../stores/editor/editor");
+      const tabs = useEditorStore.getState().tabs;
+      for (const tab of tabs.filter((t) => t.contextId === contextId)) {
+        useEditorStore.getState().closeTab(tab.id);
+      }
+
       await removeContext(contextId);
-      // If we closed the active context, switch to the new active one
+
       if (wasActive) {
         const newActive = useContextStore.getState().activeContextId;
         if (newActive) {
           await switchContext(newActive);
         } else {
-          // No contexts left — clear file tree
+          // No contexts left — clear everything, show home screen
           const { useFileStore } = await import("../../stores/file/file");
-          useFileStore.getState().setRootPath(null as unknown as string);
-          useFileStore.getState().setFileTree([]);
+          useFileStore.getState().closeFolder();
         }
       }
     },
