@@ -114,8 +114,14 @@ export function VaultTab() {
         </button>
       </div>
 
-      {selectedContext && (
+      {selectedContext && selectedContext.contextType === "vault" && (
         <VaultSettingsSection contextPath={selectedContext.path} />
+      )}
+      {selectedContext && selectedContext.contextType === "folder" && (
+        <p className="settings-section-desc">
+          This is a plain folder. Use &ldquo;Initialize as Vault&rdquo; from the
+          + menu to enable per-folder settings.
+        </p>
       )}
     </div>
   );
