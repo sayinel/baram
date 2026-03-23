@@ -59,10 +59,10 @@ export function VaultTab() {
     activeContextId,
   );
 
-  // The context whose settings are shown — either user-selected or active vault
+  // The context whose settings are shown — vault or folder (not standalone file)
   const selectedContext =
     contexts.find(
-      (c) => c.id === selectedContextId && c.contextType === "vault",
+      (c) => c.id === selectedContextId && c.contextType !== "file",
     ) ?? null;
 
   const handleAddFolder = useCallback(async () => {
@@ -187,21 +187,21 @@ function ThreeStateToggle({
       <span className="vault-settings-row__label">{label}</span>
       <div className="vault-settings-row__control">
         <button
-          className={`vault-three-state-btn${value === undefined ? "vault-three-state-btn--active" : ""}`}
+          className={`vault-three-state-btn ${value === undefined ? "vault-three-state-btn--active" : ""}`}
           onClick={() => onChange(undefined)}
           type="button"
         >
           Default
         </button>
         <button
-          className={`vault-three-state-btn${value === true ? "vault-three-state-btn--active" : ""}`}
+          className={`vault-three-state-btn ${value === true ? "vault-three-state-btn--active" : ""}`}
           onClick={() => onChange(true)}
           type="button"
         >
           On
         </button>
         <button
-          className={`vault-three-state-btn${value === false ? "vault-three-state-btn--active" : ""}`}
+          className={`vault-three-state-btn ${value === false ? "vault-three-state-btn--active" : ""}`}
           onClick={() => onChange(false)}
           type="button"
         >
@@ -253,21 +253,21 @@ function VaultExtensionToggle({
       <span className="vault-settings-row__label">{name}</span>
       <div className="vault-settings-row__control">
         <button
-          className={`vault-three-state-btn${state === "default" ? "vault-three-state-btn--active" : ""}`}
+          className={`vault-three-state-btn ${state === "default" ? "vault-three-state-btn--active" : ""}`}
           onClick={() => handleChange("default")}
           type="button"
         >
           Default
         </button>
         <button
-          className={`vault-three-state-btn${state === "enabled" ? "vault-three-state-btn--active" : ""}`}
+          className={`vault-three-state-btn ${state === "enabled" ? "vault-three-state-btn--active" : ""}`}
           onClick={() => handleChange("enabled")}
           type="button"
         >
           Enabled
         </button>
         <button
-          className={`vault-three-state-btn${state === "disabled" ? "vault-three-state-btn--active" : ""}`}
+          className={`vault-three-state-btn ${state === "disabled" ? "vault-three-state-btn--active" : ""}`}
           onClick={() => handleChange("disabled")}
           type="button"
         >
