@@ -6,7 +6,7 @@ import type { Editor } from "@tiptap/react";
 import { Calendar, ChevronDown, Pencil, Zap } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
-import { useAIStore } from "../../stores/ai/ai";
+import { useResolvedSettings } from "../../hooks/use-resolved-settings";
 import {
   BUILTIN_PRESETS,
   useWorkspaceStore,
@@ -79,7 +79,9 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
     })),
   );
   const hasChanges = changes.length > 0;
-  const privacyMode = useAIStore((s) => s.privacyMode);
+  // §86 Use vault-scoped resolved settings for privacy mode
+  const resolved = useResolvedSettings();
+  const privacyMode = resolved.aiPrivacyMode ?? false;
   const zoomLevel = useSettingsStore((s) => s.zoomLevel);
   const zoomPercent = Math.round(zoomLevel * 100);
 
