@@ -173,6 +173,10 @@ pub fn run() {
             context_cmd::get_contexts,
             context_cmd::get_vault_config,
             context_cmd::init_vault,
+            context_cmd::resolve_cross_vault_link,
+            context_cmd::set_vault_config,
+            context_cmd::get_vault_config_by_path,
+            context_cmd::set_vault_config_by_path,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

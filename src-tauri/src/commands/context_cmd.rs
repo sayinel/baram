@@ -104,6 +104,18 @@ pub async fn set_vault_config(
     crate::context::vault_config::save_vault_config(std::path::Path::new(&ctx.path), &config)
 }
 
+/// §86 Load vault config directly by path (no context ID lookup needed).
+#[tauri::command]
+pub async fn get_vault_config_by_path(path: String) -> Result<VaultConfig, String> {
+    crate::context::vault_config::load_vault_config(std::path::Path::new(&path))
+}
+
+/// §86 Save vault config directly by path (no context ID lookup needed).
+#[tauri::command]
+pub async fn set_vault_config_by_path(path: String, config: VaultConfig) -> Result<(), String> {
+    crate::context::vault_config::save_vault_config(std::path::Path::new(&path), &config)
+}
+
 /// §87 Resolve a cross-vault link target by alias + target name.
 /// Returns the absolute file path if found, None if not resolvable.
 #[tauri::command]
