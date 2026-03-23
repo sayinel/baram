@@ -177,6 +177,16 @@ export async function switchContext(contextId: string): Promise<void> {
   const ctx = contextStore.contexts.find((c) => c.id === contextId);
   if (!ctx) return;
 
+  // §81 Skip if already on this context's path (prevents redundant reload)
+  const fileStore = useFileStore.getState();
+  if (
+    contextStore.activeContextId === contextId &&
+    ctx.contextType !== "file" &&
+    fileStore.rootPath === ctx.path
+  ) {
+    return;
+  }
+
   // 1. Update frontend active context (no IPC — avoid potential failures)
   contextStore._setActiveContextLocal(contextId);
 
