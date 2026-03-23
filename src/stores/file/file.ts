@@ -532,13 +532,9 @@ export function isActiveContextJournal(): boolean {
 useContextStore.subscribe((state, prevState) => {
   if (state.activeContextId === prevState.activeContextId) return;
 
-  // §81 All contexts removed — clear file tree and rootPath
-  if (!state.activeContextId) {
-    const fileStore = useFileStore.getState();
-    fileStore.setRootPath(null as unknown as string);
-    fileStore.setFileTree([]);
-    return;
-  }
+  // When activeContextId becomes null (all contexts removed), do nothing here.
+  // The ContextTabBar handleClose / closeFolder() handles cleanup explicitly.
+  if (!state.activeContextId) return;
 
   const ctx = state.contexts.find((c) => c.id === state.activeContextId);
   if (!ctx) return;

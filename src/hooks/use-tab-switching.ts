@@ -32,6 +32,7 @@ import {
 import { mdLineToPmBlockStart } from "../utils/editor/cursor-mapper";
 import { isMarkdownFile } from "../utils/file-type";
 import { logger } from "../utils/logger";
+import { suppressNextDirtyMark } from "./use-auto-save";
 
 interface UseTabSwitchingParams {
   editor: Editor | null;
@@ -154,6 +155,7 @@ export function useTabSwitching({
         doc: emptyDoc,
         plugins: editor.state.plugins,
       });
+      suppressNextDirtyMark();
       editor.view.updateState(newState);
       return;
     }
@@ -241,6 +243,7 @@ export function useTabSwitching({
       const cachedState = editorStateCache.current.get(activeTabId!);
       const cachedScrollTop = scrollTopCache.current.get(activeTabId!);
       if (cachedState) {
+        suppressNextDirtyMark();
         editor.view.updateState(cachedState);
         // Restore exact scroll position (not just cursor visibility)
         if (cachedScrollTop !== undefined) {
@@ -286,6 +289,7 @@ export function useTabSwitching({
               plugins: editor.state.plugins,
               selection: TextSelection.atStart(doc),
             });
+            suppressNextDirtyMark();
             editor.view.updateState(newState);
             setIsParsing(false);
             // Reset scroll to top for freshly opened documents

@@ -17,6 +17,14 @@ import { isMarkdownFile } from "../utils/file-type";
  * §3.6: Debounced Write — 타이핑 중에는 저장하지 않음
  * Note: Non-MD files are auto-saved by App.tsx directly; this hook only handles markdown.
  */
+// §81 Module-level flag to suppress dirty marking during content load (tab switch/open)
+let suppressDirtyUntil = 0;
+
+/** Call before setting editor content to suppress the next dirty mark */
+export function suppressNextDirtyMark() {
+  suppressDirtyUntil = Date.now() + 200; // 200ms window
+}
+
 export function useAutoSave(editor: Editor | null) {
   const timerRef = useRef<null | ReturnType<typeof setTimeout>>(null);
   // Capture which tab scheduled the save; prevents writing tab B's content to tab A's
@@ -62,6 +70,9 @@ export function useAutoSave(editor: Editor | null) {
       const { activeTabId, tabs, markDirty } = useEditorStore.getState();
       const tab = tabs.find((t) => t.id === activeTabId);
       if (!tab?.filePath) return;
+
+      // §81 Skip dirty marking during content load (tab switch / file open)
+      if (Date.now() < suppressDirtyUntil) return;
 
       markDirty(tab.id, true);
       // Record which tab triggered this save so save() can detect a mid-debounce tab switch
