@@ -5,19 +5,18 @@ import { Plus, X } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useContextStore } from "../../stores/context/context";
+import { switchContext } from "../../stores/file/file";
 import "../../styles/context-tab-bar.css";
 import { ContextAddMenu } from "./ContextAddMenu";
 
 export function ContextTabBar() {
-  const { contexts, activeContextId, setActiveContext, removeContext } =
-    useContextStore(
-      useShallow((s) => ({
-        contexts: s.contexts,
-        activeContextId: s.activeContextId,
-        setActiveContext: s.setActiveContext,
-        removeContext: s.removeContext,
-      })),
-    );
+  const { contexts, activeContextId, removeContext } = useContextStore(
+    useShallow((s) => ({
+      contexts: s.contexts,
+      activeContextId: s.activeContextId,
+      removeContext: s.removeContext,
+    })),
+  );
 
   const [showAddMenu, setShowAddMenu] = useState(false);
   const addBtnRef = useRef<HTMLButtonElement>(null);
@@ -32,7 +31,21 @@ export function ContextTabBar() {
   const handleClose = useCallback(
     async (e: React.MouseEvent, contextId: string) => {
       e.stopPropagation();
+      const wasActive =
+        useContextStore.getState().activeContextId === contextId;
       await removeContext(contextId);
+      // If we closed the active context, switch to the new active one
+      if (wasActive) {
+        const newActive = useContextStore.getState().activeContextId;
+        if (newActive) {
+          await switchContext(newActive);
+        } else {
+          // No contexts left — clear file tree
+          const { useFileStore } = await import("../../stores/file/file");
+          useFileStore.getState().setRootPath(null as unknown as string);
+          useFileStore.getState().setFileTree([]);
+        }
+      }
     },
     [removeContext],
   );
@@ -41,10 +54,10 @@ export function ContextTabBar() {
     (e: React.MouseEvent, contextId: string) => {
       if (e.button === 1) {
         e.preventDefault();
-        removeContext(contextId);
+        handleClose(e, contextId);
       }
     },
-    [removeContext],
+    [handleClose],
   );
 
   const handleContextMenu = useCallback(
@@ -64,7 +77,7 @@ export function ContextTabBar() {
         <button
           className={`context-tab ${ctx.id === activeContextId ? "context-tab--active" : ""}`}
           key={ctx.id}
-          onClick={() => setActiveContext(ctx.id)}
+          onClick={() => switchContext(ctx.id)}
           onContextMenu={(e) => handleContextMenu(e, ctx.id)}
           onMouseDown={(e) => handleMiddleClick(e, ctx.id)}
           title={ctx.path}
@@ -140,8 +153,10 @@ function ContextTabContextMenu({
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [renaming, setRenaming] = useState(false);
+  const [editingAlias, setEditingAlias] = useState(false);
   const [showColors, setShowColors] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const aliasInputRef = useRef<HTMLInputElement>(null);
 
   const ctx = useContextStore
     .getState()
@@ -169,6 +184,16 @@ function ContextTabContextMenu({
     if (newLabel.trim()) {
       useContextStore.getState().updateContextLabel(contextId, newLabel.trim());
     }
+    onClose();
+  };
+
+  const handleEditAlias = () => {
+    setEditingAlias(true);
+    setTimeout(() => aliasInputRef.current?.focus(), 0);
+  };
+
+  const handleAliasSubmit = (newAlias: string) => {
+    useContextStore.getState().updateContextAlias(contextId, newAlias.trim());
     onClose();
   };
 
@@ -204,11 +229,31 @@ function ContextTabContextMenu({
           }}
           ref={inputRef}
         />
+      ) : editingAlias ? (
+        <input
+          className="context-ctx-menu__input"
+          defaultValue={ctx.alias ?? ""}
+          onBlur={(e) => handleAliasSubmit(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleAliasSubmit(e.currentTarget.value);
+            if (e.key === "Escape") onClose();
+          }}
+          placeholder="vault alias"
+          ref={aliasInputRef}
+        />
       ) : (
         <>
           <button className="context-ctx-menu__item" onClick={handleRename}>
             Rename
           </button>
+          {ctx.contextType === "vault" && (
+            <button
+              className="context-ctx-menu__item"
+              onClick={handleEditAlias}
+            >
+              Edit Alias{ctx.alias ? ` (${ctx.alias})` : ""}
+            </button>
+          )}
           <button
             className="context-ctx-menu__item"
             onClick={() => setShowColors((v) => !v)}

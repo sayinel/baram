@@ -210,6 +210,49 @@ export async function openFolder(path: string): Promise<void> {
     .catch((err) => logger.warn("§30 openFolder: index build failed", err));
 }
 
+/**
+ * §81 Switch the active context — updates VaultRootState, reloads file tree + index.
+ * Called directly from ContextTabBar click handler (not via subscription).
+ */
+export async function switchContext(contextId: string): Promise<void> {
+  const contextStore = useContextStore.getState();
+  const ctx = contextStore.contexts.find((c) => c.id === contextId);
+  if (!ctx) return;
+
+  // 1. Update frontend active context (no IPC — avoid potential failures)
+  contextStore._setActiveContextLocal(contextId);
+
+  // 2. Update Rust VaultRootState
+  if (ctx.contextType !== "file") {
+    try {
+      await setVaultRoot(ctx.path);
+    } catch (err) {
+      logger.warn("§81 switchContext: setVaultRoot failed", err);
+    }
+
+    // 3. Reload file tree
+    try {
+      const entries = await listDir(ctx.path, true);
+      const tree = buildFileTree(entries, ctx.path);
+      useFileStore.getState().setRootPath(ctx.path);
+      useFileStore.getState().setFileTree(tree);
+    } catch (err) {
+      logger.warn("§81 switchContext: listDir failed", err);
+    }
+
+    // 4. Rebuild link index in background
+    refreshIndex(ctx.path)
+      .then(() => useLinkStore.getState().invalidate())
+      .catch((err) =>
+        logger.warn("§81 switchContext: refreshIndex failed", err),
+      );
+  } else {
+    // FileContext: clear file tree
+    useFileStore.getState().setRootPath(null as unknown as string);
+    useFileStore.getState().setFileTree([]);
+  }
+}
+
 export const useFileStore = create<FileState>((set, get) => ({
   rootPath: null,
   fileTree: [],
