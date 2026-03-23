@@ -8,7 +8,10 @@ import type { VaultConfig } from "../../../ipc/types";
 import { Folder, Trash2 } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
-import { getVaultConfig, setVaultConfig } from "../../../ipc/context";
+import {
+  getVaultConfigByPath,
+  setVaultConfigByPath,
+} from "../../../ipc/context";
 import { useContextStore } from "../../../stores/context/context";
 import { addFolder } from "../../../stores/file/file";
 import { logger } from "../../../utils/logger";
@@ -112,7 +115,7 @@ export function VaultTab() {
       </div>
 
       {selectedContext && (
-        <VaultSettingsSection contextId={selectedContext.id} />
+        <VaultSettingsSection contextPath={selectedContext.path} />
       )}
     </div>
   );
@@ -280,28 +283,28 @@ function VaultExtensionToggle({
 
 // ── VaultTab ────────────────────────────────────────────────────────────────
 
-function VaultSettingsSection({ contextId }: { contextId: string }) {
+function VaultSettingsSection({ contextPath }: { contextPath: string }) {
   const [config, setConfig] = useState<null | VaultConfig>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    getVaultConfig(contextId)
+    getVaultConfigByPath(contextPath)
       .then((c) => setConfig(c ?? {}))
       .catch(() => setConfig({}))
       .finally(() => setLoading(false));
-  }, [contextId]);
+  }, [contextPath]);
 
   const saveConfig = useCallback(
     async (updated: VaultConfig) => {
       setConfig(updated);
       try {
-        await setVaultConfig(contextId, updated);
+        await setVaultConfigByPath(contextPath, updated);
       } catch (err) {
         logger.error("[VaultSettings] save failed:", err);
       }
     },
-    [contextId],
+    [contextPath],
   );
 
   if (loading) return <p className="vault-settings-loading">Loading…</p>;

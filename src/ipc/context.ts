@@ -17,6 +17,11 @@ export async function getVaultConfig(
   return invoke("get_vault_config", { contextId });
 }
 
+/** §86 Load vault config directly by path (no context ID needed) */
+export async function getVaultConfigByPath(path: string): Promise<VaultConfig> {
+  return invoke("get_vault_config_by_path", { path });
+}
+
 export async function initVault(
   path: string,
   alias: string,
@@ -28,6 +33,30 @@ export async function removeContext(contextId: string): Promise<void> {
   return invoke("remove_context", { contextId });
 }
 
+/** §87 Resolve a cross-vault link target by alias + target name. */
+export async function resolveCrossVaultLink(
+  alias: string,
+  target: string,
+): Promise<null | string> {
+  return invoke("resolve_cross_vault_link", { alias, target });
+}
+
 export async function setActiveContext(contextId: string): Promise<void> {
   return invoke("set_active_context", { contextId });
+}
+
+/** §86 Save vault config overrides to .baram/config.json */
+export async function setVaultConfig(
+  contextId: string,
+  config: VaultConfig,
+): Promise<void> {
+  return invoke("set_vault_config", { contextId, config });
+}
+
+/** §86 Save vault config directly by path (no context ID needed) */
+export async function setVaultConfigByPath(
+  path: string,
+  config: VaultConfig,
+): Promise<void> {
+  return invoke("set_vault_config_by_path", { path, config });
 }
