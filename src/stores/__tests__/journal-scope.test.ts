@@ -1,84 +1,14 @@
 /**
- * §56b Phase A — Journal Workspace Scoping & Layout Tests
  * §85 M2b — Journal VaultContext migration tests
+ * §56b — Journal workspace layout tests
  */
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { useContextStore } from "../context/context";
-import { isActiveContextJournal, useFileStore } from "../file/file";
+import { isActiveContextJournal } from "../file/file";
 import { BUILTIN_PRESETS, useWorkspaceStore } from "../file/workspace";
 import { useSettingsStore } from "../settings/store";
 import { useUIStore } from "../ui/ui";
-
-describe("§56b FileStore journal scoping", () => {
-  beforeEach(async () => {
-    await new Promise((r) => setTimeout(r, 0));
-    useFileStore.setState({
-      rootPath: "/Users/test/vault",
-      fileTree: [
-        {
-          name: "docs",
-          path: "/Users/test/vault/docs",
-          isDir: true,
-          children: [],
-        },
-        {
-          name: "readme.md",
-          path: "/Users/test/vault/readme.md",
-          isDir: false,
-        },
-      ],
-      openFiles: new Map(),
-      originalRootPath: null,
-      isJournalScoped: false,
-    });
-  });
-
-  it("has originalRootPath and isJournalScoped fields", () => {
-    const state = useFileStore.getState();
-    expect(state).toHaveProperty("originalRootPath");
-    expect(state).toHaveProperty("isJournalScoped");
-    expect(state.originalRootPath).toBeNull();
-    expect(state.isJournalScoped).toBe(false);
-  });
-
-  it("enterJournalScope saves original rootPath and sets journal path", () => {
-    useFileStore.getState().enterJournalScope("/Users/test/journals");
-
-    const state = useFileStore.getState();
-    expect(state.originalRootPath).toBe("/Users/test/vault");
-    expect(state.rootPath).toBe("/Users/test/journals");
-    expect(state.isJournalScoped).toBe(true);
-  });
-
-  it("exitJournalScope restores original rootPath", () => {
-    useFileStore.getState().enterJournalScope("/Users/test/journals");
-    useFileStore.getState().exitJournalScope();
-
-    const state = useFileStore.getState();
-    expect(state.rootPath).toBe("/Users/test/vault");
-    expect(state.originalRootPath).toBeNull();
-    expect(state.isJournalScoped).toBe(false);
-  });
-
-  it("exitJournalScope is no-op when not scoped", () => {
-    useFileStore.getState().exitJournalScope();
-
-    const state = useFileStore.getState();
-    expect(state.rootPath).toBe("/Users/test/vault");
-    expect(state.isJournalScoped).toBe(false);
-  });
-
-  it("enterJournalScope while already scoped updates journal path without losing original", () => {
-    useFileStore.getState().enterJournalScope("/Users/test/journals");
-    useFileStore.getState().enterJournalScope("/Users/test/journals2");
-
-    const state = useFileStore.getState();
-    expect(state.originalRootPath).toBe("/Users/test/vault");
-    expect(state.rootPath).toBe("/Users/test/journals2");
-    expect(state.isJournalScoped).toBe(true);
-  });
-});
 
 describe("§56b UIStore memories panel mode", () => {
   beforeEach(async () => {

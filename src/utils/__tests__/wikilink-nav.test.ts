@@ -92,7 +92,6 @@ beforeEach(() => {
   vi.mocked(useFileStore.getState).mockReturnValue({
     rootPath: "/vault",
     fileTree: mockFileTree,
-    isJournalScoped: false,
   } as ReturnType<typeof useFileStore.getState>);
   vi.mocked(useEditorStore.getState).mockReturnValue({
     activeTabId: "tab-1",
