@@ -2,6 +2,7 @@
 import { useEffect, useRef } from "react";
 
 import { ensureJournalFile } from "../services/journal-file-service";
+import { useContextStore } from "../stores/context/context";
 import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
 import { resolveJournalDir } from "../utils/journal/journal";
@@ -10,6 +11,8 @@ import { logger } from "../utils/logger";
 /**
  * On workspace open (rootPath change), auto-create today's journal
  * if journal is enabled and file doesn't exist yet.
+ * §85 Ensures journal context is registered before file operations
+ * so validate_path_any doesn't block journal directory access.
  */
 export function useJournal(
   handleOpenFilePath: (path: string) => Promise<void>,
@@ -40,6 +43,13 @@ export function useJournal(
 
     (async () => {
       try {
+        // §85 Register journal context first so validate_path_any
+        // allows file operations in the journal directory
+        await useContextStore
+          .getState()
+          .ensureJournalContext(resolvedDir)
+          .catch(() => {});
+
         const result = await ensureJournalFile(today, {
           journalDirectory,
           journalFilenameFormat,
