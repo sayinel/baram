@@ -571,6 +571,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn validate_path_any_path_in_non_active_context_passes() {
+        let dir_a = TempDir::new().unwrap();
+        let dir_b = TempDir::new().unwrap();
+        let mgr = ContextManager::new();
+        let info_a = make_info("a", dir_a.path().to_str().unwrap(), ContextType::Folder);
+        let info_b = make_info("b", dir_b.path().to_str().unwrap(), ContextType::Vault);
+        mgr.add(info_a).await.unwrap();
+        mgr.add(info_b).await.unwrap();
+        mgr.set_active("a").await.unwrap();
+
+        // A file in context B (non-active) should pass validate_path_any
+        let file_in_b = dir_b.path().join("doc.md");
+        std::fs::write(&file_in_b, "content").unwrap();
+        mgr.validate_path_any(file_in_b.to_str().unwrap())
+            .await
+            .unwrap();
+
+        // But validate_path_active should fail (active is A, file is in B)
+        assert!(mgr
+            .validate_path_active(file_in_b.to_str().unwrap())
+            .await
+            .is_err());
+    }
+
+    #[test]
+    fn resolve_canonical_nonexistent_walks_ancestors() {
+        let dir = TempDir::new().unwrap();
+        // Path where the file does not exist yet, but parent does
+        let nonexistent = dir.path().join("subdir").join("new-file.md");
+        let result = resolve_canonical(nonexistent.to_str().unwrap()).unwrap();
+        // Should resolve to canonical parent + pending components
+        assert!(result.ends_with("subdir/new-file.md") || result.ends_with("subdir\\new-file.md"));
+        // The canonical prefix should match the real temp dir
+        let canonical_dir = std::fs::canonicalize(dir.path()).unwrap();
+        assert!(result.starts_with(&canonical_dir));
+    }
+
+    #[tokio::test]
     async fn validate_path_any_file_context_exact_match() {
         let dir = TempDir::new().unwrap();
         let file_path = dir.path().join("single.md");
