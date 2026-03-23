@@ -10,6 +10,7 @@ import { prosemirrorToMarkdown } from "../pipeline";
 import { useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
 import { useSettingsStore } from "../stores/settings/store";
+import { programmaticUpdateRef } from "../utils/editor/programmatic-update";
 import { isMarkdownFile } from "../utils/file-type";
 
 /**
@@ -17,13 +18,6 @@ import { isMarkdownFile } from "../utils/file-type";
  * §3.6: Debounced Write — 타이핑 중에는 저장하지 않음
  * Note: Non-MD files are auto-saved by App.tsx directly; this hook only handles markdown.
  */
-// §81 Module-level flag to suppress dirty marking during content load (tab switch/open)
-let suppressDirtyUntil = 0;
-
-/** Call before setting editor content to suppress the next dirty mark */
-export function suppressNextDirtyMark() {
-  suppressDirtyUntil = Date.now() + 500; // 500ms window for large file parsing
-}
 
 export function useAutoSave(editor: Editor | null) {
   const timerRef = useRef<null | ReturnType<typeof setTimeout>>(null);
@@ -71,8 +65,8 @@ export function useAutoSave(editor: Editor | null) {
       const tab = tabs.find((t) => t.id === activeTabId);
       if (!tab?.filePath) return;
 
-      // §81 Skip dirty marking during content load (tab switch / file open)
-      if (Date.now() < suppressDirtyUntil) return;
+      // §81 Skip dirty marking during programmatic content load (tab switch / file open)
+      if (programmaticUpdateRef.current) return;
 
       markDirty(tab.id, true);
       // Record which tab triggered this save so save() can detect a mid-debounce tab switch
