@@ -86,6 +86,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (tab?.contextId) {
       const ctxStore = useContextStore.getState();
       if (ctxStore.activeContextId !== tab.contextId) {
+        // Check if the tab's context has a different PATH (not just different ID)
+        // IDs can differ due to dedup (legacy-xxx vs ctx-xxx) while path is same
+        const activeCtx = ctxStore.activeContext();
+        const tabCtx = ctxStore.contexts.find((c) => c.id === tab.contextId);
+        if (tabCtx && activeCtx && tabCtx.path === activeCtx.path) {
+          return; // Same vault, different ID — no need to switch
+        }
         // Lazy import to avoid circular dependency at module load
         import("../file/file").then(({ switchContext }) => {
           switchContext(tab.contextId);
