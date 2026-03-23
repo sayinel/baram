@@ -18,54 +18,29 @@ fn check(path: &str) -> Result<(), String> {
     crate::fs::validate_path(path).map_err(|e| e.to_string())
 }
 
-/// Validate that path is within the currently open vault root (when set).
-/// If no vault root is set (cold start / folder picker not yet used), allows all paths.
+/// §88 Validate that path is within a registered context (multi-vault aware).
 ///
-/// Canonicalizes both paths before comparison to prevent symlink traversal attacks
-/// (a symlink inside the vault that points to a location outside the vault).
-/// For paths that do not yet exist (write_file, create_dir), the parent directory
-/// is canonicalized instead to resolve any symlinks in the parent chain.
+/// Tries ContextManager first (checks against ALL registered contexts so cross-context
+/// file access works). Falls back to VaultRootState for backward compatibility when no
+/// contexts are registered yet (cold start before any context registration).
+///
+/// Canonicalizes both paths before comparison to prevent symlink traversal attacks.
 async fn check_vault(
     path: &str,
     state: &tauri::State<'_, crate::VaultRootState>,
+    ctx_mgr: &tauri::State<'_, crate::context::ContextManager>,
 ) -> Result<(), String> {
+    // Try ContextManager first (multi-vault aware)
+    let contexts = ctx_mgr.list().await;
+    if !contexts.is_empty() {
+        return ctx_mgr.validate_path_any(path).await;
+    }
+
+    // Fallback: VaultRootState (backward compat for cold start before any context registered)
     let root_guard = state.0.read().await;
     if let Some(root) = root_guard.as_ref() {
         let canonical_root = std::fs::canonicalize(root).unwrap_or_else(|_| root.clone());
-
-        let canonical_path = match std::fs::canonicalize(path) {
-            Ok(p) => p,
-            Err(_) => {
-                // Path does not exist yet (e.g., write_file / create_dir target).
-                // Walk up the ancestor chain to find the nearest existing directory,
-                // canonicalize it, then append the remaining (non-existent) components.
-                let target = std::path::Path::new(path);
-                let mut pending: Vec<std::ffi::OsString> = Vec::new();
-                let mut current = target;
-                loop {
-                    match std::fs::canonicalize(current) {
-                        Ok(canonical) => {
-                            let mut result = canonical;
-                            for component in pending.into_iter().rev() {
-                                result = result.join(component);
-                            }
-                            break result;
-                        }
-                        Err(_) => {
-                            let name = current.file_name().ok_or_else(|| {
-                                "Access denied: path is outside vault root".to_string()
-                            })?;
-                            pending.push(name.to_os_string());
-                            current = current.parent().ok_or_else(|| {
-                                "Access denied: path is outside vault root".to_string()
-                            })?;
-                        }
-                    }
-                }
-            }
-        };
-
-        // PathBuf::starts_with is component-aware: "/vault2" does NOT start_with "/vault"
+        let canonical_path = crate::context::manager::resolve_canonical(path)?;
         if !canonical_path.starts_with(&canonical_root) {
             return Err("Access denied: path is outside vault root".to_string());
         }
@@ -131,9 +106,10 @@ pub async fn set_vault_root(
 pub async fn read_file(
     path: String,
     state: tauri::State<'_, crate::VaultRootState>,
+    ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
 ) -> Result<String, String> {
     check(&path)?;
-    check_vault(&path, &state).await?;
+    check_vault(&path, &state, &ctx_mgr).await?;
     crate::fs::read_file(&path).await.map_err(|e| e.to_string())
 }
 
@@ -142,9 +118,10 @@ pub async fn write_file(
     path: String,
     content: String,
     state: tauri::State<'_, crate::VaultRootState>,
+    ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
 ) -> Result<(), String> {
     check(&path)?;
-    check_vault(&path, &state).await?;
+    check_vault(&path, &state, &ctx_mgr).await?;
     crate::fs::write_file(&path, &content)
         .await
         .map_err(|e| e.to_string())
@@ -155,9 +132,10 @@ pub async fn list_dir(
     path: String,
     recursive: Option<bool>,
     state: tauri::State<'_, crate::VaultRootState>,
+    ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
 ) -> Result<Vec<FileEntry>, String> {
     check(&path)?;
-    check_vault(&path, &state).await?;
+    check_vault(&path, &state, &ctx_mgr).await?;
     crate::fs::list_dir(&path, recursive.unwrap_or(false))
         .await
         .map_err(|e| e.to_string())
@@ -168,11 +146,12 @@ pub async fn rename_file(
     from: String,
     to: String,
     state: tauri::State<'_, crate::VaultRootState>,
+    ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
 ) -> Result<(), String> {
     check(&from)?;
     check(&to)?;
-    check_vault(&from, &state).await?;
-    check_vault(&to, &state).await?;
+    check_vault(&from, &state, &ctx_mgr).await?;
+    check_vault(&to, &state, &ctx_mgr).await?;
     crate::fs::rename_file(&from, &to)
         .await
         .map_err(|e| e.to_string())
@@ -182,9 +161,10 @@ pub async fn rename_file(
 pub async fn delete_file(
     path: String,
     state: tauri::State<'_, crate::VaultRootState>,
+    ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
 ) -> Result<(), String> {
     check(&path)?;
-    check_vault(&path, &state).await?;
+    check_vault(&path, &state, &ctx_mgr).await?;
     crate::fs::delete_file(&path)
         .await
         .map_err(|e| e.to_string())
@@ -194,9 +174,10 @@ pub async fn delete_file(
 pub async fn create_dir(
     path: String,
     state: tauri::State<'_, crate::VaultRootState>,
+    ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
 ) -> Result<(), String> {
     check(&path)?;
-    check_vault(&path, &state).await?;
+    check_vault(&path, &state, &ctx_mgr).await?;
     crate::fs::create_dir(&path)
         .await
         .map_err(|e| e.to_string())
@@ -206,9 +187,10 @@ pub async fn create_dir(
 pub async fn delete_dir(
     path: String,
     state: tauri::State<'_, crate::VaultRootState>,
+    ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
 ) -> Result<(), String> {
     check(&path)?;
-    check_vault(&path, &state).await?;
+    check_vault(&path, &state, &ctx_mgr).await?;
     crate::fs::delete_dir(&path)
         .await
         .map_err(|e| e.to_string())
@@ -219,11 +201,12 @@ pub async fn copy_file(
     from: String,
     to: String,
     state: tauri::State<'_, crate::VaultRootState>,
+    ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
 ) -> Result<(), String> {
     check(&from)?;
     check(&to)?;
-    check_vault(&from, &state).await?;
-    check_vault(&to, &state).await?;
+    check_vault(&from, &state, &ctx_mgr).await?;
+    check_vault(&to, &state, &ctx_mgr).await?;
     crate::fs::copy_file(&from, &to)
         .await
         .map_err(|e| e.to_string())
@@ -238,7 +221,7 @@ pub async fn watch_dir(
     ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
 ) -> Result<(), String> {
     check(&path)?;
-    check_vault(&path, &vault_state).await?;
+    check_vault(&path, &vault_state, &ctx_mgr).await?;
     let new_watcher = crate::fs::start_watching(&path, app_handle).map_err(|e| e.to_string())?;
     // M2: Store watcher per context (keyed by context id, falling back to path)
     let watcher_key = ctx_mgr.active_id().await.unwrap_or_else(|| path.clone());
@@ -254,10 +237,11 @@ pub async fn extract_zip(
     zip_path: String,
     output_dir: String,
     state: tauri::State<'_, crate::VaultRootState>,
+    ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
 ) -> Result<Vec<String>, String> {
     check(&zip_path)?;
     check(&output_dir)?;
-    check_vault(&output_dir, &state).await?;
+    check_vault(&output_dir, &state, &ctx_mgr).await?;
     crate::fs::extract_zip(&zip_path, &output_dir)
         .await
         .map_err(|e| e.to_string())
@@ -269,9 +253,10 @@ pub async fn write_binary_file(
     path: String,
     data: Vec<u8>,
     state: tauri::State<'_, crate::VaultRootState>,
+    ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
 ) -> Result<(), String> {
     check(&path)?;
-    check_vault(&path, &state).await?;
+    check_vault(&path, &state, &ctx_mgr).await?;
     let tmp_path = format!("{}.{}.tmp", path, uuid::Uuid::new_v4().as_simple());
     tokio::fs::write(&tmp_path, &data)
         .await
