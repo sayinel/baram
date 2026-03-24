@@ -223,10 +223,10 @@ pub async fn watch_dir(
     check(&path)?;
     check_vault(&path, &vault_state, &ctx_mgr).await?;
     let new_watcher = crate::fs::start_watching(&path, app_handle).map_err(|e| e.to_string())?;
-    // M2: Store watcher per context (keyed by context id, falling back to path)
-    let watcher_key = ctx_mgr.active_id().await.unwrap_or_else(|| path.clone());
+    // Key by PATH (not context ID) to prevent watcher accumulation
+    // when context IDs change due to dedup or restart
     let mut guard = watcher_state.0.lock().map_err(|e| e.to_string())?;
-    guard.insert(watcher_key, new_watcher);
+    guard.insert(path.clone(), new_watcher);
     Ok(())
 }
 
