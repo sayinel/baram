@@ -4,8 +4,8 @@ import { useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 
 import {
-  addContext as ipcAddContext,
-  setActiveContext as ipcSetActiveContext,
+  setActiveContext as reActivateInRust,
+  addContext as reRegisterInRust,
 } from "../ipc/context";
 import { getOpenedUrls } from "../ipc/invoke";
 import { useContextStore } from "../stores/context/context";
@@ -52,7 +52,7 @@ export function useAppStartup({
       if (contextStore.contexts.length > 0) {
         for (const ctx of contextStore.contexts) {
           try {
-            await ipcAddContext(ctx);
+            await reRegisterInRust(ctx);
           } catch {
             // Path may no longer exist — stale context, skip silently.
             // It will be cleaned up when user interacts with it.
@@ -63,7 +63,7 @@ export function useAppStartup({
         }
         // Re-activate the active context in Rust
         if (contextStore.activeContextId) {
-          await ipcSetActiveContext(contextStore.activeContextId).catch(() => {
+          await reActivateInRust(contextStore.activeContextId).catch(() => {
             logger.warn("§81 Startup re-activation of active context failed");
           });
         }
