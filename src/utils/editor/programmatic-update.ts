@@ -3,12 +3,10 @@ export const programmaticUpdateRef = { current: false };
 
 /**
  * Mark the next editor update as programmatic (will not trigger dirty flag).
- * Uses requestAnimationFrame to clear — microtasks (Promise.resolve) clear too
- * early because ProseMirror's DOMObserver may defer update events past microtask.
+ * The flag is NOT cleared by a timer — instead, the auto-save handler
+ * consumes it on first encounter. This avoids all timing issues with
+ * ProseMirror's DOMObserver (which defers update events via setTimeout).
  */
 export function markProgrammaticUpdate(): void {
   programmaticUpdateRef.current = true;
-  requestAnimationFrame(() => {
-    programmaticUpdateRef.current = false;
-  });
 }

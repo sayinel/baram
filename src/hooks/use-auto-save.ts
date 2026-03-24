@@ -66,7 +66,11 @@ export function useAutoSave(editor: Editor | null) {
       if (!tab?.filePath) return;
 
       // §81 Skip dirty marking during programmatic content load (tab switch / file open)
-      if (programmaticUpdateRef.current) return;
+      // Consume the flag so subsequent real user edits are tracked
+      if (programmaticUpdateRef.current) {
+        programmaticUpdateRef.current = false;
+        return;
+      }
 
       markDirty(tab.id, true);
       // Record which tab triggered this save so save() can detect a mid-debounce tab switch
