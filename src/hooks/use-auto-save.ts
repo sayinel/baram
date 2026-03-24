@@ -10,7 +10,10 @@ import { prosemirrorToMarkdown } from "../pipeline";
 import { useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
 import { useSettingsStore } from "../stores/settings/store";
-import { programmaticUpdateRef } from "../utils/editor/programmatic-update";
+import {
+  isDocUnchanged,
+  updateOriginalDoc,
+} from "../utils/editor/programmatic-update";
 import { isMarkdownFile } from "../utils/file-type";
 
 /**
@@ -48,6 +51,8 @@ export function useAutoSave(editor: Editor | null) {
       const markdown = prosemirrorToMarkdown(editor.state.doc);
       await writeFile(pending.filePath, markdown);
       markDirty(pending.id, false);
+      // After save, current doc becomes the new baseline for dirty detection
+      updateOriginalDoc(pending.id, editor.state.doc);
       updateFileIndex(pending.filePath)
         .then(() => useLinkStore.getState().invalidate())
         .catch(() => {});
@@ -65,8 +70,11 @@ export function useAutoSave(editor: Editor | null) {
       const tab = tabs.find((t) => t.id === activeTabId);
       if (!tab?.filePath) return;
 
-      // §81 Skip dirty marking during programmatic content load (tab switch / file open)
-      if (programmaticUpdateRef.current) return;
+      // Skip if doc hasn't actually changed from the loaded original.
+      // This correctly handles: programmatic updateState (no change),
+      // DOMObserver reconciliation (no change), AND roundtrip differences
+      // (genuine change → dirty is correct).
+      if (isDocUnchanged(tab.id, editor.state.doc)) return;
 
       markDirty(tab.id, true);
       // Record which tab triggered this save so save() can detect a mid-debounce tab switch

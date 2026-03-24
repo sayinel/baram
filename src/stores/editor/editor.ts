@@ -148,6 +148,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       return { tabs, activeTabId, mruOrder };
     });
 
+    // Clean up original doc tracking for dirty detection
+    if (target && !target.isPinned) {
+      import("../../utils/editor/programmatic-update").then(
+        ({ clearOriginalDoc }) => clearOriginalDoc(tabId),
+      );
+    }
+
     // §89 Auto-remove FileContext when its last tab is closed
     if (target && !target.isPinned && target.contextId) {
       const contextStore = useContextStore.getState();

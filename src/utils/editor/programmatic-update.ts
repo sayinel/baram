@@ -1,15 +1,33 @@
-/** Flag to suppress dirty marking during programmatic editor updates (tab switch, file load) */
-export const programmaticUpdateRef = { current: false };
-
 /**
- * Mark editor updates as programmatic for 500ms (will not trigger dirty flag).
- * ProseMirror's DOMObserver fires multiple deferred update events for large
- * files. 500ms covers all batches without affecting real user edits
- * (users don't start typing within 500ms of opening a file).
+ * Original doc tracking for dirty detection.
+ *
+ * Instead of timing-based suppression, we store the ProseMirror doc
+ * at load time and compare via doc.eq() on each update event.
+ * If the doc hasn't changed from the original, it's not dirty.
+ * If it has changed (user edit OR roundtrip difference), it's legitimately dirty.
  */
-export function markProgrammaticUpdate(): void {
-  programmaticUpdateRef.current = true;
-  setTimeout(() => {
-    programmaticUpdateRef.current = false;
-  }, 500);
+import type { Node } from "@tiptap/pm/model";
+
+const originalDocs = new Map<string, Node>();
+
+/** Clean up when tab is closed */
+export function clearOriginalDoc(tabId: string): void {
+  originalDocs.delete(tabId);
+}
+
+/** Check if current doc is unchanged from the loaded original */
+export function isDocUnchanged(tabId: string, currentDoc: Node): boolean {
+  const original = originalDocs.get(tabId);
+  if (!original) return false;
+  return original.eq(currentDoc);
+}
+
+/** Store the original doc after loading content into the editor */
+export function setOriginalDoc(tabId: string, doc: Node): void {
+  originalDocs.set(tabId, doc);
+}
+
+/** Update the original doc (e.g., after save — saved content becomes the new baseline) */
+export function updateOriginalDoc(tabId: string, doc: Node): void {
+  originalDocs.set(tabId, doc);
 }
