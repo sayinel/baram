@@ -30,7 +30,7 @@ import {
   findHeadingPosByText,
 } from "../utils/editor/block-nav";
 import { mdLineToPmBlockStart } from "../utils/editor/cursor-mapper";
-import { markProgrammaticUpdate } from "../utils/editor/programmatic-update";
+import { setOriginalDoc } from "../utils/editor/programmatic-update";
 import { isMarkdownFile } from "../utils/file-type";
 import { logger } from "../utils/logger";
 
@@ -155,10 +155,8 @@ export function useTabSwitching({
         doc: emptyDoc,
         plugins: editor.state.plugins,
       });
-      // Defer updateState outside React commit phase (setTimeout ensures
-      // a new macrotask, unlike queueMicrotask which runs within microtask queue)
+      // Defer updateState outside React commit phase
       setTimeout(() => {
-        markProgrammaticUpdate();
         editor.view.updateState(newState);
       });
       return;
@@ -247,10 +245,10 @@ export function useTabSwitching({
       const cachedState = editorStateCache.current.get(activeTabId!);
       const cachedScrollTop = scrollTopCache.current.get(activeTabId!);
       if (cachedState) {
-        // Defer updateState to avoid flushSync error in React 19 commit phase
-        queueMicrotask(() => {
-          markProgrammaticUpdate();
+        // Defer updateState outside React commit phase
+        setTimeout(() => {
           editor.view.updateState(cachedState);
+          setOriginalDoc(activeTabId!, cachedState.doc);
         });
         // Restore exact scroll position (not just cursor visibility)
         if (cachedScrollTop !== undefined) {
@@ -296,10 +294,10 @@ export function useTabSwitching({
               plugins: editor.state.plugins,
               selection: TextSelection.atStart(doc),
             });
-            // Defer updateState to avoid flushSync error in React 19 commit phase
-            queueMicrotask(() => {
-              markProgrammaticUpdate();
+            // Defer updateState outside React commit phase
+            setTimeout(() => {
               editor.view.updateState(newState);
+              setOriginalDoc(activeTabId!, newState.doc);
               setIsParsing(false);
             });
             // Reset scroll to top for freshly opened documents
