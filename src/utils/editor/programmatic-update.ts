@@ -2,11 +2,14 @@
 export const programmaticUpdateRef = { current: false };
 
 /**
- * Mark the next editor update as programmatic (will not trigger dirty flag).
- * The flag is NOT cleared by a timer — instead, the auto-save handler
- * consumes it on first encounter. This avoids all timing issues with
- * ProseMirror's DOMObserver (which defers update events via setTimeout).
+ * Mark editor updates as programmatic for 500ms (will not trigger dirty flag).
+ * ProseMirror's DOMObserver fires multiple deferred update events for large
+ * files. 500ms covers all batches without affecting real user edits
+ * (users don't start typing within 500ms of opening a file).
  */
 export function markProgrammaticUpdate(): void {
   programmaticUpdateRef.current = true;
+  setTimeout(() => {
+    programmaticUpdateRef.current = false;
+  }, 500);
 }
