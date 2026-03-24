@@ -6,7 +6,6 @@ import { createJSONStorage, persist } from "zustand/middleware";
 
 import {
   addContext as ipcAddContext,
-  getContexts as ipcGetContexts,
   removeContext as ipcRemoveContext,
   setActiveContext as ipcSetActiveContext,
   updateContextAlias as ipcUpdateContextAlias,
@@ -67,9 +66,8 @@ interface ContextState {
   getContextForPath: (filePath: string) => ContextInfo | null;
   journalContext: () => ContextInfo | null;
   removeContext: (id: string) => Promise<void>;
+  /** TODO §82: wire up drag-to-reorder in ContextTabBar */
   reorderContexts: (ids: string[]) => void;
-
-  restoreFromBackend: () => Promise<void>;
   setActiveContext: (id: string) => Promise<void>;
   updateContextAlias: (id: string, alias: string) => void;
   updateContextColor: (id: string, color: string) => void;
@@ -300,15 +298,6 @@ export const useContextStore = create<ContextState>()(
         }));
         // §88 Sync to Rust
         ipcUpdateContextColor(id, color).catch(() => {});
-      },
-
-      restoreFromBackend: async () => {
-        try {
-          const contexts = await ipcGetContexts();
-          set({ contexts });
-        } catch (err) {
-          logger.error("[contextStore] restoreFromBackend failed:", err);
-        }
       },
     }),
     {
