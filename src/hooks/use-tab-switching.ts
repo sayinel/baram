@@ -155,8 +155,11 @@ export function useTabSwitching({
         doc: emptyDoc,
         plugins: editor.state.plugins,
       });
-      markProgrammaticUpdate();
-      editor.view.updateState(newState);
+      // Defer updateState to avoid flushSync error in React 19 commit phase
+      queueMicrotask(() => {
+        markProgrammaticUpdate();
+        editor.view.updateState(newState);
+      });
       return;
     }
 
@@ -243,8 +246,11 @@ export function useTabSwitching({
       const cachedState = editorStateCache.current.get(activeTabId!);
       const cachedScrollTop = scrollTopCache.current.get(activeTabId!);
       if (cachedState) {
-        markProgrammaticUpdate();
-        editor.view.updateState(cachedState);
+        // Defer updateState to avoid flushSync error in React 19 commit phase
+        queueMicrotask(() => {
+          markProgrammaticUpdate();
+          editor.view.updateState(cachedState);
+        });
         // Restore exact scroll position (not just cursor visibility)
         if (cachedScrollTop !== undefined) {
           requestAnimationFrame(() => {
@@ -289,9 +295,12 @@ export function useTabSwitching({
               plugins: editor.state.plugins,
               selection: TextSelection.atStart(doc),
             });
-            markProgrammaticUpdate();
-            editor.view.updateState(newState);
-            setIsParsing(false);
+            // Defer updateState to avoid flushSync error in React 19 commit phase
+            queueMicrotask(() => {
+              markProgrammaticUpdate();
+              editor.view.updateState(newState);
+              setIsParsing(false);
+            });
             // Reset scroll to top for freshly opened documents
             requestAnimationFrame(() => {
               const scrollContainer = document.querySelector(

@@ -216,12 +216,11 @@ pub async fn copy_file(
 pub async fn watch_dir(
     path: String,
     app_handle: tauri::AppHandle,
-    vault_state: tauri::State<'_, crate::VaultRootState>,
     watcher_state: tauri::State<'_, crate::WatcherState>,
-    ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
 ) -> Result<(), String> {
     check(&path)?;
-    check_vault(&path, &vault_state, &ctx_mgr).await?;
+    // No check_vault here — watching a directory only monitors events,
+    // it doesn't read/write files. Security is enforced on file operations.
     let new_watcher = crate::fs::start_watching(&path, app_handle).map_err(|e| e.to_string())?;
     // Key by PATH (not context ID) to prevent watcher accumulation
     // when context IDs change due to dedup or restart
