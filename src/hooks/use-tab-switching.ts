@@ -155,8 +155,9 @@ export function useTabSwitching({
         doc: emptyDoc,
         plugins: editor.state.plugins,
       });
-      // Defer updateState to avoid flushSync error in React 19 commit phase
-      queueMicrotask(() => {
+      // Defer updateState outside React commit phase (setTimeout ensures
+      // a new macrotask, unlike queueMicrotask which runs within microtask queue)
+      setTimeout(() => {
         markProgrammaticUpdate();
         editor.view.updateState(newState);
       });
