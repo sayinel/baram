@@ -156,9 +156,9 @@ export const useContextStore = create<ContextState>()(
           (c) => c.contextType === "vault" && c.vaultType === "journal",
         );
         if (existing) {
-          // Activate if not active
+          // Activate if not active — use local-only to avoid stale ID IPC failures
           if (get().activeContextId !== existing.id) {
-            await get().setActiveContext(existing.id);
+            get()._setActiveContextLocal(existing.id);
           }
           return existing;
         }
@@ -173,7 +173,7 @@ export const useContextStore = create<ContextState>()(
         if (pinned) set({ contexts: pinned });
         // Activate the newly created journal context
         if (get().activeContextId !== created.id) {
-          await get().setActiveContext(created.id);
+          get()._setActiveContextLocal(created.id);
         }
         return created;
       },
