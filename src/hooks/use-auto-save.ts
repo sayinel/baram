@@ -11,7 +11,7 @@ import { useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
 import { useSettingsStore } from "../stores/settings/store";
 import {
-  isDocUnchanged,
+  shouldSkipDirty,
   updateOriginalDoc,
 } from "../utils/editor/programmatic-update";
 import { isMarkdownFile } from "../utils/file-type";
@@ -70,11 +70,9 @@ export function useAutoSave(editor: Editor | null) {
       const tab = tabs.find((t) => t.id === activeTabId);
       if (!tab?.filePath) return;
 
-      // Skip if doc hasn't actually changed from the loaded original.
-      // This correctly handles: programmatic updateState (no change),
-      // DOMObserver reconciliation (no change), AND roundtrip differences
-      // (genuine change → dirty is correct).
-      if (isDocUnchanged(tab.id, editor.state.doc)) return;
+      // Skip if: (1) first update after content load (captures stable baseline),
+      // or (2) doc unchanged from baseline. Only marks dirty for real changes.
+      if (shouldSkipDirty(tab.id, editor.state.doc)) return;
 
       markDirty(tab.id, true);
       // Record which tab triggered this save so save() can detect a mid-debounce tab switch
