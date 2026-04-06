@@ -9,10 +9,12 @@ export interface WikilinkSuggestionItem {
   heading?: string;
   headingLevel?: number;
   id: string;
-  kind?: "create" | "file" | "heading";
+  kind?: "create" | "file" | "heading" | "hint";
   label: string;
   path: string;
   target: string;
+  /** §87 Cross-vault: vault alias prefix for the inserted wikilink */
+  vaultAlias?: string;
 }
 
 /** Remove .md or .markdown extension from a filename */

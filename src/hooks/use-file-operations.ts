@@ -8,6 +8,7 @@ import type { Editor } from "@tiptap/core";
 import { readFile, updateFileIndex, writeFile } from "../ipc/invoke";
 import { prosemirrorToMarkdown } from "../pipeline/pm-to-md";
 import { notifyFileOpen, notifyFileSave } from "../plugins/plugin-lifecycle";
+import { useContextStore } from "../stores/context/context";
 import { isGraphTab } from "../stores/editor/editor";
 import { useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
@@ -266,8 +267,14 @@ export function useFileOperations({
       const content = await readFile(filePath);
       const fileName = filePath.split("/").pop() ?? "Unknown";
       useFileStore.getState().setFileContent(filePath, content);
+
+      // §89 Detect or create FileContext for standalone files
+      const contextStore = useContextStore.getState();
+      const context = await contextStore.ensureFileContext(filePath);
+      const contextId = context.id;
+
       useEditorStore.getState().openTab({
-        contextId: "",
+        contextId,
         id: crypto.randomUUID(),
         filePath,
         title: fileName,

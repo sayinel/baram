@@ -118,6 +118,26 @@
   font-size: 12px;
 }
 
+/* §87 Cross-vault wikilink badge */
+.wikilink-vault-badge {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 3px;
+  vertical-align: middle;
+  border-radius: 50%;
+}
+
+.wikilink-vault-badge--dangling {
+  background: var(--color-text-muted);
+  opacity: 0.5;
+}
+
+.wikilink--dangling {
+  text-decoration-style: dashed;
+  opacity: 0.6;
+}
+
 /* §30c Block Reference — inline chip */
 .block-reference {
   padding: 0 4px;
@@ -482,4 +502,16 @@
   font-family: var(--font-family-mono);
   font-size: 0.7rem;
   color: var(--color-text-muted);
+}
+
+/* §87 Cross-vault hint in wikilink menu */
+.wikilink-menu-hint {
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  border-top: 1px solid var(--color-border-default);
+}
+
+.wikilink-hint-label {
+  font-style: italic;
 }

@@ -8,7 +8,11 @@ import { WikilinkView } from "./wikilink-view";
 
 export interface WikilinkOptions {
   HTMLAttributes: Record<string, unknown>;
-  onNavigate: (target: string, heading?: null | string) => void;
+  onNavigate: (
+    target: string,
+    heading?: null | string,
+    vaultAlias?: null | string,
+  ) => void;
 }
 
 declare module "@tiptap/core" {
@@ -157,7 +161,11 @@ export const Wikilink = Node.create<WikilinkOptions>({
             const isDate = isDateString(target);
             if (!isDate && !(event.metaKey || event.ctrlKey)) return false;
 
-            onNavigate(target, wikilinkNode.attrs.heading as null | string);
+            onNavigate(
+              target,
+              wikilinkNode.attrs.heading as null | string,
+              wikilinkNode.attrs.vaultAlias as null | string,
+            );
             return true;
           },
         },

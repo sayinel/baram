@@ -8,6 +8,7 @@ import { Suggestion } from "@tiptap/suggestion";
 
 import { WikilinkMenuList } from "../../components/command/WikilinkMenu";
 import { listDir, refreshIndex, writeFile } from "../../ipc/invoke";
+import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
 import { buildFileTree, useFileStore } from "../../stores/file/file";
 import { flattenFileTree, fuzzyScore } from "../../utils/file-search";
@@ -107,11 +108,18 @@ export const WikilinkSuggest = Extension.create({
           }
 
           // Delete the range and insert a wikilink node
-          const attrs: { heading?: null | string; target: string } = {
+          const attrs: {
+            heading?: null | string;
+            target: string;
+            vaultAlias?: null | string;
+          } = {
             target: props.target,
           };
           if (props.heading) {
             attrs.heading = props.heading;
+          }
+          if (props.vaultAlias) {
+            attrs.vaultAlias = props.vaultAlias;
           }
           ed.chain()
             .focus()
@@ -120,6 +128,47 @@ export const WikilinkSuggest = Extension.create({
             .run();
         },
         items: async ({ query }: { query: string }) => {
+          // §87 Cross-vault: detect alias:: prefix
+          const colonIdx = query.indexOf("::");
+          if (colonIdx > 0) {
+            const alias = query.slice(0, colonIdx);
+            const crossTarget = query.slice(colonIdx + 2);
+            const contexts = useContextStore.getState().contexts;
+            const ctx = contexts.find((c) => c.alias === alias);
+            if (ctx) {
+              // If this context is the active one, use the current file tree
+              const { rootPath, fileTree } = useFileStore.getState();
+              if (rootPath === ctx.path && fileTree.length > 0) {
+                const flat = flattenFileTree(fileTree, rootPath);
+                const crossFiles: WikilinkSuggestionItem[] = flat
+                  .filter(
+                    (f) =>
+                      f.name.endsWith(".md") || f.name.endsWith(".markdown"),
+                  )
+                  .map((f, idx) => ({
+                    id: `cross-${idx}`,
+                    target: fileNameWithoutExtension(f.name),
+                    label: f.name,
+                    path: f.path,
+                    vaultAlias: alias,
+                  }));
+                return filterFiles(crossFiles, crossTarget, 20);
+              }
+              // Context not active — show a hint
+              return [
+                {
+                  id: "__hint_switch__",
+                  target: "",
+                  label: `Switch to "${alias}" vault to browse files`,
+                  path: "",
+                  kind: "hint" as const,
+                },
+              ];
+            }
+            // Unknown alias — show no results
+            return [];
+          }
+
           const files = getFileItems();
 
           // §61 Namespace: [[./  or [[../  → filter to relative directory
@@ -228,6 +277,23 @@ export const WikilinkSuggest = Extension.create({
                 kind: "create",
               });
             }
+          }
+
+          // §87 Cross-vault hint when multiple contexts are open
+          const contexts = useContextStore.getState().contexts;
+          const aliasContexts = contexts.filter((c) => c.alias);
+          if (aliasContexts.length > 0) {
+            const aliasExamples = aliasContexts
+              .slice(0, 2)
+              .map((c) => c.alias)
+              .join(", ");
+            filtered.push({
+              id: "__hint_crossvault__",
+              target: "",
+              label: `Cross-vault: type alias:: (e.g., ${aliasExamples}::)`,
+              path: "",
+              kind: "hint",
+            });
           }
 
           return filtered;
