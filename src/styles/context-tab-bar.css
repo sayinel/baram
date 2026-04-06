@@ -98,6 +98,19 @@
   background: rgb(255 255 255 / 10%);
 }
 
+/* §82 Drag-to-reorder */
+.context-tab--dragging {
+  opacity: 0.4;
+}
+
+.context-tab--drop-before {
+  box-shadow: inset 2px 0 0 0 var(--color-accent-default, #3b82f6);
+}
+
+.context-tab--drop-after {
+  box-shadow: inset -2px 0 0 0 var(--color-accent-default, #3b82f6);
+}
+
 /* Add (+) button */
 .context-tab--add {
   padding: 3px 6px;
