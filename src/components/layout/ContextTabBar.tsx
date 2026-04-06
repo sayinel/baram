@@ -22,6 +22,78 @@ export function ContextTabBar() {
   const [renamingId, setRenamingId] = useState<null | string>(null);
   const addBtnRef = useRef<HTMLButtonElement>(null);
 
+  // §82 Drag-to-reorder state
+  const [dragId, setDragId] = useState<null | string>(null);
+  const [dropIdx, setDropIdx] = useState<null | number>(null);
+  const dragStartX = useRef(0);
+  const didDrag = useRef(false);
+  const dropIdxRef = useRef<null | number>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+
+  // §82 Drag-to-reorder handlers
+  const handleDragStart = useCallback((e: React.MouseEvent, id: string) => {
+    if (e.button !== 0) return; // left-click only
+    dragStartX.current = e.clientX;
+    didDrag.current = false;
+    dropIdxRef.current = null;
+
+    const onMove = (ev: MouseEvent) => {
+      if (!didDrag.current && Math.abs(ev.clientX - dragStartX.current) > 4) {
+        didDrag.current = true;
+        setDragId(id);
+      }
+      if (!didDrag.current) return;
+
+      // Find drop position from tab elements
+      const bar = barRef.current;
+      if (!bar) return;
+      const tabs = Array.from(
+        bar.querySelectorAll<HTMLElement>(
+          ".context-tab:not(.context-tab--add)",
+        ),
+      );
+      let idx = tabs.length;
+      for (let i = 0; i < tabs.length; i++) {
+        const rect = tabs[i].getBoundingClientRect();
+        if (ev.clientX < rect.left + rect.width / 2) {
+          idx = i;
+          break;
+        }
+      }
+      dropIdxRef.current = idx;
+      setDropIdx(idx);
+    };
+
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+
+      if (didDrag.current) {
+        const store = useContextStore.getState();
+        const ids = store.contexts.map((c) => c.id);
+        const fromIdx = ids.indexOf(id);
+        const finalDropIdx = dropIdxRef.current ?? fromIdx;
+        if (fromIdx !== -1 && finalDropIdx !== fromIdx) {
+          const newIds = [...ids];
+          newIds.splice(fromIdx, 1);
+          newIds.splice(
+            finalDropIdx > fromIdx ? finalDropIdx - 1 : finalDropIdx,
+            0,
+            id,
+          );
+          store.reorderContexts(newIds);
+        }
+      }
+      setDragId(null);
+      setDropIdx(null);
+      dropIdxRef.current = null;
+      didDrag.current = false;
+    };
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, []);
+
   // §82 Right-click context menu state
   const [ctxMenu, setCtxMenu] = useState<null | {
     contextId: string;
@@ -80,18 +152,37 @@ export function ContextTabBar() {
   if (contexts.length === 0) return null;
 
   return (
-    <div className="context-tab-bar">
-      {contexts.map((ctx) => (
+    <div className="context-tab-bar" ref={barRef}>
+      {contexts.map((ctx, i) => (
         <button
-          className={`context-tab ${ctx.id === activeContextId ? "context-tab--active" : ""}`}
+          className={[
+            "context-tab",
+            ctx.id === activeContextId && "context-tab--active",
+            dragId === ctx.id && "context-tab--dragging",
+            dragId && dropIdx === i && "context-tab--drop-before",
+            dragId &&
+              dropIdx === i + 1 &&
+              i === contexts.length - 1 &&
+              "context-tab--drop-after",
+          ]
+            .filter(Boolean)
+            .join(" ")}
           key={ctx.id}
-          onClick={() => switchContext(ctx.id)}
+          onClick={() => {
+            if (!didDrag.current) switchContext(ctx.id);
+          }}
           onContextMenu={(e) => handleContextMenu(e, ctx.id)}
           onDoubleClick={(e) => {
             e.preventDefault();
             setRenamingId(ctx.id);
           }}
-          onMouseDown={(e) => handleMiddleClick(e, ctx.id)}
+          onMouseDown={(e) => {
+            if (e.button === 1) {
+              handleMiddleClick(e, ctx.id);
+            } else {
+              handleDragStart(e, ctx.id);
+            }
+          }}
           title={ctx.path}
         >
           <span
