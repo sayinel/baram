@@ -99,6 +99,7 @@ pub fn run() {
             fs_cmd::create_dir,
             fs_cmd::delete_dir,
             fs_cmd::copy_file,
+            fs_cmd::import_file,
             fs_cmd::watch_dir,
             fs_cmd::extract_zip,
             fs_cmd::write_binary_file,

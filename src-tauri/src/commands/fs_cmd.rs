@@ -212,6 +212,24 @@ pub async fn copy_file(
         .map_err(|e| e.to_string())
 }
 
+/// Import a file from any location into the vault.
+/// Source path may be outside the vault (e.g., ~/Desktop, ~/Downloads);
+/// only the destination is vault-confined. Same pattern as extract_zip.
+#[tauri::command]
+pub async fn import_file(
+    from: String,
+    to: String,
+    state: tauri::State<'_, crate::VaultRootState>,
+    ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
+) -> Result<(), String> {
+    check(&from)?;
+    check(&to)?;
+    check_vault(&to, &state, &ctx_mgr).await?;
+    crate::fs::copy_file(&from, &to)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn watch_dir(
     path: String,
