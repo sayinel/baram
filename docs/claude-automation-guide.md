@@ -140,22 +140,22 @@ claude   # Claude Code 실행
 
 ## 📋 파일별 역할
 
-| 파일 | 역할 | 언제 사용 |
-|------|------|----------|
-| `CLAUDE.md` (루트) | 프로젝트 전체 컨텍스트 | Claude Code 실행 시 자동 로드 |
-| `CLAUDE.md` (영역별) | 모듈별 규칙 | 해당 디렉토리 작업 시 자동 로드 |
-| `registry.json` | Extension 목록 | Extension 추가/조회 시 |
-| `ipc-registry.json` | IPC 커맨드 목록 | Rust↔TS 연동 추가/조회 시 |
-| `progress.json` | 진행 상황 | `/milestone`, `/implement` 완료 시 자동 업데이트 |
-| `/implement` | Brainstorm→Plan→TDD 워크플로우 | 기능 하나를 구현할 때 |
-| `/milestone` | 마일스톤 일괄 실행 | 마일스톤 전체를 한번에 |
-| `/new-extension` | Extension 4파일 자동 생성 | 새 Extension 추가 시 |
-| `/new-component` | React 컴포넌트 자동 생성 | 새 UI 컴포넌트 추가 시 |
-| `/new-ipc` | Rust+TS IPC 양쪽 생성 | 새 백엔드 기능 추가 시 |
-| `/roundtrip-test` | MD→PM→MD 무손실 검증 | Extension 구현 후, 릴리스 전 |
-| `/spec-check` | 설계서 vs 코드 차이 점검 | 구현 완료 후 검증 |
-| `/perf-bench` | 성능 기준 달성 확인 | M6 릴리스 전, 최적화 시 |
-| `baram-scaffold` 스킬 | 프로젝트 초기 스캐폴딩 | M1에서 한 번만 |
-| `tiptap-extension-generator` 스킬 | Extension 코드 패턴 지식 | `/new-extension`이 참조 |
-| `ui-component-generator` 스킬 | UI 컴포넌트 패턴 지식 | `/new-component`가 참조 |
-| `spec-to-code` 스킬 | 설계→코드 변환 지식 | `/implement`가 참조 |
+| 파일                              | 역할                        | 언제 사용                                   |
+| ------------------------------- | ------------------------- | --------------------------------------- |
+| `CLAUDE.md` (루트)                | 프로젝트 전체 컨텍스트              | Claude Code 실행 시 자동 로드                  |
+| `CLAUDE.md` (영역별)               | 모듈별 규칙                    | 해당 디렉토리 작업 시 자동 로드                      |
+| `registry.json`                 | Extension 목록              | Extension 추가/조회 시                       |
+| `ipc-registry.json`             | IPC 커맨드 목록                | Rust↔TS 연동 추가/조회 시                      |
+| `progress.json`                 | 진행 상황                     | `/milestone`, `/implement` 완료 시 자동 업데이트 |
+| `/implement`                    | Brainstorm→Plan→TDD 워크플로우 | 기능 하나를 구현할 때                            |
+| `/milestone`                    | 마일스톤 일괄 실행                | 마일스톤 전체를 한번에                            |
+| `/new-extension`                | Extension 4파일 자동 생성       | 새 Extension 추가 시                        |
+| `/new-component`                | React 컴포넌트 자동 생성          | 새 UI 컴포넌트 추가 시                          |
+| `/new-ipc`                      | Rust+TS IPC 양쪽 생성         | 새 백엔드 기능 추가 시                           |
+| `/roundtrip-test`               | MD→PM→MD 무손실 검증           | Extension 구현 후, 릴리스 전                   |
+| `/spec-check`                   | 설계서 vs 코드 차이 점검           | 구현 완료 후 검증                              |
+| `/perf-bench`                   | 성능 기준 달성 확인               | M6 릴리스 전, 최적화 시                         |
+| `baram-scaffold` 스킬             | 프로젝트 초기 스캐폴딩              | M1에서 한 번만                               |
+| `tiptap-extension-generator` 스킬 | Extension 코드 패턴 지식        | `/new-extension`이 참조                    |
+| `ui-component-generator` 스킬     | UI 컴포넌트 패턴 지식             | `/new-component`가 참조                    |
+| `spec-to-code` 스킬               | 설계→코드 변환 지식               | `/implement`가 참조                        |

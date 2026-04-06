@@ -30,11 +30,11 @@ Welcome to Baram — a lightweight, beautiful WYSIWYG markdown editor with AI in
 
 Download the latest release for your platform from the [Releases](https://github.com/sayinel/baram/releases) page.
 
-| Platform | Format |
-|----------|--------|
-| macOS (Apple Silicon / Intel) | `.dmg` |
-| Windows (x64 / ARM) | `.msi`, `.exe` |
-| Linux (x64) | `.deb`, `.AppImage` |
+| Platform                      | Format              |
+| ----------------------------- | ------------------- |
+| macOS (Apple Silicon / Intel) | `.dmg`              |
+| Windows (x64 / ARM)           | `.msi`, `.exe`      |
+| Linux (x64)                   | `.deb`, `.AppImage` |
 
 Alternatively, [build from source](../README.md#build-from-source).
 
@@ -76,14 +76,14 @@ Baram uses a 3-column layout:
 
 ### Creating and Opening Files
 
-| Action | macOS | Windows/Linux |
-|--------|-------|---------------|
-| New File | `Cmd+N` | `Ctrl+N` |
-| Open File | `Cmd+O` | `Ctrl+O` |
-| Save | `Cmd+S` | `Ctrl+S` |
-| Save As | `Cmd+Shift+S` | `Ctrl+Shift+S` |
-| Close Tab | `Cmd+W` | `Ctrl+W` |
-| Quick Switcher | `Cmd+K` | `Ctrl+K` |
+| Action         | macOS         | Windows/Linux  |
+| -------------- | ------------- | -------------- |
+| New File       | `Cmd+N`       | `Ctrl+N`       |
+| Open File      | `Cmd+O`       | `Ctrl+O`       |
+| Save           | `Cmd+S`       | `Ctrl+S`       |
+| Save As        | `Cmd+Shift+S` | `Ctrl+Shift+S` |
+| Close Tab      | `Cmd+W`       | `Ctrl+W`       |
+| Quick Switcher | `Cmd+K`       | `Ctrl+K`       |
 
 You can also open files from the file tree in the left sidebar, or use the **Quick Switcher** (`Cmd+K`) for fast file and heading navigation.
 
@@ -109,10 +109,10 @@ Your documents are automatically saved as you type. A dot indicator on the tab s
 
 ### Undo and Redo
 
-| Action | macOS | Windows/Linux |
-|--------|-------|---------------|
-| Undo | `Cmd+Z` | `Ctrl+Z` |
-| Redo | `Cmd+Shift+Z` | `Ctrl+Shift+Z` |
+| Action | macOS         | Windows/Linux  |
+| ------ | ------------- | -------------- |
+| Undo   | `Cmd+Z`       | `Ctrl+Z`       |
+| Redo   | `Cmd+Shift+Z` | `Ctrl+Shift+Z` |
 
 ---
 
@@ -122,18 +122,18 @@ Your documents are automatically saved as you type. A dot indicator on the tab s
 
 Baram hides markdown syntax while you write. The delimiters appear when your cursor enters the formatted text, and vanish when you move away.
 
-| Format | Syntax | Shortcut (macOS) | Shortcut (Win/Linux) |
-|--------|--------|-------------------|----------------------|
-| **Bold** | `**text**` | `Cmd+B` | `Ctrl+B` |
-| *Italic* | `*text*` | `Cmd+I` | `Ctrl+I` |
-| <u>Underline</u> | `<u>text</u>` | `Cmd+U` | `Ctrl+U` |
-| ~~Strikethrough~~ | `~~text~~` | `Cmd+Shift+X` | `Ctrl+Shift+X` |
-| ==Highlight== | `==text==` | `Cmd+Shift+H` | `Ctrl+Shift+H` |
-| Superscript | `^text^` | — | — |
-| Subscript | `~text~` | — | — |
-| `Inline Code` | `` `text` `` | `Cmd+E` | `Ctrl+E` |
-| [Link](url) | `[text](url)` | `Cmd+K` | `Ctrl+K` |
-| Inline Math | `$formula$` | Type `$...$` | Type `$...$` |
+| Format            | Syntax        | Shortcut (macOS) | Shortcut (Win/Linux) |
+| ----------------- | ------------- | ---------------- | -------------------- |
+| **Bold**          | `**text**`    | `Cmd+B`          | `Ctrl+B`             |
+| *Italic*          | `*text*`      | `Cmd+I`          | `Ctrl+I`             |
+| <u>Underline</u>  | `<u>text</u>` | `Cmd+U`          | `Ctrl+U`             |
+| ~~Strikethrough~~ | `~~text~~`    | `Cmd+Shift+X`    | `Ctrl+Shift+X`       |
+| ==Highlight==     | `==text==`    | `Cmd+Shift+H`    | `Ctrl+Shift+H`       |
+| Superscript       | `^text^`      | —                | —                    |
+| Subscript         | `~text~`      | —                | —                    |
+| `Inline Code`     | `` `text` ``  | `Cmd+E`          | `Ctrl+E`             |
+| [Link](url)       | `[text](url)` | `Cmd+K`          | `Ctrl+K`             |
+| Inline Math       | `$formula$`   | Type `$...$`     | Type `$...$`         |
 
 You can also apply formatting by selecting text and using the **Floating Toolbar** that appears above the selection. The toolbar includes buttons for Bold, Italic, Strikethrough, Highlight, Superscript, Subscript, Code, and more.
 
@@ -143,22 +143,22 @@ You can also apply formatting by selecting text and using the **Floating Toolbar
 
 Type `#` through `######` followed by a space to create headings H1–H6. You can also use shortcuts:
 
-| Action | macOS | Windows/Linux |
-|--------|-------|---------------|
-| Heading 1 | `Cmd+1` | `Ctrl+1` |
-| Heading 2 | `Cmd+2` | `Ctrl+2` |
-| Heading 3 | `Cmd+3` | `Ctrl+3` |
-| Heading 4–6 | `Cmd+4` – `Cmd+6` | `Ctrl+4` – `Ctrl+6` |
-| Increase Level | `Cmd+=` | `Ctrl+=` |
-| Decrease Level | `Cmd+-` | `Ctrl+-` |
+| Action         | macOS             | Windows/Linux       |
+| -------------- | ----------------- | ------------------- |
+| Heading 1      | `Cmd+1`           | `Ctrl+1`            |
+| Heading 2      | `Cmd+2`           | `Ctrl+2`            |
+| Heading 3      | `Cmd+3`           | `Ctrl+3`            |
+| Heading 4–6    | `Cmd+4` – `Cmd+6` | `Ctrl+4` – `Ctrl+6` |
+| Increase Level | `Cmd+=`           | `Ctrl+=`            |
+| Decrease Level | `Cmd+-`           | `Ctrl+-`            |
 
 #### Lists
 
-| List Type | How to Create | Shortcut (macOS) | Shortcut (Win/Linux) |
-|-----------|---------------|-------------------|----------------------|
-| Bullet List | Type `- ` or `* ` | `Cmd+Shift+8` | `Ctrl+Shift+8` |
-| Ordered List | Type `1. ` | `Cmd+Shift+7` | `Ctrl+Shift+7` |
-| Task List | Type `- [ ] ` or `- [x] ` | `Cmd+Shift+9` | `Ctrl+Shift+9` |
+| List Type    | How to Create             | Shortcut (macOS) | Shortcut (Win/Linux) |
+| ------------ | ------------------------- | ---------------- | -------------------- |
+| Bullet List  | Type `- ` or `* `         | `Cmd+Shift+8`    | `Ctrl+Shift+8`       |
+| Ordered List | Type `1. `                | `Cmd+Shift+7`    | `Ctrl+Shift+7`       |
+| Task List    | Type `- [ ] ` or `- [x] ` | `Cmd+Shift+9`    | `Ctrl+Shift+9`       |
 
 Use `Tab` to indent and `Shift+Tab` to outdent list items.
 
@@ -174,11 +174,11 @@ Baram supports Obsidian-style folding for headings and nested list items.
 
 **Keyboard shortcuts:**
 
-| Action | macOS | Windows/Linux |
-|--------|-------|---------------|
-| Toggle Fold | `Cmd+Shift+[` | `Ctrl+Shift+[` |
-| Fold All | `Cmd+Shift+Alt+[` | `Ctrl+Shift+Alt+[` |
-| Unfold All | `Cmd+Shift+Alt+]` | `Ctrl+Shift+Alt+]` |
+| Action      | macOS             | Windows/Linux      |
+| ----------- | ----------------- | ------------------ |
+| Toggle Fold | `Cmd+Shift+[`     | `Ctrl+Shift+[`     |
+| Fold All    | `Cmd+Shift+Alt+[` | `Ctrl+Shift+Alt+[` |
+| Unfold All  | `Cmd+Shift+Alt+]` | `Ctrl+Shift+Alt+]` |
 
 **Key behaviors:**
 
@@ -189,20 +189,21 @@ Baram supports Obsidian-style folding for headings and nested list items.
 
 #### Other Blocks
 
-| Block | How to Create | Shortcut (macOS) | Shortcut (Win/Linux) |
-|-------|---------------|-------------------|----------------------|
-| Blockquote | Type `> ` | `Cmd+Shift+B` | `Ctrl+Shift+B` |
-| Horizontal Rule | Type `---` and press Enter | — | — |
-| Code Block | Type ` ``` ` and press Enter | `Cmd+Alt+C` | `Ctrl+Alt+C` |
-| Math Block | Type `$$` and press Enter | `Cmd+Shift+M` | `Ctrl+Shift+M` |
-| Mermaid Diagram | Slash command `/mermaid` | `Cmd+Shift+D` | `Ctrl+Shift+D` |
-| Table of Contents | Type `[TOC]` or `/toc` | — | — |
+| Block             | How to Create                | Shortcut (macOS) | Shortcut (Win/Linux) |
+| ----------------- | ---------------------------- | ---------------- | -------------------- |
+| Blockquote        | Type `> `                    | `Cmd+Shift+B`    | `Ctrl+Shift+B`       |
+| Horizontal Rule   | Type `---` and press Enter   | —                | —                    |
+| Code Block        | Type ` ``` ` and press Enter | `Cmd+Alt+C`      | `Ctrl+Alt+C`         |
+| Math Block        | Type `$$` and press Enter    | `Cmd+Shift+M`    | `Ctrl+Shift+M`       |
+| Mermaid Diagram   | Slash command `/mermaid`     | `Cmd+Shift+D`    | `Ctrl+Shift+D`       |
+| Table of Contents | Type `[TOC]` or `/toc`       | —                | —                    |
 
 ### Slash Commands
 
 Type `/` at the beginning of an empty line to open the slash command menu. This provides a quick way to insert any block element:
 
 **Basic:**
+
 - `/heading1` – `/heading3` — Insert headings
 - `/bullet` — Insert a bullet list
 - `/ordered` — Insert an ordered list
@@ -215,6 +216,7 @@ Type `/` at the beginning of an empty line to open the slash command menu. This 
 - `/toc` — Insert a Table of Contents
 
 **Rich Content:**
+
 - `/code` — Insert a code block
 - `/math` — Insert a math block
 - `/mermaid` — Insert a Mermaid diagram
@@ -231,12 +233,14 @@ When you select text, a floating toolbar appears above the selection with format
 ### Block Handle
 
 Hover over any block (paragraph, heading, etc.) to see a drag handle on the left. Use it to:
+
 - **Drag** the block to reorder it
 - **Click** to open a menu with options like block type conversion, duplicate, and delete
 
 ### Context Menu
 
 Right-click anywhere in the editor for context-aware options:
+
 - Text operations (cut, copy, paste)
 - Block type conversion
 - Tab management (pin tab, close tab, close other tabs)
@@ -279,6 +283,7 @@ Hidden content here. Supports any block type — paragraphs, lists, code blocks,
 ```
 
 **Features:**
+
 - **Collapse/expand** — Click the triangle indicator or press `Cmd+Enter`
 - **Toggle Heading** — Use a heading as the summary for collapsible heading sections:
   ```markdown
@@ -354,11 +359,13 @@ graph TD
 Baram supports GFM (GitHub Flavored Markdown) pipe tables.
 
 **Creating a table:**
+
 - **Pipe input** — Type `| Header 1 | Header 2 |` and press Enter to auto-create a table with headers filled in
 - **Grid Picker** — Slash command `/table` or press `Cmd+T` to select dimensions from a 10×10 visual grid
 - **TSV Paste** — Paste tab-separated data (e.g. from a spreadsheet) to auto-create a table
 
 **Editing:**
+
 - **Tab** / **Shift+Tab** to navigate between cells
 - Column alignment (`:---`, `:---:`, `---:`) is preserved
 - **Column resize** — Drag column borders to adjust width (session only, not saved to markdown)
@@ -366,6 +373,7 @@ Baram supports GFM (GitHub Flavored Markdown) pipe tables.
 - **Right-click** for context menu: alignment, header toggle, copy as Markdown/HTML, delete
 
 **Merging and Splitting Cells:**
+
 - **Merge Cells** — Select multiple cells, then press `Cmd+M` (macOS) / `Ctrl+M` (Windows/Linux), or right-click and select "Merge Cells"
 - **Split Cell** — Place your cursor in a merged cell, then press `Cmd+M` again, or right-click and select "Split Cell"
 - **Persistence** — Cell merges are preserved across source mode toggle (`Cmd+/`) and file reopen. Baram uses `<` and `^` markers inside the pipe table to encode colspan and rowspan information:
@@ -456,18 +464,18 @@ date: 2026-02-17
 
 Connect your notes using `[[wikilinks]]`:
 
-1. **Type `[[`** — An autocomplete popup appears with matching files
+1. **Type&#x20;**`[[` — An autocomplete popup appears with matching files
 2. **Select a file** — The wikilink is inserted (e.g., `[[My Note]]`)
 3. **Cmd+click** — Navigate to the linked page
 
 **Advanced wikilink syntax:**
 
-| Syntax | Description |
-|--------|-------------|
-| `[[page]]` | Basic link to a page |
+| Syntax                   | Description                   |
+| ------------------------ | ----------------------------- |
+| `[[page]]`               | Basic link to a page          |
 | `[[page\|display text]]` | Link with custom display text |
-| `[[page#heading]]` | Link to a specific heading |
-| `[[page#^block-id]]` | Link to a specific block |
+| `[[page#heading]]`       | Link to a specific heading    |
+| `[[page#^block-id]]`     | Link to a specific block      |
 
 **Hover Preview:** Hover over any wikilink to see a preview of the target document's content without navigating away.
 
@@ -475,23 +483,25 @@ Connect your notes using `[[wikilinks]]`:
 
 Mention pages and dates using the `@` trigger, which inserts styled inline chips:
 
-1. **Type `@`** — A suggestion popup appears with Quick Dates and workspace pages
+1. **Type&#x20;**`@` — A suggestion popup appears with Quick Dates and workspace pages
 2. **Quick Dates** — Today, Yesterday, Tomorrow are always at the top (with resolved dates shown)
 3. **Type to filter** — Fuzzy matching narrows the page list as you type
 4. **Select an item** — A mention chip is inserted: 📅 for dates, 📄 for pages
 
 **Mention syntax in markdown:**
 
-| Syntax | Type | Description |
-|--------|------|-------------|
-| `@[[My Note]]` | Page | Mention a workspace page |
+| Syntax            | Type | Description                                |
+| ----------------- | ---- | ------------------------------------------ |
+| `@[[My Note]]`    | Page | Mention a workspace page                   |
 | `@[[2026-02-27]]` | Date | Mention a specific date (links to journal) |
 
 **Navigation:**
+
 - **Date mentions** — Click to open/create that day's journal entry (single-click)
 - **Page mentions** — Cmd+click (macOS) / Ctrl+click (Windows/Linux) to navigate to the page
 
 **Difference from wikilinks:**
+
 - Wikilinks (`[[page]]`) render as styled inline text links
 - Mentions (`@[[page]]`) render as chip badges with icons — visually distinct for quick scanning
 
@@ -523,10 +533,10 @@ Block references appear as inline chips that you can `Cmd+click` to navigate to 
 
 Navigate between recently visited locations:
 
-| Action | macOS | Windows/Linux |
-|--------|-------|---------------|
-| Go Back | `Ctrl+-` | `Alt+Left` |
-| Go Forward | `Ctrl+Shift+-` | `Alt+Right` |
+| Action     | macOS          | Windows/Linux |
+| ---------- | -------------- | ------------- |
+| Go Back    | `Ctrl+-`       | `Alt+Left`    |
+| Go Forward | `Ctrl+Shift+-` | `Alt+Right`   |
 
 ### Bookmarks
 
@@ -547,6 +557,7 @@ A visual map of your note connections. Nodes represent files, edges represent wi
 Press `Cmd+/` (macOS) or `Ctrl+/` (Windows/Linux) to toggle between WYSIWYG mode and Source Mode.
 
 In Source Mode, you edit raw markdown text in a CodeMirror 6 editor with:
+
 - Syntax highlighting
 - Full markdown source visibility
 - Undo/Redo (`Cmd+Z` / `Cmd+Shift+Z`)
@@ -606,20 +617,23 @@ Press `Cmd+J` (macOS) or `Ctrl+J` (Windows/Linux) to open the inline AI prompt:
 AI actions adapt to the content you're working with. Look for the ✨ button:
 
 #### Floating Toolbar (Text Selection)
+
 Select text and click the ✨ button in the floating toolbar to see actions tailored to your content type:
 
-| Content Type | Available Actions |
-|-------------|-------------------|
-| **Text** | Improve, Shorten, Expand, Translate, Tone Change, Explain |
-| **Code** | Add Comments, Optimize, Find Bugs, Convert Language, Generate Tests |
-| **Math** | Show Steps, Fix LaTeX, Explain, Related Formulas |
-| **Table** | Analyze Data, Fill Cells, Suggest Rows, To CSV |
-| **Structure** | Generate TOC, Improve Structure, Split Sections, Summarize |
+| Content Type  | Available Actions                                                   |
+| ------------- | ------------------------------------------------------------------- |
+| **Text**      | Improve, Shorten, Expand, Translate, Tone Change, Explain           |
+| **Code**      | Add Comments, Optimize, Find Bugs, Convert Language, Generate Tests |
+| **Math**      | Show Steps, Fix LaTeX, Explain, Related Formulas                    |
+| **Table**     | Analyze Data, Fill Cells, Suggest Rows, To CSV                      |
+| **Structure** | Generate TOC, Improve Structure, Split Sections, Summarize          |
 
 #### Block Handle (⋮ Menu)
+
 Hover near the left edge of any block to reveal the ⋮ handle. Click it, then hover over the ✨ item to access block-level AI actions. Actions match the block's content type automatically.
 
 #### NodeView AI Buttons
+
 Hover over specialized blocks to reveal a ✨ button directly on the block:
 
 - **Code Block** — Add Comments, Optimize, Find Bugs, Convert, Generate Tests
@@ -633,11 +647,11 @@ Hover over specialized blocks to reveal a ✨ button directly on the block:
 
 AI-powered autocomplete suggestions appear as faded text ahead of your cursor as you type:
 
-| Action | macOS | Windows/Linux |
-|--------|-------|---------------|
-| Accept Full Suggestion | `Tab` | `Tab` |
-| Accept First Word | `Cmd+Right` | `Ctrl+Right` |
-| Dismiss | `Escape` | `Escape` |
+| Action                 | macOS       | Windows/Linux |
+| ---------------------- | ----------- | ------------- |
+| Accept Full Suggestion | `Tab`       | `Tab`         |
+| Accept First Word      | `Cmd+Right` | `Ctrl+Right`  |
+| Dismiss                | `Escape`    | `Escape`      |
 
 Ghost Text can be enabled or disabled in **Settings > AI**.
 
@@ -647,12 +661,12 @@ Press `Cmd+Shift+A` (macOS) or `Ctrl+Shift+A` (Windows/Linux) to open the AI Cha
 
 Chat with AI about your documents using **@references** for context:
 
-| Reference | Description |
-|-----------|-------------|
+| Reference    | Description                           |
+| ------------ | ------------------------------------- |
 | `@selection` | Currently selected text in the editor |
-| `@current` | Full content of the current file |
-| `@file` | Content of any file in your workspace |
-| `@clipboard` | Current clipboard contents |
+| `@current`   | Full content of the current file      |
+| `@file`      | Content of any file in your workspace |
+| `@clipboard` | Current clipboard contents            |
 
 The chat panel supports streaming responses with markdown rendering. Use **Apply to Editor** to insert AI responses directly into the editor as formatted WYSIWYG content.
 
@@ -668,16 +682,16 @@ Type `/ai-template` in the slash menu to generate structured content from AI-pow
 
 Type `/` in the editor to access AI commands:
 
-| Command | Description |
-|---------|-------------|
-| `/ai-write` | Write or continue from current context |
-| `/ai-brainstorm` | Brainstorm ideas from current context |
-| `/ai-summarize` | Summarize selected text |
-| `/ai-expand` | Expand and elaborate on selected text |
-| `/ai-fix-grammar` | Fix grammar and spelling |
-| `/ai-translate` | Translate to another language |
-| `/ai-explain` | Explain selected text in simple terms |
-| `/ai-template` | Generate content from AI templates |
+| Command           | Description                            |
+| ----------------- | -------------------------------------- |
+| `/ai-write`       | Write or continue from current context |
+| `/ai-brainstorm`  | Brainstorm ideas from current context  |
+| `/ai-summarize`   | Summarize selected text                |
+| `/ai-expand`      | Expand and elaborate on selected text  |
+| `/ai-fix-grammar` | Fix grammar and spelling               |
+| `/ai-translate`   | Translate to another language          |
+| `/ai-explain`     | Explain selected text in simple terms  |
+| `/ai-template`    | Generate content from AI templates     |
 
 ### Custom AI Commands
 
@@ -756,6 +770,7 @@ Baram periodically saves snapshots of changed `.md` files in your workspace. Onl
 Click the **clock icon** in the Activity Bar (left sidebar) to open the Version History panel.
 
 The panel shows a **timeline** of all snapshots:
+
 - **●** Auto snapshots (created automatically by timer)
 - **★** Manual snapshots (created by you, optionally with a label)
 - Each entry shows the time, type, number of files, and total size
@@ -780,14 +795,15 @@ Click the **+** button in the Version History panel header. Optionally enter a l
 
 Configure snapshots in **Settings > General**:
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| Snapshot Interval | 30 minutes | How often auto-snapshots are created (0 = disabled) |
-| Max Snapshot Count | 50 | Maximum number of snapshots to keep |
+| Setting            | Default    | Description                                         |
+| ------------------ | ---------- | --------------------------------------------------- |
+| Snapshot Interval  | 30 minutes | How often auto-snapshots are created (0 = disabled) |
+| Max Snapshot Count | 50         | Maximum number of snapshots to keep                 |
 
 ### Retention Policy
 
 Old snapshots are automatically thinned to save space:
+
 - **Last 24 hours** — All snapshots kept
 - **1–7 days** — Max 1 per hour
 - **7–30 days** — Max 1 per day
@@ -817,28 +833,28 @@ Creates a print-ready PDF via the system print dialog. Supports customization of
 
 Exports a Notion-compatible Markdown file. Automatically converts Baram-specific syntax that Notion doesn't understand:
 
-| Baram Syntax | Notion Output |
-|---|---|
-| `[[page]]` wikilinks | `[page](page.md)` standard links |
-| `> [!type]` callouts | Emoji-prefixed blockquotes |
-| `$inline$` math | `$$inline$$` block math |
-| `==text==` highlight | `**text**` bold |
-| `~text~` subscript | Unicode subscript or `$_{text}$` |
-| `^text^` superscript | Unicode superscript or `$^{text}$` |
-| `[^id]` footnotes | Inline `(id)` with Notes section |
-| `((ref))` block references | Stripped |
-| Definition lists | `**Term**: Definition` format |
+| Baram Syntax               | Notion Output                      |
+| -------------------------- | ---------------------------------- |
+| `[[page]]` wikilinks       | `[page](page.md)` standard links   |
+| `> [!type]` callouts       | Emoji-prefixed blockquotes         |
+| `$inline$` math            | `$$inline$$` block math            |
+| `==text==` highlight       | `**text**` bold                    |
+| `~text~` subscript         | Unicode subscript or `$_{text}$`   |
+| `^text^` superscript       | Unicode superscript or `$^{text}$` |
+| `[^id]` footnotes          | Inline `(id)` with Notes section   |
+| `((ref))` block references | Stripped                           |
+| Definition lists           | `**Term**: Definition` format      |
 
 ### Pandoc Formats (Word, LaTeX, EPUB, RST)
 
 With [Pandoc](https://pandoc.org/) installed, Baram supports additional export formats:
 
-| Format | Extension | Description |
-|--------|-----------|-------------|
-| **Word** | `.docx` | Editable Word document, with optional reference template for styling |
-| **LaTeX** | `.tex` | Typesetting format for academic/scientific documents |
-| **EPUB** | `.epub` | E-book format for Kindle, Apple Books, etc. |
-| **RST** | `.rst` | reStructuredText for Sphinx documentation |
+| Format    | Extension | Description                                                          |
+| --------- | --------- | -------------------------------------------------------------------- |
+| **Word**  | `.docx`   | Editable Word document, with optional reference template for styling |
+| **LaTeX** | `.tex`    | Typesetting format for academic/scientific documents                 |
+| **EPUB**  | `.epub`   | E-book format for Kindle, Apple Books, etc.                          |
+| **RST**   | `.rst`    | reStructuredText for Sphinx documentation                            |
 
 **Setup:**
 
@@ -874,11 +890,13 @@ Baram includes a built-in journal system for maintaining daily notes with automa
 There are three ways to create or open a daily note:
 
 **Calendar sidebar:**
+
 1. Switch to the Journal workspace preset (`Cmd+Alt+4` / `Ctrl+Alt+4`) or select the Calendar panel in the sidebar
 2. Click any date in the mini calendar — if a journal entry doesn't exist, it is created from your template
 3. Dates with existing entries are marked with a dot
 
 **@Mentions for dates:**
+
 1. Type `@` in the editor — the mention autocomplete popup appears
 2. Select **Today**, **Yesterday**, or **Tomorrow** from the Quick Dates section
 3. A 📅 date mention chip is inserted (e.g., `@[[2026-02-27]]`)
@@ -891,14 +909,14 @@ When "Open today's journal" is enabled in settings, Baram automatically creates 
 
 Custom templates support the following variables:
 
-| Variable | Replaced With | Example |
-|----------|---------------|---------|
-| `{{date}}` | Full date | `2026-02-27` |
-| `{{year}}` | Year | `2026` |
-| `{{month}}` | Month (zero-padded) | `02` |
-| `{{day}}` | Day (zero-padded) | `27` |
-| `{{dayName}}` | Day of the week | `Friday` |
-| `{{monthName}}` | Month name | `February` |
+| Variable        | Replaced With       | Example      |
+| --------------- | ------------------- | ------------ |
+| `{{date}}`      | Full date           | `2026-02-27` |
+| `{{year}}`      | Year                | `2026`       |
+| `{{month}}`     | Month (zero-padded) | `02`         |
+| `{{day}}`       | Day (zero-padded)   | `27`         |
+| `{{dayName}}`   | Day of the week     | `Friday`     |
+| `{{monthName}}` | Month name          | `February`   |
 
 If no custom template is set, Baram uses a default template with YAML frontmatter, a date heading, and a Notes section.
 
@@ -910,12 +928,12 @@ Workspace Presets let you save and quickly restore your preferred layout — sid
 
 ### Built-in Presets
 
-| Preset | Shortcut (macOS) | Shortcut (Win/Linux) | Layout |
-|--------|-------------------|----------------------|--------|
-| Writing | `Cmd+Alt+1` | `Ctrl+Alt+1` | Sidebar closed, right panel closed — focused writing |
-| Skills | `Cmd+Alt+2` | `Ctrl+Alt+2` | File tree open, AI Chat panel open — prompt editing |
-| Research | `Cmd+Alt+3` | `Ctrl+Alt+3` | File tree + backlinks open, AI Chat panel open — knowledge exploration |
-| Journal | `Cmd+Alt+4` | `Ctrl+Alt+4` | Calendar sidebar open — daily note writing |
+| Preset   | Shortcut (macOS) | Shortcut (Win/Linux) | Layout                                                                 |
+| -------- | ---------------- | -------------------- | ---------------------------------------------------------------------- |
+| Writing  | `Cmd+Alt+1`      | `Ctrl+Alt+1`         | Sidebar closed, right panel closed — focused writing                   |
+| Skills   | `Cmd+Alt+2`      | `Ctrl+Alt+2`         | File tree open, AI Chat panel open — prompt editing                    |
+| Research | `Cmd+Alt+3`      | `Ctrl+Alt+3`         | File tree + backlinks open, AI Chat panel open — knowledge exploration |
+| Journal  | `Cmd+Alt+4`      | `Ctrl+Alt+4`         | Calendar sidebar open — daily note writing                             |
 
 ### Custom Presets
 
@@ -943,18 +961,18 @@ Open Settings with `Cmd+,` (macOS) or `Ctrl+,` (Windows/Linux).
 
 Available settings tabs:
 
-| Tab | What You Can Configure |
-|-----|------------------------|
-| **General** | Startup behavior, language |
-| **Editor** | Indentation, tab size, line numbers, line endings, editor max width |
-| **Appearance** | Theme gallery, custom theme editor (see below) |
-| **Files** | Auto-save, file sorting, default file location |
-| **Markdown** | Extended syntax toggles (math, highlight, strikethrough), smart punctuation |
-| **Extensions** | Per-extension settings (code block style, line numbers, diagrams) |
-| **Workspace** | Built-in and custom workspace presets (sidebar, panel, theme layout) |
-| **AI** | Provider, model, API key (per-provider), privacy mode, Ghost Text settings, custom AI commands |
-| **Language** | Interface language (English, Korean) |
-| **Keybindings** | Customize keyboard shortcuts — search, rebind, reset |
+| Tab             | What You Can Configure                                                                         |
+| --------------- | ---------------------------------------------------------------------------------------------- |
+| **General**     | Startup behavior, language                                                                     |
+| **Editor**      | Indentation, tab size, line numbers, line endings, editor max width                            |
+| **Appearance**  | Theme gallery, custom theme editor (see below)                                                 |
+| **Files**       | Auto-save, file sorting, default file location                                                 |
+| **Markdown**    | Extended syntax toggles (math, highlight, strikethrough), smart punctuation                    |
+| **Extensions**  | Per-extension settings (code block style, line numbers, diagrams)                              |
+| **Workspace**   | Built-in and custom workspace presets (sidebar, panel, theme layout)                           |
+| **AI**          | Provider, model, API key (per-provider), privacy mode, Ghost Text settings, custom AI commands |
+| **Language**    | Interface language (English, Korean)                                                           |
+| **Keybindings** | Customize keyboard shortcuts — search, rebind, reset                                           |
 
 ### Themes
 
@@ -962,14 +980,14 @@ Baram comes with 6 built-in themes and supports custom theme creation.
 
 **Built-in themes:**
 
-| Theme | Style |
-|-------|-------|
-| Default Light | Clean light theme (default) |
-| Default Dark | Dark theme with blue tones |
-| Tokyo Night | Popular dark theme, cool blue palette |
+| Theme           | Style                                 |
+| --------------- | ------------------------------------- |
+| Default Light   | Clean light theme (default)           |
+| Default Dark    | Dark theme with blue tones            |
+| Tokyo Night     | Popular dark theme, cool blue palette |
 | Solarized Light | Ethan Schoonover's warm light palette |
-| Solarized Dark | Ethan Schoonover's dark palette |
-| Nord | Arctic-inspired dark theme |
+| Solarized Dark  | Ethan Schoonover's dark palette       |
+| Nord            | Arctic-inspired dark theme            |
 
 **Using themes:**
 
@@ -1024,11 +1042,11 @@ See the full [Keyboard Shortcuts Reference](keyboard-shortcuts.md) for all avail
 
 Access the built-in Help panel from the **Help** menu. It includes three tabs:
 
-| Tab | Content |
-|-----|---------|
+| Tab            | Content                                 |
+| -------------- | --------------------------------------- |
 | **User Guide** | Quick-start overview of editor features |
-| **Shortcuts** | Complete keyboard shortcut reference |
-| **FAQ** | Frequently asked questions and answers |
+| **Shortcuts**  | Complete keyboard shortcut reference    |
+| **FAQ**        | Frequently asked questions and answers  |
 
 ---
 
@@ -1038,5 +1056,5 @@ Access the built-in Help panel from the **Help** menu. It includes three tabs:
 - **Command Palette** (`Cmd+P` or `Cmd+Shift+P`) — Search for any feature
 - **Quick Switcher** (`Cmd+K`) — Quickly open files and jump to headings
 - **Slash Commands** (`/`) — Quick block insertion
-- **[FAQ](faq.md)** — Frequently asked questions
-- **[GitHub Issues](https://github.com/sayinel/baram/issues)** — Report bugs or request features
+- [**FAQ**](faq.md) — Frequently asked questions
+- [**GitHub Issues**](https://github.com/sayinel/baram/issues) — Report bugs or request features

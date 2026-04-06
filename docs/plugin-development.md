@@ -34,46 +34,46 @@ my-plugin/
 
 ### Required Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | string | Unique identifier. Lowercase letters, digits, hyphens only. |
-| `name` | string | Human-readable display name |
-| `description` | string | Short description |
-| `version` | string | Semver version |
-| `author` | string | Author name |
-| `license` | string | SPDX license identifier |
-| `main` | string | Entry point file (relative to plugin directory) |
-| `engines.baram` | string | Minimum Baram version (semver range) |
-| `capabilities` | string[] | Required permissions (see below) |
+| Field           | Type      | Description                                                 |
+| --------------- | --------- | ----------------------------------------------------------- |
+| `id`            | string    | Unique identifier. Lowercase letters, digits, hyphens only. |
+| `name`          | string    | Human-readable display name                                 |
+| `description`   | string    | Short description                                           |
+| `version`       | string    | Semver version                                              |
+| `author`        | string    | Author name                                                 |
+| `license`       | string    | SPDX license identifier                                     |
+| `main`          | string    | Entry point file (relative to plugin directory)             |
+| `engines.baram` | string    | Minimum Baram version (semver range)                        |
+| `capabilities`  | string\[] | Required permissions (see below)                            |
 
 ### Optional Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `dependencies` | string[] | Other plugin IDs this plugin depends on |
-| `tiptapExtensions` | object[] | Tiptap extensions exported by this plugin |
-| `repository` | string | Source code URL |
-| `homepage` | string | Documentation URL |
-| `icon` | string | Emoji icon for the marketplace |
-| `keywords` | string[] | Search keywords |
+| Field              | Type      | Description                               |
+| ------------------ | --------- | ----------------------------------------- |
+| `dependencies`     | string\[] | Other plugin IDs this plugin depends on   |
+| `tiptapExtensions` | object\[] | Tiptap extensions exported by this plugin |
+| `repository`       | string    | Source code URL                           |
+| `homepage`         | string    | Documentation URL                         |
+| `icon`             | string    | Emoji icon for the marketplace            |
+| `keywords`         | string\[] | Search keywords                           |
 
 ## Capabilities
 
 Plugins must declare required capabilities in the manifest. Users are prompted to approve these during installation.
 
-| Capability | Description |
-|------------|-------------|
-| `editor` | Read and modify document content |
+| Capability        | Description                             |
+| ----------------- | --------------------------------------- |
+| `editor`          | Read and modify document content        |
 | `editor:readonly` | Read document content (no modification) |
-| `files` | Read and write files in the vault |
-| `files:readonly` | Read files in the vault (no writing) |
-| `commands` | Register and execute editor commands |
-| `sidebar` | Add panels to the sidebar |
-| `statusbar` | Display items in the status bar |
-| `settings` | Add options to the settings screen |
-| `events` | Listen to editor events |
-| `ai` | Access AI/LLM features |
-| `network` | Make network requests |
+| `files`           | Read and write files in the vault       |
+| `files:readonly`  | Read files in the vault (no writing)    |
+| `commands`        | Register and execute editor commands    |
+| `sidebar`         | Add panels to the sidebar               |
+| `statusbar`       | Display items in the status bar         |
+| `settings`        | Add options to the settings screen      |
+| `events`          | Listen to editor events                 |
+| `ai`              | Access AI/LLM features                  |
+| `network`         | Make network requests                   |
 
 Accessing an API without declaring its capability throws an error with a clear message.
 
@@ -108,12 +108,14 @@ export function deactivate() {
 The `context` object passed to `activate()` provides these APIs (gated by declared capabilities):
 
 ### `context.commands` (requires `commands`)
+
 ```typescript
 register(id: string, handler: Function): Disposable
 execute(id: string, ...args: any[]): Promise<any>
 ```
 
 ### `context.editor` (requires `editor` or `editor:readonly`)
+
 ```typescript
 getContent(): string
 setContent(content: string): void       // editor only
@@ -122,6 +124,7 @@ insertText(text: string): void           // editor only
 ```
 
 ### `context.files` (requires `files` or `files:readonly`)
+
 ```typescript
 readFile(path: string): Promise<string>
 writeFile(path: string, content: string): Promise<void>  // files only
@@ -129,6 +132,7 @@ listDir(path: string): Promise<string[]>
 ```
 
 ### `context.events` (requires `events`)
+
 ```typescript
 on(event: string, handler: Function): Disposable
 emit(event: string, ...args: any[]): void
@@ -137,12 +141,14 @@ emit(event: string, ...args: any[]): void
 Available events: `file:open`, `file:save`, `editor:ready`
 
 ### `context.ui` (requires `sidebar` or `statusbar`)
+
 ```typescript
 showNotification(message: string, type?: "info" | "warning" | "error"): void
 showStatusBarItem(text: string, alignment?: "left" | "right"): Disposable
 ```
 
 ### `context.subscriptions`
+
 Array of `Disposable` objects. All subscriptions are automatically disposed when the plugin is deactivated.
 
 ## Tiptap Extension Plugins

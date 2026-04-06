@@ -105,6 +105,7 @@ Baram works with standard markdown files (`.md`, `.markdown`). It supports Commo
 ### How do I insert a table?
 
 Four ways:
+
 1. **Pipe input** — Type `| Header 1 | Header 2 |` and press Enter — a table is created with the headers filled in
 2. **Grid Picker** — Type `/table` or press `Cmd+T` to select dimensions from a visual 10×10 grid
 3. **TSV Paste** — Copy cells from a spreadsheet and paste — Baram auto-creates a table
@@ -180,6 +181,7 @@ Press `Cmd+/` (macOS) or `Ctrl+/` (Windows/Linux) to toggle Source Mode. This sh
 Type `[[` to start a wikilink. An autocomplete popup appears with matching files from your workspace. Select a file to insert a link like `[[My Note]]`. Cmd+click (or Ctrl+click on Windows) to navigate to the linked page.
 
 Advanced syntax:
+
 - `[[page|custom text]]` — Display custom text
 - `[[page#heading]]` — Link to a specific heading
 - `[[page#^block-id]]` — Link to a specific block
@@ -234,12 +236,12 @@ Press `Cmd+K` (macOS) or `Ctrl+K` (Windows/Linux) to open the Quick Switcher. Ty
 
 Baram supports multiple AI providers. Get your API key from the respective provider:
 
-| Provider | Where to Get Key |
-|----------|-----------------|
-| **Claude** (Anthropic) | [console.anthropic.com](https://console.anthropic.com/) |
-| **OpenAI** | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
-| **Google Gemini** | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
-| **Ollama** (local) | No API key required — runs locally on your machine |
+| Provider               | Where to Get Key                                                     |
+| ---------------------- | -------------------------------------------------------------------- |
+| **Claude** (Anthropic) | [console.anthropic.com](https://console.anthropic.com/)              |
+| **OpenAI**             | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
+| **Google Gemini**      | [aistudio.google.com/apikey](https://aistudio.google.com/apikey)     |
+| **Ollama** (local)     | No API key required — runs locally on your machine                   |
 
 Each provider has its own API key field in **Settings > AI**.
 
@@ -368,6 +370,7 @@ Workspace Presets save your current layout (sidebar panel, right panel, theme) a
 ### How do I switch workspace presets?
 
 Three ways:
+
 1. **Keyboard shortcuts** — `Cmd+Alt+1` (Writing), `Cmd+Alt+2` (Skills), `Cmd+Alt+3` (Research), `Cmd+Alt+4` (Journal)
 2. **Command Palette** — `Cmd+Shift+P` then search for "Workspace"
 3. **Workspace menu** — Use the menu bar
@@ -391,6 +394,7 @@ Open **Settings > General > Journal**, enable the toggle, and select a folder fo
 ### How do I create a daily note?
 
 Three ways:
+
 1. **Calendar** — Open the Calendar sidebar (`Cmd+Alt+4`) and click any date
 2. **@Mention** — Type `@` in the editor and select Today/Yesterday/Tomorrow from the popup, then click the resulting 📅 date chip
 3. **Auto-create** — Set "On Startup" to "Open today's journal" in Settings — today's entry auto-opens when you launch Baram
@@ -410,6 +414,7 @@ Use the Calendar sidebar. Days with existing entries are marked with a dot. Clic
 ### What export formats are supported?
 
 Baram supports seven export formats:
+
 - **HTML** — Self-contained HTML with inline styles, math rendering, and code highlighting
 - **PDF** — Print-ready PDF via the system print dialog
 - **Notion** — Notion-compatible Markdown that converts Baram-specific syntax
@@ -475,6 +480,7 @@ Open the **Help** menu and select **User Guide**, **Keyboard Shortcuts**, or **F
 ### My markdown file looks different after editing
 
 Baram preserves your markdown with lossless roundtrip fidelity. If something looks different, it may be because:
+
 - Trailing whitespace was normalized
 - The file used non-standard markdown syntax that Baram doesn't support
 
