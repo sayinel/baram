@@ -1,9 +1,11 @@
 // §30 Graph View — interactive link graph visualization
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import type { LinkGraph } from "../../ipc/types";
 import type { Core, EventObject, StylesheetStyle } from "cytoscape";
 
 import { getLinkIndex, readFile, refreshIndex } from "../../ipc/invoke";
+import { useContextStore } from "../../stores/context/context";
 import { isGraphTab, useEditorStore } from "../../stores/editor/editor";
 import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
@@ -22,6 +24,8 @@ export function GraphView() {
   const cyRef = useRef<Core | null>(null);
   const [cyReady, setCyReady] = useState(false);
   const rootPath = useFileStore((s) => s.rootPath);
+  const [graphScope, setGraphScope] = useState<"all" | "current">("current");
+  const contexts = useContextStore((s) => s.contexts);
   // Detect if rendered inside editor tab (vs sidebar)
   const isInEditorTab = useEditorStore((s) => {
     const tab = s.tabs.find((t) => t.id === s.activeTabId);
@@ -151,13 +155,47 @@ export function GraphView() {
 
     (async () => {
       try {
-        // Ensure index matches current workspace before fetching graph
-        await refreshIndex(rootPath);
-        if (cancelled) return;
-        const graph = await getLinkIndex();
-        if (cancelled) return;
+        let graph: LinkGraph;
+        let effectiveRootPath = rootPath;
 
-        const { nodes, edges } = toGraphElements(graph, rootPath);
+        if (graphScope === "all" && contexts.length > 1) {
+          // §87 Multi-vault: fetch and merge graphs from all contexts
+          const vaultFolderContexts = contexts.filter(
+            (c) => c.contextType !== "file",
+          );
+          const graphs: Array<{
+            ctx: (typeof vaultFolderContexts)[0];
+            graph: LinkGraph;
+          }> = [];
+
+          for (const ctx of vaultFolderContexts) {
+            try {
+              await refreshIndex(ctx.path);
+              if (cancelled) return;
+              const g = await getLinkIndex();
+              if (cancelled) return;
+              graphs.push({ ctx, graph: g });
+            } catch {
+              // Skip contexts that fail
+            }
+          }
+
+          // Merge all graphs into one
+          graph = mergeGraphs(graphs.map((g) => g.graph));
+          // Use empty string as rootPath so namespace extraction works per-node
+          effectiveRootPath = "";
+        } else {
+          // Single-vault: existing behavior
+          await refreshIndex(rootPath);
+          if (cancelled) return;
+          graph = await getLinkIndex();
+          if (cancelled) return;
+        }
+
+        const { nodes, edges } = toGraphElements(
+          graph,
+          effectiveRootPath || rootPath,
+        );
         const maxNodeSize = Math.min(settingsNodeSize * 3, 80);
 
         const nodesWithSize = nodes.map((n) => ({
@@ -221,7 +259,15 @@ export function GraphView() {
     // omitted: adding them would re-fetch all graph data on every settings tweak,
     // but dedicated effects (Effect 3, node-size effect) handle those updates.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rootPath, indexVersion, handleNodeTap, colorByNamespace, cyReady]);
+  }, [
+    rootPath,
+    indexVersion,
+    handleNodeTap,
+    colorByNamespace,
+    cyReady,
+    graphScope,
+    contexts,
+  ]);
 
   // Effect 3: Re-layout on force settings change
   useEffect(() => {
@@ -515,6 +561,22 @@ export function GraphView() {
         <span className="graph-view-stats">
           {nodeCount} nodes, {edgeCount} edges
         </span>
+        {contexts.length > 1 && (
+          <div className="graph-scope">
+            <button
+              className={`graph-scope__btn ${graphScope === "current" ? "graph-scope__btn--active" : ""}`}
+              onClick={() => setGraphScope("current")}
+            >
+              Current
+            </button>
+            <button
+              className={`graph-scope__btn ${graphScope === "all" ? "graph-scope__btn--active" : ""}`}
+              onClick={() => setGraphScope("all")}
+            >
+              All
+            </button>
+          </div>
+        )}
         <div className="graph-view-header-actions">
           <button
             className="graph-view-settings-btn btn-unstyled"
@@ -735,4 +797,29 @@ function buildLayoutOptions(
     numIter: 500,
     fixedNodeConstraint: opts?.fixedNodeConstraint,
   };
+}
+
+/**
+ * §87 Merge multiple LinkGraphs into one.
+ * Deduplicates nodes and edges across vaults.
+ */
+function mergeGraphs(graphs: LinkGraph[]): LinkGraph {
+  const nodeSet = new Set<string>();
+  const edgeSet = new Set<string>();
+  const edges: Array<{ from: string; to: string }> = [];
+
+  for (const g of graphs) {
+    for (const node of g.nodes) {
+      nodeSet.add(node);
+    }
+    for (const edge of g.edges) {
+      const key = `${edge.from}\0${edge.to}`;
+      if (!edgeSet.has(key)) {
+        edgeSet.add(key);
+        edges.push(edge);
+      }
+    }
+  }
+
+  return { nodes: [...nodeSet], edges };
 }
