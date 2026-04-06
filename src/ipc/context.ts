@@ -7,6 +7,11 @@ export async function addContext(info: ContextInfo): Promise<ContextInfo> {
   return invoke("add_context", { info });
 }
 
+/** §80 Retrieve all registered contexts from the Rust backend. */
+export async function getContexts(): Promise<ContextInfo[]> {
+  return invoke("get_contexts");
+}
+
 export async function getVaultConfig(
   contextId: string,
 ): Promise<null | VaultConfig> {
