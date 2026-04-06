@@ -73,6 +73,7 @@
   --graph-neighbor-color: var(--color-graph-neighbor);
   --graph-orphan-color: var(--color-graph-orphan);
   --graph-edge-color: var(--color-graph-edge);
+  --graph-cross-vault-edge: var(--color-graph-cross-vault, #8b5cf6);
   --graph-label-color: var(--color-graph-label);
 }
 

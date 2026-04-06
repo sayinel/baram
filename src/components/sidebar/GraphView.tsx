@@ -157,6 +157,7 @@ export function GraphView() {
       try {
         let graph: LinkGraph;
         let effectiveRootPath = rootPath;
+        let nodeVaultMapRef: Map<string, string> | undefined;
 
         if (graphScope === "all" && contexts.length > 1) {
           // §87 Multi-vault: fetch and merge graphs from all contexts
@@ -180,8 +181,18 @@ export function GraphView() {
             }
           }
 
-          // Merge all graphs into one
-          graph = mergeGraphs(graphs.map((g) => g.graph));
+          // Merge all graphs into one, tracking node→vault membership
+          const merged = mergeGraphs(graphs.map((g) => g.graph));
+          graph = merged;
+          // §87 Build nodeVaultMap for cross-vault edge detection
+          nodeVaultMapRef = new Map<string, string>();
+          for (const { ctx, graph: g } of graphs) {
+            for (const node of g.nodes) {
+              if (!nodeVaultMapRef.has(node)) {
+                nodeVaultMapRef.set(node, ctx.id);
+              }
+            }
+          }
           // Use empty string as rootPath so namespace extraction works per-node
           effectiveRootPath = "";
         } else {
@@ -190,11 +201,13 @@ export function GraphView() {
           if (cancelled) return;
           graph = await getLinkIndex();
           if (cancelled) return;
+          nodeVaultMapRef = undefined;
         }
 
         const { nodes, edges } = toGraphElements(
           graph,
           effectiveRootPath || rootPath,
+          nodeVaultMapRef,
         );
         const maxNodeSize = Math.min(settingsNodeSize * 3, 80);
 
@@ -757,6 +770,17 @@ function buildGraphStyle(settings: {
         "target-arrow-color": "var(--graph-active-color, #3b82f6)",
         width: Math.max(settings.linkThickness * 1.5, 1.5),
       },
+    },
+    // §87 Cross-vault edges: dashed line
+    {
+      selector: "edge[?crossVault]",
+      style: {
+        "line-style": "dashed",
+        "line-dash-pattern": [6, 3],
+        "line-color": "var(--graph-cross-vault-edge, #8b5cf6)",
+        "target-arrow-color": "var(--graph-cross-vault-edge, #8b5cf6)",
+        opacity: 0.6,
+      } as cytoscape.Css.Edge,
     },
     // Zoom label fade
     {
