@@ -102,4 +102,28 @@ describe("§81 contextStore", () => {
     const reordered = useContextStore.getState().contexts;
     expect(reordered.map((c) => c.id)).toEqual(reversed);
   });
+
+  it("§85 ensureJournalContext pins journal to position 1", async () => {
+    // Add two vault contexts first
+    await useContextStore.getState().addContext("vault", "/a");
+    await useContextStore.getState().addContext("vault", "/b");
+    // Now add journal — should be pinned to index 1
+    await useContextStore.getState().ensureJournalContext("/journal");
+    const { contexts } = useContextStore.getState();
+    expect(contexts).toHaveLength(3);
+    expect(contexts[1].vaultType).toBe("journal");
+    expect(contexts[1].path).toBe("/journal");
+  });
+
+  it("§85 addContext keeps journal at position 1 when adding after journal", async () => {
+    await useContextStore.getState().addContext("vault", "/a");
+    await useContextStore.getState().ensureJournalContext("/journal");
+    // Journal should be at position 1
+    expect(useContextStore.getState().contexts[1].vaultType).toBe("journal");
+    // Add another context — journal should remain at position 1
+    await useContextStore.getState().addContext("vault", "/c");
+    const { contexts } = useContextStore.getState();
+    expect(contexts).toHaveLength(3);
+    expect(contexts[1].vaultType).toBe("journal");
+  });
 });
