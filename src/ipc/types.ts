@@ -288,6 +288,26 @@ export interface RenameTagResult {
   occurrencesReplaced: number;
 }
 
+/** §86 Flat merged settings: global → vault → (future) frontmatter. */
+export interface ResolvedSettings {
+  aiContextScope?: string;
+  aiModel?: string;
+  aiPrivacyMode?: boolean;
+  dailyNotesFolder?: string;
+  defaultNewFileLocation?: string;
+  enableMermaid?: boolean;
+  enableWikilink?: boolean;
+  extensionsDisabled?: string[];
+  extensionsEnabled?: string[];
+  gitAutoFetchInterval?: number;
+  gitAutoPushOnCommit?: boolean;
+  markdownSerializationRules?: Record<string, unknown>;
+  skillsFolder?: string;
+  snapshotIntervalMinutes?: number;
+  snapshotMaxCount?: number;
+  themeOverride?: string;
+}
+
 // §3.2 Search types
 export interface SearchOptions {
   caseSensitive?: boolean;
@@ -326,12 +346,12 @@ export interface TagEntry {
   count: number;
   tag: string;
 }
-
 export interface TiptapExtensionDef {
   exportName: string;
   name: string;
   type: string; // "node" | "mark" | "plugin"
 }
+
 // §34 Unlinked Mentions
 export interface UnlinkedMention {
   context: string;
