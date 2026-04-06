@@ -11,6 +11,7 @@ import {
   isVaultQuery,
   parseReferences,
   resolveReference,
+  resolveVaultContextReferences,
 } from "../../utils/chat-context";
 import { formatAIError } from "../../utils/format-error";
 import { ChatMessage } from "./ChatMessage";
@@ -152,7 +153,7 @@ export function AIChatPanel() {
     useUIStore.getState().setPendingApplyContent(content);
   }, []);
 
-  const handleSend = useCallback(() => {
+  const handleSend = useCallback(async () => {
     const trimmed = input.trim();
     if (!trimmed || isStreaming) return;
 
@@ -166,6 +167,9 @@ export function AIChatPanel() {
     const resolved: ResolvedReference[] = refStrings
       .map(resolveReference)
       .filter((r): r is ResolvedReference => r !== null);
+
+    // §87 Resolve @vault:ID and @all-vaults asynchronously
+    await resolveVaultContextReferences(resolved, refStrings);
 
     // Add user message
     addMessage(sessionId, {

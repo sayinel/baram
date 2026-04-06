@@ -1,17 +1,21 @@
 import type { FileEntry } from "../stores/file/file";
 
+import { listDir } from "../ipc/fs";
 import { useAIStore } from "../stores/ai/ai";
+import { useContextStore } from "../stores/context/context";
 // §44 AI Chat @reference resolver
 import { useEditorStore } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
 
 export type ReferenceType =
+  | "@all-vaults"
   | "@clipboard"
   | "@current"
   | "@file"
   | "@folder"
   | "@selection"
-  | "@vault";
+  | "@vault"
+  | "@vault-context";
 
 export interface ResolvedReference {
   content: string;
@@ -33,7 +37,7 @@ export function buildContextPrompt(
 export function parseReferences(text: string): string[] {
   const refs: string[] = [];
   const regex =
-    /@(selection|current|clipboard|vault|file:[^\s]+|folder:[^\s]+)/g;
+    /@(selection|current|clipboard|vault:[^\s]+|vault|all-vaults|file:[^\s]+|folder:[^\s]+)/g;
   let match;
   while ((match = regex.exec(text)) !== null) {
     refs.push(`@${match[1]}`);
@@ -87,12 +91,35 @@ export function resolveReference(ref: string): null | ResolvedReference {
   }
 
   // @vault — placeholder that signals vault-wide knowledge search
-  // Actual content is resolved asynchronously via resolveVaultReference()
+  // Actual content is resolved asynchronously via resolveVaultContextReference()
   if (ref === "@vault") {
     return {
       type: "@vault",
       label: "Vault Search",
       content: "[vault search pending]",
+    };
+  }
+
+  // §87 @vault:CONTEXT_ID — placeholder; resolved async via resolveVaultContextReferences()
+  if (ref.startsWith("@vault:")) {
+    const contextId = ref.slice(7);
+    const ctx = useContextStore
+      .getState()
+      .contexts.find((c) => c.id === contextId);
+    const label = ctx ? `${ctx.label} vault` : "Vault";
+    return {
+      type: "@vault-context",
+      label,
+      content: "[vault context pending]",
+    };
+  }
+
+  // §87 @all-vaults — placeholder; resolved async via resolveVaultContextReferences()
+  if (ref === "@all-vaults") {
+    return {
+      type: "@all-vaults",
+      label: "All Vaults",
+      content: "[all vaults pending]",
     };
   }
 
@@ -165,6 +192,67 @@ export function isVaultQuery(text: string): boolean {
   if (refs.includes("@vault")) return true;
   const lower = text.toLowerCase();
   return VAULT_QUERY_KEYWORDS.some((kw) => lower.includes(kw));
+}
+
+/**
+ * §87 Resolve @vault:ID and @all-vaults references asynchronously.
+ * Replaces placeholder ResolvedReferences in-place with actual file listing content.
+ */
+export async function resolveVaultContextReferences(
+  refs: ResolvedReference[],
+  refStrings: string[],
+): Promise<void> {
+  const contextStore = useContextStore.getState();
+
+  for (let i = 0; i < refs.length; i++) {
+    const refStr = refStrings[i];
+    if (!refStr) continue;
+
+    if (refStr.startsWith("@vault:")) {
+      const contextId = refStr.slice(7);
+      const ctx = contextStore.contexts.find((c) => c.id === contextId);
+      if (!ctx) continue;
+
+      try {
+        const entries = await listDir(ctx.path, true);
+        const fileList = entries
+          .filter((e) => !e.isDir && e.name.endsWith(".md"))
+          .map((e) => e.path.slice(ctx.path.length + 1))
+          .join("\n");
+        refs[i] = {
+          type: "@vault-context",
+          label: `${ctx.label} vault`,
+          content: `Files in ${ctx.label}:\n${fileList || "(no markdown files)"}`,
+        };
+      } catch {
+        // Leave placeholder on error
+      }
+    } else if (refStr === "@all-vaults") {
+      const nonFileContexts = contextStore.contexts.filter(
+        (c) => c.contextType !== "file",
+      );
+      const parts: string[] = [];
+      for (const ctx of nonFileContexts) {
+        try {
+          const entries = await listDir(ctx.path, true);
+          const fileList = entries
+            .filter((e) => !e.isDir && e.name.endsWith(".md"))
+            .map((e) => `${ctx.label}::${e.path.slice(ctx.path.length + 1)}`)
+            .join("\n");
+          parts.push(
+            `Files in ${ctx.label}:\n${fileList || "(no markdown files)"}`,
+          );
+        } catch {
+          // Skip vaults that fail to list
+        }
+      }
+      refs[i] = {
+        type: "@all-vaults",
+        label: "All Vaults",
+        content: parts.join("\n\n") || "(no vault files found)",
+      };
+    }
+  }
 }
 
 /** Collect all file paths under a directory from the file tree */
