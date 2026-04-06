@@ -2,6 +2,19 @@
 import type { VaultConfig } from "../ipc/types";
 
 /**
+ * Merge global settings with vault-scoped overrides.
+ * Vault config fields override global when present.
+ * Returns a flat ResolvedSettings object.
+ */
+/** §86 Frontmatter fields that can override settings (3rd tier). */
+export interface FrontmatterOverrides {
+  aiModel?: string;
+  enableMermaid?: boolean;
+  enableWikilink?: boolean;
+  theme?: string;
+}
+
+/**
  * Resolved settings for the active context.
  * Global settings with vault-scoped overrides applied.
  */
@@ -31,11 +44,6 @@ export interface ResolvedSettings {
   themeOverride?: string;
 }
 
-/**
- * Merge global settings with vault-scoped overrides.
- * Vault config fields override global when present.
- * Returns a flat ResolvedSettings object.
- */
 export function resolveSettings(
   globalSettings: {
     aiModel?: string;
@@ -47,6 +55,7 @@ export function resolveSettings(
     themeId?: string;
   },
   vaultConfig: null | undefined | VaultConfig,
+  frontmatter?: FrontmatterOverrides | null,
 ): ResolvedSettings {
   const resolved: ResolvedSettings = {
     aiModel: globalSettings.aiModel,
@@ -57,7 +66,7 @@ export function resolveSettings(
     skillsFolder: globalSettings.skillsFolder,
   };
 
-  if (!vaultConfig) return resolved;
+  if (!vaultConfig) return applyFrontmatter(resolved, frontmatter);
 
   // AI overrides
   if (vaultConfig.ai) {
@@ -118,5 +127,21 @@ export function resolveSettings(
       resolved.snapshotMaxCount = vaultConfig.snapshot.maxCount;
   }
 
+  return applyFrontmatter(resolved, frontmatter);
+}
+
+/** §86 Apply frontmatter overrides (3rd tier, limited set). */
+function applyFrontmatter(
+  resolved: ResolvedSettings,
+  frontmatter?: FrontmatterOverrides | null,
+): ResolvedSettings {
+  if (!frontmatter) return resolved;
+  if (frontmatter.aiModel !== undefined) resolved.aiModel = frontmatter.aiModel;
+  if (frontmatter.enableMermaid !== undefined)
+    resolved.enableMermaid = frontmatter.enableMermaid;
+  if (frontmatter.enableWikilink !== undefined)
+    resolved.enableWikilink = frontmatter.enableWikilink;
+  if (frontmatter.theme !== undefined)
+    resolved.themeOverride = frontmatter.theme;
   return resolved;
 }

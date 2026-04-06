@@ -108,4 +108,37 @@ describe("§86 resolveSettings", () => {
     const result = resolveSettings({}, { ai: { contextScope: "vault-only" } });
     expect(result.aiContextScope).toBe("vault-only");
   });
+
+  // §86 3rd tier: frontmatter overrides
+  it("frontmatter overrides vault config (3rd tier)", () => {
+    const result = resolveSettings(
+      { aiModel: "claude-sonnet" },
+      { ai: { model: "claude-haiku" } },
+      { aiModel: "claude-opus", theme: "sepia" },
+    );
+    expect(result.aiModel).toBe("claude-opus");
+    expect(result.themeOverride).toBe("sepia");
+  });
+
+  it("frontmatter overrides boolean settings", () => {
+    const result = resolveSettings(
+      { enableMermaid: true, enableWikilink: true },
+      { markdown: { enableMermaid: true } },
+      { enableMermaid: false, enableWikilink: false },
+    );
+    expect(result.enableMermaid).toBe(false);
+    expect(result.enableWikilink).toBe(false);
+  });
+
+  it("frontmatter null/undefined is ignored", () => {
+    const result = resolveSettings({ aiModel: "claude-sonnet" }, null, null);
+    expect(result.aiModel).toBe("claude-sonnet");
+  });
+
+  it("frontmatter without vault config still works", () => {
+    const result = resolveSettings({ aiModel: "claude-sonnet" }, null, {
+      aiModel: "claude-opus",
+    });
+    expect(result.aiModel).toBe("claude-opus");
+  });
 });
