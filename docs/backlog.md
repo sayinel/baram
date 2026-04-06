@@ -18,7 +18,7 @@
 
 ### 🟠 HIGH — Vault Root Bypass on Cold Start
 
-- **위치**: `src-tauri/src/fs/mod.rs` (check_vault), `src/hooks/use-app-startup.ts` (handleOpenFilePath)
+- **위치**: `src-tauri/src/fs/mod.rs` (check\_vault), `src/hooks/use-app-startup.ts` (handleOpenFilePath)
 - **문제**: `check_vault`가 `VaultRootState::None`일 때 no-op이어서 앱 시작부터 사용자가 폴더를 열기 전까지 모든 FS IPC 커맨드가 임의 절대 경로를 허용함. `handleOpenFilePath`(OS 파일 연결) 경로에서 발생 가능
 - **권장 수정**:
   - 옵션 A: vault root 미설정 시 FS IPC deny-by-default로 변경
@@ -55,14 +55,14 @@
 - **권장 수정**: DOM 파서 사용 또는 `DOMPurify.sanitize()` 호출 전후 적용
 - **재검토 조건**: Journal 이미지 처리 리팩토링 시
 
-### 🔵 LOW — CSP connect-src localhost:* 과다 허용
+### 🔵 LOW — CSP connect-src localhost:\* 과다 허용
 
 - **위치**: `src-tauri/tauri.conf.json` (CSP connect-src)
 - **문제**: `http://localhost:*` 허용 → XSS 발생 시 로컬 임의 서비스 접근 가능
 - **권장 수정**: Ollama 기본 포트로 제한 `http://localhost:11434`
 - **재검토 조건**: 보안 감사 시
 
-### 🔵 LOW — fs::validate_path canonicalize 미적용
+### 🔵 LOW — fs::validate\_path canonicalize 미적용
 
 - **위치**: `src-tauri/src/fs/mod.rs:51-65`
 - **문제**: 절대 경로 체크만 하고 `../../etc/passwd` 같은 traverse 패턴 미차단. ZIP 추출은 canonicalize 적용 중이나 일반 읽기/쓰기는 미적용
@@ -194,7 +194,7 @@
 - **권장 수정**: `.catch((e) => logger.warn("index update failed", e))` 로 교체
 - **재검토 조건**: 링크 인덱스 오류 디버깅 필요 시
 
-### 🟡 MEDIUM — search_cmd.rs max_results 상한 없음
+### 🟡 MEDIUM — search\_cmd.rs max\_results 상한 없음
 
 - **위치**: `src-tauri/src/commands/search_cmd.rs`
 - **문제**: 프론트엔드가 전달하는 `max_results` 값에 상한이 없어 매우 큰 값 전달 시 메모리/CPU 과다 사용
@@ -268,31 +268,31 @@
 
 > 리팩토링 계획(`.omc/plans/refactoring-plan.md`)과 연계된 항목들
 
-| # | 항목 | 연관 Phase |
-|---|------|-----------|
-| 1 | i18n 전체 적용 (74 컴포넌트 + Rust 메뉴) | Phase D 이후 별도 |
-| 2 | `as` 타입 단언 전체 검토 (695건) | 점진적 개선 |
-| 3 | 키바인딩 Rust 메뉴 accelerator 동기화 | Phase D 이후 별도 |
-| 4 | 인라인 `style={{}}` → CSS 클래스 전환 (183건) | 점진적 개선 |
+| # | 항목                                      | 연관 Phase      |
+| - | --------------------------------------- | ------------- |
+| 1 | i18n 전체 적용 (74 컴포넌트 + Rust 메뉴)          | Phase D 이후 별도 |
+| 2 | `as` 타입 단언 전체 검토 (695건)                 | 점진적 개선        |
+| 3 | 키바인딩 Rust 메뉴 accelerator 동기화            | Phase D 이후 별도 |
+| 4 | 인라인 `style={{}}` → CSS 클래스 전환 (183건)    | 점진적 개선        |
 | 5 | 스토어 간 직접 import → subscribe/event 패턴 전환 | Phase D 이후 별도 |
 
 ---
 
 ## 수정 완료 이력
 
-| 날짜 | 항목 | 커밋 |
-|------|------|------|
-| 2026-03-14 | pandoc run_custom_export 커맨드 인젝션 (CRITICAL) | `1622bd2` |
-| 2026-03-14 | journal-search.ts highlightSearchMatch XSS (HIGH) | `1622bd2` |
-| 2026-03-14 | journal-memories.ts renderSimpleMarkdown XSS (HIGH) | `1622bd2` |
-| 2026-03-14 | use-app-startup.ts restoreLastFile 조건 오타 (HIGH) | `1622bd2` |
-| 2026-03-14 | use-tab-switching.ts setIsParsing(false) 누락 (HIGH) | `1622bd2` |
-| 2026-03-14 | use-source-mode.ts double RAF race condition (HIGH) | `1622bd2` |
-| 2026-03-14 | wikilink-view.tsx CSS 클래스 공백 누락 (CSS) | `1622bd2` |
-| 2026-03-14 | settings-store.ts migration 순서 역전 (MEDIUM) | `1622bd2` |
-| 2026-03-14 | gemini.rs API 키 URL 쿼리 파라미터 노출 (HIGH) → x-goog-api-key 헤더로 전환 | `7df7646` |
-| 2026-03-14 | snapshot/io.rs restore_files 경로 순회 취약점 (HIGH) → is_safe_relative_path 검증 추가 | `7df7646` |
-| 2026-03-14 | fs/mod.rs write_file 동시 쓰기 tmp 파일 충돌 (ARCH) → 고유 uuid tmp 경로 사용 | `7df7646` |
-| 2026-03-14 | fs_cmd.rs write_binary_file 동일 tmp 충돌 (ARCH) → uuid tmp 경로 통일 | `92c0378` |
-| 2026-03-14 | gemini.rs list_models 헤더 삽입 패닉 가능성 + 에러 타입 불일치 (MEDIUM) | `4fac079` |
-| 2026-03-14 | llm/mod.rs stale comment (query params → x-goog-api-key header) | `4fac079` |
+| 날짜         | 항목                                                                              | 커밋        |
+| ---------- | ------------------------------------------------------------------------------- | --------- |
+| 2026-03-14 | pandoc run\_custom\_export 커맨드 인젝션 (CRITICAL)                                   | `1622bd2` |
+| 2026-03-14 | journal-search.ts highlightSearchMatch XSS (HIGH)                               | `1622bd2` |
+| 2026-03-14 | journal-memories.ts renderSimpleMarkdown XSS (HIGH)                             | `1622bd2` |
+| 2026-03-14 | use-app-startup.ts restoreLastFile 조건 오타 (HIGH)                                 | `1622bd2` |
+| 2026-03-14 | use-tab-switching.ts setIsParsing(false) 누락 (HIGH)                              | `1622bd2` |
+| 2026-03-14 | use-source-mode.ts double RAF race condition (HIGH)                             | `1622bd2` |
+| 2026-03-14 | wikilink-view\.tsx CSS 클래스 공백 누락 (CSS)                                          | `1622bd2` |
+| 2026-03-14 | settings-store.ts migration 순서 역전 (MEDIUM)                                      | `1622bd2` |
+| 2026-03-14 | gemini.rs API 키 URL 쿼리 파라미터 노출 (HIGH) → x-goog-api-key 헤더로 전환                   | `7df7646` |
+| 2026-03-14 | snapshot/io.rs restore\_files 경로 순회 취약점 (HIGH) → is\_safe\_relative\_path 검증 추가 | `7df7646` |
+| 2026-03-14 | fs/mod.rs write\_file 동시 쓰기 tmp 파일 충돌 (ARCH) → 고유 uuid tmp 경로 사용                | `7df7646` |
+| 2026-03-14 | fs\_cmd.rs write\_binary\_file 동일 tmp 충돌 (ARCH) → uuid tmp 경로 통일                | `92c0378` |
+| 2026-03-14 | gemini.rs list\_models 헤더 삽입 패닉 가능성 + 에러 타입 불일치 (MEDIUM)                        | `4fac079` |
+| 2026-03-14 | llm/mod.rs stale comment (query params → x-goog-api-key header)                 | `4fac079` |
