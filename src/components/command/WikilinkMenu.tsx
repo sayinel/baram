@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -24,6 +25,12 @@ export const WikilinkMenuList = forwardRef<WikilinkMenuRef, WikilinkMenuProps>(
     const [selectedIndex, setSelectedIndex] = useState(0);
     const listRef = useRef<HTMLDivElement>(null);
 
+    // §87 Separate selectable items from hint items
+    const selectableItems = useMemo(
+      () => items.filter((i) => i.kind !== "hint"),
+      [items],
+    );
+
     useEffect(() => {
       setSelectedIndex(0);
     }, [items]);
@@ -39,20 +46,23 @@ export const WikilinkMenuList = forwardRef<WikilinkMenuRef, WikilinkMenuProps>(
 
     const selectItem = useCallback(
       (index: number) => {
-        const item = items[index];
+        const item = selectableItems[index];
         if (item) command(item);
       },
-      [items, command],
+      [selectableItems, command],
     );
 
     useImperativeHandle(ref, () => ({
       onKeyDown: (event: KeyboardEvent) => {
+        if (selectableItems.length === 0) return false;
         if (event.key === "ArrowUp") {
-          setSelectedIndex((i) => (i - 1 + items.length) % items.length);
+          setSelectedIndex(
+            (i) => (i - 1 + selectableItems.length) % selectableItems.length,
+          );
           return true;
         }
         if (event.key === "ArrowDown") {
-          setSelectedIndex((i) => (i + 1) % items.length);
+          setSelectedIndex((i) => (i + 1) % selectableItems.length);
           return true;
         }
         if (event.key === "Enter" || event.key === "Tab") {
@@ -69,30 +79,40 @@ export const WikilinkMenuList = forwardRef<WikilinkMenuRef, WikilinkMenuProps>(
 
     return (
       <div className="wikilink-menu" ref={listRef}>
-        {items.map((item, idx) => (
-          <div
-            className={`wikilink-menu-item ${idx === selectedIndex ? "wikilink-item-selected" : ""}${item.kind === "create" ? "wikilink-item-create" : ""}`}
-            key={item.id}
-            onClick={() => selectItem(idx)}
-            onMouseEnter={() => setSelectedIndex(idx)}
-          >
-            {item.kind === "create" ? (
-              <>
-                <span className="wikilink-item-icon">+</span>
-                <span className="wikilink-item-label">{item.label}</span>
-              </>
-            ) : item.kind === "heading" ? (
-              <>
-                <span className="wikilink-heading-icon">
-                  {"#".repeat(item.headingLevel ?? 1)}
-                </span>
-                <span className="wikilink-item-label">{item.heading}</span>
-              </>
-            ) : (
-              <span className="wikilink-item-label">{item.target}</span>
-            )}
-          </div>
-        ))}
+        {items.map((item) => {
+          if (item.kind === "hint") {
+            return (
+              <div className="wikilink-menu-hint" key={item.id}>
+                <span className="wikilink-hint-label">{item.label}</span>
+              </div>
+            );
+          }
+          const selectableIdx = selectableItems.indexOf(item);
+          return (
+            <div
+              className={`wikilink-menu-item ${selectableIdx === selectedIndex ? "wikilink-item-selected" : ""}${item.kind === "create" ? "wikilink-item-create" : ""}`}
+              key={item.id}
+              onClick={() => selectItem(selectableIdx)}
+              onMouseEnter={() => setSelectedIndex(selectableIdx)}
+            >
+              {item.kind === "create" ? (
+                <>
+                  <span className="wikilink-item-icon">+</span>
+                  <span className="wikilink-item-label">{item.label}</span>
+                </>
+              ) : item.kind === "heading" ? (
+                <>
+                  <span className="wikilink-heading-icon">
+                    {"#".repeat(item.headingLevel ?? 1)}
+                  </span>
+                  <span className="wikilink-item-label">{item.heading}</span>
+                </>
+              ) : (
+                <span className="wikilink-item-label">{item.target}</span>
+              )}
+            </div>
+          );
+        })}
       </div>
     );
   },

@@ -28,9 +28,13 @@ export function useNavigation({
   handleOpenFilePath,
 }: UseNavigationParams) {
   // §28 Wikilink navigation ref — breaks circular dependency (editor ↔ navigate)
-  const navigateRef = useRef<(target: string, heading?: null | string) => void>(
-    () => {},
-  );
+  const navigateRef = useRef<
+    (
+      target: string,
+      heading?: null | string,
+      vaultAlias?: null | string,
+    ) => void
+  >(() => {});
   // §30c Block reference navigation ref
   const blockRefNavigateRef = useRef<(target: string, blockId: string) => void>(
     () => {},
@@ -45,8 +49,9 @@ export function useNavigation({
   const isNavBackForwardRef = useRef(false);
 
   // §28 Wikilink Cmd+Click navigation
+  // §87 Cross-vault: vaultAlias passed through from wikilink node attrs
   const handleWikilinkNavigate = useCallback(
-    (target: string, heading?: null | string) => {
+    (target: string, heading?: null | string, vaultAlias?: null | string) => {
       // §56 Date wikilink → open/create journal file
       if (isDateString(target)) {
         const {
@@ -77,7 +82,7 @@ export function useNavigation({
         return;
       }
 
-      const resolved = resolveWikilinkTarget(target);
+      const resolved = resolveWikilinkTarget(target, vaultAlias);
 
       // File doesn't exist → create it, refresh tree, then open
       if (!resolved) {

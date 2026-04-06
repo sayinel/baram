@@ -1,6 +1,8 @@
+import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
 // §28 Wikilink navigation — resolve target to file path
 // §61 Namespace — relative path resolution (./  ../)
+// §87 Cross-vault link resolution
 import { isActiveContextJournal, useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { flattenFileTree } from "../file-search";
@@ -39,6 +41,7 @@ export function resolveRelativeTarget(
  * Resolve a wikilink target (e.g. "architecture") to a file path.
  * Case-insensitive exact match on filename stem (without .md extension).
  *
+ * §87 Cross-vault resolution: when vaultAlias is set, resolve in that context.
  * §61 Namespace-aware resolution order:
  * 0. [[./name]] or [[../path/name]] → relative to current file's directory
  * §56l Journal-aware resolution order:
@@ -49,7 +52,13 @@ export function resolveRelativeTarget(
  */
 export function resolveWikilinkTarget(
   target: string,
+  vaultAlias?: null | string,
 ): null | { name: string; path: string } {
+  // §87 Cross-vault: resolve in the alias context
+  if (vaultAlias) {
+    return resolveCrossVaultTarget(vaultAlias, target);
+  }
+
   const { rootPath, fileTree } = useFileStore.getState();
   if (!rootPath || fileTree.length === 0) return null;
 
@@ -126,4 +135,52 @@ export function resolveWikilinkTarget(
   }
 
   return null;
+}
+
+/**
+ * §87 Resolve a cross-vault wikilink target synchronously.
+ * Looks up the alias in the context store and tries to find the file
+ * in that context's file tree (only works if the context is active).
+ */
+function resolveCrossVaultTarget(
+  alias: string,
+  target: string,
+): null | { name: string; path: string } {
+  const contexts = useContextStore.getState().contexts;
+  const ctx = contexts.find((c) => c.alias === alias);
+  if (!ctx) return null; // Vault not registered — dangling
+
+  const { rootPath, fileTree } = useFileStore.getState();
+
+  // Only resolve synchronously if the alias context is the active context
+  if (rootPath === ctx.path && fileTree.length > 0) {
+    const flat = flattenFileTree(fileTree, rootPath);
+    const targetLower = target.toLowerCase();
+
+    // Try exact stem match
+    for (const f of flat) {
+      if (!f.name.endsWith(".md") && !f.name.endsWith(".markdown")) continue;
+      const stem = f.name.endsWith(".markdown")
+        ? f.name.slice(0, -9)
+        : f.name.slice(0, -3);
+      if (stem.toLowerCase() === targetLower) {
+        return { path: f.path, name: f.name };
+      }
+    }
+
+    // Try path match (e.g., "skills/analyzer")
+    for (const f of flat) {
+      const rel = f.path.slice(rootPath.length + 1);
+      const relNoExt = rel.endsWith(".md")
+        ? rel.slice(0, -3)
+        : rel.endsWith(".markdown")
+          ? rel.slice(0, -9)
+          : rel;
+      if (relNoExt.toLowerCase() === targetLower) {
+        return { path: f.path, name: f.name };
+      }
+    }
+  }
+
+  return null; // Not resolvable synchronously — vault not active or file not found
 }
