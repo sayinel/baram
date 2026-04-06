@@ -132,6 +132,150 @@ pub struct VaultConfig {
     pub cross_vault_hints: Option<HashMap<String, CrossVaultHint>>,
 }
 
+// ── ResolvedSettings ──────────────────────────────────────────────────────────
+
+/// §86 Flat merged settings: global → vault → (future) frontmatter.
+/// Mirror of TypeScript `ResolvedSettings` in `src/utils/settings-resolve.ts`.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedSettings {
+    // AI
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ai_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ai_privacy_mode: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ai_context_scope: Option<String>,
+    // Markdown
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enable_wikilink: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enable_mermaid: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub markdown_serialization_rules: Option<serde_json::Value>,
+    // Editor
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub daily_notes_folder: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skills_folder: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_new_file_location: Option<String>,
+    // Git
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub git_auto_fetch_interval: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub git_auto_push_on_commit: Option<bool>,
+    // Appearance
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theme_override: Option<String>,
+    // Extensions
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extensions_enabled: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub extensions_disabled: Option<Vec<String>>,
+    // Snapshot
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub snapshot_interval_minutes: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub snapshot_max_count: Option<u32>,
+}
+
+/// Build ResolvedSettings from global key-value settings + optional VaultConfig.
+pub fn resolve_settings(
+    global: &HashMap<String, String>,
+    vault_config: Option<&VaultConfig>,
+) -> ResolvedSettings {
+    let get = |key: &str| global.get(key).cloned();
+    let get_bool = |key: &str| global.get(key).and_then(|v| v.parse::<bool>().ok());
+
+    let mut resolved = ResolvedSettings {
+        ai_model: get("aiModel"),
+        ai_privacy_mode: get_bool("privacyMode"),
+        enable_wikilink: get_bool("enableWikilink"),
+        enable_mermaid: get_bool("enableMermaid"),
+        daily_notes_folder: get("dailyNotesFolder"),
+        skills_folder: get("skillsFolder"),
+        ..Default::default()
+    };
+
+    let vc = match vault_config {
+        Some(vc) => vc,
+        None => return resolved,
+    };
+
+    // AI overrides
+    if let Some(ai) = &vc.ai {
+        if ai.model.is_some() {
+            resolved.ai_model = ai.model.clone();
+        }
+        if ai.privacy_mode.is_some() {
+            resolved.ai_privacy_mode = ai.privacy_mode;
+        }
+        if ai.context_scope.is_some() {
+            resolved.ai_context_scope = ai.context_scope.clone();
+        }
+    }
+    // Markdown overrides
+    if let Some(md) = &vc.markdown {
+        if md.enable_wikilink.is_some() {
+            resolved.enable_wikilink = md.enable_wikilink;
+        }
+        if md.enable_mermaid.is_some() {
+            resolved.enable_mermaid = md.enable_mermaid;
+        }
+        if md.serialization_rules.is_some() {
+            resolved.markdown_serialization_rules = md.serialization_rules.clone();
+        }
+    }
+    // Editor overrides
+    if let Some(ed) = &vc.editor {
+        if ed.daily_notes_folder.is_some() {
+            resolved.daily_notes_folder = ed.daily_notes_folder.clone();
+        }
+        if ed.skills_folder.is_some() {
+            resolved.skills_folder = ed.skills_folder.clone();
+        }
+        if ed.default_new_file_location.is_some() {
+            resolved.default_new_file_location = ed.default_new_file_location.clone();
+        }
+    }
+    // Git overrides
+    if let Some(git) = &vc.git {
+        if git.auto_fetch_interval.is_some() {
+            resolved.git_auto_fetch_interval = git.auto_fetch_interval;
+        }
+        if git.auto_push_on_commit.is_some() {
+            resolved.git_auto_push_on_commit = git.auto_push_on_commit;
+        }
+    }
+    // Appearance
+    if let Some(app) = &vc.appearance {
+        if app.theme.is_some() {
+            resolved.theme_override = app.theme.clone();
+        }
+    }
+    // Extensions
+    if let Some(ext) = &vc.extensions {
+        if ext.enabled.is_some() {
+            resolved.extensions_enabled = ext.enabled.clone();
+        }
+        if ext.disabled.is_some() {
+            resolved.extensions_disabled = ext.disabled.clone();
+        }
+    }
+    // Snapshot
+    if let Some(snap) = &vc.snapshot {
+        if snap.interval_minutes.is_some() {
+            resolved.snapshot_interval_minutes = snap.interval_minutes;
+        }
+        if snap.max_count.is_some() {
+            resolved.snapshot_max_count = snap.max_count;
+        }
+    }
+
+    resolved
+}
+
 // ── I/O helpers ────────────────────────────────────────────────────────────────
 
 fn config_path(vault_root: &Path) -> std::path::PathBuf {

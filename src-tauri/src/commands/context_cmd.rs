@@ -1,7 +1,8 @@
 // §88 Context IPC commands — add/remove/set_active/get/init_vault
+// §86 Settings resolution (global + vault merge)
 // §87 Cross-vault link resolution
 
-use crate::context::vault_config::{self, VaultConfig, VaultSection};
+use crate::context::vault_config::{self, ResolvedSettings, VaultConfig, VaultSection};
 use crate::context::{ContextInfo, ContextManager};
 
 #[tauri::command]
@@ -240,4 +241,37 @@ fn find_file_by_stem(dir: &std::path::Path, stem_lower: &str) -> Result<String, 
         }
     }
     Err("not found".to_string())
+}
+
+/// §86 Resolve merged settings: global config + vault overrides.
+#[tauri::command]
+pub async fn resolve_settings(
+    context_id: String,
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, ContextManager>,
+) -> Result<ResolvedSettings, String> {
+    // Read global settings from app config.json
+    let keys = [
+        "aiModel",
+        "privacyMode",
+        "enableWikilink",
+        "enableMermaid",
+        "dailyNotesFolder",
+        "skillsFolder",
+        "themeId",
+    ];
+    let mut global = std::collections::HashMap::new();
+    for key in &keys {
+        if let Ok(Some(val)) = crate::config::get_config(&app_handle, key) {
+            global.insert(key.to_string(), val);
+        }
+    }
+
+    // Get vault config (if context is a vault)
+    let vault_config = state.get_config(&context_id).await.ok().flatten();
+
+    Ok(vault_config::resolve_settings(
+        &global,
+        vault_config.as_ref(),
+    ))
 }

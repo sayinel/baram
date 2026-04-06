@@ -1,7 +1,7 @@
 // §81 Context IPC wrappers
 import { invoke } from "@tauri-apps/api/core";
 
-import type { ContextInfo, VaultConfig } from "./types";
+import type { ContextInfo, ResolvedSettings, VaultConfig } from "./types";
 
 export async function addContext(info: ContextInfo): Promise<ContextInfo> {
   return invoke("add_context", { info });
@@ -40,6 +40,13 @@ export async function resolveCrossVaultLink(
   target: string,
 ): Promise<null | string> {
   return invoke("resolve_cross_vault_link", { alias, target });
+}
+
+/** §86 Resolve merged settings: global config + vault overrides. */
+export async function resolveSettingsIpc(
+  contextId: string,
+): Promise<ResolvedSettings> {
+  return invoke("resolve_settings", { contextId });
 }
 
 export async function setActiveContext(contextId: string): Promise<void> {
