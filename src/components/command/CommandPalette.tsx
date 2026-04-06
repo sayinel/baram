@@ -223,6 +223,15 @@ function buildCommands(
       action: () => onNewFile(),
     },
     {
+      id: "file:new-work-log",
+      label: "New Work Log for Today",
+      category: "File",
+      action: async () => {
+        const { createWorkLogForToday } = await import("../../utils/work-log");
+        await createWorkLogForToday();
+      },
+    },
+    {
       id: "file:open",
       label: "Open File",
       category: "File",

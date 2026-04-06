@@ -1,6 +1,7 @@
 // §35 Quick Switcher — Cmd+K file/heading fuzzy search
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import type { ContextInfo } from "../../ipc/types";
 import type { FlatFile } from "../../utils/file-search";
 import type { Editor } from "@tiptap/react";
 
@@ -94,9 +95,7 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
   const { fileTree, rootPath, setFileContent } = useFileStore();
   const { tabs, openTab } = useEditorStore();
   const { journalEnabled, journalDirectory } = useSettingsStore();
-  const { contexts, activeContext } = useContextStore();
-  const activeCtx = activeContext();
-  const contextLabel = activeCtx?.label ?? "";
+  const { contexts, getContextForPath } = useContextStore();
   const showContextBadge = contexts.length > 1;
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -503,13 +502,11 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
               <span className="quick-switcher-label">{item.label}</span>
               {(item.detail || (showContextBadge && item.type === "file")) && (
                 <span className="quick-switcher-detail">
-                  {showContextBadge && item.type === "file" && contextLabel && (
-                    <span
-                      className="qs-context-badge"
-                      style={{ color: activeCtx?.color }}
-                    >
-                      {contextLabel}
-                    </span>
+                  {showContextBadge && item.type === "file" && item.file && (
+                    <FileContextBadge
+                      filePath={item.file.path}
+                      getContextForPath={getContextForPath}
+                    />
                   )}
                   {item.detail && <span>{item.detail}</span>}
                 </span>
@@ -535,6 +532,23 @@ function extractHeadingsFromDoc(editor: Editor): HeadingResult[] {
     }
   });
   return headings;
+}
+
+/** §84 Per-file context badge — looks up context for each file path. */
+function FileContextBadge({
+  filePath,
+  getContextForPath,
+}: {
+  filePath: string;
+  getContextForPath: (path: string) => ContextInfo | null;
+}) {
+  const ctx = getContextForPath(filePath);
+  if (!ctx?.label) return null;
+  return (
+    <span className="qs-context-badge" style={{ color: ctx.color }}>
+      {ctx.label}
+    </span>
+  );
 }
 
 /** Find the Nth heading in ProseMirror doc matching level + text. */
