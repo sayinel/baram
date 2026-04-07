@@ -107,25 +107,32 @@ export function useAppStartup({
                 await handleOpenFilePath(lastOpenedFile);
               }
             }
-            // §85 M2b: Journal startup behavior
-            const { journalEnabled, journalStartupBehavior, journalDirectory } =
-              useSettingsStore.getState();
-            if (
-              journalEnabled &&
-              journalStartupBehavior === "openJournal" &&
-              journalDirectory
-            ) {
-              const resolvedDir = resolveJournalDir(
-                useFileStore.getState().rootPath ?? "",
+            // §85 M2b: Journal startup behavior — only if journal context
+            // already exists (don't recreate if user closed all contexts)
+            const existingJournal = useContextStore.getState().journalContext();
+            if (existingJournal) {
+              const {
+                journalEnabled,
+                journalStartupBehavior,
                 journalDirectory,
-              );
-              if (resolvedDir) {
-                try {
-                  await useContextStore
-                    .getState()
-                    .ensureJournalContext(resolvedDir);
-                } catch {
-                  // Non-fatal
+              } = useSettingsStore.getState();
+              if (
+                journalEnabled &&
+                journalStartupBehavior === "openJournal" &&
+                journalDirectory
+              ) {
+                const resolvedDir = resolveJournalDir(
+                  useFileStore.getState().rootPath ?? "",
+                  journalDirectory,
+                );
+                if (resolvedDir) {
+                  try {
+                    await useContextStore
+                      .getState()
+                      .ensureJournalContext(resolvedDir);
+                  } catch {
+                    // Non-fatal
+                  }
                 }
               }
             }
