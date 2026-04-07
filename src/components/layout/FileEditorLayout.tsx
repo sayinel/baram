@@ -20,6 +20,7 @@ import { readFile, writeFile } from "../../ipc/invoke";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 import { useContextStore } from "../../stores/context/context";
+import { useEditorStore } from "../../stores/editor/editor";
 import { logger } from "../../utils/logger";
 import "../../styles/editor.css";
 import "../../styles/file-editor.css";
@@ -67,6 +68,22 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
         if (editor && !editor.isDestroyed) {
           const doc = markdownToProsemirror(content, editor.schema);
           editor.commands.setContent(doc.toJSON());
+
+          // §89 Register a virtual tab so resolveImageSrc can find the file path
+          const ctx = useContextStore
+            .getState()
+            .contexts.find(
+              (c) => c.contextType === "file" && c.path === filePath,
+            );
+          const tabId = `file-editor-${Date.now()}`;
+          useEditorStore.getState().openTab({
+            id: tabId,
+            filePath,
+            title: fileName,
+            contextId: ctx?.id ?? "",
+            isDirty: false,
+            isPinned: false,
+          });
         }
       } catch (err) {
         if (!cancelled) {
@@ -81,7 +98,7 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
     return () => {
       cancelled = true;
     };
-  }, [filePath, editor]);
+  }, [filePath, editor, fileName]);
 
   // §89 Auto-save, theme, and settings effects
   useAutoSave(editor);
