@@ -2,7 +2,14 @@
 // Rendered when App.tsx detects ?mode=file&path=... URL params.
 // No sidebar, no context tab bar, no panels — just editor + path bar.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { EditorContent, useEditor } from "@tiptap/react";
 
@@ -16,6 +23,12 @@ import { useContextStore } from "../../stores/context/context";
 import { logger } from "../../utils/logger";
 import "../../styles/editor.css";
 import "../../styles/file-editor.css";
+
+const SourceCodeEditor = lazy(() =>
+  import("../editor/SourceCodeEditor").then((m) => ({
+    default: m.SourceCodeEditor,
+  })),
+);
 
 interface FileEditorLayoutProps {
   filePath: string;
@@ -169,12 +182,12 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
         {loading ? (
           <div className="file-editor-loading">Loading...</div>
         ) : isSourceMode ? (
-          <textarea
-            className="file-editor-source"
-            onChange={(e) => setSourceContent(e.target.value)}
-            spellCheck={false}
-            value={sourceContent}
-          />
+          <Suspense fallback={null}>
+            <SourceCodeEditor
+              content={sourceContent}
+              onChange={setSourceContent}
+            />
+          </Suspense>
         ) : (
           <EditorContent editor={editor} />
         )}
