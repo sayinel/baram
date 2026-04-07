@@ -313,6 +313,12 @@ export function TabBar() {
                 onMouseDown={(e) => handleTabMouseDown(e, index)}
               >
                 {tab.isPinned && <Pin className="tab-pin-icon" size={12} />}
+                {isFileTab(tab) &&
+                  getContextForPath(tab.filePath)?.contextType === "file" && (
+                    <span className="tab-external-icon" title="External file">
+                      📎
+                    </span>
+                  )}
                 <span
                   className="tab-ctx-dot"
                   onClick={(e) => {

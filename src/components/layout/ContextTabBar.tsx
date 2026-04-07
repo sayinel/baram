@@ -148,12 +148,15 @@ export function ContextTabBar() {
     [],
   );
 
-  // Show tab bar when any contexts are open (so "+" is accessible)
-  if (contexts.length === 0) return null;
+  // §89 Hide FileContexts from context tab bar — they appear as global editor tabs instead
+  const visibleContexts = contexts.filter((c) => c.contextType !== "file");
+
+  // Show tab bar when any vault/folder contexts are open (so "+" is accessible)
+  if (visibleContexts.length === 0) return null;
 
   return (
     <div className="context-tab-bar" ref={barRef}>
-      {contexts.map((ctx, i) => (
+      {visibleContexts.map((ctx, i) => (
         <button
           className={[
             "context-tab",
