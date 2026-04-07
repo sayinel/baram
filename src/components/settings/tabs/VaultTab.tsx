@@ -99,6 +99,31 @@ export function VaultTab() {
               key={ctx.id}
               onAliasChange={(alias) => updateContextAlias(ctx.id, alias)}
               onColorChange={(color) => updateContextColor(ctx.id, color)}
+              onConvertToVault={
+                ctx.contextType === "folder"
+                  ? async () => {
+                      const { initVault } =
+                        await import("../../../ipc/context");
+                      const alias = ctx.label;
+                      await initVault(ctx.path, alias);
+                      // Re-add as vault: remove folder, add vault
+                      const wasActive = activeContextId === ctx.id;
+                      await removeContext(ctx.id);
+                      const added = await useContextStore
+                        .getState()
+                        .addContext("vault", ctx.path, {
+                          alias,
+                          color: ctx.color,
+                          label: ctx.label,
+                        });
+                      if (wasActive) {
+                        const { switchContext } =
+                          await import("../../../stores/file/file");
+                        await switchContext(added.id);
+                      }
+                    }
+                  : undefined
+              }
               onLabelChange={(label) => updateContextLabel(ctx.id, label)}
               onRemove={async () => {
                 const wasActive = activeContextId === ctx.id;
@@ -483,6 +508,7 @@ function VaultSettingsSection({ contextPath }: { contextPath: string }) {
 function VaultTabItem({
   context,
   isSelected,
+  onConvertToVault,
   onRemove,
   onAliasChange,
   onLabelChange,
@@ -501,6 +527,7 @@ function VaultTabItem({
   isSelected?: boolean;
   onAliasChange: (alias: string) => void;
   onColorChange: (color: string) => void;
+  onConvertToVault?: () => void;
   onLabelChange: (label: string) => void;
   onRemove: () => void;
   onSelect?: () => void;
@@ -595,13 +622,27 @@ function VaultTabItem({
           {typeLabel} · {context.path}
         </span>
       </div>
-      <button
-        className="vault-tab-item__remove icon-btn"
-        onClick={onRemove}
-        title="Remove context"
-      >
-        <Trash2 size={14} />
-      </button>
+      <div className="vault-tab-item__actions">
+        {context.contextType === "folder" && onConvertToVault && (
+          <button
+            className="vault-tab-item__convert"
+            onClick={(e) => {
+              e.stopPropagation();
+              onConvertToVault();
+            }}
+            title="Convert to Vault"
+          >
+            Initialize as Vault
+          </button>
+        )}
+        <button
+          className="vault-tab-item__remove icon-btn"
+          onClick={onRemove}
+          title="Remove context"
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
 
       {showColors && (
         <div className="vault-tab-item__color-picker">

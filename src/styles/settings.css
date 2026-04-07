@@ -1362,6 +1362,28 @@
   white-space: nowrap;
 }
 
+.vault-tab-item__actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+  align-items: center;
+}
+
+.vault-tab-item__convert {
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--color-accent-default, #3b82f6);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--color-accent-default, #3b82f6);
+  border-radius: 4px;
+}
+
+.vault-tab-item__convert:hover {
+  color: #fff;
+  background: var(--color-accent-default, #3b82f6);
+}
+
 .vault-tab-item__remove {
   flex-shrink: 0;
   color: var(--color-text-muted, #9ca3af);
