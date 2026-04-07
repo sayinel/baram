@@ -991,6 +991,17 @@
       "milestone": "M10",
       "status": "implemented",
       "description": "외부 파일을 vault 내부로 가져오기 (source는 vault 외부 허용)"
+    },
+    {
+      "name": "resolve_settings",
+      "input": { "contextId": "string" },
+      "output": "ResolvedSettings",
+      "module": "context",
+      "spec": "§86",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "글로벌 설정 + vault 설정 머지 결과 조회"
     }
   ],
   "events": [
