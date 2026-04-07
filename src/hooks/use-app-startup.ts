@@ -53,6 +53,14 @@ export function useAppStartup({
       // no contexts are registered in Rust.
       const contextStore = useContextStore.getState();
       if (contextStore.contexts.length > 0) {
+        // §89 Clean up persisted FileContexts — they should not survive restart
+        const fileCtxIds = contextStore.contexts
+          .filter((c) => c.contextType === "file")
+          .map((c) => c.id);
+        for (const id of fileCtxIds) {
+          await contextStore.removeContext(id).catch(() => {});
+        }
+
         const staleIds: string[] = [];
         for (const ctx of contextStore.contexts) {
           try {
@@ -79,14 +87,25 @@ export function useAppStartup({
 
       // §81 Migration: if contextStore has persisted contexts from previous session,
       // restore them in the backend. If not, fall through to lastOpenedFolder.
-      if (contextStore.contexts.length > 0 && contextStore.activeContextId) {
-        const activeCtx = contextStore.activeContext();
+      // §81 Restore contexts only if there are vault/folder contexts remaining
+      // (FileContexts were already cleaned up above)
+      const remainingContexts = useContextStore.getState().contexts;
+      if (
+        remainingContexts.length > 0 &&
+        useContextStore.getState().activeContextId
+      ) {
+        const activeCtx = useContextStore.getState().activeContext();
         if (activeCtx) {
           try {
             await openFolder(activeCtx.path);
-            // Restore last opened file if available
+            // Restore last opened file if it's inside the vault (not external)
             if (lastOpenedFile) {
-              await handleOpenFilePath(lastOpenedFile);
+              const parentCtx = useContextStore
+                .getState()
+                .getContextForPath(lastOpenedFile);
+              if (parentCtx && parentCtx.contextType !== "file") {
+                await handleOpenFilePath(lastOpenedFile);
+              }
             }
             // §85 M2b: Journal startup behavior
             const { journalEnabled, journalStartupBehavior, journalDirectory } =
