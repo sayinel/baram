@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ask } from "@tauri-apps/plugin-dialog";
 
-import { Pin } from "lucide-react";
+import { ExternalLink, Pin } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useContextStore } from "../../stores/context/context";
@@ -315,9 +315,11 @@ export function TabBar() {
                 {tab.isPinned && <Pin className="tab-pin-icon" size={12} />}
                 {isFileTab(tab) &&
                   getContextForPath(tab.filePath)?.contextType === "file" && (
-                    <span className="tab-external-icon" title="External file">
-                      📎
-                    </span>
+                    <ExternalLink
+                      className="tab-external-icon"
+                      size={11}
+                      title="External file"
+                    />
                   )}
                 <span
                   className="tab-ctx-dot"
