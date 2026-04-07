@@ -264,14 +264,15 @@ export function useFileOperations({
     }
 
     try {
-      const content = await readFile(filePath);
-      const fileName = filePath.split("/").pop() ?? "Unknown";
-      useFileStore.getState().setFileContent(filePath, content);
-
-      // §89 Detect or create FileContext for standalone files
+      // §89 Ensure FileContext exists BEFORE readFile — Rust check_vault
+      // requires the path to be registered in ContextManager first.
       const contextStore = useContextStore.getState();
       const context = await contextStore.ensureFileContext(filePath);
       const contextId = context.id;
+
+      const content = await readFile(filePath);
+      const fileName = filePath.split("/").pop() ?? "Unknown";
+      useFileStore.getState().setFileContent(filePath, content);
 
       useEditorStore.getState().openTab({
         contextId,
