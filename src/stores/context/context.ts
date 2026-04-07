@@ -209,8 +209,7 @@ export const useContextStore = create<ContextState>()(
           label: opts?.label ?? labelFromPath(path),
           color: opts?.color ?? DEFAULT_COLORS[colorIndex],
           alias:
-            opts?.alias ??
-            (type === "vault" ? labelFromPath(path).toLowerCase() : undefined),
+            opts?.alias ?? (type === "vault" ? labelFromPath(path) : undefined),
           vaultType: opts?.vaultType,
           addedAt: Date.now(),
         };
