@@ -61,21 +61,27 @@ export async function addFolder(path: string): Promise<void> {
     return;
   }
 
-  // §81 Update Rust VaultRootState
-  await setVaultRoot(path);
-
   // Detect vault by loading .baram/config.json (bypasses check_vault).
-  // load_vault_config returns default (empty) when file doesn't exist,
-  // so check for the vault section which initVault always creates.
+  // Must run BEFORE setVaultRoot — setVaultRoot registers a legacy "folder"
+  // context in Rust, and addContext's dedup would return it with wrong type.
   const { getVaultConfigByPath } = await import("../../ipc/context");
-  const isVault = await getVaultConfigByPath(path)
-    .then((cfg) => cfg.vault !== undefined && cfg.vault !== null)
-    .catch(() => false);
-  // §87 Auto-alias is now handled by addContext (uses folder name as-is)
+  let isVault = false;
+  try {
+    const cfg = await getVaultConfigByPath(path);
+    isVault = cfg.vault !== undefined && cfg.vault !== null;
+  } catch {
+    // No .baram/config.json or parse error → folder
+  }
+
+  // Register context in frontend + Rust FIRST (with correct type)
   const added = await contextStore.addContext(
     isVault ? "vault" : "folder",
     path,
   );
+
+  // §81 Update legacy VaultRootState AFTER addContext (so Rust dedup
+  // finds the correctly-typed context we just registered)
+  await setVaultRoot(path);
 
   // Explicitly activate the new context (addContext only auto-activates the first)
   contextStore._setActiveContextLocal(added.id);
@@ -136,24 +142,25 @@ export function buildFileTree(
  * §81 M2: Does NOT remove existing contexts — supports multi-context.
  */
 export async function openFolder(path: string): Promise<void> {
-  // §81 Update Rust VaultRootState (always succeeds for valid paths)
-  await setVaultRoot(path);
-
   const contextStore = useContextStore.getState();
 
   // Check if already open as a context
   const existing = contextStore.contexts.find((c) => c.path === path);
   if (!existing) {
-    // New context — register in both Rust + frontend
-    const isVault = await listDir(path + "/.baram", false)
-      .then(() => true)
-      .catch(() => false);
-    const folderName =
-      path.split("/").pop()?.toLowerCase().replace(/\s+/g, "-") ?? "vault";
+    // Detect vault via .baram/config.json (bypasses check_vault).
+    // Must run BEFORE setVaultRoot to avoid Rust legacy "folder" dedup.
+    const { getVaultConfigByPath } = await import("../../ipc/context");
+    let isVault = false;
+    try {
+      const cfg = await getVaultConfigByPath(path);
+      isVault = cfg.vault !== undefined && cfg.vault !== null;
+    } catch {
+      // No .baram/config.json or parse error → folder
+    }
+
+    // Register context with correct type FIRST
     await contextStore
-      .addContext(isVault ? "vault" : "folder", path, {
-        alias: isVault ? folderName : undefined,
-      })
+      .addContext(isVault ? "vault" : "folder", path)
       .catch((err) => {
         logger.warn("§81 openFolder: context registration failed", err);
       });
@@ -162,6 +169,9 @@ export async function openFolder(path: string): Promise<void> {
     // Use local-only activation to avoid IPC failure for stale IDs
     contextStore._setActiveContextLocal(existing.id);
   }
+
+  // §81 Update legacy VaultRootState AFTER context registration
+  await setVaultRoot(path);
 
   await _loadContextFileTree(path);
 
