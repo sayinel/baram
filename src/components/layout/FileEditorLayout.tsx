@@ -7,6 +7,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 
 import { createBaramExtensions } from "../../extensions";
+import { useAutoSave } from "../../hooks/use-auto-save";
+import { useSettingsEffects } from "../../hooks/use-settings-effects";
 import { readFile, writeFile } from "../../ipc/invoke";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
@@ -68,6 +70,14 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
     };
   }, [filePath, editor]);
 
+  // §89 Auto-save, theme, and settings effects
+  useAutoSave(editor);
+  useSettingsEffects(editor);
+
+  // §89 Source mode toggle (Cmd+/)
+  const [isSourceMode, setIsSourceMode] = useState(false);
+  const [sourceContent, setSourceContent] = useState("");
+
   // Track dirty state
   useEffect(() => {
     if (!editor) return;
@@ -91,17 +101,32 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
     }
   }, [editor, filePath]);
 
-  // Cmd+S keyboard shortcut
+  // Keyboard shortcuts: Cmd+S (save), Cmd+/ (source mode toggle)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
         e.preventDefault();
         handleSave();
       }
+      if ((e.metaKey || e.ctrlKey) && e.key === "/") {
+        e.preventDefault();
+        if (!editor) return;
+        setIsSourceMode((prev) => {
+          if (!prev) {
+            // WYSIWYG → Source: serialize current doc
+            setSourceContent(prosemirrorToMarkdown(editor.state.doc));
+          } else {
+            // Source → WYSIWYG: parse source back into editor
+            const doc = markdownToProsemirror(sourceContent, editor.schema);
+            editor.commands.setContent(doc.toJSON());
+          }
+          return !prev;
+        });
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [handleSave]);
+  }, [handleSave, editor, sourceContent]);
 
   // Cleanup FileContext on window close
   useEffect(() => {
@@ -143,6 +168,13 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
       <div className="file-editor-content">
         {loading ? (
           <div className="file-editor-loading">Loading...</div>
+        ) : isSourceMode ? (
+          <textarea
+            className="file-editor-source"
+            onChange={(e) => setSourceContent(e.target.value)}
+            spellCheck={false}
+            value={sourceContent}
+          />
         ) : (
           <EditorContent editor={editor} />
         )}
