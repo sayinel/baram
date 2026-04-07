@@ -315,11 +315,9 @@ export function TabBar() {
                 {tab.isPinned && <Pin className="tab-pin-icon" size={12} />}
                 {isFileTab(tab) &&
                   getContextForPath(tab.filePath)?.contextType === "file" && (
-                    <ExternalLink
-                      className="tab-external-icon"
-                      size={11}
-                      title="External file"
-                    />
+                    <span className="tab-external-icon" title="External file">
+                      <ExternalLink size={11} />
+                    </span>
                   )}
                 <span
                   className="tab-ctx-dot"
