@@ -26,7 +26,9 @@ export function GlobalSearch() {
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [wholeWord, setWholeWord] = useState(false);
   const [useRegex, setUseRegex] = useState(false);
-  const [searchScope, setSearchScope] = useState<"all" | "current">("current");
+  const [searchScope, setSearchScope] = useState<
+    "all" | "all-vaults" | "current"
+  >("current");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<null | string>(null);
@@ -71,14 +73,14 @@ export function GlobalSearch() {
       setLoading(true);
       setError(null);
       try {
-        if (searchScope === "all") {
-          const vaultFolderContexts = useContextStore
-            .getState()
-            .contexts.filter((c) => c.contextType !== "file");
+        if (searchScope === "all" || searchScope === "all-vaults") {
+          const ctxs = useContextStore.getState().contexts;
+          const filtered =
+            searchScope === "all-vaults"
+              ? ctxs.filter((c) => c.contextType !== "file")
+              : ctxs;
           const searchPaths =
-            vaultFolderContexts.length > 0
-              ? vaultFolderContexts.map((c) => c.path)
-              : [rootPath];
+            filtered.length > 0 ? filtered.map((c) => c.path) : [rootPath];
           const allResults: SearchResult[] = [];
           for (const path of searchPaths) {
             try {
@@ -309,14 +311,21 @@ export function GlobalSearch() {
           <button
             className={`global-search-scope__btn ${searchScope === "current" ? "global-search-scope__btn--active" : ""}`}
             onClick={() => setSearchScope("current")}
-            title="Search current context"
+            title="Search current vault only"
           >
             Current
           </button>
           <button
+            className={`global-search-scope__btn ${searchScope === "all-vaults" ? "global-search-scope__btn--active" : ""}`}
+            onClick={() => setSearchScope("all-vaults")}
+            title="Search all open vaults (excludes standalone files)"
+          >
+            Vaults
+          </button>
+          <button
             className={`global-search-scope__btn ${searchScope === "all" ? "global-search-scope__btn--active" : ""}`}
             onClick={() => setSearchScope("all")}
-            title="Search all open contexts"
+            title="Search all open contexts including standalone files"
           >
             All
           </button>

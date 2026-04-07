@@ -9,6 +9,7 @@ import { useShallow } from "zustand/shallow";
 
 import { useContextStore } from "../../stores/context/context";
 import { isFileTab, useEditorStore } from "../../stores/editor/editor";
+import { switchContext } from "../../stores/file/file";
 
 const DRAG_THRESHOLD = 3; // px before drag activates
 
@@ -278,11 +279,25 @@ export function TabBar() {
                 {tab.isPinned && <Pin className="tab-pin-icon" size={12} />}
                 <span
                   className="tab-ctx-dot"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const ctx = isFileTab(tab)
+                      ? getContextForPath(tab.filePath)
+                      : null;
+                    if (ctx) switchContext(ctx.id);
+                  }}
                   style={{
                     backgroundColor: isFileTab(tab)
                       ? (getContextForPath(tab.filePath)?.color ?? "#9ca3af")
                       : "#9ca3af",
                   }}
+                  title={
+                    isFileTab(tab)
+                      ? getContextForPath(tab.filePath)?.contextType === "file"
+                        ? tab.filePath
+                        : getContextForPath(tab.filePath)?.label
+                      : undefined
+                  }
                 />
                 <span className="tab-title">
                   {tab.isDirty && isFileTab(tab) ? "\u25CF " : ""}

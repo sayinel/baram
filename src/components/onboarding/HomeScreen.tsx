@@ -5,6 +5,7 @@ import { useSettingsStore } from "../../stores/settings/store";
 
 interface HomeScreenProps {
   onNewFile: () => void;
+  onNewVault: () => void;
   onOpenFile: () => void;
   onOpenFolder: () => void;
   onOpenRecentFile: (path: string) => void;
@@ -13,6 +14,7 @@ interface HomeScreenProps {
 
 export function HomeScreen({
   onNewFile,
+  onNewVault,
   onOpenFile,
   onOpenFolder,
   onOpenRecentFolder,
@@ -45,6 +47,9 @@ export function HomeScreen({
         <div className="home-actions">
           <button className="home-btn home-btn-primary" onClick={onOpenFolder}>
             {t("home.openFolder")}
+          </button>
+          <button className="home-btn home-btn-secondary" onClick={onNewVault}>
+            {t("home.newVault")}
           </button>
           <button className="home-btn home-btn-secondary" onClick={onOpenFile}>
             {t("home.openFile")}
