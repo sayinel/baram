@@ -183,7 +183,15 @@ export const useContextStore = create<ContextState>()(
         let best: ContextInfo | null = null;
         let bestLen = -1;
         for (const ctx of contexts) {
-          if (filePath.startsWith(ctx.path) && ctx.path.length > bestLen) {
+          // File context: exact path match only
+          if (ctx.contextType === "file") {
+            if (filePath === ctx.path) return ctx;
+            continue;
+          }
+          // Vault/Folder: must match with trailing separator to avoid
+          // "/Users/me/work" matching "/Users/me/workspace/note.md"
+          const prefix = ctx.path.endsWith("/") ? ctx.path : ctx.path + "/";
+          if (filePath.startsWith(prefix) && ctx.path.length > bestLen) {
             best = ctx;
             bestLen = ctx.path.length;
           }
