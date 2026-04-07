@@ -153,6 +153,18 @@ const QuickCaptureDialog = lazy(() =>
   })),
 );
 
+// §89 Lazy-loaded file editor for standalone file mode
+const FileEditorLayout = lazy(() =>
+  import("./components/layout/FileEditorLayout").then((m) => ({
+    default: m.FileEditorLayout,
+  })),
+);
+
+// §89 File mode detection — resolved once at module load (URL params don't change)
+const _fileModeParams = new URLSearchParams(window.location.search);
+const FILE_MODE_PATH =
+  _fileModeParams.get("mode") === "file" ? _fileModeParams.get("path") : null;
+
 function App() {
   const { t } = useTranslation();
   const {
@@ -656,6 +668,18 @@ function App() {
   );
 }
 
+/** §89 Root component — routes between vault mode and file mode. */
+function AppRoot() {
+  if (FILE_MODE_PATH) {
+    return (
+      <Suspense fallback={null}>
+        <FileEditorLayout filePath={FILE_MODE_PATH} />
+      </Suspense>
+    );
+  }
+  return <App />;
+}
+
 function AppWithErrorBoundary() {
   return (
     <ErrorBoundary
@@ -672,7 +696,7 @@ function AppWithErrorBoundary() {
         </div>
       }
     >
-      <App />
+      <AppRoot />
     </ErrorBoundary>
   );
 }
