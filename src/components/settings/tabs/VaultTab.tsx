@@ -100,7 +100,24 @@ export function VaultTab() {
               onAliasChange={(alias) => updateContextAlias(ctx.id, alias)}
               onColorChange={(color) => updateContextColor(ctx.id, color)}
               onLabelChange={(label) => updateContextLabel(ctx.id, label)}
-              onRemove={() => removeContext(ctx.id)}
+              onRemove={async () => {
+                const wasActive = activeContextId === ctx.id;
+                await removeContext(ctx.id);
+
+                if (wasActive) {
+                  const newActive = useContextStore.getState().activeContextId;
+                  if (newActive) {
+                    const { switchContext } =
+                      await import("../../../stores/file/file");
+                    await switchContext(newActive);
+                  } else {
+                    // No contexts left — clear FileTree
+                    const { useFileStore } =
+                      await import("../../../stores/file/file");
+                    useFileStore.getState().closeFolder();
+                  }
+                }
+              }}
               onSelect={() => setSelectedContextId(ctx.id)}
             />
           ))
