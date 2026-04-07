@@ -68,12 +68,10 @@ export async function addFolder(path: string): Promise<void> {
   const isVault = await listDir(path + "/.baram", false)
     .then(() => true)
     .catch(() => false);
-  const folderName =
-    path.split("/").pop()?.toLowerCase().replace(/\s+/g, "-") ?? "vault";
+  // §87 Auto-alias is now handled by addContext (uses folder name as-is)
   const added = await contextStore.addContext(
     isVault ? "vault" : "folder",
     path,
-    { alias: isVault ? folderName : undefined },
   );
 
   // Explicitly activate the new context (addContext only auto-activates the first)
