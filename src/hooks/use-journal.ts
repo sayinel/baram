@@ -35,6 +35,11 @@ export function useJournal(
     const resolvedDir = resolveJournalDir(rootPath, journalDirectory);
     if (!resolvedDir) return;
 
+    // §89 Only auto-create journal files if a journal context already exists.
+    // Don't recreate it if the user explicitly closed all contexts.
+    const journalCtx = useContextStore.getState().journalContext();
+    if (!journalCtx) return;
+
     // Only run once per resolved directory
     if (didRunRef.current === resolvedDir) return;
     didRunRef.current = resolvedDir;
@@ -43,13 +48,6 @@ export function useJournal(
 
     (async () => {
       try {
-        // §85 Register journal context first so validate_path_any
-        // allows file operations in the journal directory
-        await useContextStore
-          .getState()
-          .ensureJournalContext(resolvedDir)
-          .catch(() => {});
-
         const result = await ensureJournalFile(today, {
           journalDirectory,
           journalFilenameFormat,
