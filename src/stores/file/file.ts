@@ -64,10 +64,12 @@ export async function addFolder(path: string): Promise<void> {
   // §81 Update Rust VaultRootState
   await setVaultRoot(path);
 
-  // Detect vault by loading .baram/config.json (bypasses check_vault)
+  // Detect vault by loading .baram/config.json (bypasses check_vault).
+  // load_vault_config returns default (empty) when file doesn't exist,
+  // so check for the vault section which initVault always creates.
   const { getVaultConfigByPath } = await import("../../ipc/context");
   const isVault = await getVaultConfigByPath(path)
-    .then(() => true)
+    .then((cfg) => cfg.vault !== undefined && cfg.vault !== null)
     .catch(() => false);
   // §87 Auto-alias is now handled by addContext (uses folder name as-is)
   const added = await contextStore.addContext(
