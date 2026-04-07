@@ -153,7 +153,8 @@ function resolveCrossVaultTarget(
   target: string,
 ): null | { name: string; path: string } {
   const contexts = useContextStore.getState().contexts;
-  const ctx = contexts.find((c) => c.alias === alias);
+  const aliasLower = alias.toLowerCase();
+  const ctx = contexts.find((c) => c.alias?.toLowerCase() === aliasLower);
   if (!ctx) return null; // Vault not registered — dangling
 
   const { rootPath, fileTree } = useFileStore.getState();
