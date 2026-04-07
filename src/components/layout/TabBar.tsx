@@ -183,11 +183,23 @@ export function TabBar() {
           setDragIndex(ds.index);
         }
 
+        // §89 Tab tear-off visual feedback: change cursor when outside tab bar
+        const bar = scrollRef.current;
+        if (bar) {
+          const rect = bar.getBoundingClientRect();
+          const outside =
+            ev.clientY < rect.top - 40 ||
+            ev.clientY > rect.bottom + 40 ||
+            ev.clientX < rect.left - 40 ||
+            ev.clientX > rect.right + 40;
+          document.body.style.cursor = outside ? "move" : "grabbing";
+        }
+
         const slot = computeDropSlot(ev.clientX, ds.index);
         setDropSlot(slot);
       };
 
-      const handleMouseUp = (ev: MouseEvent) => {
+      const handleMouseUp = async (ev: MouseEvent) => {
         document.removeEventListener("mousemove", handleMouseMove);
         document.removeEventListener("mouseup", handleMouseUp);
         document.body.style.cursor = "";
@@ -202,6 +214,30 @@ export function TabBar() {
           setDragIndex(null);
           setDropSlot(null);
           return;
+        }
+
+        // §89 Tab tear-off: if mouse is outside the tab bar, detach to a new window
+        const tabBar = scrollRef.current;
+        if (tabBar) {
+          const rect = tabBar.getBoundingClientRect();
+          const outside =
+            ev.clientY < rect.top - 40 ||
+            ev.clientY > rect.bottom + 40 ||
+            ev.clientX < rect.left - 40 ||
+            ev.clientX > rect.right + 40;
+
+          if (outside) {
+            const tab = tabs[ds.index];
+            if (tab && isFileTab(tab)) {
+              const { openFileWindow } =
+                await import("../../utils/file-window");
+              await openFileWindow(tab.filePath);
+              closeTab(tab.id);
+            }
+            setDragIndex(null);
+            setDropSlot(null);
+            return;
+          }
         }
 
         // Commit reorder
@@ -221,7 +257,7 @@ export function TabBar() {
       document.body.style.cursor = "grabbing";
       document.body.style.userSelect = "none";
     },
-    [tabs, setActiveTab, reorderTab, computeDropSlot],
+    [tabs, setActiveTab, reorderTab, closeTab, computeDropSlot],
   );
 
   // §38 Context menu handler
