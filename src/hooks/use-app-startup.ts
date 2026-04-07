@@ -50,16 +50,21 @@ export function useAppStartup({
       // no contexts are registered in Rust.
       const contextStore = useContextStore.getState();
       if (contextStore.contexts.length > 0) {
+        const staleIds: string[] = [];
         for (const ctx of contextStore.contexts) {
           try {
             await reRegisterInRust(ctx);
           } catch {
-            // Path may no longer exist — stale context, skip silently.
-            // It will be cleaned up when user interacts with it.
+            // §90 Path no longer valid — mark for removal
             logger.warn(
-              `§81 Startup re-registration failed for context ${ctx.id} (${ctx.path})`,
+              `§90 Stale context removed: ${ctx.label} (${ctx.path})`,
             );
+            staleIds.push(ctx.id);
           }
+        }
+        // §90 Remove stale contexts whose paths are no longer valid
+        for (const id of staleIds) {
+          await contextStore.removeContext(id).catch(() => {});
         }
         // Re-activate the active context in Rust
         if (contextStore.activeContextId) {
@@ -114,10 +119,32 @@ export function useAppStartup({
       }
 
       // Legacy restore path (also serves as first-run migration)
+      // §90 Auto-migrate lastOpenedFolder to context if no contexts exist
       if (onLaunch === "restoreLastFolder" && lastOpenedFolder) {
         try {
           await openFolder(lastOpenedFolder);
           useSettingsStore.getState().addRecentFolder(lastOpenedFolder);
+
+          // §90 Migration: create context from legacy lastOpenedFolder
+          if (useContextStore.getState().contexts.length === 0) {
+            const { getVaultConfigByPath } = await import("../ipc/context");
+            try {
+              const config = await getVaultConfigByPath(lastOpenedFolder);
+              // .baram/config.json exists → VaultContext
+              const alias =
+                config.vault?.alias ??
+                lastOpenedFolder.split("/").pop() ??
+                "vault";
+              await useContextStore
+                .getState()
+                .addContext("vault", lastOpenedFolder, { alias });
+            } catch {
+              // No .baram/config.json → FolderContext
+              await useContextStore
+                .getState()
+                .addContext("folder", lastOpenedFolder);
+            }
+          }
         } catch {
           /* folder may have been deleted */
         }

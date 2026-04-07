@@ -490,6 +490,26 @@ function App() {
               <Suspense fallback={null}>
                 <HomeScreen
                   onNewFile={handleNewFile}
+                  onNewVault={async () => {
+                    const { open } = await import("@tauri-apps/plugin-dialog");
+                    const selected = await open({ directory: true });
+                    if (!selected) return;
+                    const path =
+                      typeof selected === "string" ? selected : selected[0];
+                    if (!path) return;
+                    const { initVault } = await import("./ipc/context");
+                    const { useContextStore: ctxStore } =
+                      await import("./stores/context/context");
+                    const alias = path.split("/").pop() ?? "vault";
+                    await initVault(path, alias);
+                    await ctxStore
+                      .getState()
+                      .addContext("vault", path, { alias });
+                    const { switchContext } =
+                      await import("./stores/file/file");
+                    const activeId = ctxStore.getState().activeContextId;
+                    if (activeId) await switchContext(activeId);
+                  }}
                   onOpenFile={handleOpenFile}
                   onOpenFolder={handleOpenFolder}
                   onOpenRecentFile={handleOpenRecentFile}
