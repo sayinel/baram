@@ -168,7 +168,26 @@ export function useAppStartup({
   useEffect(() => {
     // Cold start: check for files queued before frontend was ready
     getOpenedUrls()
-      .then((paths) => {
+      .then(async (paths) => {
+        if (!paths.length) return;
+
+        // §89 Cold start with no vault: redirect main window to file mode
+        const hasContexts = useContextStore.getState().contexts.length > 0;
+        const hasFolder = !!useFileStore.getState().rootPath;
+        if (!hasContexts && !hasFolder) {
+          // No vault open — load first file in main window directly
+          window.location.replace(
+            `/?mode=file&path=${encodeURIComponent(paths[0])}`,
+          );
+          // Open remaining files in separate windows
+          for (let i = 1; i < paths.length; i++) {
+            const { openFileWindow } = await import("../utils/file-window");
+            await openFileWindow(paths[i]);
+          }
+          return;
+        }
+
+        // Vault is open — open files normally (vault tab or separate window)
         for (const path of paths) {
           handleOpenFilePath(path);
         }
