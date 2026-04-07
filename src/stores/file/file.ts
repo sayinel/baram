@@ -64,9 +64,10 @@ export async function addFolder(path: string): Promise<void> {
   // §81 Update Rust VaultRootState
   await setVaultRoot(path);
 
-  // Register in frontend contextStore
-  const isVault = await listDir(path + "/.baram", false)
-    .then(() => true)
+  // Detect vault by loading .baram/config.json (bypasses check_vault)
+  const { getVaultConfigByPath } = await import("../ipc/context");
+  const isVault = await getVaultConfigByPath(path)
+    .then((cfg) => cfg !== null && typeof cfg === "object")
     .catch(() => false);
   // §87 Auto-alias is now handled by addContext (uses folder name as-is)
   const added = await contextStore.addContext(
