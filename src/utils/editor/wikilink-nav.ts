@@ -59,6 +59,12 @@ export function resolveWikilinkTarget(
     return resolveCrossVaultTarget(vaultAlias, target);
   }
 
+  // §89 FileContext: resolve wikilinks within the same folder only
+  const activeCtx = useContextStore.getState().activeContext();
+  if (activeCtx?.contextType === "file") {
+    return resolveInSameFolder(target, activeCtx.path);
+  }
+
   const { rootPath, fileTree } = useFileStore.getState();
   if (!rootPath || fileTree.length === 0) return null;
 
@@ -183,4 +189,43 @@ function resolveCrossVaultTarget(
   }
 
   return null; // Not resolvable synchronously — vault not active or file not found
+}
+
+/**
+ * §89 Resolve a wikilink within the same folder as the standalone file.
+ * FileContext has no file tree, so we check the folder of the source file
+ * using the global file tree (if the folder happens to be loaded) or
+ * construct the candidate path directly.
+ */
+function resolveInSameFolder(
+  target: string,
+  sourceFilePath: string,
+): null | { name: string; path: string } {
+  const dir = sourceFilePath.substring(0, sourceFilePath.lastIndexOf("/"));
+  const targetLower = target.toLowerCase();
+  const candidateName = targetLower.endsWith(".md") ? target : `${target}.md`;
+  const candidatePath = `${dir}/${candidateName}`;
+
+  // Try to find in file tree if available (some other context may cover this folder)
+  const { fileTree, rootPath } = useFileStore.getState();
+  if (rootPath && fileTree.length > 0) {
+    const flat = flattenFileTree(fileTree, rootPath);
+    for (const f of flat) {
+      if (!f.path.startsWith(dir + "/")) continue;
+      // Only same folder, not subfolders
+      const relFromDir = f.path.slice(dir.length + 1);
+      if (relFromDir.includes("/")) continue;
+
+      const stem = f.name.endsWith(".md") ? f.name.slice(0, -3) : f.name;
+      if (stem.toLowerCase() === targetLower) {
+        return { path: f.path, name: f.name };
+      }
+    }
+  }
+
+  // Construct candidate path — caller will check if file exists via navigation
+  return {
+    path: candidatePath,
+    name: candidateName,
+  };
 }
