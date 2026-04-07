@@ -20,6 +20,9 @@ interface UseAppStartupParams {
   handleOpenFilePath: (path: string) => Promise<void>;
 }
 
+/** §89 Track whether queued file-open URLs have been processed (prevents double-open). */
+let openedUrlsProcessed = false;
+
 export function useAppStartup({
   handleOpenFilePath,
   handleNewFile,
@@ -108,6 +111,8 @@ export function useAppStartup({
               }
             }
 
+            // §89 Process queued file-open requests AFTER vault restoration
+            await processOpenedUrls(handleOpenFilePath);
             return; // Done — context restored
           } catch {
             // Path may be invalid; fall through to legacy restore
@@ -161,40 +166,17 @@ export function useAppStartup({
       } else if (onLaunch === "newFile") {
         handleNewFileRef.current();
       }
+
+      // §89 Process any remaining queued file-open URLs (legacy/no-vault path)
+      await processOpenedUrls(handleOpenFilePath);
     })();
   }, [handleOpenFilePath]);
 
-  // Listen for file open events from macOS (Finder "Open With" / double-click)
+  // Listen for file open events from macOS (Finder "Open With" while app is running)
   useEffect(() => {
-    // Cold start: check for files queued before frontend was ready
-    getOpenedUrls()
-      .then(async (paths) => {
-        if (!paths.length) return;
-
-        // §89 Cold start with no vault: redirect main window to file mode
-        const hasContexts = useContextStore.getState().contexts.length > 0;
-        const hasFolder = !!useFileStore.getState().rootPath;
-        if (!hasContexts && !hasFolder) {
-          // No vault open — load first file in main window directly
-          window.location.replace(
-            `/?mode=file&path=${encodeURIComponent(paths[0])}`,
-          );
-          // Open remaining files in separate windows
-          for (let i = 1; i < paths.length; i++) {
-            const { openFileWindow } = await import("../utils/file-window");
-            await openFileWindow(paths[i]);
-          }
-          return;
-        }
-
-        // Vault is open — open files normally (vault tab or separate window)
-        for (const path of paths) {
-          handleOpenFilePath(path);
-        }
-      })
-      .catch(() => {});
-
-    // Hot open: listen for files opened while app is running
+    // Cold start URLs are now handled inside the first useEffect via
+    // processOpenedUrls() — called AFTER vault restoration completes.
+    // This effect only handles hot-open events (file opened while running).
     const unlisten = listen<string>("file:open-request", (event) => {
       handleOpenFilePath(event.payload);
     });
@@ -203,4 +185,24 @@ export function useAppStartup({
       unlisten.then((fn) => fn());
     };
   }, [handleOpenFilePath]);
+}
+
+/** §89 Process queued file-open requests from macOS file association. */
+async function processOpenedUrls(
+  handleOpenFilePath: (path: string) => Promise<void>,
+): Promise<void> {
+  if (openedUrlsProcessed) return;
+  openedUrlsProcessed = true;
+
+  let paths: string[];
+  try {
+    paths = await getOpenedUrls();
+  } catch {
+    return;
+  }
+  if (!paths.length) return;
+
+  for (const path of paths) {
+    await handleOpenFilePath(path);
+  }
 }
