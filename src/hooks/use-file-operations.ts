@@ -263,40 +263,31 @@ export function useFileOperations({
       return;
     }
 
-    // §89 Check if file belongs to an open vault/folder context
-    const contextStore = useContextStore.getState();
-    const parentCtx = contextStore.getContextForPath(filePath);
+    try {
+      // §89 Ensure context exists — vault/folder for internal files,
+      // FileContext for external files. Must happen before readFile
+      // so Rust check_vault passes.
+      const contextStore = useContextStore.getState();
+      const context = await contextStore.ensureFileContext(filePath);
+      const contextId = context.id;
 
-    if (parentCtx && parentCtx.contextType !== "file") {
-      // File is inside an open vault/folder — open as tab in main window
-      try {
-        const content = await readFile(filePath);
-        const fileName = filePath.split("/").pop() ?? "Unknown";
-        useFileStore.getState().setFileContent(filePath, content);
+      const content = await readFile(filePath);
+      const fileName = filePath.split("/").pop() ?? "Unknown";
+      useFileStore.getState().setFileContent(filePath, content);
 
-        useEditorStore.getState().openTab({
-          contextId: parentCtx.id,
-          id: crypto.randomUUID(),
-          filePath,
-          title: fileName,
-          isDirty: false,
-          isPinned: false,
-        });
-        notifyFileOpen(filePath);
-        useSettingsStore.getState().addRecentFile(filePath);
-        useSettingsStore.getState().setLastOpenedFile(filePath);
-      } catch (err) {
-        logger.error("[App] Failed to open file:", err);
-      }
-    } else {
-      // §89 File is outside all vaults — open in separate file-mode window
-      try {
-        const { openFileWindow } = await import("../utils/file-window");
-        await openFileWindow(filePath);
-        useSettingsStore.getState().addRecentFile(filePath);
-      } catch (err) {
-        logger.error("[App] Failed to open file window:", err);
-      }
+      useEditorStore.getState().openTab({
+        contextId,
+        id: crypto.randomUUID(),
+        filePath,
+        title: fileName,
+        isDirty: false,
+        isPinned: false,
+      });
+      notifyFileOpen(filePath);
+      useSettingsStore.getState().addRecentFile(filePath);
+      useSettingsStore.getState().setLastOpenedFile(filePath);
+    } catch (err) {
+      logger.error("[App] Failed to open file:", err);
     }
   }, []);
 
