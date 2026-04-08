@@ -6,10 +6,12 @@ import { useFileStore } from "../../stores/file/file";
 import { extractHeadings, fuzzyScore } from "../../utils/file-search";
 
 export interface WikilinkSuggestionItem {
+  /** §87 Parent folder path relative to vault root (for grouped display) */
+  folder?: string;
   heading?: string;
   headingLevel?: number;
   id: string;
-  kind?: "create" | "file" | "heading" | "hint";
+  kind?: "create" | "file" | "folder-header" | "heading" | "hint";
   label: string;
   path: string;
   target: string;

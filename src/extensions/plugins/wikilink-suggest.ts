@@ -165,21 +165,67 @@ export const WikilinkSuggest = Extension.create({
               }
 
               if (flat && flat.length > 0) {
-                const crossFiles: WikilinkSuggestionItem[] = flat
+                const mdFiles = flat
                   .filter(
                     (f) =>
                       f.name.endsWith(".md") || f.name.endsWith(".markdown"),
                   )
-                  .sort((a, b) => a.name.localeCompare(b.name))
-                  .map((f, idx) => ({
-                    id: `cross-${idx}`,
-                    target: fileNameWithoutExtension(f.name),
-                    label: f.name,
-                    path: f.path,
-                    vaultAlias: alias,
-                  }));
-                // Show more items for cross-vault (user is browsing another vault)
-                return filterFiles(crossFiles, crossTarget, 50);
+                  .sort((a, b) => a.name.localeCompare(b.name));
+
+                // §87 Searching: flat fuzzy results (no grouping)
+                if (crossTarget) {
+                  const crossFiles: WikilinkSuggestionItem[] = mdFiles.map(
+                    (f, idx) => ({
+                      id: `cross-${idx}`,
+                      target: fileNameWithoutExtension(f.name),
+                      label: f.name,
+                      path: f.path,
+                      vaultAlias: alias,
+                    }),
+                  );
+                  return filterFiles(crossFiles, crossTarget, 30);
+                }
+
+                // §87 Browsing (empty query): grouped by folder with headers
+                const groups = new Map<string, typeof mdFiles>();
+                for (const f of mdFiles) {
+                  const dir = f.path.slice(ctx.path.length + 1);
+                  const folder =
+                    dir.lastIndexOf("/") > 0
+                      ? dir.slice(0, dir.lastIndexOf("/"))
+                      : "/";
+                  if (!groups.has(folder)) groups.set(folder, []);
+                  groups.get(folder)!.push(f);
+                }
+
+                const result: WikilinkSuggestionItem[] = [];
+                // Sort folders: subfolders first (alphabetical), root last
+                const sortedFolders = [...groups.keys()].sort((a, b) =>
+                  a === "/" ? 1 : b === "/" ? -1 : a.localeCompare(b),
+                );
+                let idx = 0;
+                for (const folder of sortedFolders) {
+                  const files = groups.get(folder)!;
+                  result.push({
+                    id: `folder-${folder}`,
+                    target: "",
+                    label: folder === "/" ? "/ (root)" : folder,
+                    path: "",
+                    kind: "folder-header",
+                    folder,
+                  });
+                  for (const f of files) {
+                    result.push({
+                      id: `cross-${idx++}`,
+                      target: fileNameWithoutExtension(f.name),
+                      label: f.name,
+                      path: f.path,
+                      vaultAlias: alias,
+                      folder,
+                    });
+                  }
+                }
+                return result;
               }
 
               // Fallback hint if file listing failed
