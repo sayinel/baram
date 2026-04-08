@@ -19,7 +19,9 @@ export function WikilinkView({ node, selected, extension }: NodeViewProps) {
   };
 
   // Display text priority: display > heading > target
-  const text = display || (heading ? `${target} > ${heading}` : target);
+  // §87 Cross-vault: include alias:: prefix in display text
+  const baseText = display || (heading ? `${target} > ${heading}` : target);
+  const text = vaultAlias ? `${vaultAlias}::${baseText}` : baseText;
 
   const isDate = isDateString(target);
 
@@ -27,7 +29,8 @@ export function WikilinkView({ node, selected, extension }: NodeViewProps) {
   const vaultInfo = useMemo(() => {
     if (!vaultAlias) return null;
     const contexts = useContextStore.getState().contexts;
-    const ctx = contexts.find((c) => c.alias === vaultAlias);
+    const aliasLower = vaultAlias.toLowerCase();
+    const ctx = contexts.find((c) => c.alias?.toLowerCase() === aliasLower);
     return {
       color: ctx?.color ?? null,
       open: !!ctx,

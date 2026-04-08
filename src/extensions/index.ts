@@ -82,7 +82,11 @@ import { WikilinkSuggest } from "./plugins/wikilink-suggest";
 
 interface BaramExtensionOptions {
   onMentionNavigate?: (type: string, value: string) => void;
-  onNavigate?: (target: string, heading?: null | string) => void;
+  onNavigate?: (
+    target: string,
+    heading?: null | string,
+    vaultAlias?: null | string,
+  ) => void;
   onNavigateBlockRef?: (target: string, blockId: string) => void;
   onNavigateLocal?: (href: string) => void;
 }

@@ -217,7 +217,8 @@ function App() {
 
   const editor = useEditor({
     extensions: createBaramExtensions({
-      onNavigate: (target, heading) => navigateRef.current(target, heading),
+      onNavigate: (target, heading, vaultAlias) =>
+        navigateRef.current(target, heading, vaultAlias),
       onNavigateBlockRef: (target, blockId) =>
         blockRefNavigateRef.current(target, blockId),
       onNavigateLocal: (href) => localLinkNavigateRef.current(href),
