@@ -155,9 +155,12 @@ export function expandWikilink(
   const heading = node.attrs.heading as null | string;
   const blockId = node.attrs.blockId as null | string;
   const display = node.attrs.display as null | string;
+  const vaultAlias = node.attrs.vaultAlias as null | string;
 
-  // Build [[target#heading^blockId|display]] text
-  let inner = target;
+  // §87 Build [[alias::target#heading^blockId|display]] text
+  let inner = "";
+  if (vaultAlias) inner += `${vaultAlias}::`;
+  inner += target;
   if (heading) inner += `#${heading}`;
   if (blockId) inner += `^${blockId}`;
   if (display) inner += `|${display}`;
