@@ -262,4 +262,14 @@ Phase 3: 고급 기능 — 진행 중
   - 커스텀 테마 v10 마이그레이션
   - Figma Tokens Studio 호환 export
   - PR 미생성 — refactoring/ai 머지 전 상태
+- **Vault System (§80-§90)** — ✅ 완료
+  - Context 모델 + 앱 워크스페이스 (§80-§81)
+  - 컨텍스트 탭 바 UI + 에디터 탭 표시 (§82-§83)
+  - 검색 Scope UI (§84)
+  - Journal 시스템 재설계 + Work Log (§85)
+  - 설정 3-Tier 계층 (§86)
+  - Cross-vault 링크 + 그래프 (§87)
+  - ContextManager Rust 백엔드 (§88)
+  - 독립 파일 열기 + FileContext (§89)
+  - 앱 시작 흐름 + 마이그레이션 (§90)
 - Canvas, Agent Mode, Knowledge Q&A, 실시간 협업 등 — 미착수

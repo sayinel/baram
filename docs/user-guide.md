@@ -7,6 +7,7 @@ Welcome to Baram — a lightweight, beautiful WYSIWYG markdown editor with AI in
 ## Table of Contents
 
 - [Getting Started](#getting-started)
+- [Vault & Context System](#vault--context-system)
 - [Writing Documents](#writing-documents)
 - [Formatting](#formatting)
 - [Rich Content](#rich-content)
@@ -69,6 +70,65 @@ Baram uses a 3-column layout:
 - **Status Bar** — Shows word count, line count, and cursor position.
 
 > By default, both sidebars are hidden to maximize writing space. The editor follows the principle of **minimal interface** — only showing what you need, when you need it.
+
+---
+
+## Vault & Context System
+
+### What is a Vault?
+
+A **vault** is a folder that Baram treats as a first-class workspace. When a folder contains a `.baram/config.json` file, Baram recognizes it as a vault and enables additional features: vault-level settings, Journal integration, and cross-vault linking.
+
+A regular folder opened in Baram works fine without being a vault — vaults simply unlock extra capabilities.
+
+To initialize a folder as a vault, go to **Settings > Vault** and click **Initialize as Vault**. To revert back to a plain folder, click **Revert to Folder** (this removes `.baram/config.json` but leaves your files untouched).
+
+### Context Types
+
+Baram has three context types, shown as tabs in the **Context Tab Bar** at the top of the left sidebar:
+
+| Context | Icon | Description |
+| ------- | ---- | ----------- |
+| **Vault** | 🏠 | A fully initialized vault folder (has `.baram/config.json`) |
+| **Folder** | 📁 | A plain folder opened without vault initialization |
+| **File** | 📄 | A single file opened outside any workspace folder |
+
+Each context is independent — it has its own file tree, settings, and tab history.
+
+### Opening and Switching Vaults
+
+- **Open a vault**: Use **File > Open Folder** (`Cmd+Shift+O` / `Ctrl+Shift+O`) and select a folder. If it contains `.baram/config.json`, it opens as a vault context.
+- **Switch between contexts**: Click the tabs in the Context Tab Bar at the top of the left sidebar. Each tab shows the vault/folder name and its context icon.
+- **Close a context**: Right-click a context tab and select **Close**.
+
+Multiple vaults can be open simultaneously, each as its own tab in the Context Tab Bar.
+
+### Cross-Vault Wikilinks
+
+To link to a file in a different vault, use the vault alias prefix:
+
+```
+[[alias::filename]]
+```
+
+- `alias` is the vault's short name as configured in **Settings > Vault > Alias**
+- `filename` is the target file name (without `.md`)
+
+Example: `[[work::meeting-notes]]` links to `meeting-notes.md` in the vault with alias `work`.
+
+Cross-vault links appear with a distinct style and open the target in its own vault context. If the target vault is not currently open, Baram prompts you to open it.
+
+### Opening External Files
+
+You can open any `.md` file from outside your current vault using **File > Open File** (`Cmd+O` / `Ctrl+O`). The file opens as a **File context** tab with a 📎 icon and no sidebar — just the editor. This is useful for quick edits to files outside your workspace.
+
+### Tab Tear-Off (Separate Window)
+
+Drag any editor tab outside the tab bar to detach it into a separate window. The window operates independently with its own editor state. Drag the tab back into the tab bar to re-dock it.
+
+### Journal and Vaults
+
+The Journal feature integrates with vaults. Each vault can have its own journal directory configured in **Settings > Vault > Journal Directory**. When you switch to a vault context, the Calendar sidebar and @mention date chips create journal entries in that vault's journal directory.
 
 ---
 

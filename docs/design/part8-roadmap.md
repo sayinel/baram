@@ -141,6 +141,19 @@ AI Level 4 + 5 (5개):
 
 LLM Skills 전용 (1개):
   72. LLM Skills 전용 모드 (전체 UI 최적화)                        ← M10
+
+Vault 시스템 (§80-§90, 추가 구현):
+  80. Context 모델 (VaultContext / FolderContext / FileContext)    ✅ 완료
+  81. 앱 워크스페이스 (다중 컨텍스트 관리)                            ✅ 완료
+  82. 컨텍스트 탭 바 UI                                             ✅ 완료
+  83. 에디터 탭 표시                                                ✅ 완료
+  84. 검색 Scope UI                                               ✅ 완료
+  85. Journal 시스템 재설계 + Work Log                              ✅ 완료
+  86. 설정 3-Tier 계층                                             ✅ 완료
+  87. Cross-vault 링크 + 그래프                                     ✅ 완료
+  88. ContextManager Rust 백엔드                                   ✅ 완료
+  89. 독립 파일 열기 + FileContext                                   ✅ 완료
+  90. 앱 시작 흐름 + 마이그레이션                                     ✅ 완료
 ```
 
 **Phase 3 완료 기준**: AI Agent가 여러 파일을 자율적으로 편집하고, 팀이 실시간 협업하며, 커뮤니티 플러그인으로 기능이 확장되는 성숙한 제품 상태.
