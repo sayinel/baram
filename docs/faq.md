@@ -457,6 +457,40 @@ Open the **Help** menu and select **User Guide**, **Keyboard Shortcuts**, or **F
 
 ---
 
+## Vault & Context
+
+### What is a vault?
+
+A vault is a folder that contains a `.baram/config.json` file. When Baram detects this file, it treats the folder as a fully initialized workspace with vault-level settings, a configurable Journal directory, and a vault alias for cross-vault linking. A plain folder without `.baram/config.json` still works as a normal workspace — vaults simply unlock extra features.
+
+To turn any folder into a vault, open it in Baram, then go to **Settings > Vault** and click **Initialize as Vault**.
+
+### Can I use multiple vaults simultaneously?
+
+Yes. Each vault (or plain folder) you open appears as a tab in the **Context Tab Bar** at the top of the left sidebar. Click any tab to switch between contexts. Each context has its own file tree, tab history, and settings.
+
+### How do I link files across vaults?
+
+Use the cross-vault wikilink syntax: `[[alias::filename]]`. Replace `alias` with the target vault's short name (configured in **Settings > Vault > Alias**) and `filename` with the file name (without `.md`). For example, `[[research::climate-data]]` links to `climate-data.md` in the vault aliased `research`. If the target vault is not open, Baram prompts you to open it.
+
+### What happens when I open a file outside a vault?
+
+The file opens as a **File context** tab, indicated by a 📎 icon. The left sidebar is hidden — only the editor is shown. This is ideal for quick edits to files that don't belong to any workspace. There is no file tree, backlinks, or vault-level settings in this mode.
+
+### How do I convert a folder to a vault?
+
+1. Open the folder in Baram with **File > Open Folder**
+2. Go to **Settings > Vault**
+3. Click **Initialize as Vault**
+
+Baram creates a `.baram/config.json` file inside the folder. Your existing files are not changed. To revert back to a plain folder, click **Revert to Folder** — this removes `.baram/config.json` but leaves all your markdown files intact.
+
+### How is Journal related to vaults?
+
+Each vault can have its own journal directory set in **Settings > Vault > Journal Directory**. When you are working in a vault context, the Calendar sidebar and @mention date chips (Today/Yesterday/Tomorrow) create journal entries in that vault's configured directory. Switching vault contexts switches the active journal, so you can maintain separate journals per vault (e.g., personal vs. work).
+
+---
+
 ## Troubleshooting
 
 ### The app won't start
