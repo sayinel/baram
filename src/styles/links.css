@@ -515,3 +515,60 @@
 .wikilink-hint-label {
   font-style: italic;
 }
+
+/* §87 Cross-vault folder group headers */
+.wikilink-menu-folder-header {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: var(--color-bg-secondary, #f8f9fa);
+}
+
+[data-theme="dark"] .wikilink-menu-folder-header {
+  background: var(--color-bg-secondary, #252526);
+}
+
+.wikilink-menu-folder-header:hover {
+  background: var(--color-bg-hover, rgb(0 0 0 / 5%));
+}
+
+.wikilink-folder-arrow {
+  flex-shrink: 0;
+  width: 10px;
+  font-size: 10px;
+}
+
+.wikilink-folder-icon {
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.wikilink-folder-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wikilink-folder-count {
+  flex-shrink: 0;
+  padding: 0 4px;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--color-text-muted);
+  background: var(--color-bg-default, #fff);
+  border-radius: 8px;
+}
+
+[data-theme="dark"] .wikilink-folder-count {
+  background: var(--color-bg-default, #1e1e1e);
+}
+
+.wikilink-item-indented {
+  padding-left: 28px;
+}
