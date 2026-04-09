@@ -176,7 +176,7 @@ export type JsonValue =
   | { [key: string]: JsonValue };
 
 export interface LinkGraph {
-  edges: Array<{ from: string; to: string }>;
+  edges: Array<{ crossVault?: boolean; from: string; to: string }>;
   nodes: string[];
 }
 

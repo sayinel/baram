@@ -64,9 +64,13 @@ pub struct LinkGraph {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LinkEdge {
     pub from: String,
     pub to: String,
+    /// §87 True when this edge is a cross-vault link
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub cross_vault: bool,
 }
 
 /// Index build statistics
@@ -270,6 +274,7 @@ impl LinkIndex {
                     edges.push(LinkEdge {
                         from: source.clone(),
                         to: target_path,
+                        cross_vault: entry.target_vault_alias.is_some(),
                     });
                 }
             }
@@ -286,6 +291,7 @@ impl LinkIndex {
                 edges.push(LinkEdge {
                     from: file_path.clone(),
                     to: tag_node_id,
+                    cross_vault: false,
                 });
             }
         }

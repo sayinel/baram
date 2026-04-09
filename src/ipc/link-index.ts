@@ -14,8 +14,8 @@ export async function getBacklinks(filePath: string): Promise<BacklinkEntry[]> {
   return invoke<BacklinkEntry[]>("get_backlinks", { filePath });
 }
 
-export async function getLinkIndex(): Promise<LinkGraph> {
-  return invoke<LinkGraph>("get_link_index");
+export async function getLinkIndex(rootPath?: string): Promise<LinkGraph> {
+  return invoke<LinkGraph>("get_link_index", { rootPath: rootPath ?? null });
 }
 
 // §34 Unlinked Mentions

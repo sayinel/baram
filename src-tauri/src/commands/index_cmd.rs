@@ -43,11 +43,17 @@ pub async fn get_backlinks(
 
 #[tauri::command]
 pub async fn get_link_index(
+    root_path: Option<String>,
     state: State<'_, LinkIndexState>,
     ctx_mgr: State<'_, crate::context::ContextManager>,
 ) -> Result<LinkGraph, String> {
     let map = state.0.lock().await;
-    let key = active_context_path(&ctx_mgr).await;
+    // §87 Use explicit root_path if provided (for multi-vault graph merge),
+    // otherwise fall back to active context path
+    let key = match root_path {
+        Some(p) if !p.is_empty() => p,
+        _ => active_context_path(&ctx_mgr).await,
+    };
     match map.get(&key) {
         Some(index) => Ok(index.get_link_graph()),
         None => Ok(LinkGraph::default()),
