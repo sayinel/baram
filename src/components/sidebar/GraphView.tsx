@@ -1,9 +1,11 @@
 // §30 Graph View — interactive link graph visualization
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import type { LinkGraph } from "../../ipc/types";
 import type { Core, EventObject, StylesheetStyle } from "cytoscape";
 
 import { getLinkIndex, readFile, refreshIndex } from "../../ipc/invoke";
+import { useContextStore } from "../../stores/context/context";
 import { isGraphTab, useEditorStore } from "../../stores/editor/editor";
 import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
@@ -22,6 +24,8 @@ export function GraphView() {
   const cyRef = useRef<Core | null>(null);
   const [cyReady, setCyReady] = useState(false);
   const rootPath = useFileStore((s) => s.rootPath);
+  const [graphScope, setGraphScope] = useState<"all" | "current">("current");
+  const contexts = useContextStore((s) => s.contexts);
   // Detect if rendered inside editor tab (vs sidebar)
   const isInEditorTab = useEditorStore((s) => {
     const tab = s.tabs.find((t) => t.id === s.activeTabId);
@@ -129,6 +133,7 @@ export function GraphView() {
       useFileStore.getState().setFileContent(filePath, content);
       const fileName = filePath.split("/").pop() ?? filePath;
       openTab({
+        contextId: "",
         id: crypto.randomUUID(),
         filePath,
         title: fileName,
@@ -150,22 +155,87 @@ export function GraphView() {
 
     (async () => {
       try {
-        // Ensure index matches current workspace before fetching graph
-        await refreshIndex(rootPath);
-        if (cancelled) return;
-        const graph = await getLinkIndex();
-        if (cancelled) return;
+        let graph: LinkGraph;
+        let effectiveRootPath = rootPath;
+        let nodeVaultMapRef: Map<string, string> | undefined;
 
-        const { nodes, edges } = toGraphElements(graph, rootPath);
+        // §87 Read contexts fresh from store (not closure) to avoid stale data
+        const freshContexts = useContextStore.getState().contexts;
+        if (graphScope === "all" && freshContexts.length > 1) {
+          // §87 Multi-vault: fetch and merge graphs from all contexts
+          const vaultFolderContexts = freshContexts.filter(
+            (c) => c.contextType !== "file",
+          );
+          const graphs: Array<{
+            ctx: (typeof vaultFolderContexts)[0];
+            graph: LinkGraph;
+          }> = [];
+
+          // §87 Fetch existing indices for each vault. Don't call refreshIndex
+          // here — it changes indexVersion which re-triggers this effect and
+          // cancels before completion. Indices are built when vaults are opened.
+          for (const ctx of vaultFolderContexts) {
+            try {
+              const g = await getLinkIndex(ctx.path);
+              if (g.nodes.length > 0) {
+                graphs.push({ ctx, graph: g });
+              }
+            } catch {
+              // Skip contexts that fail
+            }
+          }
+
+          // Merge all graphs into one, tracking node→vault membership
+          const merged = mergeGraphs(graphs.map((g) => g.graph));
+          graph = merged;
+          // §87 Build nodeVaultMap for cross-vault edge detection
+          nodeVaultMapRef = new Map<string, string>();
+          for (const { ctx, graph: g } of graphs) {
+            for (const node of g.nodes) {
+              if (!nodeVaultMapRef.has(node)) {
+                nodeVaultMapRef.set(node, ctx.id);
+              }
+            }
+          }
+          // Use empty string as rootPath so namespace extraction works per-node
+          effectiveRootPath = "";
+        } else {
+          // Single-vault: existing behavior
+          await refreshIndex(rootPath);
+          if (cancelled) return;
+          graph = await getLinkIndex();
+          if (cancelled) return;
+          nodeVaultMapRef = undefined;
+        }
+
+        const { nodes, edges } = toGraphElements(
+          graph,
+          effectiveRootPath || rootPath,
+          nodeVaultMapRef,
+        );
         const maxNodeSize = Math.min(settingsNodeSize * 3, 80);
 
-        const nodesWithSize = nodes.map((n) => ({
-          ...n,
-          data: {
-            ...n.data,
-            size: nodeSize(n.data.degree, settingsNodeSize, maxNodeSize),
-          },
-        }));
+        const nodesWithSize = nodes.map((n) => {
+          // §87 In All mode, assign vault color to each node
+          let vaultColor: string | undefined;
+          if (nodeVaultMapRef) {
+            const ctxId = nodeVaultMapRef.get(n.data.id);
+            if (ctxId) {
+              const ctx = useContextStore
+                .getState()
+                .contexts.find((c) => c.id === ctxId);
+              if (ctx) vaultColor = ctx.color;
+            }
+          }
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              size: nodeSize(n.data.degree, settingsNodeSize, maxNodeSize),
+              ...(vaultColor && { vaultColor }),
+            },
+          };
+        });
 
         // §61 Namespace colors
         if (colorByNamespace) {
@@ -194,14 +264,23 @@ export function GraphView() {
         // Ensure container dimensions are available before layout
         cy.resize();
 
-        // Run initial fcose layout
-        cy.layout(
-          buildLayoutOptions(
-            { centerForce, repelForce, linkForce, linkDistance },
-            { randomize: true, animate: false, fit: true },
-          ),
-        ).run();
-
+        // Run initial fcose layout and fit after completion
+        await new Promise<void>((resolve) => {
+          const layout = cy.layout(
+            buildLayoutOptions(
+              { centerForce, repelForce, linkForce, linkDistance },
+              { randomize: true, animate: false, fit: true },
+            ),
+          );
+          layout.one("layoutstop", () => {
+            // §87 Force style recalculation for newly added nodes
+            // (without this, nodes from non-active vaults may not render)
+            cy.style().update();
+            cy.fit(undefined, 30);
+            resolve();
+          });
+          layout.run();
+        });
         setNodeCount(nodes.length);
         setEdgeCount(edges.length);
 
@@ -220,7 +299,15 @@ export function GraphView() {
     // omitted: adding them would re-fetch all graph data on every settings tweak,
     // but dedicated effects (Effect 3, node-size effect) handle those updates.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rootPath, indexVersion, handleNodeTap, colorByNamespace, cyReady]);
+  }, [
+    rootPath,
+    indexVersion,
+    handleNodeTap,
+    colorByNamespace,
+    cyReady,
+    graphScope,
+    contexts,
+  ]);
 
   // Effect 3: Re-layout on force settings change
   useEffect(() => {
@@ -360,18 +447,29 @@ export function GraphView() {
     if (!cy || cy.nodes().length === 0) return;
 
     // Pass 1: find nodes under current workspace rootPath
+    // §87 In All mode, include all vault paths (not just active rootPath)
+    const scopePaths =
+      graphScope === "all"
+        ? useContextStore
+            .getState()
+            .contexts.filter((c) => c.contextType !== "file")
+            .map((c) => c.path)
+        : rootPath
+          ? [rootPath]
+          : [];
+
     const scopeNodes = new Set<string>();
-    if (rootPath) {
+    if (scopePaths.length > 0) {
       cy.nodes().forEach((node) => {
-        if (node.id().startsWith(rootPath)) {
+        if (scopePaths.some((p) => node.id().startsWith(p))) {
           scopeNodes.add(node.id());
         }
       });
     }
 
-    // Pass 2: include 1-hop neighbors (link targets/sources outside rootPath)
+    // Pass 2: include 1-hop neighbors (link targets/sources outside scope)
     const neighborNodes = new Set<string>();
-    if (rootPath && scopeNodes.size > 0) {
+    if (scopePaths.length > 0 && scopeNodes.size > 0) {
       cy.edges().forEach((edge) => {
         const srcId = edge.source().id();
         const tgtId = edge.target().id();
@@ -384,8 +482,8 @@ export function GraphView() {
       });
     }
 
-    // If rootPath is set, always apply scope filter (even if no nodes match)
-    const hasScope = !!rootPath;
+    // If any scope paths exist, apply scope filter
+    const hasScope = scopePaths.length > 0;
 
     cy.nodes().forEach((node) => {
       const id = node.id();
@@ -450,6 +548,7 @@ export function GraphView() {
     showTags,
     namespaceFilter,
     nodeCount,
+    graphScope,
   ]);
 
   // Effect: Update styles when display settings change
@@ -514,6 +613,22 @@ export function GraphView() {
         <span className="graph-view-stats">
           {nodeCount} nodes, {edgeCount} edges
         </span>
+        {contexts.length > 1 && (
+          <div className="graph-scope">
+            <button
+              className={`graph-scope__btn ${graphScope === "current" ? "graph-scope__btn--active" : ""}`}
+              onClick={() => setGraphScope("current")}
+            >
+              Current
+            </button>
+            <button
+              className={`graph-scope__btn ${graphScope === "all" ? "graph-scope__btn--active" : ""}`}
+              onClick={() => setGraphScope("all")}
+            >
+              All
+            </button>
+          </div>
+        )}
         <div className="graph-view-header-actions">
           <button
             className="graph-view-settings-btn btn-unstyled"
@@ -615,6 +730,13 @@ function buildGraphStyle(settings: {
         opacity: 0.6,
       },
     },
+    // §87 Multi-vault: color nodes by vault context color
+    {
+      selector: "node[vaultColor]",
+      style: {
+        "background-color": "data(vaultColor)",
+      } as cytoscape.Css.Node,
+    },
     {
       selector: "node[?isGhost]",
       style: {
@@ -695,6 +817,17 @@ function buildGraphStyle(settings: {
         width: Math.max(settings.linkThickness * 1.5, 1.5),
       },
     },
+    // §87 Cross-vault edges: dashed line
+    {
+      selector: "edge[?crossVault]",
+      style: {
+        "line-style": "dashed",
+        "line-dash-pattern": [6, 3],
+        "line-color": "var(--graph-cross-vault-edge, #8b5cf6)",
+        "target-arrow-color": "var(--graph-cross-vault-edge, #8b5cf6)",
+        opacity: 0.6,
+      } as cytoscape.Css.Edge,
+    },
     // Zoom label fade
     {
       selector: "node.labels-hidden",
@@ -734,4 +867,29 @@ function buildLayoutOptions(
     numIter: 500,
     fixedNodeConstraint: opts?.fixedNodeConstraint,
   };
+}
+
+/**
+ * §87 Merge multiple LinkGraphs into one.
+ * Deduplicates nodes and edges across vaults.
+ */
+function mergeGraphs(graphs: LinkGraph[]): LinkGraph {
+  const nodeSet = new Set<string>();
+  const edgeSet = new Set<string>();
+  const edges: Array<{ from: string; to: string }> = [];
+
+  for (const g of graphs) {
+    for (const node of g.nodes) {
+      nodeSet.add(node);
+    }
+    for (const edge of g.edges) {
+      const key = `${edge.from}\0${edge.to}`;
+      if (!edgeSet.has(key)) {
+        edgeSet.add(key);
+        edges.push(edge);
+      }
+    }
+  }
+
+  return { nodes: [...nodeSet], edges };
 }

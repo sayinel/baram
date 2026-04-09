@@ -73,6 +73,7 @@
   --graph-neighbor-color: var(--color-graph-neighbor);
   --graph-orphan-color: var(--color-graph-orphan);
   --graph-edge-color: var(--color-graph-edge);
+  --graph-cross-vault-edge: var(--color-graph-cross-vault, #8b5cf6);
   --graph-label-color: var(--color-graph-label);
 }
 
@@ -88,6 +89,32 @@
 .graph-view-settings-btn:hover {
   color: var(--color-text-primary);
   background: var(--color-bg-subtle);
+}
+
+/* §87 Graph scope selector (Current / All toggle) */
+.graph-scope {
+  display: flex;
+  gap: 2px;
+}
+
+.graph-scope__btn {
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+}
+
+.graph-scope__btn:hover {
+  background: var(--color-bg-subtle);
+}
+
+.graph-scope__btn--active {
+  color: white;
+  background: var(--color-accent-default);
+  border-color: var(--color-accent-default);
 }
 
 /* Graph header actions (gear + expand buttons) */

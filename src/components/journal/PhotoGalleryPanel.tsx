@@ -155,6 +155,7 @@ export function PhotoGalleryPanel() {
           const fileName = journalPath.split("/").pop() ?? "Unknown";
           useFileStore.getState().setFileContent(journalPath, content);
           useEditorStore.getState().openTab({
+            contextId: "",
             id: crypto.randomUUID(),
             filePath: journalPath,
             title: fileName,

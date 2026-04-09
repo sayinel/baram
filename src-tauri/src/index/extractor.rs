@@ -12,9 +12,13 @@ use std::sync::LazyLock;
 use super::normalizer::{make_relative_path, resolve_relative_path};
 use super::{IndexError, LinkEntry};
 
-// Wikilink regex: [[target]], [[target|display]], [[target#heading]], etc.
+// Wikilink regex: [[target]], [[alias::target]], [[target|display]], [[target#heading]], etc.
+// §87: optional alias:: prefix — group 1 = alias, group 2 = target
 static WIKILINK_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\[\[([^\]|#^]+)(?:#[^\]|^]+)?(?:\^[^\]|]+)?(?:\|[^\]]+)?\]\]").unwrap()
+    Regex::new(
+        r"\[\[(?:([a-zA-Z][\w-]*)::)?([^\]|#^]+)(?:#[^\]|^]+)?(?:\^[^\]|]+)?(?:\|[^\]]+)?\]\]",
+    )
+    .unwrap()
 });
 
 // §30c Block reference regex: ((target#^blockId)) or ((target#^blockId|display)) or ((#^blockId))
@@ -42,9 +46,13 @@ static FM_TAGS_BLOCK_RE: LazyLock<Regex> =
 // Frontmatter tags block item:   - tag
 static FM_TAGS_ITEM_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s+-\s+(.+)$").unwrap());
 
-// §33 Wikilink replace regex: captures (target, rest) for replace_wikilink_target
+// §33 Wikilink replace regex: captures (alias, target, rest) for replace_wikilink_target
+// §87: optional alias:: prefix — group 1 = alias, group 2 = target, group 3 = rest
 static REPLACE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\[\[([^\]|#^]+)((?:#[^\]|^]+)?(?:\^[^\]|]+)?(?:\|[^\]]+)?)\]\]").unwrap()
+    Regex::new(
+        r"\[\[((?:[a-zA-Z][\w-]*::)?)([^\]|#^]+)((?:#[^\]|^]+)?(?:\^[^\]|]+)?(?:\|[^\]]+)?)\]\]",
+    )
+    .unwrap()
 });
 
 // §30a Block embed replace regex: {{embed ((target#^ID))}}
@@ -191,9 +199,10 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
     let lines: Vec<&str> = content.lines().collect();
 
     for (line_idx, line) in lines.iter().enumerate() {
-        // §29 Wikilinks: [[target]], [[target|display]], etc.
+        // §29 Wikilinks: [[target]], [[alias::target]], [[target|display]], etc.
         for cap in WIKILINK_RE.captures_iter(line) {
-            let target = cap.get(1).map(|m| m.as_str().trim()).unwrap_or("");
+            let vault_alias = cap.get(1).map(|m| m.as_str().to_string());
+            let target = cap.get(2).map(|m| m.as_str().trim()).unwrap_or("");
             if target.is_empty() {
                 continue;
             }
@@ -205,6 +214,7 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
                 context: build_context(line),
                 link_type: "wikilink".to_string(),
                 block_id: None,
+                target_vault_alias: vault_alias,
             });
         }
 
@@ -230,6 +240,7 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
                 context: build_context(line),
                 link_type: "blockEmbed".to_string(),
                 block_id: Some(block_id.to_string()),
+                target_vault_alias: None,
             });
         }
 
@@ -264,6 +275,7 @@ pub(crate) fn extract_links(file_path: &str, content: &str) -> Vec<LinkEntry> {
                 context: build_context(line),
                 link_type: "blockRef".to_string(),
                 block_id: Some(block_id.to_string()),
+                target_vault_alias: None,
             });
         }
     }
@@ -279,15 +291,16 @@ pub fn replace_wikilink_target(content: &str, old_target: &str, new_target: &str
     // Capture groups: (1) target, (2) rest — #heading, ^blockId, |display in any combo
     REPLACE_RE
         .replace_all(content, |caps: &regex::Captures| {
-            let captured_target = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-            let rest = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+            let alias_prefix = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+            let captured_target = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+            let rest = caps.get(3).map(|m| m.as_str()).unwrap_or("");
 
             // Case-insensitive comparison for target matching
             if captured_target
                 .trim()
                 .eq_ignore_ascii_case(old_target.trim())
             {
-                format!("[[{}{rest}]]", new_target)
+                format!("[[{alias_prefix}{}{rest}]]", new_target)
             } else {
                 // No match — return original
                 caps[0].to_string()
@@ -762,5 +775,87 @@ mod tests {
             "/vault/notes/ml",
         );
         assert_eq!(result, "Link [[../ml/models]] from sub.");
+    }
+
+    // §87 Cross-vault alias extraction tests
+    #[test]
+    fn test_extract_cross_vault_basic() {
+        let entries = extract_links("/test.md", "See [[journal::2026-03-22]] for details.");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].target, "2026-03-22");
+        assert_eq!(entries[0].target_vault_alias, Some("journal".to_string()));
+        assert_eq!(entries[0].link_type, "wikilink");
+    }
+
+    #[test]
+    fn test_extract_cross_vault_with_path() {
+        let entries = extract_links("/test.md", "Check [[work::skills/analyzer]] here.");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].target, "skills/analyzer");
+        assert_eq!(entries[0].target_vault_alias, Some("work".to_string()));
+    }
+
+    #[test]
+    fn test_extract_cross_vault_with_display() {
+        let entries = extract_links("/test.md", "See [[journal::note|My Note]] here.");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].target, "note");
+        assert_eq!(entries[0].target_vault_alias, Some("journal".to_string()));
+    }
+
+    #[test]
+    fn test_extract_cross_vault_with_heading() {
+        let entries = extract_links("/test.md", "Read [[work::doc#intro]] section.");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].target, "doc");
+        assert_eq!(entries[0].target_vault_alias, Some("work".to_string()));
+    }
+
+    #[test]
+    fn test_extract_regular_link_no_alias() {
+        let entries = extract_links("/test.md", "Link [[normal-page]] here.");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].target, "normal-page");
+        assert_eq!(entries[0].target_vault_alias, None);
+    }
+
+    #[test]
+    fn test_extract_mixed_cross_vault_and_regular() {
+        let entries = extract_links("/test.md", "Both [[journal::note]] and [[regular]] links.");
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].target, "note");
+        assert_eq!(entries[0].target_vault_alias, Some("journal".to_string()));
+        assert_eq!(entries[1].target, "regular");
+        assert_eq!(entries[1].target_vault_alias, None);
+    }
+
+    #[test]
+    fn test_extract_cross_vault_hyphenated_alias() {
+        let entries = extract_links("/test.md", "Link [[my-vault::page]] here.");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].target, "page");
+        assert_eq!(entries[0].target_vault_alias, Some("my-vault".to_string()));
+    }
+
+    #[test]
+    fn test_replace_wikilink_target_preserves_alias() {
+        let content = "See [[work::old-note]] for details.";
+        let result = replace_wikilink_target(content, "old-note", "new-note");
+        assert_eq!(result, "See [[work::new-note]] for details.");
+    }
+
+    #[test]
+    fn test_replace_wikilink_target_cross_vault_with_heading() {
+        let content = "See [[work::old-note#intro]] here.";
+        let result = replace_wikilink_target(content, "old-note", "new-note");
+        assert_eq!(result, "See [[work::new-note#intro]] here.");
+    }
+
+    #[test]
+    fn test_strip_wikilinks_cross_vault() {
+        let line = "See [[journal::2026-03-22]] and architecture.";
+        let stripped = strip_wikilinks(line);
+        assert!(!stripped.contains("[["));
+        assert!(stripped.contains("architecture"));
     }
 }

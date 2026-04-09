@@ -2,18 +2,17 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { listDir, setVaultRoot } from "../../ipc/invoke";
 import {
   ensureJournalFile,
   openFileInTab,
 } from "../../services/journal-file-service";
 import { resolveJournalDir } from "../../utils/journal/journal";
 import { logger } from "../../utils/logger";
+import { useContextStore } from "../context/context";
 import { useSettingsStore } from "../settings/store";
 import { tauriStorage } from "../system/tauri-storage";
 import { type RightPanelMode, type SidebarPanel, useUIStore } from "../ui/ui";
 import { useFileStore } from "./file";
-import { buildFileTree } from "./file";
 
 // --- Types ---
 
@@ -106,28 +105,30 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         if (ui.rightPanelOpen !== layout.rightPanelOpen) ui.toggleRightPanel();
         ui.setRightPanelMode(layout.rightPanelMode);
 
-        // §56 Exit journal scope when switching away from journal preset
-        const fileStore = useFileStore.getState();
-        if (id !== "journal" && fileStore.isJournalScoped) {
-          const originalRoot = fileStore.originalRootPath;
-          fileStore.exitJournalScope();
-          if (originalRoot) {
-            (async () => {
-              try {
-                await setVaultRoot(originalRoot);
-                const entries = await listDir(originalRoot, true);
-                const tree = buildFileTree(entries, originalRoot);
-                useFileStore.getState().setFileTree(tree);
-              } catch (err) {
-                logger.error("[Workspace] Failed to restore file tree:", err);
-              }
-            })();
+        // §85 M2b: When switching away from journal, activate the first non-journal context
+        if (id !== "journal") {
+          const contextStore = useContextStore.getState();
+          const activeCtx = contextStore.activeContext();
+          if (activeCtx?.vaultType === "journal") {
+            const firstNonJournal = contextStore.contexts.find(
+              (c) => c.vaultType !== "journal",
+            );
+            if (firstNonJournal) {
+              contextStore
+                .setActiveContext(firstNonJournal.id)
+                .catch((err) =>
+                  logger.error(
+                    "[Workspace] Failed to switch from journal:",
+                    err,
+                  ),
+                );
+            }
           }
         }
 
         set({ activePresetId: id });
 
-        // §56 Journal preset: auto-open today's journal + scope FileTree
+        // §85 M2b: Journal preset — activate journal context + open today's file
         if (id === "journal") {
           const {
             journalEnabled,
@@ -141,25 +142,22 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           if (journalEnabled && resolvedDir) {
             (async () => {
               try {
-                // Set vault root to journal directory BEFORE any file operations
-                await setVaultRoot(resolvedDir);
+                // §85 M2b: Activate journal as a separate context (not rootPath swap)
+                const contextStore = useContextStore.getState();
+                await contextStore.ensureJournalContext(resolvedDir);
 
+                // Open today's journal file
                 const result = await ensureJournalFile(new Date(), {
                   journalDirectory,
                   journalFilenameFormat,
                   journalTemplatePath,
                   journalUseHierarchy,
-                  rootPath,
+                  rootPath: resolvedDir,
                 });
                 if (result) {
                   await openFileInTab(result.path, result.content);
                 }
-
-                // §56 Scope FileTree to journal directory
-                useFileStore.getState().enterJournalScope(resolvedDir);
-                const entries = await listDir(resolvedDir, true);
-                const tree = buildFileTree(entries, resolvedDir);
-                useFileStore.getState().setFileTree(tree);
+                // Note: File tree switch is handled by contextStore subscription in file.ts
               } catch (err) {
                 logger.error("[Workspace] Failed to open journal:", err);
               }

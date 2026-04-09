@@ -10,6 +10,20 @@ export interface BacklinkEntry {
   targetPath: string;
 }
 
+export interface ContextInfo {
+  addedAt: number;
+  alias?: string;
+  color: string;
+  contextType: ContextType;
+  id: string;
+  label: string;
+  path: string;
+  vaultType?: VaultType;
+}
+
+// §80 Context types
+export type ContextType = "file" | "folder" | "vault";
+
 export interface CustomExportItem {
   command: string;
   extension: string;
@@ -162,7 +176,7 @@ export type JsonValue =
   | { [key: string]: JsonValue };
 
 export interface LinkGraph {
-  edges: Array<{ from: string; to: string }>;
+  edges: Array<{ crossVault?: boolean; from: string; to: string }>;
   nodes: string[];
 }
 
@@ -274,6 +288,26 @@ export interface RenameTagResult {
   occurrencesReplaced: number;
 }
 
+/** §86 Flat merged settings: global → vault → (future) frontmatter. */
+export interface ResolvedSettings {
+  aiContextScope?: string;
+  aiModel?: string;
+  aiPrivacyMode?: boolean;
+  dailyNotesFolder?: string;
+  defaultNewFileLocation?: string;
+  enableMermaid?: boolean;
+  enableWikilink?: boolean;
+  extensionsDisabled?: string[];
+  extensionsEnabled?: string[];
+  gitAutoFetchInterval?: number;
+  gitAutoPushOnCommit?: boolean;
+  markdownSerializationRules?: Record<string, unknown>;
+  skillsFolder?: string;
+  snapshotIntervalMinutes?: number;
+  snapshotMaxCount?: number;
+  themeOverride?: string;
+}
+
 // §3.2 Search types
 export interface SearchOptions {
   caseSensitive?: boolean;
@@ -312,7 +346,6 @@ export interface TagEntry {
   count: number;
   tag: string;
 }
-
 export interface TiptapExtensionDef {
   exportName: string;
   name: string;
@@ -326,3 +359,31 @@ export interface UnlinkedMention {
   matchText: string;
   sourcePath: string;
 }
+
+export interface VaultConfig {
+  ai?: { contextScope?: string; model?: string; privacyMode?: boolean };
+  appearance?: { theme?: string };
+  crossVaultHints?: Record<string, { lastKnownPath: string }>;
+  editor?: {
+    dailyNotesFolder?: string;
+    defaultNewFileLocation?: string;
+    skillsFolder?: string;
+  };
+  extensions?: { disabled?: string[]; enabled?: string[] };
+  git?: { autoFetchInterval?: number; autoPushOnCommit?: boolean };
+  markdown?: {
+    enableMermaid?: boolean;
+    enableWikilink?: boolean;
+    serializationRules?: Record<string, unknown>;
+  };
+  snapshot?: { intervalMinutes?: number; maxCount?: number };
+  vault?: { alias: string; type: string };
+  workLog?: {
+    enabled?: boolean;
+    fileNameFormat?: string;
+    folder?: string;
+    template?: string;
+  };
+}
+
+export type VaultType = "general" | "journal";

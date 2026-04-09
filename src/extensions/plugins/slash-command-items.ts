@@ -3,7 +3,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import type { SlashMenuItem } from "../../components/command/SlashMenu";
 import type { Editor } from "@tiptap/core";
 
-import { copyFile, createDir } from "../../ipc/invoke";
+import { createDir, importFile } from "../../ipc/invoke";
 import { useAIStore } from "../../stores/ai/ai";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
@@ -502,7 +502,7 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
               const absoluteDest = `${absoluteAssetsDir}/${destName}`;
               const relativePath = `${assetsRelDir}/${destName}`;
 
-              await copyFile(p, absoluteDest);
+              await importFile(p, absoluteDest);
 
               editor
                 .chain()

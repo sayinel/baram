@@ -68,6 +68,7 @@ pub async fn embed_text(
 pub async fn search_knowledge(
     state: tauri::State<'_, EmbeddingState>,
     link_state: tauri::State<'_, super::index_cmd::LinkIndexState>,
+    ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
     query: String,
     top_k: Option<usize>,
     current_file: Option<String>,
@@ -127,8 +128,12 @@ pub async fn search_knowledge(
 
     // Build outgoing link map from LinkIndex for graph proximity
     let outgoing = {
-        let link_index = link_state.0.lock().await;
-        let graph = link_index.get_link_graph();
+        let key = ctx_mgr.active_id().await.unwrap_or_default();
+        let map = link_state.0.lock().await;
+        let graph = map
+            .get(&key)
+            .map(|idx| idx.get_link_graph())
+            .unwrap_or_default();
         let mut out_map: HashMap<String, Vec<String>> = HashMap::new();
         for edge in &graph.edges {
             out_map

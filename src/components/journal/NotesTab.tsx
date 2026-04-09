@@ -173,6 +173,7 @@ export function NotesTab() {
           const fileName = path.split("/").pop() ?? "Unknown";
           useFileStore.getState().setFileContent(path, content);
           useEditorStore.getState().openTab({
+            contextId: "",
             id: crypto.randomUUID(),
             filePath: path,
             title: fileName,
@@ -194,6 +195,7 @@ export function NotesTab() {
       await writeFile(notePath, content);
       useFileStore.getState().setFileContent(notePath, content);
       useEditorStore.getState().openTab({
+        contextId: "",
         id: crypto.randomUUID(),
         filePath: notePath,
         title: `${name}.md`,

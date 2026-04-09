@@ -153,6 +153,18 @@ const QuickCaptureDialog = lazy(() =>
   })),
 );
 
+// §89 Lazy-loaded file editor for standalone file mode
+const FileEditorLayout = lazy(() =>
+  import("./components/layout/FileEditorLayout").then((m) => ({
+    default: m.FileEditorLayout,
+  })),
+);
+
+// §89 File mode detection — resolved once at module load (URL params don't change)
+const _fileModeParams = new URLSearchParams(window.location.search);
+const FILE_MODE_PATH =
+  _fileModeParams.get("mode") === "file" ? _fileModeParams.get("path") : null;
+
 function App() {
   const { t } = useTranslation();
   const {
@@ -205,7 +217,8 @@ function App() {
 
   const editor = useEditor({
     extensions: createBaramExtensions({
-      onNavigate: (target, heading) => navigateRef.current(target, heading),
+      onNavigate: (target, heading, vaultAlias) =>
+        navigateRef.current(target, heading, vaultAlias),
       onNavigateBlockRef: (target, blockId) =>
         blockRefNavigateRef.current(target, blockId),
       onNavigateLocal: (href) => localLinkNavigateRef.current(href),
@@ -490,6 +503,26 @@ function App() {
               <Suspense fallback={null}>
                 <HomeScreen
                   onNewFile={handleNewFile}
+                  onNewVault={async () => {
+                    const { open } = await import("@tauri-apps/plugin-dialog");
+                    const selected = await open({ directory: true });
+                    if (!selected) return;
+                    const path =
+                      typeof selected === "string" ? selected : selected[0];
+                    if (!path) return;
+                    const { initVault } = await import("./ipc/context");
+                    const { useContextStore: ctxStore } =
+                      await import("./stores/context/context");
+                    const alias = path.split("/").pop() ?? "vault";
+                    await initVault(path, alias);
+                    await ctxStore
+                      .getState()
+                      .addContext("vault", path, { alias });
+                    const { switchContext } =
+                      await import("./stores/file/file");
+                    const activeId = ctxStore.getState().activeContextId;
+                    if (activeId) await switchContext(activeId);
+                  }}
                   onOpenFile={handleOpenFile}
                   onOpenFolder={handleOpenFolder}
                   onOpenRecentFile={handleOpenRecentFile}
@@ -636,6 +669,18 @@ function App() {
   );
 }
 
+/** §89 Root component — routes between vault mode and file mode. */
+function AppRoot() {
+  if (FILE_MODE_PATH) {
+    return (
+      <Suspense fallback={null}>
+        <FileEditorLayout filePath={FILE_MODE_PATH} />
+      </Suspense>
+    );
+  }
+  return <App />;
+}
+
 function AppWithErrorBoundary() {
   return (
     <ErrorBoundary
@@ -652,7 +697,7 @@ function AppWithErrorBoundary() {
         </div>
       }
     >
-      <App />
+      <AppRoot />
     </ErrorBoundary>
   );
 }

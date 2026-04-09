@@ -5,6 +5,7 @@ import { create } from "zustand";
 
 import { listDir, refreshIndex, setVaultRoot } from "../../ipc/invoke";
 import { logger } from "../../utils/logger";
+import { useContextStore } from "../context/context";
 import { useEditorStore } from "../editor/editor";
 import { useLinkStore } from "../editor/link";
 import { useSettingsStore } from "../settings/store";
@@ -21,22 +22,14 @@ interface FileState {
   addFileEntry: (parentPath: string, entry: FileEntry) => void;
   /** Close the current folder and return to home screen */
   closeFolder: () => void;
-  /** §56b Enter journal scope: save rootPath, switch to journal directory */
-  enterJournalScope: (journalDir: string) => void;
-
-  /** §56b Exit journal scope: restore original rootPath */
-  exitJournalScope: () => void;
   expandDir: (path: string) => void;
 
   // FileTree expanded directories (persisted across sidebar tab switches)
   expandedDirs: Set<string>;
   fileTree: FileEntry[];
-  isJournalScoped: boolean;
   /** Move a file/folder entry to a new parent directory */
   moveFileEntry: (oldPath: string, newParentPath: string) => void;
   openFiles: Map<string, string>; // path → content
-  // §56b Journal workspace scoping
-  originalRootPath: null | string; // rootPath backup before journal scope
   removeFileContent: (path: string) => void;
   /** Remove a file/folder entry by path */
   removeFileEntry: (path: string) => void;
@@ -52,6 +45,51 @@ interface FileState {
   // Tag filter for FileTree
   tagFilter: null | string;
   toggleExpandedDir: (path: string) => void;
+}
+
+/**
+ * §81 Open an additional folder as a new context without replacing the current one.
+ * Used by the "+" button in ContextTabBar.
+ */
+export async function addFolder(path: string): Promise<void> {
+  const contextStore = useContextStore.getState();
+
+  // Check if already open — just switch to it
+  const existing = contextStore.contexts.find((c) => c.path === path);
+  if (existing) {
+    await switchContext(existing.id);
+    return;
+  }
+
+  // Detect vault by loading .baram/config.json (bypasses check_vault).
+  // Must run BEFORE setVaultRoot — setVaultRoot registers a legacy "folder"
+  // context in Rust, and addContext's dedup would return it with wrong type.
+  const { getVaultConfigByPath } = await import("../../ipc/context");
+  let isVault = false;
+  try {
+    const cfg = await getVaultConfigByPath(path);
+    isVault = cfg.vault !== undefined && cfg.vault !== null;
+  } catch {
+    // No .baram/config.json or parse error → folder
+  }
+
+  // Register context in frontend + Rust FIRST (with correct type)
+  const added = await contextStore.addContext(
+    isVault ? "vault" : "folder",
+    path,
+  );
+
+  // §81 Update legacy VaultRootState AFTER addContext (so Rust dedup
+  // finds the correctly-typed context we just registered)
+  await setVaultRoot(path);
+
+  // Explicitly activate the new context (addContext only auto-activates the first)
+  contextStore._setActiveContextLocal(added.id);
+
+  await _loadContextFileTree(path);
+
+  // Update settings
+  useSettingsStore.getState().addRecentFolder(path);
 }
 
 /**
@@ -101,28 +139,107 @@ export function buildFileTree(
 
 /**
  * Open a folder: list its contents recursively, build tree, update store.
+ * §81 M2: Does NOT remove existing contexts — supports multi-context.
  */
 export async function openFolder(path: string): Promise<void> {
-  await setVaultRoot(path);
-  const entries = await listDir(path, true);
-  const tree = buildFileTree(entries, path);
-  useFileStore.getState().setRootPath(path);
-  useFileStore.getState().setFileTree(tree);
+  const contextStore = useContextStore.getState();
 
-  // Build link index in background so Graph View / Backlinks have data immediately
-  refreshIndex(path)
-    .then(() => useLinkStore.getState().invalidate())
-    .catch((err) => logger.warn("§30 openFolder: index build failed", err));
+  // Check if already open as a context
+  const existing = contextStore.contexts.find((c) => c.path === path);
+  if (!existing) {
+    // Detect vault via .baram/config.json (bypasses check_vault).
+    // Must run BEFORE setVaultRoot to avoid Rust legacy "folder" dedup.
+    const { getVaultConfigByPath } = await import("../../ipc/context");
+    let isVault = false;
+    try {
+      const cfg = await getVaultConfigByPath(path);
+      isVault = cfg.vault !== undefined && cfg.vault !== null;
+    } catch {
+      // No .baram/config.json or parse error → folder
+    }
+
+    // Register context with correct type FIRST
+    await contextStore
+      .addContext(isVault ? "vault" : "folder", path)
+      .catch((err) => {
+        logger.warn("§81 openFolder: context registration failed", err);
+      });
+  } else {
+    // Existing context (possibly persisted from previous session)
+    // Use local-only activation to avoid IPC failure for stale IDs
+    contextStore._setActiveContextLocal(existing.id);
+  }
+
+  // §81 Update legacy VaultRootState AFTER context registration
+  await setVaultRoot(path);
+
+  await _loadContextFileTree(path);
+
+  // Update settings
+  useSettingsStore.getState().addRecentFolder(path);
 }
 
-export const useFileStore = create<FileState>((set, get) => ({
+/**
+ * §81 Switch the active context — updates VaultRootState, reloads file tree + index.
+ * Called directly from ContextTabBar click handler (not via subscription).
+ */
+export async function switchContext(contextId: string): Promise<void> {
+  const contextStore = useContextStore.getState();
+  const ctx = contextStore.contexts.find((c) => c.id === contextId);
+  if (!ctx) return;
+
+  // 1. Update frontend active context (no IPC — avoid potential failures)
+  contextStore._setActiveContextLocal(contextId);
+
+  // 2. Update Rust VaultRootState
+  if (ctx.contextType !== "file") {
+    try {
+      await setVaultRoot(ctx.path);
+    } catch (err) {
+      logger.warn("§81 switchContext: setVaultRoot failed", err);
+    }
+
+    // 3. Reload file tree + rebuild link index
+    await _loadContextFileTree(ctx.path);
+  } else {
+    // FileContext: clear file tree
+    useFileStore.getState().setRootPath(null as unknown as string);
+    useFileStore.getState().setFileTree([]);
+  }
+}
+
+/**
+ * §81 Internal: Load file tree and index for a context path.
+ * Shared by openFolder, addFolder, and switchContext.
+ */
+let _loadingPath: null | string = null;
+
+async function _loadContextFileTree(path: string): Promise<void> {
+  // §81 Prevent concurrent loads for the same path only
+  if (_loadingPath === path) return;
+  _loadingPath = path;
+
+  try {
+    const entries = await listDir(path, true);
+    const tree = buildFileTree(entries, path);
+    useFileStore.getState().setRootPath(path);
+    useFileStore.getState().setFileTree(tree);
+
+    // Build link index in background
+    refreshIndex(path)
+      .then(() => useLinkStore.getState().invalidate())
+      .catch((err) =>
+        logger.warn("§81 _loadContextFileTree: refreshIndex failed", err),
+      );
+  } finally {
+    _loadingPath = null;
+  }
+}
+
+export const useFileStore = create<FileState>((set) => ({
   rootPath: null,
   fileTree: [],
   openFiles: new Map(),
-
-  // §56b Journal scoping
-  originalRootPath: null,
-  isJournalScoped: false,
 
   setRootPath: (path) => set({ rootPath: path }),
 
@@ -325,29 +442,6 @@ export const useFileStore = create<FileState>((set, get) => ({
       return { openFiles, fileTree: newTree };
     }),
 
-  enterJournalScope: (journalDir) => {
-    const state = get();
-    // Only save original if not already scoped
-    const originalRootPath = state.isJournalScoped
-      ? state.originalRootPath
-      : state.rootPath;
-    set({
-      originalRootPath,
-      rootPath: journalDir,
-      isJournalScoped: true,
-    });
-  },
-
-  exitJournalScope: () => {
-    const state = get();
-    if (!state.isJournalScoped) return;
-    set({
-      rootPath: state.originalRootPath,
-      originalRootPath: null,
-      isJournalScoped: false,
-    });
-  },
-
   tagFilter: null,
   setTagFilter: (tagFilter) => set({ tagFilter }),
 
@@ -373,5 +467,47 @@ export const useFileStore = create<FileState>((set, get) => ({
     useSettingsStore.getState().setLastOpenedFolder(null);
     useSettingsStore.getState().setLastOpenedFile(null);
     set({ rootPath: null, fileTree: [], expandedDirs: new Set() });
+
+    // §81 Remove all contexts so the context tab bar clears
+    const ctxStore = useContextStore.getState();
+    for (const ctx of [...ctxStore.contexts]) {
+      ctxStore.removeContext(ctx.id).catch(() => {});
+    }
   },
 }));
+
+/**
+ * §85 M2b: Check if the active context is a journal vault.
+ * Replaces the old isJournalScoped flag.
+ */
+export function isActiveContextJournal(): boolean {
+  const ctx = useContextStore.getState().activeContext();
+  return ctx?.vaultType === "journal";
+}
+
+/**
+ * §81 Cross-store sync: keep fileStore.rootPath in sync with the active context.
+ *
+ * File tree reload and index rebuild are handled EXPLICITLY by:
+ * - switchContext() — called from ContextTabBar click
+ * - openFolder() / addFolder() — called from folder open flows
+ *
+ * This subscription only syncs rootPath for components that read it.
+ * It does NOT call listDir/setFileTree to avoid race conditions and
+ * unexpected FileTree refreshes during normal file operations.
+ */
+useContextStore.subscribe((state, prevState) => {
+  if (state.activeContextId === prevState.activeContextId) return;
+  if (!state.activeContextId) return;
+
+  const ctx = state.contexts.find((c) => c.id === state.activeContextId);
+  if (!ctx) return;
+
+  // Sync rootPath only (no listDir, no refreshIndex)
+  if (ctx.contextType !== "file") {
+    const fileStore = useFileStore.getState();
+    if (fileStore.rootPath !== ctx.path) {
+      fileStore.setRootPath(ctx.path);
+    }
+  }
+});

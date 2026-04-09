@@ -314,6 +314,17 @@ pub fn start_watching(
                     continue;
                 }
 
+                // Skip internal directories to prevent event floods
+                // (e.g., git operations can generate hundreds of .git/ events)
+                if path_str.contains("/.git/")
+                    || path_str.contains("/.baram/")
+                    || path_str.contains("/node_modules/")
+                    || path_str.contains("/.next/")
+                    || path_str.contains("/__pycache__/")
+                {
+                    continue;
+                }
+
                 match event.kind {
                     EventKind::Create(_) => {
                         let is_dir = event_path.is_dir();

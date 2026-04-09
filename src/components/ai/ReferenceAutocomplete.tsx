@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FileEntry } from "../../stores/file/file";
 
 import { useAIStore } from "../../stores/ai/ai";
+import { useContextStore } from "../../stores/context/context";
 import { useFileStore } from "../../stores/file/file";
 import { fuzzyMatch } from "../../utils/file-search";
 
@@ -43,6 +44,7 @@ export function ReferenceAutocomplete({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
   const fileTree = useFileStore((s) => s.fileTree);
+  const contexts = useContextStore((s) => s.contexts);
 
   // §44 Wrap onSelect to capture clipboard content when @clipboard is chosen
   const handleSelect = useCallback(
@@ -65,11 +67,45 @@ export function ReferenceAutocomplete({
 
   const queryLower = query.toLowerCase();
 
+  // §87 Vault refs: @all-vaults and @vault-name for each non-file context
+  const vaultRefs = useMemo<RefOption[]>(() => {
+    const refs: RefOption[] = [];
+
+    // @all-vaults only when multiple non-file contexts exist
+    const nonFileContexts = contexts.filter((c) => c.contextType !== "file");
+    if (nonFileContexts.length > 1) {
+      refs.push({
+        label: "@all-vaults",
+        value: "@all-vaults",
+        description: "All open vaults as context",
+      });
+    }
+
+    // @vault-name for each vault/folder context
+    for (const ctx of nonFileContexts) {
+      const name = ctx.alias || ctx.label;
+      refs.push({
+        label: `@${name}`,
+        value: `@vault:${ctx.id}`,
+        description: `${ctx.label} vault content`,
+      });
+    }
+
+    return refs;
+  }, [contexts]);
+
   const options = useMemo(() => {
     const result: RefOption[] = [];
 
     // Filter built-in refs
     for (const ref of BUILTIN_REFS) {
+      if (ref.label.toLowerCase().includes(queryLower) || queryLower === "") {
+        result.push(ref);
+      }
+    }
+
+    // §87 Vault refs — filtered by query
+    for (const ref of vaultRefs) {
       if (ref.label.toLowerCase().includes(queryLower) || queryLower === "") {
         result.push(ref);
       }
@@ -114,7 +150,7 @@ export function ReferenceAutocomplete({
     }
 
     return result;
-  }, [queryLower, query, fileTree]);
+  }, [queryLower, query, fileTree, vaultRefs]);
 
   // Reset selection when options change
   useEffect(() => {

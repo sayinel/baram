@@ -244,6 +244,15 @@
   text-overflow: ellipsis;
 }
 
+.tab-ctx-dot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  margin-right: 4px;
+  border-radius: 50%;
+}
+
 .tab-close {
   display: flex;
   align-items: center;

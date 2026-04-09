@@ -5,9 +5,10 @@ import type { Editor } from "@tiptap/core";
 
 import { writeFile } from "../ipc/invoke";
 import { ensureJournalFile } from "../services/journal-file-service";
+import { useContextStore } from "../stores/context/context";
 import { useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
-import { useFileStore } from "../stores/file/file";
+import { isActiveContextJournal, useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
 import { useNavigationStore } from "../stores/ui/navigation";
 import {
@@ -15,6 +16,7 @@ import {
   findHeadingPosByText,
 } from "../utils/editor/block-nav";
 import { resolveWikilinkTarget } from "../utils/editor/wikilink-nav";
+import { flattenFileTree } from "../utils/file-search";
 import { isDateString, resolveJournalDir } from "../utils/journal/journal";
 import { logger } from "../utils/logger";
 
@@ -28,9 +30,13 @@ export function useNavigation({
   handleOpenFilePath,
 }: UseNavigationParams) {
   // §28 Wikilink navigation ref — breaks circular dependency (editor ↔ navigate)
-  const navigateRef = useRef<(target: string, heading?: null | string) => void>(
-    () => {},
-  );
+  const navigateRef = useRef<
+    (
+      target: string,
+      heading?: null | string,
+      vaultAlias?: null | string,
+    ) => void
+  >(() => {});
   // §30c Block reference navigation ref
   const blockRefNavigateRef = useRef<(target: string, blockId: string) => void>(
     () => {},
@@ -45,8 +51,9 @@ export function useNavigation({
   const isNavBackForwardRef = useRef(false);
 
   // §28 Wikilink Cmd+Click navigation
+  // §87 Cross-vault: vaultAlias passed through from wikilink node attrs
   const handleWikilinkNavigate = useCallback(
-    (target: string, heading?: null | string) => {
+    (target: string, heading?: null | string, vaultAlias?: null | string) => {
       // §56 Date wikilink → open/create journal file
       if (isDateString(target)) {
         const {
@@ -77,14 +84,49 @@ export function useNavigation({
         return;
       }
 
-      const resolved = resolveWikilinkTarget(target);
+      const resolved = resolveWikilinkTarget(target, vaultAlias);
+
+      // §87 Cross-vault async fallback: if sync resolution failed but alias exists,
+      // try to find the file in the other vault via IPC
+      if (!resolved && vaultAlias) {
+        const contexts = useContextStore.getState().contexts;
+        const aliasLower = vaultAlias.toLowerCase();
+        const ctx = contexts.find((c) => c.alias?.toLowerCase() === aliasLower);
+        if (ctx) {
+          (async () => {
+            try {
+              const { listDir } = await import("../ipc/invoke");
+              const { buildFileTree } = await import("../stores/file/file");
+              const entries = await listDir(ctx.path, true);
+              const tree = buildFileTree(entries, ctx.path);
+              const flat = flattenFileTree(tree, ctx.path);
+              const targetLower = target.toLowerCase();
+              const match = flat.find((f) => {
+                if (!f.name.endsWith(".md") && !f.name.endsWith(".markdown"))
+                  return false;
+                const stem = f.name.endsWith(".markdown")
+                  ? f.name.slice(0, -9)
+                  : f.name.slice(0, -3);
+                return stem.toLowerCase() === targetLower;
+              });
+              if (match) {
+                await handleOpenFilePath(match.path);
+              }
+            } catch (err) {
+              logger.error("[Nav] Cross-vault navigation failed:", err);
+            }
+          })();
+          return;
+        }
+      }
 
       // File doesn't exist → create it, refresh tree, then open
       if (!resolved) {
-        const { rootPath, isJournalScoped } = useFileStore.getState();
+        const { rootPath } = useFileStore.getState();
         if (!rootPath) return;
 
-        // §56l Journal scope: create new notes in {journalDir}/notes/
+        // §85 M2b: Journal scope — create new notes in {journalDir}/notes/
+        const isJournalScoped = isActiveContextJournal();
         let newPath: string;
         if (isJournalScoped) {
           const { journalDirectory } = useSettingsStore.getState();

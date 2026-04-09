@@ -32,6 +32,12 @@ export async function getOpenedUrls(): Promise<string[]> {
   return invoke<string[]>("get_opened_urls");
 }
 
+/** Import a file from any location (including outside vault) into the vault.
+ *  Only the destination path is vault-confined; source may be external. */
+export async function importFile(from: string, to: string): Promise<void> {
+  return invoke<void>("import_file", { from, to });
+}
+
 export async function listDir(
   path: string,
   recursive?: boolean,

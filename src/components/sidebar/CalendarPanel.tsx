@@ -291,6 +291,7 @@ export function CalendarPanel() {
       } else {
         useFileStore.getState().setFileContent(notePath, content);
         useEditorStore.getState().openTab({
+          contextId: "",
           id: crypto.randomUUID(),
           filePath: notePath,
           title: notePath.split("/").pop() ?? "Note",

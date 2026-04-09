@@ -30,6 +30,7 @@ import {
   findHeadingPosByText,
 } from "../utils/editor/block-nav";
 import { mdLineToPmBlockStart } from "../utils/editor/cursor-mapper";
+import { markContentLoaded } from "../utils/editor/programmatic-update";
 import { isMarkdownFile } from "../utils/file-type";
 import { logger } from "../utils/logger";
 
@@ -154,7 +155,10 @@ export function useTabSwitching({
         doc: emptyDoc,
         plugins: editor.state.plugins,
       });
-      editor.view.updateState(newState);
+      // Defer updateState outside React commit phase
+      setTimeout(() => {
+        editor.view.updateState(newState);
+      });
       return;
     }
 
@@ -241,7 +245,11 @@ export function useTabSwitching({
       const cachedState = editorStateCache.current.get(activeTabId!);
       const cachedScrollTop = scrollTopCache.current.get(activeTabId!);
       if (cachedState) {
-        editor.view.updateState(cachedState);
+        // Defer updateState outside React commit phase
+        setTimeout(() => {
+          editor.view.updateState(cachedState);
+          markContentLoaded(activeTabId!);
+        });
         // Restore exact scroll position (not just cursor visibility)
         if (cachedScrollTop !== undefined) {
           requestAnimationFrame(() => {
@@ -286,8 +294,12 @@ export function useTabSwitching({
               plugins: editor.state.plugins,
               selection: TextSelection.atStart(doc),
             });
-            editor.view.updateState(newState);
-            setIsParsing(false);
+            // Defer updateState outside React commit phase
+            setTimeout(() => {
+              editor.view.updateState(newState);
+              markContentLoaded(activeTabId!);
+              setIsParsing(false);
+            });
             // Reset scroll to top for freshly opened documents
             requestAnimationFrame(() => {
               const scrollContainer = document.querySelector(

@@ -459,6 +459,7 @@ export function useKeybindingActions({
           // Open the promoted note
           useFileStore.getState().setFileContent(notePath, noteContent);
           useEditorStore.getState().openTab({
+            contextId: "",
             id: crypto.randomUUID(),
             filePath: notePath,
             title: filename,

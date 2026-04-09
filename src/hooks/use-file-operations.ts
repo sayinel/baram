@@ -8,6 +8,7 @@ import type { Editor } from "@tiptap/core";
 import { readFile, updateFileIndex, writeFile } from "../ipc/invoke";
 import { prosemirrorToMarkdown } from "../pipeline/pm-to-md";
 import { notifyFileOpen, notifyFileSave } from "../plugins/plugin-lifecycle";
+import { useContextStore } from "../stores/context/context";
 import { isGraphTab } from "../stores/editor/editor";
 import { useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
@@ -44,7 +45,14 @@ export function useFileOperations({
         title = tabNumber === 1 ? "Untitled" : `Untitled ${tabNumber}`;
       }
       useFileStore.getState().setFileContent(id, "");
-      openTab({ id, filePath: "", title, isDirty: false, isPinned: false });
+      openTab({
+        contextId: "",
+        id,
+        filePath: "",
+        title,
+        isDirty: false,
+        isPinned: false,
+      });
     },
     [openTab],
   );
@@ -72,6 +80,7 @@ export function useFileOperations({
       const fileName = selected.split("/").pop() ?? "Unknown";
       setFileContent(selected, content);
       openTab({
+        contextId: "",
         id: crypto.randomUUID(),
         filePath: selected,
         title: fileName,
@@ -255,10 +264,19 @@ export function useFileOperations({
     }
 
     try {
+      // §89 Ensure context exists — vault/folder for internal files,
+      // FileContext for external files. Must happen before readFile
+      // so Rust check_vault passes.
+      const contextStore = useContextStore.getState();
+      const context = await contextStore.ensureFileContext(filePath);
+      const contextId = context.id;
+
       const content = await readFile(filePath);
       const fileName = filePath.split("/").pop() ?? "Unknown";
       useFileStore.getState().setFileContent(filePath, content);
+
       useEditorStore.getState().openTab({
+        contextId,
         id: crypto.randomUUID(),
         filePath,
         title: fileName,
@@ -269,7 +287,7 @@ export function useFileOperations({
       useSettingsStore.getState().addRecentFile(filePath);
       useSettingsStore.getState().setLastOpenedFile(filePath);
     } catch (err) {
-      logger.error("[App] Failed to open file from OS:", err);
+      logger.error("[App] Failed to open file:", err);
     }
   }, []);
 

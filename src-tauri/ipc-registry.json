@@ -837,6 +837,171 @@
       "milestone": "M11",
       "status": "implemented",
       "description": "단일 파일 임베딩 인덱싱 (증분 업데이트, 청크 수 반환)"
+    },
+    {
+      "name": "add_context",
+      "input": { "info": "ContextInfo" },
+      "output": "ContextInfo",
+      "module": "context",
+      "spec": "§80",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "컨텍스트(Vault/Folder/File) 등록"
+    },
+    {
+      "name": "remove_context",
+      "input": { "contextId": "string" },
+      "output": "void",
+      "module": "context",
+      "spec": "§80",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "컨텍스트 제거"
+    },
+    {
+      "name": "set_active_context",
+      "input": { "contextId": "string" },
+      "output": "void",
+      "module": "context",
+      "spec": "§81",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "활성 컨텍스트 전환"
+    },
+    {
+      "name": "get_contexts",
+      "input": {},
+      "output": "ContextInfo[]",
+      "module": "context",
+      "spec": "§80",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "등록된 모든 컨텍스트 목록 조회"
+    },
+    {
+      "name": "get_vault_config",
+      "input": { "contextId": "string" },
+      "output": "VaultConfig?",
+      "module": "context",
+      "spec": "§86",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "vault 설정 조회 (context ID 기반)"
+    },
+    {
+      "name": "set_vault_config",
+      "input": { "contextId": "string", "config": "VaultConfig" },
+      "output": "void",
+      "module": "context",
+      "spec": "§86",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "vault 설정 저장 (.baram/config.json)"
+    },
+    {
+      "name": "get_vault_config_by_path",
+      "input": { "path": "string" },
+      "output": "VaultConfig",
+      "module": "context",
+      "spec": "§86",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "vault 설정 조회 (경로 기반, context ID 불필요)"
+    },
+    {
+      "name": "set_vault_config_by_path",
+      "input": { "path": "string", "config": "VaultConfig" },
+      "output": "void",
+      "module": "context",
+      "spec": "§86",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "vault 설정 저장 (경로 기반, context ID 불필요)"
+    },
+    {
+      "name": "init_vault",
+      "input": { "path": "string", "alias": "string" },
+      "output": "VaultConfig",
+      "module": "context",
+      "spec": "§88",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "폴더를 vault로 초기화 (.baram/config.json 생성)"
+    },
+    {
+      "name": "update_context_alias",
+      "input": { "contextId": "string", "alias": "string" },
+      "output": "void",
+      "module": "context",
+      "spec": "§88",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "컨텍스트 alias 변경 (cross-vault 링크용)"
+    },
+    {
+      "name": "update_context_label",
+      "input": { "contextId": "string", "label": "string" },
+      "output": "void",
+      "module": "context",
+      "spec": "§88",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "컨텍스트 표시 이름 변경"
+    },
+    {
+      "name": "update_context_color",
+      "input": { "contextId": "string", "color": "string" },
+      "output": "void",
+      "module": "context",
+      "spec": "§88",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "컨텍스트 색상 변경"
+    },
+    {
+      "name": "resolve_cross_vault_link",
+      "input": { "alias": "string", "target": "string" },
+      "output": "string?",
+      "module": "context",
+      "spec": "§87",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "cross-vault 링크 해석 ([[alias::target]] → 파일 경로)"
+    },
+    {
+      "name": "import_file",
+      "input": { "from": "string", "to": "string" },
+      "output": "void",
+      "module": "fs",
+      "spec": "§3.2",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "외부 파일을 vault 내부로 가져오기 (source는 vault 외부 허용)"
+    },
+    {
+      "name": "resolve_settings",
+      "input": { "contextId": "string" },
+      "output": "ResolvedSettings",
+      "module": "context",
+      "spec": "§86",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "글로벌 설정 + vault 설정 머지 결과 조회"
     }
   ],
   "events": [

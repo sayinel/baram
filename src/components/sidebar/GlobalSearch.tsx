@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { SearchResult } from "../../ipc/types";
 
 import { readFile, searchFiles, writeFile } from "../../ipc/invoke";
+import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
@@ -19,11 +20,15 @@ interface FileGroup {
 
 export function GlobalSearch() {
   const rootPath = useFileStore((s) => s.rootPath);
+  const contexts = useContextStore((s) => s.contexts);
 
   const [query, setQuery] = useState("");
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [wholeWord, setWholeWord] = useState(false);
   const [useRegex, setUseRegex] = useState(false);
+  const [searchScope, setSearchScope] = useState<
+    "all" | "all-vaults" | "current"
+  >("current");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<null | string>(null);
@@ -56,18 +61,40 @@ export function GlobalSearch() {
         return;
       }
 
+      const searchOptions = {
+        caseSensitive,
+        wholeWord,
+        regex: useRegex,
+        maxResults: 1000,
+        includeGlob: includeFilter.trim() || undefined,
+        excludeGlob: excludeFilter.trim() || undefined,
+      };
+
       setLoading(true);
       setError(null);
       try {
-        const res = await searchFiles(rootPath, q, {
-          caseSensitive,
-          wholeWord,
-          regex: useRegex,
-          maxResults: 1000,
-          includeGlob: includeFilter.trim() || undefined,
-          excludeGlob: excludeFilter.trim() || undefined,
-        });
-        setResults(res);
+        if (searchScope === "all" || searchScope === "all-vaults") {
+          const ctxs = useContextStore.getState().contexts;
+          const filtered =
+            searchScope === "all-vaults"
+              ? ctxs.filter((c) => c.contextType !== "file")
+              : ctxs;
+          const searchPaths =
+            filtered.length > 0 ? filtered.map((c) => c.path) : [rootPath];
+          const allResults: SearchResult[] = [];
+          for (const path of searchPaths) {
+            try {
+              const res = await searchFiles(path, q, searchOptions);
+              allResults.push(...res);
+            } catch {
+              // Skip contexts that fail
+            }
+          }
+          setResults(allResults);
+        } else {
+          const res = await searchFiles(rootPath, q, searchOptions);
+          setResults(res);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
         setResults([]);
@@ -82,6 +109,7 @@ export function GlobalSearch() {
       useRegex,
       includeFilter,
       excludeFilter,
+      searchScope,
     ],
   );
 
@@ -154,6 +182,7 @@ export function GlobalSearch() {
           const fileName = extractFileNameFromPath(filePath);
           useFileStore.getState().setFileContent(filePath, content);
           openTab({
+            contextId: "",
             id: crypto.randomUUID(),
             filePath,
             title: fileName,
@@ -276,6 +305,32 @@ export function GlobalSearch() {
           value={query}
         />
       </div>
+
+      {contexts.length > 1 && (
+        <div className="global-search-scope">
+          <button
+            className={`global-search-scope__btn ${searchScope === "current" ? "global-search-scope__btn--active" : ""}`}
+            onClick={() => setSearchScope("current")}
+            title="Search current vault only"
+          >
+            Current
+          </button>
+          <button
+            className={`global-search-scope__btn ${searchScope === "all-vaults" ? "global-search-scope__btn--active" : ""}`}
+            onClick={() => setSearchScope("all-vaults")}
+            title="Search all open vaults (excludes standalone files)"
+          >
+            Vaults
+          </button>
+          <button
+            className={`global-search-scope__btn ${searchScope === "all" ? "global-search-scope__btn--active" : ""}`}
+            onClick={() => setSearchScope("all")}
+            title="Search all open contexts including standalone files"
+          >
+            All
+          </button>
+        </div>
+      )}
 
       <div className="global-search-toggles">
         <button

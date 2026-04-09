@@ -8,6 +8,7 @@ import { Suggestion } from "@tiptap/suggestion";
 
 import { WikilinkMenuList } from "../../components/command/WikilinkMenu";
 import { listDir, refreshIndex, writeFile } from "../../ipc/invoke";
+import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
 import { buildFileTree, useFileStore } from "../../stores/file/file";
 import { flattenFileTree, fuzzyScore } from "../../utils/file-search";
@@ -68,58 +69,180 @@ export const WikilinkSuggest = Extension.create({
           props: WikilinkSuggestionItem;
           range: { from: number; to: number };
         }) => {
-          // When SyntaxReveal has a wikilink expanded, replace the entire expanded range
-          // instead of just the Suggestion range (which misses the trailing ]])
-          const expanded = getSyntaxRevealExpanded(ed.view.state);
-          const effectiveRange =
-            expanded?.kind === "wikilink"
-              ? { from: expanded.from, to: expanded.to }
-              : range;
+          try {
+            // When SyntaxReveal has a wikilink expanded, replace the entire expanded range
+            // instead of just the Suggestion range (which misses the trailing ]])
+            const expanded = getSyntaxRevealExpanded(ed.view.state);
+            const effectiveRange =
+              expanded?.kind === "wikilink"
+                ? { from: expanded.from, to: expanded.to }
+                : range;
 
-          // Clear SyntaxReveal state if it was expanded
-          if (expanded?.kind === "wikilink") {
-            const { tr } = ed.view.state;
-            tr.setMeta(syntaxRevealKey, { expanded: null });
-            ed.view.dispatch(tr);
-          }
+            // Clear SyntaxReveal state if it was expanded
+            if (expanded?.kind === "wikilink") {
+              const { tr } = ed.view.state;
+              tr.setMeta(syntaxRevealKey, { expanded: null });
+              ed.view.dispatch(tr);
+            }
 
-          if (props.kind === "create") {
-            // Create new file and insert wikilink
-            const { rootPath } = useFileStore.getState();
-            if (rootPath) {
-              const newPath = `${rootPath}/${props.target}.md`;
-              writeFile(newPath, `# ${props.target}\n`)
-                .then(async () => {
-                  await refreshIndex(rootPath);
-                  // Refresh file tree so the new file appears in sidebar & navigation
-                  const entries = await listDir(rootPath, true);
-                  const tree = buildFileTree(entries, rootPath);
-                  useFileStore.getState().setFileTree(tree);
-                })
-                .catch(() => {});
+            if (props.kind === "create") {
+              // Create new file and insert wikilink
+              const { rootPath } = useFileStore.getState();
+              if (rootPath) {
+                const newPath = `${rootPath}/${props.target}.md`;
+                writeFile(newPath, `# ${props.target}\n`)
+                  .then(async () => {
+                    await refreshIndex(rootPath);
+                    // Refresh file tree so the new file appears in sidebar & navigation
+                    const entries = await listDir(rootPath, true);
+                    const tree = buildFileTree(entries, rootPath);
+                    useFileStore.getState().setFileTree(tree);
+                  })
+                  .catch(() => {});
+              }
+              ed.chain()
+                .focus()
+                .deleteRange(effectiveRange)
+                .insertWikilink({ target: props.target })
+                .run();
+              return;
+            }
+
+            // Delete the range and insert a wikilink node
+            const attrs: {
+              heading?: null | string;
+              target: string;
+              vaultAlias?: null | string;
+            } = {
+              target: props.target,
+            };
+            if (props.heading) {
+              attrs.heading = props.heading;
+            }
+            if (props.vaultAlias) {
+              attrs.vaultAlias = props.vaultAlias;
             }
             ed.chain()
               .focus()
               .deleteRange(effectiveRange)
-              .insertWikilink({ target: props.target })
+              .insertWikilink(attrs)
               .run();
-            return;
+          } catch {
+            // Command failed — ignore (suggestion will close)
           }
-
-          // Delete the range and insert a wikilink node
-          const attrs: { heading?: null | string; target: string } = {
-            target: props.target,
-          };
-          if (props.heading) {
-            attrs.heading = props.heading;
-          }
-          ed.chain()
-            .focus()
-            .deleteRange(effectiveRange)
-            .insertWikilink(attrs)
-            .run();
         },
         items: async ({ query }: { query: string }) => {
+          // §87 Cross-vault: detect alias:: prefix
+          const colonIdx = query.indexOf("::");
+          if (colonIdx > 0) {
+            const alias = query.slice(0, colonIdx);
+            const crossTarget = query.slice(colonIdx + 2);
+            const contexts = useContextStore.getState().contexts;
+            const aliasLower = alias.toLowerCase();
+            const ctx = contexts.find(
+              (c) => c.alias?.toLowerCase() === aliasLower,
+            );
+            if (ctx) {
+              // Try current file tree first (works if this is the active context)
+              const { rootPath, fileTree } = useFileStore.getState();
+              let flat =
+                rootPath === ctx.path && fileTree.length > 0
+                  ? flattenFileTree(fileTree, rootPath)
+                  : null;
+
+              // §87 Cross-vault: fetch file list from non-active vault via IPC
+              if (!flat) {
+                try {
+                  const { listDir } = await import("../../ipc/invoke");
+                  const { buildFileTree } =
+                    await import("../../stores/file/file");
+                  const entries = await listDir(ctx.path, true);
+                  const tree = buildFileTree(entries, ctx.path);
+                  flat = flattenFileTree(tree, ctx.path);
+                } catch {
+                  flat = null;
+                }
+              }
+
+              if (flat && flat.length > 0) {
+                const mdFiles = flat
+                  .filter(
+                    (f) =>
+                      f.name.endsWith(".md") || f.name.endsWith(".markdown"),
+                  )
+                  .sort((a, b) => a.name.localeCompare(b.name));
+
+                // §87 Searching: flat fuzzy results (no grouping)
+                if (crossTarget) {
+                  const crossFiles: WikilinkSuggestionItem[] = mdFiles.map(
+                    (f, idx) => ({
+                      id: `cross-${idx}`,
+                      target: fileNameWithoutExtension(f.name),
+                      label: f.name,
+                      path: f.path,
+                      vaultAlias: alias,
+                    }),
+                  );
+                  return filterFiles(crossFiles, crossTarget, 30);
+                }
+
+                // §87 Browsing (empty query): grouped by folder with headers
+                const groups = new Map<string, typeof mdFiles>();
+                for (const f of mdFiles) {
+                  const dir = f.path.slice(ctx.path.length + 1);
+                  const folder =
+                    dir.lastIndexOf("/") > 0
+                      ? dir.slice(0, dir.lastIndexOf("/"))
+                      : "/";
+                  if (!groups.has(folder)) groups.set(folder, []);
+                  groups.get(folder)!.push(f);
+                }
+
+                const result: WikilinkSuggestionItem[] = [];
+                // Sort folders: subfolders first (alphabetical), root last
+                const sortedFolders = [...groups.keys()].sort((a, b) =>
+                  a === "/" ? 1 : b === "/" ? -1 : a.localeCompare(b),
+                );
+                let idx = 0;
+                for (const folder of sortedFolders) {
+                  const files = groups.get(folder)!;
+                  result.push({
+                    id: `folder-${folder}`,
+                    target: "",
+                    label: folder === "/" ? "/ (root)" : folder,
+                    path: "",
+                    kind: "folder-header",
+                    folder,
+                  });
+                  for (const f of files) {
+                    result.push({
+                      id: `cross-${idx++}`,
+                      target: fileNameWithoutExtension(f.name),
+                      label: f.name,
+                      path: f.path,
+                      vaultAlias: alias,
+                      folder,
+                    });
+                  }
+                }
+                return result;
+              }
+
+              // Fallback hint if file listing failed
+              return [
+                {
+                  id: "__hint_switch__",
+                  target: "",
+                  label: `No files found in "${ctx.alias}" vault`,
+                  path: "",
+                  kind: "hint" as const,
+                },
+              ];
+            }
+            // Unknown alias — show no results
+            return [];
+          }
+
           const files = getFileItems();
 
           // §61 Namespace: [[./  or [[../  → filter to relative directory
@@ -230,6 +353,23 @@ export const WikilinkSuggest = Extension.create({
             }
           }
 
+          // §87 Cross-vault hint when multiple contexts are open
+          const contexts = useContextStore.getState().contexts;
+          const aliasContexts = contexts.filter((c) => c.alias);
+          if (aliasContexts.length > 0) {
+            const aliasExamples = aliasContexts
+              .slice(0, 2)
+              .map((c) => c.alias)
+              .join(", ");
+            filtered.push({
+              id: "__hint_crossvault__",
+              target: "",
+              label: `Cross-vault: type alias:: (e.g., ${aliasExamples}::)`,
+              path: "",
+              kind: "hint",
+            });
+          }
+
           return filtered;
         },
         render: createSuggestionRenderer<WikilinkSuggestionItem>({
@@ -240,6 +380,44 @@ export const WikilinkSuggest = Extension.create({
             props,
             state: SuggestionRendererState<WikilinkSuggestionItem>,
           ) => {
+            // §87 `]` key: if query ends with `]`, the user typed `]]` to close.
+            // Parse the query for alias::target and create the wikilink node.
+            if (props.event.key === "]" && state.range) {
+              const queryFrom = state.range.from + 2; // skip [[
+              const rawQuery = editor.view.state.doc.textBetween(
+                queryFrom,
+                state.range.to,
+              );
+              // The first `]` was already inserted, so rawQuery ends with `]`
+              if (rawQuery.endsWith("]")) {
+                // Strip trailing `]` to get the actual target text
+                const query = rawQuery.slice(0, -1);
+                if (query) {
+                  const colonIdx = query.indexOf("::");
+                  const vaultAlias =
+                    colonIdx > 0 ? query.slice(0, colonIdx) : null;
+                  const target =
+                    colonIdx > 0 ? query.slice(colonIdx + 2) : query;
+
+                  if (target) {
+                    // Delete `[[query]]` and insert wikilink node
+                    const from = state.range.from;
+                    const to = state.range.to + 1; // +1 for the `]` being typed now
+                    editor
+                      .chain()
+                      .focus()
+                      .deleteRange({ from, to })
+                      .insertWikilink({
+                        target,
+                        vaultAlias,
+                      })
+                      .run();
+                    return true;
+                  }
+                }
+              }
+            }
+
             // Tab: bash-style common-prefix completion
             if (props.event.key === "Tab" && state.range) {
               const queryFrom = state.range.from + 2; // skip [[

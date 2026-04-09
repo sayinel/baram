@@ -76,6 +76,7 @@ export function SkillGeneratorDialog({
       // Open the new file in editor
       useFileStore.getState().setFileContent(filePath, content);
       useEditorStore.getState().openTab({
+        contextId: "",
         id: crypto.randomUUID(),
         filePath,
         title: `${safeName}.md`,

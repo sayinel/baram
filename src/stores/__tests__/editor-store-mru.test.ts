@@ -70,6 +70,7 @@ describe("MRU Tab Order", () => {
     useEditorStore.setState({
       tabs: [
         {
+          contextId: "",
           id: "a",
           filePath: "a.md",
           title: "A",
@@ -77,6 +78,7 @@ describe("MRU Tab Order", () => {
           isPinned: false,
         },
         {
+          contextId: "",
           id: "b",
           filePath: "b.md",
           title: "B",
@@ -94,6 +96,7 @@ describe("MRU Tab Order", () => {
   it("openTab adds new tab to mruOrder front", () => {
     useEditorStore.setState({ mruOrder: ["a"] });
     useEditorStore.getState().openTab({
+      contextId: "",
       id: "b",
       filePath: "b.md",
       title: "B",
