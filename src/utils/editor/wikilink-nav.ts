@@ -1,7 +1,9 @@
+import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
 // §28 Wikilink navigation — resolve target to file path
 // §61 Namespace — relative path resolution (./  ../)
-import { useFileStore } from "../../stores/file/file";
+// §87 Cross-vault link resolution
+import { isActiveContextJournal, useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { flattenFileTree } from "../file-search";
 import { isDateString, resolveJournalDir } from "../journal/journal";
@@ -39,6 +41,7 @@ export function resolveRelativeTarget(
  * Resolve a wikilink target (e.g. "architecture") to a file path.
  * Case-insensitive exact match on filename stem (without .md extension).
  *
+ * §87 Cross-vault resolution: when vaultAlias is set, resolve in that context.
  * §61 Namespace-aware resolution order:
  * 0. [[./name]] or [[../path/name]] → relative to current file's directory
  * §56l Journal-aware resolution order:
@@ -49,9 +52,24 @@ export function resolveRelativeTarget(
  */
 export function resolveWikilinkTarget(
   target: string,
+  vaultAlias?: null | string,
 ): null | { name: string; path: string } {
-  const { rootPath, fileTree, isJournalScoped } = useFileStore.getState();
+  // §87 Cross-vault: resolve in the alias context
+  if (vaultAlias) {
+    return resolveCrossVaultTarget(vaultAlias, target);
+  }
+
+  // §89 FileContext: resolve wikilinks within the same folder only
+  const activeCtx = useContextStore.getState().activeContext();
+  if (activeCtx?.contextType === "file") {
+    return resolveInSameFolder(target, activeCtx.path);
+  }
+
+  const { rootPath, fileTree } = useFileStore.getState();
   if (!rootPath || fileTree.length === 0) return null;
+
+  // §85 M2b: Derive journal scope from context store
+  const isJournalScoped = isActiveContextJournal();
 
   const flat = flattenFileTree(fileTree, rootPath);
 
@@ -123,4 +141,92 @@ export function resolveWikilinkTarget(
   }
 
   return null;
+}
+
+/**
+ * §87 Resolve a cross-vault wikilink target synchronously.
+ * Looks up the alias in the context store and tries to find the file
+ * in that context's file tree (only works if the context is active).
+ */
+function resolveCrossVaultTarget(
+  alias: string,
+  target: string,
+): null | { name: string; path: string } {
+  const contexts = useContextStore.getState().contexts;
+  const aliasLower = alias.toLowerCase();
+  const ctx = contexts.find((c) => c.alias?.toLowerCase() === aliasLower);
+  if (!ctx) return null; // Vault not registered — dangling
+
+  const { rootPath, fileTree } = useFileStore.getState();
+
+  // Only resolve synchronously if the alias context is the active context
+  if (rootPath === ctx.path && fileTree.length > 0) {
+    const flat = flattenFileTree(fileTree, rootPath);
+    const targetLower = target.toLowerCase();
+
+    // Try exact stem match
+    for (const f of flat) {
+      if (!f.name.endsWith(".md") && !f.name.endsWith(".markdown")) continue;
+      const stem = f.name.endsWith(".markdown")
+        ? f.name.slice(0, -9)
+        : f.name.slice(0, -3);
+      if (stem.toLowerCase() === targetLower) {
+        return { path: f.path, name: f.name };
+      }
+    }
+
+    // Try path match (e.g., "skills/analyzer")
+    for (const f of flat) {
+      const rel = f.path.slice(rootPath.length + 1);
+      const relNoExt = rel.endsWith(".md")
+        ? rel.slice(0, -3)
+        : rel.endsWith(".markdown")
+          ? rel.slice(0, -9)
+          : rel;
+      if (relNoExt.toLowerCase() === targetLower) {
+        return { path: f.path, name: f.name };
+      }
+    }
+  }
+
+  return null; // Not resolvable synchronously — vault not active or file not found
+}
+
+/**
+ * §89 Resolve a wikilink within the same folder as the standalone file.
+ * FileContext has no file tree, so we check the folder of the source file
+ * using the global file tree (if the folder happens to be loaded) or
+ * construct the candidate path directly.
+ */
+function resolveInSameFolder(
+  target: string,
+  sourceFilePath: string,
+): null | { name: string; path: string } {
+  const dir = sourceFilePath.substring(0, sourceFilePath.lastIndexOf("/"));
+  const targetLower = target.toLowerCase();
+  const candidateName = targetLower.endsWith(".md") ? target : `${target}.md`;
+  const candidatePath = `${dir}/${candidateName}`;
+
+  // Try to find in file tree if available (some other context may cover this folder)
+  const { fileTree, rootPath } = useFileStore.getState();
+  if (rootPath && fileTree.length > 0) {
+    const flat = flattenFileTree(fileTree, rootPath);
+    for (const f of flat) {
+      if (!f.path.startsWith(dir + "/")) continue;
+      // Only same folder, not subfolders
+      const relFromDir = f.path.slice(dir.length + 1);
+      if (relFromDir.includes("/")) continue;
+
+      const stem = f.name.endsWith(".md") ? f.name.slice(0, -3) : f.name;
+      if (stem.toLowerCase() === targetLower) {
+        return { path: f.path, name: f.name };
+      }
+    }
+  }
+
+  // Construct candidate path — caller will check if file exists via navigation
+  return {
+    path: candidatePath,
+    name: candidateName,
+  };
 }

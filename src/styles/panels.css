@@ -313,10 +313,18 @@
 }
 
 .quick-switcher-detail {
+  display: flex;
   flex-shrink: 0;
+  gap: 4px;
+  align-items: center;
   margin-left: auto;
   font-size: 0.75rem;
   color: var(--color-text-muted);
+}
+
+.qs-context-badge {
+  font-size: 11px;
+  opacity: 0.7;
 }
 
 /* ============================================

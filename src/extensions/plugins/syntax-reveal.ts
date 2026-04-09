@@ -233,20 +233,22 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         tr.replaceWith(from - 1, to + 1, imageNode);
       } else if (kind === "wikilink") {
         const fullText = newState.doc.textBetween(from, to);
+        // §87 Regex includes optional alias:: prefix for cross-vault wikilinks
         const wlMatch = fullText.match(
-          /^\[\[([^\]|#^]+)(?:#([^\]|^]+))?(?:\^([^\]|]+))?(?:\|([^\]]+))?\]\]$/,
+          /^\[\[(?:([a-zA-Z][\w-]*)::)?([^\]|#^]+)(?:#([^\]|^]+))?(?:\^([^\]|]+))?(?:\|([^\]]+))?\]\]$/,
         );
         if (!wlMatch) {
           tr.setMeta(syntaxRevealKey, INACTIVE);
           return tr;
         }
 
-        const [, wlTarget, wlHeading, wlBlockId, wlDisplay] = wlMatch;
+        const [, wlAlias, wlTarget, wlHeading, wlBlockId, wlDisplay] = wlMatch;
         const wikilinkNode = newState.schema.nodes.wikilink.create({
           target: wlTarget,
           heading: wlHeading || null,
           blockId: wlBlockId || null,
           display: wlDisplay || null,
+          vaultAlias: wlAlias || null,
         });
         tr.replaceWith(from, to, wikilinkNode);
         contentLen = 0;

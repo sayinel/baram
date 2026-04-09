@@ -17,6 +17,7 @@ import { GeneralTab } from "./tabs/GeneralTab";
 import { KeybindingsTab } from "./tabs/KeybindingsTab";
 import { LanguageTab } from "./tabs/LanguageTab";
 import { MarkdownTab } from "./tabs/MarkdownTab";
+import { VaultTab } from "./tabs/VaultTab";
 
 const TABS: { icon: string; id: SettingsTab; label: string }[] = [
   { id: "general", label: "General", icon: "\u2699" },
@@ -28,6 +29,7 @@ const TABS: { icon: string; id: SettingsTab; label: string }[] = [
   { id: "language", label: "Language", icon: "\uD83C\uDF10" },
   { id: "keybindings", label: "Keybindings", icon: "\u2328" },
   { id: "plugins", label: "Plugins", icon: "\uD83E\uDDE9" },
+  { id: "vault", label: "Vault", icon: "\uD83D\uDCE6" },
 ];
 
 export function SettingsModal() {
@@ -131,6 +133,7 @@ export function SettingsModal() {
                     <PluginMarketplace />
                   </div>
                 )}
+                {activeTab === "vault" && <VaultTab />}
               </>
             )}
           </div>

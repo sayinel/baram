@@ -1,7 +1,11 @@
 // §3.5 에디터 상태 스토어
 import { create } from "zustand";
 
+import { useContextStore } from "../context/context";
+
 export interface EditorTab {
+  /** §83 The context this tab belongs to */
+  contextId: string;
   filePath: string;
   id: string;
   isDirty: boolean;
@@ -75,7 +79,31 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   currentSelection: "",
   contentRefreshKey: 0,
 
-  setActiveTab: (tabId) => set({ activeTabId: tabId }),
+  setActiveTab: (tabId) => {
+    set({ activeTabId: tabId });
+    // §81 Auto-switch context when selecting a tab from a different vault
+    const tab = get().tabs.find((t) => t.id === tabId);
+    if (tab?.contextId) {
+      const ctxStore = useContextStore.getState();
+      if (ctxStore.activeContextId !== tab.contextId) {
+        // §89 FileContext tabs are global — don't switch context when selected
+        const tabCtx = ctxStore.contexts.find((c) => c.id === tab.contextId);
+        if (tabCtx?.contextType === "file") {
+          return; // External file tab — keep current vault context active
+        }
+        // Check if the tab's context has a different PATH (not just different ID)
+        // IDs can differ due to dedup (legacy-xxx vs ctx-xxx) while path is same
+        const activeCtx = ctxStore.activeContext();
+        if (tabCtx && activeCtx && tabCtx.path === activeCtx.path) {
+          return; // Same vault, different ID — no need to switch
+        }
+        // Lazy import to avoid circular dependency at module load
+        import("../file/file").then(({ switchContext }) => {
+          switchContext(tab.contextId);
+        });
+      }
+    }
+  },
 
   openTab: (tab) =>
     set((state) => {
@@ -91,8 +119,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         ];
         return { activeTabId: existing.id, mruOrder };
       }
+      // §83 Auto-fill contextId from active context if empty
+      const contextId =
+        tab.contextId || useContextStore.getState().activeContextId || "";
       // §38 New tab always unpinned
-      const newTab = { ...tab, isPinned: false };
+      const newTab = { ...tab, contextId, isPinned: false };
       // §39 New tab goes to front of MRU
       const mruOrder = [newTab.id, ...state.mruOrder];
       return {
@@ -102,10 +133,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       };
     }),
 
-  closeTab: (tabId) =>
+  closeTab: (tabId) => {
+    // Capture info before mutation for §89 FileContext cleanup
+    const stateBefore = get();
+    const target = stateBefore.tabs.find((t) => t.id === tabId);
+
     set((state) => {
       // §38 Pinned tabs cannot be closed
-      const target = state.tabs.find((t) => t.id === tabId);
       if (target?.isPinned) return state;
 
       const tabs = state.tabs.filter((t) => t.id !== tabId);
@@ -116,7 +150,29 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       // §39 Remove closed tab from MRU
       const mruOrder = state.mruOrder.filter((id) => id !== tabId);
       return { tabs, activeTabId, mruOrder };
-    }),
+    });
+
+    // Clean up original doc tracking for dirty detection
+    if (target && !target.isPinned) {
+      import("../../utils/editor/programmatic-update").then(
+        ({ clearOriginalDoc }) => clearOriginalDoc(tabId),
+      );
+    }
+
+    // §89 Auto-remove FileContext when its last tab is closed
+    if (target && !target.isPinned && target.contextId) {
+      const contextStore = useContextStore.getState();
+      const ctx = contextStore.contexts.find(
+        (c) => c.id === target.contextId && c.contextType === "file",
+      );
+      if (ctx) {
+        const remainingTabs = get().tabs.filter((t) => t.contextId === ctx.id);
+        if (remainingTabs.length === 0) {
+          contextStore.removeContext(ctx.id).catch(() => {});
+        }
+      }
+    }
+  },
 
   markDirty: (tabId, dirty) =>
     set((state) => ({
@@ -260,6 +316,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       return;
     }
     open({
+      contextId: "",
       id: crypto.randomUUID(),
       filePath: "",
       title: "Graph View",

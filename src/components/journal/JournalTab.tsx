@@ -99,6 +99,7 @@ export function JournalTab({
           const fileName = path.split("/").pop() ?? "Unknown";
           useFileStore.getState().setFileContent(path, content);
           useEditorStore.getState().openTab({
+            contextId: "",
             id: crypto.randomUUID(),
             filePath: path,
             title: fileName,

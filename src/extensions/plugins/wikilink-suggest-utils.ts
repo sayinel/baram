@@ -6,13 +6,17 @@ import { useFileStore } from "../../stores/file/file";
 import { extractHeadings, fuzzyScore } from "../../utils/file-search";
 
 export interface WikilinkSuggestionItem {
+  /** §87 Parent folder path relative to vault root (for grouped display) */
+  folder?: string;
   heading?: string;
   headingLevel?: number;
   id: string;
-  kind?: "create" | "file" | "heading";
+  kind?: "create" | "file" | "folder-header" | "heading" | "hint";
   label: string;
   path: string;
   target: string;
+  /** §87 Cross-vault: vault alias prefix for the inserted wikilink */
+  vaultAlias?: string;
 }
 
 /** Remove .md or .markdown extension from a filename */

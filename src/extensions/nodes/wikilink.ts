@@ -8,7 +8,11 @@ import { WikilinkView } from "./wikilink-view";
 
 export interface WikilinkOptions {
   HTMLAttributes: Record<string, unknown>;
-  onNavigate: (target: string, heading?: null | string) => void;
+  onNavigate: (
+    target: string,
+    heading?: null | string,
+    vaultAlias?: null | string,
+  ) => void;
 }
 
 declare module "@tiptap/core" {
@@ -19,14 +23,15 @@ declare module "@tiptap/core" {
         display?: null | string;
         heading?: null | string;
         target: string;
+        vaultAlias?: null | string;
       }) => ReturnType;
     };
   }
 }
 
-// [[target]], [[target|display]], [[target#heading]], [[target#heading|display]]
+// [[target]], [[target|display]], [[target#heading]], [[alias::target]], etc.
 const wikilinkInputRegex =
-  /\[\[([^\]|#^]+)(?:#([^\]|^]+))?(?:\^([^\]|]+))?(?:\|([^\]]+))?\]\]$/;
+  /\[\[(?:([a-zA-Z][\w-]*)::)?([^\]|#^]+)(?:#([^\]|^]+))?(?:\^([^\]|]+))?(?:\|([^\]]+))?\]\]$/;
 
 export const Wikilink = Node.create<WikilinkOptions>({
   name: "wikilink",
@@ -63,6 +68,13 @@ export const Wikilink = Node.create<WikilinkOptions>({
         default: null,
         renderHTML: (attrs) => ({ "data-block-id": attrs.blockId ?? "" }),
         parseHTML: (el) => el.getAttribute("data-block-id") || null,
+      },
+      vaultAlias: {
+        default: null,
+        renderHTML: (attrs) => ({
+          "data-vault-alias": attrs.vaultAlias ?? "",
+        }),
+        parseHTML: (el) => el.getAttribute("data-vault-alias") || null,
       },
     };
   },
@@ -104,12 +116,13 @@ export const Wikilink = Node.create<WikilinkOptions>({
       new InputRule({
         find: wikilinkInputRegex,
         handler: ({ state, range, match }) => {
-          const [, target, heading, blockId, display] = match;
+          const [, vaultAlias, target, heading, blockId, display] = match;
           const { tr } = state;
           tr.replaceWith(
             range.from,
             range.to,
             this.type.create({
+              vaultAlias: vaultAlias || null,
               target,
               display: display || null,
               heading: heading || null,
@@ -148,7 +161,11 @@ export const Wikilink = Node.create<WikilinkOptions>({
             const isDate = isDateString(target);
             if (!isDate && !(event.metaKey || event.ctrlKey)) return false;
 
-            onNavigate(target, wikilinkNode.attrs.heading as null | string);
+            onNavigate(
+              target,
+              wikilinkNode.attrs.heading as null | string,
+              wikilinkNode.attrs.vaultAlias as null | string,
+            );
             return true;
           },
         },

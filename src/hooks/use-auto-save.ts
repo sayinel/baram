@@ -10,6 +10,10 @@ import { prosemirrorToMarkdown } from "../pipeline";
 import { useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
 import { useSettingsStore } from "../stores/settings/store";
+import {
+  shouldSkipDirty,
+  updateOriginalDoc,
+} from "../utils/editor/programmatic-update";
 import { isMarkdownFile } from "../utils/file-type";
 
 /**
@@ -17,6 +21,7 @@ import { isMarkdownFile } from "../utils/file-type";
  * §3.6: Debounced Write — 타이핑 중에는 저장하지 않음
  * Note: Non-MD files are auto-saved by App.tsx directly; this hook only handles markdown.
  */
+
 export function useAutoSave(editor: Editor | null) {
   const timerRef = useRef<null | ReturnType<typeof setTimeout>>(null);
   // Capture which tab scheduled the save; prevents writing tab B's content to tab A's
@@ -46,6 +51,8 @@ export function useAutoSave(editor: Editor | null) {
       const markdown = prosemirrorToMarkdown(editor.state.doc);
       await writeFile(pending.filePath, markdown);
       markDirty(pending.id, false);
+      // After save, current doc becomes the new baseline for dirty detection
+      updateOriginalDoc(pending.id, editor.state.doc);
       updateFileIndex(pending.filePath)
         .then(() => useLinkStore.getState().invalidate())
         .catch(() => {});
@@ -62,6 +69,10 @@ export function useAutoSave(editor: Editor | null) {
       const { activeTabId, tabs, markDirty } = useEditorStore.getState();
       const tab = tabs.find((t) => t.id === activeTabId);
       if (!tab?.filePath) return;
+
+      // Skip if: (1) first update after content load (captures stable baseline),
+      // or (2) doc unchanged from baseline. Only marks dirty for real changes.
+      if (shouldSkipDirty(tab.id, editor.state.doc)) return;
 
       markDirty(tab.id, true);
       // Record which tab triggered this save so save() can detect a mid-debounce tab switch

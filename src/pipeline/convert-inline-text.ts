@@ -190,6 +190,7 @@ export function splitTextWithWikilinks(
     (match) => {
       const parsed = parseWikilinkMatch(match);
       return schema.nodes.wikilink.create({
+        vaultAlias: parsed.vaultAlias,
         target: parsed.target,
         display: parsed.display,
         heading: parsed.heading,

@@ -18,7 +18,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 
 import type { Editor } from "@tiptap/core";
 
-import { copyFile, createDir, listDir } from "../ipc/invoke";
+import { createDir, importFile, listDir } from "../ipc/invoke";
 import { useEditorStore } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
 import {
@@ -228,7 +228,7 @@ async function handleEditorDrop(
     const destPath = assetsDir + "/" + finalName;
 
     try {
-      await copyFile(sourcePath, destPath);
+      await importFile(sourcePath, destPath);
       existingNames.add(finalName);
 
       const relativeSrc = "./assets/" + finalName;
@@ -270,7 +270,7 @@ async function handleFileTreeDrop(paths: string[], el: Element | null) {
     const destPath = targetDir + "/" + finalName;
 
     try {
-      await copyFile(sourcePath, destPath);
+      await importFile(sourcePath, destPath);
       existingNames.add(finalName);
       addFileEntry(targetDir, {
         name: finalName,

@@ -58,7 +58,9 @@ baram/
 │   │   │   ├── git_cmd.rs
 │   │   │   ├── llm_cmd.rs
 │   │   │   ├── export_cmd.rs
-│   │   │   └── config_cmd.rs
+│   │   │   ├── config_cmd.rs
+│   │   │   └── context_cmd.rs
+│   │   ├── context/         # 컨텍스트 관리자 (§88)
 │   │   ├── fs/              # 파일 시스템 모듈
 │   │   ├── search/          # tantivy 검색 엔진
 │   │   ├── index/           # 링크 인덱서 (SQLite)
@@ -92,6 +94,7 @@ baram/
 │   │   ├── transformers/    # 노드별 변환기 ({name}-transformer.ts)
 │   │   └── __tests__/       # 파이프라인 테스트
 │   ├── stores/              # Zustand 스토어 (서브디렉토리 구조)
+│   │   ├── context/         # context.ts — 컨텍스트 관리 (§80-§81)
 │   │   ├── editor/          # editor.ts — 에디터 상태 (활성 탭, dirty 상태)
 │   │   ├── file/            # file.ts, workspace.ts — 파일 시스템, 워크스페이스
 │   │   ├── ui/              # ui.ts — UI 레이아웃 (사이드바, 패널, 모달)
@@ -211,6 +214,7 @@ baram/
 | 데이터 모델 | `docs/design/part7-data-models.md`     | §7.1 MD 규격, §7.2 PM 스키마, §7.3~§7.5 DB                                                                                                   |
 | 로드맵      | `docs/design/part8-roadmap.md`         | §8.1 Phase, §8.2 마일스톤, §8.4 품질, §8.6 의존성                                                                                            |
 | AI 고도화   | `docs/design/part11-ai-enhancement.md` | §11.2 빠른 개선, §11.3 Writing Flow, §11.4 Knowledge Q&A, §11.5 Semantic Wikilink, §11.6 Agent Mode, §11.7 Authorship, §11.8 Smart Templates |
+| Vault 시스템 | `docs/design/part12-vault-system.md`   | §80 Context 모델, §81 워크스페이스, §82~§84 UI, §85 Journal, §86 설정 계층, §87 Cross-vault 링크, §88 ContextManager, §89~§90 파일/시작 |
 
 ## 성능 기준 (Part 8 §8.4)
 
@@ -258,4 +262,14 @@ Phase 3: 고급 기능 — 진행 중
   - 커스텀 테마 v10 마이그레이션
   - Figma Tokens Studio 호환 export
   - PR 미생성 — refactoring/ai 머지 전 상태
+- **Vault System (§80-§90)** — ✅ 완료
+  - Context 모델 + 앱 워크스페이스 (§80-§81)
+  - 컨텍스트 탭 바 UI + 에디터 탭 표시 (§82-§83)
+  - 검색 Scope UI (§84)
+  - Journal 시스템 재설계 + Work Log (§85)
+  - 설정 3-Tier 계층 (§86)
+  - Cross-vault 링크 + 그래프 (§87)
+  - ContextManager Rust 백엔드 (§88)
+  - 독립 파일 열기 + FileContext (§89)
+  - 앱 시작 흐름 + 마이그레이션 (§90)
 - Canvas, Agent Mode, Knowledge Q&A, 실시간 협업 등 — 미착수

@@ -156,6 +156,7 @@ export function ReflectionPanel({ onClose }: Props) {
       } else {
         useFileStore.getState().setFileContent(filePath, markdown);
         useEditorStore.getState().openTab({
+          contextId: "",
           id: crypto.randomUUID(),
           filePath,
           title: fileName,

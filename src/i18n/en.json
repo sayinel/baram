@@ -13,6 +13,7 @@
   "settings.tab.language": "Language",
   "settings.tab.keybindings": "Keybindings",
   "settings.tab.plugins": "Plugins",
+  "settings.tab.vault": "Vault",
 
   "settings.general.startup": "Startup",
   "settings.general.onLaunch": "On Launch",
@@ -421,6 +422,7 @@
   "home.tagline": "A lightweight, beautiful, and connected Markdown editor",
   "home.openFolder": "Open Folder",
   "home.openFile": "Open File",
+  "home.newVault": "New Vault",
   "home.newFile": "New File",
   "home.recentFolders": "Recent Folders",
   "home.recentFiles": "Recent Files",

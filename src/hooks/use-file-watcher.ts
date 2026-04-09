@@ -118,17 +118,33 @@ export function useFileWatcher() {
 
       if (cleanedUp) {
         // Cleanup already ran before listeners resolved — unlisten immediately
-        unlistenCreated();
-        unlistenDeleted();
+        try {
+          unlistenCreated();
+        } catch {
+          /* listener already removed */
+        }
+        try {
+          unlistenDeleted();
+        } catch {
+          /* listener already removed */
+        }
       } else {
         unlistenFns.push(unlistenCreated, unlistenDeleted);
       }
-    })();
+    })().catch(() => {
+      /* Prevent unhandled rejection if listen() itself fails */
+    });
 
     return () => {
       cleanedUp = true;
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      for (const fn of unlistenFns) fn();
+      for (const fn of unlistenFns) {
+        try {
+          fn();
+        } catch {
+          /* listener already removed — safe to ignore */
+        }
+      }
     };
   }, [rootPath]);
 }

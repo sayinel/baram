@@ -5,6 +5,8 @@ import type { LinkGraph } from "../../ipc/types";
 /** Cytoscape edge element */
 export interface GraphEdge {
   data: {
+    /** §87 True when source and target belong to different vaults */
+    crossVault?: boolean;
     id: string;
     source: string;
     target: string;
@@ -56,6 +58,17 @@ const NS_PALETTE = [
   "#6366f1",
 ];
 
+/**
+ * Transform a LinkGraph (from Rust IPC) into cytoscape-compatible elements.
+ * Deduplicates edges and computes node degrees.
+ * Creates ghost nodes for edge targets that are not in graph.nodes.
+ */
+/**
+ * §87 Map from node ID (file path) to vault context ID.
+ * Used to detect cross-vault edges in multi-vault graph mode.
+ */
+export type NodeVaultMap = Map<string, string>;
+
 /** §61 Assign colors to namespaces. Returns a Map from namespace string to hex color. */
 export function assignNamespaceColors(
   namespaces: string[],
@@ -96,14 +109,10 @@ export function nodeSize(degree: number, minSize = 20, maxSize = 60): number {
   return Math.min(minSize + Math.log2(degree + 1) * 10, maxSize);
 }
 
-/**
- * Transform a LinkGraph (from Rust IPC) into cytoscape-compatible elements.
- * Deduplicates edges and computes node degrees.
- * Creates ghost nodes for edge targets that are not in graph.nodes.
- */
 export function toGraphElements(
   graph: LinkGraph,
   rootPath?: string,
+  nodeVaultMap?: NodeVaultMap,
 ): GraphElements {
   const nodeSet = new Set(graph.nodes);
 
@@ -135,11 +144,20 @@ export function toGraphElements(
       if (!degreeMap.has(edge.from)) degreeMap.set(edge.from, 0);
     }
 
+    // §87 Use cross_vault flag from Rust LinkEdge (set when target_vault_alias exists)
+    const isCrossVault =
+      edge.crossVault === true ||
+      (nodeVaultMap !== undefined &&
+        nodeVaultMap.has(edge.from) &&
+        nodeVaultMap.has(edge.to) &&
+        nodeVaultMap.get(edge.from) !== nodeVaultMap.get(edge.to));
+
     edges.push({
       data: {
         id: `e-${edges.length}`,
         source: edge.from,
         target: edge.to,
+        ...(isCrossVault && { crossVault: true }),
       },
     });
 

@@ -138,6 +138,7 @@ function JournalListBlock({ params }: { params: Record<string, string> }) {
           const fileName = filePath.split("/").pop() ?? "Unknown";
           useFileStore.getState().setFileContent(filePath, content);
           useEditorStore.getState().openTab({
+            contextId: "",
             id: crypto.randomUUID(),
             filePath,
             title: fileName,

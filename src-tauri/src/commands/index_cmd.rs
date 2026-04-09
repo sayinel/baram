@@ -11,29 +11,63 @@ use std::path::Path;
 use tauri::State;
 use tokio::sync::Mutex;
 
-/// Managed state wrapping the in-memory link index
-pub struct LinkIndexState(pub Mutex<LinkIndex>);
+/// Managed state wrapping per-context in-memory link indexes (keyed by context **path**)
+pub struct LinkIndexState(pub Mutex<std::collections::HashMap<String, LinkIndex>>);
+
+/// §88 Derive a consistent HashMap key from the active context's **path**.
+/// Using path (not id) prevents key mismatch when legacy-xxx and ctx-xxx ids
+/// refer to the same vault. Falls back to empty string during cold start.
+async fn active_context_path(ctx_mgr: &State<'_, crate::context::ContextManager>) -> String {
+    if let Some(id) = ctx_mgr.active_id().await {
+        let contexts = ctx_mgr.list().await;
+        if let Some(ctx) = contexts.iter().find(|c| c.id == id) {
+            return ctx.path.clone();
+        }
+    }
+    String::new()
+}
 
 #[tauri::command]
 pub async fn get_backlinks(
     file_path: String,
     state: State<'_, LinkIndexState>,
+    ctx_mgr: State<'_, crate::context::ContextManager>,
 ) -> Result<Vec<BacklinkResult>, String> {
-    let index = state.0.lock().await;
-    Ok(index.get_backlinks(&file_path))
+    let map = state.0.lock().await;
+    let key = active_context_path(&ctx_mgr).await;
+    match map.get(&key) {
+        Some(index) => Ok(index.get_backlinks(&file_path)),
+        None => Ok(vec![]),
+    }
 }
 
 #[tauri::command]
-pub async fn get_link_index(state: State<'_, LinkIndexState>) -> Result<LinkGraph, String> {
-    let index = state.0.lock().await;
-    Ok(index.get_link_graph())
+pub async fn get_link_index(
+    root_path: Option<String>,
+    state: State<'_, LinkIndexState>,
+    ctx_mgr: State<'_, crate::context::ContextManager>,
+) -> Result<LinkGraph, String> {
+    let map = state.0.lock().await;
+    // §87 Use explicit root_path if provided (for multi-vault graph merge),
+    // otherwise fall back to active context path
+    let key = match root_path {
+        Some(p) if !p.is_empty() => p,
+        _ => active_context_path(&ctx_mgr).await,
+    };
+    match map.get(&key) {
+        Some(index) => Ok(index.get_link_graph()),
+        None => Ok(LinkGraph::default()),
+    }
 }
 
 #[tauri::command]
 pub async fn refresh_index(
     root_path: String,
     state: State<'_, LinkIndexState>,
+    _ctx_mgr: State<'_, crate::context::ContextManager>,
 ) -> Result<IndexStats, String> {
+    // §88 Always key by root_path (consistent with query commands via active_context_path)
+    let key = root_path.clone();
     // Build a new index outside the lock (async file I/O)
     let mut new_index = LinkIndex::new();
     let stats = new_index
@@ -41,9 +75,9 @@ pub async fn refresh_index(
         .await
         .map_err(|e| e.to_string())?;
 
-    // Swap in the new index
-    let mut index = state.0.lock().await;
-    *index = new_index;
+    // Insert the new index for this context
+    let mut map = state.0.lock().await;
+    map.insert(key, new_index);
     Ok(stats)
 }
 
@@ -51,6 +85,7 @@ pub async fn refresh_index(
 pub async fn update_file_index(
     file_path: String,
     state: State<'_, LinkIndexState>,
+    ctx_mgr: State<'_, crate::context::ContextManager>,
 ) -> Result<(), String> {
     // Read file content outside the lock (async I/O)
     let content = tokio::fs::read_to_string(&file_path)
@@ -58,8 +93,11 @@ pub async fn update_file_index(
         .unwrap_or_default();
 
     // Update index synchronously inside the lock
-    let mut index = state.0.lock().await;
-    index.update_file_from_content(&file_path, &content);
+    let key = active_context_path(&ctx_mgr).await;
+    let mut map = state.0.lock().await;
+    if let Some(index) = map.get_mut(&key) {
+        index.update_file_from_content(&file_path, &content);
+    }
     Ok(())
 }
 
@@ -87,6 +125,7 @@ pub async fn rename_file_with_links(
     old_path: String,
     new_path: String,
     state: State<'_, LinkIndexState>,
+    ctx_mgr: State<'_, crate::context::ContextManager>,
 ) -> Result<RenameResult, String> {
     let old_target = Path::new(&old_path)
         .file_stem()
@@ -97,10 +136,15 @@ pub async fn rename_file_with_links(
         .map(|s| s.to_string_lossy().to_string())
         .ok_or("Invalid new path")?;
 
+    let key = active_context_path(&ctx_mgr).await;
+
     // 1. Get referencing files from the index (inside lock, quick read)
     let referring_files = {
-        let index = state.0.lock().await;
-        index.get_files_linking_to(&old_target)
+        let map = state.0.lock().await;
+        match map.get(&key) {
+            Some(index) => index.get_files_linking_to(&old_target),
+            None => vec![],
+        }
     };
 
     // 2. Read and update each referring file (async I/O, outside lock)
@@ -135,19 +179,14 @@ pub async fn rename_file_with_links(
 
     // 4. Update the index (inside lock)
     {
-        let mut index = state.0.lock().await;
-
-        // Remove old file entry, add new one
-        index.remove_file(&old_path);
-        // Read new file content for index (the file was just renamed, content is same)
-        // We can read the content from new_path, but to avoid async inside lock,
-        // we just re-read it outside first — but the file content hasn't changed,
-        // only references in OTHER files changed. So for the renamed file itself
-        // we can read it now.
-        // For updated referring files, we already have their new content.
-
-        for (path, content) in &updated_contents {
-            index.update_file_from_content(path, content);
+        let mut map = state.0.lock().await;
+        if let Some(index) = map.get_mut(&key) {
+            // Remove old file entry, add new one
+            index.remove_file(&old_path);
+            // For updated referring files, we already have their new content.
+            for (path, content) in &updated_contents {
+                index.update_file_from_content(path, content);
+            }
         }
     }
 
@@ -156,8 +195,10 @@ pub async fn rename_file_with_links(
         .await
         .unwrap_or_default();
     {
-        let mut index = state.0.lock().await;
-        index.update_file_from_content(&new_path, &renamed_content);
+        let mut map = state.0.lock().await;
+        if let Some(index) = map.get_mut(&key) {
+            index.update_file_from_content(&new_path, &renamed_content);
+        }
     }
 
     Ok(RenameResult { updated_files })
@@ -170,19 +211,27 @@ pub async fn rename_block_id(
     old_id: String,
     new_id: String,
     state: State<'_, LinkIndexState>,
+    ctx_mgr: State<'_, crate::context::ContextManager>,
 ) -> Result<RenameResult, String> {
+    let key = active_context_path(&ctx_mgr).await;
+
     // 1. Get referring files from index (block_id == old_id, target == this file)
     let referring_files = {
-        let index = state.0.lock().await;
-        let backlinks = index.get_backlinks(&file_path);
-        let mut files: Vec<String> = backlinks
-            .iter()
-            .filter(|b| b.block_id.as_deref() == Some(old_id.as_str()))
-            .map(|b| b.source_path.clone())
-            .collect();
-        files.sort();
-        files.dedup();
-        files
+        let map = state.0.lock().await;
+        match map.get(&key) {
+            Some(index) => {
+                let backlinks = index.get_backlinks(&file_path);
+                let mut files: Vec<String> = backlinks
+                    .iter()
+                    .filter(|b| b.block_id.as_deref() == Some(old_id.as_str()))
+                    .map(|b| b.source_path.clone())
+                    .collect();
+                files.sort();
+                files.dedup();
+                files
+            }
+            None => vec![],
+        }
     };
 
     // 2. Read + replace + write (outside lock)
@@ -209,9 +258,11 @@ pub async fn rename_block_id(
 
     // 3. Update index (inside lock)
     {
-        let mut index = state.0.lock().await;
-        for (path, content) in &updated_contents {
-            index.update_file_from_content(path, content);
+        let mut map = state.0.lock().await;
+        if let Some(index) = map.get_mut(&key) {
+            for (path, content) in &updated_contents {
+                index.update_file_from_content(path, content);
+            }
         }
     }
 
@@ -233,6 +284,7 @@ pub async fn rename_namespace(
     new_dir: String,
     root_path: String,
     state: State<'_, LinkIndexState>,
+    _ctx_mgr: State<'_, crate::context::ContextManager>,
 ) -> Result<NamespaceRenameResult, String> {
     // 1. Collect all .md files in the vault
     let all_files = collect_md_files(&root_path)
@@ -281,13 +333,15 @@ pub async fn rename_namespace(
         .map_err(|e| e.to_string())?;
 
     // 4. Rebuild the index (full rebuild since many files moved)
+    // §88 Key by root_path (consistent with refresh_index and query commands)
+    let key = root_path.clone();
     let mut new_index = crate::index::LinkIndex::new();
     new_index
         .build(&root_path)
         .await
         .map_err(|e| e.to_string())?;
-    let mut index = state.0.lock().await;
-    *index = new_index;
+    let mut map = state.0.lock().await;
+    map.insert(key, new_index);
 
     Ok(NamespaceRenameResult {
         updated_files,

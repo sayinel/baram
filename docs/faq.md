@@ -105,6 +105,7 @@ Baram works with standard markdown files (`.md`, `.markdown`). It supports Commo
 ### How do I insert a table?
 
 Four ways:
+
 1. **Pipe input** — Type `| Header 1 | Header 2 |` and press Enter — a table is created with the headers filled in
 2. **Grid Picker** — Type `/table` or press `Cmd+T` to select dimensions from a visual 10×10 grid
 3. **TSV Paste** — Copy cells from a spreadsheet and paste — Baram auto-creates a table
@@ -180,6 +181,7 @@ Press `Cmd+/` (macOS) or `Ctrl+/` (Windows/Linux) to toggle Source Mode. This sh
 Type `[[` to start a wikilink. An autocomplete popup appears with matching files from your workspace. Select a file to insert a link like `[[My Note]]`. Cmd+click (or Ctrl+click on Windows) to navigate to the linked page.
 
 Advanced syntax:
+
 - `[[page|custom text]]` — Display custom text
 - `[[page#heading]]` — Link to a specific heading
 - `[[page#^block-id]]` — Link to a specific block
@@ -234,12 +236,12 @@ Press `Cmd+K` (macOS) or `Ctrl+K` (Windows/Linux) to open the Quick Switcher. Ty
 
 Baram supports multiple AI providers. Get your API key from the respective provider:
 
-| Provider | Where to Get Key |
-|----------|-----------------|
-| **Claude** (Anthropic) | [console.anthropic.com](https://console.anthropic.com/) |
-| **OpenAI** | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
-| **Google Gemini** | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
-| **Ollama** (local) | No API key required — runs locally on your machine |
+| Provider               | Where to Get Key                                                     |
+| ---------------------- | -------------------------------------------------------------------- |
+| **Claude** (Anthropic) | [console.anthropic.com](https://console.anthropic.com/)              |
+| **OpenAI**             | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
+| **Google Gemini**      | [aistudio.google.com/apikey](https://aistudio.google.com/apikey)     |
+| **Ollama** (local)     | No API key required — runs locally on your machine                   |
 
 Each provider has its own API key field in **Settings > AI**.
 
@@ -368,6 +370,7 @@ Workspace Presets save your current layout (sidebar panel, right panel, theme) a
 ### How do I switch workspace presets?
 
 Three ways:
+
 1. **Keyboard shortcuts** — `Cmd+Alt+1` (Writing), `Cmd+Alt+2` (Skills), `Cmd+Alt+3` (Research), `Cmd+Alt+4` (Journal)
 2. **Command Palette** — `Cmd+Shift+P` then search for "Workspace"
 3. **Workspace menu** — Use the menu bar
@@ -391,6 +394,7 @@ Open **Settings > General > Journal**, enable the toggle, and select a folder fo
 ### How do I create a daily note?
 
 Three ways:
+
 1. **Calendar** — Open the Calendar sidebar (`Cmd+Alt+4`) and click any date
 2. **@Mention** — Type `@` in the editor and select Today/Yesterday/Tomorrow from the popup, then click the resulting 📅 date chip
 3. **Auto-create** — Set "On Startup" to "Open today's journal" in Settings — today's entry auto-opens when you launch Baram
@@ -410,6 +414,7 @@ Use the Calendar sidebar. Days with existing entries are marked with a dot. Clic
 ### What export formats are supported?
 
 Baram supports seven export formats:
+
 - **HTML** — Self-contained HTML with inline styles, math rendering, and code highlighting
 - **PDF** — Print-ready PDF via the system print dialog
 - **Notion** — Notion-compatible Markdown that converts Baram-specific syntax
@@ -452,6 +457,40 @@ Open the **Help** menu and select **User Guide**, **Keyboard Shortcuts**, or **F
 
 ---
 
+## Vault & Context
+
+### What is a vault?
+
+A vault is a folder that contains a `.baram/config.json` file. When Baram detects this file, it treats the folder as a fully initialized workspace with vault-level settings, a configurable Journal directory, and a vault alias for cross-vault linking. A plain folder without `.baram/config.json` still works as a normal workspace — vaults simply unlock extra features.
+
+To turn any folder into a vault, open it in Baram, then go to **Settings > Vault** and click **Initialize as Vault**.
+
+### Can I use multiple vaults simultaneously?
+
+Yes. Each vault (or plain folder) you open appears as a tab in the **Context Tab Bar** at the top of the left sidebar. Click any tab to switch between contexts. Each context has its own file tree, tab history, and settings.
+
+### How do I link files across vaults?
+
+Use the cross-vault wikilink syntax: `[[alias::filename]]`. Replace `alias` with the target vault's short name (configured in **Settings > Vault > Alias**) and `filename` with the file name (without `.md`). For example, `[[research::climate-data]]` links to `climate-data.md` in the vault aliased `research`. If the target vault is not open, Baram prompts you to open it.
+
+### What happens when I open a file outside a vault?
+
+The file opens as a **File context** tab, indicated by a 📎 icon. The left sidebar is hidden — only the editor is shown. This is ideal for quick edits to files that don't belong to any workspace. There is no file tree, backlinks, or vault-level settings in this mode.
+
+### How do I convert a folder to a vault?
+
+1. Open the folder in Baram with **File > Open Folder**
+2. Go to **Settings > Vault**
+3. Click **Initialize as Vault**
+
+Baram creates a `.baram/config.json` file inside the folder. Your existing files are not changed. To revert back to a plain folder, click **Revert to Folder** — this removes `.baram/config.json` but leaves all your markdown files intact.
+
+### How is Journal related to vaults?
+
+Each vault can have its own journal directory set in **Settings > Vault > Journal Directory**. When you are working in a vault context, the Calendar sidebar and @mention date chips (Today/Yesterday/Tomorrow) create journal entries in that vault's configured directory. Switching vault contexts switches the active journal, so you can maintain separate journals per vault (e.g., personal vs. work).
+
+---
+
 ## Troubleshooting
 
 ### The app won't start
@@ -475,6 +514,7 @@ Open the **Help** menu and select **User Guide**, **Keyboard Shortcuts**, or **F
 ### My markdown file looks different after editing
 
 Baram preserves your markdown with lossless roundtrip fidelity. If something looks different, it may be because:
+
 - Trailing whitespace was normalized
 - The file used non-standard markdown syntax that Baram doesn't support
 

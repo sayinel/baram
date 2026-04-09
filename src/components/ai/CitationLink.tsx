@@ -1,4 +1,5 @@
 // §11.4 Citation link — shows a numbered citation badge linking to a knowledge search result
+import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
 
 interface CitationLinkProps {
@@ -11,14 +12,27 @@ interface CitationLinkProps {
 }
 
 export function CitationLink({ index, filePath, heading }: CitationLinkProps) {
-  const displayPath = heading
+  // §87 Prefix with vault label when citation is from a non-active context
+  const vaultPrefix = (() => {
+    const { getContextForPath, activeContext } = useContextStore.getState();
+    const ctx = getContextForPath(filePath);
+    const active = activeContext();
+    if (ctx && active && ctx.id !== active.id) {
+      return `${ctx.label}::`;
+    }
+    return "";
+  })();
+
+  const basePath = heading
     ? `${filePath}#${headingToAnchor(heading)}`
     : filePath;
+  const displayPath = `${vaultPrefix}${basePath}`;
 
   const handleOpen = () => {
     const { openTab } = useEditorStore.getState();
     const title = filePath.split("/").pop() ?? filePath;
     openTab({
+      contextId: "",
       id: filePath,
       title,
       filePath,

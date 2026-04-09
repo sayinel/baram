@@ -3,9 +3,12 @@ import { lazy, Suspense, useCallback } from "react";
 
 import { useShallow } from "zustand/shallow";
 
+import { useContextStore } from "../../stores/context/context";
+import { isFileTab, useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useUIStore } from "../../stores/ui/ui";
 import { ActivityBar } from "./ActivityBar";
+import { ContextTabBar } from "./ContextTabBar";
 import { Sidebar } from "./Sidebar";
 import { Splitter } from "./Splitter";
 
@@ -65,8 +68,17 @@ export function AppLayout({ children, statusBar }: AppLayoutProps) {
   );
   const rootPath = useFileStore((s) => s.rootPath);
 
+  // §89 Check if active tab is an external file (FileContext)
+  const isExternalTabActive = useEditorStore((s) => {
+    const tab = s.tabs.find((t) => t.id === s.activeTabId);
+    if (!tab || !isFileTab(tab)) return false;
+    const ctx = useContextStore.getState().getContextForPath(tab.filePath);
+    return ctx?.contextType === "file";
+  });
+
   // Hide sidebar & activity bar when no folder is open (HomeScreen state)
-  const showSidebar = !!rootPath && sidebarOpen;
+  // or when an external file tab is active
+  const showSidebar = !!rootPath && sidebarOpen && !isExternalTabActive;
 
   const handleSidebarResize = useCallback(
     (delta: number) => {
@@ -91,6 +103,8 @@ export function AppLayout({ children, statusBar }: AppLayoutProps) {
 
   return (
     <div className="app-layout">
+      {/* §82 Context Tab Bar — hidden when single context */}
+      <ContextTabBar />
       {/* Body: sidebar + main + right panel */}
       <div className="app-layout-body">
         {/* Activity Bar — hidden when no folder open */}

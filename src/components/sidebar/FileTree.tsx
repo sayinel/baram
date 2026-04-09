@@ -171,6 +171,7 @@ export function FileTree(): React.JSX.Element {
         const content = await readFile(entry.path);
         setFileContent(entry.path, content);
         openTab({
+          contextId: "",
           id: crypto.randomUUID(),
           filePath: entry.path,
           title: entry.name,

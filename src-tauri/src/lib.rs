@@ -2,6 +2,7 @@
 
 mod commands;
 mod config;
+mod context;
 mod embedding;
 mod export;
 mod fs;
@@ -18,8 +19,8 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use commands::{
-    config_cmd, embedding_cmd, export_cmd, fs_cmd, git_cmd, index_cmd, keyring_cmd, llm_cmd,
-    plugin_cmd, search_cmd, snapshot_cmd, tag_cmd,
+    config_cmd, context_cmd, embedding_cmd, export_cmd, fs_cmd, git_cmd, index_cmd, keyring_cmd,
+    llm_cmd, plugin_cmd, search_cmd, snapshot_cmd, tag_cmd,
 };
 use tauri::{Emitter, Manager};
 
@@ -30,9 +31,11 @@ struct PendingOpenFiles(Mutex<Vec<String>>);
 /// None means no vault is open yet (cold start); all paths are allowed until set.
 pub struct VaultRootState(pub tokio::sync::RwLock<Option<std::path::PathBuf>>);
 
-/// Active directory watcher. Replacing the value drops the old watcher, which closes
-/// the internal event channel and causes the watcher thread to exit naturally (RAII).
-pub struct WatcherState(pub std::sync::Mutex<Option<notify::RecommendedWatcher>>);
+/// Per-context directory watchers. Keyed by context id (or path as fallback).
+/// Dropping a value closes the internal event channel and causes the watcher thread to exit naturally (RAII).
+pub struct WatcherState(
+    pub std::sync::Mutex<std::collections::HashMap<String, notify::RecommendedWatcher>>,
+);
 
 #[tauri::command]
 fn get_opened_urls(state: tauri::State<'_, PendingOpenFiles>) -> Result<Vec<String>, String> {
@@ -77,9 +80,12 @@ pub fn run() {
         })
         .manage(PendingOpenFiles(Mutex::new(Vec::new())))
         .manage(VaultRootState(tokio::sync::RwLock::new(None)))
-        .manage(WatcherState(std::sync::Mutex::new(None)))
+        .manage(WatcherState(std::sync::Mutex::new(
+            std::collections::HashMap::new(),
+        )))
+        .manage(context::ContextManager::new())
         .manage(index_cmd::LinkIndexState(tokio::sync::Mutex::new(
-            index::LinkIndex::new(),
+            std::collections::HashMap::new(),
         )))
         .manage(llm::cancel::CancelRegistry::new())
         .manage(embedding_cmd::EmbeddingState::new())
@@ -93,6 +99,7 @@ pub fn run() {
             fs_cmd::create_dir,
             fs_cmd::delete_dir,
             fs_cmd::copy_file,
+            fs_cmd::import_file,
             fs_cmd::watch_dir,
             fs_cmd::extract_zip,
             fs_cmd::write_binary_file,
@@ -161,6 +168,20 @@ pub fn run() {
             embedding_cmd::index_vault,
             embedding_cmd::index_status,
             embedding_cmd::index_file,
+            context_cmd::add_context,
+            context_cmd::remove_context,
+            context_cmd::set_active_context,
+            context_cmd::get_contexts,
+            context_cmd::get_vault_config,
+            context_cmd::init_vault,
+            context_cmd::resolve_cross_vault_link,
+            context_cmd::update_context_alias,
+            context_cmd::update_context_label,
+            context_cmd::update_context_color,
+            context_cmd::set_vault_config,
+            context_cmd::get_vault_config_by_path,
+            context_cmd::set_vault_config_by_path,
+            context_cmd::resolve_settings,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

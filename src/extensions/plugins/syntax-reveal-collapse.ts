@@ -141,8 +141,9 @@ export function collapseExpanded(
       return;
     }
 
-    const [, wlTarget, wlHeading, wlBlockId, wlDisplay] = wlMatch;
+    const [, wlAlias, wlTarget, wlHeading, wlBlockId, wlDisplay] = wlMatch;
     const wikilinkNode = state.schema.nodes.wikilink.create({
+      vaultAlias: wlAlias || null,
       target: wlTarget,
       heading: wlHeading || null,
       blockId: wlBlockId || null,

@@ -140,6 +140,7 @@ export function Backlinks() {
           const fileName = extractFileNameFromPath(sourcePath);
           useFileStore.getState().setFileContent(sourcePath, content);
           openTab({
+            contextId: "",
             id: crypto.randomUUID(),
             filePath: sourcePath,
             title: fileName,
