@@ -144,11 +144,13 @@ export function toGraphElements(
       if (!degreeMap.has(edge.from)) degreeMap.set(edge.from, 0);
     }
 
+    // §87 Use cross_vault flag from Rust LinkEdge (set when target_vault_alias exists)
     const isCrossVault =
-      nodeVaultMap !== undefined &&
-      nodeVaultMap.has(edge.from) &&
-      nodeVaultMap.has(edge.to) &&
-      nodeVaultMap.get(edge.from) !== nodeVaultMap.get(edge.to);
+      edge.crossVault === true ||
+      (nodeVaultMap !== undefined &&
+        nodeVaultMap.has(edge.from) &&
+        nodeVaultMap.has(edge.to) &&
+        nodeVaultMap.get(edge.from) !== nodeVaultMap.get(edge.to));
 
     edges.push({
       data: {
