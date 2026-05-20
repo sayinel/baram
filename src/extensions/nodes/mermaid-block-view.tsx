@@ -636,16 +636,30 @@ async function renderMermaid(
       startOnLoad: false,
       theme:
         document.documentElement.dataset.theme === "dark" ? "dark" : "default",
-      securityLevel: "strict",
+      // "antiscript" allows inline HTML in labels (e.g. <br>, <b>, <i>) while
+      // stripping <script>. "strict" would HTML-encode every tag, breaking <br>.
+      securityLevel: "antiscript",
     });
     const id = `mermaid-${++mermaidIdCounter}`;
     const { svg } = await mermaid.render(id, source);
-    // foreignObject is required for Mermaid text labels (flowchart nodes, sequence text).
-    // Risk is mitigated by Mermaid's securityLevel:"strict" which sanitizes its own output.
+    // foreignObject hosts HTML labels (flowchart nodes, sequence text); the
+    // common formatting tags below must be allow-listed or DOMPurify's svg
+    // profile strips them. <script>/<iframe>/event handlers stay forbidden.
     onSuccess(
       DOMPurify.sanitize(svg, {
         USE_PROFILES: { svg: true },
-        ADD_TAGS: ["foreignObject"],
+        ADD_TAGS: [
+          "foreignObject",
+          "br",
+          "div",
+          "span",
+          "p",
+          "i",
+          "b",
+          "em",
+          "strong",
+          "code",
+        ],
       }),
     );
   } catch (err) {
