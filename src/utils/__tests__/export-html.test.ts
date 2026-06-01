@@ -1,7 +1,17 @@
 // §5.12 Export HTML — generateStandaloneHTML unit tests
+import type { Editor } from "@tiptap/core";
+
 import { describe, expect, it } from "vitest";
 
-import { generateStandaloneHTML } from "../export/export-html";
+import {
+  captureEditorHTML,
+  generateStandaloneHTML,
+} from "../export/export-html";
+
+/** Build a minimal mock Editor whose view.dom is the given element. */
+function mockEditor(dom: HTMLElement): Editor {
+  return { view: { dom } } as unknown as Editor;
+}
 
 describe("generateStandaloneHTML", () => {
   it("produces valid HTML5 document with DOCTYPE and charset", () => {
@@ -66,5 +76,49 @@ describe("generateStandaloneHTML", () => {
   it("includes Baram generator meta tag", () => {
     const html = generateStandaloneHTML("<p>x</p>", "Test");
     expect(html).toContain('<meta name="generator" content="Baram">');
+  });
+
+  it("hides mermaid interactive UI in print CSS", () => {
+    const html = generateStandaloneHTML("<p>x</p>", "Test");
+    expect(html).toContain(".mermaid-hover-toolbar");
+    expect(html).toContain("display: none !important");
+  });
+});
+
+describe("captureEditorHTML — mermaid interactive UI stripping", () => {
+  it("removes the mermaid hover toolbar (AI / copy / expand buttons) but keeps the SVG", async () => {
+    const dom = document.createElement("div");
+    dom.innerHTML = `
+      <div class="mermaid-block mermaid-block-preview">
+        <svg class="mermaid-svg"><g></g></svg>
+        <div class="mermaid-hover-toolbar">
+          <button class="mermaid-hover-toolbar-btn">AI</button>
+          <button class="mermaid-hover-toolbar-btn">복사</button>
+          <button class="mermaid-hover-toolbar-btn">확장</button>
+        </div>
+      </div>`;
+
+    const html = await captureEditorHTML(mockEditor(dom));
+
+    expect(html).not.toContain("mermaid-hover-toolbar");
+    expect(html).not.toContain(">AI<");
+    expect(html).not.toContain(">복사<");
+    expect(html).not.toContain(">확장<");
+    // Rendered diagram must survive the cleanup.
+    expect(html).toContain("mermaid-svg");
+  });
+
+  it("removes the mermaid context menu portal markup", async () => {
+    const dom = document.createElement("div");
+    dom.innerHTML = `
+      <div class="mermaid-block">
+        <svg class="mermaid-svg"></svg>
+        <div class="mermaid-context-menu"><button>Copy as SVG</button></div>
+      </div>`;
+
+    const html = await captureEditorHTML(mockEditor(dom));
+
+    expect(html).not.toContain("mermaid-context-menu");
+    expect(html).toContain("mermaid-svg");
   });
 });
