@@ -416,6 +416,8 @@
 }
 
 .export-dialog-label {
+  display: flex;
+  align-items: center;
   font-size: 0.8rem;
   font-weight: 500;
   color: var(--color-text-secondary);
@@ -557,6 +559,19 @@
 
 .export-paper-tab-active:hover {
   background-color: var(--color-accent-hover);
+}
+
+.export-scale-value {
+  margin-left: auto;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary);
+}
+
+.export-scale-slider {
+  width: 100%;
+  accent-color: var(--color-accent-default);
+  cursor: pointer;
 }
 
 .export-dialog-input {

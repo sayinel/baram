@@ -52,12 +52,31 @@ export async function captureEditorHTML(editor: Editor): Promise<string> {
   for (const el of clone.querySelectorAll(".mermaid-block-error")) el.remove();
   for (const el of clone.querySelectorAll(".mermaid-block-empty")) el.remove();
   for (const el of clone.querySelectorAll(".mermaid-context-menu")) el.remove();
+  for (const el of clone.querySelectorAll(".mermaid-hover-toolbar"))
+    el.remove();
   for (const el of clone.querySelectorAll(".mermaid-template-wrapper"))
     el.remove();
   for (const el of clone.querySelectorAll(".mermaid-block-label")) el.remove();
   for (const el of clone.querySelectorAll(".mermaid-block-editing")) {
     el.classList.remove("mermaid-block-editing");
     el.classList.add("mermaid-block-preview");
+  }
+  // Normalize rendered SVG sizing for export: mermaid pins an inline
+  // `max-width: <natural>px` that overrides our stylesheet, so diagrams render
+  // at inconsistent sizes and tall ones overflow page bounds. Pin the natural
+  // size from viewBox as width/height attributes and drop the inline cap so the
+  // export/print CSS governs: small diagrams keep their natural size, large
+  // ones shrink to the text column (and fit one page in print). See §5.12.
+  for (const svg of clone.querySelectorAll(".mermaid-block-svg svg")) {
+    const viewBox = svg.getAttribute("viewBox");
+    const parts = viewBox?.split(/[\s,]+/).map(Number);
+    if (parts && parts.length === 4 && parts[2] > 0 && parts[3] > 0) {
+      svg.setAttribute("width", String(Math.round(parts[2])));
+      svg.setAttribute("height", String(Math.round(parts[3])));
+    }
+    const svgStyle = (svg as SVGElement).style;
+    svgStyle.removeProperty("max-width");
+    svgStyle.removeProperty("width");
   }
 
   // ── Images: convert Tauri asset URLs to base64 data URIs ──────────
