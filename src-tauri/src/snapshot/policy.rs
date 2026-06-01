@@ -150,7 +150,7 @@ fn thin_by_bucket(snapshots: &[&(String, u64, String)], bucket_secs: u64) -> Vec
             continue;
         }
         // Sort by epoch descending — keep first (newest)
-        entries.sort_by(|a, b| b.1.cmp(&a.1));
+        entries.sort_by_key(|b| std::cmp::Reverse(b.1));
         for entry in entries.into_iter().skip(1) {
             to_delete.push(entry.0.clone());
         }
