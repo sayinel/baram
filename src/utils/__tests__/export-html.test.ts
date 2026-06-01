@@ -83,6 +83,13 @@ describe("generateStandaloneHTML", () => {
     expect(html).toContain(".mermaid-hover-toolbar");
     expect(html).toContain("display: none !important");
   });
+
+  it("constrains tall mermaid diagrams to one page in print CSS", () => {
+    const html = generateStandaloneHTML("<p>x</p>", "Test");
+    // Print rule must cap diagram height to the page box (vh) so it never
+    // spans multiple pages, while preserving aspect ratio.
+    expect(html).toContain("max-height: 90vh !important");
+  });
 });
 
 describe("captureEditorHTML — mermaid interactive UI stripping", () => {
@@ -120,5 +127,51 @@ describe("captureEditorHTML — mermaid interactive UI stripping", () => {
 
     expect(html).not.toContain("mermaid-context-menu");
     expect(html).toContain("mermaid-svg");
+  });
+});
+
+describe("captureEditorHTML — mermaid diagram sizing normalization", () => {
+  it("pins natural size from viewBox and drops mermaid's inline max-width", async () => {
+    const dom = document.createElement("div");
+    dom.innerHTML = `
+      <div class="mermaid-block-svg">
+        <svg viewBox="0 0 480 300" style="max-width: 480px;"><g></g></svg>
+      </div>`;
+
+    const html = await captureEditorHTML(mockEditor(dom));
+
+    // Natural dimensions pinned as attributes (drives intrinsic aspect ratio).
+    expect(html).toContain('width="480"');
+    expect(html).toContain('height="300"');
+    // Mermaid's inline max-width cap must be gone so export CSS governs sizing.
+    expect(html).not.toContain("max-width: 480px");
+    expect(html).not.toContain("max-width:480px");
+  });
+
+  it("rounds fractional viewBox dimensions", async () => {
+    const dom = document.createElement("div");
+    dom.innerHTML = `
+      <div class="mermaid-block-svg">
+        <svg viewBox="0 0 764.5 512.25" style="max-width: 764.5px;"></svg>
+      </div>`;
+
+    const html = await captureEditorHTML(mockEditor(dom));
+
+    expect(html).toContain('width="765"');
+    expect(html).toContain('height="512"');
+  });
+
+  it("leaves a viewBox-less svg without pinned dimensions", async () => {
+    const dom = document.createElement("div");
+    dom.innerHTML = `
+      <div class="mermaid-block-svg">
+        <svg style="max-width: 200px;"></svg>
+      </div>`;
+
+    const html = await captureEditorHTML(mockEditor(dom));
+
+    // No viewBox → cannot derive natural size; still strips the inline cap.
+    expect(html).not.toContain('width="');
+    expect(html).not.toContain("max-width: 200px");
   });
 });

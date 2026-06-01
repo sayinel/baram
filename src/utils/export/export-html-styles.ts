@@ -302,9 +302,9 @@ sup { font-size: 0.75em; }
 /* Inline math */
 .math-inline { display: inline; }
 
-/* Mermaid blocks */
+/* Mermaid blocks — small diagrams keep natural size, large ones cap at text width */
 .mermaid-block { margin: 1em 0; text-align: center; }
-.mermaid-block-svg { display: inline-block; }
+.mermaid-block-svg { display: inline-block; max-width: 100%; }
 .mermaid-block-svg svg { max-width: 100%; height: auto; }
 
 /* Frontmatter */
@@ -435,5 +435,15 @@ export const PRINT_CSS = `
   .tableWrapper { overflow: hidden; }
   a { color: #3b82f6; }
   .mermaid-hover-toolbar, .mermaid-context-menu { display: none !important; }
+  /* Scale tall diagrams down so a single mermaid never spans pages.
+     In print, vh maps to the page box; combined with the intrinsic aspect
+     ratio (width/height attrs set during export capture), width/height:auto
+     fit the diagram within both the text column and one page, preserving ratio. */
+  .mermaid-block-svg svg {
+    width: auto !important;
+    height: auto !important;
+    max-width: 100% !important;
+    max-height: 90vh !important;
+  }
 }
 `;
