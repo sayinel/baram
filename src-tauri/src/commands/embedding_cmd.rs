@@ -349,7 +349,7 @@ async fn index_single_file(
     let mut chunk_index = state.chunk_index.lock().await;
     let chunk_count = chunks.len();
 
-    for (chunk, embedding) in chunks.into_iter().zip(embeddings.into_iter()) {
+    for (chunk, embedding) in chunks.into_iter().zip(embeddings) {
         store.add_with_file(&chunk.id, embedding, relative_path);
         chunk_index.insert(chunk.id.clone(), chunk);
     }
