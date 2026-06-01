@@ -89,6 +89,7 @@ export function ExportDialog({ editor }: ExportDialogProps) {
   const [title, setTitle] = useState("Untitled");
   const [exporting, setExporting] = useState(false);
   const [paperSize, setPaperSize] = useState<"a4" | "letter">("a4");
+  const [scale, setScale] = useState(100);
   const [errorMsg, setErrorMsg] = useState<null | string>(null);
   const [pandocInfo, setPandocInfo] = useState<null | PandocInfo>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -103,6 +104,7 @@ export function ExportDialog({ editor }: ExportDialogProps) {
       setTitle(defaultTitle);
       setExporting(false);
       setPaperSize("a4");
+      setScale(100);
       setErrorMsg(null);
       setTimeout(() => {
         titleInputRef.current?.focus();
@@ -137,7 +139,7 @@ export function ExportDialog({ editor }: ExportDialogProps) {
       if (exportFormat === "html") {
         await exportAsHTML(editor, title);
       } else if (exportFormat === "pdf") {
-        await exportAsPDF(editor, title, { paperSize });
+        await exportAsPDF(editor, title, { paperSize, scale: scale / 100 });
       } else if (exportFormat === "notion") {
         await exportForNotion(editor, title);
       } else if (isPandocFormat(exportFormat)) {
@@ -159,6 +161,7 @@ export function ExportDialog({ editor }: ExportDialogProps) {
     exportFormat,
     title,
     paperSize,
+    scale,
     pandocPath,
     pandocInfo,
     wordTemplatePath,
@@ -281,6 +284,25 @@ export function ExportDialog({ editor }: ExportDialogProps) {
                   Letter
                 </button>
               </div>
+            </div>
+          )}
+
+          {exportFormat === "pdf" && (
+            <div className="export-dialog-field">
+              <label className="export-dialog-label" htmlFor="export-scale">
+                Scale
+                <span className="export-scale-value">{scale}%</span>
+              </label>
+              <input
+                className="export-scale-slider"
+                id="export-scale"
+                max={150}
+                min={50}
+                onChange={(e) => setScale(Number(e.target.value))}
+                step={5}
+                type="range"
+                value={scale}
+              />
             </div>
           )}
 
