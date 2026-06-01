@@ -52,6 +52,8 @@ export async function captureEditorHTML(editor: Editor): Promise<string> {
   for (const el of clone.querySelectorAll(".mermaid-block-error")) el.remove();
   for (const el of clone.querySelectorAll(".mermaid-block-empty")) el.remove();
   for (const el of clone.querySelectorAll(".mermaid-context-menu")) el.remove();
+  for (const el of clone.querySelectorAll(".mermaid-hover-toolbar"))
+    el.remove();
   for (const el of clone.querySelectorAll(".mermaid-template-wrapper"))
     el.remove();
   for (const el of clone.querySelectorAll(".mermaid-block-label")) el.remove();
