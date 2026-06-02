@@ -410,7 +410,7 @@
   z-index: 30;
   display: flex;
   gap: 2px;
-  opacity: 0.7;
+  opacity: 1;
   transition: opacity 0.15s;
 }
 
@@ -424,8 +424,9 @@
   justify-content: center;
   width: 20px;
   height: 24px;
-  font-size: 14px;
-  color: var(--color-text-muted);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-text-primary);
   cursor: pointer;
   background: transparent;
   border: none;
