@@ -19,6 +19,7 @@ import {
   getBlockTextContent,
 } from "../../utils/block-ai-utils";
 import { getActionsForMode } from "../../utils/contextual-ai-actions";
+import { getEditorZoom } from "../../utils/zoom-coords";
 
 interface BlockHandleProps {
   editor: Editor;
@@ -64,21 +65,27 @@ export function BlockHandle({ editor }: BlockHandleProps) {
       if (menuOpen) return;
       cancelHideTimeout();
 
+      // §4.2 Zoom: editorRect and mouse events are both in visual viewport
+      // space, but the gutter band and probe offset are content-space sizes that
+      // scale with zoom — multiply by the zoom factor so the hover zone tracks
+      // the (scaled) gutter at any zoom level. No-op at zoom 1.
+      const zoom = getEditorZoom();
       const editorRect = editorDom.getBoundingClientRect();
       // Show handle when mouse is near the left gutter of the editor
-      // Accept from slightly left of editor to ~120px inside
+      // Accept from slightly left of editor to ~120px (content) inside
       if (
-        e.clientX < editorRect.left - 10 ||
-        e.clientX > editorRect.left + 120
+        e.clientX < editorRect.left - 10 * zoom ||
+        e.clientX > editorRect.left + 120 * zoom
       ) {
         setHandle(null);
         return;
       }
 
-      // Find the block-level node under the cursor
+      // Find the block-level node under the cursor. posAtCoords() takes visual
+      // viewport coords; probe 80 content-px (× zoom) into the editor.
       try {
         const pos = editor.view.posAtCoords({
-          left: editorRect.left + 80,
+          left: editorRect.left + 80 * zoom,
           top: e.clientY,
         });
         if (!pos) {
@@ -301,6 +308,17 @@ export function BlockHandle({ editor }: BlockHandleProps) {
   ];
 
   const editorRect = editor.view.dom.getBoundingClientRect();
+  // §4.2 Zoom: the handle/menu are position:fixed inside the zoomed
+  // .editor-area-scroll, which renders such elements at (zoom × top, zoom × left)
+  // — scaled from the viewport origin (measured in WKWebView). getBoundingClientRect
+  // already returns scaled visual coords, so dividing the target visual position
+  // by the zoom factor cancels the render-time scaling and the handle lands
+  // exactly on the block. No-op at zoom 1.
+  const renderZoom = getEditorZoom();
+  const handlePos = {
+    x: (editorRect.left + 14) / renderZoom,
+    y: handle.top / renderZoom,
+  };
 
   return (
     <>
@@ -316,8 +334,8 @@ export function BlockHandle({ editor }: BlockHandleProps) {
         }}
         ref={handleRef}
         style={{
-          top: `${handle.top}px`,
-          left: `${editorRect.left + 14}px`,
+          top: `${handlePos.y}px`,
+          left: `${handlePos.x}px`,
         }}
       >
         <button
@@ -334,8 +352,8 @@ export function BlockHandle({ editor }: BlockHandleProps) {
           className="block-handle-menu"
           ref={menuRef}
           style={{
-            top: `${handle.top}px`,
-            left: `${editorRect.left + 14}px`,
+            top: `${handlePos.y}px`,
+            left: `${handlePos.x}px`,
           }}
         >
           {menuItems.map((item, i) => (
