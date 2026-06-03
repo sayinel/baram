@@ -5,7 +5,8 @@ import type { Editor } from "@tiptap/react";
 
 import { TextSelection } from "@tiptap/pm/state";
 
-import { viewportToContentCoords } from "../../utils/zoom-coords";
+import { getEditorZoom } from "../../utils/zoom-coords";
+import { computeInsertButtonStyle } from "./table-insert-coords";
 
 interface ButtonState {
   /** Whether to insert before (true) or after (false) */
@@ -115,13 +116,17 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
         return;
       }
 
-      // Convert viewport mouse coords to content space (zoom-aware)
-      const mouse = viewportToContentCoords(e.clientX, e.clientY);
+      // §4.2 Zoom: mouse clientX/Y and getBoundingClientRect() are BOTH in
+      // visual viewport space inside the CSS-zoom container, so they compare
+      // directly with no conversion. Only the detection bands are content-space
+      // sizes that scale with zoom — multiply by the zoom factor. No-op at zoom 1.
+      const zoom = getEditorZoom();
+      const mouse = { x: e.clientX, y: e.clientY };
 
       const tableRect = tableEl.getBoundingClientRect();
       const nearTop =
-        mouse.y >= tableRect.top - DETECT_OUTER &&
-        mouse.y <= tableRect.top + DETECT_INNER;
+        mouse.y >= tableRect.top - DETECT_OUTER * zoom &&
+        mouse.y <= tableRect.top + DETECT_INNER * zoom;
 
       if (nearTop) {
         // Column insert mode: find nearest column boundary
@@ -228,8 +233,11 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
         rafRef.current = 0;
         if (hoveringBtnRef.current) return;
 
-        // Convert viewport mouse coords to content space (zoom-aware)
-        const mouse = viewportToContentCoords(e.clientX, e.clientY);
+        // §4.2 Zoom: mouse and rects share visual viewport space (no
+        // conversion); detection bands and elementFromPoint probe offsets are
+        // content-space sizes that scale with zoom — × zoom. No-op at zoom 1.
+        const zoom = getEditorZoom();
+        const mouse = { x: e.clientX, y: e.clientY };
 
         const target = e.target as HTMLElement;
         const tableEl = target.closest("table") as HTMLTableElement | null;
@@ -241,19 +249,19 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
         if (lockedButtonRef.current && !tableEl) {
           const nearTable =
             (document
-              .elementFromPoint(e.clientX + 20, e.clientY)
+              .elementFromPoint(e.clientX + 20 * zoom, e.clientY)
               ?.closest("table") as HTMLTableElement | null) ??
             (document
-              .elementFromPoint(e.clientX, e.clientY + 20)
+              .elementFromPoint(e.clientX, e.clientY + 20 * zoom)
               ?.closest("table") as HTMLTableElement | null);
 
           if (nearTable) {
             const rect = nearTable.getBoundingClientRect();
             const inZone =
-              mouse.x >= rect.left - DETECT_OUTER * 2 &&
-              mouse.x <= rect.right + DETECT_OUTER &&
-              mouse.y >= rect.top - DETECT_OUTER * 2 &&
-              mouse.y <= rect.bottom + DETECT_OUTER;
+              mouse.x >= rect.left - DETECT_OUTER * 2 * zoom &&
+              mouse.x <= rect.right + DETECT_OUTER * zoom &&
+              mouse.y >= rect.top - DETECT_OUTER * 2 * zoom &&
+              mouse.y <= rect.bottom + DETECT_OUTER * zoom;
             if (inZone) {
               cancelHide();
               return; // outside table, near it — keep button locked
@@ -267,11 +275,17 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
 
         if (!tableEl) {
           // Mouse left the table — check if we're in the outer detection zone
-          const elBelow = document.elementFromPoint(e.clientX + 20, e.clientY);
-          const elAbove = document.elementFromPoint(e.clientX, e.clientY + 20);
+          const elBelow = document.elementFromPoint(
+            e.clientX + 20 * zoom,
+            e.clientY,
+          );
+          const elAbove = document.elementFromPoint(
+            e.clientX,
+            e.clientY + 20 * zoom,
+          );
           const elLeft = document.elementFromPoint(
-            e.clientX + 20,
-            e.clientY + 20,
+            e.clientX + 20 * zoom,
+            e.clientY + 20 * zoom,
           );
           const nearTable =
             (elBelow?.closest("table") as HTMLTableElement | null) ??
@@ -285,11 +299,11 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
 
           const rect = nearTable.getBoundingClientRect();
           const inTopZone =
-            mouse.y >= rect.top - DETECT_OUTER &&
-            mouse.y <= rect.top + DETECT_INNER;
+            mouse.y >= rect.top - DETECT_OUTER * zoom &&
+            mouse.y <= rect.top + DETECT_INNER * zoom;
           const inLeftZone =
-            mouse.x >= rect.left - DETECT_OUTER &&
-            mouse.x <= rect.left + DETECT_INNER;
+            mouse.x >= rect.left - DETECT_OUTER * zoom &&
+            mouse.x <= rect.left + DETECT_INNER * zoom;
 
           if (!inTopZone && !inLeftZone) {
             scheduleHide();
@@ -302,11 +316,11 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
 
         const tableRect = tableEl.getBoundingClientRect();
         const nearTop =
-          mouse.y >= tableRect.top - DETECT_OUTER &&
-          mouse.y <= tableRect.top + DETECT_INNER;
+          mouse.y >= tableRect.top - DETECT_OUTER * zoom &&
+          mouse.y <= tableRect.top + DETECT_INNER * zoom;
         const nearLeft =
-          mouse.x >= tableRect.left - DETECT_OUTER &&
-          mouse.x <= tableRect.left + DETECT_INNER;
+          mouse.x >= tableRect.left - DETECT_OUTER * zoom &&
+          mouse.x <= tableRect.left + DETECT_INNER * zoom;
 
         if (!nearTop && !nearLeft) {
           scheduleHide();
@@ -391,14 +405,14 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
 
   if (!button) return null;
 
-  // Position: centered on the edge point.
-  // getBoundingClientRect() returns visual viewport coords even inside
-  // a CSS zoom container — use raw values for position:fixed.
+  // §4.2 Zoom-aware positioning — see computeInsertButtonStyle. button.x/y are
+  // visual-viewport edge coords; dividing by the zoom factor cancels the
+  // render-time zoom× scaling of this position:fixed element. No-op at zoom 1.
   const isCol = button.type === "col";
-  const style: React.CSSProperties = {
-    left: isCol ? button.x - 10 : button.x - 22,
-    top: isCol ? button.y - 22 : button.y - 10,
-  };
+  const style: React.CSSProperties = computeInsertButtonStyle(
+    button,
+    getEditorZoom(),
+  );
 
   return (
     <button
