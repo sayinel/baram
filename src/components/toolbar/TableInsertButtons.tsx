@@ -6,7 +6,10 @@ import type { Editor } from "@tiptap/react";
 import { TextSelection } from "@tiptap/pm/state";
 
 import { getEditorZoom } from "../../utils/zoom-coords";
-import { computeInsertButtonStyle } from "./table-insert-coords";
+import {
+  computeInsertButtonStyle,
+  findTableNearPoint,
+} from "./table-insert-coords";
 
 interface ButtonState {
   /** Whether to insert before (true) or after (false) */
@@ -83,6 +86,9 @@ const DETECT_INNER = 16; // px inside the table edge
 export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
   const [button, setButton] = useState<ButtonState | null>(null);
   const rafRef = useRef(0);
+  // Latest mousemove event — the rAF below reads this rather than the event
+  // that scheduled it, so a fast move ending inside the band is never dropped.
+  const latestEventRef = useRef<MouseEvent | null>(null);
   const hoveringBtnRef = useRef(false);
   const hideTimerRef = useRef(0);
   // Lock: when a button is visible, keep it stable until mouse leaves the zone.
@@ -227,45 +233,43 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
     (e: MouseEvent) => {
       // Don't dismiss when hovering the button itself
       if (hoveringBtnRef.current) return;
+      // Always record the latest position; the rAF reads the most recent event
+      // (not the one that scheduled the frame) so a fast move that ends inside
+      // the band isn't dropped — previously that required jiggling the mouse.
+      latestEventRef.current = e;
       if (rafRef.current) return;
 
       rafRef.current = requestAnimationFrame(() => {
         rafRef.current = 0;
         if (hoveringBtnRef.current) return;
 
-        // §4.2 Zoom: mouse and rects share visual viewport space (no
-        // conversion); detection bands and elementFromPoint probe offsets are
-        // content-space sizes that scale with zoom — × zoom. No-op at zoom 1.
-        const zoom = getEditorZoom();
-        const mouse = { x: e.clientX, y: e.clientY };
+        const ev = latestEventRef.current;
+        if (!ev) return;
 
-        const target = e.target as HTMLElement;
+        // §4.2 Zoom: mouse clientX/Y and getBoundingClientRect() share visual
+        // viewport space (no conversion); the detection bands are content-space
+        // sizes that scale with zoom — × zoom. No-op at zoom 1.
+        const zoom = getEditorZoom();
+        const mouse = { x: ev.clientX, y: ev.clientY };
+
+        const target = ev.target as HTMLElement;
         const tableEl = target.closest("table") as HTMLTableElement | null;
 
-        // If a button is already showing and mouse is OUTSIDE the table
+        // If a button is already showing and the mouse is OUTSIDE the table
         // (in the outer zone, e.g. moving toward the button), keep it locked.
-        // But if mouse is INSIDE the table, allow free recomputation so the
+        // But if the mouse is INSIDE the table, allow free recomputation so the
         // button follows the mouse to different column/row boundaries.
         if (lockedButtonRef.current && !tableEl) {
-          const nearTable =
-            (document
-              .elementFromPoint(e.clientX + 20 * zoom, e.clientY)
-              ?.closest("table") as HTMLTableElement | null) ??
-            (document
-              .elementFromPoint(e.clientX, e.clientY + 20 * zoom)
-              ?.closest("table") as HTMLTableElement | null);
-
+          // Generous on the top/left (where the button sits), tighter elsewhere.
+          const nearTable = findTableNearPoint(mouse.x, mouse.y, {
+            left: DETECT_OUTER * 2 * zoom,
+            right: DETECT_OUTER * zoom,
+            top: DETECT_OUTER * 2 * zoom,
+            bottom: DETECT_OUTER * zoom,
+          });
           if (nearTable) {
-            const rect = nearTable.getBoundingClientRect();
-            const inZone =
-              mouse.x >= rect.left - DETECT_OUTER * 2 * zoom &&
-              mouse.x <= rect.right + DETECT_OUTER * zoom &&
-              mouse.y >= rect.top - DETECT_OUTER * 2 * zoom &&
-              mouse.y <= rect.bottom + DETECT_OUTER * zoom;
-            if (inZone) {
-              cancelHide();
-              return; // outside table, near it — keep button locked
-            }
+            cancelHide();
+            return; // outside the table but near it / the button — keep locked
           }
           // Too far from any table — clear and hide
           lockedButtonRef.current = null;
@@ -274,24 +278,15 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
         }
 
         if (!tableEl) {
-          // Mouse left the table — check if we're in the outer detection zone
-          const elBelow = document.elementFromPoint(
-            e.clientX + 20 * zoom,
-            e.clientY,
-          );
-          const elAbove = document.elementFromPoint(
-            e.clientX,
-            e.clientY + 20 * zoom,
-          );
-          const elLeft = document.elementFromPoint(
-            e.clientX + 20 * zoom,
-            e.clientY + 20 * zoom,
-          );
-          const nearTable =
-            (elBelow?.closest("table") as HTMLTableElement | null) ??
-            (elAbove?.closest("table") as HTMLTableElement | null) ??
-            (elLeft?.closest("table") as HTMLTableElement | null);
-
+          // Mouse is outside any table — show only when within the outer band
+          // of a nearby table's top or left edge.
+          const band = DETECT_OUTER * zoom;
+          const nearTable = findTableNearPoint(mouse.x, mouse.y, {
+            left: band,
+            right: band,
+            top: band,
+            bottom: band,
+          });
           if (!nearTable) {
             scheduleHide();
             return;
@@ -310,7 +305,7 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
             return;
           }
 
-          computeButton(nearTable, e);
+          computeButton(nearTable, ev);
           return;
         }
 
@@ -327,7 +322,7 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
           return;
         }
 
-        computeButton(tableEl, e);
+        computeButton(tableEl, ev);
       });
     },
     [cancelHide, scheduleHide, computeButton],
