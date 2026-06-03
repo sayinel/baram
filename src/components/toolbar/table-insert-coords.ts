@@ -12,6 +12,22 @@ export interface InsertButtonAnchor {
   y: number;
 }
 
+/** Per-side margins (visual px) by which to expand a rect for hit-testing. */
+export interface NearMargins {
+  bottom: number;
+  left: number;
+  right: number;
+  top: number;
+}
+
+/** Minimal rect shape consumed by {@link isPointNearRect}. */
+interface RectLike {
+  bottom: number;
+  left: number;
+  right: number;
+  top: number;
+}
+
 /**
  * §4.2 Zoom-aware `position: fixed` offsets for the ⊕ insert button.
  *
@@ -34,4 +50,42 @@ export function computeInsertButtonStyle(
     left: button.x / zoom - (isCol ? 10 : 22),
     top: button.y / zoom - (isCol ? 22 : 10),
   };
+}
+
+/**
+ * Find the first editor `<table>` whose rect — expanded by `m` — contains
+ * (x, y). Deterministic rect math replaces the previous directional
+ * `elementFromPoint` probes, which only reached rightward/downward and so left
+ * a dead band when approaching the table edge from the margin. Coordinates are
+ * visual-viewport px (mouse clientX/Y and getBoundingClientRect share that space
+ * under CSS zoom — see zoom-coords.ts).
+ */
+export function findTableNearPoint(
+  x: number,
+  y: number,
+  m: NearMargins,
+): HTMLTableElement | null {
+  const scroll = document.querySelector(".editor-area-scroll");
+  if (!scroll) return null;
+  const tables = scroll.querySelectorAll("table");
+  for (let i = 0; i < tables.length; i++) {
+    const t = tables[i] as HTMLTableElement;
+    if (isPointNearRect(x, y, t.getBoundingClientRect(), m)) return t;
+  }
+  return null;
+}
+
+/** True when (x, y) lies inside `rect` after expanding it by per-side margins. */
+export function isPointNearRect(
+  x: number,
+  y: number,
+  rect: RectLike,
+  m: NearMargins,
+): boolean {
+  return (
+    x >= rect.left - m.left &&
+    x <= rect.right + m.right &&
+    y >= rect.top - m.top &&
+    y <= rect.bottom + m.bottom
+  );
 }
