@@ -1,4 +1,42 @@
 // §50 Mermaid diagram utilities — copy, templates, type detection
+import DOMPurify from "dompurify";
+
+/**
+ * Sanitize a Mermaid-rendered SVG for safe `dangerouslySetInnerHTML`.
+ *
+ * With `securityLevel: "antiscript"/"loose"`, Mermaid renders flowchart/graph
+ * node labels as HTML (`<div>`/`<span>`, plus inline `<br>`/`<b>`/`<i>`) inside
+ * `<foreignObject>`. DOMPurify's default `HTML_INTEGRATION_POINTS` is only
+ * `annotation-xml`, so HTML-namespaced content inside `<foreignObject>` (an SVG
+ * element) fails the namespace check and is stripped — labels render blank
+ * (regressed when §5.5 switched securityLevel "strict" → "antiscript", commit
+ * 51044cd). Registering `foreignobject` as an HTML integration point keeps the
+ * label markup, while `<script>`, event handlers, and `javascript:` URLs stay
+ * forbidden by the svg profile + DOMPurify defaults.
+ */
+export function sanitizeMermaidSvg(svg: string): string {
+  return DOMPurify.sanitize(svg, {
+    USE_PROFILES: { svg: true },
+    // foreignObject hosts HTML labels; these common inline tags must be
+    // allow-listed or DOMPurify's svg profile strips them.
+    ADD_TAGS: [
+      "foreignObject",
+      "br",
+      "div",
+      "span",
+      "p",
+      "i",
+      "b",
+      "em",
+      "strong",
+      "code",
+    ],
+    // Treat <foreignObject> as an HTML integration point so its HTML-namespaced
+    // children survive the namespace check. HTML_INTEGRATION_POINTS replaces (not
+    // merges) the default, so re-list the built-in `annotation-xml` too.
+    HTML_INTEGRATION_POINTS: { "annotation-xml": true, foreignobject: true },
+  });
+}
 
 /** Diagram type templates for Phase 2 supported types */
 export const MERMAID_TEMPLATES: Record<

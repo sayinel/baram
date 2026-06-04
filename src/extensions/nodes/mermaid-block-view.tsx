@@ -4,7 +4,6 @@ import { createPortal } from "react-dom";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 // §5.5 Mermaid Block NodeView — selected: textarea + preview, unselected: SVG render
 // §50 Enhanced: template picker + full-screen edit
-import DOMPurify from "dompurify";
 import { Copy, Maximize2, Sparkles } from "lucide-react";
 
 import {
@@ -13,6 +12,7 @@ import {
   copyMermaidSvg,
   detectMermaidType,
   MERMAID_TEMPLATES,
+  sanitizeMermaidSvg,
 } from "../../utils/markdown/mermaid-utils";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
 import { mermaidBlockEntryKey } from "./mermaid-block";
@@ -642,26 +642,10 @@ async function renderMermaid(
     });
     const id = `mermaid-${++mermaidIdCounter}`;
     const { svg } = await mermaid.render(id, source);
-    // foreignObject hosts HTML labels (flowchart nodes, sequence text); the
-    // common formatting tags below must be allow-listed or DOMPurify's svg
-    // profile strips them. <script>/<iframe>/event handlers stay forbidden.
-    onSuccess(
-      DOMPurify.sanitize(svg, {
-        USE_PROFILES: { svg: true },
-        ADD_TAGS: [
-          "foreignObject",
-          "br",
-          "div",
-          "span",
-          "p",
-          "i",
-          "b",
-          "em",
-          "strong",
-          "code",
-        ],
-      }),
-    );
+    // foreignObject hosts HTML labels (flowchart node text). DOMPurify must
+    // treat it as an HTML integration point or the label markup is stripped —
+    // see sanitizeMermaidSvg. <script>/event handlers stay forbidden.
+    onSuccess(sanitizeMermaidSvg(svg));
   } catch (err) {
     onError(err instanceof Error ? err.message : "Mermaid rendering error");
   }
