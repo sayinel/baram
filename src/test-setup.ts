@@ -1,6 +1,17 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach, vi } from "vitest";
 
+// jsdom does not implement `elementFromPoint`. ProseMirror's `posAtCoords`
+// (prosemirror-view) calls it unconditionally, and Tiptap's Placeholder
+// extension (@tiptap/extensions, viewport tracking) invokes `posAtCoords` on
+// every editor mount. Without this polyfill, mounting any editor that includes
+// the Placeholder extension throws `elementFromPoint is not a function`.
+// Returning null is the correct "no element at this point" signal — ProseMirror
+// then falls back gracefully and Placeholder treats it as "no viewport info".
+if (typeof Document.prototype.elementFromPoint !== "function") {
+  Document.prototype.elementFromPoint = () => null;
+}
+
 const mockInvoke = vi.fn(
   async (command: string): Promise<null | string[] | undefined> => {
     switch (command) {
