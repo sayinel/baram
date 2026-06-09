@@ -41,3 +41,45 @@ afterEach(() => {
   mockListen.mockClear();
   mockListen.mockResolvedValue(() => {});
 });
+
+// §perf-large-file: jsdom has no IntersectionObserver. Provide a mock whose
+// instances are tracked so tests can trigger intersection manually.
+class MockIntersectionObserver implements IntersectionObserver {
+  static instances: MockIntersectionObserver[] = [];
+  elements = new Set<Element>();
+  readonly root = null;
+  readonly rootMargin = "";
+  readonly thresholds = [];
+  private cb: IntersectionObserverCallback;
+
+  constructor(cb: IntersectionObserverCallback) {
+    this.cb = cb;
+    MockIntersectionObserver.instances.push(this);
+  }
+  disconnect() {
+    this.elements.clear();
+  }
+  observe(el: Element) {
+    this.elements.add(el);
+  }
+  takeRecords(): IntersectionObserverEntry[] {
+    return [];
+  }
+  /** Test helper: fire intersection for all observed elements. */
+  triggerIntersect(isIntersecting = true) {
+    const entries = [...this.elements].map(
+      (target) => ({ target, isIntersecting }) as IntersectionObserverEntry,
+    );
+    this.cb(entries, this);
+  }
+  unobserve(el: Element) {
+    this.elements.delete(el);
+  }
+}
+globalThis.IntersectionObserver =
+  MockIntersectionObserver as unknown as typeof IntersectionObserver;
+(
+  globalThis as unknown as {
+    MockIntersectionObserver: typeof MockIntersectionObserver;
+  }
+).MockIntersectionObserver = MockIntersectionObserver;
