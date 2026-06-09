@@ -1,10 +1,13 @@
 import { Schema } from "@tiptap/pm/model";
 import katex from "katex";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 // §8.4 Performance benchmark tests — measure pipeline throughput
 import { describe, expect, it } from "vitest";
 
 import { generateMarkdown } from "../../utils/__tests__/perf-helpers";
-import { markdownToProsemirror } from "../md-to-pm";
+import { markdownToProsemirror, mdastBlocksToPmNodes } from "../md-to-pm";
+import { parseMdast } from "../parse-mdast";
 import { prosemirrorToMarkdown } from "../pm-to-md";
 
 // CI runners are shared machines — allow 3x headroom
@@ -111,6 +114,16 @@ const schema = new Schema({
   },
 });
 
+/** Load CONTEXT.md (the 21k-line worst-case fixture) if present, else synthesize. */
+function loadLargeFixture(): { label: string; md: string } {
+  try {
+    const md = readFileSync(resolve(process.cwd(), "CONTEXT.md"), "utf8");
+    return { label: `CONTEXT.md (${md.split("\n").length} lines)`, md };
+  } catch {
+    return { label: "synthetic 20k", md: generateMarkdown(20000) };
+  }
+}
+
 // Performance budgets are too noisy for the default correctness suite.
 // Re-enable explicitly with ENABLE_PERF_BENCHMARKS=1 while the perf harness is being rebuilt.
 perfDescribe("Performance: File Open (MD → ProseMirror)", () => {
@@ -172,5 +185,24 @@ perfDescribe("Performance: KaTeX Rendering", () => {
 
     console.log(`[Perf] KaTeX complex formula: ${elapsed.toFixed(1)}ms`);
     expect(elapsed).toBeLessThan(50 * CI_MULTIPLIER);
+  });
+});
+
+perfDescribe("Performance: Open split timing (parse vs convert)", () => {
+  it("reports parse + convert split on the large fixture", () => {
+    const { label, md } = loadLargeFixture();
+
+    const t0 = performance.now();
+    const mdast = parseMdast(md);
+    const tParse = performance.now() - t0;
+
+    const t1 = performance.now();
+    const nodes = mdastBlocksToPmNodes(mdast, schema);
+    const tConvert = performance.now() - t1;
+
+    console.log(
+      `[Perf] ${label}: parse=${tParse.toFixed(0)}ms convert=${tConvert.toFixed(0)}ms blocks=${nodes.length}`,
+    );
+    expect(nodes.length).toBeGreaterThan(0);
   });
 });
