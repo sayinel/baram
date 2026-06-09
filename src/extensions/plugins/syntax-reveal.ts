@@ -147,8 +147,6 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         return tr;
       }
 
-      // Compute content length for cursor mapping
-      let contentLen = 0;
       if (kind === "mark" && markName && closeCheck) {
         const markType = newState.schema.marks[markName];
         if (!markType) {
@@ -172,7 +170,7 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
 
         const contentFrom = from + openCheck.length;
         const contentTo = to - closeCheck.length;
-        contentLen = contentTo - contentFrom;
+        const contentLen = contentTo - contentFrom;
 
         if (contentLen <= 0) {
           tr.delete(from, to);
@@ -198,7 +196,7 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
           return tr;
         }
 
-        contentLen = bracketIdx - 1;
+        const contentLen = bracketIdx - 1;
         const linkMark = newState.schema.marks.link.create({
           href,
           title: title || null,
@@ -251,7 +249,6 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
           vaultAlias: wlAlias || null,
         });
         tr.replaceWith(from, to, wikilinkNode);
-        contentLen = 0;
       }
 
       // Map cursor through the collapse operations (handles all kinds correctly,
