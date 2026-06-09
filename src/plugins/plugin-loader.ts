@@ -69,7 +69,9 @@ export class PluginLoader {
     try {
       module = await import(/* @vite-ignore */ assetUrl);
     } catch (err) {
-      throw new Error(`Failed to load plugin module ${manifest.id}: ${err}`);
+      throw new Error(`Failed to load plugin module ${manifest.id}: ${err}`, {
+        cause: err,
+      });
     }
 
     // 4. Create extension context
