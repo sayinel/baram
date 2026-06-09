@@ -1326,6 +1326,21 @@
   content-visibility: auto;
 }
 
+/* §perf-large-file C1: skip layout/paint of off-screen top-level blocks.
+   `auto` intrinsic-size lets the browser remember each block's real height
+   after first render, so scrollbar size stays stable. */
+.tiptap > * {
+  contain-intrinsic-size: auto 2em;
+  content-visibility: auto;
+}
+
+/* Heavy blocks get a larger height estimate to reduce scrollbar jump. */
+.tiptap > .code-block-wrapper,
+.tiptap > .mermaid-block,
+.tiptap > table {
+  contain-intrinsic-size: auto 8em;
+}
+
 /* §5.8 Frontmatter */
 .tiptap .frontmatter {
   padding: 0.5em 1em;
