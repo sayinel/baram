@@ -14,3 +14,12 @@ export function logAppReady(): void {
 export function markAppStart(): void {
   appStartTime = performance.now();
 }
+
+/** Dev-only: time a synchronous phase and log it. Returns the callback result. */
+export function timePhase<T>(label: string, fn: () => T): T {
+  const start = performance.now();
+  const result = fn();
+  const elapsed = performance.now() - start;
+  logger.debug(`[Baram Perf] ${label}: ${elapsed.toFixed(0)}ms`);
+  return result;
+}

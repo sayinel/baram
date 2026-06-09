@@ -33,6 +33,7 @@ import { mdLineToPmBlockStart } from "../utils/editor/cursor-mapper";
 import { markContentLoaded } from "../utils/editor/programmatic-update";
 import { isMarkdownFile } from "../utils/file-type";
 import { logger } from "../utils/logger";
+import { timePhase } from "../utils/perf";
 
 interface UseTabSwitchingParams {
   editor: Editor | null;
@@ -287,7 +288,9 @@ export function useTabSwitching({
               return;
             }
 
-            const allNodes = mdastBlocksToPmNodes(mdast, editor.schema);
+            const allNodes = timePhase("convert(mdast→PM)", () =>
+              mdastBlocksToPmNodes(mdast, editor.schema),
+            );
             const doc = editor.schema.nodes.doc.create(null, allNodes);
             const newState = EditorState.create({
               doc,
@@ -296,7 +299,9 @@ export function useTabSwitching({
             });
             // Defer updateState outside React commit phase
             setTimeout(() => {
-              editor.view.updateState(newState);
+              timePhase("updateState(DOM)", () =>
+                editor.view.updateState(newState),
+              );
               markContentLoaded(activeTabId!);
               setIsParsing(false);
             });
