@@ -30,14 +30,17 @@ import {
   getLanguageExtension,
   LANGUAGE_OPTIONS,
 } from "../code-block-languages";
+import { onFirstVisible } from "./lazy-visible";
 
 export class CodeBlockNodeView implements NodeView {
   dom: HTMLElement;
   private cmContainer: HTMLElement;
+  private cmInitialized = false;
   private cmView: CMView | null = null;
   private destroyed = false;
   private getPos: () => number | undefined;
   private langSelect: HTMLSelectElement;
+  private lazyDispose: (() => void) | null = null;
   private node: PMNode;
   private settingsUnsub: (() => void) | null = null;
   private tiptapEditor: import("@tiptap/core").Editor;
@@ -129,8 +132,13 @@ export class CodeBlockNodeView implements NodeView {
     wrapper.appendChild(cmContainer);
     this.dom = wrapper;
 
-    // Initialize CodeMirror (async for lazy language loading)
-    this.initCM(lang);
+    // §perf-large-file: defer CodeMirror creation until the block is near the
+    // viewport. Show the raw code as a lightweight placeholder until then.
+    const placeholder = document.createElement("pre");
+    placeholder.classList.add("code-block-placeholder");
+    placeholder.textContent = node.textContent;
+    cmContainer.appendChild(placeholder);
+    this.lazyDispose = onFirstVisible(wrapper, () => this.ensureCM(lang));
 
     // Subscribe to settings changes for live updates
     this.settingsUnsub = useSettingsStore.subscribe((state, prev) => {
@@ -142,13 +150,16 @@ export class CodeBlockNodeView implements NodeView {
         state.theme !== prev.theme
       ) {
         wrapper.dataset.style = state.codeBlockStyle;
-        // Recreate CodeMirror with new settings
-        if (this.cmView) {
-          this.cmView.destroy();
-          this.cmView = null;
+        // Only recreate CodeMirror if already initialized; otherwise the
+        // deferred initCM will read current settings when it eventually runs.
+        if (this.cmInitialized) {
+          if (this.cmView) {
+            this.cmView.destroy();
+            this.cmView = null;
+          }
+          const currentLang = (this.node.attrs.language as string) || "";
+          void this.initCM(currentLang);
         }
-        const currentLang = (this.node.attrs.language as string) || "";
-        this.initCM(currentLang);
       }
     });
   }
@@ -159,6 +170,10 @@ export class CodeBlockNodeView implements NodeView {
 
   destroy() {
     this.destroyed = true;
+    if (this.lazyDispose) {
+      this.lazyDispose();
+      this.lazyDispose = null;
+    }
     if (this.settingsUnsub) {
       this.settingsUnsub();
       this.settingsUnsub = null;
@@ -176,6 +191,7 @@ export class CodeBlockNodeView implements NodeView {
 
   /** Called when node is selected as a whole (NodeSelection) */
   selectNode() {
+    this.ensureCM((this.node.attrs.language as string) || "");
     if (this.cmView) {
       this.cmView.focus();
     }
@@ -187,6 +203,7 @@ export class CodeBlockNodeView implements NodeView {
    * it allows us to properly focus CodeMirror and set its cursor position.
    */
   setSelection(anchor: number, head: number) {
+    this.ensureCM((this.node.attrs.language as string) || "");
     if (!this.cmView) return;
     this.cmView.focus();
     this.updating = true;
@@ -207,16 +224,30 @@ export class CodeBlockNodeView implements NodeView {
     const oldLang = (this.node.attrs.language as string) || "";
     this.node = node;
 
-    // Update language selector and recreate CM if language changed
+    // Update language selector and wrapper dataset regardless of CM state
     const lang = (node.attrs.language as string) || "";
     if (oldLang !== lang) {
       this.langSelect.value = lang;
       this.dom.dataset.language = lang;
+    }
+
+    // §perf-large-file: CM not yet created — update placeholder and bail.
+    // A global find/replace or undo must NOT wake all off-screen blocks.
+    if (!this.cmInitialized) {
+      const ph = this.dom.querySelector(
+        ".code-block-placeholder",
+      ) as HTMLElement | null;
+      if (ph) ph.textContent = node.textContent;
+      return true;
+    }
+
+    // Language changed → destroy and recreate CM with new language.
+    if (oldLang !== lang) {
       if (this.cmView) {
         this.cmView.destroy();
         this.cmView = null;
       }
-      this.initCM(lang);
+      void this.initCM(lang);
       return true;
     }
 
@@ -238,6 +269,18 @@ export class CodeBlockNodeView implements NodeView {
     }
 
     return true;
+  }
+
+  /** Create CodeMirror if not already created (idempotent). */
+  private ensureCM(language: string) {
+    if (this.cmInitialized || this.destroyed) return;
+    this.cmInitialized = true;
+    if (this.lazyDispose) {
+      this.lazyDispose();
+      this.lazyDispose = null;
+    }
+    this.cmContainer.replaceChildren(); // drop the placeholder
+    void this.initCM(language);
   }
 
   /** Sync CM changes → PM document */
