@@ -43,24 +43,9 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
 
     // Get cursor position
     const { from } = editor.state.selection;
-    let line = 1;
-    let col = 1;
-    let pos = 0;
-
-    editor.state.doc.descendants((node, nodePos) => {
-      if (pos >= from) return false;
-      if (node.isBlock && nodePos < from) {
-        line++;
-        col = from - nodePos;
-      }
-      pos = nodePos + node.nodeSize;
-      return true;
-    });
-
-    // Simple line/col from resolved pos
     const resolved = editor.state.doc.resolve(from);
-    col = from - resolved.start(resolved.depth) + 1;
-    line = 0;
+    const col = from - resolved.start(resolved.depth) + 1;
+    let line = 0;
     editor.state.doc.nodesBetween(0, from, (node) => {
       if (node.isBlock && node.isTextblock) {
         line++;

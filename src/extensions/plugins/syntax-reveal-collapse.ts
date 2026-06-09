@@ -42,8 +42,6 @@ export function collapseExpanded(
     return;
   }
 
-  let contentLen = 0;
-
   if (kind === "mark" && markName) {
     const markType = state.schema.marks[markName];
     if (!markType || !closeCheck) {
@@ -67,7 +65,7 @@ export function collapseExpanded(
 
     const contentFrom = from + openCheck.length;
     const contentTo = to - closeCheck.length;
-    contentLen = contentTo - contentFrom;
+    const contentLen = contentTo - contentFrom;
 
     if (contentLen <= 0) {
       tr.delete(from, to);
@@ -97,7 +95,7 @@ export function collapseExpanded(
 
     const contentFrom = from + 1;
     const contentTo = from + bracketIdx;
-    contentLen = bracketIdx - 1;
+    const contentLen = bracketIdx - 1;
 
     const linkMark = state.schema.marks.link.create({
       href,
@@ -150,7 +148,6 @@ export function collapseExpanded(
       display: wlDisplay || null,
     });
     tr.replaceWith(from, to, wikilinkNode);
-    contentLen = 0; // atom node = 1 position after collapse
   }
 
   // Set explicit cursor position if requested

@@ -189,7 +189,6 @@ function extractProtectedRegions(formula: string): {
       // through end-of-string so live edits aren't mangled; KaTeX will
       // still surface the missing-brace error on its own.
       masked += makePlaceholder(formula.slice(match.index));
-      cursor = formula.length;
       break;
     }
 
