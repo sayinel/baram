@@ -53,6 +53,7 @@ describe("CodeBlock lazy CodeMirror (§perf-large-file)", () => {
 
     // After intersection: cm-editor exists, placeholder replaced
     expect(dom.querySelector(".cm-editor")).not.toBeNull();
+    expect(dom.querySelector(".code-block-placeholder")).toBeNull();
 
     editor.destroy();
   });
