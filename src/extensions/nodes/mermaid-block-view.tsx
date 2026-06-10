@@ -16,6 +16,7 @@ import {
 } from "../../utils/markdown/mermaid-utils";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
 import { mermaidBlockEntryKey } from "./mermaid-block";
+import { onFirstVisible } from "./views/lazy-visible";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
 import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
 
@@ -48,6 +49,14 @@ export function MermaidBlockView({
   const [viewFullscreen, setViewFullscreen] = useState(false);
   const fullscreenTextareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Defer rendering until the block is near the viewport (§perf-large-file)
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    return onFirstVisible(el, () => setIsVisible(true));
+  }, []);
+
   // Refs so the selected-change effect can access latest values without listing
   // them as deps (localCode changes on every keystroke; adding it would re-run
   // the effect — and re-focus the textarea — on every character typed).
@@ -62,6 +71,7 @@ export function MermaidBlockView({
 
   // Render Mermaid SVG (async — dynamic import)
   useEffect(() => {
+    if (!isVisible) return;
     const source = selected ? localCode : code;
     if (!source.trim()) {
       setSvgHtml("");
@@ -93,7 +103,7 @@ export function MermaidBlockView({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [localCode, code, selected]);
+  }, [isVisible, localCode, code, selected]);
 
   // Sync local code and focus textarea when entering edit mode
   useEffect(() => {
