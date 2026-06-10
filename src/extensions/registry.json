@@ -558,6 +558,16 @@
       "shortcuts": { "/": "slash menu" }
     },
     {
+      "name": "authorship",
+      "file": "plugins/authorship.ts",
+      "spec": "§11.7",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "shortcuts": {},
+      "_note": "§11.7 Authorship — ProseMirror Plugin (DecorationSet) marking AI-authored vs human-authored segments. View-only, backed by AuthorshipTracker util. No transformer/test pair (decoration-only, no markdown syntax)."
+    },
+    {
       "name": "syntaxReveal",
       "file": "plugins/syntax-reveal.ts",
       "spec": "§5.1",
@@ -699,7 +709,7 @@
     },
     {
       "name": "tableVirtualScroll",
-      "file": "nodes/table-virtual-scroll.ts",
+      "file": "nodes/plugins/table-virtual-scroll.ts",
       "spec": "§5.5",
       "phase": 3,
       "milestone": "M10",

@@ -1,7 +1,7 @@
 {
   "_comment": "Baram 개발 진행 상황 추적. 슬래시 커맨드가 자동으로 업데이트한다.",
   "project": "baram",
-  "lastUpdated": "2026-03-13",
+  "lastUpdated": "2026-06-04",
   "currentPhase": 3,
   "currentMilestone": "M10",
 
@@ -364,13 +364,65 @@
         "coverage": "100%",
         "note": "All 28 spec items verified. 53 plugin-specific vitest pass (3 files). Rust backend 163 cargo tests pass."
       }
+    },
+    "§80-90-vault-system": {
+      "name": "Vault System (Context 모델 + 워크스페이스)",
+      "status": "completed",
+      "completedAt": "2026-03-15",
+      "features": {
+        "§80-81-context-model": { "status": "completed", "spec": "§80-§81", "details": "Context 모델 + 앱 워크스페이스 (VaultContext / FileContext)" },
+        "§82-83-context-tabs-ui": { "status": "completed", "spec": "§82-§83", "details": "컨텍스트 탭 바 UI + 에디터 탭 표시" },
+        "§84-search-scope": { "status": "completed", "spec": "§84", "details": "검색 Scope UI (vault/folder/file 범위)" },
+        "§85-journal-redesign": { "status": "completed", "spec": "§85", "details": "Journal 시스템 재설계 + Work Log" },
+        "§86-settings-tiers": { "status": "completed", "spec": "§86", "details": "설정 3-Tier 계층 (글로벌 → vault → context), resolve_settings IPC" },
+        "§87-cross-vault-links": { "status": "completed", "spec": "§87", "details": "Cross-vault 링크 + 그래프" },
+        "§88-context-manager": { "status": "completed", "spec": "§88", "details": "ContextManager Rust 백엔드 + set_vault_root IPC (경로 confinement)" },
+        "§89-file-context": { "status": "completed", "spec": "§89", "details": "독립 파일 열기 + FileContext (FileTree 숨김, 파일당 1 FileContext)" },
+        "§90-startup-flow": { "status": "completed", "spec": "§90", "details": "앱 시작 흐름 + 마이그레이션" }
+      }
+    },
+    "phase3-advanced": {
+      "name": "Phase 3 고급 기능",
+      "status": "completed",
+      "completedAt": "2026-03-15",
+      "features": {
+        "§5.13-query-block": { "status": "completed", "spec": "§5.13", "details": "쿼리 블록" },
+        "§67-git-advanced": { "status": "completed", "spec": "§67", "details": "Git 고급 (log, stash, remote, delete branch)" },
+        "§71-file-snapshots": { "status": "completed", "spec": "§71", "details": "파일 스냅샷 / 버전 히스토리" },
+        "§61-namespace": { "status": "completed", "spec": "§61", "details": "네임스페이스 (P0+P1; P2 자동 prefix는 YAGNI 보류)" },
+        "§72-skills-mode": { "status": "completed", "spec": "§72", "details": "Skills 전용 모드" },
+        "settings-redesign": { "status": "completed", "spec": "§4", "details": "Settings UI 리디자인 (P0+P1)" },
+        "keybinding-customization": { "status": "completed", "spec": "§4", "details": "키보드 단축키 커스터마이징" },
+        "heading-list-folding": { "status": "completed", "spec": "§fold", "details": "Heading & List Folding (Obsidian-style)" }
+      }
+    },
+    "refactoring-ai": {
+      "name": "코드 통합/리팩토링 (refactoring/ai)",
+      "status": "completed",
+      "completedAt": "2026-03-15",
+      "features": {
+        "large-file-split": { "status": "completed", "details": "대형 파일 분리 (export-html, slash-command, ContextMenu)" },
+        "dedup-consolidation": { "status": "completed", "details": "중복 코드 통합 (fuzzyMatch, RightPanelMode, journal regex, path utils)" },
+        "bug-fixes": { "status": "completed", "details": "버그 수정 (listener leak, dead state, React hook 순서, useShallow)" }
+      }
+    },
+    "refactoring-design-tokens": {
+      "name": "CSS 디자인 토큰 시스템 (refactoring/design-tokens)",
+      "status": "completed",
+      "completedAt": "2026-03-15",
+      "features": {
+        "style-dictionary": { "status": "completed", "details": "Style Dictionary v5 + W3C DTCG 토큰 시스템" },
+        "css-modularization": { "status": "completed", "details": "App.css (14,506줄) → 19개 모듈 CSS 파일 분리" },
+        "css-var-rename": { "status": "completed", "details": "13개 CSS 변수 체계적 리네이밍 + 공유 유틸리티 클래스 5개 + shadow 토큰" },
+        "theme-v10-migration": { "status": "completed", "details": "커스텀 테마 v10 마이그레이션 + Figma Tokens Studio 호환 export" }
+      }
     }
   },
 
   "testSummary": {
-    "vitest": "1940/1940 pass (110 test files)",
+    "vitest": "2356 passed | 5 skipped (148 test files passed, 1 skipped) — verified 2026-06-04",
     "cargoTest": "163/163 pass (4 ignored)",
-    "note": "All medium+low+info spec-check issues resolved. Coverage 99%. Only §8.4 manual perf measurements remain.",
+    "note": "Counts re-verified via `npm test` on 2026-06-04 (spec-check). Per-file breakdown below is from 2026-03-13 and no longer exhaustive (predates Vault System §80-§90 + refactoring branches). Coverage 99%. Only §8.4 manual perf measurements remain.",
     "breakdown": {
       "_comment": "110 test files, 1940 tests total (2026-03-13 spec-check verified)",
       "integration/ai-edit-workflow": 5,
