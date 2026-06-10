@@ -244,16 +244,21 @@ describe("cursor-mapper: serialize round-trip (real toggle path)", () => {
     ["nested bullet child start", "- parent\n  - child", 13],
     ["nested bullet child middle", "- parent\n  - child", 15],
     ["nested ordered", "1. first\n   1. second", 14],
-    // Inline atom nodes (tagNode): cursor in TEXT near atoms must round-trip.
-    // Atom boundaries are inherently lossy (atom=1 PM pos but 0 text chars),
-    // so we test cursor positions within surrounding text nodes.
+    // Inline atom nodes (tagNode): every reachable cursor position around an
+    // atom must round-trip — including the atom's own boundaries. (Verified
+    // exhaustively: atom=1 PM pos / 0 text chars is NOT lossy here; the mapper
+    // disambiguates before/after-atom via gap detection.) The source-mode
+    // cursor drift was a DOM-layer issue (WebKit caret normalization), not a
+    // mapping error — keep these boundary cases as a regression guard.
     // "Hello #world tag" → text("Hello ",6) + tagNode(1) + text(" tag",4) → content.size=11
     ["tag: in text before tag", "Hello #world tag", 4],
     ["tag: text end before tag", "Hello #world tag", 6],
+    ["tag: before tag atom (left edge)", "Hello #world tag", 7],
     ["tag: text start after tag", "Hello #world tag", 8],
     ["tag: in text after tag", "Hello #world tag", 10],
     ["tag: content end after tag", "Hello #world tag", 12],
     // "#hello and #world" → tagNode(1) + text(" and ",5) + tagNode(1) → content.size=7
+    ["tag: leading atom left edge", "#hello and #world", 1],
     ["tag: text between two tags start", "#hello and #world", 2],
     ["tag: text between two tags mid", "#hello and #world", 4],
     ["tag: text between two tags end", "#hello and #world", 6],
@@ -378,5 +383,40 @@ describe("cursor-mapper: serialize round-trip (real toggle path)", () => {
     const newDoc = loadDoc(editor, serialized);
     expect(mdOffsetToPmPos(newDoc, mdBefore, serialized)).toBe(1);
     expect(mdOffsetToPmPos(newDoc, mdAfter, serialized)).toBe(2);
+  });
+});
+
+// Text-less atom blocks (mermaid) store their content in an attribute, so
+// block.textBetween() is empty. The char-matching mapper then can't advance
+// the markdown cursor into the block's fenced region, mapping the caret to the
+// line ABOVE the block. blockMatchText() must supply the block's source so the
+// caret round-trips to the block itself.
+describe("cursor-mapper: text-less atom blocks", () => {
+  const editor = createEditor();
+
+  function findBlockPos(doc: ReturnType<typeof loadDoc>, typeName: string) {
+    let pos = -1;
+    doc.descendants((n, p) => {
+      if (pos < 0 && n.type.name === typeName) pos = p;
+    });
+    return pos;
+  }
+
+  test("mermaid block maps into its fence, not the line above", () => {
+    const md = "intro\n\n```mermaid\ngraph TD\nA-->B\n```\n\nafter";
+    const doc = loadDoc(editor, md);
+    const serialized = prosemirrorToMarkdown(doc);
+    const mermaidPos = findBlockPos(doc, "mermaidBlock");
+    expect(mermaidPos).toBeGreaterThan(0);
+
+    const mdOffset = pmPosToMdOffset(doc, mermaidPos, serialized);
+    // Must land past "intro" (inside the fence region), not at the intro line.
+    const introEnd = serialized.indexOf("intro") + "intro".length;
+    expect(mdOffset).toBeGreaterThan(introEnd);
+
+    // And round-trip back to the mermaid block — not the surrounding paragraphs.
+    const newDoc = loadDoc(editor, serialized);
+    const back = mdOffsetToPmPos(newDoc, mdOffset, serialized);
+    expect(back).toBe(findBlockPos(newDoc, "mermaidBlock"));
   });
 });

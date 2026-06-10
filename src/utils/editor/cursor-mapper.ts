@@ -15,6 +15,16 @@ interface BlockInfo {
   textOffset: number;
 }
 
+// Atom blocks that store their serialized content in an attribute rather than
+// as ProseMirror text (so block.textBetween() returns ""). The char-matching
+// mapper has nothing to anchor on for these, so it can't advance the markdown
+// cursor into the block's fenced region — the caret then maps to the line
+// ABOVE the block. Supplying the attribute (which appears verbatim in the
+// fenced markdown) restores correct alignment in both directions.
+const ATTR_CONTENT_BLOCKS: Record<string, string> = {
+  mermaidBlock: "code",
+};
+
 /**
  * Markdown line number (1-based) → PM block start position.
  * Directly maps line to the containing PM block, bypassing proportional offset.
@@ -42,7 +52,7 @@ export function mdLineToPmBlockStart(
   for (let bi = 0; bi < doc.childCount; bi++) {
     const block = doc.child(bi);
     const sep = block.type.name === "table" ? "" : "\n";
-    const pmText = block.textBetween(0, block.content.size, sep);
+    const pmText = blockMatchText(block, sep);
     mdCursor = advancePastBlock(content, mdCursor, pmText);
 
     if (targetOffset <= mdCursor || bi === doc.childCount - 1) {
@@ -79,7 +89,7 @@ export function mdOffsetToPmPos(
     const block = doc.child(bi);
     const isTable = block.type.name === "table";
     const sep = isTable ? "" : "\n";
-    const pmText = block.textBetween(0, block.content.size, sep);
+    const pmText = blockMatchText(block, sep);
     const contentStart = pmBlockStart + (block.isLeaf ? 0 : 1);
 
     // Match this block's full text against markdown
@@ -195,7 +205,7 @@ export function pmPosToMdOffset(
     const block = doc.child(bi);
     const isTable = block.type.name === "table";
     const sep = isTable ? "" : "\n";
-    const pmText = block.textBetween(0, block.content.size, sep);
+    const pmText = blockMatchText(block, sep);
     mdCursor = advancePastBlock(markdown, mdCursor, pmText);
   }
 
@@ -203,7 +213,7 @@ export function pmPosToMdOffset(
   const block = doc.child(targetBlockIdx);
   const isTable = block.type.name === "table";
   const sep = isTable ? "" : "\n";
-  const pmText = block.textBetween(0, block.content.size, sep);
+  const pmText = blockMatchText(block, sep);
 
   // Convert PM content offset to text position.
   // Must use textBetween — inline atom nodes (e.g. tagNode) occupy 1 PM position
@@ -320,6 +330,23 @@ function advancePastBlock(
     mdCursor++;
   }
   return mdCursor;
+}
+
+/**
+ * Text used to align a PM block against the markdown string. Same as
+ * block.textBetween(), except for text-less atom blocks (e.g. mermaid) whose
+ * content lives in an attribute — those return the attribute value so the
+ * matcher can advance through their markdown region.
+ */
+function blockMatchText(block: PMNode, sep: string): string {
+  const text = block.textBetween(0, block.content.size, sep);
+  if (text.length > 0) return text;
+  const attr = ATTR_CONTENT_BLOCKS[block.type.name];
+  if (attr) {
+    const value = block.attrs[attr];
+    if (typeof value === "string" && value.length > 0) return value;
+  }
+  return text;
 }
 
 /**

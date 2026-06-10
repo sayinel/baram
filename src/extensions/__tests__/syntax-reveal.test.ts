@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { createBaramExtensions } from "../../extensions";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
+import { forceCollapseSyntaxReveal } from "../plugins/syntax-reveal";
 
 function createEditor(): Editor {
   return new Editor({
@@ -161,6 +162,52 @@ describe("Syntax Reveal (§5.1)", () => {
       moveCursorTo(editor, 2, 5);
 
       expect(editor.state.doc.textContent).toBe("Hello world");
+      editor.destroy();
+    });
+  });
+
+  // §5.1 source-mode toggle calls forceCollapseSyntaxReveal before serializing.
+  // It must collapse the literal delimiters back to a mark (no data loss) AND
+  // preserve the caret's logical position inside the content — without an
+  // explicit cursorTarget, ProseMirror's default mapping pushes the caret to
+  // the END of the collapsed mark, which the user observed as cursor drift to
+  // after the bold (and then literal **구문** corruption on the next round-trip).
+  describe("forceCollapse preserves caret (source-mode toggle)", () => {
+    it("bold: caret inside content stays inside after force-collapse", () => {
+      const editor = createEditor();
+      loadMarkdown(editor, "Hello **world** end\n");
+      // "Hello " = 1-7, "world" bold = 7-12, " end" = 12-16.
+      // Move caret inside "world" (pos 9 = wo|rld) → plugin expands to **world**.
+      moveCursorTo(editor, 2, 9);
+      expect(editor.state.doc.textContent).toContain("**world**");
+
+      forceCollapseSyntaxReveal(editor.view);
+
+      // No data loss: literal delimiters gone, bold mark restored.
+      expect(editor.state.doc.textContent).toBe("Hello world end");
+      const bold = editor.state.doc
+        .nodeAt(7)
+        ?.marks.some((m) => m.type.name === "bold");
+      expect(bold).toBe(true);
+      // Caret preserved inside "world" (pos 9), NOT pushed to after the bold (12).
+      expect(editor.state.selection.from).toBe(9);
+      editor.destroy();
+    });
+
+    it("bold: caret at trailing boundary collapses to after the mark", () => {
+      const editor = createEditor();
+      loadMarkdown(editor, "Hello **world** end\n");
+      moveCursorTo(editor, 2, 9); // expand → "Hello **world** end"
+      // Place caret just after the closing ** (trailing boundary → stays expanded).
+      // textContent "Hello **world** end": "**world**" at index 6, len 9 →
+      // doc position after it = 6 + 9 + 1(content offset) = 16.
+      editor.commands.setTextSelection(16);
+
+      forceCollapseSyntaxReveal(editor.view);
+
+      expect(editor.state.doc.textContent).toBe("Hello world end");
+      // Bold "world" ends at 12 — caret should land right after it (12), not inside.
+      expect(editor.state.selection.from).toBe(12);
       editor.destroy();
     });
   });

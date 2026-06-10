@@ -137,24 +137,31 @@ export function useSourceMode({
             const pos = Math.min(targetPos, doc.content.size);
             const resolvedSel = TextSelection.near(doc.resolve(pos));
 
-            // Suppress DOMObserver during focus+dispatch to prevent it
-            // from reading a stale native selection (from the previous
-            // EditorState) and overwriting our target cursor position.
-            // ProseMirror's view.focus() triggers DOMObserver flush which
-            // dispatches a transaction based on native selection — this
-            // races with our setSelection dispatch.
+            // Apply the target selection, then focus. The drift near #tag
+            // inline atoms is NOT a mapping error (the cursor mapper round-trips
+            // every reachable position, atom edges included). It happens at the
+            // DOM layer: WebKit fires an ASYNCHRONOUS `selectionchange` after
+            // focus that normalizes the native caret to the wrong side of a
+            // contenteditable=false atom NodeView (#tag). The DOMObserver reads
+            // that native selection and overwrites ours → cursor jumps to
+            // before/after the tag.
+            //
+            // A synchronous stop()/start() guard can't catch an event that
+            // fires AFTER start() re-attaches the listener (and stop() can
+            // itself schedule a deferred flush). Use ProseMirror's own
+            // suppressSelectionUpdates() (the #820 primitive): for ~50ms it
+            // answers every selectionchange by RE-ASSERTING our PM selection to
+            // the DOM (selectionToDOM) instead of reading the native one.
             const domObserver = (
-              editor.view as { domObserver?: { start(): void; stop(): void } }
+              editor.view as {
+                domObserver?: { suppressSelectionUpdates?(): void };
+              }
             ).domObserver;
-            domObserver?.stop();
-            try {
-              editor.view.dispatch(
-                editor.view.state.tr.setSelection(resolvedSel).scrollIntoView(),
-              );
-              editor.view.focus();
-            } finally {
-              domObserver?.start();
-            }
+            editor.view.dispatch(
+              editor.view.state.tr.setSelection(resolvedSel).scrollIntoView(),
+            );
+            editor.view.focus();
+            domObserver?.suppressSelectionUpdates?.();
 
             // DOM-level scroll fallback for .editor-area-scroll
             const domInfo = editor.view.domAtPos(resolvedSel.from);
