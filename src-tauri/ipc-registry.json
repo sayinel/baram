@@ -264,7 +264,8 @@
       "phase": 3,
       "milestone": "M10",
       "status": "implemented",
-      "description": "OS 메뉴 항목 텍스트를 로케일에 맞게 업데이트"
+      "description": "OS 메뉴 항목 텍스트를 로케일에 맞게 업데이트",
+      "_note": "TS wrapper: syncMenuLocale in src/ipc/menu-locale.ts"
     },
     {
       "name": "rename_block_id",
@@ -993,6 +994,18 @@
       "description": "외부 파일을 vault 내부로 가져오기 (source는 vault 외부 허용)"
     },
     {
+      "name": "set_vault_root",
+      "input": { "path": "string" },
+      "output": "void",
+      "module": "fs",
+      "spec": "§88",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "열린 vault 루트를 Rust 백엔드(VaultRootState + ContextManager)에 등록 — 경로 confinement 기준",
+      "_note": "TS wrapper: setVaultRoot in src/ipc/fs.ts"
+    },
+    {
       "name": "resolve_settings",
       "input": { "contextId": "string" },
       "output": "ResolvedSettings",
@@ -1001,7 +1014,8 @@
       "phase": 3,
       "milestone": "M10",
       "status": "implemented",
-      "description": "글로벌 설정 + vault 설정 머지 결과 조회"
+      "description": "글로벌 설정 + vault 설정 머지 결과 조회",
+      "_note": "TS wrapper: resolveSettingsIpc in src/ipc/context.ts (Ipc 접미사로 동기 버전과 구분)"
     }
   ],
   "events": [
