@@ -39,9 +39,11 @@ export class CodeBlockNodeView implements NodeView {
   private cmView: CMView | null = null;
   private destroyed = false;
   private getPos: () => number | undefined;
+  private initGeneration = 0;
   private langSelect: HTMLSelectElement;
   private lazyDispose: (() => void) | null = null;
   private node: PMNode;
+  private pendingSelection: null | { anchor: number; head: number } = null;
   private settingsUnsub: (() => void) | null = null;
   private tiptapEditor: import("@tiptap/core").Editor;
   private updating = false;
@@ -138,7 +140,7 @@ export class CodeBlockNodeView implements NodeView {
     placeholder.classList.add("code-block-placeholder");
     placeholder.textContent = node.textContent;
     cmContainer.appendChild(placeholder);
-    this.lazyDispose = onFirstVisible(wrapper, () => this.ensureCM(lang));
+    this.lazyDispose = onFirstVisible(wrapper, () => this.ensureCM());
 
     // Subscribe to settings changes for live updates
     this.settingsUnsub = useSettingsStore.subscribe((state, prev) => {
@@ -191,7 +193,7 @@ export class CodeBlockNodeView implements NodeView {
 
   /** Called when node is selected as a whole (NodeSelection) */
   selectNode() {
-    this.ensureCM((this.node.attrs.language as string) || "");
+    this.ensureCM();
     if (this.cmView) {
       this.cmView.focus();
     }
@@ -203,8 +205,11 @@ export class CodeBlockNodeView implements NodeView {
    * it allows us to properly focus CodeMirror and set its cursor position.
    */
   setSelection(anchor: number, head: number) {
-    this.ensureCM((this.node.attrs.language as string) || "");
-    if (!this.cmView) return;
+    this.ensureCM();
+    if (!this.cmView) {
+      this.pendingSelection = { anchor, head };
+      return;
+    }
     this.cmView.focus();
     this.updating = true;
     this.cmView.dispatch({ selection: { anchor, head } });
@@ -272,15 +277,16 @@ export class CodeBlockNodeView implements NodeView {
   }
 
   /** Create CodeMirror if not already created (idempotent). */
-  private ensureCM(language: string) {
+  private ensureCM() {
     if (this.cmInitialized || this.destroyed) return;
     this.cmInitialized = true;
     if (this.lazyDispose) {
       this.lazyDispose();
       this.lazyDispose = null;
     }
-    this.cmContainer.replaceChildren(); // drop the placeholder
-    void this.initCM(language);
+    this.cmContainer.replaceChildren();
+    const lang = (this.node.attrs.language as string) || "";
+    void this.initCM(lang);
   }
 
   /** Sync CM changes → PM document */
@@ -307,8 +313,9 @@ export class CodeBlockNodeView implements NodeView {
   }
 
   private async initCM(language: string) {
+    const gen = ++this.initGeneration;
     const langExt = await getLanguageExtension(language);
-    if (this.destroyed) return;
+    if (this.destroyed || gen !== this.initGeneration) return;
 
     const settings = useSettingsStore.getState();
     const { tabSize, codeBlockLineNumbers, autoPairBrackets } = settings;
@@ -465,6 +472,14 @@ export class CodeBlockNodeView implements NodeView {
           this.dom.scrollIntoView({ block: "nearest", behavior: "smooth" });
         }
       });
+    }
+
+    if (this.pendingSelection && this.cmView) {
+      this.cmView.focus();
+      this.updating = true;
+      this.cmView.dispatch({ selection: this.pendingSelection });
+      this.updating = false;
+      this.pendingSelection = null;
     }
   }
 }
