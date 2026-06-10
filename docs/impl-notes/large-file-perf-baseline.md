@@ -7,12 +7,12 @@
 
 | Phase | CONTEXT.md (~21k) | Source | Status |
 |-------|-------------------|--------|--------|
-| parse (Worker, md→mdast) | **~832–853 ms** | vitest `perf-benchmark.test.ts` split timing | ✅ measured |
-| convert (mdast→PM, main) | **~10–13 ms** | vitest split timing | ✅ measured |
-| updateState (DOM create) | __ ms | app `[Baram Perf] updateState(DOM)` | ⏳ pending GUI |
-| CodeMirror init (296×) | __ ms | delta of updateState w/ `initCM` disabled | ⏳ pending GUI |
-| Scroll FPS (before fix) | __ | DevTools / observation | ⏳ pending GUI |
-| Tab switch (cached) | __ ms | observation | ⏳ pending GUI |
+| App ready (warm) | **209 ms** | app `[Baram Perf] App ready` | ✅ measured |
+| parse (Worker, md→mdast) | **~832–853 ms** | vitest `perf-benchmark.test.ts` split timing | ✅ measured (off main thread) |
+| convert (mdast→PM, main) | **~10 ms (vitest) / 30 ms (app, full schema)** | vitest split + app `[Baram Perf] convert` | ✅ measured — trivial |
+| **updateState (DOM create)** | **2025 ms** ← THE FREEZE | app `[Baram Perf] updateState(DOM)`, WITH Phase 1 (lazy CM + content-visibility) applied | ✅ measured |
+| Scroll FPS (after Phase 1) | (pending user confirm) | observation | ⏳ |
+| Tab switch (cached) | (pending) | observation | ⏳ |
 
 Block count produced by convert: **3,594** top-level blocks.
 
@@ -38,6 +38,20 @@ Block count produced by convert: **3,594** top-level blocks.
 - **20k `T_settled < 1s` (C2 escalation)?** → Decide after the GUI `updateState(DOM)` floor is known.
   - Note: even though `parse` is off-main-thread, its **832ms wall-clock** alone nearly consumes a 1s `T_interactive` budget for 20k lines. If `T_interactive < 1s` proves hard after Phase 1, a streaming/chunked **parse** (not convert) becomes the relevant lever — a different Phase 2 framing than the design doc assumed. Record GUI wall-clock to first-paint to judge.
 
-## Implication for the plan
+## Post-Phase-1 GUI measurement (2026-06-10) — DECISIVE
 
-Phase 1 (content-visibility C1 + lazy CodeMirror/Mermaid 1b) is confirmed as the **primary** lever for the reported freeze + scroll/tab stutter. Phase 2 (async convert) is downgraded to "likely unnecessary, pending GUI confirmation."
+Measured on `feature/large-file-perf` (Phase 1 fully applied): **`updateState(DOM) = 2025 ms`**.
+
+- `convert = 30 ms` ⇒ original **"Phase 2 = async conversion" is confirmed UNNECESSARY** (convert is trivial).
+- The 2025 ms is **synchronous whole-document DOM materialization** inside `editor.view.updateState` — ProseMirror building DOM for ~21k lines at once (4,368 table rows + all paragraphs/lists + 296 code-block chrome with ~25-option `<select>`s). convert (the PM node tree) is 30 ms; updateState is ~67× that — the gap is pure DOM creation/reconcile.
+- **Phase 1 did NOT reduce this number** and could not: `content-visibility` skips off-screen *paint/layout* (helps scroll), `lazy CodeMirror` avoids the off-screen CM-view storm (memory + post-open jank). Neither shrinks the one-shot DOM build.
+- Heavy decoration plugins ruled out as load-time cost: `syntax-reveal` returns `DecorationSet.empty` when nothing is expanded (cursor-local, not whole-doc); `block-id-decoration` / `list-atom-fix` defer to first transaction.
+
+### Gate decision (now resolved)
+- **20k `T_settled < 1s` and `T_freeze < 100ms` are NOT achievable with Phase 1 alone.** The DOM-materialization floor is ~2s.
+- ⇒ **C2 escalation triggered:** the only fix for the open freeze is **progressive / windowed document rendering** — render the first viewport immediately (small, fast `updateState`), then append the remaining blocks in async chunks after first paint (the `mdastBlocksToPmNodes` "progressive loading" C2 helper already exists for this). Higher-risk than the original medium-risk scope; requires user opt-in.
+- Smaller complementary wins (defer code-block header chrome ~hundreds of ms; A2 prompt-highlight/lint Skills guards) do NOT reach the target alone and become marginal once C2 bounds the per-chunk DOM.
+
+### What Phase 1 delivered (not wasted)
+- Scroll/tab stutter (the second reported symptom): targeted by content-visibility — **pending user confirmation of scroll feel**.
+- Off-screen CodeMirror memory/jank storm: eliminated by lazy CM (296 → only-visible instances).
