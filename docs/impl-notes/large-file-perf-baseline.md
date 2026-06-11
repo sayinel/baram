@@ -55,3 +55,35 @@ Measured on `feature/large-file-perf` (Phase 1 fully applied): **`updateState(DO
 ### What Phase 1 delivered (not wasted)
 - Scroll/tab stutter (the second reported symptom): targeted by content-visibility — **pending user confirmation of scroll feel**.
 - Off-screen CodeMirror memory/jank storm: eliminated by lazy CM (296 → only-visible instances).
+
+## Post-C2 GUI verification (2026-06-11)
+
+Measured on `feature/large-file-perf` with C2 progressive rendering applied (commits 23bfd15..ec8d85e). Fixture: CONTEXT.md (3,594 top-level blocks).
+
+| Check | Result | Status |
+|-------|--------|--------|
+| convert(mdast→PM), first open | 33 ms | ✅ |
+| **updateState(first chunk), first open** | **11 ms** (was 2025 ms) | ✅ target < 100ms |
+| False dirty marker after open | none | ✅ |
+| Steady-state scroll while doc open | sluggish | ❌ |
+| Editing latency while doc open | sluggish | ❌ |
+| Tab switch away/back | slow; return ran the UNCACHED path (convert 1 ms, updateState(first chunk) 173 ms) | ❌ |
+
+### Analysis
+
+- **C2 goal achieved:** the open freeze is eliminated — first paint dropped 2025 ms → 11 ms (~184×).
+- **Remaining bottlenecks are steady-state, not open-time:**
+  1. **Cached tab-switch is still a whole-DOM rebuild.** The cached-state restore path (`use-tab-switching.ts` cached branch) calls `editor.view.updateState(cachedState)` with the FULL 3,594-block doc — the same ~2 s-class synchronous DOM materialization C2 removed from the open path. Switching AWAY from the large doc also tears down the whole DOM synchronously. C2 only made the *uncached* path progressive.
+  2. **Per-edit whole-doc plugin passes.** `block-id-decoration` (collectBlockIdEntries), `list-atom-fix`, and `fold` each walk the entire doc on every `docChanged` transaction during normal editing (the C2 gating applies only while the progressive-load meta is set). 3 × O(3,594 blocks) per keystroke.
+  3. **Scroll-triggered lazy CodeMirror mounts.** ~296 code blocks instantiate CM on first visibility; fast scrolling mounts them in bursts.
+  4. **Append window cost.** ~24 rest-chunks × ~85–300 ms synchronous DOM work each — the UI is degraded for several seconds after open while chunks fill in.
+- **Regression found & fixed during verification:** the unmount cleanup added in ec8d85e cleared the per-tab loading flag *before* the next effect's outgoing-save guard read it (React runs old cleanup → new effect body), defeating the partial-doc save guard from f2cf188. Fixed by keeping the flag through cleanup.
+- **Open question (needs instrumentation):** the user's tab-return hit the uncached path even though the load should have completed — either the tab was closed/reopened, the return happened mid-append (by-design reload), or an unidentified cache invalidation. Add set/get logging to `editorStateCache` in C3 measurement.
+
+### Gate decision
+
+- **C2 is complete and shippable for its scope** (open-path freeze). The remaining symptoms define a **C3 scope: steady-state large-doc performance** —
+  - C3a: progressive (or DOM-preserving) **cached** tab restore + cheap teardown,
+  - C3b: incremental decoration maintenance (replace whole-doc rebuilds with mapped + local updates),
+  - C3c: scroll-burst CM mount throttling/pooling,
+  - C3d: bound the post-open append window (bigger idle budget per tick or smaller chunks under input pressure).
