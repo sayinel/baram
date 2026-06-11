@@ -97,8 +97,9 @@
 
 ## Task C3.2: scroll-burst CodeMirror mount throttling (C3c)
 
-**Files:** `src/extensions/nodes/views/lazy-visible.ts` (+ its consumers stay unchanged — same API).
+**Files:** `src/extensions/nodes/views/lazy-visible.ts` (+ its consumers stay unchanged — same API); `src/utils/editor/perf-trace.ts` (Step 0).
 
+- [ ] **Step 0 (added after C3.0 measurement):** WKWebView does not support the `longtask` PerformanceObserver (C3.0 measured count=0 while scroll was visibly janky). Add a rAF-gap stall detector to `perf-trace.ts`: a requestAnimationFrame loop recording gaps > 50 ms (`__baramPerf.stalls()` → {count, totalMs, max}); use it for this task's before/after gate.
 - [ ] **Step 1:** Refactor `onFirstVisible` to use ONE shared `IntersectionObserver` (module-level, lazily created) with an element→callback Map — drops ~296 observer instances.
 - [ ] **Step 2:** Add a mount queue: when intersection fires, push the callback into a queue drained by `scheduleIdle` (reuse from `progressive-load.ts`), max ONE callback per tick. Elements still in viewport keep priority (drain order: most recently intersected first, so the block the user is looking at mounts before ones scrolled past).
 - [ ] **Step 3:** Bypass the queue for direct interaction: `selectNode()`/`setSelection()` paths in `code-block-node-view.ts:196,207` already call `ensureCM()` directly — verify they skip the queue (clicking a placeholder must mount immediately).
