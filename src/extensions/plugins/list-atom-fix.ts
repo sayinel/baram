@@ -14,7 +14,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
 import { PROGRESSIVE_LOAD_META } from "../../utils/editor/progressive-load";
 
-const pluginKey = new PluginKey("listAtomFix");
+export const listAtomFixKey = new PluginKey<DecorationSet>("listAtomFix");
 
 function buildListAtomDecos(
   doc: Parameters<typeof DecorationSet.create>[0],
@@ -56,7 +56,7 @@ export const ListAtomFix = Extension.create({
   addProseMirrorPlugins() {
     return [
       new Plugin({
-        key: pluginKey,
+        key: listAtomFixKey,
         state: {
           init() {
             // §perf-large-file: Defer initial build to first transaction
@@ -74,7 +74,7 @@ export const ListAtomFix = Extension.create({
         },
         props: {
           decorations(state) {
-            return pluginKey.getState(state) as DecorationSet;
+            return listAtomFixKey.getState(state) as DecorationSet;
           },
         },
       }),
