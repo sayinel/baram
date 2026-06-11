@@ -30,7 +30,17 @@ import {
   findHeadingPosByText,
 } from "../utils/editor/block-nav";
 import { mdLineToPmBlockStart } from "../utils/editor/cursor-mapper";
-import { markContentLoaded } from "../utils/editor/programmatic-update";
+import {
+  markContentLoaded,
+  setTabLoading,
+} from "../utils/editor/programmatic-update";
+import {
+  appendChunksProgressively,
+  chunkBlocks,
+  FIRST_CHUNK_BLOCKS,
+  type ProgressiveLoadHandle,
+  REST_CHUNK_BLOCKS,
+} from "../utils/editor/progressive-load";
 import { isMarkdownFile } from "../utils/file-type";
 import { logger } from "../utils/logger";
 import { timePhase } from "../utils/perf";
@@ -71,6 +81,7 @@ export function useTabSwitching({
   const progressiveLoadRef = useRef<{ cancelled: boolean }>({
     cancelled: false,
   });
+  const appendHandleRef = useRef<null | ProgressiveLoadHandle>(null);
 
   // --- Tab switching: swap editor content when activeTabId changes ---
   useEffect(() => {
@@ -246,6 +257,8 @@ export function useTabSwitching({
       const cachedState = editorStateCache.current.get(activeTabId!);
       const cachedScrollTop = scrollTopCache.current.get(activeTabId!);
       if (cachedState) {
+        appendHandleRef.current?.cancel();
+        appendHandleRef.current = null;
         // Defer updateState outside React commit phase
         setTimeout(() => {
           editor.view.updateState(cachedState);
@@ -270,8 +283,10 @@ export function useTabSwitching({
         }
         afterDocLoad();
       } else {
-        // §perf-large-file B1: Parse in Worker, load full doc at once
+        // §perf-large-file B1/C2: Parse in Worker, progressively render chunks
         // Rendering perf is handled by content-visibility: auto (C1)
+        appendHandleRef.current?.cancel();
+        appendHandleRef.current = null;
         progressiveLoadRef.current.cancelled = true;
         const loadToken = { cancelled: false };
         progressiveLoadRef.current = loadToken;
@@ -291,44 +306,79 @@ export function useTabSwitching({
             const allNodes = timePhase("convert(mdast→PM)", () =>
               mdastBlocksToPmNodes(mdast, editor.schema),
             );
-            const doc = editor.schema.nodes.doc.create(null, allNodes);
+            const chunks = chunkBlocks(
+              allNodes,
+              FIRST_CHUNK_BLOCKS,
+              REST_CHUNK_BLOCKS,
+            );
+            const firstChunk = chunks[0] ?? [];
+            const restChunks = chunks.slice(1);
+
+            const doc = editor.schema.nodes.doc.create(
+              null,
+              firstChunk.length ? firstChunk : undefined,
+            );
             const newState = EditorState.create({
               doc,
               plugins: editor.state.plugins,
               selection: TextSelection.atStart(doc),
             });
-            // Defer updateState outside React commit phase
-            setTimeout(() => {
-              timePhase("updateState(DOM)", () =>
-                editor.view.updateState(newState),
-              );
-              markContentLoaded(activeTabId!);
-              setIsParsing(false);
-            });
-            // Reset scroll to top for freshly opened documents
-            requestAnimationFrame(() => {
-              const scrollContainer = document.querySelector(
-                ".editor-area-scroll",
-              );
-              if (scrollContainer) {
-                scrollContainer.scrollTop = 0;
-              }
-            });
-            afterDocLoad();
 
-            // Restore fold state from persistence
-            const inTab = tabs.find((t) => t.id === activeTabId);
-            if (inTab?.filePath) {
-              const savedAnchors = useFoldStore
-                .getState()
-                .getFolds(inTab.filePath);
-              if (savedAnchors.length > 0) {
-                const positions = anchorsToPositions(doc, savedAnchors);
-                if (positions.length > 0) {
-                  dispatchRestoreFolds(editor.view, positions);
+            // Suppress dirty/auto-save for the whole progressive load.
+            setTabLoading(activeTabId!, true);
+
+            // Run the deferred post-load work once the FULL doc is present.
+            const finishLoad = () => {
+              setTabLoading(activeTabId!, false);
+              markContentLoaded(activeTabId!);
+              afterDocLoad();
+              const inTab = tabs.find((t) => t.id === activeTabId);
+              if (inTab?.filePath) {
+                const savedAnchors = useFoldStore
+                  .getState()
+                  .getFolds(inTab.filePath);
+                if (savedAnchors.length > 0) {
+                  const positions = anchorsToPositions(
+                    editor.view.state.doc,
+                    savedAnchors,
+                  );
+                  if (positions.length > 0) {
+                    dispatchRestoreFolds(editor.view, positions);
+                  }
                 }
               }
-            }
+            };
+
+            // Defer updateState outside React commit phase.
+            setTimeout(() => {
+              if (loadToken.cancelled) {
+                setTabLoading(activeTabId!, false);
+                setIsParsing(false);
+                return;
+              }
+              timePhase("updateState(first chunk)", () =>
+                editor.view.updateState(newState),
+              );
+              setIsParsing(false);
+
+              // Reset scroll to top for freshly opened documents.
+              requestAnimationFrame(() => {
+                const scrollContainer = document.querySelector(
+                  ".editor-area-scroll",
+                );
+                if (scrollContainer) scrollContainer.scrollTop = 0;
+              });
+
+              if (restChunks.length === 0) {
+                finishLoad();
+                return;
+              }
+              appendHandleRef.current = appendChunksProgressively(
+                editor,
+                restChunks,
+                { onComplete: finishLoad },
+              );
+            });
           })
           .catch((err: unknown) => {
             setIsParsing(false);
