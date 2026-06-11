@@ -95,4 +95,28 @@ describe("appendChunksProgressively", () => {
     expect(editor.state.doc.childCount).toBe(1);
     editor.destroy();
   });
+
+  it("does not throw and appends nothing after editor.destroy()", () => {
+    const editor = new Editor({
+      extensions: createBaramExtensions(),
+      content: "",
+    });
+    const mdast = parseMdast("A\n\nB\n\nC\n");
+    const blocks = mdastBlocksToPmNodes(mdast, editor.schema);
+    editor.commands.setContent(
+      editor.schema.nodes.doc.create(null, [blocks[0]]).toJSON(),
+    );
+    // Collect pending ticks without executing them.
+    const pending: (() => void)[] = [];
+    appendChunksProgressively(editor, [[blocks[1]], [blocks[2]]], {
+      schedule: (cb) => {
+        pending.push(cb);
+        return () => {};
+      },
+      onComplete: () => {},
+    });
+    editor.destroy();
+    // Firing pending callbacks after destroy must not throw.
+    expect(() => pending.forEach((cb) => cb())).not.toThrow();
+  });
 });

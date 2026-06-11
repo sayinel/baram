@@ -28,6 +28,9 @@ export function chunkBlocks<T>(
   return chunks;
 }
 
+/** Fallback timeout (ms) for requestIdleCallback when the browser is busy. */
+const IDLE_TIMEOUT_MS = 100;
+
 export const scheduleIdle: ScheduleFn = (cb) => {
   const g = globalThis as unknown as {
     cancelIdleCallback?: (id: number) => void;
@@ -37,7 +40,7 @@ export const scheduleIdle: ScheduleFn = (cb) => {
     ) => number;
   };
   if (typeof g.requestIdleCallback === "function") {
-    const id = g.requestIdleCallback(cb, { timeout: 100 });
+    const id = g.requestIdleCallback(cb, { timeout: IDLE_TIMEOUT_MS });
     return () => g.cancelIdleCallback?.(id);
   }
   const id = setTimeout(cb, 0);
@@ -53,7 +56,8 @@ export interface ProgressiveLoadHandle {
  * chunk per scheduled tick, yielding between chunks. Every chunk except the
  * last carries PROGRESSIVE_LOAD_META so heavy decoration plugins skip their
  * whole-doc rebuild; the last chunk omits it, triggering exactly one rebuild.
- * Appends are not added to undo history. Calls onComplete after the last chunk.
+ * Appends are not added to undo history. Calls onComplete after the last chunk
+ * (or immediately if chunks is empty).
  */
 export function appendChunksProgressively(
   editor: Editor,
@@ -66,7 +70,7 @@ export function appendChunksProgressively(
   let cancelTick: () => void = () => {};
 
   const step = () => {
-    if (cancelled) return;
+    if (cancelled || editor.isDestroyed) return;
     if (i >= chunks.length) {
       opts.onComplete();
       return;
