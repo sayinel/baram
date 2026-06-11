@@ -174,11 +174,14 @@ export function useTabSwitching({
       }
     }
 
+    // The outgoing-save block above has already read isTabLoading(prevTabId).
+    // Now it is safe to cancel the in-flight appender and clear its flag/ref.
+    cancelInflightAppend();
+
     // Load incoming tab content
     const incomingTab = tabs.find((t) => t.id === activeTabId);
     if (!incomingTab) {
       // No active tab — clear editor
-      cancelInflightAppend();
       const emptyDoc = markdownToProsemirror("", editor.schema);
       const newState = EditorState.create({
         doc: emptyDoc,
@@ -192,10 +195,7 @@ export function useTabSwitching({
     }
 
     // Graph tab — no ProseMirror content to load
-    if (isGraphTab(incomingTab)) {
-      cancelInflightAppend();
-      return;
-    }
+    if (isGraphTab(incomingTab)) return;
 
     const content = incomingTab.filePath
       ? openFiles.get(incomingTab.filePath)
@@ -204,7 +204,6 @@ export function useTabSwitching({
     if (content !== undefined) {
       // Non-markdown file — load into source editor, skip ProseMirror entirely
       if (!isMarkdownFile(incomingTab.filePath)) {
-        cancelInflightAppend();
         sourceContentRef.current = content;
         setSourceContent(content);
         return;
@@ -278,7 +277,6 @@ export function useTabSwitching({
       const cachedState = editorStateCache.current.get(activeTabId!);
       const cachedScrollTop = scrollTopCache.current.get(activeTabId!);
       if (cachedState) {
-        cancelInflightAppend();
         // Defer updateState outside React commit phase
         setTimeout(() => {
           editor.view.updateState(cachedState);
@@ -305,7 +303,6 @@ export function useTabSwitching({
       } else {
         // §perf-large-file B1/C2: Parse in Worker, progressively render chunks
         // Rendering perf is handled by content-visibility: auto (C1)
-        cancelInflightAppend();
         progressiveLoadRef.current.cancelled = true;
         const loadToken = { cancelled: false };
         progressiveLoadRef.current = loadToken;
@@ -348,6 +345,12 @@ export function useTabSwitching({
 
             // Run the deferred post-load work once the FULL doc is present.
             const finishLoad = () => {
+              // Null the ref before clearing the flag so a concurrent cleanup
+              // (effect re-run) can't see a stale tabId and clear a newer load's flag.
+              // Only null if this load's tabId still matches (no newer load started).
+              if (appendHandleRef.current?.tabId === activeTabId) {
+                appendHandleRef.current = null;
+              }
               setTabLoading(activeTabId!, false);
               markContentLoaded(activeTabId!);
               afterDocLoad();
@@ -419,7 +422,13 @@ export function useTabSwitching({
     // tabs, openFiles, etc.) are read from store state or refs to avoid
     // re-registering the effect on every keystroke.
     return () => {
-      cancelInflightAppend();
+      // React runs this cleanup BEFORE the next effect body executes.
+      // The next effect's outgoing-save block reads isTabLoading(prevTabId) at
+      // line ~135 to decide whether to skip caching a partial doc — so we must
+      // NOT clear the loading flag here. Only stop the appender from ticking.
+      // cancelInflightAppend() is called unconditionally after the outgoing-save
+      // block (line ~178) where the flag is no longer needed.
+      appendHandleRef.current?.handle.cancel();
       progressiveLoadRef.current.cancelled = true;
     };
   }, [activeTabId]); // eslint-disable-line react-hooks/exhaustive-deps
