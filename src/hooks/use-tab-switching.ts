@@ -31,6 +31,7 @@ import {
 } from "../utils/editor/block-nav";
 import { mdLineToPmBlockStart } from "../utils/editor/cursor-mapper";
 import {
+  isTabLoading,
   markContentLoaded,
   setTabLoading,
 } from "../utils/editor/programmatic-update";
@@ -81,7 +82,19 @@ export function useTabSwitching({
   const progressiveLoadRef = useRef<{ cancelled: boolean }>({
     cancelled: false,
   });
-  const appendHandleRef = useRef<null | ProgressiveLoadHandle>(null);
+  const appendHandleRef = useRef<null | {
+    handle: ProgressiveLoadHandle;
+    tabId: string;
+  }>(null);
+
+  // Cancel any in-flight progressive append and clear the loading flag for its tab.
+  const cancelInflightAppend = () => {
+    if (appendHandleRef.current) {
+      appendHandleRef.current.handle.cancel();
+      setTabLoading(appendHandleRef.current.tabId, false);
+      appendHandleRef.current = null;
+    }
+  };
 
   // --- Tab switching: swap editor content when activeTabId changes ---
   useEffect(() => {
@@ -117,9 +130,12 @@ export function useTabSwitching({
       // Only save ProseMirror state for file tabs (graph tabs have no editor state)
       if (isFileTab(prevTab)) {
         const prevIsCode = !isMarkdownFile(prevTab?.filePath);
+        // §perf-large-file C2: Skip caching/saving a tab that is mid-load —
+        // the doc is partial. Returning to it will re-run the uncached open path.
+        const prevMidLoad = isTabLoading(prevTabId);
         // Cache EditorState before switching (keeps undo/redo stack intact)
         // Non-MD files don't use ProseMirror — skip caching
-        if (!isSourceMode && !prevIsCode) {
+        if (!isSourceMode && !prevIsCode && !prevMidLoad) {
           editorStateCache.current.set(prevTabId, editor.state);
           // Save fold state as content-based anchors
           if (prevTab?.filePath) {
@@ -135,7 +151,7 @@ export function useTabSwitching({
             }
           }
         }
-        if (prevTab?.filePath) {
+        if (prevTab?.filePath && !prevMidLoad) {
           try {
             const md =
               prevIsCode || isSourceMode
@@ -162,6 +178,7 @@ export function useTabSwitching({
     const incomingTab = tabs.find((t) => t.id === activeTabId);
     if (!incomingTab) {
       // No active tab — clear editor
+      cancelInflightAppend();
       const emptyDoc = markdownToProsemirror("", editor.schema);
       const newState = EditorState.create({
         doc: emptyDoc,
@@ -175,7 +192,10 @@ export function useTabSwitching({
     }
 
     // Graph tab — no ProseMirror content to load
-    if (isGraphTab(incomingTab)) return;
+    if (isGraphTab(incomingTab)) {
+      cancelInflightAppend();
+      return;
+    }
 
     const content = incomingTab.filePath
       ? openFiles.get(incomingTab.filePath)
@@ -184,6 +204,7 @@ export function useTabSwitching({
     if (content !== undefined) {
       // Non-markdown file — load into source editor, skip ProseMirror entirely
       if (!isMarkdownFile(incomingTab.filePath)) {
+        cancelInflightAppend();
         sourceContentRef.current = content;
         setSourceContent(content);
         return;
@@ -257,8 +278,7 @@ export function useTabSwitching({
       const cachedState = editorStateCache.current.get(activeTabId!);
       const cachedScrollTop = scrollTopCache.current.get(activeTabId!);
       if (cachedState) {
-        appendHandleRef.current?.cancel();
-        appendHandleRef.current = null;
+        cancelInflightAppend();
         // Defer updateState outside React commit phase
         setTimeout(() => {
           editor.view.updateState(cachedState);
@@ -285,8 +305,7 @@ export function useTabSwitching({
       } else {
         // §perf-large-file B1/C2: Parse in Worker, progressively render chunks
         // Rendering perf is handled by content-visibility: auto (C1)
-        appendHandleRef.current?.cancel();
-        appendHandleRef.current = null;
+        cancelInflightAppend();
         progressiveLoadRef.current.cancelled = true;
         const loadToken = { cancelled: false };
         progressiveLoadRef.current = loadToken;
@@ -373,11 +392,12 @@ export function useTabSwitching({
                 finishLoad();
                 return;
               }
-              appendHandleRef.current = appendChunksProgressively(
-                editor,
-                restChunks,
-                { onComplete: finishLoad },
-              );
+              appendHandleRef.current = {
+                handle: appendChunksProgressively(editor, restChunks, {
+                  onComplete: finishLoad,
+                }),
+                tabId: activeTabId!,
+              };
             });
           })
           .catch((err: unknown) => {
