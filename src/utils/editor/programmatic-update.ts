@@ -11,16 +11,29 @@ import type { Node } from "@tiptap/pm/model";
 
 const originalDocs = new Map<string, Node>();
 const pendingTabs = new Set<string>();
+const loadingTabs = new Set<string>();
 
 /** Clean up when tab is closed */
 export function clearOriginalDoc(tabId: string): void {
   originalDocs.delete(tabId);
   pendingTabs.delete(tabId);
+  loadingTabs.delete(tabId);
+}
+
+export function isTabLoading(tabId: string): boolean {
+  return loadingTabs.has(tabId);
 }
 
 /** Mark a tab as having just loaded content — the next update will capture baseline */
 export function markContentLoaded(tabId: string): void {
   pendingTabs.add(tabId);
+}
+
+/** Mark a tab as currently loading (progressive render in flight). While set,
+ *  shouldSkipDirty() returns true so append transactions never mark dirty. */
+export function setTabLoading(tabId: string, loading: boolean): void {
+  if (loading) loadingTabs.add(tabId);
+  else loadingTabs.delete(tabId);
 }
 
 /**
@@ -29,6 +42,9 @@ export function markContentLoaded(tabId: string): void {
  * or doc unchanged from baseline).
  */
 export function shouldSkipDirty(tabId: string, currentDoc: Node): boolean {
+  // Suppress dirty during progressive load
+  if (loadingTabs.has(tabId)) return true;
+
   // First update after content load — capture stabilized doc as baseline
   if (pendingTabs.has(tabId)) {
     pendingTabs.delete(tabId);
