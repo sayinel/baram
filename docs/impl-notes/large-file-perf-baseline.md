@@ -87,3 +87,20 @@ Measured on `feature/large-file-perf` with C2 progressive rendering applied (com
   - C3b: incremental decoration maintenance (replace whole-doc rebuilds with mapped + local updates),
   - C3c: scroll-burst CM mount throttling/pooling,
   - C3d: bound the post-open append window (bigger idle budget per tick or smaller chunks under input pressure).
+
+## C3.0 measurements (2026-06-11, post-047bfa0)
+
+Fixture: CONTEXT.md (3,531 blocks at measure time). All numbers from `__baramPerf` / `[Baram Perf]` logs in `npm run tauri dev` (WKWebView).
+
+| Metric | Value | Note |
+|---|---|---|
+| Input latency (27 mid-doc keystrokes) | **p50 700 ms / p99 1378 ms / max 1378 ms** | target p99 < 33 ms → **~40× over** — dominant symptom |
+| Scroll longTasks | count 0 | **WKWebView does not support `longtask` PerformanceObserver** — metric unusable on this platform; replace with rAF-gap stall detector (C3.2 Step 0) |
+| Tab switch away (large→small) | serializeOutgoing **217 ms** + restore(9 blocks) **398 ms** | restore cost dominated by tearing down 3,531-block DOM |
+| Tab switch back (small→large, cache HIT) | restore **1956 ms** | confirms C3a: cached restore = whole-DOM rebuild |
+| editorStateCache | set/hit both directions ✓ | **2026-06-11 miss mystery RESOLVED**: not reproducible after the 0a424fd cleanup-ordering fix; attributed to that regression (or tab close/reopen). No further action. |
+
+### C3.0 gate verdicts
+- Cache-miss root cause: **closed** (see above).
+- Before-numbers captured for C3.1 (input latency) and C3.5 (tabSwitch:restore 1956 ms / 398 ms, serializeOutgoing 217 ms).
+- Scroll before-number NOT capturable via longtask on WKWebView → C3.2 must first add a rAF-gap stall metric (frames > 50 ms while scrolling), then capture before/after within C3.2's own gate.
