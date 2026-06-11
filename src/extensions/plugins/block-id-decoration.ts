@@ -14,6 +14,7 @@ import { generateBlockId } from "../../pipeline/block-id";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
+import { changedRanges } from "../../utils/editor/changed-ranges";
 import { PROGRESSIVE_LOAD_META } from "../../utils/editor/progressive-load";
 import { logger } from "../../utils/logger";
 
@@ -24,6 +25,14 @@ interface BlockIdDecoState {
   editingBlockPos: null | number;
   entries: BlockIdEntry[];
   focusedBlockPos: null | number;
+  /** Map from blockId → count of blocks in the doc that have that id. */
+  idCountMap: Map<string, number>;
+  /**
+   * Set to true when a progressive-load (gated) transaction was applied so
+   * that the next non-gated docChanged triggers a full rebuild to catch all
+   * the skipped chunks.
+   */
+  needsFullRebuild: boolean;
 }
 
 interface BlockIdEntry {
@@ -69,6 +78,15 @@ function buildDecosFromEntries(
   return DecorationSet.create(doc, decos);
 }
 
+/** Build an id→count map from an entries array. */
+function buildIdCountMap(entries: BlockIdEntry[]): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const { blockId } of entries) {
+    map.set(blockId, (map.get(blockId) ?? 0) + 1);
+  }
+  return map;
+}
+
 /** Walk the doc once and collect all blocks that have a blockId attr. */
 function collectBlockIdEntries(doc: PmNode): BlockIdEntry[] {
   const entries: BlockIdEntry[] = [];
@@ -83,6 +101,67 @@ function collectBlockIdEntries(doc: PmNode): BlockIdEntry[] {
     return false; // Don't descend into paragraphs/headings
   });
   return entries;
+}
+
+/**
+ * Update entries incrementally for a set of changed ranges.
+ * Drops entries whose positions fall in changed ranges (using old-doc coords
+ * obtained by inverting the mapping), maps surviving positions forward, then
+ * re-collects entries from the new-doc changed ranges.
+ */
+function updateEntriesIncremental(
+  oldEntries: BlockIdEntry[],
+  tr: Transaction,
+  newDoc: PmNode,
+): BlockIdEntry[] {
+  // Collect old-doc changed ranges directly from the StepMap forEach callbacks.
+  // These tell us which OLD positions were touched, so we can correctly drop
+  // old entries that fell inside those ranges (rather than using new-doc coords,
+  // which can be misleading when nodes shift to position 0 after a delete).
+  const oldRanges: { from: number; to: number }[] = [];
+  for (const map of tr.mapping.maps) {
+    map.forEach((oldStart, oldEnd) => {
+      oldRanges.push({ from: oldStart, to: oldEnd });
+    });
+  }
+
+  // Map surviving old entries into new-doc coordinates, dropping any whose
+  // OLD position fell inside an old-doc changed range.
+  const surviving: BlockIdEntry[] = [];
+  for (const entry of oldEntries) {
+    const inOldRange = oldRanges.some(
+      (r) => entry.pos >= r.from && entry.pos < r.to,
+    );
+    if (!inOldRange) {
+      surviving.push({
+        pos: tr.mapping.map(entry.pos),
+        blockId: entry.blockId,
+        endPos: tr.mapping.map(entry.endPos),
+      });
+    }
+  }
+
+  // Re-collect entries from the new-doc changed ranges.
+  // Use a Map to deduplicate by position. Skip positions that already exist in
+  // `surviving` — a node whose start token is in the changed range but whose
+  // body contains the changed position would otherwise be double-counted.
+  const survivingPosSet = new Set(surviving.map((e) => e.pos));
+  const newDocRanges = changedRanges(tr);
+  const freshMap = new Map<number, BlockIdEntry>();
+  for (const range of newDocRanges) {
+    newDoc.nodesBetween(range.from, range.to, (node: PmNode, pos: number) => {
+      if (node.type.name !== "paragraph" && node.type.name !== "heading") {
+        return true;
+      }
+      const blockId = node.attrs.blockId as null | string;
+      if (blockId && !freshMap.has(pos) && !survivingPosSet.has(pos)) {
+        freshMap.set(pos, { pos, blockId, endPos: pos + node.nodeSize - 1 });
+      }
+      return false;
+    });
+  }
+
+  return [...surviving, ...freshMap.values()];
 }
 
 export const blockIdDecoKey = new PluginKey<BlockIdDecoState>(
@@ -245,6 +324,8 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
           editingBlockPos: null,
           decorations: DecorationSet.empty,
           entries: [],
+          idCountMap: new Map(),
+          needsFullRebuild: false,
         };
       },
 
@@ -261,6 +342,8 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
             focusedBlockPos: null,
             editingBlockPos: null,
             entries,
+            idCountMap: buildIdCountMap(entries),
+            needsFullRebuild: false,
             decorations: buildDecosFromEntries(
               newState.doc,
               entries,
@@ -276,13 +359,37 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
           | { editingBlockPos: null | number; focusedBlockPos: null | number };
         if (meta !== undefined) {
           const skipRebuild = tr.getMeta(PROGRESSIVE_LOAD_META) === true;
-          const entries =
-            tr.docChanged && !skipRebuild
-              ? collectBlockIdEntries(newState.doc)
-              : value.entries;
+          let entries: BlockIdEntry[];
+          let idCountMap: Map<string, number>;
+          let needsFullRebuild = value.needsFullRebuild;
+          if (tr.docChanged) {
+            if (skipRebuild) {
+              // Progressive-load chunk: map positions, flag for full rebuild later
+              entries = value.entries;
+              idCountMap = value.idCountMap;
+              needsFullRebuild = true;
+            } else if (needsFullRebuild) {
+              // First non-progressive docChanged after progressive load: full rebuild
+              entries = collectBlockIdEntries(newState.doc);
+              idCountMap = buildIdCountMap(entries);
+              needsFullRebuild = false;
+            } else {
+              entries = updateEntriesIncremental(
+                value.entries,
+                tr,
+                newState.doc,
+              );
+              idCountMap = buildIdCountMap(entries);
+            }
+          } else {
+            entries = value.entries;
+            idCountMap = value.idCountMap;
+          }
           return {
             ...meta,
             entries,
+            idCountMap,
+            needsFullRebuild,
             decorations: buildDecosFromEntries(
               newState.doc,
               entries,
@@ -334,18 +441,39 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
           return value;
         }
 
-        // Doc changed → rebuild entries from scratch; otherwise reuse
-        // Skip rebuild during progressive load (append transactions carry meta)
+        // Doc changed → update entries; skip during progressive load
         const skipRebuild = tr.getMeta(PROGRESSIVE_LOAD_META) === true;
-        const entries =
-          tr.docChanged && !skipRebuild
-            ? collectBlockIdEntries(newState.doc)
-            : value.entries;
+        let entries: BlockIdEntry[];
+        let idCountMap: Map<string, number>;
+        let needsFullRebuild = value.needsFullRebuild;
+
+        if (tr.docChanged) {
+          if (skipRebuild) {
+            // Progressive-load chunk: map positions only, flag for full rebuild
+            entries = value.entries;
+            idCountMap = value.idCountMap;
+            needsFullRebuild = true;
+          } else if (needsFullRebuild) {
+            // First non-progressive docChanged after progressive load: full rebuild
+            entries = collectBlockIdEntries(newState.doc);
+            idCountMap = buildIdCountMap(entries);
+            needsFullRebuild = false;
+          } else {
+            // §perf-large-file C3.1: incremental entry update
+            entries = updateEntriesIncremental(value.entries, tr, newState.doc);
+            idCountMap = buildIdCountMap(entries);
+          }
+        } else {
+          entries = value.entries;
+          idCountMap = value.idCountMap;
+        }
 
         return {
           focusedBlockPos,
           editingBlockPos,
           entries,
+          idCountMap,
+          needsFullRebuild,
           decorations: buildDecosFromEntries(
             newState.doc,
             entries,

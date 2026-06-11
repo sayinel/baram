@@ -11,6 +11,7 @@ import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
+import { changedRanges } from "../../utils/editor/changed-ranges";
 import { PROGRESSIVE_LOAD_META } from "../../utils/editor/progressive-load";
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -434,6 +435,33 @@ function createFoldPlugin(): Plugin<FoldState> {
           // §perf-large-file C2: Skip whole-doc rebuild during progressive load;
           // map existing decorations instead. Final (no-meta) chunk rebuilds fully.
           if (tr.getMeta(PROGRESSIVE_LOAD_META) === true) {
+            return {
+              foldedPositions: newFolded,
+              decorations: value.decorations.map(tr.mapping, tr.doc),
+            };
+          }
+          // §perf-large-file C3.1: skip doc.descendants in findFoldableListItems
+          // when the changed range doesn't touch any list item or heading.
+          // findFoldableHeadings is O(direct-children) so it is always fast.
+          const ranges = changedRanges(tr);
+          const touchesListItemOrHeading = ranges.some((r) => {
+            let found = false;
+            newState.doc.nodesBetween(r.from, r.to, (node) => {
+              if (
+                node.type.name === "heading" ||
+                node.type.name === "listItem"
+              ) {
+                found = true;
+                return false;
+              }
+              return !found;
+            });
+            return found;
+          });
+
+          if (!touchesListItemOrHeading) {
+            // Pure inline paragraph edit — reuse mapped decorations; no list/heading
+            // structure changed so foldables are identical after position mapping.
             return {
               foldedPositions: newFolded,
               decorations: value.decorations.map(tr.mapping, tr.doc),
