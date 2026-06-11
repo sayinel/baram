@@ -418,5 +418,9 @@ export function useTabSwitching({
     // Intentionally only re-run on activeTabId change; other values (editor,
     // tabs, openFiles, etc.) are read from store state or refs to avoid
     // re-registering the effect on every keystroke.
+    return () => {
+      cancelInflightAppend();
+      progressiveLoadRef.current.cancelled = true;
+    };
   }, [activeTabId]); // eslint-disable-line react-hooks/exhaustive-deps
 }
