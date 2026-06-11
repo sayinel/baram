@@ -14,6 +14,7 @@ import { generateBlockId } from "../../pipeline/block-id";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
+import { PROGRESSIVE_LOAD_META } from "../../utils/editor/progressive-load";
 import { logger } from "../../utils/logger";
 
 // ── Plugin state ──────────────────────────────────────────────────────
@@ -274,9 +275,11 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
           | undefined
           | { editingBlockPos: null | number; focusedBlockPos: null | number };
         if (meta !== undefined) {
-          const entries = tr.docChanged
-            ? collectBlockIdEntries(newState.doc)
-            : value.entries;
+          const skipRebuild = tr.getMeta(PROGRESSIVE_LOAD_META) === true;
+          const entries =
+            tr.docChanged && !skipRebuild
+              ? collectBlockIdEntries(newState.doc)
+              : value.entries;
           return {
             ...meta,
             entries,
@@ -332,9 +335,12 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
         }
 
         // Doc changed → rebuild entries from scratch; otherwise reuse
-        const entries = tr.docChanged
-          ? collectBlockIdEntries(newState.doc)
-          : value.entries;
+        // Skip rebuild during progressive load (append transactions carry meta)
+        const skipRebuild = tr.getMeta(PROGRESSIVE_LOAD_META) === true;
+        const entries =
+          tr.docChanged && !skipRebuild
+            ? collectBlockIdEntries(newState.doc)
+            : value.entries;
 
         return {
           focusedBlockPos,
