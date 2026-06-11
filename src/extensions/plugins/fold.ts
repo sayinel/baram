@@ -11,6 +11,8 @@ import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
+import { PROGRESSIVE_LOAD_META } from "../../utils/editor/progressive-load";
+
 // ── Types ──────────────────────────────────────────────────────────
 
 export type FoldMeta =
@@ -428,6 +430,14 @@ function createFoldPlugin(): Plugin<FoldState> {
             ) {
               newFolded.add(mapped);
             }
+          }
+          // §perf-large-file C2: Skip whole-doc rebuild during progressive load;
+          // map existing decorations instead. Final (no-meta) chunk rebuilds fully.
+          if (tr.getMeta(PROGRESSIVE_LOAD_META) === true) {
+            return {
+              foldedPositions: newFolded,
+              decorations: value.decorations.map(tr.mapping, tr.doc),
+            };
           }
           return {
             foldedPositions: newFolded,

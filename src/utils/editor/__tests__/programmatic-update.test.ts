@@ -2,6 +2,7 @@ import { Schema } from "@tiptap/pm/model";
 import { describe, expect, it } from "vitest";
 
 import {
+  clearOriginalDoc,
   isTabLoading,
   setTabLoading,
   shouldSkipDirty,
@@ -23,5 +24,11 @@ describe("loading guard", () => {
     expect(shouldSkipDirty("tabX", doc)).toBe(true); // suppressed during load
     setTabLoading("tabX", false);
     expect(isTabLoading("tabX")).toBe(false);
+  });
+
+  it("clearOriginalDoc clears the loading flag (tab closed mid-load)", () => {
+    setTabLoading("tabY", true);
+    clearOriginalDoc("tabY");
+    expect(isTabLoading("tabY")).toBe(false);
   });
 });
