@@ -12,6 +12,8 @@ import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
+import { PROGRESSIVE_LOAD_META } from "../../utils/editor/progressive-load";
+
 const pluginKey = new PluginKey("listAtomFix");
 
 function buildListAtomDecos(
@@ -64,7 +66,9 @@ export const ListAtomFix = Extension.create({
             if (old === DecorationSet.empty && newState.doc.content.size > 0) {
               return buildListAtomDecos(newState.doc);
             }
-            if (!tr.docChanged) return old.map(tr.mapping, tr.doc);
+            if (!tr.docChanged || tr.getMeta(PROGRESSIVE_LOAD_META) === true) {
+              return old.map(tr.mapping, tr.doc);
+            }
             return buildListAtomDecos(tr.doc);
           },
         },
