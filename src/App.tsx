@@ -73,6 +73,7 @@ import { isFileTab, isGraphTab } from "./stores/editor/editor";
 import { useFileStore } from "./stores/file/file";
 import { useSettingsStore } from "./stores/settings/store";
 import { useUIStore } from "./stores/ui/ui";
+import { initPerfTrace } from "./utils/editor/perf-trace";
 import { getLanguageForFile, isMarkdownFile } from "./utils/file-type";
 import { createLLMStream } from "./utils/llm-stream";
 import { logger } from "./utils/logger";
@@ -232,6 +233,11 @@ function App() {
       notifyEditorReady();
     },
   });
+
+  // §perf-large-file C3.0: Install dev-only performance instrumentation
+  useEffect(() => {
+    if (import.meta.env.DEV) initPerfTrace();
+  }, []);
 
   // §69 Plugin system — initialize plugins and update checker on mount
   useEffect(() => {

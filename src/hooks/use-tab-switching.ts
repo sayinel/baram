@@ -30,6 +30,7 @@ import {
   findHeadingPosByText,
 } from "../utils/editor/block-nav";
 import { mdLineToPmBlockStart } from "../utils/editor/cursor-mapper";
+import { logCacheEvent, timePhase } from "../utils/editor/perf-trace";
 import {
   isTabLoading,
   markContentLoaded,
@@ -44,7 +45,6 @@ import {
 } from "../utils/editor/progressive-load";
 import { isMarkdownFile } from "../utils/file-type";
 import { logger } from "../utils/logger";
-import { timePhase } from "../utils/perf";
 
 interface UseTabSwitchingParams {
   editor: Editor | null;
@@ -137,6 +137,7 @@ export function useTabSwitching({
         // Non-MD files don't use ProseMirror — skip caching
         if (!isSourceMode && !prevIsCode && !prevMidLoad) {
           editorStateCache.current.set(prevTabId, editor.state);
+          logCacheEvent("set", prevTabId, editor.state.doc.childCount);
           // Save fold state as content-based anchors
           if (prevTab?.filePath) {
             const pluginState = foldPluginKey.getState(editor.state);
@@ -156,7 +157,9 @@ export function useTabSwitching({
             const md =
               prevIsCode || isSourceMode
                 ? sourceContentRef.current
-                : prosemirrorToMarkdown(editor.state.doc);
+                : timePhase("tabSwitch:serializeOutgoing", () =>
+                    prosemirrorToMarkdown(editor.state.doc),
+                  );
             useFileStore.getState().setFileContent(prevTab.filePath, md);
           } catch (err) {
             // Serialization failed — mark tab dirty so unsaved edits are visible
@@ -277,9 +280,12 @@ export function useTabSwitching({
       const cachedState = editorStateCache.current.get(activeTabId!);
       const cachedScrollTop = scrollTopCache.current.get(activeTabId!);
       if (cachedState) {
+        logCacheEvent("hit", activeTabId!, cachedState.doc.childCount);
         // Defer updateState outside React commit phase
         setTimeout(() => {
-          editor.view.updateState(cachedState);
+          timePhase("tabSwitch:restore", () =>
+            editor.view.updateState(cachedState),
+          );
           markContentLoaded(activeTabId!);
         });
         // Restore exact scroll position (not just cursor visibility)
@@ -301,6 +307,7 @@ export function useTabSwitching({
         }
         afterDocLoad();
       } else {
+        logCacheEvent("miss", activeTabId!);
         // §perf-large-file B1/C2: Parse in Worker, progressively render chunks
         // Rendering perf is handled by content-visibility: auto (C1)
         progressiveLoadRef.current.cancelled = true;
@@ -413,6 +420,7 @@ export function useTabSwitching({
       const openTabIds = new Set(tabs.map((t) => t.id));
       for (const cachedId of editorStateCache.current.keys()) {
         if (!openTabIds.has(cachedId)) {
+          logCacheEvent("delete", cachedId);
           editorStateCache.current.delete(cachedId);
           scrollTopCache.current.delete(cachedId);
         }
