@@ -48,10 +48,15 @@ import { logger } from "../utils/logger";
 import {
   type KeepalivePool,
   LARGE_DOC_BLOCK_THRESHOLD,
-  resolveTabEditor,
 } from "./use-large-doc-keepalive";
 
 interface UseTabSwitchingParams {
+  /** [NEW-MODERATE-C] Shared ref for progressive append handles — also used
+   *  by useSourceMode so cancelInflightAppend covers source-mode fills. */
+  appendHandleRef: React.MutableRefObject<null | {
+    handle: ProgressiveLoadHandle;
+    tabId: string;
+  }>;
   /** §perf-large-file C3.5: factory to create a keep-alive editor for a tab */
   createKeepaliveEditor: () => Editor;
   editor: Editor | null;
@@ -72,6 +77,7 @@ interface UseTabSwitchingParams {
 }
 
 export function useTabSwitching({
+  appendHandleRef,
   editor,
   editorStateCache,
   isNavBackForwardRef,
@@ -96,10 +102,6 @@ export function useTabSwitching({
   const progressiveLoadRef = useRef<{ cancelled: boolean }>({
     cancelled: false,
   });
-  const appendHandleRef = useRef<null | {
-    handle: ProgressiveLoadHandle;
-    tabId: string;
-  }>(null);
 
   // Cancel any in-flight progressive append and clear the loading flag for its tab.
   const cancelInflightAppend = () => {
@@ -236,11 +238,9 @@ export function useTabSwitching({
       return;
     }
 
-    // §perf-large-file C3.5: if this tab has a keep-alive editor, show it and skip load
-    // [MINOR-10] Use resolveTabEditor (now live production code, not dead).
-    const resolvedEditor = resolveTabEditor(activeTabId, keepalive, editor);
-    const incomingKeepaliveEditor =
-      resolvedEditor !== editor ? resolvedEditor : null;
+    // §perf-large-file C3.5: if this tab has a COMPLETE keep-alive editor,
+    // show it and skip load. activeFor returns null for incomplete entries.
+    const incomingKeepaliveEditor = keepalive.activeFor(activeTabId);
     if (incomingKeepaliveEditor) {
       // Visibility is controlled by React state (activeKeepaliveEditor) via
       // onActiveEditorChange — no manual DOM style toggle needed.
@@ -256,19 +256,68 @@ export function useTabSwitching({
           scrollContainer.scrollTop = cachedScrollTop ?? 0;
         }
       });
-      // Still run afterDocLoad equivalent for search highlight etc.
+      markContentLoaded(activeTabId!);
+
+      // [MINOR-a] Consume pending scroll/search so backlink navigation to a
+      // pooled tab scrolls correctly — not just pendingSearchHighlight.
+      const kaContent = incomingTab.filePath
+        ? openFiles.get(incomingTab.filePath)
+        : undefined;
+      const pendingBlockId = useLinkStore.getState().pendingScrollBlockId;
+      const pendingLine = useLinkStore.getState().pendingScrollLine;
+      const pendingHeading = useLinkStore.getState().pendingScrollHeading;
       const pendingHighlight = useUIStore.getState().pendingSearchHighlight;
+      let kaScrollPos: null | number = null;
+      const kaDoc = incomingKeepaliveEditor.view.state.doc;
+
+      if (pendingBlockId) {
+        useLinkStore.getState().setPendingScrollBlockId(null);
+        const bp = findBlockPosById(kaDoc, pendingBlockId);
+        if (bp !== null)
+          kaScrollPos = Math.min(Math.max(bp, 0), kaDoc.content.size);
+      } else if (pendingLine && kaContent) {
+        useLinkStore.getState().setPendingScrollLine(null);
+        const pp = mdLineToPmBlockStart(kaDoc, kaContent, pendingLine);
+        kaScrollPos = Math.min(Math.max(pp, 0), kaDoc.content.size);
+      } else if (pendingHeading) {
+        useLinkStore.getState().setPendingScrollHeading(null);
+        const hp = findHeadingPosByText(kaDoc, pendingHeading);
+        if (hp !== null)
+          kaScrollPos = Math.min(Math.max(hp + 1, 0), kaDoc.content.size);
+      }
+      if (kaScrollPos !== null) {
+        requestAnimationFrame(() => {
+          try {
+            const rp = incomingKeepaliveEditor.view.state.doc.resolve(
+              kaScrollPos!,
+            );
+            const tr = incomingKeepaliveEditor.view.state.tr
+              .setSelection(TextSelection.near(rp))
+              .scrollIntoView();
+            incomingKeepaliveEditor.view.dispatch(tr);
+            incomingKeepaliveEditor.view.focus();
+          } catch {
+            /* ignore invalid pos */
+          }
+        });
+      }
       if (pendingHighlight) {
         useUIStore.getState().setPendingSearchHighlight(null);
         setTimeout(() => {
-          if (!incomingKeepaliveEditor?.view) return;
+          if (incomingKeepaliveEditor.view.isDestroyed) return;
           dispatchSetSearchTerm(incomingKeepaliveEditor.view, pendingHighlight);
           setFindReplaceOpen(true);
           setFindReplaceMode("find");
         }, 50);
       }
-      markContentLoaded(activeTabId!);
       return;
+    }
+
+    // [NEW-CRITICAL-B] If the pool holds an INCOMPLETE entry for this tab
+    // (mid-load switch-away left a partial doc), destroy it and fall through
+    // to the normal uncached load path — simplest correct behavior.
+    if (keepalive.has(activeTabId!)) {
+      keepalive.release(activeTabId!);
     }
 
     const content = incomingTab.filePath
@@ -457,10 +506,10 @@ export function useTabSwitching({
               setTabLoading(activeTabId!, false);
               markContentLoaded(activeTabId!);
 
-              // [MAJOR-5] Pool slot already acquired at creation time;
-              // acquire is idempotent, this is a safety no-op.
+              // [NEW-CRITICAL-B] Mark the pool entry as complete so
+              // switch-back uses it rather than discarding it.
               if (isLargeDoc) {
-                keepalive.acquire(activeTabId!, targetEditor);
+                keepalive.markComplete(activeTabId!);
               }
 
               afterDocLoad(targetEditor);
