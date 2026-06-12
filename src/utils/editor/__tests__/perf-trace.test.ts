@@ -1,7 +1,15 @@
-// §perf-large-file C3.0: Tests for perf-trace utilities (jsdom-safe subset)
-import { describe, expect, it } from "vitest";
+// §perf-large-file C3.0/C3.1: Tests for perf-trace utilities (jsdom-safe subset)
+import { Editor } from "@tiptap/core";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { percentile, RingBuffer } from "../perf-trace";
+import { createBaramExtensions } from "../../../extensions";
+import {
+  _resetInstrumentationForTest,
+  initPerfTrace,
+  instrumentEditor,
+  percentile,
+  RingBuffer,
+} from "../perf-trace";
 
 // ---------------------------------------------------------------------------
 // RingBuffer
@@ -112,5 +120,88 @@ describe("logCacheEvent", () => {
     expect(() => logCacheEvent("hit", "tab-2")).not.toThrow();
     expect(() => logCacheEvent("miss", "tab-3")).not.toThrow();
     expect(() => logCacheEvent("delete", "tab-4")).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// instrumentEditor — §perf-large-file C3.1
+// ---------------------------------------------------------------------------
+// In Vitest, import.meta.env.DEV is true, so instrumentEditor is active.
+// We create a real Editor, instrument it, dispatch a transaction, and verify
+// the per-plugin and per-event accumulators are populated via
+// window.__baramPerf.txBreakdown() (initPerfTrace installs it on window).
+describe("instrumentEditor", () => {
+  // initPerfTrace installs window.__baramPerf; the module-level `installed`
+  // flag makes it idempotent, so calling it once before each test is safe.
+  beforeEach(() => {
+    _resetInstrumentationForTest();
+    initPerfTrace();
+  });
+
+  afterEach(() => {
+    _resetInstrumentationForTest();
+  });
+
+  it("txBreakdown.transactions.count increments after dispatch", () => {
+    const editor = new Editor({
+      extensions: createBaramExtensions(),
+      content: "<p>test</p>",
+    });
+    instrumentEditor(editor);
+
+    editor.commands.insertContent("!");
+
+    const breakdown = window.__baramPerf!.txBreakdown();
+    expect(breakdown.transactions.count).toBeGreaterThanOrEqual(1);
+
+    editor.destroy();
+  });
+
+  it("txBreakdown.plugins is non-empty and sorted by totalMs desc", () => {
+    const editor = new Editor({
+      extensions: createBaramExtensions(),
+      content: "<p>a</p>",
+    });
+    instrumentEditor(editor);
+    editor.commands.insertContent("b");
+
+    const { plugins } = window.__baramPerf!.txBreakdown();
+    expect(plugins.length).toBeGreaterThan(0);
+
+    // Verify sort order
+    for (let i = 1; i < plugins.length; i++) {
+      expect(plugins[i - 1].totalMs).toBeGreaterThanOrEqual(plugins[i].totalMs);
+    }
+
+    // Verify shape of entries
+    const first = plugins[0];
+    expect(typeof first.name).toBe("string");
+    expect(first.name.length).toBeGreaterThan(0);
+    expect(typeof first.totalMs).toBe("number");
+    expect(typeof first.maxMs).toBe("number");
+    expect(typeof first.calls).toBe("number");
+    expect(first.calls).toBeGreaterThanOrEqual(1);
+
+    editor.destroy();
+  });
+
+  it("txBreakdown.events contains 'transaction' after dispatch", () => {
+    const editor = new Editor({
+      extensions: createBaramExtensions(),
+      content: "<p>hello</p>",
+    });
+    instrumentEditor(editor);
+
+    // tiptap emits "transaction" on every dispatched transaction
+    editor.commands.insertContent(" world");
+
+    const { events } = window.__baramPerf!.txBreakdown();
+    expect(events.length).toBeGreaterThan(0);
+
+    const txEvent = events.find((e) => e.name === "transaction");
+    expect(txEvent).toBeDefined();
+    expect(txEvent!.calls).toBeGreaterThanOrEqual(1);
+
+    editor.destroy();
   });
 });
