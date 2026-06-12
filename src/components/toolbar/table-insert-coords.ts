@@ -65,7 +65,11 @@ export function findTableNearPoint(
   y: number,
   m: NearMargins,
 ): HTMLTableElement | null {
-  const scroll = document.querySelector(".editor-area-scroll");
+  // §perf-large-file C3.4: scope to the ACTIVE editor's scroll container
+  // so tables from a hidden keep-alive editor are excluded.
+  const scroll =
+    document.querySelector(".editor-area-scroll[data-editor-active]") ??
+    document.querySelector(".editor-area-scroll");
   if (!scroll) return null;
   const tables = scroll.querySelectorAll("table");
   for (let i = 0; i < tables.length; i++) {
