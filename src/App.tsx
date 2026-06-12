@@ -73,7 +73,7 @@ import { isFileTab, isGraphTab } from "./stores/editor/editor";
 import { useFileStore } from "./stores/file/file";
 import { useSettingsStore } from "./stores/settings/store";
 import { useUIStore } from "./stores/ui/ui";
-import { initPerfTrace } from "./utils/editor/perf-trace";
+import { initPerfTrace, instrumentEditor } from "./utils/editor/perf-trace";
 import { getLanguageForFile, isMarkdownFile } from "./utils/file-type";
 import { createLLMStream } from "./utils/llm-stream";
 import { logger } from "./utils/logger";
@@ -254,6 +254,11 @@ function App() {
   // §69 Plugin system — provide editor instance to plugin loader
   useEffect(() => {
     if (editor) pluginLoader.setEditor(editor);
+  }, [editor]);
+
+  // §perf-large-file C3.1: Install per-plugin transaction cost instrumentation
+  useEffect(() => {
+    if (editor) instrumentEditor(editor);
   }, [editor]);
 
   // §72 Skills mode — auto-detect skill files and switch right panel
