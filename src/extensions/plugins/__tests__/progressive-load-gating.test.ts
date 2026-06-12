@@ -73,9 +73,10 @@ describe("progressive-load decoration gating", () => {
     expect(ids).toContain("id-delta");
     expect(ids).toContain("id-epsilon");
 
-    // Verify listAtomFixKey state is a valid DecorationSet (no crash from mapping).
+    // Verify listAtomFixKey state is valid (no crash from mapping).
     const lafState = listAtomFixKey.getState(editor.state);
-    expect(lafState).toBeInstanceOf(DecorationSet);
+    expect(lafState).toBeDefined();
+    expect(lafState?.decorations).toBeInstanceOf(DecorationSet);
 
     editor.destroy();
   });

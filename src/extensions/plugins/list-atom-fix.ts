@@ -15,7 +15,25 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { changedRanges } from "../../utils/editor/changed-ranges";
 import { PROGRESSIVE_LOAD_META } from "../../utils/editor/progressive-load";
 
-export const listAtomFixKey = new PluginKey<DecorationSet>("listAtomFix");
+// ── State ─────────────────────────────────────────────────────────────
+
+interface ListAtomFixState {
+  decorations: DecorationSet;
+  /**
+   * True after the first full build has run. Prevents re-running the full
+   * doc walk on every transaction for docs that have zero qualifying items
+   * (DecorationSet.create(doc,[]) returns the shared empty instance so
+   * `decos === DecorationSet.empty` can't be used as an init sentinel).
+   */
+  initialized: boolean;
+  /**
+   * Set to true by every progressive-load (gated) transaction. The next
+   * non-gated docChanged performs a full rebuild to honour the C2 contract.
+   */
+  needsFullRebuild: boolean;
+}
+
+export const listAtomFixKey = new PluginKey<ListAtomFixState>("listAtomFix");
 
 function buildListAtomDecos(
   doc: Parameters<typeof DecorationSet.create>[0],
@@ -59,25 +77,58 @@ export const ListAtomFix = Extension.create({
       new Plugin({
         key: listAtomFixKey,
         state: {
-          init() {
-            // §perf-large-file: Defer initial build to first transaction
-            return DecorationSet.empty;
+          init(): ListAtomFixState {
+            // §perf-large-file: Defer initial build to first transaction.
+            return {
+              decorations: DecorationSet.empty,
+              initialized: false,
+              needsFullRebuild: false,
+            };
           },
-          apply(tr, old, _oldState, newState) {
-            // Deferred init: first real doc → full build
-            if (old === DecorationSet.empty && newState.doc.content.size > 0) {
-              return buildListAtomDecos(newState.doc);
+
+          apply(tr, old, _oldState, newState): ListAtomFixState {
+            // Deferred init: first transaction after doc is populated.
+            if (!old.initialized && newState.doc.content.size > 0) {
+              return {
+                decorations: buildListAtomDecos(newState.doc),
+                initialized: true,
+                needsFullRebuild: false,
+              };
             }
-            // Progressive-load chunks or no doc change → fast map only
-            if (!tr.docChanged || tr.getMeta(PROGRESSIVE_LOAD_META) === true) {
-              return old.map(tr.mapping, tr.doc);
+
+            // No doc change (or empty doc still) → fast map only.
+            if (!tr.docChanged) {
+              return {
+                decorations: old.decorations.map(tr.mapping, tr.doc),
+                initialized: old.initialized,
+                needsFullRebuild: old.needsFullRebuild,
+              };
             }
-            // §perf-large-file C3.1: incremental update over changed ranges
-            let decos = old.map(tr.mapping, tr.doc);
+
+            // Progressive-load (gated) chunk: map positions, set flag.
+            if (tr.getMeta(PROGRESSIVE_LOAD_META) === true) {
+              return {
+                decorations: old.decorations.map(tr.mapping, tr.doc),
+                initialized: old.initialized,
+                needsFullRebuild: true,
+              };
+            }
+
+            // First non-gated docChanged after progressive load → full rebuild.
+            if (old.needsFullRebuild) {
+              return {
+                decorations: buildListAtomDecos(newState.doc),
+                initialized: true,
+                needsFullRebuild: false,
+              };
+            }
+
+            // §perf-large-file C3.1: incremental update over changed ranges.
+            let decos = old.decorations.map(tr.mapping, tr.doc);
             const ranges = changedRanges(tr);
             for (const range of ranges) {
-              // Expand range to enclosing listItem/taskItem boundary so a partial
-              // edit within an item re-evaluates the whole item.
+              // Expand range to enclosing listItem/taskItem boundary so a
+              // partial edit within an item re-evaluates the whole item.
               let from = range.from;
               let to = range.to;
               const $from = newState.doc.resolve(Math.max(0, from));
@@ -92,11 +143,11 @@ export const ListAtomFix = Extension.create({
                   break;
                 }
               }
-              // Clamp to doc bounds
+              // Clamp to doc bounds.
               from = Math.max(0, from);
               to = Math.min(newState.doc.content.size, to);
 
-              // Remove stale decorations in this range and re-collect
+              // Remove stale decorations in this range and re-collect.
               const stale = decos.find(from, to);
               if (stale.length > 0) decos = decos.remove(stale);
 
@@ -133,12 +184,18 @@ export const ListAtomFix = Extension.create({
               );
               if (fresh.length > 0) decos = decos.add(newState.doc, fresh);
             }
-            return decos;
+            return {
+              decorations: decos,
+              initialized: true,
+              needsFullRebuild: false,
+            };
           },
         },
         props: {
           decorations(state) {
-            return listAtomFixKey.getState(state) as DecorationSet;
+            return (
+              listAtomFixKey.getState(state)?.decorations ?? DecorationSet.empty
+            );
           },
         },
       }),

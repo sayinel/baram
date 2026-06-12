@@ -25,6 +25,12 @@ export type FoldMeta =
 export interface FoldState {
   decorations: DecorationSet;
   foldedPositions: Set<number>;
+  /**
+   * True when a progressive-load chunk has been applied without a full
+   * rebuild (PROGRESSIVE_LOAD_META was set). The next non-gated docChanged
+   * must do a full buildDecorations to honour the C2 contract.
+   */
+  needsFullRebuild: boolean;
 }
 
 export const foldPluginKey = new PluginKey<FoldState>("fold");
@@ -151,8 +157,21 @@ export function findAllFoldables(doc: PmNode): FoldableItem[] {
 
 // ── Anchor-based persistence ───────────────────────────────────────
 
+/**
+ * TEST-ONLY: incremented every time findFoldableHeadings runs a full doc walk.
+ * Used by unit tests to verify the incremental plugin path skips the walk on
+ * pure paragraph edits. Never read in production code.
+ */
+export let _findFoldableHeadingsCallCount = 0;
+
+/** Reset the test-only call counter. Call from beforeEach in tests. */
+export function _resetFindFoldableHeadingsCallCount(): void {
+  _findFoldableHeadingsCallCount = 0;
+}
+
 /** Find all foldable headings — direct doc children only */
 export function findFoldableHeadings(doc: PmNode): FoldableItem[] {
+  _findFoldableHeadingsCallCount++;
   const items: FoldableItem[] = [];
   const children: { node: PmNode; pos: number }[] = [];
 
@@ -374,6 +393,7 @@ function createFoldPlugin(): Plugin<FoldState> {
         return {
           foldedPositions: new Set(),
           decorations: buildDecorations(state.doc, new Set()),
+          needsFullRebuild: false,
         };
       },
 
@@ -416,6 +436,7 @@ function createFoldPlugin(): Plugin<FoldState> {
           return {
             foldedPositions: newFolded,
             decorations: buildDecorations(newState.doc, newFolded),
+            needsFullRebuild: false,
           };
         }
 
@@ -438,13 +459,28 @@ function createFoldPlugin(): Plugin<FoldState> {
             return {
               foldedPositions: newFolded,
               decorations: value.decorations.map(tr.mapping, tr.doc),
+              // §perf-large-file C3.1: flag so the first non-gated docChanged
+              // performs a full rebuild to honour the C2 final-chunk contract.
+              needsFullRebuild: true,
             };
           }
-          // §perf-large-file C3.1: skip doc.descendants in findFoldableListItems
-          // when the changed range doesn't touch any list item or heading.
-          // findFoldableHeadings is O(direct-children) so it is always fast.
+
+          // §perf-large-file C3.1: if a previous progressive-load chunk set the
+          // flag, this is the first non-gated transaction — do the full rebuild.
+          if (value.needsFullRebuild) {
+            return {
+              foldedPositions: newFolded,
+              decorations: buildDecorations(newState.doc, newFolded),
+              needsFullRebuild: false,
+            };
+          }
+
+          // Pure incremental path: skip full descendants walk when the changed
+          // range touches no heading or listItem AND doesn't span a depth-0 node
+          // boundary (top-level insert/delete adjacent to a folded region).
           const ranges = changedRanges(tr);
-          const touchesListItemOrHeading = ranges.some((r) => {
+          const needsRebuild = ranges.some((r) => {
+            // Check for heading or listItem in the changed range
             let found = false;
             newState.doc.nodesBetween(r.from, r.to, (node) => {
               if (
@@ -456,20 +492,35 @@ function createFoldPlugin(): Plugin<FoldState> {
               }
               return !found;
             });
-            return found;
+            if (found) return true;
+
+            // Also trigger rebuild when a top-level block boundary was touched
+            // (a plain-block insert/delete adjacent to a folded heading's hidden
+            // range would otherwise leave stale hidden-node decorations).
+            try {
+              const $from = newState.doc.resolve(Math.max(0, r.from));
+              const $to = newState.doc.resolve(
+                Math.min(newState.doc.content.size, r.to),
+              );
+              if ($from.depth === 0 || $to.depth === 0) return true;
+            } catch {
+              return true;
+            }
+            return false;
           });
 
-          if (!touchesListItemOrHeading) {
-            // Pure inline paragraph edit — reuse mapped decorations; no list/heading
-            // structure changed so foldables are identical after position mapping.
+          if (!needsRebuild) {
+            // Pure inline paragraph edit — reuse mapped decorations.
             return {
               foldedPositions: newFolded,
               decorations: value.decorations.map(tr.mapping, tr.doc),
+              needsFullRebuild: false,
             };
           }
           return {
             foldedPositions: newFolded,
             decorations: buildDecorations(newState.doc, newFolded),
+            needsFullRebuild: false,
           };
         }
 
