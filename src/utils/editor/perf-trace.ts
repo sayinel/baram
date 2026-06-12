@@ -14,6 +14,7 @@ interface BaramPerfApi {
   inputLatency: () => { max: number; n: number; p50: number; p99: number };
   longTasks: () => { count: number; totalMs: number };
   reset: () => void;
+  stalls: () => { count: number; max: number; totalMs: number };
   txBreakdown: () => TxBreakdown;
 }
 
@@ -124,6 +125,35 @@ const inputLatencySamples = new RingBuffer(INPUT_LATENCY_CAPACITY);
 let longTaskCount = 0;
 let longTaskTotalMs = 0;
 
+// §perf-large-file C3.2: rAF-gap stall detector
+// WKWebView does not support the `longtask` PerformanceObserver; use a
+// requestAnimationFrame loop instead. Gaps > 50 ms between frames indicate a
+// blocked main thread (long task stall).
+const RAF_STALL_THRESHOLD_MS = 50;
+let rafStallCount = 0;
+let rafStallTotalMs = 0;
+let rafStallMaxMs = 0;
+let rafLoopActive = false;
+
+function startRafStallDetector(): void {
+  if (rafLoopActive) return;
+  rafLoopActive = true;
+  let last = performance.now();
+  function tick() {
+    if (!rafLoopActive) return;
+    const now = performance.now();
+    const gap = now - last;
+    if (gap > RAF_STALL_THRESHOLD_MS) {
+      rafStallCount++;
+      rafStallTotalMs += gap;
+      if (gap > rafStallMaxMs) rafStallMaxMs = gap;
+    }
+    last = now;
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
 // ---------------------------------------------------------------------------
 // Module-level accumulators for instrumentEditor (populated after call)
 // ---------------------------------------------------------------------------
@@ -204,6 +234,9 @@ export function initPerfTrace(): void {
     // longtask not supported — silently skip
   }
 
+  // §perf-large-file C3.2: rAF-gap stall detector (WKWebView longtask fallback)
+  startRafStallDetector();
+
   // Expose API on window for DevTools console
   window.__baramPerf = {
     inputLatency() {
@@ -222,7 +255,17 @@ export function initPerfTrace(): void {
       inputLatencySamples.reset();
       longTaskCount = 0;
       longTaskTotalMs = 0;
+      rafStallCount = 0;
+      rafStallTotalMs = 0;
+      rafStallMaxMs = 0;
       resetTxBreakdown();
+    },
+    stalls() {
+      return {
+        count: rafStallCount,
+        max: rafStallMaxMs,
+        totalMs: rafStallTotalMs,
+      };
     },
     txBreakdown() {
       const plugins = [...pluginCosts.values()].sort(
