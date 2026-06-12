@@ -7,9 +7,14 @@ import type { NodeViewProps } from "@tiptap/react";
 
 import { NodeViewWrapper } from "@tiptap/react";
 
-// §perf-large-file: Shared cache — one doc walk per doc change, all instances read from it
-let _cachedDoc: null | PmNode = null;
-let _footnoteOrder: Map<string, number> = new Map(); // identifier → 1-based number
+// §perf-large-file: Shared cache — one doc walk per doc change, all instances read from it.
+// §perf-large-file C3.4: keyed by editor instance via WeakMap so two concurrent editor
+// instances (C3.5 dual-editor) never share a cache entry.
+interface FootnoteCache {
+  doc: PmNode;
+  order: Map<string, number>;
+}
+const _footnoteCache = new WeakMap<Editor, FootnoteCache>();
 
 export function FootnoteRefView({ node, editor, selected }: NodeViewProps) {
   const identifier = node.attrs.identifier as string;
@@ -113,19 +118,22 @@ export function FootnoteRefView({ node, editor, selected }: NodeViewProps) {
 
 function getFootnoteNumber(editor: Editor, identifier: string): number {
   const doc = editor.state.doc;
-  if (doc !== _cachedDoc) {
-    _cachedDoc = doc;
-    _footnoteOrder = new Map();
-    let count = 0;
-    doc.descendants((node) => {
-      if (node.type.name === "footnoteRef") {
-        const id = node.attrs.identifier as string;
-        if (!_footnoteOrder.has(id)) {
-          count++;
-          _footnoteOrder.set(id, count);
-        }
-      }
-    });
+  const cached = _footnoteCache.get(editor);
+  if (cached && cached.doc === doc) {
+    return cached.order.get(identifier) ?? 0;
   }
-  return _footnoteOrder.get(identifier) ?? 0;
+  // Cache miss: rebuild the order map for this editor's current doc.
+  const order = new Map<string, number>();
+  let count = 0;
+  doc.descendants((node) => {
+    if (node.type.name === "footnoteRef") {
+      const id = node.attrs.identifier as string;
+      if (!order.has(id)) {
+        count++;
+        order.set(id, count);
+      }
+    }
+  });
+  _footnoteCache.set(editor, { doc, order });
+  return order.get(identifier) ?? 0;
 }

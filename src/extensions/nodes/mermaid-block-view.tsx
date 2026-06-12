@@ -20,9 +20,6 @@ import { onFirstVisible } from "./views/lazy-visible";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
 import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
 
-// Unique ID counter for mermaid rendering
-let mermaidIdCounter = 0;
-
 export function MermaidBlockView({
   node,
   updateAttributes,
@@ -630,6 +627,15 @@ export function MermaidBlockView({
   );
 }
 
+// §perf-large-file C3.4: use randomUUID so concurrent editor instances never
+// share an ID. The old module-level counter would generate colliding IDs when
+// two MermaidBlockView instances across two editors rendered simultaneously.
+function newMermaidId(): string {
+  // crypto.randomUUID() is available in all modern browsers and WKWebView.
+  // Mermaid requires IDs starting with a letter.
+  return `mermaid-${crypto.randomUUID()}`;
+}
+
 /** Shared rendering logic */
 async function renderMermaid(
   source: string,
@@ -650,7 +656,7 @@ async function renderMermaid(
       // stripping <script>. "strict" would HTML-encode every tag, breaking <br>.
       securityLevel: "antiscript",
     });
-    const id = `mermaid-${++mermaidIdCounter}`;
+    const id = newMermaidId();
     const { svg } = await mermaid.render(id, source);
     // foreignObject hosts HTML labels (flowchart node text). DOMPurify must
     // treat it as an HTML integration point or the label markup is stripped —

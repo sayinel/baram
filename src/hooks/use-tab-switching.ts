@@ -123,7 +123,11 @@ export function useTabSwitching({
     if (prevTabId && prevTabId !== activeTabId) {
       const prevTab = tabs.find((t) => t.id === prevTabId);
       // Save scroll position of .editor-area-scroll for the outgoing tab
-      const scrollContainer = document.querySelector(".editor-area-scroll");
+      // §perf-large-file C3.4: resolve via editor.view.dom.closest() so this
+      // targets the ACTIVE editor's scroll container in a dual-editor layout.
+      const scrollContainer = editor?.view.dom.closest<HTMLElement>(
+        ".editor-area-scroll",
+      );
       if (scrollContainer) {
         scrollTopCache.current.set(prevTabId, scrollContainer.scrollTop);
       }
@@ -391,8 +395,9 @@ export function useTabSwitching({
               setIsParsing(false);
 
               // Reset scroll to top for freshly opened documents.
+              // §perf-large-file C3.4: resolve via editor.view.dom.closest().
               requestAnimationFrame(() => {
-                const scrollContainer = document.querySelector(
+                const scrollContainer = editor.view.dom.closest<HTMLElement>(
                   ".editor-area-scroll",
                 );
                 if (scrollContainer) scrollContainer.scrollTop = 0;

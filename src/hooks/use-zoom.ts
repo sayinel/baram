@@ -24,9 +24,14 @@ export function useZoom(editor: Editor | null): void {
     const level = useSettingsStore.getState().zoomLevel;
     if (level !== 1) applyZoom(level, editor);
 
-    // The scroll container may not exist yet on first mount; observe for it
+    // The scroll container may not exist yet on first mount; observe for it.
+    // §perf-large-file C3.4: resolve via editor.view.dom.closest() when the
+    // editor is available; fall back to document.querySelector for the brief
+    // window before the editor mounts.
     const observer = new MutationObserver(() => {
-      const el = document.querySelector(".editor-area-scroll");
+      const el =
+        editor?.view.dom.closest(".editor-area-scroll") ??
+        document.querySelector(".editor-area-scroll");
       if (el) {
         const lvl = useSettingsStore.getState().zoomLevel;
         if (lvl !== 1) applyZoom(lvl, editor);

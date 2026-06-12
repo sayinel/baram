@@ -3,6 +3,7 @@ import { useCallback, useEffect } from "react";
 
 import type { BookmarkItem } from "../../stores/file/bookmark";
 
+import { useEditorContext } from "../../contexts/editor-context";
 import { readFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor/editor";
 import { getGroups, useBookmarkStore } from "../../stores/file/bookmark";
@@ -11,6 +12,7 @@ import { logger } from "../../utils/logger";
 import { extractFileNameFromPath } from "./backlink-utils";
 
 export function BookmarkPanel() {
+  const editor = useEditorContext();
   const rootPath = useFileStore((s) => s.rootPath);
   const activeTabId = useEditorStore((s) => s.activeTabId);
   const tabs = useEditorStore((s) => s.tabs);
@@ -52,48 +54,57 @@ export function BookmarkPanel() {
   }, [filePath, addBookmark]);
 
   // Navigate to a bookmark
-  const handleClick = useCallback((bookmark: BookmarkItem) => {
-    const {
-      tabs: currentTabs,
-      openTab,
-      setActiveTab,
-    } = useEditorStore.getState();
+  const handleClick = useCallback(
+    (bookmark: BookmarkItem) => {
+      const {
+        tabs: currentTabs,
+        openTab,
+        setActiveTab,
+      } = useEditorStore.getState();
 
-    // If file is already open, switch to it
-    const existing = currentTabs.find((t) => t.filePath === bookmark.filePath);
-    if (existing) {
-      setActiveTab(existing.id);
-      // If heading bookmark, scroll to heading after tab switch
-      if (bookmark.type === "heading" && bookmark.headingText) {
-        scrollToHeading(bookmark);
-      }
-      return;
-    }
+      // §perf-large-file C3.4: pass editor DOM so scrollToHeading resolves
+      // the active editor's element instead of a global querySelector.
+      const editorEl = editor?.view.dom as HTMLElement | undefined;
 
-    // Open the file
-    (async () => {
-      try {
-        const content = await readFile(bookmark.filePath);
-        const fileName = extractFileNameFromPath(bookmark.filePath);
-        useFileStore.getState().setFileContent(bookmark.filePath, content);
-        openTab({
-          contextId: "",
-          id: crypto.randomUUID(),
-          filePath: bookmark.filePath,
-          title: fileName,
-          isDirty: false,
-          isPinned: false,
-        });
-        // Heading scroll will be handled after editor mounts
+      // If file is already open, switch to it
+      const existing = currentTabs.find(
+        (t) => t.filePath === bookmark.filePath,
+      );
+      if (existing) {
+        setActiveTab(existing.id);
+        // If heading bookmark, scroll to heading after tab switch
         if (bookmark.type === "heading" && bookmark.headingText) {
-          // Small delay to allow editor to mount and process content
-          setTimeout(() => scrollToHeading(bookmark), 100);
+          scrollToHeading(bookmark, editorEl);
         }
-      } catch (err) {
-        logger.error("[BookmarkPanel] Failed to open file:", err);
+        return;
       }
-    })();
-  }, []);
+
+      // Open the file
+      void (async () => {
+        try {
+          const content = await readFile(bookmark.filePath);
+          const fileName = extractFileNameFromPath(bookmark.filePath);
+          useFileStore.getState().setFileContent(bookmark.filePath, content);
+          openTab({
+            contextId: "",
+            id: crypto.randomUUID(),
+            filePath: bookmark.filePath,
+            title: fileName,
+            isDirty: false,
+            isPinned: false,
+          });
+          // Heading scroll will be handled after editor mounts
+          if (bookmark.type === "heading" && bookmark.headingText) {
+            // Small delay to allow editor to mount and process content
+            setTimeout(() => scrollToHeading(bookmark, editorEl), 100);
+          }
+        } catch (err) {
+          logger.error("[BookmarkPanel] Failed to open file:", err);
+        }
+      })();
+    },
+    [editor],
+  );
 
   // Check if current file is bookmarked
   const isCurrentFileBookmarked = filePath
@@ -172,21 +183,27 @@ export function BookmarkPanel() {
   );
 }
 
-/** Scroll to a heading in the active editor */
-function scrollToHeading(bookmark: BookmarkItem) {
-  // Access editor from the DOM — find the Tiptap editor instance
-  const editorElement = document.querySelector(".tiptap.ProseMirror");
-  if (!editorElement) return;
+/** Scroll to a heading in the active editor.
+ *
+ * §perf-large-file C3.4: accepts the editor's DOM element directly so this
+ * works in a dual-editor layout without a global querySelector fallback.
+ */
+function scrollToHeading(bookmark: BookmarkItem, editorElement?: HTMLElement) {
+  // Resolve the editor element: prefer the passed-in element, fall back to
+  // global query for the brief window before the editor is available.
+  const el =
+    editorElement ?? document.querySelector<HTMLElement>(".tiptap.ProseMirror");
+  if (!el) return;
 
   // Find heading nodes in the DOM
   const headingTag = bookmark.headingLevel
     ? `h${bookmark.headingLevel}`
     : "h1, h2, h3, h4, h5, h6";
-  const headings = editorElement.querySelectorAll(headingTag);
+  const headings = el.querySelectorAll(headingTag);
 
-  for (const el of headings) {
-    if (el.textContent === bookmark.headingText) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
+  for (const heading of headings) {
+    if (heading.textContent === bookmark.headingText) {
+      heading.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
   }
