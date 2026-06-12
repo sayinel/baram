@@ -48,6 +48,7 @@ import { logger } from "../utils/logger";
 import {
   type KeepalivePool,
   LARGE_DOC_BLOCK_THRESHOLD,
+  resolveTabEditor,
 } from "./use-large-doc-keepalive";
 
 interface UseTabSwitchingParams {
@@ -154,10 +155,9 @@ export function useTabSwitching({
       // and skip outgoing serialize. The live editor IS the state; auto-save hooks
       // already run against it continuously.
       if (prevKeepaliveEditor) {
-        const kaEl = prevKeepaliveEditor.view.dom.closest<HTMLElement>(
-          "[data-keepalive-editor]",
-        );
-        if (kaEl) kaEl.style.display = "none";
+        // Visibility is controlled by React state (activeKeepaliveEditor) —
+        // no manual DOM style toggle needed. onActiveEditorChange(null) in the
+        // incoming-tab branches hides the keep-alive editor via React render.
         // Don't write editorStateCache or serialize — the editor stays live.
       } else if (isFileTab(prevTab) && prevEditor) {
         const prevIsCode = !isMarkdownFile(prevTab?.filePath);
@@ -230,15 +230,20 @@ export function useTabSwitching({
     }
 
     // Graph tab — no ProseMirror content to load
-    if (isGraphTab(incomingTab)) return;
+    // [CRITICAL-1 fix] Reset activeEditor so hooks bind to shared editor
+    if (isGraphTab(incomingTab)) {
+      onActiveEditorChange(null);
+      return;
+    }
 
     // §perf-large-file C3.5: if this tab has a keep-alive editor, show it and skip load
-    const incomingKeepaliveEditor = keepalive.get(activeTabId!);
+    // [MINOR-10] Use resolveTabEditor (now live production code, not dead).
+    const resolvedEditor = resolveTabEditor(activeTabId, keepalive, editor);
+    const incomingKeepaliveEditor =
+      resolvedEditor !== editor ? resolvedEditor : null;
     if (incomingKeepaliveEditor) {
-      const kaEl = incomingKeepaliveEditor.view.dom.closest<HTMLElement>(
-        "[data-keepalive-editor]",
-      );
-      if (kaEl) kaEl.style.display = "";
+      // Visibility is controlled by React state (activeKeepaliveEditor) via
+      // onActiveEditorChange — no manual DOM style toggle needed.
       onActiveEditorChange(incomingKeepaliveEditor);
       // Restore scroll position
       const cachedScrollTop = scrollTopCache.current.get(activeTabId!);
@@ -273,19 +278,27 @@ export function useTabSwitching({
     if (content !== undefined) {
       // Non-markdown file — load into source editor, skip ProseMirror entirely
       if (!isMarkdownFile(incomingTab.filePath)) {
+        // [CRITICAL-1 fix] Reset to shared editor
+        onActiveEditorChange(null);
         sourceContentRef.current = content;
         setSourceContent(content);
         return;
       }
 
+      // [CRITICAL-1 fix] All non-keepalive branches use the shared editor.
+      // Set immediately so hooks/overlays rebind before content loads.
+      onActiveEditorChange(null);
+
       // §perf-large-file B1: Post-load handler (scroll + search highlight)
-      const afterDocLoad = () => {
+      // [MAJOR-7] Parameterized by `loadEditor` so keep-alive loads target the
+      // correct editor instance (not the shared one).
+      const afterDocLoad = (loadEditor: Editor) => {
         // §29 Check if navigating from backlinks — compute scroll position
         const pendingLine = useLinkStore.getState().pendingScrollLine;
         const pendingBlockId = useLinkStore.getState().pendingScrollBlockId;
         const pendingHeading = useLinkStore.getState().pendingScrollHeading;
         let scrollPos: null | number = null;
-        const doc = editor.view.state.doc;
+        const doc = loadEditor.view.state.doc;
         if (pendingBlockId) {
           useLinkStore.getState().setPendingScrollBlockId(null);
           const blockPos = findBlockPosById(doc, pendingBlockId);
@@ -309,15 +322,15 @@ export function useTabSwitching({
         if (scrollPos !== null) {
           requestAnimationFrame(() => {
             try {
-              const resolvedPos = editor.view.state.doc.resolve(scrollPos);
-              const tr = editor.view.state.tr
+              const resolvedPos = loadEditor.view.state.doc.resolve(scrollPos);
+              const tr = loadEditor.view.state.tr
                 .setSelection(TextSelection.near(resolvedPos))
                 .scrollIntoView();
-              editor.view.dispatch(tr);
-              editor.view.focus();
+              loadEditor.view.dispatch(tr);
+              loadEditor.view.focus();
 
               // DOM-level scroll fallback — ensures .editor-area scrolls
-              const domInfo = editor.view.domAtPos(scrollPos);
+              const domInfo = loadEditor.view.domAtPos(scrollPos);
               const el =
                 domInfo.node instanceof HTMLElement
                   ? domInfo.node
@@ -334,8 +347,8 @@ export function useTabSwitching({
         if (pendingHighlight) {
           useUIStore.getState().setPendingSearchHighlight(null);
           setTimeout(() => {
-            if (!editor?.view) return;
-            dispatchSetSearchTerm(editor.view, pendingHighlight);
+            if (!loadEditor?.view) return;
+            dispatchSetSearchTerm(loadEditor.view, pendingHighlight);
             setFindReplaceOpen(true);
             setFindReplaceMode("find");
           }, 50);
@@ -375,7 +388,7 @@ export function useTabSwitching({
             if (sc) sc.scrollTop = 0;
           });
         }
-        afterDocLoad();
+        afterDocLoad(editor);
       } else {
         logCacheEvent("miss", activeTabId!);
         // §perf-large-file B1/C2: Parse in Worker, progressively render chunks
@@ -410,10 +423,15 @@ export function useTabSwitching({
             // §perf-large-file C3.5: decide up-front whether to load into a
             // keep-alive editor (direct-load variant — simpler to verify).
             const isLargeDoc = allNodes.length >= LARGE_DOC_BLOCK_THRESHOLD;
-            const targetEditor =
-              isLargeDoc && !keepalive.has(activeTabId!)
-                ? createKeepaliveEditor()
-                : editor;
+            let targetEditor = editor;
+            if (isLargeDoc && !keepalive.has(activeTabId!)) {
+              targetEditor = createKeepaliveEditor();
+              // [MAJOR-5] Acquire the pool slot immediately so a mid-load
+              // switch-away destroys it via cancelInflightAppend + pool cleanup
+              // instead of leaking a detached editor forever.
+              keepalive.acquire(activeTabId!, targetEditor);
+              onActiveEditorChange(targetEditor);
+            }
 
             const doc = targetEditor.schema.nodes.doc.create(
               null,
@@ -439,13 +457,13 @@ export function useTabSwitching({
               setTabLoading(activeTabId!, false);
               markContentLoaded(activeTabId!);
 
-              // §perf-large-file C3.5: promote to keep-alive pool after full load
-              if (isLargeDoc && !keepalive.has(activeTabId!)) {
+              // [MAJOR-5] Pool slot already acquired at creation time;
+              // acquire is idempotent, this is a safety no-op.
+              if (isLargeDoc) {
                 keepalive.acquire(activeTabId!, targetEditor);
-                onActiveEditorChange(targetEditor);
               }
 
-              afterDocLoad();
+              afterDocLoad(targetEditor);
               const inTab = tabs.find((t) => t.id === activeTabId);
               if (inTab?.filePath) {
                 const savedAnchors = useFoldStore
@@ -510,10 +528,14 @@ export function useTabSwitching({
           logCacheEvent("delete", cachedId);
           editorStateCache.current.delete(cachedId);
           scrollTopCache.current.delete(cachedId);
-          // §perf-large-file C3.5: destroy keep-alive editor when its tab closes
-          if (keepalive.has(cachedId)) {
-            keepalive.release(cachedId);
-          }
+        }
+      }
+      // [MAJOR-4] Keep-alive tabs never enter editorStateCache, so check
+      // the pool separately for closed tabs.
+      for (const pooledTabId of keepalive.keys()) {
+        if (!openTabIds.has(pooledTabId)) {
+          keepalive.release(pooledTabId);
+          scrollTopCache.current.delete(pooledTabId);
         }
       }
     }

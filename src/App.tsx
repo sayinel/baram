@@ -237,17 +237,40 @@ function App() {
   });
 
   // §perf-large-file C3.5: keep-alive editor pool for large documents
-  const keepalive = useLargeDocKeepalive();
-  // activeEditor: null uses sharedEditor; set to keep-alive editor when large-doc tab is active
-  const [keepaliveEditor, setKeepaliveEditor] = useState<
+  // mountedKeepaliveEditor: the editor whose EditorContent is mounted (stays
+  // mounted as long as it's in the pool — this is the "keep-alive" part).
+  // activeKeepaliveEditor: non-null only when the active tab uses a keep-alive
+  // editor (controls visibility and hook binding).
+  const [mountedKeepaliveEditor, setMountedKeepaliveEditor] = useState<
     import("@tiptap/react").Editor | null
   >(null);
-  const activeEditor = keepaliveEditor ?? editor;
-  // Stable callback for useTabSwitching to notify us of editor changes
+  const [activeKeepaliveEditor, setActiveKeepaliveEditor] = useState<
+    import("@tiptap/react").Editor | null
+  >(null);
+  // [MODERATE-9] On eviction, unmount EditorContent BEFORE editor.destroy().
+  const handleEviction = useCallback(() => {
+    setMountedKeepaliveEditor(null);
+    setActiveKeepaliveEditor(null);
+  }, []);
+  const keepalive = useLargeDocKeepalive(handleEviction);
+  const activeEditor = activeKeepaliveEditor ?? editor;
+  // Stable callback for useTabSwitching to notify us of editor changes.
+  // null = use shared editor; non-null = use this keep-alive editor.
   const handleActiveEditorChange = useCallback(
-    (e: import("@tiptap/react").Editor | null) => setKeepaliveEditor(e),
+    (e: import("@tiptap/react").Editor | null) => {
+      setActiveKeepaliveEditor(e);
+      // Keep the EditorContent mounted as long as the editor exists
+      if (e) setMountedKeepaliveEditor(e);
+      // When switching away (e=null), do NOT unmount — the pool keeps it alive.
+      // mountedKeepaliveEditor stays set so the DOM is preserved (hidden).
+    },
     [],
   );
+
+  // [MINOR-11] Destroy pooled editors on App unmount / HMR cleanup
+  useEffect(() => {
+    return () => keepalive.destroyAll();
+  }, [keepalive]);
 
   // §perf-large-file C3.0: Install dev-only performance instrumentation
   useEffect(() => {
@@ -310,6 +333,8 @@ function App() {
   // --- Source mode (WYSIWYG ↔ raw markdown toggle) ---
   // Must be called before useFileOperations and useTabSwitching because it owns
   // editorStateCache and exposes isSourceMode / sourceContentRef they need.
+  // [MAJOR-3 fix] Pass activeEditor so source-mode toggle reads/writes the
+  // correct document for keep-alive tabs.
   const {
     isSourceMode,
     setIsSourceMode,
@@ -321,7 +346,7 @@ function App() {
     editorStateCache,
     toggleSourceMode,
     handleSourceChange,
-  } = useSourceMode({ editor });
+  } = useSourceMode({ editor: activeEditor });
 
   // Auto-save for non-MD code files (debounced write when dirty)
   const { autoSave, autoSaveDelay } = useSettingsStore(
@@ -363,6 +388,8 @@ function App() {
   ]);
 
   // --- File operations ---
+  // [CRITICAL-2 fix] Pass activeEditor so Cmd+S serializes the correct
+  // document for keep-alive tabs (not the shared editor's stale content).
   const {
     handleCloseFolder,
     handleCloseTab,
@@ -375,7 +402,7 @@ function App() {
     handleSave,
     handleSaveAs,
   } = useFileOperations({
-    editor,
+    editor: activeEditor,
     isSourceMode,
     sourceContentRef,
   });
@@ -648,19 +675,20 @@ function App() {
                     <div className="skeleton-line w-1/2" />
                   </div>
                 )}
-                {/* §perf-large-file C3.5: keep-alive editor — always in DOM, hidden when inactive */}
-                {keepaliveEditor && (
+                {/* §perf-large-file C3.5: keep-alive editor — stays mounted while
+                    in pool (DOM kept alive), hidden when another tab is active. */}
+                {mountedKeepaliveEditor && (
                   <div
                     data-keepalive-editor
                     style={{
-                      display: keepaliveEditor === activeEditor ? "" : "none",
+                      display: activeKeepaliveEditor ? "" : "none",
                     }}
                   >
-                    <EditorContent editor={keepaliveEditor} />
+                    <EditorContent editor={mountedKeepaliveEditor} />
                   </div>
                 )}
                 {/* Shared editor — hidden when a keep-alive editor is active */}
-                <div style={{ display: keepaliveEditor ? "none" : "" }}>
+                <div style={{ display: activeKeepaliveEditor ? "none" : "" }}>
                   <EditorContent editor={editor} />
                 </div>
                 {activeEditor && (
