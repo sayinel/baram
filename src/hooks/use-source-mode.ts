@@ -28,12 +28,23 @@ import {
   appendChunksProgressively,
   chunkBlocks,
   FIRST_CHUNK_BLOCKS,
+  type ProgressiveLoadHandle,
   REST_CHUNK_BLOCKS,
 } from "../utils/editor/progressive-load";
 import { isMarkdownFile } from "../utils/file-type";
 import { LARGE_DOC_BLOCK_THRESHOLD } from "./use-large-doc-keepalive";
 
+/** Shared ref type for registering progressive append handles so all cancel
+ *  sites (tab switch, cleanup) can cancel source-mode fills too. */
+export type AppendHandleRef = React.MutableRefObject<null | {
+  handle: ProgressiveLoadHandle;
+  tabId: string;
+}>;
+
 interface UseSourceModeParams {
+  /** Shared ref from use-tab-switching — register progressive handle here
+   *  so cancelInflightAppend covers source-mode fills. */
+  appendHandleRef?: AppendHandleRef;
   editor: Editor | null;
 }
 
@@ -53,6 +64,7 @@ interface UseSourceModeReturn {
 
 export function useSourceMode({
   editor,
+  appendHandleRef,
 }: UseSourceModeParams): UseSourceModeReturn {
   // Per-tab EditorState cache — owned here so toggleSourceMode can write to it
   // without a circular dependency with useTabSwitching
@@ -177,9 +189,26 @@ export function useSourceMode({
                 finishLoad();
                 return;
               }
-              appendChunksProgressively(editor, restChunks, {
-                onComplete: finishLoad,
+              // [NEW-MODERATE-C] Register the handle in the shared ref so
+              // cancelInflightAppend (tab switch / cleanup) can cancel it.
+              // Also cancel any prior fill (rapid re-toggle guard).
+              if (appendHandleRef?.current) {
+                appendHandleRef.current.handle.cancel();
+              }
+              const handle = appendChunksProgressively(editor, restChunks, {
+                onComplete: () => {
+                  if (appendHandleRef?.current?.tabId === currentTabId) {
+                    appendHandleRef.current = null;
+                  }
+                  finishLoad();
+                },
               });
+              if (appendHandleRef && currentTabId) {
+                appendHandleRef.current = {
+                  handle,
+                  tabId: currentTabId,
+                };
+              }
             });
           })
           .catch(() => {
@@ -254,7 +283,8 @@ export function useSourceMode({
     }
     // editorStateCache, sourceContentRef, sourceEditorRef are stable refs (useRef) —
     // intentionally omitted from deps; they never change identity across renders.
-  }, [editor, isSourceMode]);
+    // appendHandleRef is a stable ref passed from App — included for exhaustive-deps.
+  }, [editor, isSourceMode, appendHandleRef]);
 
   return {
     isSourceMode,

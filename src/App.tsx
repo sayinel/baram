@@ -53,7 +53,7 @@ import { useMenuEventHandler } from "./hooks/use-menu-event-handler";
 import { useNavigation } from "./hooks/use-navigation";
 import { useSettingsEffects } from "./hooks/use-settings-effects";
 import { useSkillsMode } from "./hooks/use-skills-mode";
-import { useSourceMode } from "./hooks/use-source-mode";
+import { type AppendHandleRef, useSourceMode } from "./hooks/use-source-mode";
 import { useTabSwitching } from "./hooks/use-tab-switching";
 import { useZoom } from "./hooks/use-zoom";
 import { useTranslation } from "./i18n/useTranslation";
@@ -267,10 +267,14 @@ function App() {
     [],
   );
 
-  // [MINOR-11] Destroy pooled editors on App unmount / HMR cleanup
+  // [MINOR-11] Destroy pooled editors on App unmount / HMR cleanup.
+  // [NEW-CRITICAL-A fix] Empty deps — true unmount-only. Pool identity is
+  // now stable (ref-based) but we still read from a ref for belt-and-suspenders.
+  const keepaliveRef = useRef(keepalive);
+  keepaliveRef.current = keepalive;
   useEffect(() => {
-    return () => keepalive.destroyAll();
-  }, [keepalive]);
+    return () => keepaliveRef.current.destroyAll();
+  }, []);
 
   // §perf-large-file C3.0: Install dev-only performance instrumentation
   useEffect(() => {
@@ -330,6 +334,11 @@ function App() {
   // Apply settings to DOM (theme, font, spellcheck, locale)
   useSettingsEffects(activeEditor);
 
+  // [NEW-MODERATE-C] Shared ref for progressive append handles — owned here,
+  // passed to both useSourceMode and useTabSwitching so cancelInflightAppend
+  // covers source-mode fills and tab-switch cancellation covers both.
+  const appendHandleRef: AppendHandleRef = useRef(null);
+
   // --- Source mode (WYSIWYG ↔ raw markdown toggle) ---
   // Must be called before useFileOperations and useTabSwitching because it owns
   // editorStateCache and exposes isSourceMode / sourceContentRef they need.
@@ -346,7 +355,7 @@ function App() {
     editorStateCache,
     toggleSourceMode,
     handleSourceChange,
-  } = useSourceMode({ editor: activeEditor });
+  } = useSourceMode({ editor: activeEditor, appendHandleRef });
 
   // Auto-save for non-MD code files (debounced write when dirty)
   const { autoSave, autoSaveDelay } = useSettingsStore(
@@ -440,6 +449,7 @@ function App() {
 
   // --- Tab switching ---
   useTabSwitching({
+    appendHandleRef,
     editor,
     editorStateCache,
     isNavBackForwardRef,
