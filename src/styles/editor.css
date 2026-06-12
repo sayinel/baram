@@ -1326,19 +1326,41 @@
   content-visibility: auto;
 }
 
-/* §perf-large-file C1: skip layout/paint of off-screen top-level blocks.
-   `auto` intrinsic-size lets the browser remember each block's real height
-   after first render, so scrollbar size stays stable. */
+/* §perf-large-file C3.1c: content-visibility:auto forced whole-document
+ * re-layout on every caret/coordinate query in WKWebView (~300ms per
+ * keystroke, ~5s per click on a 3,531-block doc; Safari Timeline showed
+ * Layout-dominated frames with JS≈0). contain:layout paint isolates each
+ * top-level block instead: one up-front layout, then per-block incremental
+ * re-layout while editing.
+ * (style containment measured no additional benefit; omitted to keep
+ * CSS counters/inheritance semantics.) */
 .tiptap > * {
-  contain-intrinsic-size: auto 2em;
-  content-visibility: auto;
+  contain: layout paint;
 }
 
-/* Heavy blocks get a larger height estimate to reduce scrollbar jump. */
-.tiptap > .code-block-wrapper,
-.tiptap > .mermaid-block,
-.tiptap > table {
-  contain-intrinsic-size: auto 8em;
+/* Headings: fold arrows are position:absolute; left:-24px (overflows the
+ * block's left edge). Paint containment would clip them — use layout only. */
+.tiptap > h1,
+.tiptap > h2,
+.tiptap > h3,
+.tiptap > h4,
+.tiptap > h5,
+.tiptap > h6 {
+  contain: layout;
+}
+
+/* Code blocks: "paper" style floats the lang tab above the block via
+ * position:absolute; transform:translateY(-100%) — would be clipped by
+ * paint containment. Layout only. */
+.tiptap > .code-block-wrapper {
+  contain: layout;
+}
+
+/* Mermaid blocks: template dropdown is position:absolute; top:100% and
+ * overflows the block's bottom edge — would be clipped by paint containment.
+ * Layout only. */
+.tiptap > .mermaid-block {
+  contain: layout;
 }
 
 /* §5.8 Frontmatter */

@@ -204,4 +204,40 @@ describe("instrumentEditor", () => {
 
     editor.destroy();
   });
+
+  // §perf-large-file C3.1c: reset() must clear txBreakdown accumulators.
+  // Previously pluginCosts.clear() orphaned closed-over cost refs so maxMs
+  // persisted across reset calls in the live console.
+  it("reset() clears txBreakdown transactions count and maxMs", () => {
+    const editor = new Editor({
+      extensions: createBaramExtensions(),
+      content: "<p>reset test</p>",
+    });
+    instrumentEditor(editor);
+
+    // Dispatch at least one transaction to populate accumulators
+    editor.commands.insertContent("!");
+
+    // Verify something was recorded
+    const before = window.__baramPerf!.txBreakdown();
+    expect(before.transactions.count).toBeGreaterThanOrEqual(1);
+
+    // Reset and verify all transaction accumulators are zeroed
+    window.__baramPerf!.reset();
+
+    const after = window.__baramPerf!.txBreakdown();
+    expect(after.transactions.count).toBe(0);
+    expect(after.transactions.maxMs).toBe(0);
+    expect(after.transactions.totalMs).toBe(0);
+    expect(after.transactions.docChangedCount).toBe(0);
+
+    // Plugin accumulators should also be zeroed (not orphaned)
+    for (const plugin of after.plugins) {
+      expect(plugin.calls).toBe(0);
+      expect(plugin.totalMs).toBe(0);
+      expect(plugin.maxMs).toBe(0);
+    }
+
+    editor.destroy();
+  });
 });
