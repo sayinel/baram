@@ -28,6 +28,12 @@ interface BlockIdDecoState {
   /** Map from blockId → count of blocks in the doc that have that id. */
   idCountMap: Map<string, number>;
   /**
+   * True after the first full build has run. Prevents re-firing the init walk
+   * on every transaction for docs with zero block-IDs (entries.length === 0
+   * can't be used as a sentinel because it also matches legitimate empty docs).
+   */
+  initialized: boolean;
+  /**
    * Set to true when a progressive-load (gated) transaction was applied so
    * that the next non-gated docChanged triggers a full rebuild to catch all
    * the skipped chunks.
@@ -78,7 +84,7 @@ function buildDecosFromEntries(
   return DecorationSet.create(doc, decos);
 }
 
-/** Build an id→count map from an entries array. */
+/** Build an id→count map from scratch from an entries array. O(n). */
 function buildIdCountMap(entries: BlockIdEntry[]): Map<string, number> {
   const map = new Map<string, number>();
   for (const { blockId } of entries) {
@@ -105,19 +111,19 @@ function collectBlockIdEntries(doc: PmNode): BlockIdEntry[] {
 
 /**
  * Update entries incrementally for a set of changed ranges.
- * Drops entries whose positions fall in changed ranges (using old-doc coords
- * obtained by inverting the mapping), maps surviving positions forward, then
- * re-collects entries from the new-doc changed ranges.
+ * Returns the new entries array plus separate dropped/added arrays so the
+ * caller can update idCountMap in O(changed) rather than O(all entries).
+ *
+ * Old-doc changed ranges are read directly from StepMap forEach (oldStart,
+ * oldEnd) which gives the correct pre-edit positions, avoiding the ambiguity
+ * that arises when using new-doc coordinates for deletion detection.
  */
 function updateEntriesIncremental(
   oldEntries: BlockIdEntry[],
   tr: Transaction,
   newDoc: PmNode,
-): BlockIdEntry[] {
-  // Collect old-doc changed ranges directly from the StepMap forEach callbacks.
-  // These tell us which OLD positions were touched, so we can correctly drop
-  // old entries that fell inside those ranges (rather than using new-doc coords,
-  // which can be misleading when nodes shift to position 0 after a delete).
+): { added: BlockIdEntry[]; dropped: BlockIdEntry[]; entries: BlockIdEntry[] } {
+  // Collect old-doc changed ranges from StepMap old-coordinate callbacks.
   const oldRanges: { from: number; to: number }[] = [];
   for (const map of tr.mapping.maps) {
     map.forEach((oldStart, oldEnd) => {
@@ -125,14 +131,17 @@ function updateEntriesIncremental(
     });
   }
 
-  // Map surviving old entries into new-doc coordinates, dropping any whose
-  // OLD position fell inside an old-doc changed range.
+  // Partition old entries: drop those whose old position was inside a changed
+  // range; map the rest forward.
+  const dropped: BlockIdEntry[] = [];
   const surviving: BlockIdEntry[] = [];
   for (const entry of oldEntries) {
     const inOldRange = oldRanges.some(
       (r) => entry.pos >= r.from && entry.pos < r.to,
     );
-    if (!inOldRange) {
+    if (inOldRange) {
+      dropped.push(entry);
+    } else {
       surviving.push({
         pos: tr.mapping.map(entry.pos),
         blockId: entry.blockId,
@@ -142,9 +151,8 @@ function updateEntriesIncremental(
   }
 
   // Re-collect entries from the new-doc changed ranges.
-  // Use a Map to deduplicate by position. Skip positions that already exist in
-  // `surviving` — a node whose start token is in the changed range but whose
-  // body contains the changed position would otherwise be double-counted.
+  // Deduplicate by position; skip positions already in surviving (a node that
+  // spans the change point is visited by nodesBetween for each range it overlaps).
   const survivingPosSet = new Set(surviving.map((e) => e.pos));
   const newDocRanges = changedRanges(tr);
   const freshMap = new Map<number, BlockIdEntry>();
@@ -161,7 +169,30 @@ function updateEntriesIncremental(
     });
   }
 
-  return [...surviving, ...freshMap.values()];
+  const added = [...freshMap.values()];
+  return { entries: [...surviving, ...added], dropped, added };
+}
+
+/**
+ * Update an existing idCountMap O(changed) instead of O(all entries).
+ * Decrements counts for removed entries, increments for added entries.
+ * Entries with count reaching 0 are removed from the map.
+ */
+function updateIdCountMap(
+  base: Map<string, number>,
+  removed: BlockIdEntry[],
+  added: BlockIdEntry[],
+): Map<string, number> {
+  const map = new Map(base);
+  for (const { blockId } of removed) {
+    const count = (map.get(blockId) ?? 0) - 1;
+    if (count <= 0) map.delete(blockId);
+    else map.set(blockId, count);
+  }
+  for (const { blockId } of added) {
+    map.set(blockId, (map.get(blockId) ?? 0) + 1);
+  }
+  return map;
 }
 
 export const blockIdDecoKey = new PluginKey<BlockIdDecoState>(
@@ -325,6 +356,7 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
           decorations: DecorationSet.empty,
           entries: [],
           idCountMap: new Map(),
+          initialized: false,
           needsFullRebuild: false,
         };
       },
@@ -335,14 +367,18 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
         _oldState: EditorState,
         newState: EditorState,
       ): BlockIdDecoState {
-        // §perf-large-file: Deferred init — build on first transaction
-        if (value.entries.length === 0 && newState.doc.content.size > 0) {
+        // §perf-large-file: Deferred init — build on first transaction.
+        // Use explicit `initialized` flag rather than `entries.length === 0`
+        // because DecorationSet.create(doc,[]) returns the shared empty
+        // instance and an empty doc legitimately has zero entries.
+        if (!value.initialized && newState.doc.content.size > 0) {
           const entries = collectBlockIdEntries(newState.doc);
           return {
             focusedBlockPos: null,
             editingBlockPos: null,
             entries,
             idCountMap: buildIdCountMap(entries),
+            initialized: true,
             needsFullRebuild: false,
             decorations: buildDecosFromEntries(
               newState.doc,
@@ -374,12 +410,17 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
               idCountMap = buildIdCountMap(entries);
               needsFullRebuild = false;
             } else {
-              entries = updateEntriesIncremental(
+              const result = updateEntriesIncremental(
                 value.entries,
                 tr,
                 newState.doc,
               );
-              idCountMap = buildIdCountMap(entries);
+              entries = result.entries;
+              idCountMap = updateIdCountMap(
+                value.idCountMap,
+                result.dropped,
+                result.added,
+              );
             }
           } else {
             entries = value.entries;
@@ -389,6 +430,7 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
             ...meta,
             entries,
             idCountMap,
+            initialized: true,
             needsFullRebuild,
             decorations: buildDecosFromEntries(
               newState.doc,
@@ -446,6 +488,7 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
         let entries: BlockIdEntry[];
         let idCountMap: Map<string, number>;
         let needsFullRebuild = value.needsFullRebuild;
+        // initialized is true from here on (deferred-init branch handled above)
 
         if (tr.docChanged) {
           if (skipRebuild) {
@@ -459,9 +502,18 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
             idCountMap = buildIdCountMap(entries);
             needsFullRebuild = false;
           } else {
-            // §perf-large-file C3.1: incremental entry update
-            entries = updateEntriesIncremental(value.entries, tr, newState.doc);
-            idCountMap = buildIdCountMap(entries);
+            // §perf-large-file C3.1: incremental entry update + O(changed) map
+            const result = updateEntriesIncremental(
+              value.entries,
+              tr,
+              newState.doc,
+            );
+            entries = result.entries;
+            idCountMap = updateIdCountMap(
+              value.idCountMap,
+              result.dropped,
+              result.added,
+            );
           }
         } else {
           entries = value.entries;
@@ -473,6 +525,7 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
           editingBlockPos,
           entries,
           idCountMap,
+          initialized: true,
           needsFullRebuild,
           decorations: buildDecosFromEntries(
             newState.doc,
