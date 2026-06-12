@@ -9,14 +9,29 @@ import type { Editor } from "@tiptap/react";
 import { EditorState, TextSelection } from "@tiptap/pm/state";
 
 import { forceCollapseSyntaxReveal } from "../extensions/plugins/syntax-reveal";
-import { markdownToProsemirror } from "../pipeline/md-to-pm";
+import {
+  markdownToProsemirror,
+  mdastBlocksToPmNodes,
+} from "../pipeline/md-to-pm";
+import { parseMdastAsync } from "../pipeline/parse-async";
 import { prosemirrorToMarkdown } from "../pipeline/pm-to-md";
 import { isFileTab, isGraphTab, useEditorStore } from "../stores/editor/editor";
 import {
   mdOffsetToPmPos,
   pmPosToMdOffset,
 } from "../utils/editor/cursor-mapper";
+import {
+  markContentLoaded,
+  setTabLoading,
+} from "../utils/editor/programmatic-update";
+import {
+  appendChunksProgressively,
+  chunkBlocks,
+  FIRST_CHUNK_BLOCKS,
+  REST_CHUNK_BLOCKS,
+} from "../utils/editor/progressive-load";
 import { isMarkdownFile } from "../utils/file-type";
+import { LARGE_DOC_BLOCK_THRESHOLD } from "./use-large-doc-keepalive";
 
 interface UseSourceModeParams {
   editor: Editor | null;
@@ -96,9 +111,85 @@ export function useSourceMode({
 
       const newDoc = markdownToProsemirror(currentSource, editor.schema);
       const pmPos = mdOffsetToPmPos(newDoc, mdOffset, currentSource);
-
       const clampedPos = Math.min(Math.max(pmPos, 0), newDoc.content.size);
 
+      // [MAJOR-3] For large docs (≥ threshold), use the C2 progressive path
+      // to avoid a multi-second whole-DOM rebuild on toggle-back. Cursor
+      // restore is deferred to finishLoad (same as fold restore in tab switch).
+      if (newDoc.childCount >= LARGE_DOC_BLOCK_THRESHOLD) {
+        setIsSourceMode(false);
+
+        // Parse async and progressive-load into the keep-alive editor
+        if (currentTabId) setTabLoading(currentTabId, true);
+
+        parseMdastAsync(currentSource)
+          .then((mdast) => {
+            if (useEditorStore.getState().activeTabId !== currentTabId) return;
+
+            const allNodes = mdastBlocksToPmNodes(mdast, editor.schema);
+            const chunks = chunkBlocks(
+              allNodes,
+              FIRST_CHUNK_BLOCKS,
+              REST_CHUNK_BLOCKS,
+            );
+            const firstChunk = chunks[0] ?? [];
+            const restChunks = chunks.slice(1);
+
+            const firstDoc = editor.schema.nodes.doc.create(
+              null,
+              firstChunk.length ? firstChunk : undefined,
+            );
+            const firstState = EditorState.create({
+              doc: firstDoc,
+              plugins: editor.state.plugins,
+              selection: TextSelection.atStart(firstDoc),
+            });
+
+            const finishLoad = () => {
+              if (currentTabId) {
+                setTabLoading(currentTabId, false);
+                markContentLoaded(currentTabId);
+              }
+              // Deferred cursor restore (same as fold restore in tab switch)
+              requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                  try {
+                    if (editor.view.isDestroyed) return;
+                    if (useEditorStore.getState().activeTabId !== currentTabId)
+                      return;
+                    const doc = editor.view.state.doc;
+                    const pos = Math.min(clampedPos, doc.content.size);
+                    const sel = TextSelection.near(doc.resolve(pos));
+                    editor.view.dispatch(
+                      editor.view.state.tr.setSelection(sel).scrollIntoView(),
+                    );
+                    editor.view.focus();
+                  } catch {
+                    // ignore invalid position
+                  }
+                });
+              });
+            };
+
+            setTimeout(() => {
+              editor.view.updateState(firstState);
+              if (restChunks.length === 0) {
+                finishLoad();
+                return;
+              }
+              appendChunksProgressively(editor, restChunks, {
+                onComplete: finishLoad,
+              });
+            });
+          })
+          .catch(() => {
+            if (currentTabId) setTabLoading(currentTabId, false);
+          });
+
+        return;
+      }
+
+      // Small doc: synchronous path (existing behaviour)
       // Update the document immediately so EditorContent renders correct
       // content when it mounts. Use a temporary selection (atStart) because
       // the DOM is detached — ProseMirror's selectionToDOM fails silently
@@ -137,21 +228,6 @@ export function useSourceMode({
             const pos = Math.min(targetPos, doc.content.size);
             const resolvedSel = TextSelection.near(doc.resolve(pos));
 
-            // Apply the target selection, then focus. The drift near #tag
-            // inline atoms is NOT a mapping error (the cursor mapper round-trips
-            // every reachable position, atom edges included). It happens at the
-            // DOM layer: WebKit fires an ASYNCHRONOUS `selectionchange` after
-            // focus that normalizes the native caret to the wrong side of a
-            // contenteditable=false atom NodeView (#tag). The DOMObserver reads
-            // that native selection and overwrites ours → cursor jumps to
-            // before/after the tag.
-            //
-            // A synchronous stop()/start() guard can't catch an event that
-            // fires AFTER start() re-attaches the listener (and stop() can
-            // itself schedule a deferred flush). Use ProseMirror's own
-            // suppressSelectionUpdates() (the #820 primitive): for ~50ms it
-            // answers every selectionchange by RE-ASSERTING our PM selection to
-            // the DOM (selectionToDOM) instead of reading the native one.
             const domObserver = (
               editor.view as {
                 domObserver?: { suppressSelectionUpdates?(): void };

@@ -26,11 +26,10 @@ function makeEditor(blocks = 0): Editor {
   } as unknown as Editor;
 }
 
-// renderHook equivalent using plain function call (pool is pure logic with refs)
-function makePool() {
-  // Call the hook body directly — it only uses useCallback/useRef which are
-  // available in the test environment through vitest + happy-dom.
-  // For unit testing the pure logic, we duplicate the pool factory inline.
+// Pool factory — mirrors the production hook's logic (which wraps these same
+// operations in useCallback/useRef). Tests exercise the same algorithm the
+// hook executes at runtime.
+function makePool(onEvict?: (tabId: string, editor: Editor) => void) {
   const entries: Array<{ editor: Editor; tabId: string }> = [];
 
   const get = (tabId: string): Editor | null =>
@@ -43,6 +42,7 @@ function makePool() {
     if (has(tabId)) return;
     while (entries.length >= KEEPALIVE_LRU_CAP) {
       const evicted = entries.shift()!;
+      onEvict?.(evicted.tabId, evicted.editor);
       if (!evicted.editor.isDestroyed) evicted.editor.destroy();
     }
     entries.push({ tabId, editor });
@@ -60,12 +60,30 @@ function makePool() {
     return get(activeTabId);
   };
 
-  return { get, has, acquire, release, activeFor, _entries: entries };
+  const keys = (): string[] => entries.map((e) => e.tabId);
+
+  const destroyAll = () => {
+    for (const entry of entries) {
+      if (!entry.editor.isDestroyed) entry.editor.destroy();
+    }
+    entries.length = 0;
+  };
+
+  return {
+    get,
+    has,
+    acquire,
+    release,
+    activeFor,
+    keys,
+    destroyAll,
+    _entries: entries,
+  };
 }
 
 describe("LARGE_DOC_BLOCK_THRESHOLD", () => {
-  it("is defined and positive", () => {
-    expect(LARGE_DOC_BLOCK_THRESHOLD).toBeGreaterThan(0);
+  it("is 500 per plan", () => {
+    expect(LARGE_DOC_BLOCK_THRESHOLD).toBe(500);
   });
 });
 
@@ -139,6 +157,38 @@ describe("keepalive pool", () => {
   it("activeFor returns null for null activeTabId", () => {
     const pool = makePool();
     expect(pool.activeFor(null)).toBeNull();
+  });
+
+  it("keys() returns all pooled tabIds", () => {
+    const pool = makePool();
+    expect(pool.keys()).toEqual([]);
+    pool.acquire("tab1", makeEditor());
+    expect(pool.keys()).toEqual(["tab1"]);
+  });
+
+  it("destroyAll() destroys all editors and empties the pool", () => {
+    const pool = makePool();
+    const ed = makeEditor(300);
+    pool.acquire("tab1", ed);
+    pool.destroyAll();
+    expect(ed.destroy).toHaveBeenCalledOnce();
+    expect(pool.keys()).toEqual([]);
+    expect(pool.has("tab1")).toBe(false);
+  });
+
+  it("eviction callback fires before editor.destroy()", () => {
+    const order: string[] = [];
+    const onEvict = vi.fn((_tabId: string, editor: Editor) => {
+      // At callback time, editor should NOT yet be destroyed
+      order.push(editor.isDestroyed ? "destroyed" : "alive");
+    });
+    const pool = makePool(onEvict);
+    const ed1 = makeEditor(300);
+    pool.acquire("tab1", ed1);
+    pool.acquire("tab2", makeEditor(250)); // evicts tab1
+    expect(onEvict).toHaveBeenCalledWith("tab1", ed1);
+    expect(order).toEqual(["alive"]); // callback ran before destroy
+    expect(ed1.isDestroyed).toBe(true); // destroyed after callback
   });
 });
 
