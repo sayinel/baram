@@ -304,12 +304,19 @@ function buildDecorations(
   for (const item of foldables) {
     const isFolded = foldedPositions.has(item.pos);
 
+    // §perf-large-file C3.1d: use content-stable key (not pos) so downstream
+    // widgets survive position shifts without DOM teardown when a heading is edited.
+    const stableKey =
+      item.kind === "heading"
+        ? `${item.node.attrs.level as number}-${item.node.textContent.slice(0, 40)}`
+        : item.node.textContent.slice(0, 40);
+
     // Gutter arrow widget — inside the node, before text
     decos.push(
       Decoration.widget(
         item.pos + 1,
         () => createFoldArrow(isFolded, item.pos),
-        { side: -1, key: `fold-arrow-${item.pos}-${isFolded}` },
+        { side: -1, key: `fold-arrow-${stableKey}-${isFolded}` },
       ),
     );
 
@@ -323,7 +330,7 @@ function buildDecorations(
       decos.push(
         Decoration.widget(ellipsisPos, () => createEllipsis(item.pos), {
           side: 1,
-          key: `fold-ellipsis-${item.pos}`,
+          key: `fold-ellipsis-${stableKey}`,
         }),
       );
 

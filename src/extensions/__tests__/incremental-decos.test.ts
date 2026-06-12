@@ -6,6 +6,7 @@
 // only after all six C3.1 fixes are applied.
 
 import { Editor } from "@tiptap/core";
+import { TextSelection } from "@tiptap/pm/state";
 import { DecorationSet } from "@tiptap/pm/view";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -424,6 +425,183 @@ describe("prompt-highlight: production plugin incremental === from-scratch", () 
 
     const decos = promptHighlightKey.getState(editor.state) as DecorationSet;
     expect(decos.find().length).toBe(0);
+
+    editor.destroy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §perf-large-file C3.1d: Decoration identity stability
+//
+// The key invariant: when a surviving entry's role is unchanged across a
+// transaction, its WidgetType instance (accessed via the internal `type` field
+// cast through `any`) must be the SAME object (===). This is what
+// DecorationSet.eq() checks via `this == other` to short-circuit matchesNode
+// and skip updateChildren for unchanged paragraphs.
+//
+// Tests fail before the C3.1d fix (always creating new WidgetType instances)
+// and pass after (deco caching in BlockIdEntry.deco + blockId-stable keys).
+// ---------------------------------------------------------------------------
+
+/** Access the spec.key of a Decoration. */
+function decoKey(deco: import("@tiptap/pm/view").Decoration): string {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return ((deco as any).spec as { key: string }).key;
+}
+
+/** Access the internal WidgetType instance of a Decoration for identity checks. */
+function decoWidgetType(deco: import("@tiptap/pm/view").Decoration): object {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (deco as any).type as object;
+}
+
+describe("block-id-decoration: C3.1d decoration identity stability", () => {
+  it("downstream blockId entry WidgetType is SAME instance after upstream text insert", () => {
+    const editor = makeEditor();
+
+    // Two blockId paragraphs: P1 (upstream) and P2 (downstream).
+    // Cursor in P1 so P2 starts as a hint widget.
+    const p1 = editor.schema.nodes.paragraph.create(
+      { blockId: "id-upstream" },
+      editor.schema.text("first"),
+    );
+    const p2 = editor.schema.nodes.paragraph.create(
+      { blockId: "id-downstream" },
+      editor.schema.text("second"),
+    );
+    const newDoc = editor.schema.nodes.doc.create(null, [p1, p2]);
+    const tr0 = editor.state.tr.replaceWith(
+      0,
+      editor.state.doc.content.size,
+      newDoc,
+    );
+    editor.view.dispatch(tr0.setSelection(TextSelection.create(tr0.doc, 2)));
+
+    const stateBefore = blockIdDecoKey.getState(editor.state)!;
+    const p2Before = stateBefore.entries.find(
+      (e) => e.blockId === "id-downstream",
+    )!;
+    expect(p2Before).toBeDefined();
+    expect(decoKey(p2Before.deco)).toBe("block-id-hint-id-downstream");
+    const wtBefore = decoWidgetType(p2Before.deco);
+
+    // Insert a character inside P1 — P2's doc position shifts by 1
+    editor.view.dispatch(editor.state.tr.insertText("X", 2));
+
+    const stateAfter = blockIdDecoKey.getState(editor.state)!;
+    const p2After = stateAfter.entries.find(
+      (e) => e.blockId === "id-downstream",
+    )!;
+    expect(p2After.endPos).toBe(p2Before.endPos + 1); // position did shift
+    // WidgetType instance preserved → no DOM teardown for P2 on this keystroke
+    expect(decoWidgetType(p2After.deco)).toBe(wtBefore);
+
+    editor.destroy();
+  });
+
+  it("unaffected entries keep WidgetType identity on focus move", () => {
+    const editor = makeEditor();
+
+    const p1 = editor.schema.nodes.paragraph.create(
+      { blockId: "id-a" },
+      editor.schema.text("alpha"),
+    );
+    const p2 = editor.schema.nodes.paragraph.create(
+      { blockId: "id-b" },
+      editor.schema.text("beta"),
+    );
+    const p3 = editor.schema.nodes.paragraph.create(
+      { blockId: "id-c" },
+      editor.schema.text("gamma"),
+    );
+    // Cursor inside P1 initially
+    const newDoc = editor.schema.nodes.doc.create(null, [p1, p2, p3]);
+    const tr0 = editor.state.tr.replaceWith(
+      0,
+      editor.state.doc.content.size,
+      newDoc,
+    );
+    editor.view.dispatch(tr0.setSelection(TextSelection.create(tr0.doc, 2)));
+
+    const s0 = blockIdDecoKey.getState(editor.state)!;
+    const getE0 = (id: string) => s0.entries.find((e) => e.blockId === id)!;
+    const wtC0 = decoWidgetType(getE0("id-c").deco);
+
+    // Move cursor to P2 — only P1 (old focus) and P2 (new focus) should change
+    const p2Pos = p1.nodeSize + 1;
+    editor.view.dispatch(
+      editor.state.tr.setSelection(
+        TextSelection.create(editor.state.doc, p2Pos),
+      ),
+    );
+
+    const s1 = blockIdDecoKey.getState(editor.state)!;
+    const getE1 = (id: string) => s1.entries.find((e) => e.blockId === id)!;
+
+    // id-c not touched by focus move → SAME WidgetType
+    expect(decoWidgetType(getE1("id-c").deco)).toBe(wtC0);
+    expect(decoKey(getE1("id-c").deco)).toBe("block-id-hint-id-c");
+
+    // id-b role changed hint → focused → different WidgetType
+    expect(decoKey(getE1("id-b").deco)).toBe("block-id-focus-id-b");
+
+    editor.destroy();
+  });
+
+  it("repeated typing in upstream paragraph keeps downstream WidgetType identity", () => {
+    const editor = makeEditor();
+
+    const p1 = editor.schema.nodes.paragraph.create(
+      { blockId: "id-typed" },
+      editor.schema.text("type here"),
+    );
+    const p2 = editor.schema.nodes.paragraph.create(
+      { blockId: "id-stable" },
+      editor.schema.text("stable"),
+    );
+    // Cursor in P1 throughout — P2 always hint
+    const newDoc = editor.schema.nodes.doc.create(null, [p1, p2]);
+    const tr0 = editor.state.tr.replaceWith(
+      0,
+      editor.state.doc.content.size,
+      newDoc,
+    );
+    editor.view.dispatch(tr0.setSelection(TextSelection.create(tr0.doc, 2)));
+
+    const s0 = blockIdDecoKey.getState(editor.state)!;
+    const stableE0 = s0.entries.find((e) => e.blockId === "id-stable")!;
+    const wt0 = decoWidgetType(stableE0.deco);
+
+    // 3 keystrokes — each shifts P2's position but role stays hint
+    editor.view.dispatch(editor.state.tr.insertText("X", 2));
+    const wt1 = decoWidgetType(
+      blockIdDecoKey
+        .getState(editor.state)!
+        .entries.find((e) => e.blockId === "id-stable")!.deco,
+    );
+    editor.view.dispatch(editor.state.tr.insertText("Y", 2));
+    const wt2 = decoWidgetType(
+      blockIdDecoKey
+        .getState(editor.state)!
+        .entries.find((e) => e.blockId === "id-stable")!.deco,
+    );
+    editor.view.dispatch(editor.state.tr.insertText("Z", 2));
+    const wt3 = decoWidgetType(
+      blockIdDecoKey
+        .getState(editor.state)!
+        .entries.find((e) => e.blockId === "id-stable")!.deco,
+    );
+
+    // WidgetType instance SAME across all 3 keystrokes — no DOM churn for P2
+    expect(wt1).toBe(wt0);
+    expect(wt2).toBe(wt0);
+    expect(wt3).toBe(wt0);
+
+    // Verify endPos did shift (so the mapping was applied)
+    const stableEFinal = blockIdDecoKey
+      .getState(editor.state)!
+      .entries.find((e) => e.blockId === "id-stable")!;
+    expect(stableEFinal.endPos).toBe(stableE0.endPos + 3);
 
     editor.destroy();
   });
