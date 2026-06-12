@@ -355,9 +355,11 @@ export function useTabSwitching({
           markContentLoaded(activeTabId!);
         });
         // Restore exact scroll position (not just cursor visibility)
+        // §perf-large-file C3.4: scope via editor.view.dom.closest() so this
+        // targets the correct editor's scroll container in a dual-editor layout.
         if (cachedScrollTop !== undefined) {
           requestAnimationFrame(() => {
-            const scrollContainer = document.querySelector(
+            const scrollContainer = editor.view.dom.closest<HTMLElement>(
               ".editor-area-scroll",
             );
             if (scrollContainer) {
@@ -367,7 +369,9 @@ export function useTabSwitching({
         } else {
           // No cached scroll — reset to top (avoid stale scroll from previous tab)
           requestAnimationFrame(() => {
-            const sc = document.querySelector(".editor-area-scroll");
+            const sc = editor.view.dom.closest<HTMLElement>(
+              ".editor-area-scroll",
+            );
             if (sc) sc.scrollTop = 0;
           });
         }

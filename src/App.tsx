@@ -632,7 +632,11 @@ function App() {
                   type={periodicType}
                 />
               )}
-              <div className="editor-area-scroll" data-editor-scroll>
+              <div
+                className="editor-area-scroll"
+                data-editor-active
+                data-editor-scroll
+              >
                 {/* §perf-large-file B2: Loading skeleton while Worker parses */}
                 {isParsing && (
                   <div className="editor-loading-skeleton">
