@@ -45,13 +45,23 @@ import {
 } from "../utils/editor/progressive-load";
 import { isMarkdownFile } from "../utils/file-type";
 import { logger } from "../utils/logger";
+import {
+  type KeepalivePool,
+  LARGE_DOC_BLOCK_THRESHOLD,
+} from "./use-large-doc-keepalive";
 
 interface UseTabSwitchingParams {
+  /** §perf-large-file C3.5: factory to create a keep-alive editor for a tab */
+  createKeepaliveEditor: () => Editor;
   editor: Editor | null;
   /** Per-tab EditorState cache — owned by useSourceMode, shared here */
   editorStateCache: React.MutableRefObject<Map<string, EditorState>>;
   isNavBackForwardRef: React.RefObject<boolean>;
   isSourceMode: boolean;
+  /** §perf-large-file C3.5: keep-alive editor pool for large documents */
+  keepalive: KeepalivePool;
+  /** §perf-large-file C3.5: notify App of the active editor change */
+  onActiveEditorChange: (editor: Editor | null) => void;
   setFindReplaceMode: (mode: "find" | "replace") => void;
   setFindReplaceOpen: (open: boolean) => void;
   setIsParsing: (v: boolean) => void;
@@ -65,6 +75,9 @@ export function useTabSwitching({
   editorStateCache,
   isNavBackForwardRef,
   isSourceMode,
+  keepalive,
+  createKeepaliveEditor,
+  onActiveEditorChange,
   setFindReplaceMode,
   setFindReplaceOpen,
   setIsSourceMode,
@@ -122,17 +135,31 @@ export function useTabSwitching({
     // Save outgoing tab content + cache EditorState (preserves undo history)
     if (prevTabId && prevTabId !== activeTabId) {
       const prevTab = tabs.find((t) => t.id === prevTabId);
+
+      // §perf-large-file C3.5: determine which editor was active for the outgoing tab
+      const prevKeepaliveEditor = keepalive.get(prevTabId);
+      const prevEditor = prevKeepaliveEditor ?? editor;
+
       // Save scroll position of .editor-area-scroll for the outgoing tab
       // §perf-large-file C3.4: resolve via editor.view.dom.closest() so this
       // targets the ACTIVE editor's scroll container in a dual-editor layout.
-      const scrollContainer = editor?.view.dom.closest<HTMLElement>(
+      const scrollContainer = prevEditor?.view.dom.closest<HTMLElement>(
         ".editor-area-scroll",
       );
       if (scrollContainer) {
         scrollTopCache.current.set(prevTabId, scrollContainer.scrollTop);
       }
-      // Only save ProseMirror state for file tabs (graph tabs have no editor state)
-      if (isFileTab(prevTab)) {
+
+      // §perf-large-file C3.5: keep-alive tabs — hide their DOM, skip cache write
+      // and skip outgoing serialize. The live editor IS the state; auto-save hooks
+      // already run against it continuously.
+      if (prevKeepaliveEditor) {
+        const kaEl = prevKeepaliveEditor.view.dom.closest<HTMLElement>(
+          "[data-keepalive-editor]",
+        );
+        if (kaEl) kaEl.style.display = "none";
+        // Don't write editorStateCache or serialize — the editor stays live.
+      } else if (isFileTab(prevTab) && prevEditor) {
         const prevIsCode = !isMarkdownFile(prevTab?.filePath);
         // §perf-large-file C2: Skip caching/saving a tab that is mid-load —
         // the doc is partial. Returning to it will re-run the uncached open path.
@@ -140,14 +167,14 @@ export function useTabSwitching({
         // Cache EditorState before switching (keeps undo/redo stack intact)
         // Non-MD files don't use ProseMirror — skip caching
         if (!isSourceMode && !prevIsCode && !prevMidLoad) {
-          editorStateCache.current.set(prevTabId, editor.state);
-          logCacheEvent("set", prevTabId, editor.state.doc.childCount);
+          editorStateCache.current.set(prevTabId, prevEditor.state);
+          logCacheEvent("set", prevTabId, prevEditor.state.doc.childCount);
           // Save fold state as content-based anchors
           if (prevTab?.filePath) {
-            const pluginState = foldPluginKey.getState(editor.state);
+            const pluginState = foldPluginKey.getState(prevEditor.state);
             if (pluginState && pluginState.foldedPositions.size > 0) {
               const anchors = positionsToAnchors(
-                editor.state.doc,
+                prevEditor.state.doc,
                 pluginState.foldedPositions,
               );
               useFoldStore.getState().saveFolds(prevTab.filePath, anchors);
@@ -162,7 +189,7 @@ export function useTabSwitching({
               prevIsCode || isSourceMode
                 ? sourceContentRef.current
                 : timePhase("tabSwitch:serializeOutgoing", () =>
-                    prosemirrorToMarkdown(editor.state.doc),
+                    prosemirrorToMarkdown(prevEditor.state.doc),
                   );
             useFileStore.getState().setFileContent(prevTab.filePath, md);
           } catch (err) {
@@ -198,11 +225,46 @@ export function useTabSwitching({
       setTimeout(() => {
         editor.view.updateState(newState);
       });
+      onActiveEditorChange(null);
       return;
     }
 
     // Graph tab — no ProseMirror content to load
     if (isGraphTab(incomingTab)) return;
+
+    // §perf-large-file C3.5: if this tab has a keep-alive editor, show it and skip load
+    const incomingKeepaliveEditor = keepalive.get(activeTabId!);
+    if (incomingKeepaliveEditor) {
+      const kaEl = incomingKeepaliveEditor.view.dom.closest<HTMLElement>(
+        "[data-keepalive-editor]",
+      );
+      if (kaEl) kaEl.style.display = "";
+      onActiveEditorChange(incomingKeepaliveEditor);
+      // Restore scroll position
+      const cachedScrollTop = scrollTopCache.current.get(activeTabId!);
+      requestAnimationFrame(() => {
+        const scrollContainer =
+          incomingKeepaliveEditor.view.dom.closest<HTMLElement>(
+            ".editor-area-scroll",
+          );
+        if (scrollContainer) {
+          scrollContainer.scrollTop = cachedScrollTop ?? 0;
+        }
+      });
+      // Still run afterDocLoad equivalent for search highlight etc.
+      const pendingHighlight = useUIStore.getState().pendingSearchHighlight;
+      if (pendingHighlight) {
+        useUIStore.getState().setPendingSearchHighlight(null);
+        setTimeout(() => {
+          if (!incomingKeepaliveEditor?.view) return;
+          dispatchSetSearchTerm(incomingKeepaliveEditor.view, pendingHighlight);
+          setFindReplaceOpen(true);
+          setFindReplaceMode("find");
+        }, 50);
+      }
+      markContentLoaded(activeTabId!);
+      return;
+    }
 
     const content = incomingTab.filePath
       ? openFiles.get(incomingTab.filePath)
@@ -341,13 +403,21 @@ export function useTabSwitching({
             const firstChunk = chunks[0] ?? [];
             const restChunks = chunks.slice(1);
 
-            const doc = editor.schema.nodes.doc.create(
+            // §perf-large-file C3.5: decide up-front whether to load into a
+            // keep-alive editor (direct-load variant — simpler to verify).
+            const isLargeDoc = allNodes.length >= LARGE_DOC_BLOCK_THRESHOLD;
+            const targetEditor =
+              isLargeDoc && !keepalive.has(activeTabId!)
+                ? createKeepaliveEditor()
+                : editor;
+
+            const doc = targetEditor.schema.nodes.doc.create(
               null,
               firstChunk.length ? firstChunk : undefined,
             );
             const newState = EditorState.create({
               doc,
-              plugins: editor.state.plugins,
+              plugins: targetEditor.state.plugins,
               selection: TextSelection.atStart(doc),
             });
 
@@ -364,6 +434,13 @@ export function useTabSwitching({
               }
               setTabLoading(activeTabId!, false);
               markContentLoaded(activeTabId!);
+
+              // §perf-large-file C3.5: promote to keep-alive pool after full load
+              if (isLargeDoc && !keepalive.has(activeTabId!)) {
+                keepalive.acquire(activeTabId!, targetEditor);
+                onActiveEditorChange(targetEditor);
+              }
+
               afterDocLoad();
               const inTab = tabs.find((t) => t.id === activeTabId);
               if (inTab?.filePath) {
@@ -372,11 +449,11 @@ export function useTabSwitching({
                   .getFolds(inTab.filePath);
                 if (savedAnchors.length > 0) {
                   const positions = anchorsToPositions(
-                    editor.view.state.doc,
+                    targetEditor.view.state.doc,
                     savedAnchors,
                   );
                   if (positions.length > 0) {
-                    dispatchRestoreFolds(editor.view, positions);
+                    dispatchRestoreFolds(targetEditor.view, positions);
                   }
                 }
               }
@@ -390,16 +467,17 @@ export function useTabSwitching({
                 return;
               }
               timePhase("updateState(first chunk)", () =>
-                editor.view.updateState(newState),
+                targetEditor.view.updateState(newState),
               );
               setIsParsing(false);
 
               // Reset scroll to top for freshly opened documents.
-              // §perf-large-file C3.4: resolve via editor.view.dom.closest().
+              // §perf-large-file C3.4: resolve via targetEditor.view.dom.closest().
               requestAnimationFrame(() => {
-                const scrollContainer = editor.view.dom.closest<HTMLElement>(
-                  ".editor-area-scroll",
-                );
+                const scrollContainer =
+                  targetEditor.view.dom.closest<HTMLElement>(
+                    ".editor-area-scroll",
+                  );
                 if (scrollContainer) scrollContainer.scrollTop = 0;
               });
 
@@ -408,7 +486,7 @@ export function useTabSwitching({
                 return;
               }
               appendHandleRef.current = {
-                handle: appendChunksProgressively(editor, restChunks, {
+                handle: appendChunksProgressively(targetEditor, restChunks, {
                   onComplete: finishLoad,
                 }),
                 tabId: activeTabId!,
@@ -428,6 +506,10 @@ export function useTabSwitching({
           logCacheEvent("delete", cachedId);
           editorStateCache.current.delete(cachedId);
           scrollTopCache.current.delete(cachedId);
+          // §perf-large-file C3.5: destroy keep-alive editor when its tab closes
+          if (keepalive.has(cachedId)) {
+            keepalive.release(cachedId);
+          }
         }
       }
     }
