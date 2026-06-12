@@ -138,8 +138,20 @@ const txStats: TxStats = {
 };
 
 function resetTxBreakdown(): void {
-  pluginCosts.clear();
-  eventCosts.clear();
+  // §perf-large-file C3.1c: reset accumulator values IN PLACE rather than
+  // clearing the map. pluginCosts / eventCosts entries are closed over by the
+  // patched field.apply / editor.emit functions; clearing the map orphans those
+  // references so post-reset txBreakdown() would return stale or empty data.
+  for (const v of pluginCosts.values()) {
+    v.calls = 0;
+    v.totalMs = 0;
+    v.maxMs = 0;
+  }
+  for (const v of eventCosts.values()) {
+    v.calls = 0;
+    v.totalMs = 0;
+    v.maxMs = 0;
+  }
   txStats.count = 0;
   txStats.totalMs = 0;
   txStats.maxMs = 0;
