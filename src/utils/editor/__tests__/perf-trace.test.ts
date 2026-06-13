@@ -240,4 +240,59 @@ describe("instrumentEditor", () => {
 
     editor.destroy();
   });
+
+  // §perf-large-file C4: instrumentation must be PER editor instance. The old
+  // single module-level boolean instrumented only the first editor, so the
+  // large-doc keep-alive editor (a separate instance) reported txBreakdown=0.
+  it("instruments a SECOND, distinct editor instance (R9 regression)", () => {
+    const shared = new Editor({
+      extensions: createBaramExtensions(),
+      content: "<p>shared</p>",
+    });
+    const keepAlive = new Editor({
+      extensions: createBaramExtensions(),
+      content: "<p>keepalive</p>",
+    });
+    // Instrument the shared editor first (as App historically did), then a
+    // second distinct instance (the keep-alive editor in production).
+    instrumentEditor(shared);
+    instrumentEditor(keepAlive);
+
+    // Clear counters, then dispatch ONLY on the second editor.
+    window.__baramPerf!.reset();
+    keepAlive.commands.insertContent("!");
+
+    // Pre-fix (single global boolean) the second editor was never patched →
+    // count stayed 0. Post-fix it must be instrumented.
+    expect(
+      window.__baramPerf!.txBreakdown().transactions.count,
+    ).toBeGreaterThanOrEqual(1);
+
+    shared.destroy();
+    keepAlive.destroy();
+  });
+
+  it("is idempotent per instance — re-instrumenting the same editor does not double-count", () => {
+    const editor = new Editor({
+      extensions: createBaramExtensions(),
+      content: "<p>x</p>",
+    });
+    instrumentEditor(editor);
+
+    window.__baramPerf!.reset();
+    editor.commands.insertContent("1");
+    const once = window.__baramPerf!.txBreakdown().transactions.count;
+
+    // Re-instrument the SAME instance — must be a no-op (WeakSet guard), so the
+    // identical edit produces the same transaction count, not double.
+    instrumentEditor(editor);
+    window.__baramPerf!.reset();
+    editor.commands.insertContent("2");
+    const afterReinstrument =
+      window.__baramPerf!.txBreakdown().transactions.count;
+
+    expect(afterReinstrument).toBe(once);
+
+    editor.destroy();
+  });
 });
