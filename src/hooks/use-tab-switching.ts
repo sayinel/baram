@@ -260,6 +260,10 @@ export function useTabSwitching({
 
       // [MINOR-a] Consume pending scroll/search so backlink navigation to a
       // pooled tab scrolls correctly — not just pendingSearchHighlight.
+      // TODO: openFiles content may be stale for keep-alive tabs (auto-save
+      // writes to disk but the in-memory openFiles map isn't always updated in
+      // sync with the live editor). This slightly skews pendingLine scroll
+      // position when the user edited after the last openFiles sync.
       const kaContent = incomingTab.filePath
         ? openFiles.get(incomingTab.filePath)
         : undefined;

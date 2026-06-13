@@ -59,6 +59,8 @@ export interface KeepalivePool {
   keys: () => string[];
   /** Mark an entry as complete (progressive load finished). */
   markComplete: (tabId: string) => void;
+  /** Mark an entry as incomplete (source-mode fill starting). */
+  markIncomplete: (tabId: string) => void;
   /**
    * Release a keep-alive slot (e.g. when the tab is closed or entry is
    * incomplete on switch-back). Calls onEvict then destroys the editor.
@@ -90,6 +92,11 @@ export function createKeepalivePool(opts: CreateKeepalivePoolOpts = {}) {
   const markComplete = (tabId: string): void => {
     const entry = entries.find((e) => e.tabId === tabId);
     if (entry) entry.complete = true;
+  };
+
+  const markIncomplete = (tabId: string): void => {
+    const entry = entries.find((e) => e.tabId === tabId);
+    if (entry) entry.complete = false;
   };
 
   const acquire = (tabId: string, editor: Editor) => {
@@ -148,6 +155,7 @@ export function createKeepalivePool(opts: CreateKeepalivePoolOpts = {}) {
     has,
     isComplete,
     markComplete,
+    markIncomplete,
     acquire,
     release,
     activeFor,
@@ -158,19 +166,8 @@ export function createKeepalivePool(opts: CreateKeepalivePoolOpts = {}) {
   };
 }
 
-/**
- * Resolve which editor should be used for a given tab.
- * Pure function — extracted for unit testing.
- */
-export function resolveTabEditor(
-  tabId: null | string,
-  pool: Pick<KeepalivePool, "get">,
-  sharedEditor: Editor | null,
-): Editor | null {
-  if (!tabId) return sharedEditor;
-  const keepAliveEditor = pool.get(tabId);
-  return keepAliveEditor ?? sharedEditor;
-}
+// resolveTabEditor was removed — it became production-dead after round-2
+// restructured the incoming-tab routing to use keepalive.activeFor() directly.
 
 /**
  * useLargeDocKeepalive — manages the keep-alive editor pool.

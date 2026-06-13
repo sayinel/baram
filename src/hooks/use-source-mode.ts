@@ -41,11 +41,19 @@ export type AppendHandleRef = React.MutableRefObject<null | {
   tabId: string;
 }>;
 
+/** Narrow pool interface — only the completeness methods source-mode needs. */
+export interface SourceModePoolAccess {
+  markComplete: (tabId: string) => void;
+  markIncomplete: (tabId: string) => void;
+}
+
 interface UseSourceModeParams {
   /** Shared ref from use-tab-switching — register progressive handle here
    *  so cancelInflightAppend covers source-mode fills. */
   appendHandleRef?: AppendHandleRef;
   editor: Editor | null;
+  /** Pool access for marking completeness during source-mode progressive fills. */
+  pool?: SourceModePoolAccess;
 }
 
 interface UseSourceModeReturn {
@@ -65,6 +73,7 @@ interface UseSourceModeReturn {
 export function useSourceMode({
   editor,
   appendHandleRef,
+  pool,
 }: UseSourceModeParams): UseSourceModeReturn {
   // Per-tab EditorState cache — owned here so toggleSourceMode can write to it
   // without a circular dependency with useTabSwitching
@@ -131,6 +140,11 @@ export function useSourceMode({
       if (newDoc.childCount >= LARGE_DOC_BLOCK_THRESHOLD) {
         setIsSourceMode(false);
 
+        // [MAJOR fix] Mark the pool entry incomplete so a mid-fill tab
+        // switch + return takes the release-and-reload path instead of
+        // blessing a truncated doc as the save baseline.
+        if (currentTabId) pool?.markIncomplete(currentTabId);
+
         // Parse async and progressive-load into the keep-alive editor
         if (currentTabId) setTabLoading(currentTabId, true);
 
@@ -159,6 +173,8 @@ export function useSourceMode({
 
             const finishLoad = () => {
               if (currentTabId) {
+                // [MAJOR fix] Mark complete so switch-back uses the pool entry.
+                pool?.markComplete(currentTabId);
                 setTabLoading(currentTabId, false);
                 markContentLoaded(currentTabId);
               }
@@ -284,7 +300,8 @@ export function useSourceMode({
     // editorStateCache, sourceContentRef, sourceEditorRef are stable refs (useRef) —
     // intentionally omitted from deps; they never change identity across renders.
     // appendHandleRef is a stable ref passed from App — included for exhaustive-deps.
-  }, [editor, isSourceMode, appendHandleRef]);
+    // pool is a stable ref-based object — included for exhaustive-deps.
+  }, [editor, isSourceMode, appendHandleRef, pool]);
 
   return {
     isSourceMode,

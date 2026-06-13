@@ -9,7 +9,6 @@ import {
   createKeepalivePool,
   KEEPALIVE_LRU_CAP,
   LARGE_DOC_BLOCK_THRESHOLD,
-  resolveTabEditor,
   useLargeDocKeepalive,
 } from "../use-large-doc-keepalive";
 
@@ -204,31 +203,24 @@ describe("createKeepalivePool", () => {
   });
 });
 
-describe("resolveTabEditor", () => {
-  it("returns keep-alive editor when tab is pooled", () => {
-    const kaEditor = makeEditor(300);
-    const sharedEditor = makeEditor(10);
-    const pool = {
-      get: (tabId: string) => (tabId === "tab1" ? kaEditor : null),
-    };
-    expect(resolveTabEditor("tab1", pool, sharedEditor)).toBe(kaEditor);
+describe("markIncomplete", () => {
+  it("markIncomplete reverts a complete entry so activeFor returns null", () => {
+    const pool = createKeepalivePool();
+    const ed = makeEditor(600);
+    pool.acquire("tab1", ed);
+    pool.markComplete("tab1");
+    expect(pool.activeFor("tab1")).toBe(ed);
+
+    pool.markIncomplete("tab1");
+    expect(pool.activeFor("tab1")).toBeNull();
+    // Entry still exists — just incomplete
+    expect(pool.has("tab1")).toBe(true);
+    expect(pool.isComplete("tab1")).toBe(false);
   });
 
-  it("falls back to shared editor when tab is not pooled", () => {
-    const sharedEditor = makeEditor(10);
-    const pool = { get: () => null };
-    expect(resolveTabEditor("tab1", pool, sharedEditor)).toBe(sharedEditor);
-  });
-
-  it("returns shared editor when tabId is null", () => {
-    const sharedEditor = makeEditor(10);
-    const pool = { get: () => null };
-    expect(resolveTabEditor(null, pool, sharedEditor)).toBe(sharedEditor);
-  });
-
-  it("returns null when tabId is null and sharedEditor is null", () => {
-    const pool = { get: () => null };
-    expect(resolveTabEditor(null, pool, null)).toBeNull();
+  it("markIncomplete is a no-op for unknown tabId", () => {
+    const pool = createKeepalivePool();
+    expect(() => pool.markIncomplete("unknown")).not.toThrow();
   });
 });
 
