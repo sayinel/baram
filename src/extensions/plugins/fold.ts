@@ -549,8 +549,45 @@ function createFoldPlugin(): Plugin<FoldState> {
           const foldEl = target.closest(".fold-arrow, .fold-ellipsis");
           if (!foldEl) return false;
 
-          const pos = Number(foldEl.getAttribute("data-fold-pos"));
-          if (isNaN(pos)) return false;
+          // §perf-large-file C3: Resolve the heading/listItem position at click
+          // time rather than reading the potentially-stale `data-fold-pos`
+          // attribute (which was written at decoration-creation time and is not
+          // updated when edits above this widget shift doc positions).
+          //
+          // Strategy: walk up from the widget element to find the containing
+          // top-level block's DOM node, then use posAtDOM to get its current
+          // doc position.  Fall back to the attribute only if posAtDOM fails.
+          let pos: null | number = null;
+          try {
+            // The widget is rendered inside the heading/listItem's DOM node.
+            // posAtDOM on the widget element itself gives the position of the
+            // widget inside that node; we want the node's own start position.
+            // Walking up to the first direct child of the editor's DOM root
+            // gives us a node whose posAtDOM result we can resolve to depth-0.
+            const editorDom = view.dom;
+            let el: HTMLElement | null = foldEl as HTMLElement;
+            while (el && el.parentElement && el.parentElement !== editorDom) {
+              el = el.parentElement;
+            }
+            if (el && el.parentElement === editorDom) {
+              const rawPos = view.posAtDOM(el, 0);
+              // posAtDOM returns a position inside the node; resolve to the
+              // node's outer start by going to depth-0 ancestor.
+              const $resolved = view.state.doc.resolve(rawPos);
+              // depth-0 ancestor's before() is the node's start pos in the doc.
+              pos = $resolved.depth > 0 ? $resolved.before(1) : rawPos;
+            }
+          } catch {
+            pos = null;
+          }
+
+          // Fallback: use the attribute (may be stale but better than nothing).
+          if (pos === null) {
+            const attrPos = Number(foldEl.getAttribute("data-fold-pos"));
+            if (!isNaN(attrPos)) pos = attrPos;
+          }
+
+          if (pos === null) return false;
 
           event.preventDefault();
           event.stopPropagation();

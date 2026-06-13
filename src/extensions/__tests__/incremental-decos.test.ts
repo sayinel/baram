@@ -606,3 +606,77 @@ describe("block-id-decoration: C3.1d decoration identity stability", () => {
     editor.destroy();
   });
 });
+
+// ---------------------------------------------------------------------------
+// §perf-large-file C3 residual: stale focus/hint widget after combined
+// docChanged+selection transaction (undo/redo regression).
+//
+// Bug: oldRole was computed from the NEW focusedBlockPos instead of the
+// previous one.  After an undo that changes both doc and selection in one
+// transaction, a block that was previously focused but is no longer focused
+// after undo would keep its "focus" decoration instead of reverting to "hint".
+// ---------------------------------------------------------------------------
+
+describe("block-id-decoration: stale focus widget cleared on combined docChanged+selection tr", () => {
+  it("focus decoration on block A is replaced by hint after undo moves cursor to block B", () => {
+    const editor = makeEditor();
+
+    // Two blockId paragraphs.
+    const makeP = (id: string, text: string) =>
+      editor.schema.nodes.paragraph.create(
+        { blockId: id },
+        editor.schema.text(text),
+      );
+
+    // Load initial doc: P_A (cursor here → focused), P_B (hint).
+    const docInitial = editor.schema.nodes.doc.create(null, [
+      makeP("id-A", "alpha"),
+      makeP("id-B", "beta"),
+    ]);
+    const tr0 = editor.state.tr.replaceWith(
+      0,
+      editor.state.doc.content.size,
+      docInitial,
+    );
+    // Place cursor inside P_A (pos 2).
+    editor.view.dispatch(tr0.setSelection(TextSelection.create(tr0.doc, 2)));
+
+    // Confirm P_A is focused, P_B is hint.
+    const s0 = blockIdDecoKey.getState(editor.state)!;
+    expect(decoKey(s0.entries.find((e) => e.blockId === "id-A")!.deco)).toBe(
+      "block-id-focus-id-A",
+    );
+    expect(decoKey(s0.entries.find((e) => e.blockId === "id-B")!.deco)).toBe(
+      "block-id-hint-id-B",
+    );
+
+    // Simulate an edit inside P_A (adds text), then a combined docChanged+selection
+    // transaction that moves the cursor to P_B (mimics undo/redo).
+    // We construct the combined transaction manually.
+    const stateBeforeUndo = editor.state;
+    const combinedTr = stateBeforeUndo.tr.insertText("X", 2);
+    // After insertText("X", 2), P_A grew by 1 char. P_B starts at P_A.nodeSize+1.
+    // P_A original nodeSize = "alpha".length + 2 (open+close) = 7, after +1 char = 8.
+    // So P_B pos in new doc = 8, cursor inside P_B = 9.
+    const pBPosInNewDoc = combinedTr.doc.firstChild!.nodeSize;
+    combinedTr.setSelection(
+      TextSelection.create(combinedTr.doc, pBPosInNewDoc + 1),
+    );
+    editor.view.dispatch(combinedTr);
+
+    // After the combined tr: cursor is in P_B → P_B should be "focus",
+    // P_A should be "hint" (no longer focused).
+    const s1 = blockIdDecoKey.getState(editor.state)!;
+    const decoA = s1.entries.find((e) => e.blockId === "id-A")!;
+    const decoB = s1.entries.find((e) => e.blockId === "id-B")!;
+
+    expect(decoKey(decoB.deco)).toBe("block-id-focus-id-B");
+    // Bug (pre-fix): P_A would still show "block-id-focus-id-A" because oldRole
+    // was computed from NEW focusedBlockPos (P_B) instead of OLD focusedBlockPos (P_A),
+    // so the role appeared unchanged ("hint" == "hint" for P_A per new focus) and
+    // the old focus decoration was incorrectly reused.
+    expect(decoKey(decoA.deco)).toBe("block-id-hint-id-A");
+
+    editor.destroy();
+  });
+});
