@@ -294,18 +294,24 @@ export function initPerfTrace(): void {
 // (ProseMirror's view.updateState handles DOM reconcile; not separately timed)
 // ---------------------------------------------------------------------------
 
-let editorInstrumented = false;
+// §perf-large-file C4: instrument PER editor instance (was a single module-level
+// boolean). The large-doc keep-alive editor is a SEPARATE Editor instance from
+// the shared one (App.tsx activeEditor = activeKeepaliveEditor ?? editor); with
+// the old boolean only the shared editor was ever patched, so the keep-alive
+// editor that actually renders large docs reported txBreakdown=0. A WeakSet lets
+// each editor be instrumented exactly once without leaking references.
+let instrumentedEditors = new WeakSet<object>();
 
 /** Reset module-level instrumentation state. Only intended for unit tests. */
 export function _resetInstrumentationForTest(): void {
-  editorInstrumented = false;
+  instrumentedEditors = new WeakSet<object>();
   resetTxBreakdown();
 }
 
 export function instrumentEditor(editor: AnyEditor): void {
   if (!import.meta.env.DEV) return;
-  if (!editor || editorInstrumented) return;
-  editorInstrumented = true;
+  if (!editor || instrumentedEditors.has(editor)) return;
+  instrumentedEditors.add(editor);
 
   // --- 1. Patch config.fields[].apply to accumulate per-plugin costs --------
   // ProseMirror binds plugin.spec.state.apply into FieldDesc.apply at

@@ -298,10 +298,14 @@ function App() {
     if (editor) pluginLoader.setEditor(editor);
   }, [editor]);
 
-  // §perf-large-file C3.1: Install per-plugin transaction cost instrumentation
+  // §perf-large-file C3.1/C4: Install per-plugin transaction cost instrumentation
+  // on the ACTIVE editor — the keep-alive editor that renders large docs is a
+  // separate instance, so instrumenting only the shared `editor` left its
+  // txBreakdown reading 0. instrumentEditor is idempotent per instance (WeakSet),
+  // so re-binding on activeEditor change instruments each editor exactly once.
   useEffect(() => {
-    if (editor) instrumentEditor(editor);
-  }, [editor]);
+    if (activeEditor) instrumentEditor(activeEditor);
+  }, [activeEditor]);
 
   // §72 Skills mode — auto-detect skill files and switch right panel
   const { isSkill } = useSkillsMode();
