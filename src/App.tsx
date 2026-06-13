@@ -355,7 +355,7 @@ function App() {
     editorStateCache,
     toggleSourceMode,
     handleSourceChange,
-  } = useSourceMode({ editor: activeEditor, appendHandleRef });
+  } = useSourceMode({ editor: activeEditor, appendHandleRef, pool: keepalive });
 
   // Auto-save for non-MD code files (debounced write when dirty)
   const { autoSave, autoSaveDelay } = useSettingsStore(
