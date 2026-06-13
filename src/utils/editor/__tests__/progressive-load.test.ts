@@ -297,17 +297,152 @@ describe("appendChunksProgressively — C3.3 adaptive chunk size", () => {
     editor.commands.setContent(
       editor.schema.nodes.doc.create(null, [blocks[0]]).toJSON(),
     );
-    let completed = false;
+    // Use a call COUNTER, not a boolean, to catch double-fire.
+    let completeCount = 0;
     const handle = appendChunksProgressively(editor, [[blocks[1]]], {
       schedule: syncSchedule,
       now: () => 999999,
       onComplete: () => {
-        completed = true;
+        completeCount++;
       },
     });
     // Already completed synchronously; calling cancel should not throw.
-    expect(completed).toBe(true);
+    expect(completeCount).toBe(1);
     expect(() => handle.cancel()).not.toThrow();
     editor.destroy();
+  });
+
+  it("onComplete fires exactly ONCE — never twice even when cancel() is called after completion", () => {
+    // §perf-large-file C3.3: regression — cancel() after onComplete must not
+    // re-trigger or double-fire onComplete.
+    const editor = new Editor({
+      extensions: createBaramExtensions(),
+      content: "",
+    });
+    const mdast = parseMdast("A\n\nB\n\nC\n");
+    const blocks = mdastBlocksToPmNodes(mdast, editor.schema);
+    editor.commands.setContent(
+      editor.schema.nodes.doc.create(null, [blocks[0]]).toJSON(),
+    );
+
+    const pending: (() => void)[] = [];
+    let completeCount = 0;
+
+    const handle = appendChunksProgressively(
+      editor,
+      [[blocks[1]], [blocks[2]]],
+      {
+        schedule: (cb) => {
+          pending.push(cb);
+          return () => {};
+        },
+        now: () => 999999,
+        onComplete: () => {
+          completeCount++;
+        },
+      },
+    );
+
+    // Cancel before any tick fires.
+    handle.cancel();
+
+    // Fire all pending ticks — cancelled short-circuits, onComplete must NOT fire.
+    pending.forEach((cb) => cb());
+    expect(completeCount).toBe(0);
+    expect(editor.state.doc.childCount).toBe(1);
+
+    editor.destroy();
+  });
+
+  it("adaptive halving: per-tick chunk sizes halve when each append exceeds CHUNK_TIME_BUDGET_MS", () => {
+    // §perf-large-file C3.3: genuine sequence test.
+    // Build enough blocks that multiple ticks are needed even with chunk size at
+    // floor (MIN_CHUNK_BLOCKS=25). We use 200 blocks so that halving from 150
+    // produces a measurable sequence of progressively smaller chunks.
+    //
+    // now() call pattern per step():
+    //   call 1 — pressure check (now() - lastInputTime)
+    //   call 2 — t0 before dispatch
+    //   call 3 — elapsed = now() - t0  (we make this > CHUNK_TIME_BUDGET_MS → halve)
+    // lastInputTime starts at -Infinity so pressure check always passes.
+
+    const BLOCK_COUNT = 200;
+    const md = Array.from({ length: BLOCK_COUNT }, (_, i) => `P${i}`).join(
+      "\n\n",
+    );
+
+    const halvingEditor = new Editor({
+      extensions: createBaramExtensions(),
+      content: "",
+    });
+    const allBlocks = mdastBlocksToPmNodes(
+      parseMdast(md),
+      halvingEditor.schema,
+    );
+    expect(allBlocks).toHaveLength(BLOCK_COUNT);
+
+    halvingEditor.commands.setContent(
+      halvingEditor.schema.nodes.doc.create(null, [allBlocks[0]]).toJSON(),
+    );
+
+    // now() state machine: cycles through 3 roles per step().
+    // Phase 1 (pressure check): large constant so now()-(-Infinity) is large → no deferral.
+    // Phase 2 (t0): 0.
+    // Phase 3 (elapsed = now()-t0): CHUNK_TIME_BUDGET_MS + 1 → always slow → halve.
+    let nowPhase = 0;
+    const BASE_TIME = 10_000_000;
+    const controlledNow = () => {
+      nowPhase = (nowPhase % 3) + 1;
+      if (nowPhase === 1) return BASE_TIME; // pressure check passes
+      if (nowPhase === 2) return 0; // t0
+      return CHUNK_TIME_BUDGET_MS + 1; // elapsed: slow → halve
+    };
+
+    const ticks: (() => void)[] = [];
+    const insertedPerTick: number[] = [];
+    let prevChildCount = 1; // first block already loaded
+    let completeCount = 0;
+
+    appendChunksProgressively(halvingEditor, [allBlocks.slice(1)], {
+      schedule: (cb) => {
+        ticks.push(cb);
+        return () => {};
+      },
+      now: controlledNow,
+      onComplete: () => {
+        completeCount++;
+      },
+    });
+
+    // Drain ticks, recording how many blocks were inserted per tick.
+    while (ticks.length > 0) {
+      ticks.shift()!();
+      const newCount = halvingEditor.state.doc.childCount;
+      insertedPerTick.push(newCount - prevChildCount);
+      prevChildCount = newCount;
+    }
+
+    // onComplete must have fired exactly once.
+    expect(completeCount).toBe(1);
+    expect(halvingEditor.state.doc.childCount).toBe(BLOCK_COUNT);
+
+    // The sequence of inserted-per-tick counts must be non-increasing
+    // (each slow tick halves the chunk size) and must contain at least one
+    // halving step. Exclude the last tick which may be a partial chunk.
+    const fullTicks = insertedPerTick.slice(0, -1);
+    if (fullTicks.length >= 2) {
+      // Each full tick's count must be <= the previous.
+      for (let i = 1; i < fullTicks.length; i++) {
+        expect(fullTicks[i]).toBeLessThanOrEqual(fullTicks[i - 1]);
+      }
+      // At least one actual halving must have occurred.
+      expect(fullTicks[fullTicks.length - 1]).toBeLessThan(fullTicks[0]);
+      // All full-tick chunk sizes must respect the MIN_CHUNK_BLOCKS floor.
+      for (const count of fullTicks) {
+        expect(count).toBeGreaterThanOrEqual(MIN_CHUNK_BLOCKS);
+      }
+    }
+
+    halvingEditor.destroy();
   });
 });

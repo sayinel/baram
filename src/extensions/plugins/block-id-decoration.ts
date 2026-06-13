@@ -241,6 +241,8 @@ function updateEntriesIncremental(
   newDoc: PmNode,
   focusedBlockPos: null | number,
   editingBlockPos: null | number,
+  oldFocusedBlockPos: null | number,
+  oldEditingBlockPos: null | number,
 ): { added: BlockIdEntry[]; dropped: BlockIdEntry[]; entries: BlockIdEntry[] } {
   // Collect old-doc changed ranges from StepMap old-coordinate callbacks.
   const oldRanges: { from: number; to: number }[] = [];
@@ -273,9 +275,9 @@ function updateEntriesIncremental(
             ? "focus"
             : "hint";
       const oldRole =
-        editingBlockPos === entry.pos
+        oldEditingBlockPos === entry.pos
           ? "edit"
-          : focusedBlockPos === entry.pos
+          : oldFocusedBlockPos === entry.pos
             ? "focus"
             : "hint";
       const sameRole = newRole === oldRole;
@@ -587,6 +589,8 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
                 newState.doc,
                 meta.focusedBlockPos,
                 meta.editingBlockPos,
+                value.focusedBlockPos,
+                value.editingBlockPos,
               );
               entries = result.entries;
               idCountMap = updateIdCountMap(
@@ -684,12 +688,15 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
             // §perf-large-file C3.1: incremental entry update + O(changed) map
             // §perf-large-file C3.1d: pass focus state so surviving entries get
             // the right Decoration object cached (preserves WidgetType identity).
+            // Pass old positions so oldRole is derived from previous state, not new.
             const result = updateEntriesIncremental(
               value.entries,
               tr,
               newState.doc,
               focusedBlockPos,
               editingBlockPos,
+              value.focusedBlockPos,
+              value.editingBlockPos,
             );
             entries = result.entries;
             idCountMap = updateIdCountMap(
