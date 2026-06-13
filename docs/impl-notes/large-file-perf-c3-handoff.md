@@ -2,22 +2,23 @@
 
 > Resume point for a fresh session. Branch: `feature/large-file-perf`. Plan: [`docs/plans/2026-06-11-large-file-perf-c3-plan.md`](../plans/2026-06-11-large-file-perf-c3-plan.md). Baseline/measurements: [`large-file-perf-baseline.md`](large-file-perf-baseline.md).
 
-## CURRENT BLOCKER (start here)
+## RESOLVED BLOCKER — large-file truncation (2026-06-13)
 
-**Symptom (user-reported in GUI, 2026-06-13):** Opening `CONTEXT.md` (3,531 top-level blocks) renders only the FIRST CHUNK — the document is truncated, the progressive fill never completes.
+**Symptom (user-reported in GUI):** Opening `CONTEXT.md` (~3,500 top-level blocks) renders only the FIRST CHUNK — the document is truncated, the progressive fill never completes.
 
-**Status:** UNDER INVESTIGATION, not yet fixed. No fix commit exists for this. Last action was tracing the code path; root cause NOT yet confirmed — do not assume, verify.
+**Status:** ROOT CAUSE CONFIRMED + FIXED. Verified by a deterministic repro test + full suite. Two earlier hypotheses were investigated and DISPROVED before the real cause was found — do not revisit them:
+1. StrictMode/cancellation (handoff's original lead) — disproved by GUI instrumentation: the `[activeTabId]` effect ran exactly once, no cancel/evict fired, the appender itself threw.
+2. Illegal top-level non-block node + a `sanitizeTopLevelNodes` pipeline guard — disproved: re-test still truncated AND emitted no warning, and a probe found 0 non-block top-level nodes. That fix was fully reverted.
 
-**What was being traced (evidence so far, all in `src/hooks/use-tab-switching.ts` keep-alive direct-load branch ~lines 460-575):**
-- First open of a large doc (`allNodes.length >= LARGE_DOC_BLOCK_THRESHOLD = 500`) creates a keep-alive editor, `keepalive.acquire(tabId, targetEditor)`, `onActiveEditorChange(targetEditor)` — this triggers a React setState (`setActiveKeepaliveEditor`, `App.tsx:259-261`).
-- THEN first chunk `updateState` runs inside a `setTimeout`, and the rest is scheduled via `appendChunksProgressively(targetEditor, restChunks, { onComplete: finishLoad })` (use-tab-switching.ts:563).
-- The effect's cleanup (`use-tab-switching.ts:598-607`) runs `appendHandleRef.current?.handle.cancel()` + `progressiveLoadRef.current.cancelled = true` BEFORE the next effect body. The effect dep array is `[activeTabId]`.
+**Actual root cause — cross-schema node insertion.** The keep-alive editor (large-doc path, C3.5) is a SEPARATE `Editor` instance created by `createKeepaliveEditor()`, so it has its OWN `Schema` instance — `editor.schema !== keepAliveEditor.schema`, and their `NodeType`s are distinct objects. `use-tab-switching.ts` built the PM nodes with `mdastBlocksToPmNodes(mdast, editor.schema)` (the SHARED editor's schema) but then created the first-chunk doc and ran the appender on the keep-alive editor. ProseMirror compares `NodeType` by **identity**, so the keep-alive editor's `doc.contentMatchAt()` treats every shared-schema node as not-a-block and throws `Called contentMatchAt on a node with invalid content`. The first chunk still renders because `doc.create()`/`updateState()` skip validation; the appender's first `tr.insert()` validates and throws → fill dies → truncation. Small docs use the shared editor only (same schema) → never hit it.
 
-**PRIME SUSPECT (hypothesis, UNVERIFIED):** `onActiveEditorChange(targetEditor)` at line 486 calls `setActiveKeepaliveEditor` → App re-renders. If that re-render causes the `[activeTabId]` effect to re-run (it should NOT, activeTabId is unchanged — but verify whether something else in the dep chain or a StrictMode double-invoke does), the cleanup fires `appendHandleRef.current?.handle.cancel()` and `progressiveLoadRef.current.cancelled = true`, killing the in-flight appender after only the first chunk. Note `main.tsx:35` wraps the app in `React.StrictMode` → effects run twice in dev; the SECOND mount's cleanup of the FIRST could cancel the appender. **This is the strongest lead — check StrictMode double-invoke interaction with the appender first.**
-- Also check: `appendChunksProgressively` input-pressure deferral (`progressive-load.ts:165-169`) — `if (now() - lastInputTime < INPUT_QUIET_MS) reschedule`. If a `wheel`/`pointerdown`/`keydown` fires continuously (or `lastInputTime` is seeded wrong), the fill could defer forever. Less likely (would resume when input stops) but rule it out.
-- Also check: `editor.isDestroyed` guard (`progressive-load.ts:153`) — if the keep-alive editor gets destroyed by an eviction/cleanup mid-fill, step() silently returns. Tie-in with the StrictMode suspicion.
+**The GUI console evidence that cracked it (instrumented run):** `EFFECT run #2` (exactly once) → `THEN allNodes=3561 … isLargeDoc=true` → `keepalive: +1 editor` → `updateState(first chunk)` → `appender START` → `Error: Called contentMatchAt … at step → replace → replaceStep → canReplace → contentMatchAt`. No cancel, no evict, no `[WARN] illegal top-level node` — the appender threw on its first insert into the keep-alive editor.
 
-**How to confirm:** add a temporary log in `appendChunksProgressively`'s `step()` (cancelled branch vs isDestroyed branch vs deferral branch) and in the effect cleanup; reproduce by opening CONTEXT.md; see which path stops the fill. Then fix narrowly.
+**Fix:** `src/hooks/use-tab-switching.ts` — after choosing `targetEditor` (which may be the keep-alive editor), re-convert the mdast with `targetEditor.schema` before chunking when `targetEditor !== editor`: `const targetNodes = targetEditor === editor ? allNodes : mdastBlocksToPmNodes(mdast, targetEditor.schema)`. So every node's `NodeType` belongs to the editor it is inserted into. Cost: one extra `convert(mdast→PM)` (~50ms) only on the large-doc keep-alive open path; the shared-editor path is unchanged (reuses `allNodes`). Regression test: `src/utils/editor/__tests__/keepalive-cross-schema.test.ts` (distinct-schema identity; HAZARD = cross-schema `toThrow(/contentMatchAt/)`; FIX = same-schema appends fully).
+
+**Follow-up / watch-outs:**
+- The same cross-schema trap applies to ANY code that builds nodes with one editor's schema and inserts into another. The source-mode large-doc path (`use-source-mode.ts`) builds with its own `editor` (the active editor, which for a pooled tab IS the keep-alive editor) so it is consistent — but verify if that routing changes.
+- Possible optimization (not done): decide `isLargeDoc` from a cheap pre-convert estimate so the keep-alive path converts only once instead of twice. Correctness-first chose the double-convert; revisit only if the ~50ms shows up in C3.6 measurements.
 
 ## What C3 has delivered (all committed, all reviewed APPROVED, full suite 2453 pass + tsc clean at HEAD 7816ac6)
 
