@@ -465,13 +465,6 @@ export function useTabSwitching({
             const allNodes = timePhase("convert(mdast→PM)", () =>
               mdastBlocksToPmNodes(mdast, editor.schema),
             );
-            const chunks = chunkBlocks(
-              allNodes,
-              FIRST_CHUNK_BLOCKS,
-              REST_CHUNK_BLOCKS,
-            );
-            const firstChunk = chunks[0] ?? [];
-            const restChunks = chunks.slice(1);
 
             // §perf-large-file C3.5: decide up-front whether to load into a
             // keep-alive editor (direct-load variant — simpler to verify).
@@ -485,6 +478,26 @@ export function useTabSwitching({
               keepalive.acquire(activeTabId!, targetEditor);
               onActiveEditorChange(targetEditor);
             }
+
+            // §perf-large-file C3: the keep-alive editor is a SEPARATE Editor
+            // instance with its OWN Schema. ProseMirror compares NodeTypes by
+            // identity, so nodes built with `editor.schema` are foreign to the
+            // keep-alive editor — its `doc.contentMatchAt` rejects them ("Called
+            // contentMatchAt on a node with invalid content"), which throws on
+            // the first progressive append and truncates the document to the
+            // first chunk. Re-convert against the target editor's schema when it
+            // differs so every node's NodeType belongs to the right schema.
+            const targetNodes =
+              targetEditor === editor
+                ? allNodes
+                : mdastBlocksToPmNodes(mdast, targetEditor.schema);
+            const chunks = chunkBlocks(
+              targetNodes,
+              FIRST_CHUNK_BLOCKS,
+              REST_CHUNK_BLOCKS,
+            );
+            const firstChunk = chunks[0] ?? [];
+            const restChunks = chunks.slice(1);
 
             const doc = targetEditor.schema.nodes.doc.create(
               null,
