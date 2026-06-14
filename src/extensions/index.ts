@@ -78,7 +78,6 @@ import { SlashCommands } from "./plugins/slash-command";
 import { SyntaxReveal } from "./plugins/syntax-reveal";
 import { TagClick } from "./plugins/tag-click";
 import { TagSuggest } from "./plugins/tag-suggest";
-import { ViewportVirtualize } from "./plugins/viewport-virtualize";
 import { WikilinkSuggest } from "./plugins/wikilink-suggest";
 
 interface BaramExtensionOptions {
@@ -242,11 +241,6 @@ export function createBaramExtensions(
 
     // Plugins — Heading & List Folding (Obsidian-style)
     Fold,
-
-    // Plugins — §perf-large-file C4 Phase 0 SPIKE: block virtualization probe.
-    // No-op unless window.__baramFlags.virtualize is set (DEV-only). See
-    // viewport-virtualize.ts. Throwaway measurement scaffolding.
-    ViewportVirtualize,
 
     // UI
     Placeholder.configure({
