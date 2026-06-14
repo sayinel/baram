@@ -3,7 +3,25 @@
 > Date: 2026-06-13
 > Mode: RALPLAN-DR **DELIBERATE** (high cross-cutting regression risk)
 > Predecessors: `docs/plans/2026-06-09-large-file-perf-plan.md`, `2026-06-10-large-file-perf-c2-plan.md`, `2026-06-11-large-file-perf-c3-plan.md`
-> Status: PLAN — Phase 0 spike gates the whole effort. Do NOT commit to the full approach before the go/no-go gate.
+> Status: **Phase 0 spike = GO (2026-06-14).** Proceed to Phase 1+ hardening.
+
+## Phase 0 RESULT — GO (2026-06-14)
+
+Measured on the `CONTEXT.md` fixture (WKWebView/Tauri dev) via `window.__baramPerf` typing avg (`transactions.totalMs / count`), after the §9 active-editor instrumentation fix landed:
+
+| | typing avg / tx |
+|---|---|
+| flag OFF (current C3) | **467 ms** (consistent across runs: 519 / 530 / 467) |
+| flag ON (off-screen blocks `content-visibility:hidden`) | **28 ms** (~16× faster, **under the 33 ms target**) |
+
+**Resolved unknowns:**
+- §2.5 — YES: on WKWebView, `content-visibility:hidden` + `contain-intrinsic-size` on off-screen top-level blocks DOES remove them from the synchronous forced layout the typing path triggers. The dominant per-keystroke cost was WebKit laying out all ~3,500 blocks (~97% of tx time; plugins ~3%, confirmed via the C4 per-plugin instrumentation fix).
+- Pre-mortem #1 fear (content-visibility ineffective / repeats the `auto` failure) — DISPROVED for the `hidden` (script-gated) variant.
+- The v1/v2 spike froze due to **Decoration.node churn** (~3,400 decorations remapped + re-applied per keystroke — the C3.1d identity-churn class), NOT content-visibility. The winning probe (`viewport-virtualize.ts` v3, commit `1260a70`) toggles content-visibility **imperatively** on off-screen block DOM only when the visible window changes (never per keystroke) → zero per-keystroke plugin work.
+
+**Implication for the production design:** Option A is confirmed, but the implementation MUST be churn-free. The spike's imperative-DOM-toggle approach (not PM `Decoration.node`) is the viable basis — it sidesteps the decoration-remap churn entirely. Phase 1 hardens it (scroll stability, click/nav reveal, export-suspend per AM-4, fold compose, NodeView lazy-mount, kill switch → settings flag).
+
+> Status: PLAN — Phase 0 spike gated the effort; gate PASSED. Phase 0→1 commitment still requires the AM-1..AM-7 amendments (export-suspend, AC re-spec, etc.) to be implemented in Phase 1.
 
 ---
 
