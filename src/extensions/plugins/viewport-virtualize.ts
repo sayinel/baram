@@ -1,5 +1,3 @@
-import type { EditorView } from "@tiptap/pm/view";
-
 // §perf-large-file C4 — Phase 0 SPIKE: block-level virtualization probe.
 //
 // Evidence (window.__baramPerf on the CONTEXT.md fixture): ~97% of per-keystroke
@@ -11,15 +9,21 @@ import type { EditorView } from "@tiptap/pm/view";
 //
 // SPIKE — DEV-only, OFF by default, no doc mutation (decorations only), so it is
 // a no-op unless explicitly toggled. Toggle live in the DevTools console:
-//   window.__baramFlags = { virtualize: true };            // enable
-//   window.__baramFlags = { virtualize: true, shim: false }; // measure UN-shimmed click (plan §12 AM-5)
-//   window.__baramFlags = {};                              // disable
-// Then scroll once (to trigger the first window compute) and measure typing via
-// __baramPerf (avgTxMs OFF vs ON) and a timed click into an off-screen region.
+//   window.__baramFlags = { virtualize: true };             // enable
+//   window.__baramFlags = { virtualize: true, shim: false };// un-shimmed click (plan §12 AM-5)
+//   window.__baramFlags = {};                               // disable (re-renders all on next scroll)
+// Then scroll once (first window compute) and measure typing via __baramPerf
+// (avgTxMs OFF vs ON) and a timed click into an off-screen region.
 //
-// This is throwaway measurement scaffolding; the production design is
-// docs/plans/2026-06-13-large-file-perf-c4-virtualization-plan.md. Delete or
-// harden after the Phase 0 go/no-go gate.
+// Loop-safety (v2): heights are measured ONCE per doc-structure and cached by
+// block index; a window is recomputed from scrollTop arithmetic (no per-scroll
+// rect reads), and a decoration dispatch happens ONLY when the visible index
+// window actually changes. With contain-intrinsic-size = cached real height the
+// total document height is preserved, so applying the hide does not shift
+// scrollTop — which is what made v1 feed back into an infinite recompute loop.
+//
+// Throwaway measurement scaffolding; production design in
+// docs/plans/2026-06-13-large-file-perf-c4-virtualization-plan.md.
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
@@ -44,38 +48,6 @@ function flags(): VirtualizeFlags {
 /** Render the viewport plus this much above/below (px). */
 const BUFFER_PX = 1000;
 
-/** Compute a DecorationSet that hides every top-level block outside the
- *  viewport band. Reads geometry (forces a layout) — scroll-gated, not
- *  keystroke-gated, so it does not inflate typing latency. */
-function computeHiddenSet(view: EditorView): DecorationSet {
-  if (!flags().virtualize) return DecorationSet.empty;
-  const scroller = view.dom.closest<HTMLElement>(".editor-area-scroll");
-  if (!scroller) return DecorationSet.empty;
-
-  const sRect = scroller.getBoundingClientRect();
-  const bandTop = sRect.top - BUFFER_PX;
-  const bandBottom = sRect.bottom + BUFFER_PX;
-
-  const decos: Decoration[] = [];
-  const { doc } = view.state;
-  doc.forEach((node, offset) => {
-    const dom = view.nodeDOM(offset);
-    if (!(dom instanceof HTMLElement)) return;
-    const r = dom.getBoundingClientRect();
-    // Off-screen (fully above or fully below the band) → hide it but reserve
-    // its current height so the scrollbar/offset stays stable.
-    if (r.bottom < bandTop || r.top > bandBottom) {
-      const h = Math.max(1, Math.round(r.height));
-      decos.push(
-        Decoration.node(offset, offset + node.nodeSize, {
-          style: `content-visibility:hidden;contain-intrinsic-size:auto ${h}px;`,
-        }),
-      );
-    }
-  });
-  return DecorationSet.create(doc, decos);
-}
-
 export const ViewportVirtualize = Extension.create({
   name: "viewportVirtualize",
 
@@ -87,12 +59,10 @@ export const ViewportVirtualize = Extension.create({
           init: () => DecorationSet.empty,
           apply(tr, old) {
             const meta = tr.getMeta(viewportVirtualizeKey);
-            // Scroll handler computed a fresh window.
-            if (meta instanceof DecorationSet) return meta;
-            // Pre-reveal shim: drop all hiding so posAtCoords sees real DOM.
-            if (meta === "reveal") return DecorationSet.empty;
-            // Otherwise keep the current window, mapped through doc edits so
-            // typing does NOT re-lay-out the hidden blocks.
+            if (meta instanceof DecorationSet) return meta; // fresh window
+            if (meta === "reveal") return DecorationSet.empty; // shim
+            // Map the current window through edits so typing does NOT
+            // re-lay-out the hidden blocks.
             return old.map(tr.mapping, tr.doc);
           },
         },
@@ -100,39 +70,143 @@ export const ViewportVirtualize = Extension.create({
           decorations(state) {
             return viewportVirtualizeKey.getState(state);
           },
-          handleDOMEvents: {
-            mousedown(view) {
-              const f = flags();
-              if (!f.virtualize || f.shim === false) return false;
-              // Reveal everything before the click's posAtCoords runs, then
-              // re-virtualize on the next frame.
-              view.dispatch(
-                view.state.tr.setMeta(viewportVirtualizeKey, "reveal"),
-              );
-              requestAnimationFrame(() => recompute(view));
-              return false;
-            },
-          },
         },
         view(editorView) {
           const scroller = editorView.dom.closest<HTMLElement>(
             ".editor-area-scroll",
           );
+
+          // Cached per-block-index geometry (measured once per doc structure).
+          let tops: number[] = [];
+          let heights: number[] = [];
+          let measuredFor = -1; // doc.childCount the cache was built for
+          let lastFirst = -1;
+          let lastLast = -1;
           let raf = 0;
-          const onScroll = () => {
-            if (!flags().virtualize) return;
+
+          /** Measure each top-level block's height + cumulative top, once. */
+          const measure = (): void => {
+            tops = [];
+            heights = [];
+            let acc = 0;
+            const { doc } = editorView.state;
+            doc.forEach((_node, offset) => {
+              const dom = editorView.nodeDOM(offset);
+              const h = dom instanceof HTMLElement ? dom.offsetHeight : 0;
+              tops.push(acc);
+              heights.push(h);
+              acc += h;
+            });
+            measuredFor = doc.childCount;
+          };
+
+          const clearWindow = (): void => {
+            lastFirst = -1;
+            lastLast = -1;
+            if (!editorView.isDestroyed) {
+              editorView.dispatch(
+                editorView.state.tr.setMeta(
+                  viewportVirtualizeKey,
+                  DecorationSet.empty,
+                ),
+              );
+            }
+          };
+
+          const recompute = (): void => {
+            if (editorView.isDestroyed || !scroller) return;
+            if (!flags().virtualize) {
+              if (lastFirst !== -1) clearWindow();
+              return;
+            }
+            const { doc } = editorView.state;
+            // (Re)measure only when the block COUNT changes — never per scroll
+            // and never per keystroke (single-char edits keep the count).
+            if (doc.childCount !== measuredFor) measure();
+            if (heights.length === 0) return;
+
+            const top = scroller.scrollTop - BUFFER_PX;
+            const bottom =
+              scroller.scrollTop + scroller.clientHeight + BUFFER_PX;
+
+            let first = 0;
+            for (let i = 0; i < heights.length; i++) {
+              if (tops[i] + heights[i] >= top) {
+                first = i;
+                break;
+              }
+            }
+            let last = heights.length - 1;
+            for (let i = heights.length - 1; i >= 0; i--) {
+              if (tops[i] <= bottom) {
+                last = i;
+                break;
+              }
+            }
+
+            // CHANGE-GUARD: only dispatch when the visible window moved. This is
+            // what stops the recompute→dispatch→scroll feedback loop.
+            if (first === lastFirst && last === lastLast) return;
+            lastFirst = first;
+            lastLast = last;
+
+            const decos: Decoration[] = [];
+            let idx = 0;
+            doc.forEach((node, offset) => {
+              if (idx < first || idx > last) {
+                const h = Math.max(1, Math.round(heights[idx] || 1));
+                decos.push(
+                  Decoration.node(offset, offset + node.nodeSize, {
+                    style: `content-visibility:hidden;contain-intrinsic-size:auto ${h}px;`,
+                  }),
+                );
+              }
+              idx++;
+            });
+            editorView.dispatch(
+              editorView.state.tr.setMeta(
+                viewportVirtualizeKey,
+                DecorationSet.create(doc, decos),
+              ),
+            );
+          };
+
+          const scheduleRecompute = (): void => {
             if (raf) return;
             raf = requestAnimationFrame(() => {
               raf = 0;
-              recompute(editorView);
+              recompute();
             });
           };
-          scroller?.addEventListener("scroll", onScroll, { passive: true });
-          // Defer the first compute so initial layout has settled.
-          const initRaf = requestAnimationFrame(onScroll);
+
+          // Click pre-reveal shim: reveal all before PM's posAtCoords, then
+          // re-virtualize next frame. Capture phase so it runs before PM.
+          const onMouseDown = (): void => {
+            const f = flags();
+            if (!f.virtualize || f.shim === false) return;
+            if (lastFirst === -1) return; // nothing hidden
+            editorView.dispatch(
+              editorView.state.tr.setMeta(viewportVirtualizeKey, "reveal"),
+            );
+            lastFirst = -1;
+            lastLast = -1;
+            requestAnimationFrame(scheduleRecompute);
+          };
+
+          scroller?.addEventListener("scroll", scheduleRecompute, {
+            passive: true,
+          });
+          editorView.dom.addEventListener("mousedown", onMouseDown, {
+            capture: true,
+          });
+          const initRaf = requestAnimationFrame(scheduleRecompute);
+
           return {
             destroy() {
-              scroller?.removeEventListener("scroll", onScroll);
+              scroller?.removeEventListener("scroll", scheduleRecompute);
+              editorView.dom.removeEventListener("mousedown", onMouseDown, {
+                capture: true,
+              });
               if (raf) cancelAnimationFrame(raf);
               cancelAnimationFrame(initRaf);
             },
@@ -142,10 +216,3 @@ export const ViewportVirtualize = Extension.create({
     ];
   },
 });
-
-/** Recompute the hidden window and install it via a no-doc-change transaction. */
-function recompute(view: EditorView): void {
-  if (view.isDestroyed) return;
-  const set = computeHiddenSet(view);
-  view.dispatch(view.state.tr.setMeta(viewportVirtualizeKey, set));
-}
