@@ -301,10 +301,24 @@ export function initPerfTrace(): void {
 // editor that actually renders large docs reported txBreakdown=0. A WeakSet lets
 // each editor be instrumented exactly once without leaking references.
 let instrumentedEditors = new WeakSet<object>();
+// §perf-large-file C4: EditorState.create() (used by view.updateState during
+// load / source-mode / cache-restore) builds a NEW Configuration with a NEW
+// `fields` array, discarding any field.apply patch installed on the previous
+// config. So per-plugin instrumentation silently went to 0 on large docs (the
+// keep-alive editor is always updateState'd after instrumentation). We instead
+// re-patch the live config's fields on every dispatch — idempotent per config
+// object via this WeakSet — so plugin costs survive config replacement.
+let patchedConfigs = new WeakSet<object>();
+
+interface FieldLike {
+  apply: (...args: unknown[]) => unknown;
+  name: string;
+}
 
 /** Reset module-level instrumentation state. Only intended for unit tests. */
 export function _resetInstrumentationForTest(): void {
   instrumentedEditors = new WeakSet<object>();
+  patchedConfigs = new WeakSet<object>();
   resetTxBreakdown();
 }
 
@@ -314,44 +328,11 @@ export function instrumentEditor(editor: AnyEditor): void {
   instrumentedEditors.add(editor);
 
   // --- 1. Patch config.fields[].apply to accumulate per-plugin costs --------
-  // ProseMirror binds plugin.spec.state.apply into FieldDesc.apply at
-  // configuration time, so we must patch field.apply on the live config.fields
-  // array (not plugin.spec.state.apply which is already bound away).
-  const fields: Array<{
-    apply: (...args: unknown[]) => unknown;
-    name: string;
-  }> = editor.state?.config?.fields ?? [];
-
-  for (const field of fields) {
-    // Skip base fields (doc, selection, storedMarks, scrollToSelection)
-    if (
-      field.name === "doc" ||
-      field.name === "selection" ||
-      field.name === "storedMarks" ||
-      field.name === "scrollToSelection"
-    ) {
-      continue;
-    }
-    const originalApply = field.apply.bind(field);
-    // The plugin key string looks like "syntaxReveal$0"; strip the "$N" suffix
-    // for a readable display name.
-    const displayName = field.name.replace(/\$\d+$/, "");
-    let acc = pluginCosts.get(displayName);
-    if (!acc) {
-      acc = { calls: 0, maxMs: 0, name: displayName, totalMs: 0 };
-      pluginCosts.set(displayName, acc);
-    }
-    const cost = acc;
-    field.apply = function (...args: unknown[]) {
-      const t0 = performance.now();
-      const result = originalApply(...args);
-      const elapsed = performance.now() - t0;
-      cost.totalMs += elapsed;
-      cost.calls++;
-      if (elapsed > cost.maxMs) cost.maxMs = elapsed;
-      return result;
-    };
-  }
+  // Patch the current config now; the dispatch wrapper re-patches whenever
+  // view.updateState swaps in a freshly-created config (see patchedConfigs).
+  patchConfigFields(
+    (editor.state as undefined | { config?: { fields?: FieldLike[] } })?.config,
+  );
 
   // --- 2. Patch editor.emit to accumulate per-event costs -------------------
   // tiptap's dispatchTransaction calls this.emit("transaction"), "update", etc.
@@ -382,6 +363,14 @@ export function instrumentEditor(editor: AnyEditor): void {
   const originalDispatch = view.dispatch.bind(view);
 
   view.dispatch = function (tr: unknown) {
+    // §perf-large-file C4: re-patch the live config's fields if view.updateState
+    // swapped in a new Configuration since the last dispatch. The tr applies to
+    // editor.state.config, so patching it here (idempotent) captures THIS tx's
+    // plugin applies even after a config replacement.
+    patchConfigFields(
+      (editor.state as undefined | { config?: { fields?: FieldLike[] } })
+        ?.config,
+    );
     // Snapshot per-plugin totals before dispatch to compute per-tx top-2
     const snapBefore = new Map<string, number>();
     for (const [k, v] of pluginCosts) snapBefore.set(k, v.totalMs);
@@ -415,4 +404,43 @@ export function instrumentEditor(editor: AnyEditor): void {
       );
     }
   };
+}
+
+/** Patch each plugin field's `apply` on a Configuration to accumulate per-plugin
+ *  cost. Idempotent per config object. DEV-only callers. */
+function patchConfigFields(config: undefined | { fields?: FieldLike[] }): void {
+  if (!config || patchedConfigs.has(config)) return;
+  patchedConfigs.add(config);
+  const fields: FieldLike[] = config.fields ?? [];
+  for (const field of fields) {
+    // Skip base fields (doc, selection, storedMarks, scrollToSelection)
+    if (
+      field.name === "doc" ||
+      field.name === "selection" ||
+      field.name === "storedMarks" ||
+      field.name === "scrollToSelection"
+    ) {
+      continue;
+    }
+    const originalApply = field.apply.bind(field);
+    // The plugin key string looks like "syntaxReveal$0"; strip the "$N" suffix
+    // for a readable display name. The cost accumulator is keyed by display
+    // name (module-level pluginCosts) so it survives across config replacements.
+    const displayName = field.name.replace(/\$\d+$/, "");
+    let acc = pluginCosts.get(displayName);
+    if (!acc) {
+      acc = { calls: 0, maxMs: 0, name: displayName, totalMs: 0 };
+      pluginCosts.set(displayName, acc);
+    }
+    const cost = acc;
+    field.apply = function (...args: unknown[]) {
+      const t0 = performance.now();
+      const result = originalApply(...args);
+      const elapsed = performance.now() - t0;
+      cost.totalMs += elapsed;
+      cost.calls++;
+      if (elapsed > cost.maxMs) cost.maxMs = elapsed;
+      return result;
+    };
+  }
 }

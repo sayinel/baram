@@ -1,5 +1,6 @@
 // §perf-large-file C3.0/C3.1: Tests for perf-trace utilities (jsdom-safe subset)
 import { Editor } from "@tiptap/core";
+import { EditorState } from "@tiptap/pm/state";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createBaramExtensions } from "../../../extensions";
@@ -270,6 +271,35 @@ describe("instrumentEditor", () => {
 
     shared.destroy();
     keepAlive.destroy();
+  });
+
+  // §perf-large-file C4: view.updateState(EditorState.create({plugins})) builds
+  // a NEW config.fields array, dropping the field.apply patch. The dispatch
+  // wrapper must re-patch the live config so per-plugin breakdown survives —
+  // otherwise large-doc typing reports plugins all-zero (the observed bug).
+  it("per-plugin breakdown survives a config replacement (updateState) — R-config", () => {
+    const editor = new Editor({
+      extensions: createBaramExtensions(),
+      content: "<p>a</p>",
+    });
+    instrumentEditor(editor);
+
+    // Replace the config exactly like the large-doc load path does.
+    editor.view.updateState(
+      EditorState.create({
+        doc: editor.state.doc,
+        plugins: editor.state.plugins,
+      }),
+    );
+
+    window.__baramPerf!.reset();
+    editor.commands.insertContent("b");
+
+    const { plugins } = window.__baramPerf!.txBreakdown();
+    // Pre-fix this was all-zero because the patched config was discarded.
+    expect(plugins.some((p) => p.calls > 0)).toBe(true);
+
+    editor.destroy();
   });
 
   it("is idempotent per instance — re-instrumenting the same editor does not double-count", () => {
