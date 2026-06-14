@@ -78,6 +78,7 @@ import { SlashCommands } from "./plugins/slash-command";
 import { SyntaxReveal } from "./plugins/syntax-reveal";
 import { TagClick } from "./plugins/tag-click";
 import { TagSuggest } from "./plugins/tag-suggest";
+import { ViewportVirtualize } from "./plugins/viewport-virtualize";
 import { WikilinkSuggest } from "./plugins/wikilink-suggest";
 
 interface BaramExtensionOptions {
@@ -241,6 +242,10 @@ export function createBaramExtensions(
 
     // Plugins — Heading & List Folding (Obsidian-style)
     Fold,
+
+    // Plugins — §perf-large-file C4 A1: block virtualization (DEV, OFF by
+    // default via window.__baramFlags.virtualize). See viewport-virtualize.ts.
+    ViewportVirtualize,
 
     // UI
     Placeholder.configure({
