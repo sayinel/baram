@@ -50,6 +50,10 @@ interface VBlockView extends NodeView {
  *  block NodeViews' visibility — only on window change, never per keystroke. */
 class VirtualizeController {
   private idleTimer = 0;
+  private readonly positions = new Map<
+    VBlockView,
+    { bottom: number; top: number }
+  >();
   private scroller: HTMLElement | null = null;
   private scrollRaf = 0;
   private started = false;
@@ -77,16 +81,22 @@ class VirtualizeController {
 
   unregister(nv: VBlockView): void {
     this.views.delete(nv);
+    this.positions.delete(nv);
   }
 
   private evaluate(nv: VBlockView): void {
     if (!this.scroller) return;
-    const top = nv.dom.offsetTop;
-    const h = nv.dom.offsetHeight;
+    let p = this.positions.get(nv);
+    if (!p) {
+      // Created mid-burst / not cached yet — read once and cache.
+      const t = nv.dom.offsetTop;
+      p = { bottom: t + nv.dom.offsetHeight, top: t };
+      this.positions.set(nv, p);
+    }
     const bandTop = this.scroller.scrollTop - BUFFER_PX;
     const bandBottom =
       this.scroller.scrollTop + this.scroller.clientHeight + BUFFER_PX;
-    nv.setHidden(top + h < bandTop || top > bandBottom, h);
+    nv.setHidden(p.bottom < bandTop || p.top > bandBottom, p.bottom - p.top);
   }
 
   private evaluateAll(): void {
@@ -97,7 +107,22 @@ class VirtualizeController {
     if (!this.typing) return;
     this.typing = false;
     this.showAll();
+    // Refresh the position cache off the typing path (after reveal, idle).
+    requestAnimationFrame(() => this.measurePositions());
   };
+
+  /** Read every block's doc-relative position into the cache. One forced
+   *  layout, but only at idle/init — never during a typing burst — so a
+   *  keystroke never pays for it. offsetTop is scroll-independent, so the cache
+   *  stays valid across scrolling; only content edits invalidate it (refreshed
+   *  on the next idle). */
+  private measurePositions(): void {
+    if (this.typing) return;
+    for (const nv of this.views) {
+      const t = nv.dom.offsetTop;
+      this.positions.set(nv, { bottom: t + nv.dom.offsetHeight, top: t });
+    }
+  }
 
   private onKeyDown = (): void => {
     if (!flagOn()) return;
@@ -131,6 +156,7 @@ class VirtualizeController {
     this.scroller = view.dom.closest<HTMLElement>(".editor-area-scroll");
     view.dom.addEventListener("keydown", this.onKeyDown, { capture: true });
     this.scroller?.addEventListener("scroll", this.onScroll, { passive: true });
+    requestAnimationFrame(() => this.measurePositions());
   }
 }
 
