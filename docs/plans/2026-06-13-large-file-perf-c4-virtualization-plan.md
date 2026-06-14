@@ -3,9 +3,9 @@
 > Date: 2026-06-13
 > Mode: RALPLAN-DR **DELIBERATE** (high cross-cutting regression risk)
 > Predecessors: `docs/plans/2026-06-09-large-file-perf-plan.md`, `2026-06-10-large-file-perf-c2-plan.md`, `2026-06-11-large-file-perf-c3-plan.md`
-> Status: **Phase 0 spike = GO (2026-06-14).** Proceed to Phase 1+ hardening.
+> Status: **Phase 0 spike DONE → C4 PAUSED (2026-06-14).** Mechanism validated, but no cheap implementation works; the robust path is A1 (NodeView) — a substantial effort deferred until there is appetite. The truncation bug (the real user-facing issue) is fixed and shipped separately (commit `d0d655b`). Spike plugin removed; this plan + the perf instrumentation fixes are kept.
 
-## Phase 0 RESULT — GO (2026-06-14)
+## Phase 0 RESULT — mechanism GO, but PAUSED (no cheap impl) (2026-06-14)
 
 Measured on the `CONTEXT.md` fixture (WKWebView/Tauri dev) via `window.__baramPerf` typing avg (`transactions.totalMs / count`), after the §9 active-editor instrumentation fix landed:
 
@@ -17,11 +17,16 @@ Measured on the `CONTEXT.md` fixture (WKWebView/Tauri dev) via `window.__baramPe
 **Resolved unknowns:**
 - §2.5 — YES: on WKWebView, `content-visibility:hidden` + `contain-intrinsic-size` on off-screen top-level blocks DOES remove them from the synchronous forced layout the typing path triggers. The dominant per-keystroke cost was WebKit laying out all ~3,500 blocks (~97% of tx time; plugins ~3%, confirmed via the C4 per-plugin instrumentation fix).
 - Pre-mortem #1 fear (content-visibility ineffective / repeats the `auto` failure) — DISPROVED for the `hidden` (script-gated) variant.
-- The v1/v2 spike froze due to **Decoration.node churn** (~3,400 decorations remapped + re-applied per keystroke — the C3.1d identity-churn class), NOT content-visibility. The winning probe (`viewport-virtualize.ts` v3, commit `1260a70`) toggles content-visibility **imperatively** on off-screen block DOM only when the visible window changes (never per keystroke) → zero per-keystroke plugin work.
+- The v1/v2 spike froze due to **Decoration.node churn** (~3,400 decorations remapped + re-applied per keystroke — the C3.1d identity-churn class), NOT content-visibility.
 
-**Implication for the production design:** Option A is confirmed, but the implementation MUST be churn-free. The spike's imperative-DOM-toggle approach (not PM `Decoration.node`) is the viable basis — it sidesteps the decoration-remap churn entirely. Phase 1 hardens it (scroll stability, click/nav reveal, export-suspend per AM-4, fold compose, NodeView lazy-mount, kill switch → settings flag).
+**But the cheap approaches do NOT survive integration (why C4 is paused):** the spike iterated v1→v5 and hit a hard wall — there is no quick, robust way to keep off-screen blocks hidden under ProseMirror:
+- **Decoration.node (v1/v2):** survives PM re-renders but remaps ~3,400 node decorations per keystroke → froze typing.
+- **Imperative `el.style.contentVisibility` (v3/v4/v5):** no churn, and gave the 28ms number — BUT only in a *fixed-position, short* measurement. In sustained typing, OTHER plugins' decorations (fold, block-id, …) shift position below the caret and make PM **re-render those blocks, clobbering the imperative inline style** → blocks get laid out again → typing fell back to ~800–1260ms (SLOW TX logs, `plugins≈none`), i.e. *worse* than OFF (467ms) due to content-visibility toggle thrash.
+- **Typing-only hybrid (v5):** hide on keydown / reveal on idle. Same clobbering → still slow; also trades nothing because always-on virtualization trades typing speed for scroll speed (laid-out blocks scroll free on the compositor; hidden blocks must be laid out as they enter → slow scroll).
 
-> Status: PLAN — Phase 0 spike gated the effort; gate PASSED. Phase 0→1 commitment still requires the AM-1..AM-7 amendments (export-suspend, AC re-spec, etc.) to be implemented in Phase 1.
+**Conclusion:** the §2.5 mechanism is real (content-visibility:hidden DOES exclude off-screen blocks from WKWebView's forced layout), but a production solution must let PM own the off-screen rendering decision so it is not clobbered — i.e. **Option A1 (a per-top-level-block NodeView that renders a sized placeholder when off-screen)**. That is the substantial, multi-phase effort the plan scoped (with the selection/DOMObserver risks in §5/§7). No cheaper path survived. **C4 is paused here**; resume with A1 + the AM-1..AM-7 amendments when there is appetite.
+
+> Status: PAUSED — Phase 0 gate ran; mechanism validated but the cheap implementations failed integration. A1 (NodeView) is the only robust path and is deferred. Spike plugin (`viewport-virtualize.ts`) removed; perf instrumentation fixes (active-editor + config-survival) and this plan are kept.
 
 ---
 
