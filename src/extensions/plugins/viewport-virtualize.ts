@@ -32,14 +32,11 @@ export const viewportVirtualizeKey = new PluginKey("viewportVirtualize");
 /** Block types virtualized in this phase (no existing custom NodeView; cover
  *  ~82% of the CONTEXT.md fixture). Heavy types (code/mermaid/math/table) keep
  *  their own lazy-mounting NodeViews. */
-const VIRTUALIZED_TYPES = [
-  "paragraph",
-  "heading",
-  "blockquote",
-  "bulletList",
-  "orderedList",
-  "taskList",
-];
+// Narrowed to the safe, numerous, NON-container leaf blocks to isolate the
+// math/mermaid edit-entry regression (container types — lists/blockquote — wrap
+// nested blocks and are the prime suspect). paragraph+heading = ~62% of the
+// fixture. Re-add containers once the regression cause is confirmed/fixed.
+const VIRTUALIZED_TYPES = ["paragraph", "heading"];
 
 const BUFFER_PX = 1200;
 const IDLE_MS = 400;
