@@ -311,14 +311,41 @@ function buildDecorations(
         ? `${item.node.attrs.level as number}-${item.node.textContent.slice(0, 40)}`
         : item.node.textContent.slice(0, 40);
 
-    // Gutter arrow widget — inside the node, before text
-    decos.push(
-      Decoration.widget(
-        item.pos + 1,
-        () => createFoldArrow(isFolded, item.pos),
-        { side: -1, key: `fold-arrow-${stableKey}-${isFolded}` },
-      ),
-    );
+    if (item.kind === "heading") {
+      // §perf-large-file C4: the heading fold arrow is rendered via a CSS
+      // pseudo-element (`.tiptap > hN::before`, hover-shown), NOT a widget
+      // decoration. Emitting one gutter-arrow widget per heading meant the
+      // DecorationSet held ~1,391 widgets on the perf fixture, and PM's
+      // per-keystroke `DecorationSet.map(...)` over that whole set cost ~40ms on
+      // EVERY keystroke (even the map-only path). With CSS rendering, an OPEN
+      // heading contributes zero decorations; only a FOLDED heading gets a
+      // `fold-collapsed` node-class decoration (CSS rotates its arrow + keeps it
+      // visible). So the set is empty when nothing is folded and the
+      // per-keystroke map drops toward ~0. Gutter clicks are detected by
+      // coordinate (see handleDOMEvents.mousedown).
+      if (isFolded) {
+        decos.push(
+          Decoration.node(
+            item.pos,
+            item.pos + item.node.nodeSize,
+            { class: "fold-collapsed" },
+            { key: `fold-collapsed-${stableKey}` },
+          ),
+        );
+      }
+    } else {
+      // List items keep a gutter-arrow widget. Foldable list items (those with a
+      // nested sub-list) are far fewer than headings, so the per-keystroke map
+      // cost is negligible, and this preserves the exact list-fold interaction
+      // (the arrow is a real click target).
+      decos.push(
+        Decoration.widget(
+          item.pos + 1,
+          () => createFoldArrow(isFolded, item.pos),
+          { side: -1, key: `fold-arrow-${stableKey}-${isFolded}` },
+        ),
+      );
+    }
 
     if (isFolded) {
       // Ellipsis at end of heading / first paragraph
@@ -390,6 +417,12 @@ function createFoldArrow(folded: boolean, pos: number): HTMLElement {
   span.contentEditable = "false";
   return span;
 }
+
+// §perf-large-file C4: how far right of the click point to re-probe when the
+// click lands in the empty gutter (no text node there), and how wide the
+// clickable gutter band is to the left of the heading's text box.
+const FOLD_GUTTER_PROBE_PX = 40;
+const FOLD_GUTTER_BAND_PX = 32;
 
 function createFoldPlugin(): Plugin<FoldState> {
   return new Plugin<FoldState>({
@@ -557,7 +590,17 @@ function createFoldPlugin(): Plugin<FoldState> {
           if (!target) return false;
 
           const foldEl = target.closest(".fold-arrow, .fold-ellipsis");
-          if (!foldEl) return false;
+          if (!foldEl) {
+            // §perf-large-file C4: heading arrows are CSS pseudo-elements with no
+            // DOM node, so a click on a heading's gutter cannot be detected via
+            // `closest()`. Resolve it by coordinate instead.
+            const headingPos = resolveHeadingGutterFold(view, event);
+            if (headingPos === null) return false;
+            event.preventDefault();
+            event.stopPropagation();
+            dispatchToggleFold(view, headingPos);
+            return true;
+          }
 
           // §perf-large-file C3: Resolve the heading/listItem position at click
           // time rather than reading the potentially-stale `data-fold-pos`
@@ -640,8 +683,6 @@ function findFoldableAtCursor(state: EditorState): null | number {
   return null;
 }
 
-// ── Plugin factory ─────────────────────────────────────────────────
-
 function getFirstChildSize(node: PmNode): number {
   let size = 0;
   let found = false;
@@ -652,6 +693,52 @@ function getFirstChildSize(node: PmNode): number {
     }
   });
   return size;
+}
+
+// ── Plugin factory ─────────────────────────────────────────────────
+
+/**
+ * §perf-large-file C4: detect a click in a top-level heading's left gutter,
+ * where the CSS pseudo-element fold arrow (`.tiptap > hN::before`) sits. Returns
+ * the heading's doc position when the click lands in the gutter band of a
+ * FOLDABLE heading, else null.
+ *
+ * The arrow has no DOM node (it is a `::before` pseudo), so it cannot be
+ * hit-tested with `closest()`. Instead we find the block on the clicked row via
+ * `posAtCoords` (re-probing slightly to the right when the gutter point itself
+ * maps to no text node), then confirm the click X is just left of the heading's
+ * text box and the heading is actually foldable.
+ */
+function resolveHeadingGutterFold(
+  view: EditorView,
+  event: MouseEvent,
+): null | number {
+  let hit = view.posAtCoords({ left: event.clientX, top: event.clientY });
+  if (!hit) {
+    hit = view.posAtCoords({
+      left: event.clientX + FOLD_GUTTER_PROBE_PX,
+      top: event.clientY,
+    });
+  }
+  if (!hit) return null;
+
+  const $pos = view.state.doc.resolve(hit.pos);
+  if ($pos.depth < 1) return null;
+  if ($pos.node(1).type.name !== "heading") return null;
+  const topPos = $pos.before(1);
+
+  // Confirm the click is in the left gutter — left of the heading text box but
+  // within a band matching the arrow's visual position.
+  const dom = view.nodeDOM(topPos);
+  if (!(dom instanceof HTMLElement)) return null;
+  const rect = dom.getBoundingClientRect();
+  if (event.clientX >= rect.left) return null;
+  if (event.clientX < rect.left - FOLD_GUTTER_BAND_PX) return null;
+
+  // Only foldable headings toggle (don't pollute foldedPositions with headings
+  // that have no content to fold).
+  if (!getFoldRange(view.state.doc, topPos)) return null;
+  return topPos;
 }
 
 // ── Tiptap Extension wrapper ───────────────────────────────────────
