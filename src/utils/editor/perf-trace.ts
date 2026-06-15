@@ -1,6 +1,8 @@
 // §perf-large-file C3.0/C3.1: Steady-state instrumentation — dev-only, no-op in prod.
 // `timePhase` already lives in src/utils/perf.ts; re-export it so callers in
 // the editor layer can import everything from one place.
+import { PROGRESSIVE_LOAD_META } from "./progressive-load";
+
 export { timePhase } from "../perf";
 
 // ---------------------------------------------------------------------------
@@ -386,8 +388,14 @@ export function instrumentEditor(editor: AnyEditor): void {
     if (elapsed > txStats.maxMs) txStats.maxMs = elapsed;
     if (docChanged) txStats.docChangedCount++;
 
-    // Warn for slow transactions (>100ms) with top-2 plugin costs
-    if (elapsed > 100) {
+    // Warn for slow transactions (>100ms) with top-2 plugin costs — but NOT for
+    // progressive-load chunk appends, which are expected to be slow (inserting
+    // ~150 blocks at a time) and would otherwise flood the console while a large
+    // document loads. The final chunk omits the meta, so one warning may remain.
+    const isProgressiveLoad = !!(
+      tr as { getMeta?: (key: unknown) => unknown }
+    ).getMeta?.(PROGRESSIVE_LOAD_META);
+    if (elapsed > 100 && !isProgressiveLoad) {
       const deltas: Array<[string, number]> = [];
       for (const [k, v] of pluginCosts) {
         const before = snapBefore.get(k) ?? 0;
