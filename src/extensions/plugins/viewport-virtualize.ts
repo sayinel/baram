@@ -33,6 +33,17 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 export const viewportVirtualizeKey = new PluginKey("viewportVirtualize");
 
 const VIRTUALIZED_TYPES = ["paragraph", "heading"];
+// Heavy top-level blocks that already own React NodeViews (so we can't wrap them
+// with the generic NodeView). The controller hides them off-screen by toggling
+// content-visibility directly on their DOM — safe because PM does not re-render
+// an off-screen NodeView, so the style is not clobbered.
+const HEAVY_TYPES = [
+  "codeBlock",
+  "mermaidBlock",
+  "mathBlock",
+  "queryBlock",
+  "table",
+];
 const BUFFER_PX = 1200;
 /** Debounce for re-measuring positions after content edits. */
 const REMEASURE_MS = 200;
@@ -46,6 +57,7 @@ interface VBlockView extends NodeView {
  *  maintaining the visible window on scroll + edits from a position cache. */
 class VirtualizeController {
   private anyHidden = false;
+  private externals: { bottom: number; el: HTMLElement; top: number }[] = [];
   private readonly positions = new Map<
     VBlockView,
     { bottom: number; top: number }
@@ -54,6 +66,7 @@ class VirtualizeController {
   private scroller: HTMLElement | null = null;
   private scrollRaf = 0;
   private started = false;
+  private view: EditorView | null = null;
   private readonly views = new Set<VBlockView>();
 
   destroy(): void {
@@ -94,6 +107,20 @@ class VirtualizeController {
     this.evaluateAll();
   }
 
+  private buildExternals(): void {
+    this.externals = [];
+    const view = this.view;
+    if (!view) return;
+    view.state.doc.forEach((node, offset) => {
+      if (!HEAVY_TYPES.includes(node.type.name)) return;
+      const el = view.nodeDOM(offset);
+      if (el instanceof HTMLElement) {
+        const t = el.offsetTop;
+        this.externals.push({ bottom: t + el.offsetHeight, el, top: t });
+      }
+    });
+  }
+
   private evaluate(nv: VBlockView): void {
     if (!this.scroller) return;
     let p = this.positions.get(nv);
@@ -112,6 +139,26 @@ class VirtualizeController {
 
   private evaluateAll(): void {
     for (const nv of this.views) this.evaluate(nv);
+    this.evaluateExternals();
+  }
+
+  /** Hide off-screen heavy blocks (own React Nodeviews) by toggling
+   *  content-visibility on their DOM directly. */
+  private evaluateExternals(): void {
+    if (!this.scroller) return;
+    const bandTop = this.scroller.scrollTop - BUFFER_PX;
+    const bandBottom =
+      this.scroller.scrollTop + this.scroller.clientHeight + BUFFER_PX;
+    for (const e of this.externals) {
+      const hide = e.bottom < bandTop || e.top > bandBottom;
+      const want = hide ? "hidden" : "";
+      if (e.el.style.contentVisibility === want) continue;
+      e.el.style.contentVisibility = want;
+      e.el.style.containIntrinsicSize = hide
+        ? `auto ${Math.max(1, Math.round(e.bottom - e.top))}px`
+        : "";
+      if (hide) this.anyHidden = true;
+    }
   }
 
   /** Read every block's doc-relative position into the cache. One forced layout
@@ -122,6 +169,7 @@ class VirtualizeController {
       const t = nv.dom.offsetTop;
       this.positions.set(nv, { bottom: t + nv.dom.offsetHeight, top: t });
     }
+    this.buildExternals();
   }
 
   private onScroll = (): void => {
@@ -143,14 +191,20 @@ class VirtualizeController {
 
   private showAll(): void {
     for (const nv of this.views) nv.setHidden(false, 0);
+    for (const e of this.externals) {
+      e.el.style.contentVisibility = "";
+      e.el.style.containIntrinsicSize = "";
+    }
     this.anyHidden = false;
     // Positions are stale once everything is laid out differently; drop them so
     // the next activation re-measures.
     this.positions.clear();
+    this.externals = [];
   }
 
   private start(view: EditorView): void {
     this.started = true;
+    this.view = view;
     this.scroller = view.dom.closest<HTMLElement>(".editor-area-scroll");
     this.scroller?.addEventListener("scroll", this.onScroll, { passive: true });
     requestAnimationFrame(() => this.apply(false));
