@@ -126,7 +126,7 @@
     "lint-staged": "^17.0.7",
     "prettier": "^3.8.3",
     "prettier-plugin-tailwindcss": "^0.8.0",
-    "style-dictionary": "^5.4.3",
+    "style-dictionary": "^5.4.4",
     "stylelint": "^17.13.0",
     "stylelint-config-recess-order": "^7.7.0",
     "stylelint-config-standard": "^40.0.0",
