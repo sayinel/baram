@@ -269,14 +269,40 @@ describe("fold: production plugin map-only branch on pure paragraph edit", () =>
     editor.destroy();
   });
 
-  it("heading edit DOES call findFoldableHeadings (rebuild triggered)", () => {
+  it("heading CONTENT edit does NOT rebuild (map-only — foldable set unchanged)", () => {
     const editor = makeEditor();
     editor.commands.setContent("<h1>Section A</h1><p>Content.</p>");
 
     _resetFindFoldableHeadingsCallCount();
 
-    // Text edit inside the heading → structure changed → full rebuild
+    // §perf-large-file C3 (fold): a pure text edit inside an existing heading
+    // does not change the foldable set (same headings, same levels), so it takes
+    // the map-only path — no full findAllFoldables walk.
     editor.view.dispatch(editor.state.tr.insertText("X", 2));
+
+    expect(_findFoldableHeadingsCallCount).toBe(0);
+
+    editor.destroy();
+  });
+
+  it("creating a heading (structural change) DOES rebuild", () => {
+    const editor = makeEditor();
+    editor.commands.setContent("<p>Plain.</p>");
+
+    _resetFindFoldableHeadingsCallCount();
+
+    // Insert a new heading node → its boundary lies in the changed range →
+    // the foldable set changed → full rebuild.
+    const s = editor.state;
+    editor.view.dispatch(
+      s.tr.insert(
+        s.doc.content.size,
+        editor.schema.nodes.heading.create(
+          { level: 2 },
+          editor.schema.text("New"),
+        ),
+      ),
+    );
 
     expect(_findFoldableHeadingsCallCount).toBeGreaterThan(0);
 

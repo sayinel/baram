@@ -487,15 +487,25 @@ function createFoldPlugin(): Plugin<FoldState> {
           // boundary (top-level insert/delete adjacent to a folded region).
           const ranges = changedRanges(tr);
           const needsRebuild = ranges.some((r) => {
-            // Check for heading or listItem in the changed range
+            // §perf-large-file C3 (fold): rebuild only on a STRUCTURAL change to
+            // the foldable set — a heading/listItem node whose BOUNDARY lies
+            // within the edit (created, deleted, or level/markup changed; such
+            // edits replace the node, so its start sits inside the changed
+            // range). A pure CONTENT edit inside an existing heading/listItem
+            // (the node spans the range, neither boundary inside it) leaves the
+            // foldable set unchanged, so its decorations are simply mapped — this
+            // avoids the ~50ms full findAllFoldables walk on every keystroke in a
+            // heading on heading-dense documents.
             let found = false;
-            newState.doc.nodesBetween(r.from, r.to, (node) => {
+            newState.doc.nodesBetween(r.from, r.to, (node, pos) => {
               if (
                 node.type.name === "heading" ||
                 node.type.name === "listItem"
               ) {
-                found = true;
-                return false;
+                if (pos >= r.from || pos + node.nodeSize <= r.to) {
+                  found = true;
+                  return false;
+                }
               }
               return !found;
             });
