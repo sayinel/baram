@@ -18,17 +18,28 @@
 
 ## CURRENT BLOCKER / NEXT STEP (start here)
 
-**Symptom (last test):** typing "hello hello hello" logged `SLOW TX ~170–300ms docChanged=true plugins=fold$:38–56,listAtomFix$:6–9` on EVERY keystroke.
+**Symptom (the test that produced this handoff):** typing "hello hello hello" logged `SLOW TX ~170–300ms docChanged=true plugins=fold$:38–56,listAtomFix$:6–9` on EVERY keystroke.
 
-**Two things to resolve, in order:**
+**Status of the two original blockers:**
 
-1. **CONFIRM THE FLAG STATE FIRST (unresolved).** It is unknown whether `window.__baramFlags.virtualize` was ON during that last test (it resets on reload). Of the ~170ms, only fold(~40) + listAtomFix(~7) are plugins → ~120ms is layout. **If the flag was OFF, that ~120ms is the un-virtualized baseline layout and would vanish with the flag ON.** So step 1 in the new session: open CONTEXT.md, `window.__baramFlags = { virtualize: true }`, scroll once to warm the cache, then `__baramPerf.reset()` → type → read `__baramPerf.txBreakdown().transactions` (avg = totalMs/count). Determine whether the ~120ms layout is gone with the flag ON.
+1. **Flag state — RESOLVED.** The user confirmed `window.__baramFlags.virtualize` was **ON** during that test. So virtualization was active and the ~120ms of non-plugin time is layout that virtualization did **not** eliminate in that run. Most likely cause: the position cache was not warmed before the timed burst (typing started before any scroll/activation `measure()` had hidden off-screen blocks), OR the first keystroke paid the one-time `measure()` forced-layout. The next GUI test MUST warm first (scroll once → `__baramPerf.reset()` → THEN type) to get the steady-state number. If steady-state typing is still ~100ms+ of pure layout with the flag ON and warmed, that is a separate virtualization-engagement bug to chase (see `viewport-virtualize.ts` `measure()`/`evaluateAll()`).
 
-2. **fold's ~40ms/keystroke is a CONFIRMED real bottleneck virtualization does NOT fix.** Root cause: `fold` (`src/extensions/plugins/fold.ts`) creates a gutter-arrow **widget Decoration for EVERY foldable** (1,391 headings in the fixture). On every keystroke `fold.apply` must `DecorationSet.map(...)` that ~1,391-widget set (~40ms) — this happens on BOTH the rebuild path AND the map-only path. The earlier "rebuild only on structural change" opt (`e4e6c61`) did NOT help because the cost is the per-keystroke MAP of the huge set, not the rebuild.
-   - **Proposed fix (next lever):** render fold arrows via **CSS** (a `::before`/class on the heading + `data-fold-pos` attr + a delegated click handler) instead of ~1,391 widget decorations → fold's DecorationSet then holds only folded-heading decos (ellipsis + hidden-range nodes, i.e. only when something is actually folded) → per-keystroke `fold.apply` drops toward ~0. Risk: arrow positioning, click hit-area, folded-state visuals, and the existing fold tests (`src/extensions/__tests__/fold.test.ts`, `incremental-decos.test.ts`).
-   - Alternative: window the arrow decorations (only visible headings) by coupling fold to the virtualization controller's viewport — more invasive, rejected for now in favour of CSS.
+2. **fold's ~40ms/keystroke — FIXED in code (commit `4bbd54c`), pending GUI re-measure.** Root cause was: `fold` created a gutter-arrow **widget Decoration for EVERY foldable** (1,391 headings), and `fold.apply` did `DecorationSet.map(...)` over that ~1,391-widget set every keystroke (~40ms) on both rebuild and map-only paths. **Fix shipped:** heading arrows are now rendered via a CSS pseudo-element (`.tiptap > hN::before`); an open heading contributes **zero** decorations, and only a *folded* heading gets a `.fold-collapsed` node-class decoration. So fold's DecorationSet is empty when nothing is folded → per-keystroke map → ~0. Gutter clicks are coordinate-detected (`posAtCoords` probe + heading rect check) in `fold.ts handleDOMEvents.mousedown`. List-item arrows kept their widgets (far fewer than headings). All automated gates green (2460 pass / 6 skip, tsc/eslint/stylelint clean).
 
-**The long-tail reality (tell the user):** virtualization fixes the *layout* cost, but multiple plugins each maintain a whole-document-sized DecorationSet that is mapped every keystroke — `fold` (~40ms, the big one), `listAtomFix` (~7ms), `block-id`, etc. Reaching Obsidian-level means addressing each (CSS rendering or viewport-windowing of their decorations). Each fix is bounded but there are several. This is why every fix has revealed the next bottleneck.
+**NEXT STEP — GUI re-measure (user must run; I cannot run the GUI):**
+```
+npm run tauri dev   → open CONTEXT.md → DevTools console:
+window.__baramFlags = { virtualize: true };
+// scroll the editor up & down once to WARM the position cache + hide off-screen blocks
+__baramPerf.reset();
+// type a long burst (e.g. hold a key / type a sentence) IN A HEADING and again in a paragraph
+const t = __baramPerf.txBreakdown();
+console.log("avg ms/tx:", t.transactions.totalMs / t.transactions.count);
+console.log("per-plugin:", t.plugins);   // fold$ should now be ~0
+```
+Report: (a) avg ms/tx, (b) whether `fold$` is gone from the plugin breakdown, (c) any residual SLOW TX and its `plugins=` field. Also verify folding still WORKS visually: hover a heading → arrow appears in the gutter; click the gutter → content folds + arrow rotates to collapsed; click again → unfolds. **Verify this with the flag both ON and OFF** (the `.fold-collapsed` node-class decoration lands on a heading that is also wrapped by the virtualize generic NodeView — node-deco-on-NodeView is expected to work but is the one untested interaction).
+
+**The long-tail reality (tell the user):** virtualization fixes the *layout* cost, but multiple plugins each maintain a whole-document-sized DecorationSet that is mapped every keystroke — `fold` (~40ms, now fixed), `listAtomFix` (~7ms), `block-id`, etc. Reaching Obsidian-level means addressing each (CSS rendering or viewport-windowing of their decorations) AND confirming virtualization actually engages on steady-state typing (blocker #1). Each fix is bounded but there are several. This is why every fix has revealed the next bottleneck.
 
 ## What is committed this session (all green: 2460 pass / 6 skip, tsc clean, eslint --max-warnings=0 clean)
 
@@ -43,6 +54,8 @@
 | `1c6aa5d` | DX: suppress SLOW TX warning for progressive-load chunks (PROGRESSIVE_LOAD_META) so the console isn't flooded during load. |
 | `e4e6c61` | perf: fold rebuilds only on structural change (heading content edit = map-only). Did NOT fix the fold map cost (see blocker #2). |
 | `dc8ac52` | test: harden code-block-lazy (vi.waitFor instead of setTimeout(50)) — was flaky under parallel load. |
+| `e3e9dfd` | docs: this handoff (C4 session). |
+| `4bbd54c` | **perf(C4): heading fold arrows → CSS pseudo-element, not per-heading widgets.** Kills the ~40ms/keystroke fold-map cost (blocker #2). Open headings = 0 decos; folded headings get a `.fold-collapsed` node-class deco + CSS-rotated arrow. Gutter clicks coordinate-detected. List arrows unchanged. Pending GUI re-measure. |
 
 ## Dead-ends — do NOT retry (proven this session)
 
@@ -79,9 +92,9 @@ npx tsc --noEmit              # clean
 ```
 
 Then GUI (user runs `npm run tauri dev`, opens CONTEXT.md, DevTools console):
-1. **Confirm flag-on perf** (blocker #1): `window.__baramFlags = { virtualize: true }` → scroll once → `__baramPerf.reset()` → type a long burst → `const t=__baramPerf.txBreakdown().transactions; console.log(t.totalMs/t.count)`. Note whether the ~120ms layout part is gone (flag-on) vs the fold ~40ms.
-2. **Implement the fold CSS-arrow refactor** (blocker #2) to kill the ~40ms/keystroke, then re-measure.
-3. Continue down the plugin long-tail (listAtomFix, block-id) as needed, then productionize (settings flag, containers).
+1. **Re-measure with the fold fix in** (see "NEXT STEP — GUI re-measure" above). Confirm `fold$` is gone from the per-plugin breakdown and read the new steady-state avg ms/tx (warm the cache first).
+2. **If residual layout remains with the flag ON + warmed** → chase blocker #1 (virtualization not engaging on steady-state typing): instrument `viewport-virtualize.ts` `measure()`/`evaluateAll()`, confirm off-screen NodeViews actually carry `content-visibility:hidden` during a typing burst.
+3. Continue down the plugin long-tail (listAtomFix ~7ms, block-id) as the breakdown dictates, then productionize (settings flag instead of `__baramFlags`, containers, export/print verify).
 
 ## Conventions (unchanged)
 
