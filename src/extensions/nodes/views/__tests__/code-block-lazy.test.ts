@@ -2,7 +2,7 @@
 // Verifies that CodeMirror is NOT created at mount time, only after the
 // block's wrapper element enters the viewport (IntersectionObserver fires).
 import { Editor } from "@tiptap/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createBaramExtensions } from "../../..";
 import { markdownToProsemirror } from "../../../../pipeline/md-to-pm";
@@ -48,11 +48,13 @@ describe("CodeBlock lazy CodeMirror (§perf-large-file)", () => {
     MockIntersectionObserver.instances.at(-1)!.triggerIntersect(true);
 
     // initCM is async (awaits language extension + new CMView construction).
-    // Flush the microtask + macrotask queue so initCM completes.
-    await new Promise((r) => setTimeout(r, 50));
+    // Poll for completion instead of a fixed sleep — a fixed 50ms timeout was
+    // flaky under parallel-test load when initCM took longer.
+    await vi.waitFor(() => {
+      expect(dom.querySelector(".cm-editor")).not.toBeNull();
+    });
 
     // After intersection: cm-editor exists, placeholder replaced
-    expect(dom.querySelector(".cm-editor")).not.toBeNull();
     expect(dom.querySelector(".code-block-placeholder")).toBeNull();
 
     editor.destroy();
