@@ -348,6 +348,60 @@ describe("fold: production plugin map-only branch on pure paragraph edit", () =>
 });
 
 // ---------------------------------------------------------------------------
+// fold — §perf-large-file C4: heading arrows are CSS pseudo-elements, not
+// per-heading widget decorations. The perf invariant: an OPEN heading
+// contributes ZERO decorations, so fold's DecorationSet (the thing PM maps on
+// every keystroke) is empty when nothing is folded. Only FOLDED headings add
+// decorations (a `fold-collapsed` node class + the hidden range + ellipsis).
+// ---------------------------------------------------------------------------
+
+describe("fold: C4 CSS-arrow — heading arrows are not widget decorations", () => {
+  it("emits ZERO fold decorations for an all-headings doc when nothing is folded", () => {
+    const editor = makeEditor();
+    editor.commands.setContent(
+      "<h1>A</h1><p>a</p><h2>B</h2><p>b</p><h3>C</h3><p>c</p>",
+    );
+
+    const decos = foldPluginKey.getState(editor.state)?.decorations;
+    expect(decos).toBeInstanceOf(DecorationSet);
+    // Pre-C4 this would hold one gutter-arrow widget per foldable heading (the
+    // ~1,391-widget set that cost ~40ms/keystroke to map). Now: empty.
+    expect(decos!.find().length).toBe(0);
+
+    editor.destroy();
+  });
+
+  it("folding a heading adds a fold-collapsed node decoration; unfolding clears it", () => {
+    const editor = makeEditor();
+    editor.commands.setContent("<h1>A</h1><p>a</p><p>b</p>");
+
+    // Toggle-fold the H1 (direct doc child at pos 0).
+    editor.view.dispatch(
+      editor.state.tr.setMeta(foldPluginKey, { pos: 0, type: "toggle" }),
+    );
+
+    const folded = foldPluginKey.getState(editor.state)!.decorations.find();
+    expect(folded.length).toBeGreaterThan(0);
+    const hasCollapsed = folded.some((d) =>
+      String((d.spec as { key?: string }).key ?? "").startsWith(
+        "fold-collapsed-",
+      ),
+    );
+    expect(hasCollapsed).toBe(true);
+
+    // Unfold → back to an empty set (no lingering per-heading decorations).
+    editor.view.dispatch(
+      editor.state.tr.setMeta(foldPluginKey, { pos: 0, type: "toggle" }),
+    );
+    expect(
+      foldPluginKey.getState(editor.state)!.decorations.find().length,
+    ).toBe(0);
+
+    editor.destroy();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // prompt-highlight — incremental === from-scratch on a Skills file
 // ---------------------------------------------------------------------------
 
