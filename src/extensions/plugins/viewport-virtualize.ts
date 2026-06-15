@@ -1,27 +1,30 @@
 import type { Node as PMNode } from "@tiptap/pm/model";
+import type { EditorState } from "@tiptap/pm/state";
 import type { EditorView, NodeView } from "@tiptap/pm/view";
 
-// §perf-large-file C4 — A1 NodeView virtualization (Phase 1: mechanism validation).
+// §perf-large-file C4 — A1 NodeView virtualization (ALWAYS-ON).
 //
-// WHY NodeView (after imperative + decoration both failed sustained typing):
-// ProseMirror only calls nodeView.update() for the block that actually changed;
-// off-screen blocks' NodeViews are left untouched on a keystroke. So if the
-// controller sets content-visibility on an off-screen NodeView's dom, PM does
-// NOT re-render that block and does NOT clobber the style (the v5 imperative
-// failure was PM re-rendering *default*-rendered blocks via decoration shifts).
-// And there is no per-keystroke decoration set to reprocess (the v1/v2/v6
-// decoration failure). Net: zero per-keystroke work on off-screen blocks.
+// WHY NodeView: ProseMirror only calls nodeView.update() for the block that
+// actually changed, so off-screen blocks' NodeViews are left untouched on a
+// keystroke. The controller sets content-visibility:hidden on off-screen
+// NodeView doms, and PM does NOT clobber it (the v5 imperative failure was PM
+// re-rendering *default* blocks via decoration shifts) and there is no
+// per-keystroke decoration set to reprocess (v1/v2/v6 decoration failure).
 //
-// Typing-only gating (idle/scroll → reveal all) keeps scrolling native-fast, so
-// the off-screen-hide cost is paid only during typing where it wins.
+// WHY ALWAYS-ON (not typing-only): keeping off-screen blocks hidden at ALL times
+// means EVERY interaction (typing, scroll, click-to-cursor, math/mermaid
+// edit-entry, navigation) forces layout over the viewport only — not the whole
+// ~3,500-block document. The window is maintained by delta-toggling only the
+// blocks that crossed the viewport boundary, using a position cache (no layout
+// read per keystroke/scroll-frame), so maintaining it is cheap.
 //
-// PROTOTYPE: a generic NodeView (renders via the node's own toDOM, so tag/attrs/
-// contentDOM match the default) registered for the common simple block types.
-// DEV-only, OFF by default; with the flag off the NodeView is a faithful
-// passthrough (never hides). Toggle:
+// PROTOTYPE SCOPE: a generic NodeView (renders via the node's own toDOM, so
+// tag/attrs/contentDOM match the default) for the safe leaf blocks
+// (paragraph+heading, ~62% of the fixture). Container types (lists/blockquote)
+// broke math/mermaid edit-entry with the generic NodeView and are deferred.
+// DEV-only, OFF by default; flag-off the NodeView is a faithful passthrough.
 //   window.__baramFlags = { virtualize: true };  // enable
 //   window.__baramFlags = {};                     // disable
-// Validation gate: sustained typing stays fast AND editing/selection is intact.
 // Plan: docs/plans/2026-06-13-large-file-perf-c4-virtualization-plan.md.
 import { Extension } from "@tiptap/core";
 import { DOMSerializer } from "@tiptap/pm/model";
@@ -29,54 +32,49 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 
 export const viewportVirtualizeKey = new PluginKey("viewportVirtualize");
 
-/** Block types virtualized in this phase (no existing custom NodeView; cover
- *  ~82% of the CONTEXT.md fixture). Heavy types (code/mermaid/math/table) keep
- *  their own lazy-mounting NodeViews. */
-// Narrowed to the safe, numerous, NON-container leaf blocks to isolate the
-// math/mermaid edit-entry regression (container types — lists/blockquote — wrap
-// nested blocks and are the prime suspect). paragraph+heading = ~62% of the
-// fixture. Re-add containers once the regression cause is confirmed/fixed.
 const VIRTUALIZED_TYPES = ["paragraph", "heading"];
-
 const BUFFER_PX = 1200;
-const IDLE_MS = 400;
+/** Debounce for re-measuring positions after content edits. */
+const REMEASURE_MS = 200;
 
 interface VBlockView extends NodeView {
   dom: HTMLElement;
   setHidden(hidden: boolean, reservePx: number): void;
 }
 
-/** Per-editor controller: owns typing/scroll state and toggles the registered
- *  block NodeViews' visibility — only on window change, never per keystroke. */
+/** Per-editor controller: keeps off-screen block NodeViews hidden at all times,
+ *  maintaining the visible window on scroll + edits from a position cache. */
 class VirtualizeController {
-  private idleTimer = 0;
+  private anyHidden = false;
   private readonly positions = new Map<
     VBlockView,
     { bottom: number; top: number }
   >();
+  private remeasureTimer = 0;
   private scroller: HTMLElement | null = null;
   private scrollRaf = 0;
   private started = false;
-  private typing = false;
-  private view: EditorView | null = null;
   private readonly views = new Set<VBlockView>();
 
   destroy(): void {
-    if (this.view) {
-      this.view.dom.removeEventListener("keydown", this.onKeyDown, {
-        capture: true,
-      });
-    }
     this.scroller?.removeEventListener("scroll", this.onScroll);
-    window.clearTimeout(this.idleTimer);
+    window.clearTimeout(this.remeasureTimer);
     if (this.scrollRaf) cancelAnimationFrame(this.scrollRaf);
     this.views.clear();
+    this.positions.clear();
+  }
+
+  /** Called from the plugin's view.update() on every transaction. */
+  onUpdate(docChanged: boolean): void {
+    this.apply(docChanged);
   }
 
   register(nv: VBlockView, view: EditorView): void {
     if (!this.started) this.start(view);
     this.views.add(nv);
-    if (this.typing) this.evaluate(nv);
+    // A block created/re-created during scrolling should hide immediately if
+    // it is already outside the window.
+    if (flagOn() && this.positions.size > 0) this.evaluate(nv);
   }
 
   unregister(nv: VBlockView): void {
@@ -84,11 +82,22 @@ class VirtualizeController {
     this.positions.delete(nv);
   }
 
+  /** Main entry: keep the window current. Uses the position cache (no layout
+   *  read); only the blocks crossing the boundary toggle content-visibility. */
+  private apply(docChanged: boolean): void {
+    if (!flagOn()) {
+      if (this.anyHidden) this.showAll();
+      return;
+    }
+    if (this.positions.size === 0) this.measure();
+    if (docChanged) this.scheduleRemeasure();
+    this.evaluateAll();
+  }
+
   private evaluate(nv: VBlockView): void {
     if (!this.scroller) return;
     let p = this.positions.get(nv);
     if (!p) {
-      // Created mid-burst / not cached yet — read once and cache.
       const t = nv.dom.offsetTop;
       p = { bottom: t + nv.dom.offsetHeight, top: t };
       this.positions.set(nv, p);
@@ -96,67 +105,55 @@ class VirtualizeController {
     const bandTop = this.scroller.scrollTop - BUFFER_PX;
     const bandBottom =
       this.scroller.scrollTop + this.scroller.clientHeight + BUFFER_PX;
-    nv.setHidden(p.bottom < bandTop || p.top > bandBottom, p.bottom - p.top);
+    const hide = p.bottom < bandTop || p.top > bandBottom;
+    if (hide) this.anyHidden = true;
+    nv.setHidden(hide, p.bottom - p.top);
   }
 
   private evaluateAll(): void {
     for (const nv of this.views) this.evaluate(nv);
   }
 
-  private exitTyping = (): void => {
-    if (!this.typing) return;
-    this.typing = false;
-    this.showAll();
-    // Refresh the position cache off the typing path (after reveal, idle).
-    requestAnimationFrame(() => this.measurePositions());
-  };
-
-  /** Read every block's doc-relative position into the cache. One forced
-   *  layout, but only at idle/init — never during a typing burst — so a
-   *  keystroke never pays for it. offsetTop is scroll-independent, so the cache
-   *  stays valid across scrolling; only content edits invalidate it (refreshed
-   *  on the next idle). */
-  private measurePositions(): void {
-    if (this.typing) return;
+  /** Read every block's doc-relative position into the cache. One forced layout
+   *  (off-screen blocks are cheap — content-visibility skips their contents).
+   *  Run at activation and debounced after edits, never per keystroke. */
+  private measure(): void {
     for (const nv of this.views) {
       const t = nv.dom.offsetTop;
       this.positions.set(nv, { bottom: t + nv.dom.offsetHeight, top: t });
     }
   }
 
-  private onKeyDown = (): void => {
-    if (!flagOn()) return;
-    if (!this.typing) {
-      this.typing = true;
-      this.evaluateAll();
-    }
-    window.clearTimeout(this.idleTimer);
-    this.idleTimer = window.setTimeout(this.exitTyping, IDLE_MS);
-  };
-
   private onScroll = (): void => {
-    if (!flagOn()) {
-      this.exitTyping();
-      return;
-    }
-    if (!this.typing || this.scrollRaf) return;
+    if (this.scrollRaf) return;
     this.scrollRaf = requestAnimationFrame(() => {
       this.scrollRaf = 0;
-      if (this.typing) this.evaluateAll();
+      this.apply(false);
     });
   };
 
+  private scheduleRemeasure(): void {
+    window.clearTimeout(this.remeasureTimer);
+    this.remeasureTimer = window.setTimeout(() => {
+      if (!flagOn()) return;
+      this.measure();
+      this.evaluateAll();
+    }, REMEASURE_MS);
+  }
+
   private showAll(): void {
     for (const nv of this.views) nv.setHidden(false, 0);
+    this.anyHidden = false;
+    // Positions are stale once everything is laid out differently; drop them so
+    // the next activation re-measures.
+    this.positions.clear();
   }
 
   private start(view: EditorView): void {
     this.started = true;
-    this.view = view;
     this.scroller = view.dom.closest<HTMLElement>(".editor-area-scroll");
-    view.dom.addEventListener("keydown", this.onKeyDown, { capture: true });
     this.scroller?.addEventListener("scroll", this.onScroll, { passive: true });
-    requestAnimationFrame(() => this.measurePositions());
+    requestAnimationFrame(() => this.apply(false));
   }
 }
 
@@ -235,6 +232,9 @@ export const ViewportVirtualize = Extension.create({
           return {
             destroy() {
               controller.destroy();
+            },
+            update(view: EditorView, prevState: EditorState) {
+              controller.onUpdate(!view.state.doc.eq(prevState.doc));
             },
           };
         },
