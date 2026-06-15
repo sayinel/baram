@@ -418,12 +418,6 @@ function createFoldArrow(folded: boolean, pos: number): HTMLElement {
   return span;
 }
 
-// §perf-large-file C4: how far right of the click point to re-probe when the
-// click lands in the empty gutter (no text node there), and how wide the
-// clickable gutter band is to the left of the heading's text box.
-const FOLD_GUTTER_PROBE_PX = 40;
-const FOLD_GUTTER_BAND_PX = 32;
-
 function createFoldPlugin(): Plugin<FoldState> {
   return new Plugin<FoldState>({
     key: foldPluginKey,
@@ -698,42 +692,44 @@ function getFirstChildSize(node: PmNode): number {
 // ── Plugin factory ─────────────────────────────────────────────────
 
 /**
- * §perf-large-file C4: detect a click in a top-level heading's left gutter,
- * where the CSS pseudo-element fold arrow (`.tiptap > hN::before`) sits. Returns
- * the heading's doc position when the click lands in the gutter band of a
- * FOLDABLE heading, else null.
+ * §perf-large-file C4: detect a click on a top-level heading's gutter fold
+ * arrow, rendered as a CSS pseudo-element (`.tiptap > hN::before`, which is
+ * `pointer-events: auto`). Returns the heading's doc position when a FOLDABLE
+ * heading's gutter arrow was clicked, else null.
  *
- * The arrow has no DOM node (it is a `::before` pseudo), so it cannot be
- * hit-tested with `closest()`. Instead we find the block on the clicked row via
- * `posAtCoords` (re-probing slightly to the right when the gutter point itself
- * maps to no text node), then confirm the click X is just left of the heading's
- * text box and the heading is actually foldable.
+ * MUST stay coordinate-free: `.editor-area-scroll` uses CSS `zoom`, under which
+ * WKWebView's `MouseEvent.clientX` / `getBoundingClientRect()` / `posAtCoords`
+ * live in mismatched coordinate spaces (see [[wkwebview-css-zoom-coords]]) — so
+ * the earlier `posAtCoords` + rect approach silently never fired. Instead:
+ *   1. A click on the `::before` arrow reports `event.target` === the heading
+ *      element (pseudo-elements forward events to their host).
+ *   2. `event.offsetX < 0` means the click landed left of the heading's content
+ *      box, i.e. in the gutter where the arrow sits. The SIGN of offsetX is
+ *      invariant under any positive `zoom`, so this needs no zoom math.
+ *   3. The heading's doc position is resolved via `posAtDOM` (DOM-based, also
+ *      zoom-safe), exactly as the list-item/ellipsis widget path does.
  */
 function resolveHeadingGutterFold(
   view: EditorView,
   event: MouseEvent,
 ): null | number {
-  let hit = view.posAtCoords({ left: event.clientX, top: event.clientY });
-  if (!hit) {
-    hit = view.posAtCoords({
-      left: event.clientX + FOLD_GUTTER_PROBE_PX,
-      top: event.clientY,
-    });
+  const target = event.target as HTMLElement | null;
+  const heading = target?.closest("h1, h2, h3, h4, h5, h6");
+  if (!(heading instanceof HTMLElement) || !view.dom.contains(heading)) {
+    return null;
   }
-  if (!hit) return null;
+  // Only the gutter (left of the heading content box) toggles; clicks on the
+  // heading text fall through to normal cursor placement.
+  if (event.offsetX >= 0) return null;
 
-  const $pos = view.state.doc.resolve(hit.pos);
-  if ($pos.depth < 1) return null;
-  if ($pos.node(1).type.name !== "heading") return null;
-  const topPos = $pos.before(1);
-
-  // Confirm the click is in the left gutter — left of the heading text box but
-  // within a band matching the arrow's visual position.
-  const dom = view.nodeDOM(topPos);
-  if (!(dom instanceof HTMLElement)) return null;
-  const rect = dom.getBoundingClientRect();
-  if (event.clientX >= rect.left) return null;
-  if (event.clientX < rect.left - FOLD_GUTTER_BAND_PX) return null;
+  let topPos: number;
+  try {
+    const rawPos = view.posAtDOM(heading, 0);
+    const $resolved = view.state.doc.resolve(rawPos);
+    topPos = $resolved.depth > 0 ? $resolved.before(1) : rawPos;
+  } catch {
+    return null;
+  }
 
   // Only foldable headings toggle (don't pollute foldedPositions with headings
   // that have no content to fold).
