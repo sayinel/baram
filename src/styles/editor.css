@@ -88,8 +88,10 @@
 /* §perf-large-file C4: heading fold arrow via CSS pseudo-element — no per-heading
    widget decoration (see fold.ts buildDecorations). An OPEN heading arrow costs
    zero decorations; only FOLDED headings get the `.fold-collapsed` node class.
-   Gutter clicks are coordinate-detected in fold.ts (the arrow is `pointer-events:
-   none` and purely visual). */
+   The arrow is a real hit target (default pointer-events: auto on the pseudo):
+   a click on it reports event.target = the heading, and fold.ts detects the
+   gutter via offsetX < 0 — zoom-safe, since `.editor-area-scroll` uses CSS zoom
+   which breaks clientX/getBoundingClientRect (see resolveHeadingGutterFold). */
 .tiptap > h1::before,
 .tiptap > h2::before,
 .tiptap > h3::before,
@@ -99,13 +101,13 @@
   position: absolute;
   top: 50%;
   left: -24px;
-  width: 0;
-  height: 0;
-  pointer-events: none;
-  content: "";
-  border-color: transparent transparent transparent currentcolor;
-  border-style: solid;
-  border-width: 4px 0 4px 6px;
+  width: 18px;
+  height: 18px;
+  font-size: 9px;
+  line-height: 18px;
+  text-align: center;
+  cursor: pointer;
+  content: "▶";
   opacity: 0;
   transform: translateY(-50%) rotate(90deg);
   transition:
