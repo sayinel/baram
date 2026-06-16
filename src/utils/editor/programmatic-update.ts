@@ -52,9 +52,23 @@ export function shouldSkipDirty(tabId: string, currentDoc: Node): boolean {
     return true;
   }
 
-  // Compare with stored baseline
+  // Compare with stored baseline.
+  // §perf-large-file C4: `Node.eq()` is a deep structural walk of the WHOLE
+  // document, and this runs on EVERY keystroke (via the auto-save `update`
+  // listener). On a ~21k-line doc that walk costs ~100ms+/keystroke — the
+  // flag-independent typing-latency floor that block virtualization could never
+  // touch (it is JS, not DOM layout). Guard it with an O(1) `content.size`
+  // pre-check: a baseline of a different size is unequal without walking, and
+  // since `eq()` implies equal size this stays behaviour-identical — it only
+  // skips the walk in the common case (typing changes the total size).
   const original = originalDocs.get(tabId);
-  if (original && original.eq(currentDoc)) return true;
+  if (
+    original &&
+    original.content.size === currentDoc.content.size &&
+    original.eq(currentDoc)
+  ) {
+    return true;
+  }
 
   return false;
 }
