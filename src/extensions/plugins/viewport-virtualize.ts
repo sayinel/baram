@@ -102,6 +102,12 @@ class VirtualizeController {
       if (this.anyHidden) this.showAll();
       return;
     }
+    // §perf-large-file C4: bail until the editor DOM is inside a scroll
+    // container. The large-doc keep-alive editor registers its NodeViews while
+    // still DETACHED, so resolving the scroller only once (in start) captured
+    // null forever and NOTHING was ever hidden (hidden(cv)=0). Re-resolve here
+    // on every tx until found.
+    if (!this.ensureScroller()) return;
     if (this.positions.size === 0) this.measure();
     if (docChanged) this.scheduleRemeasure();
     this.evaluateAll();
@@ -119,6 +125,19 @@ class VirtualizeController {
         this.externals.push({ bottom: t + el.offsetHeight, el, top: t });
       }
     });
+  }
+
+  /** Lazily (re)resolve the scroll container and attach the scroll listener
+   *  once found. Returns true when a scroller is available. See apply() for why
+   *  this can't be a one-shot lookup in start(). */
+  private ensureScroller(): boolean {
+    if (this.scroller) return true;
+    const scroller =
+      this.view?.dom.closest<HTMLElement>(".editor-area-scroll") ?? null;
+    if (!scroller) return false;
+    this.scroller = scroller;
+    scroller.addEventListener("scroll", this.onScroll, { passive: true });
+    return true;
   }
 
   private evaluate(nv: VBlockView): void {
@@ -205,8 +224,7 @@ class VirtualizeController {
   private start(view: EditorView): void {
     this.started = true;
     this.view = view;
-    this.scroller = view.dom.closest<HTMLElement>(".editor-area-scroll");
-    this.scroller?.addEventListener("scroll", this.onScroll, { passive: true });
+    this.ensureScroller();
     requestAnimationFrame(() => this.apply(false));
   }
 }
