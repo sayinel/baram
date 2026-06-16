@@ -16,6 +16,27 @@
   - A per-editor `VirtualizeController`: keeps off-screen blocks hidden at all times, maintains the window from a **position cache** (no layout read per keystroke), delta-toggles only blocks crossing the viewport boundary, driven by the plugin's `view.update()` (every tx) + a scroll listener. `flag-off → reveal all` (passthrough).
 - **Measured progress (CONTEXT.md, WKWebView dev, via `window.__baramPerf`):** typing 467ms (baseline) → ~26ms avg (always-on). Scroll "much smoother". math/mermaid edit-entry "faster but still slow".
 
+## UPDATE 2026-06-16 (GUI-confirmed — START HERE)
+
+Three fixes shipped this session, each GUI-validated where possible:
+
+1. **fold ~40ms/keystroke → CONFIRMED FIXED** (`4bbd54c`). GUI `txBreakdown`: `fold$` now **0.29ms avg** (was ~40ms). Heading arrows are CSS pseudo-elements; fold's DecorationSet is empty when nothing is folded (unit test locks this in). Folding works in the GUI.
+2. **heading fold gutter click → FIXED** (`117b6dd`). The first cut used `posAtCoords`/`getBoundingClientRect`, which break under `.editor-area-scroll`'s CSS `zoom` ([[wkwebview-css-zoom-coords]]) — the gutter did nothing. Now coordinate-free: `pointer-events:auto` pseudo → `event.target` = heading, gutter detected via `event.offsetX < 0` (sign is zoom-invariant), position via `posAtDOM`. User confirms folding works.
+3. **The real typing-latency floor was NOT layout — it was a per-keystroke whole-doc `doc.eq()`** (`3d0b67b`). GUI `inputLatency` p50 was **152ms with the flag ON and 153ms with it OFF** — i.e. virtualization barely moved the median, because the dominant cost is JS, not DOM. `txBreakdown` proved plugins were ~0.7ms/tx total. Root cause: the auto-save `update` listener calls `shouldSkipDirty()` → `original.eq(currentDoc)` (ProseMirror `Node.eq` = deep walk of the whole ~3,500-block doc) on EVERY keystroke. Fixed with an O(1) `content.size` pre-check (behaviour-identical). **Pending GUI re-measure to confirm the floor drops.**
+
+**KEY LESSON:** on a large doc, a flag-independent typing floor (ON≈OFF) means the cost is JS in a per-keystroke listener, NOT DOM layout — virtualization can't help it. Audit every `editor.on("update"|"transaction", …)` for whole-doc work. Remaining per-keystroke whole-doc suspects (only when their UI is mounted): **Outline** (`src/components/sidebar/Outline.tsx` — `useEditorState` runs `extractHeadings` O(doc) every tx, NOT debounced — open panel = per-keystroke walk); math-block number recompute (already shared-cached → O(n) once/tx); TOC view (200ms debounced → safe).
+
+**NEXT (start here):** GUI re-measure with `3d0b67b` in. Warm first (scroll → `reset()` → type 30+ chars), then:
+```js
+console.log("ON p50:", JSON.stringify(__baramPerf.inputLatency()));
+const b = __baramPerf.txBreakdown();
+console.log("events:", JSON.stringify(b.events));   // 'update'/'transaction' emit cost (the listener stack)
+const els = [...document.querySelectorAll('.editor-area-scroll .tiptap > *')];
+console.log("blocks:", els.length, "hidden(cv):", els.filter(e=>e.style.contentVisibility==='hidden').length);
+```
+- Big drop (→ tens of ms): `doc.eq()` was the floor — done, move to virtualization tuning / containers.
+- Small drop: another per-keystroke offender remains → the `events` total points at the `update` listener stack (close the Outline panel to A/B it); and `hidden(cv)` near 0 means virtualization isn't engaging (chase `viewport-virtualize.ts measure()/evaluateAll()`).
+
 ## CURRENT BLOCKER / NEXT STEP (start here)
 
 **Symptom (the test that produced this handoff):** typing "hello hello hello" logged `SLOW TX ~170–300ms docChanged=true plugins=fold$:38–56,listAtomFix$:6–9` on EVERY keystroke.
@@ -55,7 +76,10 @@ Report: (a) avg ms/tx, (b) whether `fold$` is gone from the plugin breakdown, (c
 | `e4e6c61` | perf: fold rebuilds only on structural change (heading content edit = map-only). Did NOT fix the fold map cost (see blocker #2). |
 | `dc8ac52` | test: harden code-block-lazy (vi.waitFor instead of setTimeout(50)) — was flaky under parallel load. |
 | `e3e9dfd` | docs: this handoff (C4 session). |
-| `4bbd54c` | **perf(C4): heading fold arrows → CSS pseudo-element, not per-heading widgets.** Kills the ~40ms/keystroke fold-map cost (blocker #2). Open headings = 0 decos; folded headings get a `.fold-collapsed` node-class deco + CSS-rotated arrow. Gutter clicks coordinate-detected. List arrows unchanged. Pending GUI re-measure. |
+| `4bbd54c` | **perf(C4): heading fold arrows → CSS pseudo-element, not per-heading widgets.** Kills the ~40ms/keystroke fold-map cost (blocker #2). GUI-confirmed: `fold$` 0.29ms avg. |
+| `0c29acb` | test(C4): assert fold DecorationSet is empty when nothing folded (locks the invariant). |
+| `117b6dd` | **fix(C4): heading fold gutter click made zoom-safe** — coord approach broke under CSS `zoom`; now `pointer-events:auto` pseudo + `offsetX<0` + `posAtDOM`. User-confirmed folding works. |
+| `3d0b67b` | **perf(C4): guard per-keystroke baseline `doc.eq()` with O(1) `content.size` check.** The real flag-independent ~152ms typing floor (ON≈OFF) — auto-save `update` listener walked the whole doc every keystroke. Behaviour-identical guard. Pending GUI re-measure. |
 
 ## Dead-ends — do NOT retry (proven this session)
 
