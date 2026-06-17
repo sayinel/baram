@@ -22,20 +22,17 @@ Three fixes shipped this session, each GUI-validated where possible:
 
 1. **fold ~40ms/keystroke → CONFIRMED FIXED** (`4bbd54c`). GUI `txBreakdown`: `fold$` now **0.29ms avg** (was ~40ms). Heading arrows are CSS pseudo-elements; fold's DecorationSet is empty when nothing is folded (unit test locks this in). Folding works in the GUI.
 2. **heading fold gutter click → FIXED** (`117b6dd`). The first cut used `posAtCoords`/`getBoundingClientRect`, which break under `.editor-area-scroll`'s CSS `zoom` ([[wkwebview-css-zoom-coords]]) — the gutter did nothing. Now coordinate-free: `pointer-events:auto` pseudo → `event.target` = heading, gutter detected via `event.offsetX < 0` (sign is zoom-invariant), position via `posAtDOM`. User confirms folding works.
-3. **The real typing-latency floor was NOT layout — it was a per-keystroke whole-doc `doc.eq()`** (`3d0b67b`). GUI `inputLatency` p50 was **152ms with the flag ON and 153ms with it OFF** — i.e. virtualization barely moved the median, because the dominant cost is JS, not DOM. `txBreakdown` proved plugins were ~0.7ms/tx total. Root cause: the auto-save `update` listener calls `shouldSkipDirty()` → `original.eq(currentDoc)` (ProseMirror `Node.eq` = deep walk of the whole ~3,500-block doc) on EVERY keystroke. Fixed with an O(1) `content.size` pre-check (behaviour-identical). **Pending GUI re-measure to confirm the floor drops.**
+3. **The per-keystroke whole-doc `doc.eq()` floor → CONFIRMED FIXED** (`3d0b67b`). GUI `inputLatency` p50 was **152ms (flag ON) vs 153ms (OFF)** — flag-independent ⇒ the cost was JS, not DOM. `txBreakdown` proved plugins ~0.7ms/tx. Root cause: the auto-save `update` listener → `shouldSkipDirty()` → `original.eq(currentDoc)` (ProseMirror `Node.eq` = deep walk of the whole ~3,500-block doc) EVERY keystroke. Fixed with an O(1) `content.size` pre-check (behaviour-identical). **GUI-confirmed:** post-fix `events` shows the `update` listener at **11ms total / 129 calls** (was the dominant floor).
+
+4. **Block virtualization (flag ON) — TRIED, REVERTED, NOT VIABLE AS-IS** (`8d881e3` then reverted by `0c6541d`). GUI revealed `hidden(cv)=0` over 3,629 blocks with the flag ON — virtualization had **never actually engaged on the large keep-alive editor**, because the controller resolved its scroll container once in `start()` while that editor's DOM was still DETACHED (registers NodeViews before `<EditorContent>` mounts) → `scroller` null forever → `evaluate()` early-returned. `8d881e3` made it resolve lazily (`ensureScroller`) so it engaged for the FIRST time — and the app became unusable (scroll + typing both froze; user couldn't test). So the always-on content-visibility design does not survive contact with the real large doc: toggling content-visibility across thousands of blocks, compounded by the editor's CSS `zoom` breaking the `offsetTop`/`scrollTop` band math and `contain-intrinsic-size` (→ scrollHeight feedback), thrashes. **Reverted to keep the DEV flag a harmless no-op.** All the handoff's earlier "26ms always-on / smoother scroll" numbers were therefore NOT the large doc — they were the shared editor (small docs), where the scroller resolves normally.
 
 **KEY LESSON:** on a large doc, a flag-independent typing floor (ON≈OFF) means the cost is JS in a per-keystroke listener, NOT DOM layout — virtualization can't help it. Audit every `editor.on("update"|"transaction", …)` for whole-doc work. Remaining per-keystroke whole-doc suspects (only when their UI is mounted): **Outline** (`src/components/sidebar/Outline.tsx` — `useEditorState` runs `extractHeadings` O(doc) every tx, NOT debounced — open panel = per-keystroke walk); math-block number recompute (already shared-cached → O(n) once/tx); TOC view (200ms debounced → safe).
 
-**NEXT (start here):** GUI re-measure with `3d0b67b` in. Warm first (scroll → `reset()` → type 30+ chars), then:
-```js
-console.log("ON p50:", JSON.stringify(__baramPerf.inputLatency()));
-const b = __baramPerf.txBreakdown();
-console.log("events:", JSON.stringify(b.events));   // 'update'/'transaction' emit cost (the listener stack)
-const els = [...document.querySelectorAll('.editor-area-scroll .tiptap > *')];
-console.log("blocks:", els.length, "hidden(cv):", els.filter(e=>e.style.contentVisibility==='hidden').length);
-```
-- Big drop (→ tens of ms): `doc.eq()` was the floor — done, move to virtualization tuning / containers.
-- Small drop: another per-keystroke offender remains → the `events` total points at the `update` listener stack (close the Outline panel to A/B it); and `hidden(cv)` near 0 means virtualization isn't engaging (chase `viewport-virtualize.ts measure()/evaluateAll()`).
+**NET RESULT THIS SESSION:** the DEFAULT (flag-OFF) typing path is materially better — fold (40ms→0.29ms) + doc.eq floor removed. Virtualization is parked: it needs a redesign before re-enabling.
+
+**NEXT (start here):**
+1. **Quantify the default win:** GUI re-measure with flag **OFF** (it was never re-measured after `3d0b67b`). Warm → `__baramPerf.reset()` → type 30+ chars → `__baramPerf.inputLatency()`. The doc.eq + fold removal should drop p50 below the prior 153ms. This is the number that matters (flag OFF ships).
+2. **Virtualization redesign (only if the OFF p50 is still too high to hit the <16ms goal):** the content-visibility-on-every-block approach is the wrong primitive here. Options to evaluate: (a) TRUE windowing — render only viewport blocks into the DOM, replace off-screen ranges with sized spacers (react-virtual-style), but this fights ProseMirror's single-doc DOM model (see plan §"rejected: segmented editors"); (b) make all virtualization measurements zoom-normalized (divide offset/scroll by `--editor-zoom`) AND switch `evaluateAll` from O(all-blocks)/frame to an incremental boundary walk (only toggle blocks entering/leaving the band); (c) drop CSS `zoom` for the editor in favour of `transform: scale` or font-size scaling so layout coords stay consistent. Each is substantial — do it as its own plan, and keep the flag OFF-by-default until a GUI burst proves scroll+typing stay smooth.
 
 ## CURRENT BLOCKER / NEXT STEP (start here)
 
@@ -79,7 +76,9 @@ Report: (a) avg ms/tx, (b) whether `fold$` is gone from the plugin breakdown, (c
 | `4bbd54c` | **perf(C4): heading fold arrows → CSS pseudo-element, not per-heading widgets.** Kills the ~40ms/keystroke fold-map cost (blocker #2). GUI-confirmed: `fold$` 0.29ms avg. |
 | `0c29acb` | test(C4): assert fold DecorationSet is empty when nothing folded (locks the invariant). |
 | `117b6dd` | **fix(C4): heading fold gutter click made zoom-safe** — coord approach broke under CSS `zoom`; now `pointer-events:auto` pseudo + `offsetX<0` + `posAtDOM`. User-confirmed folding works. |
-| `3d0b67b` | **perf(C4): guard per-keystroke baseline `doc.eq()` with O(1) `content.size` check.** The real flag-independent ~152ms typing floor (ON≈OFF) — auto-save `update` listener walked the whole doc every keystroke. Behaviour-identical guard. Pending GUI re-measure. |
+| `3d0b67b` | **perf(C4): guard per-keystroke baseline `doc.eq()` with O(1) `content.size` check.** The real flag-independent ~152ms typing floor (ON≈OFF) — auto-save `update` listener walked the whole doc every keystroke. Behaviour-identical guard. GUI-confirmed: `update` event now 11ms/129 calls. |
+| `8d881e3` | fix(C4): lazily re-resolve virtualize scroller — made virtualization engage on the large doc for the first time (revealed `hidden(cv)=0` was a detached-scroller bug). **Reverted** — engaging it froze the app. |
+| `0c6541d` | **perf(C4): revert `8d881e3`** — large-doc content-visibility virtualization is not viable as-is (scroll+typing froze; content-visibility thrash × CSS `zoom` band-math). DEV flag back to a harmless no-op. Virtualization parked for redesign. |
 
 ## Dead-ends — do NOT retry (proven this session)
 
