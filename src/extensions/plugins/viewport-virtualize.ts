@@ -288,7 +288,17 @@ export const ViewportVirtualize = Extension.create({
               controller.destroy();
             },
             update(view: EditorView, prevState: EditorState) {
-              controller.onUpdate(!view.state.doc.eq(prevState.doc));
+              // §perf-large-file C4: detect a doc change by REFERENCE, not
+              // `doc.eq()`. `view.update()` runs inside `view.dispatch`, so a
+              // deep whole-doc `doc.eq(prevState.doc)` here cost ~O(doc) on EVERY
+              // keystroke — even with the flag OFF (this plugin is always
+              // registered) — and was a second hidden typing-latency floor
+              // alongside the auto-save one. ProseMirror creates a new doc object
+              // whenever content changes, so `!==` is an O(1), correct change
+              // check (matches syntax-reveal.ts). A rare identical-content
+              // replacement reads as "changed" → at worst one extra debounced
+              // remeasure, which is harmless.
+              controller.onUpdate(view.state.doc !== prevState.doc);
             },
           };
         },
