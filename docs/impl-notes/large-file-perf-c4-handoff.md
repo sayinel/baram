@@ -91,6 +91,28 @@ blocks.forEach((b) => { b.style.display = ''; });                     // restore
 - **WINDOWED median ≪ FULL median** (e.g. 140→15ms) ⇒ `view.dispatch`/`updateState` cost IS driven by rendered DOM size ⇒ a clean windowing virtualization (`display:none`/unmount off-screen, NOT content-visibility, NOT fold) is the fix. Redesign it: hide off-screen top-level blocks with `display:none` + a sized spacer, toggled incrementally (only blocks crossing the band), zoom-normalized, no per-frame O(all) `evaluateAll`.
 - **WINDOWED ≈ FULL** ⇒ dispatch cost is NOT DOM-size-driven ⇒ the floor is per-keystroke browser input/observer cost or a doc-spanning DecorationSet's VIEW reconciliation (block-id/list-atom-fix/prompt-highlight/syntax-reveal widgets across the whole doc, reconciled in `updateState` — the instrumentation blind spot). Next probe would disable those plugins one at a time.
 
+## UPDATE 2026-06-18c — DECISIVE: typing cost scales with RENDERED block count (windowing validated)
+
+Synthetic `view.dispatch` benchmark (50 single-char inserts, median — no keydown/fold/controller noise), CONTEXT.md, flag OFF:
+
+| Condition | rendered top-level blocks | median `view.dispatch` |
+|---|---|---|
+| **FULL DOM** | 3,636 | **53 ms** |
+| **WINDOWED** (`display:none` all but first 60) | 60 | **4 ms** |
+
+⇒ **`view.dispatch` cost is ~linear in rendered block count.** PM's `updateState` forces a synchronous layout of the whole contenteditable (selection sync) on every transaction; with a huge DOM that's ~53ms, with a small DOM ~4ms. Also: `inputLatency` p50 was 152ms while dispatch is 53ms → the other ~100ms is browser input-handling + paint OUTSIDE dispatch, which a smaller DOM also shrinks. **So real windowing virtualization is THE fix, and it's now quantified: it can take the ~152ms floor toward single digits.**
+
+This also explains the earlier content-visibility FREEZE: the primitive wasn't the problem — the CONTROLLER was. It ran `evaluateAll()` over all 3,629 block views on EVERY transaction (incl. every keystroke). The redesign must make **typing trigger ZERO virtualization work** (the visible window doesn't change when you type in place — only scrolling changes it).
+
+**HARD CONSTRAINT for the redesign (why naive `display:none` is wrong for the real thing):** `display:none` removes a block's HEIGHT, so hiding 3,500 off-screen blocks collapses `scrollHeight` → the scrollbar and scroll position break. The bench used `display:none` only because it never scrolled. Real windowing must RESERVE the off-screen height — either `content-visibility:hidden` + `contain-intrinsic-size:<h>px` (current primitive; reserves space, scroll works) or explicit sized spacer elements. **Before building, confirm `content-visibility` ALSO yields the ~4ms dispatch** (re-run the bench using `b.style.contentVisibility='hidden';b.style.containIntrinsicSize='auto 20px'` instead of `display:none`). If yes → keep content-visibility, just fix the controller. If content-visibility does NOT drop dispatch (only `display:none` does) → the design must use sized spacers, which is a bigger lift.
+
+**Redesign sketch (viewport-virtualize.ts controller):**
+- Evaluate/toggle ONLY on scroll (rAF-throttled) and a debounced post-edit remeasure. A plain docChanged tx (typing in place) must NOT call `evaluateAll` — schedule a debounced remeasure of cached positions, return immediately.
+- Toggle only the DELTA of blocks crossing the viewport band since the last evaluation (track the current window range; on scroll, only flip blocks that entered/left).
+- Zoom-normalize all `offsetTop`/`scrollTop` math (`.editor-area-scroll` has CSS `zoom`): divide measured offsets by `--editor-zoom` (or read `getComputedStyle(scroller).zoom`).
+- Resolve the scroller lazily (the keep-alive editor mounts detached — the reverted `8d881e3` `ensureScroller` idea was right; it only failed because the OLD controller then thrashed).
+- Keep export safe: content-visibility keeps nodes in the DOM (export clone works); sized-spacer approach would need `withVirtualizationSuspended` (plan §12 AM-4).
+
 ## CURRENT BLOCKER / NEXT STEP (start here)
 
 **Symptom (the test that produced this handoff):** typing "hello hello hello" logged `SLOW TX ~170–300ms docChanged=true plugins=fold$:38–56,listAtomFix$:6–9` on EVERY keystroke.
