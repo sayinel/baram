@@ -305,6 +305,12 @@ function App() {
   // so re-binding on activeEditor change instruments each editor exactly once.
   useEffect(() => {
     if (activeEditor) instrumentEditor(activeEditor);
+    // §perf-large-file C4: expose the ACTIVE editor on window in DEV so perf
+    // experiments can be driven from the DevTools console (e.g. fold-all to
+    // simulate windowing, read doc size, dispatch commands).
+    if (import.meta.env.DEV) {
+      (globalThis as { __baramEditor?: unknown }).__baramEditor = activeEditor;
+    }
   }, [activeEditor]);
 
   // §72 Skills mode — auto-detect skill files and switch right panel
