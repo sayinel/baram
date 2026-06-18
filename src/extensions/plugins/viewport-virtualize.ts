@@ -62,7 +62,10 @@ class VirtualizeController {
     VBlockView,
     { bottom: number; top: number }
   >();
-  private remeasureTimer = 0;
+  /** Cached positions are stale (an edit or (un)registration happened); the next
+   *  reconcile must re-measure before evaluating the band. */
+  private positionsDirty = true;
+  private reconcileTimer = 0;
   private scroller: HTMLElement | null = null;
   private scrollRaf = 0;
   private started = false;
@@ -71,40 +74,44 @@ class VirtualizeController {
 
   destroy(): void {
     this.scroller?.removeEventListener("scroll", this.onScroll);
-    window.clearTimeout(this.remeasureTimer);
+    window.clearTimeout(this.reconcileTimer);
     if (this.scrollRaf) cancelAnimationFrame(this.scrollRaf);
     this.views.clear();
     this.positions.clear();
   }
 
-  /** Called from the plugin's view.update() on every transaction. */
+  /** Called from the plugin's view.update() on every transaction.
+   *  §perf-large-file C4: typing must do ZERO virtualization work — the visible
+   *  window only changes on SCROLL, not when you type in place. So on a doc
+   *  change we only mark positions stale and schedule a DEBOUNCED reconcile
+   *  (which refreshes the cache for the next scroll and hides any newly-added
+   *  off-screen blocks once the burst settles). We never iterate the block set
+   *  synchronously here — that per-keystroke O(all-blocks) evaluate is exactly
+   *  what froze the editor when the flag was first actually engaged. */
   onUpdate(docChanged: boolean): void {
-    this.apply(docChanged);
+    if (!flagOn()) {
+      if (this.anyHidden) this.showAll();
+      return;
+    }
+    if (docChanged) {
+      this.positionsDirty = true;
+      this.scheduleReconcile();
+    }
   }
 
   register(nv: VBlockView, view: EditorView): void {
     if (!this.started) this.start(view);
     this.views.add(nv);
-    // A block created/re-created during scrolling should hide immediately if
-    // it is already outside the window.
-    if (flagOn() && this.positions.size > 0) this.evaluate(nv);
+    // New/re-created blocks (initial load, scroll, source-toggle) shift layout;
+    // mark stale and reconcile once after the batch settles (debounced — never
+    // once per block, which would be thousands of reconciles during load).
+    this.positionsDirty = true;
+    if (flagOn()) this.scheduleReconcile();
   }
 
   unregister(nv: VBlockView): void {
     this.views.delete(nv);
     this.positions.delete(nv);
-  }
-
-  /** Main entry: keep the window current. Uses the position cache (no layout
-   *  read); only the blocks crossing the boundary toggle content-visibility. */
-  private apply(docChanged: boolean): void {
-    if (!flagOn()) {
-      if (this.anyHidden) this.showAll();
-      return;
-    }
-    if (this.positions.size === 0) this.measure();
-    if (docChanged) this.scheduleRemeasure();
-    this.evaluateAll();
   }
 
   private buildExternals(): void {
@@ -119,6 +126,23 @@ class VirtualizeController {
         this.externals.push({ bottom: t + el.offsetHeight, el, top: t });
       }
     });
+  }
+
+  /** Lazily (re)resolve the scroll container and attach the scroll listener.
+   *  The large-doc keep-alive editor registers NodeViews while its DOM is still
+   *  DETACHED, so a one-shot lookup in start() captured null forever; resolve on
+   *  demand until found. (This is the reverted 8d881e3 idea — correct; it only
+   *  regressed before because the OLD controller then evaluated every block on
+   *  every keystroke. This controller does scroll-only work, so engaging is
+   *  safe.) */
+  private ensureScroller(): boolean {
+    if (this.scroller) return true;
+    const s =
+      this.view?.dom.closest<HTMLElement>(".editor-area-scroll") ?? null;
+    if (!s) return false;
+    this.scroller = s;
+    s.addEventListener("scroll", this.onScroll, { passive: true });
+    return true;
   }
 
   private evaluate(nv: VBlockView): void {
@@ -176,17 +200,33 @@ class VirtualizeController {
     if (this.scrollRaf) return;
     this.scrollRaf = requestAnimationFrame(() => {
       this.scrollRaf = 0;
-      this.apply(false);
+      this.reconcile();
     });
   };
 
-  private scheduleRemeasure(): void {
-    window.clearTimeout(this.remeasureTimer);
-    this.remeasureTimer = window.setTimeout(() => {
-      if (!flagOn()) return;
+  /** Re-window from the position cache. Called on scroll (rAF) and after the
+   *  debounced post-edit settle — NEVER synchronously per keystroke. Re-measures
+   *  first if the cache is stale; only blocks crossing the band toggle
+   *  content-visibility. */
+  private reconcile(): void {
+    if (!flagOn()) {
+      if (this.anyHidden) this.showAll();
+      return;
+    }
+    if (!this.ensureScroller()) return;
+    if (this.positionsDirty || this.positions.size === 0) {
       this.measure();
-      this.evaluateAll();
-    }, REMEASURE_MS);
+      this.positionsDirty = false;
+    }
+    this.evaluateAll();
+  }
+
+  private scheduleReconcile(): void {
+    window.clearTimeout(this.reconcileTimer);
+    this.reconcileTimer = window.setTimeout(
+      () => this.reconcile(),
+      REMEASURE_MS,
+    );
   }
 
   private showAll(): void {
@@ -197,17 +237,17 @@ class VirtualizeController {
     }
     this.anyHidden = false;
     // Positions are stale once everything is laid out differently; drop them so
-    // the next activation re-measures.
+    // the next reconcile re-measures.
     this.positions.clear();
     this.externals = [];
+    this.positionsDirty = true;
   }
 
   private start(view: EditorView): void {
     this.started = true;
     this.view = view;
-    this.scroller = view.dom.closest<HTMLElement>(".editor-area-scroll");
-    this.scroller?.addEventListener("scroll", this.onScroll, { passive: true });
-    requestAnimationFrame(() => this.apply(false));
+    this.ensureScroller();
+    requestAnimationFrame(() => this.reconcile());
   }
 }
 
