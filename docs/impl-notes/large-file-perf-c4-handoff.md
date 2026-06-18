@@ -58,6 +58,39 @@ Three fixes shipped this session, each GUI-validated where possible:
    **2026-06-18 update:** the 2nd flag-OFF re-measure (after `3d0b67b`, before `c76cc6a`) gave **p50 150ms, PM-dispatch avg 218ms/tx** — so PM-dispatch was STILL dominant, which led to finding & fixing the virtualize `view.update` `doc.eq()` (`c76cc6a`). **Re-measure AGAIN with `c76cc6a` in.** Watch `transactions.totalMs/count` specifically: if it falls from ~218ms toward single digits, dispatch was the doc.eq and the p50 should follow down. If PM-dispatch stays high, the cost is PM's own DOM reconcile/layout → virtualization redesign. (Note: the 218ms *average* is inflated by `maxMs 1262` load outliers; prefer the p50 of `inputLatency` and, if possible, eyeball the per-tx values during a steady burst.)
 2. **Virtualization redesign (only if the OFF p50 is still too high to hit the <16ms goal):** the content-visibility-on-every-block approach is the wrong primitive here. Options to evaluate: (a) TRUE windowing — render only viewport blocks into the DOM, replace off-screen ranges with sized spacers (react-virtual-style), but this fights ProseMirror's single-doc DOM model (see plan §"rejected: segmented editors"); (b) make all virtualization measurements zoom-normalized (divide offset/scroll by `--editor-zoom`) AND switch `evaluateAll` from O(all-blocks)/frame to an incremental boundary walk (only toggle blocks entering/leaving the band); (c) drop CSS `zoom` for the editor in favour of `transform: scale` or font-size scaling so layout coords stay consistent. Each is substantial — do it as its own plan, and keep the flag OFF-by-default until a GUI burst proves scroll+typing stay smooth.
 
+## UPDATE 2026-06-18b — fold-all test refuted the naive layout hypothesis; need a clean windowing probe
+
+After `c76cc6a` (both `doc.eq`s gone, Outline debounced), flag-OFF typing p50 was STILL ~152–232ms and unmoved by any JS fix — pointing at DOM cost. To test "is it the rendered block count?", we ran a fold-all (which `display:none`s most blocks): rendered dropped **3636 → 108**, but typing got **WORSE: p50 232 → 1231ms** (p99 26841ms). So reducing rendered DOM did NOT help.
+
+**BUT the fold-all test is contaminated:** folding ~1,391 headings makes `fold.ts buildDecorations` emit a `fold-hidden` node decoration for every child in every fold range + an ellipsis widget per heading → a huge folded `DecorationSet` that `fold.apply` maps every keystroke. The 1231ms is that fold-decoration cost, not "small DOM is slow". (Aside: this is a real separate issue — folding a huge doc is itself expensive — but not the current target.)
+
+**So the layout-vs-not question is still OPEN** and needs a contamination-free probe. Two things plague the data: (1) fold decorations when folded, (2) huge measurement noise (p99 in the tens of seconds = GC/load spikes). The fix for both: a **synthetic dispatch benchmark** that removes human/keydown variance and fold, measuring `view.dispatch` median directly, full-DOM vs a manually `display:none`-windowed DOM (no fold, no controller):
+
+```js
+const ed = __baramEditor;
+function bench(label, n = 50) {
+  ed.commands.focus();
+  ed.commands.setTextSelection(3);                       // inside the first block
+  for (let i = 0; i < 5; i++)                             // warmup
+    ed.view.dispatch(ed.state.tr.insertText("x", ed.state.selection.from));
+  const t = [];
+  for (let i = 0; i < n; i++) {
+    const t0 = performance.now();
+    ed.view.dispatch(ed.state.tr.insertText("x", ed.state.selection.from));
+    t.push(performance.now() - t0);
+  }
+  t.sort((a, b) => a - b);
+  console.log(label, "median ms:", t[n >> 1].toFixed(1), "p90:", t[Math.floor(n * 0.9)].toFixed(1));
+}
+bench("FULL DOM");
+const blocks = [...document.querySelectorAll('.editor-area-scroll .tiptap > *')];
+blocks.forEach((b, i) => { if (i > 60) b.style.display = 'none'; });  // window to first ~60, no fold deco
+bench("WINDOWED 60");
+blocks.forEach((b) => { b.style.display = ''; });                     // restore
+```
+- **WINDOWED median ≪ FULL median** (e.g. 140→15ms) ⇒ `view.dispatch`/`updateState` cost IS driven by rendered DOM size ⇒ a clean windowing virtualization (`display:none`/unmount off-screen, NOT content-visibility, NOT fold) is the fix. Redesign it: hide off-screen top-level blocks with `display:none` + a sized spacer, toggled incrementally (only blocks crossing the band), zoom-normalized, no per-frame O(all) `evaluateAll`.
+- **WINDOWED ≈ FULL** ⇒ dispatch cost is NOT DOM-size-driven ⇒ the floor is per-keystroke browser input/observer cost or a doc-spanning DecorationSet's VIEW reconciliation (block-id/list-atom-fix/prompt-highlight/syntax-reveal widgets across the whole doc, reconciled in `updateState` — the instrumentation blind spot). Next probe would disable those plugins one at a time.
+
 ## CURRENT BLOCKER / NEXT STEP (start here)
 
 **Symptom (the test that produced this handoff):** typing "hello hello hello" logged `SLOW TX ~170–300ms docChanged=true plugins=fold$:38–56,listAtomFix$:6–9` on EVERY keystroke.
