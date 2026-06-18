@@ -113,6 +113,32 @@ This also explains the earlier content-visibility FREEZE: the primitive wasn't t
 - Resolve the scroller lazily (the keep-alive editor mounts detached — the reverted `8d881e3` `ensureScroller` idea was right; it only failed because the OLD controller then thrashed).
 - Keep export safe: content-visibility keeps nodes in the DOM (export clone works); sized-spacer approach would need `withVirtualizationSuspended` (plan §12 AM-4).
 
+## UPDATE 2026-06-18d — virtualize controller REBUILT (typing does zero work); GUI validation pending
+
+Acted on the decisive finding: rebuilt `viewport-virtualize.ts`'s controller (`a43cb5c`). The earlier freeze was the controller running `evaluateAll()` over all ~3,629 block views on EVERY transaction (it's driven by the plugin's `view.update()`, which fires per tx). New design:
+- **`onUpdate` (per tx): on docChanged, only set `positionsDirty` + schedule a DEBOUNCED reconcile. NO synchronous evaluate.** Typing in place doesn't move the visible window, so typing now costs ~0 virtualization work — this is the fix for the freeze.
+- **`reconcile()` runs only on scroll (rAF-throttled) + after the post-edit debounce settles.** Re-measures if stale, then evaluates the band and toggles content-visibility on the delta.
+- **`register()`** schedules a debounced reconcile (one pass after the load batch, not per block).
+- **`ensureScroller()`** lazily resolves the scroll container (keep-alive editor mounts detached) — the reverted `8d881e3` idea, now safe because there's no per-keystroke thrash.
+- Kept **content-visibility + contain-intrinsic-size** (reserves off-screen height → scroll stays correct; `display:none` would collapse `scrollHeight`).
+
+DEV-flag-gated, OFF by default. Automated gates green (2465 pass / 6 skip, tsc/eslint clean) but jsdom can't exercise it (content-visibility/offsetTop/scroll). **GUI validation required before flipping default:**
+```js
+window.__baramFlags = { virtualize: true };
+// scroll up & down once (triggers the first reconcile → hides off-screen)
+// then run the synthetic bench from §UPDATE 2026-06-18b again:
+//   bench("VIRT ON")   → median view.dispatch should be ~4–10ms (near the windowed number), NOT 53ms
+const els=[...document.querySelectorAll('.editor-area-scroll .tiptap > *')];
+console.log("hidden(cv):", els.filter(e=>e.style.contentVisibility==='hidden').length, "/", els.length);
+```
+PASS criteria, all required:
+1. synthetic `bench` median ≈ single digits (windowing engaged), `hidden(cv)` is a few thousand (most blocks hidden);
+2. **real typing** stays smooth (no freeze) — type a burst, scroll, type again;
+3. **scroll** is smooth top-to-bottom and all content appears (no blank gaps that never fill);
+4. click / Outline-nav / find-in-doc to an off-screen target reveals it;
+5. no scrollbar jump / wrong document height.
+If all pass → replace the `window.__baramFlags.virtualize` DEV gate with a real `virtualizeLargeDocs` setting (default off → opt-in), gated to the large keep-alive editor. If typing freezes again → the per-tx path is still doing work; if scroll leaves blank gaps → reconcile/measure timing or the band/`contain-intrinsic-size` is off.
+
 ## CURRENT BLOCKER / NEXT STEP (start here)
 
 **Symptom (the test that produced this handoff):** typing "hello hello hello" logged `SLOW TX ~170–300ms docChanged=true plugins=fold$:38–56,listAtomFix$:6–9` on EVERY keystroke.
@@ -160,6 +186,8 @@ Report: (a) avg ms/tx, (b) whether `fold$` is gone from the plugin breakdown, (c
 | `0c6541d` | **perf(C4): revert `8d881e3`** — large-doc content-visibility virtualization is not viable as-is (scroll+typing froze; content-visibility thrash × CSS `zoom` band-math). DEV flag back to a harmless no-op. Virtualization parked for redesign. |
 | `d7c56a4` | **perf(C4): debounce Outline heading extraction.** `useEditorState`→`extractHeadings` ran a whole-doc walk every tx (incl. cursor moves) when the Outline panel was open → now 200ms-debounced `update` listener. |
 | `c76cc6a` | **perf(C4): drop 2nd per-keystroke `doc.eq()` in virtualize `view.update`.** It ran inside `view.dispatch` (so it showed as PM-dispatch time, survived the auto-save fix) on every tx even flag-OFF → O(1) `!==` reference check. Completes the per-keystroke whole-doc audit (hooks + components + plugin apply + view.update + appendTransaction all clean). |
+| `fb50651` | chore(C4): expose active editor on `window.__baramEditor` in DEV (drives the synthetic bench / windowing experiments). |
+| `a43cb5c` | **perf(C4): rebuild virtualize controller — typing does ZERO work, evaluate on scroll only.** Fixes the freeze (was `evaluateAll` over all blocks every tx). content-visibility retained. DEV-flag OFF; GUI validation pending. |
 
 ## Dead-ends — do NOT retry (proven this session)
 
