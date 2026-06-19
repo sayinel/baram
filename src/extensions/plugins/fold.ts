@@ -11,6 +11,9 @@ import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 
+import { changedRanges } from "../../utils/editor/changed-ranges";
+import { PROGRESSIVE_LOAD_META } from "../../utils/editor/progressive-load";
+
 // ── Types ──────────────────────────────────────────────────────────
 
 export type FoldMeta =
@@ -22,6 +25,12 @@ export type FoldMeta =
 export interface FoldState {
   decorations: DecorationSet;
   foldedPositions: Set<number>;
+  /**
+   * True when a progressive-load chunk has been applied without a full
+   * rebuild (PROGRESSIVE_LOAD_META was set). The next non-gated docChanged
+   * must do a full buildDecorations to honour the C2 contract.
+   */
+  needsFullRebuild: boolean;
 }
 
 export const foldPluginKey = new PluginKey<FoldState>("fold");
@@ -148,8 +157,21 @@ export function findAllFoldables(doc: PmNode): FoldableItem[] {
 
 // ── Anchor-based persistence ───────────────────────────────────────
 
+/**
+ * TEST-ONLY: incremented every time findFoldableHeadings runs a full doc walk.
+ * Used by unit tests to verify the incremental plugin path skips the walk on
+ * pure paragraph edits. Never read in production code.
+ */
+export let _findFoldableHeadingsCallCount = 0;
+
+/** Reset the test-only call counter. Call from beforeEach in tests. */
+export function _resetFindFoldableHeadingsCallCount(): void {
+  _findFoldableHeadingsCallCount = 0;
+}
+
 /** Find all foldable headings — direct doc children only */
 export function findFoldableHeadings(doc: PmNode): FoldableItem[] {
+  _findFoldableHeadingsCallCount++;
   const items: FoldableItem[] = [];
   const children: { node: PmNode; pos: number }[] = [];
 
@@ -282,14 +304,48 @@ function buildDecorations(
   for (const item of foldables) {
     const isFolded = foldedPositions.has(item.pos);
 
-    // Gutter arrow widget — inside the node, before text
-    decos.push(
-      Decoration.widget(
-        item.pos + 1,
-        () => createFoldArrow(isFolded, item.pos),
-        { side: -1, key: `fold-arrow-${item.pos}-${isFolded}` },
-      ),
-    );
+    // §perf-large-file C3.1d: use content-stable key (not pos) so downstream
+    // widgets survive position shifts without DOM teardown when a heading is edited.
+    const stableKey =
+      item.kind === "heading"
+        ? `${item.node.attrs.level as number}-${item.node.textContent.slice(0, 40)}`
+        : item.node.textContent.slice(0, 40);
+
+    if (item.kind === "heading") {
+      // §perf-large-file C4: the heading fold arrow is rendered via a CSS
+      // pseudo-element (`.tiptap > hN::before`, hover-shown), NOT a widget
+      // decoration. Emitting one gutter-arrow widget per heading meant the
+      // DecorationSet held ~1,391 widgets on the perf fixture, and PM's
+      // per-keystroke `DecorationSet.map(...)` over that whole set cost ~40ms on
+      // EVERY keystroke (even the map-only path). With CSS rendering, an OPEN
+      // heading contributes zero decorations; only a FOLDED heading gets a
+      // `fold-collapsed` node-class decoration (CSS rotates its arrow + keeps it
+      // visible). So the set is empty when nothing is folded and the
+      // per-keystroke map drops toward ~0. Gutter clicks are detected by
+      // coordinate (see handleDOMEvents.mousedown).
+      if (isFolded) {
+        decos.push(
+          Decoration.node(
+            item.pos,
+            item.pos + item.node.nodeSize,
+            { class: "fold-collapsed" },
+            { key: `fold-collapsed-${stableKey}` },
+          ),
+        );
+      }
+    } else {
+      // List items keep a gutter-arrow widget. Foldable list items (those with a
+      // nested sub-list) are far fewer than headings, so the per-keystroke map
+      // cost is negligible, and this preserves the exact list-fold interaction
+      // (the arrow is a real click target).
+      decos.push(
+        Decoration.widget(
+          item.pos + 1,
+          () => createFoldArrow(isFolded, item.pos),
+          { side: -1, key: `fold-arrow-${stableKey}-${isFolded}` },
+        ),
+      );
+    }
 
     if (isFolded) {
       // Ellipsis at end of heading / first paragraph
@@ -301,7 +357,7 @@ function buildDecorations(
       decos.push(
         Decoration.widget(ellipsisPos, () => createEllipsis(item.pos), {
           side: 1,
-          key: `fold-ellipsis-${item.pos}`,
+          key: `fold-ellipsis-${stableKey}`,
         }),
       );
 
@@ -371,6 +427,7 @@ function createFoldPlugin(): Plugin<FoldState> {
         return {
           foldedPositions: new Set(),
           decorations: buildDecorations(state.doc, new Set()),
+          needsFullRebuild: false,
         };
       },
 
@@ -413,6 +470,7 @@ function createFoldPlugin(): Plugin<FoldState> {
           return {
             foldedPositions: newFolded,
             decorations: buildDecorations(newState.doc, newFolded),
+            needsFullRebuild: false,
           };
         }
 
@@ -429,9 +487,84 @@ function createFoldPlugin(): Plugin<FoldState> {
               newFolded.add(mapped);
             }
           }
+          // §perf-large-file C2: Skip whole-doc rebuild during progressive load;
+          // map existing decorations instead. Final (no-meta) chunk rebuilds fully.
+          if (tr.getMeta(PROGRESSIVE_LOAD_META) === true) {
+            return {
+              foldedPositions: newFolded,
+              decorations: value.decorations.map(tr.mapping, tr.doc),
+              // §perf-large-file C3.1: flag so the first non-gated docChanged
+              // performs a full rebuild to honour the C2 final-chunk contract.
+              needsFullRebuild: true,
+            };
+          }
+
+          // §perf-large-file C3.1: if a previous progressive-load chunk set the
+          // flag, this is the first non-gated transaction — do the full rebuild.
+          if (value.needsFullRebuild) {
+            return {
+              foldedPositions: newFolded,
+              decorations: buildDecorations(newState.doc, newFolded),
+              needsFullRebuild: false,
+            };
+          }
+
+          // Pure incremental path: skip full descendants walk when the changed
+          // range touches no heading or listItem AND doesn't span a depth-0 node
+          // boundary (top-level insert/delete adjacent to a folded region).
+          const ranges = changedRanges(tr);
+          const needsRebuild = ranges.some((r) => {
+            // §perf-large-file C3 (fold): rebuild only on a STRUCTURAL change to
+            // the foldable set — a heading/listItem node whose BOUNDARY lies
+            // within the edit (created, deleted, or level/markup changed; such
+            // edits replace the node, so its start sits inside the changed
+            // range). A pure CONTENT edit inside an existing heading/listItem
+            // (the node spans the range, neither boundary inside it) leaves the
+            // foldable set unchanged, so its decorations are simply mapped — this
+            // avoids the ~50ms full findAllFoldables walk on every keystroke in a
+            // heading on heading-dense documents.
+            let found = false;
+            newState.doc.nodesBetween(r.from, r.to, (node, pos) => {
+              if (
+                node.type.name === "heading" ||
+                node.type.name === "listItem"
+              ) {
+                if (pos >= r.from || pos + node.nodeSize <= r.to) {
+                  found = true;
+                  return false;
+                }
+              }
+              return !found;
+            });
+            if (found) return true;
+
+            // Also trigger rebuild when a top-level block boundary was touched
+            // (a plain-block insert/delete adjacent to a folded heading's hidden
+            // range would otherwise leave stale hidden-node decorations).
+            try {
+              const $from = newState.doc.resolve(Math.max(0, r.from));
+              const $to = newState.doc.resolve(
+                Math.min(newState.doc.content.size, r.to),
+              );
+              if ($from.depth === 0 || $to.depth === 0) return true;
+            } catch {
+              return true;
+            }
+            return false;
+          });
+
+          if (!needsRebuild) {
+            // Pure inline paragraph edit — reuse mapped decorations.
+            return {
+              foldedPositions: newFolded,
+              decorations: value.decorations.map(tr.mapping, tr.doc),
+              needsFullRebuild: false,
+            };
+          }
           return {
             foldedPositions: newFolded,
             decorations: buildDecorations(newState.doc, newFolded),
+            needsFullRebuild: false,
           };
         }
 
@@ -451,10 +584,57 @@ function createFoldPlugin(): Plugin<FoldState> {
           if (!target) return false;
 
           const foldEl = target.closest(".fold-arrow, .fold-ellipsis");
-          if (!foldEl) return false;
+          if (!foldEl) {
+            // §perf-large-file C4: heading arrows are CSS pseudo-elements with no
+            // DOM node, so a click on a heading's gutter cannot be detected via
+            // `closest()`. Resolve it by coordinate instead.
+            const headingPos = resolveHeadingGutterFold(view, event);
+            if (headingPos === null) return false;
+            event.preventDefault();
+            event.stopPropagation();
+            dispatchToggleFold(view, headingPos);
+            return true;
+          }
 
-          const pos = Number(foldEl.getAttribute("data-fold-pos"));
-          if (isNaN(pos)) return false;
+          // §perf-large-file C3: Resolve the heading/listItem position at click
+          // time rather than reading the potentially-stale `data-fold-pos`
+          // attribute (which was written at decoration-creation time and is not
+          // updated when edits above this widget shift doc positions).
+          //
+          // Strategy: walk up from the widget element to find the containing
+          // top-level block's DOM node, then use posAtDOM to get its current
+          // doc position.  Fall back to the attribute only if posAtDOM fails.
+          let pos: null | number = null;
+          try {
+            // The widget is rendered inside the heading/listItem's DOM node.
+            // posAtDOM on the widget element itself gives the position of the
+            // widget inside that node; we want the node's own start position.
+            // Walking up to the first direct child of the editor's DOM root
+            // gives us a node whose posAtDOM result we can resolve to depth-0.
+            const editorDom = view.dom;
+            let el: HTMLElement | null = foldEl as HTMLElement;
+            while (el && el.parentElement && el.parentElement !== editorDom) {
+              el = el.parentElement;
+            }
+            if (el && el.parentElement === editorDom) {
+              const rawPos = view.posAtDOM(el, 0);
+              // posAtDOM returns a position inside the node; resolve to the
+              // node's outer start by going to depth-0 ancestor.
+              const $resolved = view.state.doc.resolve(rawPos);
+              // depth-0 ancestor's before() is the node's start pos in the doc.
+              pos = $resolved.depth > 0 ? $resolved.before(1) : rawPos;
+            }
+          } catch {
+            pos = null;
+          }
+
+          // Fallback: use the attribute (may be stale but better than nothing).
+          if (pos === null) {
+            const attrPos = Number(foldEl.getAttribute("data-fold-pos"));
+            if (!isNaN(attrPos)) pos = attrPos;
+          }
+
+          if (pos === null) return false;
 
           event.preventDefault();
           event.stopPropagation();
@@ -497,8 +677,6 @@ function findFoldableAtCursor(state: EditorState): null | number {
   return null;
 }
 
-// ── Plugin factory ─────────────────────────────────────────────────
-
 function getFirstChildSize(node: PmNode): number {
   let size = 0;
   let found = false;
@@ -509,6 +687,54 @@ function getFirstChildSize(node: PmNode): number {
     }
   });
   return size;
+}
+
+// ── Plugin factory ─────────────────────────────────────────────────
+
+/**
+ * §perf-large-file C4: detect a click on a top-level heading's gutter fold
+ * arrow, rendered as a CSS pseudo-element (`.tiptap > hN::before`, which is
+ * `pointer-events: auto`). Returns the heading's doc position when a FOLDABLE
+ * heading's gutter arrow was clicked, else null.
+ *
+ * MUST stay coordinate-free: `.editor-area-scroll` uses CSS `zoom`, under which
+ * WKWebView's `MouseEvent.clientX` / `getBoundingClientRect()` / `posAtCoords`
+ * live in mismatched coordinate spaces (see [[wkwebview-css-zoom-coords]]) — so
+ * the earlier `posAtCoords` + rect approach silently never fired. Instead:
+ *   1. A click on the `::before` arrow reports `event.target` === the heading
+ *      element (pseudo-elements forward events to their host).
+ *   2. `event.offsetX < 0` means the click landed left of the heading's content
+ *      box, i.e. in the gutter where the arrow sits. The SIGN of offsetX is
+ *      invariant under any positive `zoom`, so this needs no zoom math.
+ *   3. The heading's doc position is resolved via `posAtDOM` (DOM-based, also
+ *      zoom-safe), exactly as the list-item/ellipsis widget path does.
+ */
+function resolveHeadingGutterFold(
+  view: EditorView,
+  event: MouseEvent,
+): null | number {
+  const target = event.target as HTMLElement | null;
+  const heading = target?.closest("h1, h2, h3, h4, h5, h6");
+  if (!(heading instanceof HTMLElement) || !view.dom.contains(heading)) {
+    return null;
+  }
+  // Only the gutter (left of the heading content box) toggles; clicks on the
+  // heading text fall through to normal cursor placement.
+  if (event.offsetX >= 0) return null;
+
+  let topPos: number;
+  try {
+    const rawPos = view.posAtDOM(heading, 0);
+    const $resolved = view.state.doc.resolve(rawPos);
+    topPos = $resolved.depth > 0 ? $resolved.before(1) : rawPos;
+  } catch {
+    return null;
+  }
+
+  // Only foldable headings toggle (don't pollute foldedPositions with headings
+  // that have no content to fold).
+  if (!getFoldRange(view.state.doc, topPos)) return null;
+  return topPos;
 }
 
 // ── Tiptap Extension wrapper ───────────────────────────────────────

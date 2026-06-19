@@ -11,16 +11,29 @@ import type { Node } from "@tiptap/pm/model";
 
 const originalDocs = new Map<string, Node>();
 const pendingTabs = new Set<string>();
+const loadingTabs = new Set<string>();
 
 /** Clean up when tab is closed */
 export function clearOriginalDoc(tabId: string): void {
   originalDocs.delete(tabId);
   pendingTabs.delete(tabId);
+  loadingTabs.delete(tabId);
+}
+
+export function isTabLoading(tabId: string): boolean {
+  return loadingTabs.has(tabId);
 }
 
 /** Mark a tab as having just loaded content — the next update will capture baseline */
 export function markContentLoaded(tabId: string): void {
   pendingTabs.add(tabId);
+}
+
+/** Mark a tab as currently loading (progressive render in flight). While set,
+ *  shouldSkipDirty() returns true so append transactions never mark dirty. */
+export function setTabLoading(tabId: string, loading: boolean): void {
+  if (loading) loadingTabs.add(tabId);
+  else loadingTabs.delete(tabId);
 }
 
 /**
@@ -29,6 +42,9 @@ export function markContentLoaded(tabId: string): void {
  * or doc unchanged from baseline).
  */
 export function shouldSkipDirty(tabId: string, currentDoc: Node): boolean {
+  // Suppress dirty during progressive load
+  if (loadingTabs.has(tabId)) return true;
+
   // First update after content load — capture stabilized doc as baseline
   if (pendingTabs.has(tabId)) {
     pendingTabs.delete(tabId);
@@ -36,9 +52,23 @@ export function shouldSkipDirty(tabId: string, currentDoc: Node): boolean {
     return true;
   }
 
-  // Compare with stored baseline
+  // Compare with stored baseline.
+  // §perf-large-file C4: `Node.eq()` is a deep structural walk of the WHOLE
+  // document, and this runs on EVERY keystroke (via the auto-save `update`
+  // listener). On a ~21k-line doc that walk costs ~100ms+/keystroke — the
+  // flag-independent typing-latency floor that block virtualization could never
+  // touch (it is JS, not DOM layout). Guard it with an O(1) `content.size`
+  // pre-check: a baseline of a different size is unequal without walking, and
+  // since `eq()` implies equal size this stays behaviour-identical — it only
+  // skips the walk in the common case (typing changes the total size).
   const original = originalDocs.get(tabId);
-  if (original && original.eq(currentDoc)) return true;
+  if (
+    original &&
+    original.content.size === currentDoc.content.size &&
+    original.eq(currentDoc)
+  ) {
+    return true;
+  }
 
   return false;
 }

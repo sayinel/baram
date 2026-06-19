@@ -177,8 +177,12 @@ function clearAllHighlights() {
 // --- Highlight helpers ---
 
 function detectZone(x: number, y: number): DropZone {
-  if (hitTestRect(document.querySelector(".editor-area-scroll"), x, y))
-    return "editor";
+  // §perf-large-file C3.4: scope to the ACTIVE editor's scroll container
+  // so the hidden keep-alive editor's area doesn't intercept drops.
+  const editorScroll =
+    document.querySelector(".editor-area-scroll[data-editor-active]") ??
+    document.querySelector(".editor-area-scroll");
+  if (hitTestRect(editorScroll, x, y)) return "editor";
   if (hitTestRect(document.querySelector(".file-tree"), x, y))
     return "filetree";
   return null;

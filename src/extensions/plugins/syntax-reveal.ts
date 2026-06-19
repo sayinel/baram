@@ -41,7 +41,31 @@ export { syntaxRevealKey };
 export function forceCollapseSyntaxReveal(view: EditorView): void {
   const es = syntaxRevealKey.getState(view.state);
   if (!es?.expanded) return;
-  collapseExpanded(view, es.expanded);
+  const exp = es.expanded;
+
+  // Preserve the caret's logical position through the collapse. Without an
+  // explicit target, ProseMirror's default mapping for `replaceWith(from, to,
+  // content)` pushes a caret that sits inside the expanded range to the END of
+  // the collapsed mark — which surfaced as the cursor drifting to after a bold
+  // word on source-mode toggle. Map the caret from the expanded delimiter text
+  // back onto the collapsed content for marks (other kinds collapse to atoms
+  // where the default mapping is already correct).
+  let cursorTarget: number | undefined;
+  if (exp.kind === "mark" && exp.closeCheck) {
+    const contentFrom = exp.from + exp.openCheck.length;
+    const contentTo = exp.to - exp.closeCheck.length;
+    const contentLen = Math.max(0, contentTo - contentFrom);
+    const caret = view.state.selection.from;
+    if (caret <= contentFrom) {
+      cursorTarget = exp.from; // at/before opening delimiter → mark start
+    } else if (caret >= contentTo) {
+      cursorTarget = exp.from + contentLen; // at/after closing delimiter → mark end
+    } else {
+      cursorTarget = exp.from + (caret - contentFrom); // inside → preserve offset
+    }
+  }
+
+  collapseExpanded(view, exp, cursorTarget);
 }
 
 /** Get the active expanded range info (used by wikilink-suggest to replace entire expanded text). */

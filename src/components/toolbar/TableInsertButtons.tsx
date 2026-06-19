@@ -329,7 +329,11 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
   );
 
   useEffect(() => {
-    const scrollContainer = document.querySelector(".editor-area-scroll");
+    // §perf-large-file C3.4: resolve via editor.view.dom.closest() so this
+    // targets the ACTIVE editor's scroll container in a dual-editor layout.
+    const scrollContainer =
+      editor.view.dom.closest(".editor-area-scroll") ??
+      document.querySelector(".editor-area-scroll");
     if (!scrollContainer) return;
 
     scrollContainer.addEventListener(
@@ -351,7 +355,7 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     };
-  }, [handleMouseMove, scheduleHide]);
+  }, [editor, handleMouseMove, scheduleHide]);
 
   // Hide on document changes — also reset hover ref since DOM element will be removed
   useEffect(() => {

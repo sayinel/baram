@@ -9,17 +9,51 @@ import type { Editor } from "@tiptap/react";
 import { EditorState, TextSelection } from "@tiptap/pm/state";
 
 import { forceCollapseSyntaxReveal } from "../extensions/plugins/syntax-reveal";
-import { markdownToProsemirror } from "../pipeline/md-to-pm";
+import {
+  markdownToProsemirror,
+  mdastBlocksToPmNodes,
+} from "../pipeline/md-to-pm";
+import { parseMdastAsync } from "../pipeline/parse-async";
 import { prosemirrorToMarkdown } from "../pipeline/pm-to-md";
 import { isFileTab, isGraphTab, useEditorStore } from "../stores/editor/editor";
 import {
   mdOffsetToPmPos,
   pmPosToMdOffset,
 } from "../utils/editor/cursor-mapper";
+import {
+  markContentLoaded,
+  setTabLoading,
+} from "../utils/editor/programmatic-update";
+import {
+  appendChunksProgressively,
+  chunkBlocks,
+  FIRST_CHUNK_BLOCKS,
+  type ProgressiveLoadHandle,
+  REST_CHUNK_BLOCKS,
+} from "../utils/editor/progressive-load";
 import { isMarkdownFile } from "../utils/file-type";
+import { LARGE_DOC_BLOCK_THRESHOLD } from "./use-large-doc-keepalive";
+
+/** Shared ref type for registering progressive append handles so all cancel
+ *  sites (tab switch, cleanup) can cancel source-mode fills too. */
+export type AppendHandleRef = React.MutableRefObject<null | {
+  handle: ProgressiveLoadHandle;
+  tabId: string;
+}>;
+
+/** Narrow pool interface — only the completeness methods source-mode needs. */
+export interface SourceModePoolAccess {
+  markComplete: (tabId: string) => void;
+  markIncomplete: (tabId: string) => void;
+}
 
 interface UseSourceModeParams {
+  /** Shared ref from use-tab-switching — register progressive handle here
+   *  so cancelInflightAppend covers source-mode fills. */
+  appendHandleRef?: AppendHandleRef;
   editor: Editor | null;
+  /** Pool access for marking completeness during source-mode progressive fills. */
+  pool?: SourceModePoolAccess;
 }
 
 interface UseSourceModeReturn {
@@ -38,6 +72,8 @@ interface UseSourceModeReturn {
 
 export function useSourceMode({
   editor,
+  appendHandleRef,
+  pool,
 }: UseSourceModeParams): UseSourceModeReturn {
   // Per-tab EditorState cache — owned here so toggleSourceMode can write to it
   // without a circular dependency with useTabSwitching
@@ -96,9 +132,109 @@ export function useSourceMode({
 
       const newDoc = markdownToProsemirror(currentSource, editor.schema);
       const pmPos = mdOffsetToPmPos(newDoc, mdOffset, currentSource);
-
       const clampedPos = Math.min(Math.max(pmPos, 0), newDoc.content.size);
 
+      // [MAJOR-3] For large docs (≥ threshold), use the C2 progressive path
+      // to avoid a multi-second whole-DOM rebuild on toggle-back. Cursor
+      // restore is deferred to finishLoad (same as fold restore in tab switch).
+      if (newDoc.childCount >= LARGE_DOC_BLOCK_THRESHOLD) {
+        setIsSourceMode(false);
+
+        // [MAJOR fix] Mark the pool entry incomplete so a mid-fill tab
+        // switch + return takes the release-and-reload path instead of
+        // blessing a truncated doc as the save baseline.
+        if (currentTabId) pool?.markIncomplete(currentTabId);
+
+        // Parse async and progressive-load into the keep-alive editor
+        if (currentTabId) setTabLoading(currentTabId, true);
+
+        parseMdastAsync(currentSource)
+          .then((mdast) => {
+            if (useEditorStore.getState().activeTabId !== currentTabId) return;
+
+            const allNodes = mdastBlocksToPmNodes(mdast, editor.schema);
+            const chunks = chunkBlocks(
+              allNodes,
+              FIRST_CHUNK_BLOCKS,
+              REST_CHUNK_BLOCKS,
+            );
+            const firstChunk = chunks[0] ?? [];
+            const restChunks = chunks.slice(1);
+
+            const firstDoc = editor.schema.nodes.doc.create(
+              null,
+              firstChunk.length ? firstChunk : undefined,
+            );
+            const firstState = EditorState.create({
+              doc: firstDoc,
+              plugins: editor.state.plugins,
+              selection: TextSelection.atStart(firstDoc),
+            });
+
+            const finishLoad = () => {
+              if (currentTabId) {
+                // [MAJOR fix] Mark complete so switch-back uses the pool entry.
+                pool?.markComplete(currentTabId);
+                setTabLoading(currentTabId, false);
+                markContentLoaded(currentTabId);
+              }
+              // Deferred cursor restore (same as fold restore in tab switch)
+              requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                  try {
+                    if (editor.view.isDestroyed) return;
+                    if (useEditorStore.getState().activeTabId !== currentTabId)
+                      return;
+                    const doc = editor.view.state.doc;
+                    const pos = Math.min(clampedPos, doc.content.size);
+                    const sel = TextSelection.near(doc.resolve(pos));
+                    editor.view.dispatch(
+                      editor.view.state.tr.setSelection(sel).scrollIntoView(),
+                    );
+                    editor.view.focus();
+                  } catch {
+                    // ignore invalid position
+                  }
+                });
+              });
+            };
+
+            setTimeout(() => {
+              editor.view.updateState(firstState);
+              if (restChunks.length === 0) {
+                finishLoad();
+                return;
+              }
+              // [NEW-MODERATE-C] Register the handle in the shared ref so
+              // cancelInflightAppend (tab switch / cleanup) can cancel it.
+              // Also cancel any prior fill (rapid re-toggle guard).
+              if (appendHandleRef?.current) {
+                appendHandleRef.current.handle.cancel();
+              }
+              const handle = appendChunksProgressively(editor, restChunks, {
+                onComplete: () => {
+                  if (appendHandleRef?.current?.tabId === currentTabId) {
+                    appendHandleRef.current = null;
+                  }
+                  finishLoad();
+                },
+              });
+              if (appendHandleRef && currentTabId) {
+                appendHandleRef.current = {
+                  handle,
+                  tabId: currentTabId,
+                };
+              }
+            });
+          })
+          .catch(() => {
+            if (currentTabId) setTabLoading(currentTabId, false);
+          });
+
+        return;
+      }
+
+      // Small doc: synchronous path (existing behaviour)
       // Update the document immediately so EditorContent renders correct
       // content when it mounts. Use a temporary selection (atStart) because
       // the DOM is detached — ProseMirror's selectionToDOM fails silently
@@ -137,24 +273,16 @@ export function useSourceMode({
             const pos = Math.min(targetPos, doc.content.size);
             const resolvedSel = TextSelection.near(doc.resolve(pos));
 
-            // Suppress DOMObserver during focus+dispatch to prevent it
-            // from reading a stale native selection (from the previous
-            // EditorState) and overwriting our target cursor position.
-            // ProseMirror's view.focus() triggers DOMObserver flush which
-            // dispatches a transaction based on native selection — this
-            // races with our setSelection dispatch.
             const domObserver = (
-              editor.view as { domObserver?: { start(): void; stop(): void } }
+              editor.view as {
+                domObserver?: { suppressSelectionUpdates?(): void };
+              }
             ).domObserver;
-            domObserver?.stop();
-            try {
-              editor.view.dispatch(
-                editor.view.state.tr.setSelection(resolvedSel).scrollIntoView(),
-              );
-              editor.view.focus();
-            } finally {
-              domObserver?.start();
-            }
+            editor.view.dispatch(
+              editor.view.state.tr.setSelection(resolvedSel).scrollIntoView(),
+            );
+            editor.view.focus();
+            domObserver?.suppressSelectionUpdates?.();
 
             // DOM-level scroll fallback for .editor-area-scroll
             const domInfo = editor.view.domAtPos(resolvedSel.from);
@@ -171,7 +299,9 @@ export function useSourceMode({
     }
     // editorStateCache, sourceContentRef, sourceEditorRef are stable refs (useRef) —
     // intentionally omitted from deps; they never change identity across renders.
-  }, [editor, isSourceMode]);
+    // appendHandleRef is a stable ref passed from App — included for exhaustive-deps.
+    // pool is a stable ref-based object — included for exhaustive-deps.
+  }, [editor, isSourceMode, appendHandleRef, pool]);
 
   return {
     isSourceMode,

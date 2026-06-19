@@ -16,11 +16,9 @@ import {
 } from "../../utils/markdown/mermaid-utils";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
 import { mermaidBlockEntryKey } from "./mermaid-block";
+import { onFirstVisible } from "./views/lazy-visible";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
 import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
-
-// Unique ID counter for mermaid rendering
-let mermaidIdCounter = 0;
 
 export function MermaidBlockView({
   node,
@@ -48,6 +46,14 @@ export function MermaidBlockView({
   const [viewFullscreen, setViewFullscreen] = useState(false);
   const fullscreenTextareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Defer rendering until the block is near the viewport (§perf-large-file)
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    return onFirstVisible(el, () => setIsVisible(true));
+  }, []);
+
   // Refs so the selected-change effect can access latest values without listing
   // them as deps (localCode changes on every keystroke; adding it would re-run
   // the effect — and re-focus the textarea — on every character typed).
@@ -62,6 +68,7 @@ export function MermaidBlockView({
 
   // Render Mermaid SVG (async — dynamic import)
   useEffect(() => {
+    if (!isVisible) return;
     const source = selected ? localCode : code;
     if (!source.trim()) {
       setSvgHtml("");
@@ -93,7 +100,7 @@ export function MermaidBlockView({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [localCode, code, selected]);
+  }, [isVisible, localCode, code, selected]);
 
   // Sync local code and focus textarea when entering edit mode
   useEffect(() => {
@@ -620,6 +627,15 @@ export function MermaidBlockView({
   );
 }
 
+// §perf-large-file C3.4: use randomUUID so concurrent editor instances never
+// share an ID. The old module-level counter would generate colliding IDs when
+// two MermaidBlockView instances across two editors rendered simultaneously.
+function newMermaidId(): string {
+  // crypto.randomUUID() is available in all modern browsers and WKWebView.
+  // Mermaid requires IDs starting with a letter.
+  return `mermaid-${crypto.randomUUID()}`;
+}
+
 /** Shared rendering logic */
 async function renderMermaid(
   source: string,
@@ -640,7 +656,7 @@ async function renderMermaid(
       // stripping <script>. "strict" would HTML-encode every tag, breaking <br>.
       securityLevel: "antiscript",
     });
-    const id = `mermaid-${++mermaidIdCounter}`;
+    const id = newMermaidId();
     const { svg } = await mermaid.render(id, source);
     // foreignObject hosts HTML labels (flowchart node text). DOMPurify must
     // treat it as an HTML integration point or the label markup is stripped —

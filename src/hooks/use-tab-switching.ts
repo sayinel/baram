@@ -30,16 +30,44 @@ import {
   findHeadingPosByText,
 } from "../utils/editor/block-nav";
 import { mdLineToPmBlockStart } from "../utils/editor/cursor-mapper";
-import { markContentLoaded } from "../utils/editor/programmatic-update";
+import { logCacheEvent, timePhase } from "../utils/editor/perf-trace";
+import {
+  isTabLoading,
+  markContentLoaded,
+  setTabLoading,
+} from "../utils/editor/programmatic-update";
+import {
+  appendChunksProgressively,
+  chunkBlocks,
+  FIRST_CHUNK_BLOCKS,
+  type ProgressiveLoadHandle,
+  REST_CHUNK_BLOCKS,
+} from "../utils/editor/progressive-load";
 import { isMarkdownFile } from "../utils/file-type";
 import { logger } from "../utils/logger";
+import {
+  type KeepalivePool,
+  LARGE_DOC_BLOCK_THRESHOLD,
+} from "./use-large-doc-keepalive";
 
 interface UseTabSwitchingParams {
+  /** [NEW-MODERATE-C] Shared ref for progressive append handles — also used
+   *  by useSourceMode so cancelInflightAppend covers source-mode fills. */
+  appendHandleRef: React.MutableRefObject<null | {
+    handle: ProgressiveLoadHandle;
+    tabId: string;
+  }>;
+  /** §perf-large-file C3.5: factory to create a keep-alive editor for a tab */
+  createKeepaliveEditor: () => Editor;
   editor: Editor | null;
   /** Per-tab EditorState cache — owned by useSourceMode, shared here */
   editorStateCache: React.MutableRefObject<Map<string, EditorState>>;
   isNavBackForwardRef: React.RefObject<boolean>;
   isSourceMode: boolean;
+  /** §perf-large-file C3.5: keep-alive editor pool for large documents */
+  keepalive: KeepalivePool;
+  /** §perf-large-file C3.5: notify App of the active editor change */
+  onActiveEditorChange: (editor: Editor | null) => void;
   setFindReplaceMode: (mode: "find" | "replace") => void;
   setFindReplaceOpen: (open: boolean) => void;
   setIsParsing: (v: boolean) => void;
@@ -49,10 +77,14 @@ interface UseTabSwitchingParams {
 }
 
 export function useTabSwitching({
+  appendHandleRef,
   editor,
   editorStateCache,
   isNavBackForwardRef,
   isSourceMode,
+  keepalive,
+  createKeepaliveEditor,
+  onActiveEditorChange,
   setFindReplaceMode,
   setFindReplaceOpen,
   setIsSourceMode,
@@ -70,6 +102,15 @@ export function useTabSwitching({
   const progressiveLoadRef = useRef<{ cancelled: boolean }>({
     cancelled: false,
   });
+
+  // Cancel any in-flight progressive append and clear the loading flag for its tab.
+  const cancelInflightAppend = () => {
+    if (appendHandleRef.current) {
+      appendHandleRef.current.handle.cancel();
+      setTabLoading(appendHandleRef.current.tabId, false);
+      appendHandleRef.current = null;
+    }
+  };
 
   // --- Tab switching: swap editor content when activeTabId changes ---
   useEffect(() => {
@@ -97,24 +138,45 @@ export function useTabSwitching({
     // Save outgoing tab content + cache EditorState (preserves undo history)
     if (prevTabId && prevTabId !== activeTabId) {
       const prevTab = tabs.find((t) => t.id === prevTabId);
+
+      // §perf-large-file C3.5: determine which editor was active for the outgoing tab
+      const prevKeepaliveEditor = keepalive.get(prevTabId);
+      const prevEditor = prevKeepaliveEditor ?? editor;
+
       // Save scroll position of .editor-area-scroll for the outgoing tab
-      const scrollContainer = document.querySelector(".editor-area-scroll");
+      // §perf-large-file C3.4: resolve via editor.view.dom.closest() so this
+      // targets the ACTIVE editor's scroll container in a dual-editor layout.
+      const scrollContainer = prevEditor?.view.dom.closest<HTMLElement>(
+        ".editor-area-scroll",
+      );
       if (scrollContainer) {
         scrollTopCache.current.set(prevTabId, scrollContainer.scrollTop);
       }
-      // Only save ProseMirror state for file tabs (graph tabs have no editor state)
-      if (isFileTab(prevTab)) {
+
+      // §perf-large-file C3.5: keep-alive tabs — hide their DOM, skip cache write
+      // and skip outgoing serialize. The live editor IS the state; auto-save hooks
+      // already run against it continuously.
+      if (prevKeepaliveEditor) {
+        // Visibility is controlled by React state (activeKeepaliveEditor) —
+        // no manual DOM style toggle needed. onActiveEditorChange(null) in the
+        // incoming-tab branches hides the keep-alive editor via React render.
+        // Don't write editorStateCache or serialize — the editor stays live.
+      } else if (isFileTab(prevTab) && prevEditor) {
         const prevIsCode = !isMarkdownFile(prevTab?.filePath);
+        // §perf-large-file C2: Skip caching/saving a tab that is mid-load —
+        // the doc is partial. Returning to it will re-run the uncached open path.
+        const prevMidLoad = isTabLoading(prevTabId);
         // Cache EditorState before switching (keeps undo/redo stack intact)
         // Non-MD files don't use ProseMirror — skip caching
-        if (!isSourceMode && !prevIsCode) {
-          editorStateCache.current.set(prevTabId, editor.state);
+        if (!isSourceMode && !prevIsCode && !prevMidLoad) {
+          editorStateCache.current.set(prevTabId, prevEditor.state);
+          logCacheEvent("set", prevTabId, prevEditor.state.doc.childCount);
           // Save fold state as content-based anchors
           if (prevTab?.filePath) {
-            const pluginState = foldPluginKey.getState(editor.state);
+            const pluginState = foldPluginKey.getState(prevEditor.state);
             if (pluginState && pluginState.foldedPositions.size > 0) {
               const anchors = positionsToAnchors(
-                editor.state.doc,
+                prevEditor.state.doc,
                 pluginState.foldedPositions,
               );
               useFoldStore.getState().saveFolds(prevTab.filePath, anchors);
@@ -123,12 +185,14 @@ export function useTabSwitching({
             }
           }
         }
-        if (prevTab?.filePath) {
+        if (prevTab?.filePath && !prevMidLoad) {
           try {
             const md =
               prevIsCode || isSourceMode
                 ? sourceContentRef.current
-                : prosemirrorToMarkdown(editor.state.doc);
+                : timePhase("tabSwitch:serializeOutgoing", () =>
+                    prosemirrorToMarkdown(prevEditor.state.doc),
+                  );
             useFileStore.getState().setFileContent(prevTab.filePath, md);
           } catch (err) {
             // Serialization failed — mark tab dirty so unsaved edits are visible
@@ -146,6 +210,10 @@ export function useTabSwitching({
       }
     }
 
+    // The outgoing-save block above has already read isTabLoading(prevTabId).
+    // Now it is safe to cancel the in-flight appender and clear its flag/ref.
+    cancelInflightAppend();
+
     // Load incoming tab content
     const incomingTab = tabs.find((t) => t.id === activeTabId);
     if (!incomingTab) {
@@ -159,11 +227,102 @@ export function useTabSwitching({
       setTimeout(() => {
         editor.view.updateState(newState);
       });
+      onActiveEditorChange(null);
       return;
     }
 
     // Graph tab — no ProseMirror content to load
-    if (isGraphTab(incomingTab)) return;
+    // [CRITICAL-1 fix] Reset activeEditor so hooks bind to shared editor
+    if (isGraphTab(incomingTab)) {
+      onActiveEditorChange(null);
+      return;
+    }
+
+    // §perf-large-file C3.5: if this tab has a COMPLETE keep-alive editor,
+    // show it and skip load. activeFor returns null for incomplete entries.
+    const incomingKeepaliveEditor = keepalive.activeFor(activeTabId);
+    if (incomingKeepaliveEditor) {
+      // Visibility is controlled by React state (activeKeepaliveEditor) via
+      // onActiveEditorChange — no manual DOM style toggle needed.
+      onActiveEditorChange(incomingKeepaliveEditor);
+      // Restore scroll position
+      const cachedScrollTop = scrollTopCache.current.get(activeTabId!);
+      requestAnimationFrame(() => {
+        const scrollContainer =
+          incomingKeepaliveEditor.view.dom.closest<HTMLElement>(
+            ".editor-area-scroll",
+          );
+        if (scrollContainer) {
+          scrollContainer.scrollTop = cachedScrollTop ?? 0;
+        }
+      });
+      markContentLoaded(activeTabId!);
+
+      // [MINOR-a] Consume pending scroll/search so backlink navigation to a
+      // pooled tab scrolls correctly — not just pendingSearchHighlight.
+      // TODO: openFiles content may be stale for keep-alive tabs (auto-save
+      // writes to disk but the in-memory openFiles map isn't always updated in
+      // sync with the live editor). This slightly skews pendingLine scroll
+      // position when the user edited after the last openFiles sync.
+      const kaContent = incomingTab.filePath
+        ? openFiles.get(incomingTab.filePath)
+        : undefined;
+      const pendingBlockId = useLinkStore.getState().pendingScrollBlockId;
+      const pendingLine = useLinkStore.getState().pendingScrollLine;
+      const pendingHeading = useLinkStore.getState().pendingScrollHeading;
+      const pendingHighlight = useUIStore.getState().pendingSearchHighlight;
+      let kaScrollPos: null | number = null;
+      const kaDoc = incomingKeepaliveEditor.view.state.doc;
+
+      if (pendingBlockId) {
+        useLinkStore.getState().setPendingScrollBlockId(null);
+        const bp = findBlockPosById(kaDoc, pendingBlockId);
+        if (bp !== null)
+          kaScrollPos = Math.min(Math.max(bp, 0), kaDoc.content.size);
+      } else if (pendingLine && kaContent) {
+        useLinkStore.getState().setPendingScrollLine(null);
+        const pp = mdLineToPmBlockStart(kaDoc, kaContent, pendingLine);
+        kaScrollPos = Math.min(Math.max(pp, 0), kaDoc.content.size);
+      } else if (pendingHeading) {
+        useLinkStore.getState().setPendingScrollHeading(null);
+        const hp = findHeadingPosByText(kaDoc, pendingHeading);
+        if (hp !== null)
+          kaScrollPos = Math.min(Math.max(hp + 1, 0), kaDoc.content.size);
+      }
+      if (kaScrollPos !== null) {
+        requestAnimationFrame(() => {
+          try {
+            const rp = incomingKeepaliveEditor.view.state.doc.resolve(
+              kaScrollPos!,
+            );
+            const tr = incomingKeepaliveEditor.view.state.tr
+              .setSelection(TextSelection.near(rp))
+              .scrollIntoView();
+            incomingKeepaliveEditor.view.dispatch(tr);
+            incomingKeepaliveEditor.view.focus();
+          } catch {
+            /* ignore invalid pos */
+          }
+        });
+      }
+      if (pendingHighlight) {
+        useUIStore.getState().setPendingSearchHighlight(null);
+        setTimeout(() => {
+          if (incomingKeepaliveEditor.view.isDestroyed) return;
+          dispatchSetSearchTerm(incomingKeepaliveEditor.view, pendingHighlight);
+          setFindReplaceOpen(true);
+          setFindReplaceMode("find");
+        }, 50);
+      }
+      return;
+    }
+
+    // [NEW-CRITICAL-B] If the pool holds an INCOMPLETE entry for this tab
+    // (mid-load switch-away left a partial doc), destroy it and fall through
+    // to the normal uncached load path — simplest correct behavior.
+    if (keepalive.has(activeTabId!)) {
+      keepalive.release(activeTabId!);
+    }
 
     const content = incomingTab.filePath
       ? openFiles.get(incomingTab.filePath)
@@ -172,19 +331,27 @@ export function useTabSwitching({
     if (content !== undefined) {
       // Non-markdown file — load into source editor, skip ProseMirror entirely
       if (!isMarkdownFile(incomingTab.filePath)) {
+        // [CRITICAL-1 fix] Reset to shared editor
+        onActiveEditorChange(null);
         sourceContentRef.current = content;
         setSourceContent(content);
         return;
       }
 
+      // [CRITICAL-1 fix] All non-keepalive branches use the shared editor.
+      // Set immediately so hooks/overlays rebind before content loads.
+      onActiveEditorChange(null);
+
       // §perf-large-file B1: Post-load handler (scroll + search highlight)
-      const afterDocLoad = () => {
+      // [MAJOR-7] Parameterized by `loadEditor` so keep-alive loads target the
+      // correct editor instance (not the shared one).
+      const afterDocLoad = (loadEditor: Editor) => {
         // §29 Check if navigating from backlinks — compute scroll position
         const pendingLine = useLinkStore.getState().pendingScrollLine;
         const pendingBlockId = useLinkStore.getState().pendingScrollBlockId;
         const pendingHeading = useLinkStore.getState().pendingScrollHeading;
         let scrollPos: null | number = null;
-        const doc = editor.view.state.doc;
+        const doc = loadEditor.view.state.doc;
         if (pendingBlockId) {
           useLinkStore.getState().setPendingScrollBlockId(null);
           const blockPos = findBlockPosById(doc, pendingBlockId);
@@ -208,15 +375,15 @@ export function useTabSwitching({
         if (scrollPos !== null) {
           requestAnimationFrame(() => {
             try {
-              const resolvedPos = editor.view.state.doc.resolve(scrollPos);
-              const tr = editor.view.state.tr
+              const resolvedPos = loadEditor.view.state.doc.resolve(scrollPos);
+              const tr = loadEditor.view.state.tr
                 .setSelection(TextSelection.near(resolvedPos))
                 .scrollIntoView();
-              editor.view.dispatch(tr);
-              editor.view.focus();
+              loadEditor.view.dispatch(tr);
+              loadEditor.view.focus();
 
               // DOM-level scroll fallback — ensures .editor-area scrolls
-              const domInfo = editor.view.domAtPos(scrollPos);
+              const domInfo = loadEditor.view.domAtPos(scrollPos);
               const el =
                 domInfo.node instanceof HTMLElement
                   ? domInfo.node
@@ -233,8 +400,8 @@ export function useTabSwitching({
         if (pendingHighlight) {
           useUIStore.getState().setPendingSearchHighlight(null);
           setTimeout(() => {
-            if (!editor?.view) return;
-            dispatchSetSearchTerm(editor.view, pendingHighlight);
+            if (!loadEditor?.view) return;
+            dispatchSetSearchTerm(loadEditor.view, pendingHighlight);
             setFindReplaceOpen(true);
             setFindReplaceMode("find");
           }, 50);
@@ -245,15 +412,20 @@ export function useTabSwitching({
       const cachedState = editorStateCache.current.get(activeTabId!);
       const cachedScrollTop = scrollTopCache.current.get(activeTabId!);
       if (cachedState) {
+        logCacheEvent("hit", activeTabId!, cachedState.doc.childCount);
         // Defer updateState outside React commit phase
         setTimeout(() => {
-          editor.view.updateState(cachedState);
+          timePhase("tabSwitch:restore", () =>
+            editor.view.updateState(cachedState),
+          );
           markContentLoaded(activeTabId!);
         });
         // Restore exact scroll position (not just cursor visibility)
+        // §perf-large-file C3.4: scope via editor.view.dom.closest() so this
+        // targets the correct editor's scroll container in a dual-editor layout.
         if (cachedScrollTop !== undefined) {
           requestAnimationFrame(() => {
-            const scrollContainer = document.querySelector(
+            const scrollContainer = editor.view.dom.closest<HTMLElement>(
               ".editor-area-scroll",
             );
             if (scrollContainer) {
@@ -263,13 +435,16 @@ export function useTabSwitching({
         } else {
           // No cached scroll — reset to top (avoid stale scroll from previous tab)
           requestAnimationFrame(() => {
-            const sc = document.querySelector(".editor-area-scroll");
+            const sc = editor.view.dom.closest<HTMLElement>(
+              ".editor-area-scroll",
+            );
             if (sc) sc.scrollTop = 0;
           });
         }
-        afterDocLoad();
+        afterDocLoad(editor);
       } else {
-        // §perf-large-file B1: Parse in Worker, load full doc at once
+        logCacheEvent("miss", activeTabId!);
+        // §perf-large-file B1/C2: Parse in Worker, progressively render chunks
         // Rendering perf is handled by content-visibility: auto (C1)
         progressiveLoadRef.current.cancelled = true;
         const loadToken = { cancelled: false };
@@ -287,43 +462,124 @@ export function useTabSwitching({
               return;
             }
 
-            const allNodes = mdastBlocksToPmNodes(mdast, editor.schema);
-            const doc = editor.schema.nodes.doc.create(null, allNodes);
+            const allNodes = timePhase("convert(mdast→PM)", () =>
+              mdastBlocksToPmNodes(mdast, editor.schema),
+            );
+
+            // §perf-large-file C3.5: decide up-front whether to load into a
+            // keep-alive editor (direct-load variant — simpler to verify).
+            const isLargeDoc = allNodes.length >= LARGE_DOC_BLOCK_THRESHOLD;
+            let targetEditor = editor;
+            if (isLargeDoc && !keepalive.has(activeTabId!)) {
+              targetEditor = createKeepaliveEditor();
+              // [MAJOR-5] Acquire the pool slot immediately so a mid-load
+              // switch-away destroys it via cancelInflightAppend + pool cleanup
+              // instead of leaking a detached editor forever.
+              keepalive.acquire(activeTabId!, targetEditor);
+              onActiveEditorChange(targetEditor);
+            }
+
+            // §perf-large-file C3: the keep-alive editor is a SEPARATE Editor
+            // instance with its OWN Schema. ProseMirror compares NodeTypes by
+            // identity, so nodes built with `editor.schema` are foreign to the
+            // keep-alive editor — its `doc.contentMatchAt` rejects them ("Called
+            // contentMatchAt on a node with invalid content"), which throws on
+            // the first progressive append and truncates the document to the
+            // first chunk. Re-convert against the target editor's schema when it
+            // differs so every node's NodeType belongs to the right schema.
+            const targetNodes =
+              targetEditor === editor
+                ? allNodes
+                : mdastBlocksToPmNodes(mdast, targetEditor.schema);
+            const chunks = chunkBlocks(
+              targetNodes,
+              FIRST_CHUNK_BLOCKS,
+              REST_CHUNK_BLOCKS,
+            );
+            const firstChunk = chunks[0] ?? [];
+            const restChunks = chunks.slice(1);
+
+            const doc = targetEditor.schema.nodes.doc.create(
+              null,
+              firstChunk.length ? firstChunk : undefined,
+            );
             const newState = EditorState.create({
               doc,
-              plugins: editor.state.plugins,
+              plugins: targetEditor.state.plugins,
               selection: TextSelection.atStart(doc),
             });
-            // Defer updateState outside React commit phase
-            setTimeout(() => {
-              editor.view.updateState(newState);
-              markContentLoaded(activeTabId!);
-              setIsParsing(false);
-            });
-            // Reset scroll to top for freshly opened documents
-            requestAnimationFrame(() => {
-              const scrollContainer = document.querySelector(
-                ".editor-area-scroll",
-              );
-              if (scrollContainer) {
-                scrollContainer.scrollTop = 0;
-              }
-            });
-            afterDocLoad();
 
-            // Restore fold state from persistence
-            const inTab = tabs.find((t) => t.id === activeTabId);
-            if (inTab?.filePath) {
-              const savedAnchors = useFoldStore
-                .getState()
-                .getFolds(inTab.filePath);
-              if (savedAnchors.length > 0) {
-                const positions = anchorsToPositions(doc, savedAnchors);
-                if (positions.length > 0) {
-                  dispatchRestoreFolds(editor.view, positions);
+            // Suppress dirty/auto-save for the whole progressive load.
+            setTabLoading(activeTabId!, true);
+
+            // Run the deferred post-load work once the FULL doc is present.
+            const finishLoad = () => {
+              // Null the ref before clearing the flag so a concurrent cleanup
+              // (effect re-run) can't see a stale tabId and clear a newer load's flag.
+              // Only null if this load's tabId still matches (no newer load started).
+              if (appendHandleRef.current?.tabId === activeTabId) {
+                appendHandleRef.current = null;
+              }
+              setTabLoading(activeTabId!, false);
+              markContentLoaded(activeTabId!);
+
+              // [NEW-CRITICAL-B] Mark the pool entry as complete so
+              // switch-back uses it rather than discarding it.
+              if (isLargeDoc) {
+                keepalive.markComplete(activeTabId!);
+              }
+
+              afterDocLoad(targetEditor);
+              const inTab = tabs.find((t) => t.id === activeTabId);
+              if (inTab?.filePath) {
+                const savedAnchors = useFoldStore
+                  .getState()
+                  .getFolds(inTab.filePath);
+                if (savedAnchors.length > 0) {
+                  const positions = anchorsToPositions(
+                    targetEditor.view.state.doc,
+                    savedAnchors,
+                  );
+                  if (positions.length > 0) {
+                    dispatchRestoreFolds(targetEditor.view, positions);
+                  }
                 }
               }
-            }
+            };
+
+            // Defer updateState outside React commit phase.
+            setTimeout(() => {
+              if (loadToken.cancelled) {
+                setTabLoading(activeTabId!, false);
+                setIsParsing(false);
+                return;
+              }
+              timePhase("updateState(first chunk)", () =>
+                targetEditor.view.updateState(newState),
+              );
+              setIsParsing(false);
+
+              // Reset scroll to top for freshly opened documents.
+              // §perf-large-file C3.4: resolve via targetEditor.view.dom.closest().
+              requestAnimationFrame(() => {
+                const scrollContainer =
+                  targetEditor.view.dom.closest<HTMLElement>(
+                    ".editor-area-scroll",
+                  );
+                if (scrollContainer) scrollContainer.scrollTop = 0;
+              });
+
+              if (restChunks.length === 0) {
+                finishLoad();
+                return;
+              }
+              appendHandleRef.current = {
+                handle: appendChunksProgressively(targetEditor, restChunks, {
+                  onComplete: finishLoad,
+                }),
+                tabId: activeTabId!,
+              };
+            });
           })
           .catch((err: unknown) => {
             setIsParsing(false);
@@ -335,13 +591,32 @@ export function useTabSwitching({
       const openTabIds = new Set(tabs.map((t) => t.id));
       for (const cachedId of editorStateCache.current.keys()) {
         if (!openTabIds.has(cachedId)) {
+          logCacheEvent("delete", cachedId);
           editorStateCache.current.delete(cachedId);
           scrollTopCache.current.delete(cachedId);
+        }
+      }
+      // [MAJOR-4] Keep-alive tabs never enter editorStateCache, so check
+      // the pool separately for closed tabs.
+      for (const pooledTabId of keepalive.keys()) {
+        if (!openTabIds.has(pooledTabId)) {
+          keepalive.release(pooledTabId);
+          scrollTopCache.current.delete(pooledTabId);
         }
       }
     }
     // Intentionally only re-run on activeTabId change; other values (editor,
     // tabs, openFiles, etc.) are read from store state or refs to avoid
     // re-registering the effect on every keystroke.
+    return () => {
+      // React runs this cleanup BEFORE the next effect body executes.
+      // The next effect's outgoing-save block reads isTabLoading(prevTabId) at
+      // line ~135 to decide whether to skip caching a partial doc — so we must
+      // NOT clear the loading flag here. Only stop the appender from ticking.
+      // cancelInflightAppend() is called unconditionally after the outgoing-save
+      // block (line ~178) where the flag is no longer needed.
+      appendHandleRef.current?.handle.cancel();
+      progressiveLoadRef.current.cancelled = true;
+    };
   }, [activeTabId]); // eslint-disable-line react-hooks/exhaustive-deps
 }
