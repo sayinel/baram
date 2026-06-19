@@ -85,7 +85,57 @@
   position: relative;
 }
 
-/* Fold arrow — gutter positioned, hidden by default */
+/* §perf-large-file C4: heading fold arrow via CSS pseudo-element — no per-heading
+   widget decoration (see fold.ts buildDecorations). An OPEN heading arrow costs
+   zero decorations; only FOLDED headings get the `.fold-collapsed` node class.
+   The arrow is a real hit target (default pointer-events: auto on the pseudo):
+   a click on it reports event.target = the heading, and fold.ts detects the
+   gutter via offsetX < 0 — zoom-safe, since `.editor-area-scroll` uses CSS zoom
+   which breaks clientX/getBoundingClientRect (see resolveHeadingGutterFold). */
+.tiptap > h1::before,
+.tiptap > h2::before,
+.tiptap > h3::before,
+.tiptap > h4::before,
+.tiptap > h5::before,
+.tiptap > h6::before {
+  position: absolute;
+  top: 50%;
+  left: -24px;
+  width: 18px;
+  height: 18px;
+  font-size: 9px;
+  line-height: 18px;
+  text-align: center;
+  cursor: pointer;
+  content: "▶";
+  opacity: 0;
+  transform: translateY(-50%) rotate(90deg);
+  transition:
+    opacity 0.15s ease,
+    transform 0.2s ease;
+}
+
+.tiptap > h1:hover::before,
+.tiptap > h2:hover::before,
+.tiptap > h3:hover::before,
+.tiptap > h4:hover::before,
+.tiptap > h5:hover::before,
+.tiptap > h6:hover::before {
+  opacity: 0.4;
+}
+
+/* Folded heading — node-class decoration applied only to folded headings */
+.tiptap > h1.fold-collapsed::before,
+.tiptap > h2.fold-collapsed::before,
+.tiptap > h3.fold-collapsed::before,
+.tiptap > h4.fold-collapsed::before,
+.tiptap > h5.fold-collapsed::before,
+.tiptap > h6.fold-collapsed::before {
+  opacity: 0.7;
+  transform: translateY(-50%) rotate(0deg);
+}
+
+/* Fold arrow — gutter positioned, hidden by default (list items only) */
 .fold-arrow {
   position: absolute;
   top: 50%;
@@ -103,13 +153,7 @@
   transition: opacity 0.15s ease;
 }
 
-/* Show arrow on heading/li hover */
-.tiptap h1:hover > .fold-arrow,
-.tiptap h2:hover > .fold-arrow,
-.tiptap h3:hover > .fold-arrow,
-.tiptap h4:hover > .fold-arrow,
-.tiptap h5:hover > .fold-arrow,
-.tiptap h6:hover > .fold-arrow,
+/* Show arrow on list-item hover (headings use the CSS pseudo-element above) */
 .tiptap li:hover > .fold-arrow {
   opacity: 0.5;
 }
@@ -1326,6 +1370,43 @@
   content-visibility: auto;
 }
 
+/* §perf-large-file C3.1c: content-visibility:auto forced whole-document
+ * re-layout on every caret/coordinate query in WKWebView (~300ms per
+ * keystroke, ~5s per click on a 3,531-block doc; Safari Timeline showed
+ * Layout-dominated frames with JS≈0). contain:layout paint isolates each
+ * top-level block instead: one up-front layout, then per-block incremental
+ * re-layout while editing.
+ * (style containment measured no additional benefit; omitted to keep
+ * CSS counters/inheritance semantics.) */
+.tiptap > * {
+  contain: layout paint;
+}
+
+/* Headings: fold arrows are position:absolute; left:-24px (overflows the
+ * block's left edge). Paint containment would clip them — use layout only. */
+.tiptap > h1,
+.tiptap > h2,
+.tiptap > h3,
+.tiptap > h4,
+.tiptap > h5,
+.tiptap > h6 {
+  contain: layout;
+}
+
+/* Code blocks: "paper" style floats the lang tab above the block via
+ * position:absolute; transform:translateY(-100%) — would be clipped by
+ * paint containment. Layout only. */
+.tiptap > .code-block-wrapper {
+  contain: layout;
+}
+
+/* Mermaid blocks: template dropdown is position:absolute; top:100% and
+ * overflows the block's bottom edge — would be clipped by paint containment.
+ * Layout only. */
+.tiptap > .mermaid-block {
+  contain: layout;
+}
+
 /* §5.8 Frontmatter */
 .tiptap .frontmatter {
   padding: 0.5em 1em;
@@ -1374,6 +1455,16 @@
   cursor: pointer;
   background: transparent;
   border: none;
+}
+
+.code-block-placeholder {
+  padding: 0.75em 1em;
+  margin: 0;
+  overflow-x: auto;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.9em;
+  color: var(--color-text-muted);
+  white-space: pre;
 }
 
 .code-block-editor .cm-editor {

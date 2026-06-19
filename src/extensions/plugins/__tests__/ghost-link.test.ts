@@ -1,4 +1,6 @@
 // §11.5.2 Ghost Link ProseMirror Plugin — tests
+import type { EditorView } from "@tiptap/pm/view";
+
 import { Schema } from "@tiptap/pm/model";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -13,6 +15,9 @@ import {
   shouldThrottle,
   SUGGESTION_COOLDOWN_MS,
 } from "../ghost-link";
+
+// §perf-large-file C3.4: mock EditorView for per-view cooldown tests
+const mockView = {} as EditorView;
 
 // ── Minimal schema ────────────────────────────────────────────────────
 
@@ -182,32 +187,40 @@ describe("§11.5.2 Ghost Link — computeGhostLinkDecorations", () => {
 describe("§11.5.2 Ghost Link — cooldown", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    resetCooldown();
+    resetCooldown(mockView);
   });
 
   afterEach(() => {
     vi.useRealTimers();
-    resetCooldown();
+    resetCooldown(mockView);
   });
 
   it("is not throttled initially", () => {
-    expect(shouldThrottle()).toBe(false);
+    expect(shouldThrottle(mockView)).toBe(false);
   });
 
   it("is throttled immediately after recording suggestion time", () => {
-    recordSuggestionTime();
-    expect(shouldThrottle()).toBe(true);
+    recordSuggestionTime(mockView);
+    expect(shouldThrottle(mockView)).toBe(true);
   });
 
   it("is still throttled after 29 seconds", () => {
-    recordSuggestionTime();
+    recordSuggestionTime(mockView);
     vi.advanceTimersByTime(29_000);
-    expect(shouldThrottle()).toBe(true);
+    expect(shouldThrottle(mockView)).toBe(true);
   });
 
   it("is no longer throttled after 30 seconds", () => {
-    recordSuggestionTime();
+    recordSuggestionTime(mockView);
     vi.advanceTimersByTime(30_001);
-    expect(shouldThrottle()).toBe(false);
+    expect(shouldThrottle(mockView)).toBe(false);
+  });
+
+  // §perf-large-file C3.4: per-view isolation
+  it("isolates cooldown per view instance", () => {
+    const view2 = {} as EditorView;
+    recordSuggestionTime(mockView);
+    expect(shouldThrottle(mockView)).toBe(true);
+    expect(shouldThrottle(view2)).toBe(false);
   });
 });

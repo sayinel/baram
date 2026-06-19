@@ -14,6 +14,8 @@ import { generateBlockId } from "../../pipeline/block-id";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
+import { changedRanges } from "../../utils/editor/changed-ranges";
+import { PROGRESSIVE_LOAD_META } from "../../utils/editor/progressive-load";
 import { logger } from "../../utils/logger";
 
 // ── Plugin state ──────────────────────────────────────────────────────
@@ -23,10 +25,31 @@ interface BlockIdDecoState {
   editingBlockPos: null | number;
   entries: BlockIdEntry[];
   focusedBlockPos: null | number;
+  /** Map from blockId → count of blocks in the doc that have that id. */
+  idCountMap: Map<string, number>;
+  /**
+   * True after the first full build has run. Prevents re-firing the init walk
+   * on every transaction for docs with zero block-IDs (entries.length === 0
+   * can't be used as a sentinel because it also matches legitimate empty docs).
+   */
+  initialized: boolean;
+  /**
+   * Set to true when a progressive-load (gated) transaction was applied so
+   * that the next non-gated docChanged triggers a full rebuild to catch all
+   * the skipped chunks.
+   */
+  needsFullRebuild: boolean;
 }
 
 interface BlockIdEntry {
   blockId: string;
+  /**
+   * §perf-large-file C3.1d: Cached Decoration object for this entry.
+   * Reusing the same Decoration object (same WidgetType instance) lets
+   * DecorationSet.eq() short-circuit via reference equality (this == other),
+   * which prevents PM from calling updateChildren on unchanged paragraphs.
+   */
+  deco: Decoration;
   endPos: number;
   pos: number;
 }
@@ -35,41 +58,30 @@ interface BlockIdEntry {
 function buildDecosFromEntries(
   doc: PmNode,
   entries: BlockIdEntry[],
-  focusedBlockPos: null | number,
-  editingBlockPos: null | number,
 ): DecorationSet {
+  // §perf-large-file C3.1d: entries carry pre-built Decoration objects.
+  // Unchanged entries reuse the same WidgetType instance → DecorationSet.eq()
+  // short-circuits via `this == other` → matchesNode skips updateChildren.
   if (entries.length === 0) return DecorationSet.empty;
-  const decos: Decoration[] = [];
-  for (const { pos, blockId, endPos } of entries) {
-    if (editingBlockPos === pos) {
-      decos.push(
-        Decoration.widget(
-          endPos,
-          (view: EditorView) => createEditWidget(blockId, view, pos),
-          { side: 1, key: `block-id-edit-${pos}` },
-        ),
-      );
-    } else if (focusedBlockPos === pos) {
-      decos.push(
-        Decoration.widget(endPos, () => createFocusedWidget(blockId), {
-          side: 1,
-          key: `block-id-focus-${pos}`,
-        }),
-      );
-    } else {
-      decos.push(
-        Decoration.widget(endPos, () => createHintWidget(blockId), {
-          side: 1,
-          key: `block-id-hint-${pos}`,
-        }),
-      );
-    }
-  }
+  const decos = entries.map((e) => e.deco);
   return DecorationSet.create(doc, decos);
 }
 
+/** Build an id→count map from scratch from an entries array. O(n). */
+function buildIdCountMap(entries: BlockIdEntry[]): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const { blockId } of entries) {
+    map.set(blockId, (map.get(blockId) ?? 0) + 1);
+  }
+  return map;
+}
+
 /** Walk the doc once and collect all blocks that have a blockId attr. */
-function collectBlockIdEntries(doc: PmNode): BlockIdEntry[] {
+function collectBlockIdEntries(
+  doc: PmNode,
+  focusedBlockPos: null | number = null,
+  editingBlockPos: null | number = null,
+): BlockIdEntry[] {
   const entries: BlockIdEntry[] = [];
   doc.descendants((node: PmNode, pos: number) => {
     if (node.type.name !== "paragraph" && node.type.name !== "heading") {
@@ -77,11 +89,284 @@ function collectBlockIdEntries(doc: PmNode): BlockIdEntry[] {
     }
     const blockId = node.attrs.blockId as null | string;
     if (blockId) {
-      entries.push({ pos, blockId, endPos: pos + node.nodeSize - 1 });
+      const endPos = pos + node.nodeSize - 1;
+      entries.push({
+        pos,
+        blockId,
+        endPos,
+        deco: makeEntryDeco(
+          blockId,
+          pos,
+          endPos,
+          focusedBlockPos,
+          editingBlockPos,
+        ),
+      });
     }
     return false; // Don't descend into paragraphs/headings
   });
   return entries;
+}
+
+/** Create an editing (input widget) Decoration for an entry. */
+function makeEditDeco(
+  blockId: string,
+  endPos: number,
+  pos: number,
+): Decoration {
+  return Decoration.widget(
+    endPos,
+    (view: EditorView) => createEditWidget(blockId, view, pos),
+    { side: 1, key: `block-id-edit-${blockId}` },
+  );
+}
+
+/**
+ * Create the appropriate Decoration for an entry given the current focus/edit state.
+ * §perf-large-file C3.1d: cached on entry so the same object is reused across applies.
+ */
+function makeEntryDeco(
+  blockId: string,
+  pos: number,
+  endPos: number,
+  focusedBlockPos: null | number,
+  editingBlockPos: null | number,
+): Decoration {
+  if (editingBlockPos === pos) return makeEditDeco(blockId, endPos, pos);
+  if (focusedBlockPos === pos) return makeFocusDeco(blockId, endPos);
+  return makeHintDeco(blockId, endPos);
+}
+
+/** Create a focused (visible text) Decoration for an entry. */
+function makeFocusDeco(blockId: string, endPos: number): Decoration {
+  return Decoration.widget(endPos, () => createFocusedWidget(blockId), {
+    side: 1,
+    key: `block-id-focus-${blockId}`,
+  });
+}
+
+/** Create a hint (anchor dot) Decoration for an entry. */
+function makeHintDeco(blockId: string, endPos: number): Decoration {
+  return Decoration.widget(endPos, () => createHintWidget(blockId), {
+    side: 1,
+    // §perf-large-file C3.1d: blockId-stable key (not pos) so downstream
+    // widgets survive position shifts without DOM teardown.
+    key: `block-id-hint-${blockId}`,
+  });
+}
+
+/**
+ * §perf-large-file C3.1d: Rebuild Decoration objects only for entries whose
+ * focus/editing role changed. All other entries keep their cached Decoration
+ * object (same WidgetType instance → DecorationSet.eq short-circuits).
+ *
+ * Called on selection-only transactions where focusedBlockPos/editingBlockPos
+ * changes but the doc is unchanged.
+ */
+function rebuildFocusDecos(
+  entries: BlockIdEntry[],
+  oldFocusedPos: null | number,
+  oldEditingPos: null | number,
+  newFocusedPos: null | number,
+  newEditingPos: null | number,
+): BlockIdEntry[] {
+  // Positions that need a new Decoration (at most 2: old focused and new focused)
+  const affected = new Set<number>();
+  if (oldFocusedPos !== newFocusedPos) {
+    if (oldFocusedPos !== null) affected.add(oldFocusedPos);
+    if (newFocusedPos !== null) affected.add(newFocusedPos);
+  }
+  if (oldEditingPos !== newEditingPos) {
+    if (oldEditingPos !== null) affected.add(oldEditingPos);
+    if (newEditingPos !== null) affected.add(newEditingPos);
+  }
+  if (affected.size === 0) return entries; // fast path: nothing changed
+
+  return entries.map((entry) => {
+    if (!affected.has(entry.pos)) return entry; // reuse same object
+    return {
+      ...entry,
+      deco: makeEntryDeco(
+        entry.blockId,
+        entry.pos,
+        entry.endPos,
+        newFocusedPos,
+        newEditingPos,
+      ),
+    };
+  });
+}
+
+/**
+ * §perf-large-file C3.1d: Create a new Decoration wrapper at a new position
+ * reusing the existing WidgetType instance from `oldDeco`.
+ *
+ * PM's WidgetType.map() does exactly `new Decoration(newPos, newPos, this)` —
+ * same WidgetType instance, new position wrapper. We replicate that here so
+ * that position-shifted survivors still give `this == other` in WidgetType.eq(),
+ * letting DecorationSet.eq() short-circuit matchesNode for unchanged paragraphs.
+ *
+ * The WidgetType is accessed via `(deco as any).type` — PM doesn't expose it
+ * publicly but it is a stable internal field present since prosemirror-view 1.x.
+ */
+function remapDeco(oldDeco: Decoration, newEndPos: number): Decoration {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const widgetType = (oldDeco as any).type as unknown;
+  // Construct via Decoration.widget so the public API is used for the wrapper,
+  // but pass the existing WidgetType's toDOM and spec so the same instance is
+  // retrieved from the created Decoration. Actually we need the constructor directly.
+  // PM's Decoration constructor is not exported, but we can access it from an
+  // existing instance: `Object.getPrototypeOf(oldDeco).constructor`.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const DecoCtor = (oldDeco as any).constructor as new (
+    from: number,
+    to: number,
+    type: unknown,
+  ) => Decoration;
+  return new DecoCtor(newEndPos, newEndPos, widgetType);
+}
+
+/**
+ * Update entries incrementally for a set of changed ranges.
+ * Returns the new entries array plus separate dropped/added arrays so the
+ * caller can update idCountMap in O(changed) rather than O(all entries).
+ *
+ * Old-doc changed ranges are read directly from StepMap forEach (oldStart,
+ * oldEnd) which gives the correct pre-edit positions, avoiding the ambiguity
+ * that arises when using new-doc coordinates for deletion detection.
+ */
+function updateEntriesIncremental(
+  oldEntries: BlockIdEntry[],
+  tr: Transaction,
+  newDoc: PmNode,
+  focusedBlockPos: null | number,
+  editingBlockPos: null | number,
+  oldFocusedBlockPos: null | number,
+  oldEditingBlockPos: null | number,
+): { added: BlockIdEntry[]; dropped: BlockIdEntry[]; entries: BlockIdEntry[] } {
+  // Collect old-doc changed ranges from StepMap old-coordinate callbacks.
+  const oldRanges: { from: number; to: number }[] = [];
+  for (const map of tr.mapping.maps) {
+    map.forEach((oldStart, oldEnd) => {
+      oldRanges.push({ from: oldStart, to: oldEnd });
+    });
+  }
+
+  // Partition old entries: drop those whose old position was inside a changed
+  // range; map the rest forward.
+  const dropped: BlockIdEntry[] = [];
+  const surviving: BlockIdEntry[] = [];
+  for (const entry of oldEntries) {
+    const inOldRange = oldRanges.some(
+      (r) => entry.pos >= r.from && entry.pos < r.to,
+    );
+    if (inOldRange) {
+      dropped.push(entry);
+    } else {
+      const newPos = tr.mapping.map(entry.pos);
+      const newEndPos = tr.mapping.map(entry.endPos);
+      // §perf-large-file C3.1d: reuse the same Decoration object when the
+      // entry's position and role haven't changed. This preserves WidgetType
+      // instance identity so DecorationSet.eq() short-circuits via `this == other`.
+      const newRole =
+        editingBlockPos === newPos
+          ? "edit"
+          : focusedBlockPos === newPos
+            ? "focus"
+            : "hint";
+      const oldRole =
+        oldEditingBlockPos === entry.pos
+          ? "edit"
+          : oldFocusedBlockPos === entry.pos
+            ? "focus"
+            : "hint";
+      const sameRole = newRole === oldRole;
+      const samePos = newPos === entry.pos && newEndPos === entry.endPos;
+
+      let deco: Decoration;
+      if (samePos && sameRole) {
+        // Nothing changed — reuse the exact same Decoration object.
+        deco = entry.deco;
+      } else if (sameRole) {
+        // Position shifted but role unchanged — reuse WidgetType instance.
+        // §perf-large-file C3.1d: remapDeco creates new Decoration wrapper at
+        // newEndPos with the SAME WidgetType instance → `this == other` in
+        // WidgetType.eq() → DecorationSet.eq() short-circuits matchesNode.
+        deco = remapDeco(entry.deco, newEndPos);
+      } else {
+        // Role changed — need a fresh Decoration with the correct widget type.
+        deco = makeEntryDeco(
+          entry.blockId,
+          newPos,
+          newEndPos,
+          focusedBlockPos,
+          editingBlockPos,
+        );
+      }
+      surviving.push({
+        pos: newPos,
+        blockId: entry.blockId,
+        endPos: newEndPos,
+        deco,
+      });
+    }
+  }
+
+  // Re-collect entries from the new-doc changed ranges.
+  // Deduplicate by position; skip positions already in surviving (a node that
+  // spans the change point is visited by nodesBetween for each range it overlaps).
+  const survivingPosSet = new Set(surviving.map((e) => e.pos));
+  const newDocRanges = changedRanges(tr);
+  const freshMap = new Map<number, BlockIdEntry>();
+  for (const range of newDocRanges) {
+    newDoc.nodesBetween(range.from, range.to, (node: PmNode, pos: number) => {
+      if (node.type.name !== "paragraph" && node.type.name !== "heading") {
+        return true;
+      }
+      const blockId = node.attrs.blockId as null | string;
+      if (blockId && !freshMap.has(pos) && !survivingPosSet.has(pos)) {
+        const endPos = pos + node.nodeSize - 1;
+        freshMap.set(pos, {
+          pos,
+          blockId,
+          endPos,
+          deco: makeEntryDeco(
+            blockId,
+            pos,
+            endPos,
+            focusedBlockPos,
+            editingBlockPos,
+          ),
+        });
+      }
+      return false;
+    });
+  }
+
+  const added = [...freshMap.values()];
+  return { entries: [...surviving, ...added], dropped, added };
+}
+
+/**
+ * Update an existing idCountMap O(changed) instead of O(all entries).
+ * Decrements counts for removed entries, increments for added entries.
+ * Entries with count reaching 0 are removed from the map.
+ */
+function updateIdCountMap(
+  base: Map<string, number>,
+  removed: BlockIdEntry[],
+  added: BlockIdEntry[],
+): Map<string, number> {
+  const map = new Map(base);
+  for (const { blockId } of removed) {
+    const count = (map.get(blockId) ?? 0) - 1;
+    if (count <= 0) map.delete(blockId);
+    else map.set(blockId, count);
+  }
+  for (const { blockId } of added) {
+    map.set(blockId, (map.get(blockId) ?? 0) + 1);
+  }
+  return map;
 }
 
 export const blockIdDecoKey = new PluginKey<BlockIdDecoState>(
@@ -244,6 +529,9 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
           editingBlockPos: null,
           decorations: DecorationSet.empty,
           entries: [],
+          idCountMap: new Map(),
+          initialized: false,
+          needsFullRebuild: false,
         };
       },
 
@@ -253,19 +541,20 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
         _oldState: EditorState,
         newState: EditorState,
       ): BlockIdDecoState {
-        // §perf-large-file: Deferred init — build on first transaction
-        if (value.entries.length === 0 && newState.doc.content.size > 0) {
-          const entries = collectBlockIdEntries(newState.doc);
+        // §perf-large-file: Deferred init — build on first transaction.
+        // Use explicit `initialized` flag rather than `entries.length === 0`
+        // because DecorationSet.create(doc,[]) returns the shared empty
+        // instance and an empty doc legitimately has zero entries.
+        if (!value.initialized && newState.doc.content.size > 0) {
+          const entries = collectBlockIdEntries(newState.doc, null, null);
           return {
             focusedBlockPos: null,
             editingBlockPos: null,
             entries,
-            decorations: buildDecosFromEntries(
-              newState.doc,
-              entries,
-              null,
-              null,
-            ),
+            idCountMap: buildIdCountMap(entries),
+            initialized: true,
+            needsFullRebuild: false,
+            decorations: buildDecosFromEntries(newState.doc, entries),
           };
         }
 
@@ -274,18 +563,60 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
           | undefined
           | { editingBlockPos: null | number; focusedBlockPos: null | number };
         if (meta !== undefined) {
-          const entries = tr.docChanged
-            ? collectBlockIdEntries(newState.doc)
-            : value.entries;
+          const skipRebuild = tr.getMeta(PROGRESSIVE_LOAD_META) === true;
+          let entries: BlockIdEntry[];
+          let idCountMap: Map<string, number>;
+          let needsFullRebuild = value.needsFullRebuild;
+          if (tr.docChanged) {
+            if (skipRebuild) {
+              // Progressive-load chunk: map positions, flag for full rebuild later
+              entries = value.entries;
+              idCountMap = value.idCountMap;
+              needsFullRebuild = true;
+            } else if (needsFullRebuild) {
+              // First non-progressive docChanged after progressive load: full rebuild
+              entries = collectBlockIdEntries(
+                newState.doc,
+                meta.focusedBlockPos,
+                meta.editingBlockPos,
+              );
+              idCountMap = buildIdCountMap(entries);
+              needsFullRebuild = false;
+            } else {
+              const result = updateEntriesIncremental(
+                value.entries,
+                tr,
+                newState.doc,
+                meta.focusedBlockPos,
+                meta.editingBlockPos,
+                value.focusedBlockPos,
+                value.editingBlockPos,
+              );
+              entries = result.entries;
+              idCountMap = updateIdCountMap(
+                value.idCountMap,
+                result.dropped,
+                result.added,
+              );
+            }
+          } else {
+            // Selection-only with meta: update deco for focus-changed entries only.
+            entries = rebuildFocusDecos(
+              value.entries,
+              value.focusedBlockPos,
+              value.editingBlockPos,
+              meta.focusedBlockPos,
+              meta.editingBlockPos,
+            );
+            idCountMap = value.idCountMap;
+          }
           return {
             ...meta,
             entries,
-            decorations: buildDecosFromEntries(
-              newState.doc,
-              entries,
-              meta.focusedBlockPos,
-              meta.editingBlockPos,
-            ),
+            idCountMap,
+            initialized: true,
+            needsFullRebuild,
+            decorations: buildDecosFromEntries(newState.doc, entries),
           };
         }
 
@@ -331,21 +662,69 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
           return value;
         }
 
-        // Doc changed → rebuild entries from scratch; otherwise reuse
-        const entries = tr.docChanged
-          ? collectBlockIdEntries(newState.doc)
-          : value.entries;
+        // Doc changed → update entries; skip during progressive load
+        const skipRebuild = tr.getMeta(PROGRESSIVE_LOAD_META) === true;
+        let entries: BlockIdEntry[];
+        let idCountMap: Map<string, number>;
+        let needsFullRebuild = value.needsFullRebuild;
+        // initialized is true from here on (deferred-init branch handled above)
+
+        if (tr.docChanged) {
+          if (skipRebuild) {
+            // Progressive-load chunk: map positions only, flag for full rebuild
+            entries = value.entries;
+            idCountMap = value.idCountMap;
+            needsFullRebuild = true;
+          } else if (needsFullRebuild) {
+            // First non-progressive docChanged after progressive load: full rebuild
+            entries = collectBlockIdEntries(
+              newState.doc,
+              focusedBlockPos,
+              editingBlockPos,
+            );
+            idCountMap = buildIdCountMap(entries);
+            needsFullRebuild = false;
+          } else {
+            // §perf-large-file C3.1: incremental entry update + O(changed) map
+            // §perf-large-file C3.1d: pass focus state so surviving entries get
+            // the right Decoration object cached (preserves WidgetType identity).
+            // Pass old positions so oldRole is derived from previous state, not new.
+            const result = updateEntriesIncremental(
+              value.entries,
+              tr,
+              newState.doc,
+              focusedBlockPos,
+              editingBlockPos,
+              value.focusedBlockPos,
+              value.editingBlockPos,
+            );
+            entries = result.entries;
+            idCountMap = updateIdCountMap(
+              value.idCountMap,
+              result.dropped,
+              result.added,
+            );
+          }
+        } else {
+          // Selection-only change: rebuild deco only for the two focus-affected entries.
+          entries = rebuildFocusDecos(
+            value.entries,
+            value.focusedBlockPos,
+            value.editingBlockPos,
+            focusedBlockPos,
+            editingBlockPos,
+          );
+          idCountMap = value.idCountMap;
+        }
 
         return {
           focusedBlockPos,
           editingBlockPos,
           entries,
-          decorations: buildDecosFromEntries(
-            newState.doc,
-            entries,
-            focusedBlockPos,
-            editingBlockPos,
-          ),
+          idCountMap,
+          initialized: true,
+          needsFullRebuild,
+          decorations: buildDecosFromEntries(newState.doc, entries),
         };
       },
     },

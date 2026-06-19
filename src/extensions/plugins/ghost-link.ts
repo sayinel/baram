@@ -127,20 +127,40 @@ export function computeGhostLinkDecorations(
 }
 
 // ── Cooldown ──────────────────────────────────────────────────────────
+// §perf-large-file C3.4: Per-view cooldown via WeakMap so two concurrent
+// editor views (C3.5 dual-editor) track cooldown independently.
 
-let lastSuggestionTime = 0;
+const _cooldownByView = new WeakMap<
+  import("@tiptap/pm/view").EditorView,
+  number
+>();
 
-export function recordSuggestionTime(): void {
-  lastSuggestionTime = Date.now();
+export function recordSuggestionTime(
+  view?: import("@tiptap/pm/view").EditorView,
+): void {
+  if (view) {
+    _cooldownByView.set(view, Date.now());
+  }
 }
 
-export function resetCooldown(): void {
-  lastSuggestionTime = 0;
+export function resetCooldown(
+  view?: import("@tiptap/pm/view").EditorView,
+): void {
+  if (view) {
+    _cooldownByView.delete(view);
+  }
 }
 
-export function shouldThrottle(): boolean {
-  return Date.now() - lastSuggestionTime < SUGGESTION_COOLDOWN_MS;
+export function shouldThrottle(
+  view?: import("@tiptap/pm/view").EditorView,
+): boolean {
+  if (!view) return false;
+  const last = _cooldownByView.get(view) ?? 0;
+  return Date.now() - last < SUGGESTION_COOLDOWN_MS;
 }
+
+/** @internal — exported for testing only */
+export { _cooldownByView };
 
 // ── Empty state ───────────────────────────────────────────────────────
 
@@ -157,6 +177,8 @@ export const GhostLink = Extension.create({
   name: "ghostLink",
 
   addProseMirrorPlugins() {
+    // §perf-large-file C3.4: capture editor view for per-view cooldown tracking
+    const editorView = this.editor.view;
     return [
       new Plugin({
         key: ghostLinkPluginKey,
@@ -195,14 +217,14 @@ export const GhostLink = Extension.create({
                 }
 
                 case "refresh": {
-                  if (shouldThrottle()) return prev;
+                  if (shouldThrottle(editorView)) return prev;
                   const refreshResult = computeGhostLinkDecorations(
                     newState.doc,
                     prev.dictionary,
                     prev.dismissed,
                   );
                   if (refreshResult.suggestions.length > 0) {
-                    recordSuggestionTime();
+                    recordSuggestionTime(editorView);
                   }
                   return {
                     ...prev,
@@ -217,7 +239,7 @@ export const GhostLink = Extension.create({
                     meta.dictionary,
                     prev.dismissed,
                   );
-                  recordSuggestionTime();
+                  recordSuggestionTime(editorView);
                   return {
                     ...prev,
                     decorationSet: updateResult.decorationSet,

@@ -14,20 +14,33 @@ import { filterTags } from "../../utils/journal/journal-tags";
 import { logger } from "../../utils/logger";
 import { createSuggestionRenderer } from "./suggestion-renderer";
 
-/** Cached tag index — rebuilt lazily via Rust IPC when stale */
-let cachedTagIndex: Map<string, number> = new Map();
-let cacheTimestamp = 0;
+/**
+ * §perf-large-file C3.4: Per-editor tag cache via WeakMap so two concurrent
+ * editor instances (C3.5 dual-editor) never share stale cache entries.
+ */
+interface TagCache {
+  index: Map<string, number>;
+  timestamp: number;
+}
+const _tagCacheByEditor = new WeakMap<
+  import("@tiptap/core").Editor,
+  TagCache
+>();
 const CACHE_TTL = 30_000; // 30 seconds
 
-async function getTagIndex(): Promise<Map<string, number>> {
+async function getTagIndex(
+  editor: import("@tiptap/core").Editor,
+): Promise<Map<string, number>> {
   const now = Date.now();
-  if (cachedTagIndex.size > 0 && now - cacheTimestamp < CACHE_TTL) {
-    return cachedTagIndex;
+  const cached = _tagCacheByEditor.get(editor);
+  if (cached && cached.index.size > 0 && now - cached.timestamp < CACHE_TTL) {
+    return cached.index;
   }
 
+  const fallback = cached?.index ?? new Map<string, number>();
   try {
     const { rootPath } = useFileStore.getState();
-    if (!rootPath) return cachedTagIndex;
+    if (!rootPath) return fallback;
 
     const entries = await getVaultTags(rootPath);
     const index = new Map<string, number>();
@@ -35,14 +48,17 @@ async function getTagIndex(): Promise<Map<string, number>> {
       index.set(entry.tag, entry.count);
     }
 
-    cachedTagIndex = index;
-    cacheTimestamp = now;
+    _tagCacheByEditor.set(editor, { index, timestamp: now });
+    return index;
   } catch (err) {
     logger.error("[TagSuggest] Failed to build tag index:", err);
   }
 
-  return cachedTagIndex;
+  return fallback;
 }
+
+/** @internal — exported for testing only */
+export { _tagCacheByEditor };
 
 export const TagSuggest = Extension.create({
   name: "tagSuggest",
@@ -88,7 +104,7 @@ export const TagSuggest = Extension.create({
             .run();
         },
         items: async ({ query }: { query: string }) => {
-          const tagIndex = await getTagIndex();
+          const tagIndex = await getTagIndex(editor);
           const filtered = filterTags(query, tagIndex);
           return filtered.map((tag, idx) => ({
             id: String(idx),

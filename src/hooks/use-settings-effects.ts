@@ -82,8 +82,12 @@ export function useSettingsEffects(editor: Editor | null) {
   }, [activeThemeId, customThemes]);
 
   useEffect(() => {
-    const tiptap = document.querySelector<HTMLElement>(".tiptap");
-    if (!tiptap) return;
+    // §perf-large-file C3.4: resolve via editor.view.dom rather than a global
+    // querySelector so this targets the ACTIVE editor in a dual-editor layout.
+    const domNode: Element | null = editor ? editor.view.dom : null;
+    if (!domNode) return;
+    const tiptap = domNode as HTMLElement;
+    // eslint-disable-next-line react-hooks/immutability -- we are styling the DOM element, not mutating the editor argument
     tiptap.style.fontSize = `${fontSize}px`;
     tiptap.style.fontFamily = fontFamily
       ? `${fontFamily}, var(--font-family-editor)`

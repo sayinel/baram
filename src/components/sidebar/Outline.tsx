@@ -1,7 +1,7 @@
-import type { Editor } from "@tiptap/react";
-
 // §4.3 Outline sidebar — heading hierarchy from editor
-import { useEditorState } from "@tiptap/react";
+import { useEffect, useRef, useState } from "react";
+
+import type { Editor } from "@tiptap/react";
 
 import { useEditorContext } from "../../contexts/editor-context";
 
@@ -13,16 +13,37 @@ interface HeadingItem {
 
 export function Outline() {
   const editor = useEditorContext();
-  // Re-extract headings on every document change via useEditorState
-  const headings = useEditorState({
-    editor,
-    selector: ({ editor: ed }) => {
-      if (!ed || ed.isDestroyed) return [];
-      return extractHeadings(ed);
-    },
-  });
+  const [headings, setHeadings] = useState<HeadingItem[]>([]);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  if (!editor || !headings) {
+  // §perf-large-file C4: extract headings on a debounced `update` listener
+  // instead of useEditorState. useEditorState reran extractHeadings (a whole-doc
+  // descendants walk over ~1,391 headings on the perf fixture) on EVERY
+  // transaction — including pure selection changes (cursor moves) — so an open
+  // Outline panel was a per-keystroke whole-doc cost on large files. A 200ms
+  // debounce on `update` only (matching table-of-contents-view) skips the walk
+  // during a typing burst and ignores selection-only transactions entirely.
+  useEffect(() => {
+    if (!editor) return;
+
+    const collect = () => {
+      if (editor.isDestroyed) return;
+      setHeadings(extractHeadings(editor));
+    };
+    collect();
+
+    const handler = () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(collect, 200);
+    };
+    editor.on("update", handler);
+    return () => {
+      editor.off("update", handler);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [editor]);
+
+  if (!editor) {
     return <div className="outline-empty">No editor</div>;
   }
 

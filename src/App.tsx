@@ -10,6 +10,7 @@ import {
 
 import type { EditorTab } from "./stores/editor/editor";
 
+import { Editor as TiptapCoreEditor } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { useShallow } from "zustand/shallow";
 
@@ -47,11 +48,12 @@ import {
   useGlobalKeyboard,
   useKeybindingActions,
 } from "./hooks/use-keybinding-actions";
+import { useLargeDocKeepalive } from "./hooks/use-large-doc-keepalive";
 import { useMenuEventHandler } from "./hooks/use-menu-event-handler";
 import { useNavigation } from "./hooks/use-navigation";
 import { useSettingsEffects } from "./hooks/use-settings-effects";
 import { useSkillsMode } from "./hooks/use-skills-mode";
-import { useSourceMode } from "./hooks/use-source-mode";
+import { type AppendHandleRef, useSourceMode } from "./hooks/use-source-mode";
 import { useTabSwitching } from "./hooks/use-tab-switching";
 import { useZoom } from "./hooks/use-zoom";
 import { useTranslation } from "./i18n/useTranslation";
@@ -73,6 +75,7 @@ import { isFileTab, isGraphTab } from "./stores/editor/editor";
 import { useFileStore } from "./stores/file/file";
 import { useSettingsStore } from "./stores/settings/store";
 import { useUIStore } from "./stores/ui/ui";
+import { initPerfTrace, instrumentEditor } from "./utils/editor/perf-trace";
 import { getLanguageForFile, isMarkdownFile } from "./utils/file-type";
 import { createLLMStream } from "./utils/llm-stream";
 import { logger } from "./utils/logger";
@@ -233,6 +236,51 @@ function App() {
     },
   });
 
+  // §perf-large-file C3.5: keep-alive editor pool for large documents
+  // mountedKeepaliveEditor: the editor whose EditorContent is mounted (stays
+  // mounted as long as it's in the pool — this is the "keep-alive" part).
+  // activeKeepaliveEditor: non-null only when the active tab uses a keep-alive
+  // editor (controls visibility and hook binding).
+  const [mountedKeepaliveEditor, setMountedKeepaliveEditor] = useState<
+    import("@tiptap/react").Editor | null
+  >(null);
+  const [activeKeepaliveEditor, setActiveKeepaliveEditor] = useState<
+    import("@tiptap/react").Editor | null
+  >(null);
+  // [MODERATE-9] On eviction, unmount EditorContent BEFORE editor.destroy().
+  const handleEviction = useCallback(() => {
+    setMountedKeepaliveEditor(null);
+    setActiveKeepaliveEditor(null);
+  }, []);
+  const keepalive = useLargeDocKeepalive(handleEviction);
+  const activeEditor = activeKeepaliveEditor ?? editor;
+  // Stable callback for useTabSwitching to notify us of editor changes.
+  // null = use shared editor; non-null = use this keep-alive editor.
+  const handleActiveEditorChange = useCallback(
+    (e: import("@tiptap/react").Editor | null) => {
+      setActiveKeepaliveEditor(e);
+      // Keep the EditorContent mounted as long as the editor exists
+      if (e) setMountedKeepaliveEditor(e);
+      // When switching away (e=null), do NOT unmount — the pool keeps it alive.
+      // mountedKeepaliveEditor stays set so the DOM is preserved (hidden).
+    },
+    [],
+  );
+
+  // [MINOR-11] Destroy pooled editors on App unmount / HMR cleanup.
+  // [NEW-CRITICAL-A fix] Empty deps — true unmount-only. Pool identity is
+  // now stable (ref-based) but we still read from a ref for belt-and-suspenders.
+  const keepaliveRef = useRef(keepalive);
+  keepaliveRef.current = keepalive;
+  useEffect(() => {
+    return () => keepaliveRef.current.destroyAll();
+  }, []);
+
+  // §perf-large-file C3.0: Install dev-only performance instrumentation
+  useEffect(() => {
+    if (import.meta.env.DEV) initPerfTrace();
+  }, []);
+
   // §69 Plugin system — initialize plugins and update checker on mount
   useEffect(() => {
     initializePlugins().catch((err) =>
@@ -250,6 +298,21 @@ function App() {
     if (editor) pluginLoader.setEditor(editor);
   }, [editor]);
 
+  // §perf-large-file C3.1/C4: Install per-plugin transaction cost instrumentation
+  // on the ACTIVE editor — the keep-alive editor that renders large docs is a
+  // separate instance, so instrumenting only the shared `editor` left its
+  // txBreakdown reading 0. instrumentEditor is idempotent per instance (WeakSet),
+  // so re-binding on activeEditor change instruments each editor exactly once.
+  useEffect(() => {
+    if (activeEditor) instrumentEditor(activeEditor);
+    // §perf-large-file C4: expose the ACTIVE editor on window in DEV so perf
+    // experiments can be driven from the DevTools console (e.g. fold-all to
+    // simulate windowing, read doc size, dispatch commands).
+    if (import.meta.env.DEV) {
+      (globalThis as { __baramEditor?: unknown }).__baramEditor = activeEditor;
+    }
+  }, [activeEditor]);
+
   // §72 Skills mode — auto-detect skill files and switch right panel
   const { isSkill } = useSkillsMode();
 
@@ -259,29 +322,38 @@ function App() {
     : null;
 
   // Auto-save hook (markdown files — Tiptap editor.on("update") based)
-  useAutoSave(editor);
+  // §perf-large-file C3.5: use activeEditor so keep-alive tabs auto-save correctly
+  useAutoSave(activeEditor);
 
   // File system watcher — auto-refresh FileTree on external changes
   useFileWatcher();
 
   // Page zoom — trackpad pinch + Cmd+/Cmd-/Cmd+0
-  useZoom(editor);
+  // §perf-large-file C3.5: zoom against activeEditor's DOM
+  useZoom(activeEditor);
 
   // External file drag & drop — Tauri OS-level file drop (Feature 1 & 2)
-  useExternalDrop({ editor });
+  useExternalDrop({ editor: activeEditor });
 
   // §43 Ghost Text — inline AI completion
-  useGhostText(editor);
+  useGhostText(activeEditor);
 
   // §6.2 Inline AI — Cmd+J editing
-  const inlineAI = useInlineAI(editor);
+  const inlineAI = useInlineAI(activeEditor);
 
   // Apply settings to DOM (theme, font, spellcheck, locale)
-  useSettingsEffects(editor);
+  useSettingsEffects(activeEditor);
+
+  // [NEW-MODERATE-C] Shared ref for progressive append handles — owned here,
+  // passed to both useSourceMode and useTabSwitching so cancelInflightAppend
+  // covers source-mode fills and tab-switch cancellation covers both.
+  const appendHandleRef: AppendHandleRef = useRef(null);
 
   // --- Source mode (WYSIWYG ↔ raw markdown toggle) ---
   // Must be called before useFileOperations and useTabSwitching because it owns
   // editorStateCache and exposes isSourceMode / sourceContentRef they need.
+  // [MAJOR-3 fix] Pass activeEditor so source-mode toggle reads/writes the
+  // correct document for keep-alive tabs.
   const {
     isSourceMode,
     setIsSourceMode,
@@ -293,7 +365,7 @@ function App() {
     editorStateCache,
     toggleSourceMode,
     handleSourceChange,
-  } = useSourceMode({ editor });
+  } = useSourceMode({ editor: activeEditor, appendHandleRef, pool: keepalive });
 
   // Auto-save for non-MD code files (debounced write when dirty)
   const { autoSave, autoSaveDelay } = useSettingsStore(
@@ -335,6 +407,8 @@ function App() {
   ]);
 
   // --- File operations ---
+  // [CRITICAL-2 fix] Pass activeEditor so Cmd+S serializes the correct
+  // document for keep-alive tabs (not the shared editor's stale content).
   const {
     handleCloseFolder,
     handleCloseTab,
@@ -347,7 +421,7 @@ function App() {
     handleSave,
     handleSaveAs,
   } = useFileOperations({
-    editor,
+    editor: activeEditor,
     isSourceMode,
     sourceContentRef,
   });
@@ -366,12 +440,33 @@ function App() {
     handleOpenFilePath,
   });
 
+  // §perf-large-file C3.5: factory to create a keep-alive editor with the same extensions.
+  // Placed after useNavigation so navigateRef et al. are already declared.
+  // TiptapCoreEditor === @tiptap/react Editor (same class, re-exported via @tiptap/core).
+  const createKeepaliveEditor = useCallback(() => {
+    return new TiptapCoreEditor({
+      extensions: createBaramExtensions({
+        onNavigate: (target, heading, vaultAlias) =>
+          navigateRef.current(target, heading, vaultAlias),
+        onNavigateBlockRef: (target, blockId) =>
+          blockRefNavigateRef.current(target, blockId),
+        onNavigateLocal: (href) => localLinkNavigateRef.current(href),
+        onMentionNavigate: (type, value) =>
+          mentionNavigateRef.current(type, value),
+      }),
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // --- Tab switching ---
   useTabSwitching({
+    appendHandleRef,
     editor,
     editorStateCache,
     isNavBackForwardRef,
     isSourceMode,
+    keepalive,
+    createKeepaliveEditor,
+    onActiveEditorChange: handleActiveEditorChange,
     setFindReplaceMode,
     setFindReplaceOpen,
     setIsSourceMode,
@@ -381,8 +476,9 @@ function App() {
   });
 
   // --- Editor effects (selection, content reload, goto-position, title) ---
+  // §perf-large-file C3.5: use activeEditor so keep-alive tabs handle goto-position correctly
   useEditorEffects({
-    editor,
+    editor: activeEditor,
     editorStateCache,
     inlineAI,
     setFindReplaceMode,
@@ -429,7 +525,7 @@ function App() {
 
   // --- Keybinding actions registration ---
   useKeybindingActions({
-    editor,
+    editor: activeEditor,
     handleCloseFolder,
     handleCloseTab,
     handleNewFile,
@@ -450,7 +546,7 @@ function App() {
 
   // --- Global keyboard shortcuts ---
   useGlobalKeyboard({
-    editor,
+    editor: activeEditor,
     findReplaceOpen,
     handleGoBack,
     handleGoForward,
@@ -463,7 +559,7 @@ function App() {
 
   // Native menu event listener (Tauri menu bar → frontend dispatch)
   useMenuEventHandler({
-    editor,
+    editor: activeEditor,
     handleCloseFolder,
     handleCloseTab,
     handleGoBack,
@@ -483,12 +579,12 @@ function App() {
   });
 
   return (
-    <EditorProvider value={editor}>
+    <EditorProvider value={activeEditor}>
       <AppLayout
         statusBar={
           rootPath ? (
             <StatusBar
-              editor={editor}
+              editor={activeEditor}
               mode={
                 isGraphTabActive ? "graph" : isSourceMode ? "source" : "wysiwyg"
               }
@@ -567,23 +663,27 @@ function App() {
             </div>
           ) : (
             <>
-              {findReplaceOpen && editor && (
+              {findReplaceOpen && activeEditor && (
                 <FindReplaceBar
-                  editor={editor}
+                  editor={activeEditor}
                   mode={findReplaceMode}
                   onClose={() => setFindReplaceOpen(false)}
                   onSetMode={setFindReplaceMode}
                 />
               )}
-              <MoodBar editor={editor} />
-              <FollowUpCard editor={editor} />
+              <MoodBar editor={activeEditor} />
+              <FollowUpCard editor={activeEditor} />
               {periodicType && activeTabFilePath && (
                 <PeriodicInsightBanner
                   filePath={activeTabFilePath}
                   type={periodicType}
                 />
               )}
-              <div className="editor-area-scroll" data-editor-scroll>
+              <div
+                className="editor-area-scroll"
+                data-editor-active
+                data-editor-scroll
+              >
                 {/* §perf-large-file B2: Loading skeleton while Worker parses */}
                 {isParsing && (
                   <div className="editor-loading-skeleton">
@@ -595,17 +695,32 @@ function App() {
                     <div className="skeleton-line w-1/2" />
                   </div>
                 )}
-                <EditorContent editor={editor} />
-                {editor && (
+                {/* §perf-large-file C3.5: keep-alive editor — stays mounted while
+                    in pool (DOM kept alive), hidden when another tab is active. */}
+                {mountedKeepaliveEditor && (
+                  <div
+                    data-keepalive-editor
+                    style={{
+                      display: activeKeepaliveEditor ? "" : "none",
+                    }}
+                  >
+                    <EditorContent editor={mountedKeepaliveEditor} />
+                  </div>
+                )}
+                {/* Shared editor — hidden when a keep-alive editor is active */}
+                <div style={{ display: activeKeepaliveEditor ? "none" : "" }}>
+                  <EditorContent editor={editor} />
+                </div>
+                {activeEditor && (
                   <>
-                    <FloatingToolbar editor={editor} />
-                    <TableToolbar editor={editor} />
-                    <BlockHandle editor={editor} />
-                    <TableInsertButtons editor={editor} />
-                    <ContextMenu editor={editor} />
+                    <FloatingToolbar editor={activeEditor} />
+                    <TableToolbar editor={activeEditor} />
+                    <BlockHandle editor={activeEditor} />
+                    <TableInsertButtons editor={activeEditor} />
+                    <ContextMenu editor={activeEditor} />
                     {inlineAI.isActive && inlineAI.phase !== "idle" && (
                       <InlineAIPrompt
-                        editor={editor}
+                        editor={activeEditor}
                         hasSelection={inlineAI.hasSelection}
                         hunks={inlineAI.hunks}
                         onAccept={inlineAI.accept}
@@ -628,7 +743,7 @@ function App() {
             </>
           )}
         </div>
-        <PromptLintPanel editor={editor} />
+        <PromptLintPanel editor={activeEditor} />
         {isSkill && (
           <Suspense fallback={null}>
             <SkillPreviewPanel
@@ -640,7 +755,7 @@ function App() {
       </AppLayout>
       <Suspense fallback={null}>
         <CommandPalette
-          editor={editor}
+          editor={activeEditor}
           onCloseFolder={handleCloseFolder}
           onNewFile={handleNewFile}
           onOpenFile={handleOpenFile}
@@ -649,14 +764,14 @@ function App() {
           onSkillPreview={() => setSkillPreviewOpen((v) => !v)}
           onToggleSourceMode={toggleSourceMode}
         />
-        <ExportDialog editor={editor} />
-        <QuickSwitcher editor={editor} onNewFile={handleNewFile} />
+        <ExportDialog editor={activeEditor} />
+        <QuickSwitcher editor={activeEditor} onNewFile={handleNewFile} />
         <SettingsModal />
         <AboutModal />
         <HoverPreview />
         <SkillGeneratorDialogWrapper />
         <SkillTestDialogWrapper />
-        <SmartTemplateDialogWrapper editor={editor} />
+        <SmartTemplateDialogWrapper editor={activeEditor} />
         <QuickCaptureDialog />
       </Suspense>
       {tabSwitcherOpen && (

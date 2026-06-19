@@ -67,6 +67,10 @@ export const WritingFlow = Extension.create({
           if (txCount >= REDETECT_INTERVAL) {
             txCount = 0;
 
+            // §perf-large-file C3.1c: skip O(N) doc walk on large documents.
+            // childCount > 1000 top-level blocks → walk cost exceeds benefit.
+            if (newState.doc.childCount > 1000) return null;
+
             // Count node types in the document
             const nodeTypes: Record<string, number> = {};
             newState.doc.descendants((node) => {
