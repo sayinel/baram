@@ -559,3 +559,6 @@ blob-report/
 
 # End of https://www.toptal.com/developers/gitignore/api/osx,windows,linux,git,python,vim,emacs,jetbrains+all,visualstudiocode,node,rust,rust-analyzer
 .idea/
+
+# Local large-file performance fixture (repo root) — never commit
+/CONTEXT.md

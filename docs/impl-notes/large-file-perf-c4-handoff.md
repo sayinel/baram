@@ -7,14 +7,20 @@
 
 ---
 
-## TL;DR — where we are
+## TL;DR — where we are (updated 2026-06-19, current HEAD)
 
-- The **truncation bug is fixed and shipped** (`d0d655b`, GUI-confirmed) — large files now fully open. That was the original blocker.
-- **Block virtualization (C4)** is in progress behind a DEV flag (`window.__baramFlags.virtualize`). It is **ALWAYS-ON when enabled, OFF by default**. Current mechanism (see `src/extensions/plugins/viewport-virtualize.ts`):
-  - **paragraph + heading**: a generic NodeView (`makeNodeView`, renders via the node's own `toDOM` so it is a faithful passthrough when the flag is off) whose dom gets `content-visibility:hidden` when off-screen.
-  - **heavy blocks** (codeBlock, mermaidBlock, mathBlock, queryBlock, table): the controller toggles `content-visibility` directly on their DOM (found via `view.nodeDOM()` doc-walk) — they own React NodeViews so we can't wrap them.
-  - A per-editor `VirtualizeController`: keeps off-screen blocks hidden at all times, maintains the window from a **position cache** (no layout read per keystroke), delta-toggles only blocks crossing the viewport boundary, driven by the plugin's `view.update()` (every tx) + a scroll listener. `flag-off → reveal all` (passthrough).
-- **Measured progress (CONTEXT.md, WKWebView dev, via `window.__baramPerf`):** typing 467ms (baseline) → ~26ms avg (always-on). Scroll "much smoother". math/mermaid edit-entry "faster but still slow".
+- The **truncation bug is fixed and shipped** (`d0d655b`, GUI-confirmed) — large files fully open.
+- **This session's shipped, GUI-confirmed wins (all on the flag-OFF DEFAULT path):**
+  - fold heading arrows → CSS pseudo-element (per-keystroke fold cost 40ms → 0.29ms) (`4bbd54c`, `117b6dd`).
+  - auto-save per-keystroke whole-doc `doc.eq()` → O(1) `content.size` guard (`3d0b67b`).
+  - a SECOND per-keystroke `doc.eq()` hiding in virtualize `view.update` → O(1) ref check (`c76cc6a`).
+  - Outline per-keystroke whole-doc `extractHeadings` → 200ms debounced (`d7c56a4`).
+- **Block virtualization (content-visibility) is REMOVED** (`3da17a5`). It was proven a DEAD END: a controlled bench showed content-visibility does NOT reduce typing cost (170ms → 178ms), only `display:none` does (→ 6ms). The bottleneck is **box-level FLOW layout of all ~3,264 top-level boxes** that PM forces every transaction; content-visibility keeps boxes in flow so it can't help. The `viewport-virtualize.ts` extension + DEV flag are gone (no inert NodeView wrappers on the default path).
+- **The real remaining lever (NOT YET BUILT — separate future task): true windowing** = `display:none` off-screen blocks + `.tiptap::before/::after` pseudo-element spacers (`--vtop`/`--vbot`) to preserve scroll height. Validated design + rationale in the "UPDATE 2026-06-19b" section below. This is the only thing that can take the ~150ms typing floor toward single digits.
+- **`window.__baramEditor`** (DEV-only) is still exposed for perf experiments (the synthetic dispatch bench).
+
+### Net effect this session
+The flag-OFF default path lost all per-keystroke whole-doc JS work (fold map, two doc.eq walks, Outline walk). The residual ~150ms typing floor on the 3,500-block fixture is browser box-flow layout, addressable only by the windowing engine above — deliberately deferred as its own task.
 
 ## UPDATE 2026-06-16 (GUI-confirmed — START HERE)
 
