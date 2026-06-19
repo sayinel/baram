@@ -139,6 +139,17 @@ PASS criteria, all required:
 5. no scrollbar jump / wrong document height.
 If all pass → replace the `window.__baramFlags.virtualize` DEV gate with a real `virtualizeLargeDocs` setting (default off → opt-in), gated to the large keep-alive editor. If typing freezes again → the per-tx path is still doing work; if scroll leaves blank gaps → reconcile/measure timing or the band/`contain-intrinsic-size` is off.
 
+## UPDATE 2026-06-19 — virtualize rewritten via IntersectionObserver (v3); GUI re-test pending
+
+The scroll-only `offsetTop`/`scrollTop` band-math controller (v2) blanked the screen on scroll: under `.editor-area-scroll`'s CSS `zoom`, offsetTop (layout coords) and scrollTop are in mismatched spaces → every block judged off-screen → all hidden, never revealed. Rewrote the controller (`b93e94b`) around an **IntersectionObserver** — the proven `lazy-visible.ts` pattern, which computes intersection from real rendered geometry and is inherently zoom-correct (zero coordinate math):
+- `root: null` (viewport) + `rootMargin: 1200px 0px` — same config lazy-visible uses successfully in this WKWebView.
+- Observes each paragraph/heading NodeView dom + heavy block doms; IO callback toggles `content-visibility:hidden` + `contain-intrinsic-size` (reserves height → scroll height correct, box still observable so re-entry fires).
+- **Typing fires no IO callbacks** (visible set unchanged) → zero typing cost. Scrolling fires only the delta crossing the buffer.
+- Reserve height from `entry.boundingClientRect` (IO already computed it) — NOT `offsetHeight`, whose per-entry read would thrash read/write layout and re-freeze.
+- `syncEnabled()` (on tx + scroll) picks up the DEV-flag toggle.
+
+**GUI re-test (the v2 blank-screen should be gone):** flag ON → scroll the whole doc top-to-bottom (content must appear everywhere, no permanent blanks) → synthetic `bench` median should be single digits → `hidden(cv)` a few thousand → typing/scroll smooth. If content still blanks: check IO is created (`window.__baramFlags.virtualize` true at scroll time) and that `contain-intrinsic-size` heights aren't wildly off. Pass → productionize to a `virtualizeLargeDocs` setting (default off).
+
 ## CURRENT BLOCKER / NEXT STEP (start here)
 
 **Symptom (the test that produced this handoff):** typing "hello hello hello" logged `SLOW TX ~170–300ms docChanged=true plugins=fold$:38–56,listAtomFix$:6–9` on EVERY keystroke.
