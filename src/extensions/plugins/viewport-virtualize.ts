@@ -53,201 +53,172 @@ interface VBlockView extends NodeView {
   setHidden(hidden: boolean, reservePx: number): void;
 }
 
-/** Per-editor controller: keeps off-screen block NodeViews hidden at all times,
- *  maintaining the visible window on scroll + edits from a position cache. */
+/** Per-editor controller: keeps off-screen block NodeViews hidden via an
+ *  IntersectionObserver, so the window updates itself on scroll with NO
+ *  per-keystroke or per-scroll-frame work in our code.
+ *
+ *  §perf-large-file C4 — why IntersectionObserver (3rd design):
+ *  - v1 (per-keystroke evaluateAll over all blocks) FROZE the editor.
+ *  - v2 (scroll-only reconcile with cached offsetTop vs scrollTop band math)
+ *    blanked the screen: `.editor-area-scroll` has CSS `zoom`, under which
+ *    offsetTop/scrollTop live in mismatched coordinate spaces, so every block
+ *    was judged off-screen and never revealed.
+ *  - v3 (this): IO computes intersection from real rendered geometry, so it is
+ *    inherently zoom-correct and needs ZERO coordinate math. Root = viewport
+ *    (null) + a rootMargin buffer — exactly the proven pattern in
+ *    lazy-visible.ts. Typing fires no IO callbacks (the visible set doesn't
+ *    change), so typing pays nothing; scrolling fires only the delta of blocks
+ *    crossing the buffer. content-visibility:hidden + contain-intrinsic-size
+ *    keeps each hidden block's box (so scroll height stays correct and IO can
+ *    still see it re-enter). */
 class VirtualizeController {
-  private anyHidden = false;
-  private externals: { bottom: number; el: HTMLElement; top: number }[] = [];
-  private readonly positions = new Map<
-    VBlockView,
-    { bottom: number; top: number }
-  >();
-  /** Cached positions are stale (an edit or (un)registration happened); the next
-   *  reconcile must re-measure before evaluating the band. */
-  private positionsDirty = true;
-  private reconcileTimer = 0;
+  private heavyTimer = 0;
+  private io: IntersectionObserver | null = null;
+  private readonly nvByDom = new WeakMap<Element, VBlockView>();
   private scroller: HTMLElement | null = null;
-  private scrollRaf = 0;
   private started = false;
   private view: EditorView | null = null;
   private readonly views = new Set<VBlockView>();
 
   destroy(): void {
     this.scroller?.removeEventListener("scroll", this.onScroll);
-    window.clearTimeout(this.reconcileTimer);
-    if (this.scrollRaf) cancelAnimationFrame(this.scrollRaf);
+    window.clearTimeout(this.heavyTimer);
+    this.io?.disconnect();
+    this.io = null;
     this.views.clear();
-    this.positions.clear();
   }
 
-  /** Called from the plugin's view.update() on every transaction.
-   *  §perf-large-file C4: typing must do ZERO virtualization work — the visible
-   *  window only changes on SCROLL, not when you type in place. So on a doc
-   *  change we only mark positions stale and schedule a DEBOUNCED reconcile
-   *  (which refreshes the cache for the next scroll and hides any newly-added
-   *  off-screen blocks once the burst settles). We never iterate the block set
-   *  synchronously here — that per-keystroke O(all-blocks) evaluate is exactly
-   *  what froze the editor when the flag was first actually engaged. */
+  /** Called from the plugin's view.update() on every transaction. Does NO
+   *  windowing work — IO handles that. It only (a) flips enabled state when the
+   *  flag toggles and (b) debounce-observes any newly-added heavy blocks. */
   onUpdate(docChanged: boolean): void {
-    if (!flagOn()) {
-      if (this.anyHidden) this.showAll();
-      return;
-    }
-    if (docChanged) {
-      this.positionsDirty = true;
-      this.scheduleReconcile();
-    }
+    this.syncEnabled();
+    if (this.io && docChanged) this.scheduleHeavySync();
   }
 
   register(nv: VBlockView, view: EditorView): void {
     if (!this.started) this.start(view);
     this.views.add(nv);
-    // New/re-created blocks (initial load, scroll, source-toggle) shift layout;
-    // mark stale and reconcile once after the batch settles (debounced — never
-    // once per block, which would be thousands of reconciles during load).
-    this.positionsDirty = true;
-    if (flagOn()) this.scheduleReconcile();
+    this.nvByDom.set(nv.dom, nv);
+    this.io?.observe(nv.dom);
   }
 
   unregister(nv: VBlockView): void {
     this.views.delete(nv);
-    this.positions.delete(nv);
+    this.nvByDom.delete(nv.dom);
+    this.io?.unobserve(nv.dom);
   }
 
-  private buildExternals(): void {
-    this.externals = [];
+  private disable(): void {
+    this.io?.disconnect();
+    this.io = null;
+    this.showAll();
+  }
+
+  private enable(): void {
+    if (this.io) return;
+    this.io = new IntersectionObserver(this.onIntersect, {
+      rootMargin: `${BUFFER_PX}px 0px ${BUFFER_PX}px 0px`,
+      threshold: 0,
+    });
+    for (const nv of this.views) this.io.observe(nv.dom);
+    this.observeHeavy();
+  }
+
+  /** Resolve the scroll container once and attach a passive scroll listener
+   *  whose ONLY job is to detect a runtime flag toggle (O(1) syncEnabled); IO
+   *  itself does the windowing. The keep-alive editor can be detached at first
+   *  call, so this is retried from start()/onUpdate until it succeeds. */
+  private ensureScroller(): void {
+    if (this.scroller) return;
+    const s =
+      this.view?.dom.closest<HTMLElement>(".editor-area-scroll") ?? null;
+    if (!s) return;
+    this.scroller = s;
+    s.addEventListener("scroll", this.onScroll, { passive: true });
+  }
+
+  /** Observe heavy top-level blocks (codeBlock/mermaid/math/query/table — they
+   *  own React NodeViews so we can't wrap them). Idempotent: observe() on an
+   *  already-observed element is a no-op. */
+  private observeHeavy(): void {
     const view = this.view;
-    if (!view) return;
+    const io = this.io;
+    if (!view || !io) return;
     view.state.doc.forEach((node, offset) => {
       if (!HEAVY_TYPES.includes(node.type.name)) return;
       const el = view.nodeDOM(offset);
-      if (el instanceof HTMLElement) {
-        const t = el.offsetTop;
-        this.externals.push({ bottom: t + el.offsetHeight, el, top: t });
-      }
+      if (el instanceof HTMLElement && !this.nvByDom.has(el)) io.observe(el);
     });
   }
 
-  /** Lazily (re)resolve the scroll container and attach the scroll listener.
-   *  The large-doc keep-alive editor registers NodeViews while its DOM is still
-   *  DETACHED, so a one-shot lookup in start() captured null forever; resolve on
-   *  demand until found. (This is the reverted 8d881e3 idea — correct; it only
-   *  regressed before because the OLD controller then evaluated every block on
-   *  every keystroke. This controller does scroll-only work, so engaging is
-   *  safe.) */
-  private ensureScroller(): boolean {
-    if (this.scroller) return true;
-    const s =
-      this.view?.dom.closest<HTMLElement>(".editor-area-scroll") ?? null;
-    if (!s) return false;
-    this.scroller = s;
-    s.addEventListener("scroll", this.onScroll, { passive: true });
-    return true;
-  }
-
-  private evaluate(nv: VBlockView): void {
-    if (!this.scroller) return;
-    let p = this.positions.get(nv);
-    if (!p) {
-      const t = nv.dom.offsetTop;
-      p = { bottom: t + nv.dom.offsetHeight, top: t };
-      this.positions.set(nv, p);
+  private onIntersect = (entries: IntersectionObserverEntry[]): void => {
+    for (const e of entries) {
+      const el = e.target as HTMLElement;
+      const hide = !e.isIntersecting;
+      // Use the rect IO already computed (no forced layout — reading offsetHeight
+      // per entry in this loop would thrash read/write and re-freeze the editor).
+      const reserve = Math.max(1, Math.round(e.boundingClientRect.height));
+      const nv = this.nvByDom.get(el);
+      if (nv) nv.setHidden(hide, reserve);
+      else this.setHeavyHidden(el, hide, reserve);
     }
-    const bandTop = this.scroller.scrollTop - BUFFER_PX;
-    const bandBottom =
-      this.scroller.scrollTop + this.scroller.clientHeight + BUFFER_PX;
-    const hide = p.bottom < bandTop || p.top > bandBottom;
-    if (hide) this.anyHidden = true;
-    nv.setHidden(hide, p.bottom - p.top);
-  }
-
-  private evaluateAll(): void {
-    for (const nv of this.views) this.evaluate(nv);
-    this.evaluateExternals();
-  }
-
-  /** Hide off-screen heavy blocks (own React Nodeviews) by toggling
-   *  content-visibility on their DOM directly. */
-  private evaluateExternals(): void {
-    if (!this.scroller) return;
-    const bandTop = this.scroller.scrollTop - BUFFER_PX;
-    const bandBottom =
-      this.scroller.scrollTop + this.scroller.clientHeight + BUFFER_PX;
-    for (const e of this.externals) {
-      const hide = e.bottom < bandTop || e.top > bandBottom;
-      const want = hide ? "hidden" : "";
-      if (e.el.style.contentVisibility === want) continue;
-      e.el.style.contentVisibility = want;
-      e.el.style.containIntrinsicSize = hide
-        ? `auto ${Math.max(1, Math.round(e.bottom - e.top))}px`
-        : "";
-      if (hide) this.anyHidden = true;
-    }
-  }
-
-  /** Read every block's doc-relative position into the cache. One forced layout
-   *  (off-screen blocks are cheap — content-visibility skips their contents).
-   *  Run at activation and debounced after edits, never per keystroke. */
-  private measure(): void {
-    for (const nv of this.views) {
-      const t = nv.dom.offsetTop;
-      this.positions.set(nv, { bottom: t + nv.dom.offsetHeight, top: t });
-    }
-    this.buildExternals();
-  }
-
-  private onScroll = (): void => {
-    if (this.scrollRaf) return;
-    this.scrollRaf = requestAnimationFrame(() => {
-      this.scrollRaf = 0;
-      this.reconcile();
-    });
   };
 
-  /** Re-window from the position cache. Called on scroll (rAF) and after the
-   *  debounced post-edit settle — NEVER synchronously per keystroke. Re-measures
-   *  first if the cache is stale; only blocks crossing the band toggle
-   *  content-visibility. */
-  private reconcile(): void {
-    if (!flagOn()) {
-      if (this.anyHidden) this.showAll();
-      return;
-    }
-    if (!this.ensureScroller()) return;
-    if (this.positionsDirty || this.positions.size === 0) {
-      this.measure();
-      this.positionsDirty = false;
-    }
-    this.evaluateAll();
+  // Scroll only reconciles enabled state (O(1)); IO does the real windowing.
+  private onScroll = (): void => {
+    this.syncEnabled();
+  };
+
+  private scheduleHeavySync(): void {
+    window.clearTimeout(this.heavyTimer);
+    this.heavyTimer = window.setTimeout(() => {
+      if (this.io) this.observeHeavy();
+    }, REMEASURE_MS);
   }
 
-  private scheduleReconcile(): void {
-    window.clearTimeout(this.reconcileTimer);
-    this.reconcileTimer = window.setTimeout(
-      () => this.reconcile(),
-      REMEASURE_MS,
-    );
+  private setHeavyHidden(
+    el: HTMLElement,
+    hide: boolean,
+    reserve: number,
+  ): void {
+    const cur = el.style.contentVisibility === "hidden";
+    if (cur === hide) return;
+    if (hide) {
+      el.style.contentVisibility = "hidden";
+      el.style.containIntrinsicSize = `auto ${reserve}px`;
+    } else {
+      el.style.contentVisibility = "";
+      el.style.containIntrinsicSize = "";
+    }
   }
 
   private showAll(): void {
     for (const nv of this.views) nv.setHidden(false, 0);
-    for (const e of this.externals) {
-      e.el.style.contentVisibility = "";
-      e.el.style.containIntrinsicSize = "";
+    const view = this.view;
+    if (view) {
+      view.state.doc.forEach((node, offset) => {
+        if (!HEAVY_TYPES.includes(node.type.name)) return;
+        const el = view.nodeDOM(offset);
+        if (el instanceof HTMLElement) this.setHeavyHidden(el, false, 0);
+      });
     }
-    this.anyHidden = false;
-    // Positions are stale once everything is laid out differently; drop them so
-    // the next reconcile re-measures.
-    this.positions.clear();
-    this.externals = [];
-    this.positionsDirty = true;
   }
 
   private start(view: EditorView): void {
     this.started = true;
     this.view = view;
     this.ensureScroller();
-    requestAnimationFrame(() => this.reconcile());
+    this.syncEnabled();
+  }
+
+  /** Enable/disable the observer to match the flag (checked on every tx + on
+   *  scroll, so a runtime DEV-flag toggle is picked up either way). */
+  private syncEnabled(): void {
+    this.ensureScroller();
+    const on = flagOn();
+    if (on && !this.io) this.enable();
+    else if (!on && this.io) this.disable();
   }
 }
 
