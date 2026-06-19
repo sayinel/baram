@@ -150,6 +150,29 @@ The scroll-only `offsetTop`/`scrollTop` band-math controller (v2) blanked the sc
 
 **GUI re-test (the v2 blank-screen should be gone):** flag ON → scroll the whole doc top-to-bottom (content must appear everywhere, no permanent blanks) → synthetic `bench` median should be single digits → `hidden(cv)` a few thousand → typing/scroll smooth. If content still blanks: check IO is created (`window.__baramFlags.virtualize` true at scroll time) and that `contain-intrinsic-size` heights aren't wildly off. Pass → productionize to a `virtualizeLargeDocs` setting (default off).
 
+## UPDATE 2026-06-19b — DEFINITIVE: content-visibility is a DEAD END; only display:none (box removal) works
+
+Controlled bench (same ~3,110 off-screen blocks, applied directly — not IO-dependent — flag OFF so no NodeView confound):
+
+| Condition | median `view.dispatch` |
+|---|---|
+| baseline (none hidden) | 170 ms |
+| **content-visibility:hidden + contain-intrinsic-size** | **178 ms (NO improvement — slightly worse)** |
+| **display:none** | **6 ms (28×)** |
+
+**Conclusion: `content-visibility` does NOT reduce the typing cost. Only `display:none` does.** The bottleneck is the **box-level flow layout of all ~3,264 top-level boxes** that PM's `updateState`/selection-sync forces every transaction. `content-visibility:hidden` only skips painting/contents of descendants — the element's BOX stays in the layout flow, so all 3,264 boxes are still positioned → ~170ms regardless. `display:none` removes the box from flow entirely → 6ms.
+
+⇒ **The entire IntersectionObserver + content-visibility controller (the current `viewport-virtualize.ts` flag code, `b93e94b`) cannot ever hit the target — wrong primitive.** It correctly fixed the blank-screen and engages, but content-visibility is the wrong tool. It stays DEV-flag OFF (inert in prod) but should be considered superseded.
+
+**The ONLY path to fast large-doc typing: true windowing that REMOVES off-screen boxes from layout flow (`display:none`) while preserving scroll height with SPACERS** (CodeMirror-6 model). Validated design:
+- Generic NodeView per paragraph/heading already exists; `setHidden(true)` → `dom.style.display='none'` (not content-visibility).
+- Reserve the removed height with `.tiptap::before { height: var(--vtop) }` / `.tiptap::after { height: var(--vbot) }` pseudo-elements (pseudo-elements aren't DOM nodes, so PM's reconciliation won't strip them — this sidesteps the "PM owns the children" problem that kills real spacer divs).
+- `--vtop` = Σ cached heights of hidden blocks ABOVE the visible window; `--vbot` = Σ below. Requires a per-block height cache (measure offsetHeight while visible; stale off-screen heights only cause minor scroll drift, re-measured on scroll-to).
+- Visible window from IO (zoom-correct) or a band; recompute --vtop/--vbot on scroll. Heavy React-NodeView blocks participate too.
+- Edge cases to handle: selection/click/find/nav into a display:none block must reveal it first; height-cache invalidation on edit; export must reveal all (`withVirtualizationSuspended`).
+
+This is a substantial, careful windowing engine (~150–250 lines, several GUI iterations expected), NOT a tweak. It is the real C4 deliverable.
+
 ## CURRENT BLOCKER / NEXT STEP (start here)
 
 **Symptom (the test that produced this handoff):** typing "hello hello hello" logged `SLOW TX ~170–300ms docChanged=true plugins=fold$:38–56,listAtomFix$:6–9` on EVERY keystroke.
