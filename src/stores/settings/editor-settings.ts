@@ -29,11 +29,15 @@ export interface EditorSettingsSlice {
   setSpellCheck: (enabled: boolean) => void;
   setStrikethrough: (enabled: boolean) => void;
   setTabSize: (size: number) => void;
+  setVirtualizeLargeDocs: (enabled: boolean) => void;
   setZoomLevel: (level: number) => void;
   smartPunctuation: boolean;
   spellCheck: boolean;
   strikethrough: boolean;
   tabSize: number;
+  // §perf-large-file C4: window large docs (display:none off-screen blocks).
+  // Kill-switch — default on; active only on the large keep-alive editor.
+  virtualizeLargeDocs: boolean;
   zoomLevel: number;
 }
 
@@ -55,6 +59,7 @@ export const createEditorSettingsSlice: StateCreator<
   editorMaxWidth: 800,
   zoomLevel: 1,
   spellCheck: false,
+  virtualizeLargeDocs: true,
 
   // Markdown
   inlineMath: true,
@@ -81,6 +86,7 @@ export const createEditorSettingsSlice: StateCreator<
       zoomLevel: Math.round(Math.max(0.5, Math.min(2, zoomLevel)) * 100) / 100,
     }),
   setSpellCheck: (spellCheck) => set({ spellCheck }),
+  setVirtualizeLargeDocs: (virtualizeLargeDocs) => set({ virtualizeLargeDocs }),
 
   // Markdown setters
   setInlineMath: (inlineMath) => set({ inlineMath }),

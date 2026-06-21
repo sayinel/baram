@@ -4,6 +4,7 @@ import type { Editor } from "@tiptap/core";
 
 import katexCSS from "katex/dist/katex.min.css?raw";
 
+import { withVirtualizationSuspended } from "../../extensions/plugins/viewport-virtualize";
 import {
   buildCodeBlockExport,
   collectCodeBlockInfo,
@@ -29,14 +30,21 @@ export interface ExportHTMLOptions {
 export async function captureEditorHTML(editor: Editor): Promise<string> {
   const dom = editor.view.dom;
 
-  // ── Collect code block data from live DOM (before cloning) ────────
-  // getComputedStyle() only works on elements in the live DOM
-  const codeBlockInfos: CodeBlockInfo[] = [];
-  for (const wrapper of dom.querySelectorAll(".code-block-wrapper")) {
-    codeBlockInfos.push(collectCodeBlockInfo(wrapper));
-  }
-
-  const clone = dom.cloneNode(true) as HTMLElement;
+  // ── Collect code block data + clone, with windowing suspended ─────
+  // §perf-large-file C4: under windowing, off-screen blocks are display:none —
+  // reveal them ALL so the clone captures the FULL document, then re-window.
+  // getComputedStyle() only works on elements in the live DOM, so collect here.
+  // (No-op when no large-doc windowing controller is active.)
+  const { clone, codeBlockInfos } = withVirtualizationSuspended(() => {
+    const infos: CodeBlockInfo[] = [];
+    for (const wrapper of dom.querySelectorAll(".code-block-wrapper")) {
+      infos.push(collectCodeBlockInfo(wrapper));
+    }
+    return {
+      clone: dom.cloneNode(true) as HTMLElement,
+      codeBlockInfos: infos,
+    };
+  });
 
   // ── Math blocks: keep rendered KaTeX, remove editing UI ──────────
   for (const el of clone.querySelectorAll(".math-block-textarea")) el.remove();

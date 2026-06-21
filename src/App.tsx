@@ -446,6 +446,8 @@ function App() {
   const createKeepaliveEditor = useCallback(() => {
     return new TiptapCoreEditor({
       extensions: createBaramExtensions({
+        // §perf-large-file C4: this is the large-doc editor — enable windowing.
+        isLargeKeepaliveEditor: true,
         onNavigate: (target, heading, vaultAlias) =>
           navigateRef.current(target, heading, vaultAlias),
         onNavigateBlockRef: (target, blockId) =>

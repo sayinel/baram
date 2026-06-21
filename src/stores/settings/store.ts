@@ -52,6 +52,7 @@ export const useSettingsStore = create<SettingsState>()(
         autoSave: state.autoSave,
         autoSaveDelay: state.autoSaveDelay,
         spellCheck: state.spellCheck,
+        virtualizeLargeDocs: state.virtualizeLargeDocs,
         showWelcome: state.showWelcome,
         recentFolders: state.recentFolders,
         recentFiles: state.recentFiles,
@@ -113,7 +114,7 @@ export const useSettingsStore = create<SettingsState>()(
         locale: state.locale,
         keybindingOverrides: state.keybindingOverrides,
       }),
-      version: 11,
+      version: 12,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
 
@@ -259,6 +260,12 @@ export const useSettingsStore = create<SettingsState>()(
               colors: migrateThemeColors(theme.colors),
             }));
           }
+        }
+
+        // v11 → v12: §perf-large-file C4 windowing kill-switch (default on)
+        if (version < 12) {
+          if (state.virtualizeLargeDocs === undefined)
+            state.virtualizeLargeDocs = true;
         }
 
         return state;

@@ -25,6 +25,7 @@ import {
   dispatchToggleWholeWord,
   findReplacePluginKey,
 } from "../../extensions/plugins/find-replace";
+import { revealBlockInActiveEditor } from "../../extensions/plugins/viewport-virtualize";
 
 interface FindReplaceBarProps {
   editor: Editor;
@@ -113,6 +114,8 @@ export function FindReplaceBar({
     lastSelectedRef.current = { from: match.from, to: match.to };
 
     try {
+      // §perf-large-file C4: reveal an off-screen (windowed) match first.
+      revealBlockInActiveEditor(match.from);
       // Set ProseMirror selection to the match range + scroll into view
       const tr = editor.state.tr
         .setSelection(

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 
 import { useEditorContext } from "../../contexts/editor-context";
+import { revealBlockInActiveEditor } from "../../extensions/plugins/viewport-virtualize";
 
 interface HeadingItem {
   level: number;
@@ -58,6 +59,9 @@ export function Outline() {
           className={`outline-item outline-h${h.level}`}
           key={i}
           onClick={() => {
+            // §perf-large-file C4: reveal an off-screen (display:none) target
+            // before scrollIntoView, which needs the block to have geometry.
+            revealBlockInActiveEditor(h.pos + 1);
             editor.commands.focus();
             editor.commands.setTextSelection(h.pos + 1);
             const domNode = editor.view.domAtPos(h.pos + 1);
