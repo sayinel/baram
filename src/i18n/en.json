@@ -104,6 +104,8 @@
   "settings.editor.display": "Display",
   "settings.editor.lineNumbers": "Line Numbers",
   "settings.editor.lineNumbers.desc": "Show line numbers in source mode",
+  "settings.editor.virtualizeLargeDocs": "Virtualize Large Documents",
+  "settings.editor.virtualizeLargeDocs.desc": "Render only on-screen blocks for very large files (500+ blocks) for faster typing and scrolling. Disable if you notice rendering glitches.",
   "settings.editor.maxWidth": "Editor Max Width",
   "settings.editor.maxWidth.desc": "Maximum content width ({value})",
   "settings.editor.maxWidth.noLimit": "No limit",
