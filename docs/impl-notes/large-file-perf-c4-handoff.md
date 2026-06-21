@@ -7,6 +7,40 @@
 
 ---
 
+## UPDATE 2026-06-20 — windowing engine IMPLEMENTED (GUI validation pending) — START HERE
+
+The true-windowing engine the prior updates concluded was the only viable path is now **built and committed** on branch `feature/large-file-windowing` (commits `f6c5957`..`68e8f08`). Design + plan:
+- Design: [`docs/plans/2026-06-20-large-file-windowing-design.md`](../plans/2026-06-20-large-file-windowing-design.md)
+- Plan (18 tasks): [`docs/plans/2026-06-20-large-file-windowing-plan.md`](../plans/2026-06-20-large-file-windowing-plan.md)
+
+**What was built (`display:none` + pseudo-element spacers + scroll-driven band; NOT content-visibility, NOT IntersectionObserver):**
+- `src/extensions/plugins/viewport-virtualize-geometry.ts` — PURE, unit-tested: `HeightMap` (node-keyed, cumulative offsets, binary search), `computeBand`, `computeSpacers`, `computeDelta` (15 tests).
+- `src/extensions/plugins/viewport-virtualize.ts` — `makeBlockNodeView` (light types → `display:none` via NodeView, 3 tests), `VirtualizeController` (height map + lazy scroller + zoom-normalized band; reconcile on scroll rAF; `onUpdate` = debounced remeasure only, ZERO band work per keystroke; `applyBand` full-pass when band null else delta; `revealBlock`/`revealElement` centre the band on a target; `revealAll`/`rewindow` for export), `ViewportVirtualize` extension (gated nodeViews + O(1) `doc !==` update), `revealBlockInActiveEditor`/`revealElementInActiveEditor`/`withVirtualizationSuspended`.
+- `.tiptap::before/::after { height: var(--vtop/--vbot) }` spacers in `editor.css`.
+- Auto-on for the large keep-alive editor only (`createBaramExtensions({ isLargeKeepaliveEditor: true })` in App.tsx); `virtualizeLargeDocs` setting (default ON, settings v11→12) is the kill-switch.
+- Nav reveal hooks wired: Outline, QuickSwitcher, FindReplaceBar, BookmarkPanel.
+- Export: `captureEditorHTML` wraps the clone in `withVirtualizationSuspended`.
+- Containers (list/blockquote) ARE included in `LIGHT_VIRTUALIZED_TYPES` (user chose full coverage) — the prior paragraph+heading-only limit is lifted; the container edit-entry risk is now a GUI check (below), not a code unknown.
+
+**Automated gates green:** vitest 2483 pass / 6 skip, `tsc --noEmit` clean, eslint `--max-warnings=0` clean on all touched files.
+
+**STATUS: SHIPPED + GUI-CONFIRMED (2026-06-20).** Windowing engages on CONTEXT.md:
+- `view.dispatch` median **80ms → 5.0ms** (p90 6.0ms) — 16×, single-digit target met.
+- `hidden 2469 / 2567` (~96% off-screen blocks `display:none`), `hmLength/orderedLength 2517` (full doc tracked), `totalHeight 315,880px` (scroll height preserved), `band {0,47}`.
+- User confirmed scroll + typing "much faster and smooth".
+- Coordinate spike: zoom=1, LAYOUT space → `MEASURE_DIVIDES_BY_ZOOM = false` (correct). Container edit-entry (math/mermaid in list/blockquote): works → full `LIGHT_VIRTUALIZED_TYPES` kept.
+
+**The bugs the GUI sessions surfaced (all fixed + now covered by `viewport-virtualize-controller.test.ts`):**
+1. Detached/hidden-tab mount → scroller never resolved → `engage()` retries until resolved+visible (`3c94fd7`).
+2. First reconcile + `computeDelta(null,…)` hid nothing → firstPass forces a full pass (`9d31ddd`).
+3. First-chunk `updateState` applied a STALE captured plugin set, reverting @tiptap/react menus' `registerPlugin` and dropping the VV plugin → apply `newState.reconfigure({plugins: targetEditor.state.plugins})` (`b12148a`).
+4. **The real killer:** PM's `updatePluginViews` destroys+recreates ALL plugin views on every plugins-array change (reconfigure/registerPlugin); the controller (1:1 with the plugin instance) was one-way `destroy()`'d → permanently dead → `setView()` now REVIVES it (`deb0001`).
+5. Controller stuck at the first chunk (80 blocks) as progressive load grew the doc → reconcile self-schedules a follow-up while the block count changes (`c968865`).
+
+**Productionized:** `virtualizeLargeDocs` Editor-settings toggle (default on, kill-switch) + search registry + en/ko i18n (`99c24d8`). DEV `window.__virt.debugState()` retained for future perf work.
+
+**Remaining (follow-up, NOT blockers):** plugin DecorationSet long-tail (the SLOW TX still shows `fold$:7,listAtomFix$:7` — each maps a whole-doc-sized set per keystroke; separate plan), open time (~2s, all heavy blocks render at load).
+
 ## TL;DR — where we are (updated 2026-06-19, current HEAD)
 
 - The **truncation bug is fixed and shipped** (`d0d655b`, GUI-confirmed) — large files fully open.
