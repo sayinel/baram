@@ -44,6 +44,8 @@ export function EditorTab() {
     setAutoPairBrackets,
     editorMaxWidth,
     setEditorMaxWidth,
+    virtualizeLargeDocs,
+    setVirtualizeLargeDocs,
   } = useSettingsStore();
 
   return (
@@ -126,6 +128,16 @@ export function EditorTab() {
         label={t("settings.editor.lineNumbers")}
       >
         <ToggleSwitch checked={lineNumbers} onChange={setLineNumbers} />
+      </SettingsRow>
+
+      <SettingsRow
+        description={t("settings.editor.virtualizeLargeDocs.desc")}
+        label={t("settings.editor.virtualizeLargeDocs")}
+      >
+        <ToggleSwitch
+          checked={virtualizeLargeDocs}
+          onChange={setVirtualizeLargeDocs}
+        />
       </SettingsRow>
 
       <SettingsRow

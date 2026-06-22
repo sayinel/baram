@@ -11,6 +11,7 @@ import History from "@tiptap/extension-history";
 import Placeholder from "@tiptap/extension-placeholder";
 import Text from "@tiptap/extension-text";
 
+import { useSettingsStore } from "../stores/settings/store";
 import { logger } from "../utils/logger";
 // Mark Extensions
 import { Bold } from "./marks/bold";
@@ -78,9 +79,13 @@ import { SlashCommands } from "./plugins/slash-command";
 import { SyntaxReveal } from "./plugins/syntax-reveal";
 import { TagClick } from "./plugins/tag-click";
 import { TagSuggest } from "./plugins/tag-suggest";
+import { ViewportVirtualize } from "./plugins/viewport-virtualize";
 import { WikilinkSuggest } from "./plugins/wikilink-suggest";
 
 interface BaramExtensionOptions {
+  /** §perf-large-file C4: register windowing only on the large keep-alive
+   *  editor (small docs are never wrapped). */
+  isLargeKeepaliveEditor?: boolean;
   onMentionNavigate?: (type: string, value: string) => void;
   onNavigate?: (
     target: string,
@@ -241,6 +246,17 @@ export function createBaramExtensions(
 
     // Plugins — Heading & List Folding (Obsidian-style)
     Fold,
+
+    // §perf-large-file C4: true windowing — registered ONLY on the large
+    // keep-alive editor (small docs never get the NodeViews). isEnabled is the
+    // runtime kill-switch (virtualizeLargeDocs setting, default on).
+    ...(options?.isLargeKeepaliveEditor
+      ? [
+          ViewportVirtualize.configure({
+            isEnabled: () => useSettingsStore.getState().virtualizeLargeDocs,
+          }),
+        ]
+      : []),
 
     // UI
     Placeholder.configure({

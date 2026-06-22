@@ -4,6 +4,7 @@ import { useCallback, useEffect } from "react";
 import type { BookmarkItem } from "../../stores/file/bookmark";
 
 import { useEditorContext } from "../../contexts/editor-context";
+import { revealElementInActiveEditor } from "../../extensions/plugins/viewport-virtualize";
 import { readFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor/editor";
 import { getGroups, useBookmarkStore } from "../../stores/file/bookmark";
@@ -203,6 +204,9 @@ function scrollToHeading(bookmark: BookmarkItem, editorElement?: HTMLElement) {
 
   for (const heading of headings) {
     if (heading.textContent === bookmark.headingText) {
+      // §perf-large-file C4: reveal the heading if windowing hid it (display:none
+      // has no geometry, so scrollIntoView would be a no-op otherwise).
+      revealElementInActiveEditor(heading as HTMLElement);
       heading.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
