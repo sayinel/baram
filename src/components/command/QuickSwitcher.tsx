@@ -5,6 +5,7 @@ import type { ContextInfo } from "../../ipc/types";
 import type { FlatFile } from "../../utils/file-search";
 import type { Editor } from "@tiptap/react";
 
+import { revealBlockInActiveEditor } from "../../extensions/plugins/viewport-virtualize";
 import { readFile } from "../../ipc/invoke";
 import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
@@ -393,6 +394,8 @@ export function QuickSwitcher({ editor, onNewFile }: QuickSwitcherProps) {
               );
             }
             if (pos !== null && pos <= editor.state.doc.content.size) {
+              // §perf-large-file C4: reveal an off-screen windowed target first.
+              revealBlockInActiveEditor(pos);
               editor
                 .chain()
                 .focus()

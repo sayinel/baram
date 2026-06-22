@@ -98,6 +98,8 @@
   "settings.editor.display": "표시",
   "settings.editor.lineNumbers": "줄 번호",
   "settings.editor.lineNumbers.desc": "소스 모드에서 줄 번호를 표시합니다",
+  "settings.editor.virtualizeLargeDocs": "대용량 문서 가상화",
+  "settings.editor.virtualizeLargeDocs.desc": "매우 큰 파일(500블록 이상)에서 화면에 보이는 블록만 렌더링해 타이핑·스크롤을 빠르게 합니다. 렌더링 문제가 보이면 끄세요.",
   "settings.editor.maxWidth": "에디터 최대 너비",
   "settings.editor.maxWidth.desc": "최대 콘텐츠 너비 ({value})",
   "settings.editor.maxWidth.noLimit": "제한 없음",

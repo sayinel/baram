@@ -256,6 +256,17 @@ export function useSettingsRegistry(): SearchableSetting[] {
       ),
     },
     {
+      id: "virtualizeLargeDocs",
+      label: "settings.editor.virtualizeLargeDocs",
+      description: "settings.editor.virtualizeLargeDocs.desc",
+      category: "editor",
+      section: "settings.editor.display",
+      control: makeToggleControl(
+        () => settings.virtualizeLargeDocs,
+        settings.setVirtualizeLargeDocs,
+      ),
+    },
+    {
       id: "editorMaxWidth",
       label: "settings.editor.maxWidth",
       description: "settings.editor.maxWidth.desc",

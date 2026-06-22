@@ -555,7 +555,17 @@ export function useTabSwitching({
                 return;
               }
               timePhase("updateState(first chunk)", () =>
-                targetEditor.view.updateState(newState),
+                // §perf-large-file C4: apply with the editor's CURRENT plugins
+                // (read at apply time, not the set captured into `newState`).
+                // @tiptap/react menus call editor.registerPlugin() via a passive
+                // effect between newState capture and this deferred apply, so the
+                // captured plugin set is stale; applying it would revert that
+                // registration AND drop the ViewportVirtualize plugin — its
+                // controller would be destroyed with no live replacement, so
+                // large-doc windowing never engages (GUI: hidden=0/all blocks).
+                targetEditor.view.updateState(
+                  newState.reconfigure({ plugins: targetEditor.state.plugins }),
+                ),
               );
               setIsParsing(false);
 
