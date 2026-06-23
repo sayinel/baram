@@ -181,11 +181,17 @@ export class VirtualizeController implements Controller {
     this.engageTimer = setTimeout(() => this.engage(), 200);
   }
 
-  /** A docChanged tx does ZERO band work (typing doesn't move the window) — it
-   *  only schedules a debounced remeasure of heights. This is the fix for the
-   *  freeze that killed every prior controller (per-tx evaluateAll). */
-  onUpdate(docChanged: boolean): void {
-    if (!docChanged || this.destroyed) return;
+  /** Re-window ONLY on a STRUCTURAL change (top-level block added/removed). The
+   *  band and spacers depend on the block COUNT, never on text typed inside an
+   *  already-visible block (a visible block is never reserved by a spacer). A
+   *  text-only edit therefore skips the debounced reconcile entirely: reconcile's
+   *  measureBand() reads offsetHeight over the displayed blocks and FORCES A FULL
+   *  REFLOW, which on a ~3,000-block doc cost ~1s on the first keystrokes (the
+   *  "first few chars are slow" symptom, profiled 2026-06-23). Scroll still
+   *  refreshes heights via onScroll; progressive-load growth still re-windows
+   *  because each appended chunk changes the top-level block count. */
+  onUpdate(structuralChange: boolean): void {
+    if (!structuralChange || this.destroyed) return;
     if (this.remeasureTimer) clearTimeout(this.remeasureTimer);
     this.remeasureTimer = setTimeout(() => {
       this.remeasureTimer = null;
@@ -517,7 +523,13 @@ export const ViewportVirtualize = Extension.create<ViewportVirtualizeOptions>({
               controller.destroy();
             },
             update: (v, prev: EditorState) => {
-              if (enabled()) controller.onUpdate(v.state.doc !== prev.doc);
+              // Only a top-level block-count delta needs a re-window. Text edits
+              // inside a block must NOT trigger reconcile's measureBand reflow
+              // (the per-keystroke ~1s freeze on large docs).
+              if (enabled())
+                controller.onUpdate(
+                  v.state.doc.childCount !== prev.doc.childCount,
+                );
             },
           };
         },
