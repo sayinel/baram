@@ -101,6 +101,32 @@ Verified — typecheck + 2487 tests + lint green; GUI re-measure (CONTEXT.md edi
 3. **load-time** — windowing `measureBand` reads `offsetHeight` over all blocks during progressive
    load (13,943). Fix: measure only the band, or throttle firstPass full measures.
 
+### Increment 3 — windowing reconcile only on block-count changes ✅ DONE (2026-06-23)
+
+After Increment 2 the user surfaced a NEW symptom: **the first ~5 keystrokes are slow (first char
+~2s), then typing is fast.** Profile (layout-read probe) again showed forced reflow, dominated by
+`offsetHeight` ← windowing `reconcile`/`measureBand`. Cause: `onUpdate` ran a debounced `reconcile()`
+on EVERY docChanged tx; `measureBand` reads offsetHeight over the displayed blocks → full-DOM reflow.
+
+`src/extensions/plugins/viewport-virtualize.ts`: `onUpdate` now reconciles only on a STRUCTURAL change
+(top-level block-count delta) — the band/spacers never depend on text typed inside an already-visible
+block. The plugin `update` passes `doc.childCount !== prev.doc.childCount`. Progressive-load growth
+still re-windows (each chunk changes the count); scroll still refreshes heights via `onScroll`.
+
+Verified — typecheck + 2487 tests + windowing controller tests (22) + lint green. GUI: **worst
+keystroke latency 1,223ms → 252ms**; reconcile is now 32 calls / 50ms total (all cheap band measures,
+no FULL passes).
+
+### Current state / remaining
+
+Major wins (vs original): click→cursor ~1s→fast; load ~18s→~5s; scroll much smoother; per-keystroke
+1,223ms→252ms. **Remaining = first-keystroke-after-open lag (one-time):** the first DOM mutation after
+the doc settles dirties the whole 3,000-block layout, and PM's `updateStateInner` `getBoundingClientRect`
+(scroll-into-view) forces one full reflow (~1.2s) before incremental reflow kicks in for later
+keystrokes. It is NOT windowing/plugins/Placeholder (all ruled out by probe). Reducing it would mean
+shrinking the laid-out DOM (windowing the heavy table/math/mermaid blocks too — the big change the
+scoping doc de-scoped) or PM-internal scroll/coords changes. Deferred unless prioritized.
+
 ---
 
 ### (dead — kept for history) Increment 1 — vanilla-ize the MathInline NodeView
