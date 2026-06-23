@@ -11,6 +11,7 @@ import { preprocessNotionFormula } from "../../utils/export/notion-katex-compat"
 import { parseKaTeXError } from "../../utils/katex/katex-error";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
 import { mathBlockEntryKey } from "./math-block";
+import { onFirstVisible } from "./views/lazy-visible";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
 import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
 
@@ -29,8 +30,19 @@ export function MathBlockView({
   const [localFormula, setLocalFormula] = useState(formula);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<null | string>(null);
   const [eqNumber, setEqNumber] = useState(1);
+
+  // §perf-large-file heavy-block windowing (Phase 2): defer KaTeX render until
+  // the block nears the viewport, mirroring mermaid/code. A selected block
+  // (edit-entry) bypasses the gate so find/nav into an unrendered block works.
+  const [isVisible, setIsVisible] = useState(false);
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    return onFirstVisible(el, () => setIsVisible(true));
+  }, []);
 
   // Refs so the selected-change effect can access latest values without listing
   // them as deps (localFormula changes on every keystroke; adding it would
@@ -90,6 +102,8 @@ export function MathBlockView({
   // Render KaTeX preview
   useEffect(() => {
     if (!previewRef.current) return;
+    // Lazy gate: skip KaTeX while off-screen and not being edited.
+    if (!isVisible && !selected) return;
     const f = selected ? localFormula : formula;
     const el = previewRef.current;
 
@@ -125,7 +139,7 @@ export function MathBlockView({
         }
       }
     });
-  }, [localFormula, formula, selected]);
+  }, [localFormula, formula, selected, isVisible]);
 
   // Common atom-block behavior: deleteBlock, exitBlock, handleKeyDown
   const onSaveBeforeExit = useCallback(() => {
@@ -180,6 +194,7 @@ export function MathBlockView({
         contentEditable={false}
         data-math-size={mathSize}
         onClick={handlePreviewClick}
+        ref={wrapperRef}
         spellCheck={false}
       >
         <div className="math-block-row">
@@ -207,6 +222,7 @@ export function MathBlockView({
       className="math-block math-block-editing"
       contentEditable={false}
       data-math-size={mathSize}
+      ref={wrapperRef}
       spellCheck={false}
     >
       <textarea
