@@ -101,6 +101,14 @@ export function makeBlockNodeView(
   return nv;
 }
 
+/** prosemirror-tables renders a table as `div.tableWrapper > table` when column
+ *  resizing is on (BaramTable sets `resizable:true`), or a bare `<table>`
+ *  otherwise. Either is a heavy block the controller can safely display:none —
+ *  tables have NO lazy-visible observer, so hiding the box breaks nothing. */
+function isTableWrapper(el: HTMLElement): boolean {
+  return el.classList.contains("tableWrapper") || el.tagName === "TABLE";
+}
+
 // Off-screen pre-render margin above + below the viewport. A static, generous
 // margin: box count doesn't move typing p50 (GUI 2026-06-20), and a DYNAMIC
 // small-idle/large-scroll margin lowered the p99 hitch but its shrink-on-idle
@@ -334,20 +342,39 @@ export class VirtualizeController implements Controller {
   }
 
   /** Doc-order handles from .tiptap's direct children. Light blocks resolve to
-   *  their registered NodeView handle; heavy blocks (own React NodeView) get an
-   *  ad-hoc handle toggling their dom directly (safe — PM doesn't re-render an
-   *  off-screen NodeView). */
+   *  their registered NodeView handle; tables get an ad-hoc handle toggling
+   *  their wrapper dom directly; other heavy blocks stay non-windowable. */
   private collectBlocks(): BlockHandle[] {
     const root = this.view?.dom as HTMLElement | undefined;
     if (!root) return [];
     const out: BlockHandle[] = [];
     for (const el of Array.from(root.children) as HTMLElement[]) {
       const light = this.handles.get(el);
-      // Only registered light NodeView blocks are windowed. Everything else
-      // (heavy lazy-visible NodeViews, images, frontmatter, …) is never
-      // display:none'd — display:none removes a lazy-visible block's observed
-      // box so its content never mounts (math edit-entry lag, mermaid broken).
-      out.push(light ?? { dom: el, setHidden: () => {}, windowable: false });
+      if (light) {
+        // Registered light NodeView block — windowed via its own setHidden.
+        out.push(light);
+      } else if (isTableWrapper(el)) {
+        // §perf-large-file heavy-block windowing (Phase 0): tables build their
+        // cell contentDOM eagerly and own NO lazy-visible IntersectionObserver,
+        // so display:none only skips off-screen LAYOUT and is fully reversible.
+        // Toggle it directly on the existing prosemirror-tables wrapper — no
+        // custom NodeView needed. Counted in the spacer (windowable: true). The
+        // ad-hoc handle is recreated each pass; applyBand writes display
+        // idempotently, so no per-table hidden-state closure is needed.
+        out.push({
+          dom: el,
+          setHidden: (h) => {
+            el.style.display = h ? "none" : "";
+          },
+          windowable: true,
+        });
+      } else {
+        // Other heavy blocks (math/mermaid/code lazy-visible NodeViews, images,
+        // frontmatter, …) are never display:none'd — display:none removes a
+        // lazy-visible block's observed box so its content never mounts (math
+        // edit-entry lag, mermaid broken).
+        out.push({ dom: el, setHidden: () => {}, windowable: false });
+      }
     }
     this.ordered = out;
     return out;
