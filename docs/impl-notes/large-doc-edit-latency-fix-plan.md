@@ -117,15 +117,45 @@ Verified — typecheck + 2487 tests + windowing controller tests (22) + lint gre
 keystroke latency 1,223ms → 252ms**; reconcile is now 32 calls / 50ms total (all cheap band measures,
 no FULL passes).
 
-### Current state / remaining
+### Increment 4 — skip windowing reconcile during progressive load ❌ ATTEMPTED & REVERTED (2026-06-23)
 
-Major wins (vs original): click→cursor ~1s→fast; load ~18s→~5s; scroll much smoother; per-keystroke
-1,223ms→252ms. **Remaining = first-keystroke-after-open lag (one-time):** the first DOM mutation after
-the doc settles dirties the whole 3,000-block layout, and PM's `updateStateInner` `getBoundingClientRect`
-(scroll-into-view) forces one full reflow (~1.2s) before incremental reflow kicks in for later
-keystrokes. It is NOT windowing/plugins/Placeholder (all ruled out by probe). Reducing it would mean
-shrinking the laid-out DOM (windowing the heavy table/math/mermaid blocks too — the big change the
-scoping doc de-scoped) or PM-internal scroll/coords changes. Deferred unless prioritized.
+Chasing the "first keystroke" lag, the provenance probe revealed the real cause: **progressive load is
+still running ~40s in the background** (81 `baramProgressiveLoad` chunks, ~512ms avg, max 1.2s each) —
+the "first char slow" was typing DURING the still-running load. Hypothesised the per-chunk cost was the
+windowing reconcile/measureBand; added a plugin-state guard to skip windowing during progressive-load
+chunks. **Refuted:** chunks stayed ~1.2s (81 chunks / 41,420ms) — windowing was NOT the chunk cost
+(mistook offsetHeight READ COUNT for cost; reconcile is ~50ms). Reverted to Increment 3.
+
+### Increment 5 — larger fixed progressive-load chunks ❌ ATTEMPTED & REVERTED (2026-06-23)
+
+Hypothesised the per-chunk cost was reflow-bound (∝ existing DOM, not chunk size) → bigger chunks =
+fewer reflows = faster. Set REST_CHUNK_BLOCKS 150→400, removed the adaptive shrink. **Refuted:** 81
+chunks → 6, but total only 41,420ms→28,887ms (~30%) AND the worst single chunk jumped to **9,928ms (a
+10s freeze)**. So per-chunk cost scales STRONGLY with chunk size — it is dominated by **constructing +
+laying out the heavy blocks IN the chunk** (tables/KaTeX/mermaid), not by re-flowing existing DOM. The
+profile's "Layout & Rendering" was the layout of the NEW blocks, not a reflow of old ones. Reverted.
+
+### Load root cause — CONFIRMED, and chunking is a dead end
+
+Total load is ~28s of intrinsic work: **rendering + laying out all 3,000 heavy blocks** (342 tables +
+317 KaTeX + 94 mermaid). This is ~constant regardless of chunking (small chunks: 41s of many ~0.5s
+hitches; large chunks: 28s with multi-second freezes; the ~13s delta is only the wasteful re-layout
+saved by fewer chunks). **No chunking config fixes it** — measured across 3 configs.
+
+The ONLY real fix is to NOT render off-screen heavy blocks during load = **window the heavy
+table/math/mermaid blocks** (render a sized placeholder, build real content on scroll-in). That is
+exactly the big change the scoping doc de-scoped (heavy blocks are `windowable:false` today because
+`display:none` breaks their lazy-visible IO; true heavy-block windowing needs placeholder/​remount
+machinery + scroll stability — its own design + approval cycle). PM-internal scroll-pos reflow
+avoidance is a smaller but uncertain secondary lever.
+
+### Current state
+
+Committed wins (vs original): click→cursor ~1s→fast; scroll smooth; per-keystroke 1,223ms→252ms;
+edit-entry tx total 17,482ms→813ms. Two commits: `9a8b940` (Placeholder), `7849ab7` (windowing on
+text edits). **Remaining: background load jank (~28s) — intrinsic heavy-DOM render cost; only
+heavy-block windowing fixes it** (de-scoped big change). Three load fix-attempts (Increment 1
+React-portals, 4 windowing-skip, 5 big-chunks) all refuted — the heavy DOM is the floor.
 
 ---
 
