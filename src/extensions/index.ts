@@ -258,10 +258,19 @@ export function createBaramExtensions(
         ]
       : []),
 
-    // UI
-    Placeholder.configure({
-      placeholder: "Start writing…",
-    }),
+    // UI — §perf-large-file: @tiptap Placeholder's viewport-boundary tracking
+    // (getViewportBoundaryPositions → posAtCoords → getClientRects) forces a full
+    // reflow of the whole DOM on EVERY transaction. On the large keep-alive editor
+    // (~3,000 blocks) this measured ~271k getClientRects per edit-entry click — the
+    // dominant edit-latency cost (profiled 2026-06-22). A large doc is never empty,
+    // so the placeholder adds no value there; gate it off (same gate as windowing).
+    ...(options?.isLargeKeepaliveEditor
+      ? []
+      : [
+          Placeholder.configure({
+            placeholder: "Start writing…",
+          }),
+        ]),
   ];
 }
 
