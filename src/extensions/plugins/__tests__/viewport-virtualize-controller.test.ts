@@ -28,13 +28,35 @@ const editors: Editor[] = [];
 
 // A node named like a HEAVY type → ViewportVirtualize does NOT wrap it in a
 // generic NodeView, so the controller treats it as non-windowable (never hides
-// it — it owns its own lazy-mount). Mirrors codeBlock/math/mermaid/table.
+// it — it owns its own lazy-mount). Mirrors codeBlock/math/mermaid.
 const HeavyBlock = Node.create({
   content: "text*",
   group: "block",
   name: "codeBlock",
   parseHTML: () => [{ tag: "pre" }],
   renderHTML: () => ["pre", 0],
+});
+
+// A node rendering prosemirror-tables' wrapper shape (`div.tableWrapper`) — the
+// real DOM BaramTable produces with resizable:true. Tables have NO lazy-visible
+// observer (they build their cell contentDOM eagerly), so `display:none` is safe
+// and reversible — the controller windows them like light blocks.
+const TableLike = Node.create({
+  content: "text*",
+  group: "block",
+  name: "table",
+  parseHTML: () => [{ tag: "div.tableWrapper" }],
+  renderHTML: () => ["div", { class: "tableWrapper" }, 0],
+});
+
+// A node rendering a bare `<table>` (prosemirror-tables' no-resize fallback) —
+// detected by tagName, not the wrapper class.
+const BareTable = Node.create({
+  content: "text*",
+  group: "block",
+  name: "bareTable",
+  parseHTML: () => [{ tag: "table.bare" }],
+  renderHTML: () => ["table", { class: "bare" }, 0],
 });
 
 afterEach(() => {
@@ -70,6 +92,8 @@ function makeEditor(paragraphCount: number): Editor {
       Paragraph,
       Text,
       HeavyBlock,
+      TableLike,
+      BareTable,
       ViewportVirtualize.configure({ isEnabled: () => true }),
     ],
   });
@@ -164,6 +188,56 @@ describe("VirtualizeController lifecycle", () => {
     expect(heavy!.style.display).not.toBe("none");
     // Meanwhile the windowable paragraphs around it ARE hidden.
     expect(hiddenCount(editor)).toBeGreaterThan(100);
+  });
+});
+
+describe("VirtualizeController table windowing", () => {
+  it("hides an off-screen table wrapper (display:none) — no lazy observer to break", () => {
+    const editor = makeEditor(150);
+    // Insert a table (div.tableWrapper) far down, well off-screen.
+    editor.commands.insertContentAt(posBeforeBlock(editor, 80), {
+      content: [{ text: "t", type: "text" }],
+      type: "table",
+    });
+    stubHeights(editor);
+    _activeControllerForTest()!.reconcile();
+
+    const wrapper = editor.view.dom.querySelector<HTMLElement>(".tableWrapper");
+    expect(wrapper).not.toBeNull();
+    // Tables have no IntersectionObserver, so display:none is safe — unlike
+    // codeBlock/math/mermaid, the off-screen table IS windowed.
+    expect(wrapper!.style.display).toBe("none");
+  });
+
+  it("hides an off-screen bare <table> (detected by tagName)", () => {
+    const editor = makeEditor(150);
+    editor.commands.insertContentAt(posBeforeBlock(editor, 80), {
+      content: [{ text: "t", type: "text" }],
+      type: "bareTable",
+    });
+    stubHeights(editor);
+    _activeControllerForTest()!.reconcile();
+
+    const table = editor.view.dom.querySelector<HTMLElement>("table.bare");
+    expect(table).not.toBeNull();
+    expect(table!.style.display).toBe("none");
+  });
+
+  it("reveals a windowed table via revealBlock before nav", () => {
+    const editor = makeEditor(150);
+    editor.commands.insertContentAt(posBeforeBlock(editor, 80), {
+      content: [{ text: "t", type: "text" }],
+      type: "table",
+    });
+    stubHeights(editor);
+    const c = _activeControllerForTest()!;
+    c.reconcile();
+    const wrapper = editor.view.dom.querySelector<HTMLElement>(".tableWrapper");
+    expect(wrapper!.style.display).toBe("none"); // hidden after reconcile
+
+    // Nav helpers call revealBlock(pos) before scrollIntoView.
+    c.revealBlock(posBeforeBlock(editor, 80) + 1);
+    expect(wrapper!.style.display).toBe(""); // revealed
   });
 });
 
