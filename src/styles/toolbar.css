@@ -426,13 +426,14 @@
   height: 24px;
   font-size: 16px;
   font-weight: 700;
-  color: var(--color-text-primary);
+  color: var(--color-text-muted);
   cursor: pointer;
   background: transparent;
   border: none;
   border-radius: 3px;
 }
 
+/* Handle stays faint (muted) until hovered, then darkens to primary. */
 .block-handle-btn:hover {
   color: var(--color-text-primary);
   background-color: var(--color-bg-elevated, var(--color-bg-subtle));
