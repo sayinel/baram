@@ -1,0 +1,146 @@
+/* §5.4 Code Block with language header */
+.code-block-wrapper {
+  margin: 0.5em 0;
+}
+
+.code-block-header {
+  display: flex;
+  justify-content: flex-start;
+  padding: 2px 8px;
+  background-color: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-subtle);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+}
+
+.code-block-lang-select {
+  padding: 1px 4px;
+  font-family: var(--font-family-mono);
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+}
+
+.code-block-placeholder {
+  padding: 0.75em 1em;
+  margin: 0;
+  overflow-x: auto;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.9em;
+  color: var(--color-text-muted);
+  white-space: pre;
+}
+
+.code-block-editor .cm-editor {
+  font-size: 0.875em;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 0 0 6px 6px;
+}
+
+.code-block-editor .cm-editor .cm-content {
+  padding: 8px 12px;
+}
+
+.code-block-editor .cm-editor .cm-scroller {
+  overflow: hidden !important;
+}
+
+/* Code Block Style: Minimal — no background/border, bottom divider only */
+.code-block-wrapper[data-style="minimal"] .code-block-header {
+  padding: 2px 4px;
+  background: transparent;
+  border: none;
+}
+
+.code-block-wrapper[data-style="minimal"] .code-block-editor .cm-editor {
+  border: none;
+  border-bottom: 1px solid var(--color-border-subtle);
+  border-radius: 0;
+}
+
+/* Code Block Style: Contrast — dark background */
+.code-block-wrapper[data-style="contrast"] .code-block-header {
+  color: #cdd6f4;
+  background-color: #1e1e2e;
+  border-color: #1e1e2e;
+}
+
+.code-block-wrapper[data-style="contrast"] .code-block-lang-select {
+  color: #a6adc8;
+}
+
+.code-block-wrapper[data-style="contrast"] .code-block-editor .cm-editor {
+  background-color: #1e1e2e;
+  border-color: #313244;
+}
+
+.code-block-wrapper[data-style="contrast"]
+  .code-block-editor
+  .cm-editor
+  .cm-content {
+  color: #cdd6f4;
+  caret-color: #f5e0dc;
+}
+
+.code-block-wrapper[data-style="contrast"]
+  .code-block-editor
+  .cm-editor
+  .cm-gutters {
+  color: #6c7086;
+  background-color: #181825;
+  border-color: #313244;
+}
+
+.code-block-wrapper[data-style="contrast"]
+  .code-block-editor
+  .cm-editor
+  .cm-activeLine {
+  background-color: rgb(69 71 90 / 30%);
+}
+
+.code-block-wrapper[data-style="contrast"]
+  .code-block-editor
+  .cm-editor
+  .cm-selectionBackground {
+  background-color: rgb(137 180 250 / 20%) !important;
+}
+
+/* Code Block Style: Paper — light gray background, floating lang tab */
+.code-block-wrapper[data-style="paper"] {
+  position: relative;
+}
+
+.code-block-wrapper[data-style="paper"] .code-block-header {
+  position: absolute;
+  top: -2px;
+  right: 12px;
+  z-index: 1;
+  padding: 1px 6px;
+  background-color: var(--color-bg-elevated);
+  border: none;
+  border-radius: 4px 4px 0 0;
+  box-shadow: 0 -1px 3px rgb(0 0 0 / 6%);
+  transform: translateY(-100%);
+}
+
+.code-block-wrapper[data-style="paper"] .code-block-lang-select {
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+}
+
+.code-block-wrapper[data-style="paper"] .code-block-editor .cm-editor {
+  background-color: var(--color-bg-elevated);
+  border: none;
+  border-radius: 6px;
+}
+
+.code-block-wrapper[data-style="paper"]
+  .code-block-editor
+  .cm-editor
+  .cm-gutters {
+  color: var(--color-text-muted);
+  background-color: transparent;
+  border: none;
+}
