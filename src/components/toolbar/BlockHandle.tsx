@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Editor } from "@tiptap/react";
 
-import { Sparkles } from "lucide-react";
+import { GripVertical, Sparkles } from "lucide-react";
 
 import {
   addBlockId,
@@ -71,11 +71,14 @@ export function BlockHandle({ editor }: BlockHandleProps) {
       // the (scaled) gutter at any zoom level. No-op at zoom 1.
       const zoom = getEditorZoom();
       const editorRect = editorDom.getBoundingClientRect();
-      // Show handle when mouse is near the left gutter of the editor
-      // Accept from slightly left of editor to ~120px (content) inside
+      // Reveal the handle whenever the mouse is anywhere over the editor's
+      // horizontal span — from just left of the gutter through the full
+      // content width — so hovering *inside* a block (not only its left edge)
+      // shows the handle, matching Notion. The probe below still samples the
+      // left edge to resolve which block the cursor's row belongs to.
       if (
         e.clientX < editorRect.left - 10 * zoom ||
-        e.clientX > editorRect.left + 120 * zoom
+        e.clientX > editorRect.right + 10 * zoom
       ) {
         setHandle(null);
         return;
@@ -93,12 +96,27 @@ export function BlockHandle({ editor }: BlockHandleProps) {
           return;
         }
 
+        // Resolve the top-level block under the probe. Plain text blocks
+        // (paragraph/heading/list) land *inside* their content (depth ≥ 1),
+        // so the nearest depth-1 ancestor is the block. But atom & custom
+        // NodeView blocks (mathBlock, mermaidBlock, codeBlock/CodeMirror) have
+        // no editable caret position inside them, so posAtCoords reports a node
+        // *boundary* (depth 0) — the depth check alone rejected them and the
+        // handle never appeared. posAtCoords also returns `inside`: the start
+        // position of the node the coords fell within. Fall back to it so these
+        // NodeView blocks get a handle too.
         const resolved = editor.state.doc.resolve(pos.pos);
-        if (resolved.depth < 1) {
+        let blockPos: null | number = null;
+        if (resolved.depth >= 1) {
+          blockPos = resolved.before(1);
+        } else if (pos.inside >= 0) {
+          const $inside = editor.state.doc.resolve(pos.inside);
+          blockPos = $inside.depth >= 1 ? $inside.before(1) : pos.inside;
+        }
+        if (blockPos === null) {
           setHandle(null);
           return;
         }
-        const blockPos = resolved.before(1);
         const dom = editor.view.nodeDOM(blockPos);
         if (!dom || !(dom instanceof HTMLElement)) {
           setHandle(null);
@@ -106,7 +124,24 @@ export function BlockHandle({ editor }: BlockHandleProps) {
         }
 
         const domRect = dom.getBoundingClientRect();
-        setHandle({ top: domRect.top, pos: blockPos });
+        // §4.8 Align the handle to the vertical center of the block's FIRST
+        // line, not its top edge. For large-font blocks (headings) the top
+        // edge sits well above the visual center of the glyphs, leaving the
+        // handle floating high. Offset by (first-line-center − btn-center).
+        // Applied uniformly to every block — including atom/NodeView blocks
+        // (math/mermaid) — so handle placement stays consistent across the
+        // document. computed line-height/padding are content-space sizes →
+        // × zoom to match the visual-space domRect.top. No-op at zoom 1.
+        const cs = window.getComputedStyle(dom);
+        let lineHeight = parseFloat(cs.lineHeight);
+        if (Number.isNaN(lineHeight)) {
+          lineHeight = parseFloat(cs.fontSize) * 1.2;
+        }
+        const paddingTop = parseFloat(cs.paddingTop) || 0;
+        const BTN_HEIGHT = 24; // .block-handle-btn height (toolbar.css)
+        const lineCenterOffset =
+          (paddingTop + lineHeight / 2 - BTN_HEIGHT / 2) * zoom;
+        setHandle({ top: domRect.top + lineCenterOffset, pos: blockPos });
       } catch {
         setHandle(null);
       }
@@ -120,12 +155,25 @@ export function BlockHandle({ editor }: BlockHandleProps) {
       }, 300);
     };
 
+    // Hide on scroll: the handle is position:fixed and its top was captured at
+    // a single scroll offset, so it stays pinned on screen while the block
+    // scrolls away — leaving it stranded over the wrong block. Clear it (and any
+    // open menu) so the next mousemove re-places it on the block under the
+    // cursor. passive: hot path, never preventDefault.
+    const handleScroll = () => {
+      setHandle(null);
+      setMenuOpen(false);
+      setAiSubOpen(false);
+    };
+
     scrollContainer.addEventListener("mousemove", handleMouseMove);
     scrollContainer.addEventListener("mouseleave", handleMouseLeave);
+    scrollContainer.addEventListener("scroll", handleScroll, { passive: true });
 
     return () => {
       scrollContainer.removeEventListener("mousemove", handleMouseMove);
       scrollContainer.removeEventListener("mouseleave", handleMouseLeave);
+      scrollContainer.removeEventListener("scroll", handleScroll);
       cancelHideTimeout();
     };
   }, [editor, menuOpen, cancelHideTimeout]);
@@ -142,6 +190,22 @@ export function BlockHandle({ editor }: BlockHandleProps) {
       editor.off("update", handler);
     };
   }, [editor]);
+
+  // §4.2 Hide the handle on zoom (and window resize). A handle that's already
+  // showing was positioned & sized for the OLD zoom level, so it visibly drifts
+  // and rescales until the next hover recomputes it. applyZoom() in use-zoom.ts
+  // dispatches a "resize" event right after changing --editor-zoom, so clearing
+  // here makes the handle vanish during zoom; the next mousemove re-places it
+  // correctly at the new zoom.
+  useEffect(() => {
+    const hide = () => {
+      setHandle(null);
+      setMenuOpen(false);
+      setAiSubOpen(false);
+    };
+    window.addEventListener("resize", hide);
+    return () => window.removeEventListener("resize", hide);
+  }, []);
 
   // Close menu on outside click
   useEffect(() => {
@@ -316,7 +380,14 @@ export function BlockHandle({ editor }: BlockHandleProps) {
   // exactly on the block. No-op at zoom 1.
   const renderZoom = getEditorZoom();
   const handlePos = {
-    x: (editorRect.left + 14) / renderZoom,
+    // editorRect.left is visual; the 14px gutter inset is a content-space size,
+    // so it must NOT be divided by zoom — only the visual term is. Writing it
+    // as `editorRect.left / zoom + 14` keeps the inset a constant 14 content-px
+    // at every zoom level. (Folding it into `(editorRect.left + 14) / zoom`
+    // shrinks the inset to 14/zoom content-px, so the handle drifts toward the
+    // text on zoom-in and away on zoom-out.) y already bakes × zoom into
+    // lineCenterOffset, which is why only x drifted.
+    x: editorRect.left / renderZoom + 14,
     y: handle.top / renderZoom,
   };
 
@@ -343,7 +414,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
           onClick={() => setMenuOpen(!menuOpen)}
           title="Click for menu"
         >
-          {"\u22EE"}
+          <GripVertical size={16} strokeWidth={2} />
         </button>
       </div>
 
