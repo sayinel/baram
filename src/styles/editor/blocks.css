@@ -1,0 +1,742 @@
+/* §5.1 Heading styles */
+.tiptap h1 {
+  margin: 1.4em 0 0.6em;
+  font-size: 2em;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.tiptap h2 {
+  margin: 1.2em 0 0.5em;
+  font-size: 1.5em;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.tiptap h3 {
+  margin: 1em 0 0.4em;
+  font-size: 1.25em;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.tiptap h4 {
+  margin: 0.8em 0 0.3em;
+  font-size: 1.1em;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.tiptap h5 {
+  margin: 0.6em 0 0.25em;
+  font-size: 1em;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.tiptap h6 {
+  margin: 0.5em 0 0.2em;
+  font-size: 0.9em;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+.tiptap h1:first-child,
+.tiptap h2:first-child,
+.tiptap h3:first-child,
+.tiptap h4:first-child,
+.tiptap h5:first-child,
+.tiptap h6:first-child {
+  margin-top: 0;
+}
+
+/* Tighten gap: heading → list (both sides needed to defeat margin collapsing) */
+.tiptap :is(h1, h2, h3, h4, h5, h6):has(+ ul),
+.tiptap :is(h1, h2, h3, h4, h5, h6):has(+ ol) {
+  margin-bottom: 0.1em;
+}
+
+.tiptap :is(h1, h2, h3, h4, h5, h6) + ul,
+.tiptap :is(h1, h2, h3, h4, h5, h6) + ol {
+  margin-top: 0;
+}
+
+/* Moderate gap: consecutive headings (empty sections like ## Notes → ## Captures) */
+.tiptap :is(h1, h2, h3, h4, h5, h6):has(+ :is(h1, h2, h3, h4, h5, h6)) {
+  margin-bottom: 0.2em;
+}
+
+.tiptap :is(h1, h2, h3, h4, h5, h6) + :is(h1, h2, h3, h4, h5, h6) {
+  margin-top: 0.4em;
+}
+
+/* Paragraph */
+.tiptap p {
+  margin: 0.5em 0;
+}
+
+/* §5.1 Blockquote */
+.tiptap blockquote {
+  padding-left: 1em;
+  margin: 0.5em 0;
+  color: var(--color-text-secondary);
+  border-left: 3px solid var(--color-border-default);
+}
+
+.tiptap blockquote p {
+  margin: 0.25em 0;
+}
+
+/* §5.9 Callout */
+.tiptap .callout {
+  padding: 0;
+  margin: 0.5em 0;
+  background: var(--color-bg-subtle);
+  border-left: 4px solid var(--color-accent-default);
+  border-radius: 4px;
+}
+
+.tiptap .callout-header {
+  display: flex;
+  gap: 0.4em;
+  align-items: center;
+  padding: 0.5em 0.75em;
+  font-size: 0.95em;
+  font-weight: 600;
+  cursor: default;
+  user-select: none;
+}
+
+.tiptap .callout-icon-wrapper {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.tiptap .callout-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  cursor: pointer;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.tiptap .callout-icon-btn:hover {
+  background: rgb(0 0 0 / 6%);
+  border-color: var(--color-border-subtle);
+}
+
+[data-theme="dark"] .tiptap .callout-icon-btn:hover {
+  background: rgb(255 255 255 / 10%);
+}
+
+.tiptap .callout-icon-btn svg {
+  flex-shrink: 0;
+}
+
+/* Callout type picker popover */
+.tiptap .callout-type-picker {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  width: 280px;
+  padding: 6px;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  box-shadow:
+    0 4px 16px rgb(0 0 0 / 12%),
+    0 1px 3px rgb(0 0 0 / 8%);
+}
+
+[data-theme="dark"] .tiptap .callout-type-picker {
+  box-shadow:
+    0 4px 16px rgb(0 0 0 / 40%),
+    0 1px 3px rgb(0 0 0 / 20%);
+}
+
+.tiptap .callout-type-option {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 4px;
+  cursor: pointer;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
+}
+
+.tiptap .callout-type-option:hover {
+  background: var(--color-bg-subtle);
+  border-color: var(--color-border-subtle);
+}
+
+.tiptap .callout-type-option.active {
+  background: var(--color-bg-subtle);
+  border-color: var(--color-accent-default);
+}
+
+.tiptap .callout-type-label {
+  font-size: 0.65em;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.tiptap .callout-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.tiptap .callout-title-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.1em 0.3em;
+  font: inherit;
+  font-weight: 600;
+  outline: none;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 3px;
+}
+
+.tiptap .callout-collapse-btn {
+  flex-shrink: 0;
+  padding: 0.2em 0.3em;
+  font-size: 0.7em;
+  line-height: 1;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-radius: 3px;
+}
+
+.tiptap .callout-collapse-btn:hover {
+  color: var(--color-text-secondary);
+  background: var(--color-border-subtle);
+}
+
+.tiptap .callout-body {
+  padding: 0 0.75em 0.5em;
+}
+
+.tiptap .callout-body p {
+  margin: 0.25em 0;
+}
+
+.tiptap .callout-body-collapsed {
+  display: none;
+}
+
+/* Callout type colors */
+.tiptap .callout-tip {
+  border-left-color: #10b981; /* TODO: tokenize --color-callout-tip */
+}
+
+.tiptap .callout-info {
+  border-left-color: var(--color-status-info);
+}
+
+.tiptap .callout-warning {
+  border-left-color: var(--color-status-warning);
+}
+
+.tiptap .callout-danger {
+  border-left-color: var(--color-status-danger);
+}
+
+.tiptap .callout-note {
+  border-left-color: var(--color-text-secondary);
+}
+
+.tiptap .callout-abstract {
+  border-left-color: var(--color-accent-ai);
+}
+
+.tiptap .callout-todo {
+  border-left-color: #06b6d4; /* TODO: tokenize --color-callout-todo */
+}
+
+.tiptap .callout-example {
+  border-left-color: #14b8a6; /* TODO: tokenize --color-callout-example */
+}
+
+.tiptap .callout-quote {
+  border-left-color: var(--color-text-muted);
+}
+
+.tiptap .callout-bug {
+  border-left-color: var(--color-status-danger);
+}
+
+.tiptap .callout-success {
+  border-left-color: var(--color-status-success);
+}
+
+.tiptap .callout-failure {
+  border-left-color: var(--color-status-danger);
+}
+
+.tiptap .callout-question {
+  border-left-color: var(--color-status-warning);
+}
+
+/* Callout type backgrounds (subtle tint) */
+.tiptap .callout-tip {
+  background: color-mix(in srgb, #10b981 8%, transparent); /* TODO: tokenize */
+}
+
+.tiptap .callout-info {
+  background: color-mix(in srgb, var(--color-status-info) 8%, transparent);
+}
+
+.tiptap .callout-warning {
+  background: color-mix(in srgb, var(--color-status-warning) 8%, transparent);
+}
+
+.tiptap .callout-danger {
+  background: color-mix(in srgb, var(--color-status-danger) 8%, transparent);
+}
+
+.tiptap .callout-note {
+  background: var(--color-bg-subtle);
+}
+
+.tiptap .callout-abstract {
+  background: color-mix(in srgb, var(--color-accent-ai) 8%, transparent);
+}
+
+.tiptap .callout-todo {
+  background: color-mix(in srgb, #06b6d4 8%, transparent); /* TODO: tokenize */
+}
+
+.tiptap .callout-example {
+  background: color-mix(in srgb, #14b8a6 8%, transparent); /* TODO: tokenize */
+}
+
+.tiptap .callout-quote {
+  background: var(--color-bg-subtle);
+}
+
+.tiptap .callout-bug {
+  background: color-mix(in srgb, var(--color-status-danger) 8%, transparent);
+}
+
+.tiptap .callout-success {
+  background: color-mix(in srgb, var(--color-status-success) 8%, transparent);
+}
+
+.tiptap .callout-failure {
+  background: color-mix(in srgb, var(--color-status-danger) 8%, transparent);
+}
+
+.tiptap .callout-question {
+  background: color-mix(in srgb, var(--color-status-warning) 8%, transparent);
+}
+
+/* Dark mode callout overrides */
+[data-theme="dark"] .tiptap .callout {
+  background: rgb(255 255 255 / 5%);
+}
+
+[data-theme="dark"] .tiptap .callout-tip {
+  background: rgb(16 185 129 / 10%);
+}
+
+[data-theme="dark"] .tiptap .callout-info {
+  background: rgb(59 130 246 / 10%);
+}
+
+[data-theme="dark"] .tiptap .callout-warning {
+  background: rgb(245 158 11 / 10%);
+}
+
+[data-theme="dark"] .tiptap .callout-danger {
+  background: rgb(239 68 68 / 10%);
+}
+
+[data-theme="dark"] .tiptap .callout-note {
+  background: rgb(107 114 128 / 10%);
+}
+
+[data-theme="dark"] .tiptap .callout-abstract {
+  background: rgb(139 92 246 / 10%);
+}
+
+[data-theme="dark"] .tiptap .callout-todo {
+  background: rgb(6 182 212 / 10%);
+}
+
+[data-theme="dark"] .tiptap .callout-example {
+  background: rgb(20 184 166 / 10%);
+}
+
+[data-theme="dark"] .tiptap .callout-quote {
+  background: rgb(156 163 175 / 10%);
+}
+
+[data-theme="dark"] .tiptap .callout-bug {
+  background: rgb(239 68 68 / 10%);
+}
+
+[data-theme="dark"] .tiptap .callout-success {
+  background: rgb(34 197 94 / 10%);
+}
+
+[data-theme="dark"] .tiptap .callout-failure {
+  background: rgb(239 68 68 / 10%);
+}
+
+[data-theme="dark"] .tiptap .callout-question {
+  background: rgb(234 179 8 / 10%);
+}
+
+[data-theme="dark"] .tiptap .callout-title-input {
+  color: var(--color-text-primary);
+  background: var(--color-bg-default);
+  border-color: var(--color-border-default);
+}
+
+/* §footnote Footnote reference — inline superscript */
+.tiptap .footnote-ref {
+  position: relative;
+  padding: 0 1px;
+  font-size: 0.75em;
+  font-weight: 600;
+  line-height: 0;
+  vertical-align: super;
+  color: var(--color-accent-default);
+  cursor: pointer;
+}
+
+.tiptap .footnote-ref:hover {
+  color: var(--color-accent-hover);
+  text-decoration: underline;
+}
+
+.tiptap .footnote-ref-selected {
+  background: var(--color-editor-selection);
+  border-radius: 2px;
+}
+
+/* Footnote hover tooltip */
+.tiptap .footnote-ref-tooltip {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  z-index: 50;
+  width: max-content;
+  max-width: 320px;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  font-weight: 400;
+  line-height: 1.4;
+  vertical-align: baseline;
+  color: var(--color-text-primary);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+  transform: translateX(-50%);
+}
+
+/* §footnote Footnote definition — inline N. content ↩ layout */
+.tiptap .footnote-definition {
+  display: flex;
+  gap: 4px;
+  align-items: baseline;
+  padding: 0.5em 0 0.25em;
+  margin: 1em 0 0.5em;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.tiptap .footnote-definition-label {
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-accent-default);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tiptap .footnote-definition-label:hover {
+  text-decoration: underline;
+}
+
+.tiptap .footnote-definition-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.tiptap .footnote-definition-body p {
+  margin: 0;
+}
+
+.tiptap .footnote-definition-back {
+  flex-shrink: 0;
+  padding: 0 2px;
+  margin-left: auto;
+  font-size: 0.85rem;
+  line-height: 1;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+.tiptap .footnote-definition-back:hover {
+  color: var(--color-accent-default);
+}
+
+/* Dark mode footnote overrides */
+[data-theme="dark"] .tiptap .footnote-ref-tooltip {
+  background: var(--color-bg-subtle);
+  border-color: var(--color-border-default);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 30%);
+}
+
+[data-theme="dark"] .tiptap .footnote-definition-label {
+  color: var(--color-accent-default);
+}
+
+/* Definition List — <dl><dt><dd> */
+.tiptap dl.definition-list {
+  padding: 0;
+  margin: 0.5em 0;
+}
+
+.tiptap dl.definition-list dt {
+  margin-top: 0.5em;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.tiptap dl.definition-list dt:first-child {
+  margin-top: 0;
+}
+
+.tiptap dl.definition-list dd {
+  padding-left: 0.5em;
+  margin-top: 0.15em;
+  margin-left: 1.5em;
+  color: var(--color-text-secondary);
+  border-left: 2px solid var(--color-border-default);
+}
+
+[data-theme="dark"] .tiptap dl.definition-list dd {
+  border-left-color: var(--color-border-default);
+}
+
+/* §5.1 Toggle (Details/Summary) — Notion-style minimal */
+.tiptap .toggle {
+  display: flex;
+  padding: 0.1em 0;
+  margin: 0.5em 0;
+  margin-left: -1.2em; /* indicator sits in editor padding area */
+}
+
+.tiptap .toggle-indicator {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  align-self: flex-start;
+  justify-content: center;
+  width: 1.2em;
+  height: 1.75em;
+  margin-top: 0.2em;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  user-select: none;
+  border-radius: 3px;
+  transition: background 0.15s ease;
+}
+
+.tiptap .toggle-indicator:hover {
+  color: var(--color-text-secondary);
+  background: rgb(55 53 47 / 8%);
+}
+
+[data-theme="dark"] .tiptap .toggle-indicator:hover {
+  background: rgb(255 255 255 / 8%);
+}
+
+.tiptap .toggle-arrow {
+  display: block;
+  width: 0;
+  height: 0;
+  border-color: transparent transparent transparent currentcolor;
+  border-style: solid;
+  border-width: 4px 0 4px 5px;
+  transition: transform 0.2s ease;
+}
+
+.tiptap .toggle-arrow-open {
+  transform: rotate(90deg);
+}
+
+.tiptap .toggle-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.tiptap .toggle-body p {
+  margin: 0.2em 0;
+}
+
+/* Collapse: hide everything except summary */
+.tiptap .toggle-body-collapsed > :not(:first-child),
+.tiptap .toggle-body-collapsed > div > :not(:first-child) {
+  display: none;
+}
+
+/* Toggle Heading — summary is a heading node */
+.tiptap .toggle-body > h1:first-child,
+.tiptap .toggle-body > h2:first-child,
+.tiptap .toggle-body > h3:first-child,
+.tiptap .toggle-body > div > h1:first-child,
+.tiptap .toggle-body > div > h2:first-child,
+.tiptap .toggle-body > div > h3:first-child {
+  margin: 0.1em 0;
+}
+
+/* H1 summary: font-size 2em × line-height 1.2 = 2.4em */
+.tiptap .toggle[data-summary-level="1"] .toggle-indicator {
+  height: 2.4em;
+  margin-top: 0.1em;
+}
+
+.tiptap .toggle[data-summary-level="1"] .toggle-arrow {
+  border-width: 5px 0 5px 7px;
+}
+
+/* H2 summary: font-size 1.5em × line-height 1.3 = 1.95em */
+.tiptap .toggle[data-summary-level="2"] .toggle-indicator {
+  height: 1.95em;
+  margin-top: 0.1em;
+}
+
+.tiptap .toggle[data-summary-level="2"] .toggle-arrow {
+  border-width: 5px 0 5px 6px;
+}
+
+/* H3 summary: font-size 1.25em × line-height 1.4 = 1.75em */
+.tiptap .toggle[data-summary-level="3"] .toggle-indicator {
+  height: 1.75em;
+  margin-top: 0.1em;
+}
+
+/* §5.1 Lists */
+.tiptap ul {
+  padding-left: 1.6em;
+  margin: 0.5em 0;
+  list-style-type: disc;
+}
+
+.tiptap ol {
+  padding-left: 1.6em;
+  margin: 0.5em 0;
+  list-style-type: decimal;
+}
+
+.tiptap li {
+  padding-left: 0.2em;
+  margin: 0.15em 0;
+}
+
+.tiptap li p {
+  margin: 0;
+}
+
+/* List atom fix widget — provides an editable first line box for WebKit
+   ::marker alignment without adding visible height or affecting selection.
+   The actual zero-width space is inserted by ListAtomFix ProseMirror plugin. */
+.list-atom-fix {
+  font-size: 0;
+  line-height: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Nested lists */
+.tiptap ul ul,
+.tiptap ol ul {
+  list-style-type: circle;
+}
+
+.tiptap ul ul ul,
+.tiptap ol ul ul {
+  list-style-type: square;
+}
+
+/* §5.1 Task List */
+.tiptap ul[data-type="taskList"] {
+  padding-left: 0;
+  list-style: none;
+}
+
+.tiptap ul[data-type="taskList"] li[data-type="taskItem"] {
+  display: flex;
+  gap: 0.4em;
+  align-items: baseline;
+}
+
+.tiptap ul[data-type="taskList"] li[data-type="taskItem"] > label {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  height: 1.75em; /* match line-height of body text */
+  user-select: none;
+}
+
+.tiptap
+  ul[data-type="taskList"]
+  li[data-type="taskItem"]
+  > label
+  input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--color-accent-default);
+  cursor: pointer;
+}
+
+.tiptap ul[data-type="taskList"] li[data-type="taskItem"] > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.tiptap
+  ul[data-type="taskList"]
+  li[data-type="taskItem"][data-checked="true"]
+  > div {
+  color: var(--color-text-muted);
+  text-decoration: line-through;
+}
+
+/* §5.1 Horizontal Rule */
+.tiptap hr {
+  margin: 1.5em 0;
+  border: none;
+  border-top: 2px solid var(--color-border-default);
+}

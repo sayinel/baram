@@ -1,0 +1,161 @@
+/* §5.3 Math Block — atom:true, selected=textarea+preview, unselected=KaTeX only */
+.tiptap .math-block {
+  position: relative;
+  margin: 1em 0;
+}
+
+.tiptap .math-block-preview {
+  padding: 0.25em 0;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.tiptap .math-block-preview:hover {
+  background-color: var(--color-bg-subtle);
+}
+
+.tiptap .math-block-editing {
+  padding: 0.75em 1em;
+  background-color: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+}
+
+.tiptap .math-block-textarea {
+  display: block;
+  width: 100%;
+  padding: 0.5em;
+  margin-bottom: 0.5em;
+  overflow: hidden;
+  font-family: var(--font-family-mono);
+  font-size: 0.875em;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+  resize: none;
+  outline: none;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+}
+
+.tiptap .math-block-textarea:focus {
+  border-color: var(--color-accent-default);
+}
+
+.tiptap .math-block-row {
+  display: flex;
+  align-items: center;
+}
+
+.tiptap .math-block-katex {
+  flex: 1;
+  padding: 0.5em 0;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.tiptap .math-block-eq-number {
+  flex-shrink: 0;
+  padding-right: 0.25em;
+  font-size: 0.95em;
+  color: var(--color-text-secondary);
+  user-select: none;
+}
+
+.tiptap .math-block-katex-empty {
+  font-size: 0.875em;
+  font-style: italic;
+  color: var(--color-text-muted);
+}
+
+.tiptap .math-block-error {
+  padding: 0.35em 0.6em;
+  margin-top: 0.35em;
+  font-family: var(--font-family-mono);
+  font-size: 0.75em;
+  color: var(--color-status-danger);
+  background-color: var(--color-status-error-bg);
+  border: 1px solid var(--color-status-error-border);
+  border-radius: 4px;
+}
+
+[data-theme="dark"] .tiptap .math-block-error {
+  color: var(--color-status-danger);
+  background-color: var(--color-status-error-bg);
+  border-color: var(--color-status-error-border);
+}
+
+/* §5.3 Math size variants */
+.tiptap [data-math-size="small"] .math-block-katex,
+.tiptap [data-math-size="small"] .katex {
+  font-size: 0.85em;
+}
+
+.tiptap [data-math-size="large"] .math-block-katex,
+.tiptap [data-math-size="large"] .katex {
+  font-size: 1.4em;
+}
+
+/* §5.3 Math Inline — atom render-only */
+.tiptap .math-inline {
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.tiptap .math-inline-rendered {
+  padding: 0 0.15em;
+}
+
+.tiptap .math-inline-rendered:hover {
+  background-color: var(--color-bg-subtle);
+}
+
+.tiptap .math-inline-selected {
+  background-color: var(--color-editor-selection);
+}
+
+/* §5.3 Math Inline Edit — ProseMirror plugin delimiter decorations */
+.tiptap .math-delimiter {
+  font-family: var(--font-family-mono);
+  font-size: 0.85em;
+  color: var(--color-text-muted);
+}
+
+/* §5.3 Math Inline Preview Popover */
+.math-inline-preview-popover {
+  position: fixed;
+  z-index: 50;
+  max-width: 400px;
+  padding: 6px 10px;
+  overflow-x: auto;
+  pointer-events: none;
+  background-color: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
+}
+
+.math-inline-preview-content {
+  min-height: 1em;
+  text-align: center;
+}
+
+.math-inline-preview-error {
+  padding-top: 4px;
+  margin-top: 4px;
+  font-family: var(--font-family-mono, monospace);
+  font-size: 0.7em;
+  color: var(--color-status-danger);
+  border-top: 1px solid var(--color-status-error-border);
+}
+
+[data-theme="dark"] .math-inline-preview-popover {
+  background-color: var(--color-bg-default);
+  border-color: var(--color-border-default);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 30%);
+}
+
+[data-theme="dark"] .math-inline-preview-error {
+  color: var(--color-status-danger);
+  border-color: var(--color-status-error-border);
+}

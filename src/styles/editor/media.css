@@ -1,0 +1,180 @@
+/* §5.1 Code Block */
+.tiptap pre {
+  padding: 0.75em 1em;
+  margin: 1em 0;
+  overflow-x: auto;
+  background-color: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+}
+
+.tiptap pre code {
+  padding: 0;
+  font-family: var(--font-family-mono);
+  font-size: 0.875em;
+  line-height: 1.6;
+  color: inherit;
+  background: none;
+  border: none;
+  border-radius: 0;
+}
+
+/* Inline code */
+.tiptap code {
+  padding: 0.1em 0.3em;
+  font-family: var(--font-family-mono);
+  font-size: 0.875em;
+  background-color: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 3px;
+}
+
+/* §5.1 Image + §3.3 Image NodeView */
+.tiptap .image-node-view {
+  margin: 0.5em 0;
+}
+
+.tiptap .image-figure {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  margin: 0;
+  transition: width 0.2s ease;
+}
+
+.tiptap .image-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 4px;
+}
+
+.tiptap .image-figure.image-selected img {
+  outline: 2px solid var(--color-accent-default);
+  outline-offset: 2px;
+}
+
+.tiptap .image-toolbar {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  z-index: 10;
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  padding: 3px 6px;
+  background: rgb(0 0 0 / 70%);
+  border-radius: 6px;
+  transform: translateX(-50%);
+}
+
+.tiptap .image-toolbar-btn {
+  padding: 2px 8px;
+  font-family: var(--font-family-mono);
+  font-size: 0.7rem;
+  color: #e5e5e5;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+}
+
+.tiptap .image-toolbar-btn:hover {
+  color: #fff;
+  background: rgb(255 255 255 / 15%);
+}
+
+.tiptap .image-toolbar-btn-active {
+  color: #fff;
+  background: var(--color-accent-default);
+}
+
+.tiptap .image-toolbar-sep {
+  width: 1px;
+  height: 14px;
+  margin: 0 2px;
+  background: rgb(255 255 255 / 25%);
+}
+
+.tiptap .image-size-input-wrap {
+  display: inline-flex;
+  gap: 1px;
+  align-items: center;
+}
+
+.tiptap .image-size-input {
+  width: 40px;
+  padding: 1px 4px;
+  font-family: var(--font-family-mono);
+  font-size: 0.7rem;
+  color: #fff;
+  text-align: right;
+  -moz-appearance: textfield;
+  outline: none;
+  background: rgb(255 255 255 / 15%);
+  border: 1px solid rgb(255 255 255 / 30%);
+  border-radius: 3px;
+}
+
+.tiptap .image-size-input::-webkit-inner-spin-button,
+.tiptap .image-size-input::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+
+.tiptap .image-size-input:focus {
+  border-color: var(--color-accent-default);
+}
+
+.tiptap .image-size-unit {
+  font-size: 0.65rem;
+  color: #ccc;
+}
+
+.tiptap .image-caption {
+  margin-top: 4px;
+  font-size: 0.85em;
+  color: var(--color-text-secondary);
+  text-align: center;
+  cursor: pointer;
+}
+
+.tiptap .image-caption-input {
+  width: 100%;
+  padding: 2px 6px;
+  font-size: 0.85em;
+  color: var(--color-text-primary);
+  text-align: center;
+  outline: none;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 3px;
+}
+
+.tiptap .image-caption-input:focus {
+  border-color: var(--color-accent-default);
+}
+
+/* Inline marks */
+.tiptap strong {
+  font-weight: 700;
+}
+
+.tiptap em {
+  font-style: italic;
+}
+
+.tiptap del {
+  text-decoration: line-through;
+}
+
+.tiptap a {
+  color: var(--color-accent-default);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.tiptap a:hover {
+  color: var(--color-accent-hover);
+}
