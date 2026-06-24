@@ -1,7 +1,29 @@
 # Heavy-Block Placeholder NodeView — Session Handoff
 
 §perf-large-file · branch `feature/heavy-block-placeholder-nodeview` (off main @ #141 merge)
-Status: NOT STARTED. This doc is the resume point for a fresh session.
+Status: SPIKE DONE (2026-06-24) — **both cheap load levers REFUTED.** See conclusion below; the rest of this doc is the (now-refuted) original plan, kept for context.
+
+---
+
+## CONCLUSION (2026-06-24): spike done — placeholder AND band-reduction both REFUTED
+
+Ran the recommended diagnostic spike (throwaway custom table NodeView + an in-app measure harness, GUI/WKWebView on CONTEXT.md ≈402 tables / ~3000 blocks). Measured `__baramPerf.txBreakdown().transactions.totalMs`:
+
+| config | what it isolates | totalMs |
+|---|---|---|
+| original (real tables, BUFFER_PX=1200) | true baseline | **39.5s** |
+| atom (tables → trivial `hr`, realistic 360px height) | construction removed, band normal | **37.2s** (≈ baseline, ~6%) |
+| atom (tables → `hr`, ~16px short) | construction removed, band inflated | 172s |
+| stub (contentDOM-less div, short) | — | 132s |
+| buffer=0 (real tables, band = viewport only) | band shrunk during load | **64s (WORSE)** |
+
+**Findings (do NOT re-derive / re-attempt):**
+1. **Deferring heavy-block construction is NOT the lever.** Replacing all 402 tables with trivial `hr` but keeping realistic height (atom 360px) = 37.2s ≈ baseline 39.5s. Construction is only ~6% of load. So a placeholder NodeView (the whole premise of this branch) cannot meaningfully cut load. **NO-GO.**
+2. **Shrinking the windowing band is NOT the lever either.** `buffer=0` (band = viewport, 3140 blocks hidden) = 64s, *worse* than baseline (display:none-toggle / huge-spacer churn). Short placeholders inflate the band → 172s. original's natural band (BUFFER_PX=1200) is already a sweet spot; moving either way is worse. **NO-GO.**
+3. plugin/event apply time is ~30ms total in every config — the ~38s is entirely PM's per-chunk DOM reconcile + layout over ~3000 blocks.
+4. The ~38s floor is **intrinsic to ProseMirror rendering the whole doc**. Confirmed the design thesis: only **CodeMirror-6-style true viewport virtualization** (don't render the whole doc) can move it — a large architectural effort. Remaining options: accept the floor, or scope the CM6 path.
+
+**Throwaway spike code on this branch** (revert when closing; the measure harness is reusable for any future load work): `table.ts` addNodeView + `TableView` import; `src/utils/editor/spike-runner.ts` (measure harness + table-swap + buffer report); `use-tab-switching.ts` (load-start reset, finishLoad snapshot, table-swap call); `viewport-virtualize.ts` `bufferPx()` + 2 call sites. All DEV + localStorage gated (`baramSpikeTableMode` / `baramSpikeManual` / `baramSpikeBuffer`), off by default — tests + typecheck green. Memory: [[project-placeholder-nodeview]].
 
 ---
 
