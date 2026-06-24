@@ -1,0 +1,116 @@
+/* §5.5 Table */
+.tiptap .tableWrapper {
+  margin: 1em 0;
+  overflow-x: auto;
+}
+
+.tiptap table {
+  border-collapse: collapse;
+}
+
+.tiptap th,
+.tiptap td {
+  position: relative;
+  min-width: 60px;
+  padding: 0.4em 0.75em;
+  vertical-align: top;
+  border: 1px solid var(--color-border-default);
+}
+
+.tiptap th {
+  font-weight: 600;
+  background-color: var(--color-bg-subtle);
+}
+
+.tiptap th p,
+.tiptap td p {
+  margin: 0;
+}
+
+.tiptap .selectedCell {
+  background-color: var(--color-editor-selection);
+}
+
+/* §5.5 Tier 3: Column resize handle */
+.tiptap .column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  bottom: 0;
+  z-index: 20;
+  width: 4px;
+  pointer-events: none;
+  background-color: var(--color-accent-default);
+}
+
+.tiptap.resize-cursor {
+  cursor: col-resize;
+}
+
+/* §5.5 M10: Virtual scroll for 50+ row tables */
+.tiptap table tr.baram-vscroll {
+  contain-intrinsic-height: 40px;
+  content-visibility: auto;
+}
+
+/* §perf-large-file C3.1c: content-visibility:auto forced whole-document
+ * re-layout on every caret/coordinate query in WKWebView (~300ms per
+ * keystroke, ~5s per click on a 3,531-block doc; Safari Timeline showed
+ * Layout-dominated frames with JS≈0). contain:layout paint isolates each
+ * top-level block instead: one up-front layout, then per-block incremental
+ * re-layout while editing.
+ * (style containment measured no additional benefit; omitted to keep
+ * CSS counters/inheritance semantics.) */
+.tiptap > * {
+  contain: layout paint;
+}
+
+/* Headings: fold arrows are position:absolute; left:-24px (overflows the
+ * block's left edge). Paint containment would clip them — use layout only. */
+.tiptap > h1,
+.tiptap > h2,
+.tiptap > h3,
+.tiptap > h4,
+.tiptap > h5,
+.tiptap > h6 {
+  contain: layout;
+}
+
+/* Code blocks: "paper" style floats the lang tab above the block via
+ * position:absolute; transform:translateY(-100%) — would be clipped by
+ * paint containment. Layout only. */
+.tiptap > .code-block-wrapper {
+  contain: layout;
+}
+
+/* Mermaid blocks: template dropdown is position:absolute; top:100% and
+ * overflows the block's bottom edge — would be clipped by paint containment.
+ * Layout only. */
+.tiptap > .mermaid-block {
+  contain: layout;
+}
+
+/* §5.8 Frontmatter */
+.tiptap .frontmatter {
+  padding: 0.5em 1em;
+  margin-bottom: 1em;
+  background-color: var(--color-bg-subtle);
+  border: 1px dashed var(--color-border-default);
+  border-radius: 6px;
+}
+
+.tiptap .frontmatter pre {
+  padding: 0;
+  margin: 0;
+  background: none;
+  border: none;
+}
+
+.tiptap .frontmatter pre code {
+  padding: 0;
+  font-family: var(--font-family-mono);
+  font-size: 0.8em;
+  color: var(--color-text-secondary);
+  background: none;
+  border: none;
+}
