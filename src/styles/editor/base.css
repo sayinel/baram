@@ -1,0 +1,246 @@
+/* Tiptap editor styles */
+.tiptap {
+  min-height: 100%;
+  padding: 2rem var(--editor-padding);
+  font-family: var(--font-family-editor);
+  font-size: 1rem;
+  line-height: 1.75;
+  color: var(--color-editor-text);
+  outline: none;
+}
+
+/* §perf-large-file C4: windowing spacers. Pseudo-elements (not DOM nodes) so
+   ProseMirror's child reconciliation cannot strip them — a real spacer <div>
+   would be removed because PM owns .tiptap's children. Height is 0 unless the
+   virtualize controller sets --vtop / --vbot. */
+.tiptap::before {
+  display: block;
+  height: var(--vtop, 0);
+  content: "";
+}
+
+.tiptap::after {
+  display: block;
+  height: var(--vbot, 0);
+  content: "";
+}
+
+/* §4.9 Empty document placeholder */
+.tiptap p.is-editor-empty:first-child::before {
+  float: left;
+  height: 0;
+  color: var(--color-text-disabled);
+  pointer-events: none;
+  content: "/ 를 입력하여 블록을 추가하거나, 바로 타이핑을 시작하세요.";
+}
+
+.tiptap:focus {
+  outline: none;
+}
+
+/* Override default ProseMirror gapcursor — vertical caret instead of '__' */
+.tiptap .ProseMirror-gapcursor::after {
+  width: 1px;
+  height: 1.2em;
+  background-color: var(--color-editor-cursor);
+  border-top: none;
+}
+
+/* Mode indicator */
+.mode-indicator {
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px 12px;
+  background-color: var(--color-bg-subtle);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.mode-toggle-btn {
+  padding: 2px 10px;
+  font-family: var(--font-family-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+  transition:
+    background-color 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.mode-toggle-btn:hover {
+  color: white;
+  background: var(--color-accent-default);
+  border-color: var(--color-accent-default);
+}
+
+/* Source code editor */
+.source-code-editor {
+  background: var(--color-bg-default);
+}
+
+.source-code-editor .cm-editor {
+  height: 100%;
+}
+
+/* ── Fold — Obsidian-style heading & list folding ─────────────────── */
+
+/* Headings and list items need position: relative for absolute fold arrow */
+.tiptap h1,
+.tiptap h2,
+.tiptap h3,
+.tiptap h4,
+.tiptap h5,
+.tiptap h6 {
+  position: relative;
+}
+
+.tiptap li {
+  position: relative;
+}
+
+/* §perf-large-file C4: heading fold arrow via CSS pseudo-element — no per-heading
+   widget decoration (see fold.ts buildDecorations). An OPEN heading arrow costs
+   zero decorations; only FOLDED headings get the `.fold-collapsed` node class.
+   The arrow is a real hit target (default pointer-events: auto on the pseudo):
+   a click on it reports event.target = the heading, and fold.ts detects the
+   gutter via offsetX < 0 — zoom-safe, since `.editor-area-scroll` uses CSS zoom
+   which breaks clientX/getBoundingClientRect (see resolveHeadingGutterFold). */
+.tiptap > h1::before,
+.tiptap > h2::before,
+.tiptap > h3::before,
+.tiptap > h4::before,
+.tiptap > h5::before,
+.tiptap > h6::before {
+  position: absolute;
+  top: 50%;
+  left: -24px;
+  width: 18px;
+  height: 18px;
+  font-size: 9px;
+  line-height: 18px;
+  text-align: center;
+  cursor: pointer;
+  content: "▶";
+  opacity: 0;
+  transform: translateY(-50%) rotate(90deg);
+  transition:
+    opacity 0.15s ease,
+    transform 0.2s ease;
+}
+
+.tiptap > h1:hover::before,
+.tiptap > h2:hover::before,
+.tiptap > h3:hover::before,
+.tiptap > h4:hover::before,
+.tiptap > h5:hover::before,
+.tiptap > h6:hover::before {
+  opacity: 0.4;
+}
+
+/* Folded heading — node-class decoration applied only to folded headings */
+.tiptap > h1.fold-collapsed::before,
+.tiptap > h2.fold-collapsed::before,
+.tiptap > h3.fold-collapsed::before,
+.tiptap > h4.fold-collapsed::before,
+.tiptap > h5.fold-collapsed::before,
+.tiptap > h6.fold-collapsed::before {
+  opacity: 0.7;
+  transform: translateY(-50%) rotate(0deg);
+}
+
+/* Fold arrow — gutter positioned, hidden by default (list items only) */
+.fold-arrow {
+  position: absolute;
+  top: 50%;
+  left: -24px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: opacity 0.15s ease;
+}
+
+/* Show arrow on list-item hover (headings use the CSS pseudo-element above) */
+.tiptap li:hover > .fold-arrow {
+  opacity: 0.5;
+}
+
+/* List items: align arrow with first line, clear of bullet/number markers */
+.tiptap li > .fold-arrow {
+  top: 0.3em;
+  transform: none;
+}
+
+/* Unordered lists: position left of bullet (disc sits ~1.2em from li edge) */
+.tiptap ul > li > .fold-arrow {
+  top: 0.4em;
+  left: -2.6em;
+}
+
+/* Ordered lists: wider clearance for 2-digit numbers */
+.tiptap ol > li > .fold-arrow {
+  left: -3.2em;
+}
+
+.fold-arrow:hover {
+  opacity: 1 !important;
+}
+
+/* Always visible when folded */
+.fold-arrow-folded {
+  opacity: 0.7 !important;
+}
+
+/* Triangle via border trick (same as toggle-arrow) */
+.fold-arrow::before {
+  display: block;
+  width: 0;
+  height: 0;
+  content: "";
+  border-color: transparent transparent transparent currentcolor;
+  border-style: solid;
+  border-width: 4px 0 4px 6px;
+  transition: transform 0.2s ease;
+}
+
+.fold-arrow-open::before {
+  transform: rotate(90deg);
+}
+
+.fold-arrow-folded::before {
+  transform: rotate(0deg);
+}
+
+/* Hidden content */
+.fold-hidden {
+  display: none !important;
+}
+
+/* Ellipsis indicator */
+.fold-ellipsis {
+  display: inline-block;
+  padding: 0 6px;
+  margin-left: 4px;
+  font-size: 0.85em;
+  line-height: 1.4;
+  vertical-align: middle;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  user-select: none;
+  background: var(--color-bg-subtle);
+  border-radius: 3px;
+}
+
+.fold-ellipsis:hover {
+  color: var(--color-text-secondary);
+  background: var(--color-bg-elevated);
+}

@@ -1,0 +1,143 @@
+/* ============================================
+   §11.8 Smart Template Dialog
+   ============================================ */
+
+.smart-template-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 350;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 40%);
+}
+
+.smart-template-dialog {
+  width: 520px;
+  max-width: 92vw;
+  max-height: 80vh;
+  overflow-y: auto;
+  background-color: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgb(0 0 0 / 20%);
+}
+
+.smart-template-header {
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.smart-template-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.smart-template-close {
+  width: 28px;
+  height: 28px;
+  font-size: 1.2rem;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+}
+
+.smart-template-close:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-subtle);
+}
+
+.smart-template-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  padding: 16px 20px;
+}
+
+.smart-template-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  text-align: left;
+  cursor: pointer;
+  background-color: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s;
+}
+
+.smart-template-card:hover {
+  background-color: var(--color-bg-elevated, var(--color-bg-subtle));
+  border-color: var(--color-accent-default);
+}
+
+.smart-template-card-name {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.smart-template-card-sections {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.smart-template-custom {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.smart-template-custom-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.smart-template-custom-row {
+  display: flex;
+  gap: 8px;
+}
+
+.smart-template-custom-input {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  color: var(--color-text-primary);
+  outline: none;
+  background-color: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+}
+
+.smart-template-custom-input:focus {
+  border-color: var(--color-accent-default);
+}
+
+.smart-template-custom-btn {
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: white;
+  cursor: pointer;
+  background-color: var(--color-accent-default);
+  border: none;
+  border-radius: 6px;
+}
+
+.smart-template-custom-btn:hover {
+  opacity: 0.9;
+}
+
+.smart-template-custom-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
