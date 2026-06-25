@@ -439,6 +439,25 @@
   background-color: var(--color-bg-elevated, var(--color-bg-subtle));
 }
 
+/* §4.8 "Add block below" button — sits left of the grip in .block-handle. */
+.block-handle-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 24px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+}
+
+.block-handle-add-btn:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-elevated, var(--color-bg-subtle));
+}
+
 /* §4.8 Override cursor to grabbing while a block drag is in progress. */
 body.block-dragging,
 body.block-dragging * {
