@@ -10,6 +10,7 @@ import {
   addBlockId,
   editBlockId,
 } from "../../extensions/plugins/block-id-decoration";
+import { useEditorStore } from "../../stores/editor/editor";
 import {
   dispatchAIAction,
   dispatchCustomInstruction,
@@ -19,6 +20,7 @@ import {
   getBlockTextContent,
 } from "../../utils/block-ai-utils";
 import { getActionsForMode } from "../../utils/contextual-ai-actions";
+import { blockBasename, buildBlockLink } from "../../utils/toolbar/block-link";
 import { buildTurnIntoItems } from "../../utils/toolbar/block-turn-into";
 import { getEditorZoom } from "../../utils/zoom-coords";
 import { useBlockDrag } from "./use-block-drag";
@@ -247,6 +249,31 @@ export function BlockHandle({ editor }: BlockHandleProps) {
   // §4.8 Drag-to-reorder — must be called before any early return (hooks rule)
   const { startDrag, isDragging } = useBlockDrag(editor);
 
+  // §4.8 Copy link helpers — must be before early return (hooks rule)
+  const copyBlockLink = useCallback(
+    (form: "ref" | "wikilink") => {
+      if (!handle) return;
+      const { activeTabId, tabs } = useEditorStore.getState();
+      const filePath = tabs.find((t) => t.id === activeTabId)?.filePath ?? "";
+      const base = blockBasename(filePath);
+
+      // addBlockId is synchronous (generateBlockId + setNodeMarkup + dispatch),
+      // so the id is readable right after the call — no rAF needed.
+      let id = editor.state.doc.nodeAt(handle.pos)?.attrs.blockId as
+        | null
+        | string;
+      if (!id) {
+        addBlockId(editor.view, handle.pos);
+        id = editor.state.doc.nodeAt(handle.pos)?.attrs.blockId as
+          | null
+          | string;
+      }
+      if (id)
+        void navigator.clipboard.writeText(buildBlockLink(base, id, form));
+    },
+    [editor, handle],
+  );
+
   const handleMenuAction = useCallback((action: () => void) => {
     action();
     setMenuOpen(false);
@@ -314,6 +341,26 @@ export function BlockHandle({ editor }: BlockHandleProps) {
         addBlockId(editor.view, handle.pos);
       },
     };
+  })();
+
+  // §4.8 Copy link / Copy block ref — paragraph/heading only (blockId is
+  // schema-supported only on those node types, same gate as blockIdItem).
+  const copyLinkItems: DropdownItem[] = (() => {
+    if (!handle) return [];
+    const node = editor.state.doc.nodeAt(handle.pos);
+    if (
+      !node ||
+      (node.type.name !== "paragraph" && node.type.name !== "heading")
+    )
+      return [];
+    return [
+      {
+        label: "Copy link",
+        separator: true,
+        action: () => copyBlockLink("wikilink"),
+      },
+      { label: "Copy block ref", action: () => copyBlockLink("ref") },
+    ];
   })();
 
   const menuItems: DropdownItem[] = [
@@ -384,6 +431,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
         }
       },
     },
+    ...copyLinkItems,
     ...(blockIdItem ? [blockIdItem] : []),
   ];
 
