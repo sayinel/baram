@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Editor } from "@tiptap/react";
 
-import { GripVertical, Sparkles } from "lucide-react";
+import { GripVertical, Plus, Sparkles } from "lucide-react";
 
 import {
   addBlockId,
@@ -473,6 +473,24 @@ export function BlockHandle({ editor }: BlockHandleProps) {
           left: `${handlePos.x}px`,
         }}
       >
+        {/* §4.8 Add an empty paragraph directly below this block. */}
+        <button
+          className="block-handle-add-btn"
+          onClick={() => {
+            const node = editor.state.doc.nodeAt(handle.pos);
+            if (!node) return;
+            const insertAt = handle.pos + node.nodeSize;
+            editor
+              .chain()
+              .focus()
+              .insertContentAt(insertAt, { type: "paragraph" })
+              .setTextSelection(insertAt + 1)
+              .run();
+          }}
+          title="Add block below"
+        >
+          <Plus size={14} strokeWidth={2} />
+        </button>
         <button
           className="block-handle-btn"
           onClick={() => {
