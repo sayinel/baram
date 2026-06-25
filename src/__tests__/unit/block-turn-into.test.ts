@@ -20,4 +20,12 @@ describe("buildTurnIntoItems", () => {
     expect(items.find((i) => i.label === "Heading 2")!.isActive).toBe(true);
     expect(items.find((i) => i.label === "Text")!.isActive).toBe(false);
   });
+
+  it("is a no-op when converting to the already-active type", () => {
+    const editor = makeTestEditor("<h2>Title</h2>");
+    const items = buildTurnIntoItems(editor, 0);
+    items.find((i) => i.label === "Heading 2")!.run();
+    expect(editor.state.doc.firstChild!.type.name).toBe("heading");
+    expect(editor.state.doc.firstChild!.attrs.level).toBe(2);
+  });
 });

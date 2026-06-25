@@ -73,6 +73,7 @@ export function buildTurnIntoItems(
     label: spec.label,
     isActive: spec.isActive(typeName, attrs),
     run: () => {
+      if (spec.isActive(typeName, attrs)) return; // already this type — no-op
       // Select inside the target block before converting.
       editor.commands.setTextSelection(pos + 1);
       spec.run(editor);
