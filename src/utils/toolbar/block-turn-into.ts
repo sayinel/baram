@@ -37,6 +37,21 @@ const SPECS: Spec[] = [
     run: (e) => e.chain().focus().toggleHeading({ level: 3 }).run(),
   },
   {
+    label: "Heading 4",
+    isActive: (t, a) => t === "heading" && a.level === 4,
+    run: (e) => e.chain().focus().toggleHeading({ level: 4 }).run(),
+  },
+  {
+    label: "Heading 5",
+    isActive: (t, a) => t === "heading" && a.level === 5,
+    run: (e) => e.chain().focus().toggleHeading({ level: 5 }).run(),
+  },
+  {
+    label: "Heading 6",
+    isActive: (t, a) => t === "heading" && a.level === 6,
+    run: (e) => e.chain().focus().toggleHeading({ level: 6 }).run(),
+  },
+  {
     label: "Bullet List",
     isActive: (t) => t === "bulletList",
     run: (e) => e.chain().focus().toggleBulletList().run(),
@@ -50,6 +65,15 @@ const SPECS: Spec[] = [
     label: "To-do List",
     isActive: (t) => t === "taskList",
     run: (e) => e.chain().focus().toggleTaskList().run(),
+  },
+  {
+    // §5.1 Toggle (collapsible). wrapIn keeps the block's content as the
+    // toggle's summary (first child); setToggle would instead insert a new
+    // empty toggle, losing the current text. No-op handled by the builder's
+    // isActive guard, so "Toggle" on an existing toggle does nothing.
+    label: "Toggle",
+    isActive: (t) => t === "toggle",
+    run: (e) => e.chain().focus().wrapIn("toggle").run(),
   },
   {
     label: "Quote",
