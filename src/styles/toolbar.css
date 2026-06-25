@@ -426,16 +426,51 @@
   height: 24px;
   font-size: 16px;
   font-weight: 700;
+  color: var(--color-text-muted);
+  cursor: grab;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+}
+
+/* Handle stays faint (muted) until hovered, then darkens to primary. */
+.block-handle-btn:hover {
   color: var(--color-text-primary);
+  background-color: var(--color-bg-elevated, var(--color-bg-subtle));
+}
+
+/* §4.8 "Add block below" button — floats just left of the grip via
+   right:100% (= the grip's full width), so it lands in the reclaimed left
+   gutter (content-left −64…−50) without pushing the grip into the heading/
+   list fold mark (which sits at content-left −24…−6). Absolute → out of the
+   flex flow, so the grip keeps its original gutter position & the fold mark
+   stays clear. width is content-space and scales with --editor-zoom like the
+   grip, so the clearance holds at any zoom. */
+.block-handle-add-btn {
+  position: absolute;
+  right: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 24px;
+  color: var(--color-text-muted);
   cursor: pointer;
   background: transparent;
   border: none;
   border-radius: 3px;
 }
 
-.block-handle-btn:hover {
+.block-handle-add-btn:hover {
   color: var(--color-text-primary);
   background-color: var(--color-bg-elevated, var(--color-bg-subtle));
+}
+
+/* §4.8 Override cursor to grabbing while a block drag is in progress. */
+body.block-dragging,
+body.block-dragging * {
+  cursor: grabbing !important;
+  user-select: none;
 }
 
 .block-handle-menu {
@@ -495,7 +530,9 @@
   left: 100%;
   z-index: 50;
   min-width: 150px;
+  max-height: 70vh;
   padding: 4px 0;
+  overflow-y: auto;
   background-color: var(--color-bg-default);
   border: 1px solid var(--color-border-default);
   border-radius: 6px;
