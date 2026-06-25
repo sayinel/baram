@@ -427,7 +427,7 @@
   font-size: 16px;
   font-weight: 700;
   color: var(--color-text-muted);
-  cursor: pointer;
+  cursor: grab;
   background: transparent;
   border: none;
   border-radius: 3px;
@@ -437,6 +437,13 @@
 .block-handle-btn:hover {
   color: var(--color-text-primary);
   background-color: var(--color-bg-elevated, var(--color-bg-subtle));
+}
+
+/* §4.8 Override cursor to grabbing while a block drag is in progress. */
+body.block-dragging,
+body.block-dragging * {
+  cursor: grabbing !important;
+  user-select: none;
 }
 
 .block-handle-menu {
