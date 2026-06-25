@@ -439,12 +439,20 @@
   background-color: var(--color-bg-elevated, var(--color-bg-subtle));
 }
 
-/* §4.8 "Add block below" button — sits left of the grip in .block-handle. */
+/* §4.8 "Add block below" button — floats just left of the grip via
+   right:100% (= the grip's full width), so it lands in the reclaimed left
+   gutter (content-left −64…−50) without pushing the grip into the heading/
+   list fold mark (which sits at content-left −24…−6). Absolute → out of the
+   flex flow, so the grip keeps its original gutter position & the fold mark
+   stays clear. width is content-space and scales with --editor-zoom like the
+   grip, so the clearance holds at any zoom. */
 .block-handle-add-btn {
+  position: absolute;
+  right: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
+  width: 14px;
   height: 24px;
   color: var(--color-text-muted);
   cursor: pointer;

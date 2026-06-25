@@ -489,7 +489,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
           }}
           title="Add block below"
         >
-          <Plus size={14} strokeWidth={2} />
+          <Plus size={12} strokeWidth={2} />
         </button>
         <button
           className="block-handle-btn"
