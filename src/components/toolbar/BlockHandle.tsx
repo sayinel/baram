@@ -20,6 +20,7 @@ import {
 } from "../../utils/block-ai-utils";
 import { getActionsForMode } from "../../utils/contextual-ai-actions";
 import { getEditorZoom } from "../../utils/zoom-coords";
+import { useBlockDrag } from "./use-block-drag";
 
 interface BlockHandleProps {
   editor: Editor;
@@ -237,6 +238,9 @@ export function BlockHandle({ editor }: BlockHandleProps) {
     }
   }, [aiSubOpen]);
 
+  // §4.8 Drag-to-reorder — must be called before any early return (hooks rule)
+  const { startDrag, isDragging } = useBlockDrag(editor);
+
   const handleMenuAction = useCallback((action: () => void) => {
     action();
     setMenuOpen(false);
@@ -411,8 +415,12 @@ export function BlockHandle({ editor }: BlockHandleProps) {
       >
         <button
           className="block-handle-btn"
-          onClick={() => setMenuOpen(!menuOpen)}
-          title="Click for menu"
+          onClick={() => {
+            if (isDragging) return; // a drag just ended — don't toggle the menu
+            setMenuOpen(!menuOpen);
+          }}
+          onMouseDown={(e) => handle && startDrag(e, handle.pos)}
+          title="Drag to move · click for menu"
         >
           <GripVertical size={16} strokeWidth={2} />
         </button>
