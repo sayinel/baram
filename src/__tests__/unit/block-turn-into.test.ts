@@ -28,4 +28,38 @@ describe("buildTurnIntoItems", () => {
     expect(editor.state.doc.firstChild!.type.name).toBe("heading");
     expect(editor.state.doc.firstChild!.attrs.level).toBe(2);
   });
+
+  it.each([4, 5, 6])("converts a paragraph to Heading %i", (level) => {
+    const editor = makeTestEditor("<p>Hello</p>");
+    const item = buildTurnIntoItems(editor, 0).find(
+      (i) => i.label === `Heading ${level}`,
+    )!;
+    expect(item).toBeTruthy();
+    item.run();
+    expect(editor.state.doc.firstChild!.type.name).toBe("heading");
+    expect(editor.state.doc.firstChild!.attrs.level).toBe(level);
+  });
+
+  it("converts a paragraph to a Toggle, keeping its text as the summary", () => {
+    const editor = makeTestEditor("<p>Hello</p>");
+    const toggle = buildTurnIntoItems(editor, 0).find(
+      (i) => i.label === "Toggle",
+    )!;
+    expect(toggle).toBeTruthy();
+    toggle.run();
+    const first = editor.state.doc.firstChild!;
+    expect(first.type.name).toBe("toggle");
+    expect(first.firstChild!.type.name).toBe("paragraph"); // summary
+    expect(first.textContent).toBe("Hello");
+  });
+
+  it("marks Toggle active when the block is already a toggle", () => {
+    const editor = makeTestEditor("<p>Hello</p>");
+    buildTurnIntoItems(editor, 0)
+      .find((i) => i.label === "Toggle")!
+      .run();
+    // After wrapping, the top-level block at pos 0 is the toggle itself.
+    const items = buildTurnIntoItems(editor, 0);
+    expect(items.find((i) => i.label === "Toggle")!.isActive).toBe(true);
+  });
 });
