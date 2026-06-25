@@ -259,6 +259,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
       if (!handle) return;
       setMenuOpen(false);
       setAiSubOpen(false);
+      setTurnIntoOpen(false);
       dispatchAIAction(action, editor, handle.pos);
     },
     [editor, handle],
@@ -268,6 +269,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
     if (!handle) return;
     setMenuOpen(false);
     setAiSubOpen(false);
+    setTurnIntoOpen(false);
     dispatchCustomInstruction(editor, handle.pos);
   }, [editor, handle]);
 
