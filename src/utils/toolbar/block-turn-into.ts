@@ -17,7 +17,9 @@ const SPECS: Spec[] = [
   {
     label: "Text",
     isActive: (t) => t === "paragraph",
-    run: (e) => e.chain().focus().setParagraph().run(),
+    // setNode (core command) instead of setParagraph: Baram's Paragraph
+    // extension doesn't declare a setParagraph command on ChainedCommands.
+    run: (e) => e.chain().focus().setNode("paragraph").run(),
   },
   {
     label: "Heading 1",
