@@ -57,7 +57,11 @@ export function useBlockDrag(editor: Editor): {
         setIsDragging(false);
         return; // a click, not a drag — menu toggle handles it
       }
-      setIsDragging(false);
+      // Defer clearing: the click event fires right after mouseup, and
+      // BlockHandle's onClick reads isDragging to suppress the menu after a drag.
+      // Clearing synchronously would let the menu open (mirrors use-file-tree-dnd's
+      // suppressClick + setTimeout(0) pattern).
+      setTimeout(() => setIsDragging(false), 0);
 
       const target = resolveInsertTarget(editor, e.clientX, e.clientY);
       if (!target) return;
