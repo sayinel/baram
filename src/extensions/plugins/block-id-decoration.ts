@@ -1,4 +1,4 @@
-import type { Node as PmNode } from "@tiptap/pm/model";
+import type { Node as PmNode, ResolvedPos } from "@tiptap/pm/model";
 import type { EditorState } from "@tiptap/pm/state";
 
 // §30a Block ID Visible Decoration — Focus-Reveal + Hint Dot
@@ -106,6 +106,25 @@ function collectBlockIdEntries(
     return false; // Don't descend into paragraphs/headings
   });
   return entries;
+}
+
+/**
+ * Resolve the position of the nearest paragraph/heading ancestor that carries
+ * a blockId, or null. Shared by the deferred-init branch and the
+ * selection-driven apply path so both compute the focused block identically.
+ */
+function findFocusedBlockPos($from: ResolvedPos): null | number {
+  for (let d = $from.depth; d >= 1; d--) {
+    const ancestor = $from.node(d);
+    if (
+      (ancestor.type.name === "paragraph" ||
+        ancestor.type.name === "heading") &&
+      ancestor.attrs.blockId
+    ) {
+      return $from.before(d);
+    }
+  }
+  return null;
 }
 
 /** Create an editing (input widget) Decoration for an entry. */
@@ -546,10 +565,45 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
         // because DecorationSet.create(doc,[]) returns the shared empty
         // instance and an empty doc legitimately has zero entries.
         if (!value.initialized && newState.doc.content.size > 0) {
-          const entries = collectBlockIdEntries(newState.doc, null, null);
+          // Progressive-load chunk arriving before init: stay deferred and flag
+          // a rebuild rather than collecting every entry now — collecting here
+          // would defeat the large-file progressive-load optimization.
+          if (tr.getMeta(PROGRESSIVE_LOAD_META) === true) {
+            return {
+              focusedBlockPos: null,
+              editingBlockPos: null,
+              entries: [],
+              idCountMap: new Map(),
+              initialized: true,
+              needsFullRebuild: true,
+              decorations: DecorationSet.empty,
+            };
+          }
+          // Honor explicit meta if present, else derive focus from the current
+          // selection so a block that already holds the cursor at init renders
+          // focused, not hinted. (Pre-tiptap-3.27, editor creation dispatched a
+          // transaction that consumed this deferred init with the empty initial
+          // doc, so the first *real* transaction always took the normal path
+          // below; 3.27 no longer dispatches it, so init must compute focus
+          // itself — otherwise the first edit leaves the focused block hinted.)
+          const initMeta = tr.getMeta(blockIdDecoKey) as
+            | undefined
+            | {
+                editingBlockPos: null | number;
+                focusedBlockPos: null | number;
+              };
+          const focusedBlockPos =
+            initMeta?.focusedBlockPos ??
+            findFocusedBlockPos(newState.selection.$from);
+          const editingBlockPos = initMeta?.editingBlockPos ?? null;
+          const entries = collectBlockIdEntries(
+            newState.doc,
+            focusedBlockPos,
+            editingBlockPos,
+          );
           return {
-            focusedBlockPos: null,
-            editingBlockPos: null,
+            focusedBlockPos,
+            editingBlockPos,
             entries,
             idCountMap: buildIdCountMap(entries),
             initialized: true,
@@ -634,20 +688,7 @@ function createBlockIdDecoPlugin(): Plugin<BlockIdDecoState> {
         }
 
         // Compute focusedBlockPos from cursor
-        let focusedBlockPos: null | number = null;
-        const { selection } = newState;
-        const $from = selection.$from;
-        for (let d = $from.depth; d >= 1; d--) {
-          const ancestor = $from.node(d);
-          if (
-            (ancestor.type.name === "paragraph" ||
-              ancestor.type.name === "heading") &&
-            ancestor.attrs.blockId
-          ) {
-            focusedBlockPos = $from.before(d);
-            break;
-          }
-        }
+        const focusedBlockPos = findFocusedBlockPos(newState.selection.$from);
 
         if (editingBlockPos !== null && editingBlockPos !== focusedBlockPos) {
           editingBlockPos = null;
