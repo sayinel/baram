@@ -19,6 +19,7 @@ import {
   getBlockTextContent,
 } from "../../utils/block-ai-utils";
 import { getActionsForMode } from "../../utils/contextual-ai-actions";
+import { buildTurnIntoItems } from "../../utils/toolbar/block-turn-into";
 import { getEditorZoom } from "../../utils/zoom-coords";
 import { useBlockDrag } from "./use-block-drag";
 
@@ -41,6 +42,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
   const [handle, setHandle] = useState<HandlePosition | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [aiSubOpen, setAiSubOpen] = useState(false);
+  const [turnIntoOpen, setTurnIntoOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const aiSubRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<HTMLDivElement>(null);
@@ -165,6 +167,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
       setHandle(null);
       setMenuOpen(false);
       setAiSubOpen(false);
+      setTurnIntoOpen(false);
     };
 
     scrollContainer.addEventListener("mousemove", handleMouseMove);
@@ -185,6 +188,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
       setHandle(null);
       setMenuOpen(false);
       setAiSubOpen(false);
+      setTurnIntoOpen(false);
     };
     editor.on("update", handler);
     return () => {
@@ -203,6 +207,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
       setHandle(null);
       setMenuOpen(false);
       setAiSubOpen(false);
+      setTurnIntoOpen(false);
     };
     window.addEventListener("resize", hide);
     return () => window.removeEventListener("resize", hide);
@@ -215,6 +220,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
         setAiSubOpen(false);
+        setTurnIntoOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClick);
@@ -245,6 +251,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
     action();
     setMenuOpen(false);
     setAiSubOpen(false);
+    setTurnIntoOpen(false);
   }, []);
 
   const handleAIAction = useCallback(
@@ -276,6 +283,9 @@ export function BlockHandle({ editor }: BlockHandleProps) {
   const blockHasContent = currentNode
     ? getBlockTextContent(currentNode).trim().length > 0
     : false;
+
+  // §4.8 Turn-into submenu — block type conversions
+  const turnIntoItems = buildTurnIntoItems(editor, handle.pos);
 
   // Build block ID menu item for paragraph/heading nodes
   const blockIdItem: DropdownItem | null = (() => {
@@ -435,6 +445,36 @@ export function BlockHandle({ editor }: BlockHandleProps) {
             left: `${handlePos.x}px`,
           }}
         >
+          {/* Turn into submenu — first entry §4.8 */}
+          {turnIntoItems.length > 0 && (
+            <div
+              className="block-handle-ai-trigger"
+              onMouseEnter={() => setTurnIntoOpen(true)}
+              onMouseLeave={() => setTurnIntoOpen(false)}
+            >
+              <button className="block-handle-menu-item block-handle-ai-item">
+                <span>Turn into</span>
+                <span className="block-handle-ai-arrow">{"▸"}</span>
+              </button>
+              {turnIntoOpen && (
+                <div className="block-handle-ai-submenu">
+                  {turnIntoItems.map((item) => (
+                    <button
+                      className="block-handle-menu-item"
+                      key={item.label}
+                      onClick={() => handleMenuAction(() => item.run())}
+                    >
+                      {item.isActive ? `✓ ${item.label}` : item.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {turnIntoItems.length > 0 && (
+            <div className="block-handle-separator" />
+          )}
+
           {menuItems.map((item, i) => (
             <div key={i}>
               {item.separator && <div className="block-handle-separator" />}
