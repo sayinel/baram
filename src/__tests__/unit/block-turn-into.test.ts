@@ -77,4 +77,67 @@ describe("buildTurnIntoItems", () => {
     const items = buildTurnIntoItems(editor, 0);
     expect(items.find((i) => i.label === "Toggle")!.isActive).toBe(true);
   });
+
+  /** Wrap a paragraph into a toggle and return the editor (toggle at pos 0). */
+  function makeToggleEditor() {
+    const editor = makeEditor("<p>Hello</p>");
+    buildTurnIntoItems(editor, 0)
+      .find((i) => i.label === "Toggle")!
+      .run();
+    expect(editor.state.doc.firstChild!.type.name).toBe("toggle");
+    return editor;
+  }
+
+  it("converts a Toggle to Text by unwrapping it", () => {
+    const editor = makeToggleEditor();
+    buildTurnIntoItems(editor, 0)
+      .find((i) => i.label === "Text")!
+      .run();
+    // The toggle wrapper is gone; the summary becomes a top-level paragraph.
+    expect(editor.state.doc.firstChild!.type.name).toBe("paragraph");
+    expect(editor.state.doc.firstChild!.textContent).toBe("Hello");
+  });
+
+  it("converts a Toggle to Heading 1 using the summary text", () => {
+    const editor = makeToggleEditor();
+    buildTurnIntoItems(editor, 0)
+      .find((i) => i.label === "Heading 1")!
+      .run();
+    expect(editor.state.doc.firstChild!.type.name).toBe("heading");
+    expect(editor.state.doc.firstChild!.attrs.level).toBe(1);
+    expect(editor.state.doc.firstChild!.textContent).toBe("Hello");
+  });
+
+  it("converts a paragraph to a Callout, keeping its text", () => {
+    const editor = makeEditor("<p>Hello</p>");
+    buildTurnIntoItems(editor, 0)
+      .find((i) => i.label === "Callout")!
+      .run();
+    const first = editor.state.doc.firstChild!;
+    expect(first.type.name).toBe("callout");
+    expect(first.textContent).toBe("Hello");
+  });
+
+  it("converts a Callout to Text by unwrapping it", () => {
+    const editor = makeEditor("<p>Hello</p>");
+    buildTurnIntoItems(editor, 0)
+      .find((i) => i.label === "Callout")!
+      .run();
+    expect(editor.state.doc.firstChild!.type.name).toBe("callout");
+    buildTurnIntoItems(editor, 0)
+      .find((i) => i.label === "Text")!
+      .run();
+    expect(editor.state.doc.firstChild!.type.name).toBe("paragraph");
+    expect(editor.state.doc.firstChild!.textContent).toBe("Hello");
+  });
+
+  it("converts a paragraph to a Math block using its text as the formula", () => {
+    const editor = makeEditor("<p>E=mc^2</p>");
+    buildTurnIntoItems(editor, 0)
+      .find((i) => i.label === "Math")!
+      .run();
+    const first = editor.state.doc.firstChild!;
+    expect(first.type.name).toBe("mathBlock");
+    expect(first.attrs.formula).toBe("E=mc^2");
+  });
 });

@@ -314,7 +314,7 @@ function buildCommands(
     // Insert — Blocks
     {
       id: "insert:bullet-list",
-      label: "Bullet List",
+      label: "Unordered List",
       category: "Insert",
       shortcut: "\u21E7\u23188",
       action: (editor) => editor?.chain().focus().toggleBulletList().run(),

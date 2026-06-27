@@ -410,7 +410,7 @@
   "keybindings.fmt.heading1": "Heading 1",
   "keybindings.fmt.heading2": "Heading 2",
   "keybindings.fmt.heading3": "Heading 3",
-  "keybindings.fmt.bulletList": "Bullet List",
+  "keybindings.fmt.bulletList": "Unordered List",
   "keybindings.fmt.orderedList": "Ordered List",
   "keybindings.fmt.taskList": "Task List",
   "keybindings.fmt.mermaid": "Mermaid Diagram",
