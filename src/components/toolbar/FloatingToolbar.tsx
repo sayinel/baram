@@ -265,7 +265,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         isActive={editor.isActive("bulletList")}
         label="UL"
         onClick={() => editor.chain().focus().toggleBulletList().run()}
-        title="Bullet List"
+        title="Unordered List"
       />
       <ToolbarButton
         isActive={editor.isActive("orderedList")}
