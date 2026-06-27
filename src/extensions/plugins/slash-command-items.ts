@@ -63,7 +63,7 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
     // Lists
     {
       id: "bullet-list",
-      label: "Bullet List",
+      label: "Unordered List",
       category: "Basic",
       description: "Unordered list",
       mdHint: "-",

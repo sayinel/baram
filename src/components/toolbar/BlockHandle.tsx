@@ -1,10 +1,28 @@
 // §4.8 Block Handle — drag handle + menu on block hover
 // §11.2.3 BlockHandle AI submenu — contextual AI actions per block type
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Fragment,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import type { Editor } from "@tiptap/react";
 
-import { GripVertical, Plus, Sparkles } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Copy,
+  GripVertical,
+  Hash,
+  Link,
+  Plus,
+  Replace,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 
 import {
   addBlockId,
@@ -31,9 +49,12 @@ interface BlockHandleProps {
 
 interface DropdownItem {
   action: () => void;
+  icon?: ReactNode;
   label: string;
   separator?: boolean;
 }
+
+const ICON_SIZE = 14;
 
 interface HandlePosition {
   pos: number;
@@ -328,6 +349,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
       return {
         label: `Edit Block ID (^${existingId})`,
         separator: true,
+        icon: <Hash size={ICON_SIZE} />,
         action: () => {
           editBlockId(editor.view, handle.pos);
           setMenuOpen(false);
@@ -337,6 +359,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
     return {
       label: "Add Block ID",
       separator: true,
+      icon: <Hash size={ICON_SIZE} />,
       action: () => {
         addBlockId(editor.view, handle.pos);
       },
@@ -356,16 +379,21 @@ export function BlockHandle({ editor }: BlockHandleProps) {
     return [
       {
         label: "Copy link",
-        separator: true,
+        icon: <Link size={ICON_SIZE} />,
         action: () => copyBlockLink("wikilink"),
       },
-      { label: "Copy block ref", action: () => copyBlockLink("ref") },
+      {
+        label: "Copy block ref",
+        icon: <Hash size={ICON_SIZE} />,
+        action: () => copyBlockLink("ref"),
+      },
     ];
   })();
 
   const menuItems: DropdownItem[] = [
     {
       label: "Duplicate",
+      icon: <Copy size={ICON_SIZE} />,
       action: () => {
         if (handle) {
           const node = editor.state.doc.nodeAt(handle.pos);
@@ -376,24 +404,11 @@ export function BlockHandle({ editor }: BlockHandleProps) {
         }
       },
     },
-    {
-      label: "Delete",
-      action: () => {
-        if (handle) {
-          const node = editor.state.doc.nodeAt(handle.pos);
-          if (node) {
-            editor
-              .chain()
-              .focus()
-              .deleteRange({ from: handle.pos, to: handle.pos + node.nodeSize })
-              .run();
-          }
-        }
-      },
-    },
+    ...copyLinkItems,
     {
       label: "Move Up",
       separator: true,
+      icon: <ArrowUp size={ICON_SIZE} />,
       action: () => {
         if (handle && handle.pos > 0) {
           const node = editor.state.doc.nodeAt(handle.pos);
@@ -412,6 +427,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
     },
     {
       label: "Move Down",
+      icon: <ArrowDown size={ICON_SIZE} />,
       action: () => {
         if (handle) {
           const node = editor.state.doc.nodeAt(handle.pos);
@@ -431,7 +447,22 @@ export function BlockHandle({ editor }: BlockHandleProps) {
         }
       },
     },
-    ...copyLinkItems,
+    {
+      label: "Delete",
+      icon: <Trash2 size={ICON_SIZE} />,
+      action: () => {
+        if (handle) {
+          const node = editor.state.doc.nodeAt(handle.pos);
+          if (node) {
+            editor
+              .chain()
+              .focus()
+              .deleteRange({ from: handle.pos, to: handle.pos + node.nodeSize })
+              .run();
+          }
+        }
+      },
+    },
     ...(blockIdItem ? [blockIdItem] : []),
   ];
 
@@ -473,7 +504,9 @@ export function BlockHandle({ editor }: BlockHandleProps) {
           left: `${handlePos.x}px`,
         }}
       >
-        {/* §4.8 Add an empty paragraph directly below this block. */}
+        {/* §4.8 Add a block below and open the slash menu to pick its type
+            (Notion-style): insert an empty paragraph, then type "/" so the
+            SlashCommands suggestion opens on the fresh block. */}
         <button
           className="block-handle-add-btn"
           onClick={() => {
@@ -485,7 +518,9 @@ export function BlockHandle({ editor }: BlockHandleProps) {
               .focus()
               .insertContentAt(insertAt, { type: "paragraph" })
               .setTextSelection(insertAt + 1)
+              .insertContent("/")
               .run();
+            setHandle(null);
           }}
           title="Add block below"
         >
@@ -521,19 +556,26 @@ export function BlockHandle({ editor }: BlockHandleProps) {
               onMouseLeave={() => setTurnIntoOpen(false)}
             >
               <button className="block-handle-menu-item block-handle-ai-item">
-                <span>Turn into</span>
+                <span className="block-handle-item-left">
+                  <Replace size={ICON_SIZE} />
+                  <span>Turn into</span>
+                </span>
                 <span className="block-handle-ai-arrow">{"▸"}</span>
               </button>
               {turnIntoOpen && (
                 <div className="block-handle-ai-submenu">
                   {turnIntoItems.map((item) => (
-                    <button
-                      className="block-handle-menu-item"
-                      key={item.label}
-                      onClick={() => handleMenuAction(() => item.run())}
-                    >
-                      {item.isActive ? `✓ ${item.label}` : item.label}
-                    </button>
+                    <Fragment key={item.label}>
+                      {item.separator && (
+                        <div className="block-handle-separator" />
+                      )}
+                      <button
+                        className="block-handle-menu-item"
+                        onClick={() => handleMenuAction(() => item.run())}
+                      >
+                        {item.isActive ? `✓ ${item.label}` : item.label}
+                      </button>
+                    </Fragment>
                   ))}
                 </div>
               )}
@@ -550,7 +592,8 @@ export function BlockHandle({ editor }: BlockHandleProps) {
                 className="block-handle-menu-item"
                 onClick={() => handleMenuAction(item.action)}
               >
-                {item.label}
+                {item.icon}
+                <span>{item.label}</span>
               </button>
             </div>
           ))}
@@ -565,7 +608,10 @@ export function BlockHandle({ editor }: BlockHandleProps) {
                 onMouseLeave={() => setAiSubOpen(false)}
               >
                 <button className="block-handle-menu-item block-handle-ai-item">
-                  <Sparkles size={14} />
+                  <span className="block-handle-item-left">
+                    <Sparkles size={ICON_SIZE} />
+                    <span>Ask AI</span>
+                  </span>
                   <span className="block-handle-ai-arrow">{"\u25B8"}</span>
                 </button>
 

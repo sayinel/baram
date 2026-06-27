@@ -601,28 +601,32 @@ function createFoldPlugin(): Plugin<FoldState> {
           // attribute (which was written at decoration-creation time and is not
           // updated when edits above this widget shift doc positions).
           //
-          // Strategy: walk up from the widget element to find the containing
-          // top-level block's DOM node, then use posAtDOM to get its current
-          // doc position.  Fall back to the attribute only if posAtDOM fails.
+          // Strategy: walk up from the widget element to the nearest <li>/<hN>
+          // block it lives in, then use posAtDOM + resolve to that block's OWN
+          // start position. A list item lives at depth ≥2 (doc > list >
+          // listItem), so the previous "walk to the editor's direct child +
+          // before(1)" returned the parent LIST's position, not the listItem's,
+          // and the toggle dispatch silently no-op'd. Resolve to the innermost
+          // heading/listItem ancestor depth instead. Fall back to the attribute
+          // only if resolution fails.
           let pos: null | number = null;
           try {
-            // The widget is rendered inside the heading/listItem's DOM node.
-            // posAtDOM on the widget element itself gives the position of the
-            // widget inside that node; we want the node's own start position.
-            // Walking up to the first direct child of the editor's DOM root
-            // gives us a node whose posAtDOM result we can resolve to depth-0.
-            const editorDom = view.dom;
-            let el: HTMLElement | null = foldEl as HTMLElement;
-            while (el && el.parentElement && el.parentElement !== editorDom) {
-              el = el.parentElement;
-            }
-            if (el && el.parentElement === editorDom) {
-              const rawPos = view.posAtDOM(el, 0);
-              // posAtDOM returns a position inside the node; resolve to the
-              // node's outer start by going to depth-0 ancestor.
+            const blockEl = (foldEl as HTMLElement).closest(
+              "li, h1, h2, h3, h4, h5, h6",
+            );
+            if (blockEl instanceof HTMLElement && view.dom.contains(blockEl)) {
+              const rawPos = view.posAtDOM(blockEl, 0);
               const $resolved = view.state.doc.resolve(rawPos);
-              // depth-0 ancestor's before() is the node's start pos in the doc.
-              pos = $resolved.depth > 0 ? $resolved.before(1) : rawPos;
+              for (let d = $resolved.depth; d >= 1; d--) {
+                const ancestor = $resolved.node(d);
+                if (
+                  ancestor.type.name === "listItem" ||
+                  ancestor.type.name === "heading"
+                ) {
+                  pos = $resolved.before(d);
+                  break;
+                }
+              }
             }
           } catch {
             pos = null;

@@ -110,6 +110,11 @@
 /* Code Block Style: Paper — light gray background, floating lang tab */
 .code-block-wrapper[data-style="paper"] {
   position: relative;
+
+  /* The header is absolutely positioned and floated above the block via
+     translateY(-100%). Reserve top space (≈ tab height + gap) so the tab sits
+     in the margin gap instead of overlapping the paragraph above it. */
+  margin-top: 1.8em;
 }
 
 .code-block-wrapper[data-style="paper"] .code-block-header {
