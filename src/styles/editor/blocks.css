@@ -548,120 +548,137 @@
   border-left-color: var(--color-border-default);
 }
 
-/* §5.1 Toggle (Details/Summary) — Notion-style minimal */
+/* §5.1 Toggle (Details/Summary) — Notion-style minimal.
+   Rendered PM-natively (NO React NodeView): `.toggle` is the <div> from
+   renderHTML and holds the summary (first child) + body blocks directly. The
+   arrow is a CSS ::before in the left gutter — the SAME proven mechanism as the
+   heading fold arrow (`.tiptap > hN::before`). A React NodeView's arrow never
+   painted on initial mount under WKWebView (only a global style recalc revived
+   it), so the toggle is kept out of the NodeView system entirely (see
+   toggle.ts). A gutter mousedown (offsetX < 0) flips `open` via the
+   toggleGutterClick plugin; `.toggle` is exempted from paint containment in
+   tables.css so the gutter arrow isn't clipped (like headings/lists). */
 .tiptap .toggle {
-  display: flex;
-  padding: 0.1em 0;
+  position: relative;
+  padding: 0.1em 0 0.1em 1.4em; /* indent summary + body to clear the arrow */
   margin: 0.5em 0;
-  margin-left: -1.2em; /* indicator sits in editor padding area */
 }
 
-.tiptap .toggle-indicator {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  align-self: flex-start;
-  justify-content: center;
-  width: 1.2em;
-  height: 1.75em;
-  margin-top: 0.2em;
+/* Arrow sits at the toggle's left edge (x=0), aligned with where other lines
+   begin — NOT in the negative gutter. The summary + body are indented past it
+   by the padding-left, so the headline and body share one indentation. */
+.tiptap .toggle::before {
+  position: absolute;
+  top: 0.7em;
+  left: 0;
+  font-size: 0.8em;
+  line-height: 1;
   color: var(--color-text-muted);
   cursor: pointer;
-  user-select: none;
-  border-radius: 3px;
-  transition: background 0.15s ease;
-}
-
-.tiptap .toggle-indicator:hover {
-  color: var(--color-text-secondary);
-  background: rgb(55 53 47 / 8%);
-}
-
-[data-theme="dark"] .tiptap .toggle-indicator:hover {
-  background: rgb(255 255 255 / 8%);
-}
-
-.tiptap .toggle-arrow {
-  display: block;
-  width: 0;
-  height: 0;
-  border-color: transparent transparent transparent currentcolor;
-  border-style: solid;
-  border-width: 4px 0 4px 5px;
+  content: "▶";
+  opacity: 0.55;
   transition: transform 0.2s ease;
 }
 
-.tiptap .toggle-arrow-open {
+.tiptap .toggle:hover::before {
+  opacity: 1;
+}
+
+.tiptap .toggle[data-open="true"]::before {
   transform: rotate(90deg);
 }
 
-.tiptap .toggle-body {
-  flex: 1;
-  min-width: 0;
+/* Heading summary (first child is a heading): nudge the arrow down to sit on the
+   taller first line. :has() is supported in the app's WKWebView. */
+.tiptap .toggle:has(> h1:first-child)::before {
+  top: 1.05em;
+  font-size: 1.1em;
 }
 
-.tiptap .toggle-body p {
-  margin: 0.2em 0;
+.tiptap .toggle:has(> h2:first-child)::before {
+  top: 0.85em;
+  font-size: 1em;
 }
 
-/* Collapse: hide everything except summary */
-.tiptap .toggle-body-collapsed > :not(:first-child),
-.tiptap .toggle-body-collapsed > div > :not(:first-child) {
+.tiptap .toggle:has(> h3:first-child)::before {
+  top: 0.75em;
+  font-size: 0.9em;
+}
+
+/* Collapse: hide every block after the summary (first child) when closed */
+.tiptap .toggle[data-open="false"] > :not(:first-child) {
   display: none;
 }
 
-/* Toggle Heading — summary is a heading node */
-.tiptap .toggle-body > h1:first-child,
-.tiptap .toggle-body > h2:first-child,
-.tiptap .toggle-body > h3:first-child,
-.tiptap .toggle-body > div > h1:first-child,
-.tiptap .toggle-body > div > h2:first-child,
-.tiptap .toggle-body > div > h3:first-child {
+.tiptap .toggle > p {
+  margin: 0.2em 0;
+}
+
+.tiptap .toggle > h1:first-child,
+.tiptap .toggle > h2:first-child,
+.tiptap .toggle > h3:first-child {
   margin: 0.1em 0;
 }
 
-/* H1 summary: font-size 2em × line-height 1.2 = 2.4em */
-.tiptap .toggle[data-summary-level="1"] .toggle-indicator {
-  height: 2.4em;
-  margin-top: 0.1em;
+/* Don't push the summary's first line down (it would misalign with the arrow,
+   whose `top` is fixed). Body blocks keep their margins for spacing. The summary
+   and body share one indentation via the toggle's padding-left, so no extra
+   body margin is needed. */
+.tiptap .toggle > :first-child {
+  margin-top: 0;
 }
 
-.tiptap .toggle[data-summary-level="1"] .toggle-arrow {
-  border-width: 5px 0 5px 7px;
-}
-
-/* H2 summary: font-size 1.5em × line-height 1.3 = 1.95em */
-.tiptap .toggle[data-summary-level="2"] .toggle-indicator {
-  height: 1.95em;
-  margin-top: 0.1em;
-}
-
-.tiptap .toggle[data-summary-level="2"] .toggle-arrow {
-  border-width: 5px 0 5px 6px;
-}
-
-/* H3 summary: font-size 1.25em × line-height 1.4 = 1.75em */
-.tiptap .toggle[data-summary-level="3"] .toggle-indicator {
-  height: 1.75em;
-  margin-top: 0.1em;
-}
-
-/* §5.1 Lists */
-.tiptap ul {
-  padding-left: 1.6em;
-  margin: 0.5em 0;
-  list-style-type: disc;
-}
-
+/* §5.1 Lists.
+   Markers are rendered via `::before` (list-style: none) instead of the native
+   `::marker`. Under `.editor-area-scroll`'s CSS `zoom`, WKWebView mis-paints the
+   text caret ~1 character into a list item whenever a native `::marker` is
+   present (the model/selection position is correct; only the painted caret is
+   off). A custom `::before` marker avoids that. It is anchored with `right: 100%`
+   (a percentage, so it scales cleanly under zoom — no absolute-offset drift, cf.
+   the fold-arrow) and sits in the list's padding gutter, left of the content. */
+.tiptap ul,
 .tiptap ol {
   padding-left: 1.6em;
   margin: 0.5em 0;
-  list-style-type: decimal;
+  list-style: none;
 }
 
 .tiptap li {
-  padding-left: 0.2em;
+  /* padding-left is the gap between the ::before marker and the content */
+  padding-left: 0.5em;
   margin: 0.15em 0;
+}
+
+.tiptap ul > li::before,
+.tiptap ol > li::before {
+  position: absolute;
+  right: 100%;
+  color: var(--color-editor-text);
+}
+
+/* Fixed-width centred box so every bullet glyph (•/◦/▪, which have different
+   advance widths) sits in the same column → uniform arrow→bullet gap across
+   nesting levels. Kept baseline-aligned (no forced vertical centring): the
+   first-level disc lines up with the text-centred fold arrow, which matters
+   most. (Flex-centring the glyph box instead aligned deeper levels but threw
+   off the first level, because the disc/circle/square glyphs have different
+   in-box baselines.) Ordered numbers keep the variable-width right-alignment so
+   their periods line up. */
+.tiptap ul > li::before {
+  width: 1em;
+  text-align: center;
+  content: "•";
+}
+
+/* Ordered numbers use the built-in `list-item` counter so `<ol start>` is
+   honoured without manual counter-reset. */
+.tiptap ol > li::before {
+  content: counter(list-item) ".";
+}
+
+/* Task items render their own checkbox — suppress the bullet. */
+.tiptap ul[data-type="taskList"] > li::before {
+  content: none;
 }
 
 .tiptap li p {
@@ -678,15 +695,17 @@
   user-select: none;
 }
 
-/* Nested lists */
-.tiptap ul ul,
-.tiptap ol ul {
-  list-style-type: circle;
+/* Nested bullet markers — depth 2 = circle, depth 3+ = square (mirrors the
+   former list-style-type cascade). Higher element-count specificity wins over
+   the base `.tiptap ul > li::before` disc. */
+.tiptap ul ul > li::before,
+.tiptap ol ul > li::before {
+  content: "◦";
 }
 
-.tiptap ul ul ul,
-.tiptap ol ul ul {
-  list-style-type: square;
+.tiptap ul ul ul > li::before,
+.tiptap ol ul ul > li::before {
+  content: "▪";
 }
 
 /* §5.1 Task List */
