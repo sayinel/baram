@@ -1,15 +1,13 @@
 // §5.1 Toggle Extension — <details><summary> collapsible block
-import type { ResolvedPos } from "@tiptap/pm/model";
+import type { Node as PmNode, ResolvedPos } from "@tiptap/pm/model";
 import type { EditorState } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 
 import { mergeAttributes, Node } from "@tiptap/core";
-import { TextSelection } from "@tiptap/pm/state";
-import { ReactNodeViewRenderer } from "@tiptap/react";
+import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
 
 import { htmlAttributesOptions } from "../utils/html-attributes-options";
 import { resolveShortcut } from "../utils/shortcut-resolver";
-import { ToggleView } from "./toggle-view";
 
 export interface ToggleOptions {
   HTMLAttributes: Record<string, string>;
@@ -95,8 +93,67 @@ export const Toggle = Node.create<ToggleOptions>({
     ];
   },
 
-  addNodeView() {
-    return ReactNodeViewRenderer(ToggleView);
+  // Rendered natively via renderHTML (NOT a React NodeView): the arrow is a CSS
+  // ::before on the PM-rendered `.toggle` element, the same proven mechanism as
+  // the heading fold arrow (`.tiptap > hN::before`). A React NodeView's arrow
+  // (svg/glyph/::before inside the contentEditable=false subtree) never painted
+  // on initial mount in WKWebView — only a global style recalc revived it — so
+  // the toggle is kept out of the React NodeView system entirely.
+  addProseMirrorPlugins() {
+    const type = this.type;
+    return [
+      new Plugin({
+        key: new PluginKey("toggleGutterClick"),
+        props: {
+          handleDOMEvents: {
+            mousedown(view, event) {
+              const target = event.target;
+              // Only a direct click on the toggle's own box — its left padding
+              // column or the ::before arrow (a pseudo-element, so its clicks
+              // forward to the host `.toggle`) — toggles. Clicks on a child block
+              // (summary/body) report that child as the target and fall through
+              // to normal cursor placement. Matching the element needs no
+              // coordinate math, so it is zoom-safe (offsetX magnitude under CSS
+              // zoom is unreliable — cf. [[wkwebview-css-zoom-coords]]).
+              if (
+                !(target instanceof HTMLElement) ||
+                !target.matches('div[data-type="toggle"]') ||
+                !view.dom.contains(target)
+              ) {
+                return false;
+              }
+              const toggleEl = target;
+
+              let pos: null | number = null;
+              let node: null | PmNode = null;
+              try {
+                const rawPos = view.posAtDOM(toggleEl, 0);
+                const $resolved = view.state.doc.resolve(rawPos);
+                for (let d = $resolved.depth; d >= 0; d--) {
+                  if ($resolved.node(d).type === type) {
+                    node = $resolved.node(d);
+                    pos = d > 0 ? $resolved.before(d) : 0;
+                    break;
+                  }
+                }
+              } catch {
+                return false;
+              }
+              if (pos === null || !node) return false;
+
+              event.preventDefault();
+              event.stopPropagation();
+              const tr = view.state.tr.setNodeMarkup(pos, undefined, {
+                ...node.attrs,
+                open: !node.attrs.open,
+              });
+              view.dispatch(tr);
+              return true;
+            },
+          },
+        },
+      }),
+    ];
   },
 
   addCommands() {
@@ -221,26 +278,57 @@ export const Toggle = Node.create<ToggleOptions>({
         return true;
       },
 
-      // Backspace at start of summary → unwrap toggle (children become siblings)
+      // Backspace:
+      //  • at the start of a toggle summary → unwrap the toggle (Case A)
+      //  • at the start of an empty top-level block right after a toggle → drop
+      //    the empty block and move into the toggle's visible end (Case B)
       Backspace: () => {
         const { state, view } = this.editor;
         const { $from, empty } = state.selection;
         if (!empty) return false;
 
         const toggleDepth = findToggleDepth($from, this.name);
-        if (toggleDepth < 0) return false;
 
-        const childIndex = $from.index(toggleDepth);
-        if (childIndex !== 0 || $from.parentOffset !== 0) return false;
+        // Case A: inside a toggle, at the start of its summary → unwrap (children
+        // become siblings).
+        if (toggleDepth >= 0) {
+          const childIndex = $from.index(toggleDepth);
+          if (childIndex !== 0 || $from.parentOffset !== 0) return false;
 
-        // Unwrap: replace toggle with its children
-        const toggleNode = $from.node(toggleDepth);
-        const toggleStart = $from.before(toggleDepth);
-        const toggleEnd = $from.after(toggleDepth);
+          const toggleNode = $from.node(toggleDepth);
+          const toggleStart = $from.before(toggleDepth);
+          const toggleEnd = $from.after(toggleDepth);
+          const { tr } = state;
+          tr.replaceWith(toggleStart, toggleEnd, toggleNode.content);
+          tr.setSelection(TextSelection.create(tr.doc, toggleStart + 1));
+          view.dispatch(tr);
+          return true;
+        }
+
+        // Case B: at the start of an empty top-level block whose previous sibling
+        // is a toggle. Default Backspace would merge into the toggle's last child
+        // — which is HIDDEN when the toggle is collapsed. Instead, delete the
+        // empty block and place the cursor at the toggle's visible end: the end of
+        // the summary when collapsed, or the end of the last body block when open.
+        if ($from.depth !== 1 || $from.parentOffset !== 0) return false;
+        if ($from.parent.content.size !== 0) return false;
+
+        const topIndex = $from.index(0);
+        if (topIndex === 0) return false;
+        const prevToggle = state.doc.child(topIndex - 1);
+        if (prevToggle.type !== this.type) return false;
+
+        const emptyStart = $from.before(1);
+        const toggleStart = emptyStart - prevToggle.nodeSize;
+        const isOpen = prevToggle.attrs.open as boolean;
+        const summary = prevToggle.firstChild;
+        const targetPos = isOpen
+          ? emptyStart - 2 // end of the toggle's last child's content
+          : toggleStart + 2 + (summary ? summary.content.size : 0); // summary end
+
         const { tr } = state;
-        tr.replaceWith(toggleStart, toggleEnd, toggleNode.content);
-        tr.setSelection(TextSelection.create(tr.doc, toggleStart + 1));
-
+        tr.delete(emptyStart, emptyStart + $from.parent.nodeSize);
+        tr.setSelection(TextSelection.near(tr.doc.resolve(targetPos), -1));
         view.dispatch(tr);
         return true;
       },
