@@ -174,21 +174,30 @@
   opacity: 0.5;
 }
 
-/* List items: align arrow with first line, clear of bullet/number markers */
+/* Vertically center the arrow on the first line's MARKER. The arrow sits next
+   to the marker, whose optical centre is slightly below the line-box centre; a
+   box of exactly line-height (1.75em) reads as too high, 2.1em as too low, so
+   1.95em lands the flex-centred triangle on the number/bullet. Tuned in WebKit
+   against the real editor font (Inter + Apple SD Gothic Neo). */
 .tiptap li > .fold-arrow {
-  top: 0.3em;
+  top: 0;
+  height: 1.95em;
   transform: none;
 }
 
-/* Unordered lists: position left of bullet (disc sits ~1.2em from li edge) */
+/* Gutter offset: a small static negative `left` sits the arrow just left of the
+   marker — ul wider than the narrow bullet would suggest, since the triangle
+   box is ~1em wide. No `--editor-zoom` compensation is needed now that markers
+   are custom `::before` glyphs anchored with `right: 100%` (scale-perfect under
+   CSS zoom): verified in WebKit that the gap stays close and never overlaps the
+   bullet/number across zoom 1.0–2.5 (see [[wkwebview-css-zoom-coords]]). */
 .tiptap ul > li > .fold-arrow {
-  top: 0.4em;
-  left: -2.6em;
+  left: -1.8em;
 }
 
-/* Ordered lists: wider clearance for 2-digit numbers */
+/* Ordered lists: wider to clear 2-digit numbers ("10."). */
 .tiptap ol > li > .fold-arrow {
-  left: -3.2em;
+  left: -2.4em;
 }
 
 .fold-arrow:hover {

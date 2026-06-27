@@ -90,6 +90,23 @@
   contain: layout;
 }
 
+/* Lists: the list-item fold arrow is position:absolute; left:-2.6em/-3.2em and
+ * the ordered-list ::marker for 2+ digit numbers (e.g. "10.") both overflow the
+ * list's left edge. Paint containment would clip them — so a top-level item's
+ * fold arrow never appeared and two-digit numbers were cut off (".0." for
+ * "10."). Nested lists aren't direct .tiptap children, so this only bit the top
+ * level. Layout only, matching headings. */
+.tiptap > ul,
+.tiptap > ol {
+  contain: layout;
+}
+
+/* Toggle: the fold arrow is a ::before at left:-1.2em, overflowing the block's
+ * left edge — paint containment would clip it (same as headings/lists). */
+.tiptap > [data-type="toggle"] {
+  contain: layout;
+}
+
 /* §5.8 Frontmatter */
 .tiptap .frontmatter {
   padding: 0.5em 1em;
