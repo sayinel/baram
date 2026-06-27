@@ -486,7 +486,9 @@ body.block-dragging * {
 }
 
 .block-handle-menu-item {
-  display: block;
+  display: flex;
+  gap: 8px;
+  align-items: center;
   width: 100%;
   padding: 5px 12px;
   font-size: 0.8rem;
@@ -499,6 +501,18 @@ body.block-dragging * {
 
 .block-handle-menu-item:hover {
   background-color: var(--color-bg-subtle);
+}
+
+/* Leading icons keep their size inside the flex row. */
+.block-handle-menu-item svg {
+  flex-shrink: 0;
+}
+
+/* Left group (icon + label) of a submenu trigger; the ▸ arrow stays right. */
+.block-handle-item-left {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .block-handle-separator {
