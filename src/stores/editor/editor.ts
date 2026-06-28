@@ -3,16 +3,7 @@ import { create } from "zustand";
 
 import { useContextStore } from "../context/context";
 
-export interface ConflictState {
-  action: "pending" | "resolved";
-  externalMtime: number;
-  filePath: string;
-  localLastSaveMtime: number;
-}
-
 export interface EditorTab {
-  /** Conflict state when external file change detected while tab is dirty */
-  conflictState?: ConflictState;
   /** §83 The context this tab belongs to */
   contextId: string;
   filePath: string;
@@ -62,14 +53,7 @@ interface EditorState {
   reorderTab: (fromIndex: number, toIndex: number) => void;
   /** §72 Signal editor to re-read content from fileStore */
   requestContentRefresh: () => void;
-  /** Resolve a conflict: 'reload' clears conflict state for re-fetch; 'keep' marks resolved */
-  resolveConflict: (tabId: string, action: "keep" | "reload") => void;
   setActiveTab: (tabId: string) => void;
-  /** Set or clear the conflict state for a tab */
-  setConflictState: (
-    tabId: string,
-    conflictState: ConflictState | undefined,
-  ) => void;
   /** §44 Update current editor selection text */
   setCurrentSelection: (text: string) => void;
   tabs: EditorTab[];
@@ -343,29 +327,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   setCurrentSelection: (text) => set({ currentSelection: text }),
-
-  setConflictState: (tabId, conflictState) =>
-    set((state) => ({
-      tabs: state.tabs.map((t) =>
-        t.id === tabId ? { ...t, conflictState } : t,
-      ),
-    })),
-
-  resolveConflict: (tabId, action) =>
-    set((state) => ({
-      tabs: state.tabs.map((t) => {
-        if (t.id !== tabId || !t.conflictState) return t;
-        if (action === "reload") {
-          // Clear conflict state — the caller is responsible for reloading content
-          return { ...t, conflictState: undefined };
-        }
-        // "keep": mark as resolved so the UI dismisses but local edits are preserved
-        return {
-          ...t,
-          conflictState: { ...t.conflictState, action: "resolved" },
-        };
-      }),
-    })),
 
   requestContentRefresh: () =>
     set((state) => ({ contentRefreshKey: state.contentRefreshKey + 1 })),
