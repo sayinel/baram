@@ -16,6 +16,7 @@ import { useSettingsStore } from "../stores/settings/store";
 import { useUIStore } from "../stores/ui/ui";
 import { isMarkdownFile } from "../utils/file-type";
 import { logger } from "../utils/logger";
+import { basename } from "../utils/path-utils";
 
 interface UseFileOperationsParams {
   editor: Editor | null;
@@ -53,6 +54,11 @@ export async function triggerAutoReload(
 
   // Signal the editor to re-read from openFiles
   useEditorStore.getState().requestContentRefresh();
+
+  // Surface a transient toast so the reload isn't silent (esp. with auto-save on)
+  useUIStore
+    .getState()
+    .showToast(`Reloaded external changes: ${basename(filePath)}`);
 
   logger.info("[triggerAutoReload] auto-reloaded", filePath);
 }
