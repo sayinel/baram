@@ -102,7 +102,10 @@ export function useAutoSave(editor: Editor | null) {
   }, [editor]);
 
   useEffect(() => {
-    if (!editor || !autoSave) return;
+    // NOTE: do NOT gate on `autoSave` here. Dirty tracking must run on every edit
+    // regardless of the auto-save setting — otherwise the dirty indicator and the
+    // external-change conflict detection silently break when auto-save is off.
+    if (!editor) return;
 
     const handleUpdate = () => {
       // Read current tab at event time — avoids stale closure
@@ -117,6 +120,9 @@ export function useAutoSave(editor: Editor | null) {
       markDirty(tab.id, true);
       // Record which tab triggered this save so save() can detect a mid-debounce tab switch
       pendingTabRef.current = { id: tab.id, filePath: tab.filePath };
+
+      // Only schedule a debounced auto-save when the feature is enabled.
+      if (!autoSave) return;
 
       if (timerRef.current) {
         clearTimeout(timerRef.current);
