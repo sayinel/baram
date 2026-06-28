@@ -1110,3 +1110,110 @@
   color: white;
   background-color: rgb(249 115 22 / 70%);
 }
+
+/* ============================================
+   §Phase5: External File Conflict Modal
+   ============================================ */
+
+.conflict-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgb(0 0 0 / 50%);
+}
+
+.conflict-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  width: 90%;
+  max-width: 420px;
+  padding: 24px 28px;
+  text-align: center;
+  background-color: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  box-shadow: var(--shadow-xl);
+}
+
+.conflict-modal-icon {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.conflict-modal-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text-default);
+}
+
+.conflict-modal-message {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+.conflict-modal-message strong {
+  font-weight: 600;
+  color: var(--color-text-default);
+}
+
+.conflict-modal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.conflict-modal-btn {
+  width: 100%;
+  padding: 8px 16px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  transition: opacity 0.15s;
+}
+
+.conflict-modal-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.conflict-modal-btn-reload {
+  color: #fff;
+  background-color: var(--color-accent-default);
+  border-color: var(--color-accent-default);
+}
+
+.conflict-modal-btn-reload:not(:disabled):hover {
+  opacity: 0.9;
+}
+
+.conflict-modal-btn-keep {
+  color: var(--color-text-default);
+  background-color: var(--color-bg-elevated);
+  border-color: var(--color-border-default);
+}
+
+.conflict-modal-btn-keep:not(:disabled):hover {
+  background-color: var(--color-bg-hover);
+}
+
+.conflict-modal-btn-diff {
+  color: var(--color-text-muted);
+  background-color: transparent;
+  border-color: var(--color-border-default);
+}
+
+.conflict-modal-btn-diff:not(:disabled):hover {
+  background-color: var(--color-bg-hover);
+}

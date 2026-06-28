@@ -9,12 +9,35 @@ import { updateFileIndex, writeFile } from "../ipc/invoke";
 import { prosemirrorToMarkdown } from "../pipeline";
 import { useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
+import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
 import {
   shouldSkipDirty,
   updateOriginalDoc,
 } from "../utils/editor/programmatic-update";
 import { isMarkdownFile } from "../utils/file-type";
+import { logger } from "../utils/logger";
+
+/**
+ * Phase 4: Pure guard — returns true when auto-save should be deferred because an
+ * external file:changed event has arrived that has not yet been resolved.
+ *
+ * Conditions for deferral (all must hold):
+ *   1. An mtime entry exists for the file (file watcher has initialised tracking)
+ *   2. canReloadMtime > 0  (at least one external change event received)
+ *   3. canReloadMtime > lastSaveMtime  (external change is newer than last save)
+ *
+ * Exported for unit testing.
+ */
+export function shouldDeferSave(
+  mtimeEntry: undefined | { canReloadMtime: number; lastSaveMtime: number },
+): boolean {
+  if (!mtimeEntry) return false;
+  return (
+    mtimeEntry.canReloadMtime > 0 &&
+    mtimeEntry.canReloadMtime > mtimeEntry.lastSaveMtime
+  );
+}
 
 /**
  * Auto-save hook: 마지막 편집 후 설정된 딜레이(기본 2초) 뒤 자동 저장
@@ -47,12 +70,29 @@ export function useAutoSave(editor: Editor | null) {
     // Non-MD files don't use ProseMirror — skip (handled by App.tsx code auto-save)
     if (!isMarkdownFile(pending.filePath)) return;
 
+    // Phase 4: mtime race-condition guard — if an external file:changed event has
+    // arrived but not yet been resolved, skip this save so we don't overwrite the
+    // external change without user consent.  The conflict handler (use-file-watcher)
+    // will either auto-reload (clean) or show the conflict modal (dirty) and will
+    // trigger a re-save once the user resolves the conflict.
+    const mtimeEntry = useFileStore.getState().getFileMtime(pending.filePath);
+    if (shouldDeferSave(mtimeEntry)) {
+      logger.warn(
+        "[auto-save] deferred: external change pending for",
+        pending.filePath,
+        `(canReloadMtime=${mtimeEntry!.canReloadMtime}, lastSaveMtime=${mtimeEntry!.lastSaveMtime})`,
+      );
+      return;
+    }
+
     try {
       const markdown = prosemirrorToMarkdown(editor.state.doc);
       await writeFile(pending.filePath, markdown);
       markDirty(pending.id, false);
       // After save, current doc becomes the new baseline for dirty detection
       updateOriginalDoc(pending.id, editor.state.doc);
+      // Phase 4: record save time so future mtime comparisons have a baseline
+      useFileStore.getState().updateLastSaveMtime(pending.filePath, Date.now());
       updateFileIndex(pending.filePath)
         .then(() => useLinkStore.getState().invalidate())
         .catch(() => {});

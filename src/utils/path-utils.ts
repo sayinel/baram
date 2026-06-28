@@ -12,6 +12,13 @@ const IMAGE_EXTENSIONS = new Set([
   "webp",
 ]);
 
+/** Return the final path component (filename) for a given path.
+ *  e.g. "/home/user/notes/readme.md" → "readme.md" */
+export function basename(path: string): string {
+  const idx = path.lastIndexOf("/");
+  return idx >= 0 ? path.substring(idx + 1) : path;
+}
+
 /** §61 Extract namespace (directory path) from a vault-relative file path.
  *  e.g. "notes/ai/prompt.md" → "notes/ai", "readme.md" → undefined */
 export function extractNamespace(relativePath: string): string | undefined {

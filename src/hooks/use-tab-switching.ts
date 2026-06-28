@@ -45,6 +45,7 @@ import {
 } from "../utils/editor/progressive-load";
 import { isMarkdownFile } from "../utils/file-type";
 import { logger } from "../utils/logger";
+import { showConflictModal, triggerAutoReload } from "./use-file-operations";
 import {
   type KeepalivePool,
   LARGE_DOC_BLOCK_THRESHOLD,
@@ -260,10 +261,31 @@ export function useTabSwitching({
 
       // [MINOR-a] Consume pending scroll/search so backlink navigation to a
       // pooled tab scrolls correctly — not just pendingSearchHighlight.
-      // TODO: openFiles content may be stale for keep-alive tabs (auto-save
-      // writes to disk but the in-memory openFiles map isn't always updated in
-      // sync with the live editor). This slightly skews pendingLine scroll
-      // position when the user edited after the last openFiles sync.
+      // §Phase5: Check for keep-alive tab staleness — if the file was modified
+      // externally since the last save, handle it before resuming the cached editor.
+      if (incomingTab.filePath) {
+        const mtimeEntry = useFileStore
+          .getState()
+          .getFileMtime(incomingTab.filePath);
+        if (
+          mtimeEntry &&
+          mtimeEntry.canReloadMtime > 0 &&
+          mtimeEntry.canReloadMtime > mtimeEntry.lastSaveMtime
+        ) {
+          // activeTabId === incomingTab.id here (see incomingTab above), so the
+          // incoming tab's dirty state can be read directly.
+          const isDirty = incomingTab.isDirty ?? false;
+          if (!isDirty) {
+            triggerAutoReload(
+              incomingTab.filePath,
+              mtimeEntry.canReloadMtime,
+            ).catch(() => {});
+          } else {
+            showConflictModal(incomingTab.filePath, mtimeEntry.canReloadMtime);
+            return;
+          }
+        }
+      }
       const kaContent = incomingTab.filePath
         ? openFiles.get(incomingTab.filePath)
         : undefined;
