@@ -6,6 +6,8 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 
 import type { FileEntry } from "../stores/file/file";
 
+import { useShallow } from "zustand/shallow";
+
 import { watchDir } from "../ipc/invoke";
 import { useEditorStore } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
@@ -50,6 +52,13 @@ export function useFileWatcher() {
   const rootPath = useFileStore((s) => s.rootPath);
   const debounceRef = useRef<null | ReturnType<typeof setTimeout>>(null);
   const pendingRef = useRef<Map<string, PendingEntry>>(new Map());
+  const externalDirsRef = useRef<Set<string>>(new Set());
+  // Paths of currently open file tabs — drives out-of-vault watching below.
+  const openFilePaths = useEditorStore(
+    useShallow((s) =>
+      s.tabs.map((t) => t.filePath).filter((p) => p.length > 0),
+    ),
+  );
 
   useEffect(() => {
     if (!rootPath) return;
@@ -198,6 +207,26 @@ export function useFileWatcher() {
       }
     };
   }, [rootPath]);
+
+  // §3.6 Out-of-vault files: when the vault is open (so the watcher listeners
+  // above are active), also watch the parent directory of any open file that
+  // lives outside the vault root, so external edits to it are detected too.
+  // Rust WatcherState dedups by path; we also track dirs locally to avoid
+  // re-issuing watch_dir on every tab change.
+  useEffect(() => {
+    if (!rootPath) return;
+    for (const filePath of openFilePaths) {
+      if (filePath === rootPath || filePath.startsWith(rootPath + "/"))
+        continue;
+      const dir = parentDir(filePath);
+      if (!dir || dir === filePath || externalDirsRef.current.has(dir))
+        continue;
+      externalDirsRef.current.add(dir);
+      watchDir(dir).catch((err) =>
+        logger.warn("useFileWatcher: external watchDir failed", err),
+      );
+    }
+  }, [openFilePaths, rootPath]);
 }
 
 function fileName(path: string): string {
