@@ -17,6 +17,13 @@ export interface FileEntry {
   path: string;
 }
 
+export interface FileMtimeEntry {
+  /** mtime reported by the most recent file:changed event (ms since epoch, 0 = unknown) */
+  canReloadMtime: number;
+  /** mtime at the time of the last save (ms since epoch, 0 = unknown) */
+  lastSaveMtime: number;
+}
+
 interface FileState {
   /** Add a file/folder entry under parentPath (sorted: dirs first, then name) */
   addFileEntry: (parentPath: string, entry: FileEntry) => void;
@@ -26,7 +33,13 @@ interface FileState {
 
   // FileTree expanded directories (persisted across sidebar tab switches)
   expandedDirs: Set<string>;
+  /** path → mtime tracking for external change detection */
+  fileMtimes: Map<string, FileMtimeEntry>;
   fileTree: FileEntry[];
+  /** Return the mtime entry for a path, or undefined if not tracked */
+  getFileMtime: (path: string) => FileMtimeEntry | undefined;
+  /** Initialize mtime tracking when a file is opened (sets both fields to 0) */
+  initFileMtime: (path: string) => void;
   /** Move a file/folder entry to a new parent directory */
   moveFileEntry: (oldPath: string, newParentPath: string) => void;
   openFiles: Map<string, string>; // path → content
@@ -45,6 +58,10 @@ interface FileState {
   // Tag filter for FileTree
   tagFilter: null | string;
   toggleExpandedDir: (path: string) => void;
+  /** Record the mtime at the time of a successful save */
+  updateCanReloadMtime: (path: string, mtime: number) => void;
+  /** Record the mtime reported by the most recent file:changed watcher event */
+  updateLastSaveMtime: (path: string, mtime: number) => void;
 }
 
 /**
@@ -236,10 +253,11 @@ async function _loadContextFileTree(path: string): Promise<void> {
   }
 }
 
-export const useFileStore = create<FileState>((set) => ({
+export const useFileStore = create<FileState>((set, get) => ({
   rootPath: null,
   fileTree: [],
   openFiles: new Map(),
+  fileMtimes: new Map(),
 
   setRootPath: (path) => set({ rootPath: path }),
 
@@ -256,7 +274,40 @@ export const useFileStore = create<FileState>((set) => ({
     set((state) => {
       const openFiles = new Map(state.openFiles);
       openFiles.delete(path);
-      return { openFiles };
+      const fileMtimes = new Map(state.fileMtimes);
+      fileMtimes.delete(path);
+      return { openFiles, fileMtimes };
+    }),
+
+  getFileMtime: (path) => get().fileMtimes.get(path),
+
+  initFileMtime: (path) =>
+    set((state) => {
+      const fileMtimes = new Map(state.fileMtimes);
+      fileMtimes.set(path, { lastSaveMtime: 0, canReloadMtime: 0 });
+      return { fileMtimes };
+    }),
+
+  updateLastSaveMtime: (path, mtime) =>
+    set((state) => {
+      const fileMtimes = new Map(state.fileMtimes);
+      const existing = fileMtimes.get(path) ?? {
+        lastSaveMtime: 0,
+        canReloadMtime: 0,
+      };
+      fileMtimes.set(path, { ...existing, lastSaveMtime: mtime });
+      return { fileMtimes };
+    }),
+
+  updateCanReloadMtime: (path, mtime) =>
+    set((state) => {
+      const fileMtimes = new Map(state.fileMtimes);
+      const existing = fileMtimes.get(path) ?? {
+        lastSaveMtime: 0,
+        canReloadMtime: 0,
+      };
+      fileMtimes.set(path, { ...existing, canReloadMtime: mtime });
+      return { fileMtimes };
     }),
 
   renameFileEntry: (oldPath, newPath, newName) =>

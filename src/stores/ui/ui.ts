@@ -1,6 +1,11 @@
 // §3.5 UI 레이아웃 스토어
 import { create } from "zustand";
 
+export interface ConflictModalState {
+  externalMtime: number;
+  filePath: string;
+}
+
 export type RightPanelMode =
   | "chat"
   | "help"
@@ -34,14 +39,20 @@ type ExportFormat =
 
 interface UIState {
   aboutOpen: boolean;
+  /** §Phase5: Close the conflict modal (without resolution — used internally) */
+  closeConflictModal: () => void;
   closeExportDialog: () => void;
   commandPaletteOpen: boolean;
+  /** §Phase5: External file change conflict modal state (null = closed) */
+  conflictModal: ConflictModalState | null;
   /** When true, cursor moves to end of document after reload (e.g. Quick Capture append) */
   contentReloadCursorEnd: boolean;
   /** Monotonic counter — incremented after Global Search Replace / Quick Capture to signal editor reload */
   contentReloadVersion: number;
   exportDialogOpen: boolean;
   exportFormat: ExportFormat;
+  /** §Phase5: Open the conflict modal for a file that changed externally while dirty */
+  openConflictModal: (filePath: string, externalMtime: number) => void;
   openExportDialog: (format?: ExportFormat) => void;
   openQuickCapture: (type?: "idea" | "link" | "note" | "quote") => void;
   pendingApplyContent: null | string;
@@ -53,9 +64,9 @@ interface UIState {
   rightPanelOpen: boolean;
   rightPanelWidth: number;
   setPendingApplyContent: (content: null | string) => void;
+
   setPendingSearchHighlight: (term: null | string) => void;
   setRightPanelMode: (mode: RightPanelMode) => void;
-
   setRightPanelWidth: (width: number) => void;
   setSidebarPanel: (panel: SidebarPanel) => void;
   setSidebarWidth: (width: number) => void;
@@ -90,6 +101,7 @@ export const useUIStore = create<UIState>((set) => ({
   quickSwitcherOpen: false,
   settingsOpen: false,
   aboutOpen: false,
+  conflictModal: null,
   exportDialogOpen: false,
   exportFormat: "html" as ExportFormat,
   skillGeneratorDialogOpen: false,
@@ -101,6 +113,11 @@ export const useUIStore = create<UIState>((set) => ({
   pendingSearchHighlight: null,
   contentReloadVersion: 0,
   contentReloadCursorEnd: false,
+
+  openConflictModal: (filePath, externalMtime) =>
+    set({ conflictModal: { filePath, externalMtime } }),
+
+  closeConflictModal: () => set({ conflictModal: null }),
 
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
 

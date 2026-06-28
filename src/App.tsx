@@ -39,7 +39,10 @@ import { useAppStartup } from "./hooks/use-app-startup";
 import { useAutoSave } from "./hooks/use-auto-save";
 import { useEditorEffects } from "./hooks/use-editor-effects";
 import { useExternalDrop } from "./hooks/use-external-drop";
-import { useFileOperations } from "./hooks/use-file-operations";
+import {
+  triggerAutoReload,
+  useFileOperations,
+} from "./hooks/use-file-operations";
 import { useFileWatcher } from "./hooks/use-file-watcher";
 import { useGhostText } from "./hooks/use-ghost-text";
 import { useInlineAI } from "./hooks/use-inline-ai";
@@ -153,6 +156,11 @@ const SkillPreviewPanel = lazy(() =>
 const QuickCaptureDialog = lazy(() =>
   import("./components/journal/QuickCaptureDialog").then((m) => ({
     default: m.QuickCaptureDialog,
+  })),
+);
+const ConflictModalWrapper = lazy(() =>
+  import("./components/editor/ConflictModal").then((m) => ({
+    default: m.ConflictModalWrapper,
   })),
 );
 
@@ -775,6 +783,24 @@ function App() {
         <SkillTestDialogWrapper />
         <SmartTemplateDialogWrapper editor={activeEditor} />
         <QuickCaptureDialog />
+        <ConflictModalWrapper
+          onKeepLocal={(filePath) => {
+            // Keep local edits: clear the mtime guard so the next save (and the
+            // immediate save below) overwrites the external change on disk.
+            const entry = useFileStore.getState().getFileMtime(filePath);
+            useFileStore
+              .getState()
+              .updateLastSaveMtime(filePath, entry?.canReloadMtime ?? 0);
+            // If the conflicted file is the active tab, persist local edits now so
+            // they aren't lost if the user doesn't edit again before quitting.
+            const { activeTabId, tabs } = useEditorStore.getState();
+            const activeTab = tabs.find((t) => t.id === activeTabId);
+            if (activeTab?.filePath === filePath) void handleSave();
+          }}
+          onReload={(filePath, externalMtime) => {
+            void triggerAutoReload(filePath, externalMtime).catch(() => {});
+          }}
+        />
       </Suspense>
       {tabSwitcherOpen && (
         <TabSwitcher
