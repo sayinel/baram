@@ -163,6 +163,11 @@ const ConflictModalWrapper = lazy(() =>
     default: m.ConflictModalWrapper,
   })),
 );
+const ToastHost = lazy(() =>
+  import("./components/editor/Toast").then((m) => ({
+    default: m.ToastHost,
+  })),
+);
 
 // §89 Lazy-loaded file editor for standalone file mode
 const FileEditorLayout = lazy(() =>
@@ -801,6 +806,7 @@ function App() {
             void triggerAutoReload(filePath, externalMtime).catch(() => {});
           }}
         />
+        <ToastHost />
       </Suspense>
       {tabSwitcherOpen && (
         <TabSwitcher
