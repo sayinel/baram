@@ -13,6 +13,16 @@ const originalDocs = new Map<string, Node>();
 const pendingTabs = new Set<string>();
 const loadingTabs = new Set<string>();
 
+/**
+ * Transaction meta key set by the table colwidth auto-init plugin
+ * (createColResizePlugin). Transactions carrying this meta apply auto-measured
+ * colwidths with `userResized: false` — load-time normalization that is never
+ * serialized back to markdown — so they must never mark a tab dirty. The
+ * auto-save update handler routes these to noteColwidthInit() instead of the
+ * dirty path.
+ */
+export const COLWIDTH_AUTO_INIT_META = "colwidthAutoInit";
+
 /** Clean up when tab is closed */
 export function clearOriginalDoc(tabId: string): void {
   originalDocs.delete(tabId);
@@ -32,6 +42,26 @@ export function isTabLoading(tabId: string): boolean {
 /** Mark a tab as having just loaded content — the next update will capture baseline */
 export function markContentLoaded(tabId: string): void {
   pendingTabs.add(tabId);
+}
+
+/**
+ * Called when an auto-colwidth-init transaction fires (see createColResizePlugin
+ * and COLWIDTH_AUTO_INIT_META). Auto-measured colwidth is load-time
+ * normalization, not a user edit, so it must never mark the tab dirty.
+ *
+ * We fold it into the baseline: consume any pending capture and re-sync the
+ * baseline to the current (colwidth-applied) doc, so later REAL edits still
+ * compare correctly. This is what makes per-table colwidth dispatches safe — a
+ * multi-table file emits one colwidth tx PER table, and folding each one into
+ * the baseline prevents the 2nd+ table from being mistaken for a user edit.
+ *
+ * Ignored while the tab is still loading: the doc is partial then, and the full
+ * baseline is captured at finishLoad time via markContentLoaded().
+ */
+export function noteColwidthInit(tabId: string, doc: Node): void {
+  if (loadingTabs.has(tabId)) return;
+  pendingTabs.delete(tabId);
+  originalDocs.set(tabId, doc);
 }
 
 /** Mark a tab as currently loading (progressive render in flight). While set,
