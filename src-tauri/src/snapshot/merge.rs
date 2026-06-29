@@ -328,4 +328,16 @@ mod tests {
         assert!(!k.contains(&"conflict"));
         assert_eq!(apply_auto(&r), vec!["A", "b", "c", "d", "E"]);
     }
+
+    #[test]
+    fn two_separate_conflicts() {
+        // both sides change line b and line d differently — two distinct conflicts.
+        let r = merge_texts("a\nb\nc\nd\ne", "a\nX\nc\nY\ne", "a\nZ\nc\nW\ne");
+        let conflicts = r
+            .segments
+            .iter()
+            .filter(|s| matches!(s, MergeSegment::Conflict { .. }))
+            .count();
+        assert_eq!(conflicts, 2, "expected 2 conflicts, got {:?}", r.segments);
+    }
 }

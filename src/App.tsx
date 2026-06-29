@@ -82,7 +82,6 @@ import { useFileStore } from "./stores/file/file";
 import { useSettingsStore } from "./stores/settings/store";
 import { useUIStore } from "./stores/ui/ui";
 import { initPerfTrace, instrumentEditor } from "./utils/editor/perf-trace";
-import { getOriginalDoc } from "./utils/editor/programmatic-update";
 import { getLanguageForFile, isMarkdownFile } from "./utils/file-type";
 import { createLLMStream } from "./utils/llm-stream";
 import { logger } from "./utils/logger";
@@ -815,14 +814,10 @@ function App() {
             const activeTab = tabs.find((t) => t.id === activeTabId);
             if (activeTab?.filePath === filePath) void handleSave();
           }}
-          onMerge={async (filePath) => {
+          onMerge={async (filePath, base) => {
             if (!activeEditor || activeEditor.isDestroyed) return;
             const local = prosemirrorToMarkdown(activeEditor.state.doc);
             const external = await readFile(filePath);
-            const baseDoc = activeTabId
-              ? getOriginalDoc(activeTabId)
-              : undefined;
-            const base = baseDoc ? prosemirrorToMarkdown(baseDoc) : local;
             const result = await mergeTexts(base, local, external);
             setMergeState({ filePath, segments: result.segments });
           }}

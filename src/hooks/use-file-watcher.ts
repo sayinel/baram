@@ -161,7 +161,10 @@ export function useFileWatcher() {
                 logger.warn("useFileWatcher: triggerAutoReload failed", err),
               );
             } else {
-              showConflictModal(filePath, externalMtime);
+              // Capture the pre-external content (last synced) as the 3-way base.
+              const base =
+                useFileStore.getState().openFiles.get(filePath) ?? "";
+              showConflictModal(filePath, externalMtime, base);
             }
           }),
         ]);

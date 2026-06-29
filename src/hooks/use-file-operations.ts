@@ -31,8 +31,9 @@ interface UseFileOperationsParams {
 export function showConflictModal(
   filePath: string,
   externalMtime: number,
+  base: string,
 ): void {
-  useUIStore.getState().openConflictModal(filePath, externalMtime);
+  useUIStore.getState().openConflictModal(filePath, externalMtime, base);
 }
 
 /**
