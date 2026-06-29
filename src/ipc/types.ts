@@ -213,6 +213,14 @@ export interface LLMTokenPayload {
   token: string;
 }
 
+export interface MergeResult {
+  segments: MergeSegment[];
+}
+
+export type MergeSegment =
+  | { external: string[]; kind: "conflict"; local: string[] }
+  | { kind: "stable"; lines: string[] };
+
 // §6.3 LLM types
 export interface ModelInfo {
   id: string;

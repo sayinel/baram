@@ -14,7 +14,7 @@ import {
 import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
-import type { DiffResult } from "../../ipc/types";
+import type { DiffResult, MergeSegment } from "../../ipc/types";
 
 import { EditorContent, useEditor } from "@tiptap/react";
 
@@ -22,7 +22,7 @@ import { createBaramExtensions } from "../../extensions";
 import { useAutoSave } from "../../hooks/use-auto-save";
 import { useSettingsEffects } from "../../hooks/use-settings-effects";
 import { readFile, watchDir, writeFile } from "../../ipc/invoke";
-import { diffTexts } from "../../ipc/snapshot";
+import { diffTexts, mergeTexts } from "../../ipc/snapshot";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 import { useContextStore } from "../../stores/context/context";
@@ -30,6 +30,7 @@ import { useEditorStore } from "../../stores/editor/editor";
 import { logger } from "../../utils/logger";
 import { dirname } from "../../utils/path-utils";
 import { DiffView } from "../editor/DiffView";
+import { MergeView } from "../editor/MergeView";
 import "../../styles/editor.css";
 import "../../styles/file-editor.css";
 
@@ -50,6 +51,7 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
   const isDirtyRef = useRef(false);
   const [externalChange, setExternalChange] = useState<null | string>(null);
   const [diff, setDiff] = useState<DiffResult | null>(null);
+  const [mergeState, setMergeState] = useState<MergeSegment[] | null>(null);
   const contentRef = useRef<string>("");
   const fileName = filePath.split("/").pop() ?? "Untitled";
 
@@ -222,6 +224,38 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
     }
   }, [editor, externalChange, diff]);
 
+  const handleMerge = useCallback(async () => {
+    if (!editor || externalChange === null) return;
+    try {
+      const local = prosemirrorToMarkdown(editor.state.doc);
+      const result = await mergeTexts(
+        contentRef.current,
+        local,
+        externalChange,
+      );
+      setMergeState(result.segments);
+    } catch (err) {
+      logger.warn("[FileEditor] merge failed", err);
+    }
+  }, [editor, externalChange]);
+
+  const handleApplyMerge = useCallback(
+    (merged: string) => {
+      if (!editor) return;
+      void writeFile(filePath, merged).then(() => {
+        contentRef.current = merged;
+        editor.commands.setContent(
+          markdownToProsemirror(merged, editor.schema).toJSON(),
+        );
+        setIsDirty(false);
+        setExternalChange(null);
+        setDiff(null);
+        setMergeState(null);
+      });
+    },
+    [editor, filePath],
+  );
+
   // Keyboard shortcuts: Cmd+S (save), Cmd+/ (source mode toggle)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -303,6 +337,9 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
           >
             Keep Local
           </button>
+          <button className="file-editor-conflict__btn" onClick={handleMerge}>
+            Merge
+          </button>
           <button
             className="file-editor-conflict__btn"
             onClick={handleToggleDiff}
@@ -315,6 +352,14 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
         <div className="file-editor-conflict-diff">
           <DiffView diff={diff} filePath={filePath} />
         </div>
+      )}
+      {mergeState && (
+        <MergeView
+          filePath={filePath}
+          onApply={handleApplyMerge}
+          onCancel={() => setMergeState(null)}
+          segments={mergeState}
+        />
       )}
       <div className="file-editor-content">
         {loading ? (
