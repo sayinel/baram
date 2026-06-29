@@ -1,9 +1,15 @@
-// §3.6 3-way line merge (diff3). Each region of the base text is classified as
-// unchanged, a one-sided edit (auto-applied, rendered as a +/- diff in the UI),
-// a coincident identical edit, or a true conflict that needs resolution.
+// §3.6 3-way line merge (diff3). Each side's edits are extracted as hunks in
+// base coordinates; non-overlapping hunks are auto-applied (rendered as +/-),
+// and only hunks that overlap the same base region become conflicts.
 
 use super::{MergeResult, MergeSegment};
-use similar::{ChangeTag, TextDiff};
+use similar::{ChangeTag, DiffTag, TextDiff};
+
+struct Hunk {
+    base_start: usize,
+    base_end: usize,
+    lines: Vec<String>,
+}
 
 /// Compute a structured 3-way merge of `base` → (`local`, `external`).
 pub fn merge_texts(base: &str, local: &str, external: &str) -> MergeResult {
@@ -11,83 +17,123 @@ pub fn merge_texts(base: &str, local: &str, external: &str) -> MergeResult {
     let local_lines: Vec<&str> = local.lines().collect();
     let external_lines: Vec<&str> = external.lines().collect();
 
-    // For each base line, the matching index in local/external if it is
-    // unchanged there (a "sync" point), else None.
     let local_match = match_map(&base_lines, &local_lines);
     let external_match = match_map(&base_lines, &external_lines);
+    let lh = changed_hunks(&base_lines, &local_lines);
+    let eh = changed_hunks(&base_lines, &external_lines);
 
     let mut segments: Vec<MergeSegment> = Vec::new();
-    let mut unchanged: Vec<String> = Vec::new();
     let n = base_lines.len();
-    let mut bi = 0;
-    let mut li = 0;
-    let mut ei = 0;
+    let mut bi = 0usize;
+    let mut li = 0usize;
+    let mut ei = 0usize;
 
-    while bi < n {
-        if let (Some(lt), Some(et)) = (local_match[bi], external_match[bi]) {
-            // base[bi] is unchanged in both sides — a sync line. First emit any
-            // lines inserted before it on either side as a change region.
-            if lt > li || et > ei {
-                flush_unchanged(&mut segments, &mut unchanged);
-                classify(
-                    &[],
-                    &to_vec(&local_lines[li..lt]),
-                    &to_vec(&external_lines[ei..et]),
-                    &mut segments,
-                );
-            }
-            unchanged.push(base_lines[bi].to_string());
-            li = lt + 1;
-            ei = et + 1;
-            bi += 1;
-        } else {
-            // Change region: consecutive base lines not synced in both sides.
-            flush_unchanged(&mut segments, &mut unchanged);
-            let start = bi;
-            while bi < n && !(local_match[bi].is_some() && external_match[bi].is_some()) {
-                bi += 1;
-            }
-            let next_li = if bi < n {
-                local_match[bi].unwrap()
-            } else {
-                local_lines.len()
-            };
-            let next_ei = if bi < n {
-                external_match[bi].unwrap()
-            } else {
-                external_lines.len()
-            };
-            classify(
-                &to_vec(&base_lines[start..bi]),
-                &to_vec(&local_lines[li..next_li]),
-                &to_vec(&external_lines[ei..next_ei]),
-                &mut segments,
-            );
-            li = next_li;
-            ei = next_ei;
+    loop {
+        let l_start = lh.get(li).map(|h| h.base_start);
+        let e_start = eh.get(ei).map(|h| h.base_start);
+
+        // Emit unchanged base lines up to the next change.
+        let next = match (l_start, e_start) {
+            (Some(a), Some(b)) => a.min(b),
+            (Some(a), None) => a,
+            (None, Some(b)) => b,
+            (None, None) => n,
+        };
+        if bi < next {
+            segments.push(MergeSegment::Unchanged {
+                lines: to_vec(&base_lines[bi..next]),
+            });
+            bi = next;
         }
-    }
-    flush_unchanged(&mut segments, &mut unchanged);
+        if l_start.is_none() && e_start.is_none() {
+            break;
+        }
 
-    // Trailing insertions after the last base line.
-    if li < local_lines.len() || ei < external_lines.len() {
-        classify(
-            &[],
-            &to_vec(&local_lines[li..]),
-            &to_vec(&external_lines[ei..]),
-            &mut segments,
-        );
+        // Build the overlapping union of hunks starting here: take the
+        // earliest-starting hunk, then absorb any hunk that strictly overlaps
+        // the growing region (adjacent, non-overlapping hunks stay separate).
+        let mut used_l: Vec<&Hunk> = Vec::new();
+        let mut used_e: Vec<&Hunk> = Vec::new();
+        let union_start = bi;
+        let mut union_end;
+        let take_local_first = match (l_start, e_start) {
+            (Some(a), Some(b)) => a <= b,
+            (Some(_), None) => true,
+            _ => false,
+        };
+        if take_local_first {
+            union_end = lh[li].base_end;
+            used_l.push(&lh[li]);
+            li += 1;
+        } else {
+            union_end = eh[ei].base_end;
+            used_e.push(&eh[ei]);
+            ei += 1;
+        }
+        loop {
+            let mut grew = false;
+            if li < lh.len() && lh[li].base_start < union_end {
+                union_end = union_end.max(lh[li].base_end);
+                used_l.push(&lh[li]);
+                li += 1;
+                grew = true;
+            }
+            if ei < eh.len() && eh[ei].base_start < union_end {
+                union_end = union_end.max(eh[ei].base_end);
+                used_e.push(&eh[ei]);
+                ei += 1;
+                grew = true;
+            }
+            if !grew {
+                break;
+            }
+        }
+        bi = union_end;
+
+        let base_seg = to_vec(&base_lines[union_start..union_end]);
+        if used_e.is_empty() {
+            segments.push(MergeSegment::Local {
+                base: base_seg,
+                local: reconstruct(union_start, union_end, &used_l, &local_lines, &local_match),
+            });
+        } else if used_l.is_empty() {
+            segments.push(MergeSegment::External {
+                base: base_seg,
+                external: reconstruct(
+                    union_start,
+                    union_end,
+                    &used_e,
+                    &external_lines,
+                    &external_match,
+                ),
+            });
+        } else {
+            let local_seg =
+                reconstruct(union_start, union_end, &used_l, &local_lines, &local_match);
+            let external_seg = reconstruct(
+                union_start,
+                union_end,
+                &used_e,
+                &external_lines,
+                &external_match,
+            );
+            if local_seg == external_seg {
+                // Both sides made the same edit — not a conflict.
+                segments.push(MergeSegment::Local {
+                    base: base_seg,
+                    local: local_seg,
+                });
+            } else {
+                segments.push(MergeSegment::Conflict {
+                    base: base_seg,
+                    local: local_seg,
+                    external: external_seg,
+                });
+            }
+        }
     }
 
     MergeResult { segments }
-}
-
-fn flush_unchanged(segments: &mut Vec<MergeSegment>, unchanged: &mut Vec<String>) {
-    if !unchanged.is_empty() {
-        segments.push(MergeSegment::Unchanged {
-            lines: std::mem::take(unchanged),
-        });
-    }
 }
 
 fn to_vec(slice: &[&str]) -> Vec<String> {
@@ -110,39 +156,59 @@ fn match_map(base: &[&str], target: &[&str]) -> Vec<Option<usize>> {
     map
 }
 
-/// Classify a change region into a one-sided edit, coincident edit, or conflict.
-fn classify(base: &[String], local: &[String], external: &[String], out: &mut Vec<MergeSegment>) {
-    if local == external {
-        // Both sides ended up identical. If it equals base there is no change.
-        if local == base {
-            if !base.is_empty() {
-                out.push(MergeSegment::Unchanged {
-                    lines: base.to_vec(),
-                });
-            }
-        } else {
-            out.push(MergeSegment::Local {
-                base: base.to_vec(),
-                local: local.to_vec(),
-            });
+/// Extract `target`'s edits relative to `base` as hunks in base coordinates.
+fn changed_hunks(base: &[&str], target: &[&str]) -> Vec<Hunk> {
+    let diff = TextDiff::from_slices(base, target);
+    let mut hunks: Vec<Hunk> = Vec::new();
+    for op in diff.ops() {
+        if op.tag() == DiffTag::Equal {
+            continue;
         }
-    } else if local == base {
-        out.push(MergeSegment::External {
-            base: base.to_vec(),
-            external: external.to_vec(),
-        });
-    } else if external == base {
-        out.push(MergeSegment::Local {
-            base: base.to_vec(),
-            local: local.to_vec(),
-        });
-    } else {
-        out.push(MergeSegment::Conflict {
-            base: base.to_vec(),
-            local: local.to_vec(),
-            external: external.to_vec(),
+        let old_range = op.old_range();
+        let new_range = op.new_range();
+        let lines: Vec<String> = target[new_range].iter().map(|s| s.to_string()).collect();
+        if let Some(last) = hunks.last_mut() {
+            if last.base_end == old_range.start {
+                last.base_end = old_range.end;
+                last.lines.extend(lines);
+                continue;
+            }
+        }
+        hunks.push(Hunk {
+            base_start: old_range.start,
+            base_end: old_range.end,
+            lines,
         });
     }
+    hunks
+}
+
+/// Rebuild a side's text for the union region [start, end): hunk lines for
+/// changed spans, the side's unchanged line for everything else.
+fn reconstruct(
+    start: usize,
+    end: usize,
+    hunks: &[&Hunk],
+    target_lines: &[&str],
+    target_match: &[Option<usize>],
+) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut bj = start;
+    for h in hunks {
+        for k in bj..h.base_start {
+            if let Some(ti) = target_match[k] {
+                out.push(target_lines[ti].to_string());
+            }
+        }
+        out.extend(h.lines.iter().cloned());
+        bj = h.base_end;
+    }
+    for k in bj..end {
+        if let Some(ti) = target_match[k] {
+            out.push(target_lines[ti].to_string());
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -159,6 +225,20 @@ mod tests {
                 MergeSegment::Conflict { .. } => "conflict",
             })
             .collect()
+    }
+
+    fn apply_auto(r: &MergeResult) -> Vec<String> {
+        // Apply non-conflicting result (local/external auto, base for conflict).
+        let mut out = Vec::new();
+        for s in &r.segments {
+            match s {
+                MergeSegment::Unchanged { lines } => out.extend(lines.clone()),
+                MergeSegment::Local { local, .. } => out.extend(local.clone()),
+                MergeSegment::External { external, .. } => out.extend(external.clone()),
+                MergeSegment::Conflict { base, .. } => out.extend(base.clone()),
+            }
+        }
+        out
     }
 
     #[test]
@@ -189,8 +269,8 @@ mod tests {
     fn coincident_edit_auto_applies() {
         let r = merge_texts("a\nb\nc", "a\nX\nc", "a\nX\nc");
         let k = kinds(&r);
-        assert!(k.contains(&"local"));
         assert!(!k.contains(&"conflict"));
+        assert_eq!(apply_auto(&r), vec!["a", "X", "c"]);
     }
 
     #[test]
@@ -219,6 +299,16 @@ mod tests {
         assert!(k.contains(&"local"));
         assert!(k.contains(&"external"));
         assert!(!k.contains(&"conflict"));
+        assert_eq!(apply_auto(&r), vec!["A", "b", "C"]);
+    }
+
+    #[test]
+    fn adjacent_independent_edits_no_conflict() {
+        // local edits B, external edits C — adjacent, no sync line between.
+        let r = merge_texts("A\nB\nC", "A\nB2\nC", "A\nB\nC2");
+        let k = kinds(&r);
+        assert!(!k.contains(&"conflict"), "got {:?}", k);
+        assert_eq!(apply_auto(&r), vec!["A", "B2", "C2"]);
     }
 
     #[test]
@@ -227,5 +317,15 @@ mod tests {
         let k = kinds(&r);
         assert!(k.contains(&"local"));
         assert!(!k.contains(&"conflict"));
+        assert_eq!(apply_auto(&r), vec!["a", "NEW", "b"]);
+    }
+
+    #[test]
+    fn separate_blocks_both_auto() {
+        // local edits the top block, external the bottom block.
+        let r = merge_texts("a\nb\nc\nd\ne", "A\nb\nc\nd\ne", "a\nb\nc\nd\nE");
+        let k = kinds(&r);
+        assert!(!k.contains(&"conflict"));
+        assert_eq!(apply_auto(&r), vec!["A", "b", "c", "d", "E"]);
     }
 }
