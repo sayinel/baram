@@ -2,6 +2,9 @@
 import { create } from "zustand";
 
 export interface ConflictModalState {
+  /** Snapshot of the common-ancestor content captured when the conflict was
+   *  detected (before reading the external change) — used as the 3-way base. */
+  base: string;
   externalMtime: number;
   filePath: string;
 }
@@ -60,7 +63,11 @@ interface UIState {
   exportDialogOpen: boolean;
   exportFormat: ExportFormat;
   /** §Phase5: Open the conflict modal for a file that changed externally while dirty */
-  openConflictModal: (filePath: string, externalMtime: number) => void;
+  openConflictModal: (
+    filePath: string,
+    externalMtime: number,
+    base: string,
+  ) => void;
   openExportDialog: (format?: ExportFormat) => void;
   openQuickCapture: (type?: "idea" | "link" | "note" | "quote") => void;
   pendingApplyContent: null | string;
@@ -126,8 +133,8 @@ export const useUIStore = create<UIState>((set) => ({
   contentReloadVersion: 0,
   contentReloadCursorEnd: false,
 
-  openConflictModal: (filePath, externalMtime) =>
-    set({ conflictModal: { filePath, externalMtime } }),
+  openConflictModal: (filePath, externalMtime, base) =>
+    set({ conflictModal: { base, externalMtime, filePath } }),
 
   closeConflictModal: () => set({ conflictModal: null }),
 

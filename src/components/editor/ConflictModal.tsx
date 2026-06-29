@@ -76,7 +76,7 @@ export function ConflictModalWrapper({
   onMerge,
 }: {
   onKeepLocal: (filePath: string) => void;
-  onMerge: (filePath: string) => void;
+  onMerge: (filePath: string, base: string) => void;
   onReload: (filePath: string, externalMtime: number) => void;
 }) {
   const { conflictModal, closeConflictModal } = useUIStore(
@@ -88,7 +88,7 @@ export function ConflictModalWrapper({
 
   if (!conflictModal) return null;
 
-  const { filePath, externalMtime } = conflictModal;
+  const { base, externalMtime, filePath } = conflictModal;
 
   return (
     <ConflictModal
@@ -99,7 +99,7 @@ export function ConflictModalWrapper({
       }}
       onMerge={() => {
         closeConflictModal();
-        onMerge(filePath);
+        onMerge(filePath, base);
       }}
       onReload={() => {
         closeConflictModal();

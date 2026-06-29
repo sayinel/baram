@@ -281,7 +281,11 @@ export function useTabSwitching({
               mtimeEntry.canReloadMtime,
             ).catch(() => {});
           } else {
-            showConflictModal(incomingTab.filePath, mtimeEntry.canReloadMtime);
+            showConflictModal(
+              incomingTab.filePath,
+              mtimeEntry.canReloadMtime,
+              useFileStore.getState().openFiles.get(incomingTab.filePath) ?? "",
+            );
             return;
           }
         }
