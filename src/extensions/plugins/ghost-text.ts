@@ -18,8 +18,7 @@ export interface GhostTextState {
 // Called after Tab-acceptance so the hook can schedule a background LLM prefetch.
 // acceptedText: the ghost text that was inserted; pos: insertion position.
 export let onGhostTextAccepted:
-  | ((acceptedText: string, pos: number) => void)
-  | null = null;
+  ((acceptedText: string, pos: number) => void) | null = null;
 
 export function registerGhostTextAcceptedCallback(
   cb: ((acceptedText: string, pos: number) => void) | null,

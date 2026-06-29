@@ -9,9 +9,7 @@ import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 
 export type JournalBlockLanguage =
-  | "journal-list"
-  | "journal-mood"
-  | "journal-photos";
+  "journal-list" | "journal-mood" | "journal-photos";
 
 export interface JournalDynamicBlockProps {
   content: string; // raw code block content (YAML-like params)

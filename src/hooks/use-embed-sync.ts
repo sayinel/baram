@@ -12,11 +12,7 @@ import { replaceBlockInContent } from "../utils/editor/block-replace";
 import { resolveWikilinkTarget } from "../utils/editor/wikilink-nav";
 
 type EmbedStatus =
-  | "block-not-found"
-  | "error"
-  | "file-not-found"
-  | "loading"
-  | "ready";
+  "block-not-found" | "error" | "file-not-found" | "loading" | "ready";
 
 interface UseEmbedSyncOptions {
   blockId: string;

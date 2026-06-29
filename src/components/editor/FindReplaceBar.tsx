@@ -47,8 +47,7 @@ export function FindReplaceBar({
   // Initialize from plugin state if already set (e.g. from Global Search)
   const [localSearchTerm, setLocalSearchTerm] = useState(() => {
     const ps = findReplacePluginKey.getState(editor.state) as
-      | FindReplaceState
-      | undefined;
+      FindReplaceState | undefined;
     return ps?.searchTerm ?? "";
   });
   const [localReplaceWith, setLocalReplaceWith] = useState("");
@@ -74,8 +73,7 @@ export function FindReplaceBar({
 
   // Read plugin state for match info (reactive via forceRender)
   const pluginState = (findReplacePluginKey.getState(editor.state) as
-    | FindReplaceState
-    | undefined) ?? {
+    FindReplaceState | undefined) ?? {
     searchTerm: "",
     caseSensitive: false,
     useRegex: false,

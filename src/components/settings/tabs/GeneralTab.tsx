@@ -70,9 +70,7 @@ export function GeneralTab() {
           onChange={(e) =>
             setOnLaunch(
               e.target.value as
-                | "newFile"
-                | "restoreLastFile"
-                | "restoreLastFolder",
+                "newFile" | "restoreLastFile" | "restoreLastFolder",
             )
           }
           value={onLaunch}

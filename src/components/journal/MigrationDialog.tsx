@@ -32,12 +32,7 @@ interface MigrationPair {
 }
 
 type MigrationStatus =
-  | "done"
-  | "error"
-  | "idle"
-  | "loading"
-  | "migrating"
-  | "ready";
+  "done" | "error" | "idle" | "loading" | "migrating" | "ready";
 
 const PREVIEW_MAX = 10;
 
