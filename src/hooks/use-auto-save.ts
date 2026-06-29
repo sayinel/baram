@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef } from "react";
 
 import type { Editor } from "@tiptap/core";
+import type { Transaction } from "@tiptap/pm/state";
 
 import { useShallow } from "zustand/shallow";
 
@@ -12,6 +13,8 @@ import { useLinkStore } from "../stores/editor/link";
 import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
 import {
+  COLWIDTH_AUTO_INIT_META,
+  noteColwidthInit,
   shouldSkipDirty,
   updateOriginalDoc,
 } from "../utils/editor/programmatic-update";
@@ -107,11 +110,22 @@ export function useAutoSave(editor: Editor | null) {
     // external-change conflict detection silently break when auto-save is off.
     if (!editor) return;
 
-    const handleUpdate = () => {
+    const handleUpdate = ({ transaction }: { transaction: Transaction }) => {
       // Read current tab at event time — avoids stale closure
       const { activeTabId, tabs, markDirty } = useEditorStore.getState();
       const tab = tabs.find((t) => t.id === activeTabId);
       if (!tab?.filePath) return;
+
+      // Auto-measured table colwidth init (createColResizePlugin) is load-time
+      // normalization, not a user edit, and is never serialized (userResized:
+      // false). Fold it into the dirty baseline so it never marks dirty nor
+      // triggers a spurious auto-save on open. Without this, a multi-table file
+      // lacking `<!-- colwidths -->` goes dirty on open: each table dispatches
+      // its own colwidth tx and only the first is absorbed as the baseline.
+      if (transaction?.getMeta(COLWIDTH_AUTO_INIT_META)) {
+        noteColwidthInit(tab.id, editor.state.doc);
+        return;
+      }
 
       // Skip if: (1) first update after content load (captures stable baseline),
       // or (2) doc unchanged from baseline. Only marks dirty for real changes.
