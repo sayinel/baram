@@ -96,10 +96,21 @@ pub struct MergeResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum MergeSegment {
-    Stable {
-        lines: Vec<String>,
+    /// Unchanged in both sides (context).
+    Unchanged { lines: Vec<String> },
+    /// Only the local side changed (auto-applied; shown as a diff).
+    Local {
+        base: Vec<String>,
+        local: Vec<String>,
     },
+    /// Only the external side changed (auto-applied; shown as a diff).
+    External {
+        base: Vec<String>,
+        external: Vec<String>,
+    },
+    /// Both sides changed the same region differently (needs resolution).
     Conflict {
+        base: Vec<String>,
         local: Vec<String>,
         external: Vec<String>,
     },

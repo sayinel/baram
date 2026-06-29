@@ -62,7 +62,7 @@ import { useTabSwitching } from "./hooks/use-tab-switching";
 import { useZoom } from "./hooks/use-zoom";
 import { useTranslation } from "./i18n/useTranslation";
 import { llmComplete, readFile, writeFile } from "./ipc/invoke";
-import { diffTexts, mergeTexts } from "./ipc/snapshot";
+import { mergeTexts } from "./ipc/snapshot";
 import { markdownToProsemirror } from "./pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "./pipeline/pm-to-md";
 import {
@@ -828,12 +828,6 @@ function App() {
           }}
           onReload={(filePath, externalMtime) => {
             void triggerAutoReload(filePath, externalMtime).catch(() => {});
-          }}
-          onShowDiff={async (filePath) => {
-            if (!activeEditor || activeEditor.isDestroyed) return null;
-            const external = await readFile(filePath);
-            const local = prosemirrorToMarkdown(activeEditor.state.doc);
-            return diffTexts(local, external);
           }}
         />
         <ToastHost />

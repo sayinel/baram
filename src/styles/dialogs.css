@@ -1189,13 +1189,13 @@
 }
 
 .conflict-modal-btn-reload {
-  color: #fff;
-  background-color: var(--color-accent-default);
-  border-color: var(--color-accent-default);
+  color: var(--color-text-default);
+  background-color: var(--color-bg-elevated);
+  border-color: var(--color-border-default);
 }
 
 .conflict-modal-btn-reload:not(:disabled):hover {
-  opacity: 0.9;
+  background-color: var(--color-bg-hover);
 }
 
 .conflict-modal-btn-keep {
@@ -1375,6 +1375,41 @@
 
 .merge-candidate-selected {
   box-shadow: inset 3px 0 0 var(--color-accent-default);
+}
+
+.merge-change {
+  margin: 8px 0;
+  overflow: hidden;
+  border-radius: 6px;
+}
+
+.merge-line {
+  display: flex;
+  gap: 8px;
+  padding: 1px 8px;
+  white-space: pre-wrap;
+}
+
+.merge-line-prefix {
+  flex-shrink: 0;
+  user-select: none;
+  opacity: 0.6;
+}
+
+.merge-line-content {
+  flex: 1;
+}
+
+.merge-line-del {
+  background-color: rgb(239 68 68 / 10%);
+}
+
+.merge-change-local .merge-line-add {
+  background-color: rgb(34 197 94 / 12%);
+}
+
+.merge-change-external .merge-line-add {
+  background-color: rgb(59 130 246 / 12%);
 }
 
 /* Transient toast (e.g. external-change auto-reload notice) */
