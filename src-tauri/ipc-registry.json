@@ -686,6 +686,17 @@
       "description": "스냅샷 vs 현재 파일 diff 조회"
     },
     {
+      "name": "diff_texts",
+      "input": { "oldText": "string", "newText": "string" },
+      "output": "DiffResult",
+      "module": "snapshot",
+      "spec": "§3.6",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "두 텍스트의 라인 레벨 diff (외부 변경 충돌 UI용)"
+    },
+    {
       "name": "restore_snapshot",
       "input": { "vaultPath": "string", "snapshotId": "string", "files": "string[]?" },
       "output": "void",

@@ -14,18 +14,22 @@ import {
 import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 
+import type { DiffResult } from "../../ipc/types";
+
 import { EditorContent, useEditor } from "@tiptap/react";
 
 import { createBaramExtensions } from "../../extensions";
 import { useAutoSave } from "../../hooks/use-auto-save";
 import { useSettingsEffects } from "../../hooks/use-settings-effects";
 import { readFile, watchDir, writeFile } from "../../ipc/invoke";
+import { diffTexts } from "../../ipc/snapshot";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
 import { logger } from "../../utils/logger";
 import { dirname } from "../../utils/path-utils";
+import { DiffView } from "../editor/DiffView";
 import "../../styles/editor.css";
 import "../../styles/file-editor.css";
 
@@ -45,6 +49,7 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
   const [isDirty, setIsDirty] = useState(false);
   const isDirtyRef = useRef(false);
   const [externalChange, setExternalChange] = useState<null | string>(null);
+  const [diff, setDiff] = useState<DiffResult | null>(null);
   const contentRef = useRef<string>("");
   const fileName = filePath.split("/").pop() ?? "Untitled";
 
@@ -194,12 +199,28 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
     );
     setIsDirty(false);
     setExternalChange(null);
+    setDiff(null);
   }, [editor, externalChange]);
 
   const handleKeepLocal = useCallback(() => {
     // Ignore the external change; the next save overwrites it on disk.
     setExternalChange(null);
+    setDiff(null);
   }, []);
+
+  const handleToggleDiff = useCallback(async () => {
+    if (!editor || externalChange === null) return;
+    if (diff) {
+      setDiff(null);
+      return;
+    }
+    try {
+      const local = prosemirrorToMarkdown(editor.state.doc);
+      setDiff(await diffTexts(local, externalChange));
+    } catch (err) {
+      logger.warn("[FileEditor] diff failed", err);
+    }
+  }, [editor, externalChange, diff]);
 
   // Keyboard shortcuts: Cmd+S (save), Cmd+/ (source mode toggle)
   useEffect(() => {
@@ -282,6 +303,17 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
           >
             Keep Local
           </button>
+          <button
+            className="file-editor-conflict__btn"
+            onClick={handleToggleDiff}
+          >
+            {diff ? "Hide Diff" : "Show Diff"}
+          </button>
+        </div>
+      )}
+      {diff && (
+        <div className="file-editor-conflict-diff">
+          <DiffView diff={diff} filePath={filePath} />
         </div>
       )}
       <div className="file-editor-content">

@@ -105,3 +105,10 @@
 .file-editor-conflict__btn:hover {
   background: var(--color-bg-hover, #f3f4f6);
 }
+
+.file-editor-conflict-diff {
+  flex-shrink: 0;
+  max-height: 40vh;
+  overflow: auto;
+  border-bottom: 1px solid var(--color-border-default, #e5e7eb);
+}

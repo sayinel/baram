@@ -22,6 +22,13 @@ export async function deleteSnapshot(
   return invoke<void>("delete_snapshot", { vaultPath, snapshotId });
 }
 
+export async function diffTexts(
+  oldText: string,
+  newText: string,
+): Promise<DiffResult> {
+  return invoke<DiffResult>("diff_texts", { oldText, newText });
+}
+
 export async function getFileHistory(
   vaultPath: string,
   filePath: string,
