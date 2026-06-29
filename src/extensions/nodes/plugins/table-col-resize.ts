@@ -10,6 +10,8 @@ import type { EditorView } from "@tiptap/pm/view";
  */
 import { Plugin, PluginKey, type Transaction } from "@tiptap/pm/state";
 
+import { COLWIDTH_AUTO_INIT_META } from "../../../utils/editor/programmatic-update";
+
 const pluginKey = new PluginKey("baramTableColwidthInit");
 
 const MIN_COL_WIDTH = 40;
@@ -66,6 +68,10 @@ export function createColResizePlugin(): Plugin {
 
               if (changed) {
                 tr.setMeta("addToHistory", false);
+                // Mark as auto-measured colwidth init so the dirty/auto-save
+                // handler never treats it as a user edit (these widths are
+                // userResized:false and are not serialized to markdown).
+                tr.setMeta(COLWIDTH_AUTO_INIT_META, true);
                 view.dispatch(tr);
               }
               return false;
