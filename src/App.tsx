@@ -60,8 +60,10 @@ import { type AppendHandleRef, useSourceMode } from "./hooks/use-source-mode";
 import { useTabSwitching } from "./hooks/use-tab-switching";
 import { useZoom } from "./hooks/use-zoom";
 import { useTranslation } from "./i18n/useTranslation";
-import { llmComplete, writeFile } from "./ipc/invoke";
+import { llmComplete, readFile, writeFile } from "./ipc/invoke";
+import { diffTexts } from "./ipc/snapshot";
 import { markdownToProsemirror } from "./pipeline/md-to-pm";
+import { prosemirrorToMarkdown } from "./pipeline/pm-to-md";
 import {
   initializePlugins,
   notifyEditorReady,
@@ -804,6 +806,12 @@ function App() {
           }}
           onReload={(filePath, externalMtime) => {
             void triggerAutoReload(filePath, externalMtime).catch(() => {});
+          }}
+          onShowDiff={async (filePath) => {
+            if (!activeEditor || activeEditor.isDestroyed) return null;
+            const external = await readFile(filePath);
+            const local = prosemirrorToMarkdown(activeEditor.state.doc);
+            return diffTexts(local, external);
           }}
         />
         <ToastHost />

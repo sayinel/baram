@@ -157,6 +157,7 @@ pub fn run() {
             snapshot_cmd::restore_snapshot,
             snapshot_cmd::delete_snapshot,
             snapshot_cmd::get_file_history,
+            snapshot_cmd::diff_texts,
             plugin_cmd::plugin_install,
             plugin_cmd::plugin_uninstall,
             plugin_cmd::plugin_list_installed,

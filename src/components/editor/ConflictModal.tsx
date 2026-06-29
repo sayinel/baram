@@ -1,30 +1,57 @@
 // §Phase5: External file change conflict modal
 // Shown when a keep-alive or cached tab's file was modified externally while dirty.
+import { useState } from "react";
+
+import type { DiffResult } from "../../ipc/types";
+
 import { useShallow } from "zustand/shallow";
 
 import { useUIStore } from "../../stores/ui/ui";
+import { logger } from "../../utils/logger";
 import { basename } from "../../utils/path-utils";
+import { DiffView } from "./DiffView";
 
 interface ConflictModalProps {
   externalMtime: number;
   filePath: string;
   onKeepLocal: () => void;
   onReload: () => void;
+  onShowDiff: (filePath: string) => Promise<DiffResult | null>;
 }
 
 export function ConflictModal({
   filePath,
   onReload,
   onKeepLocal,
+  onShowDiff,
 }: ConflictModalProps) {
   const fileName = basename(filePath);
+  const [diff, setDiff] = useState<DiffResult | null>(null);
+  const [diffLoading, setDiffLoading] = useState(false);
+
+  const handleToggleDiff = async () => {
+    if (diff) {
+      setDiff(null);
+      return;
+    }
+    setDiffLoading(true);
+    try {
+      setDiff(await onShowDiff(filePath));
+    } catch (err) {
+      logger.warn("[ConflictModal] diff failed", err);
+    } finally {
+      setDiffLoading(false);
+    }
+  };
 
   return (
     <div className="conflict-modal-overlay">
       <div
         aria-labelledby="conflict-modal-title"
         aria-modal="true"
-        className="conflict-modal"
+        className={
+          diff ? "conflict-modal conflict-modal--with-diff" : "conflict-modal"
+        }
         role="dialog"
       >
         <div aria-hidden="true" className="conflict-modal-icon">
@@ -54,12 +81,17 @@ export function ConflictModal({
           </button>
           <button
             className="conflict-modal-btn conflict-modal-btn-diff"
-            disabled
-            title="Diff view coming soon"
+            disabled={diffLoading}
+            onClick={handleToggleDiff}
           >
-            Show Diff
+            {diffLoading ? "Loading…" : diff ? "Hide Diff" : "Show Diff"}
           </button>
         </div>
+        {diff && (
+          <div className="conflict-modal-diff">
+            <DiffView diff={diff} filePath={filePath} />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -72,9 +104,11 @@ export function ConflictModal({
 export function ConflictModalWrapper({
   onReload,
   onKeepLocal,
+  onShowDiff,
 }: {
   onKeepLocal: (filePath: string) => void;
   onReload: (filePath: string, externalMtime: number) => void;
+  onShowDiff: (filePath: string) => Promise<DiffResult | null>;
 }) {
   const { conflictModal, closeConflictModal } = useUIStore(
     useShallow((s) => ({
@@ -99,6 +133,7 @@ export function ConflictModalWrapper({
         closeConflictModal();
         onReload(filePath, externalMtime);
       }}
+      onShowDiff={onShowDiff}
     />
   );
 }

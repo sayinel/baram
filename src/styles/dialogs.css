@@ -1218,6 +1218,20 @@
   background-color: var(--color-bg-hover);
 }
 
+.conflict-modal--with-diff {
+  max-width: 760px;
+}
+
+.conflict-modal-diff {
+  width: 100%;
+  max-height: 50vh;
+  margin-top: 4px;
+  overflow: auto;
+  text-align: left;
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+}
+
 /* Transient toast (e.g. external-change auto-reload notice) */
 .toast-host {
   position: fixed;
