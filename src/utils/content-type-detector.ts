@@ -1,12 +1,6 @@
 // §11.2.3 Contextual AI Toolbar — content type detection
 export type ContentMode =
-  | "code"
-  | "diagram"
-  | "image"
-  | "math"
-  | "structure"
-  | "table"
-  | "text";
+  "code" | "diagram" | "image" | "math" | "structure" | "table" | "text";
 
 interface NodeInfo {
   type: string;

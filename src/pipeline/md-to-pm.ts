@@ -372,8 +372,7 @@ function convertBlockNode(
       const firstText =
         (
           (firstChild as { children: Content[] }).children[0] as
-            | Text
-            | undefined
+            Text | undefined
         )?.value || "";
       const firstLine = firstText.split("\n")[0];
       if (parseCalloutHeader(firstLine)) {

@@ -79,8 +79,7 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
 
     const handleTransaction = () => {
       const pluginState = aiDiffPluginKey.getState(editor.state) as
-        | AIDiffState
-        | undefined;
+        AIDiffState | undefined;
       if (!pluginState) return;
 
       // Sync hunks from plugin state
@@ -238,8 +237,7 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
     if (!editor) return;
 
     const pluginState = aiDiffPluginKey.getState(editor.state) as
-      | AIDiffState
-      | undefined;
+      AIDiffState | undefined;
     if (!pluginState || pluginState.phase === "idle") {
       // No-selection case: text was generated at cursor. Already inserted via diff.
     }
@@ -265,8 +263,7 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
   const autoApplyIfAllDecided = useCallback(() => {
     if (!editor) return;
     const ps = aiDiffPluginKey.getState(editor.state) as
-      | AIDiffState
-      | undefined;
+      AIDiffState | undefined;
     if (!ps || ps.phase !== "completed" || ps.hunks.length === 0) return;
     const allDecided = ps.hunks.every((h) => h.accepted || h.rejected);
     if (!allDecided) return;

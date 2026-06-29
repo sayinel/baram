@@ -188,8 +188,7 @@ export const GhostLink = Extension.create({
           },
           apply(tr, prev, _oldState, newState): GhostLinkState {
             const meta = tr.getMeta(ghostLinkPluginKey) as
-              | GhostLinkMeta
-              | undefined;
+              GhostLinkMeta | undefined;
 
             if (meta) {
               switch (meta.type) {

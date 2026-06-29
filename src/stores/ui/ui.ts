@@ -10,12 +10,7 @@ export interface ConflictModalState {
 }
 
 export type RightPanelMode =
-  | "chat"
-  | "help"
-  | "memories"
-  | "none"
-  | "photo-gallery"
-  | "properties";
+  "chat" | "help" | "memories" | "none" | "photo-gallery" | "properties";
 
 export type SidebarPanel =
   | "backlinks"
@@ -38,13 +33,7 @@ export interface ToastState {
 }
 
 type ExportFormat =
-  | "docx"
-  | "epub"
-  | "html"
-  | "latex"
-  | "notion"
-  | "pdf"
-  | "rst";
+  "docx" | "epub" | "html" | "latex" | "notion" | "pdf" | "rst";
 
 interface UIState {
   aboutOpen: boolean;
