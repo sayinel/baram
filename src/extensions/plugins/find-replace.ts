@@ -280,8 +280,7 @@ export const FindReplace = Extension.create({
             newState: EditorState,
           ): FindReplaceState {
             const meta = tr.getMeta(findReplacePluginKey) as
-              | FindReplaceMeta
-              | undefined;
+              FindReplaceMeta | undefined;
 
             if (meta) {
               switch (meta.type) {

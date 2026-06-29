@@ -281,13 +281,11 @@ export function BlockHandle({ editor }: BlockHandleProps) {
       // addBlockId is synchronous (generateBlockId + setNodeMarkup + dispatch),
       // so the id is readable right after the call — no rAF needed.
       let id = editor.state.doc.nodeAt(handle.pos)?.attrs.blockId as
-        | null
-        | string;
+        null | string;
       if (!id) {
         addBlockId(editor.view, handle.pos);
         id = editor.state.doc.nodeAt(handle.pos)?.attrs.blockId as
-          | null
-          | string;
+          null | string;
       }
       if (id)
         void navigator.clipboard.writeText(buildBlockLink(base, id, form));

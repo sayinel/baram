@@ -168,12 +168,7 @@ export interface InstalledPluginInfo {
 
 // §3.2 Config types
 export type JsonValue =
-  | boolean
-  | JsonValue[]
-  | null
-  | number
-  | string
-  | { [key: string]: JsonValue };
+  boolean | JsonValue[] | null | number | string | { [key: string]: JsonValue };
 
 export interface LinkGraph {
   edges: Array<{ crossVault?: boolean; from: string; to: string }>;

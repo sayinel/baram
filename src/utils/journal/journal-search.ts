@@ -3,12 +3,7 @@ import { extractFrontmatter } from "../markdown/frontmatter";
 import { JOURNAL_FILENAME_COMPACT_RE, JOURNAL_FILENAME_RE } from "./journal";
 
 export type JournalCategory =
-  | "daily"
-  | "monthly"
-  | "notes"
-  | "other"
-  | "weekly"
-  | "yearly";
+  "daily" | "monthly" | "notes" | "other" | "weekly" | "yearly";
 
 /**
  * Categorize a search result path relative to the journal root directory.
