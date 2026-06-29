@@ -1110,3 +1110,324 @@
   color: white;
   background-color: rgb(249 115 22 / 70%);
 }
+
+/* ============================================
+   §Phase5: External File Conflict Modal
+   ============================================ */
+
+.conflict-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgb(0 0 0 / 50%);
+}
+
+.conflict-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  width: 90%;
+  max-width: 420px;
+  padding: 24px 28px;
+  text-align: center;
+  background-color: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  box-shadow: var(--shadow-xl);
+}
+
+.conflict-modal-icon {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.conflict-modal-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text-default);
+}
+
+.conflict-modal-message {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+.conflict-modal-message strong {
+  font-weight: 600;
+  color: var(--color-text-default);
+}
+
+.conflict-modal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.conflict-modal-btn {
+  width: 100%;
+  padding: 8px 16px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  transition: opacity 0.15s;
+}
+
+.conflict-modal-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.conflict-modal-btn-reload {
+  color: var(--color-text-default);
+  background-color: var(--color-bg-elevated);
+  border-color: var(--color-border-default);
+}
+
+.conflict-modal-btn-reload:not(:disabled):hover {
+  background-color: var(--color-bg-hover);
+}
+
+.conflict-modal-btn-keep {
+  color: var(--color-text-default);
+  background-color: var(--color-bg-elevated);
+  border-color: var(--color-border-default);
+}
+
+.conflict-modal-btn-keep:not(:disabled):hover {
+  background-color: var(--color-bg-hover);
+}
+
+.conflict-modal-btn-diff {
+  color: var(--color-text-default);
+  background-color: var(--color-bg-elevated);
+  border-color: var(--color-border-default);
+}
+
+.conflict-modal-btn-diff:not(:disabled):hover {
+  background-color: var(--color-bg-hover);
+}
+
+.conflict-modal--with-diff {
+  max-width: 760px;
+}
+
+.conflict-modal-diff {
+  width: 100%;
+  max-height: 50vh;
+  margin-top: 4px;
+  overflow: auto;
+  text-align: left;
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+}
+
+.conflict-modal-btn-merge {
+  color: var(--color-text-default);
+  background-color: var(--color-bg-elevated);
+  border-color: var(--color-border-default);
+}
+
+.conflict-modal-btn-merge:not(:disabled):hover {
+  background-color: var(--color-bg-hover);
+}
+
+/* §3.6 3-way merge resolution overlay */
+.merge-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background-color: rgb(0 0 0 / 50%);
+}
+
+.merge-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 900px;
+  height: 100%;
+  max-height: 90vh;
+  overflow: hidden;
+  background-color: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  box-shadow: var(--shadow-xl);
+}
+
+.merge-header {
+  display: flex;
+  flex-shrink: 0;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+.merge-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.merge-header-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.merge-btn {
+  padding: 6px 14px;
+  font-size: 0.875rem;
+  color: var(--color-text-default);
+  cursor: pointer;
+  background-color: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+}
+
+.merge-btn-apply {
+  color: #fff;
+  background-color: var(--color-accent-default);
+  border-color: var(--color-accent-default);
+}
+
+.merge-btn-apply:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.merge-body {
+  flex: 1;
+  padding: 12px 16px;
+  overflow-y: auto;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8125rem;
+}
+
+.merge-stable {
+  margin: 0;
+  color: var(--color-text-muted);
+  white-space: pre-wrap;
+}
+
+.merge-conflict {
+  margin: 8px 0;
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+}
+
+.merge-choice-row {
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+.merge-choice {
+  padding: 3px 10px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  background-color: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 4px;
+}
+
+.merge-choice-active {
+  color: #fff;
+  background-color: var(--color-accent-default);
+  border-color: var(--color-accent-default);
+}
+
+.merge-candidates {
+  display: flex;
+  flex-direction: column;
+}
+
+.merge-candidate {
+  padding: 6px 8px;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.merge-candidate-local {
+  background-color: rgb(34 197 94 / 8%);
+}
+
+.merge-candidate-external {
+  background-color: rgb(59 130 246 / 8%);
+}
+
+.merge-candidate-selected {
+  box-shadow: inset 3px 0 0 var(--color-accent-default);
+}
+
+.merge-change {
+  margin: 8px 0;
+  overflow: hidden;
+  border-radius: 6px;
+}
+
+.merge-line {
+  display: flex;
+  gap: 8px;
+  padding: 1px 8px;
+  white-space: pre-wrap;
+}
+
+.merge-line-prefix {
+  flex-shrink: 0;
+  user-select: none;
+  opacity: 0.6;
+}
+
+.merge-line-content {
+  flex: 1;
+}
+
+.merge-line-del {
+  background-color: rgb(239 68 68 / 10%);
+}
+
+.merge-change-local .merge-line-add {
+  background-color: rgb(34 197 94 / 12%);
+}
+
+.merge-change-external .merge-line-add {
+  background-color: rgb(59 130 246 / 12%);
+}
+
+/* Transient toast (e.g. external-change auto-reload notice) */
+.toast-host {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  z-index: 1000;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.toast {
+  padding: 10px 16px;
+  font-size: 0.8125rem;
+  color: var(--color-text-default);
+  background-color: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg);
+}

@@ -1,6 +1,14 @@
 // §3.5 UI 레이아웃 스토어
 import { create } from "zustand";
 
+export interface ConflictModalState {
+  /** Snapshot of the common-ancestor content captured when the conflict was
+   *  detected (before reading the external change) — used as the 3-way base. */
+  base: string;
+  externalMtime: number;
+  filePath: string;
+}
+
 export type RightPanelMode =
   | "chat"
   | "help"
@@ -23,6 +31,12 @@ export type SidebarPanel =
   | "snapshots"
   | "tags";
 
+export interface ToastState {
+  /** Monotonic id — changing it restarts the auto-dismiss timer */
+  id: number;
+  message: string;
+}
+
 type ExportFormat =
   | "docx"
   | "epub"
@@ -34,14 +48,26 @@ type ExportFormat =
 
 interface UIState {
   aboutOpen: boolean;
+  /** §Phase5: Close the conflict modal (without resolution — used internally) */
+  closeConflictModal: () => void;
   closeExportDialog: () => void;
   commandPaletteOpen: boolean;
+  /** §Phase5: External file change conflict modal state (null = closed) */
+  conflictModal: ConflictModalState | null;
   /** When true, cursor moves to end of document after reload (e.g. Quick Capture append) */
   contentReloadCursorEnd: boolean;
   /** Monotonic counter — incremented after Global Search Replace / Quick Capture to signal editor reload */
   contentReloadVersion: number;
+  /** Dismiss the transient toast */
+  dismissToast: () => void;
   exportDialogOpen: boolean;
   exportFormat: ExportFormat;
+  /** §Phase5: Open the conflict modal for a file that changed externally while dirty */
+  openConflictModal: (
+    filePath: string,
+    externalMtime: number,
+    base: string,
+  ) => void;
   openExportDialog: (format?: ExportFormat) => void;
   openQuickCapture: (type?: "idea" | "link" | "note" | "quote") => void;
   pendingApplyContent: null | string;
@@ -60,12 +86,16 @@ interface UIState {
   setSidebarPanel: (panel: SidebarPanel) => void;
   setSidebarWidth: (width: number) => void;
   settingsOpen: boolean;
+  /** Show a transient toast (auto-dismisses after a few seconds) */
+  showToast: (message: string) => void;
   sidebarOpen: boolean;
   sidebarPanel: SidebarPanel;
   sidebarWidth: number;
   skillGeneratorDialogOpen: boolean;
   skillTestDialogOpen: boolean;
   smartTemplateDialogOpen: boolean;
+  /** Transient toast notification (null = hidden) */
+  toast: null | ToastState;
   toggleAbout: () => void;
   toggleCommandPalette: () => void;
   toggleQuickCapture: () => void;
@@ -90,6 +120,7 @@ export const useUIStore = create<UIState>((set) => ({
   quickSwitcherOpen: false,
   settingsOpen: false,
   aboutOpen: false,
+  conflictModal: null,
   exportDialogOpen: false,
   exportFormat: "html" as ExportFormat,
   skillGeneratorDialogOpen: false,
@@ -101,6 +132,18 @@ export const useUIStore = create<UIState>((set) => ({
   pendingSearchHighlight: null,
   contentReloadVersion: 0,
   contentReloadCursorEnd: false,
+
+  openConflictModal: (filePath, externalMtime, base) =>
+    set({ conflictModal: { base, externalMtime, filePath } }),
+
+  closeConflictModal: () => set({ conflictModal: null }),
+
+  toast: null,
+
+  showToast: (message) =>
+    set((state) => ({ toast: { id: (state.toast?.id ?? 0) + 1, message } })),
+
+  dismissToast: () => set({ toast: null }),
 
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
 

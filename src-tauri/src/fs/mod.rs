@@ -4,6 +4,7 @@ use crate::commands::fs_cmd::FileEntry;
 use notify::{event::ModifyKind, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
+use std::time::UNIX_EPOCH;
 use tauri::Emitter;
 use thiserror::Error;
 
@@ -348,9 +349,16 @@ pub fn start_watching(
                         }
                     }
                     EventKind::Modify(_) => {
+                        // §Phase2: include mtime so frontend can detect external changes
+                        let mtime = std::fs::metadata(event_path)
+                            .and_then(|m| m.modified())
+                            .ok()
+                            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                            .map(|d| d.as_millis() as u64)
+                            .unwrap_or(0);
                         let _ = app_handle.emit(
                             "file:changed",
-                            serde_json::json!({ "path": path_str, "kind": "modified" }),
+                            serde_json::json!({ "path": path_str, "mtime": mtime }),
                         );
                     }
                     EventKind::Remove(_) => {

@@ -1,10 +1,11 @@
 // §71 Version History Panel -- sidebar
 import { useCallback, useEffect, useState } from "react";
 
-import type { DiffResult, SnapshotEntry } from "../../ipc/types";
+import type { SnapshotEntry } from "../../ipc/types";
 
 import { useSnapshotStore } from "../../stores/editor/snapshot";
 import { useFileStore } from "../../stores/file/file";
+import { DiffView } from "../editor/DiffView";
 
 export function VersionHistoryPanel() {
   const rootPath = useFileStore((s) => s.rootPath);
@@ -138,60 +139,6 @@ export function VersionHistoryPanel() {
 }
 
 // DiffView component for showing file diffs
-function DiffView({
-  diff,
-  filePath,
-  onClose,
-}: {
-  diff: DiffResult;
-  filePath: string;
-  onClose: () => void;
-}) {
-  return (
-    <div className="snapshot-diff-view">
-      <div className="snapshot-diff-header">
-        <span className="snapshot-diff-path">{filePath}</span>
-        <span className="snapshot-diff-stats">
-          <span className="diff-additions">+{diff.stats.additions}</span>
-          <span className="diff-deletions">-{diff.stats.deletions}</span>
-        </span>
-        <button
-          className="snapshot-action-btn"
-          onClick={onClose}
-          title="Close diff"
-        >
-          {"\u2715"}
-        </button>
-      </div>
-      <div className="snapshot-diff-content">
-        {diff.hunks.map((hunk, i) => (
-          <div className="diff-hunk" key={i}>
-            <div className="diff-hunk-header">
-              @@ -{hunk.oldStart},{hunk.oldCount} +{hunk.newStart},
-              {hunk.newCount} @@
-            </div>
-            {hunk.changes.map((change, j) => (
-              <div className={`diff-line diff-${change.type}`} key={j}>
-                <span className="diff-line-prefix">
-                  {change.type === "insert"
-                    ? "+"
-                    : change.type === "delete"
-                      ? "-"
-                      : " "}
-                </span>
-                <span className="diff-line-content">{change.content}</span>
-              </div>
-            ))}
-          </div>
-        ))}
-        {diff.hunks.length === 0 && (
-          <div className="snapshot-empty">No differences</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;

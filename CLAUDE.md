@@ -2,7 +2,7 @@
 
 ## 에이전트 정책
 
-- 멀티 에이전트 오케스트레이션은 **oh-my-claudecode(OMC)**를 활용할 것
+- 멀티 에이전트 오케스트레이션은 \*\*oh-my-claudecode(OMC)\*\*를 활용할 것
   - 대규모 구현: `/team N:executor "task"` 또는 `/ultrawork`로 병렬 실행
   - 지속적 완수: `/ralph`로 완료될 때까지 반복 루프
   - 계획 수립: `/plan` 또는 `/ralplan`으로 합의 기반 설계
@@ -17,13 +17,13 @@
 Baram(바람)은 Tauri 2.0 + Tiptap/ProseMirror + React 기반의 경량 WYSIWYG 마크다운 에디터다.
 Typora의 WYSIWYG 품질 + Obsidian의 확장성 + AI 네이티브 통합을 목표한다.
 
-- **핵심 가치**: 가볍다 (~10MB) / 아름답다 (구문이 사라지는 WYSIWYG) / 연결된다 (양방향 링크 + AI)
+- **핵심 가치**: 가볍다 (\~10MB) / 아름답다 (구문이 사라지는 WYSIWYG) / 연결된다 (양방향 링크 + AI)
 - **타겟 사용자**: AI 개발자(Skills 편집), 마크다운 파워유저(기술 문서), 연구자(수식+지식 링크)
 - **라이선스**: 에디터 코어 MIT / 앱 AGPL-3.0
 
 ## 기술 스택
 
-| 영역              | 기술                        | 버전          |
+| 영역                | 기술                          | 버전            |
 | ----------------- | --------------------------- | ------------- |
 | Desktop Framework | Tauri                       | 2.0           |
 | Backend           | Rust                        | latest stable |
@@ -164,7 +164,7 @@ baram/
 - **CSS 변수 네이밍**: `--color-{category}-{qualifier}` 패턴 (예: `--color-bg-default`, `--color-text-muted`, `--color-accent-default`)
 - **공유 CSS 유틸리티**: `base.css`의 `.btn-unstyled`, `.flex-header`, `.text-truncate`, `.icon-btn`, `.flex-col` 사용
 - **Shadow 토큰**: `--shadow-sm`, `--shadow-md`, `--shadow-lg`, `--shadow-xl`
-- **CSS 파일 크기**: 단일 CSS 파일 ~1,500줄 이하 유지
+- **CSS 파일 크기**: 단일 CSS 파일 \~1,500줄 이하 유지
 
 ### Rust
 
@@ -205,29 +205,29 @@ baram/
 
 구현 시 반드시 해당 설계 문서 섹션을 참조할 것. `§` 번호를 코드 주석과 커밋에 유지한다.
 
-| 영역        | 설계 문서                              | 핵심 참조                                                                                                                                    |
-| ----------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| 아키텍처    | `docs/design/part3-architecture.md`    | §3.1 스택, §3.2 IPC, §3.3 엔진, §3.4 Extension, §3.5 상태, §3.6 파일                                                                         |
-| UI/UX       | `docs/design/part4-uiux.md`            | §4.1 원칙, §4.2 레이아웃, §4.3~§4.8 각 요소                                                                                                  |
-| 기능 상세   | `docs/design/part5-core-features.md`   | §5.1~§5.15 각 기능 상세 스펙                                                                                                                 |
-| AI 통합     | `docs/design/part6-ai-integration.md`  | §6.1 전략, §6.2 5-Level, §6.3 Provider                                                                                                       |
-| 데이터 모델 | `docs/design/part7-data-models.md`     | §7.1 MD 규격, §7.2 PM 스키마, §7.3~§7.5 DB                                                                                                   |
-| 로드맵      | `docs/design/part8-roadmap.md`         | §8.1 Phase, §8.2 마일스톤, §8.4 품질, §8.6 의존성                                                                                            |
-| AI 고도화   | `docs/design/part11-ai-enhancement.md` | §11.2 빠른 개선, §11.3 Writing Flow, §11.4 Knowledge Q&A, §11.5 Semantic Wikilink, §11.6 Agent Mode, §11.7 Authorship, §11.8 Smart Templates |
-| Vault 시스템 | `docs/design/part12-vault-system.md`   | §80 Context 모델, §81 워크스페이스, §82~§84 UI, §85 Journal, §86 설정 계층, §87 Cross-vault 링크, §88 ContextManager, §89~§90 파일/시작 |
+| 영역        | 설계 문서                                  | 핵심 참조                                                                                                                                     |
+| --------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| 아키텍처      | `docs/design/part3-architecture.md`    | §3.1 스택, §3.2 IPC, §3.3 엔진, §3.4 Extension, §3.5 상태, §3.6 파일                                                                              |
+| UI/UX     | `docs/design/part4-uiux.md`            | §4.1 원칙, §4.2 레이아웃, §4.3\~§4.8 각 요소                                                                                                       |
+| 기능 상세     | `docs/design/part5-core-features.md`   | §5.1\~§5.15 각 기능 상세 스펙                                                                                                                    |
+| AI 통합     | `docs/design/part6-ai-integration.md`  | §6.1 전략, §6.2 5-Level, §6.3 Provider                                                                                                      |
+| 데이터 모델    | `docs/design/part7-data-models.md`     | §7.1 MD 규격, §7.2 PM 스키마, §7.3\~§7.5 DB                                                                                                    |
+| 로드맵       | `docs/design/part8-roadmap.md`         | §8.1 Phase, §8.2 마일스톤, §8.4 품질, §8.6 의존성                                                                                                  |
+| AI 고도화    | `docs/design/part11-ai-enhancement.md` | §11.2 빠른 개선, §11.3 Writing Flow, §11.4 Knowledge Q\&A, §11.5 Semantic Wikilink, §11.6 Agent Mode, §11.7 Authorship, §11.8 Smart Templates |
+| Vault 시스템 | `docs/design/part12-vault-system.md`   | §80 Context 모델, §81 워크스페이스, §82~§84 UI, §85 Journal, §86 설정 계층, §87 Cross-vault 링크, §88 ContextManager, §89~§90 파일/시작                     |
 
 ## 성능 기준 (Part 8 §8.4)
 
-| 지표                  | 목표                         |
-| --------------------- | ---------------------------- |
+| 지표            | 목표                      |
+| ------------- | ----------------------- |
 | 앱 시작 → 에디터 준비 | < 1.5초 (콜드), < 0.5초 (웜) |
-| 1,000줄 파일 열기     | < 200ms                      |
-| 10,000줄 파일 열기    | < 1초                        |
-| 타이핑 레이턴시       | < 16ms (60fps)               |
-| KaTeX 렌더링          | < 50ms                       |
-| 파일 저장             | < 100ms                      |
-| 앱 바이너리 크기      | < 15MB                       |
-| 유휴 메모리           | < 100MB                      |
+| 1,000줄 파일 열기  | < 200ms                 |
+| 10,000줄 파일 열기 | < 1초                    |
+| 타이핑 레이턴시      | < 16ms (60fps)          |
+| KaTeX 렌더링     | < 50ms                  |
+| 파일 저장         | < 100ms                 |
+| 앱 바이너리 크기     | < 15MB                  |
+| 유휴 메모리        | < 100MB                 |
 
 ## 현재 Phase 및 마일스톤
 
@@ -236,7 +236,7 @@ Phase 2: 확장 — ✅ 완료 (M7~M9)
 
 - M7: 연결 시스템 & 네비게이션 — ✅ 완료
 - M8: AI 심화 + Skills 편집 — ✅ 완료
-- M9: 생산성 도구 — ✅ 완료 (인라인 마크, TOC, 테이블 Tier 3, 각주, 도움말 패널, 글로벌 검색, 정의 목록, Mermaid 고도화, Git Basic, 테마 시스템, Extension Settings, Workspace Presets, Export for Notion, Pandoc Export, Journal §56a~§56m, @멘션, 태그 시스템)
+- M9: 생산성 도구 — ✅ 완료 (인라인 마크, TOC, 테이블 Tier 3, 각주, 도움말 패널, 글로벌 검색, 정의 목록, Mermaid 고도화, Git Basic, 테마 시스템, Extension Settings, Workspace Presets, Export for Notion, Pandoc Export, Journal §56a\~§56m, @멘션, 태그 시스템)
 
 Phase 3: 고급 기능 — 진행 중
 
@@ -272,4 +272,4 @@ Phase 3: 고급 기능 — 진행 중
   - ContextManager Rust 백엔드 (§88)
   - 독립 파일 열기 + FileContext (§89)
   - 앱 시작 흐름 + 마이그레이션 (§90)
-- Canvas, Agent Mode, Knowledge Q&A, 실시간 협업 등 — 미착수
+- Canvas, Agent Mode, Knowledge Q\&A, 실시간 협업 등 — 미착수
