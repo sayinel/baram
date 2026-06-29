@@ -1209,8 +1209,8 @@
 }
 
 .conflict-modal-btn-diff {
-  color: var(--color-text-muted);
-  background-color: transparent;
+  color: var(--color-text-default);
+  background-color: var(--color-bg-elevated);
   border-color: var(--color-border-default);
 }
 
