@@ -195,16 +195,16 @@ fn reconstruct(
     let mut out = Vec::new();
     let mut bj = start;
     for h in hunks {
-        for k in bj..h.base_start {
-            if let Some(ti) = target_match[k] {
+        for opt in &target_match[bj..h.base_start] {
+            if let Some(ti) = *opt {
                 out.push(target_lines[ti].to_string());
             }
         }
         out.extend(h.lines.iter().cloned());
         bj = h.base_end;
     }
-    for k in bj..end {
-        if let Some(ti) = target_match[k] {
+    for opt in &target_match[bj..end] {
+        if let Some(ti) = *opt {
             out.push(target_lines[ti].to_string());
         }
     }
