@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 
+import type { MergeSegment } from "./ipc/types";
 import type { EditorTab } from "./stores/editor/editor";
 
 import { Editor as TiptapCoreEditor } from "@tiptap/core";
@@ -39,7 +40,10 @@ import { useAppStartup } from "./hooks/use-app-startup";
 import { useAutoSave } from "./hooks/use-auto-save";
 import { useEditorEffects } from "./hooks/use-editor-effects";
 import { useExternalDrop } from "./hooks/use-external-drop";
-import { useFileOperations } from "./hooks/use-file-operations";
+import {
+  triggerAutoReload,
+  useFileOperations,
+} from "./hooks/use-file-operations";
 import { useFileWatcher } from "./hooks/use-file-watcher";
 import { useGhostText } from "./hooks/use-ghost-text";
 import { useInlineAI } from "./hooks/use-inline-ai";
@@ -57,8 +61,10 @@ import { type AppendHandleRef, useSourceMode } from "./hooks/use-source-mode";
 import { useTabSwitching } from "./hooks/use-tab-switching";
 import { useZoom } from "./hooks/use-zoom";
 import { useTranslation } from "./i18n/useTranslation";
-import { llmComplete, writeFile } from "./ipc/invoke";
+import { llmComplete, readFile, writeFile } from "./ipc/invoke";
+import { mergeTexts } from "./ipc/snapshot";
 import { markdownToProsemirror } from "./pipeline/md-to-pm";
+import { prosemirrorToMarkdown } from "./pipeline/pm-to-md";
 import {
   initializePlugins,
   notifyEditorReady,
@@ -155,6 +161,21 @@ const QuickCaptureDialog = lazy(() =>
     default: m.QuickCaptureDialog,
   })),
 );
+const ConflictModalWrapper = lazy(() =>
+  import("./components/editor/ConflictModal").then((m) => ({
+    default: m.ConflictModalWrapper,
+  })),
+);
+const ToastHost = lazy(() =>
+  import("./components/editor/Toast").then((m) => ({
+    default: m.ToastHost,
+  })),
+);
+const MergeView = lazy(() =>
+  import("./components/editor/MergeView").then((m) => ({
+    default: m.MergeView,
+  })),
+);
 
 // §89 Lazy-loaded file editor for standalone file mode
 const FileEditorLayout = lazy(() =>
@@ -212,6 +233,10 @@ function App() {
 
   // §39 Tab switcher state
   const [tabSwitcherOpen, setTabSwitcherOpen] = useState(false);
+  const [mergeState, setMergeState] = useState<null | {
+    filePath: string;
+    segments: MergeSegment[];
+  }>(null);
   const [tabSwitcherIndex, setTabSwitcherIndex] = useState(0);
 
   // §72 Skill Preview Panel state
@@ -775,6 +800,55 @@ function App() {
         <SkillTestDialogWrapper />
         <SmartTemplateDialogWrapper editor={activeEditor} />
         <QuickCaptureDialog />
+        <ConflictModalWrapper
+          onKeepLocal={(filePath) => {
+            // Keep local edits: clear the mtime guard so the next save (and the
+            // immediate save below) overwrites the external change on disk.
+            const entry = useFileStore.getState().getFileMtime(filePath);
+            useFileStore
+              .getState()
+              .updateLastSaveMtime(filePath, entry?.canReloadMtime ?? 0);
+            // If the conflicted file is the active tab, persist local edits now so
+            // they aren't lost if the user doesn't edit again before quitting.
+            const { activeTabId, tabs } = useEditorStore.getState();
+            const activeTab = tabs.find((t) => t.id === activeTabId);
+            if (activeTab?.filePath === filePath) void handleSave();
+          }}
+          onMerge={async (filePath, base) => {
+            if (!activeEditor || activeEditor.isDestroyed) return;
+            const local = prosemirrorToMarkdown(activeEditor.state.doc);
+            const external = await readFile(filePath);
+            const result = await mergeTexts(base, local, external);
+            setMergeState({ filePath, segments: result.segments });
+          }}
+          onReload={(filePath, externalMtime) => {
+            void triggerAutoReload(filePath, externalMtime).catch(() => {});
+          }}
+        />
+        <ToastHost />
+        {mergeState && (
+          <MergeView
+            filePath={mergeState.filePath}
+            onApply={(merged) => {
+              const fp = mergeState.filePath;
+              void (async () => {
+                try {
+                  await writeFile(fp, merged);
+                  useFileStore.getState().setFileContent(fp, merged);
+                  useFileStore.getState().updateLastSaveMtime(fp, Date.now());
+                  useEditorStore.getState().requestContentRefresh();
+                  const { activeTabId: tid } = useEditorStore.getState();
+                  if (tid) markDirty(tid, false);
+                } catch (err) {
+                  logger.error("[App] merge apply failed", err);
+                }
+              })();
+              setMergeState(null);
+            }}
+            onCancel={() => setMergeState(null)}
+            segments={mergeState.segments}
+          />
+        )}
       </Suspense>
       {tabSwitcherOpen && (
         <TabSwitcher

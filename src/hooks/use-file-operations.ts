@@ -9,18 +9,59 @@ import { readFile, updateFileIndex, writeFile } from "../ipc/invoke";
 import { prosemirrorToMarkdown } from "../pipeline/pm-to-md";
 import { notifyFileOpen, notifyFileSave } from "../plugins/plugin-lifecycle";
 import { useContextStore } from "../stores/context/context";
-import { isGraphTab } from "../stores/editor/editor";
-import { useEditorStore } from "../stores/editor/editor";
+import { isGraphTab, useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
 import { openFolder, useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
+import { useUIStore } from "../stores/ui/ui";
 import { isMarkdownFile } from "../utils/file-type";
 import { logger } from "../utils/logger";
+import { basename } from "../utils/path-utils";
 
 interface UseFileOperationsParams {
   editor: Editor | null;
   isSourceMode: boolean;
   sourceContentRef: React.RefObject<string>;
+}
+
+/**
+ * §Phase5: Show the conflict modal for a file that changed externally while dirty.
+ * The modal is driven by UIStore — ConflictModalWrapper in App.tsx renders it.
+ */
+export function showConflictModal(
+  filePath: string,
+  externalMtime: number,
+  base: string,
+): void {
+  useUIStore.getState().openConflictModal(filePath, externalMtime, base);
+}
+
+/**
+ * Auto-reload a file from disk when an external change is detected and the tab
+ * is not dirty. Updates openFiles, syncs mtime, and triggers editor refresh via
+ * contentRefreshKey.
+ */
+export async function triggerAutoReload(
+  filePath: string,
+  externalMtime: number,
+): Promise<void> {
+  const freshContent = await readFile(filePath);
+
+  // Update the in-memory content cache
+  useFileStore.getState().setFileContent(filePath, freshContent);
+
+  // Sync mtime so the next auto-save doesn't see a false conflict
+  useFileStore.getState().updateLastSaveMtime(filePath, externalMtime);
+
+  // Signal the editor to re-read from openFiles
+  useEditorStore.getState().requestContentRefresh();
+
+  // Surface a transient toast so the reload isn't silent (esp. with auto-save on)
+  useUIStore
+    .getState()
+    .showToast(`Reloaded external changes: ${basename(filePath)}`);
+
+  logger.info("[triggerAutoReload] auto-reloaded", filePath);
 }
 
 export function useFileOperations({

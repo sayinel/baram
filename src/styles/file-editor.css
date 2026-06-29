@@ -75,3 +75,40 @@
   padding: 24px;
   color: var(--color-status-error, #ef4444);
 }
+
+.file-editor-conflict {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 16px;
+  font-size: 13px;
+  color: var(--color-text-default, #1a1a1a);
+  background: var(--color-bg-secondary, #fff7ed);
+  border-bottom: 1px solid var(--color-border-default, #e5e7eb);
+}
+
+.file-editor-conflict__msg {
+  flex: 1;
+}
+
+.file-editor-conflict__btn {
+  padding: 3px 10px;
+  font-size: 12px;
+  color: var(--color-text-default, #1a1a1a);
+  cursor: pointer;
+  background: var(--color-bg-default, #fff);
+  border: 1px solid var(--color-border-default, #e5e7eb);
+  border-radius: 4px;
+}
+
+.file-editor-conflict__btn:hover {
+  background: var(--color-bg-hover, #f3f4f6);
+}
+
+.file-editor-conflict-diff {
+  flex-shrink: 0;
+  max-height: 40vh;
+  overflow: auto;
+  border-bottom: 1px solid var(--color-border-default, #e5e7eb);
+}

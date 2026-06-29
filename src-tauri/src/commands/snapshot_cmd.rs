@@ -93,3 +93,29 @@ pub async fn get_file_history(
     .await
     .map_err(|e| e.to_string())?
 }
+
+/// §3.6 Generic line-level diff between two in-memory texts.
+/// Used by the external-change conflict UI to show external vs local content.
+#[tauri::command]
+pub async fn diff_texts(
+    old_text: String,
+    new_text: String,
+) -> Result<crate::snapshot::DiffResult, String> {
+    tokio::task::spawn_blocking(move || crate::snapshot::diff::compute_diff(&old_text, &new_text))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// §3.6 3-way merge of base → (local, external) for the conflict-resolution UI.
+#[tauri::command]
+pub async fn merge_texts(
+    base: String,
+    local: String,
+    external: String,
+) -> Result<crate::snapshot::MergeResult, String> {
+    tokio::task::spawn_blocking(move || {
+        crate::snapshot::merge::merge_texts(&base, &local, &external)
+    })
+    .await
+    .map_err(|e| e.to_string())
+}

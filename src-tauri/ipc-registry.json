@@ -686,6 +686,28 @@
       "description": "스냅샷 vs 현재 파일 diff 조회"
     },
     {
+      "name": "diff_texts",
+      "input": { "oldText": "string", "newText": "string" },
+      "output": "DiffResult",
+      "module": "snapshot",
+      "spec": "§3.6",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "두 텍스트의 라인 레벨 diff (외부 변경 충돌 UI용)"
+    },
+    {
+      "name": "merge_texts",
+      "input": { "base": "string", "local": "string", "external": "string" },
+      "output": "MergeResult",
+      "module": "snapshot",
+      "spec": "§3.6",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "base→local/external 3-way merge (충돌 영역 구조화)"
+    },
+    {
       "name": "restore_snapshot",
       "input": { "vaultPath": "string", "snapshotId": "string", "files": "string[]?" },
       "output": "void",
