@@ -93,10 +93,7 @@ export interface PluginModule {
 }
 
 export type PluginStatus =
-  | "disabled"
-  | "enabled"
-  | "installing"
-  | "not-installed";
+  "disabled" | "enabled" | "installing" | "not-installed";
 
 export interface RegistryEntry {
   author: string;

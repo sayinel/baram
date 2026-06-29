@@ -97,8 +97,7 @@ function createSyntaxRevealPlugin(): Plugin<SyntaxRevealState> {
         newState: EditorState,
       ): SyntaxRevealState {
         const meta = tr.getMeta(syntaxRevealKey) as
-          | SyntaxRevealState
-          | undefined;
+          SyntaxRevealState | undefined;
         if (meta !== undefined) return meta;
         if (!value.expanded) return value;
 

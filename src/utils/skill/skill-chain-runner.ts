@@ -24,11 +24,7 @@ export interface ChainStep {
 }
 
 export type ChainStepStatus =
-  | "failed"
-  | "passed"
-  | "pending"
-  | "running"
-  | "skipped";
+  "failed" | "passed" | "pending" | "running" | "skipped";
 
 /**
  * Run a chain test (dry run) — validates that the dependency chain is resolvable

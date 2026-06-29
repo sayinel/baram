@@ -6,12 +6,7 @@ export interface AgentPlan {
 }
 
 export type AgentStatus =
-  | "completed"
-  | "executing"
-  | "idle"
-  | "paused"
-  | "planning"
-  | "reviewing";
+  "completed" | "executing" | "idle" | "paused" | "planning" | "reviewing";
 
 export interface AgentStep {
   action: string;

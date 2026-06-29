@@ -27,8 +27,7 @@ interface PromptLintState {
  */
 export function getPromptLintResults(state: EditorState): PmLintResult[] {
   const pluginState = promptLintKey.getState(state) as
-    | PromptLintState
-    | undefined;
+    PromptLintState | undefined;
   return pluginState?.results ?? [];
 }
 
@@ -165,8 +164,7 @@ export const PromptLint = Extension.create({
         props: {
           decorations(state) {
             const pluginState = promptLintKey.getState(state) as
-              | PromptLintState
-              | undefined;
+              PromptLintState | undefined;
             return pluginState?.decorations ?? DecorationSet.empty;
           },
         },

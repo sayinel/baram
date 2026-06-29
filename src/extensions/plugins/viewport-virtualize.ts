@@ -146,8 +146,7 @@ export class VirtualizeController implements Controller {
       (b) => b.dom.style.display === "none",
     ).length;
     const active = (globalThis as Record<string, unknown>).__baramEditor as
-      | undefined
-      | { view?: EditorView };
+      undefined | { view?: EditorView };
     return {
       band: this.band,
       clientHeight: this.scroller?.clientHeight,
