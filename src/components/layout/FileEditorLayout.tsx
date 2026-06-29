@@ -11,17 +11,21 @@ import {
   useState,
 } from "react";
 
+import { listen } from "@tauri-apps/api/event";
+import type { UnlistenFn } from "@tauri-apps/api/event";
+
 import { EditorContent, useEditor } from "@tiptap/react";
 
 import { createBaramExtensions } from "../../extensions";
 import { useAutoSave } from "../../hooks/use-auto-save";
 import { useSettingsEffects } from "../../hooks/use-settings-effects";
-import { readFile, writeFile } from "../../ipc/invoke";
+import { readFile, watchDir, writeFile } from "../../ipc/invoke";
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
 import { logger } from "../../utils/logger";
+import { dirname } from "../../utils/path-utils";
 import "../../styles/editor.css";
 import "../../styles/file-editor.css";
 
@@ -39,6 +43,8 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<null | string>(null);
   const [isDirty, setIsDirty] = useState(false);
+  const isDirtyRef = useRef(false);
+  const [externalChange, setExternalChange] = useState<null | string>(null);
   const contentRef = useRef<string>("");
   const fileName = filePath.split("/").pop() ?? "Untitled";
 
@@ -118,6 +124,54 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
     };
   }, [editor]);
 
+  // Keep isDirty in a ref for the file:changed listener closure.
+  useEffect(() => {
+    isDirtyRef.current = isDirty;
+  }, [isDirty]);
+
+  // §3.6 External change detection for standalone file windows: watch the parent
+  // directory and react to file:changed for this file. Clean buffers reload
+  // silently; dirty buffers surface an inline conflict banner.
+  useEffect(() => {
+    if (!editor) return;
+    let cancelled = false;
+    let unlisten: undefined | UnlistenFn;
+    const dir = dirname(filePath);
+    if (dir) watchDir(dir).catch(() => {});
+    (async () => {
+      const fn = await listen<{ mtime: number; path: string }>(
+        "file:changed",
+        async (event) => {
+          if (event.payload.path !== filePath) return;
+          if (!editor || editor.isDestroyed) return;
+          let diskContent: string;
+          try {
+            diskContent = await readFile(filePath);
+          } catch {
+            return;
+          }
+          // Ignore if the disk already matches the editor (self-write / no-op).
+          if (diskContent === prosemirrorToMarkdown(editor.state.doc)) return;
+          if (isDirtyRef.current) {
+            setExternalChange(diskContent);
+          } else {
+            contentRef.current = diskContent;
+            editor.commands.setContent(
+              markdownToProsemirror(diskContent, editor.schema).toJSON(),
+            );
+            setIsDirty(false);
+          }
+        },
+      );
+      if (cancelled) fn();
+      else unlisten = fn;
+    })().catch(() => {});
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [editor, filePath]);
+
   // Save handler
   const handleSave = useCallback(async () => {
     if (!editor) return;
@@ -130,6 +184,22 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
       logger.error("[FileEditor] Failed to save:", err);
     }
   }, [editor, filePath]);
+
+  // Conflict banner actions (standalone window)
+  const handleReloadExternal = useCallback(() => {
+    if (!editor || externalChange === null) return;
+    contentRef.current = externalChange;
+    editor.commands.setContent(
+      markdownToProsemirror(externalChange, editor.schema).toJSON(),
+    );
+    setIsDirty(false);
+    setExternalChange(null);
+  }, [editor, externalChange]);
+
+  const handleKeepLocal = useCallback(() => {
+    // Ignore the external change; the next save overwrites it on disk.
+    setExternalChange(null);
+  }, []);
 
   // Keyboard shortcuts: Cmd+S (save), Cmd+/ (source mode toggle)
   useEffect(() => {
@@ -195,6 +265,25 @@ export function FileEditorLayout({ filePath }: FileEditorLayoutProps) {
           {filePath}
         </span>
       </div>
+      {externalChange !== null && (
+        <div className="file-editor-conflict" role="alert">
+          <span className="file-editor-conflict__msg">
+            This file was modified externally.
+          </span>
+          <button
+            className="file-editor-conflict__btn"
+            onClick={handleReloadExternal}
+          >
+            Reload
+          </button>
+          <button
+            className="file-editor-conflict__btn"
+            onClick={handleKeepLocal}
+          >
+            Keep Local
+          </button>
+        </div>
+      )}
       <div className="file-editor-content">
         {loading ? (
           <div className="file-editor-loading">Loading...</div>
