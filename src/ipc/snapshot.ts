@@ -1,7 +1,7 @@
 // §71 Snapshot IPC commands
 import { invoke } from "@tauri-apps/api/core";
 
-import type { DiffResult, SnapshotEntry } from "./types";
+import type { DiffResult, MergeResult, SnapshotEntry } from "./types";
 
 export async function createSnapshot(
   vaultPath: string,
@@ -52,6 +52,14 @@ export async function listSnapshots(
   vaultPath: string,
 ): Promise<SnapshotEntry[]> {
   return invoke<SnapshotEntry[]>("list_snapshots", { vaultPath });
+}
+
+export async function mergeTexts(
+  base: string,
+  local: string,
+  external: string,
+): Promise<MergeResult> {
+  return invoke<MergeResult>("merge_texts", { base, local, external });
 }
 
 export async function restoreSnapshot(

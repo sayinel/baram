@@ -1,6 +1,7 @@
 // §71 File Snapshots / Version History — 스냅샷 모듈
 
 pub mod diff;
+pub mod merge;
 pub mod index;
 pub mod io;
 pub mod policy;
@@ -83,4 +84,23 @@ pub struct DiffStats {
     pub additions: usize,
     pub deletions: usize,
     pub unchanged: usize,
+}
+
+/// §3.6 3-way merge result — a sequence of stable (auto-merged) and conflict
+/// (overlapping edits) segments.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MergeResult {
+    pub segments: Vec<MergeSegment>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum MergeSegment {
+    Stable {
+        lines: Vec<String>,
+    },
+    Conflict {
+        local: Vec<String>,
+        external: Vec<String>,
+    },
 }

@@ -15,6 +15,7 @@ interface ConflictModalProps {
   externalMtime: number;
   filePath: string;
   onKeepLocal: () => void;
+  onMerge: () => void;
   onReload: () => void;
   onShowDiff: (filePath: string) => Promise<DiffResult | null>;
 }
@@ -23,6 +24,7 @@ export function ConflictModal({
   filePath,
   onReload,
   onKeepLocal,
+  onMerge,
   onShowDiff,
 }: ConflictModalProps) {
   const fileName = basename(filePath);
@@ -80,6 +82,12 @@ export function ConflictModal({
             Keep Local Edits
           </button>
           <button
+            className="conflict-modal-btn conflict-modal-btn-merge"
+            onClick={onMerge}
+          >
+            Merge
+          </button>
+          <button
             className="conflict-modal-btn conflict-modal-btn-diff"
             disabled={diffLoading}
             onClick={handleToggleDiff}
@@ -104,9 +112,11 @@ export function ConflictModal({
 export function ConflictModalWrapper({
   onReload,
   onKeepLocal,
+  onMerge,
   onShowDiff,
 }: {
   onKeepLocal: (filePath: string) => void;
+  onMerge: (filePath: string) => void;
   onReload: (filePath: string, externalMtime: number) => void;
   onShowDiff: (filePath: string) => Promise<DiffResult | null>;
 }) {
@@ -128,6 +138,10 @@ export function ConflictModalWrapper({
       onKeepLocal={() => {
         closeConflictModal();
         onKeepLocal(filePath);
+      }}
+      onMerge={() => {
+        closeConflictModal();
+        onMerge(filePath);
       }}
       onReload={() => {
         closeConflictModal();

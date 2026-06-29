@@ -105,3 +105,17 @@ pub async fn diff_texts(
         .await
         .map_err(|e| e.to_string())
 }
+
+/// §3.6 3-way merge of base → (local, external) for the conflict-resolution UI.
+#[tauri::command]
+pub async fn merge_texts(
+    base: String,
+    local: String,
+    external: String,
+) -> Result<crate::snapshot::MergeResult, String> {
+    tokio::task::spawn_blocking(move || {
+        crate::snapshot::merge::merge_texts(&base, &local, &external)
+    })
+    .await
+    .map_err(|e| e.to_string())
+}

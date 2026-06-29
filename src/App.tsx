@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 
+import type { MergeSegment } from "./ipc/types";
 import type { EditorTab } from "./stores/editor/editor";
 
 import { Editor as TiptapCoreEditor } from "@tiptap/core";
@@ -61,7 +62,7 @@ import { useTabSwitching } from "./hooks/use-tab-switching";
 import { useZoom } from "./hooks/use-zoom";
 import { useTranslation } from "./i18n/useTranslation";
 import { llmComplete, readFile, writeFile } from "./ipc/invoke";
-import { diffTexts } from "./ipc/snapshot";
+import { diffTexts, mergeTexts } from "./ipc/snapshot";
 import { markdownToProsemirror } from "./pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "./pipeline/pm-to-md";
 import {
@@ -81,6 +82,7 @@ import { useFileStore } from "./stores/file/file";
 import { useSettingsStore } from "./stores/settings/store";
 import { useUIStore } from "./stores/ui/ui";
 import { initPerfTrace, instrumentEditor } from "./utils/editor/perf-trace";
+import { getOriginalDoc } from "./utils/editor/programmatic-update";
 import { getLanguageForFile, isMarkdownFile } from "./utils/file-type";
 import { createLLMStream } from "./utils/llm-stream";
 import { logger } from "./utils/logger";
@@ -170,6 +172,11 @@ const ToastHost = lazy(() =>
     default: m.ToastHost,
   })),
 );
+const MergeView = lazy(() =>
+  import("./components/editor/MergeView").then((m) => ({
+    default: m.MergeView,
+  })),
+);
 
 // §89 Lazy-loaded file editor for standalone file mode
 const FileEditorLayout = lazy(() =>
@@ -227,6 +234,10 @@ function App() {
 
   // §39 Tab switcher state
   const [tabSwitcherOpen, setTabSwitcherOpen] = useState(false);
+  const [mergeState, setMergeState] = useState<null | {
+    filePath: string;
+    segments: MergeSegment[];
+  }>(null);
   const [tabSwitcherIndex, setTabSwitcherIndex] = useState(0);
 
   // §72 Skill Preview Panel state
@@ -804,6 +815,17 @@ function App() {
             const activeTab = tabs.find((t) => t.id === activeTabId);
             if (activeTab?.filePath === filePath) void handleSave();
           }}
+          onMerge={async (filePath) => {
+            if (!activeEditor || activeEditor.isDestroyed) return;
+            const local = prosemirrorToMarkdown(activeEditor.state.doc);
+            const external = await readFile(filePath);
+            const baseDoc = activeTabId
+              ? getOriginalDoc(activeTabId)
+              : undefined;
+            const base = baseDoc ? prosemirrorToMarkdown(baseDoc) : local;
+            const result = await mergeTexts(base, local, external);
+            setMergeState({ filePath, segments: result.segments });
+          }}
           onReload={(filePath, externalMtime) => {
             void triggerAutoReload(filePath, externalMtime).catch(() => {});
           }}
@@ -815,6 +837,29 @@ function App() {
           }}
         />
         <ToastHost />
+        {mergeState && (
+          <MergeView
+            filePath={mergeState.filePath}
+            onApply={(merged) => {
+              const fp = mergeState.filePath;
+              void (async () => {
+                try {
+                  await writeFile(fp, merged);
+                  useFileStore.getState().setFileContent(fp, merged);
+                  useFileStore.getState().updateLastSaveMtime(fp, Date.now());
+                  useEditorStore.getState().requestContentRefresh();
+                  const { activeTabId: tid } = useEditorStore.getState();
+                  if (tid) markDirty(tid, false);
+                } catch (err) {
+                  logger.error("[App] merge apply failed", err);
+                }
+              })();
+              setMergeState(null);
+            }}
+            onCancel={() => setMergeState(null)}
+            segments={mergeState.segments}
+          />
+        )}
       </Suspense>
       {tabSwitcherOpen && (
         <TabSwitcher

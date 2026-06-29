@@ -20,6 +20,11 @@ export function clearOriginalDoc(tabId: string): void {
   loadingTabs.delete(tabId);
 }
 
+/** Read the baseline doc (last saved/loaded) — used as the 3-way merge base */
+export function getOriginalDoc(tabId: string): Node | undefined {
+  return originalDocs.get(tabId);
+}
+
 export function isTabLoading(tabId: string): boolean {
   return loadingTabs.has(tabId);
 }
