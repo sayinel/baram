@@ -19,6 +19,15 @@ export function basename(path: string): string {
   return idx >= 0 ? path.substring(idx + 1) : path;
 }
 
+/** Return the directory portion of a path (no trailing slash).
+ *  e.g. "/home/user/notes/readme.md" → "/home/user/notes" */
+export function dirname(path: string): string {
+  const idx = path.lastIndexOf("/");
+  if (idx < 0) return "";
+  if (idx === 0) return "/";
+  return path.substring(0, idx);
+}
+
 /** §61 Extract namespace (directory path) from a vault-relative file path.
  *  e.g. "notes/ai/prompt.md" → "notes/ai", "readme.md" → undefined */
 export function extractNamespace(relativePath: string): string | undefined {

@@ -60,9 +60,9 @@ export function useFileWatcher() {
     ),
   );
 
+  // Register watcher event listeners once on mount, independent of rootPath, so
+  // single files opened without a vault still receive change events.
   useEffect(() => {
-    if (!rootPath) return;
-
     const unlistenFns: UnlistenFn[] = [];
 
     const flush = () => {
@@ -92,11 +92,6 @@ export function useFileWatcher() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(flush, 300);
     };
-
-    // Start watcher
-    watchDir(rootPath).catch((err) =>
-      logger.warn("useFileWatcher: watchDir failed", err),
-    );
 
     // Listen for events — use async IIFE so unlistenFns is populated before
     // cleanup can run, closing the race window when rootPath changes quickly.
@@ -206,6 +201,14 @@ export function useFileWatcher() {
         }
       }
     };
+  }, []);
+
+  // Watch the vault root directory whenever a vault is open.
+  useEffect(() => {
+    if (!rootPath) return;
+    watchDir(rootPath).catch((err) =>
+      logger.warn("useFileWatcher: watchDir failed", err),
+    );
   }, [rootPath]);
 
   // §3.6 Out-of-vault files: when the vault is open (so the watcher listeners
@@ -214,9 +217,11 @@ export function useFileWatcher() {
   // Rust WatcherState dedups by path; we also track dirs locally to avoid
   // re-issuing watch_dir on every tab change.
   useEffect(() => {
-    if (!rootPath) return;
     for (const filePath of openFilePaths) {
-      if (filePath === rootPath || filePath.startsWith(rootPath + "/"))
+      if (
+        rootPath &&
+        (filePath === rootPath || filePath.startsWith(rootPath + "/"))
+      )
         continue;
       const dir = parentDir(filePath);
       if (!dir || dir === filePath || externalDirsRef.current.has(dir))
