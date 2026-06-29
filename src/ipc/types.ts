@@ -218,8 +218,10 @@ export interface MergeResult {
 }
 
 export type MergeSegment =
-  | { external: string[]; kind: "conflict"; local: string[] }
-  | { kind: "stable"; lines: string[] };
+  | { base: string[]; external: string[]; kind: "conflict"; local: string[] }
+  | { base: string[]; external: string[]; kind: "external" }
+  | { base: string[]; kind: "local"; local: string[] }
+  | { kind: "unchanged"; lines: string[] };
 
 // §6.3 LLM types
 export interface ModelInfo {
