@@ -10,7 +10,7 @@ import { createPortal } from "react-dom";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 // §5.1 SVG Block NodeView — selected: textarea + preview, unselected: render +
 // hover toolbar (AI / copy / download PNG / fullscreen) + right-click menu.
-import { Copy, Download, Maximize2, Sparkles } from "lucide-react";
+import { Captions, Copy, Download, Maximize2, Sparkles } from "lucide-react";
 
 import { useUIStore } from "../../stores/ui/ui";
 import { logger } from "../../utils/logger";
@@ -30,6 +30,7 @@ import {
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
 import { svgBlockEntryKey } from "./svg-block";
 import { BlockCaption } from "./views/BlockCaption";
+import { MediaToolbar, MediaToolbarButton } from "./views/MediaToolbar";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
 import { useMediaResize } from "./views/use-media-resize";
 import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
@@ -51,6 +52,7 @@ export function SvgBlockView({
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenCode, setFullscreenCode] = useState("");
   const [viewFullscreen, setViewFullscreen] = useState(false);
+  const [editingCaption, setEditingCaption] = useState(false);
   const [contextMenu, setContextMenu] = useState<null | {
     x: number;
     y: number;
@@ -353,7 +355,12 @@ export function SvgBlockView({
                 )}
               </div>
             </div>
-            <BlockCaption onCommit={commitCaption} value={caption} />
+            <BlockCaption
+              editing={editingCaption}
+              onCommit={commitCaption}
+              onEditingChange={setEditingCaption}
+              value={caption}
+            />
           </>
         ) : (
           <div className="svg-block-empty">Empty SVG block</div>
@@ -361,53 +368,41 @@ export function SvgBlockView({
 
         {/* Hover toolbar */}
         {svgHtml && (
-          <div
-            className="svg-hover-toolbar"
-            ref={(el) => {
-              if (el) el.onmousedown = (e) => e.stopPropagation();
-            }}
-          >
-            <button
-              className="svg-hover-toolbar-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                runAI(e.currentTarget);
-              }}
+          <MediaToolbar>
+            <MediaToolbarButton
+              active={editingCaption}
+              onClick={() => setEditingCaption(true)}
+              title="Caption"
+            >
+              <Captions size={16} strokeWidth={2} />
+            </MediaToolbarButton>
+            <MediaToolbarButton
+              onClick={(e) => runAI(e.currentTarget)}
               title="AI Commands"
             >
               <Sparkles size={14} />
-            </button>
-            <button
-              className="svg-hover-toolbar-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                runAsync("copy source", () => copySvgSource(code));
-              }}
+            </MediaToolbarButton>
+            <MediaToolbarButton
+              onClick={() => runAsync("copy source", () => copySvgSource(code))}
               title="Copy SVG source"
             >
               <Copy size={16} strokeWidth={2} />
-            </button>
-            <button
-              className="svg-hover-toolbar-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                runAsync("download PNG", () => downloadSvgAsPng(svgHtml));
-              }}
+            </MediaToolbarButton>
+            <MediaToolbarButton
+              onClick={() =>
+                runAsync("download PNG", () => downloadSvgAsPng(svgHtml))
+              }
               title="Download as PNG"
             >
               <Download size={16} strokeWidth={2} />
-            </button>
-            <button
-              className="svg-hover-toolbar-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                setViewFullscreen(true);
-              }}
+            </MediaToolbarButton>
+            <MediaToolbarButton
+              onClick={() => setViewFullscreen(true)}
               title="Fullscreen view"
             >
               <Maximize2 size={16} strokeWidth={2} />
-            </button>
-          </div>
+            </MediaToolbarButton>
+          </MediaToolbar>
         )}
 
         {contextMenu &&

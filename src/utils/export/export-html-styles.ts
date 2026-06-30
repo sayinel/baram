@@ -434,7 +434,7 @@ export const PRINT_CSS = `
   table { max-width: 100%; }
   .tableWrapper { overflow: hidden; }
   a { color: #3b82f6; }
-  .mermaid-hover-toolbar, .mermaid-context-menu { display: none !important; }
+  .media-toolbar, .media-resize-handle, .media-resize-label, .mermaid-context-menu, .svg-context-menu { display: none !important; }
   /* Scale tall diagrams down so a single mermaid never spans pages.
      In print, vh maps to the page box; combined with the intrinsic aspect
      ratio (width/height attrs set during export capture), width/height:auto

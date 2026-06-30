@@ -93,6 +93,71 @@
   transform: translateX(-50%);
 }
 
+/* Shared hover toolbar — light pill of icon buttons pinned to the block's
+   top-right, revealed when the block (or, for images, the figure) is hovered or
+   selected. Sits above the resize handles/label. */
+.media-toolbar {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 4;
+  display: flex;
+  gap: 4px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.tiptap .svg-block-preview:hover .media-toolbar,
+.tiptap .mermaid-block-preview:hover .media-toolbar,
+.tiptap .image-node-view:hover .media-toolbar,
+.tiptap .image-figure.image-selected .media-toolbar {
+  pointer-events: auto;
+  opacity: 1;
+}
+
+.media-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 10%);
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.media-toolbar-btn:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-subtle);
+  border-color: var(--color-accent-default);
+}
+
+.media-toolbar-btn:active {
+  color: white;
+  background: var(--color-accent-default);
+  border-color: var(--color-accent-default);
+  transform: scale(0.85);
+  transition:
+    transform 0.08s ease,
+    background-color 0.08s ease,
+    color 0.08s ease;
+}
+
+.media-toolbar-btn-active {
+  color: white;
+  background: var(--color-accent-default);
+  border-color: var(--color-accent-default);
+}
+
 /* Caption shown below a media block (centered, muted), click-to-edit. */
 .tiptap .block-caption {
   margin: 0.4em auto 0;
@@ -100,16 +165,6 @@
   color: var(--color-text-muted);
   text-align: center;
   cursor: text;
-}
-
-.tiptap .block-caption-placeholder {
-  opacity: 0;
-  transition: opacity 0.12s ease;
-}
-
-.tiptap .svg-block-preview:hover .block-caption-placeholder,
-.tiptap .mermaid-block-preview:hover .block-caption-placeholder {
-  opacity: 0.55;
 }
 
 .tiptap .block-caption-editing {
