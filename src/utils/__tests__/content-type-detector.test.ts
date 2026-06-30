@@ -32,4 +32,12 @@ describe("detectContentType", () => {
     const nodeTypes = [{ type: "paragraph" }, { type: "codeBlock" }];
     expect(detectContentType(nodeTypes)).toBe("code");
   });
+
+  it("returns diagram when selection contains mermaidBlock", () => {
+    expect(detectContentType([{ type: "mermaidBlock" }])).toBe("diagram");
+  });
+
+  it("returns svg when selection contains svgBlock", () => {
+    expect(detectContentType([{ type: "svgBlock" }])).toBe("svg");
+  });
 });

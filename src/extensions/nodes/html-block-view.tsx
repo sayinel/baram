@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 import DOMPurify from "dompurify";
 
+import { isSvgContent, sanitizeSvg } from "../../utils/markdown/svg-utils";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
 import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
 
@@ -104,9 +105,7 @@ export function HtmlBlockView({
     editor.commands.setNodeSelection(pos);
   }, [editor, getPos]);
 
-  const sanitizedHtml = content
-    ? DOMPurify.sanitize(content, SANITIZE_CONFIG)
-    : "";
+  const sanitizedHtml = content ? sanitizeHtmlBlock(content) : "";
 
   // Non-editing: sanitized HTML render
   if (!selected) {
@@ -158,10 +157,22 @@ export function HtmlBlockView({
         <div
           className="html-block-render html-block-render-faded"
           dangerouslySetInnerHTML={{
-            __html: DOMPurify.sanitize(localContent, SANITIZE_CONFIG),
+            __html: sanitizeHtmlBlock(localContent),
           }}
         />
       )}
     </NodeViewWrapper>
   );
+}
+
+/**
+ * Raw `<svg>` markup goes through the shared {@link sanitizeSvg} (svg profile +
+ * inline `style`/presentation attrs/filters) so it renders with full fidelity;
+ * everything else keeps the stricter HTML config. `<script>`, event handlers and
+ * `javascript:` URLs stay forbidden on both paths.
+ */
+function sanitizeHtmlBlock(html: string): string {
+  return isSvgContent(html)
+    ? sanitizeSvg(html)
+    : DOMPurify.sanitize(html, SANITIZE_CONFIG);
 }

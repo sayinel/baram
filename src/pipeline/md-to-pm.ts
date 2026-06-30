@@ -42,6 +42,7 @@ import { isDetailsOpening } from "./transformers/toggle-transformer";
 const CODE_LANG_MAP = [
   { lang: "mermaid", schemaNode: "mermaidBlock", transformerKey: "mermaid" },
   { lang: "query", schemaNode: "queryBlock", transformerKey: "query" },
+  { lang: "svg", schemaNode: "svgBlock", transformerKey: "svg" },
 ] as const;
 
 // §perf-large-file: Set for O(1) inline type check (replaces per-call array allocation)

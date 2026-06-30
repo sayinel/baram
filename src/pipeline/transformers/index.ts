@@ -31,6 +31,7 @@ import { queryBlockTransformer } from "./query-block-transformer";
 import { strikeTransformer } from "./strike-transformer";
 import { subscriptTransformer } from "./subscript-transformer";
 import { superscriptTransformer } from "./superscript-transformer";
+import { svgBlockTransformer } from "./svg-block-transformer";
 import { tableOfContentsTransformer } from "./table-of-contents-transformer";
 import { tableTransformer } from "./table-transformer";
 import { tagTransformer } from "./tag-transformer";
@@ -71,6 +72,7 @@ const nodeEntries: NodeTransformerEntry[] = [
   tableTransformer,
   frontmatterTransformer,
   mermaidBlockTransformer,
+  svgBlockTransformer,
   queryBlockTransformer,
   blockReferenceTransformer,
   blockEmbedTransformer,

@@ -1,0 +1,325 @@
+/* §5.1 SVG Block — dual mode (rendered SVG / source edit) + inline SVG in HTML block */
+
+.tiptap .svg-block {
+  margin: 1em 0;
+}
+
+.tiptap .svg-block-preview {
+  position: relative;
+  padding: 0.5em;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.tiptap .svg-block-preview:hover {
+  background-color: var(--color-bg-subtle);
+}
+
+.tiptap .svg-block-editing {
+  padding: 0.75em 1em;
+  background-color: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+}
+
+/* Rendered SVG — centered, constrained to editor width. Block (not flex) +
+   text-align so a `width="100%"` SVG with no height keeps its viewBox aspect
+   ratio; in a flex container WebKit collapses such an SVG to zero height. */
+.tiptap .svg-block-render {
+  padding: 0.5em 0;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.tiptap .svg-block-render svg {
+  display: inline-block;
+  max-width: 100%;
+  height: auto;
+}
+
+.tiptap .svg-block-render-faded {
+  margin-top: 0.5em;
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.tiptap .svg-block-empty {
+  padding: 1em;
+  font-size: 0.875em;
+  font-style: italic;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.tiptap .svg-block-header {
+  display: flex;
+  gap: 0.5em;
+  align-items: center;
+  margin-bottom: 0.5em;
+}
+
+.tiptap .svg-block-label {
+  font-family: var(--font-family-mono);
+  font-size: 0.75em;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.tiptap .svg-block-actions {
+  display: flex;
+  gap: 0.35em;
+  margin-left: auto;
+}
+
+.tiptap .svg-fullscreen-btn {
+  padding: 0.15em 0.5em;
+  font-family: var(--font-family-mono);
+  font-size: 0.7em;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 3px;
+}
+
+.tiptap .svg-fullscreen-btn:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-accent-default);
+}
+
+.tiptap .svg-block-textarea {
+  display: block;
+  width: 100%;
+  padding: 0.5em;
+  margin-bottom: 0.5em;
+  overflow: hidden;
+  font-family: var(--font-family-mono);
+  font-size: 0.875em;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+  resize: none;
+  outline: none;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+}
+
+.tiptap .svg-block-textarea:focus {
+  border-color: var(--color-accent-default);
+}
+
+/* Hover toolbar */
+
+.svg-hover-toolbar {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.tiptap .svg-block-preview:hover .svg-hover-toolbar {
+  pointer-events: auto;
+  opacity: 1;
+}
+
+.svg-hover-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 10%);
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.svg-hover-toolbar-btn:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-subtle);
+  border-color: var(--color-accent-default);
+}
+
+.svg-hover-toolbar-btn:active {
+  color: white;
+  background: var(--color-accent-default);
+  border-color: var(--color-accent-default);
+  transform: scale(0.85);
+  transition:
+    transform 0.08s ease,
+    background-color 0.08s ease,
+    color 0.08s ease;
+}
+
+/* Context menu */
+
+.svg-context-menu {
+  min-width: 160px;
+  padding: 4px 0;
+  font-size: 13px;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
+}
+
+.svg-context-menu-item {
+  display: block;
+  width: 100%;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+.svg-context-menu-item:hover {
+  background: var(--color-bg-subtle);
+}
+
+.svg-context-menu-danger {
+  color: var(--color-status-danger);
+}
+
+.svg-context-menu-danger:hover {
+  background: var(--color-status-error-bg);
+}
+
+.svg-context-menu-divider {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--color-border-default);
+}
+
+/* Fullscreen overlay (shared by edit + view modals) */
+
+.svg-fullscreen-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 50%);
+}
+
+.svg-fullscreen-modal {
+  display: flex;
+  flex-direction: column;
+  width: 90vw;
+  height: 80vh;
+  overflow: hidden;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgb(0 0 0 / 20%);
+}
+
+.svg-fullscreen-header {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.75em;
+  align-items: center;
+  padding: 0.75em 1em;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.svg-fullscreen-close {
+  padding: 0.25em 0.75em;
+  margin-left: auto;
+  font-family: var(--font-family-mono);
+  font-size: 0.8em;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+}
+
+.svg-fullscreen-close:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-accent-default);
+}
+
+.svg-fullscreen-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.svg-fullscreen-editor {
+  flex: 1;
+  padding: 1em;
+  overflow-y: auto;
+  border-right: 1px solid var(--color-border-subtle);
+}
+
+.svg-fullscreen-editor .svg-block-textarea {
+  min-height: 100%;
+  margin-bottom: 0;
+  font-size: 0.9em;
+  background: var(--color-bg-subtle);
+}
+
+.svg-fullscreen-preview {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: 1em;
+  overflow: auto;
+}
+
+.svg-fullscreen-preview .svg-block-render svg {
+  max-width: 100%;
+  height: auto;
+  max-height: 100%;
+}
+
+/* Fullscreen view modal (read-only) */
+
+.svg-view-fullscreen-modal {
+  display: flex;
+  flex-direction: column;
+  width: calc(100vw - 2rem);
+  height: calc(100vh - 2rem);
+  overflow: hidden;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgb(0 0 0 / 20%);
+}
+
+.svg-view-fullscreen-body {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: 2em;
+  overflow: auto;
+}
+
+.svg-view-fullscreen-body .svg-block-render {
+  width: 100%;
+  height: 100%;
+}
+
+.svg-view-fullscreen-body .svg-block-render svg {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  max-height: 100%;
+}

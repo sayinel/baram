@@ -192,6 +192,22 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       action: () => editor.commands.setMermaidBlock(),
     },
     {
+      id: "svg",
+      label: "SVG Image",
+      category: "Rich Content",
+      description: "Render raw SVG markup",
+      mdHint: "```svg",
+      action: () => editor.commands.setSvgBlock(),
+    },
+    {
+      id: "html",
+      label: "HTML Block",
+      category: "Rich Content",
+      description: "Embed raw HTML (sanitized)",
+      mdHint: "<div>",
+      action: () => editor.commands.setHtmlBlock(),
+    },
+    {
       id: "query",
       label: "Query",
       category: "Rich Content",

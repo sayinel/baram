@@ -50,6 +50,7 @@ import { MermaidBlock } from "./nodes/mermaid-block";
 import { OrderedList } from "./nodes/ordered-list";
 import { Paragraph } from "./nodes/paragraph";
 import { QueryBlock } from "./nodes/query-block";
+import { SvgBlock } from "./nodes/svg-block";
 import {
   BaramTable,
   BaramTableCell,
@@ -126,6 +127,9 @@ export function createBaramExtensions(
 
     // Nodes — §5.5 Mermaid
     MermaidBlock,
+
+    // Nodes — §5.1 SVG Block (```svg fenced render)
+    SvgBlock,
 
     // Nodes — §5.13 Query Block
     QueryBlock,
@@ -336,6 +340,7 @@ export {
   Strike,
   Subscript,
   Superscript,
+  SvgBlock,
   TableOfContents,
   TagNode,
   TaskItem,

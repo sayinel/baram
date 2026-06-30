@@ -12,6 +12,7 @@ export function getBlockContentMode(node: PmNode): ContentMode {
   if (typeName === "mathBlock" || typeName === "mathInline") return "math";
   if (typeName === "table") return "table";
   if (typeName === "mermaidBlock") return "diagram";
+  if (typeName === "svgBlock") return "svg";
   if (typeName === "image") return "image";
   if (typeName === "heading") return "structure";
 
@@ -35,6 +36,10 @@ export function getBlockRawContent(node: PmNode): string {
 
   // MermaidBlock: diagram code stored in attribute
   if (typeName === "mermaidBlock")
+    return (node.attrs.code as string) || node.textContent || "";
+
+  // SvgBlock: SVG markup stored in attribute
+  if (typeName === "svgBlock")
     return (node.attrs.code as string) || node.textContent || "";
 
   // Image: alt text (primary replaceable content)
@@ -70,6 +75,11 @@ export function getBlockTextContent(node: PmNode): string {
 
   // MermaidBlock: diagram code stored in attrs.code
   if (typeName === "mermaidBlock") {
+    return (node.attrs.code as string) || node.textContent || "";
+  }
+
+  // SvgBlock: SVG markup stored in attrs.code
+  if (typeName === "svgBlock") {
     return (node.attrs.code as string) || node.textContent || "";
   }
 

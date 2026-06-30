@@ -19,6 +19,18 @@ export async function deleteFile(path: string): Promise<void> {
   return invoke<void>("delete_file", { path });
 }
 
+/**
+ * §5.1 Export binary data to a user-chosen path (e.g. SVG → PNG download).
+ * NOT vault-confined — the path comes from the native save dialog, so saving
+ * outside the vault (Downloads/Desktop) works. Mirrors export_pdf policy.
+ */
+export async function exportBinaryFile(
+  path: string,
+  data: number[],
+): Promise<void> {
+  return invoke<void>("export_binary_file", { path, data });
+}
+
 /** §53 Extract a ZIP file to output directory, returns list of extracted file paths */
 export async function extractZip(
   zipPath: string,
@@ -63,7 +75,7 @@ export async function watchDir(path: string): Promise<void> {
   return invoke<void>("watch_dir", { path });
 }
 
-/** §56d Write binary data to a file (for images, etc.) */
+/** §56d Write binary data to a file (for images, etc.) — vault-confined. */
 export async function writeBinaryFile(
   path: string,
   data: number[],

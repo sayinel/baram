@@ -70,8 +70,9 @@ export function applyBlockAIResult(
       );
       break;
     }
-    case "mermaidBlock": {
-      // Code stored in attribute
+    case "mermaidBlock":
+    case "svgBlock": {
+      // Code/markup stored in attribute
       editor.view.dispatch(
         editor.state.tr.setNodeMarkup(targetPos, undefined, {
           ...node.attrs,
@@ -354,7 +355,12 @@ function createDiffPanel(
 }
 
 function stripCodeFences(text: string, nodeType: string): string {
-  if (nodeType !== "codeBlock" && nodeType !== "mermaidBlock") return text;
+  if (
+    nodeType !== "codeBlock" &&
+    nodeType !== "mermaidBlock" &&
+    nodeType !== "svgBlock"
+  )
+    return text;
   const trimmed = text.trim();
   const match = trimmed.match(/^```[\w]*\n?([\s\S]*?)```$/);
   return match ? match[1].trimEnd() : trimmed;

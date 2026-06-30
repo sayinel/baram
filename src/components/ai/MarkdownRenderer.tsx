@@ -16,6 +16,8 @@ import { fromMarkdown } from "mdast-util-from-markdown";
 import { gfmFromMarkdown } from "mdast-util-gfm";
 import { gfm } from "micromark-extension-gfm";
 
+import { isSvgContent, sanitizeSvg } from "../../utils/markdown/svg-utils";
+
 type MdastBlockContent = BlockContent | DefinitionContent | ListItem;
 type MdastNode = Nodes;
 
@@ -72,7 +74,7 @@ function renderBlock(node: MdastBlockContent, key: number): ReactNode {
     case "html":
       return (
         <div
-          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(node.value) }}
+          dangerouslySetInnerHTML={{ __html: sanitizeEmbeddedHtml(node.value) }}
           key={key}
         />
       );
@@ -150,7 +152,7 @@ function renderInline(node: PhrasingContent, key: number): ReactNode {
     case "html":
       return (
         <span
-          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(node.value) }}
+          dangerouslySetInnerHTML={{ __html: sanitizeEmbeddedHtml(node.value) }}
           key={key}
         />
       );
@@ -207,4 +209,9 @@ function renderMdast(tree: MdastNode): ReactNode {
     );
   }
   return null;
+}
+
+/** Raw HTML embedded in AI markdown — render SVG faithfully, sanitize the rest. */
+function sanitizeEmbeddedHtml(value: string): string {
+  return isSvgContent(value) ? sanitizeSvg(value) : DOMPurify.sanitize(value);
 }

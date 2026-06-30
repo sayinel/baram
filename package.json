@@ -62,6 +62,7 @@
     "@floating-ui/dom": "^1.7.6",
     "@tailwindcss/vite": "^4.3.1",
     "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-clipboard-manager": "^2.3.2",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-opener": "^2",
     "@tiptap/extension-document": "^3.27.1",
