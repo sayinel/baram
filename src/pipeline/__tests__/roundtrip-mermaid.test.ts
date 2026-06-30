@@ -25,7 +25,11 @@ const schema = new Schema({
     mermaidBlock: {
       group: "block",
       atom: true,
-      attrs: { code: { default: "" } },
+      attrs: {
+        code: { default: "" },
+        width: { default: null },
+        caption: { default: null },
+      },
     },
     mathBlock: {
       content: "text*",
@@ -83,6 +87,21 @@ describe("Roundtrip: Mermaid Block (§5.5)", () => {
     const input =
       '```mermaid\npie title Pets\n  "Dogs" : 386\n  "Cats" : 85\n```\n';
     expect(roundtrip(input)).toBe(input);
+  });
+
+  it("preserves width/caption stored as a %% baram-meta line", () => {
+    const input =
+      '```mermaid\n%% baram-meta: {"width":50,"caption":"My flow"}\nflowchart LR\n  A --> B\n```\n';
+    expect(roundtrip(input)).toBe(input);
+  });
+
+  it("splits %% baram-meta out of the code attr (clean diagram)", () => {
+    const input =
+      '```mermaid\n%% baram-meta: {"width":60}\nflowchart LR\n  A --> B\n```\n';
+    const doc = markdownToProsemirror(input, schema);
+    const block = doc.firstChild!;
+    expect(block.attrs.code).toBe("flowchart LR\n  A --> B");
+    expect(block.attrs.width).toBe(60);
   });
 });
 

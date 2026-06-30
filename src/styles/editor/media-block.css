@@ -1,0 +1,134 @@
+/* Shared media-block chrome — edge-drag resize handles + caption.
+   Used by the SVG block (§5.1), Mermaid block (§5.5), and image (§3.3). */
+
+/* Centered, shrink-to-fit frame hosting the media + edge handles.
+   Unsized: wraps the media's natural size. Resized (.is-sized): an inline
+   width:N% (of the block) makes it definite and the media fills it. */
+.tiptap .media-resize-frame {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: top;
+}
+
+/* Full-width, centered host for a resizable media preview (block, not flex, so a
+   width:100% child keeps its aspect ratio — flex collapses such SVGs in WebKit). */
+.tiptap .media-render {
+  position: relative;
+  padding: 0.5em 0;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.tiptap .media-resize-content {
+  display: block;
+}
+
+.tiptap .media-resize-content svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.tiptap .media-resize-frame.is-sized .media-resize-content svg {
+  display: block;
+  width: 100%;
+}
+
+/* Edge resize handles — revealed on hover, just inside the frame edges so a
+   100%-wide block doesn't overflow into a scrollbar. The bar is pinned to the
+   very edge via justify-content. */
+.media-resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  cursor: ew-resize;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.media-resize-handle-left {
+  left: 0;
+  justify-content: flex-start;
+}
+
+.media-resize-handle-right {
+  right: 0;
+  justify-content: flex-end;
+}
+
+.media-resize-handle::before {
+  width: 5px;
+  height: 44px;
+  max-height: 70%;
+  content: "";
+  background: var(--color-accent-default);
+  border: 1px solid var(--color-bg-default);
+  border-radius: 3px;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 25%);
+}
+
+.tiptap .media-resize-frame:hover .media-resize-handle,
+.tiptap .image-figure:hover .media-resize-handle {
+  opacity: 1;
+}
+
+/* Live % readout while dragging. */
+.media-resize-label {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  z-index: 3;
+  padding: 2px 8px;
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  color: white;
+  pointer-events: none;
+  background: var(--color-accent-default);
+  border-radius: 10px;
+  transform: translateX(-50%);
+}
+
+/* Caption shown below a media block (centered, muted), click-to-edit. */
+.tiptap .block-caption {
+  margin: 0.4em auto 0;
+  font-size: 0.85em;
+  color: var(--color-text-muted);
+  text-align: center;
+  cursor: text;
+}
+
+.tiptap .block-caption-placeholder {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.tiptap .svg-block-preview:hover .block-caption-placeholder,
+.tiptap .mermaid-block-preview:hover .block-caption-placeholder {
+  opacity: 0.55;
+}
+
+.tiptap .block-caption-editing {
+  text-align: center;
+}
+
+.tiptap .block-caption-input {
+  width: 80%;
+  max-width: 100%;
+  padding: 2px 6px;
+  font-size: 1em;
+  color: var(--color-text-primary);
+  text-align: center;
+  outline: none;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+}
+
+.tiptap .block-caption-input:focus {
+  border-color: var(--color-accent-default);
+}

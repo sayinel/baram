@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 // §5.5 Mermaid Block NodeView — selected: textarea + preview, unselected: SVG render
 // §50 Enhanced: template picker + full-screen edit
-import { Copy, Maximize2, Sparkles } from "lucide-react";
+import { Copy, Download, Maximize2, Sparkles } from "lucide-react";
 
 import {
   copyMermaidPng,
@@ -14,10 +14,13 @@ import {
   MERMAID_TEMPLATES,
   sanitizeMermaidSvg,
 } from "../../utils/markdown/mermaid-utils";
+import { downloadSvgAsPng } from "../../utils/markdown/svg-export";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
 import { mermaidBlockEntryKey } from "./mermaid-block";
+import { BlockCaption } from "./views/BlockCaption";
 import { onFirstVisible } from "./views/lazy-visible";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
+import { useMediaResize } from "./views/use-media-resize";
 import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
 
 export function MermaidBlockView({
@@ -235,6 +238,22 @@ export function MermaidBlockView({
     editor.commands.setNodeSelection(pos);
   }, [editor, getPos]);
 
+  // §5.5 resize + caption — stored as node attrs; the transformer serializes them
+  // into a `%% baram-meta` comment line in the fence (mermaid ignores it) so they
+  // round-trip while the editable `code` stays a pure diagram.
+  const widthPercent = (node.attrs.width as null | number) ?? null;
+  const caption = (node.attrs.caption as null | string) ?? null;
+  const { dragPct, startResize } = useMediaResize(renderRef, (pct) => {
+    updateAttributesRef.current({ width: pct });
+  });
+  const effectivePct = dragPct ?? widthPercent;
+  const commitCaption = useCallback(
+    (text: string) => {
+      updateAttributes({ caption: text || null });
+    },
+    [updateAttributes],
+  );
+
   const applyTemplate = useCallback((key: string) => {
     const template = MERMAID_TEMPLATES[key];
     if (!template) return;
@@ -399,11 +418,42 @@ export function MermaidBlockView({
         spellCheck={false}
       >
         {svgHtml ? (
-          <div
-            className="mermaid-block-svg"
-            dangerouslySetInnerHTML={{ __html: svgHtml }}
-            ref={renderRef}
-          />
+          <>
+            <div className="media-render" ref={renderRef}>
+              <div
+                className={
+                  "media-resize-frame" +
+                  (effectivePct != null ? " is-sized" : "")
+                }
+                style={
+                  effectivePct != null
+                    ? { width: `${effectivePct}%` }
+                    : undefined
+                }
+              >
+                <div
+                  className="media-resize-content"
+                  dangerouslySetInnerHTML={{ __html: svgHtml }}
+                />
+                <div
+                  className="media-resize-handle media-resize-handle-left"
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={startResize}
+                  title="Drag to resize"
+                />
+                <div
+                  className="media-resize-handle media-resize-handle-right"
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={startResize}
+                  title="Drag to resize"
+                />
+                {dragPct != null && (
+                  <div className="media-resize-label">{dragPct}%</div>
+                )}
+              </div>
+            </div>
+            <BlockCaption onCommit={commitCaption} value={caption} />
+          </>
         ) : error ? (
           <div className="mermaid-block-error">{error}</div>
         ) : (
@@ -450,6 +500,16 @@ export function MermaidBlockView({
               className="mermaid-hover-toolbar-btn"
               onClick={(e) => {
                 e.stopPropagation();
+                void downloadSvgAsPng(svgHtml, "diagram.png");
+              }}
+              title="Download as PNG"
+            >
+              <Download size={16} strokeWidth={2} />
+            </button>
+            <button
+              className="mermaid-hover-toolbar-btn"
+              onClick={(e) => {
+                e.stopPropagation();
                 setViewFullscreen(true);
               }}
               title="Fullscreen view"
@@ -489,6 +549,15 @@ export function MermaidBlockView({
                     }}
                   >
                     Copy as PNG
+                  </button>
+                  <button
+                    className="mermaid-context-menu-item"
+                    onClick={() => {
+                      void downloadSvgAsPng(svgHtml, "diagram.png");
+                      setContextMenu(null);
+                    }}
+                  >
+                    Download PNG
                   </button>
                 </>
               )}
