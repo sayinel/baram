@@ -38,88 +38,12 @@
   height: auto;
 }
 
-/* Centered, shrink-to-fit frame hosting the SVG + edge resize handles.
-   Unsized: wraps the SVG's natural size. Resized (.is-sized): an inline
-   width:N% (of the block) makes it definite and the SVG fills it. */
-.tiptap .svg-render-frame {
-  position: relative;
-  display: inline-block;
-  max-width: 100%;
-  vertical-align: top;
-}
-
-.tiptap .svg-render-content {
-  display: block;
-}
-
-.tiptap .svg-render-frame.is-sized .svg-render-content svg {
-  display: block;
-  width: 100%;
-}
+/* Resize frame / handles / label are shared — see media-block.css. */
 
 .tiptap .svg-block-render-faded {
   margin-top: 0.5em;
   pointer-events: none;
   opacity: 0.6;
-}
-
-/* Edge resize handles — revealed on hover, straddling the frame edges. */
-.svg-resize-handle {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  cursor: ew-resize;
-  opacity: 0;
-  transition: opacity 0.12s ease;
-}
-
-/* Handles sit just inside the frame edges (not -8px outside) so a 100%-wide
-   block doesn't overflow its container and trigger a horizontal scrollbar.
-   The visual bar is pinned to the very edge via justify-content. */
-.svg-resize-handle-left {
-  left: 0;
-  justify-content: flex-start;
-}
-
-.svg-resize-handle-right {
-  right: 0;
-  justify-content: flex-end;
-}
-
-.svg-resize-handle::before {
-  width: 5px;
-  height: 44px;
-  max-height: 70%;
-  content: "";
-  background: var(--color-accent-default);
-  border: 1px solid var(--color-bg-default);
-  border-radius: 3px;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 25%);
-}
-
-.tiptap .svg-block-preview:hover .svg-resize-handle {
-  opacity: 1;
-}
-
-/* Live % readout while dragging. */
-.svg-resize-label {
-  position: absolute;
-  top: 6px;
-  left: 50%;
-  z-index: 3;
-  padding: 2px 8px;
-  font-family: var(--font-family-mono);
-  font-size: 11px;
-  color: white;
-  pointer-events: none;
-  background: var(--color-accent-default);
-  border-radius: 10px;
-  transform: translateX(-50%);
 }
 
 .tiptap .svg-block-empty {

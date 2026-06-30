@@ -57,6 +57,15 @@ export async function copySvgSource(svg: string): Promise<void> {
 }
 
 /**
+ * Read the caption from the root `<svg>`'s first `<title>` child (the SVG-native
+ * slot for a label; also surfaces as a tooltip). Returns null when absent.
+ */
+export function getSvgCaption(svg: string): null | string {
+  const m = /<svg\b[^>]*>\s*<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(svg);
+  return m ? unescapeXmlText(m[1]).trim() || null : null;
+}
+
+/**
  * Read a percentage `width` from the **root `<svg>`** (e.g. a previously stored
  * resize). Returns the number (e.g. 50) or null when the root has no percentage
  * width — a px/absent width means "natural size", not a fixed percentage. Only
@@ -75,6 +84,23 @@ export function getSvgRootWidthPercent(svg: string): null | number {
  */
 export function isSvgContent(content: string): boolean {
   return SVG_ROOT_RE.test(content) && /<\/svg\s*>/i.test(content);
+}
+
+/**
+ * Set/replace/remove the root `<svg>`'s `<title>` caption via string edit (keeps
+ * the rest of the SVG formatting intact). Round-trips inside the ```svg fence.
+ */
+export function setSvgCaption(svg: string, caption: string): string {
+  const withoutTitle = svg.replace(
+    /(<svg\b[^>]*>)\s*<title\b[^>]*>[\s\S]*?<\/title>/i,
+    "$1",
+  );
+  const text = caption.trim();
+  if (!text) return withoutTitle;
+  return withoutTitle.replace(
+    /(<svg\b[^>]*>)/i,
+    `$1<title>${escapeXmlText(text)}</title>`,
+  );
 }
 
 /**
@@ -150,6 +176,10 @@ export async function svgToRgba(
   };
 }
 
+function escapeXmlText(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 /**
  * Parse a length attribute (width/height) to pixels. Relative units
  * (`%`, `em`, `ex`, `auto`) can't be used as a raster pixel size, so they
@@ -162,6 +192,15 @@ function lengthToPx(value: null | string): number {
   if (/%|e[mx]$|^auto$/i.test(s)) return 0;
   const n = parseFloat(s);
   return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function unescapeXmlText(s: string): string {
+  return s
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&(?:apos|#0?39);/g, "'")
+    .replace(/&amp;/g, "&");
 }
 
 /** Presentation properties that decide how SVG geometry/text paints. */

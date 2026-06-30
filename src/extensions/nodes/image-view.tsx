@@ -1,4 +1,4 @@
-// §3.3 Image NodeView — hover toolbar (resize, caption editing)
+// §3.3 Image NodeView — edge-drag resize, caption editing, AI menu
 import { useCallback, useMemo, useRef, useState } from "react";
 
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -8,8 +8,7 @@ import { Sparkles } from "lucide-react";
 
 import { useEditorStore } from "../../stores/editor/editor";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
-
-const RESIZE_PRESETS = [25, 50, 75, 100];
+import { useMediaResize } from "./views/use-media-resize";
 
 export function ImageView({
   node,
@@ -32,10 +31,8 @@ export function ImageView({
   const [hovered, setHovered] = useState(false);
   const [editingCaption, setEditingCaption] = useState(false);
   const [captionText, setCaptionText] = useState(alt);
-  const [editingSize, setEditingSize] = useState(false);
-  const [sizeInput, setSizeInput] = useState(String(widthPercent));
   const captionRef = useRef<HTMLInputElement>(null);
-  const sizeInputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLElement | null>(null);
 
   // §5.1: Image click → NodeSelection is handled by the ProseMirror plugin
   // in image.ts (handleDOMEvents.mousedown). React handlers must NOT call
@@ -44,31 +41,13 @@ export function ImageView({
 
   const showToolbar = hovered || selected;
 
-  const handleResize = useCallback(
-    (percent: number) => {
-      const clamped = Math.max(10, Math.min(100, percent));
-      updateAttributes({ widthPercent: clamped });
-      setSizeInput(String(clamped));
-      setEditingSize(false);
-    },
-    [updateAttributes],
-  );
-
-  const startSizeEdit = useCallback(() => {
-    setSizeInput(String(widthPercent));
-    setEditingSize(true);
-    setTimeout(() => sizeInputRef.current?.select(), 0);
-  }, [widthPercent]);
-
-  const commitSizeInput = useCallback(() => {
-    const val = parseInt(sizeInput, 10);
-    if (!isNaN(val) && val >= 10 && val <= 100) {
-      handleResize(val);
-    } else {
-      setSizeInput(String(widthPercent));
-    }
-    setEditingSize(false);
-  }, [sizeInput, widthPercent, handleResize]);
+  // Edge-drag resize (Notion-style), shared with the SVG/Mermaid blocks. The
+  // figure is centered, so the same centre-distance maths apply; width persists
+  // to the widthPercent attr (already serialized to `<img width="X%">`).
+  const { dragPct, startResize } = useMediaResize(containerRef, (pct) => {
+    updateAttributes({ widthPercent: pct });
+  });
+  const effectiveWidth = dragPct ?? widthPercent;
 
   const handleCaptionSave = useCallback(() => {
     setEditingCaption(false);
@@ -106,10 +85,11 @@ export function ImageView({
       className="image-node-view"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      ref={containerRef}
     >
       <figure
         className={`image-figure ${selected ? "image-selected" : ""}`}
-        style={{ width: `${widthPercent}%` }}
+        style={{ width: `${effectiveWidth}%` }}
       >
         <img
           alt={alt}
@@ -119,58 +99,24 @@ export function ImageView({
           title={title || undefined}
         />
 
+        {/* Edge resize handles */}
+        <div
+          className="media-resize-handle media-resize-handle-left"
+          onMouseDown={startResize}
+          title="Drag to resize"
+        />
+        <div
+          className="media-resize-handle media-resize-handle-right"
+          onMouseDown={startResize}
+          title="Drag to resize"
+        />
+        {dragPct != null && (
+          <div className="media-resize-label">{dragPct}%</div>
+        )}
+
         {/* Hover toolbar */}
         {showToolbar && (
           <div className="image-toolbar" contentEditable={false}>
-            {RESIZE_PRESETS.map((pct) => (
-              <button
-                className={`image-toolbar-btn ${widthPercent === pct ? "image-toolbar-btn-active" : ""}`}
-                key={pct}
-                onClick={() => handleResize(pct)}
-                type="button"
-              >
-                {pct}%
-              </button>
-            ))}
-            <span className="image-toolbar-sep" />
-            {editingSize ? (
-              <span className="image-size-input-wrap">
-                <input
-                  className="image-size-input"
-                  max={100}
-                  min={10}
-                  onBlur={commitSizeInput}
-                  onChange={(e) => setSizeInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      commitSizeInput();
-                    }
-                    if (e.key === "Escape") {
-                      e.preventDefault();
-                      setEditingSize(false);
-                      setSizeInput(String(widthPercent));
-                    }
-                  }}
-                  ref={sizeInputRef}
-                  type="number"
-                  value={sizeInput}
-                />
-                <span className="image-size-unit">%</span>
-              </span>
-            ) : (
-              <button
-                className={`image-toolbar-btn ${!RESIZE_PRESETS.includes(widthPercent) ? "image-toolbar-btn-active" : ""}`}
-                onClick={startSizeEdit}
-                title="커스텀 크기 입력"
-                type="button"
-              >
-                {RESIZE_PRESETS.includes(widthPercent)
-                  ? "Custom"
-                  : `${widthPercent}%`}
-              </button>
-            )}
-            <span className="image-toolbar-sep" />
             <button
               className="image-toolbar-btn"
               onClick={startCaptionEdit}
