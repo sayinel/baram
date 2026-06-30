@@ -134,6 +134,27 @@ describe("HTML Block does not capture special HTML", () => {
   });
 });
 
+// ── Inline SVG (§5.1 Option A) ──────────────────────────────────────
+
+describe("HTML Block: raw SVG markup", () => {
+  // CommonMark HTML-block rule: the opening tag must be alone on its line for
+  // the block to be captured as raw HTML (a single-line `<svg>…</svg>` with
+  // content after the tag is parsed as a paragraph instead). This multi-line
+  // form is the supported way to author inline SVG; the ```svg fenced block
+  // (svgBlock) is the robust path for arbitrary SVG source.
+  it("block-level multi-line <svg> becomes an htmlBlock and roundtrips", () => {
+    const input =
+      '<svg viewBox="0 0 100 100">\n  <circle cx="50" cy="50" r="40"/>\n</svg>\n';
+    const doc = markdownToProsemirror(input, schema);
+    const block = doc.firstChild!;
+    expect(block.type.name).toBe("htmlBlock");
+    expect(block.attrs.content).toBe(
+      '<svg viewBox="0 0 100 100">\n  <circle cx="50" cy="50" r="40"/>\n</svg>',
+    );
+    expect(roundtrip(input)).toBe(input);
+  });
+});
+
 // ── PM structure tests ──────────────────────────────────────────────
 
 describe("HTML Block PM structure", () => {

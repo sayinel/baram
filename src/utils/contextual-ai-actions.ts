@@ -218,6 +218,37 @@ const DIAGRAM_ACTIONS: AIAction[] = [
   },
 ];
 
+const SVG_ACTIONS: AIAction[] = [
+  {
+    id: "improve-svg",
+    label: "Improve SVG",
+    mode: "replace",
+    systemPrompt:
+      "Improve the following SVG markup for visual clarity and correctness while preserving its intent. Output only the raw SVG markup, no explanation, no code fences.",
+  },
+  {
+    id: "explain-svg",
+    label: "Explain",
+    mode: "generate",
+    systemPrompt:
+      "Explain what the following SVG markup renders in plain language. Describe the shapes, colors, and layout.",
+  },
+  {
+    id: "modify-svg",
+    label: "Modify",
+    mode: "replace",
+    systemPrompt:
+      "Apply the requested change to the following SVG markup. Output only the raw SVG markup, no explanation, no code fences.",
+  },
+  {
+    id: "change-style",
+    label: "Change Style",
+    mode: "replace",
+    systemPrompt:
+      "Restyle the following SVG markup (colors, strokes, fills) for a cleaner look while keeping the same shapes. Output only the raw SVG markup, no explanation, no code fences.",
+  },
+];
+
 const IMAGE_ACTIONS: AIAction[] = [
   {
     id: "gen-alt",
@@ -248,6 +279,7 @@ const MODE_ACTIONS: Record<ContentMode, AIAction[]> = {
   image: IMAGE_ACTIONS,
   math: MATH_ACTIONS,
   structure: STRUCTURE_ACTIONS,
+  svg: SVG_ACTIONS,
   table: TABLE_ACTIONS,
   text: TEXT_ACTIONS,
 };

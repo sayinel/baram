@@ -20,6 +20,7 @@ export { MermaidBlock } from "./mermaid-block";
 export { OrderedList } from "./ordered-list";
 export { Paragraph } from "./paragraph";
 export { QueryBlock } from "./query-block";
+export { SvgBlock } from "./svg-block";
 export {
   BaramTable,
   BaramTableCell,

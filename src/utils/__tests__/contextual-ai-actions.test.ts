@@ -38,6 +38,14 @@ describe("getActionsForMode", () => {
     expect(actions).toHaveLength(4);
   });
 
+  it("returns SVG actions for svg mode", () => {
+    const actions = getActionsForMode("svg");
+    expect(actions.length).toBeGreaterThan(0);
+    const ids = actions.map((a) => a.id);
+    expect(ids).toContain("improve-svg");
+    expect(ids).toContain("modify-svg");
+  });
+
   it("each action has id, label, systemPrompt", () => {
     const actions = getActionsForMode("code");
     for (const action of actions) {

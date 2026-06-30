@@ -1,41 +1,21 @@
 // §50 Mermaid diagram utilities — copy, templates, type detection
-import DOMPurify from "dompurify";
+import { copySvgAsPng } from "./svg-export";
+import { copySvgSource, sanitizeSvg } from "./svg-utils";
 
 /**
  * Sanitize a Mermaid-rendered SVG for safe `dangerouslySetInnerHTML`.
  *
- * With `securityLevel: "antiscript"/"loose"`, Mermaid renders flowchart/graph
- * node labels as HTML (`<div>`/`<span>`, plus inline `<br>`/`<b>`/`<i>`) inside
- * `<foreignObject>`. DOMPurify's default `HTML_INTEGRATION_POINTS` is only
- * `annotation-xml`, so HTML-namespaced content inside `<foreignObject>` (an SVG
- * element) fails the namespace check and is stripped — labels render blank
- * (regressed when §5.5 switched securityLevel "strict" → "antiscript", commit
- * 51044cd). Registering `foreignobject` as an HTML integration point keeps the
- * label markup, while `<script>`, event handlers, and `javascript:` URLs stay
- * forbidden by the svg profile + DOMPurify defaults.
+ * Delegates to the canonical {@link sanitizeSvg} so the SVG sanitize policy lives
+ * in one place. With `securityLevel: "antiscript"/"loose"`, Mermaid renders
+ * flowchart/graph node labels as HTML (`<div>`/`<span>`, plus inline
+ * `<br>`/`<b>`/`<i>`) inside `<foreignObject>`; `sanitizeSvg` registers
+ * `foreignobject` as an HTML integration point so those labels survive the
+ * namespace check (regressed when §5.5 switched securityLevel "strict" →
+ * "antiscript", commit 51044cd), while `<script>`, event handlers, and
+ * `javascript:` URLs stay forbidden.
  */
 export function sanitizeMermaidSvg(svg: string): string {
-  return DOMPurify.sanitize(svg, {
-    USE_PROFILES: { svg: true },
-    // foreignObject hosts HTML labels; these common inline tags must be
-    // allow-listed or DOMPurify's svg profile strips them.
-    ADD_TAGS: [
-      "foreignObject",
-      "br",
-      "div",
-      "span",
-      "p",
-      "i",
-      "b",
-      "em",
-      "strong",
-      "code",
-    ],
-    // Treat <foreignObject> as an HTML integration point so its HTML-namespaced
-    // children survive the namespace check. HTML_INTEGRATION_POINTS replaces (not
-    // merges) the default, so re-list the built-in `annotation-xml` too.
-    HTML_INTEGRATION_POINTS: { "annotation-xml": true, foreignobject: true },
-  });
+  return sanitizeSvg(svg);
 }
 
 /** Diagram type templates for Phase 2 supported types */
@@ -89,91 +69,19 @@ export const MERMAID_TEMPLATES: Record<
   },
 };
 
-/** Copy rendered SVG as PNG to clipboard */
+/** Copy rendered SVG as PNG to clipboard (delegates to the shared SVG rasterizer). */
 export async function copyMermaidPng(svgHtml: string): Promise<void> {
-  // Parse SVG to extract dimensions
-  const parser = new DOMParser();
-  const svgDoc = parser.parseFromString(svgHtml, "image/svg+xml");
-  const svgEl = svgDoc.querySelector("svg");
-  if (!svgEl) throw new Error("No SVG element found");
-
-  // Get dimensions from SVG attributes or viewBox
-  const viewBox = svgEl.getAttribute("viewBox");
-  let width = parseFloat(svgEl.getAttribute("width") || "0");
-  let height = parseFloat(svgEl.getAttribute("height") || "0");
-  if ((!width || !height) && viewBox) {
-    const parts = viewBox.split(/[\s,]+/).map(Number);
-    if (parts.length === 4) {
-      width = parts[2];
-      height = parts[3];
-    }
-  }
-  if (!width) width = 800;
-  if (!height) height = 600;
-
-  const dpr = window.devicePixelRatio || 1;
-  const canvasW = Math.ceil(width * dpr);
-  const canvasH = Math.ceil(height * dpr);
-
-  // Ensure SVG has explicit dimensions for rendering
-  svgEl.setAttribute("width", String(width));
-  svgEl.setAttribute("height", String(height));
-  const serializer = new XMLSerializer();
-  const svgString = serializer.serializeToString(svgEl);
-
-  const blob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-
-  try {
-    const img = new Image();
-    img.width = canvasW;
-    img.height = canvasH;
-
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = canvasW;
-        canvas.height = canvasH;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) {
-          reject(new Error("Could not get canvas context"));
-          return;
-        }
-        ctx.fillStyle = "white";
-        ctx.fillRect(0, 0, canvasW, canvasH);
-        ctx.drawImage(img, 0, 0, canvasW, canvasH);
-
-        canvas.toBlob(async (pngBlob) => {
-          if (!pngBlob) {
-            reject(new Error("Could not create PNG blob"));
-            return;
-          }
-          try {
-            await navigator.clipboard.write([
-              new ClipboardItem({ "image/png": pngBlob }),
-            ]);
-            resolve();
-          } catch (err) {
-            reject(err);
-          }
-        }, "image/png");
-      };
-      img.onerror = () => reject(new Error("SVG rendering failed"));
-      img.src = url;
-    });
-  } finally {
-    URL.revokeObjectURL(url);
-  }
+  await copySvgAsPng(svgHtml);
 }
 
 /** Copy mermaid source code to clipboard */
 export async function copyMermaidSource(code: string): Promise<void> {
-  await navigator.clipboard.writeText(code);
+  await copySvgSource(code);
 }
 
 /** Copy rendered SVG markup to clipboard as text */
 export async function copyMermaidSvg(svgHtml: string): Promise<void> {
-  await navigator.clipboard.writeText(svgHtml);
+  await copySvgSource(svgHtml);
 }
 
 /** Detect diagram type from mermaid source code */
