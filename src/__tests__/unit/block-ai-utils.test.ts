@@ -103,6 +103,10 @@ describe("getBlockContentMode", () => {
     expect(getBlockContentMode(mockNode("image", ""))).toBe("image");
   });
 
+  it("returns 'svg' for svgBlock", () => {
+    expect(getBlockContentMode(mockNode("svgBlock", ""))).toBe("svg");
+  });
+
   it("returns 'text' for unknown types", () => {
     expect(getBlockContentMode(mockNode("someCustomBlock", ""))).toBe("text");
   });
@@ -189,6 +193,15 @@ describe("getBlockTextContent", () => {
   it("falls back to textContent for mermaid without code attr", () => {
     const node = mockNode("mermaidBlock", "flowchart LR\n  X --> Y", {});
     expect(getBlockTextContent(node)).toBe("flowchart LR\n  X --> Y");
+  });
+
+  it("extracts svg block markup from attrs.code", () => {
+    const node = mockNode("svgBlock", "", {
+      code: '<svg viewBox="0 0 10 10"><rect/></svg>',
+    });
+    expect(getBlockTextContent(node)).toBe(
+      '<svg viewBox="0 0 10 10"><rect/></svg>',
+    );
   });
 
   it("extracts image context from attrs", () => {

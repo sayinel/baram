@@ -1,0 +1,95 @@
+/* §5.1 HTML Block — dual mode (sanitized HTML render / raw source edit) */
+
+.tiptap .html-block {
+  margin: 1em 0;
+}
+
+/* Preview (not selected) */
+.tiptap .html-block-preview {
+  position: relative;
+  padding: 0.5em 0.75em;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background-color 0.12s ease;
+}
+
+.tiptap .html-block-preview:hover {
+  background-color: var(--color-bg-subtle);
+}
+
+/* Rendered HTML flows naturally (left-aligned); only SVG children are centered
+   and width-constrained so inline `<svg>` reads as a figure. */
+.tiptap .html-block-render {
+  overflow-x: auto;
+}
+
+.tiptap .html-block-render svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+.tiptap .html-block-empty {
+  font-family: var(--font-family-mono);
+  font-size: 0.8em;
+  font-style: italic;
+  color: var(--color-text-muted);
+}
+
+/* Editing (selected) — matches the polished svg/mermaid source editor */
+.tiptap .html-block-editing {
+  padding: 0.75em 1em;
+  background-color: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+}
+
+.tiptap .html-block-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.5em;
+}
+
+.tiptap .html-block-label {
+  font-family: var(--font-family-mono);
+  font-size: 0.75em;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.tiptap .html-block-textarea {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  padding: 0.6em 0.75em;
+  overflow: hidden;
+  font-family: var(--font-family-mono);
+  font-size: 0.875em;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+  resize: none;
+  outline: none;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 6px;
+  transition: border-color 0.12s ease;
+}
+
+.tiptap .html-block-textarea::placeholder {
+  color: var(--color-text-muted);
+}
+
+.tiptap .html-block-textarea:focus {
+  border-color: var(--color-accent-default);
+}
+
+/* Live preview shown faded below the textarea while editing */
+.tiptap .html-block-render-faded {
+  padding-top: 0.6em;
+  margin-top: 0.6em;
+  pointer-events: none;
+  border-top: 1px dashed var(--color-border-subtle);
+  opacity: 0.6;
+}
