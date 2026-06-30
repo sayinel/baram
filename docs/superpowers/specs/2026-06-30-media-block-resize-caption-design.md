@@ -61,3 +61,36 @@ captions to the SVG and Mermaid blocks. Reuse shared infrastructure.
 - Edit: `svg-block-view.tsx` (use shared hook/component), `mermaid-block-view.tsx`,
   `image-view.tsx`, `mermaid-block.ts` (render strip), `svg-utils.ts` (caption
   helpers), CSS, `registry.json`.
+
+---
+
+## Follow-up: menu unification + caption-as-toolbar-button (2026-06-30)
+
+The three media blocks had divergent hover menus: SVG/Mermaid shared an identical
+light top-right icon pill under two separate class names (`svg-hover-toolbar`,
+`mermaid-hover-toolbar`); the image used a dark top-center pill (`image-toolbar`)
+with a text "Caption" button. Captions on SVG/Mermaid were add-able only by
+clicking a hover placeholder below the block.
+
+**Decision** (user-approved): standardize all three on the light top-right icon
+pill, and surface caption editing as a toolbar **icon button** (`Captions`) on
+every block.
+
+- **Shared component**: `views/MediaToolbar.tsx` (`MediaToolbar` container +
+  `MediaToolbarButton`). The container stops native `mousedown` so button clicks
+  never select/edit the block. Styles live in `media-block.css` as
+  `.media-toolbar` / `.media-toolbar-btn`; reveal via
+  `.{svg,mermaid}-block-preview:hover`, `.image-node-view:hover`, and
+  `.image-figure.image-selected`.
+- **Caption editing is parent-controlled**: `BlockCaption` takes `editing` +
+  `onEditingChange`; the toolbar Caption button flips it. When empty and not
+  editing it renders nothing — the toolbar button is the add affordance (the
+  hover placeholder below is gone). Caption display below stays for set values.
+- **Per-capability buttons**: SVG/Mermaid keep Caption · AI · Copy · PNG ·
+  Fullscreen; image keeps Caption · AI (no source/PNG/fullscreen concept).
+- **Export**: stripping consolidated to the shared `.media-toolbar` /
+  `.media-resize-handle` / `.media-resize-label` (previously the SVG toolbar and
+  the new resize handles were not stripped from exported HTML — fixed here).
+
+Removed: `.svg-hover-toolbar*`, `.mermaid-hover-toolbar*`, `.image-toolbar*`, the
+dead `.image-size-*` preset inputs, and the unused `.block-caption-placeholder`.

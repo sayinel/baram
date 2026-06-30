@@ -112,58 +112,7 @@
   border-color: var(--color-accent-default);
 }
 
-/* Hover toolbar */
-
-.svg-hover-toolbar {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  display: flex;
-  gap: 4px;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-
-.tiptap .svg-block-preview:hover .svg-hover-toolbar {
-  pointer-events: auto;
-  opacity: 1;
-}
-
-.svg-hover-toolbar-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  background: var(--color-bg-default);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 6px;
-  box-shadow: 0 1px 4px rgb(0 0 0 / 10%);
-  transition:
-    color 0.15s ease,
-    border-color 0.15s ease,
-    background-color 0.15s ease;
-}
-
-.svg-hover-toolbar-btn:hover {
-  color: var(--color-text-primary);
-  background: var(--color-bg-subtle);
-  border-color: var(--color-accent-default);
-}
-
-.svg-hover-toolbar-btn:active {
-  color: white;
-  background: var(--color-accent-default);
-  border-color: var(--color-accent-default);
-  transform: scale(0.85);
-  transition:
-    transform 0.08s ease,
-    background-color 0.08s ease,
-    color 0.08s ease;
-}
+/* Hover toolbar styles are shared — see .media-toolbar in media-block.css */
 
 /* Context menu */
 

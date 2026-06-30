@@ -4,10 +4,11 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
-import { Sparkles } from "lucide-react";
+import { Captions, Sparkles } from "lucide-react";
 
 import { useEditorStore } from "../../stores/editor/editor";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
+import { MediaToolbar, MediaToolbarButton } from "./views/MediaToolbar";
 import { useMediaResize } from "./views/use-media-resize";
 
 export function ImageView({
@@ -28,7 +29,6 @@ export function ImageView({
   // §56d: Show caption placeholder for journal photo assets
   const isJournalAsset = /assets\/\d{4}-\d{2}\//.test(rawSrc);
 
-  const [hovered, setHovered] = useState(false);
   const [editingCaption, setEditingCaption] = useState(false);
   const [captionText, setCaptionText] = useState(alt);
   const captionRef = useRef<HTMLInputElement>(null);
@@ -38,8 +38,6 @@ export function ImageView({
   // in image.ts (handleDOMEvents.mousedown). React handlers must NOT call
   // stopPropagation() because React 18 processes onMouseDown during the
   // capture phase on #root, which would block the event from reaching PM.
-
-  const showToolbar = hovered || selected;
 
   // Edge-drag resize (Notion-style), shared with the SVG/Mermaid blocks. The
   // figure is centered, so the same centre-distance maths apply; width persists
@@ -81,12 +79,7 @@ export function ImageView({
   }, [alt]);
 
   return (
-    <NodeViewWrapper
-      className="image-node-view"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      ref={containerRef}
-    >
+    <NodeViewWrapper className="image-node-view" ref={containerRef}>
       <figure
         className={`image-figure ${selected ? "image-selected" : ""}`}
         style={{ width: `${effectiveWidth}%` }}
@@ -114,47 +107,40 @@ export function ImageView({
           <div className="media-resize-label">{dragPct}%</div>
         )}
 
-        {/* Hover toolbar */}
-        {showToolbar && (
-          <div className="image-toolbar" contentEditable={false}>
-            <button
-              className="image-toolbar-btn"
-              onClick={startCaptionEdit}
-              type="button"
-            >
-              Caption
-            </button>
-            <span className="image-toolbar-sep" />
-            <button
-              className="image-toolbar-btn"
-              onClick={(e) => {
-                const context =
-                  [
-                    alt && `Alt: ${alt}`,
-                    title && `Title: ${title}`,
-                    rawSrc && `Source: ${rawSrc}`,
-                  ]
-                    .filter(Boolean)
-                    .join("\n") || "image";
-                const pos = getPos();
-                if (typeof pos !== "number") return;
-                showNodeViewAIMenu(
-                  e.currentTarget,
-                  "image",
-                  context,
-                  editor,
-                  pos,
-                );
-              }}
-              ref={(el) => {
-                if (el) el.onmousedown = (e) => e.stopPropagation();
-              }}
-              type="button"
-            >
-              <Sparkles size={14} />
-            </button>
-          </div>
-        )}
+        {/* Hover toolbar — shared chrome with SVG/Mermaid blocks */}
+        <MediaToolbar>
+          <MediaToolbarButton
+            active={editingCaption}
+            onClick={startCaptionEdit}
+            title="Caption"
+          >
+            <Captions size={16} strokeWidth={2} />
+          </MediaToolbarButton>
+          <MediaToolbarButton
+            onClick={(e) => {
+              const context =
+                [
+                  alt && `Alt: ${alt}`,
+                  title && `Title: ${title}`,
+                  rawSrc && `Source: ${rawSrc}`,
+                ]
+                  .filter(Boolean)
+                  .join("\n") || "image";
+              const pos = getPos();
+              if (typeof pos !== "number") return;
+              showNodeViewAIMenu(
+                e.currentTarget,
+                "image",
+                context,
+                editor,
+                pos,
+              );
+            }}
+            title="AI Commands"
+          >
+            <Sparkles size={14} />
+          </MediaToolbarButton>
+        </MediaToolbar>
 
         {/* Caption */}
         {editingCaption ? (

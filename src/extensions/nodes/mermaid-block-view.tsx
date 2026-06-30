@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 // §5.5 Mermaid Block NodeView — selected: textarea + preview, unselected: SVG render
 // §50 Enhanced: template picker + full-screen edit
-import { Copy, Download, Maximize2, Sparkles } from "lucide-react";
+import { Captions, Copy, Download, Maximize2, Sparkles } from "lucide-react";
 
 import {
   copyMermaidPng,
@@ -19,6 +19,7 @@ import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
 import { mermaidBlockEntryKey } from "./mermaid-block";
 import { BlockCaption } from "./views/BlockCaption";
 import { onFirstVisible } from "./views/lazy-visible";
+import { MediaToolbar, MediaToolbarButton } from "./views/MediaToolbar";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
 import { useMediaResize } from "./views/use-media-resize";
 import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
@@ -47,6 +48,7 @@ export function MermaidBlockView({
     y: number;
   }>(null);
   const [viewFullscreen, setViewFullscreen] = useState(false);
+  const [editingCaption, setEditingCaption] = useState(false);
   const fullscreenTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Defer rendering until the block is near the viewport (§perf-large-file)
@@ -452,7 +454,12 @@ export function MermaidBlockView({
                 )}
               </div>
             </div>
-            <BlockCaption onCommit={commitCaption} value={caption} />
+            <BlockCaption
+              editing={editingCaption}
+              onCommit={commitCaption}
+              onEditingChange={setEditingCaption}
+              value={caption}
+            />
           </>
         ) : error ? (
           <div className="mermaid-block-error">{error}</div>
@@ -461,16 +468,16 @@ export function MermaidBlockView({
         )}
         {/* Hover toolbar — appears on mouse hover */}
         {svgHtml && (
-          <div
-            className="mermaid-hover-toolbar"
-            ref={(el) => {
-              if (el) el.onmousedown = (e) => e.stopPropagation();
-            }}
-          >
-            <button
-              className="mermaid-hover-toolbar-btn"
+          <MediaToolbar>
+            <MediaToolbarButton
+              active={editingCaption}
+              onClick={() => setEditingCaption(true)}
+              title="Caption"
+            >
+              <Captions size={16} strokeWidth={2} />
+            </MediaToolbarButton>
+            <MediaToolbarButton
               onClick={(e) => {
-                e.stopPropagation();
                 if (!code.trim()) return;
                 const pos = getPos();
                 if (typeof pos !== "number") return;
@@ -485,38 +492,26 @@ export function MermaidBlockView({
               title="AI Commands"
             >
               <Sparkles size={14} />
-            </button>
-            <button
-              className="mermaid-hover-toolbar-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                copyMermaidSource(code);
-              }}
+            </MediaToolbarButton>
+            <MediaToolbarButton
+              onClick={() => copyMermaidSource(code)}
               title="Copy source code"
             >
               <Copy size={16} strokeWidth={2} />
-            </button>
-            <button
-              className="mermaid-hover-toolbar-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                void downloadSvgAsPng(svgHtml, "diagram.png");
-              }}
+            </MediaToolbarButton>
+            <MediaToolbarButton
+              onClick={() => void downloadSvgAsPng(svgHtml, "diagram.png")}
               title="Download as PNG"
             >
               <Download size={16} strokeWidth={2} />
-            </button>
-            <button
-              className="mermaid-hover-toolbar-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                setViewFullscreen(true);
-              }}
+            </MediaToolbarButton>
+            <MediaToolbarButton
+              onClick={() => setViewFullscreen(true)}
               title="Fullscreen view"
             >
               <Maximize2 size={16} strokeWidth={2} />
-            </button>
-          </div>
+            </MediaToolbarButton>
+          </MediaToolbar>
         )}
         {contextMenu &&
           createPortal(

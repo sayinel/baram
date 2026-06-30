@@ -181,7 +181,7 @@ export const Image = Node.create<ImageOptions>({
 
               if (
                 imageWrapper &&
-                !target.closest(".image-toolbar") &&
+                !target.closest(".media-toolbar") &&
                 !target.closest(".image-caption") &&
                 target.tagName !== "INPUT"
               ) {
