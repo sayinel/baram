@@ -5,8 +5,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   ensureRootSvgNamespace,
+  getSvgRootWidthPercent,
   isSvgContent,
   sanitizeSvg,
+  setSvgRootWidth,
   svgDimensions,
 } from "../svg-utils";
 
@@ -117,6 +119,72 @@ describe("ensureRootSvgNamespace", () => {
     const svg =
       '<svg  xmlns = "http://www.w3.org/2000/svg" viewBox="0 0 1 1"/>';
     expect(ensureRootSvgNamespace(svg)).toBe(svg);
+  });
+});
+
+describe("setSvgRootWidth", () => {
+  it("replaces an existing width on the root <svg>", () => {
+    const out = setSvgRootWidth(
+      '<svg width="120" height="120" viewBox="0 0 120 120"><rect/></svg>',
+      50,
+    );
+    expect(out).toBe(
+      '<svg width="50%" height="120" viewBox="0 0 120 120"><rect/></svg>',
+    );
+  });
+
+  it("inserts width when the root has none", () => {
+    const out = setSvgRootWidth('<svg viewBox="0 0 10 10"><rect/></svg>', 60);
+    expect(out).toBe('<svg width="60%" viewBox="0 0 10 10"><rect/></svg>');
+  });
+
+  it("only touches the root tag, not child width/height", () => {
+    const out = setSvgRootWidth(
+      '<svg viewBox="0 0 10 10"><rect width="10" height="10"/></svg>',
+      40,
+    );
+    expect(out).toBe(
+      '<svg width="40%" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>',
+    );
+  });
+
+  it("clamps and rounds the percentage to 1–100", () => {
+    expect(setSvgRootWidth("<svg><rect/></svg>", 150)).toContain(
+      'width="100%"',
+    );
+    expect(setSvgRootWidth("<svg><rect/></svg>", 0)).toContain('width="1%"');
+    expect(setSvgRootWidth("<svg><rect/></svg>", 33.6)).toContain(
+      'width="34%"',
+    );
+  });
+
+  it("round-trips with getSvgRootWidthPercent", () => {
+    expect(getSvgRootWidthPercent(setSvgRootWidth("<svg/>", 60))).toBe(60);
+  });
+});
+
+describe("getSvgRootWidthPercent", () => {
+  it("reads a percentage width from the root", () => {
+    expect(
+      getSvgRootWidthPercent(
+        '<svg width="50%" viewBox="0 0 1 1"><rect/></svg>',
+      ),
+    ).toBe(50);
+  });
+
+  it("returns null for px or absent width (= natural size)", () => {
+    expect(getSvgRootWidthPercent('<svg width="120" viewBox="0 0 1 1"/>')).toBe(
+      null,
+    );
+    expect(getSvgRootWidthPercent('<svg viewBox="0 0 1 1"/>')).toBe(null);
+  });
+
+  it("ignores a percentage width on a child element", () => {
+    expect(
+      getSvgRootWidthPercent(
+        '<svg viewBox="0 0 1 1"><rect width="50%"/></svg>',
+      ),
+    ).toBe(null);
   });
 });
 

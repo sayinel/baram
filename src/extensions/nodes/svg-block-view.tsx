@@ -19,7 +19,12 @@ import {
   downloadSvg,
   downloadSvgAsPng,
 } from "../../utils/markdown/svg-export";
-import { copySvgSource, sanitizeSvg } from "../../utils/markdown/svg-utils";
+import {
+  copySvgSource,
+  getSvgRootWidthPercent,
+  sanitizeSvg,
+  setSvgRootWidth,
+} from "../../utils/markdown/svg-utils";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
 import { svgBlockEntryKey } from "./svg-block";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
@@ -36,7 +41,10 @@ export function SvgBlockView({
   const [localCode, setLocalCode] = useState(code);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const renderRef = useRef<HTMLDivElement>(null);
   const fullscreenTextareaRef = useRef<HTMLTextAreaElement>(null);
+  // % shown while dragging an edge handle (null when not resizing).
+  const [dragPct, setDragPct] = useState<null | number>(null);
 
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenCode, setFullscreenCode] = useState("");
@@ -171,6 +179,50 @@ export function SvgBlockView({
     });
   }, []);
 
+  // Stored display width (% of the block) — null means natural size.
+  const storedPct = getSvgRootWidthPercent(source);
+  // Effective width while rendering: the live drag value wins.
+  const effectivePct = dragPct ?? storedPct;
+
+  // Notion-style edge-drag resize. The block is centred, so width tracks the
+  // cursor's distance from the block centre (same maths for either handle).
+  // WKWebView breaks HTML5 DnD, so drive it with mouse events (see project
+  // memory). Width is committed into the fence code (width="N%") on mouseup so
+  // it round-trips; live feedback runs off React state during the drag.
+  const startResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const container = renderRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const containerW = rect.width;
+    if (containerW <= 0) return;
+    let committed: null | number = null;
+
+    const onMove = (ev: MouseEvent) => {
+      let pct = ((2 * Math.abs(ev.clientX - centerX)) / containerW) * 100;
+      pct = Math.max(10, Math.min(100, pct));
+      // Light snap to the nearest 10%.
+      const nearest = Math.round(pct / 10) * 10;
+      if (Math.abs(pct - nearest) <= 3) pct = nearest;
+      committed = Math.round(pct);
+      setDragPct(committed);
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      setDragPct(null);
+      if (committed != null) {
+        updateAttributesRef.current({
+          code: setSvgRootWidth(codeRef.current, committed),
+        });
+      }
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, []);
+
   // ── Fullscreen view modal (read-only) ─────────────────────────────
   const viewFullscreenModal = viewFullscreen
     ? createPortal(
@@ -290,10 +342,36 @@ export function SvgBlockView({
         spellCheck={false}
       >
         {svgHtml ? (
-          <div
-            className="svg-block-render"
-            dangerouslySetInnerHTML={{ __html: svgHtml }}
-          />
+          <div className="svg-block-render" ref={renderRef}>
+            <div
+              className={
+                "svg-render-frame" + (effectivePct != null ? " is-sized" : "")
+              }
+              style={
+                effectivePct != null ? { width: `${effectivePct}%` } : undefined
+              }
+            >
+              <div
+                className="svg-render-content"
+                dangerouslySetInnerHTML={{ __html: svgHtml }}
+              />
+              <div
+                className="svg-resize-handle svg-resize-handle-left"
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={startResize}
+                title="Drag to resize"
+              />
+              <div
+                className="svg-resize-handle svg-resize-handle-right"
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={startResize}
+                title="Drag to resize"
+              />
+              {dragPct != null && (
+                <div className="svg-resize-label">{dragPct}%</div>
+              )}
+            </div>
+          </div>
         ) : (
           <div className="svg-block-empty">Empty SVG block</div>
         )}

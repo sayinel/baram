@@ -57,6 +57,17 @@ export async function copySvgSource(svg: string): Promise<void> {
 }
 
 /**
+ * Read a percentage `width` from the **root `<svg>`** (e.g. a previously stored
+ * resize). Returns the number (e.g. 50) or null when the root has no percentage
+ * width — a px/absent width means "natural size", not a fixed percentage. Only
+ * the root opening tag is inspected (`[^>]` can't cross the first `>`).
+ */
+export function getSvgRootWidthPercent(svg: string): null | number {
+  const m = /<svg\b[^>]*?\swidth\s*=\s*["'](\d+(?:\.\d+)?)%["']/i.exec(svg);
+  return m ? parseFloat(m[1]) : null;
+}
+
+/**
  * Heuristic: does this content represent a standalone SVG document (vs arbitrary
  * HTML)? Used by the HTML block to route raw `<svg>` markup through
  * {@link sanitizeSvg} for full fidelity, while keeping the stricter HTML config
@@ -64,6 +75,24 @@ export async function copySvgSource(svg: string): Promise<void> {
  */
 export function isSvgContent(content: string): boolean {
   return SVG_ROOT_RE.test(content) && /<\/svg\s*>/i.test(content);
+}
+
+/**
+ * Set the display width on the **root `<svg>`** as a percentage, replacing an
+ * existing `width` attribute or inserting one if absent. Only the root opening
+ * tag is touched (children's `width`/`height` are left alone). Used to persist
+ * an edge-drag resize into the fenced `code` so it round-trips. `percent` is
+ * clamped to 1–100 and rounded.
+ */
+export function setSvgRootWidth(svg: string, percent: number): string {
+  const pct = Math.max(1, Math.min(100, Math.round(percent)));
+  return svg.replace(/<svg\b([^>]*)>/i, (_full, attrs: string) => {
+    const widthAttr = /\swidth\s*=\s*("[^"]*"|'[^']*'|[^\s/>]+)/i;
+    const newAttrs = widthAttr.test(attrs)
+      ? attrs.replace(widthAttr, ` width="${pct}%"`)
+      : ` width="${pct}%"${attrs}`;
+    return `<svg${newAttrs}>`;
+  });
 }
 
 /**

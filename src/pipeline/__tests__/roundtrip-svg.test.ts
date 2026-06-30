@@ -69,6 +69,12 @@ describe("Roundtrip: SVG Block (§5.1)", () => {
       '```javascript\nconsole.log("hello");\n```\n\n```svg\n<svg><rect/></svg>\n```\n';
     expect(roundtrip(input)).toBe(input);
   });
+
+  it("preserves a resized width=N% on the root svg (§5.1 resize)", () => {
+    const input =
+      '```svg\n<svg width="50%" viewBox="0 0 100 100"><rect width="100" height="100"/></svg>\n```\n';
+    expect(roundtrip(input)).toBe(input);
+  });
 });
 
 describe("SVG Block: ProseMirror structure", () => {
