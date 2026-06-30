@@ -67,6 +67,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             let (built_menu, menu_state) = menu::build_menu(app)?;
             app.set_menu(built_menu)?;
@@ -103,6 +104,7 @@ pub fn run() {
             fs_cmd::watch_dir,
             fs_cmd::extract_zip,
             fs_cmd::write_binary_file,
+            fs_cmd::export_binary_file,
             config_cmd::get_config,
             config_cmd::set_config,
             config_cmd::remove_config,

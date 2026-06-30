@@ -283,3 +283,22 @@ pub async fn write_binary_file(
         e.to_string()
     })
 }
+
+/// §5.1 사용자 지정 경로로 바이너리 내보내기 (예: SVG → PNG 다운로드).
+///
+/// `write_binary_file`과 달리 vault 경로 제약을 적용하지 않는다. 경로는 네이티브
+/// 저장 다이얼로그에서 사용자가 직접 선택한 것이므로 vault 밖(다운로드/데스크톱
+/// 등)으로의 저장이 정상 동작해야 한다. `export_pdf`/`export_document`와 동일한
+/// 정책이며, null 바이트/비절대 경로 검증(`check`)은 유지한다.
+#[tauri::command]
+pub async fn export_binary_file(path: String, data: Vec<u8>) -> Result<(), String> {
+    check(&path)?;
+    let tmp_path = format!("{}.{}.tmp", path, uuid::Uuid::new_v4().as_simple());
+    tokio::fs::write(&tmp_path, &data)
+        .await
+        .map_err(|e| e.to_string())?;
+    tokio::fs::rename(&tmp_path, &path).await.map_err(|e| {
+        let _ = std::fs::remove_file(&tmp_path);
+        e.to_string()
+    })
+}

@@ -650,7 +650,18 @@
       "phase": 2,
       "milestone": "M9",
       "status": "implemented",
-      "description": "바이너리 파일 쓰기 (이미지 등 비텍스트 파일, 원자적 쓰기)"
+      "description": "바이너리 파일 쓰기 (이미지 등 비텍스트 파일, 원자적 쓰기, vault 경로 제약)"
+    },
+    {
+      "name": "export_binary_file",
+      "input": { "path": "string", "data": "Vec<u8>" },
+      "output": "void",
+      "module": "fs",
+      "spec": "§5.1",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "사용자 지정 경로로 바이너리 내보내기 (SVG→PNG 다운로드 등). vault 제약 없음 — 네이티브 저장 다이얼로그 경로용 (export_pdf와 동일 정책)"
     },
     {
       "name": "create_snapshot",

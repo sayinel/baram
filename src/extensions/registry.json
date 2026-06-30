@@ -261,6 +261,28 @@
       ]
     },
     {
+      "name": "svgBlock",
+      "file": "nodes/svg-block.ts",
+      "markdown": "```svg",
+      "spec": "§5.1",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "enhanced",
+      "hasNodeView": true,
+      "inputRules": [],
+      "shortcuts": {},
+      "contextMenu": [
+        "Copy SVG",
+        "Copy as PNG",
+        "Download PNG",
+        "Download SVG",
+        "View Fullscreen",
+        "Edit Fullscreen",
+        "Delete"
+      ],
+      "_note": "Fenced ```svg code block renders sanitized SVG (atom:true, dual mode). Hover toolbar (AI/copy/download PNG/fullscreen) + right-click menu, mirroring mermaidBlock. Shares sanitizeSvg + svgToPngBlob with the inline HTML block and mermaid."
+    },
+    {
       "name": "queryBlock",
       "file": "nodes/query-block.ts",
       "markdown": "```query...```",
@@ -410,7 +432,8 @@
       "status": "implemented",
       "hasNodeView": true,
       "inputRules": [],
-      "shortcuts": {}
+      "shortcuts": {},
+      "_note": "Created via /html slash command (setHtmlBlock, auto-selects to open source editor) or raw HTML in source mode. Renders sanitized HTML; raw <svg> routes through sanitizeSvg for full fidelity."
     },
     {
       "name": "mention",
