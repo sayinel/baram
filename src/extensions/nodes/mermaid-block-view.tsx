@@ -11,10 +11,10 @@ import {
   copyMermaidSource,
   copyMermaidSvg,
   detectMermaidType,
+  downloadMermaidPng,
   MERMAID_TEMPLATES,
   sanitizeMermaidSvg,
 } from "../../utils/markdown/mermaid-utils";
-import { downloadSvgAsPng } from "../../utils/markdown/svg-export";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
 import { mermaidBlockEntryKey } from "./mermaid-block";
 import { BlockCaption } from "./views/BlockCaption";
@@ -502,7 +502,7 @@ export function MermaidBlockView({
               <Copy size={16} strokeWidth={2} />
             </MediaToolbarButton>
             <MediaToolbarButton
-              onClick={() => void downloadSvgAsPng(svgHtml, "diagram.png")}
+              onClick={() => void downloadMermaidPng(code)}
               title="Download as PNG"
             >
               <Download size={16} strokeWidth={2} />
@@ -544,7 +544,7 @@ export function MermaidBlockView({
                   <button
                     className="mermaid-context-menu-item"
                     onClick={() => {
-                      copyMermaidPng(svgHtml);
+                      copyMermaidPng(code);
                       setContextMenu(null);
                     }}
                   >
@@ -553,7 +553,7 @@ export function MermaidBlockView({
                   <button
                     className="mermaid-context-menu-item"
                     onClick={() => {
-                      void downloadSvgAsPng(svgHtml, "diagram.png");
+                      void downloadMermaidPng(code);
                       setContextMenu(null);
                     }}
                   >
