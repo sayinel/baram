@@ -4,7 +4,7 @@
 // baseline (a DOM-normalization allowance), so a lone attr-only resize/caption —
 // which does not change content.size — was silently swallowed and never dirtied.
 import { Editor } from "@tiptap/core";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { createBaramExtensions } from "../../..";
 import {
@@ -17,9 +17,19 @@ import {
   shouldSkipDirty,
 } from "../../../../utils/editor/programmatic-update";
 
+// Destroy every editor after each test. Otherwise ProseMirror's DOMObserver
+// keeps a scheduled flush timer that fires after the jsdom environment is torn
+// down → "document is not defined" surfaces as an unhandled error in CI.
+const editors: Editor[] = [];
+afterEach(() => {
+  for (const e of editors) e.destroy();
+  editors.length = 0;
+});
+
 function buildEditor(md: string): Editor {
   const editor = new Editor({ extensions: createBaramExtensions() });
   editor.commands.setContent(markdownToProsemirror(md, editor.schema).toJSON());
+  editors.push(editor);
   return editor;
 }
 
