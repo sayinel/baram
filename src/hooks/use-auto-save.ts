@@ -129,7 +129,18 @@ export function useAutoSave(editor: Editor | null) {
 
       // Skip if: (1) first update after content load (captures stable baseline),
       // or (2) doc unchanged from baseline. Only marks dirty for real changes.
-      if (shouldSkipDirty(tab.id, editor.state.doc)) return;
+      // For the first-update case, pass the pre-edit doc + a markdown comparator
+      // so a genuine first edit (e.g. a media-block resize done as the first
+      // action) is detected instead of being absorbed as the baseline. The
+      // comparator only runs on that one update, never per-keystroke.
+      if (
+        shouldSkipDirty(tab.id, editor.state.doc, {
+          beforeDoc: transaction.before,
+          markdownEqual: (before, after) =>
+            prosemirrorToMarkdown(before) === prosemirrorToMarkdown(after),
+        })
+      )
+        return;
 
       markDirty(tab.id, true);
       // Record which tab triggered this save so save() can detect a mid-debounce tab switch

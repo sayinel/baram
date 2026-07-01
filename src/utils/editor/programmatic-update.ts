@@ -6,6 +6,11 @@
  * mark a tab as "pending", then on the FIRST editor update event after loading,
  * capture the stabilized doc as the baseline. Subsequent updates compare against
  * this stable baseline.
+ *
+ * The first update is not always normalization, though — it can be a genuine
+ * user edit (e.g. resizing a media block as the first action). shouldSkipDirty
+ * disambiguates the two by serialized markdown so a real first edit still marks
+ * dirty instead of being absorbed. See its doc comment.
  */
 import type { Node } from "@tiptap/pm/model";
 
@@ -75,14 +80,42 @@ export function setTabLoading(tabId: string, loading: boolean): void {
  * Called on every editor update event.
  * Returns true if this update should NOT mark dirty (either capturing baseline
  * or doc unchanged from baseline).
+ *
+ * `firstEdit` lets the caller distinguish DOM-stabilization noise from a genuine
+ * first user edit on the pending-baseline update (see below). It is only
+ * consulted once per load (when the pending capture fires), so `markdownEqual`
+ * — which serializes the whole doc — never runs per-keystroke.
  */
-export function shouldSkipDirty(tabId: string, currentDoc: Node): boolean {
+export function shouldSkipDirty(
+  tabId: string,
+  currentDoc: Node,
+  firstEdit?: {
+    /** Doc before this transaction's steps (transaction.before). */
+    beforeDoc: Node;
+    /** True when the two docs serialize to identical markdown. */
+    markdownEqual: (before: Node, after: Node) => boolean;
+  },
+): boolean {
   // Suppress dirty during progressive load
   if (loadingTabs.has(tabId)) return true;
 
-  // First update after content load — capture stabilized doc as baseline
+  // First update after content load. This is normally DOMObserver
+  // normalization (e.g. NodeView DOM tidy-ups) that we absorb as the baseline.
+  // BUT a genuine user edit can also BE this first update — most visibly an
+  // attr-only media resize/caption done as the first action, which leaves
+  // content.size unchanged and so would otherwise be silently swallowed and
+  // never mark dirty. Disambiguate by serialized markdown: if the edit changed
+  // the markdown it is real → keep the pre-edit doc as the baseline and mark
+  // dirty; if markdown is unchanged it is normalization noise → absorb it.
   if (pendingTabs.has(tabId)) {
     pendingTabs.delete(tabId);
+    if (
+      firstEdit &&
+      !firstEdit.markdownEqual(firstEdit.beforeDoc, currentDoc)
+    ) {
+      originalDocs.set(tabId, firstEdit.beforeDoc);
+      return false;
+    }
     originalDocs.set(tabId, currentDoc);
     return true;
   }
