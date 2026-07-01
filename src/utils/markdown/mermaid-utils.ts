@@ -1,5 +1,5 @@
 // §50 Mermaid diagram utilities — copy, templates, type detection
-import { copySvgAsPng } from "./svg-export";
+import { copySvgAsPng, downloadSvgAsPng } from "./svg-export";
 import { copySvgSource, sanitizeSvg } from "./svg-utils";
 
 /**
@@ -69,9 +69,13 @@ export const MERMAID_TEMPLATES: Record<
   },
 };
 
-/** Copy rendered SVG as PNG to clipboard (delegates to the shared SVG rasterizer). */
-export async function copyMermaidPng(svgHtml: string): Promise<void> {
-  await copySvgAsPng(svgHtml);
+/** Rasterize Mermaid source to PNG and copy to the OS clipboard (SVG labels). */
+export async function copyMermaidPng(code: string): Promise<void> {
+  try {
+    await copySvgAsPng(await renderMermaidRasterSvg(code));
+  } catch (err) {
+    console.error("Mermaid: copy as PNG failed", err);
+  }
 }
 
 /** Copy mermaid source code to clipboard */
@@ -101,4 +105,63 @@ export function detectMermaidType(code: string): null | string {
   if (/^gitGraph\b/i.test(trimmed) || /^gitgraph\b/i.test(trimmed))
     return "gitgraph";
   return null;
+}
+
+/**
+ * Rasterize Mermaid source to PNG and save it via the native dialog (SVG labels).
+ * Returns true if a file was written, false on cancel or error.
+ */
+export async function downloadMermaidPng(
+  code: string,
+  defaultName = "diagram.png",
+): Promise<boolean> {
+  try {
+    return await downloadSvgAsPng(
+      await renderMermaidRasterSvg(code),
+      defaultName,
+    );
+  } catch (err) {
+    console.error("Mermaid: download PNG failed", err);
+    return false;
+  }
+}
+
+/**
+ * Neutralize an explicit `htmlLabels: true` opt-in inside `%%{init}%%` directives
+ * so PNG raster export renders SVG `<text>` labels instead of HTML in
+ * `<foreignObject>`. WKWebView does not rasterize foreignObject HTML through the
+ * `<img>`→canvas path, so the on-screen render (HTML labels) and the raster
+ * render (SVG labels) diverge deliberately. Scoped to directive blocks so the
+ * same text in a node label body is left untouched; diagrams without a directive
+ * rely on the global `htmlLabels:false` in {@link renderMermaidRasterSvg}. A
+ * per-diagram directive would otherwise override `mermaid.initialize`.
+ */
+export function forceSvgLabels(code: string): string {
+  return code.replace(/%%\{[\s\S]*?\}%%/g, (block) =>
+    block.replace(/(["']?htmlLabels["']?\s*:\s*)true\b/gi, "$1false"),
+  );
+}
+
+/**
+ * Render Mermaid source to an SVG string that uses SVG `<text>` labels (not HTML
+ * `<foreignObject>`) so it survives PNG rasterization in WKWebView. `<br>` still
+ * becomes multi-line text; inline `<b>`/`<i>` label formatting is not reproduced
+ * in SVG-label mode. Shared by the copy-as-PNG and download-PNG paths.
+ */
+async function renderMermaidRasterSvg(code: string): Promise<string> {
+  const mermaid = (await import("mermaid")).default;
+  mermaid.initialize({
+    startOnLoad: false,
+    theme:
+      document.documentElement.dataset.theme === "dark" ? "dark" : "default",
+    securityLevel: "antiscript",
+    // Global htmlLabels (flowchart.htmlLabels deprecated since v11.12.3) → SVG
+    // text labels. forceSvgLabels strips any per-diagram directive that would
+    // re-enable HTML labels and override this initialize() config.
+    htmlLabels: false,
+    flowchart: { htmlLabels: false },
+  });
+  const id = `mermaid-png-${crypto.randomUUID()}`;
+  const { svg } = await mermaid.render(id, forceSvgLabels(code));
+  return sanitizeMermaidSvg(svg);
 }
