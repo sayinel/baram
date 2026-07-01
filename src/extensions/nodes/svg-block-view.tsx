@@ -10,7 +10,7 @@ import { createPortal } from "react-dom";
 import { type NodeViewProps, NodeViewWrapper } from "@tiptap/react";
 // §5.1 SVG Block NodeView — selected: textarea + preview, unselected: render +
 // hover toolbar (AI / copy / download PNG / fullscreen) + right-click menu.
-import { Copy, Download, Maximize2, Sparkles } from "lucide-react";
+import { Captions, Copy, Download, Maximize2, Sparkles } from "lucide-react";
 
 import { useUIStore } from "../../stores/ui/ui";
 import { logger } from "../../utils/logger";
@@ -21,13 +21,18 @@ import {
 } from "../../utils/markdown/svg-export";
 import {
   copySvgSource,
+  getSvgCaption,
   getSvgRootWidthPercent,
   sanitizeSvg,
+  setSvgCaption,
   setSvgRootWidth,
 } from "../../utils/markdown/svg-utils";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
 import { svgBlockEntryKey } from "./svg-block";
+import { BlockCaption } from "./views/BlockCaption";
+import { MediaToolbar, MediaToolbarButton } from "./views/MediaToolbar";
 import { useAtomBlockBehavior } from "./views/use-atom-block-behavior";
+import { useMediaResize } from "./views/use-media-resize";
 import { useTextareaAutoResize } from "./views/use-textarea-auto-resize";
 
 export function SvgBlockView({
@@ -43,12 +48,11 @@ export function SvgBlockView({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const renderRef = useRef<HTMLDivElement>(null);
   const fullscreenTextareaRef = useRef<HTMLTextAreaElement>(null);
-  // % shown while dragging an edge handle (null when not resizing).
-  const [dragPct, setDragPct] = useState<null | number>(null);
 
   const [fullscreen, setFullscreen] = useState(false);
   const [fullscreenCode, setFullscreenCode] = useState("");
   const [viewFullscreen, setViewFullscreen] = useState(false);
+  const [editingCaption, setEditingCaption] = useState(false);
   const [contextMenu, setContextMenu] = useState<null | {
     x: number;
     y: number;
@@ -179,48 +183,23 @@ export function SvgBlockView({
     });
   }, []);
 
+  // Resize: width persisted as width="N%" on the root <svg> (round-trips).
+  const { dragPct, startResize } = useMediaResize(renderRef, (pct) => {
+    updateAttributesRef.current({
+      code: setSvgRootWidth(codeRef.current, pct),
+    });
+  });
   // Stored display width (% of the block) — null means natural size.
   const storedPct = getSvgRootWidthPercent(source);
   // Effective width while rendering: the live drag value wins.
   const effectivePct = dragPct ?? storedPct;
 
-  // Notion-style edge-drag resize. The block is centred, so width tracks the
-  // cursor's distance from the block centre (same maths for either handle).
-  // WKWebView breaks HTML5 DnD, so drive it with mouse events (see project
-  // memory). Width is committed into the fence code (width="N%") on mouseup so
-  // it round-trips; live feedback runs off React state during the drag.
-  const startResize = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const container = renderRef.current;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const containerW = rect.width;
-    if (containerW <= 0) return;
-    let committed: null | number = null;
-
-    const onMove = (ev: MouseEvent) => {
-      let pct = ((2 * Math.abs(ev.clientX - centerX)) / containerW) * 100;
-      pct = Math.max(10, Math.min(100, pct));
-      // Light snap to the nearest 10%.
-      const nearest = Math.round(pct / 10) * 10;
-      if (Math.abs(pct - nearest) <= 3) pct = nearest;
-      committed = Math.round(pct);
-      setDragPct(committed);
-    };
-    const onUp = () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      setDragPct(null);
-      if (committed != null) {
-        updateAttributesRef.current({
-          code: setSvgRootWidth(codeRef.current, committed),
-        });
-      }
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
+  // Caption stored in the root <svg>'s <title> (round-trips).
+  const caption = getSvgCaption(source);
+  const commitCaption = useCallback((text: string) => {
+    updateAttributesRef.current({
+      code: setSvgCaption(codeRef.current, text),
+    });
   }, []);
 
   // ── Fullscreen view modal (read-only) ─────────────────────────────
@@ -342,89 +321,88 @@ export function SvgBlockView({
         spellCheck={false}
       >
         {svgHtml ? (
-          <div className="svg-block-render" ref={renderRef}>
-            <div
-              className={
-                "svg-render-frame" + (effectivePct != null ? " is-sized" : "")
-              }
-              style={
-                effectivePct != null ? { width: `${effectivePct}%` } : undefined
-              }
-            >
+          <>
+            <div className="svg-block-render" ref={renderRef}>
               <div
-                className="svg-render-content"
-                dangerouslySetInnerHTML={{ __html: svgHtml }}
-              />
-              <div
-                className="svg-resize-handle svg-resize-handle-left"
-                onClick={(e) => e.stopPropagation()}
-                onMouseDown={startResize}
-                title="Drag to resize"
-              />
-              <div
-                className="svg-resize-handle svg-resize-handle-right"
-                onClick={(e) => e.stopPropagation()}
-                onMouseDown={startResize}
-                title="Drag to resize"
-              />
-              {dragPct != null && (
-                <div className="svg-resize-label">{dragPct}%</div>
-              )}
+                className={
+                  "media-resize-frame" +
+                  (effectivePct != null ? " is-sized" : "")
+                }
+                style={
+                  effectivePct != null
+                    ? { width: `${effectivePct}%` }
+                    : undefined
+                }
+              >
+                <div
+                  className="media-resize-content"
+                  dangerouslySetInnerHTML={{ __html: svgHtml }}
+                />
+                <div
+                  className="media-resize-handle media-resize-handle-left"
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={startResize}
+                  title="Drag to resize"
+                />
+                <div
+                  className="media-resize-handle media-resize-handle-right"
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={startResize}
+                  title="Drag to resize"
+                />
+                {dragPct != null && (
+                  <div className="media-resize-label">{dragPct}%</div>
+                )}
+              </div>
             </div>
-          </div>
+            <BlockCaption
+              editing={editingCaption}
+              onCommit={commitCaption}
+              onEditingChange={setEditingCaption}
+              value={caption}
+            />
+          </>
         ) : (
           <div className="svg-block-empty">Empty SVG block</div>
         )}
 
         {/* Hover toolbar */}
         {svgHtml && (
-          <div
-            className="svg-hover-toolbar"
-            ref={(el) => {
-              if (el) el.onmousedown = (e) => e.stopPropagation();
-            }}
-          >
-            <button
-              className="svg-hover-toolbar-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                runAI(e.currentTarget);
-              }}
+          <MediaToolbar>
+            <MediaToolbarButton
+              active={editingCaption}
+              onClick={() => setEditingCaption(true)}
+              title="Caption"
+            >
+              <Captions size={16} strokeWidth={2} />
+            </MediaToolbarButton>
+            <MediaToolbarButton
+              onClick={(e) => runAI(e.currentTarget)}
               title="AI Commands"
             >
               <Sparkles size={14} />
-            </button>
-            <button
-              className="svg-hover-toolbar-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                runAsync("copy source", () => copySvgSource(code));
-              }}
+            </MediaToolbarButton>
+            <MediaToolbarButton
+              onClick={() => runAsync("copy source", () => copySvgSource(code))}
               title="Copy SVG source"
             >
               <Copy size={16} strokeWidth={2} />
-            </button>
-            <button
-              className="svg-hover-toolbar-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                runAsync("download PNG", () => downloadSvgAsPng(svgHtml));
-              }}
+            </MediaToolbarButton>
+            <MediaToolbarButton
+              onClick={() =>
+                runAsync("download PNG", () => downloadSvgAsPng(svgHtml))
+              }
               title="Download as PNG"
             >
               <Download size={16} strokeWidth={2} />
-            </button>
-            <button
-              className="svg-hover-toolbar-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                setViewFullscreen(true);
-              }}
+            </MediaToolbarButton>
+            <MediaToolbarButton
+              onClick={() => setViewFullscreen(true)}
               title="Fullscreen view"
             >
               <Maximize2 size={16} strokeWidth={2} />
-            </button>
-          </div>
+            </MediaToolbarButton>
+          </MediaToolbar>
         )}
 
         {contextMenu &&

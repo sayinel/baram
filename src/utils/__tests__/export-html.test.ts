@@ -78,9 +78,9 @@ describe("generateStandaloneHTML", () => {
     expect(html).toContain('<meta name="generator" content="Baram">');
   });
 
-  it("hides mermaid interactive UI in print CSS", () => {
+  it("hides media-block interactive UI in print CSS", () => {
     const html = generateStandaloneHTML("<p>x</p>", "Test");
-    expect(html).toContain(".mermaid-hover-toolbar");
+    expect(html).toContain(".media-toolbar");
     expect(html).toContain("display: none !important");
   });
 
@@ -93,21 +93,21 @@ describe("generateStandaloneHTML", () => {
 });
 
 describe("captureEditorHTML — mermaid interactive UI stripping", () => {
-  it("removes the mermaid hover toolbar (AI / copy / expand buttons) but keeps the SVG", async () => {
+  it("removes the shared media toolbar (AI / copy / expand buttons) but keeps the SVG", async () => {
     const dom = document.createElement("div");
     dom.innerHTML = `
       <div class="mermaid-block mermaid-block-preview">
         <svg class="mermaid-svg"><g></g></svg>
-        <div class="mermaid-hover-toolbar">
-          <button class="mermaid-hover-toolbar-btn">AI</button>
-          <button class="mermaid-hover-toolbar-btn">복사</button>
-          <button class="mermaid-hover-toolbar-btn">확장</button>
+        <div class="media-toolbar">
+          <button class="media-toolbar-btn">AI</button>
+          <button class="media-toolbar-btn">복사</button>
+          <button class="media-toolbar-btn">확장</button>
         </div>
       </div>`;
 
     const html = await captureEditorHTML(mockEditor(dom));
 
-    expect(html).not.toContain("mermaid-hover-toolbar");
+    expect(html).not.toContain("media-toolbar");
     expect(html).not.toContain(">AI<");
     expect(html).not.toContain(">복사<");
     expect(html).not.toContain(">확장<");
