@@ -40,6 +40,25 @@ export const MermaidBlock = Node.create<MermaidBlockOptions>({
   addAttributes() {
     return {
       code: { default: "" },
+      // §5.5 display width (% of block) and caption. Stored as node attrs and
+      // serialized into a `%% baram-meta` fence comment by the transformer, so
+      // the editable `code` stays a pure mermaid diagram. data-* on the editor
+      // HTML keeps them on copy/paste.
+      width: {
+        default: null,
+        parseHTML: (el: HTMLElement) => {
+          const w = el.getAttribute("data-width");
+          return w ? parseFloat(w) : null;
+        },
+        renderHTML: (attrs: Record<string, unknown>) =>
+          attrs.width != null ? { "data-width": String(attrs.width) } : {},
+      },
+      caption: {
+        default: null,
+        parseHTML: (el: HTMLElement) => el.getAttribute("data-caption") || null,
+        renderHTML: (attrs: Record<string, unknown>) =>
+          attrs.caption ? { "data-caption": String(attrs.caption) } : {},
+      },
     };
   },
 

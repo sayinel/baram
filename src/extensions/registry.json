@@ -233,10 +233,13 @@
       "contextMenu": [
         "Copy as SVG",
         "Copy as PNG",
+        "Download PNG",
         "Copy Source",
-        "Edit Full-screen",
+        "View Fullscreen",
+        "Edit Fullscreen",
         "Delete"
       ],
+      "_note": "Edge-drag resize + caption stored as node attrs (width/caption), serialized into a `%% baram-meta` fence comment by the transformer so the editable code stays a pure diagram. Shares media-block resize/caption chrome with the SVG block and image.",
       "templates": [
         "flowchart",
         "sequence",

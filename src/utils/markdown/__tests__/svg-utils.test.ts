@@ -5,9 +5,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   ensureRootSvgNamespace,
+  getSvgCaption,
   getSvgRootWidthPercent,
   isSvgContent,
   sanitizeSvg,
+  setSvgCaption,
   setSvgRootWidth,
   svgDimensions,
 } from "../svg-utils";
@@ -160,6 +162,35 @@ describe("setSvgRootWidth", () => {
 
   it("round-trips with getSvgRootWidthPercent", () => {
     expect(getSvgRootWidthPercent(setSvgRootWidth("<svg/>", 60))).toBe(60);
+  });
+});
+
+describe("setSvgCaption / getSvgCaption", () => {
+  it("inserts a <title> caption as the first child of the root", () => {
+    const out = setSvgCaption('<svg viewBox="0 0 10 10"><rect/></svg>', "Hi");
+    expect(out).toBe('<svg viewBox="0 0 10 10"><title>Hi</title><rect/></svg>');
+    expect(getSvgCaption(out)).toBe("Hi");
+  });
+
+  it("replaces an existing caption", () => {
+    const once = setSvgCaption("<svg><rect/></svg>", "first");
+    const twice = setSvgCaption(once, "second");
+    expect((twice.match(/<title>/g) || []).length).toBe(1);
+    expect(getSvgCaption(twice)).toBe("second");
+  });
+
+  it("removes the caption when set to empty", () => {
+    const withCap = setSvgCaption("<svg><rect/></svg>", "x");
+    expect(setSvgCaption(withCap, "")).toBe("<svg><rect/></svg>");
+    expect(getSvgCaption("<svg><rect/></svg>")).toBe(null);
+  });
+
+  it("escapes and round-trips XML-special characters", () => {
+    const caption = 'a < b & "c"';
+    const out = setSvgCaption("<svg><rect/></svg>", caption);
+    expect(out).toContain("&lt;");
+    expect(out).toContain("&amp;");
+    expect(getSvgCaption(out)).toBe(caption);
   });
 });
 

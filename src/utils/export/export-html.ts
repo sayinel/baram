@@ -60,8 +60,6 @@ export async function captureEditorHTML(editor: Editor): Promise<string> {
   for (const el of clone.querySelectorAll(".mermaid-block-error")) el.remove();
   for (const el of clone.querySelectorAll(".mermaid-block-empty")) el.remove();
   for (const el of clone.querySelectorAll(".mermaid-context-menu")) el.remove();
-  for (const el of clone.querySelectorAll(".mermaid-hover-toolbar"))
-    el.remove();
   for (const el of clone.querySelectorAll(".mermaid-template-wrapper"))
     el.remove();
   for (const el of clone.querySelectorAll(".mermaid-block-label")) el.remove();
@@ -109,9 +107,11 @@ export async function captureEditorHTML(editor: Editor): Promise<string> {
   }
   await Promise.all(imgPromises);
 
-  // ── Image toolbar / resize handles ───────────────────────────────
-  for (const el of clone.querySelectorAll(".image-toolbar")) el.remove();
-  for (const el of clone.querySelectorAll(".image-resize-handle")) el.remove();
+  // ── Shared media chrome (SVG/Mermaid/image): drop hover toolbar +
+  //    edge-drag resize handles + the drag % readout ─────────────────
+  for (const el of clone.querySelectorAll(".media-toolbar")) el.remove();
+  for (const el of clone.querySelectorAll(".media-resize-handle")) el.remove();
+  for (const el of clone.querySelectorAll(".media-resize-label")) el.remove();
   for (const el of clone.querySelectorAll(".image-caption input")) {
     const text = (el as HTMLInputElement).value;
     if (text) {

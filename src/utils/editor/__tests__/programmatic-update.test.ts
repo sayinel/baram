@@ -72,6 +72,52 @@ describe("baseline comparison (size-guarded)", () => {
   });
 });
 
+// A genuine user edit can BE the first post-load update (most visibly an
+// attr-only media-block resize done as the first action — content.size is
+// unchanged, so the size pre-check can't catch it). The `firstEdit` arg lets
+// the caller disambiguate normalization noise from a real edit by markdown.
+describe("first-update disambiguation (resize-as-first-action)", () => {
+  it("marks dirty when the first update changed the markdown (real edit)", () => {
+    clearOriginalDoc("tab-first-real");
+    markContentLoaded("tab-first-real");
+    const before = docWith("ab");
+    const after = docWith("ab"); // same size: simulates an attr-only change
+    // markdownEqual=false → treated as a real edit, NOT absorbed.
+    expect(
+      shouldSkipDirty("tab-first-real", after, {
+        beforeDoc: before,
+        markdownEqual: () => false,
+      }),
+    ).toBe(false);
+    // Baseline became the PRE-edit doc, so the edited doc still reads dirty.
+    expect(shouldSkipDirty("tab-first-real", docWith("cd"))).toBe(false);
+    // …and reverting to the baseline reads clean.
+    expect(shouldSkipDirty("tab-first-real", docWith("ab"))).toBe(true);
+  });
+
+  it("absorbs the first update when markdown is unchanged (normalization)", () => {
+    clearOriginalDoc("tab-first-norm");
+    markContentLoaded("tab-first-norm");
+    const before = docWith("a");
+    const after = docWith("ab"); // structurally different…
+    // …but markdownEqual=true → DOM-normalization noise, absorbed as baseline.
+    expect(
+      shouldSkipDirty("tab-first-norm", after, {
+        beforeDoc: before,
+        markdownEqual: () => true,
+      }),
+    ).toBe(true);
+    // The absorbed (post-normalization) doc is the baseline → equal = clean.
+    expect(shouldSkipDirty("tab-first-norm", docWith("ab"))).toBe(true);
+  });
+
+  it("falls back to absorbing when no firstEdit info is supplied", () => {
+    clearOriginalDoc("tab-first-fallback");
+    markContentLoaded("tab-first-fallback");
+    expect(shouldSkipDirty("tab-first-fallback", docWith("ab"))).toBe(true);
+  });
+});
+
 // Auto-measured table colwidth init must never mark a tab dirty. The colwidth
 // plugin dispatches one transaction PER table; the dirty baseline previously
 // absorbed only the first, so the 2nd+ table looked like a user edit and a
