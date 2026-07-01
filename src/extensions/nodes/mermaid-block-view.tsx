@@ -338,6 +338,8 @@ export function MermaidBlockView({
         <div
           className="mermaid-fullscreen-overlay"
           onClick={(e) => {
+            // Don't let clicks bubble through the portal to the block's onClick.
+            e.stopPropagation();
             if (e.target === e.currentTarget) closeFullscreen();
           }}
           onKeyDown={(e) => {
@@ -517,6 +519,9 @@ export function MermaidBlockView({
           createPortal(
             <div
               className="mermaid-context-menu"
+              // Stop click from bubbling through the React portal tree to the
+              // NodeViewWrapper's onClick (which would select the block → edit mode).
+              onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
               style={{
                 position: "fixed",
