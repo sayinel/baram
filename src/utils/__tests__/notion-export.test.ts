@@ -507,6 +507,20 @@ describe("convertForNotion + mermaid", () => {
     expect(out).toContain("```mermaid");
     expect(out).toContain("A --> B");
   });
+
+  it("strips baram-meta from a mermaid block through the full pipeline", () => {
+    const md = [
+      "```mermaid",
+      '%% baram-meta: {"width":60}',
+      "graph TD",
+      "  A --> B",
+      "```",
+    ].join("\n");
+    const out = convertForNotion(md);
+    expect(out).not.toContain("baram-meta");
+    expect(out).toContain("```mermaid");
+    expect(out).toContain("A --> B");
+  });
 });
 
 // ---------------------------------------------------------------------------
