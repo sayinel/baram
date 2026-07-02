@@ -9,6 +9,9 @@ export interface ConflictModalState {
   filePath: string;
 }
 
+export type ExportFormat =
+  "docx" | "epub" | "html" | "latex" | "notion" | "pdf" | "rst";
+
 export type RightPanelMode =
   "chat" | "help" | "memories" | "none" | "photo-gallery" | "properties";
 
@@ -31,9 +34,6 @@ export interface ToastState {
   id: number;
   message: string;
 }
-
-type ExportFormat =
-  "docx" | "epub" | "html" | "latex" | "notion" | "pdf" | "rst";
 
 interface UIState {
   aboutOpen: boolean;
