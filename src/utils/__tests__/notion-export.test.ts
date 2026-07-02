@@ -14,6 +14,7 @@ import {
   convertUnderlineForNotion,
   convertWikilinksForNotion,
   stripBlockRefsForNotion,
+  stripMermaidMetaForNotion,
   stripTocForNotion,
   toUnicodeSubscript,
   toUnicodeSuperscript,
@@ -475,7 +476,41 @@ describe("convertUnderlineForNotion", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 15. convertForNotion (full document integration)
+// 15. stripMermaidMetaForNotion
+// ---------------------------------------------------------------------------
+describe("stripMermaidMetaForNotion", () => {
+  it("removes the baram-meta comment but keeps the mermaid fence + code", () => {
+    const md = [
+      "```mermaid",
+      '%% baram-meta: {"width":60}',
+      "graph TD",
+      "  A --> B",
+      "```",
+    ].join("\n");
+    const out = stripMermaidMetaForNotion(md);
+    expect(out).toContain("```mermaid");
+    expect(out).toContain("graph TD");
+    expect(out).toContain("A --> B");
+    expect(out).not.toContain("baram-meta");
+  });
+
+  it("leaves non-mermaid code fences untouched", () => {
+    const md = ["```js", "const x = 1; // baram-meta", "```"].join("\n");
+    expect(stripMermaidMetaForNotion(md)).toBe(md);
+  });
+});
+
+describe("convertForNotion + mermaid", () => {
+  it("preserves a mermaid code block", () => {
+    const md = ["```mermaid", "graph TD", "  A --> B", "```"].join("\n");
+    const out = convertForNotion(md);
+    expect(out).toContain("```mermaid");
+    expect(out).toContain("A --> B");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 16. convertForNotion (full document integration)
 // ---------------------------------------------------------------------------
 describe("convertForNotion", () => {
   it("preserves frontmatter unchanged", () => {
