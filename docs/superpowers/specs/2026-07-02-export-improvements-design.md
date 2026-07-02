@@ -17,50 +17,55 @@
 
 ## 2. 목표
 
-1. **메뉴 개선 (A안)**: 발견 가능한 `Export ▾` 드롭다운 진입점 + 카테고리 그룹 + 스마트 진입(옵션 없는 포맷 원클릭) + 포맷 포커스 다이얼로그.
+1. **메뉴 개선**: 네이티브 **File 메뉴에 `Export...` 항목** 추가(발견성 확보) + `ExportDialog`의 포맷 선택을 평면 나열식 카드에서 **카테고리 그룹 드롭다운 메뉴**로 개선.
 2. **Mermaid 렌더 출력**: Pandoc 전 포맷(Word/LaTeX/EPUB/RST)은 PNG 임베드, Notion은 네이티브 코드블록 유지로 다이어그램이 실제로 렌더되도록 한다.
 
 ## 3. 비목표 (YAGNI)
 
+- **Export를 TabBar 등에 배치하지 않는다** — Export는 문서 전체 대상 동작이므로 진입점은 File 메뉴/다이얼로그로 둔다(Mermaid PNG 복사 같은 블록-단위 액션과 다름).
+- 스마트 즉시 export / 포맷 포커스 다이얼로그 — 단일 다이얼로그(드롭다운 포맷 선택 + 옵션) 흐름을 유지하므로 도입하지 않는다.
 - 커스텀 export(§55 `run_custom_export`) 메뉴 재설계 — 별도 과제.
 - HTML/PDF 변환 경로 변경 — 이미 정상 동작.
 - Notion을 ZIP 번들(.md + images/)로 바꾸는 것 — 네이티브 코드블록 렌더로 충분하므로 도입하지 않는다.
 
 ## 4. 설계 A — 메뉴
 
-### 4.1 진입점
-- **주 진입점**: `TabBar` 우측 끝에 `Export ▾` 아이콘 버튼 추가 (항상 보이는 상단 chrome).
-- **유지**: `CommandPalette`의 "Export..." 항목은 그대로 둔다(`Cmd+P` 워크플로우 보존).
-- **선택(옵션)**: 네이티브 Tauri File 메뉴(`src-tauri/src/menu.rs`, `menu-event`)에 Export 서브메뉴 추가 — 저비용이면 포함, 아니면 후속.
+Export는 문서 전체를 대상으로 하는 동작이므로, 진입점은 **File 메뉴**에 두고, 실제 포맷 선택 UI는 **팝업(ExportDialog) 내부**에서 개선한다.
 
-### 4.2 드롭다운 구조
-기존 메뉴 패턴(`ContextMenu`, `buildMermaidBlockMenu`)을 재사용해 항목 배열로 구성한다.
+### 4.1 진입점 (이미 구현됨 — 검증만)
+- 네이티브 File 메뉴의 `Export...` 항목은 **이미 존재하고 연결되어 있다**: `src-tauri/src/menu.rs:48`(id `export_doc`) → `src/hooks/use-menu-event-handler.ts:67`에서 `useUIStore.getState().openExportDialog("html")`로 매핑됨. **추가 작업 불필요**, 동작 검증만 한다.
+- `CommandPalette`의 "Export..." 항목(`CommandPalette.tsx:262`)도 그대로 유지.
+
+### 4.2 팝업(ExportDialog) 포맷 선택 개선 — 나열식 → 드롭다운 메뉴
+현재 7개 포맷을 세로 카드로 나열하던 `export-format-list`(`ExportDialog.tsx:211-240`)를 **카테고리 그룹 드롭다운 메뉴**로 교체한다.
+
+- 현재 선택 포맷을 표시하는 **트리거 버튼**(예: `Word (.docx) ▾`) → 클릭 시 드롭다운 팝업.
+- 팝업은 카테고리로 그룹화하고, 각 항목에 확장자 배지·설명·pandoc 배지를 유지한다. pandoc 미설치 시 문서 그룹 항목은 disabled + 안내.
 
 ```
-Export ▾
-  웹
-    HTML
-    PDF            ▸ (옵션: 용지/배율)
-  ──────────────
-  마크다운
-    Notion
-  ──────────────
-  문서 (Pandoc)                 ← pandoc 미설치 시 그룹 disabled + 힌트
-    Word (.docx)   ▸ (옵션: 템플릿)
-    LaTeX
-    EPUB
-    RST
+[ Word (.docx)                       ▾ ]   ← 트리거 버튼(현재 선택)
+┌─────────────────────────────────────┐
+│ 웹                                   │
+│   .html  HTML     Standalone page    │
+│   .pdf   PDF      Print-ready        │
+│ ───────────────────────────────────  │
+│ 마크다운                              │
+│   .md    Notion   Notion-compatible  │
+│ ───────────────────────────────────  │
+│ 문서 (Pandoc)          pandoc 미설치시 │
+│   .docx  Word     Editable    [pandoc]│
+│   .tex   LaTeX    Typesetting [pandoc]│
+│   .epub  EPUB     E-book      [pandoc]│
+│   .rst   RST      Sphinx      [pandoc]│
+└─────────────────────────────────────┘
 ```
 
-### 4.3 스마트 진입
-- **옵션 없는 포맷**(HTML, Notion, LaTeX, EPUB, RST): 곧바로 네이티브 save dialog → export 실행.
-- **옵션 있는 포맷**(PDF=용지/배율, Word=템플릿): 해당 포맷 옵션만 담은 **포커스 다이얼로그**를 연다.
-- 기존 전체 `ExportDialog`(모든 포맷 카드 + 옵션)는 fallback으로 유지한다(커맨드 팔레트 진입 시).
+- 포맷 선택 후, 기존과 동일하게 포맷별 옵션(PDF=용지/배율, Word=템플릿, Notion 힌트)이 다이얼로그 하단에 표시되고, `Export` 버튼으로 실행한다.
 
-### 4.4 컴포넌트 변경
-- **신규** `src/components/export/ExportMenu.tsx`: 드롭다운 메뉴. 포맷 메타(`FORMAT_OPTIONS`)를 `ExportDialog`에서 공유 모듈로 추출해 재사용.
-- **리팩터** `src/components/export/ExportDialog.tsx`: 특정 포맷만 표시하는 "포커스 모드" 지원(선택 포맷 prop). 기존 전체 모드 유지.
-- 포맷 메타(`FORMAT_OPTIONS`, `PANDOC_FORMATS`, `isPandocFormat`)를 `src/components/export/export-formats.ts`(신규)로 추출 → 메뉴/다이얼로그 공유.
+### 4.3 컴포넌트 변경
+- **신규** `src/components/export/ExportFormatDropdown.tsx`: 카테고리 그룹 드롭다운(기존 `ContextMenu`/`buildMermaidBlockMenu` 팝업 패턴과 스타일 일관). `FORMAT_OPTIONS` 메타를 입력받아 렌더.
+- **리팩터** `src/components/export/ExportDialog.tsx`: `export-format-list` 카드 블록을 `ExportFormatDropdown`으로 교체. 나머지(제목·옵션·footer) 유지.
+- **CSS**: `styles/dialogs.css`(또는 해당 export 스타일)에 드롭다운 스타일 추가. 기존 `export-format-*` 카드 스타일은 제거/치환.
 
 ## 5. 설계 B — Mermaid 렌더 출력
 
@@ -110,19 +115,20 @@ Export ▾
 
 ## 7. 영향 파일 (예상)
 
-프론트엔드
-- `src/components/layout/TabBar.tsx` — `Export ▾` 버튼 배치
-- `src/components/export/ExportMenu.tsx` — 신규 드롭다운
-- `src/components/export/export-formats.ts` — 신규 공유 포맷 메타
-- `src/components/export/ExportDialog.tsx` — 포커스 모드
-- `src/components/command/CommandPalette.tsx` — (유지, 필요 시 진입 정리)
+메뉴 (프론트엔드) — File 메뉴 진입점은 이미 존재하므로 다이얼로그만 개선
+- `src/components/export/ExportFormatDropdown.tsx` — 신규 카테고리 그룹 드롭다운
+- `src/components/export/ExportDialog.tsx` — 나열식 카드 → 드롭다운 교체
+- `src/styles/dialogs.css`(또는 export 스타일) — 드롭다운 스타일
+- 검증만: `src-tauri/src/menu.rs:48`(`export_doc`), `src/hooks/use-menu-event-handler.ts:67` (변경 없음)
+
+Mermaid 렌더 출력 (프론트엔드)
 - `src/utils/export/export.ts` — mermaid 수집/치환 + assets 전달
 - `src/utils/export/mermaid-export-assets.ts` — 신규 헬퍼(수집·래스터·치환)
-- `src/utils/export/notion-export.ts` — mermaid meta strip
+- `src/utils/export/notion-export.ts` — mermaid `%% baram-meta` strip
 - `src/ipc/export.ts`, `src/ipc/types.ts` — `assets` 인자
 
-Rust
-- `src-tauri/src/export/pandoc.rs` — assets 기록 + 경로 rewrite
+Mermaid 렌더 출력 (Rust)
+- `src-tauri/src/export/pandoc.rs` — assets 기록 + `baram-asset:` 경로 rewrite
 - `src-tauri/src/commands/export_cmd.rs` — `export_pandoc` 시그니처
 - `src-tauri/ipc-registry.json` — 동기화
 
