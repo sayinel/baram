@@ -2,6 +2,7 @@
 // Pure utility functions (no external dependencies)
 
 import { replaceOutsideCode } from "../markdown/markdown-code-regions";
+import { stripMermaidMeta } from "../markdown/mermaid-meta";
 
 // ---------------------------------------------------------------------------
 // Unicode subscript / superscript mappings
@@ -331,6 +332,7 @@ export function convertForNotion(md: string): string {
   let result = md;
 
   // 1. Block-level conversions first
+  result = stripMermaidMetaForNotion(result);
   result = convertCalloutsForNotion(result);
   result = convertToggleForNotion(result);
   result = convertDefinitionListsForNotion(result);
@@ -487,6 +489,35 @@ export function stripBlockRefsForNotion(md: string): string {
   // Remove ^blockId suffixes at end of lines (space + ^ + word chars at EOL)
   result = result.replace(/ \^\w+$/gm, "");
   return result;
+}
+
+/** Strip the `%% baram-meta` comment from mermaid fences so Notion imports a
+ *  clean `mermaid` code block (Notion renders these natively). */
+export function stripMermaidMetaForNotion(md: string): string {
+  const lines = md.split("\n");
+  const out: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (/^```mermaid\s*$/.test(lines[i])) {
+      out.push(lines[i]); // opening fence
+      i++;
+      const body: string[] = [];
+      while (i < lines.length && !/^```\s*$/.test(lines[i])) {
+        body.push(lines[i]);
+        i++;
+      }
+      const cleaned = stripMermaidMeta(body.join("\n"));
+      if (cleaned) out.push(...cleaned.split("\n"));
+      if (i < lines.length) {
+        out.push(lines[i]); // closing fence
+        i++;
+      }
+      continue;
+    }
+    out.push(lines[i]);
+    i++;
+  }
+  return out.join("\n");
 }
 
 // ---------------------------------------------------------------------------
