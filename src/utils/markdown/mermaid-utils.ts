@@ -148,7 +148,7 @@ export function forceSvgLabels(code: string): string {
  * becomes multi-line text; inline `<b>`/`<i>` label formatting is not reproduced
  * in SVG-label mode. Shared by the copy-as-PNG and download-PNG paths.
  */
-async function renderMermaidRasterSvg(code: string): Promise<string> {
+export async function renderMermaidRasterSvg(code: string): Promise<string> {
   const mermaid = (await import("mermaid")).default;
   mermaid.initialize({
     startOnLoad: false,
