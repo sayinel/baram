@@ -346,7 +346,7 @@
     },
     {
       "name": "export_pandoc",
-      "input": { "markdownContent": "string", "outputPath": "string", "format": "string", "pandocPath": "string?", "referenceDoc": "string?", "extraArgs": "string[]?" },
+      "input": { "markdownContent": "string", "outputPath": "string", "format": "string", "pandocPath": "string?", "referenceDoc": "string?", "extraArgs": "string[]?", "assets": "PandocAsset[]?" },
       "output": "void",
       "module": "export",
       "spec": "§55",
