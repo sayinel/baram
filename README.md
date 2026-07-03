@@ -354,7 +354,7 @@ A full daily-notes workspace, not just a dated file:
 
 Save and restore your workspace layout:
 
-- **3 built-in presets** — Writing (`Cmd+Alt+1`), Journal (`Cmd+Alt+2`), and Skills Editing (via Command Palette or the Workspace menu)
+- **3 built-in presets** — Writing (`Cmd+Alt+1`), Journal (`Cmd+Alt+2`), Skills Editing (`Cmd+Alt+3`)
 - **Custom presets** — Save your current sidebar, panel, and theme configuration as a named preset
 - **Quick switch** — Apply presets via keyboard shortcuts, Command Palette, or the Workspace menu
 
@@ -516,6 +516,7 @@ Create your own slash commands in **Settings > AI > Custom Commands**. Use varia
 | Tab Switcher (MRU) | `Ctrl+Tab` |
 | Workspace: Writing | `Cmd+Alt+1` |
 | Workspace: Journal | `Cmd+Alt+2` |
+| Workspace: Skills Editing | `Cmd+Alt+3` |
 | Quick Capture | `Cmd+Shift+N` |
 | Open Today's Journal | `Cmd+Shift+J` |
 | Settings | `Cmd+,` |

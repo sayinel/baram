@@ -19,6 +19,7 @@ Complete list of keyboard shortcuts available in Baram.
 | Save As         | `Cmd+Shift+S` | `Ctrl+Shift+S`  |
 | Close Tab       | `Cmd+W`       | `Ctrl+W`        |
 | Close Folder    | `Cmd+Shift+W` | `Ctrl+Shift+W`  |
+| Export...       | `Cmd+Shift+E` | `Ctrl+Shift+E`  |
 | Quick Switcher  | `Cmd+K`       | `Ctrl+K`        |
 | Command Palette | `Cmd+P`       | `Ctrl+P`        |
 | Settings        | `Cmd+,`       | `Ctrl+,`        |
@@ -130,16 +131,17 @@ Complete list of keyboard shortcuts available in Baram.
 
 <!-- colwidths:188,139,153 -->
 
-| Action             | macOS          | Windows / Linux |
-| ------------------ | -------------- | --------------- |
-| Workspace: Writing | `Cmd+Option+1` | `Ctrl+Alt+1`    |
-| Workspace: Journal | `Cmd+Option+2` | `Ctrl+Alt+2`    |
+| Action                    | macOS          | Windows / Linux |
+| ------------------------- | -------------- | --------------- |
+| Workspace: Writing        | `Cmd+Option+1` | `Ctrl+Alt+1`    |
+| Workspace: Journal        | `Cmd+Option+2` | `Ctrl+Alt+2`    |
+| Workspace: Skills Editing | `Cmd+Option+3` | `Ctrl+Alt+3`    |
 
-> The **Skills Editing** preset has no default shortcut — apply it from the Command Palette or Workspace menu.
+> Writing and Journal are also customizable in **Settings > Keybindings**; the Skills Editing shortcut is provided by the Workspace menu.
 
 ## Journal
 
-> Journal shortcuts apply while you are working in a journal entry. Some overlap with editor shortcuts (e.g. `Cmd+Shift+D`, `Cmd+Shift+M`) and are resolved by context.
+> Journal shortcuts apply while you are working in a journal entry. Several overlap with editor or menu shortcuts — `Cmd+Shift+D` (Mermaid), `Cmd+Shift+M` (Math Block), `Cmd+Shift+E` (Export), `Cmd+Shift+P` (Command Palette) — and are resolved by context.
 
 | Action                    | macOS         | Windows / Linux |
 | ------------------------- | ------------- | --------------- |

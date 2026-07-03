@@ -1057,9 +1057,9 @@ Workspace Presets let you save and quickly restore your preferred layout — sid
 | -------------- | ---------------- | -------------------- | ------------------------------------------------------------ |
 | Writing        | `Cmd+Alt+1`      | `Ctrl+Alt+1`         | Sidebar closed, right panel closed — focused writing         |
 | Journal        | `Cmd+Alt+2`      | `Ctrl+Alt+2`         | Calendar sidebar + today's journal + Memories view           |
-| Skills Editing | —                | —                    | File tree + Properties panel — LLM Skills editing            |
+| Skills Editing | `Cmd+Alt+3`      | `Ctrl+Alt+3`         | File tree + Properties panel — LLM Skills editing            |
 
-The Skills Editing preset has no default keyboard shortcut — apply it from the Command Palette or the Workspace menu.
+> The Writing and Journal shortcuts can also be customized in **Settings > Keybindings**; the Skills Editing shortcut is provided by the Workspace menu.
 
 ### Custom Presets
 
@@ -1073,7 +1073,7 @@ Custom presets can be renamed, deleted, and applied from the same Settings tab.
 
 ### Applying Presets
 
-- **Keyboard shortcuts** — `Cmd+Alt+1` (Writing), `Cmd+Alt+2` (Journal)
+- **Keyboard shortcuts** — `Cmd+Alt+1` (Writing), `Cmd+Alt+2` (Journal), `Cmd+Alt+3` (Skills Editing)
 - **Command Palette** — Search for "Workspace" commands
 - **Workspace menu** — Use the Workspace menu in the menu bar
 
