@@ -458,7 +458,7 @@
   width: 100%;
   padding: 0.5rem 0.75rem;
   font: inherit;
-  color: var(--color-text-default);
+  color: var(--color-text-primary);
   cursor: pointer;
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border-default);
@@ -502,7 +502,7 @@
   width: 100%;
   padding: 0.4rem 0.5rem;
   font: inherit;
-  color: var(--color-text-default);
+  color: var(--color-text-primary);
   text-align: left;
   cursor: pointer;
   background: none;
@@ -511,11 +511,12 @@
 }
 
 .export-format-item:hover:not(.export-format-item-disabled) {
-  background: var(--color-bg-hover);
+  background: var(--color-bg-subtle);
 }
 
 .export-format-item-selected {
-  background: var(--color-bg-hover);
+  background: var(--color-bg-subtle);
+  box-shadow: inset 3px 0 0 var(--color-accent-default);
 }
 
 .export-format-item-disabled {
@@ -527,6 +528,7 @@
   display: flex;
   flex: 1;
   flex-direction: column;
+  min-width: 0;
 }
 
 .export-format-item-desc {
