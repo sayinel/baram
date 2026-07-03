@@ -37,13 +37,25 @@ pub struct PandocAsset {
     pub data: Vec<u8>,
 }
 
-/// Replace `baram-asset:NAME` placeholders with the asset's absolute path.
+/// Replace `baram-asset:NAME` placeholders with each asset's absolute path.
+///
+/// Replacement is performed longest-name-first so one asset name being a
+/// prefix of another (e.g. "img" vs "img2") cannot clobber the longer
+/// placeholder; this also makes the result independent of HashMap order.
 fn rewrite_asset_refs(markdown: &str, name_to_path: &HashMap<String, String>) -> String {
+    let mut entries: Vec<(&String, &String)> = name_to_path.iter().collect();
+    entries.sort_by_key(|(name, _)| std::cmp::Reverse(name.len()));
     let mut result = markdown.to_string();
-    for (name, path) in name_to_path {
+    for (name, path) in entries {
         result = result.replace(&format!("baram-asset:{}", name), path);
     }
     result
+}
+
+/// A safe asset name is a single file name — no path separators and not
+/// `..` — so joining it under the temp dir cannot escape that dir.
+fn is_safe_asset_name(name: &str) -> bool {
+    !name.is_empty() && name != ".." && !name.contains('/') && !name.contains('\\')
 }
 
 /// Custom export command definition
@@ -167,6 +179,12 @@ pub fn run_pandoc(
     // 1a. Write each asset next to the input and map name -> absolute path
     let mut name_to_path: HashMap<String, String> = HashMap::new();
     for asset in assets {
+        if !is_safe_asset_name(&asset.name) {
+            return Err(ExportError::TempFileError(format!(
+                "Unsafe asset name: {}",
+                asset.name
+            )));
+        }
         let asset_path = tmp_dir.path().join(&asset.name);
         std::fs::write(&asset_path, &asset.data)
             .map_err(|e| ExportError::TempFileError(e.to_string()))?;
@@ -455,5 +473,25 @@ mod tests {
         let asset: PandocAsset = serde_json::from_str(json).unwrap();
         assert_eq!(asset.name, "mermaid-0.png");
         assert_eq!(asset.data, vec![137, 80, 78, 71]);
+    }
+
+    #[test]
+    fn test_rewrite_asset_refs_multiple_assets_no_prefix_clobber() {
+        let mut map = HashMap::new();
+        map.insert("img".to_string(), "/tmp/x/img.png".to_string());
+        map.insert("img2".to_string(), "/tmp/x/img2.png".to_string());
+        let md = "![](baram-asset:img) and ![](baram-asset:img2)";
+        let out = rewrite_asset_refs(md, &map);
+        assert_eq!(out, "![](/tmp/x/img.png) and ![](/tmp/x/img2.png)");
+    }
+
+    #[test]
+    fn test_is_safe_asset_name() {
+        assert!(is_safe_asset_name("mermaid-0.png"));
+        assert!(!is_safe_asset_name(""));
+        assert!(!is_safe_asset_name(".."));
+        assert!(!is_safe_asset_name("../evil.png"));
+        assert!(!is_safe_asset_name("a/b.png"));
+        assert!(!is_safe_asset_name("a\\b.png"));
     }
 }
