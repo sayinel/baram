@@ -2,6 +2,8 @@
 // Pure utility functions (no external dependencies)
 
 import { replaceOutsideCode } from "../markdown/markdown-code-regions";
+import { segmentMarkdownByMermaid } from "../markdown/mermaid-fence";
+import { stripMermaidMeta } from "../markdown/mermaid-meta";
 
 // ---------------------------------------------------------------------------
 // Unicode subscript / superscript mappings
@@ -331,6 +333,7 @@ export function convertForNotion(md: string): string {
   let result = md;
 
   // 1. Block-level conversions first
+  result = stripMermaidMetaForNotion(result);
   result = convertCalloutsForNotion(result);
   result = convertToggleForNotion(result);
   result = convertDefinitionListsForNotion(result);
@@ -487,6 +490,24 @@ export function stripBlockRefsForNotion(md: string): string {
   // Remove ^blockId suffixes at end of lines (space + ^ + word chars at EOL)
   result = result.replace(/ \^\w+$/gm, "");
   return result;
+}
+
+/** Strip the `%% baram-meta` comment from mermaid fences so Notion imports a
+ *  clean `mermaid` code block (Notion renders these natively). */
+export function stripMermaidMetaForNotion(md: string): string {
+  const segments = segmentMarkdownByMermaid(md);
+  const out: string[] = [];
+  for (const seg of segments) {
+    if (seg.kind === "text") {
+      out.push(...seg.lines);
+      continue;
+    }
+    out.push(seg.open);
+    const cleaned = stripMermaidMeta(seg.body.join("\n"));
+    if (cleaned) out.push(...cleaned.split("\n"));
+    if (seg.close !== null) out.push(seg.close);
+  }
+  return out.join("\n");
 }
 
 // ---------------------------------------------------------------------------

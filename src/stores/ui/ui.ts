@@ -9,6 +9,9 @@ export interface ConflictModalState {
   filePath: string;
 }
 
+export type ExportFormat =
+  "docx" | "epub" | "html" | "latex" | "notion" | "pdf" | "rst";
+
 export type RightPanelMode =
   "chat" | "help" | "memories" | "none" | "photo-gallery" | "properties";
 
@@ -31,9 +34,6 @@ export interface ToastState {
   id: number;
   message: string;
 }
-
-type ExportFormat =
-  "docx" | "epub" | "html" | "latex" | "notion" | "pdf" | "rst";
 
 interface UIState {
   aboutOpen: boolean;
@@ -111,7 +111,7 @@ export const useUIStore = create<UIState>((set) => ({
   aboutOpen: false,
   conflictModal: null,
   exportDialogOpen: false,
-  exportFormat: "html" as ExportFormat,
+  exportFormat: "pdf" as ExportFormat,
   skillGeneratorDialogOpen: false,
   skillTestDialogOpen: false,
   smartTemplateDialogOpen: false,
@@ -158,7 +158,7 @@ export const useUIStore = create<UIState>((set) => ({
   toggleAbout: () => set((state) => ({ aboutOpen: !state.aboutOpen })),
 
   openExportDialog: (format) =>
-    set({ exportDialogOpen: true, exportFormat: format ?? "html" }),
+    set({ exportDialogOpen: true, exportFormat: format ?? "pdf" }),
 
   closeExportDialog: () => set({ exportDialogOpen: false }),
 

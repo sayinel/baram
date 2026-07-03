@@ -230,6 +230,15 @@ export interface NamespaceRenameResult {
   updatedFiles: string[];
 }
 
+/** A binary asset (e.g. rasterized Mermaid PNG) sent alongside a Pandoc
+ *  export. `data` is raw bytes as a number array (no base64 dependency). */
+export interface PandocAsset {
+  /** Raw file bytes */
+  data: number[];
+  /** File name written next to the Pandoc input, e.g. "mermaid-0.png" */
+  name: string;
+}
+
 // §55 Pandoc Extended Export types
 export type PandocFormat = "docx" | "epub" | "latex" | "rst";
 
