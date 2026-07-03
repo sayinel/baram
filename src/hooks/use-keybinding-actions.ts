@@ -364,6 +364,9 @@ export function useKeybindingActions({
     registerAction("workspace.journal", () =>
       useWorkspaceStore.getState().applyPreset("journal"),
     );
+    registerAction("workspace.skills", () =>
+      useWorkspaceStore.getState().applyPreset("skills"),
+    );
 
     // Journal
     registerAction("journal.quickCapture", () =>

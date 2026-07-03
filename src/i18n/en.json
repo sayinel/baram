@@ -392,6 +392,7 @@
   "keybindings.ai.skillTest": "Skill Test",
   "keybindings.workspace.writing": "Writing Preset",
   "keybindings.workspace.journal": "Journal Preset",
+  "keybindings.workspace.skills": "Skills Editing Preset",
   "keybindings.journal.quickCapture": "Quick Capture",
   "keybindings.journal.promoteCapture": "Promote Capture",
   "keybindings.journal.openToday": "Open Today's Journal",

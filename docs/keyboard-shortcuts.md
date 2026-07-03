@@ -18,6 +18,8 @@ Complete list of keyboard shortcuts available in Baram.
 | Save            | `Cmd+S`       | `Ctrl+S`        |
 | Save As         | `Cmd+Shift+S` | `Ctrl+Shift+S`  |
 | Close Tab       | `Cmd+W`       | `Ctrl+W`        |
+| Close Folder    | `Cmd+Shift+W` | `Ctrl+Shift+W`  |
+| Export...       | `Cmd+Shift+E` | `Ctrl+Shift+E`  |
 | Quick Switcher  | `Cmd+K`       | `Ctrl+K`        |
 | Command Palette | `Cmd+P`       | `Ctrl+P`        |
 | Settings        | `Cmd+,`       | `Ctrl+,`        |
@@ -88,7 +90,6 @@ Complete list of keyboard shortcuts available in Baram.
 | -------------------- | ------------- | --------------- |
 | Source Mode Toggle   | `Cmd+/`       | `Ctrl+/`        |
 | Toggle Left Sidebar  | `Cmd+Shift+L` | `Ctrl+Shift+L`  |
-| Toggle Right Sidebar | `Cmd+Shift+R` | `Ctrl+Shift+R`  |
 
 ## Navigation
 
@@ -119,22 +120,38 @@ Complete list of keyboard shortcuts available in Baram.
 
 <!-- colwidths:144,130,153 -->
 
-| Action           | macOS         | Windows / Linux |
-| ---------------- | ------------- | --------------- |
-| Inline AI Prompt | `Cmd+J`       | `Ctrl+J`        |
-| AI Chat Panel    | `Cmd+Shift+A` | `Ctrl+Shift+A`  |
-| Skill Test       | `Cmd+Shift+T` | `Ctrl+Shift+T`  |
+| Action            | macOS         | Windows / Linux |
+| ----------------- | ------------- | --------------- |
+| Inline AI Prompt  | `Cmd+J`       | `Ctrl+J`        |
+| AI Chat Panel     | `Cmd+Shift+A` | `Ctrl+Shift+A`  |
+| Toggle Ghost Text | `Cmd+Shift+G` | `Ctrl+Shift+G`  |
+| Skill Test        | `Cmd+Shift+T` | `Ctrl+Shift+T`  |
 
 ## Workspace
 
 <!-- colwidths:188,139,153 -->
 
-| Action              | macOS          | Windows / Linux |
-| ------------------- | -------------- | --------------- |
-| Workspace: Writing  | `Cmd+Option+1` | `Ctrl+Alt+1`    |
-| Workspace: Skills   | `Cmd+Option+2` | `Ctrl+Alt+2`    |
-| Workspace: Research | `Cmd+Option+3` | `Ctrl+Alt+3`    |
-| Workspace: Journal  | `Cmd+Option+4` | `Ctrl+Alt+4`    |
+| Action                    | macOS          | Windows / Linux |
+| ------------------------- | -------------- | --------------- |
+| Workspace: Writing        | `Cmd+Option+1` | `Ctrl+Alt+1`    |
+| Workspace: Journal        | `Cmd+Option+2` | `Ctrl+Alt+2`    |
+| Workspace: Skills Editing | `Cmd+Option+3` | `Ctrl+Alt+3`    |
+
+> All three workspace presets are customizable in **Settings > Keybindings**.
+
+## Journal
+
+> Journal shortcuts use dedicated `Cmd+Shift` letters chosen to avoid the editor and app shortcuts (Mermaid, Math Block, Export, Command Palette), so there are no conflicts.
+
+| Action                    | macOS         | Windows / Linux |
+| ------------------------- | ------------- | --------------- |
+| Quick Capture             | `Cmd+Shift+N` | `Ctrl+Shift+N`  |
+| Open Today's Journal      | `Cmd+Shift+J` | `Ctrl+Shift+J`  |
+| Jump to Captures Section  | `Cmd+Shift+C` | `Ctrl+Shift+C`  |
+| Jump to Diary Section     | `Cmd+Shift+Y` | `Ctrl+Shift+Y`  |
+| Promote Capture to Note   | `Cmd+Shift+U` | `Ctrl+Shift+U`  |
+| Toggle Memories View      | `Cmd+Shift+R` | `Ctrl+Shift+R`  |
+| Photo Gallery             | `Cmd+Shift+I` | `Ctrl+Shift+I`  |
 
 ## Ghost Text (AI Autocomplete)
 
@@ -190,6 +207,8 @@ Complete list of keyboard shortcuts available in Baram.
 - **Find & Replace**: Use `Cmd+F` to find text, `Cmd+H` to find and replace. Press `Enter`/`Shift+Enter` to navigate between matches
 - **Folding**: Hover over a heading or nested list item to see a fold arrow. Click it or press `Cmd+Shift+[` to collapse/expand. Use `Cmd+Shift+Alt+[` / `]` to fold/unfold all
 - **Date Mentions**: Type `@` and select Today/Yesterday/Tomorrow to insert a date mention chip linked to that day's journal entry
+- **Tags**: Type `#tag` (autocompletes vault-wide); `Cmd/Ctrl+click` a tag to search every file that uses it
+- **Quick Capture**: Press `Cmd+Shift+N` to jot an idea/link/quote/note, or use `/idea`, `/link`, `/quote`, `/note`
 
 ---
 
