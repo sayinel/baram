@@ -28,6 +28,36 @@ pub struct PandocExportOptions {
     pub extra_args: Vec<String>,
 }
 
+/// A binary asset (e.g. rasterized Mermaid PNG) written alongside the Pandoc
+/// input so Pandoc can embed it. `data` arrives as a JSON number array.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PandocAsset {
+    pub name: String,
+    pub data: Vec<u8>,
+}
+
+/// Replace `baram-asset:NAME` placeholders with each asset's absolute path.
+///
+/// Replacement is performed longest-name-first so one asset name being a
+/// prefix of another (e.g. "img" vs "img2") cannot clobber the longer
+/// placeholder; this also makes the result independent of HashMap order.
+fn rewrite_asset_refs(markdown: &str, name_to_path: &HashMap<String, String>) -> String {
+    let mut entries: Vec<(&String, &String)> = name_to_path.iter().collect();
+    entries.sort_by_key(|(name, _)| std::cmp::Reverse(name.len()));
+    let mut result = markdown.to_string();
+    for (name, path) in entries {
+        result = result.replace(&format!("baram-asset:{}", name), path);
+    }
+    result
+}
+
+/// A safe asset name is a single file name — no path separators and not
+/// `..` — so joining it under the temp dir cannot escape that dir.
+fn is_safe_asset_name(name: &str) -> bool {
+    !name.is_empty() && name != ".." && !name.contains('/') && !name.contains('\\')
+}
+
 /// Custom export command definition
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -141,11 +171,31 @@ pub fn run_pandoc(
     output_path: &str,
     pandoc_path: &str,
     options: &PandocExportOptions,
+    assets: &[PandocAsset],
 ) -> Result<(), ExportError> {
-    // 1. Write markdown to temp file
+    // 1. Write markdown (with assets) to temp dir
     let tmp_dir = tempdir().map_err(|e| ExportError::TempFileError(e.to_string()))?;
+
+    // 1a. Write each asset next to the input and map name -> absolute path
+    let mut name_to_path: HashMap<String, String> = HashMap::new();
+    for asset in assets {
+        if !is_safe_asset_name(&asset.name) {
+            return Err(ExportError::TempFileError(format!(
+                "Unsafe asset name: {}",
+                asset.name
+            )));
+        }
+        let asset_path = tmp_dir.path().join(&asset.name);
+        std::fs::write(&asset_path, &asset.data)
+            .map_err(|e| ExportError::TempFileError(e.to_string()))?;
+        name_to_path.insert(asset.name.clone(), asset_path.to_string_lossy().to_string());
+    }
+
+    // 1b. Rewrite baram-asset: references to absolute paths
+    let markdown_content = rewrite_asset_refs(markdown_content, &name_to_path);
+
     let input_path = tmp_dir.path().join("baram-pandoc-input.md");
-    std::fs::write(&input_path, markdown_content)
+    std::fs::write(&input_path, &markdown_content)
         .map_err(|e| ExportError::TempFileError(e.to_string()))?;
 
     // 2. Build pandoc command
@@ -396,5 +446,52 @@ mod tests {
         let json = serde_json::to_string(&info).unwrap();
         assert!(json.contains("\"available\":true"));
         assert!(json.contains("\"version\":\"3.1.9\""));
+    }
+
+    #[test]
+    fn test_rewrite_asset_refs_replaces_placeholder_with_path() {
+        let mut map = HashMap::new();
+        map.insert(
+            "mermaid-0.png".to_string(),
+            "/tmp/x/mermaid-0.png".to_string(),
+        );
+        let md = "before ![](baram-asset:mermaid-0.png) after";
+        let out = rewrite_asset_refs(md, &map);
+        assert_eq!(out, "before ![](/tmp/x/mermaid-0.png) after");
+    }
+
+    #[test]
+    fn test_rewrite_asset_refs_no_assets_is_identity() {
+        let map = HashMap::new();
+        let md = "no assets here";
+        assert_eq!(rewrite_asset_refs(md, &map), md);
+    }
+
+    #[test]
+    fn test_pandoc_asset_deserialize() {
+        let json = r#"{ "name": "mermaid-0.png", "data": [137, 80, 78, 71] }"#;
+        let asset: PandocAsset = serde_json::from_str(json).unwrap();
+        assert_eq!(asset.name, "mermaid-0.png");
+        assert_eq!(asset.data, vec![137, 80, 78, 71]);
+    }
+
+    #[test]
+    fn test_rewrite_asset_refs_multiple_assets_no_prefix_clobber() {
+        let mut map = HashMap::new();
+        map.insert("img".to_string(), "/tmp/x/img.png".to_string());
+        map.insert("img2".to_string(), "/tmp/x/img2.png".to_string());
+        let md = "![](baram-asset:img) and ![](baram-asset:img2)";
+        let out = rewrite_asset_refs(md, &map);
+        assert_eq!(out, "![](/tmp/x/img.png) and ![](/tmp/x/img2.png)");
+    }
+
+    #[test]
+    fn test_is_safe_asset_name() {
+        assert!(is_safe_asset_name("mermaid-0.png"));
+        assert!(!is_safe_asset_name(""));
+        assert!(!is_safe_asset_name(".."));
+        assert!(!is_safe_asset_name("../evil.png"));
+        assert!(!is_safe_asset_name("a/b.png"));
+        assert!(!is_safe_asset_name("a\\b.png"));
     }
 }

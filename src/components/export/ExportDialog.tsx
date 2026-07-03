@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 
 import type { PandocInfo } from "../../ipc/types";
+import type { ExportFormatGroup } from "./ExportFormatDropdown";
 import type { Editor } from "@tiptap/react";
 
 import { detectPandoc } from "../../ipc/invoke";
@@ -17,62 +18,83 @@ import {
   exportWithPandoc,
 } from "../../utils/export/export";
 import { logger } from "../../utils/logger";
+import { ExportFormatDropdown } from "./ExportFormatDropdown";
 
 interface ExportDialogProps {
   editor: Editor | null;
 }
 
-const FORMAT_OPTIONS = [
+const FORMAT_GROUPS: ExportFormatGroup[] = [
   {
-    id: "html",
-    ext: ".html",
-    name: "HTML",
-    desc: "Standalone page",
-    pandoc: false,
+    label: "인쇄",
+    options: [
+      {
+        id: "pdf",
+        ext: ".pdf",
+        name: "PDF",
+        desc: "Print-ready document",
+        pandoc: false,
+      },
+    ],
   },
   {
-    id: "pdf",
-    ext: ".pdf",
-    name: "PDF",
-    desc: "Print-ready document",
-    pandoc: false,
+    label: "웹",
+    options: [
+      {
+        id: "html",
+        ext: ".html",
+        name: "HTML",
+        desc: "Standalone page",
+        pandoc: false,
+      },
+    ],
   },
   {
-    id: "notion",
-    ext: ".md",
-    name: "Notion",
-    desc: "Notion-compatible Markdown",
-    pandoc: false,
+    label: "마크다운",
+    options: [
+      {
+        id: "notion",
+        ext: ".md",
+        name: "Notion",
+        desc: "Notion-compatible Markdown",
+        pandoc: false,
+      },
+    ],
   },
   {
-    id: "docx",
-    ext: ".docx",
-    name: "Word",
-    desc: "Editable document",
-    pandoc: true,
+    label: "문서 (Pandoc)",
+    options: [
+      {
+        id: "docx",
+        ext: ".docx",
+        name: "Word",
+        desc: "Editable document",
+        pandoc: true,
+      },
+      {
+        id: "latex",
+        ext: ".tex",
+        name: "LaTeX",
+        desc: "Typesetting",
+        pandoc: true,
+      },
+      {
+        id: "epub",
+        ext: ".epub",
+        name: "EPUB",
+        desc: "E-book format",
+        pandoc: true,
+      },
+      {
+        id: "rst",
+        ext: ".rst",
+        name: "RST",
+        desc: "Sphinx documentation",
+        pandoc: true,
+      },
+    ],
   },
-  {
-    id: "latex",
-    ext: ".tex",
-    name: "LaTeX",
-    desc: "Typesetting",
-    pandoc: true,
-  },
-  {
-    id: "epub",
-    ext: ".epub",
-    name: "EPUB",
-    desc: "E-book format",
-    pandoc: true,
-  },
-  {
-    id: "rst",
-    ext: ".rst",
-    name: "RST",
-    desc: "Sphinx documentation",
-    pandoc: true,
-  },
-] as const;
+];
 
 const PANDOC_FORMATS = ["docx", "latex", "epub", "rst"] as const;
 
@@ -208,36 +230,12 @@ export function ExportDialog({ editor }: ExportDialogProps) {
         <div className="export-dialog-body">
           <div className="export-dialog-field">
             <label className="export-dialog-label">Format</label>
-            <div className="export-format-list">
-              {FORMAT_OPTIONS.map((fmt) => {
-                const isDisabled = fmt.pandoc && !pandocAvailable;
-                const isSelected = exportFormat === fmt.id;
-                return (
-                  <button
-                    className={`export-format-card${isSelected ? "export-format-card-selected" : ""}${isDisabled ? "export-format-card-disabled" : ""}`}
-                    disabled={isDisabled}
-                    key={fmt.id}
-                    onClick={() => {
-                      if (!isDisabled)
-                        openExportDialog(fmt.id as typeof exportFormat);
-                    }}
-                  >
-                    <span className="export-ext-badge">{fmt.ext}</span>
-                    <span className="export-format-card-info">
-                      <span className="export-format-card-name">
-                        {fmt.name}
-                      </span>
-                      <span className="export-format-card-desc">
-                        {fmt.desc}
-                      </span>
-                    </span>
-                    {fmt.pandoc && (
-                      <span className="export-pandoc-badge">pandoc</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+            <ExportFormatDropdown
+              groups={FORMAT_GROUPS}
+              onChange={(id) => openExportDialog(id)}
+              pandocAvailable={pandocAvailable}
+              value={exportFormat}
+            />
             {!pandocAvailable && (
               <p className="export-pandoc-warning">
                 ⚠ Install Pandoc for additional formats.{" "}

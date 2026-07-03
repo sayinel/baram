@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   ExportFormat,
   ExportOptions,
+  PandocAsset,
   PandocInfo,
   PdfOptions,
 } from "./types";
@@ -35,6 +36,7 @@ export async function exportPandoc(
   pandocPath?: string,
   referenceDoc?: string,
   extraArgs?: string[],
+  assets?: PandocAsset[],
 ): Promise<void> {
   return invoke<void>("export_pandoc", {
     markdownContent,
@@ -43,6 +45,7 @@ export async function exportPandoc(
     pandocPath,
     referenceDoc,
     extraArgs,
+    assets,
   });
 }
 
