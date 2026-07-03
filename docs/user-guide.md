@@ -21,6 +21,7 @@ Welcome to Baram — a lightweight, beautiful WYSIWYG markdown editor with AI in
 - [Journal / Daily Notes](#journal--daily-notes)
 - [Workspace Presets](#workspace-presets)
 - [Customization](#customization)
+- [Plugins](#plugins)
 - [Help Panel](#help-panel)
 
 ---
@@ -504,6 +505,14 @@ In the editor, `[^einstein]` displays as `1` and `[^physics]` as `2`.
 - Press **Enter** on an empty last line inside a definition to exit the block
 - Press **Backspace** at the start of the first line to lift the content out of the definition
 
+### Query Blocks
+
+Query blocks embed dynamic, always-current content that reflects the state of your vault:
+
+1. Insert a query block using the ` ```query ` fenced code block
+2. Build filters with the visual query builder
+3. Matching results (files, tasks, or notes) render inline and refresh automatically as your vault changes
+
 ### YAML Frontmatter
 
 YAML frontmatter at the top of a document is automatically detected and rendered as a structured block:
@@ -564,6 +573,21 @@ Mention pages and dates using the `@` trigger, which inserts styled inline chips
 
 - Wikilinks (`[[page]]`) render as styled inline text links
 - Mentions (`@[[page]]`) render as chip badges with icons — visually distinct for quick scanning
+
+### Tags
+
+Organize notes with `#tags`, indexed across the entire vault:
+
+1. **Type `#tag`** inline (autocomplete suggests existing tags), or add a `tags:` list to YAML frontmatter
+2. **Nested tags** — Use `#parent/child` for hierarchy
+3. **Cmd/Ctrl+click** a tag to search every file that uses it
+
+**Tag panel:** Open the Tags panel from the Activity Bar to browse tags as a tree or a frequency-sized cloud. From here you can:
+
+- **Rename** a tag across the whole vault
+- Assign **colors** to tags
+- **Filter the file tree** by tag
+- Get **AI tag suggestions** for the current note
 
 ### Backlinks
 
@@ -919,8 +943,8 @@ With [Pandoc](https://pandoc.org/) installed, Baram supports additional export f
 **Setup:**
 
 1. Install [Pandoc](https://pandoc.org/installing.html) on your system
-2. Baram auto-detects Pandoc — the Export dialog shows Pandoc formats when available
-3. (Optional) Set a custom Pandoc path in **Settings > Extensions** if Pandoc is not in your system PATH
+2. Baram auto-detects Pandoc from your PATH — the Export dialog shows Pandoc formats when available
+3. The Export dialog lets you pick a Word reference template and (when needed) resolves the Pandoc executable automatically
 
 **Word Templates:**
 
@@ -951,7 +975,7 @@ There are three ways to create or open a daily note:
 
 **Calendar sidebar:**
 
-1. Switch to the Journal workspace preset (`Cmd+Alt+4` / `Ctrl+Alt+4`) or select the Calendar panel in the sidebar
+1. Switch to the Journal workspace preset (`Cmd+Alt+2` / `Ctrl+Alt+2`) or select the Calendar panel in the sidebar
 2. Click any date in the mini calendar — if a journal entry doesn't exist, it is created from your template
 3. Dates with existing entries are marked with a dot
 
@@ -980,6 +1004,47 @@ Custom templates support the following variables:
 
 If no custom template is set, Baram uses a default template with YAML frontmatter, a date heading, and a Notes section.
 
+### Periodic Notes
+
+Beyond daily entries, Baram supports weekly, monthly, and yearly notes:
+
+- Enable each type in **Settings > General > Journal**
+- In the Calendar sidebar, click the week-number column for a weekly note, the month header for a monthly note, or the year for a yearly note
+- Each periodic note type can have its own template
+
+### Mood & Energy Tracking
+
+- Use the MoodBar to log a mood (1–5) and energy level for the day
+- The calendar shows colored mood dots; a **Year-in-Pixels** grid and a **30-day trend** chart visualize patterns over time
+- AI can infer a mood from your writing and suggest one when the mood is unset
+
+### Photo Journal
+
+- Drag, paste, or use the `/photo` slash command to add images — they are auto-saved to an `assets/` folder next to your journal
+- Open the **Photo Gallery** (`Cmd+Shift+P` / `Ctrl+Shift+P`) to browse photos grouped by day/month/year, with a keyboard-navigable lightbox
+
+### Memories
+
+- Open the **Memories** view (`Cmd+Shift+M` / `Ctrl+Shift+M`) to revisit past entries by year
+- Three tabs: Journal (one-line or full), Photos, and Notes
+- Edit the current year's one-line summaries inline
+
+### Streaks, Stats & Prompts
+
+- Track consecutive-day **streaks** and view monthly/yearly stats plus a contribution heatmap
+- Get a **daily writing prompt** to spark entries
+- Generate an **AI reflection** on your week or month with the ✨ button in the Calendar sidebar (saved to a `notes/` file)
+
+### Quick Capture
+
+- Capture fleeting thoughts without leaving your flow: `/idea`, `/link`, `/quote`, `/note`, or the Quick Capture dialog (`Cmd+Shift+N` / `Ctrl+Shift+N`)
+- Promote a capture into its own note with `Cmd+Shift+E` / `Ctrl+Shift+E`
+- Jump to the Diary section (`Cmd+Shift+D`) or Captures section (`Cmd+Shift+C`) of today's entry
+
+### Journal Themes
+
+Choose a dedicated journal/calendar theme (independent of the app theme) in **Settings > General > Journal**.
+
 ---
 
 ## Workspace Presets
@@ -988,26 +1053,27 @@ Workspace Presets let you save and quickly restore your preferred layout — sid
 
 ### Built-in Presets
 
-| Preset   | Shortcut (macOS) | Shortcut (Win/Linux) | Layout                                                                 |
-| -------- | ---------------- | -------------------- | ---------------------------------------------------------------------- |
-| Writing  | `Cmd+Alt+1`      | `Ctrl+Alt+1`         | Sidebar closed, right panel closed — focused writing                   |
-| Skills   | `Cmd+Alt+2`      | `Ctrl+Alt+2`         | File tree open, AI Chat panel open — prompt editing                    |
-| Research | `Cmd+Alt+3`      | `Ctrl+Alt+3`         | File tree + backlinks open, AI Chat panel open — knowledge exploration |
-| Journal  | `Cmd+Alt+4`      | `Ctrl+Alt+4`         | Calendar sidebar open — daily note writing                             |
+| Preset         | Shortcut (macOS) | Shortcut (Win/Linux) | Layout                                                        |
+| -------------- | ---------------- | -------------------- | ------------------------------------------------------------ |
+| Writing        | `Cmd+Alt+1`      | `Ctrl+Alt+1`         | Sidebar closed, right panel closed — focused writing         |
+| Journal        | `Cmd+Alt+2`      | `Ctrl+Alt+2`         | Calendar sidebar + today's journal + Memories view           |
+| Skills Editing | —                | —                    | File tree + Properties panel — LLM Skills editing            |
+
+The Skills Editing preset has no default keyboard shortcut — apply it from the Command Palette or the Workspace menu.
 
 ### Custom Presets
 
-Create your own presets in **Settings > Workspace**:
+Create your own presets in **Settings > Appearance**:
 
 1. Arrange your workspace layout as desired (sidebar panel, right panel, theme)
-2. Go to **Settings > Workspace** and click **Save Current Layout**
+2. Go to **Settings > Appearance** and click **Save Current Layout**
 3. Enter a name for the preset
 
 Custom presets can be renamed, deleted, and applied from the same Settings tab.
 
 ### Applying Presets
 
-- **Keyboard shortcuts** — `Cmd+Alt+1`/`2`/`3` for built-in presets
+- **Keyboard shortcuts** — `Cmd+Alt+1` (Writing), `Cmd+Alt+2` (Journal)
 - **Command Palette** — Search for "Workspace" commands
 - **Workspace menu** — Use the Workspace menu in the menu bar
 
@@ -1021,33 +1087,35 @@ Open Settings with `Cmd+,` (macOS) or `Ctrl+,` (Windows/Linux).
 
 Available settings tabs:
 
-| Tab             | What You Can Configure                                                                         |
-| --------------- | ---------------------------------------------------------------------------------------------- |
-| **General**     | Startup behavior, language                                                                     |
-| **Editor**      | Indentation, tab size, line numbers, line endings, editor max width                            |
-| **Appearance**  | Theme gallery, custom theme editor (see below)                                                 |
-| **Files**       | Auto-save, file sorting, default file location                                                 |
-| **Markdown**    | Extended syntax toggles (math, highlight, strikethrough), smart punctuation                    |
-| **Extensions**  | Per-extension settings (code block style, line numbers, diagrams)                              |
-| **Workspace**   | Built-in and custom workspace presets (sidebar, panel, theme layout)                           |
-| **AI**          | Provider, model, API key (per-provider), privacy mode, Ghost Text settings, custom AI commands |
-| **Language**    | Interface language (English, Korean)                                                           |
-| **Keybindings** | Customize keyboard shortcuts — search, rebind, reset                                           |
+| Tab              | What You Can Configure                                                                          |
+| ---------------- | ---------------------------------------------------------------------------------------------- |
+| **General**      | Startup behavior, auto-save, Journal, and file snapshots (Version History)                     |
+| **Editor**       | Indentation, tab size, line numbers, line endings, editor max width                            |
+| **Appearance**   | Theme gallery, custom theme editor, and workspace presets                                       |
+| **Markdown**     | Extended syntax toggles (math, highlight, strikethrough), smart punctuation                    |
+| **AI**           | Provider, model, API key (per-provider), privacy mode, Ghost Text settings, custom AI commands |
+| **Activity Bar** | Show/hide and reorder the left Activity Bar panels                                              |
+| **Language**     | Interface language (English, Korean)                                                            |
+| **Keybindings**  | Customize keyboard shortcuts — search, rebind, reset                                            |
+| **Plugins**      | Browse, install, update, and manage community plugins                                           |
+| **Vault**        | Initialize/revert vault, vault alias, journal directory, and cross-vault settings              |
 
 ### Themes
 
-Baram comes with 6 built-in themes and supports custom theme creation.
+Baram comes with 8 built-in themes and supports custom theme creation.
 
 **Built-in themes:**
 
-| Theme           | Style                                 |
-| --------------- | ------------------------------------- |
-| Default Light   | Clean light theme (default)           |
-| Default Dark    | Dark theme with blue tones            |
-| Tokyo Night     | Popular dark theme, cool blue palette |
-| Solarized Light | Ethan Schoonover's warm light palette |
-| Solarized Dark  | Ethan Schoonover's dark palette       |
-| Nord            | Arctic-inspired dark theme            |
+| Theme              | Style                                 |
+| ------------------ | ------------------------------------- |
+| Default Light      | Clean light theme (default)           |
+| Default Dark       | Dark theme with blue tones            |
+| Tokyo Night        | Popular dark theme, cool blue palette |
+| Solarized Light    | Ethan Schoonover's warm light palette |
+| Solarized Dark     | Ethan Schoonover's dark palette       |
+| Nord               | Arctic-inspired dark theme            |
+| Baram Garden Light | Warm, garden-inspired light theme     |
+| Baram Garden Dark  | Warm, garden-inspired dark theme      |
 
 **Using themes:**
 
@@ -1059,7 +1127,7 @@ Baram comes with 6 built-in themes and supports custom theme creation.
 
 1. Click **Customize...** in the Appearance tab
 2. Edit the theme name and choose a base mode (Light or Dark)
-3. Adjust any of the 16 color values using the color pickers (grouped by Background, Text, Border, Accent, Editor)
+3. Adjust any of the 25 color values using the color pickers (grouped by Background, Text, Border, Accent, Editor, Status, and Graph)
 4. Colors update live as you pick — preview changes in real-time
 5. Click **Save** to keep the theme, or **Cancel** to discard
 
@@ -1095,6 +1163,20 @@ All keyboard shortcuts can be customized in **Settings > Keybindings**:
 Use **Reset All** at the bottom to restore all shortcuts to defaults.
 
 See the full [Keyboard Shortcuts Reference](keyboard-shortcuts.md) for all available shortcuts.
+
+---
+
+## Plugins
+
+Baram can be extended with community plugins, managed from **Settings > Plugins**.
+
+- **Browse** — Discover plugins from the registry
+- **Installed** — See and configure the plugins you have installed
+- **Updates** — Check for and apply plugin updates
+
+Each plugin declares the **capabilities** (permissions) it needs — access to the editor, files, commands, UI, and so on. You review and approve these before installing. Plugins run in isolation, so a misbehaving plugin can't crash the editor, and downloads are checksum-verified.
+
+To build your own plugin, see the [Plugin Development Guide](plugin-development.md) for the manifest format, the `ExtensionContext` API, and bundling/publishing.
 
 ---
 

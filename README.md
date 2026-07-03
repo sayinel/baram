@@ -123,6 +123,18 @@ Here is some text[^note] with a footnote[^2].
 [^2]: Another footnote.
 ```
 
+### Vaults & Multi-Context Workspaces
+
+Baram organizes your work into **contexts** shown as tabs in the Context Tab Bar at the top of the left sidebar:
+
+- **Vault** 🏠 — A folder initialized as a first-class workspace (contains `.baram/config.json`), unlocking vault-level settings, a configurable Journal directory, and a vault alias for cross-vault linking
+- **Folder** 📁 — Any plain folder opened without vault initialization — works as a normal workspace
+- **File** 📄 — A single file opened outside any workspace (no file tree, just the editor)
+- **Multiple vaults at once** — Open several vaults/folders simultaneously, each with its own file tree, tab history, and settings
+- **Cross-vault links** — Link across vaults with `[[alias::filename]]`; the graph and backlinks span vaults
+- **3-tier settings** — Global → vault → context settings resolution
+- **Initialize / revert** — Turn any folder into a vault (or back) from **Settings > Vault**
+
 ### Bidirectional Links (Wikilinks)
 
 Connect your notes with `[[wikilinks]]`:
@@ -131,6 +143,8 @@ Connect your notes with `[[wikilinks]]`:
 - **Heading links** — `[[page#heading]]` links to a specific heading
 - **Block links** — `[[page#^block-id]]` links to a specific block
 - **Display text** — `[[page|custom text]]` shows custom text
+- **Relative / namespace links** — `[[./sibling]]` and `[[../parent-folder/note]]` resolve relative to the current file; filter by namespace in the Quick Switcher (`ns:`) and color the graph by namespace
+- **Cross-vault links** — `[[alias::filename]]` links to a file in another vault
 - **Cmd+click** to navigate to the linked page
 - **Hover preview** — hover over a wikilink to see a preview of the target
 
@@ -144,6 +158,17 @@ Mention pages and dates with inline chip badges using `@[[...]]` syntax:
 - **Date mention** — `@[[2026-02-27]]` inserts a 📅 date chip (navigates to journal on click)
 - **Page mention** — `@[[My Note]]` inserts a 📄 page chip (navigates on Cmd+click)
 - Mentions are visually distinct from wikilinks — styled as inline chips with icons
+
+### Tags
+
+Organize and filter notes with `#tags`:
+
+- **Type `#tag`** inline, or add `tags:` to YAML frontmatter — both are indexed vault-wide
+- **Nested tags** — `#parent/child` for hierarchical organization
+- **Autocomplete** — Type `#` to get suggestions from the vault-wide tag index
+- **Click to search** — `Cmd/Ctrl+click` a tag to search all files that use it
+- **Tag panel** — Browse tags as a tree or a frequency-sized cloud; rename tags across the whole vault, assign colors, or filter the file tree by tag
+- **AI tag suggestions** — Let AI suggest relevant tags for the current note
 
 ### Backlinks
 
@@ -245,6 +270,13 @@ GFM (GitHub Flavored Markdown) pipe table support:
 - **`Cmd+Shift+F`** — Full-text search across all files in the workspace using tantivy
 - Supports regex, file/folder filters, and replace across files
 
+### Query Blocks
+
+Embed live, dynamic content that updates as your vault changes:
+
+- Insert a query block (` ```query ` fence) and build filters with a visual query builder
+- Results (matching files, tasks, or notes) render inline and refresh automatically
+
 ### Graph View
 
 Visual map of your note connections. See how your documents are linked through wikilinks — nodes represent files, edges represent links.
@@ -294,27 +326,35 @@ Version History works alongside Git but is independent — Git users who prefer 
 
 Customize the look and feel of Baram with built-in themes or create your own:
 
-- **6 built-in themes** — Default Light, Default Dark, Tokyo Night, Solarized Light, Solarized Dark, Nord
+- **8 built-in themes** — Default Light, Default Dark, Tokyo Night, Solarized Light, Solarized Dark, Nord, Baram Garden Light, Baram Garden Dark
 - **System (Auto)** — Automatically follows your OS light/dark mode preference
 - **Theme Gallery** — Visual card grid in **Settings > Appearance** — click to switch
-- **Color Editor** — Customize any theme with a full 16-color picker (backgrounds, text, borders, accent, editor)
+- **Color Editor** — Customize any theme with a full 25-color picker (backgrounds, text, borders, accent, editor, status, graph)
 - **Import / Export** — Share themes as `.json` files
 
 ### Journal / Daily Notes
 
-Maintain a daily log with automatic note creation and a calendar sidebar:
+A full daily-notes workspace, not just a dated file:
 
 - **Auto-create** — Today's journal entry is automatically created on startup (configurable)
-- **Calendar sidebar** — Interactive mini calendar showing which days have journal entries; click a date to open/create
-- **@Mentions for dates** — Type `@` and select Today / Yesterday / Tomorrow from the popup, or type `@[[YYYY-MM-DD]]` to insert a date mention chip that links to that day's journal
-- **Templates** — Use a custom `.md` template with variables (`{{date}}`, `{{year}}`, `{{dayName}}`, etc.)
-- **Settings** — Enable in **Settings > General > Journal** — configure directory, filename format, template, and startup behavior
+- **Calendar sidebar** — Interactive mini calendar showing which days have entries; click a date to open/create
+- **Periodic notes** — Weekly, monthly, and yearly notes with their own templates
+- **@Mentions for dates** — Type `@` and select Today / Yesterday / Tomorrow, or `@[[YYYY-MM-DD]]` to link a specific day
+- **Mood & energy tracking** — Log mood/energy per day; visualize with Year-in-Pixels and 30-day trend charts
+- **Photo journal** — Drag, paste, or `/photo` to add images (auto-saved to `assets/`); browse them in a gallery with a lightbox
+- **Memories view** — Revisit past entries by year (Journal / Photos / Notes tabs), with inline one-line editing
+- **Streaks & stats** — Consecutive-day streaks, monthly/yearly stats, and a contribution heatmap
+- **Daily prompts & AI reflection** — Get a writing prompt each day and generate AI reflections on your week or month
+- **Quick capture** — Capture ideas, links, quotes, and notes (`/idea`, `/link`, `/quote`, `/note`, or `Cmd+Shift+N`)
+- **Templates** — Custom `.md` templates with variables (`{{date}}`, `{{dayName}}`, `{{daily_prompt}}`, etc.)
+- **Journal themes** — Dedicated calendar/journal themes independent of the app theme
+- **Settings** — Enable and configure directory, filename format, hierarchy, templates, and startup behavior in **Settings > General > Journal**
 
 ### Workspace Presets
 
 Save and restore your workspace layout:
 
-- **4 built-in presets** — Writing (`Cmd+Alt+1`), Skills (`Cmd+Alt+2`), Research (`Cmd+Alt+3`), Journal (`Cmd+Alt+4`)
+- **3 built-in presets** — Writing (`Cmd+Alt+1`), Journal (`Cmd+Alt+2`), and Skills Editing (via Command Palette or the Workspace menu)
 - **Custom presets** — Save your current sidebar, panel, and theme configuration as a named preset
 - **Quick switch** — Apply presets via keyboard shortcuts, Command Palette, or the Workspace menu
 
@@ -333,6 +373,15 @@ Remap any keyboard shortcut to your preference:
 - Click **Edit** on any shortcut, then press the new key combination to rebind
 - **Conflict detection** warns when a key combination is already in use
 - **Reset** individual shortcuts or reset all to defaults
+
+### Plugins
+
+Extend Baram with community plugins:
+
+- **Marketplace** — Browse, search, install, and update plugins from **Settings > Plugins** (Browse / Installed / Updates tabs)
+- **Capability-gated** — Each plugin declares the permissions it needs (editor, files, commands, UI, …); you review and approve them before install
+- **Safe by design** — Dynamic ESM loading with crash isolation (error boundaries), SHA-256 checksum verification on download, and an activation timeout
+- **Developer guide** — See [docs/plugin-development.md](docs/plugin-development.md) for the manifest format, the `ExtensionContext` API, and how to bundle and publish
 
 ## AI Integration
 
@@ -466,9 +515,9 @@ Create your own slash commands in **Settings > AI > Custom Commands**. Use varia
 | Global Search | `Cmd+Shift+F` |
 | Tab Switcher (MRU) | `Ctrl+Tab` |
 | Workspace: Writing | `Cmd+Alt+1` |
-| Workspace: Skills | `Cmd+Alt+2` |
-| Workspace: Research | `Cmd+Alt+3` |
-| Workspace: Journal | `Cmd+Alt+4` |
+| Workspace: Journal | `Cmd+Alt+2` |
+| Quick Capture | `Cmd+Shift+N` |
+| Open Today's Journal | `Cmd+Shift+J` |
 | Settings | `Cmd+,` |
 | Undo | `Cmd+Z` |
 | Redo | `Cmd+Shift+Z` |
@@ -477,9 +526,10 @@ Create your own slash commands in **Settings > AI > Custom Commands**. Use varia
 
 ### 3-Column Layout
 
-- **Left Sidebar** — File tree + Backlinks + Bookmarks + Git + Version History (`Cmd+Shift+L` to toggle)
+- **Context Tab Bar** — Switch between open vaults, folders, and files
+- **Left Sidebar** — File tree, Search, Backlinks, Bookmarks, Tags, Calendar, Git, and Version History (`Cmd+Shift+L` to toggle)
 - **Editor** — Main editing area with WYSIWYG or Source mode
-- **Right Sidebar** — Document outline, AI Chat, or Help panel
+- **Right Sidebar** — Document outline, AI Chat, Memories, Photo Gallery, or Help panel
 
 ### Toolbar & Menus
 
@@ -613,11 +663,18 @@ Reverse:  ProseMirror Document → mdast → remark-stringify
 | Query Block | ✅ Done | Visual query builder for dynamic content filtering |
 | Git Advanced | ✅ Done | Log, stash, remote push/pull/fetch, branch delete |
 | File Snapshots / Version History | ✅ Done | Automatic file versioning, timeline, diff viewer, selective restore |
-| Internationalization (i18n) | ✅ Done | English + Korean with full UI localization |
-| Keybinding Customization | ✅ Done | Remap shortcuts with conflict detection |
+| Namespace | ✅ Done | Relative wikilinks, namespace filtering, graph coloring |
+| Skills Dedicated Mode | ✅ Done | Editing UI optimized for LLM Skills files |
+| Tag System | ✅ Done | Vault-wide index, nested tags, rename, colors, cloud view, AI suggestions |
+| Journal Workspace | ✅ Done | Mood, photos, memories, streaks, periodic notes, AI reflection, quick capture |
+| Settings Redesign & Keybinding Customization | ✅ Done | 9-tab settings, search, remap shortcuts with conflict detection |
+| Heading & List Folding | ✅ Done | Obsidian-style view-only folding |
+| Vault System | ✅ Done | Multi-context workspaces, context tabs, cross-vault links, 3-tier settings |
+| Plugin Marketplace | ✅ Done | Community plugins with capability-gated install and crash isolation |
 | Canvas | Planned | Infinite canvas with free-form layout |
 | Agent Mode | Planned | Multi-file autonomous AI editing |
-| Plugin Marketplace | Planned | Community extensions |
+| Knowledge Q&A | Planned | Vault-wide vector search with cited answers |
+| Real-time Collaboration | Planned | Yjs CRDT-based live editing |
 
 ## License
 

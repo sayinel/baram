@@ -1,6 +1,6 @@
 # Baram Feature Catalog
 
-> **Last Updated**: 2026-03-14
+> **Last Updated**: 2026-07-03
 > **Codebase Basis**: `main` branch, verified against actual source code
 
 Baram의 모든 기능을 코드 기반으로 정리한 문서. 추측이 아닌 실제 구현 상태만 기록한다.
@@ -28,7 +28,8 @@ Baram의 모든 기능을 코드 기반으로 정리한 문서. 추측이 아닌
 17. [버전 히스토리](#16-버전-히스토리)
 18. [Rust 백엔드 IPC](#17-rust-백엔드-ipc)
 19. [MD ↔ ProseMirror 파이프라인](#18-md--prosemirror-파이프라인)
-20. [미구현 기능](#19-미구현-기능)
+20. [Vault 시스템 (§80-§90)](#18b-vault-시스템-80-90)
+21. [미구현 기능](#19-미구현-기능)
 
 ---
 
@@ -47,7 +48,7 @@ Baram의 모든 기능을 코드 기반으로 정리한 문서. 추측이 아닌
 | Frontend Components | 87개 |
 | React Hooks | 18개 |
 | Zustand Stores | 17개 |
-| Test Suites | 32개 (2,007 tests) |
+| Test Suites | 148개 파일 (2,356 vitest + 163 cargo) |
 
 ---
 
@@ -233,9 +234,9 @@ Baram의 모든 기능을 코드 기반으로 정리한 문서. 추측이 아닌
 | Hover Preview | Ctrl+hover → 팝업 미리보기 (20줄) | §32 |
 | Graph View | Cytoscape + fcose 레이아웃 — 노드/링크 시각화 | §30 |
 | Outline | 헤딩 계층 네비게이션, 레벨 필터 | §4.3 |
-| Quick Switcher | Cmd+O fuzzy 검색 (파일/별칭/헤딩/블록) | §35 |
+| Quick Switcher | Cmd+K fuzzy 검색 (파일/별칭/헤딩/블록) | §35 |
 | Bookmarks | 파일/헤딩/블록 북마크, 사이드바 패널 | §36 |
-| Back/Forward | 점프 히스토리 스택 — Cmd+[ / Cmd+] | §37 |
+| Back/Forward | 점프 히스토리 스택 — Ctrl+- / Ctrl+Shift+- (Win/Linux: Alt+←/→) | §37 |
 | Namespace | 상대 wikilink (`./`, `../`), `ns:` 필터 | §61 |
 
 **Rust IPC (8개):** `get_backlinks`, `get_link_index`, `refresh_index`, `update_file_index`, `get_unlinked_mentions`, `rename_file_with_links`, `rename_block_id`, `rename_namespace`
@@ -358,26 +359,27 @@ Baram의 모든 기능을 코드 기반으로 정리한 문서. 추측이 아닌
 
 ## 14. 설정 & 커스터마이징
 
-### 9-Tab 설정 모달
+### 10-Tab 설정 모달
 
 | 탭 | 주요 설정 |
 |----|----------|
-| General | 언어, 자동 저장, 시작 동작, 저널 디렉토리 |
+| General | 자동 저장, 시작 동작, 저널, 파일 스냅샷 (버전 히스토리) |
 | Editor | 줄 높이, 들여쓰기, 탭 크기, 자동 줄바꿈, 공백 표시 |
-| Appearance | 테마 (6 내장 + 커스텀), 폰트, 에디터 너비 |
+| Appearance | 테마 (8 내장 + 커스텀), 워크스페이스 프리셋, 폰트, 에디터 너비 |
 | Markdown | 마크다운 확장 토글 (테이블, 취소선, 각주 등) |
 | AI | Provider/모델 선택, API 키, Privacy 모드 |
-| ActivityBar | 패널 표시/숨김, 순서 |
+| Activity Bar | 패널 표시/숨김, 순서 |
 | Language | 로케일 선택 (i18n) |
-| Keybindings | 54개 키바인딩 레지스트리, 키 캡처, 충돌 감지 |
-| Plugins | 플러그인 관리 |
+| Keybindings | 키바인딩 레지스트리 (customizable + read-only), 키 캡처, 충돌 감지 |
+| Plugins | 플러그인 관리 (Browse/Installed/Updates) |
+| Vault | Vault 초기화/해제, alias, 저널 디렉토리, cross-vault 설정 |
 
 ### 추가 커스터마이징
 
 | 기능 | 설명 | 스펙 |
 |------|------|------|
-| Theme System | 6 내장 테마, CSS var 오버라이드, 커스텀 import/export | §54 |
-| Workspace Presets | 3 프리셋 (Writing/Skills/Research) + 커스텀 | §52 |
+| Theme System | 8 내장 테마 (25 CSS var), CSS var 오버라이드, 커스텀 import/export | §54 |
+| Workspace Presets | 3 프리셋 (Writing/Journal/Skills Editing) + 커스텀 | §52 |
 | Keybinding Override | Extension별 단축키 오버라이드 (shortcut-resolver) | — |
 | Settings Search | 설정 항목 검색 (settings-registry) | — |
 
@@ -449,6 +451,26 @@ blockquote, block-reference, block-embed, bullet-list, callout, code-block, defi
 bold, code, highlight, italic, link, strike, subscript, superscript, underline (inline)
 
 **소스:** `src/pipeline/transformers/`, `src/pipeline/md-to-pm.ts`, `src/pipeline/pm-to-md.ts`, `src/pipeline/serializer.ts`
+
+---
+
+## 18b. Vault 시스템 (§80-§90)
+
+> Context 모델 기반 멀티 워크스페이스 — 2026-03-15 완료
+
+| 기능 | 설명 | 스펙 |
+|------|------|------|
+| Context 모델 | VaultContext / FileContext 추상화 | §80-§81 |
+| Context 탭 바 | 여러 vault/folder/file을 탭으로 전환 | §82-§83 |
+| Search Scope | vault/folder/file 범위 검색 UI | §84 |
+| Journal 재설계 | Vault별 저널 + Work Log | §85 |
+| 설정 3-Tier | 글로벌 → vault → context 계층 (`resolve_settings` IPC) | §86 |
+| Cross-vault 링크 | `[[alias::file]]` + 크로스 vault 그래프 | §87 |
+| ContextManager | Rust 백엔드 + `set_vault_root` (경로 confinement) | §88 |
+| 독립 파일 열기 | FileContext (FileTree 숨김, 파일당 1 컨텍스트) | §89 |
+| 앱 시작 흐름 | 시작 플로우 + 마이그레이션 | §90 |
+
+**소스:** `src/stores/context/`, `src/components/layout/` (Context 탭 바), `src-tauri/src/context/`
 
 ---
 

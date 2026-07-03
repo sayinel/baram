@@ -34,14 +34,14 @@ Open **Settings > Appearance** (`Cmd+,`). You'll see a gallery of theme cards �
 
 ### What built-in themes are available?
 
-Baram includes 6 built-in themes: Default Light, Default Dark, Tokyo Night, Solarized Light, Solarized Dark, and Nord. Built-in themes cannot be deleted.
+Baram includes 8 built-in themes: Default Light, Default Dark, Tokyo Night, Solarized Light, Solarized Dark, Nord, Baram Garden Light, and Baram Garden Dark. Built-in themes cannot be deleted.
 
 ### How do I create a custom theme?
 
 1. Go to **Settings > Appearance** and click **Customize...**
 2. Enter a name for your theme
 3. Choose a base mode (Light or Dark) — this determines how code blocks and diagrams render
-4. Adjust the 16 colors using the color pickers
+4. Adjust the 25 colors using the color pickers (Background, Text, Border, Accent, Editor, Status, Graph)
 5. Click **Save**
 
 Your custom theme appears in the gallery with a "Custom" badge.
@@ -212,6 +212,10 @@ Type `@` to open the mention popup with Quick Dates (Today, Yesterday, Tomorrow)
 
 In markdown, mentions serialize as `@[[value]]` — the `@` prefix distinguishes them from regular wikilinks.
 
+### How do tags work?
+
+Type `#tag` inline (with autocomplete) or add a `tags:` list to YAML frontmatter — both are indexed across the whole vault. Use `#parent/child` for nested tags. `Cmd/Ctrl+click` a tag to search every file that uses it. The Tags panel (from the Activity Bar) shows a tree or a frequency-sized cloud where you can rename a tag vault-wide, assign colors, filter the file tree by tag, or get AI tag suggestions for the current note.
+
 ### What happens when I rename a file?
 
 When you rename a file in the file tree (press `F2`), all wikilinks pointing to that file are automatically updated across your workspace. No broken links.
@@ -371,13 +375,13 @@ Workspace Presets save your current layout (sidebar panel, right panel, theme) a
 
 Three ways:
 
-1. **Keyboard shortcuts** — `Cmd+Alt+1` (Writing), `Cmd+Alt+2` (Skills), `Cmd+Alt+3` (Research), `Cmd+Alt+4` (Journal)
+1. **Keyboard shortcuts** — `Cmd+Alt+1` (Writing), `Cmd+Alt+2` (Journal). The Skills Editing preset has no default shortcut.
 2. **Command Palette** — `Cmd+Shift+P` then search for "Workspace"
 3. **Workspace menu** — Use the menu bar
 
 ### Can I create custom presets?
 
-Yes. Go to **Settings > Workspace**, arrange your layout, and click **Save Current Layout**. Custom presets can be renamed or deleted.
+Yes. Go to **Settings > Appearance**, arrange your layout, and click **Save Current Layout**. Custom presets can be renamed or deleted.
 
 ---
 
@@ -395,7 +399,7 @@ Open **Settings > General > Journal**, enable the toggle, and select a folder fo
 
 Three ways:
 
-1. **Calendar** — Open the Calendar sidebar (`Cmd+Alt+4`) and click any date
+1. **Calendar** — Open the Calendar sidebar (`Cmd+Alt+2`) and click any date
 2. **@Mention** — Type `@` in the editor and select Today/Yesterday/Tomorrow from the popup, then click the resulting 📅 date chip
 3. **Auto-create** — Set "On Startup" to "Open today's journal" in Settings — today's entry auto-opens when you launch Baram
 
@@ -488,6 +492,22 @@ Baram creates a `.baram/config.json` file inside the folder. Your existing files
 ### How is Journal related to vaults?
 
 Each vault can have its own journal directory set in **Settings > Vault > Journal Directory**. When you are working in a vault context, the Calendar sidebar and @mention date chips (Today/Yesterday/Tomorrow) create journal entries in that vault's configured directory. Switching vault contexts switches the active journal, so you can maintain separate journals per vault (e.g., personal vs. work).
+
+---
+
+## Plugins
+
+### Does Baram support plugins?
+
+Yes. Open **Settings > Plugins** to browse, install, update, and manage community plugins. The tab has three sections: Browse (discover plugins), Installed (configure your plugins), and Updates (apply new versions).
+
+### Are plugins safe?
+
+Plugins are capability-gated: each declares the permissions it needs (editor, files, commands, UI, etc.), and you review and approve them before installing. Plugins run in isolation with crash protection, and downloads are verified with a SHA-256 checksum.
+
+### How do I build a plugin?
+
+See the [Plugin Development Guide](plugin-development.md). A plugin is a directory with a `baram-plugin.json` manifest and an ESM entry point, using the `ExtensionContext` API to add commands, Tiptap extensions, UI, and more.
 
 ---
 

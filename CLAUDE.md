@@ -199,7 +199,7 @@ baram/
 - **빌드**: `npm run tokens:build` → `src/styles/generated/` 자동 생성
 - **감사**: `npm run audit:css-vars` — 미정의 CSS 변수 검출
 - **Figma export**: `npm run tokens:export` → `tokens/tokens-studio.json`
-- **Settings store version**: 10 (v9→v10: 커스텀 테마 CSS 변수키 마이그레이션)
+- **Settings store version**: 12 (v10: CSS 변수키 리네이밍, v11: ThemeColors 16→25 키 확장, v12: 대형 파일 windowing kill-switch)
 
 ## 설계 문서 참조 규칙
 
