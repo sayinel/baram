@@ -1347,7 +1347,7 @@
   flex: 1;
   padding: 12px 16px;
   overflow-y: auto;
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-family-mono, monospace);
   font-size: 0.8125rem;
 }
 
