@@ -27,7 +27,7 @@
   padding: 0.75em 1em;
   margin: 0;
   overflow-x: auto;
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-family-mono, monospace);
   font-size: 0.9em;
   color: var(--color-text-muted);
   white-space: pre;

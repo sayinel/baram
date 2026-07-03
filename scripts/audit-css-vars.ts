@@ -72,6 +72,10 @@ const ALLOWLIST = new Set([
   "--journal-header-bg",
   "--journal-prompt-bg",
   "--journal-prompt-border",
+  // Viewport virtualization + editor zoom (injected at runtime via style.setProperty)
+  "--vtop",
+  "--vbot",
+  "--editor-zoom",
 ]);
 
 const undefinedVars: [string, string[]][] = [];

@@ -10,6 +10,10 @@
         "$value": "{color.navy.850}",
         "$description": "Secondary background dark (was --color-bg-secondary: #16213e)"
       },
+      "hover": {
+        "$value": "{color.navy.750}",
+        "$description": "Hover background for interactive rows dark (was undefined --color-bg-hover)"
+      },
       "panel": {
         "$value": "{color.slate.900}",
         "$description": "Sidebar/panel background dark (was --color-bg-sidebar: #0f172a)"
@@ -31,6 +35,10 @@
       "primary": {
         "$value": "{color.slate.200}",
         "$description": "Primary text dark (was --color-text-primary: #e2e8f0)"
+      },
+      "default": {
+        "$value": "{color.text.primary}",
+        "$description": "Default body text (alias of text.primary; was undefined --color-text-default)"
       },
       "secondary": {
         "$value": "{color.slate.400}",
@@ -207,6 +215,10 @@
       "tag": {
         "$value": "{color.emerald.400}",
         "$description": "Tag node color in graph view"
+      },
+      "crossVault": {
+        "$value": "{color.violet.500}",
+        "$description": "Cross-vault link edge/node in graph view (matches prior #8b5cf6 fallback)"
       }
     },
     "git": {
