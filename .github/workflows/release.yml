@@ -21,6 +21,7 @@ jobs:
     uses: ./.github/workflows/ci.yml
     permissions:
       contents: read
+      pull-requests: read
 
   # ── Build on 3 platforms + create GitHub Release ───────────────────
   build-and-release:
