@@ -65,7 +65,7 @@ export function useMenuEventHandler({
           setFindReplaceOpen((prev) => !prev);
           break;
         case "export_doc":
-          useUIStore.getState().openExportDialog("html");
+          useUIStore.getState().openExportDialog("pdf");
           break;
         case "file_close_folder":
           handleCloseFolder();

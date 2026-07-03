@@ -111,7 +111,7 @@ export const useUIStore = create<UIState>((set) => ({
   aboutOpen: false,
   conflictModal: null,
   exportDialogOpen: false,
-  exportFormat: "html" as ExportFormat,
+  exportFormat: "pdf" as ExportFormat,
   skillGeneratorDialogOpen: false,
   skillTestDialogOpen: false,
   smartTemplateDialogOpen: false,
@@ -158,7 +158,7 @@ export const useUIStore = create<UIState>((set) => ({
   toggleAbout: () => set((state) => ({ aboutOpen: !state.aboutOpen })),
 
   openExportDialog: (format) =>
-    set({ exportDialogOpen: true, exportFormat: format ?? "html" }),
+    set({ exportDialogOpen: true, exportFormat: format ?? "pdf" }),
 
   closeExportDialog: () => set({ exportDialogOpen: false }),
 

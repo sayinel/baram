@@ -26,6 +26,18 @@ interface ExportDialogProps {
 
 const FORMAT_GROUPS: ExportFormatGroup[] = [
   {
+    label: "인쇄",
+    options: [
+      {
+        id: "pdf",
+        ext: ".pdf",
+        name: "PDF",
+        desc: "Print-ready document",
+        pandoc: false,
+      },
+    ],
+  },
+  {
     label: "웹",
     options: [
       {
@@ -33,13 +45,6 @@ const FORMAT_GROUPS: ExportFormatGroup[] = [
         ext: ".html",
         name: "HTML",
         desc: "Standalone page",
-        pandoc: false,
-      },
-      {
-        id: "pdf",
-        ext: ".pdf",
-        name: "PDF",
-        desc: "Print-ready document",
         pandoc: false,
       },
     ],
