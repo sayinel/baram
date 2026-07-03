@@ -238,6 +238,13 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
     defaultKey: "Mod+Alt+2",
     customizable: true,
   },
+  {
+    id: "workspace.skills",
+    label: "keybindings.workspace.skills",
+    category: "workspace",
+    defaultKey: "Mod+Alt+3",
+    customizable: true,
+  },
 
   // ── journal ───────────────────────────────────────────────────────────────
   {
@@ -251,7 +258,7 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
     id: "journal.promoteCapture",
     label: "keybindings.journal.promoteCapture",
     category: "journal",
-    defaultKey: "Mod+Shift+E",
+    defaultKey: "Mod+Shift+U",
     customizable: true,
   },
   {
@@ -265,7 +272,7 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
     id: "journal.jumpToDiary",
     label: "keybindings.journal.jumpToDiary",
     category: "journal",
-    defaultKey: "Mod+Shift+D",
+    defaultKey: "Mod+Shift+Y",
     customizable: true,
   },
   {
@@ -279,14 +286,14 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
     id: "journal.memories",
     label: "keybindings.journal.memories",
     category: "journal",
-    defaultKey: "Mod+Shift+M",
+    defaultKey: "Mod+Shift+R",
     customizable: true,
   },
   {
     id: "journal.photoGallery",
     label: "keybindings.journal.photoGallery",
     category: "journal",
-    defaultKey: "Mod+Shift+P",
+    defaultKey: "Mod+Shift+I",
     customizable: true,
   },
 

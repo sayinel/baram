@@ -1021,11 +1021,11 @@ Beyond daily entries, Baram supports weekly, monthly, and yearly notes:
 ### Photo Journal
 
 - Drag, paste, or use the `/photo` slash command to add images — they are auto-saved to an `assets/` folder next to your journal
-- Open the **Photo Gallery** (`Cmd+Shift+P` / `Ctrl+Shift+P`) to browse photos grouped by day/month/year, with a keyboard-navigable lightbox
+- Open the **Photo Gallery** (`Cmd+Shift+I` / `Ctrl+Shift+I`) to browse photos grouped by day/month/year, with a keyboard-navigable lightbox
 
 ### Memories
 
-- Open the **Memories** view (`Cmd+Shift+M` / `Ctrl+Shift+M`) to revisit past entries by year
+- Open the **Memories** view (`Cmd+Shift+R` / `Ctrl+Shift+R`) to revisit past entries by year
 - Three tabs: Journal (one-line or full), Photos, and Notes
 - Edit the current year's one-line summaries inline
 
@@ -1038,8 +1038,8 @@ Beyond daily entries, Baram supports weekly, monthly, and yearly notes:
 ### Quick Capture
 
 - Capture fleeting thoughts without leaving your flow: `/idea`, `/link`, `/quote`, `/note`, or the Quick Capture dialog (`Cmd+Shift+N` / `Ctrl+Shift+N`)
-- Promote a capture into its own note with `Cmd+Shift+E` / `Ctrl+Shift+E`
-- Jump to the Diary section (`Cmd+Shift+D`) or Captures section (`Cmd+Shift+C`) of today's entry
+- Promote a capture into its own note with `Cmd+Shift+U` / `Ctrl+Shift+U`
+- Jump to the Diary section (`Cmd+Shift+Y`) or Captures section (`Cmd+Shift+C`) of today's entry
 
 ### Journal Themes
 

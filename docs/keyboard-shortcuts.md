@@ -137,21 +137,21 @@ Complete list of keyboard shortcuts available in Baram.
 | Workspace: Journal        | `Cmd+Option+2` | `Ctrl+Alt+2`    |
 | Workspace: Skills Editing | `Cmd+Option+3` | `Ctrl+Alt+3`    |
 
-> Writing and Journal are also customizable in **Settings > Keybindings**; the Skills Editing shortcut is provided by the Workspace menu.
+> All three workspace presets are customizable in **Settings > Keybindings**.
 
 ## Journal
 
-> Journal shortcuts apply while you are working in a journal entry. Several overlap with editor or menu shortcuts — `Cmd+Shift+D` (Mermaid), `Cmd+Shift+M` (Math Block), `Cmd+Shift+E` (Export), `Cmd+Shift+P` (Command Palette) — and are resolved by context.
+> Journal shortcuts use dedicated `Cmd+Shift` letters chosen to avoid the editor and app shortcuts (Mermaid, Math Block, Export, Command Palette), so there are no conflicts.
 
 | Action                    | macOS         | Windows / Linux |
 | ------------------------- | ------------- | --------------- |
 | Quick Capture             | `Cmd+Shift+N` | `Ctrl+Shift+N`  |
-| Promote Capture to Note   | `Cmd+Shift+E` | `Ctrl+Shift+E`  |
 | Open Today's Journal      | `Cmd+Shift+J` | `Ctrl+Shift+J`  |
-| Jump to Diary Section     | `Cmd+Shift+D` | `Ctrl+Shift+D`  |
 | Jump to Captures Section  | `Cmd+Shift+C` | `Ctrl+Shift+C`  |
-| Toggle Memories View      | `Cmd+Shift+M` | `Ctrl+Shift+M`  |
-| Photo Gallery             | `Cmd+Shift+P` | `Ctrl+Shift+P`  |
+| Jump to Diary Section     | `Cmd+Shift+Y` | `Ctrl+Shift+Y`  |
+| Promote Capture to Note   | `Cmd+Shift+U` | `Ctrl+Shift+U`  |
+| Toggle Memories View      | `Cmd+Shift+R` | `Ctrl+Shift+R`  |
+| Photo Gallery             | `Cmd+Shift+I` | `Ctrl+Shift+I`  |
 
 ## Ghost Text (AI Autocomplete)
 
