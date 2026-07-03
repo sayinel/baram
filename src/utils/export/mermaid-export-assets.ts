@@ -44,9 +44,9 @@ export async function rewriteMermaidForPandoc(
       idx++;
     } catch (err) {
       console.error("Mermaid export: render failed, keeping source", err);
-      out.push("```mermaid");
+      out.push(lines[i]);
       out.push(...body);
-      out.push("```");
+      if (j < lines.length) out.push(lines[j]);
     }
     i = j < lines.length ? j + 1 : j; // skip the closing fence
   }
