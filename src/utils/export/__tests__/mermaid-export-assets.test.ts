@@ -53,6 +53,31 @@ describe("rewriteMermaidForPandoc", () => {
     expect(assets).toHaveLength(0);
   });
 
+  it("does not consume an asset index when an earlier render fails", async () => {
+    let call = 0;
+    const render = vi.fn(async () => {
+      call += 1;
+      if (call === 1) throw new Error("boom");
+      return [1, 2, 3];
+    });
+    const md = [
+      "```mermaid",
+      "graph TD",
+      "```",
+      "```mermaid",
+      "sequenceDiagram",
+      "```",
+    ].join("\n");
+
+    const { markdown, assets } = await rewriteMermaidForPandoc(md, render);
+
+    expect(assets).toHaveLength(1);
+    expect(assets[0].name).toBe("mermaid-0.png"); // second (successful) diagram is still 0
+    expect(markdown).toContain("```mermaid"); // first (failed) fence kept as source
+    expect(markdown).toContain("graph TD");
+    expect(markdown).toContain("![](baram-asset:mermaid-0.png)");
+  });
+
   it("leaves non-mermaid content unchanged", async () => {
     const md = ["para", "```js", "code", "```"].join("\n");
     const { markdown, assets } = await rewriteMermaidForPandoc(md, fakeRender);
