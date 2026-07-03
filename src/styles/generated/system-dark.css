@@ -3,11 +3,13 @@
   html:not([data-theme="light"], [data-theme="dark"]) {
     --color-bg-default: #1a1a2e;
     --color-bg-subtle: #16213e;
+    --color-bg-hover: #1e2a45;
     --color-bg-panel: #0f172a;
     --color-bg-elevated: #1e2a45;
     --color-bg-input: #1e293b;
     --color-bg-selection: #1e3a8a;
     --color-text-primary: #e2e8f0;
+    --color-text-default: #e2e8f0;
     --color-text-secondary: #94a3b8;
     --color-text-disabled: #64748b;
     --color-text-muted: #64748b;
@@ -49,6 +51,7 @@
     --color-graph-edge: #374151;
     --color-graph-label: #d1d5db;
     --color-graph-tag: #34d399;
+    --color-graph-cross-vault: #8b5cf6;
     --color-git-modified: #e69500;
     --color-git-added: #4ade80;
     --color-git-deleted: #f87171;

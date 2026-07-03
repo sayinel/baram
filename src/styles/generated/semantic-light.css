@@ -10,6 +10,10 @@
     --color-slate-50
   ); /** Secondary background (was --color-bg-secondary: #f8f9fa) */
 
+  --color-bg-hover: var(
+    --color-slate-100
+  ); /** Hover background for interactive rows (was undefined --color-bg-hover) */
+
   --color-bg-panel: var(
     --color-slate-100
   ); /** Sidebar/panel background (was --color-bg-sidebar: #f1f3f5) */
@@ -18,6 +22,10 @@
   --color-bg-selection: var(
     --color-blue-100
   ); /** General selection background (non-editor) */
+
+  --color-text-default: var(
+    --color-text-primary
+  ); /** Default body text (alias of text.primary; was undefined --color-text-default) */
 
   --color-text-secondary: var(
     --color-gray-500
@@ -111,6 +119,10 @@
   --color-graph-tag: var(
     --color-emerald-500
   ); /** Tag node color in graph view */
+
+  --color-graph-cross-vault: var(
+    --color-violet-500
+  ); /** Cross-vault link edge/node in graph view (matches prior #8b5cf6 fallback) */
 
   --color-git-added: var(--color-green-500); /** Git added/new file */
   --color-git-deleted: var(--color-red-500); /** Git deleted file */
