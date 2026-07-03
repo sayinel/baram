@@ -28,6 +28,24 @@ pub struct PandocExportOptions {
     pub extra_args: Vec<String>,
 }
 
+/// A binary asset (e.g. rasterized Mermaid PNG) written alongside the Pandoc
+/// input so Pandoc can embed it. `data` arrives as a JSON number array.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PandocAsset {
+    pub name: String,
+    pub data: Vec<u8>,
+}
+
+/// Replace `baram-asset:NAME` placeholders with the asset's absolute path.
+fn rewrite_asset_refs(markdown: &str, name_to_path: &HashMap<String, String>) -> String {
+    let mut result = markdown.to_string();
+    for (name, path) in name_to_path {
+        result = result.replace(&format!("baram-asset:{}", name), path);
+    }
+    result
+}
+
 /// Custom export command definition
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -141,11 +159,25 @@ pub fn run_pandoc(
     output_path: &str,
     pandoc_path: &str,
     options: &PandocExportOptions,
+    assets: &[PandocAsset],
 ) -> Result<(), ExportError> {
-    // 1. Write markdown to temp file
+    // 1. Write markdown (with assets) to temp dir
     let tmp_dir = tempdir().map_err(|e| ExportError::TempFileError(e.to_string()))?;
+
+    // 1a. Write each asset next to the input and map name -> absolute path
+    let mut name_to_path: HashMap<String, String> = HashMap::new();
+    for asset in assets {
+        let asset_path = tmp_dir.path().join(&asset.name);
+        std::fs::write(&asset_path, &asset.data)
+            .map_err(|e| ExportError::TempFileError(e.to_string()))?;
+        name_to_path.insert(asset.name.clone(), asset_path.to_string_lossy().to_string());
+    }
+
+    // 1b. Rewrite baram-asset: references to absolute paths
+    let markdown_content = rewrite_asset_refs(markdown_content, &name_to_path);
+
     let input_path = tmp_dir.path().join("baram-pandoc-input.md");
-    std::fs::write(&input_path, markdown_content)
+    std::fs::write(&input_path, &markdown_content)
         .map_err(|e| ExportError::TempFileError(e.to_string()))?;
 
     // 2. Build pandoc command
@@ -396,5 +428,32 @@ mod tests {
         let json = serde_json::to_string(&info).unwrap();
         assert!(json.contains("\"available\":true"));
         assert!(json.contains("\"version\":\"3.1.9\""));
+    }
+
+    #[test]
+    fn test_rewrite_asset_refs_replaces_placeholder_with_path() {
+        let mut map = HashMap::new();
+        map.insert(
+            "mermaid-0.png".to_string(),
+            "/tmp/x/mermaid-0.png".to_string(),
+        );
+        let md = "before ![](baram-asset:mermaid-0.png) after";
+        let out = rewrite_asset_refs(md, &map);
+        assert_eq!(out, "before ![](/tmp/x/mermaid-0.png) after");
+    }
+
+    #[test]
+    fn test_rewrite_asset_refs_no_assets_is_identity() {
+        let map = HashMap::new();
+        let md = "no assets here";
+        assert_eq!(rewrite_asset_refs(md, &map), md);
+    }
+
+    #[test]
+    fn test_pandoc_asset_deserialize() {
+        let json = r#"{ "name": "mermaid-0.png", "data": [137, 80, 78, 71] }"#;
+        let asset: PandocAsset = serde_json::from_str(json).unwrap();
+        assert_eq!(asset.name, "mermaid-0.png");
+        assert_eq!(asset.data, vec![137, 80, 78, 71]);
     }
 }

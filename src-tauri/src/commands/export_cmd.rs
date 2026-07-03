@@ -1,7 +1,7 @@
 // §5.10 내보내기 IPC 커맨드 — PDF + HTML 통합
 // §55 Pandoc Extended Export — Pandoc 기반 다중 포맷 내보내기
 
-use crate::export::pandoc::{self, PandocExportOptions};
+use crate::export::pandoc::{self, PandocAsset, PandocExportOptions};
 use crate::export::PdfOptions;
 use std::collections::HashMap;
 
@@ -59,6 +59,7 @@ pub async fn detect_pandoc(pandoc_path: Option<String>) -> Result<pandoc::Pandoc
 }
 
 /// §55 Pandoc 내보내기 — markdown → docx/latex/epub/rst
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn export_pandoc(
     markdown_content: String,
@@ -67,6 +68,7 @@ pub async fn export_pandoc(
     pandoc_path: Option<String>,
     reference_doc: Option<String>,
     extra_args: Option<Vec<String>>,
+    assets: Option<Vec<PandocAsset>>,
 ) -> Result<(), String> {
     let path = pandoc_path.unwrap_or_else(|| "pandoc".to_string());
     let options = PandocExportOptions {
@@ -74,9 +76,10 @@ pub async fn export_pandoc(
         reference_doc,
         extra_args: extra_args.unwrap_or_default(),
     };
+    let assets = assets.unwrap_or_default();
 
     tokio::task::spawn_blocking(move || {
-        pandoc::run_pandoc(&markdown_content, &output_path, &path, &options)
+        pandoc::run_pandoc(&markdown_content, &output_path, &path, &options, &assets)
     })
     .await
     .map_err(|e| format!("Task join error: {}", e))?
