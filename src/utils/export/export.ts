@@ -4,7 +4,7 @@ import type { PandocFormat, PdfOptions } from "../../ipc/types";
 // §5.12 Export — HTML file save + PDF via headless Chrome backend + §53 Notion + §55 Pandoc
 import type { Editor } from "@tiptap/core";
 
-import { exportPandoc, exportPdf, writeFile } from "../../ipc/invoke";
+import { exportBinaryFile, exportPandoc, exportPdf } from "../../ipc/invoke";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 import { captureEditorHTML, generateStandaloneHTML } from "./export-html";
 import { rewriteMermaidForPandoc } from "./mermaid-export-assets";
@@ -27,7 +27,7 @@ export async function exportAsHTML(
   });
   if (!path) return; // user cancelled
 
-  await writeFile(path, html);
+  await exportBinaryFile(path, Array.from(new TextEncoder().encode(html)));
 }
 
 /**
@@ -71,7 +71,7 @@ export async function exportForNotion(
   });
   if (!path) return; // user cancelled
 
-  await writeFile(path, notionMd);
+  await exportBinaryFile(path, Array.from(new TextEncoder().encode(notionMd)));
 }
 
 /**
