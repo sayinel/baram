@@ -263,7 +263,7 @@ function buildCommands(
       label: "Export...",
       category: "File",
       shortcut: "⇧⌘E",
-      action: () => useUIStore.getState().openExportDialog("html"),
+      action: () => useUIStore.getState().openExportDialog("pdf"),
     },
     // View
     {
