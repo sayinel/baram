@@ -7,6 +7,7 @@ import type { Editor } from "@tiptap/core";
 import { exportPandoc, exportPdf, writeFile } from "../../ipc/invoke";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 import { captureEditorHTML, generateStandaloneHTML } from "./export-html";
+import { rewriteMermaidForPandoc } from "./mermaid-export-assets";
 import { convertForNotion } from "./notion-export";
 import { convertForPandoc } from "./pandoc-export";
 
@@ -86,6 +87,7 @@ export async function exportWithPandoc(
 ): Promise<void> {
   const md = prosemirrorToMarkdown(editor.state.doc);
   const pandocMd = convertForPandoc(md);
+  const { markdown: finalMd, assets } = await rewriteMermaidForPandoc(pandocMd);
 
   const extensionMap: Record<PandocFormat, string> = {
     docx: "docx",
@@ -103,10 +105,12 @@ export async function exportWithPandoc(
   if (!path) return; // user cancelled
 
   await exportPandoc(
-    pandocMd,
+    finalMd,
     path,
     format,
     options?.pandocPath,
     options?.referenceDoc,
+    undefined,
+    assets,
   );
 }
