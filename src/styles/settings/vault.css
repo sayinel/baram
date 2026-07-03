@@ -131,7 +131,7 @@
 }
 
 .vault-tab-item__remove:hover {
-  color: var(--color-status-error, #ef4444);
+  color: var(--color-status-danger, #ef4444);
 }
 
 .vault-tab-item__color-picker {
