@@ -8,6 +8,10 @@
     --color-navy-850
   ); /** Secondary background dark (was --color-bg-secondary: #16213e) */
 
+  --color-bg-hover: var(
+    --color-navy-750
+  ); /** Hover background for interactive rows dark (was undefined --color-bg-hover) */
+
   --color-bg-panel: var(
     --color-slate-900
   ); /** Sidebar/panel background dark (was --color-bg-sidebar: #0f172a) */
@@ -152,9 +156,17 @@
     --color-emerald-400
   ); /** Tag node color in graph view */
 
+  --color-graph-cross-vault: var(
+    --color-violet-500
+  ); /** Cross-vault link edge/node in graph view (matches prior #8b5cf6 fallback) */
+
   --color-git-added: var(--color-green-400); /** Git added/new file dark */
   --color-git-deleted: var(--color-red-400); /** Git deleted file dark */
   --color-git-staged: var(--color-blue-400); /** Git staged file dark */
+  --color-text-default: var(
+    --color-text-primary
+  ); /** Default body text (alias of text.primary; was undefined --color-text-default) */
+
   --color-text-muted: var(
     --color-text-disabled
   ); /** Low-emphasis text dark — follows disabled token for theme consistency */
