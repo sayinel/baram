@@ -7,6 +7,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 
 import type { Editor } from "@tiptap/react";
 
+import { getAction } from "../keybindings/keybinding-actions";
 import { useWorkspaceStore } from "../stores/file/workspace";
 import { useUIStore } from "../stores/ui/ui";
 import { showPrompt } from "../utils/ai-commands";
@@ -102,6 +103,7 @@ export function useMenuEventHandler({
           toggleCommandPalette();
           break;
         case "go_quick_switcher":
+        case "go_switch_doc":
           toggleQuickSwitcher();
           break;
         case "help_faq":
@@ -113,7 +115,7 @@ export function useMenuEventHandler({
           break;
 
         case "help_report":
-          openUrl("https://github.com/anthropics/baram/issues").catch(() => {});
+          openUrl("https://github.com/sayinel/baram/issues").catch(() => {});
           break;
         case "help_shortcuts":
           useUIStore.getState().setRightPanelMode("help");
@@ -311,6 +313,9 @@ export function useMenuEventHandler({
           uiGR.setSidebarPanel("graph");
           break;
         }
+        case "view_inline_ai":
+          getAction("insert.inlineAI")?.();
+          break;
         case "view_outline": {
           const uiOL = useUIStore.getState();
           if (!uiOL.sidebarOpen) uiOL.toggleSidebar();
