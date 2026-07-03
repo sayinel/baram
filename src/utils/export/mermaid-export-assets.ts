@@ -1,6 +1,7 @@
 // §5.5 / §55 — rasterize Mermaid blocks to PNG for Pandoc export embedding.
 import type { PandocAsset } from "../../ipc/types";
 
+import { segmentMarkdownByMermaid } from "../markdown/mermaid-fence";
 import { stripMermaidMeta } from "../markdown/mermaid-meta";
 import { renderMermaidRasterSvg } from "../markdown/mermaid-utils";
 import { svgToPngBlob } from "../markdown/svg-utils";
@@ -16,26 +17,17 @@ export async function rewriteMermaidForPandoc(
   markdown: string,
   render: MermaidPngRenderer = defaultRenderer,
 ): Promise<{ assets: PandocAsset[]; markdown: string }> {
-  const lines = markdown.split("\n");
+  const segments = segmentMarkdownByMermaid(markdown);
   const out: string[] = [];
   const assets: PandocAsset[] = [];
-  let i = 0;
   let idx = 0;
 
-  while (i < lines.length) {
-    if (!/^```mermaid\s*$/.test(lines[i])) {
-      out.push(lines[i]);
-      i++;
+  for (const seg of segments) {
+    if (seg.kind === "text") {
+      out.push(...seg.lines);
       continue;
     }
-    // Collect fence body (excluding opening/closing ``` lines)
-    const body: string[] = [];
-    let j = i + 1;
-    while (j < lines.length && !/^```\s*$/.test(lines[j])) {
-      body.push(lines[j]);
-      j++;
-    }
-    const code = stripMermaidMeta(body.join("\n"));
+    const code = stripMermaidMeta(seg.body.join("\n"));
     try {
       const data = await render(code);
       const name = `mermaid-${idx}.png`;
@@ -44,11 +36,10 @@ export async function rewriteMermaidForPandoc(
       idx++;
     } catch (err) {
       console.error("Mermaid export: render failed, keeping source", err);
-      out.push(lines[i]);
-      out.push(...body);
-      if (j < lines.length) out.push(lines[j]);
+      out.push(seg.open);
+      if (code) out.push(...code.split("\n"));
+      if (seg.close !== null) out.push(seg.close);
     }
-    i = j < lines.length ? j + 1 : j; // skip the closing fence
   }
 
   return { assets, markdown: out.join("\n") };

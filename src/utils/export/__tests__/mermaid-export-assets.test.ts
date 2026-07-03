@@ -84,4 +84,30 @@ describe("rewriteMermaidForPandoc", () => {
     expect(markdown).toBe(md);
     expect(assets).toHaveLength(0);
   });
+
+  it("ignores a ```mermaid fence nested inside an outer code block", async () => {
+    const md = ["````markdown", "```mermaid", "graph TD", "```", "````"].join(
+      "\n",
+    );
+    const { markdown, assets } = await rewriteMermaidForPandoc(md, fakeRender);
+    expect(assets).toHaveLength(0);
+    expect(markdown).toBe(md);
+  });
+
+  it("strips baram-meta when keeping a failed mermaid block's source", async () => {
+    const render = vi.fn(async () => {
+      throw new Error("boom");
+    });
+    const md = [
+      "```mermaid",
+      '%% baram-meta: {"width":50}',
+      "graph TD",
+      "```",
+    ].join("\n");
+    const { markdown, assets } = await rewriteMermaidForPandoc(md, render);
+    expect(assets).toHaveLength(0);
+    expect(markdown).toContain("```mermaid");
+    expect(markdown).toContain("graph TD");
+    expect(markdown).not.toContain("baram-meta");
+  });
 });
