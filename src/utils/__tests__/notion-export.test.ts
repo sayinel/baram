@@ -498,6 +498,18 @@ describe("stripMermaidMetaForNotion", () => {
     const md = ["```js", "const x = 1; // baram-meta", "```"].join("\n");
     expect(stripMermaidMetaForNotion(md)).toBe(md);
   });
+
+  it("does not strip meta from a mermaid fence nested in an outer code block", () => {
+    const md = [
+      "````markdown",
+      "```mermaid",
+      '%% baram-meta: {"width":50}',
+      "graph TD",
+      "```",
+      "````",
+    ].join("\n");
+    expect(stripMermaidMetaForNotion(md)).toBe(md);
+  });
 });
 
 describe("convertForNotion + mermaid", () => {

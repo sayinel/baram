@@ -2,6 +2,7 @@
 // Pure utility functions (no external dependencies)
 
 import { replaceOutsideCode } from "../markdown/markdown-code-regions";
+import { segmentMarkdownByMermaid } from "../markdown/mermaid-fence";
 import { stripMermaidMeta } from "../markdown/mermaid-meta";
 
 // ---------------------------------------------------------------------------
@@ -494,28 +495,17 @@ export function stripBlockRefsForNotion(md: string): string {
 /** Strip the `%% baram-meta` comment from mermaid fences so Notion imports a
  *  clean `mermaid` code block (Notion renders these natively). */
 export function stripMermaidMetaForNotion(md: string): string {
-  const lines = md.split("\n");
+  const segments = segmentMarkdownByMermaid(md);
   const out: string[] = [];
-  let i = 0;
-  while (i < lines.length) {
-    if (/^```mermaid\s*$/.test(lines[i])) {
-      out.push(lines[i]); // opening fence
-      i++;
-      const body: string[] = [];
-      while (i < lines.length && !/^```\s*$/.test(lines[i])) {
-        body.push(lines[i]);
-        i++;
-      }
-      const cleaned = stripMermaidMeta(body.join("\n"));
-      if (cleaned) out.push(...cleaned.split("\n"));
-      if (i < lines.length) {
-        out.push(lines[i]); // closing fence
-        i++;
-      }
+  for (const seg of segments) {
+    if (seg.kind === "text") {
+      out.push(...seg.lines);
       continue;
     }
-    out.push(lines[i]);
-    i++;
+    out.push(seg.open);
+    const cleaned = stripMermaidMeta(seg.body.join("\n"));
+    if (cleaned) out.push(...cleaned.split("\n"));
+    if (seg.close !== null) out.push(seg.close);
   }
   return out.join("\n");
 }
