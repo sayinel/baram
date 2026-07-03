@@ -49,6 +49,7 @@ export function ExportFormatDropdown({
   return (
     <div className="export-format-dropdown" ref={rootRef}>
       <button
+        aria-expanded={open}
         aria-haspopup="listbox"
         className="export-format-trigger"
         onClick={() => setOpen((v) => !v)}
@@ -64,7 +65,12 @@ export function ExportFormatDropdown({
       {open && (
         <div className="export-format-popup" role="listbox">
           {groups.map((group) => (
-            <div className="export-format-group" key={group.label}>
+            <div
+              aria-label={group.label}
+              className="export-format-group"
+              key={group.label}
+              role="group"
+            >
               <div className="export-format-group-label">{group.label}</div>
               {group.options.map((opt) => {
                 const disabled = opt.pandoc && !pandocAvailable;
