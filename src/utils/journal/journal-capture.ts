@@ -13,6 +13,15 @@ export interface CaptureItem {
 
 export type CaptureType = "idea" | "link" | "note" | "quote";
 
+/**
+ * Resolve the notes directory path from a journal/vault base path.
+ * Single source of truth for the notes subdirectory location — injection
+ * point for a future Zettelkasten relocation (P2).
+ */
+export function resolveNotesDir(base: string): string {
+  return `${base}/notes`;
+}
+
 export const CAPTURE_TYPES: CaptureType[] = ["idea", "link", "quote", "note"];
 
 export const CAPTURE_ICONS: Record<CaptureType, string> = {

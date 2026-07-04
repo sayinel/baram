@@ -5,6 +5,7 @@ import { getBacklinks, listDir, readFile, writeFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
+import { resolveNotesDir } from "../../utils/journal/journal-capture";
 import { extractOneLine } from "../../utils/journal/journal-memories";
 import { logger } from "../../utils/logger";
 import { resolveJournalBase } from "./utils";
@@ -119,7 +120,7 @@ export function NotesTab() {
     (async () => {
       try {
         const base = resolveJournalBase(rootPath, journalDirectory);
-        const notesDir = currentSubdir ?? `${base}/notes`;
+        const notesDir = currentSubdir ?? resolveNotesDir(base);
         await loadNotes(notesDir, cancelled);
       } catch {
         if (!cancelled.v) {
@@ -189,7 +190,7 @@ export function NotesTab() {
     const name = newName.trim();
     if (!name || !rootPath || !journalDirectory) return;
     const base = resolveJournalBase(rootPath, journalDirectory);
-    const notePath = `${base}/notes/${name}.md`;
+    const notePath = `${resolveNotesDir(base)}/${name}.md`;
     const content = `# ${name}\n\n`;
     try {
       await writeFile(notePath, content);
