@@ -1,7 +1,6 @@
 /**
  * §56 Journal / Daily Notes — utility functions
  */
-import { getDailyPrompt } from "./journal-prompts";
 
 /** Simple FileEntry-like type for migration functions */
 interface MigrationEntry {
@@ -36,14 +35,17 @@ export function applyJournalTemplate(template: string, date: Date): string {
     "November",
     "December",
   ];
-  return template
-    .replace(/\{\{date\}\}/g, dateStr)
-    .replace(/\{\{year\}\}/g, String(date.getFullYear()))
-    .replace(/\{\{month\}\}/g, String(date.getMonth() + 1).padStart(2, "0"))
-    .replace(/\{\{monthName\}\}/g, monthNames[date.getMonth()])
-    .replace(/\{\{day\}\}/g, String(date.getDate()).padStart(2, "0"))
-    .replace(/\{\{dayName\}\}/g, dayNames[date.getDay()])
-    .replace(/\{\{daily_prompt\}\}/g, getDailyPrompt(date));
+  return (
+    template
+      .replace(/\{\{date\}\}/g, dateStr)
+      .replace(/\{\{year\}\}/g, String(date.getFullYear()))
+      .replace(/\{\{month\}\}/g, String(date.getMonth() + 1).padStart(2, "0"))
+      .replace(/\{\{monthName\}\}/g, monthNames[date.getMonth()])
+      .replace(/\{\{day\}\}/g, String(date.getDate()).padStart(2, "0"))
+      .replace(/\{\{dayName\}\}/g, dayNames[date.getDay()])
+      // §P1: '오늘의 질문' 프롬프트 제거 — 잔류 플레이스홀더는 빈 문자열로 치환
+      .replace(/\{\{daily_prompt\}\}/g, "")
+  );
 }
 
 /**
@@ -359,7 +361,7 @@ export const JOURNAL_DATE_PARTS_RE = /^(\d{4})-(\d{2})-(\d{2})\.md$/;
 export const JOURNAL_FILENAME_COMPACT_RE = /^\d{8}\.md$/;
 
 /** Entries hidden from FileTree when journal-scoped */
-export const JOURNAL_HIDDEN_ENTRIES = [".journal.json", "assets", "prompts"];
+export const JOURNAL_HIDDEN_ENTRIES = [".journal.json", "assets"];
 
 /** Check if a file/folder name should be hidden in journal FileTree */
 export function isJournalHiddenEntry(name: string): boolean {

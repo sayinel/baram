@@ -1,5 +1,5 @@
 // §56f Journal Dynamic Block NodeView — mounts React into a plain PM NodeView
-// Used for journal-list, journal-mood, journal-photos fenced code blocks.
+// Used for journal-list, journal-photos fenced code blocks.
 
 import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";

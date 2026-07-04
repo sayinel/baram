@@ -160,12 +160,10 @@ describe("highlightSearchMatch", () => {
 describe("extractFrontmatterFields", () => {
   const mkContent = (yaml: string, body = "") => `---\n${yaml}\n---\n${body}`;
 
-  it("extracts date, mood, energy from frontmatter", () => {
-    const content = mkContent("date: 2026-02-28\nmood: calm\nenergy: 4");
+  it("extracts date from frontmatter", () => {
+    const content = mkContent("date: 2026-02-28");
     const fields = extractFrontmatterFields(content);
     expect(fields.date).toBe("2026-02-28");
-    expect(fields.mood).toBe("calm");
-    expect(fields.energy).toBe(4);
   });
 
   it("extracts inline tags", () => {
@@ -197,8 +195,6 @@ describe("extractFrontmatterFields", () => {
     const content = "No frontmatter here\n![photo](img.jpg)";
     const fields = extractFrontmatterFields(content);
     expect(fields.date).toBeUndefined();
-    expect(fields.mood).toBeUndefined();
-    expect(fields.energy).toBeUndefined();
     expect(fields.hasPhotos).toBe(true);
   });
 
@@ -282,27 +278,6 @@ describe("filterByFrontmatter", () => {
     expect(res.map((r) => r.path)).not.toContain("/j/no-date.md");
   });
 
-  it("mood filter matches selected moods", () => {
-    const res = filterByFrontmatter(items, { moodFilter: ["calm", "bright"] });
-    expect(res.map((r) => r.path)).toEqual([
-      "/j/2026-01-10.md",
-      "/j/2026-03-15.md",
-    ]);
-  });
-
-  it("mood filter empty array = no filter", () => {
-    const res = filterByFrontmatter(items, { moodFilter: [] });
-    expect(res).toHaveLength(items.length);
-  });
-
-  it("energy min filter", () => {
-    const res = filterByFrontmatter(items, { energyMin: 4 });
-    expect(res.map((r) => r.path)).toEqual([
-      "/j/2026-02-01.md",
-      "/j/no-date.md",
-    ]);
-  });
-
   it("tags filter — OR logic, any match passes", () => {
     const res = filterByFrontmatter(items, { tagsFilter: ["운동", "독서"] });
     expect(res.map((r) => r.path)).toEqual([
@@ -325,8 +300,7 @@ describe("filterByFrontmatter", () => {
     const res = filterByFrontmatter(items, {
       dateFrom: "2026-01-01",
       dateTo: "2026-02-28",
-      moodFilter: ["warm"],
-      energyMin: 4,
+      tagsFilter: ["운동"],
       hasPhotos: true,
     });
     expect(res.map((r) => r.path)).toEqual(["/j/2026-02-01.md"]);
@@ -347,16 +321,12 @@ describe("hasActiveFilters", () => {
     expect(hasActiveFilters({ dateFrom: "2026-01-01" })).toBe(true);
   });
 
-  it("returns true when moodFilter non-empty", () => {
-    expect(hasActiveFilters({ moodFilter: ["calm"] })).toBe(true);
+  it("returns true when tagsFilter non-empty", () => {
+    expect(hasActiveFilters({ tagsFilter: ["운동"] })).toBe(true);
   });
 
-  it("returns false when moodFilter is empty array", () => {
-    expect(hasActiveFilters({ moodFilter: [] })).toBe(false);
-  });
-
-  it("returns true when energyMin set", () => {
-    expect(hasActiveFilters({ energyMin: 3 })).toBe(true);
+  it("returns false when tagsFilter is empty array", () => {
+    expect(hasActiveFilters({ tagsFilter: [] })).toBe(false);
   });
 
   it("returns true when hasPhotos true", () => {
