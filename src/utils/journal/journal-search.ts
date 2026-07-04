@@ -67,9 +67,7 @@ export const CATEGORY_ORDER: JournalCategory[] = [
 export interface JournalSearchFilters {
   dateFrom?: string; // YYYY-MM-DD
   dateTo?: string; // YYYY-MM-DD
-  energyMin?: number; // 1-5, undefined = no filter
   hasPhotos?: boolean; // true = only entries with photos
-  moodFilter?: string[]; // ["warm", "bright"] — empty = all
   tagsFilter?: string[]; // ["여행", "운동"] — empty = no filter
 }
 
@@ -84,9 +82,7 @@ export function extractDateFromPath(path: string): null | string {
 /** Extract frontmatter scalar fields from raw markdown content. */
 export function extractFrontmatterFields(content: string): {
   date?: string;
-  energy?: number;
   hasPhotos: boolean;
-  mood?: string;
   tags?: string[];
 } {
   const hasPhotos = content.includes("![");
@@ -95,9 +91,6 @@ export function extractFrontmatterFields(content: string): {
 
   const yaml = fm.yaml;
   const date = yaml.match(/^date:\s*(\d{4}-\d{2}-\d{2})/m)?.[1];
-  const mood = yaml.match(/^mood:\s*(\w+)/m)?.[1];
-  const energyStr = yaml.match(/^energy:\s*(\d)/m)?.[1];
-  const energy = energyStr !== undefined ? parseInt(energyStr) : undefined;
 
   // Inline tags: tags: [tag1, tag2]
   const tagsInline = yaml.match(/^tags:\s*\[([^\]]*)\]/m)?.[1];
@@ -119,7 +112,7 @@ export function extractFrontmatterFields(content: string): {
     }
   }
 
-  return { date, mood, energy, tags, hasPhotos };
+  return { date, tags, hasPhotos };
 }
 
 /** Filter an array of {path, content} results by frontmatter criteria. */
@@ -136,18 +129,6 @@ export function filterByFrontmatter(
       if (!date) return false;
       if (filters.dateFrom && date < filters.dateFrom) return false;
       if (filters.dateTo && date > filters.dateTo) return false;
-    }
-
-    // Mood — must match one of the selected moods
-    if (filters.moodFilter && filters.moodFilter.length > 0) {
-      if (!fields.mood || !filters.moodFilter.includes(fields.mood))
-        return false;
-    }
-
-    // Energy minimum
-    if (filters.energyMin !== undefined) {
-      if (fields.energy === undefined || fields.energy < filters.energyMin)
-        return false;
     }
 
     // Tags — ANY match (OR logic)
@@ -203,8 +184,6 @@ export function hasActiveFilters(filters: JournalSearchFilters): boolean {
   return !!(
     filters.dateFrom ||
     filters.dateTo ||
-    (filters.moodFilter && filters.moodFilter.length > 0) ||
-    filters.energyMin !== undefined ||
     (filters.tagsFilter && filters.tagsFilter.length > 0) ||
     filters.hasPhotos
   );

@@ -19,12 +19,6 @@ import { InlineAIPrompt } from "./components/ai/InlineAIPrompt";
 import { PromptLintPanel } from "./components/ai/PromptLintPanel";
 import { FindReplaceBar } from "./components/editor/FindReplaceBar";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { FollowUpCard } from "./components/journal/FollowUpCard";
-import { MoodBar } from "./components/journal/MoodBar";
-import {
-  detectPeriodicType,
-  PeriodicInsightBanner,
-} from "./components/journal/PeriodicInsightBanner";
 import { AppLayout } from "./components/layout/AppLayout";
 import { StatusBar } from "./components/layout/StatusBar";
 import { TabBar } from "./components/layout/TabBar";
@@ -340,11 +334,6 @@ function App() {
 
   // §72 Skills mode — auto-detect skill files and switch right panel
   const { isSkill } = useSkillsMode();
-
-  // Compute once per render to avoid double-calling detectPeriodicType in JSX
-  const periodicType = activeTabFilePath
-    ? detectPeriodicType(activeTabFilePath)
-    : null;
 
   // Auto-save hook (markdown files — Tiptap editor.on("update") based)
   // §perf-large-file C3.5: use activeEditor so keep-alive tabs auto-save correctly
@@ -696,14 +685,6 @@ function App() {
                   mode={findReplaceMode}
                   onClose={() => setFindReplaceOpen(false)}
                   onSetMode={setFindReplaceMode}
-                />
-              )}
-              <MoodBar editor={activeEditor} />
-              <FollowUpCard editor={activeEditor} />
-              {periodicType && activeTabFilePath && (
-                <PeriodicInsightBanner
-                  filePath={activeTabFilePath}
-                  type={periodicType}
                 />
               )}
               <div

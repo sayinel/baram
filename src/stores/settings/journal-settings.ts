@@ -2,19 +2,12 @@ import type { JournalTheme } from "../../utils/journal/journal-themes";
 import type { StateCreator } from "zustand";
 
 export interface JournalSettingsSlice {
-  journalAIAutoSuggest: boolean;
-  journalAIReflectionEnabled: boolean;
   journalCustomThemes: JournalTheme[];
   journalDirectory: string;
   journalEnabled: boolean;
-  journalEnergyEnabled: boolean;
   journalFilenameFormat: string;
   journalMonthlyEnabled: boolean;
   journalMonthlyTemplate: string;
-  journalMoodEnabled: boolean;
-  journalPromptCategory: string;
-  journalPromptEnabled: boolean;
-  journalPromptMode: "random" | "sequential";
   journalShowStreak: boolean;
   journalStartupBehavior: JournalStartupBehavior;
   journalTemplatePath: string;
@@ -27,19 +20,12 @@ export interface JournalSettingsSlice {
   journalYearlyTemplate: string;
   memoriesMode: MemoriesMode;
   memoriesTab: MemoriesTab;
-  setJournalAIAutoSuggest: (enabled: boolean) => void;
-  setJournalAIReflectionEnabled: (enabled: boolean) => void;
   setJournalCustomThemes: (themes: JournalTheme[]) => void;
   setJournalDirectory: (dir: string) => void;
   setJournalEnabled: (enabled: boolean) => void;
-  setJournalEnergyEnabled: (enabled: boolean) => void;
   setJournalFilenameFormat: (fmt: string) => void;
   setJournalMonthlyEnabled: (enabled: boolean) => void;
   setJournalMonthlyTemplate: (path: string) => void;
-  setJournalMoodEnabled: (enabled: boolean) => void;
-  setJournalPromptCategory: (category: string) => void;
-  setJournalPromptEnabled: (enabled: boolean) => void;
-  setJournalPromptMode: (mode: "random" | "sequential") => void;
   setJournalShowStreak: (enabled: boolean) => void;
   setJournalStartupBehavior: (behavior: JournalStartupBehavior) => void;
   setJournalTemplatePath: (path: string) => void;
@@ -79,25 +65,12 @@ export const createJournalSettingsSlice: StateCreator<
   journalMonthlyTemplate: "",
   journalYearlyTemplate: "",
 
-  // §56e Mood/Energy
-  journalMoodEnabled: true,
-  journalEnergyEnabled: true,
-
   // §56g Stats
   journalShowStreak: true,
 
   // §56h Journal Theme
   journalThemeId: "classic-diary",
   journalCustomThemes: [],
-
-  // §56i Prompts
-  journalPromptEnabled: true,
-  journalPromptCategory: "",
-  journalPromptMode: "random" as const,
-
-  // §56j AI Reflection
-  journalAIReflectionEnabled: true,
-  journalAIAutoSuggest: false,
 
   // §56b Memories Panel UI state
   memoriesTab: "journal" as const,
@@ -126,21 +99,9 @@ export const createJournalSettingsSlice: StateCreator<
     set({ journalMonthlyTemplate }),
   setJournalYearlyTemplate: (journalYearlyTemplate) =>
     set({ journalYearlyTemplate }),
-  setJournalMoodEnabled: (journalMoodEnabled) => set({ journalMoodEnabled }),
-  setJournalEnergyEnabled: (journalEnergyEnabled) =>
-    set({ journalEnergyEnabled }),
   setJournalShowStreak: (journalShowStreak) => set({ journalShowStreak }),
   setJournalThemeId: (journalThemeId) => set({ journalThemeId }),
   setJournalCustomThemes: (journalCustomThemes) => set({ journalCustomThemes }),
-  setJournalPromptEnabled: (journalPromptEnabled) =>
-    set({ journalPromptEnabled }),
-  setJournalPromptCategory: (journalPromptCategory) =>
-    set({ journalPromptCategory }),
-  setJournalPromptMode: (journalPromptMode) => set({ journalPromptMode }),
-  setJournalAIReflectionEnabled: (journalAIReflectionEnabled) =>
-    set({ journalAIReflectionEnabled }),
-  setJournalAIAutoSuggest: (journalAIAutoSuggest) =>
-    set({ journalAIAutoSuggest }),
   setMemoriesTab: (memoriesTab) => set({ memoriesTab }),
   setMemoriesMode: (memoriesMode) => set({ memoriesMode }),
 });

@@ -2,10 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildTagIndex,
-  buildTagSuggestionPrompt,
   extractTagsFromContent,
   filterTags,
-  parseTagSuggestions,
 } from "../journal/journal-tags";
 
 describe("extractTagsFromContent", () => {
@@ -195,107 +193,5 @@ describe("filterTags", () => {
     ]);
     const result = filterTags("project/b", nestedIndex);
     expect(result).toEqual(["project/baram"]);
-  });
-});
-
-// ─── buildTagSuggestionPrompt ─────────────────────────────────────────────
-
-describe("buildTagSuggestionPrompt", () => {
-  it("returns system prompt about tag recommendation", () => {
-    const { systemPrompt } = buildTagSuggestionPrompt("내용", [], []);
-    expect(systemPrompt).toContain("태그");
-    expect(systemPrompt).toContain("3~5개");
-  });
-
-  it("includes content in user prompt", () => {
-    const content = "오늘 Rust로 코딩했다.";
-    const { userPrompt } = buildTagSuggestionPrompt(content, [], []);
-    expect(userPrompt).toContain(content);
-  });
-
-  it("includes existing tags when provided", () => {
-    const { userPrompt } = buildTagSuggestionPrompt(
-      "내용",
-      ["rust", "coding"],
-      [],
-    );
-    expect(userPrompt).toContain("기존 태그: rust, coding");
-  });
-
-  it("includes vault tags (top 50)", () => {
-    const vaultTags = Array.from({ length: 60 }, (_, i) => `tag${i}`);
-    const { userPrompt } = buildTagSuggestionPrompt("내용", [], vaultTags);
-    expect(userPrompt).toContain("볼트 태그");
-    expect(userPrompt).toContain("tag0");
-    expect(userPrompt).toContain("tag49");
-    expect(userPrompt).not.toContain("tag50");
-  });
-
-  it("handles empty content gracefully", () => {
-    const { userPrompt } = buildTagSuggestionPrompt("", [], []);
-    expect(userPrompt).toContain("비어 있습니다");
-  });
-
-  it("omits existing tags section when empty", () => {
-    const { userPrompt } = buildTagSuggestionPrompt("내용", [], []);
-    expect(userPrompt).not.toContain("기존 태그");
-  });
-
-  it("omits vault tags section when empty", () => {
-    const { userPrompt } = buildTagSuggestionPrompt("내용", [], []);
-    expect(userPrompt).not.toContain("볼트 태그");
-  });
-});
-
-// ─── parseTagSuggestions ──────────────────────────────────────────────────
-
-describe("parseTagSuggestions", () => {
-  it("splits comma-separated tags", () => {
-    const result = parseTagSuggestions("rust, coding, daily", []);
-    expect(result).toEqual(["rust", "coding", "daily"]);
-  });
-
-  it("strips # prefix from tags", () => {
-    const result = parseTagSuggestions("#rust, #coding, ##daily", []);
-    expect(result).toEqual(["rust", "coding", "daily"]);
-  });
-
-  it("removes duplicates", () => {
-    const result = parseTagSuggestions("rust, coding, rust, daily", []);
-    expect(result).toEqual(["rust", "coding", "daily"]);
-  });
-
-  it("excludes existing tags", () => {
-    const result = parseTagSuggestions("rust, coding, daily", ["rust"]);
-    expect(result).toEqual(["coding", "daily"]);
-  });
-
-  it("handles newline-separated tags", () => {
-    const result = parseTagSuggestions("rust\ncoding\ndaily", []);
-    expect(result).toEqual(["rust", "coding", "daily"]);
-  });
-
-  it("limits to 5 tags", () => {
-    const result = parseTagSuggestions("a, b, c, d, e, f, g", []);
-    expect(result).toHaveLength(5);
-  });
-
-  it("handles empty response", () => {
-    expect(parseTagSuggestions("", [])).toEqual([]);
-  });
-
-  it("lowercases all tags", () => {
-    const result = parseTagSuggestions("Rust, CODING, Daily", []);
-    expect(result).toEqual(["rust", "coding", "daily"]);
-  });
-
-  it("excludes existing tags case-insensitively", () => {
-    const result = parseTagSuggestions("Rust, coding", ["rust"]);
-    expect(result).toEqual(["coding"]);
-  });
-
-  it("trims whitespace from tags", () => {
-    const result = parseTagSuggestions("  rust  ,  coding  ", []);
-    expect(result).toEqual(["rust", "coding"]);
   });
 });
