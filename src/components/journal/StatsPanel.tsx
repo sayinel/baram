@@ -18,6 +18,7 @@ import {
   writeStatsCache,
 } from "../../utils/journal/journal-stats-cache";
 import { ContributionHeatmap, type HeatmapEntry } from "./ContributionHeatmap";
+import { JournalSection } from "./JournalSection";
 
 /** One day in milliseconds — cache is considered fresh if lastFullScan is within this. */
 const CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -280,15 +281,16 @@ export function StatsPanel({
   };
 
   return (
-    <div className="journal-stats">
-      <ContributionHeatmap
-        entries={heatmapEntries}
-        onDateClick={handleDateClick}
-        year={currentYear}
-      />
-      <div className="journal-stats-body">
-        <div className="journal-stats-header">
-          <span className="journal-stats-title">Stats</span>
+    <>
+      <JournalSection id="journal-activity" title="활동">
+        <ContributionHeatmap
+          entries={heatmapEntries}
+          onDateClick={handleDateClick}
+          year={currentYear}
+        />
+      </JournalSection>
+      <JournalSection
+        action={
           <button
             aria-label="Refresh journal stats"
             className="journal-stats-refresh"
@@ -310,7 +312,10 @@ export function StatsPanel({
               <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
             </svg>
           </button>
-        </div>
+        }
+        id="journal-stats"
+        title="통계"
+      >
         <div className="journal-stats-grid">
           <div className="journal-stats-row">
             <svg
@@ -464,7 +469,7 @@ export function StatsPanel({
             </>
           )}
         </div>
-      </div>
-    </div>
+      </JournalSection>
+    </>
   );
 }

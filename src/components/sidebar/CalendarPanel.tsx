@@ -11,6 +11,7 @@ import {
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
+import { useJournalLayoutStore } from "../../stores/ui/journal-layout";
 import {
   formatJournalDate,
   getFirstDayOfWeek,
@@ -28,8 +29,10 @@ import {
 import { getJournalTheme } from "../../utils/journal/journal-themes";
 import { logger } from "../../utils/logger";
 import { JournalSearchPanel } from "../journal/JournalSearchPanel";
+import { JournalSection } from "../journal/JournalSection";
 import { StatsPanel } from "../journal/StatsPanel";
 
+const SEARCH_SECTION = "journal-search";
 const DAY_NAMES = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const MONTH_NAMES = [
   "January",
@@ -51,7 +54,11 @@ export function CalendarPanel() {
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
   const [calView, setCalView] = useState<"days" | "months" | "years">("days");
-  const [showSearch, setShowSearch] = useState(false);
+  const searchCollapsed = useJournalLayoutStore(
+    (s) => s.collapsed[SEARCH_SECTION] ?? true,
+  );
+  const toggleSection = useJournalLayoutStore((s) => s.toggle);
+  const setSectionCollapsed = useJournalLayoutStore((s) => s.setCollapsed);
 
   const {
     journalEnabled,
@@ -355,11 +362,11 @@ export function CalendarPanel() {
           aria-label="Toggle journal search"
           className={[
             "calendar-nav-btn calendar-search-btn",
-            showSearch && "calendar-search-btn-active",
+            !searchCollapsed && "calendar-search-btn-active",
           ]
             .filter(Boolean)
             .join(" ")}
-          onClick={() => setShowSearch((v) => !v)}
+          onClick={() => toggleSection(SEARCH_SECTION, true)}
           title="Search journal"
         >
           &#128269;
@@ -492,9 +499,11 @@ export function CalendarPanel() {
           )}
         </div>
       )}
-      {showSearch && (
-        <JournalSearchPanel onClose={() => setShowSearch(false)} />
-      )}
+      <JournalSection defaultCollapsed id={SEARCH_SECTION} title="검색">
+        <JournalSearchPanel
+          onClose={() => setSectionCollapsed(SEARCH_SECTION, true)}
+        />
+      </JournalSection>
       <StatsPanel journalDates={journalDates} />
     </div>
   );
