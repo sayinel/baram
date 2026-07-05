@@ -182,12 +182,6 @@ date: ${dateStr}
 
 # ${formatReadableDate(date)}
 
-## Diary
-
-
-
-## Notes
-
 `;
 }
 

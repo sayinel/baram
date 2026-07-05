@@ -503,21 +503,6 @@ export function useKeybindingActions({
       })();
     });
 
-    registerAction("journal.jumpToDiary", () => {
-      if (editor) {
-        const md = prosemirrorToMarkdown(editor.state.doc);
-        const lines = md.split("\n");
-        const diaryIdx = lines.findIndex((l) => /^## Diary/.test(l));
-        if (diaryIdx >= 0) {
-          const pos = mdLineToPmBlockStart(editor.state.doc, md, diaryIdx);
-          if (pos >= 0) {
-            editor.commands.focus();
-            editor.commands.setTextSelection(pos + 1);
-          }
-        }
-      }
-    });
-
     registerAction("journal.jumpToCaptures", () => {
       if (editor) {
         const md = prosemirrorToMarkdown(editor.state.doc);

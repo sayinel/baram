@@ -5,15 +5,10 @@ import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
 import { JournalTab } from "./JournalTab";
 import { MiniCalendar } from "./MiniCalendar";
-import { NotesTab } from "./NotesTab";
 import { MemoryEntry } from "./OneLineEditor";
-
-type MemoriesTab = "journal" | "notes";
 
 export function MemoriesPanel() {
   const { rightPanelOpen, rightPanelMode } = useUIStore();
-  const activeTab = useSettingsStore((s) => s.memoriesTab) as MemoriesTab;
-  const setActiveTab = useSettingsStore((s) => s.setMemoriesTab);
   const mode = useSettingsStore((s) => s.memoriesMode);
   const setMode = useSettingsStore((s) => s.setMemoriesMode);
   const [memories, setMemories] = useState<MemoryEntry[]>([]);
@@ -40,15 +35,6 @@ export function MemoriesPanel() {
     d.setDate(d.getDate() + delta);
     setSelectedDate(d);
   };
-
-  // Ensure activeTab is valid after Photos tab removal
-  const safeTab: MemoriesTab =
-    activeTab === "journal" || activeTab === "notes" ? activeTab : "journal";
-
-  const TABS: { id: MemoriesTab; label: string }[] = [
-    { id: "journal", label: "Journal" },
-    { id: "notes", label: "Notes" },
-  ];
 
   return (
     <div className="memories-panel">
@@ -113,32 +99,17 @@ export function MemoriesPanel() {
         />
       )}
 
-      <div className="memories-tabs">
-        {TABS.map((tab) => (
-          <button
-            className={`memories-tabs-btn ${safeTab === tab.id ? "memories-tabs-btn-active" : ""}`}
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
       <div className="memories-content">
-        {safeTab === "journal" && (
-          <JournalTab
-            day={day}
-            loading={loading}
-            memories={memories}
-            mode={mode}
-            month={month}
-            setLoading={setLoading}
-            setMemories={setMemories}
-            setMode={setMode}
-          />
-        )}
-        {safeTab === "notes" && <NotesTab />}
+        <JournalTab
+          day={day}
+          loading={loading}
+          memories={memories}
+          mode={mode}
+          month={month}
+          setLoading={setLoading}
+          setMemories={setMemories}
+          setMode={setMode}
+        />
       </div>
     </div>
   );

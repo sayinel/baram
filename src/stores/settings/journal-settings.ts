@@ -19,7 +19,6 @@ export interface JournalSettingsSlice {
   journalYearlyEnabled: boolean;
   journalYearlyTemplate: string;
   memoriesMode: MemoriesMode;
-  memoriesTab: MemoriesTab;
   setJournalCustomThemes: (themes: JournalTheme[]) => void;
   setJournalDirectory: (dir: string) => void;
   setJournalEnabled: (enabled: boolean) => void;
@@ -37,12 +36,9 @@ export interface JournalSettingsSlice {
   setJournalYearlyEnabled: (enabled: boolean) => void;
   setJournalYearlyTemplate: (path: string) => void;
   setMemoriesMode: (mode: MemoriesMode) => void;
-  setMemoriesTab: (tab: MemoriesTab) => void;
 }
 type JournalStartupBehavior = "nothing" | "openJournal";
 type MemoriesMode = "full" | "oneline";
-
-type MemoriesTab = "journal" | "notes";
 
 export const createJournalSettingsSlice: StateCreator<
   JournalSettingsSlice,
@@ -73,7 +69,6 @@ export const createJournalSettingsSlice: StateCreator<
   journalCustomThemes: [],
 
   // §56b Memories Panel UI state
-  memoriesTab: "journal" as const,
   memoriesMode: "oneline" as const,
 
   // Setters
@@ -102,6 +97,5 @@ export const createJournalSettingsSlice: StateCreator<
   setJournalShowStreak: (journalShowStreak) => set({ journalShowStreak }),
   setJournalThemeId: (journalThemeId) => set({ journalThemeId }),
   setJournalCustomThemes: (journalCustomThemes) => set({ journalCustomThemes }),
-  setMemoriesTab: (memoriesTab) => set({ memoriesTab }),
   setMemoriesMode: (memoriesMode) => set({ memoriesMode }),
 });
