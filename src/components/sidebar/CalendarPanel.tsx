@@ -319,7 +319,7 @@ export function CalendarPanel() {
     <div className="calendar-panel" style={themeStyle}>
       <div className="calendar-header">
         <button className="calendar-nav-btn" onClick={navPrev} title="Previous">
-          &lt;
+          ‹
         </button>
         <span className="calendar-title-group">
           {calView === "days" && (
@@ -356,7 +356,7 @@ export function CalendarPanel() {
           )}
         </span>
         <button className="calendar-nav-btn" onClick={navNext} title="Next">
-          &gt;
+          ›
         </button>
         <button
           aria-label="Toggle journal search"
