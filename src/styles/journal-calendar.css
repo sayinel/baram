@@ -219,139 +219,36 @@
 }
 
 /* ============================================
-   §56e Year in Pixels + 30-day Trend
-   ============================================ */
-
-.year-in-pixels {
-  padding: 4px 8px;
-  border-top: 1px solid var(--color-border-default);
-}
-
-.year-in-pixels-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: 4px 0;
-  font-size: 11px;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  background: none;
-  border: none;
-}
-
-.year-in-pixels-toggle:hover {
-  color: var(--color-text-primary);
-}
-
-.year-in-pixels-count {
-  font-size: 10px;
-  opacity: 0.6;
-}
-
-.year-in-pixels-arrow {
-  font-size: 10px;
-}
-
-.year-in-pixels-grid {
-  padding: 4px 0 8px;
-}
-
-.year-in-pixels-labels {
-  display: flex;
-  gap: 0;
-  margin-bottom: 2px;
-}
-
-.year-in-pixels-month-label {
-  flex: 1;
-  font-size: 9px;
-  color: var(--color-text-muted);
-  text-align: center;
-}
-
-.year-in-pixels-dots {
-  display: flex;
-  gap: 1px;
-}
-
-.year-in-pixels-month {
-  display: flex;
-  flex: 1;
-  flex-wrap: wrap;
-  gap: 1px;
-}
-
-.year-in-pixels-dot {
-  width: 5px;
-  height: 5px;
-  background: var(--color-bg-elevated);
-  border-radius: 1px;
-}
-
-.year-in-pixels-dot-filled {
-  opacity: 0.9;
-}
-
-.year-in-pixels-legend {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  margin-top: 6px;
-  font-size: 9px;
-  color: var(--color-text-muted);
-}
-
-.year-in-pixels-legend-item {
-  display: flex;
-  gap: 2px;
-  align-items: center;
-}
-
-.year-in-pixels-legend-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 1px;
-}
-
-/* ============================================
    §56g Contribution Heatmap
    ============================================ */
 
-.contribution-heatmap-wrapper {
-  border-top: 1px solid var(--color-border-default);
-}
-
-.contribution-heatmap-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: 6px 12px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--color-text-secondary);
-  text-align: left;
-  cursor: pointer;
-  background: transparent;
-  border: none;
-}
-
-.contribution-heatmap-toggle:hover {
-  background: var(--color-bg-subtle);
-}
-
-.contribution-heatmap-toggle-arrow {
-  font-size: 10px;
-}
-
 .contribution-heatmap {
-  padding: 4px 12px 8px;
   overflow-x: auto;
 }
 
+.contribution-heatmap::-webkit-scrollbar {
+  height: 6px;
+}
+
+.contribution-heatmap::-webkit-scrollbar-thumb {
+  background: var(--color-border-default);
+  border-radius: 3px;
+}
+
+.contribution-heatmap::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 .contribution-heatmap-month-labels {
-  margin-bottom: 2px;
+  margin-bottom: 4px;
+}
+
+.contribution-heatmap-month {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 .contribution-heatmap-grid {
@@ -366,6 +263,8 @@
   height: 10px;
   cursor: pointer;
   border-radius: 2px;
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--color-text-primary) 8%, transparent);
 }
 
 .contribution-heatmap-cell:hover {
@@ -411,9 +310,37 @@
   gap: 2px;
   align-items: center;
   min-width: 24px;
-  margin-right: 4px;
-  font-size: 0.65em;
-  color: var(--color-text-secondary);
+  margin-right: 6px;
+}
+
+.contribution-heatmap-day-label {
+  height: 10px;
+  font-size: 9px;
+  line-height: 10px;
+  color: var(--color-text-muted);
+}
+
+.contribution-heatmap-legend {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 8px;
+  font-size: 9px;
+  color: var(--color-text-muted);
+}
+
+.contribution-heatmap-legend-cells {
+  display: flex;
+  gap: 2px;
+}
+
+.contribution-heatmap-legend-cell {
+  cursor: default;
+}
+
+.contribution-heatmap-legend-cell:hover {
+  outline: none;
 }
 
 /* Calendar search button */
@@ -427,31 +354,67 @@
 }
 
 /* ============================================
-   §56g Journal Stats (styled card, non-collapsible)
+   §56 Journal sidebar sections (unified collapsible)
    ============================================ */
 
-.journal-stats {
+.journal-section {
+  padding-top: 4px;
+  margin-top: 8px;
   border-top: 1px solid var(--color-border-default);
 }
 
-.journal-stats-body {
-  padding: 10px 12px 12px;
-}
-
-.journal-stats-header {
+.journal-section-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  min-height: 28px;
 }
 
-.journal-stats-title {
-  font-size: 11px;
-  font-weight: 700;
+.journal-section-toggle {
+  display: flex;
+  flex: 1;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 0;
   color: var(--color-text-muted);
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+.journal-section-toggle:hover {
+  color: var(--color-text-secondary);
+}
+
+.journal-section-chevron {
+  font-size: 9px;
+  transition: transform 0.15s;
+}
+
+.journal-section-chevron.is-collapsed {
+  transform: rotate(-90deg);
+}
+
+.journal-section-title {
+  font-size: 11px;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
+
+.journal-section-action {
+  display: flex;
+  align-items: center;
+}
+
+.journal-section-body {
+  padding: 4px 0 8px;
+}
+
+/* ============================================
+   §56g Journal Stats card
+   ============================================ */
 
 .journal-stats-refresh {
   display: flex;
