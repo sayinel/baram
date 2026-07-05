@@ -188,8 +188,6 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
   const isTagSearch = query.startsWith("#");
   const filtersActive = hasActiveFilters(filters);
 
-  const MOODS = ["deep", "calm", "neutral", "warm", "bright"] as const;
-
   return (
     <div className="journal-search">
       <div className="journal-search-input-row">
@@ -254,31 +252,6 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
             />
           </div>
 
-          {/* Mood filter — 5 clickable dots */}
-          <div className="jsf-row">
-            <span className="jsf-label">기분</span>
-            <div className="jsf-mood-dots">
-              {MOODS.map((mood) => (
-                <button
-                  className={`jsf-mood-dot ${(filters.moodFilter ?? []).includes(mood) ? "active" : ""}`}
-                  data-mood={mood}
-                  key={mood}
-                  onClick={() => {
-                    const current = filters.moodFilter ?? [];
-                    const next = current.includes(mood)
-                      ? current.filter((m) => m !== mood)
-                      : [...current, mood];
-                    handleFilterChange({
-                      ...filters,
-                      moodFilter: next.length > 0 ? next : undefined,
-                    });
-                  }}
-                  title={mood}
-                />
-              ))}
-            </div>
-          </div>
-
           {/* Tags filter — comma separated */}
           <div className="jsf-row">
             <span className="jsf-label">태그</span>
@@ -297,29 +270,6 @@ export function JournalSearchPanel({ onClose }: JournalSearchPanelProps) {
               type="text"
               value={(filters.tagsFilter ?? []).join(", ")}
             />
-          </div>
-
-          {/* Energy minimum */}
-          <div className="jsf-row">
-            <span className="jsf-label">에너지</span>
-            <select
-              onChange={(e) =>
-                handleFilterChange({
-                  ...filters,
-                  energyMin: e.target.value
-                    ? parseInt(e.target.value)
-                    : undefined,
-                })
-              }
-              value={filters.energyMin ?? ""}
-            >
-              <option value="">전체</option>
-              <option value="1">1 이상</option>
-              <option value="2">2 이상</option>
-              <option value="3">3 이상</option>
-              <option value="4">4 이상</option>
-              <option value="5">5</option>
-            </select>
           </div>
 
           {/* Has photos */}

@@ -81,14 +81,21 @@ export function getWeekColumns(
   return result;
 }
 
-const DAY_LABEL_MAP: Record<number, string> = { 1: "Mon", 3: "Wed", 5: "Fri" };
+const DAY_LABEL_MAP: Record<number, string> = {
+  0: "Sun",
+  1: "Mon",
+  2: "Tue",
+  3: "Wed",
+  4: "Thu",
+  5: "Fri",
+  6: "Sat",
+};
 
 export function ContributionHeatmap({
   entries,
   year,
   onDateClick,
 }: ContributionHeatmapProps) {
-  const [collapsed, setCollapsed] = useState(false);
   const [tooltip, setTooltip] = useState<null | {
     date: string;
     wordCount: number;
@@ -126,135 +133,124 @@ export function ContributionHeatmap({
   };
 
   return (
-    <div className="contribution-heatmap-wrapper">
-      <button
-        aria-expanded={!collapsed}
-        className="contribution-heatmap-toggle"
-        onClick={() => setCollapsed((c) => !c)}
+    <>
+      <div
+        className="contribution-heatmap"
+        onMouseLeave={() => setTooltip(null)}
       >
-        <span>기여 히트맵</span>
-        <span className="contribution-heatmap-toggle-arrow">
-          {collapsed ? "▸" : "▾"}
-        </span>
-      </button>
-
-      {!collapsed && (
+        {/* Month labels row */}
         <div
-          className="contribution-heatmap"
-          onMouseLeave={() => setTooltip(null)}
+          className="contribution-heatmap-month-labels"
+          style={{ paddingLeft: 28 }}
         >
-          {/* Month labels row */}
           <div
-            className="contribution-heatmap-month-labels"
-            style={{ paddingLeft: 28 }}
+            style={{
+              display: "grid",
+              gridTemplateColumns: `repeat(${totalWeeks}, 10px)`,
+              gap: "2px",
+              position: "relative",
+              height: 14,
+            }}
           >
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: `repeat(${totalWeeks}, 10px)`,
-                gap: "2px",
-                position: "relative",
-                height: 14,
-              }}
-            >
-              {monthLabels.map(({ month, weekIndex }) => (
+            {monthLabels.map(({ month, weekIndex }) => (
+              <div
+                className="contribution-heatmap-month"
+                key={month}
+                style={{ gridColumn: weekIndex + 1, gridRow: 1 }}
+              >
+                {month}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Main grid: day labels + cells */}
+        <div style={{ display: "flex", alignItems: "flex-start" }}>
+          {/* Day-of-week labels (Sun–Sat) */}
+          <div className="contribution-heatmap-day-labels">
+            {[0, 1, 2, 3, 4, 5, 6].map((dow) => (
+              <div className="contribution-heatmap-day-label" key={dow}>
+                {DAY_LABEL_MAP[dow] ?? ""}
+              </div>
+            ))}
+          </div>
+
+          {/* Heatmap grid */}
+          <div
+            className="contribution-heatmap-grid"
+            style={{ gridTemplateColumns: `repeat(${totalWeeks}, 10px)` }}
+          >
+            {cells.map(({ date, dayOfWeek, weekIndex }) => {
+              const wc = wordCountMap.get(date) ?? 0;
+              const level = getHeatmapLevel(wc);
+              return (
                 <div
-                  key={month}
+                  className="contribution-heatmap-cell"
+                  data-level={level}
+                  key={date}
+                  onClick={() => handleCellClick(date)}
+                  onMouseEnter={(e) => {
+                    const rect = (
+                      e.target as HTMLElement
+                    ).getBoundingClientRect();
+                    setTooltip({
+                      date,
+                      wordCount: wc,
+                      x: rect.left + rect.width / 2,
+                      y: rect.top,
+                    });
+                  }}
+                  onMouseLeave={() => setTooltip(null)}
                   style={{
                     gridColumn: weekIndex + 1,
-                    gridRow: 1,
-                    fontSize: "0.7em",
-                    color: "var(--color-text-secondary)",
-                    whiteSpace: "nowrap",
+                    gridRow: dayOfWeek + 1,
                   }}
-                >
-                  {month}
-                </div>
-              ))}
-            </div>
+                  title={`${date}: ${wc} words`}
+                />
+              );
+            })}
           </div>
-
-          {/* Main grid: day labels + cells */}
-          <div style={{ display: "flex", alignItems: "flex-start" }}>
-            {/* Day-of-week labels (Mon, Wed, Fri) */}
-            <div className="contribution-heatmap-day-labels">
-              {[0, 1, 2, 3, 4, 5, 6].map((dow) => (
-                <div
-                  key={dow}
-                  style={{
-                    height: 10,
-                    lineHeight: "10px",
-                    fontSize: "0.7em",
-                    color: "var(--color-text-secondary)",
-                  }}
-                >
-                  {DAY_LABEL_MAP[dow] ?? ""}
-                </div>
-              ))}
-            </div>
-
-            {/* Heatmap grid */}
-            <div
-              className="contribution-heatmap-grid"
-              style={{ gridTemplateColumns: `repeat(${totalWeeks}, 10px)` }}
-            >
-              {cells.map(({ date, dayOfWeek, weekIndex }) => {
-                const wc = wordCountMap.get(date) ?? 0;
-                const level = getHeatmapLevel(wc);
-                return (
-                  <div
-                    className="contribution-heatmap-cell"
-                    data-level={level}
-                    key={date}
-                    onClick={() => handleCellClick(date)}
-                    onMouseEnter={(e) => {
-                      const rect = (
-                        e.target as HTMLElement
-                      ).getBoundingClientRect();
-                      setTooltip({
-                        date,
-                        wordCount: wc,
-                        x: rect.left + rect.width / 2,
-                        y: rect.top,
-                      });
-                    }}
-                    onMouseLeave={() => setTooltip(null)}
-                    style={{
-                      gridColumn: weekIndex + 1,
-                      gridRow: dayOfWeek + 1,
-                    }}
-                    title={`${date}: ${wc} words`}
-                  />
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Tooltip */}
-          {tooltip && (
-            <div
-              className="contribution-heatmap-tooltip-fixed"
-              style={{
-                position: "fixed",
-                left: tooltip.x,
-                top: tooltip.y - 4,
-                transform: "translateX(-50%) translateY(-100%)",
-                background: "var(--color-bg-default)",
-                border: "1px solid var(--color-border-default)",
-                padding: "2px 6px",
-                borderRadius: 4,
-                fontSize: "0.75em",
-                whiteSpace: "nowrap",
-                zIndex: 9999,
-                pointerEvents: "none",
-              }}
-            >
-              {tooltip.date} · {tooltip.wordCount} words
-            </div>
-          )}
         </div>
-      )}
-    </div>
+
+        {/* Tooltip */}
+        {tooltip && (
+          <div
+            className="contribution-heatmap-tooltip-fixed"
+            style={{
+              position: "fixed",
+              left: tooltip.x,
+              top: tooltip.y - 4,
+              transform: "translateX(-50%) translateY(-100%)",
+              background: "var(--color-bg-default)",
+              border: "1px solid var(--color-border-default)",
+              padding: "2px 6px",
+              borderRadius: 4,
+              fontSize: "0.75em",
+              whiteSpace: "nowrap",
+              zIndex: 9999,
+              pointerEvents: "none",
+            }}
+          >
+            {tooltip.date} · {tooltip.wordCount} words
+          </div>
+        )}
+      </div>
+
+      {/* Legend — outside the scroll area so it stays visible */}
+      <div className="contribution-heatmap-legend">
+        <span>적음</span>
+        <div className="contribution-heatmap-legend-cells">
+          {[0, 1, 2, 3, 4].map((lvl) => (
+            <span
+              className="contribution-heatmap-cell contribution-heatmap-legend-cell"
+              data-level={lvl}
+              key={lvl}
+            />
+          ))}
+        </div>
+        <span>많음</span>
+      </div>
+    </>
   );
 }
 

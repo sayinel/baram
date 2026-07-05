@@ -1,9 +1,6 @@
 // §56 Calendar sidebar panel — mini calendar for journal navigation
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
-import type { MoodValue } from "../../utils/journal/journal-mood";
-
-import { Sparkles } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { createDir, listDir, readFile, writeFile } from "../../ipc/invoke";
@@ -11,10 +8,10 @@ import {
   ensureJournalFile,
   openFileInTab,
 } from "../../services/journal-file-service";
-import { useAIStore } from "../../stores/ai/ai";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
+import { useJournalLayoutStore } from "../../stores/ui/journal-layout";
 import {
   formatJournalDate,
   getFirstDayOfWeek,
@@ -26,21 +23,16 @@ import {
   resolveJournalDir,
 } from "../../utils/journal/journal";
 import {
-  getMoodColors,
-  parseMoodFromFrontmatter,
-} from "../../utils/journal/journal-mood";
-import {
   applyPeriodicTemplate,
   generateDefaultWeekly,
 } from "../../utils/journal/journal-periodic";
 import { getJournalTheme } from "../../utils/journal/journal-themes";
 import { logger } from "../../utils/logger";
 import { JournalSearchPanel } from "../journal/JournalSearchPanel";
-import { MoodTrend30 } from "../journal/MoodTrend30";
-import { ReflectionPanel } from "../journal/ReflectionPanel";
+import { JournalSection } from "../journal/JournalSection";
 import { StatsPanel } from "../journal/StatsPanel";
-import { YearInPixels } from "../journal/YearInPixels";
 
+const SEARCH_SECTION = "journal-search";
 const DAY_NAMES = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const MONTH_NAMES = [
   "January",
@@ -62,12 +54,11 @@ export function CalendarPanel() {
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
   const [calView, setCalView] = useState<"days" | "months" | "years">("days");
-  const [showSearch, setShowSearch] = useState(false);
-  const [showReflection, setShowReflection] = useState(false);
-
-  const { provider, apiKey } = useAIStore(
-    useShallow((s) => ({ provider: s.provider, apiKey: s.apiKey })),
+  const searchCollapsed = useJournalLayoutStore(
+    (s) => s.collapsed[SEARCH_SECTION] ?? true,
   );
+  const toggleSection = useJournalLayoutStore((s) => s.toggle);
+  const setSectionCollapsed = useJournalLayoutStore((s) => s.setCollapsed);
 
   const {
     journalEnabled,
@@ -78,7 +69,6 @@ export function CalendarPanel() {
     journalWeeklyEnabled,
     journalWeeklyTemplate,
     journalThemeId,
-    theme,
   } = useSettingsStore(
     useShallow((s) => ({
       journalEnabled: s.journalEnabled,
@@ -89,7 +79,6 @@ export function CalendarPanel() {
       journalWeeklyEnabled: s.journalWeeklyEnabled,
       journalWeeklyTemplate: s.journalWeeklyTemplate,
       journalThemeId: s.journalThemeId,
-      theme: s.theme,
     })),
   );
 
@@ -103,21 +92,8 @@ export function CalendarPanel() {
     [journalDirectory],
   );
 
-  // §56e Mood colors — theme-aware palette
-  const effectiveBase = useMemo<"dark" | "light">(() => {
-    if (theme === "light" || theme === "dark") return theme;
-    return window.matchMedia("(prefers-color-scheme: dark)").matches
-      ? "dark"
-      : "light";
-  }, [theme]);
-  const MOOD_COLORS = useMemo(
-    () => getMoodColors(effectiveBase),
-    [effectiveBase],
-  );
-
   // Fetch journal files via IPC — supports both flat and hierarchical layouts
   const [dirFiles, setDirFiles] = useState<string[]>([]);
-  const [moodMap, setMoodMap] = useState<Map<string, MoodValue>>(new Map());
   useEffect(() => {
     if (!journalEnabled || !resolvedDir) return;
     let cancelled = false;
@@ -138,31 +114,9 @@ export function CalendarPanel() {
         }
         if (cancelled) return;
         setDirFiles(fileEntries.map((e) => e.name));
-
-        // Read frontmatter for mood colors (batch, non-blocking)
-        const moods = new Map<string, MoodValue>();
-        const reads = fileEntries.slice(0, 62).map(async (entry) => {
-          const matchStd = entry.name.match(JOURNAL_DATE_PARTS_RE);
-          const matchCompact =
-            !matchStd && JOURNAL_FILENAME_COMPACT_RE.test(entry.name);
-          if (!matchStd && !matchCompact) return;
-          const dateStr = matchStd
-            ? `${matchStd[1]}-${matchStd[2]}-${matchStd[3]}`
-            : `${entry.name.slice(0, 4)}-${entry.name.slice(4, 6)}-${entry.name.slice(6, 8)}`;
-          try {
-            const content = await readFile(entry.path);
-            const mood = parseMoodFromFrontmatter(content);
-            if (mood) moods.set(dateStr, mood);
-          } catch {
-            /* skip unreadable files */
-          }
-        });
-        await Promise.all(reads);
-        if (!cancelled) setMoodMap(moods);
       } catch {
         if (!cancelled) {
           setDirFiles([]);
-          setMoodMap(new Map());
         }
       }
     })();
@@ -365,7 +319,7 @@ export function CalendarPanel() {
     <div className="calendar-panel" style={themeStyle}>
       <div className="calendar-header">
         <button className="calendar-nav-btn" onClick={navPrev} title="Previous">
-          &lt;
+          ‹
         </button>
         <span className="calendar-title-group">
           {calView === "days" && (
@@ -376,7 +330,7 @@ export function CalendarPanel() {
                 title="Select month"
               >
                 {MONTH_NAMES[viewMonth]}
-              </button>{" "}
+              </button>
               <button
                 className="calendar-title calendar-title-year"
                 onClick={() => setCalView("years")}
@@ -402,30 +356,30 @@ export function CalendarPanel() {
           )}
         </span>
         <button className="calendar-nav-btn" onClick={navNext} title="Next">
-          &gt;
+          ›
         </button>
         <button
           aria-label="Toggle journal search"
-          className={`calendar-nav-btn calendar-search-btn${showSearch ? "calendar-search-btn-active" : ""}`}
-          onClick={() => setShowSearch((v) => !v)}
+          className={[
+            "calendar-nav-btn calendar-search-btn",
+            !searchCollapsed && "calendar-search-btn-active",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          onClick={() => toggleSection(SEARCH_SECTION, true)}
           title="Search journal"
         >
           &#128269;
         </button>
-        {(provider === "ollama" || (apiKey && apiKey.length > 0)) && (
-          <button
-            aria-label="Toggle AI reflection"
-            className={`calendar-nav-btn calendar-reflection-btn${showReflection ? "calendar-reflection-btn-active" : ""}`}
-            onClick={() => setShowReflection((v) => !v)}
-            title="AI Reflection"
-          >
-            <Sparkles size={14} />
-          </button>
-        )}
       </div>
       {calView === "days" && (
         <div
-          className={`calendar-grid${journalWeeklyEnabled ? "calendar-grid-with-weeks" : ""}`}
+          className={[
+            "calendar-grid",
+            journalWeeklyEnabled && "calendar-grid-with-weeks",
+          ]
+            .filter(Boolean)
+            .join(" ")}
         >
           {journalWeeklyEnabled && (
             <div className="calendar-week-header">W</div>
@@ -469,25 +423,26 @@ export function CalendarPanel() {
                   const hasJournal = journalDates.has(dateStr);
                   return (
                     <button
-                      className={`calendar-cell${isToday ? "calendar-cell-today" : ""}${hasJournal ? "calendar-cell-has-journal" : ""}`}
+                      className={[
+                        "calendar-cell",
+                        isToday && "calendar-cell-today",
+                        hasJournal && "calendar-cell-has-journal",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
                       key={dateStr}
                       onClick={() => openOrCreateJournal(date)}
                       title={dateStr}
                     >
+                      <span
+                        className={[
+                          "calendar-dot",
+                          hasJournal && "calendar-dot-filled",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                      />
                       {date.getDate()}
-                      {hasJournal && (
-                        <span
-                          className="calendar-dot"
-                          style={
-                            moodMap.has(dateStr)
-                              ? {
-                                  background:
-                                    MOOD_COLORS[moodMap.get(dateStr)!],
-                                }
-                              : undefined
-                          }
-                        />
-                      )}
                     </button>
                   );
                 })}
@@ -500,7 +455,15 @@ export function CalendarPanel() {
         <div className="calendar-picker calendar-months-picker">
           {MONTH_NAMES.map((name, idx) => (
             <button
-              className={`calendar-pick-btn${idx === viewMonth ? "calendar-pick-btn-selected" : ""}${idx === today.getMonth() && viewYear === today.getFullYear() ? "calendar-pick-btn-today" : ""}`}
+              className={[
+                "calendar-pick-btn",
+                idx === viewMonth && "calendar-pick-btn-selected",
+                idx === today.getMonth() &&
+                  viewYear === today.getFullYear() &&
+                  "calendar-pick-btn-today",
+              ]
+                .filter(Boolean)
+                .join(" ")}
               key={name}
               onClick={() => {
                 setViewMonth(idx);
@@ -517,7 +480,13 @@ export function CalendarPanel() {
           {Array.from({ length: 12 }, (_, i) => yearRangeStart + i).map(
             (yr) => (
               <button
-                className={`calendar-pick-btn${yr === viewYear ? "calendar-pick-btn-selected" : ""}${yr === today.getFullYear() ? "calendar-pick-btn-today" : ""}`}
+                className={[
+                  "calendar-pick-btn",
+                  yr === viewYear && "calendar-pick-btn-selected",
+                  yr === today.getFullYear() && "calendar-pick-btn-today",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
                 key={yr}
                 onClick={() => {
                   setViewYear(yr);
@@ -530,19 +499,12 @@ export function CalendarPanel() {
           )}
         </div>
       )}
-      {showSearch && (
-        <JournalSearchPanel onClose={() => setShowSearch(false)} />
-      )}
-      {showReflection && (
-        <ReflectionPanel onClose={() => setShowReflection(false)} />
-      )}
+      <JournalSection defaultCollapsed id={SEARCH_SECTION} title="검색">
+        <JournalSearchPanel
+          onClose={() => setSectionCollapsed(SEARCH_SECTION, true)}
+        />
+      </JournalSection>
       <StatsPanel journalDates={journalDates} />
-      <MoodTrend30 moodMap={moodMap} />
-      <YearInPixels
-        journalDir={resolvedDir}
-        useHierarchy={journalUseHierarchy}
-        year={viewYear}
-      />
     </div>
   );
 }

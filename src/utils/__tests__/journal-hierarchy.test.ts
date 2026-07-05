@@ -120,7 +120,6 @@ describe("§56a Journal hidden entries filter", () => {
     it("includes .journal.json and assets", () => {
       expect(JOURNAL_HIDDEN_ENTRIES).toContain(".journal.json");
       expect(JOURNAL_HIDDEN_ENTRIES).toContain("assets");
-      expect(JOURNAL_HIDDEN_ENTRIES).toContain("prompts");
     });
   });
 
@@ -128,7 +127,6 @@ describe("§56a Journal hidden entries filter", () => {
     it("returns true for hidden entries", () => {
       expect(isJournalHiddenEntry(".journal.json")).toBe(true);
       expect(isJournalHiddenEntry("assets")).toBe(true);
-      expect(isJournalHiddenEntry("prompts")).toBe(true);
     });
 
     it("returns false for visible entries", () => {

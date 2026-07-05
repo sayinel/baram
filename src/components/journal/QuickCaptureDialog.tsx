@@ -2,7 +2,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { listDir, readFile, writeFile } from "../../ipc/invoke";
-import { ensureJournalFile } from "../../services/journal-file-service";
+import {
+  ensureJournalFile,
+  type JournalFileOptions,
+} from "../../services/journal-file-service";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
@@ -60,10 +63,7 @@ export function QuickCaptureDialog() {
         const { journalDirectory } = useSettingsStore.getState();
         if (!rootPath || !journalDirectory) return;
 
-        const tagScanDir =
-          journalDirectory.startsWith("/") || /^[A-Z]:\\/.test(journalDirectory)
-            ? journalDirectory
-            : `${rootPath}/${journalDirectory}`;
+        const tagScanDir = resolveTagScanRoot(rootPath, journalDirectory);
 
         const entries = await listDir(tagScanDir, true).catch(() => []);
         const mdFiles = entries
@@ -132,8 +132,7 @@ export function QuickCaptureDialog() {
         return;
       }
 
-      const date = new Date();
-      const result = await ensureJournalFile(date, {
+      const result = await resolveCaptureTarget({
         journalDirectory,
         journalFilenameFormat,
         journalTemplatePath,
@@ -381,4 +380,29 @@ function getCurrentTagQuery(value: string, cursorPos: number): null | string {
   const textBefore = value.slice(0, cursorPos);
   const match = textBefore.match(/#([\w가-힣]*)$/);
   return match ? match[1] : null;
+}
+
+/**
+ * Resolve which file a capture should be written into.
+ * Currently always today's journal file — injection point for a future
+ * Zettelkasten capture destination (P2).
+ */
+function resolveCaptureTarget(
+  options: JournalFileOptions,
+): ReturnType<typeof ensureJournalFile> {
+  return ensureJournalFile(new Date(), options);
+}
+
+/**
+ * Resolve the root directory to scan when building the quick-capture tag
+ * index. Currently always the journal directory — single decision point so
+ * a future Zettelkasten scan root can be swapped in (P2).
+ */
+function resolveTagScanRoot(
+  rootPath: string,
+  journalDirectory: string,
+): string {
+  return journalDirectory.startsWith("/") || /^[A-Z]:\\/.test(journalDirectory)
+    ? journalDirectory
+    : `${rootPath}/${journalDirectory}`;
 }

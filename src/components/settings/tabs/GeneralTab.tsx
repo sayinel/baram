@@ -477,20 +477,6 @@ export function GeneralTab() {
               </div>
             </SettingsRow>
           )}
-
-          <SettingsSectionHeader title={t("settings.general.journalAI")} />
-
-          <SettingsRow
-            description={t("settings.general.journalAIAutoSuggest.desc")}
-            label={t("settings.general.journalAIAutoSuggest")}
-          >
-            <ToggleSwitch
-              checked={useSettingsStore.getState().journalAIAutoSuggest}
-              onChange={(v) =>
-                useSettingsStore.getState().setJournalAIAutoSuggest(v)
-              }
-            />
-          </SettingsRow>
         </>
       )}
 
