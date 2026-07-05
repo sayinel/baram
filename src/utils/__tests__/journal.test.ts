@@ -139,23 +139,15 @@ describe("journal utilities", () => {
       expect(result).toContain("# February 27th (Friday), 2026");
     });
 
-    it("includes Diary and Notes sections", () => {
+    it("does not split into Diary/Notes sections", () => {
       const result = generateDefaultJournal(date);
-      expect(result).toContain("## Diary");
-      expect(result).toContain("## Notes");
+      expect(result).not.toContain("## Diary");
+      expect(result).not.toContain("## Notes");
     });
 
     it("does not include daily prompt blockquote", () => {
       const result = generateDefaultJournal(date);
       expect(result).not.toContain("> 💡");
-    });
-
-    it("has two empty lines after Diary heading", () => {
-      const result = generateDefaultJournal(date);
-      const diaryIdx = result.indexOf("## Diary");
-      const afterDiary = result.slice(diaryIdx + "## Diary".length);
-      // Should be \n\n\n (heading newline + 2 empty lines) before ## Notes
-      expect(afterDiary).toMatch(/^\n\n\n\n## Notes/);
     });
   });
 

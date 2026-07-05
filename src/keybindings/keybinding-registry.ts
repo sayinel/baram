@@ -269,13 +269,6 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
     customizable: true,
   },
   {
-    id: "journal.jumpToDiary",
-    label: "keybindings.journal.jumpToDiary",
-    category: "journal",
-    defaultKey: "Mod+Shift+Y",
-    customizable: true,
-  },
-  {
     id: "journal.jumpToCaptures",
     label: "keybindings.journal.jumpToCaptures",
     category: "journal",

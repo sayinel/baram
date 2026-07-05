@@ -36,6 +36,7 @@ import {
   buildNoteFromCapture,
   buildPromotedCaptureLink,
   parseCapturesFromMarkdown,
+  resolveNotesDir,
 } from "../utils/journal/journal-capture";
 import { logger } from "../utils/logger";
 import { showTableGridPicker } from "../utils/table-grid-picker";
@@ -433,7 +434,7 @@ export function useKeybindingActions({
             journalDirectory,
           );
           if (!resolvedJournalDir) return;
-          const notesDir = `${resolvedJournalDir}/notes`;
+          const notesDir = resolveNotesDir(resolvedJournalDir);
           const notePath = `${notesDir}/${filename}`;
 
           // Create notes dir and write note file
@@ -500,21 +501,6 @@ export function useKeybindingActions({
           logger.error("[JournalShortcut] Failed:", err);
         }
       })();
-    });
-
-    registerAction("journal.jumpToDiary", () => {
-      if (editor) {
-        const md = prosemirrorToMarkdown(editor.state.doc);
-        const lines = md.split("\n");
-        const diaryIdx = lines.findIndex((l) => /^## Diary/.test(l));
-        if (diaryIdx >= 0) {
-          const pos = mdLineToPmBlockStart(editor.state.doc, md, diaryIdx);
-          if (pos >= 0) {
-            editor.commands.focus();
-            editor.commands.setTextSelection(pos + 1);
-          }
-        }
-      }
     });
 
     registerAction("journal.jumpToCaptures", () => {

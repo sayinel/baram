@@ -165,7 +165,7 @@ date: 2026-02-28
     expect(extractDiarySection(content)).toBe("일기 내용만 있음.");
   });
 
-  it("returns empty string when no Diary section", () => {
+  it("falls back to the body (minus title) when there is no Diary section", () => {
     const content = `---
 date: 2026-02-28
 ---
@@ -173,7 +173,22 @@ date: 2026-02-28
 # Title
 
 그냥 내용.`;
-    expect(extractDiarySection(content)).toBe("");
+    expect(extractDiarySection(content)).toBe("그냥 내용.");
+  });
+
+  it("drops a legacy Captures section in the no-Diary fallback", () => {
+    const content = `---
+date: 2026-02-28
+---
+
+# Title
+
+일기 본문.
+
+## Captures
+
+- 캡처 항목`;
+    expect(extractDiarySection(content)).toBe("일기 본문.");
   });
 
   it("returns empty string for empty content", () => {

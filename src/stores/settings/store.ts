@@ -92,17 +92,9 @@ export const useSettingsStore = create<SettingsState>()(
         journalWeeklyTemplate: state.journalWeeklyTemplate,
         journalMonthlyTemplate: state.journalMonthlyTemplate,
         journalYearlyTemplate: state.journalYearlyTemplate,
-        journalMoodEnabled: state.journalMoodEnabled,
-        journalEnergyEnabled: state.journalEnergyEnabled,
         journalShowStreak: state.journalShowStreak,
         journalThemeId: state.journalThemeId,
         journalCustomThemes: state.journalCustomThemes,
-        journalPromptEnabled: state.journalPromptEnabled,
-        journalPromptCategory: state.journalPromptCategory,
-        journalPromptMode: state.journalPromptMode,
-        journalAIReflectionEnabled: state.journalAIReflectionEnabled,
-        journalAIAutoSuggest: state.journalAIAutoSuggest,
-        memoriesTab: state.memoriesTab,
         memoriesMode: state.memoriesMode,
         pandocPath: state.pandocPath,
         wordTemplatePath: state.wordTemplatePath,
@@ -114,7 +106,7 @@ export const useSettingsStore = create<SettingsState>()(
         locale: state.locale,
         keybindingOverrides: state.keybindingOverrides,
       }),
-      version: 12,
+      version: 13,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
 
@@ -192,8 +184,6 @@ export const useSettingsStore = create<SettingsState>()(
         if (version < 7) {
           if (state.journalMoodEnabled === undefined)
             state.journalMoodEnabled = true;
-          if (state.journalEnergyEnabled === undefined)
-            state.journalEnergyEnabled = true;
           if (state.journalShowStreak === undefined)
             state.journalShowStreak = true;
           if (state.journalCustomThemes === undefined)
@@ -206,8 +196,6 @@ export const useSettingsStore = create<SettingsState>()(
             state.journalPromptMode = "random";
           if (state.journalAIReflectionEnabled === undefined)
             state.journalAIReflectionEnabled = true;
-          if (state.journalAIAutoSuggest === undefined)
-            state.journalAIAutoSuggest = false;
           // Migrate old theme IDs to spec names
           const themeMap: Record<string, string> = {
             default: "classic-diary",
@@ -266,6 +254,20 @@ export const useSettingsStore = create<SettingsState>()(
         if (version < 12) {
           if (state.virtualizeLargeDocs === undefined)
             state.virtualizeLargeDocs = true;
+        }
+
+        // v12 → v13: §P1 journal slim-down — drop removed setting keys
+        // (Mood tracking, AI reflection cluster, daily-prompt, and the
+        // Memories panel Journal/Notes tab now that Notes moves to a
+        // separate Zettelkasten space).
+        // Data-preserving: only clears stale settings; journal files untouched.
+        if (version < 13) {
+          delete state.journalMoodEnabled;
+          delete state.journalAIReflectionEnabled;
+          delete state.journalPromptEnabled;
+          delete state.journalPromptCategory;
+          delete state.journalPromptMode;
+          delete state.memoriesTab;
         }
 
         return state;

@@ -1,4 +1,4 @@
-// §56f Journal Dynamic Code Block — renders journal-list / journal-mood / journal-photos
+// §56f Journal Dynamic Code Block — renders journal-list / journal-photos
 import { useCallback, useEffect, useState } from "react";
 
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -8,8 +8,7 @@ import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 
-export type JournalBlockLanguage =
-  "journal-list" | "journal-mood" | "journal-photos";
+export type JournalBlockLanguage = "journal-list" | "journal-photos";
 
 export interface JournalDynamicBlockProps {
   content: string; // raw code block content (YAML-like params)
@@ -25,6 +24,12 @@ interface JournalListEntry {
   date: string;
   filePath: string;
   preview: string;
+}
+
+interface PhotoEntry {
+  absolutePath: string;
+  date: string;
+  filename: string;
 }
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -43,6 +48,10 @@ export function parseRange(range: string): [string, string] | null {
   return m ? [m[1], m[2]] : null;
 }
 
+// ---------------------------------------------------------------------------
+// journal-list sub-component
+// ---------------------------------------------------------------------------
+
 /** Returns all YYYY-MM-DD dates in [start, end] inclusive */
 function datesInRange(start: string, end: string): string[] {
   const dates: string[] = [];
@@ -57,10 +66,6 @@ function datesInRange(start: string, end: string): string[] {
   }
   return dates;
 }
-
-// ---------------------------------------------------------------------------
-// journal-list sub-component
-// ---------------------------------------------------------------------------
 
 function formatMonthLabel(start: string, end: string): string {
   const s = new Date(start + "T00:00:00");
@@ -174,102 +179,8 @@ function JournalListBlock({ params }: { params: Record<string, string> }) {
 }
 
 // ---------------------------------------------------------------------------
-// journal-mood sub-component
-// ---------------------------------------------------------------------------
-
-const MOOD_LABELS: Record<string, string> = {
-  bright: "Bright",
-  warm: "Warm",
-  neutral: "Neutral",
-  calm: "Calm",
-  gloomy: "Gloomy",
-};
-
-interface PhotoEntry {
-  absolutePath: string;
-  date: string;
-  filename: string;
-}
-
-// ---------------------------------------------------------------------------
 // journal-photos sub-component
 // ---------------------------------------------------------------------------
-
-function JournalMoodBlock({ params }: { params: Record<string, string> }) {
-  const [distribution, setDistribution] = useState<Map<string, number>>(
-    new Map(),
-  );
-  const [loading, setLoading] = useState(true);
-  const rootPath = useFileStore((s) => s.rootPath);
-  const journalDirectory = useSettingsStore((s) => s.journalDirectory);
-
-  useEffect(() => {
-    if (!rootPath || !journalDirectory) {
-      setLoading(false);
-      return;
-    }
-    const range = params.range ? parseRange(params.range) : null;
-    if (!range) {
-      setLoading(false);
-      return;
-    }
-    const [start, end] = range;
-    const dates = datesInRange(start, end);
-
-    (async () => {
-      const counts = new Map<string, number>();
-      for (const date of dates) {
-        const [yyyy, mm] = date.split("-");
-        const filePath = `${rootPath}/${journalDirectory}/daily/${yyyy}/${mm}/${date}.md`;
-        try {
-          const content = await readFile(filePath);
-          // Parse frontmatter mood: value
-          const moodMatch = content.match(/^mood:\s*(\S+)/m);
-          if (moodMatch) {
-            const mood = moodMatch[1].toLowerCase().replace(/['"]/g, "");
-            counts.set(mood, (counts.get(mood) ?? 0) + 1);
-          }
-        } catch {
-          // No file for this date
-        }
-      }
-      setDistribution(counts);
-      setLoading(false);
-    })();
-  }, [rootPath, journalDirectory, params.range]);
-
-  if (loading)
-    return (
-      <div aria-live="polite" className="journal-block-loading">
-        Loading…
-      </div>
-    );
-  if (distribution.size === 0)
-    return <div className="journal-block-empty">(해당 기간 데이터 없음)</div>;
-
-  const total = Array.from(distribution.values()).reduce((a, b) => a + b, 0);
-
-  return (
-    <div className="journal-mood-summary">
-      {Array.from(distribution.entries())
-        .sort((a, b) => b[1] - a[1])
-        .map(([mood, count]) => (
-          <span
-            className={`journal-mood-chip journal-mood-chip-${mood}`}
-            key={mood}
-          >
-            {MOOD_LABELS[mood] ?? mood}: {count}일
-            {total > 0 && (
-              <span className="journal-mood-pct">
-                {" "}
-                ({Math.round((count / total) * 100)}%)
-              </span>
-            )}
-          </span>
-        ))}
-    </div>
-  );
-}
 
 function JournalPhotosBlock({ params }: { params: Record<string, string> }) {
   const [photos, setPhotos] = useState<PhotoEntry[]>([]);
@@ -380,7 +291,6 @@ function JournalPhotosBlock({ params }: { params: Record<string, string> }) {
 
 const BLOCK_ICONS: Record<JournalBlockLanguage, string> = {
   "journal-list": "List",
-  "journal-mood": "Mood",
   "journal-photos": "Photos",
 };
 
@@ -395,7 +305,7 @@ export function JournalDynamicBlock({
   const rangeLabel = range
     ? formatMonthLabel(range[0], range[1])
     : (params.range ?? "");
-  const headerTitle = `${BLOCK_ICONS[language]}: ${rangeLabel}`;
+  const headerTitle = `${BLOCK_ICONS[language] ?? language}: ${rangeLabel}`;
 
   return (
     <div className="journal-dynamic-block" contentEditable={false}>
@@ -411,7 +321,6 @@ export function JournalDynamicBlock({
       </div>
       <div className="journal-dynamic-block-body">
         {language === "journal-list" && <JournalListBlock params={params} />}
-        {language === "journal-mood" && <JournalMoodBlock params={params} />}
         {language === "journal-photos" && (
           <JournalPhotosBlock params={params} />
         )}
