@@ -21,15 +21,26 @@ export function extractDiarySection(content: string): string {
   if (!body) return "";
 
   const diaryMatch = body.match(/^## Diary\s*$/m);
-  if (!diaryMatch) return "";
+  if (diaryMatch) {
+    const diaryStart = diaryMatch.index! + diaryMatch[0].length;
+    const nextSectionMatch = body.slice(diaryStart).match(/^## /m);
+    const diaryContent = nextSectionMatch
+      ? body.slice(diaryStart, diaryStart + nextSectionMatch.index!)
+      : body.slice(diaryStart);
+    return diaryContent.trim();
+  }
 
-  const diaryStart = diaryMatch.index! + diaryMatch[0].length;
-  const nextSectionMatch = body.slice(diaryStart).match(/^## /m);
-  const diaryContent = nextSectionMatch
-    ? body.slice(diaryStart, diaryStart + nextSectionMatch.index!)
-    : body.slice(diaryStart);
-
-  return diaryContent.trim();
+  // Current template has no "## Diary" split: use the whole body, dropping a
+  // legacy "## Captures" block and the leading date title.
+  const capturesMatch = body.match(/^## Captures\s*$/m);
+  let text = body;
+  if (capturesMatch) {
+    const after = body.slice(capturesMatch.index! + capturesMatch[0].length);
+    const next = after.match(/^## /m);
+    const before = body.slice(0, capturesMatch.index!);
+    text = next ? before + after.slice(next.index!) : before;
+  }
+  return text.replace(/^#\s+[^\n]*\n?/, "").trim();
 }
 
 /** Extract image references from journal markdown content */

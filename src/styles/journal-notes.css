@@ -244,37 +244,6 @@
   border-radius: 10px;
 }
 
-/* Segmented pill tabs */
-.memories-tabs {
-  display: flex;
-  gap: 2px;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--color-border-default);
-}
-
-.memories-tabs-btn {
-  flex: 1;
-  padding: 5px 12px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  background: var(--color-bg-subtle);
-  border: none;
-  border-radius: 6px;
-  transition: color 0.15s;
-}
-
-.memories-tabs-btn:hover {
-  color: var(--color-text-primary);
-}
-
-.memories-tabs-btn-active {
-  color: #fff;
-  background: var(--color-accent-default);
-  box-shadow: 0 1px 3px rgb(0 0 0 / 12%);
-}
-
 .memories-content {
   flex: 1;
   padding: 12px 16px;

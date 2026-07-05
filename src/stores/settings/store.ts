@@ -95,7 +95,6 @@ export const useSettingsStore = create<SettingsState>()(
         journalShowStreak: state.journalShowStreak,
         journalThemeId: state.journalThemeId,
         journalCustomThemes: state.journalCustomThemes,
-        memoriesTab: state.memoriesTab,
         memoriesMode: state.memoriesMode,
         pandocPath: state.pandocPath,
         wordTemplatePath: state.wordTemplatePath,
@@ -258,7 +257,9 @@ export const useSettingsStore = create<SettingsState>()(
         }
 
         // v12 → v13: §P1 journal slim-down — drop removed setting keys
-        // (Mood tracking, AI reflection cluster, daily-prompt).
+        // (Mood tracking, AI reflection cluster, daily-prompt, and the
+        // Memories panel Journal/Notes tab now that Notes moves to a
+        // separate Zettelkasten space).
         // Data-preserving: only clears stale settings; journal files untouched.
         if (version < 13) {
           delete state.journalMoodEnabled;
@@ -266,6 +267,7 @@ export const useSettingsStore = create<SettingsState>()(
           delete state.journalPromptEnabled;
           delete state.journalPromptCategory;
           delete state.journalPromptMode;
+          delete state.memoriesTab;
         }
 
         return state;
