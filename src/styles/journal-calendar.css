@@ -19,24 +19,31 @@
 }
 
 .calendar-nav-btn {
-  padding: 2px 8px;
-  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-size: 16px;
   line-height: 1;
   color: var(--color-text-secondary);
   cursor: pointer;
   background: none;
-  border: 1px solid var(--color-border-default);
-  border-radius: 4px;
+  border: none;
+  border-radius: 7px;
+  transition:
+    color 0.12s,
+    background 0.12s;
 }
 
 .calendar-nav-btn:hover {
   color: var(--color-accent-default);
-  background: var(--color-bg-elevated);
-  border-color: var(--color-accent-default);
+  background: color-mix(in srgb, var(--color-accent-default) 15%, transparent);
 }
 
 .calendar-title {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--color-text-primary);
   cursor: pointer;
@@ -48,15 +55,15 @@
   color: var(--color-accent-default);
 }
 
+.calendar-title-year {
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
 .calendar-title-group {
   display: flex;
   gap: 5px;
   align-items: center;
-}
-
-.calendar-title-month:hover,
-.calendar-title-year:hover {
-  text-decoration: underline;
 }
 
 .calendar-picker {
@@ -169,19 +176,26 @@
   color: var(--color-text-primary);
   cursor: pointer;
   background: none;
-  border: none;
+  border: 1px solid var(--color-border-default);
   border-radius: 8px;
   transition:
     color 0.12s,
-    background 0.12s;
+    background 0.12s,
+    border-color 0.12s;
 }
 
 .calendar-cell:hover:not(.calendar-cell-empty) {
-  background: var(--color-bg-elevated);
+  background: color-mix(in srgb, var(--color-accent-default) 15%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--color-accent-default) 45%,
+    transparent
+  );
 }
 
 .calendar-cell-empty {
   cursor: default;
+  border-color: transparent;
 }
 
 /* Today: soft sky-blue tint, number keeps its normal color/size. */
@@ -190,6 +204,11 @@
     in srgb,
     var(--color-accent-default) 20%,
     var(--color-bg-default)
+  );
+  border-color: color-mix(
+    in srgb,
+    var(--color-accent-default) 45%,
+    transparent
   );
 }
 
