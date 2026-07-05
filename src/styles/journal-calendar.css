@@ -30,7 +30,9 @@
 }
 
 .calendar-nav-btn:hover {
+  color: var(--color-accent-default);
   background: var(--color-bg-elevated);
+  border-color: var(--color-accent-default);
 }
 
 .calendar-title {
@@ -48,7 +50,7 @@
 
 .calendar-title-group {
   display: flex;
-  gap: 0;
+  gap: 5px;
   align-items: center;
 }
 
@@ -99,12 +101,15 @@
 
 .calendar-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+
+  /* minmax(0, 1fr): equal columns that can shrink below content width so the
+     grid never overflows or blocks the sidebar from shrinking. */
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 2px;
 }
 
 .calendar-grid-with-weeks {
-  grid-template-columns: 24px repeat(7, 1fr);
+  grid-template-columns: 24px repeat(7, minmax(0, 1fr));
 }
 
 .calendar-week-header {
@@ -134,29 +139,44 @@
 }
 
 .calendar-day-name {
-  padding: 4px 0;
-  font-size: 11px;
+  padding: 2px 0 6px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--color-text-muted);
   text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .calendar-cell {
   position: relative;
   display: flex;
+  flex-direction: column;
+  gap: 2px;
   align-items: center;
   justify-content: center;
+  min-width: 0;
+
+  /* aspect-ratio scales cells in both dimensions with the sidebar width;
+     min-width:0 + minmax(0,1fr) columns (see .calendar-grid) let them shrink
+     back. Do NOT add min-height:0 — it collapses rows and overlaps numbers. */
   aspect-ratio: 1;
   padding: 0;
   font-size: 13px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
   color: var(--color-text-primary);
   cursor: pointer;
   background: none;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
+  transition:
+    color 0.12s,
+    background 0.12s;
 }
 
-.calendar-cell:hover {
+.calendar-cell:hover:not(.calendar-cell-empty) {
   background: var(--color-bg-elevated);
 }
 
@@ -164,26 +184,38 @@
   cursor: default;
 }
 
-.calendar-cell-today {
-  font-weight: 700;
-  outline: 2px solid var(--color-accent-default);
-  outline-offset: -2px;
+/* Today: soft sky-blue tint, number keeps its normal color/size. */
+.calendar-cell.calendar-cell-today {
+  background: color-mix(
+    in srgb,
+    var(--color-accent-default) 20%,
+    var(--color-bg-default)
+  );
 }
 
+.calendar-cell.calendar-cell-today:hover {
+  background: color-mix(
+    in srgb,
+    var(--color-accent-default) 30%,
+    var(--color-bg-default)
+  );
+}
+
+/* Journal day: bold number + a dot above it (same font size as other days). */
 .calendar-cell-has-journal {
-  font-weight: 600;
-  color: var(--color-accent-default);
+  font-weight: 700;
 }
 
+/* Reserved dot slot in every cell so all date numbers align; filled only for
+   days that have a journal entry. */
 .calendar-dot {
-  position: absolute;
-  bottom: 2px;
-  left: 50%;
   width: 4px;
   height: 4px;
-  background: var(--color-accent-default);
   border-radius: 50%;
-  transform: translateX(-50%);
+}
+
+.calendar-dot-filled {
+  background: var(--color-accent-default);
 }
 
 /* ============================================
@@ -392,4 +424,122 @@
 
 .calendar-search-btn-active {
   color: var(--color-accent-default);
+}
+
+/* ============================================
+   §56g Journal Stats (styled card, non-collapsible)
+   ============================================ */
+
+.journal-stats {
+  border-top: 1px solid var(--color-border-default);
+}
+
+.journal-stats-body {
+  padding: 10px 12px 12px;
+}
+
+.journal-stats-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.journal-stats-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.journal-stats-refresh {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+
+.journal-stats-refresh:hover:not(:disabled) {
+  color: var(--color-accent-default);
+  background: var(--color-bg-elevated);
+}
+
+.journal-stats-refresh:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.journal-stats-grid {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+}
+
+.journal-stats-row {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  padding: 7px 10px;
+  font-size: 12px;
+  color: var(--color-text-primary);
+}
+
+.journal-stats-row + .journal-stats-row {
+  border-top: 1px solid var(--color-border-default);
+}
+
+.journal-stats-icon {
+  flex-shrink: 0;
+  color: var(--color-accent-default);
+  opacity: 0.75;
+}
+
+.journal-stats-label {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.journal-stats-value {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary);
+}
+
+.journal-stats-value strong {
+  font-weight: 700;
+}
+
+.journal-stats-sep {
+  width: 1px;
+  height: 11px;
+  margin: 0 1px;
+  background: var(--color-border-default);
+}
+
+.journal-stats-pct {
+  padding: 1px 7px;
+  margin-left: auto;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+  background: var(--color-bg-elevated);
+  border-radius: 999px;
+}
+
+.journal-stats-dim {
+  color: var(--color-text-muted);
+  opacity: 0.7;
 }
