@@ -323,7 +323,7 @@ export function CalendarPanel() {
                 title="Select month"
               >
                 {MONTH_NAMES[viewMonth]}
-              </button>{" "}
+              </button>
               <button
                 className="calendar-title calendar-title-year"
                 onClick={() => setCalView("years")}
@@ -353,7 +353,12 @@ export function CalendarPanel() {
         </button>
         <button
           aria-label="Toggle journal search"
-          className={`calendar-nav-btn calendar-search-btn${showSearch ? "calendar-search-btn-active" : ""}`}
+          className={[
+            "calendar-nav-btn calendar-search-btn",
+            showSearch && "calendar-search-btn-active",
+          ]
+            .filter(Boolean)
+            .join(" ")}
           onClick={() => setShowSearch((v) => !v)}
           title="Search journal"
         >
@@ -362,7 +367,12 @@ export function CalendarPanel() {
       </div>
       {calView === "days" && (
         <div
-          className={`calendar-grid${journalWeeklyEnabled ? "calendar-grid-with-weeks" : ""}`}
+          className={[
+            "calendar-grid",
+            journalWeeklyEnabled && "calendar-grid-with-weeks",
+          ]
+            .filter(Boolean)
+            .join(" ")}
         >
           {journalWeeklyEnabled && (
             <div className="calendar-week-header">W</div>
@@ -406,13 +416,26 @@ export function CalendarPanel() {
                   const hasJournal = journalDates.has(dateStr);
                   return (
                     <button
-                      className={`calendar-cell${isToday ? "calendar-cell-today" : ""}${hasJournal ? "calendar-cell-has-journal" : ""}`}
+                      className={[
+                        "calendar-cell",
+                        isToday && "calendar-cell-today",
+                        hasJournal && "calendar-cell-has-journal",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
                       key={dateStr}
                       onClick={() => openOrCreateJournal(date)}
                       title={dateStr}
                     >
+                      <span
+                        className={[
+                          "calendar-dot",
+                          hasJournal && "calendar-dot-filled",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                      />
                       {date.getDate()}
-                      {hasJournal && <span className="calendar-dot" />}
                     </button>
                   );
                 })}
@@ -425,7 +448,15 @@ export function CalendarPanel() {
         <div className="calendar-picker calendar-months-picker">
           {MONTH_NAMES.map((name, idx) => (
             <button
-              className={`calendar-pick-btn${idx === viewMonth ? "calendar-pick-btn-selected" : ""}${idx === today.getMonth() && viewYear === today.getFullYear() ? "calendar-pick-btn-today" : ""}`}
+              className={[
+                "calendar-pick-btn",
+                idx === viewMonth && "calendar-pick-btn-selected",
+                idx === today.getMonth() &&
+                  viewYear === today.getFullYear() &&
+                  "calendar-pick-btn-today",
+              ]
+                .filter(Boolean)
+                .join(" ")}
               key={name}
               onClick={() => {
                 setViewMonth(idx);
@@ -442,7 +473,13 @@ export function CalendarPanel() {
           {Array.from({ length: 12 }, (_, i) => yearRangeStart + i).map(
             (yr) => (
               <button
-                className={`calendar-pick-btn${yr === viewYear ? "calendar-pick-btn-selected" : ""}${yr === today.getFullYear() ? "calendar-pick-btn-today" : ""}`}
+                className={[
+                  "calendar-pick-btn",
+                  yr === viewYear && "calendar-pick-btn-selected",
+                  yr === today.getFullYear() && "calendar-pick-btn-today",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
                 key={yr}
                 onClick={() => {
                   setViewYear(yr);

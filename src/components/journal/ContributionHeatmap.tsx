@@ -81,7 +81,15 @@ export function getWeekColumns(
   return result;
 }
 
-const DAY_LABEL_MAP: Record<number, string> = { 1: "Mon", 3: "Wed", 5: "Fri" };
+const DAY_LABEL_MAP: Record<number, string> = {
+  0: "Sun",
+  1: "Mon",
+  2: "Tue",
+  3: "Wed",
+  4: "Thu",
+  5: "Fri",
+  6: "Sat",
+};
 
 export function ContributionHeatmap({
   entries,
@@ -176,7 +184,7 @@ export function ContributionHeatmap({
 
           {/* Main grid: day labels + cells */}
           <div style={{ display: "flex", alignItems: "flex-start" }}>
-            {/* Day-of-week labels (Mon, Wed, Fri) */}
+            {/* Day-of-week labels (Sun–Sat) */}
             <div className="contribution-heatmap-day-labels">
               {[0, 1, 2, 3, 4, 5, 6].map((dow) => (
                 <div

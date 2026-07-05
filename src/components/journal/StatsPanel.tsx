@@ -35,7 +35,6 @@ export function StatsPanel({
   lastSavedDate,
   lastSavedContent,
 }: StatsPanelProps) {
-  const [collapsed, setCollapsed] = useState(false);
   const [heatmapEntries, setHeatmapEntries] = useState<HeatmapEntry[]>([]);
   const [cache, setCache] = useState<JournalStatsCache | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -282,19 +281,37 @@ export function StatsPanel({
 
   return (
     <div className="journal-stats">
-      <button
-        aria-expanded={!collapsed}
-        className="journal-stats-toggle"
-        onClick={() => setCollapsed((c) => !c)}
-        title={collapsed ? "Show stats" : "Hide stats"}
-      >
-        <span className="journal-stats-toggle-label">Stats</span>
-        <span className="journal-stats-toggle-arrow">
-          {collapsed ? "▶" : "▼"}
-        </span>
-      </button>
-      {!collapsed && (
-        <div className="journal-stats-body">
+      <ContributionHeatmap
+        entries={heatmapEntries}
+        onDateClick={handleDateClick}
+        year={currentYear}
+      />
+      <div className="journal-stats-body">
+        <div className="journal-stats-header">
+          <span className="journal-stats-title">Stats</span>
+          <button
+            aria-label="Refresh journal stats"
+            className="journal-stats-refresh"
+            disabled={refreshing}
+            onClick={handleRefresh}
+            title="Refresh stats"
+          >
+            <svg
+              fill="none"
+              height="12"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2.5"
+              viewBox="0 0 24 24"
+              width="12"
+            >
+              <polyline points="23 4 23 10 17 10" />
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+            </svg>
+          </button>
+        </div>
+        <div className="journal-stats-grid">
           <div className="journal-stats-row">
             <svg
               className="journal-stats-icon"
@@ -446,34 +463,8 @@ export function StatsPanel({
               )}
             </>
           )}
-          <button
-            aria-label="Refresh journal stats"
-            className="journal-stats-refresh"
-            disabled={refreshing}
-            onClick={handleRefresh}
-            title="Refresh stats"
-          >
-            <svg
-              fill="none"
-              height="12"
-              stroke="currentColor"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2.5"
-              viewBox="0 0 24 24"
-              width="12"
-            >
-              <polyline points="23 4 23 10 17 10" />
-              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-            </svg>
-          </button>
         </div>
-      )}
-      <ContributionHeatmap
-        entries={heatmapEntries}
-        onDateClick={handleDateClick}
-        year={currentYear}
-      />
+      </div>
     </div>
   );
 }
