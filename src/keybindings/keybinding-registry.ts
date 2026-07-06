@@ -289,6 +289,13 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
     defaultKey: "Mod+Shift+P",
     customizable: true,
   },
+  {
+    id: "zettelkasten.newFromSelection",
+    label: "keybindings.journal.newFromSelection",
+    category: "journal",
+    defaultKey: "Mod+Shift+E",
+    customizable: true,
+  },
 
   // ── formatting (Tiptap extension shortcuts — read-only) ───────────────────
   {

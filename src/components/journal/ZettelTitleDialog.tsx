@@ -15,8 +15,8 @@ export function ZettelTitleDialog() {
   const [title, setTitle] = useState("");
 
   useEffect(() => {
-    if (dialog.open) setTitle("");
-  }, [dialog.open]);
+    if (dialog.open) setTitle(dialog.initialTitle);
+  }, [dialog.open, dialog.initialTitle]);
 
   if (!dialog.open) return null;
 

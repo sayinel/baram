@@ -56,6 +56,26 @@ describe("createZettelNote", () => {
       entries.some((n) => n.path === res!.path && n.title === "Fresh Idea"),
     ).toBe(true);
   });
+
+  it("seeds the note body under the H1 and returns { path, id }", async () => {
+    const res = await createZettelNote("/z", "T", "body text");
+    expect(res).not.toBeNull();
+    expect(res).toEqual({
+      path: expect.stringMatching(/^\/z\/notes\/\d{12} T\.md$/) as string,
+      id: expect.stringMatching(/^\d{12}$/) as string,
+    });
+    const [, content] = writeFile.mock.calls.at(-1)!;
+    expect(content).toContain("# T");
+    expect(content).toContain("body text");
+    // body follows the H1, not the frontmatter
+    expect(content.indexOf("# T")).toBeLessThan(content.indexOf("body text"));
+  });
+
+  it("skips opening a tab when openTab=false", async () => {
+    openFileInTab.mockClear();
+    await createZettelNote("/z", "No Tab", "seed", false);
+    expect(openFileInTab).not.toHaveBeenCalled();
+  });
 });
 
 describe("captureFleeting", () => {

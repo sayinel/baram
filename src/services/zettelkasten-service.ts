@@ -38,22 +38,40 @@ export async function captureFleeting(
   return { path };
 }
 
-/** §94 Create a permanent atomic note and open it. */
+/**
+ * §94 Create a permanent atomic note and open it.
+ *
+ * `body`, when given, is appended under the note's `# {title}` heading (used
+ * by §94 new-note-from-selection to seed the note with the extracted text).
+ *
+ * `openTab` defaults to true (the normal "New Zettel Note" flow). Pass false
+ * when the caller is about to keep editing its OWN currently-active
+ * document/selection right after this call (e.g. new-from-selection) —
+ * opening a tab here would swap the shared editor's content out from under
+ * that caller before it can replace the selection.
+ */
 export async function createZettelNote(
   zettelDir: string,
   title: string,
-): Promise<null | { path: string }> {
+  body?: string,
+  openTab = true,
+): Promise<null | { id: string; path: string }> {
   const notesDir = `${zettelDir}/notes`;
   await createDir(notesDir);
   const existing = await collectExistingIds(zettelDir);
   const id = generateZettelId(existing);
   const created = localIsoMinute();
-  const { filename, content } = buildPermanentNote({ id, title, created });
+  const { filename, content: baseContent } = buildPermanentNote({
+    id,
+    title,
+    created,
+  });
+  const content = body ? `${baseContent}\n${body}\n` : baseContent;
   const path = `${notesDir}/${filename}`;
   await writeFile(path, content);
   useZettelIndexStore.getState().upsert({ id, path, title });
-  await openFileInTab(path, content);
-  return { path };
+  if (openTab) await openFileInTab(path, content);
+  return { id, path };
 }
 
 /**

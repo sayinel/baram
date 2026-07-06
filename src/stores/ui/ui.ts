@@ -60,7 +60,10 @@ interface UIState {
   ) => void;
   openExportDialog: (format?: ExportFormat) => void;
   openQuickCapture: (type?: "idea" | "link" | "note" | "quote") => void;
-  openZettelTitleDialog: (onSubmit: (title: string) => void) => void;
+  openZettelTitleDialog: (
+    onSubmit: (title: string) => void,
+    initialTitle?: string,
+  ) => void;
   pendingApplyContent: null | string;
   pendingSearchHighlight: null | string;
   quickCaptureOpen: boolean;
@@ -100,6 +103,8 @@ interface UIState {
   triggerContentReload: (cursorEnd?: boolean) => void;
   /** §94: Inline title-input dialog (WKWebView has no window.prompt) */
   zettelTitleDialog: {
+    /** Prefill text (e.g. §94 new-from-selection's derived title) */
+    initialTitle: string;
     onSubmit: ((title: string) => void) | null;
     open: boolean;
   };
@@ -128,7 +133,7 @@ export const useUIStore = create<UIState>((set) => ({
   pendingSearchHighlight: null,
   contentReloadVersion: 0,
   contentReloadCursorEnd: false,
-  zettelTitleDialog: { open: false, onSubmit: null },
+  zettelTitleDialog: { open: false, onSubmit: null, initialTitle: "" },
 
   openConflictModal: (filePath, externalMtime, base) =>
     set({ conflictModal: { base, externalMtime, filePath } }),
@@ -189,11 +194,19 @@ export const useUIStore = create<UIState>((set) => ({
   openQuickCapture: (type) =>
     set({ quickCaptureOpen: true, quickCaptureType: type ?? "note" }),
 
-  openZettelTitleDialog: (onSubmit) =>
-    set({ zettelTitleDialog: { open: true, onSubmit } }),
+  openZettelTitleDialog: (onSubmit, initialTitle) =>
+    set({
+      zettelTitleDialog: {
+        open: true,
+        onSubmit,
+        initialTitle: initialTitle ?? "",
+      },
+    }),
 
   closeZettelTitleDialog: () =>
-    set({ zettelTitleDialog: { open: false, onSubmit: null } }),
+    set({
+      zettelTitleDialog: { open: false, onSubmit: null, initialTitle: "" },
+    }),
 
   setPendingApplyContent: (pendingApplyContent) => set({ pendingApplyContent }),
 
