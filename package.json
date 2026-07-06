@@ -125,7 +125,7 @@
     "jsdom": "29.1.1",
     "knip": "^6.0.2",
     "lint-staged": "^17.0.8",
-    "prettier": "^3.9.1",
+    "prettier": "^3.9.4",
     "prettier-plugin-tailwindcss": "^0.8.0",
     "style-dictionary": "^5.4.4",
     "stylelint": "^17.14.0",
@@ -133,7 +133,7 @@
     "stylelint-config-standard": "^40.0.0",
     "tsx": "^4.22.4",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.62.0",
+    "typescript-eslint": "^8.62.1",
     "vite": "^8.0.16",
     "vitest": "^4.1.9"
   }
