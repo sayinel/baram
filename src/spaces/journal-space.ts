@@ -4,6 +4,7 @@ import {
   ensureJournalFile,
   openFileInTab,
 } from "../services/journal-file-service";
+import { useContextStore } from "../stores/context/context";
 import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
 import { resolveJournalDir } from "../utils/journal/journal";
@@ -38,5 +39,27 @@ export const journalSpace: SpaceDefinition = {
     });
     if (result) await openFileInTab(result.path, result.content);
     return result;
+  },
+  startup: async () => {
+    const existingJournal = useContextStore.getState().journalContext();
+    if (!existingJournal) return;
+    const { journalEnabled, journalStartupBehavior, journalDirectory } =
+      useSettingsStore.getState();
+    if (
+      !journalEnabled ||
+      journalStartupBehavior !== "openJournal" ||
+      !journalDirectory
+    )
+      return;
+    const resolvedDir = resolveJournalDir(
+      useFileStore.getState().rootPath ?? "",
+      journalDirectory,
+    );
+    if (!resolvedDir) return;
+    try {
+      await useContextStore.getState().ensureJournalContext(resolvedDir);
+    } catch {
+      /* non-fatal */
+    }
   },
 };
