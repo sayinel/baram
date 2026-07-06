@@ -405,6 +405,7 @@
   "keybindings.journal.newNote": "새 제텔 노트",
   "keybindings.journal.promote": "영구 노트로 승격",
   "keybindings.journal.newFromSelection": "선택 영역으로 새 노트 만들기",
+  "keybindings.journal.newMoc": "새 MOC",
   "keybindings.fmt.bold": "굵게",
   "keybindings.fmt.italic": "기울임",
   "keybindings.fmt.underline": "밑줄",

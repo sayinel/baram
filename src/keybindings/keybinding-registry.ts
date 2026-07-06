@@ -296,6 +296,16 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
     defaultKey: "Mod+Shift+E",
     customizable: true,
   },
+  {
+    // §97 basic MOC. Category is "journal" — matches the other zettel
+    // keybindings above; Task 5 formalizes a dedicated "zettelkasten"
+    // category across all of these.
+    id: "zettelkasten.newMoc",
+    label: "keybindings.journal.newMoc",
+    category: "journal",
+    defaultKey: "Mod+Shift+C",
+    customizable: true,
+  },
 
   // ── formatting (Tiptap extension shortcuts — read-only) ───────────────────
   {

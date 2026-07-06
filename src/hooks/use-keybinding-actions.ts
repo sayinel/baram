@@ -22,6 +22,7 @@ import {
   openFileInTab,
 } from "../services/journal-file-service";
 import {
+  createMoc,
   createZettelNote,
   promoteFleeting,
 } from "../services/zettelkasten-service";
@@ -498,6 +499,24 @@ export function useKeybindingActions({
             logger.error("[Zettel] newFromSelection failed:", err),
           );
       }, initialTitle);
+    });
+
+    // §97 New MOC (Map of Content) — a #moc-tagged index note. Discovery of
+    // MOCs reuses the existing tag search; no dedicated sidebar panel here.
+    registerAction("zettelkasten.newMoc", () => {
+      const { zettelkastenEnabled, zettelkastenDirectory } =
+        useSettingsStore.getState();
+      const { rootPath } = useFileStore.getState();
+      const dir = resolveZettelDir(rootPath, zettelkastenDirectory);
+      if (!zettelkastenEnabled || !dir) {
+        logger.warn("[Zettel] newMoc: space not enabled/configured");
+        return;
+      }
+      useUIStore.getState().openZettelTitleDialog((title) => {
+        createMoc(dir, title).catch((err) =>
+          logger.error("[Zettel] newMoc failed:", err),
+        );
+      });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- setFindReplaceOpen/setFindReplaceMode are stable store actions
   }, [

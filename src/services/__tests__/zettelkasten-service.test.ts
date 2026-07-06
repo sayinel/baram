@@ -24,7 +24,11 @@ const { openFileInTab } = vi.hoisted(() => ({
 vi.mock("../../services/journal-file-service", () => ({ openFileInTab }));
 
 import { useZettelIndexStore } from "../../stores/zettelkasten/zettel-index";
-import { createZettelNote, promoteFleeting } from "../zettelkasten-service";
+import {
+  createMoc,
+  createZettelNote,
+  promoteFleeting,
+} from "../zettelkasten-service";
 
 describe("createZettelNote", () => {
   it("writes notes/{id title}.md and opens it", async () => {
@@ -75,6 +79,39 @@ describe("createZettelNote", () => {
     openFileInTab.mockClear();
     await createZettelNote("/z", "No Tab", "seed", false);
     expect(openFileInTab).not.toHaveBeenCalled();
+  });
+});
+
+describe("createMoc", () => {
+  it("writes a #moc-tagged note under notes/{id title}.md and returns { path, id }", async () => {
+    const res = await createMoc("/z", "Index");
+    expect(res).not.toBeNull();
+    expect(createDir).toHaveBeenCalledWith("/z/notes");
+    const [path, content] = writeFile.mock.calls.at(-1)!;
+    expect(path).toBe(res!.path);
+    expect(path).toMatch(/^\/z\/notes\/\d{12} Index\.md$/);
+    expect(content).toContain("# Index");
+    expect(content).toContain("#moc");
+    expect(content).toContain("## 관련 노트");
+    expect(res).toEqual({
+      path: expect.stringMatching(/^\/z\/notes\/\d{12} Index\.md$/) as string,
+      id: expect.stringMatching(/^\d{12}$/) as string,
+    });
+  });
+
+  it("upserts the new MOC note into the zettel index", async () => {
+    useZettelIndexStore.getState().clear();
+    const res = await createMoc("/z", "MOC Idea");
+    const entries = Object.values(useZettelIndexStore.getState().byId);
+    expect(
+      entries.some((n) => n.path === res!.path && n.title === "MOC Idea"),
+    ).toBe(true);
+  });
+
+  it("opens the created MOC note in a tab", async () => {
+    openFileInTab.mockClear();
+    const res = await createMoc("/z", "Opened MOC");
+    expect(openFileInTab).toHaveBeenCalledWith(res!.path, expect.any(String));
   });
 });
 
