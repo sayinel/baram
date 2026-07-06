@@ -391,6 +391,7 @@
   "keybindings.journal.jumpToCaptures": "캡처로 이동",
   "keybindings.journal.memories": "추억 패널",
   "keybindings.journal.photoGallery": "사진 갤러리",
+  "keybindings.journal.newNote": "새 제텔 노트",
   "keybindings.fmt.bold": "굵게",
   "keybindings.fmt.italic": "기울임",
   "keybindings.fmt.underline": "밑줄",
