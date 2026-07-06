@@ -77,6 +77,25 @@ pub(crate) fn make_relative_path(source_dir: &str, target_path: &str) -> String 
     result
 }
 
+/// Extract the leading timestamp-id run (12–14 digits) from a filename stem.
+/// The id is the run of leading ASCII digits before the first space (or end),
+/// accepted only when its length is 12–14.
+pub(crate) fn extract_id_from_stem(stem: &str) -> Option<String> {
+    let head = stem.split(' ').next().unwrap_or(stem);
+    if head.len() >= 12 && head.len() <= 14 && head.bytes().all(|b| b.is_ascii_digit()) {
+        Some(head.to_string())
+    } else {
+        None
+    }
+}
+
+/// True iff the whole normalized target is a bare 12–14 digit id (e.g. `[[202607051530]]`).
+pub(crate) fn is_id_target(target_normalized: &str) -> bool {
+    target_normalized.len() >= 12
+        && target_normalized.len() <= 14
+        && target_normalized.bytes().all(|b| b.is_ascii_digit())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -128,5 +147,33 @@ mod tests {
             make_relative_path("/vault", "/vault/notes/ml/prompt"),
             "./notes/ml/prompt"
         );
+    }
+
+    #[test]
+    fn test_extract_id_from_stem() {
+        assert_eq!(
+            extract_id_from_stem("202607051530 원자적 노트"),
+            Some("202607051530".to_string())
+        );
+        assert_eq!(
+            extract_id_from_stem("202607051530"),
+            Some("202607051530".to_string())
+        );
+        assert_eq!(
+            extract_id_from_stem("20260705153012 note"),
+            Some("20260705153012".to_string())
+        );
+        assert_eq!(extract_id_from_stem("architecture"), None);
+        assert_eq!(extract_id_from_stem("2026 draft"), None); // too short
+        assert_eq!(extract_id_from_stem(""), None);
+    }
+
+    #[test]
+    fn test_is_id_target() {
+        assert!(is_id_target("202607051530"));
+        assert!(is_id_target("20260705153012"));
+        assert!(!is_id_target("202607051530 원자적 노트")); // has trailing text
+        assert!(!is_id_target("architecture"));
+        assert!(!is_id_target("2026")); // too short
     }
 }
