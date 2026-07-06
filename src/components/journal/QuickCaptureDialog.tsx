@@ -1,24 +1,19 @@
 // §56l Quick Capture Dialog — Cmd+Shift+N
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { listDir, readFile, writeFile } from "../../ipc/invoke";
-import {
-  ensureJournalFile,
-  type JournalFileOptions,
-} from "../../services/journal-file-service";
-import { useEditorStore } from "../../stores/editor/editor";
+import { listDir, readFile } from "../../ipc/invoke";
+import { captureFleeting } from "../../services/zettelkasten-service";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
 import {
   CAPTURE_ICONS,
   CAPTURE_TYPES,
-  type CaptureItem,
   type CaptureType,
-  insertCaptureIntoContent,
 } from "../../utils/journal/journal-capture";
 import { buildTagIndex, filterTags } from "../../utils/journal/journal-tags";
 import { logger } from "../../utils/logger";
+import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
 import { TagSuggest } from "./TagSuggest";
 
 export function QuickCaptureDialog() {
@@ -99,63 +94,34 @@ export function QuickCaptureDialog() {
       return;
     }
 
-    const item: CaptureItem = {
-      type: captureType,
-      ...(title.trim() ? { title: title.trim() } : {}),
-      ...(body.trim() ? { body: body.trim() } : {}),
-      ...(url.trim() && captureType === "link" ? { url: url.trim() } : {}),
-      ...(tags.trim()
-        ? {
-            tags: tags
-              .split(/\s+/)
-              .map((t) => t.replace(/^#/, ""))
-              .filter(Boolean),
-          }
-        : {}),
-    };
-
     try {
+      const { zettelkastenEnabled, zettelkastenDirectory } =
+        useSettingsStore.getState();
       const { rootPath } = useFileStore.getState();
-      const {
-        journalDirectory,
-        journalFilenameFormat,
-        journalTemplatePath,
-        journalUseHierarchy,
-      } = useSettingsStore.getState();
-
-      if (!rootPath) {
-        setSaveError("프로젝트 폴더를 먼저 열어주세요.");
-        return;
-      }
-      if (!journalDirectory) {
-        setSaveError("설정에서 저널 디렉토리를 지정해주세요.");
+      const dir = resolveZettelDir(rootPath, zettelkastenDirectory);
+      if (!zettelkastenEnabled || !dir) {
+        setSaveError("설정에서 Zettelkasten 공간을 먼저 지정해주세요.");
         return;
       }
 
-      const result = await resolveCaptureTarget({
-        journalDirectory,
-        journalFilenameFormat,
-        journalTemplatePath,
-        journalUseHierarchy,
-        rootPath,
-      });
+      // Compose the fleeting body from the dialog fields
+      const bodyLines: string[] = [];
+      if (title) bodyLines.push(`# ${title}`, "");
+      if (body) bodyLines.push(body, "");
+      if (url) bodyLines.push(`Source: ${url}`, "");
+      if (tags)
+        bodyLines.push(
+          tags
+            .split(/\s+/)
+            .filter(Boolean)
+            .map((t) => (t.startsWith("#") ? t : `#${t}`))
+            .join(" "),
+        );
+
+      const result = await captureFleeting(dir, bodyLines.join("\n").trim());
       if (!result) {
-        setSaveError("저널 파일 경로를 확인할 수 없습니다.");
+        setSaveError("Zettelkasten inbox에 저장하지 못했습니다.");
         return;
-      }
-      const { path: journalPath, content } = result;
-
-      // Insert capture and save
-      const updated = insertCaptureIntoContent(content, item);
-      await writeFile(journalPath, updated);
-
-      // Update file-store cache + reload editor if journal is open
-      useFileStore.getState().setFileContent(journalPath, updated);
-      const activeTab = useEditorStore
-        .getState()
-        .tabs.find((t) => t.id === useEditorStore.getState().activeTabId);
-      if (activeTab?.filePath === journalPath) {
-        useUIStore.getState().triggerContentReload(true);
       }
 
       toggleQuickCapture();
@@ -165,7 +131,7 @@ export function QuickCaptureDialog() {
         `저장 실패: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-  }, [captureType, title, body, url, tags, toggleQuickCapture]);
+  }, [title, body, url, tags, toggleQuickCapture]);
 
   // Handle tag input changes — detect #prefix for autocomplete
   const handleTagsChange = useCallback(
@@ -380,17 +346,6 @@ function getCurrentTagQuery(value: string, cursorPos: number): null | string {
   const textBefore = value.slice(0, cursorPos);
   const match = textBefore.match(/#([\w가-힣]*)$/);
   return match ? match[1] : null;
-}
-
-/**
- * Resolve which file a capture should be written into.
- * Currently always today's journal file — injection point for a future
- * Zettelkasten capture destination (P2).
- */
-function resolveCaptureTarget(
-  options: JournalFileOptions,
-): ReturnType<typeof ensureJournalFile> {
-  return ensureJournalFile(new Date(), options);
 }
 
 /**
