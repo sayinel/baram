@@ -33,10 +33,13 @@ import { useFileStore } from "../stores/file/file";
 import { useWorkspaceStore } from "../stores/file/workspace";
 import { useSettingsStore } from "../stores/settings/store";
 import { useUIStore } from "../stores/ui/ui";
-import { getSelectedText } from "../utils/ai-commands";
 import { isDateString } from "../utils/journal/journal";
 import { logger } from "../utils/logger";
 import { showTableGridPicker } from "../utils/table-grid-picker";
+import {
+  firstNonEmptyLine,
+  getSelectionMarkdown,
+} from "../utils/zettelkasten/selection-markdown";
 import { resolveZettelDir } from "../utils/zettelkasten/zettelkasten";
 
 interface UseGlobalKeyboardParams {
@@ -473,14 +476,14 @@ export function useKeybindingActions({
         return;
       }
       const activeEditor = editor;
-      const selectionText = getSelectedText(activeEditor);
+      // §95 Use block-separated text (not the shared getSelectedText) so a
+      // multi-paragraph selection keeps its paragraph breaks in the note body.
+      const selectionText = getSelectionMarkdown(activeEditor);
       if (!selectionText.trim()) {
         logger.warn("[Zettel] newFromSelection: selection is empty");
         return;
       }
-      const initialTitle = (selectionText.split("\n")[0] ?? "")
-        .trim()
-        .slice(0, 60);
+      const initialTitle = firstNonEmptyLine(selectionText).slice(0, 60);
       useUIStore.getState().openZettelTitleDialog((title) => {
         // openTab=false: stay on the current document — this note's own
         // selection is about to be replaced below, so the shared editor

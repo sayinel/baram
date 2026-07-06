@@ -1,6 +1,7 @@
 // §31 wikilink autocomplete — search/filter logic tests
 import { describe, expect, it } from "vitest";
 
+import { hasExactMatch } from "../plugins/wikilink-suggest";
 import {
   fileNameWithoutExtension,
   filterFiles,
@@ -84,6 +85,48 @@ describe("filterFiles", () => {
   it("limits results", () => {
     const result = filterFiles(testFiles, "", 3);
     expect(result).toHaveLength(3);
+  });
+});
+
+describe("§95 hasExactMatch — zettel title exact-match Create suppression", () => {
+  it("matches regular (non-zettel) files by target, unchanged behavior", () => {
+    expect(hasExactMatch(testFiles, "roadmap")).toBe(true);
+    expect(hasExactMatch(testFiles, "nonexistent")).toBe(false);
+  });
+
+  it("is case-insensitive for target matches", () => {
+    expect(hasExactMatch(testFiles, "ROADMAP")).toBe(true);
+  });
+
+  it("suppresses Create for a zettel note when the query matches its title (searchText), not the id", () => {
+    const zettelFiles: WikilinkSuggestionItem[] = [
+      {
+        id: "0",
+        target: "202607051530",
+        label: "원자적 노트",
+        path: "/vault/notes/202607051530 원자적 노트.md",
+        searchText: "원자적 노트",
+      },
+    ];
+
+    expect(hasExactMatch(zettelFiles, "원자적 노트")).toBe(true);
+  });
+
+  it("does not treat the raw zettel id as an exact title match", () => {
+    const zettelFiles: WikilinkSuggestionItem[] = [
+      {
+        id: "0",
+        target: "202607051530",
+        label: "원자적 노트",
+        path: "/vault/notes/202607051530 원자적 노트.md",
+        searchText: "원자적 노트",
+      },
+    ];
+
+    // Before the fix this compared against `target` (the id) and would
+    // incorrectly return false for the title query, showing a redundant
+    // Create "원자적 노트" item alongside the existing note.
+    expect(hasExactMatch(zettelFiles, "202607051530")).toBe(false);
   });
 });
 
