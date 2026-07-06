@@ -194,24 +194,31 @@ impl LinkIndex {
 
     /// Get backlinks for a given file path
     pub fn get_backlinks(&self, file_path: &str) -> Vec<BacklinkResult> {
-        let normalized = normalize_file_path(file_path);
+        let stem = normalize_file_path(file_path);
+        let mut keys = vec![stem.clone()];
+        if let Some(id) = extract_id_from_stem(&stem) {
+            keys.push(id);
+        }
 
-        self.incoming
-            .get(&normalized)
-            .map(|entries| {
-                entries
-                    .iter()
-                    .map(|e| BacklinkResult {
-                        source_path: e.source_path.clone(),
-                        target_path: file_path.to_string(),
-                        context: e.context.clone(),
-                        line: e.line,
-                        link_type: e.link_type.clone(),
-                        block_id: e.block_id.clone(),
-                    })
-                    .collect()
-            })
-            .unwrap_or_default()
+        let mut seen = std::collections::HashSet::new();
+        let mut results = Vec::new();
+        for key in keys {
+            if let Some(entries) = self.incoming.get(&key) {
+                for e in entries {
+                    if seen.insert((e.source_path.clone(), e.line)) {
+                        results.push(BacklinkResult {
+                            source_path: e.source_path.clone(),
+                            target_path: file_path.to_string(),
+                            context: e.context.clone(),
+                            line: e.line,
+                            link_type: e.link_type.clone(),
+                            block_id: e.block_id.clone(),
+                        });
+                    }
+                }
+            }
+        }
+        results
     }
 
     /// Register a file path in file_map and relative_map for target resolution
@@ -636,6 +643,25 @@ mod tests {
         assert_eq!(
             index.resolve_target_from_map("architecture"),
             Some("/z/architecture.md".to_string())
+        );
+    }
+
+    #[test]
+    fn test_backlinks_by_id() {
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/z".to_string());
+        index.register_file_path("/z/notes/202607051530 원자적 노트.md", "/z");
+        index.register_file_path("/z/notes/202607051600 다른 노트.md", "/z");
+        // "다른 노트" links to the first note via [[202607051530]]
+        index.update_file_from_content(
+            "/z/notes/202607051600 다른 노트.md",
+            "본문 [[202607051530]] 참조",
+        );
+        let backlinks = index.get_backlinks("/z/notes/202607051530 원자적 노트.md");
+        assert_eq!(backlinks.len(), 1);
+        assert_eq!(
+            backlinks[0].source_path,
+            "/z/notes/202607051600 다른 노트.md"
         );
     }
 
