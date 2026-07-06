@@ -26,3 +26,17 @@ describe("createZettelNote", () => {
     expect(openFileInTab).toHaveBeenCalledWith(res!.path, expect.any(String));
   });
 });
+
+describe("captureFleeting", () => {
+  it("writes inbox/{id}.md and does not open a tab", async () => {
+    openFileInTab.mockClear();
+    const { captureFleeting } = await import("../zettelkasten-service");
+    const res = await captureFleeting("/z", "quick thought");
+    expect(createDir).toHaveBeenCalledWith("/z/inbox");
+    const [path, content] = writeFile.mock.calls.at(-1)!;
+    expect(path).toMatch(/^\/z\/inbox\/\d{12}\.md$/);
+    expect(content).toContain("quick thought");
+    expect(openFileInTab).not.toHaveBeenCalled();
+    expect(res).not.toBeNull();
+  });
+});

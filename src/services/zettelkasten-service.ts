@@ -1,8 +1,30 @@
 // §94 Zettelkasten service — create a permanent note and open it
 import { createDir, listDir, writeFile } from "../ipc/invoke";
 import { generateZettelId } from "../utils/zettelkasten/zettel-id";
-import { buildPermanentNote } from "../utils/zettelkasten/zettel-note";
+import {
+  buildFleetingNote,
+  buildPermanentNote,
+} from "../utils/zettelkasten/zettel-note";
 import { openFileInTab } from "./journal-file-service";
+
+/**
+ * §99 Write a fleeting note into inbox/ from Quick Capture. Does NOT open a
+ * tab — fleeting notes accumulate silently until promoted.
+ */
+export async function captureFleeting(
+  zettelDir: string,
+  body: string,
+): Promise<null | { path: string }> {
+  const inboxDir = `${zettelDir}/inbox`;
+  await createDir(inboxDir);
+  const existing = await collectExistingIds(zettelDir);
+  const id = generateZettelId(existing);
+  const created = new Date().toISOString().slice(0, 16);
+  const { filename, content } = buildFleetingNote({ id, body, created });
+  const path = `${inboxDir}/${filename}`;
+  await writeFile(path, content);
+  return { path };
+}
 
 /** §94 Create a permanent atomic note and open it. */
 export async function createZettelNote(
