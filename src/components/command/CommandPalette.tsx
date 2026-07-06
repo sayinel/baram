@@ -606,6 +606,12 @@ function buildCommands(
       action: () => useWorkspaceStore.getState().applyPreset("journal"),
     },
     {
+      id: "space.zettelkasten",
+      label: "Open Zettelkasten",
+      category: "Workspace",
+      action: () => useWorkspaceStore.getState().applyPreset("zettelkasten"),
+    },
+    {
       id: "journal:open-today",
       label: "Open Today's Journal",
       category: "Journal",

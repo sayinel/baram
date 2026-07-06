@@ -5,6 +5,10 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { getSpace } from "../../spaces";
 import { resolveJournalDir } from "../../utils/journal/journal";
 import { logger } from "../../utils/logger";
+import {
+  ensureZettelkastenScaffold,
+  resolveZettelDir,
+} from "../../utils/zettelkasten/zettelkasten";
 import { useContextStore } from "../context/context";
 import { useSettingsStore } from "../settings/store";
 import { tauriStorage } from "../system/tauri-storage";
@@ -53,6 +57,18 @@ export const BUILTIN_PRESETS: WorkspacePreset[] = [
       sidebarPanel: "calendar",
       rightPanelOpen: true,
       rightPanelMode: "memories",
+    },
+  },
+  {
+    id: "zettelkasten",
+    name: "Zettelkasten",
+    description: "Open the Zettelkasten space (notes + inbox + backlinks).",
+    builtIn: true,
+    layout: getSpace("zettelkasten")?.layout ?? {
+      sidebarOpen: true,
+      sidebarPanel: "backlinks",
+      rightPanelOpen: false,
+      rightPanelMode: "none",
     },
   },
   {
@@ -141,6 +157,27 @@ export const useWorkspaceStore = create<WorkspaceState>()(
                 // File tree switch handled by contextStore subscription in file.ts
               } catch (err) {
                 logger.error("[Workspace] Failed to open journal:", err);
+              }
+            })();
+          }
+        }
+
+        // §93 Zettelkasten preset — activate context + ensure scaffold folders
+        if (id === "zettelkasten") {
+          const { zettelkastenEnabled, zettelkastenDirectory } =
+            useSettingsStore.getState();
+          const { rootPath } = useFileStore.getState();
+          const resolvedDir = resolveZettelDir(rootPath, zettelkastenDirectory);
+          if (zettelkastenEnabled && resolvedDir) {
+            (async () => {
+              try {
+                await ensureZettelkastenScaffold(resolvedDir);
+                await useContextStore
+                  .getState()
+                  .ensureSpaceContext("zettelkasten", resolvedDir);
+                await getSpace("zettelkasten")?.startup?.();
+              } catch (err) {
+                logger.error("[Workspace] Failed to open zettelkasten:", err);
               }
             })();
           }
