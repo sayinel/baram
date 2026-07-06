@@ -40,6 +40,7 @@ interface UIState {
   /** §Phase5: Close the conflict modal (without resolution — used internally) */
   closeConflictModal: () => void;
   closeExportDialog: () => void;
+  closeZettelTitleDialog: () => void;
   commandPaletteOpen: boolean;
   /** §Phase5: External file change conflict modal state (null = closed) */
   conflictModal: ConflictModalState | null;
@@ -59,6 +60,7 @@ interface UIState {
   ) => void;
   openExportDialog: (format?: ExportFormat) => void;
   openQuickCapture: (type?: "idea" | "link" | "note" | "quote") => void;
+  openZettelTitleDialog: (onSubmit: (title: string) => void) => void;
   pendingApplyContent: null | string;
   pendingSearchHighlight: null | string;
   quickCaptureOpen: boolean;
@@ -96,6 +98,11 @@ interface UIState {
   toggleSkillTestDialog: () => void;
   toggleSmartTemplateDialog: () => void;
   triggerContentReload: (cursorEnd?: boolean) => void;
+  /** §94: Inline title-input dialog (WKWebView has no window.prompt) */
+  zettelTitleDialog: {
+    onSubmit: ((title: string) => void) | null;
+    open: boolean;
+  };
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -121,6 +128,7 @@ export const useUIStore = create<UIState>((set) => ({
   pendingSearchHighlight: null,
   contentReloadVersion: 0,
   contentReloadCursorEnd: false,
+  zettelTitleDialog: { open: false, onSubmit: null },
 
   openConflictModal: (filePath, externalMtime, base) =>
     set({ conflictModal: { base, externalMtime, filePath } }),
@@ -180,6 +188,12 @@ export const useUIStore = create<UIState>((set) => ({
 
   openQuickCapture: (type) =>
     set({ quickCaptureOpen: true, quickCaptureType: type ?? "note" }),
+
+  openZettelTitleDialog: (onSubmit) =>
+    set({ zettelTitleDialog: { open: true, onSubmit } }),
+
+  closeZettelTitleDialog: () =>
+    set({ zettelTitleDialog: { open: false, onSubmit: null } }),
 
   setPendingApplyContent: (pendingApplyContent) => set({ pendingApplyContent }),
 
