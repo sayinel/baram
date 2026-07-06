@@ -410,6 +410,7 @@
   "keybindings.journal.newNote": "New Zettel Note",
   "keybindings.journal.promote": "Promote to Permanent Note",
   "keybindings.journal.newFromSelection": "New Note from Selection",
+  "keybindings.journal.newMoc": "New MOC",
   "keybindings.fmt.bold": "Bold",
   "keybindings.fmt.italic": "Italic",
   "keybindings.fmt.underline": "Underline",

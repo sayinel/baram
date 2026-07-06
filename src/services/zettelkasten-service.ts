@@ -39,6 +39,34 @@ export async function captureFleeting(
 }
 
 /**
+ * §97 Create a basic MOC (Map of Content) note: a permanent note whose body
+ * is a `#moc`-tagged template with a "관련 노트" section for curated links.
+ * MOC discovery reuses the existing `#moc` tag search — no dedicated
+ * sidebar panel in this slice.
+ */
+export async function createMoc(
+  zettelDir: string,
+  title: string,
+): Promise<null | { id: string; path: string }> {
+  const notesDir = `${zettelDir}/notes`;
+  await createDir(notesDir);
+  const existing = await collectExistingIds(zettelDir);
+  const id = generateZettelId(existing);
+  const created = localIsoMinute();
+  const { filename, content: baseContent } = buildPermanentNote({
+    id,
+    title,
+    created,
+  });
+  const content = `${baseContent}\n#moc\n\n## 관련 노트\n`;
+  const path = `${notesDir}/${filename}`;
+  await writeFile(path, content);
+  useZettelIndexStore.getState().upsert({ id, path, title });
+  await openFileInTab(path, content);
+  return { id, path };
+}
+
+/**
  * §94 Create a permanent atomic note and open it.
  *
  * `body`, when given, is appended under the note's `# {title}` heading (used

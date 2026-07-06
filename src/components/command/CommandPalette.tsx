@@ -625,5 +625,12 @@ function buildCommands(
       shortcut: "⇧⌘K",
       action: () => getAction("zettelkasten.newNote")?.(),
     },
+    {
+      id: "zettelkasten:new-moc",
+      label: "New MOC",
+      category: "Journal",
+      shortcut: "⇧⌘C",
+      action: () => getAction("zettelkasten.newMoc")?.(),
+    },
   ];
 }
