@@ -2,6 +2,7 @@ import type { SpaceDefinition } from "../types";
 
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { journalSpace } from "../journal-space";
 import {
   __resetSpacesForTest,
   getSpace,
@@ -39,5 +40,21 @@ describe("space registry", () => {
   it("lists all registered spaces", () => {
     registerSpace(fake);
     expect(listSpaces()).toEqual([fake]);
+  });
+});
+
+describe("journal space definition", () => {
+  beforeEach(() => __resetSpacesForTest());
+
+  it("matches the existing journal preset layout (behavior-preserving)", () => {
+    expect(journalSpace.type).toBe("journal");
+    expect(journalSpace.maxInstances).toBe(1);
+    expect(journalSpace.configFolders).toEqual(["daily"]);
+    expect(journalSpace.layout).toEqual({
+      sidebarOpen: true,
+      sidebarPanel: "calendar",
+      rightPanelOpen: true,
+      rightPanelMode: "memories",
+    });
   });
 });
