@@ -10,7 +10,6 @@ import {
   dispatchUnfoldAll,
   toggleFoldAtCursor,
 } from "../extensions/plugins/fold";
-import { createDir, writeFile } from "../ipc/invoke";
 import { normalizeKeyEvent } from "../keybindings/key-utils";
 import {
   clearActions,
@@ -18,7 +17,6 @@ import {
   registerAction,
 } from "../keybindings/keybinding-actions";
 import { findCommandByKey } from "../keybindings/use-keybindings";
-import { prosemirrorToMarkdown } from "../pipeline/pm-to-md";
 import {
   ensureJournalFile,
   openFileInTab,
@@ -34,14 +32,7 @@ import { useFileStore } from "../stores/file/file";
 import { useWorkspaceStore } from "../stores/file/workspace";
 import { useSettingsStore } from "../stores/settings/store";
 import { useUIStore } from "../stores/ui/ui";
-import { mdLineToPmBlockStart } from "../utils/editor/cursor-mapper";
-import { isDateString, resolveJournalDir } from "../utils/journal/journal";
-import {
-  buildNoteFromCapture,
-  buildPromotedCaptureLink,
-  parseCapturesFromMarkdown,
-  resolveNotesDir,
-} from "../utils/journal/journal-capture";
+import { isDateString } from "../utils/journal/journal";
 import { logger } from "../utils/logger";
 import { showTableGridPicker } from "../utils/table-grid-picker";
 import { resolveZettelDir } from "../utils/zettelkasten/zettelkasten";
@@ -379,108 +370,6 @@ export function useKeybindingActions({
       useUIStore.getState().toggleQuickCapture(),
     );
 
-    registerAction("journal.promoteCapture", () => {
-      (async () => {
-        try {
-          const store = useEditorStore.getState();
-          const tab = store.tabs.find((t) => t.id === store.activeTabId);
-          if (!tab || !tab.filePath) return;
-          const content = useFileStore.getState().openFiles.get(tab.filePath);
-          if (!content) return;
-
-          // Parse captures from the current file
-          const captures = parseCapturesFromMarkdown(content);
-          if (captures.length === 0) return;
-
-          const iconMap: Record<string, string> = {
-            idea: "\u2726",
-            link: "\u2197",
-            quote: "\u275D",
-            note: "\u2630",
-          };
-          // Find the capture at cursor position (fall back to last capture)
-          let capture = captures[captures.length - 1];
-          if (editor) {
-            const cursorPos = editor.state.selection.from;
-            const md = prosemirrorToMarkdown(editor.state.doc);
-            const lines = md.split("\n");
-            // Map PM cursor to markdown line
-            let charCount = 0;
-            let cursorLine = 0;
-            for (let li = 0; li < lines.length; li++) {
-              charCount += lines[li].length + 1;
-              if (charCount >= cursorPos) {
-                cursorLine = li;
-                break;
-              }
-            }
-            const cursorLineText = lines[cursorLine] ?? "";
-            // Match cursor line against capture icons
-            for (const c of captures) {
-              const icon = iconMap[c.type];
-              if (
-                cursorLineText.startsWith(`- ${icon}`) &&
-                (c.title ? cursorLineText.includes(c.title) : true)
-              ) {
-                capture = c;
-                break;
-              }
-            }
-          }
-          const { filename, content: noteContent } =
-            buildNoteFromCapture(capture);
-
-          // Determine notes directory
-          const { rootPath } = useFileStore.getState();
-          const { journalDirectory } = useSettingsStore.getState();
-          if (!rootPath || !journalDirectory) return;
-          const resolvedJournalDir = resolveJournalDir(
-            rootPath,
-            journalDirectory,
-          );
-          if (!resolvedJournalDir) return;
-          const notesDir = resolveNotesDir(resolvedJournalDir);
-          const notePath = `${notesDir}/${filename}`;
-
-          // Create notes dir and write note file
-          await createDir(notesDir);
-          await writeFile(notePath, noteContent);
-
-          // Replace the capture line in journal with a wikilink
-          const noteName = filename.replace(/\.md$/, "");
-          const linkLine = buildPromotedCaptureLink(capture, noteName);
-          const lines = content.split("\n");
-          const lineIndex = lines.findIndex((line) => {
-            const icon = iconMap[capture.type] ?? "\u2630";
-            return (
-              line.startsWith(`- ${icon}`) &&
-              (capture.title ? line.includes(capture.title) : true)
-            );
-          });
-          if (lineIndex !== -1) {
-            // Replace by index to avoid clobbering an earlier duplicate line
-            lines[lineIndex] = linkLine;
-            const updated = lines.join("\n");
-            await writeFile(tab.filePath, updated);
-            useFileStore.getState().setFileContent(tab.filePath, updated);
-          }
-
-          // Open the promoted note
-          useFileStore.getState().setFileContent(notePath, noteContent);
-          useEditorStore.getState().openTab({
-            contextId: "",
-            id: crypto.randomUUID(),
-            filePath: notePath,
-            title: filename,
-            isDirty: false,
-            isPinned: false,
-          });
-        } catch (err) {
-          logger.error("[PromoteCapture] Failed:", err);
-        }
-      })();
-    });
-
     registerAction("journal.openToday", () => {
       (async () => {
         try {
@@ -506,21 +395,6 @@ export function useKeybindingActions({
           logger.error("[JournalShortcut] Failed:", err);
         }
       })();
-    });
-
-    registerAction("journal.jumpToCaptures", () => {
-      if (editor) {
-        const md = prosemirrorToMarkdown(editor.state.doc);
-        const lines = md.split("\n");
-        const capturesIdx = lines.findIndex((l) => /^## Captures/.test(l));
-        if (capturesIdx >= 0) {
-          const pos = mdLineToPmBlockStart(editor.state.doc, md, capturesIdx);
-          if (pos >= 0) {
-            editor.commands.focus();
-            editor.commands.setTextSelection(pos + 1);
-          }
-        }
-      }
     });
 
     registerAction("journal.memories", () => {

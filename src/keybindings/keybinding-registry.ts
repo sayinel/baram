@@ -255,24 +255,10 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
     customizable: true,
   },
   {
-    id: "journal.promoteCapture",
-    label: "keybindings.journal.promoteCapture",
-    category: "journal",
-    defaultKey: "Mod+Shift+U",
-    customizable: true,
-  },
-  {
     id: "journal.openToday",
     label: "keybindings.journal.openToday",
     category: "journal",
     defaultKey: "Mod+Shift+J",
-    customizable: true,
-  },
-  {
-    id: "journal.jumpToCaptures",
-    label: "keybindings.journal.jumpToCaptures",
-    category: "journal",
-    defaultKey: "Mod+Shift+C",
     customizable: true,
   },
   {
