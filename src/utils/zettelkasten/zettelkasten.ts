@@ -23,7 +23,8 @@ export function resolveZettelDir(
 ): null | string {
   if (!zettelDir) return null;
   if (zettelDir.startsWith("/") || /^[A-Z]:\\/.test(zettelDir)) {
-    return zettelDir;
+    // Strip trailing slash(es) so joins like `${dir}/inbox` don't double up.
+    return zettelDir.replace(/[/\\]+$/, "");
   }
   return null; // relative path not supported
 }

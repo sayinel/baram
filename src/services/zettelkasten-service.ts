@@ -6,7 +6,10 @@ import {
   readFile,
   writeFile,
 } from "../ipc/invoke";
-import { generateZettelId } from "../utils/zettelkasten/zettel-id";
+import {
+  generateZettelId,
+  localIsoMinute,
+} from "../utils/zettelkasten/zettel-id";
 import {
   buildFleetingNote,
   buildPermanentNote,
@@ -26,7 +29,7 @@ export async function captureFleeting(
   await createDir(inboxDir);
   const existing = await collectExistingIds(zettelDir);
   const id = generateZettelId(existing);
-  const created = new Date().toISOString().slice(0, 16);
+  const created = localIsoMinute();
   const { filename, content } = buildFleetingNote({ id, body, created });
   const path = `${inboxDir}/${filename}`;
   await writeFile(path, content);
@@ -42,7 +45,7 @@ export async function createZettelNote(
   await createDir(notesDir);
   const existing = await collectExistingIds(zettelDir);
   const id = generateZettelId(existing);
-  const created = new Date().toISOString().slice(0, 16);
+  const created = localIsoMinute();
   const { filename, content } = buildPermanentNote({ id, title, created });
   const path = `${notesDir}/${filename}`;
   await writeFile(path, content);
@@ -65,7 +68,8 @@ export async function promoteFleeting(
   const id = idMatch[1];
   const raw = await readFile(fleetingPath);
   const seedBody = stripFrontmatter(raw);
-  const created = new Date().toISOString().slice(0, 16);
+  const created =
+    extractCreated(raw) ?? deriveCreatedFromId(id) ?? localIsoMinute();
   const notesDir = `${zettelDir}/notes`;
   await createDir(notesDir);
   const filename = `${id} ${sanitizeZettelTitle(title)}.md`;
@@ -100,6 +104,23 @@ async function collectExistingIds(zettelDir: string): Promise<Set<string>> {
     }
   }
   return ids;
+}
+
+/**
+ * Fall back to deriving `created` from the reused zettel id
+ * (`YYYYMMDDHHmm[ss]`) when the fleeting note has no `created:` frontmatter.
+ */
+function deriveCreatedFromId(id: string): null | string {
+  const m = id.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})/);
+  if (!m) return null;
+  const [, y, mo, day, h, mi] = m;
+  return `${y}-${mo}-${day}T${h}:${mi}`;
+}
+
+/** Read the `created:` value out of a note's YAML frontmatter, if present. */
+function extractCreated(md: string): null | string {
+  const m = md.match(/^created:\s*(.+)$/m);
+  return m ? m[1].trim() : null;
 }
 
 /** Strip a leading YAML frontmatter block, if present. */

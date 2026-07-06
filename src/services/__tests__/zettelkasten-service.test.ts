@@ -35,6 +35,17 @@ describe("createZettelNote", () => {
     expect(content).toContain("# My Idea");
     expect(openFileInTab).toHaveBeenCalledWith(res!.path, expect.any(String));
   });
+
+  it("stamps `created` in LOCAL YYYY-MM-DDTHH:mm form matching the id", async () => {
+    await createZettelNote("/z", "Timestamped");
+    const [path, content] = writeFile.mock.calls.at(-1)!;
+    const id = path.match(/\/(\d{12})\s/)![1];
+    const createdMatch = content.match(/^created: (.+)$/m);
+    expect(createdMatch).not.toBeNull();
+    const created = createdMatch![1];
+    expect(created).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+    expect(created.replace(/[-T:]/g, "")).toBe(id);
+  });
 });
 
 describe("captureFleeting", () => {
@@ -48,6 +59,16 @@ describe("captureFleeting", () => {
     expect(content).toContain("quick thought");
     expect(openFileInTab).not.toHaveBeenCalled();
     expect(res).not.toBeNull();
+  });
+
+  it("stamps `created` in LOCAL YYYY-MM-DDTHH:mm form matching the id", async () => {
+    const { captureFleeting } = await import("../zettelkasten-service");
+    const res = await captureFleeting("/z", "another thought");
+    const id = res!.path.match(/\/(\d{12})\.md$/)![1];
+    const [, content] = writeFile.mock.calls.at(-1)!;
+    const created = content.match(/^created: (.+)$/m)![1];
+    expect(created).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+    expect(created.replace(/[-T:]/g, "")).toBe(id);
   });
 });
 
@@ -66,5 +87,29 @@ describe("promoteFleeting", () => {
     const call = writeFile.mock.calls.find((c) => c[0] === res!.path)!;
     expect(call[1]).toContain("# Real Idea");
     expect(call[1]).toContain("seed body");
+  });
+
+  it("preserves the fleeting note's original `created` (does not stamp promotion time)", async () => {
+    readFile.mockResolvedValueOnce(
+      "---\nid: 202601010005\ncreated: 2026-01-01T00:05\ntags: []\n---\n\nold thought\n",
+    );
+    const res = await promoteFleeting(
+      "/z",
+      "/z/inbox/202601010005.md",
+      "Old Idea",
+    );
+    const call = writeFile.mock.calls.find((c) => c[0] === res!.path)!;
+    expect(call[1]).toContain("created: 2026-01-01T00:05");
+  });
+
+  it("falls back to deriving `created` from the id when frontmatter lacks it", async () => {
+    readFile.mockResolvedValueOnce("no frontmatter here\n");
+    const res = await promoteFleeting(
+      "/z",
+      "/z/inbox/202603152359.md",
+      "No Frontmatter",
+    );
+    const call = writeFile.mock.calls.find((c) => c[0] === res!.path)!;
+    expect(call[1]).toContain("created: 2026-03-15T23:59");
   });
 });

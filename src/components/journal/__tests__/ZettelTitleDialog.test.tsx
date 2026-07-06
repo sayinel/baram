@@ -23,4 +23,19 @@ describe("ZettelTitleDialog", () => {
     expect(onSubmit).toHaveBeenCalledWith("New Idea");
     expect(useUIStore.getState().zettelTitleDialog.open).toBe(false);
   });
+
+  it("does not submit on Enter while an IME composition is in progress", () => {
+    const onSubmit = vi.fn();
+    useUIStore.getState().openZettelTitleDialog(onSubmit);
+    render(<ZettelTitleDialog />);
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "제목" },
+    });
+    fireEvent.keyDown(screen.getByRole("textbox"), {
+      key: "Enter",
+      isComposing: true,
+    });
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(useUIStore.getState().zettelTitleDialog.open).toBe(true);
+  });
 });

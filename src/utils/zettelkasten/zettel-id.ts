@@ -17,6 +17,20 @@ export function generateZettelId(existingIds: Set<string>): string {
   return candidate;
 }
 
+/**
+ * LOCAL `YYYY-MM-DDTHH:mm` timestamp — mirrors the local-time logic used to
+ * build zettel ids above, so a note's `created` frontmatter always agrees
+ * with the local date/time baked into its id (avoids a UTC/local mismatch,
+ * e.g. `new Date().toISOString()` which is UTC).
+ */
+export function localIsoMinute(): string {
+  const d = new Date();
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1, 2)}-${pad(d.getDate(), 2)}` +
+    `T${pad(d.getHours(), 2)}:${pad(d.getMinutes(), 2)}`
+  );
+}
+
 function pad(n: number, width: number): string {
   return String(n).padStart(width, "0");
 }
