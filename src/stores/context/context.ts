@@ -13,7 +13,13 @@ import {
   updateContextLabel as ipcUpdateContextLabel,
 } from "../../ipc/context";
 import { logger } from "../../utils/logger";
+import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
+import { useSettingsStore } from "../settings/store";
 import { tauriStorage } from "../system/tauri-storage";
+import {
+  refreshZettelIndex,
+  useZettelIndexStore,
+} from "../zettelkasten/zettel-index";
 
 // --- Constants ---
 
@@ -113,6 +119,39 @@ function pinJournalToSecond(contexts: ContextInfo[]): ContextInfo[] | null {
     return reordered;
   }
   return null;
+}
+
+/**
+ * §95/§98 M1: Keep the zettel id index scoped to the active zettel space.
+ * When the newly active context's path is under the configured zettel dir,
+ * refresh the index (covers switching INTO the space via the context tab
+ * bar, not just the workspace preset). Otherwise clear it, so stale
+ * id→title mappings from a previously active zettel space never leak into
+ * an unrelated vault. No-op when the zettelkasten feature is disabled.
+ *
+ * Note: `resolveZettelDir`'s first (rootPath) argument is unused — only
+ * absolute directory settings are supported — so we pass `null` here to
+ * avoid importing the file store (which itself imports this module).
+ */
+function syncZettelIndexForContext(ctx: ContextInfo | null): void {
+  const { zettelkastenEnabled, zettelkastenDirectory } =
+    useSettingsStore.getState();
+  if (!zettelkastenEnabled) return;
+
+  const zettelDir = resolveZettelDir(null, zettelkastenDirectory);
+  if (!zettelDir) return;
+
+  const prefix = `${zettelDir}/`;
+  const inZettelSpace =
+    !!ctx && (ctx.path === zettelDir || ctx.path.startsWith(prefix));
+
+  if (inZettelSpace) {
+    refreshZettelIndex(zettelDir).catch((err) =>
+      logger.error("[contextStore] Failed to refresh zettel index:", err),
+    );
+  } else {
+    useZettelIndexStore.getState().clear();
+  }
 }
 
 // --- Store ---
@@ -279,6 +318,7 @@ export const useContextStore = create<ContextState>()(
         try {
           await ipcSetActiveContext(id);
           set({ activeContextId: id });
+          syncZettelIndexForContext(get().activeContext());
         } catch (err) {
           logger.error("[contextStore] setActiveContext failed:", err);
           throw err;
@@ -288,6 +328,7 @@ export const useContextStore = create<ContextState>()(
       /** §81 Set active context locally (no IPC) — used by switchContext in file.ts */
       _setActiveContextLocal: (id: string) => {
         set({ activeContextId: id });
+        syncZettelIndexForContext(get().activeContext());
       },
 
       reorderContexts: (ids) => {

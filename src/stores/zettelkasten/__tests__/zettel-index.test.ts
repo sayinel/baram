@@ -10,6 +10,7 @@ vi.mock("../../../ipc/invoke", () => ({ listDir, readFile }));
 
 import {
   idForTitle,
+  maybeRefreshForPath,
   refreshZettelIndex,
   titleForId,
   useZettelIndexStore,
@@ -42,5 +43,55 @@ describe("zettel index", () => {
       { id: "2", path: "b", title: "dup" },
     ]);
     expect(idForTitle("dup")).toBeNull();
+  });
+});
+
+describe("maybeRefreshForPath", () => {
+  beforeEach(() => {
+    useZettelIndexStore.getState().clear();
+    listDir.mockReset();
+    readFile.mockReset();
+  });
+
+  it("refreshes when opening a path under the zettel dir while the index is empty", async () => {
+    listDir.mockImplementation(async (dir: string) =>
+      dir.endsWith("/notes")
+        ? [
+            {
+              name: "202607051530 title.md",
+              path: `${dir}/202607051530 title.md`,
+            },
+          ]
+        : [],
+    );
+    readFile.mockResolvedValue("no frontmatter");
+
+    await maybeRefreshForPath("/z/notes/202607051530 title.md", "/z");
+
+    expect(titleForId("202607051530")).toBe("title");
+  });
+
+  it("does nothing for a path outside the zettel dir", async () => {
+    await maybeRefreshForPath("/other/notes/foo.md", "/z");
+
+    expect(listDir).not.toHaveBeenCalled();
+    expect(Object.keys(useZettelIndexStore.getState().byId)).toHaveLength(0);
+  });
+
+  it("does nothing when the index is already populated", async () => {
+    useZettelIndexStore
+      .getState()
+      .setAll([{ id: "1", path: "/z/notes/a.md", title: "a" }]);
+
+    await maybeRefreshForPath("/z/notes/b.md", "/z");
+
+    expect(listDir).not.toHaveBeenCalled();
+    expect(titleForId("1")).toBe("a");
+  });
+
+  it("does nothing when zettelDir is null", async () => {
+    await maybeRefreshForPath("/z/notes/foo.md", null);
+
+    expect(listDir).not.toHaveBeenCalled();
   });
 });
