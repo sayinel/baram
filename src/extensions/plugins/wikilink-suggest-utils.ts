@@ -2,8 +2,10 @@ import type { HeadingEntry } from "../../utils/file-search";
 
 import { readFile } from "../../ipc/invoke";
 import { useFileStore } from "../../stores/file/file";
+import { titleForId } from "../../stores/zettelkasten/zettel-index";
 // §31 Wikilink autocomplete — utility functions
 import { extractHeadings, fuzzyScore } from "../../utils/file-search";
+import { parseNoteTitle } from "../../utils/zettelkasten/parse-note-title";
 
 export interface WikilinkSuggestionItem {
   /** §87 Parent folder path relative to vault root (for grouped display) */
@@ -14,9 +16,50 @@ export interface WikilinkSuggestionItem {
   kind?: "create" | "file" | "folder-header" | "heading" | "hint";
   label: string;
   path: string;
+  /**
+   * §95 Zettelkasten: fuzzy-search key used instead of `target`, when set.
+   * Zettel-note items (id-prefixed filenames) set this to the note title, so
+   * `[[` autocomplete searches by title even though `target` is the id.
+   */
+  searchText?: string;
   target: string;
   /** §87 Cross-vault: vault alias prefix for the inserted wikilink */
   vaultAlias?: string;
+}
+
+/** Matches a Zettelkasten id prefix at the start of a filename (e.g. "202607051530 title.md"). */
+const ZETTEL_FILENAME_ID_RE = /^(\d{12,14})\b/;
+
+/**
+ * §95 Zettelkasten: build a suggestion item for one file. If the filename has a
+ * leading id (12-14 digit prefix), the item's `target` is the id — so the stored
+ * wikilink is `[[id]]`, rendered as the title by WikilinkView — and its
+ * `searchText` is the note title (from the zettel index, falling back to
+ * parsing the filename), so fuzzy search matches by title. Regular
+ * (non-zettel) files are unchanged: `target` is the filename, no `searchText`.
+ */
+export function buildFileSuggestionItem(
+  file: { name: string; path: string },
+  id: string,
+): WikilinkSuggestionItem {
+  const idMatch = file.name.match(ZETTEL_FILENAME_ID_RE);
+  if (idMatch) {
+    const zettelId = idMatch[1];
+    const title = titleForId(zettelId) ?? parseNoteTitle(file.name, "");
+    return {
+      id,
+      target: zettelId,
+      label: title,
+      path: file.path,
+      searchText: title,
+    };
+  }
+  return {
+    id,
+    target: fileNameWithoutExtension(file.name),
+    label: file.name,
+    path: file.path,
+  };
 }
 
 /** Remove .md or .markdown extension from a filename */
@@ -43,7 +86,7 @@ export function filterFiles(
   const scored = files
     .map((file) => ({
       file,
-      score: fuzzyScore(query, file.target),
+      score: fuzzyScore(query, file.searchText ?? file.target),
     }))
     .filter(({ score }) => score < Infinity)
     .sort((a, b) => a.score - b.score);
