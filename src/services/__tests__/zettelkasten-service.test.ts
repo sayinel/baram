@@ -23,6 +23,7 @@ const { openFileInTab } = vi.hoisted(() => ({
 }));
 vi.mock("../../services/journal-file-service", () => ({ openFileInTab }));
 
+import { useZettelIndexStore } from "../../stores/zettelkasten/zettel-index";
 import { createZettelNote, promoteFleeting } from "../zettelkasten-service";
 
 describe("createZettelNote", () => {
@@ -45,6 +46,15 @@ describe("createZettelNote", () => {
     const created = createdMatch![1];
     expect(created).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
     expect(created.replace(/[-T:]/g, "")).toBe(id);
+  });
+
+  it("upserts the new note into the zettel index", async () => {
+    useZettelIndexStore.getState().clear();
+    const res = await createZettelNote("/z", "Fresh Idea");
+    const entries = Object.values(useZettelIndexStore.getState().byId);
+    expect(
+      entries.some((n) => n.path === res!.path && n.title === "Fresh Idea"),
+    ).toBe(true);
   });
 });
 

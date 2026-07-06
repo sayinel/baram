@@ -13,6 +13,7 @@ import { useContextStore } from "../context/context";
 import { useSettingsStore } from "../settings/store";
 import { tauriStorage } from "../system/tauri-storage";
 import { type RightPanelMode, type SidebarPanel, useUIStore } from "../ui/ui";
+import { refreshZettelIndex } from "../zettelkasten/zettel-index";
 import { useFileStore } from "./file";
 
 // --- Types ---
@@ -172,6 +173,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             (async () => {
               try {
                 await ensureZettelkastenScaffold(resolvedDir);
+                await refreshZettelIndex(resolvedDir);
                 await useContextStore
                   .getState()
                   .ensureSpaceContext("zettelkasten", resolvedDir);

@@ -6,6 +6,7 @@ import {
   readFile,
   writeFile,
 } from "../ipc/invoke";
+import { useZettelIndexStore } from "../stores/zettelkasten/zettel-index";
 import {
   generateZettelId,
   localIsoMinute,
@@ -33,6 +34,7 @@ export async function captureFleeting(
   const { filename, content } = buildFleetingNote({ id, body, created });
   const path = `${inboxDir}/${filename}`;
   await writeFile(path, content);
+  useZettelIndexStore.getState().upsert({ id, path, title: id });
   return { path };
 }
 
@@ -49,6 +51,7 @@ export async function createZettelNote(
   const { filename, content } = buildPermanentNote({ id, title, created });
   const path = `${notesDir}/${filename}`;
   await writeFile(path, content);
+  useZettelIndexStore.getState().upsert({ id, path, title });
   await openFileInTab(path, content);
   return { path };
 }
@@ -85,6 +88,8 @@ export async function promoteFleeting(
     `# ${title}\n\n${seedBody}\n`;
   await writeFile(path, content);
   await deleteFile(fleetingPath);
+  useZettelIndexStore.getState().upsert({ id, path, title });
+  useZettelIndexStore.getState().removeByPath(fleetingPath);
   await openFileInTab(path, content);
   return { path };
 }
