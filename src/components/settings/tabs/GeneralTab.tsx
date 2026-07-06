@@ -55,6 +55,14 @@ export function GeneralTab() {
     setJournalMonthlyTemplate,
     journalYearlyTemplate,
     setJournalYearlyTemplate,
+    zettelkastenEnabled,
+    setZettelkastenEnabled,
+    zettelkastenDirectory,
+    setZettelkastenDirectory,
+    zettelkastenStartupBehavior,
+    setZettelkastenStartupBehavior,
+    zettelkastenHomeNote,
+    setZettelkastenHomeNote,
   } = useSettingsStore();
 
   return (
@@ -477,6 +485,86 @@ export function GeneralTab() {
               </div>
             </SettingsRow>
           )}
+        </>
+      )}
+
+      <SettingsSectionHeader title={t("settings.general.zettelkasten")} />
+
+      <SettingsRow
+        description={t("settings.general.zettelkastenEnabled.desc")}
+        label={t("settings.general.zettelkastenEnabled")}
+      >
+        <ToggleSwitch
+          checked={zettelkastenEnabled}
+          onChange={setZettelkastenEnabled}
+        />
+      </SettingsRow>
+
+      {zettelkastenEnabled && (
+        <>
+          <SettingsRow
+            description={t("settings.general.zettelkastenDirectory.desc")}
+            label={t("settings.general.zettelkastenDirectory")}
+          >
+            <div className="settings-key-row">
+              <input
+                className="settings-input settings-input-key"
+                placeholder={t(
+                  "settings.general.zettelkastenDirectory.placeholder",
+                )}
+                readOnly
+                type="text"
+                value={zettelkastenDirectory}
+              />
+              <button
+                className="settings-key-toggle"
+                onClick={async () => {
+                  const selected = await open({ directory: true });
+                  if (typeof selected === "string")
+                    setZettelkastenDirectory(selected);
+                }}
+              >
+                {t("common.browse")}
+              </button>
+            </div>
+          </SettingsRow>
+
+          <SettingsRow
+            description={t("settings.general.zettelkastenStartup.desc")}
+            label={t("settings.general.zettelkastenStartup")}
+          >
+            <select
+              className="settings-select"
+              onChange={(e) =>
+                setZettelkastenStartupBehavior(
+                  e.target.value as "nothing" | "openInbox",
+                )
+              }
+              value={zettelkastenStartupBehavior}
+            >
+              <option value="openInbox">
+                {t("settings.general.zettelkastenStartup.openInbox")}
+              </option>
+              <option value="nothing">
+                {t("settings.general.zettelkastenStartup.nothing")}
+              </option>
+            </select>
+          </SettingsRow>
+
+          <SettingsRow
+            description={t("settings.general.zettelkastenHomeNote.desc")}
+            label={t("settings.general.zettelkastenHomeNote")}
+          >
+            <input
+              className="settings-input"
+              onChange={(e) => setZettelkastenHomeNote(e.target.value)}
+              placeholder={t(
+                "settings.general.zettelkastenHomeNote.placeholder",
+              )}
+              type="text"
+              value={zettelkastenHomeNote}
+            />
+          </SettingsRow>
         </>
       )}
 
