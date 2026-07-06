@@ -400,4 +400,4 @@ export interface VaultConfig {
   };
 }
 
-export type VaultType = "general" | "journal";
+export type VaultType = "general" | "journal" | "zettelkasten";

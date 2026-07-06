@@ -17,6 +17,7 @@ pub enum ContextType {
 pub enum VaultType {
     General,
     Journal,
+    Zettelkasten,
 }
 
 /// A single context entry (vault, folder, or file) managed by ContextManager.
@@ -32,4 +33,17 @@ pub struct ContextInfo {
     pub vault_type: Option<VaultType>,
     /// Unix timestamp (ms) when this context was added.
     pub added_at: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn zettelkasten_serializes_camel_case() {
+        let json = serde_json::to_string(&VaultType::Zettelkasten).unwrap();
+        assert_eq!(json, "\"zettelkasten\"");
+        let parsed: VaultType = serde_json::from_str("\"zettelkasten\"").unwrap();
+        assert_eq!(parsed, VaultType::Zettelkasten);
+    }
 }
