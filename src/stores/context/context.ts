@@ -63,12 +63,24 @@ interface ContextState {
    * Creates one if not present; activates it if not already active.
    */
   ensureJournalContext: (journalDir: string) => Promise<ContextInfo>;
+  /**
+   * §92 Generic space-aware variant of ensureJournalContext: ensures a vault
+   * context of the given vaultType exists at `dir` (creates+activates if missing,
+   * activates if already present).
+   */
+  ensureSpaceContext: (
+    vaultType: VaultType,
+    dir: string,
+    opts?: { color?: string; label?: string },
+  ) => Promise<ContextInfo>;
   getContextForPath: (filePath: string) => ContextInfo | null;
   journalContext: () => ContextInfo | null;
   removeContext: (id: string) => Promise<void>;
   /** TODO §82: wire up drag-to-reorder in ContextTabBar */
   reorderContexts: (ids: string[]) => void;
   setActiveContext: (id: string) => Promise<void>;
+  /** §92 Generic space-aware variant of journalContext: first context with the given vaultType. */
+  spaceContext: (vaultType: VaultType) => ContextInfo | null;
   updateContextAlias: (id: string, alias: string) => void;
   updateContextColor: (id: string, color: string) => void;
   updateContextLabel: (id: string, label: string) => void;
@@ -120,13 +132,12 @@ export const useContextStore = create<ContextState>()(
         return get().contexts.filter((c) => c.contextType === "vault");
       },
 
-      journalContext: () => {
-        return (
-          get().contexts.find(
-            (c) => c.contextType === "vault" && c.vaultType === "journal",
-          ) ?? null
-        );
-      },
+      journalContext: () => get().spaceContext("journal"),
+
+      spaceContext: (vaultType) =>
+        get().contexts.find(
+          (c) => c.contextType === "vault" && c.vaultType === vaultType,
+        ) ?? null,
 
       ensureFileContext: async (filePath: string) => {
         const { contexts } = get();
@@ -150,10 +161,23 @@ export const useContextStore = create<ContextState>()(
       },
 
       ensureJournalContext: async (journalDir: string) => {
-        const { contexts } = get();
-        // Check if journal context already exists
-        const existing = contexts.find(
-          (c) => c.contextType === "vault" && c.vaultType === "journal",
+        const wasExisting = get().spaceContext("journal") !== null;
+        const ctx = await get().ensureSpaceContext("journal", journalDir, {
+          label: "journal",
+          color: "#10b981",
+        });
+        // §85 Pin journal context to position 1 (after first vault) — only
+        // needed when we just created it; an existing context is already pinned.
+        if (!wasExisting) {
+          const pinned = pinJournalToSecond(get().contexts);
+          if (pinned) set({ contexts: pinned });
+        }
+        return ctx;
+      },
+
+      ensureSpaceContext: async (vaultType, dir, opts) => {
+        const existing = get().contexts.find(
+          (c) => c.contextType === "vault" && c.vaultType === vaultType,
         );
         if (existing) {
           // Activate if not active — use local-only to avoid stale ID IPC failures
@@ -162,16 +186,13 @@ export const useContextStore = create<ContextState>()(
           }
           return existing;
         }
-        // Create new journal vault context
-        const created = await get().addContext("vault", journalDir, {
-          vaultType: "journal",
-          label: "journal",
-          color: "#10b981",
+        // Create new vault context of the given type
+        const created = await get().addContext("vault", dir, {
+          vaultType,
+          label: opts?.label ?? vaultType,
+          color: opts?.color,
         });
-        // §85 Pin journal context to position 1 (after first vault)
-        const pinned = pinJournalToSecond(get().contexts);
-        if (pinned) set({ contexts: pinned });
-        // Activate the newly created journal context
+        // Activate the newly created context
         if (get().activeContextId !== created.id) {
           get()._setActiveContextLocal(created.id);
         }
