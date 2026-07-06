@@ -9,6 +9,7 @@ import {
   listSpaces,
   registerSpace,
 } from "../registry";
+import { zettelkastenSpace } from "../zettelkasten-space";
 
 const fake: SpaceDefinition = {
   type: "journal",
@@ -56,5 +57,15 @@ describe("journal space definition", () => {
       rightPanelOpen: true,
       rightPanelMode: "memories",
     });
+  });
+});
+
+describe("zettelkasten space definition", () => {
+  it("declares a single global space with inbox/notes folders", () => {
+    expect(zettelkastenSpace.type).toBe("zettelkasten");
+    expect(zettelkastenSpace.maxInstances).toBe(1);
+    expect(zettelkastenSpace.configFolders).toEqual(["inbox", "notes"]);
+    expect(zettelkastenSpace.layout.sidebarPanel).toBe("backlinks");
+    expect(zettelkastenSpace.layout.rightPanelMode).toBe("none");
   });
 });
