@@ -392,6 +392,7 @@
   "keybindings.journal.memories": "추억 패널",
   "keybindings.journal.photoGallery": "사진 갤러리",
   "keybindings.journal.newNote": "새 제텔 노트",
+  "keybindings.journal.promote": "영구 노트로 승격",
   "keybindings.fmt.bold": "굵게",
   "keybindings.fmt.italic": "기울임",
   "keybindings.fmt.underline": "밑줄",

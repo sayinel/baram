@@ -397,6 +397,7 @@
   "keybindings.journal.memories": "Memories Panel",
   "keybindings.journal.photoGallery": "Photo Gallery",
   "keybindings.journal.newNote": "New Zettel Note",
+  "keybindings.journal.promote": "Promote to Permanent Note",
   "keybindings.fmt.bold": "Bold",
   "keybindings.fmt.italic": "Italic",
   "keybindings.fmt.underline": "Underline",
