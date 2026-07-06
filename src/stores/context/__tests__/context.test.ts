@@ -127,3 +127,69 @@ describe("§81 contextStore", () => {
     expect(contexts[1].vaultType).toBe("journal");
   });
 });
+
+describe("§92 space-generic context helpers", () => {
+  beforeEach(async () => {
+    // Flush microtasks from persist middleware
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+    // Reset to empty state
+    useContextStore.setState({ contexts: [], activeContextId: null });
+  });
+
+  it("spaceContext returns null when no vault of that type exists", () => {
+    expect(useContextStore.getState().spaceContext("zettelkasten")).toBeNull();
+  });
+
+  it("journalContext equals spaceContext('journal')", () => {
+    const s = useContextStore.getState();
+    expect(s.journalContext()).toBe(s.spaceContext("journal"));
+  });
+
+  it("ensureSpaceContext creates and activates a new vault context", async () => {
+    const ctx = await useContextStore
+      .getState()
+      .ensureSpaceContext("zettelkasten", "/zk", { label: "zettelkasten" });
+    const state = useContextStore.getState();
+    expect(ctx.vaultType).toBe("zettelkasten");
+    expect(ctx.path).toBe("/zk");
+    expect(state.activeContextId).toBe(ctx.id);
+    expect(state.spaceContext("zettelkasten")).toBe(ctx);
+  });
+
+  it("ensureSpaceContext activates (not duplicates) an existing vault context", async () => {
+    const first = await useContextStore
+      .getState()
+      .ensureSpaceContext("zettelkasten", "/zk");
+    // Simulate a different active context, then ensure again
+    await useContextStore.getState().addContext("vault", "/other");
+    useContextStore
+      .getState()
+      ._setActiveContextLocal(
+        useContextStore.getState().contexts.find((c) => c.path === "/other")!
+          .id,
+      );
+    const second = await useContextStore
+      .getState()
+      .ensureSpaceContext("zettelkasten", "/zk");
+    const state = useContextStore.getState();
+    expect(second.id).toBe(first.id);
+    expect(
+      state.contexts.filter((c) => c.vaultType === "zettelkasten"),
+    ).toHaveLength(1);
+    expect(state.activeContextId).toBe(first.id);
+  });
+
+  it("ensureJournalContext still pins journal to position 1 and uses green color", async () => {
+    await useContextStore.getState().addContext("vault", "/a");
+    await useContextStore.getState().addContext("vault", "/b");
+    const ctx = await useContextStore
+      .getState()
+      .ensureJournalContext("/journal");
+    const state = useContextStore.getState();
+    expect(state.contexts).toHaveLength(3);
+    expect(state.contexts[1].vaultType).toBe("journal");
+    expect(ctx.color).toBe("#10b981");
+    expect(state.activeContextId).toBe(ctx.id);
+  });
+});
