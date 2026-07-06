@@ -17,7 +17,9 @@ pub use extractor::{
 };
 
 use extractor::{extract_file_tags, extract_links};
-use normalizer::{extract_id_from_stem, normalize_file_path, normalize_target, resolve_target};
+use normalizer::{
+    extract_id_from_stem, is_id_target, normalize_file_path, normalize_target, resolve_target,
+};
 
 #[derive(Error, Debug)]
 pub enum IndexError {
@@ -249,6 +251,13 @@ impl LinkIndex {
     /// Resolve a wikilink target to an actual file path using file maps.
     /// Falls back to None if no matching file is found.
     fn resolve_target_from_map(&self, target_normalized: &str) -> Option<String> {
+        // 0) Zettelkasten [[ID]] — bare timestamp id resolves via id_map (subfolder-agnostic)
+        if is_id_target(target_normalized) {
+            if let Some(path) = self.id_map.get(target_normalized) {
+                return Some(path.clone());
+            }
+        }
+
         // 1) Try relative path match (for [[path/name]] style targets)
         if let Some(path) = self.relative_map.get(target_normalized) {
             return Some(path.clone());
@@ -610,6 +619,24 @@ mod tests {
         assert_eq!(index.id_map_len(), 2);
         index.remove_file("/z/notes/202607051530 원자적 노트.md");
         assert_eq!(index.id_map_len(), 1);
+    }
+
+    #[test]
+    fn test_resolve_id_target_across_subfolders() {
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/z".to_string());
+        index.register_file_path("/z/notes/202607051530 원자적 노트.md", "/z");
+        // [[202607051530]] resolves to the id-prefixed file in the subfolder
+        assert_eq!(
+            index.resolve_target_from_map("202607051530"),
+            Some("/z/notes/202607051530 원자적 노트.md".to_string())
+        );
+        // a non-id target is unaffected (existing stem/relative behavior)
+        index.register_file_path("/z/architecture.md", "/z");
+        assert_eq!(
+            index.resolve_target_from_map("architecture"),
+            Some("/z/architecture.md".to_string())
+        );
     }
 
     #[test]
