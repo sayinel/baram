@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateZettelId } from "../zettel-id";
+import { generateZettelId, localIsoMinute } from "../zettel-id";
 
 describe("generateZettelId", () => {
   it("returns a 12-digit YYYYMMDDHHmm id when no collision", () => {
@@ -25,5 +25,27 @@ describe("generateZettelId", () => {
     const id = generateZettelId(taken);
     expect(taken.has(id)).toBe(false);
     expect(id).toMatch(/^\d{14}$/);
+  });
+});
+
+describe("localIsoMinute", () => {
+  beforeEach(() => {
+    // Fix the clock so id + iso are read at the exact same instant —
+    // avoids flakiness from a minute boundary ticking between calls.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 6, 5, 15, 30, 42)); // local: 2026-07-05T15:30:42
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("returns a LOCAL YYYY-MM-DDTHH:mm timestamp (no seconds, zero-padded)", () => {
+    expect(localIsoMinute()).toBe("2026-07-05T15:30");
+  });
+
+  it("agrees with the local-time digits baked into the zettel id", () => {
+    const id = generateZettelId(new Set());
+    expect(localIsoMinute().replace(/[-T:]/g, "")).toBe(id);
   });
 });

@@ -32,7 +32,12 @@ export function ZettelTitleDialog() {
           autoFocus
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") submit();
+            if (e.key === "Enter") {
+              // Korean IME: Enter during composition commits the syllable.
+              // Do NOT submit — let the IME finish naturally.
+              if (e.nativeEvent.isComposing) return;
+              submit();
+            }
             if (e.key === "Escape") close();
           }}
           placeholder="노트 제목"

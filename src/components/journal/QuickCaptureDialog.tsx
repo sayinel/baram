@@ -51,14 +51,13 @@ export function QuickCaptureDialog() {
     setSaveError("");
     setTimeout(() => inputRef.current?.focus(), 50);
 
-    // Scan journal files for tag index
+    // Scan the zettelkasten space for tag index — captures now land there.
     (async () => {
       try {
         const { rootPath } = useFileStore.getState();
-        const { journalDirectory } = useSettingsStore.getState();
-        if (!rootPath || !journalDirectory) return;
-
-        const tagScanDir = resolveTagScanRoot(rootPath, journalDirectory);
+        const { zettelkastenDirectory } = useSettingsStore.getState();
+        const tagScanDir = resolveZettelDir(rootPath, zettelkastenDirectory);
+        if (!tagScanDir) return;
 
         const entries = await listDir(tagScanDir, true).catch(() => []);
         const mdFiles = entries
@@ -346,18 +345,4 @@ function getCurrentTagQuery(value: string, cursorPos: number): null | string {
   const textBefore = value.slice(0, cursorPos);
   const match = textBefore.match(/#([\w가-힣]*)$/);
   return match ? match[1] : null;
-}
-
-/**
- * Resolve the root directory to scan when building the quick-capture tag
- * index. Currently always the journal directory — single decision point so
- * a future Zettelkasten scan root can be swapped in (P2).
- */
-function resolveTagScanRoot(
-  rootPath: string,
-  journalDirectory: string,
-): string {
-  return journalDirectory.startsWith("/") || /^[A-Z]:\\/.test(journalDirectory)
-    ? journalDirectory
-    : `${rootPath}/${journalDirectory}`;
 }

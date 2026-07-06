@@ -20,6 +20,12 @@ describe("zettelkasten scaffold", () => {
     expect(resolveZettelDir(null, "")).toBeNull();
   });
 
+  it("strips trailing slash(es) so joined paths don't double up", () => {
+    expect(resolveZettelDir(null, "/z/")).toBe("/z");
+    expect(resolveZettelDir(null, "/z//")).toBe("/z");
+    expect(resolveZettelDir("/vault", "C:\\zettel\\")).toBe("C:\\zettel");
+  });
+
   it("creates inbox/ and notes/ under root", async () => {
     await ensureZettelkastenScaffold("/z");
     expect(createDir).toHaveBeenCalledWith("/z/inbox");
