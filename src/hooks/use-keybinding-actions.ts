@@ -32,6 +32,7 @@ import { useFileStore } from "../stores/file/file";
 import { useWorkspaceStore } from "../stores/file/workspace";
 import { useSettingsStore } from "../stores/settings/store";
 import { useUIStore } from "../stores/ui/ui";
+import { getSelectedText } from "../utils/ai-commands";
 import { isDateString } from "../utils/journal/journal";
 import { logger } from "../utils/logger";
 import { showTableGridPicker } from "../utils/table-grid-picker";
@@ -457,6 +458,46 @@ export function useKeybindingActions({
           logger.error("[Zettel] promote failed:", err),
         );
       });
+    });
+
+    // §94 New note from selection — extract the selected text into a new
+    // permanent zettel note and replace the selection with an [[id]] link.
+    registerAction("zettelkasten.newFromSelection", () => {
+      const { zettelkastenEnabled, zettelkastenDirectory } =
+        useSettingsStore.getState();
+      const { rootPath } = useFileStore.getState();
+      const dir = resolveZettelDir(rootPath, zettelkastenDirectory);
+      if (!zettelkastenEnabled || !dir || !editor) {
+        logger.warn("[Zettel] newFromSelection: space not enabled/configured");
+        return;
+      }
+      const activeEditor = editor;
+      const selectionText = getSelectedText(activeEditor);
+      if (!selectionText.trim()) {
+        logger.warn("[Zettel] newFromSelection: selection is empty");
+        return;
+      }
+      const initialTitle = (selectionText.split("\n")[0] ?? "")
+        .trim()
+        .slice(0, 60);
+      useUIStore.getState().openZettelTitleDialog((title) => {
+        // openTab=false: stay on the current document — this note's own
+        // selection is about to be replaced below, so the shared editor
+        // must not be swapped to the newly created note first.
+        createZettelNote(dir, title, selectionText, false)
+          .then((result) => {
+            if (!result) return;
+            activeEditor
+              .chain()
+              .focus()
+              .deleteSelection()
+              .insertWikilink({ target: result.id })
+              .run();
+          })
+          .catch((err) =>
+            logger.error("[Zettel] newFromSelection failed:", err),
+          );
+      }, initialTitle);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- setFindReplaceOpen/setFindReplaceMode are stable store actions
   }, [
