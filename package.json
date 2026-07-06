@@ -93,7 +93,7 @@
     "mdast-util-to-string": "^4.0.0",
     "mermaid": "^11.15.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0",
+    "react-dom": "^19.2.7",
     "remark-frontmatter": "^5.0.0",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
