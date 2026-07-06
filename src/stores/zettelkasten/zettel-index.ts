@@ -41,6 +41,23 @@ export function idForTitle(title: string): null | string {
   return matches.length === 1 ? matches[0].id : null;
 }
 
+/**
+ * §95 M2: Ensure the index is populated when a zettel note is opened directly
+ * (file-tree, quick-switcher, wikilink) without the "zettelkasten" workspace
+ * preset having been activated first — that activation path already calls
+ * `refreshZettelIndex` itself, so this is a no-op unless the index is empty.
+ * No-op for paths outside `zettelDir` or when `zettelDir` is unset.
+ */
+export async function maybeRefreshForPath(
+  openedPath: string,
+  zettelDir: null | string,
+): Promise<void> {
+  if (!zettelDir) return;
+  if (!openedPath.startsWith(`${zettelDir}/`)) return;
+  if (Object.keys(useZettelIndexStore.getState().byId).length > 0) return;
+  await refreshZettelIndex(zettelDir);
+}
+
 /** Scans notes/ + inbox/ under zettelDir, builds the id→note index, and replaces the store's contents. */
 export async function refreshZettelIndex(zettelDir: string): Promise<void> {
   const notes: ZettelNote[] = [];
