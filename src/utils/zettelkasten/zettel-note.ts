@@ -10,13 +10,16 @@ export function buildFleetingNote(input: {
   body: string;
   created: string;
   id: string;
+  /** §99 M4: Quick Capture type (idea/link/quote/note) — written as `type:` frontmatter when given. */
+  type?: string;
 }): { content: string; filename: string } {
-  const { id, body, created } = input;
+  const { id, body, created, type } = input;
   const filename = `${id}.md`;
   const content =
     `---\n` +
     `id: ${id}\n` +
     `created: ${created}\n` +
+    (type ? `type: ${type}\n` : "") +
     `tags: []\n` +
     `---\n\n` +
     `${body}\n`;

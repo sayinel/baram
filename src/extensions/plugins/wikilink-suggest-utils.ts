@@ -5,7 +5,10 @@ import { useFileStore } from "../../stores/file/file";
 import { titleForId } from "../../stores/zettelkasten/zettel-index";
 // §31 Wikilink autocomplete — utility functions
 import { extractHeadings, fuzzyScore } from "../../utils/file-search";
-import { parseNoteTitle } from "../../utils/zettelkasten/parse-note-title";
+import {
+  extractLeadingId,
+  parseNoteTitle,
+} from "../../utils/zettelkasten/parse-note-title";
 
 export interface WikilinkSuggestionItem {
   /** §87 Parent folder path relative to vault root (for grouped display) */
@@ -27,9 +30,6 @@ export interface WikilinkSuggestionItem {
   vaultAlias?: string;
 }
 
-/** Matches a Zettelkasten id prefix at the start of a filename (e.g. "202607051530 title.md"). */
-const ZETTEL_FILENAME_ID_RE = /^(\d{12,14})\b/;
-
 /**
  * §95 Zettelkasten: build a suggestion item for one file. If the filename has a
  * leading id (12-14 digit prefix), the item's `target` is the id — so the stored
@@ -42,9 +42,8 @@ export function buildFileSuggestionItem(
   file: { name: string; path: string },
   id: string,
 ): WikilinkSuggestionItem {
-  const idMatch = file.name.match(ZETTEL_FILENAME_ID_RE);
-  if (idMatch) {
-    const zettelId = idMatch[1];
+  const zettelId = extractLeadingId(file.name);
+  if (zettelId) {
     const title = titleForId(zettelId) ?? parseNoteTitle(file.name, "");
     return {
       id,

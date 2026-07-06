@@ -7,6 +7,7 @@ import {
   writeFile,
 } from "../ipc/invoke";
 import { useZettelIndexStore } from "../stores/zettelkasten/zettel-index";
+import { extractLeadingId } from "../utils/zettelkasten/parse-note-title";
 import {
   generateZettelId,
   localIsoMinute,
@@ -25,13 +26,15 @@ import { openFileInTab } from "./journal-file-service";
 export async function captureFleeting(
   zettelDir: string,
   body: string,
+  /** §99 M4: Quick Capture type (idea/link/quote/note) — written to frontmatter. */
+  type?: string,
 ): Promise<null | { path: string }> {
   const inboxDir = `${zettelDir}/inbox`;
   await createDir(inboxDir);
   const existing = await collectExistingIds(zettelDir);
   const id = generateZettelId(existing);
   const created = localIsoMinute();
-  const { filename, content } = buildFleetingNote({ id, body, created });
+  const { filename, content } = buildFleetingNote({ id, body, created, type });
   const path = `${inboxDir}/${filename}`;
   await writeFile(path, content);
   useZettelIndexStore.getState().upsert({ id, path, title: id });
@@ -147,8 +150,8 @@ async function collectExistingIds(zettelDir: string): Promise<Set<string>> {
     try {
       const entries = await listDir(`${zettelDir}/${sub}`, false);
       for (const e of entries) {
-        const m = e.name.match(/^(\d{12,14})\b/);
-        if (m) ids.add(m[1]);
+        const id = extractLeadingId(e.name);
+        if (id) ids.add(id);
       }
     } catch {
       /* dir may not exist yet */
