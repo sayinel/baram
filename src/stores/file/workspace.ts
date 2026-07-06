@@ -2,10 +2,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import {
-  ensureJournalFile,
-  openFileInTab,
-} from "../../services/journal-file-service";
+import { getSpace } from "../../spaces";
 import { resolveJournalDir } from "../../utils/journal/journal";
 import { logger } from "../../utils/logger";
 import { useContextStore } from "../context/context";
@@ -130,34 +127,18 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
         // §85 M2b: Journal preset — activate journal context + open today's file
         if (id === "journal") {
-          const {
-            journalEnabled,
-            journalDirectory,
-            journalFilenameFormat,
-            journalTemplatePath,
-            journalUseHierarchy,
-          } = useSettingsStore.getState();
+          const { journalEnabled, journalDirectory } =
+            useSettingsStore.getState();
           const { rootPath } = useFileStore.getState();
           const resolvedDir = resolveJournalDir(rootPath, journalDirectory);
           if (journalEnabled && resolvedDir) {
             (async () => {
               try {
-                // §85 M2b: Activate journal as a separate context (not rootPath swap)
-                const contextStore = useContextStore.getState();
-                await contextStore.ensureJournalContext(resolvedDir);
-
-                // Open today's journal file
-                const result = await ensureJournalFile(new Date(), {
-                  journalDirectory,
-                  journalFilenameFormat,
-                  journalTemplatePath,
-                  journalUseHierarchy,
-                  rootPath: resolvedDir,
-                });
-                if (result) {
-                  await openFileInTab(result.path, result.content);
-                }
-                // Note: File tree switch is handled by contextStore subscription in file.ts
+                await useContextStore
+                  .getState()
+                  .ensureJournalContext(resolvedDir);
+                await getSpace("journal")?.newFileFlow?.();
+                // File tree switch handled by contextStore subscription in file.ts
               } catch (err) {
                 logger.error("[Workspace] Failed to open journal:", err);
               }
