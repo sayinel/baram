@@ -8,11 +8,11 @@ import {
   addContext as reRegisterInRust,
 } from "../ipc/context";
 import { getOpenedUrls } from "../ipc/invoke";
+import { getSpace } from "../spaces";
 import { useContextStore } from "../stores/context/context";
-import { openFolder, useFileStore } from "../stores/file/file";
+import { openFolder } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
 import { migrateFromLocalStorage } from "../stores/system/tauri-storage";
-import { resolveJournalDir } from "../utils/journal/journal";
 import { logger } from "../utils/logger";
 
 interface UseAppStartupParams {
@@ -107,35 +107,8 @@ export function useAppStartup({
                 await handleOpenFilePath(lastOpenedFile);
               }
             }
-            // §85 M2b: Journal startup behavior — only if journal context
-            // already exists (don't recreate if user closed all contexts)
-            const existingJournal = useContextStore.getState().journalContext();
-            if (existingJournal) {
-              const {
-                journalEnabled,
-                journalStartupBehavior,
-                journalDirectory,
-              } = useSettingsStore.getState();
-              if (
-                journalEnabled &&
-                journalStartupBehavior === "openJournal" &&
-                journalDirectory
-              ) {
-                const resolvedDir = resolveJournalDir(
-                  useFileStore.getState().rootPath ?? "",
-                  journalDirectory,
-                );
-                if (resolvedDir) {
-                  try {
-                    await useContextStore
-                      .getState()
-                      .ensureJournalContext(resolvedDir);
-                  } catch {
-                    // Non-fatal
-                  }
-                }
-              }
-            }
+            // §85/§92 M2b: Journal startup behavior (registry-driven, self-guarded)
+            await getSpace("journal")?.startup?.();
 
             // §89 Process queued file-open requests AFTER vault restoration
             await processOpenedUrls(handleOpenFilePath);
