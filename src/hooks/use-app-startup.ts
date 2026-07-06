@@ -109,6 +109,8 @@ export function useAppStartup({
             }
             // §85/§92 M2b: Journal startup behavior (registry-driven, self-guarded)
             await getSpace("journal")?.startup?.();
+            // §98 Zettelkasten startup behavior (registry-driven, self-guarded)
+            await getSpace("zettelkasten")?.startup?.();
 
             // §89 Process queued file-open requests AFTER vault restoration
             await processOpenedUrls(handleOpenFilePath);
