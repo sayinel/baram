@@ -4,7 +4,7 @@
  */
 
 export interface KeybindingEntry {
-  category: string; // "file" | "edit" | "view" | "search" | "insert" | "ai" | "workspace" | "journal" | "formatting"
+  category: string; // "file" | "edit" | "view" | "search" | "insert" | "ai" | "workspace" | "journal" | "zettelkasten" | "formatting"
   customizable: boolean; // true = global shortcut, false = Tiptap extension
   defaultKey: string; // Platform-independent: "Mod+S"
   id: string; // e.g. "file.save"
@@ -20,6 +20,7 @@ export const KEYBINDING_CATEGORIES: string[] = [
   "ai",
   "workspace",
   "journal",
+  "zettelkasten",
   "formatting",
 ];
 
@@ -32,6 +33,7 @@ export const CATEGORY_LABELS: Record<string, string> = {
   ai: "keybindings.category.ai",
   workspace: "keybindings.category.workspace",
   journal: "keybindings.category.journal",
+  zettelkasten: "keybindings.category.zettelkasten",
   formatting: "keybindings.category.formatting",
 };
 
@@ -275,34 +277,34 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
     defaultKey: "Mod+Shift+I",
     customizable: true,
   },
+
+  // ── zettelkasten ──────────────────────────────────────────────────────────
   {
     id: "zettelkasten.newNote",
-    label: "keybindings.journal.newNote",
-    category: "journal",
+    label: "keybindings.zettelkasten.newNote",
+    category: "zettelkasten",
     defaultKey: "Mod+Shift+K",
     customizable: true,
   },
   {
     id: "zettelkasten.promote",
-    label: "keybindings.journal.promote",
-    category: "journal",
+    label: "keybindings.zettelkasten.promote",
+    category: "zettelkasten",
     defaultKey: "Mod+Shift+P",
     customizable: true,
   },
   {
     id: "zettelkasten.newFromSelection",
-    label: "keybindings.journal.newFromSelection",
-    category: "journal",
+    label: "keybindings.zettelkasten.newFromSelection",
+    category: "zettelkasten",
     defaultKey: "Mod+Shift+E",
     customizable: true,
   },
   {
-    // §97 basic MOC. Category is "journal" — matches the other zettel
-    // keybindings above; Task 5 formalizes a dedicated "zettelkasten"
-    // category across all of these.
+    // §97 basic MOC.
     id: "zettelkasten.newMoc",
-    label: "keybindings.journal.newMoc",
-    category: "journal",
+    label: "keybindings.zettelkasten.newMoc",
+    category: "zettelkasten",
     defaultKey: "Mod+Shift+C",
     customizable: true,
   },
