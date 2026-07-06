@@ -23,6 +23,7 @@ import {
   ensureJournalFile,
   openFileInTab,
 } from "../services/journal-file-service";
+import { createZettelNote } from "../services/zettelkasten-service";
 import { useAIStore } from "../stores/ai/ai";
 import { useEditorStore } from "../stores/editor/editor";
 import { useBookmarkStore } from "../stores/file/bookmark";
@@ -40,6 +41,7 @@ import {
 } from "../utils/journal/journal-capture";
 import { logger } from "../utils/logger";
 import { showTableGridPicker } from "../utils/table-grid-picker";
+import { resolveZettelDir } from "../utils/zettelkasten/zettelkasten";
 
 interface UseGlobalKeyboardParams {
   editor: Editor | null;
@@ -538,6 +540,23 @@ export function useKeybindingActions({
         ui.setRightPanelMode("photo-gallery");
         if (!ui.rightPanelOpen) ui.toggleRightPanel();
       }
+    });
+
+    // §94 Zettelkasten
+    registerAction("zettelkasten.newNote", () => {
+      const { zettelkastenEnabled, zettelkastenDirectory } =
+        useSettingsStore.getState();
+      const { rootPath } = useFileStore.getState();
+      const dir = resolveZettelDir(rootPath, zettelkastenDirectory);
+      if (!zettelkastenEnabled || !dir) {
+        logger.warn("[Zettel] newNote: space not enabled/configured");
+        return;
+      }
+      useUIStore.getState().openZettelTitleDialog((title) => {
+        createZettelNote(dir, title).catch((err) =>
+          logger.error("[Zettel] newNote failed:", err),
+        );
+      });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- setFindReplaceOpen/setFindReplaceMode are stable store actions
   }, [

@@ -5,6 +5,7 @@ import type { Editor } from "@tiptap/react";
 
 import { useShallow } from "zustand/shallow";
 
+import { getAction } from "../../keybindings/keybinding-actions";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useWorkspaceStore } from "../../stores/file/workspace";
@@ -616,6 +617,13 @@ function buildCommands(
       label: "Open Today's Journal",
       category: "Journal",
       action: () => useWorkspaceStore.getState().applyPreset("journal"),
+    },
+    {
+      id: "zettelkasten:new-note",
+      label: "New Zettel",
+      category: "Journal",
+      shortcut: "⇧⌘K",
+      action: () => getAction("zettelkasten.newNote")?.(),
     },
   ];
 }

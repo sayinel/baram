@@ -396,6 +396,7 @@
   "keybindings.journal.jumpToCaptures": "Jump to Captures",
   "keybindings.journal.memories": "Memories Panel",
   "keybindings.journal.photoGallery": "Photo Gallery",
+  "keybindings.journal.newNote": "New Zettel Note",
   "keybindings.fmt.bold": "Bold",
   "keybindings.fmt.italic": "Italic",
   "keybindings.fmt.underline": "Underline",
