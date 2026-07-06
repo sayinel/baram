@@ -2,7 +2,10 @@
 import { create } from "zustand";
 
 import { listDir, readFile } from "../../ipc/invoke";
-import { parseNoteTitle } from "../../utils/zettelkasten/parse-note-title";
+import {
+  extractLeadingId,
+  parseNoteTitle,
+} from "../../utils/zettelkasten/parse-note-title";
 
 export interface ZettelNote {
   id: string;
@@ -69,8 +72,8 @@ export async function refreshZettelIndex(zettelDir: string): Promise<void> {
       continue;
     }
     for (const e of entries) {
-      const m = e.name.match(/^(\d{12,14})\b/);
-      if (!m || !/\.(md|markdown)$/.test(e.name)) continue;
+      const id = extractLeadingId(e.name);
+      if (!id || !/\.(md|markdown)$/.test(e.name)) continue;
       let content = "";
       try {
         content = await readFile(e.path);
@@ -78,7 +81,7 @@ export async function refreshZettelIndex(zettelDir: string): Promise<void> {
         /* keep empty */
       }
       notes.push({
-        id: m[1],
+        id,
         path: e.path,
         title: parseNoteTitle(e.name, content),
       });

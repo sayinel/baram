@@ -1,3 +1,17 @@
+/**
+ * Extract the leading Zettelkasten id (12-14 digits) from a filename or bare
+ * stem. Mirrors Rust's canonical `extract_id_from_stem`
+ * (`src-tauri/src/index/normalizer.rs`): the digit run must be followed by a
+ * space or be the entire (extension-stripped) stem — e.g.
+ * `202607051530-note` has NO id (a hyphen is not a valid separator, unlike
+ * the old `\b`-based regex this replaces).
+ */
+export function extractLeadingId(nameOrStem: string): null | string {
+  const stem = nameOrStem.replace(/\.(md|markdown)$/, "");
+  const m = stem.match(/^(\d{12,14})(?:\s|$)/);
+  return m ? m[1] : null;
+}
+
 export function isZettelId(s: string): boolean {
   return /^\d{12,14}$/.test(s);
 }

@@ -1,6 +1,8 @@
 // §56l Quick Capture Dialog — Cmd+Shift+N
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useShallow } from "zustand/shallow";
+
 import { listDir, readFile } from "../../ipc/invoke";
 import { captureFleeting } from "../../services/zettelkasten-service";
 import { useFileStore } from "../../stores/file/file";
@@ -19,6 +21,17 @@ import { TagSuggest } from "./TagSuggest";
 export function QuickCaptureDialog() {
   const { quickCaptureOpen, quickCaptureType, toggleQuickCapture } =
     useUIStore();
+  // §99 M4: reactive read so the "space not configured" hint / disabled Save
+  // surface immediately on open/render, not only after a failed save attempt.
+  const { zettelkastenEnabled, zettelkastenDirectory } = useSettingsStore(
+    useShallow((s) => ({
+      zettelkastenEnabled: s.zettelkastenEnabled,
+      zettelkastenDirectory: s.zettelkastenDirectory,
+    })),
+  );
+  const rootPath = useFileStore((s) => s.rootPath);
+  const zettelDir = resolveZettelDir(rootPath, zettelkastenDirectory);
+  const zettelReady = zettelkastenEnabled && !!zettelDir;
   const [captureType, setCaptureType] = useState<CaptureType>("note");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -93,16 +106,14 @@ export function QuickCaptureDialog() {
       return;
     }
 
-    try {
-      const { zettelkastenEnabled, zettelkastenDirectory } =
-        useSettingsStore.getState();
-      const { rootPath } = useFileStore.getState();
-      const dir = resolveZettelDir(rootPath, zettelkastenDirectory);
-      if (!zettelkastenEnabled || !dir) {
-        setSaveError("설정에서 Zettelkasten 공간을 먼저 지정해주세요.");
-        return;
-      }
+    // §99 M4: the Save button is disabled while !zettelReady, but keep this
+    // check as a defense-in-depth guard (e.g. Enter key submit).
+    if (!zettelReady || !zettelDir) {
+      setSaveError("제텔카스텐 공간을 먼저 설정하세요.");
+      return;
+    }
 
+    try {
       // Compose the fleeting body from the dialog fields
       const bodyLines: string[] = [];
       if (title) bodyLines.push(`# ${title}`, "");
@@ -117,7 +128,11 @@ export function QuickCaptureDialog() {
             .join(" "),
         );
 
-      const result = await captureFleeting(dir, bodyLines.join("\n").trim());
+      const result = await captureFleeting(
+        zettelDir,
+        bodyLines.join("\n").trim(),
+        captureType,
+      );
       if (!result) {
         setSaveError("Zettelkasten inbox에 저장하지 못했습니다.");
         return;
@@ -130,7 +145,16 @@ export function QuickCaptureDialog() {
         `저장 실패: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-  }, [title, body, url, tags, toggleQuickCapture]);
+  }, [
+    title,
+    body,
+    url,
+    tags,
+    captureType,
+    zettelReady,
+    zettelDir,
+    toggleQuickCapture,
+  ]);
 
   // Handle tag input changes — detect #prefix for autocomplete
   const handleTagsChange = useCallback(
@@ -319,6 +343,14 @@ export function QuickCaptureDialog() {
           />
         </div>
 
+        {/* §99 M4: surface the "space not configured" state immediately on
+            render, not only after a failed save attempt. */}
+        {!zettelReady && (
+          <div className="quick-capture-error">
+            제텔카스텐 공간을 먼저 설정하세요.
+          </div>
+        )}
+
         {/* Error message */}
         {saveError && <div className="quick-capture-error">{saveError}</div>}
 
@@ -329,7 +361,7 @@ export function QuickCaptureDialog() {
           </button>
           <button
             className="quick-capture-save"
-            disabled={!body.trim() && !title.trim()}
+            disabled={(!body.trim() && !title.trim()) || !zettelReady}
             onClick={handleSave}
           >
             저장 (Enter)

@@ -137,6 +137,20 @@ describe("captureFleeting", () => {
     expect(created).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
     expect(created.replace(/[-T:]/g, "")).toBe(id);
   });
+
+  it("records the capture type in the fleeting note's frontmatter (§99 M4)", async () => {
+    const { captureFleeting } = await import("../zettelkasten-service");
+    await captureFleeting("/z", "a quote to keep", "quote");
+    const [, content] = writeFile.mock.calls.at(-1)!;
+    expect(content).toContain("type: quote");
+  });
+
+  it("omits type: frontmatter when no capture type is given", async () => {
+    const { captureFleeting } = await import("../zettelkasten-service");
+    await captureFleeting("/z", "untyped thought");
+    const [, content] = writeFile.mock.calls.at(-1)!;
+    expect(content).not.toContain("type:");
+  });
 });
 
 describe("promoteFleeting", () => {

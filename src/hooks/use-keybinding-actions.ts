@@ -475,6 +475,16 @@ export function useKeybindingActions({
         logger.warn("[Zettel] newFromSelection: space not enabled/configured");
         return;
       }
+      // §95/§99 M5: mirror zettelkasten.promote's gate — only insert an
+      // [[id]] link into a document that is itself inside the zettel space.
+      const es = useEditorStore.getState();
+      const activeTab = es.tabs.find((t) => t.id === es.activeTabId);
+      if (!activeTab?.filePath?.startsWith(`${dir}/`)) {
+        logger.warn(
+          "[Zettel] newFromSelection: active file is not in the zettel space",
+        );
+        return;
+      }
       const activeEditor = editor;
       // §95 Use block-separated text (not the shared getSelectedText) so a
       // multi-paragraph selection keeps its paragraph breaks in the note body.
