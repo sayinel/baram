@@ -18,6 +18,7 @@ import {
 } from "./suggestion-renderer";
 import { getSyntaxRevealExpanded, syntaxRevealKey } from "./syntax-reveal";
 import {
+  buildFileSuggestionItem,
   fileNameWithoutExtension,
   filterFiles,
   loadFileHeadings,
@@ -33,12 +34,7 @@ function getFileItems(): WikilinkSuggestionItem[] {
   const flat = flattenFileTree(fileTree, rootPath);
   return flat
     .filter((f) => f.name.endsWith(".md") || f.name.endsWith(".markdown"))
-    .map((f, idx) => ({
-      id: String(idx),
-      target: fileNameWithoutExtension(f.name),
-      label: f.name,
-      path: f.path,
-    }));
+    .map((f, idx) => buildFileSuggestionItem(f, String(idx)));
 }
 
 export const WikilinkSuggest = Extension.create({
