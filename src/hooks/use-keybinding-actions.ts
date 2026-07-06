@@ -23,7 +23,10 @@ import {
   ensureJournalFile,
   openFileInTab,
 } from "../services/journal-file-service";
-import { createZettelNote } from "../services/zettelkasten-service";
+import {
+  createZettelNote,
+  promoteFleeting,
+} from "../services/zettelkasten-service";
 import { useAIStore } from "../stores/ai/ai";
 import { useEditorStore } from "../stores/editor/editor";
 import { useBookmarkStore } from "../stores/file/bookmark";
@@ -555,6 +558,29 @@ export function useKeybindingActions({
       useUIStore.getState().openZettelTitleDialog((title) => {
         createZettelNote(dir, title).catch((err) =>
           logger.error("[Zettel] newNote failed:", err),
+        );
+      });
+    });
+
+    registerAction("zettelkasten.promote", () => {
+      const { zettelkastenEnabled, zettelkastenDirectory } =
+        useSettingsStore.getState();
+      const { rootPath } = useFileStore.getState();
+      const dir = resolveZettelDir(rootPath, zettelkastenDirectory);
+      const es = useEditorStore.getState();
+      const tab = es.tabs.find((t) => t.id === es.activeTabId);
+      if (
+        !zettelkastenEnabled ||
+        !dir ||
+        !tab?.filePath?.startsWith(`${dir}/inbox/`)
+      ) {
+        logger.warn("[Zettel] promote: active file is not an inbox note");
+        return;
+      }
+      const fleetingPath = tab.filePath;
+      useUIStore.getState().openZettelTitleDialog((title) => {
+        promoteFleeting(dir, fleetingPath, title).catch((err) =>
+          logger.error("[Zettel] promote failed:", err),
         );
       });
     });
