@@ -225,3 +225,32 @@ describe("§82 revertSpaceIfContextClosed", () => {
     expect(useUIStore.getState().sidebarOpen).toBe(false);
   });
 });
+
+describe("§93 applyPreset zettelkasten readiness guard", () => {
+  beforeEach(async () => {
+    await new Promise((r) => setTimeout(r, 0));
+    useWorkspaceStore.setState({ activePresetId: null, customPresets: [] });
+    useUIStore.setState({ toast: null });
+  });
+
+  it("does not switch + toasts when the Zettel feature is disabled", () => {
+    useSettingsStore.setState({ zettelkastenEnabled: false });
+    useWorkspaceStore.getState().applyPreset("zettelkasten");
+    expect(useWorkspaceStore.getState().activePresetId).not.toBe(
+      "zettelkasten",
+    );
+    expect(useUIStore.getState().toast?.message).toBeTruthy();
+  });
+
+  it("does not switch + toasts when enabled but no directory is set", () => {
+    useSettingsStore.setState({
+      zettelkastenEnabled: true,
+      zettelkastenDirectory: "",
+    });
+    useWorkspaceStore.getState().applyPreset("zettelkasten");
+    expect(useWorkspaceStore.getState().activePresetId).not.toBe(
+      "zettelkasten",
+    );
+    expect(useUIStore.getState().toast?.message).toBeTruthy();
+  });
+});

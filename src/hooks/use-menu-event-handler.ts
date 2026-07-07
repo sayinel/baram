@@ -359,6 +359,9 @@ export function useMenuEventHandler({
         case "workspace_writing":
           useWorkspaceStore.getState().applyPreset("writing");
           break;
+        case "workspace_zettel":
+          useWorkspaceStore.getState().applyPreset("zettelkasten");
+          break;
       }
     });
 
