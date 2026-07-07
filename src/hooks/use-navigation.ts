@@ -11,6 +11,7 @@ import { useLinkStore } from "../stores/editor/link";
 import { isActiveContextJournal, useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
 import { useNavigationStore } from "../stores/ui/navigation";
+import { useZettelIndexStore } from "../stores/zettelkasten/zettel-index";
 import {
   findBlockPosById,
   findHeadingPosByText,
@@ -19,6 +20,7 @@ import { resolveWikilinkTarget } from "../utils/editor/wikilink-nav";
 import { flattenFileTree } from "../utils/file-search";
 import { isDateString, resolveJournalDir } from "../utils/journal/journal";
 import { logger } from "../utils/logger";
+import { isZettelId } from "../utils/zettelkasten/parse-note-title";
 
 interface UseNavigationParams {
   editor: Editor | null;
@@ -85,6 +87,19 @@ export function useNavigation({
       }
 
       const resolved = resolveWikilinkTarget(target, vaultAlias);
+
+      // §95 Zettelkasten [[id]] → open the note via the frontend id index.
+      // The target is a bare id but the file is notes/{id} {title}.md (or
+      // inbox/{id}.md), so stem-matching in resolveWikilinkTarget won't find a
+      // promoted note and would otherwise create a spurious {id}.md at the root.
+      // The index holds the note's CURRENT path (fleeting or promoted).
+      if (isZettelId(target)) {
+        const note = useZettelIndexStore.getState().byId[target];
+        if (note?.path) {
+          handleOpenFilePath(note.path);
+          return;
+        }
+      }
 
       // §87 Cross-vault async fallback: if sync resolution failed but alias exists,
       // try to find the file in the other vault via IPC
