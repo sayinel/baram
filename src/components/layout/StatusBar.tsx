@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { Editor } from "@tiptap/react";
 
-import { Calendar, ChevronDown, Pencil, Zap } from "lucide-react";
+import { Calendar, ChevronDown, Pencil, StickyNote, Zap } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useResolvedSettings } from "../../hooks/use-resolved-settings";
@@ -25,6 +25,7 @@ const MODE_LABELS: Record<EditorMode, string> = {
 const SPACE_ICONS: Record<string, typeof Pencil> = {
   writing: Pencil,
   journal: Calendar,
+  zettelkasten: StickyNote,
   skills: Zap,
 };
 
