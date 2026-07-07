@@ -290,14 +290,16 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
     id: "zettelkasten.promote",
     label: "keybindings.zettelkasten.promote",
     category: "zettelkasten",
-    defaultKey: "Mod+Shift+P",
+    // Mod+Shift+P is grabbed by the native menu (Command Palette, menu.rs);
+    // Mod+Shift+E by Export. Use keys free in BOTH the registry and menu.rs.
+    defaultKey: "Mod+Shift+U",
     customizable: true,
   },
   {
     id: "zettelkasten.newFromSelection",
     label: "keybindings.zettelkasten.newFromSelection",
     category: "zettelkasten",
-    defaultKey: "Mod+Shift+E",
+    defaultKey: "Mod+Shift+Y",
     customizable: true,
   },
   {

@@ -632,5 +632,19 @@ function buildCommands(
       shortcut: "⇧⌘C",
       action: () => getAction("zettelkasten.newMoc")?.(),
     },
+    {
+      id: "zettelkasten:promote",
+      label: "Promote to Permanent Note",
+      category: "Journal",
+      shortcut: "⇧⌘U",
+      action: () => getAction("zettelkasten.promote")?.(),
+    },
+    {
+      id: "zettelkasten:new-from-selection",
+      label: "New Note from Selection",
+      category: "Journal",
+      shortcut: "⇧⌘Y",
+      action: () => getAction("zettelkasten.newFromSelection")?.(),
+    },
   ];
 }
