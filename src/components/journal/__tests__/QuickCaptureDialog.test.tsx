@@ -28,7 +28,7 @@ describe("QuickCaptureDialog — zettel space gating (§95/§99 M4)", () => {
     render(<QuickCaptureDialog />);
 
     expect(
-      screen.getByText("제텔카스텐 공간을 먼저 설정하세요."),
+      screen.getByText("Zettel 공간을 먼저 설정하세요."),
     ).toBeInTheDocument();
     expect(screen.getByText("저장 (Enter)")).toBeDisabled();
   });
@@ -44,7 +44,7 @@ describe("QuickCaptureDialog — zettel space gating (§95/§99 M4)", () => {
     });
 
     expect(
-      screen.queryByText("제텔카스텐 공간을 먼저 설정하세요."),
+      screen.queryByText("Zettel 공간을 먼저 설정하세요."),
     ).not.toBeInTheDocument();
     expect(screen.getByText("저장 (Enter)")).not.toBeDisabled();
   });

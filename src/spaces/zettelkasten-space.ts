@@ -16,7 +16,7 @@ function resolveHomeNotePath(resolvedDir: string, homeNote: string): string {
 
 export const zettelkastenSpace: SpaceDefinition = {
   type: "zettelkasten",
-  label: "Zettelkasten",
+  label: "Zettel",
   maxInstances: 1,
   configFolders: ["inbox", "notes"],
   layout: {
@@ -43,7 +43,7 @@ export const zettelkastenSpace: SpaceDefinition = {
     try {
       await useContextStore
         .getState()
-        .ensureSpaceContext("zettelkasten", resolvedDir);
+        .ensureSpaceContext("zettelkasten", resolvedDir, { label: "Zettel" });
     } catch {
       /* non-fatal */
     }

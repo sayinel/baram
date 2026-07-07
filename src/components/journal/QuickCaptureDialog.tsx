@@ -99,7 +99,7 @@ export function QuickCaptureDialog() {
     // §99 M4: the Save button is disabled while !zettelReady, but keep this
     // check as a defense-in-depth guard (e.g. Enter key submit).
     if (!zettelReady || !zettelDir) {
-      setSaveError("제텔카스텐 공간을 먼저 설정하세요.");
+      setSaveError("Zettel 공간을 먼저 설정하세요.");
       return;
     }
 
@@ -121,7 +121,7 @@ export function QuickCaptureDialog() {
         tagList,
       );
       if (!result) {
-        setSaveError("Zettelkasten inbox에 저장하지 못했습니다.");
+        setSaveError("Zettel inbox에 저장하지 못했습니다.");
         return;
       }
 
@@ -292,7 +292,7 @@ export function QuickCaptureDialog() {
             render, not only after a failed save attempt. */}
         {!zettelReady && (
           <div className="quick-capture-error">
-            제텔카스텐 공간을 먼저 설정하세요.
+            Zettel 공간을 먼저 설정하세요.
           </div>
         )}
 
