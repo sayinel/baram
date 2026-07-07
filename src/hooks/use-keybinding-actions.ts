@@ -10,6 +10,7 @@ import {
   dispatchUnfoldAll,
   toggleFoldAtCursor,
 } from "../extensions/plugins/fold";
+import { readFile } from "../ipc/invoke";
 import { normalizeKeyEvent } from "../keybindings/key-utils";
 import {
   clearActions,
@@ -437,10 +438,14 @@ export function useKeybindingActions({
         logger.warn("[Zettel] newNote: space not enabled/configured");
         return;
       }
-      useUIStore.getState().openZettelTitleDialog((title) => {
-        createZettelNote(dir, title).catch((err) =>
-          logger.error("[Zettel] newNote failed:", err),
-        );
+      useUIStore.getState().openZettelTitleDialog({
+        onSubmit: (title) =>
+          createZettelNote(dir, title).catch((err) =>
+            logger.error("[Zettel] newNote failed:", err),
+          ),
+        title: "New Zettel",
+        description: "Create a permanent atomic note in notes/.",
+        confirmLabel: "Create",
       });
     });
 
@@ -460,11 +465,30 @@ export function useKeybindingActions({
         return;
       }
       const fleetingPath = tab.filePath;
-      useUIStore.getState().openZettelTitleDialog((title) => {
-        promoteFleeting(dir, fleetingPath, title).catch((err) =>
-          logger.error("[Zettel] promote failed:", err),
-        );
-      });
+      // §102 Prefill the title with the fleeting note's first body line so the
+      // user can confirm/tweak instead of typing from scratch.
+      void (async () => {
+        let initialTitle = "";
+        try {
+          const raw = await readFile(fleetingPath);
+          const body = raw.replace(/^---\n[\s\S]*?\n---\n?/, "");
+          initialTitle = firstNonEmptyLine(body)
+            .replace(/^#+\s*/, "")
+            .slice(0, 80);
+        } catch {
+          /* fall back to an empty title */
+        }
+        useUIStore.getState().openZettelTitleDialog({
+          onSubmit: (title) =>
+            promoteFleeting(dir, fleetingPath, title).catch((err) =>
+              logger.error("[Zettel] promote failed:", err),
+            ),
+          title: "Promote to Permanent Note",
+          description: "Move this fleeting note from inbox/ to notes/.",
+          confirmLabel: "Promote",
+          initialTitle,
+        });
+      })();
     });
 
     // §94 New note from selection — extract the selected text into a new
@@ -504,24 +528,31 @@ export function useKeybindingActions({
         .slice(0, 3)
         .join(" ")
         .slice(0, 40);
-      useUIStore.getState().openZettelTitleDialog((title) => {
-        // openTab=false: stay on the current document — this note's own
-        // selection is about to be replaced below, so the shared editor
-        // must not be swapped to the newly created note first.
-        createZettelNote(dir, title, selectionText, false)
-          .then((result) => {
-            if (!result) return;
-            activeEditor
-              .chain()
-              .focus()
-              .deleteSelection()
-              .insertWikilink({ target: result.id })
-              .run();
-          })
-          .catch((err) =>
-            logger.error("[Zettel] newFromSelection failed:", err),
-          );
-      }, initialTitle);
+      useUIStore.getState().openZettelTitleDialog({
+        onSubmit: (title) => {
+          // openTab=false: stay on the current document — this note's own
+          // selection is about to be replaced below, so the shared editor
+          // must not be swapped to the newly created note first.
+          createZettelNote(dir, title, selectionText, false)
+            .then((result) => {
+              if (!result) return;
+              activeEditor
+                .chain()
+                .focus()
+                .deleteSelection()
+                .insertWikilink({ target: result.id })
+                .run();
+            })
+            .catch((err) =>
+              logger.error("[Zettel] newFromSelection failed:", err),
+            );
+        },
+        title: "New Note from Selection",
+        description:
+          "Create a note from the selection and replace it with a link.",
+        confirmLabel: "Create",
+        initialTitle,
+      });
     });
 
     // §97 New MOC (Map of Content) — a #moc-tagged index note. Discovery of
@@ -535,10 +566,14 @@ export function useKeybindingActions({
         logger.warn("[Zettel] newMoc: space not enabled/configured");
         return;
       }
-      useUIStore.getState().openZettelTitleDialog((title) => {
-        createMoc(dir, title).catch((err) =>
-          logger.error("[Zettel] newMoc failed:", err),
-        );
+      useUIStore.getState().openZettelTitleDialog({
+        onSubmit: (title) =>
+          createMoc(dir, title).catch((err) =>
+            logger.error("[Zettel] newMoc failed:", err),
+          ),
+        title: "New MOC",
+        description: "Create a #moc index note.",
+        confirmLabel: "Create",
       });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- setFindReplaceOpen/setFindReplaceMode are stable store actions
