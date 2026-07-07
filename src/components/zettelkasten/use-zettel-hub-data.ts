@@ -6,7 +6,10 @@ import type { FileEntry } from "../../ipc/types";
 
 import { listDir, readFile } from "../../ipc/invoke";
 import { getFilesByTag } from "../../ipc/tag";
-import { titleForId } from "../../stores/zettelkasten/zettel-index";
+import {
+  titleForId,
+  useZettelIndexStore,
+} from "../../stores/zettelkasten/zettel-index";
 import { extractTagsFromContent } from "../../utils/journal/journal-tags";
 import { basename } from "../../utils/path-utils";
 import { recentFromEntries } from "../../utils/zettelkasten/hub-data";
@@ -43,6 +46,13 @@ export function useZettelHubData(zettelDir: null | string): ZettelHubData {
   const [recent, setRecent] = useState<ZettelHubListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const mountedRef = useRef(true);
+  // Bumped on every refresh() call; guards against an overlapping earlier
+  // refresh overwriting state with stale results (see gen check below).
+  const genRef = useRef(0);
+  // Raw reference selector (NOT useShallow) — byId is replaced wholesale by
+  // every upsert/removeByPath/setAll/clear, so reference-change is exactly
+  // the "something changed" signal this hook wants to react to.
+  const indexById = useZettelIndexStore((s) => s.byId);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -52,6 +62,7 @@ export function useZettelHubData(zettelDir: null | string): ZettelHubData {
   }, []);
 
   const refresh = useCallback(async () => {
+    const gen = ++genRef.current;
     if (!zettelDir) {
       setInbox([]);
       setMocs([]);
@@ -65,16 +76,19 @@ export function useZettelHubData(zettelDir: null | string): ZettelHubData {
       loadRecent(zettelDir),
       loadMocs(zettelDir),
     ]);
-    if (!mountedRef.current) return;
+    if (!mountedRef.current || gen !== genRef.current) return;
     setInbox(inboxItems);
     setRecent(recentItems);
     setMocs(mocItems);
     setLoading(false);
   }, [zettelDir]);
 
+  // Refresh on mount, on zettelDir change (via refresh's identity), and on
+  // every index mutation — capture/promote/delete all upsert/removeByPath
+  // the index (including Quick Capture, which happens outside this panel).
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+  }, [refresh, indexById]);
 
   return { inbox, mocs, recent, loading, refresh };
 }

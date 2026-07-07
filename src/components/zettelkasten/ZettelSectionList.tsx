@@ -7,9 +7,7 @@ import type { ZettelHubListItem } from "./use-zettel-hub-data";
 
 import { ChevronDown, ChevronRight } from "lucide-react";
 
-import { readFile } from "../../ipc/invoke";
-import { openFileInTab } from "../../services/journal-file-service";
-import { logger } from "../../utils/logger";
+import { openZettelHubNote } from "./open-hub-note";
 
 interface ZettelHubSectionHeaderProps {
   collapsed: boolean;
@@ -79,7 +77,7 @@ export function ZettelSectionList({
               <button
                 className="zettel-hub-list-row btn-unstyled text-truncate"
                 key={item.path}
-                onClick={() => void openHubNote(item.path, label)}
+                onClick={() => void openZettelHubNote(item.path)}
                 title={item.title}
               >
                 <span className="text-truncate">{item.title}</span>
@@ -90,13 +88,4 @@ export function ZettelSectionList({
       )}
     </div>
   );
-}
-
-async function openHubNote(path: string, label: string): Promise<void> {
-  try {
-    const content = await readFile(path);
-    await openFileInTab(path, content);
-  } catch (err) {
-    logger.error(`[Zettel] hub: open ${label} note failed:`, err);
-  }
 }
