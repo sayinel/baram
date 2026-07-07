@@ -62,10 +62,11 @@ describe("QuickCaptureDialog — zettel space gating (§95/§99 M4)", () => {
     fireEvent.click(screen.getByText("저장 (Enter)"));
 
     await vi.waitFor(() => {
-      // Exactly two args — the type parameter is gone (§99 A).
+      // No capture type param (§99 A); tags arg is an empty array when none typed.
       expect(captureFleeting).toHaveBeenCalledWith(
         "/vault/zettel",
         expect.stringContaining("a fleeting thought"),
+        [],
       );
     });
   });
@@ -89,7 +90,35 @@ describe("QuickCaptureDialog — zettel space gating (§95/§99 M4)", () => {
       expect(captureFleeting).toHaveBeenCalledWith(
         "/vault/zettel",
         expect.stringContaining("Source: https://example.com"),
+        [],
       );
     });
+  });
+
+  it("passes typed tags as an array (frontmatter), not inline in the body (§99 A)", async () => {
+    useSettingsStore.getState().setZettelkastenEnabled(true);
+    useSettingsStore.getState().setZettelkastenDirectory("/vault/zettel");
+    useFileStore.getState().setRootPath("/vault");
+    useUIStore.setState({ quickCaptureOpen: true });
+
+    render(<QuickCaptureDialog />);
+    fireEvent.change(screen.getByPlaceholderText("메모를 입력하세요..."), {
+      target: { value: "note body" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("#태그1 #태그2"), {
+      target: { value: "#idea #todo" },
+    });
+    fireEvent.click(screen.getByText("저장 (Enter)"));
+
+    await vi.waitFor(() => {
+      expect(captureFleeting).toHaveBeenCalledWith(
+        "/vault/zettel",
+        expect.stringContaining("note body"),
+        ["idea", "todo"],
+      );
+    });
+    // The tags must not leak into the body argument
+    const bodyArg = vi.mocked(captureFleeting).mock.calls.at(-1)![1];
+    expect(bodyArg).not.toContain("#idea");
   });
 });

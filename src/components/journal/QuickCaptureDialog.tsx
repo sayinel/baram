@@ -104,22 +104,21 @@ export function QuickCaptureDialog() {
     }
 
     try {
-      // Compose the fleeting body from the dialog fields
+      // Compose the fleeting body — §99 A: tags go to the frontmatter `tags:`
+      // array, not inline in the body.
       const bodyLines: string[] = [];
       if (body) bodyLines.push(body, "");
       if (source) bodyLines.push(`Source: ${source}`, "");
-      if (tags)
-        bodyLines.push(
-          tags
-            .split(/\s+/)
-            .filter(Boolean)
-            .map((t) => (t.startsWith("#") ? t : `#${t}`))
-            .join(" "),
-        );
+
+      const tagList = tags
+        .split(/\s+/)
+        .map((t) => t.replace(/^#/, "").trim())
+        .filter(Boolean);
 
       const result = await captureFleeting(
         zettelDir,
         bodyLines.join("\n").trim(),
+        tagList,
       );
       if (!result) {
         setSaveError("Zettelkasten inbox에 저장하지 못했습니다.");

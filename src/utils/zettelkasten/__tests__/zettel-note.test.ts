@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildFleetingNote,
   buildPermanentNote,
+  parseFrontmatterTags,
   sanitizeZettelTitle,
 } from "../zettel-note";
 
@@ -54,5 +55,38 @@ describe("buildFleetingNote", () => {
     expect(content).not.toContain("title:");
     // §99 A: fleeting notes never carry a capture `type:` field
     expect(content).not.toContain("type:");
+    // no tags given → empty array
+    expect(content).toContain("tags: []");
+  });
+
+  it("§99 A: writes given tags into the frontmatter array (not the body)", () => {
+    const { content } = buildFleetingNote({
+      id: "202607051530",
+      body: "tagged thought",
+      created: "2026-07-05T15:30",
+      tags: ["idea", "zettel/inbox"],
+    });
+    expect(content).toContain("tags: [idea, zettel/inbox]");
+    expect(content).not.toContain("#idea");
+  });
+});
+
+describe("parseFrontmatterTags", () => {
+  it("parses an inline tags array", () => {
+    expect(parseFrontmatterTags("---\ntags: [a, b/c]\n---\n\nx")).toEqual([
+      "a",
+      "b/c",
+    ]);
+  });
+
+  it("parses a block-list tags field", () => {
+    expect(
+      parseFrontmatterTags("---\ntags:\n  - one\n  - two\n---\n\nx"),
+    ).toEqual(["one", "two"]);
+  });
+
+  it("returns [] when there is no frontmatter or no tags field", () => {
+    expect(parseFrontmatterTags("no frontmatter")).toEqual([]);
+    expect(parseFrontmatterTags("---\nid: 1\n---\n")).toEqual([]);
   });
 });
