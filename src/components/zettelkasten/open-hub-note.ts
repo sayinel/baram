@@ -11,6 +11,6 @@ export async function openZettelHubNote(path: string): Promise<void> {
     const content = await readFile(path);
     await openFileInTab(path, content);
   } catch (err) {
-    logger.error("[Zettel] hub: open note failed:", err);
+    logger.error(`[Zettel] hub: open note failed (${path}):`, err);
   }
 }

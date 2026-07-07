@@ -29,7 +29,7 @@ export function ZettelHubPanel() {
   );
   const dir = resolveZettelDir(rootPath, zettelkastenDirectory);
 
-  const { inbox, mocs, recent, refresh } = useZettelHubData(
+  const { inbox, loading, mocs, recent, refresh } = useZettelHubData(
     zettelkastenEnabled && dir ? dir : null,
   );
 
@@ -78,6 +78,7 @@ export function ZettelHubPanel() {
           <ZettelInboxList
             collapsed={collapsed.inbox}
             items={inbox}
+            loading={loading}
             onRefresh={refresh}
             onToggleCollapse={() => toggle("inbox")}
             zettelDir={dir}
@@ -88,6 +89,7 @@ export function ZettelHubPanel() {
             icon={<MapIcon size={14} strokeWidth={1.5} />}
             items={mocs}
             label="MOCs"
+            loading={loading}
             onToggleCollapse={() => toggle("mocs")}
           />
           <ZettelSectionList
@@ -96,6 +98,7 @@ export function ZettelHubPanel() {
             icon={<Clock size={14} strokeWidth={1.5} />}
             items={recent}
             label="RECENT"
+            loading={loading}
             onToggleCollapse={() => toggle("recent")}
           />
         </>

@@ -22,6 +22,7 @@ interface ZettelSectionListProps {
   icon: ReactNode;
   items: ZettelHubListItem[];
   label: string;
+  loading: boolean;
   onToggleCollapse: () => void;
 }
 
@@ -58,6 +59,7 @@ export function ZettelSectionList({
   icon,
   items,
   label,
+  loading,
   onToggleCollapse,
 }: ZettelSectionListProps) {
   return (
@@ -70,20 +72,20 @@ export function ZettelSectionList({
       />
       {!collapsed && (
         <div className="zettel-hub-section-body">
-          {items.length === 0 ? (
-            <div className="zettel-hub-empty-hint">{emptyHint}</div>
-          ) : (
-            items.map((item) => (
-              <button
-                className="zettel-hub-list-row btn-unstyled text-truncate"
-                key={item.path}
-                onClick={() => void openZettelHubNote(item.path)}
-                title={item.title}
-              >
-                <span className="text-truncate">{item.title}</span>
-              </button>
-            ))
-          )}
+          {items.length === 0
+            ? !loading && (
+                <div className="zettel-hub-empty-hint">{emptyHint}</div>
+              )
+            : items.map((item) => (
+                <button
+                  className="zettel-hub-list-row btn-unstyled text-truncate"
+                  key={item.path}
+                  onClick={() => void openZettelHubNote(item.path)}
+                  title={item.title}
+                >
+                  <span className="text-truncate">{item.title}</span>
+                </button>
+              ))}
         </div>
       )}
     </div>

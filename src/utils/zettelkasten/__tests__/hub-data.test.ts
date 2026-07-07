@@ -18,6 +18,12 @@ describe("firstBodyLine", () => {
     expect(firstBodyLine("---\nid: 1\n---\n\n")).toBe("");
     expect(firstBodyLine("")).toBe("");
   });
+
+  it("strips CRLF frontmatter", () => {
+    expect(firstBodyLine("---\r\nid: 1\r\n---\r\n\r\n# Hello\r\nbody")).toBe(
+      "Hello",
+    );
+  });
 });
 
 describe("recentFromEntries", () => {
