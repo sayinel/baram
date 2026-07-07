@@ -21,7 +21,7 @@ describe("QuickCaptureDialog — zettel space gating (§95/§99 M4)", () => {
     useSettingsStore.getState().setZettelkastenEnabled(false);
     useSettingsStore.getState().setZettelkastenDirectory("");
     useFileStore.getState().setRootPath(null);
-    useUIStore.setState({ quickCaptureOpen: true, quickCaptureType: "note" });
+    useUIStore.setState({ quickCaptureOpen: true });
   });
 
   it("shows the setup hint and disables Save immediately when the zettel space isn't configured", () => {
@@ -49,23 +49,46 @@ describe("QuickCaptureDialog — zettel space gating (§95/§99 M4)", () => {
     expect(screen.getByText("저장 (Enter)")).not.toBeDisabled();
   });
 
-  it("passes the selected capture type through to captureFleeting on save", async () => {
+  it("passes the composed body to captureFleeting on save (no capture type)", async () => {
     useSettingsStore.getState().setZettelkastenEnabled(true);
     useSettingsStore.getState().setZettelkastenDirectory("/vault/zettel");
     useFileStore.getState().setRootPath("/vault");
-    useUIStore.setState({ quickCaptureOpen: true, quickCaptureType: "quote" });
+    useUIStore.setState({ quickCaptureOpen: true });
 
     render(<QuickCaptureDialog />);
-    fireEvent.change(screen.getByPlaceholderText("인용문을 입력하세요..."), {
-      target: { value: "a great quote" },
+    fireEvent.change(screen.getByPlaceholderText("메모를 입력하세요..."), {
+      target: { value: "a fleeting thought" },
+    });
+    fireEvent.click(screen.getByText("저장 (Enter)"));
+
+    await vi.waitFor(() => {
+      // Exactly two args — the type parameter is gone (§99 A).
+      expect(captureFleeting).toHaveBeenCalledWith(
+        "/vault/zettel",
+        expect.stringContaining("a fleeting thought"),
+      );
+    });
+  });
+
+  it("folds the optional source into the captured body", async () => {
+    useSettingsStore.getState().setZettelkastenEnabled(true);
+    useSettingsStore.getState().setZettelkastenDirectory("/vault/zettel");
+    useFileStore.getState().setRootPath("/vault");
+    useUIStore.setState({ quickCaptureOpen: true });
+
+    render(<QuickCaptureDialog />);
+    fireEvent.change(screen.getByPlaceholderText("메모를 입력하세요..."), {
+      target: { value: "note body" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("출처 (선택): https://..."), {
+      target: { value: "https://example.com" },
     });
     fireEvent.click(screen.getByText("저장 (Enter)"));
 
     await vi.waitFor(() => {
       expect(captureFleeting).toHaveBeenCalledWith(
         "/vault/zettel",
-        expect.stringContaining("a great quote"),
-        "quote",
+        expect.stringContaining("Source: https://example.com"),
       );
     });
   });

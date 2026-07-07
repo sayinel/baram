@@ -52,25 +52,7 @@ describe("buildFleetingNote", () => {
     expect(content).toContain("id: 202607051530");
     expect(content).toContain("quick thought");
     expect(content).not.toContain("title:");
-    expect(content).not.toContain("type:");
-  });
-
-  it("writes the capture type to frontmatter when given (§99 M4)", () => {
-    const { content } = buildFleetingNote({
-      id: "202607051530",
-      body: "an idea",
-      created: "2026-07-05T15:30",
-      type: "idea",
-    });
-    expect(content).toContain("type: idea");
-  });
-
-  it("omits type: frontmatter when no type is given", () => {
-    const { content } = buildFleetingNote({
-      id: "202607051530",
-      body: "an idea",
-      created: "2026-07-05T15:30",
-    });
+    // §99 A: fleeting notes never carry a capture `type:` field
     expect(content).not.toContain("type:");
   });
 });

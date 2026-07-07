@@ -59,7 +59,7 @@ interface UIState {
     base: string,
   ) => void;
   openExportDialog: (format?: ExportFormat) => void;
-  openQuickCapture: (type?: "idea" | "link" | "note" | "quote") => void;
+  openQuickCapture: () => void;
   openZettelTitleDialog: (
     onSubmit: (title: string) => void,
     initialTitle?: string,
@@ -67,7 +67,6 @@ interface UIState {
   pendingApplyContent: null | string;
   pendingSearchHighlight: null | string;
   quickCaptureOpen: boolean;
-  quickCaptureType: "idea" | "link" | "note" | "quote";
   quickSwitcherOpen: boolean;
   rightPanelMode: RightPanelMode;
   rightPanelOpen: boolean;
@@ -129,7 +128,6 @@ export const useUIStore = create<UIState>((set) => ({
   smartTemplateDialogOpen: false,
   pendingApplyContent: null,
   quickCaptureOpen: false,
-  quickCaptureType: "note" as const,
   pendingSearchHighlight: null,
   contentReloadVersion: 0,
   contentReloadCursorEnd: false,
@@ -191,8 +189,7 @@ export const useUIStore = create<UIState>((set) => ({
   toggleQuickCapture: () =>
     set((state) => ({ quickCaptureOpen: !state.quickCaptureOpen })),
 
-  openQuickCapture: (type) =>
-    set({ quickCaptureOpen: true, quickCaptureType: type ?? "note" }),
+  openQuickCapture: () => set({ quickCaptureOpen: true }),
 
   openZettelTitleDialog: (onSubmit, initialTitle) =>
     set({

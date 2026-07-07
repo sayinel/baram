@@ -8,19 +8,13 @@ import { captureFleeting } from "../../services/zettelkasten-service";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
-import {
-  CAPTURE_ICONS,
-  CAPTURE_TYPES,
-  type CaptureType,
-} from "../../utils/journal/journal-capture";
 import { buildTagIndex, filterTags } from "../../utils/journal/journal-tags";
 import { logger } from "../../utils/logger";
 import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
 import { TagSuggest } from "./TagSuggest";
 
 export function QuickCaptureDialog() {
-  const { quickCaptureOpen, quickCaptureType, toggleQuickCapture } =
-    useUIStore();
+  const { quickCaptureOpen, toggleQuickCapture } = useUIStore();
   // §99 M4: reactive read so the "space not configured" hint / disabled Save
   // surface immediately on open/render, not only after a failed save attempt.
   const { zettelkastenEnabled, zettelkastenDirectory } = useSettingsStore(
@@ -32,10 +26,8 @@ export function QuickCaptureDialog() {
   const rootPath = useFileStore((s) => s.rootPath);
   const zettelDir = resolveZettelDir(rootPath, zettelkastenDirectory);
   const zettelReady = zettelkastenEnabled && !!zettelDir;
-  const [captureType, setCaptureType] = useState<CaptureType>("note");
-  const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
-  const [url, setUrl] = useState("");
+  const [source, setSource] = useState("");
   const [tags, setTags] = useState("");
   const [saveError, setSaveError] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -53,10 +45,8 @@ export function QuickCaptureDialog() {
   useEffect(() => {
     if (!quickCaptureOpen) return;
 
-    setCaptureType(quickCaptureType);
-    setTitle("");
     setBody("");
-    setUrl("");
+    setSource("");
     setTags("");
     setTagSuggestVisible(false);
     setTagQuery(null);
@@ -96,12 +86,12 @@ export function QuickCaptureDialog() {
         logger.error("[QuickCapture] Tag index build failed:", err);
       }
     })();
-  }, [quickCaptureOpen, quickCaptureType]);
+  }, [quickCaptureOpen]);
 
   const handleSave = useCallback(async () => {
     setSaveError("");
 
-    if (!body.trim() && !title.trim()) {
+    if (!body.trim()) {
       setSaveError("내용을 입력해주세요.");
       return;
     }
@@ -116,9 +106,8 @@ export function QuickCaptureDialog() {
     try {
       // Compose the fleeting body from the dialog fields
       const bodyLines: string[] = [];
-      if (title) bodyLines.push(`# ${title}`, "");
       if (body) bodyLines.push(body, "");
-      if (url) bodyLines.push(`Source: ${url}`, "");
+      if (source) bodyLines.push(`Source: ${source}`, "");
       if (tags)
         bodyLines.push(
           tags
@@ -131,7 +120,6 @@ export function QuickCaptureDialog() {
       const result = await captureFleeting(
         zettelDir,
         bodyLines.join("\n").trim(),
-        captureType,
       );
       if (!result) {
         setSaveError("Zettelkasten inbox에 저장하지 못했습니다.");
@@ -145,16 +133,7 @@ export function QuickCaptureDialog() {
         `저장 실패: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-  }, [
-    title,
-    body,
-    url,
-    tags,
-    captureType,
-    zettelReady,
-    zettelDir,
-    toggleQuickCapture,
-  ]);
+  }, [body, source, tags, zettelReady, zettelDir, toggleQuickCapture]);
 
   // Handle tag input changes — detect #prefix for autocomplete
   const handleTagsChange = useCallback(
@@ -267,56 +246,23 @@ export function QuickCaptureDialog() {
           <h3>Quick Capture</h3>
         </div>
 
-        {/* Type selector */}
-        <div className="quick-capture-types">
-          {CAPTURE_TYPES.map((type) => (
-            <button
-              className={`quick-capture-type-btn ${captureType === type ? "quick-capture-type-active" : ""}`}
-              key={type}
-              onClick={() => setCaptureType(type)}
-            >
-              {CAPTURE_ICONS[type]}{" "}
-              {type.charAt(0).toUpperCase() + type.slice(1)}
-            </button>
-          ))}
-        </div>
-
-        {/* Title (for idea/link) */}
-        {(captureType === "idea" || captureType === "link") && (
-          <input
-            className="quick-capture-input"
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder={captureType === "link" ? "링크 제목" : "아이디어 제목"}
-            type="text"
-            value={title}
-          />
-        )}
-
-        {/* URL (for link) */}
-        {captureType === "link" && (
-          <input
-            className="quick-capture-input"
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://..."
-            type="text"
-            value={url}
-          />
-        )}
-
         {/* Body */}
         <textarea
           className="quick-capture-textarea"
           onChange={(e) => setBody(e.target.value)}
-          placeholder={
-            captureType === "quote"
-              ? "인용문을 입력하세요..."
-              : captureType === "note"
-                ? "메모를 입력하세요..."
-                : "내용을 입력하세요..."
-          }
+          placeholder="메모를 입력하세요..."
           ref={inputRef}
           rows={3}
           value={body}
+        />
+
+        {/* Optional source */}
+        <input
+          className="quick-capture-input"
+          onChange={(e) => setSource(e.target.value)}
+          placeholder="출처 (선택): https://..."
+          type="text"
+          value={source}
         />
 
         {/* Tags with autocomplete */}
@@ -361,7 +307,7 @@ export function QuickCaptureDialog() {
           </button>
           <button
             className="quick-capture-save"
-            disabled={(!body.trim() && !title.trim()) || !zettelReady}
+            disabled={!body.trim() || !zettelReady}
             onClick={handleSave}
           >
             저장 (Enter)
