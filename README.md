@@ -356,6 +356,7 @@ A dedicated space for atomic, densely-linked notes — capture fast, refine into
 - **New Zettel** — Create a permanent atomic note directly (`Cmd+Shift+V`), or turn a text selection into a new note + `[[link]]` with `Cmd+Shift+Y`
 - **ID-based links** — Notes are `{id} {title}.md`; `[[id]]` links render the live title and stay valid across renames. `[[` autocomplete searches by title
 - **MOCs** — Create a Map of Content index note (`#moc`) with `Cmd+Shift+C` to organize entry points
+- **Hub panel** — In the Zettel space the sidebar becomes a dedicated hub: quick actions (New / Capture / MOC), an inbox queue (promote ↑ or delete ✕ inline, click to open), your MOCs, and recent notes — and it refreshes automatically as you capture and promote
 - **Enable** — Turn on and set a directory in **Settings > General > Zettel**; open the space via the space menu, Command Palette, or `Cmd+Alt+3`
 
 ### Workspace Presets

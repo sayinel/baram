@@ -146,7 +146,7 @@ openZettelTitleDialog(opts: {
 - 신규 하위(선택): `ZettelInboxList.tsx`, `ZettelSectionList.tsx`(MOC/Recent 공용) — 파일이 ~300줄 넘으면 분리.
 - 신규 CSS: `src/styles/zettelkasten.css`(또는 기존 `journal-*` 계열에 편승하지 말고 전용) — `@import`는 `index.css`에 추가.
 - 수정: `ui.ts`(SidebarPanel + 다이얼로그 상태/시그니처), `Sidebar.tsx`, `ActivityBar.tsx`, `zettelkasten-space.ts`(layout), `ZettelTitleDialog.tsx`, `use-keybinding-actions.ts`(4개 openZettelTitleDialog 호출 + promote 스마트 기본값), `CommandPalette.tsx`(동일 다이얼로그 호출부).
-- **기존 위치 정리(선택)**: `ZettelTitleDialog.tsx`·`QuickCaptureDialog.tsx`가 현재 `components/journal/`에 있음(journal 캡처 시절 잔재). 이번에 `components/zettelkasten/`로 이동하는 건 별도 정리로 두거나 함께 처리 — 스코프는 플랜에서 결정.
+- **기존 위치 정리(선택) — 결정: 이번 브랜치에서는 이동 보류(deferred).** `ZettelTitleDialog.tsx`·`QuickCaptureDialog.tsx`는 `components/journal/`에 그대로 둔다(순수 파일 이동은 동작 변화 없이 diff/리스크만 늘리므로 별도 정리 PR로 분리). 신규 허브 컴포넌트(`ZettelHubPanel`/`ZettelInboxList`/`ZettelSectionList`/`open-hub-note`)만 `components/zettelkasten/`에 신설했다.
 
 ---
 
@@ -174,7 +174,7 @@ openZettelTitleDialog(opts: {
 
 - **이번(허브 UX)**: §100 배치/라우팅, §101 허브 패널(Actions/Inbox/MOCs/Recent), §102 강화 다이얼로그 + Promote 스마트 기본값, §103 데이터 소스.
 - **후속(P2.5 유지)**: 노트 타입 규율, MOC 자동 추천, unlinked mentions, inbox 배치 처리(다중 선택 승격), 파일 watcher 실시간 반영.
-- **미결**: `components/journal/` → `components/zettelkasten/` 이동을 이번에 포함할지(플랜에서 확정).
+- **결정됨**: `components/journal/` → `components/zettelkasten/` 이동은 이번 브랜치에서 **보류(deferred)** — 별도 정리 PR로 분리한다(§14.5 참고).
 
 ---
 
