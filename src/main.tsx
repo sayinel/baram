@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 
 import App from "./App";
+import "./spaces";
 import { markAppStart } from "./utils/perf";
 
 // §8.4 Record app start time for performance measurement

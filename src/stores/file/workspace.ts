@@ -1,18 +1,23 @@
 // §52 Workspace 프리셋 스토어
+import type { VaultType } from "../../ipc/types";
+
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import {
-  ensureJournalFile,
-  openFileInTab,
-} from "../../services/journal-file-service";
+import { type Locale, t } from "../../i18n";
+import { getSpace } from "../../spaces";
 import { resolveJournalDir } from "../../utils/journal/journal";
 import { logger } from "../../utils/logger";
+import {
+  ensureZettelkastenScaffold,
+  resolveZettelDir,
+} from "../../utils/zettelkasten/zettelkasten";
 import { useContextStore } from "../context/context";
 import { useSettingsStore } from "../settings/store";
 import { tauriStorage } from "../system/tauri-storage";
 import { type RightPanelMode, type SidebarPanel, useUIStore } from "../ui/ui";
-import { useFileStore } from "./file";
+import { refreshZettelIndex } from "../zettelkasten/zettel-index";
+import { switchContext, useFileStore } from "./file";
 
 // --- Types ---
 
@@ -59,6 +64,18 @@ export const BUILTIN_PRESETS: WorkspacePreset[] = [
     },
   },
   {
+    id: "zettelkasten",
+    name: "Zettel",
+    description: "Capture ideas fast and refine them into linked notes.",
+    builtIn: true,
+    layout: getSpace("zettelkasten")?.layout ?? {
+      sidebarOpen: true,
+      sidebarPanel: "files",
+      rightPanelOpen: false,
+      rightPanelMode: "none",
+    },
+  },
+  {
     id: "skills",
     name: "Skills Editing",
     description: "Layout optimized for editing LLM Skills files.",
@@ -83,6 +100,11 @@ interface WorkspaceState {
   getAllPresets: () => WorkspacePreset[];
   getPreset: (id: string) => undefined | WorkspacePreset;
   renameCustomPreset: (id: string, name: string) => void;
+  /**
+   * §82 Revert to the Writing space when the context backing the current
+   * space (journal/zettelkasten) is closed from the context tab bar.
+   */
+  revertSpaceIfContextClosed: (closedVaultType?: VaultType) => void;
   saveCustomPreset: (name: string, description?: string) => string;
 }
 
@@ -96,11 +118,37 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         const preset = get().getPreset(id);
         if (!preset) return;
 
+        // §93 The Zettel space needs the feature enabled + a directory set.
+        // Guide the user with a toast instead of switching into an empty space.
+        if (id === "zettelkasten") {
+          const { locale, zettelkastenDirectory, zettelkastenEnabled } =
+            useSettingsStore.getState();
+          if (!zettelkastenEnabled) {
+            useUIStore
+              .getState()
+              .showToast(t("space.zettel.disabled", locale as Locale));
+            return;
+          }
+          if (
+            !resolveZettelDir(
+              useFileStore.getState().rootPath,
+              zettelkastenDirectory,
+            )
+          ) {
+            useUIStore
+              .getState()
+              .showToast(t("space.zettel.noDirectory", locale as Locale));
+            return;
+          }
+        }
+
         const ui = useUIStore.getState();
         const { layout } = preset;
 
-        // Apply layout to ui-store
-        if (ui.sidebarOpen !== layout.sidebarOpen) ui.toggleSidebar();
+        // Apply layout to ui-store.
+        // §82 Preserve an open folder tree across space switches: a preset may
+        // OPEN the sidebar but must never force-close one the user has open.
+        if (layout.sidebarOpen && !ui.sidebarOpen) ui.toggleSidebar();
         ui.setSidebarPanel(layout.sidebarPanel);
         if (ui.rightPanelOpen !== layout.rightPanelOpen) ui.toggleRightPanel();
         ui.setRightPanelMode(layout.rightPanelMode);
@@ -130,40 +178,77 @@ export const useWorkspaceStore = create<WorkspaceState>()(
 
         // §85 M2b: Journal preset — activate journal context + open today's file
         if (id === "journal") {
-          const {
-            journalEnabled,
-            journalDirectory,
-            journalFilenameFormat,
-            journalTemplatePath,
-            journalUseHierarchy,
-          } = useSettingsStore.getState();
+          const { journalEnabled, journalDirectory } =
+            useSettingsStore.getState();
           const { rootPath } = useFileStore.getState();
           const resolvedDir = resolveJournalDir(rootPath, journalDirectory);
           if (journalEnabled && resolvedDir) {
             (async () => {
               try {
-                // §85 M2b: Activate journal as a separate context (not rootPath swap)
-                const contextStore = useContextStore.getState();
-                await contextStore.ensureJournalContext(resolvedDir);
-
-                // Open today's journal file
-                const result = await ensureJournalFile(new Date(), {
-                  journalDirectory,
-                  journalFilenameFormat,
-                  journalTemplatePath,
-                  journalUseHierarchy,
-                  rootPath: resolvedDir,
-                });
-                if (result) {
-                  await openFileInTab(result.path, result.content);
-                }
-                // Note: File tree switch is handled by contextStore subscription in file.ts
+                await useContextStore
+                  .getState()
+                  .ensureJournalContext(resolvedDir);
+                await getSpace("journal")?.newFileFlow?.();
+                // File tree switch handled by contextStore subscription in file.ts
               } catch (err) {
                 logger.error("[Workspace] Failed to open journal:", err);
               }
             })();
           }
         }
+
+        // §93 Zettelkasten preset — activate context + ensure scaffold folders
+        if (id === "zettelkasten") {
+          const { zettelkastenEnabled, zettelkastenDirectory } =
+            useSettingsStore.getState();
+          const { rootPath } = useFileStore.getState();
+          const resolvedDir = resolveZettelDir(rootPath, zettelkastenDirectory);
+          if (zettelkastenEnabled && resolvedDir) {
+            (async () => {
+              try {
+                // Register the zettel dir as a context FIRST — createDir/writeFile
+                // are vault-constrained (check_vault → validate_path_any), so the
+                // scaffold folders can only be created after the dir is a
+                // registered context. (Otherwise createDir throws "Access denied",
+                // aborting this whole block: no folders, no context, no index.)
+                const ctx = await useContextStore
+                  .getState()
+                  .ensureSpaceContext("zettelkasten", resolvedDir, {
+                    label: "Zettel",
+                  });
+                await ensureZettelkastenScaffold(resolvedDir);
+                await refreshZettelIndex(resolvedDir);
+                // Load the file tree for the zettel dir — ensureSpaceContext
+                // activates the context locally but does NOT load its tree
+                // (only switchContext/openFolder do). Without this the sidebar
+                // keeps showing the previous vault's tree until the user clicks
+                // the context tab. inbox/ + notes/ now exist, so load them here.
+                await switchContext(ctx.id);
+                await getSpace("zettelkasten")?.startup?.();
+              } catch (err) {
+                logger.error("[Workspace] Failed to open zettelkasten:", err);
+              }
+            })();
+          }
+        }
+      },
+
+      revertSpaceIfContextClosed: (closedVaultType) => {
+        // The Journal/Zettelkasten spaces are each backed by a single context
+        // (maxInstances=1). When the user closes that context from the tab bar
+        // while its space is the active one, fall back to the Writing space so
+        // the layout + space indicator no longer point at a space that is gone.
+        if (
+          closedVaultType !== "journal" &&
+          closedVaultType !== "zettelkasten"
+        ) {
+          return;
+        }
+        // Preset ids ("journal"/"zettelkasten") match the VaultType strings.
+        if (get().activePresetId !== closedVaultType) return;
+        // applyPreset preserves an open folder tree (it never force-closes the
+        // sidebar), so reverting to Writing keeps the tree exactly as it was.
+        get().applyPreset("writing");
       },
 
       saveCustomPreset: (name, description) => {

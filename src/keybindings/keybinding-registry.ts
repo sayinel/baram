@@ -4,7 +4,7 @@
  */
 
 export interface KeybindingEntry {
-  category: string; // "file" | "edit" | "view" | "search" | "insert" | "ai" | "workspace" | "journal" | "formatting"
+  category: string; // "file" | "edit" | "view" | "search" | "insert" | "ai" | "workspace" | "journal" | "zettelkasten" | "formatting"
   customizable: boolean; // true = global shortcut, false = Tiptap extension
   defaultKey: string; // Platform-independent: "Mod+S"
   id: string; // e.g. "file.save"
@@ -20,6 +20,7 @@ export const KEYBINDING_CATEGORIES: string[] = [
   "ai",
   "workspace",
   "journal",
+  "zettelkasten",
   "formatting",
 ];
 
@@ -32,6 +33,7 @@ export const CATEGORY_LABELS: Record<string, string> = {
   ai: "keybindings.category.ai",
   workspace: "keybindings.category.workspace",
   journal: "keybindings.category.journal",
+  zettelkasten: "keybindings.category.zettelkasten",
   formatting: "keybindings.category.formatting",
 };
 
@@ -239,10 +241,17 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
     customizable: true,
   },
   {
+    id: "workspace.zettelkasten",
+    label: "keybindings.workspace.zettelkasten",
+    category: "workspace",
+    defaultKey: "Mod+Alt+3",
+    customizable: true,
+  },
+  {
     id: "workspace.skills",
     label: "keybindings.workspace.skills",
     category: "workspace",
-    defaultKey: "Mod+Alt+3",
+    defaultKey: "Mod+Alt+4",
     customizable: true,
   },
 
@@ -255,24 +264,10 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
     customizable: true,
   },
   {
-    id: "journal.promoteCapture",
-    label: "keybindings.journal.promoteCapture",
-    category: "journal",
-    defaultKey: "Mod+Shift+U",
-    customizable: true,
-  },
-  {
     id: "journal.openToday",
     label: "keybindings.journal.openToday",
     category: "journal",
     defaultKey: "Mod+Shift+J",
-    customizable: true,
-  },
-  {
-    id: "journal.jumpToCaptures",
-    label: "keybindings.journal.jumpToCaptures",
-    category: "journal",
-    defaultKey: "Mod+Shift+C",
     customizable: true,
   },
   {
@@ -287,6 +282,41 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
     label: "keybindings.journal.photoGallery",
     category: "journal",
     defaultKey: "Mod+Shift+I",
+    customizable: true,
+  },
+
+  // ── zettelkasten ──────────────────────────────────────────────────────────
+  {
+    id: "zettelkasten.newNote",
+    label: "keybindings.zettelkasten.newNote",
+    category: "zettelkasten",
+    // Mod+Shift+K collides with common global launchers (e.g. ChatGPT); K/N/Q/Z
+    // are otherwise taken or system-reserved, so use Mod+Shift+V (free everywhere).
+    defaultKey: "Mod+Shift+V",
+    customizable: true,
+  },
+  {
+    id: "zettelkasten.promote",
+    label: "keybindings.zettelkasten.promote",
+    category: "zettelkasten",
+    // Mod+Shift+P is grabbed by the native menu (Command Palette, menu.rs);
+    // Mod+Shift+E by Export. Use keys free in BOTH the registry and menu.rs.
+    defaultKey: "Mod+Shift+U",
+    customizable: true,
+  },
+  {
+    id: "zettelkasten.newFromSelection",
+    label: "keybindings.zettelkasten.newFromSelection",
+    category: "zettelkasten",
+    defaultKey: "Mod+Shift+Y",
+    customizable: true,
+  },
+  {
+    // §97 basic MOC.
+    id: "zettelkasten.newMoc",
+    label: "keybindings.zettelkasten.newMoc",
+    category: "zettelkasten",
+    defaultKey: "Mod+Shift+C",
     customizable: true,
   },
 

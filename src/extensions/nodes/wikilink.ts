@@ -3,7 +3,9 @@ import { InputRule, mergeAttributes, Node } from "@tiptap/core";
 import { Plugin } from "@tiptap/pm/state";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
+import { idForTitle } from "../../stores/zettelkasten/zettel-index";
 import { isDateString } from "../../utils/journal/journal";
+import { isZettelId } from "../../utils/zettelkasten/parse-note-title";
 import { WikilinkView } from "./wikilink-view";
 
 export interface WikilinkOptions {
@@ -117,13 +119,20 @@ export const Wikilink = Node.create<WikilinkOptions>({
         find: wikilinkInputRegex,
         handler: ({ state, range, match }) => {
           const [, vaultAlias, target, heading, blockId, display] = match;
+          // §95 B2: eagerly normalize a manually-typed [[title]] to [[id]]
+          // when it uniquely resolves in the zettel index. Cross-vault
+          // targets and targets that are already ids are left untouched;
+          // ambiguous/no-match titles fall through to the typed target.
+          const effectiveTarget =
+            (!vaultAlias && !isZettelId(target) && idForTitle(target)) ||
+            target;
           const { tr } = state;
           tr.replaceWith(
             range.from,
             range.to,
             this.type.create({
               vaultAlias: vaultAlias || null,
-              target,
+              target: effectiveTarget,
               display: display || null,
               heading: heading || null,
               blockId: blockId || null,

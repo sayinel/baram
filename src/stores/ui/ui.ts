@@ -40,6 +40,7 @@ interface UIState {
   /** §Phase5: Close the conflict modal (without resolution — used internally) */
   closeConflictModal: () => void;
   closeExportDialog: () => void;
+  closeZettelTitleDialog: () => void;
   commandPaletteOpen: boolean;
   /** §Phase5: External file change conflict modal state (null = closed) */
   conflictModal: ConflictModalState | null;
@@ -58,11 +59,14 @@ interface UIState {
     base: string,
   ) => void;
   openExportDialog: (format?: ExportFormat) => void;
-  openQuickCapture: (type?: "idea" | "link" | "note" | "quote") => void;
+  openQuickCapture: () => void;
+  openZettelTitleDialog: (
+    onSubmit: (title: string) => void,
+    initialTitle?: string,
+  ) => void;
   pendingApplyContent: null | string;
   pendingSearchHighlight: null | string;
   quickCaptureOpen: boolean;
-  quickCaptureType: "idea" | "link" | "note" | "quote";
   quickSwitcherOpen: boolean;
   rightPanelMode: RightPanelMode;
   rightPanelOpen: boolean;
@@ -96,6 +100,13 @@ interface UIState {
   toggleSkillTestDialog: () => void;
   toggleSmartTemplateDialog: () => void;
   triggerContentReload: (cursorEnd?: boolean) => void;
+  /** §94: Inline title-input dialog (WKWebView has no window.prompt) */
+  zettelTitleDialog: {
+    /** Prefill text (e.g. §94 new-from-selection's derived title) */
+    initialTitle: string;
+    onSubmit: ((title: string) => void) | null;
+    open: boolean;
+  };
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -117,10 +128,10 @@ export const useUIStore = create<UIState>((set) => ({
   smartTemplateDialogOpen: false,
   pendingApplyContent: null,
   quickCaptureOpen: false,
-  quickCaptureType: "note" as const,
   pendingSearchHighlight: null,
   contentReloadVersion: 0,
   contentReloadCursorEnd: false,
+  zettelTitleDialog: { open: false, onSubmit: null, initialTitle: "" },
 
   openConflictModal: (filePath, externalMtime, base) =>
     set({ conflictModal: { base, externalMtime, filePath } }),
@@ -178,8 +189,21 @@ export const useUIStore = create<UIState>((set) => ({
   toggleQuickCapture: () =>
     set((state) => ({ quickCaptureOpen: !state.quickCaptureOpen })),
 
-  openQuickCapture: (type) =>
-    set({ quickCaptureOpen: true, quickCaptureType: type ?? "note" }),
+  openQuickCapture: () => set({ quickCaptureOpen: true }),
+
+  openZettelTitleDialog: (onSubmit, initialTitle) =>
+    set({
+      zettelTitleDialog: {
+        open: true,
+        onSubmit,
+        initialTitle: initialTitle ?? "",
+      },
+    }),
+
+  closeZettelTitleDialog: () =>
+    set({
+      zettelTitleDialog: { open: false, onSubmit: null, initialTitle: "" },
+    }),
 
   setPendingApplyContent: (pendingApplyContent) => set({ pendingApplyContent }),
 

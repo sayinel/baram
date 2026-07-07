@@ -5,6 +5,7 @@ import type { Editor } from "@tiptap/react";
 
 import { useShallow } from "zustand/shallow";
 
+import { getAction } from "../../keybindings/keybinding-actions";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useWorkspaceStore } from "../../stores/file/workspace";
@@ -606,10 +607,44 @@ function buildCommands(
       action: () => useWorkspaceStore.getState().applyPreset("journal"),
     },
     {
+      id: "space.zettelkasten",
+      label: "Open Zettel",
+      category: "Workspace",
+      action: () => useWorkspaceStore.getState().applyPreset("zettelkasten"),
+    },
+    {
       id: "journal:open-today",
       label: "Open Today's Journal",
       category: "Journal",
       action: () => useWorkspaceStore.getState().applyPreset("journal"),
+    },
+    {
+      id: "zettelkasten:new-note",
+      label: "New Zettel",
+      category: "Journal",
+      shortcut: "⇧⌘V",
+      action: () => getAction("zettelkasten.newNote")?.(),
+    },
+    {
+      id: "zettelkasten:new-moc",
+      label: "New MOC",
+      category: "Journal",
+      shortcut: "⇧⌘C",
+      action: () => getAction("zettelkasten.newMoc")?.(),
+    },
+    {
+      id: "zettelkasten:promote",
+      label: "Promote to Permanent Note",
+      category: "Journal",
+      shortcut: "⇧⌘U",
+      action: () => getAction("zettelkasten.promote")?.(),
+    },
+    {
+      id: "zettelkasten:new-from-selection",
+      label: "New Note from Selection",
+      category: "Journal",
+      shortcut: "⇧⌘Y",
+      action: () => getAction("zettelkasten.newFromSelection")?.(),
     },
   ];
 }

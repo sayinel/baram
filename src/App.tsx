@@ -155,6 +155,11 @@ const QuickCaptureDialog = lazy(() =>
     default: m.QuickCaptureDialog,
   })),
 );
+const ZettelTitleDialog = lazy(() =>
+  import("./components/journal/ZettelTitleDialog").then((m) => ({
+    default: m.ZettelTitleDialog,
+  })),
+);
 const ConflictModalWrapper = lazy(() =>
   import("./components/editor/ConflictModal").then((m) => ({
     default: m.ConflictModalWrapper,
@@ -781,6 +786,7 @@ function App() {
         <SkillTestDialogWrapper />
         <SmartTemplateDialogWrapper editor={activeEditor} />
         <QuickCaptureDialog />
+        <ZettelTitleDialog />
         <ConflictModalWrapper
           onKeepLocal={(filePath) => {
             // Keep local edits: clear the mtime guard so the next save (and the

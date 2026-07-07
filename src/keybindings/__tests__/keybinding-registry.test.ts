@@ -7,7 +7,7 @@ import {
 } from "../keybinding-registry";
 
 describe("KEYBINDING_CATEGORIES", () => {
-  it("contains all 9 expected categories in order", () => {
+  it("contains all 10 expected categories in order", () => {
     expect(KEYBINDING_CATEGORIES).toEqual([
       "file",
       "edit",
@@ -17,6 +17,7 @@ describe("KEYBINDING_CATEGORIES", () => {
       "ai",
       "workspace",
       "journal",
+      "zettelkasten",
       "formatting",
     ]);
   });

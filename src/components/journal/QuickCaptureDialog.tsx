@@ -1,33 +1,33 @@
 // §56l Quick Capture Dialog — Cmd+Shift+N
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { listDir, readFile, writeFile } from "../../ipc/invoke";
-import {
-  ensureJournalFile,
-  type JournalFileOptions,
-} from "../../services/journal-file-service";
-import { useEditorStore } from "../../stores/editor/editor";
+import { useShallow } from "zustand/shallow";
+
+import { listDir, readFile } from "../../ipc/invoke";
+import { captureFleeting } from "../../services/zettelkasten-service";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
-import {
-  CAPTURE_ICONS,
-  CAPTURE_TYPES,
-  type CaptureItem,
-  type CaptureType,
-  insertCaptureIntoContent,
-} from "../../utils/journal/journal-capture";
 import { buildTagIndex, filterTags } from "../../utils/journal/journal-tags";
 import { logger } from "../../utils/logger";
+import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
 import { TagSuggest } from "./TagSuggest";
 
 export function QuickCaptureDialog() {
-  const { quickCaptureOpen, quickCaptureType, toggleQuickCapture } =
-    useUIStore();
-  const [captureType, setCaptureType] = useState<CaptureType>("note");
-  const [title, setTitle] = useState("");
+  const { quickCaptureOpen, toggleQuickCapture } = useUIStore();
+  // §99 M4: reactive read so the "space not configured" hint / disabled Save
+  // surface immediately on open/render, not only after a failed save attempt.
+  const { zettelkastenEnabled, zettelkastenDirectory } = useSettingsStore(
+    useShallow((s) => ({
+      zettelkastenEnabled: s.zettelkastenEnabled,
+      zettelkastenDirectory: s.zettelkastenDirectory,
+    })),
+  );
+  const rootPath = useFileStore((s) => s.rootPath);
+  const zettelDir = resolveZettelDir(rootPath, zettelkastenDirectory);
+  const zettelReady = zettelkastenEnabled && !!zettelDir;
   const [body, setBody] = useState("");
-  const [url, setUrl] = useState("");
+  const [source, setSource] = useState("");
   const [tags, setTags] = useState("");
   const [saveError, setSaveError] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -45,10 +45,8 @@ export function QuickCaptureDialog() {
   useEffect(() => {
     if (!quickCaptureOpen) return;
 
-    setCaptureType(quickCaptureType);
-    setTitle("");
     setBody("");
-    setUrl("");
+    setSource("");
     setTags("");
     setTagSuggestVisible(false);
     setTagQuery(null);
@@ -56,14 +54,13 @@ export function QuickCaptureDialog() {
     setSaveError("");
     setTimeout(() => inputRef.current?.focus(), 50);
 
-    // Scan journal files for tag index
+    // Scan the zettelkasten space for tag index — captures now land there.
     (async () => {
       try {
         const { rootPath } = useFileStore.getState();
-        const { journalDirectory } = useSettingsStore.getState();
-        if (!rootPath || !journalDirectory) return;
-
-        const tagScanDir = resolveTagScanRoot(rootPath, journalDirectory);
+        const { zettelkastenDirectory } = useSettingsStore.getState();
+        const tagScanDir = resolveZettelDir(rootPath, zettelkastenDirectory);
+        if (!tagScanDir) return;
 
         const entries = await listDir(tagScanDir, true).catch(() => []);
         const mdFiles = entries
@@ -89,73 +86,43 @@ export function QuickCaptureDialog() {
         logger.error("[QuickCapture] Tag index build failed:", err);
       }
     })();
-  }, [quickCaptureOpen, quickCaptureType]);
+  }, [quickCaptureOpen]);
 
   const handleSave = useCallback(async () => {
     setSaveError("");
 
-    if (!body.trim() && !title.trim()) {
+    if (!body.trim()) {
       setSaveError("내용을 입력해주세요.");
       return;
     }
 
-    const item: CaptureItem = {
-      type: captureType,
-      ...(title.trim() ? { title: title.trim() } : {}),
-      ...(body.trim() ? { body: body.trim() } : {}),
-      ...(url.trim() && captureType === "link" ? { url: url.trim() } : {}),
-      ...(tags.trim()
-        ? {
-            tags: tags
-              .split(/\s+/)
-              .map((t) => t.replace(/^#/, ""))
-              .filter(Boolean),
-          }
-        : {}),
-    };
+    // §99 M4: the Save button is disabled while !zettelReady, but keep this
+    // check as a defense-in-depth guard (e.g. Enter key submit).
+    if (!zettelReady || !zettelDir) {
+      setSaveError("Zettel 공간을 먼저 설정하세요.");
+      return;
+    }
 
     try {
-      const { rootPath } = useFileStore.getState();
-      const {
-        journalDirectory,
-        journalFilenameFormat,
-        journalTemplatePath,
-        journalUseHierarchy,
-      } = useSettingsStore.getState();
+      // Compose the fleeting body — §99 A: tags go to the frontmatter `tags:`
+      // array, not inline in the body.
+      const bodyLines: string[] = [];
+      if (body) bodyLines.push(body, "");
+      if (source) bodyLines.push(`Source: ${source}`, "");
 
-      if (!rootPath) {
-        setSaveError("프로젝트 폴더를 먼저 열어주세요.");
-        return;
-      }
-      if (!journalDirectory) {
-        setSaveError("설정에서 저널 디렉토리를 지정해주세요.");
-        return;
-      }
+      const tagList = tags
+        .split(/\s+/)
+        .map((t) => t.replace(/^#/, "").trim())
+        .filter(Boolean);
 
-      const result = await resolveCaptureTarget({
-        journalDirectory,
-        journalFilenameFormat,
-        journalTemplatePath,
-        journalUseHierarchy,
-        rootPath,
-      });
+      const result = await captureFleeting(
+        zettelDir,
+        bodyLines.join("\n").trim(),
+        tagList,
+      );
       if (!result) {
-        setSaveError("저널 파일 경로를 확인할 수 없습니다.");
+        setSaveError("Zettel inbox에 저장하지 못했습니다.");
         return;
-      }
-      const { path: journalPath, content } = result;
-
-      // Insert capture and save
-      const updated = insertCaptureIntoContent(content, item);
-      await writeFile(journalPath, updated);
-
-      // Update file-store cache + reload editor if journal is open
-      useFileStore.getState().setFileContent(journalPath, updated);
-      const activeTab = useEditorStore
-        .getState()
-        .tabs.find((t) => t.id === useEditorStore.getState().activeTabId);
-      if (activeTab?.filePath === journalPath) {
-        useUIStore.getState().triggerContentReload(true);
       }
 
       toggleQuickCapture();
@@ -165,7 +132,7 @@ export function QuickCaptureDialog() {
         `저장 실패: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-  }, [captureType, title, body, url, tags, toggleQuickCapture]);
+  }, [body, source, tags, zettelReady, zettelDir, toggleQuickCapture]);
 
   // Handle tag input changes — detect #prefix for autocomplete
   const handleTagsChange = useCallback(
@@ -278,56 +245,23 @@ export function QuickCaptureDialog() {
           <h3>Quick Capture</h3>
         </div>
 
-        {/* Type selector */}
-        <div className="quick-capture-types">
-          {CAPTURE_TYPES.map((type) => (
-            <button
-              className={`quick-capture-type-btn ${captureType === type ? "quick-capture-type-active" : ""}`}
-              key={type}
-              onClick={() => setCaptureType(type)}
-            >
-              {CAPTURE_ICONS[type]}{" "}
-              {type.charAt(0).toUpperCase() + type.slice(1)}
-            </button>
-          ))}
-        </div>
-
-        {/* Title (for idea/link) */}
-        {(captureType === "idea" || captureType === "link") && (
-          <input
-            className="quick-capture-input"
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder={captureType === "link" ? "링크 제목" : "아이디어 제목"}
-            type="text"
-            value={title}
-          />
-        )}
-
-        {/* URL (for link) */}
-        {captureType === "link" && (
-          <input
-            className="quick-capture-input"
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://..."
-            type="text"
-            value={url}
-          />
-        )}
-
         {/* Body */}
         <textarea
           className="quick-capture-textarea"
           onChange={(e) => setBody(e.target.value)}
-          placeholder={
-            captureType === "quote"
-              ? "인용문을 입력하세요..."
-              : captureType === "note"
-                ? "메모를 입력하세요..."
-                : "내용을 입력하세요..."
-          }
+          placeholder="메모를 입력하세요..."
           ref={inputRef}
           rows={3}
           value={body}
+        />
+
+        {/* Optional source */}
+        <input
+          className="quick-capture-input"
+          onChange={(e) => setSource(e.target.value)}
+          placeholder="출처 (선택): https://..."
+          type="text"
+          value={source}
         />
 
         {/* Tags with autocomplete */}
@@ -354,6 +288,14 @@ export function QuickCaptureDialog() {
           />
         </div>
 
+        {/* §99 M4: surface the "space not configured" state immediately on
+            render, not only after a failed save attempt. */}
+        {!zettelReady && (
+          <div className="quick-capture-error">
+            Zettel 공간을 먼저 설정하세요.
+          </div>
+        )}
+
         {/* Error message */}
         {saveError && <div className="quick-capture-error">{saveError}</div>}
 
@@ -364,7 +306,7 @@ export function QuickCaptureDialog() {
           </button>
           <button
             className="quick-capture-save"
-            disabled={!body.trim() && !title.trim()}
+            disabled={!body.trim() || !zettelReady}
             onClick={handleSave}
           >
             저장 (Enter)
@@ -380,29 +322,4 @@ function getCurrentTagQuery(value: string, cursorPos: number): null | string {
   const textBefore = value.slice(0, cursorPos);
   const match = textBefore.match(/#([\w가-힣]*)$/);
   return match ? match[1] : null;
-}
-
-/**
- * Resolve which file a capture should be written into.
- * Currently always today's journal file — injection point for a future
- * Zettelkasten capture destination (P2).
- */
-function resolveCaptureTarget(
-  options: JournalFileOptions,
-): ReturnType<typeof ensureJournalFile> {
-  return ensureJournalFile(new Date(), options);
-}
-
-/**
- * Resolve the root directory to scan when building the quick-capture tag
- * index. Currently always the journal directory — single decision point so
- * a future Zettelkasten scan root can be swapped in (P2).
- */
-function resolveTagScanRoot(
-  rootPath: string,
-  journalDirectory: string,
-): string {
-  return journalDirectory.startsWith("/") || /^[A-Z]:\\/.test(journalDirectory)
-    ? journalDirectory
-    : `${rootPath}/${journalDirectory}`;
 }

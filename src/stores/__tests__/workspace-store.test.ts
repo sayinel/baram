@@ -23,11 +23,12 @@ describe("§52 Workspace Store", () => {
 
   // --- Built-in Presets ---
 
-  it("has 3 built-in presets", () => {
-    expect(BUILTIN_PRESETS).toHaveLength(3);
+  it("has 4 built-in presets", () => {
+    expect(BUILTIN_PRESETS).toHaveLength(4);
     expect(BUILTIN_PRESETS.map((p) => p.id)).toEqual([
       "writing",
       "journal",
+      "zettelkasten",
       "skills",
     ]);
   });
@@ -40,7 +41,7 @@ describe("§52 Workspace Store", () => {
 
   it("getAllPresets returns built-in + custom presets", () => {
     const store = useWorkspaceStore.getState();
-    expect(store.getAllPresets()).toHaveLength(3);
+    expect(store.getAllPresets()).toHaveLength(4);
   });
 
   it("getPreset finds built-in preset by id", () => {
@@ -52,13 +53,26 @@ describe("§52 Workspace Store", () => {
 
   // --- Apply Preset ---
 
-  it("applyPreset('writing') hides both sidebars", () => {
+  it("applyPreset('writing') preserves an open folder tree, closes right panel", () => {
+    // §82 sidebar starts open (beforeEach) — Writing must NOT force-close it.
     useWorkspaceStore.getState().applyPreset("writing");
 
     const ui = useUIStore.getState();
-    expect(ui.sidebarOpen).toBe(false);
+    expect(ui.sidebarOpen).toBe(true);
     expect(ui.rightPanelOpen).toBe(false);
     expect(useWorkspaceStore.getState().activePresetId).toBe("writing");
+  });
+
+  it("applyPreset never force-closes the sidebar but opens it when a preset wants it", () => {
+    // §82 closed → Writing (sidebarOpen:false) keeps it closed
+    useUIStore.setState({ sidebarOpen: false });
+    useWorkspaceStore.getState().applyPreset("writing");
+    expect(useUIStore.getState().sidebarOpen).toBe(false);
+
+    // closed → Skills (sidebarOpen:true) opens it
+    useUIStore.setState({ sidebarOpen: false });
+    useWorkspaceStore.getState().applyPreset("skills");
+    expect(useUIStore.getState().sidebarOpen).toBe(true);
   });
 
   it("applyPreset with unknown id does nothing", () => {
@@ -103,10 +117,10 @@ describe("§52 Workspace Store", () => {
     useWorkspaceStore.getState().saveCustomPreset("Custom 2");
 
     const all = useWorkspaceStore.getState().getAllPresets();
-    expect(all).toHaveLength(5);
+    expect(all).toHaveLength(6);
     expect(all[0].builtIn).toBe(true);
-    expect(all[3].builtIn).toBe(false);
-    expect(all[3].name).toBe("Custom 1");
+    expect(all[4].builtIn).toBe(false);
+    expect(all[4].name).toBe("Custom 1");
   });
 
   it("deleteCustomPreset removes preset and clears activePresetId when active", () => {
@@ -192,7 +206,9 @@ describe("§52 Workspace Store", () => {
     useWorkspaceStore.getState().applyPreset(id);
 
     const ui = useUIStore.getState();
-    expect(ui.sidebarOpen).toBe(false);
+    // §82 sidebar was open → preserved (a preset never force-closes it), even
+    // though this custom preset was saved with sidebarOpen:false.
+    expect(ui.sidebarOpen).toBe(true);
     expect(ui.sidebarPanel).toBe("graph");
     expect(ui.rightPanelOpen).toBe(true);
     expect(ui.rightPanelMode).toBe("help");

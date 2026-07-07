@@ -10,6 +10,7 @@ import { captureEditorHTML, generateStandaloneHTML } from "./export-html";
 import { rewriteMermaidForPandoc } from "./mermaid-export-assets";
 import { convertForNotion } from "./notion-export";
 import { convertForPandoc } from "./pandoc-export";
+import { resolveZettelLinksForExport } from "./zettel-link-resolve";
 
 /**
  * Export editor content as a standalone HTML file.
@@ -63,7 +64,9 @@ export async function exportForNotion(
   title: string,
 ): Promise<void> {
   const md = prosemirrorToMarkdown(editor.state.doc);
-  const notionMd = convertForNotion(md);
+  // §95: resolve bare [[id]] zettel links to [[id|title]] for export output
+  // only — the .md round-trip save (pm-to-md.ts) is untouched by this.
+  const notionMd = convertForNotion(resolveZettelLinksForExport(md));
 
   const path = await save({
     filters: [{ name: "Markdown", extensions: ["md"] }],
@@ -86,7 +89,9 @@ export async function exportWithPandoc(
   options?: { pandocPath?: string; referenceDoc?: string },
 ): Promise<void> {
   const md = prosemirrorToMarkdown(editor.state.doc);
-  const pandocMd = convertForPandoc(md);
+  // §95: resolve bare [[id]] zettel links to [[id|title]] for export output
+  // only — the .md round-trip save (pm-to-md.ts) is untouched by this.
+  const pandocMd = convertForPandoc(resolveZettelLinksForExport(md));
   const { markdown: finalMd, assets } = await rewriteMermaidForPandoc(pandocMd);
 
   const extensionMap: Record<PandocFormat, string> = {

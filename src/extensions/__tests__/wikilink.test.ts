@@ -1,6 +1,9 @@
+import { Editor } from "@tiptap/core";
+import Document from "@tiptap/extension-document";
+import Text from "@tiptap/extension-text";
 import { Schema } from "@tiptap/pm/model";
 // §28 Wikilink — roundtrip + parsing tests
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { markdownToProsemirror } from "../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
@@ -9,6 +12,9 @@ import {
   serializeWikilink,
   WIKILINK_RE,
 } from "../../pipeline/transformers/wikilink-transformer";
+import { useZettelIndexStore } from "../../stores/zettelkasten/zettel-index";
+import { Paragraph } from "../nodes/paragraph";
+import { Wikilink } from "../nodes/wikilink";
 
 // Schema with wikilink node
 const schema = new Schema({
@@ -571,5 +577,101 @@ describe("Wikilink PM structure", () => {
     const doc = parse("[[page]]\n");
     const wl = doc.firstChild!.firstChild!;
     expect(wl.attrs.vaultAlias).toBeNull();
+  });
+});
+
+// --- §95 B2 eager normalization: manually-typed [[title]] → [[id]] ---
+
+describe("InputRule: B2 eager normalization (§95)", () => {
+  function createWikilinkEditor(): Editor {
+    return new Editor({
+      extensions: [Document, Paragraph, Text, Wikilink],
+      content: "<p></p>",
+    });
+  }
+
+  /**
+   * Simulates the user finishing typing `[[...]]` by hand (no autocomplete
+   * popup): the literal text is inserted into the doc, then the
+   * InputRule plugin's `handleTextInput` prop is invoked directly — the
+   * same prop ProseMirror's DOM input handling calls on a real keystroke —
+   * so the Wikilink InputRule handler actually runs.
+   */
+  function typeWikilink(editor: Editor, text: string): void {
+    const insertPos = editor.state.doc.content.size - 1;
+    editor.commands.insertContentAt(insertPos, text);
+    const endPos = editor.state.doc.content.size - 1;
+    editor.view.someProp("handleTextInput", (f) =>
+      f(editor.view, endPos, endPos, ""),
+    );
+  }
+
+  beforeEach(() => {
+    useZettelIndexStore.getState().clear();
+  });
+
+  it("rewrites target to id on unique title match", () => {
+    useZettelIndexStore
+      .getState()
+      .setAll([
+        { id: "202607051530", path: "notes/atom.md", title: "원자적 노트" },
+      ]);
+    const editor = createWikilinkEditor();
+    typeWikilink(editor, "[[원자적 노트]]");
+    const wl = editor.state.doc.firstChild!.firstChild!;
+    expect(wl.type.name).toBe("wikilink");
+    expect(wl.attrs.target).toBe("202607051530");
+    editor.destroy();
+  });
+
+  it("keeps typed title unchanged when the zettel index is empty", () => {
+    const editor = createWikilinkEditor();
+    typeWikilink(editor, "[[원자적 노트]]");
+    const wl = editor.state.doc.firstChild!.firstChild!;
+    expect(wl.type.name).toBe("wikilink");
+    expect(wl.attrs.target).toBe("원자적 노트");
+    editor.destroy();
+  });
+
+  it("keeps typed title unchanged when the title is ambiguous (2+ notes share it)", () => {
+    useZettelIndexStore.getState().setAll([
+      { id: "202607051530", path: "notes/a.md", title: "원자적 노트" },
+      { id: "202607051531", path: "notes/b.md", title: "원자적 노트" },
+    ]);
+    const editor = createWikilinkEditor();
+    typeWikilink(editor, "[[원자적 노트]]");
+    const wl = editor.state.doc.firstChild!.firstChild!;
+    expect(wl.type.name).toBe("wikilink");
+    expect(wl.attrs.target).toBe("원자적 노트");
+    editor.destroy();
+  });
+
+  it("does not rewrite a target that is already a zettel id", () => {
+    useZettelIndexStore
+      .getState()
+      .setAll([
+        { id: "202607051530", path: "notes/atom.md", title: "202607051530" },
+      ]);
+    const editor = createWikilinkEditor();
+    typeWikilink(editor, "[[202607051530]]");
+    const wl = editor.state.doc.firstChild!.firstChild!;
+    expect(wl.type.name).toBe("wikilink");
+    expect(wl.attrs.target).toBe("202607051530");
+    editor.destroy();
+  });
+
+  it("does not rewrite a cross-vault target even on unique title match", () => {
+    useZettelIndexStore
+      .getState()
+      .setAll([
+        { id: "202607051530", path: "notes/atom.md", title: "2026-03-22" },
+      ]);
+    const editor = createWikilinkEditor();
+    typeWikilink(editor, "[[journal::2026-03-22]]");
+    const wl = editor.state.doc.firstChild!.firstChild!;
+    expect(wl.type.name).toBe("wikilink");
+    expect(wl.attrs.vaultAlias).toBe("journal");
+    expect(wl.attrs.target).toBe("2026-03-22");
+    editor.destroy();
   });
 });
