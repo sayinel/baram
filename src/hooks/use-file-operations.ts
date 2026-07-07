@@ -150,6 +150,9 @@ export function useFileOperations({
       // Existing file — save directly
       try {
         await writeFile(saveTab.filePath, md);
+        useFileStore
+          .getState()
+          .updateLastSaveMtime(saveTab.filePath, Date.now());
         setFileContent(saveTab.filePath, md);
         markDirty(saveTab.id, false);
         notifyFileSave(saveTab.filePath);
@@ -174,6 +177,7 @@ export function useFileOperations({
 
       try {
         await writeFile(savePath, md);
+        useFileStore.getState().updateLastSaveMtime(savePath, Date.now());
         if (!isCode) {
           updateFileIndex(savePath)
             .then(() => useLinkStore.getState().invalidate())
@@ -221,6 +225,7 @@ export function useFileOperations({
 
     try {
       await writeFile(savePath, md);
+      useFileStore.getState().updateLastSaveMtime(savePath, Date.now());
       if (!isCode) {
         updateFileIndex(savePath)
           .then(() => useLinkStore.getState().invalidate())
