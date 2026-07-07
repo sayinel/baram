@@ -168,3 +168,44 @@ describe("§56a Settings: journalUseHierarchy", () => {
     expect(useSettingsStore.getState().journalUseHierarchy).toBe(true);
   });
 });
+
+describe("§82 revertSpaceIfContextClosed", () => {
+  beforeEach(async () => {
+    await new Promise((r) => setTimeout(r, 0));
+    // Empty contexts so applyPreset('writing') has no context to switch to.
+    useContextStore.setState({ contexts: [], activeContextId: null });
+    useWorkspaceStore.setState({ activePresetId: null, customPresets: [] });
+  });
+
+  it("reverts to writing when the active journal space's context is closed", () => {
+    useWorkspaceStore.setState({ activePresetId: "journal" });
+    useWorkspaceStore.getState().revertSpaceIfContextClosed("journal");
+    expect(useWorkspaceStore.getState().activePresetId).toBe("writing");
+  });
+
+  it("reverts to writing when the active zettelkasten space's context is closed", () => {
+    useWorkspaceStore.setState({ activePresetId: "zettelkasten" });
+    useWorkspaceStore.getState().revertSpaceIfContextClosed("zettelkasten");
+    expect(useWorkspaceStore.getState().activePresetId).toBe("writing");
+  });
+
+  it("does not revert when a non-space (general) context is closed", () => {
+    useWorkspaceStore.setState({ activePresetId: "zettelkasten" });
+    useWorkspaceStore.getState().revertSpaceIfContextClosed("general");
+    expect(useWorkspaceStore.getState().activePresetId).toBe("zettelkasten");
+  });
+
+  it("does not revert when the closed context's space is not the active space", () => {
+    // In the Writing space, closing a leftover zettelkasten context tab must
+    // not change the space.
+    useWorkspaceStore.setState({ activePresetId: "writing" });
+    useWorkspaceStore.getState().revertSpaceIfContextClosed("zettelkasten");
+    expect(useWorkspaceStore.getState().activePresetId).toBe("writing");
+  });
+
+  it("does not revert when the closed context has no vaultType", () => {
+    useWorkspaceStore.setState({ activePresetId: "journal" });
+    useWorkspaceStore.getState().revertSpaceIfContextClosed(undefined);
+    expect(useWorkspaceStore.getState().activePresetId).toBe("journal");
+  });
+});
