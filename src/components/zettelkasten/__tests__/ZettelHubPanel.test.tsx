@@ -148,6 +148,28 @@ describe("ZettelHubPanel", () => {
     expect(screen.queryByText(/no notes yet/i)).not.toBeInTheDocument();
   });
 
+  it("renders live items during a refresh (loading=true) without gating on loading", () => {
+    mockedUseZettelHubData.mockReturnValue({
+      inbox: [
+        {
+          id: "1",
+          path: "/vault/zettel/inbox/1.md",
+          tags: [],
+          title: "First idea",
+        },
+      ],
+      mocs: [],
+      recent: [],
+      loading: true,
+      refresh: vi.fn(noop),
+    });
+
+    render(<ZettelHubPanel />);
+
+    expect(screen.getByText("First idea")).toBeInTheDocument();
+    expect(screen.queryByText(/inbox is empty/i)).not.toBeInTheDocument();
+  });
+
   it("shows empty-state hints once loading resolves with empty data", () => {
     mockedUseZettelHubData.mockReturnValue({
       inbox: [],

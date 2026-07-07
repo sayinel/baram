@@ -134,14 +134,18 @@ async function loadInbox(zettelDir: string): Promise<ZettelHubInboxItem[]> {
 /**
  * Files tagged #moc — title resolved from the id index, else filename-derived.
  * Restricted to `notes/`: a `#moc` tag on a fleeting inbox/ note is not a
- * real MOC (MOCs are created into notes/ by createMoc). Sorted by title and
- * soft-capped at MOC_LIMIT (mirrors Recent's top-7 bounding; MOC sets are
- * curated and typically small so this rarely truncates).
+ * real MOC (MOCs are created into notes/ by createMoc). getFilesByTag's Rust
+ * backend returns OS-native separators, so backslashes (Windows) are
+ * normalized to `/` before the filter/basename/path-join below — mirrors
+ * use-file-tree-search.ts. Sorted by title and soft-capped at MOC_LIMIT
+ * (mirrors Recent's top-7 bounding; MOC sets are curated and typically small
+ * so this rarely truncates).
  */
 async function loadMocs(zettelDir: string): Promise<ZettelHubListItem[]> {
   try {
     const relPaths = await getFilesByTag(zettelDir, "moc");
     return relPaths
+      .map((rel) => rel.replace(/\\/g, "/"))
       .filter((rel) => rel.startsWith("notes/"))
       .map((rel) => {
         const name = basename(rel);
