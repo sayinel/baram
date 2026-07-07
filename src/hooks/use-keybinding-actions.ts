@@ -366,6 +366,9 @@ export function useKeybindingActions({
     registerAction("workspace.journal", () =>
       useWorkspaceStore.getState().applyPreset("journal"),
     );
+    registerAction("workspace.zettelkasten", () =>
+      useWorkspaceStore.getState().applyPreset("zettelkasten"),
+    );
     registerAction("workspace.skills", () =>
       useWorkspaceStore.getState().applyPreset("skills"),
     );
