@@ -14,7 +14,7 @@ import { useSettingsStore } from "../settings/store";
 import { tauriStorage } from "../system/tauri-storage";
 import { type RightPanelMode, type SidebarPanel, useUIStore } from "../ui/ui";
 import { refreshZettelIndex } from "../zettelkasten/zettel-index";
-import { useFileStore } from "./file";
+import { switchContext, useFileStore } from "./file";
 
 // --- Types ---
 
@@ -177,11 +177,17 @@ export const useWorkspaceStore = create<WorkspaceState>()(
                 // scaffold folders can only be created after the dir is a
                 // registered context. (Otherwise createDir throws "Access denied",
                 // aborting this whole block: no folders, no context, no index.)
-                await useContextStore
+                const ctx = await useContextStore
                   .getState()
                   .ensureSpaceContext("zettelkasten", resolvedDir);
                 await ensureZettelkastenScaffold(resolvedDir);
                 await refreshZettelIndex(resolvedDir);
+                // Load the file tree for the zettel dir — ensureSpaceContext
+                // activates the context locally but does NOT load its tree
+                // (only switchContext/openFolder do). Without this the sidebar
+                // keeps showing the previous vault's tree until the user clicks
+                // the context tab. inbox/ + notes/ now exist, so load them here.
+                await switchContext(ctx.id);
                 await getSpace("zettelkasten")?.startup?.();
               } catch (err) {
                 logger.error("[Workspace] Failed to open zettelkasten:", err);
