@@ -1045,6 +1045,17 @@ The **Zettel** space is a dedicated home for atomic, densely-linked notes. Unlik
 
 > If you select the Zettel space before enabling it or setting a directory, Baram shows a hint instead of switching into an empty space.
 
+### The hub panel
+
+In the Zettel space the sidebar is a dedicated **hub** instead of the plain file tree:
+
+- **Actions** — New Zettel, Quick Capture, and New MOC, one click away (same as `Cmd+Shift+V` / `Cmd+Shift+N` / `Cmd+Shift+C`).
+- **Inbox queue** — every fleeting note in `inbox/`, newest first, showing its first line as the title plus up to two tags. Click a row to open it; hover to reveal **↑ Promote** (opens the promote dialog pre-filled with the note's first line) and **✕ Delete** (asks for confirmation first).
+- **MOCs** — your `#moc`-tagged index notes.
+- **Recent** — the notes you touched most recently in `notes/`.
+
+The three lists are collapsible, and the hub refreshes itself automatically whenever you capture, promote, create, or delete a note — including captures made from outside the panel. If the space isn't set up yet, the hub shows a short "set up Zettel" hint with a link into Settings.
+
 ### Capturing (fleeting notes)
 
 - Press `Cmd+Shift+N` (or the `/capture` slash command) to open Quick Capture. Type your thought, an optional source URL, and tags — it is saved as a fleeting note in `inbox/{id}.md`. Tags are written to the note's frontmatter.
@@ -1077,7 +1088,7 @@ Workspace Presets let you save and quickly restore your preferred layout — sid
 | -------------- | ---------------- | -------------------- | ------------------------------------------------------------ |
 | Writing        | `Cmd+Alt+1`      | `Ctrl+Alt+1`         | Editor focus — right panel closed                            |
 | Journal        | `Cmd+Alt+2`      | `Ctrl+Alt+2`         | Calendar sidebar + today's journal + Memories view           |
-| Zettel         | `Cmd+Alt+3`      | `Ctrl+Alt+3`         | File tree (`inbox/` + `notes/`) — atomic Zettelkasten notes  |
+| Zettel         | `Cmd+Alt+3`      | `Ctrl+Alt+3`         | Zettel hub (actions + inbox + MOCs + recent) — atomic Zettelkasten notes |
 | Skills Editing | `Cmd+Alt+4`      | `Ctrl+Alt+4`         | File tree + Properties panel — LLM Skills editing            |
 
 > All four workspace presets are customizable in **Settings > Keybindings** and available from the Workspace menu. Switching to a space never force-closes an open folder tree.
