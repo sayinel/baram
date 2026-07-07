@@ -135,9 +135,10 @@ Complete list of keyboard shortcuts available in Baram.
 | ------------------------- | -------------- | --------------- |
 | Workspace: Writing        | `Cmd+Option+1` | `Ctrl+Alt+1`    |
 | Workspace: Journal        | `Cmd+Option+2` | `Ctrl+Alt+2`    |
-| Workspace: Skills Editing | `Cmd+Option+3` | `Ctrl+Alt+3`    |
+| Workspace: Zettel         | `Cmd+Option+3` | `Ctrl+Alt+3`    |
+| Workspace: Skills Editing | `Cmd+Option+4` | `Ctrl+Alt+4`    |
 
-> All three workspace presets are customizable in **Settings > Keybindings**.
+> All four workspace presets are customizable in **Settings > Keybindings**. Switching to a space never force-closes an open folder tree.
 
 ## Journal
 
@@ -145,13 +146,21 @@ Complete list of keyboard shortcuts available in Baram.
 
 | Action                    | macOS         | Windows / Linux |
 | ------------------------- | ------------- | --------------- |
-| Quick Capture             | `Cmd+Shift+N` | `Ctrl+Shift+N`  |
 | Open Today's Journal      | `Cmd+Shift+J` | `Ctrl+Shift+J`  |
-| Jump to Captures Section  | `Cmd+Shift+C` | `Ctrl+Shift+C`  |
-| Jump to Diary Section     | `Cmd+Shift+Y` | `Ctrl+Shift+Y`  |
-| Promote Capture to Note   | `Cmd+Shift+U` | `Ctrl+Shift+U`  |
 | Toggle Memories View      | `Cmd+Shift+R` | `Ctrl+Shift+R`  |
 | Photo Gallery             | `Cmd+Shift+I` | `Ctrl+Shift+I`  |
+
+## Zettel
+
+> The Zettel space (atomic Zettelkasten notes) uses `Cmd+Shift` letters that are free in both the app keybindings and the native menu. Quick Capture lands in the Zettel `inbox/`.
+
+| Action                    | macOS         | Windows / Linux |
+| ------------------------- | ------------- | --------------- |
+| Quick Capture (→ inbox)   | `Cmd+Shift+N` | `Ctrl+Shift+N`  |
+| New Zettel                | `Cmd+Shift+V` | `Ctrl+Shift+V`  |
+| Promote to Permanent Note | `Cmd+Shift+U` | `Ctrl+Shift+U`  |
+| New Note from Selection   | `Cmd+Shift+Y` | `Ctrl+Shift+Y`  |
+| New MOC                   | `Cmd+Shift+C` | `Ctrl+Shift+C`  |
 
 ## Ghost Text (AI Autocomplete)
 

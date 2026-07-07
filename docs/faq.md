@@ -375,13 +375,37 @@ Workspace Presets save your current layout (sidebar panel, right panel, theme) a
 
 Three ways:
 
-1. **Keyboard shortcuts** — `Cmd+Alt+1` (Writing), `Cmd+Alt+2` (Journal), `Cmd+Alt+3` (Skills Editing)
+1. **Keyboard shortcuts** — `Cmd+Alt+1` (Writing), `Cmd+Alt+2` (Journal), `Cmd+Alt+3` (Zettel), `Cmd+Alt+4` (Skills Editing)
 2. **Command Palette** — `Cmd+Shift+P` then search for "Workspace"
 3. **Workspace menu** — Use the menu bar
 
 ### Can I create custom presets?
 
 Yes. Go to **Settings > Appearance**, arrange your layout, and click **Save Current Layout**. Custom presets can be renamed or deleted.
+
+---
+
+## Zettel (Zettelkasten Notes)
+
+### What is the Zettel space?
+
+Zettel is a dedicated space for atomic, densely-linked notes, separate from the diary-oriented Journal. It centers on the fleeting → permanent workflow: quickly capture ideas into an `inbox/`, then refine the good ones into permanent, titled notes in `notes/` and connect them with links.
+
+### How do I capture a quick note?
+
+Press `Cmd+Shift+N` (or type `/capture`) to open Quick Capture. Your thought is saved as a fleeting note in the Zettel `inbox/`. Add tags (stored in the note's frontmatter) and an optional source URL.
+
+### How do I turn an inbox note into a permanent note?
+
+Open the inbox note and press `Cmd+Shift+U` (Promote). Give it a title — it moves to `notes/{id} {title}.md`, keeping its body and tags. You can also create a permanent note directly with `Cmd+Shift+V` (New Zettel), or turn a selection into a new note with `Cmd+Shift+Y`.
+
+### Why do links look like `[[id]]` on disk but show titles in the editor?
+
+Zettel notes are addressed by a timestamp `id`, so links are stored as `[[id]]`. Baram renders the note's current title in the editor, so links never break when you rename a note. Type `[[` to search by title.
+
+### How do I enable it?
+
+Go to **Settings > General > Zettel**, toggle it on, and choose a directory. Then open the space from the space menu (status bar), the Command Palette ("Open Zettel"), or `Cmd+Alt+3`.
 
 ---
 
