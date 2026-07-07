@@ -108,6 +108,12 @@ export async function openFileInTab(
     });
   }
 
+  // Seed the self-write baseline so the creation/open echo from the watcher
+  // (and this app's own subsequent saves) are not mistaken for external
+  // changes. Without this, a just-created/opened note's writeFile echo trips
+  // the conflict/auto-reload path. (use-file-watcher.ts self-write guard.)
+  useFileStore.getState().updateLastSaveMtime(filePath, Date.now());
+
   // §95 M2: populate the zettel id index when opening a note under the
   // zettel space, even if it was reached without activating the
   // "zettelkasten" workspace preset. No-op for non-zettel paths (see
