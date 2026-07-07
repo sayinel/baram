@@ -17,6 +17,7 @@ export const DEFAULT_ACTIVITY_BAR_CONFIG: ActivityBarItemConfig[] = [
   { id: "git", visible: true, section: "top" },
   { id: "calendar", visible: true, section: "top" },
   { id: "tags", visible: true, section: "top" },
+  { id: "zettel", visible: true, section: "top" },
   { id: "skills-gallery", visible: true, section: "top" },
   { id: "plugins", visible: true, section: "top" },
   // Bottom section — right panels + utilities

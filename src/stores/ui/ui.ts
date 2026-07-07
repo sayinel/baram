@@ -27,7 +27,8 @@ export type SidebarPanel =
   | "search"
   | "skills-gallery"
   | "snapshots"
-  | "tags";
+  | "tags"
+  | "zettel";
 
 export interface ToastState {
   /** Monotonic id — changing it restarts the auto-dismiss timer */
