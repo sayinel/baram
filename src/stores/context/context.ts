@@ -105,20 +105,32 @@ function labelFromPath(path: string): string {
 }
 
 /**
- * §85 Pin journal context to position 1 (right after the first non-journal context).
- * Returns a reordered copy if journal exists at index > 1, otherwise returns null.
+ * §85/§93 Pin the special space contexts to the front of the tab bar in a
+ * fixed order: Zettelkasten first (index 0), Journal next. Journal takes
+ * index 0 when no Zettelkasten context exists. All other contexts keep their
+ * relative order after the pinned spaces.
+ * Returns a reordered copy if the order changed, otherwise null.
  */
-function pinJournalToSecond(contexts: ContextInfo[]): ContextInfo[] | null {
-  const journalIdx = contexts.findIndex(
-    (c) => c.contextType === "vault" && c.vaultType === "journal",
-  );
-  if (journalIdx > 1) {
-    const reordered = [...contexts];
-    const [journal] = reordered.splice(journalIdx, 1);
-    reordered.splice(1, 0, journal);
-    return reordered;
-  }
-  return null;
+function pinSpaceContexts(contexts: ContextInfo[]): ContextInfo[] | null {
+  const zettel =
+    contexts.find(
+      (c) => c.contextType === "vault" && c.vaultType === "zettelkasten",
+    ) ?? null;
+  const journal =
+    contexts.find(
+      (c) => c.contextType === "vault" && c.vaultType === "journal",
+    ) ?? null;
+  if (!zettel && !journal) return null;
+
+  const rest = contexts.filter((c) => c !== zettel && c !== journal);
+  const pinned = [
+    ...(zettel ? [zettel] : []),
+    ...(journal ? [journal] : []),
+    ...rest,
+  ];
+  // No-op when already in the target order (avoid a needless set/persist).
+  if (pinned.every((c, i) => c === contexts[i])) return null;
+  return pinned;
 }
 
 /**
@@ -205,10 +217,10 @@ export const useContextStore = create<ContextState>()(
           label: "journal",
           color: "#10b981",
         });
-        // §85 Pin journal context to position 1 (after first vault) — only
-        // needed when we just created it; an existing context is already pinned.
+        // §85/§93 Pin the space tabs to the front — only needed when we just
+        // created it; an existing context is already pinned.
         if (!wasExisting) {
-          const pinned = pinJournalToSecond(get().contexts);
+          const pinned = pinSpaceContexts(get().contexts);
           if (pinned) set({ contexts: pinned });
         }
         return ctx;
@@ -288,8 +300,8 @@ export const useContextStore = create<ContextState>()(
                 : state.activeContextId,
             };
           });
-          // §85 Ensure journal stays at position 1 after any add
-          const pinned = pinJournalToSecond(get().contexts);
+          // §85/§93 Keep the space tabs pinned to the front after any add
+          const pinned = pinSpaceContexts(get().contexts);
           if (pinned) set({ contexts: pinned });
           return saved;
         } catch (err) {
