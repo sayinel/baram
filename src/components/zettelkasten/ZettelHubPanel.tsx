@@ -1,12 +1,46 @@
 // §100/§101 Zettel hub — sidebar panel for the Zettel space.
-// Actions bar now; Inbox queue + MOCs + Recent sections land in Task 4.
-import { FileText, Map as MapIcon, Zap } from "lucide-react";
+// Actions bar + Inbox queue + MOCs + Recent sections.
+import { useState } from "react";
+
+import { Clock, FileText, Map as MapIcon, Zap } from "lucide-react";
+import { useShallow } from "zustand/shallow";
 
 import { getAction } from "../../keybindings/keybinding-actions";
+import { useFileStore } from "../../stores/file/file";
+import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
+import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
 import "../../styles/zettelkasten.css";
+import { useZettelHubData } from "./use-zettel-hub-data";
+import { ZettelInboxList } from "./ZettelInboxList";
+import { ZettelSectionList } from "./ZettelSectionList";
+
+type CollapseKey = "inbox" | "mocs" | "recent";
 
 export function ZettelHubPanel() {
+  const { zettelkastenEnabled, zettelkastenDirectory } = useSettingsStore(
+    useShallow((s) => ({
+      zettelkastenEnabled: s.zettelkastenEnabled,
+      zettelkastenDirectory: s.zettelkastenDirectory,
+    })),
+  );
+  const { rootPath } = useFileStore(
+    useShallow((s) => ({ rootPath: s.rootPath })),
+  );
+  const dir = resolveZettelDir(rootPath, zettelkastenDirectory);
+
+  const { inbox, mocs, recent, refresh } = useZettelHubData(
+    zettelkastenEnabled && dir ? dir : null,
+  );
+
+  const [collapsed, setCollapsed] = useState<Record<CollapseKey, boolean>>({
+    inbox: false,
+    mocs: false,
+    recent: false,
+  });
+  const toggle = (key: CollapseKey) =>
+    setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
+
   return (
     <div className="zettel-hub">
       <div className="zettel-hub-actions">
@@ -38,6 +72,44 @@ export function ZettelHubPanel() {
           MOC
         </button>
       </div>
+
+      {zettelkastenEnabled && dir ? (
+        <>
+          <ZettelInboxList
+            collapsed={collapsed.inbox}
+            items={inbox}
+            onRefresh={refresh}
+            onToggleCollapse={() => toggle("inbox")}
+            zettelDir={dir}
+          />
+          <ZettelSectionList
+            collapsed={collapsed.mocs}
+            emptyHint="No MOCs yet — tag a note #moc to create one."
+            icon={<MapIcon size={14} strokeWidth={1.5} />}
+            items={mocs}
+            label="MOCs"
+            onToggleCollapse={() => toggle("mocs")}
+          />
+          <ZettelSectionList
+            collapsed={collapsed.recent}
+            emptyHint="No notes yet."
+            icon={<Clock size={14} strokeWidth={1.5} />}
+            items={recent}
+            label="RECENT"
+            onToggleCollapse={() => toggle("recent")}
+          />
+        </>
+      ) : (
+        <div className="zettel-hub-hint">
+          <p>Set up the Zettel space to start capturing notes.</p>
+          <button
+            className="zettel-hub-hint-link btn-unstyled"
+            onClick={() => useUIStore.getState().toggleSettings()}
+          >
+            Open Settings
+          </button>
+        </div>
+      )}
     </div>
   );
 }
