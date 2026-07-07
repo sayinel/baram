@@ -1,4 +1,6 @@
 // §52 Workspace 프리셋 스토어
+import type { VaultType } from "../../ipc/types";
+
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
@@ -97,6 +99,11 @@ interface WorkspaceState {
   getAllPresets: () => WorkspacePreset[];
   getPreset: (id: string) => undefined | WorkspacePreset;
   renameCustomPreset: (id: string, name: string) => void;
+  /**
+   * §82 Revert to the Writing space when the context backing the current
+   * space (journal/zettelkasten) is closed from the context tab bar.
+   */
+  revertSpaceIfContextClosed: (closedVaultType?: VaultType) => void;
   saveCustomPreset: (name: string, description?: string) => string;
 }
 
@@ -195,6 +202,22 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             })();
           }
         }
+      },
+
+      revertSpaceIfContextClosed: (closedVaultType) => {
+        // The Journal/Zettelkasten spaces are each backed by a single context
+        // (maxInstances=1). When the user closes that context from the tab bar
+        // while its space is the active one, fall back to the Writing space so
+        // the layout + space indicator no longer point at a space that is gone.
+        if (
+          closedVaultType !== "journal" &&
+          closedVaultType !== "zettelkasten"
+        ) {
+          return;
+        }
+        // Preset ids ("journal"/"zettelkasten") match the VaultType strings.
+        if (get().activePresetId !== closedVaultType) return;
+        get().applyPreset("writing");
       },
 
       saveCustomPreset: (name, description) => {

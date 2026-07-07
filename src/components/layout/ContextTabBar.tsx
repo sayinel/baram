@@ -6,6 +6,7 @@ import { useShallow } from "zustand/shallow";
 
 import { useContextStore } from "../../stores/context/context";
 import { switchContext } from "../../stores/file/file";
+import { useWorkspaceStore } from "../../stores/file/workspace";
 import "../../styles/context-tab-bar.css";
 import { ContextAddMenu } from "./ContextAddMenu";
 
@@ -106,6 +107,10 @@ export function ContextTabBar() {
       e.stopPropagation();
       const wasActive =
         useContextStore.getState().activeContextId === contextId;
+      // Capture the vaultType BEFORE removal — removeContext drops it from state.
+      const closedVaultType = useContextStore
+        .getState()
+        .contexts.find((c) => c.id === contextId)?.vaultType;
 
       // Close editor tabs belonging to this context
       const { useEditorStore } = await import("../../stores/editor/editor");
@@ -126,6 +131,10 @@ export function ContextTabBar() {
           useFileStore.getState().closeFolder();
         }
       }
+
+      // §82 If we just closed the context backing the current space, revert to
+      // the Writing space (runs after switchContext so the tree stays loaded).
+      useWorkspaceStore.getState().revertSpaceIfContextClosed(closedVaultType);
     },
     [removeContext],
   );
@@ -332,7 +341,10 @@ function ContextTabContextMenu({
 
   const handleCloseCtx = async () => {
     onClose();
+    const closedVaultType = ctx.vaultType;
     await useContextStore.getState().removeContext(contextId);
+    // §82 Revert to Writing if this closed the current space's context.
+    useWorkspaceStore.getState().revertSpaceIfContextClosed(closedVaultType);
   };
 
   const handleCloseOthers = async () => {
