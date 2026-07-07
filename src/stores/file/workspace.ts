@@ -217,7 +217,14 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         }
         // Preset ids ("journal"/"zettelkasten") match the VaultType strings.
         if (get().activePresetId !== closedVaultType) return;
+        // The Writing preset hides the sidebar (editor-focus layout), but when
+        // reverting on close the user expects an already-open folder tree to
+        // stay open. Preserve the sidebar's open/closed state across the switch.
+        const wasSidebarOpen = useUIStore.getState().sidebarOpen;
         get().applyPreset("writing");
+        if (wasSidebarOpen && !useUIStore.getState().sidebarOpen) {
+          useUIStore.getState().toggleSidebar();
+        }
       },
 
       saveCustomPreset: (name, description) => {

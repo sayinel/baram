@@ -208,4 +208,20 @@ describe("§82 revertSpaceIfContextClosed", () => {
     useWorkspaceStore.getState().revertSpaceIfContextClosed(undefined);
     expect(useWorkspaceStore.getState().activePresetId).toBe("journal");
   });
+
+  it("keeps the sidebar open when reverting if it was open", () => {
+    useUIStore.setState({ sidebarOpen: true });
+    useWorkspaceStore.setState({ activePresetId: "zettelkasten" });
+    useWorkspaceStore.getState().revertSpaceIfContextClosed("zettelkasten");
+    expect(useWorkspaceStore.getState().activePresetId).toBe("writing");
+    expect(useUIStore.getState().sidebarOpen).toBe(true);
+  });
+
+  it("leaves the sidebar closed when reverting if it was closed", () => {
+    useUIStore.setState({ sidebarOpen: false });
+    useWorkspaceStore.setState({ activePresetId: "journal" });
+    useWorkspaceStore.getState().revertSpaceIfContextClosed("journal");
+    expect(useWorkspaceStore.getState().activePresetId).toBe("writing");
+    expect(useUIStore.getState().sidebarOpen).toBe(false);
+  });
 });
