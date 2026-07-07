@@ -39,12 +39,15 @@ export interface ZettelHubListItem {
   title: string;
 }
 
+/** Soft cap on the MOCs list — MOC sets are curated and typically small. */
+const MOC_LIMIT = 12;
+
 /** Pure data layer for the Zettel hub panel — no UI here (see ZettelHubPanel, Task 4). */
 export function useZettelHubData(zettelDir: null | string): ZettelHubData {
   const [inbox, setInbox] = useState<ZettelHubInboxItem[]>([]);
   const [mocs, setMocs] = useState<ZettelHubListItem[]>([]);
   const [recent, setRecent] = useState<ZettelHubListItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const mountedRef = useRef(true);
   // Bumped on every refresh() call; guards against an overlapping earlier
   // refresh overwriting state with stale results (see gen check below).
@@ -128,18 +131,28 @@ async function loadInbox(zettelDir: string): Promise<ZettelHubInboxItem[]> {
     .map(({ item }) => item);
 }
 
-/** Files tagged #moc — title resolved from the id index, else filename-derived. */
+/**
+ * Files tagged #moc — title resolved from the id index, else filename-derived.
+ * Restricted to `notes/`: a `#moc` tag on a fleeting inbox/ note is not a
+ * real MOC (MOCs are created into notes/ by createMoc). Sorted by title and
+ * soft-capped at MOC_LIMIT (mirrors Recent's top-7 bounding; MOC sets are
+ * curated and typically small so this rarely truncates).
+ */
 async function loadMocs(zettelDir: string): Promise<ZettelHubListItem[]> {
   try {
     const relPaths = await getFilesByTag(zettelDir, "moc");
-    return relPaths.map((rel) => {
-      const name = basename(rel);
-      const id = extractLeadingId(name) ?? "";
-      return {
-        path: `${zettelDir}/${rel}`,
-        title: titleForId(id) ?? parseNoteTitle(name, ""),
-      };
-    });
+    return relPaths
+      .filter((rel) => rel.startsWith("notes/"))
+      .map((rel) => {
+        const name = basename(rel);
+        const id = extractLeadingId(name) ?? "";
+        return {
+          path: `${zettelDir}/${rel}`,
+          title: titleForId(id) ?? parseNoteTitle(name, ""),
+        };
+      })
+      .sort((a, b) => a.title.localeCompare(b.title))
+      .slice(0, MOC_LIMIT);
   } catch {
     return [];
   }

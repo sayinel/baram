@@ -21,7 +21,7 @@ export function extractLeadingId(nameOrStem: string): null | string {
  * cap length — callers apply their own display truncation.
  */
 export function firstBodyLine(md: string): string {
-  const body = md.replace(/^---\n[\s\S]*?\n---\n?/, "");
+  const body = md.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
   return firstNonEmptyLine(body).replace(/^#+\s*/, "");
 }
 

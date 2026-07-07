@@ -89,6 +89,42 @@ describe("useZettelHubData", () => {
     });
   });
 
+  it("MOCs: only notes/ paths, sorted by title, capped at 12", async () => {
+    listDir.mockResolvedValue([]);
+    readFile.mockResolvedValue("");
+    // 13 notes/ MOCs (unsorted titles) + 1 inbox/ note wrongly tagged #moc.
+    getFilesByTag.mockResolvedValue([
+      "inbox/999999999999 Fleeting.md",
+      "notes/202607010001 Zeta.md",
+      "notes/202607010002 Alpha.md",
+      "notes/202607010003 Mike.md",
+      "notes/202607010004 Bravo.md",
+      "notes/202607010005 November.md",
+      "notes/202607010006 Charlie.md",
+      "notes/202607010007 Oscar.md",
+      "notes/202607010008 Delta.md",
+      "notes/202607010009 Papa.md",
+      "notes/202607010010 Echo.md",
+      "notes/202607010011 Quebec.md",
+      "notes/202607010012 Foxtrot.md",
+      "notes/202607010013 Romeo.md",
+    ]);
+
+    const { result } = renderHook(() => useZettelHubData("/z"));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.mocs).toHaveLength(12);
+    expect(
+      result.current.mocs.some(
+        (m) => m.path === "/z/inbox/999999999999 Fleeting.md",
+      ),
+    ).toBe(false);
+    const titles = result.current.mocs.map((m) => m.title);
+    expect(titles).toEqual([...titles].sort((a, b) => a.localeCompare(b)));
+    // "Zeta" sorts last alphabetically, so the 12-item cap truncates it off.
+    expect(titles).not.toContain("Zeta");
+  });
+
   it("returns empty lists and does not call IPC when zettelDir is null", async () => {
     const { result } = renderHook(() => useZettelHubData(null));
 

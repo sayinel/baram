@@ -132,6 +132,38 @@ describe("ZettelHubPanel", () => {
     expect(screen.getByText(/inbox is empty/i)).toBeInTheDocument();
   });
 
+  it("suppresses empty-state hints while the initial load is pending", () => {
+    mockedUseZettelHubData.mockReturnValue({
+      inbox: [],
+      mocs: [],
+      recent: [],
+      loading: true,
+      refresh: vi.fn(noop),
+    });
+
+    render(<ZettelHubPanel />);
+
+    expect(screen.queryByText(/inbox is empty/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/no mocs yet/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/no notes yet/i)).not.toBeInTheDocument();
+  });
+
+  it("shows empty-state hints once loading resolves with empty data", () => {
+    mockedUseZettelHubData.mockReturnValue({
+      inbox: [],
+      mocs: [],
+      recent: [],
+      loading: false,
+      refresh: vi.fn(noop),
+    });
+
+    render(<ZettelHubPanel />);
+
+    expect(screen.getByText(/inbox is empty/i)).toBeInTheDocument();
+    expect(screen.getByText(/no mocs yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/no notes yet/i)).toBeInTheDocument();
+  });
+
   it("renders a MOC row and a Recent row", () => {
     mockedUseZettelHubData.mockReturnValue({
       inbox: [],
