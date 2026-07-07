@@ -116,7 +116,9 @@ describe("§98 zettelkastenSpace.startup", () => {
 
     await zettelkastenSpace.startup?.();
 
-    expect(ensureSpaceContext).toHaveBeenCalledWith("zettelkasten", "/zettel");
+    expect(ensureSpaceContext).toHaveBeenCalledWith("zettelkasten", "/zettel", {
+      label: "Zettel",
+    });
     expect(refreshZettelIndex).not.toHaveBeenCalled();
     expect(openFileInTab).not.toHaveBeenCalled();
   });

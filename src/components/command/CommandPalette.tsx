@@ -608,7 +608,7 @@ function buildCommands(
     },
     {
       id: "space.zettelkasten",
-      label: "Open Zettelkasten",
+      label: "Open Zettel",
       category: "Workspace",
       action: () => useWorkspaceStore.getState().applyPreset("zettelkasten"),
     },

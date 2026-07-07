@@ -64,8 +64,8 @@ export const BUILTIN_PRESETS: WorkspacePreset[] = [
   },
   {
     id: "zettelkasten",
-    name: "Zettelkasten",
-    description: "Open the Zettelkasten space (notes + inbox + backlinks).",
+    name: "Zettel",
+    description: "Capture ideas fast and refine them into linked notes.",
     builtIn: true,
     layout: getSpace("zettelkasten")?.layout ?? {
       sidebarOpen: true,
@@ -186,7 +186,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
                 // aborting this whole block: no folders, no context, no index.)
                 const ctx = await useContextStore
                   .getState()
-                  .ensureSpaceContext("zettelkasten", resolvedDir);
+                  .ensureSpaceContext("zettelkasten", resolvedDir, {
+                    label: "Zettel",
+                  });
                 await ensureZettelkastenScaffold(resolvedDir);
                 await refreshZettelIndex(resolvedDir);
                 // Load the file tree for the zettel dir — ensureSpaceContext

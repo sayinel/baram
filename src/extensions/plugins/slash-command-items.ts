@@ -437,7 +437,7 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       id: "quick-capture",
       label: "Quick Capture",
       category: "Journal",
-      description: "Capture a fleeting note to the Zettelkasten inbox",
+      description: "Capture a fleeting note to the Zettel inbox",
       mdHint: "/capture",
       action: () => useUIStore.getState().openQuickCapture(),
     },
