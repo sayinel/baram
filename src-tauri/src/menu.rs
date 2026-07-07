@@ -360,20 +360,20 @@ pub fn build_menu(
         .id("workspace_journal")
         .accelerator("Alt+CmdOrCtrl+2")
         .build(app)?;
-    let workspace_skills = MenuItemBuilder::new("Skills Editing")
-        .id("workspace_skills")
-        .accelerator("Alt+CmdOrCtrl+3")
-        .build(app)?;
     let workspace_zettel = MenuItemBuilder::new("Zettel")
         .id("workspace_zettel")
+        .accelerator("Alt+CmdOrCtrl+3")
+        .build(app)?;
+    let workspace_skills = MenuItemBuilder::new("Skills Editing")
+        .id("workspace_skills")
         .accelerator("Alt+CmdOrCtrl+4")
         .build(app)?;
 
     let workspace_menu = SubmenuBuilder::new(app, "Workspace")
         .item(&workspace_writing)
         .item(&workspace_journal)
-        .item(&workspace_skills)
         .item(&workspace_zettel)
+        .item(&workspace_skills)
         .build()?;
 
     // --- Window menu (macOS standard) ---
