@@ -364,11 +364,16 @@ pub fn build_menu(
         .id("workspace_skills")
         .accelerator("Alt+CmdOrCtrl+3")
         .build(app)?;
+    let workspace_zettel = MenuItemBuilder::new("Zettel")
+        .id("workspace_zettel")
+        .accelerator("Alt+CmdOrCtrl+4")
+        .build(app)?;
 
     let workspace_menu = SubmenuBuilder::new(app, "Workspace")
         .item(&workspace_writing)
         .item(&workspace_journal)
         .item(&workspace_skills)
+        .item(&workspace_zettel)
         .build()?;
 
     // --- Window menu (macOS standard) ---
@@ -502,6 +507,7 @@ pub fn build_menu(
     menu_items.insert("workspace_writing".into(), workspace_writing);
     menu_items.insert("workspace_journal".into(), workspace_journal);
     menu_items.insert("workspace_skills".into(), workspace_skills);
+    menu_items.insert("workspace_zettel".into(), workspace_zettel);
     menu_items.insert("help_user_guide".into(), help_user_guide);
     menu_items.insert("help_shortcuts".into(), help_shortcuts);
     menu_items.insert("help_faq".into(), help_faq);

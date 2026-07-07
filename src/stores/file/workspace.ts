@@ -4,6 +4,7 @@ import type { VaultType } from "../../ipc/types";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
+import { type Locale, t } from "../../i18n";
 import { getSpace } from "../../spaces";
 import { resolveJournalDir } from "../../utils/journal/journal";
 import { logger } from "../../utils/logger";
@@ -116,6 +117,30 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       applyPreset: (id) => {
         const preset = get().getPreset(id);
         if (!preset) return;
+
+        // §93 The Zettel space needs the feature enabled + a directory set.
+        // Guide the user with a toast instead of switching into an empty space.
+        if (id === "zettelkasten") {
+          const { locale, zettelkastenDirectory, zettelkastenEnabled } =
+            useSettingsStore.getState();
+          if (!zettelkastenEnabled) {
+            useUIStore
+              .getState()
+              .showToast(t("space.zettel.disabled", locale as Locale));
+            return;
+          }
+          if (
+            !resolveZettelDir(
+              useFileStore.getState().rootPath,
+              zettelkastenDirectory,
+            )
+          ) {
+            useUIStore
+              .getState()
+              .showToast(t("space.zettel.noDirectory", locale as Locale));
+            return;
+          }
+        }
 
         const ui = useUIStore.getState();
         const { layout } = preset;

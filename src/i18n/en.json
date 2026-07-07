@@ -96,6 +96,8 @@
   "settings.general.zettelkastenHomeNote": "Home Note",
   "settings.general.zettelkastenHomeNote.desc": "Note opened as the Zettel entry point",
   "settings.general.zettelkastenHomeNote.placeholder": "e.g. inbox.md",
+  "space.zettel.disabled": "Enable Zettel in Settings › General to use the Zettel space.",
+  "space.zettel.noDirectory": "Set the Zettel directory in Settings › General first.",
 
   "settings.editor.font": "Font",
   "settings.editor.fontFamily": "Font Family",
@@ -327,6 +329,7 @@
   "menu.workspace.writing": "Writing",
   "menu.workspace.journal": "Journal",
   "menu.workspace.skills": "Skills Editing",
+  "menu.workspace.zettel": "Zettel",
   "menu.window": "Window",
   "menu.window.minimize": "Minimize",
   "menu.window.maximize": "Zoom",
