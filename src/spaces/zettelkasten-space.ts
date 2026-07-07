@@ -21,7 +21,7 @@ export const zettelkastenSpace: SpaceDefinition = {
   configFolders: ["inbox", "notes"],
   layout: {
     sidebarOpen: true,
-    sidebarPanel: "backlinks",
+    sidebarPanel: "files",
     rightPanelOpen: false,
     rightPanelMode: "none",
   },

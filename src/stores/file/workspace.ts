@@ -67,7 +67,7 @@ export const BUILTIN_PRESETS: WorkspacePreset[] = [
     builtIn: true,
     layout: getSpace("zettelkasten")?.layout ?? {
       sidebarOpen: true,
-      sidebarPanel: "backlinks",
+      sidebarPanel: "files",
       rightPanelOpen: false,
       rightPanelMode: "none",
     },

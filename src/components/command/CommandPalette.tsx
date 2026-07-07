@@ -622,7 +622,7 @@ function buildCommands(
       id: "zettelkasten:new-note",
       label: "New Zettel",
       category: "Journal",
-      shortcut: "⇧⌘K",
+      shortcut: "⇧⌘V",
       action: () => getAction("zettelkasten.newNote")?.(),
     },
     {
