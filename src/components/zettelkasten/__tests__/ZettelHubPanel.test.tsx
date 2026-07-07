@@ -147,6 +147,59 @@ describe("ZettelHubPanel", () => {
     expect(screen.getByText("Atomicity")).toBeInTheDocument();
   });
 
+  it("opens a MOC note and a Recent note when their rows are clicked", async () => {
+    mockedUseZettelHubData.mockReturnValue({
+      inbox: [],
+      mocs: [{ path: "/vault/zettel/notes/10.md", title: "Knowledge Map" }],
+      recent: [{ path: "/vault/zettel/notes/11.md", title: "Atomicity" }],
+      loading: false,
+      refresh: vi.fn(noop),
+    });
+    vi.mocked(readFile).mockResolvedValue("note body");
+
+    render(<ZettelHubPanel />);
+    fireEvent.click(screen.getByText("Knowledge Map"));
+    fireEvent.click(screen.getByText("Atomicity"));
+
+    await waitFor(() => {
+      expect(openFileInTab).toHaveBeenCalledWith(
+        "/vault/zettel/notes/10.md",
+        "note body",
+      );
+      expect(openFileInTab).toHaveBeenCalledWith(
+        "/vault/zettel/notes/11.md",
+        "note body",
+      );
+    });
+  });
+
+  it("truncates a long inbox title to exactly 80 chars for the promote dialog", () => {
+    const longTitle = "a".repeat(85);
+    mockedUseZettelHubData.mockReturnValue({
+      inbox: [
+        {
+          id: "1",
+          path: "/vault/zettel/inbox/1.md",
+          tags: [],
+          title: longTitle,
+        },
+      ],
+      mocs: [],
+      recent: [],
+      loading: false,
+      refresh: vi.fn(noop),
+    });
+
+    render(<ZettelHubPanel />);
+    fireEvent.click(
+      screen.getByRole("button", { name: `Promote "${longTitle}"` }),
+    );
+
+    const dialog = useUIStore.getState().zettelTitleDialog;
+    expect(dialog.initialTitle).toBe(longTitle.slice(0, 80));
+    expect(dialog.initialTitle).toHaveLength(80);
+  });
+
   it("shows the not-configured hint (and no sections) when the space is disabled", () => {
     useSettingsStore.getState().setZettelkastenEnabled(false);
 

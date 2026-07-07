@@ -5,13 +5,13 @@ import type { ZettelHubInboxItem } from "./use-zettel-hub-data";
 // reachable) actions promote or delete it.
 import { ArrowUp, Inbox, X } from "lucide-react";
 
-import { deleteFile, readFile } from "../../ipc/invoke";
-import { openFileInTab } from "../../services/journal-file-service";
+import { deleteFile } from "../../ipc/invoke";
 import { promoteFleeting } from "../../services/zettelkasten-service";
 import { useUIStore } from "../../stores/ui/ui";
 import { useZettelIndexStore } from "../../stores/zettelkasten/zettel-index";
 import { showConfirm } from "../../utils/confirm-dialog";
 import { logger } from "../../utils/logger";
+import { openZettelHubNote } from "./open-hub-note";
 import { ZettelHubSectionHeader } from "./ZettelSectionList";
 
 interface ZettelInboxListProps {
@@ -29,15 +29,6 @@ export function ZettelInboxList({
   onToggleCollapse,
   zettelDir,
 }: ZettelInboxListProps) {
-  const handleOpen = async (path: string) => {
-    try {
-      const content = await readFile(path);
-      await openFileInTab(path, content);
-    } catch (err) {
-      logger.error("[Zettel] hub: open inbox note failed:", err);
-    }
-  };
-
   const handlePromote = (item: ZettelHubInboxItem) => {
     useUIStore.getState().openZettelTitleDialog({
       onSubmit: (title) =>
@@ -84,7 +75,7 @@ export function ZettelInboxList({
               <div
                 className="zettel-hub-inbox-row flex-header"
                 key={item.path}
-                onClick={() => void handleOpen(item.path)}
+                onClick={() => void openZettelHubNote(item.path)}
               >
                 <span className="zettel-hub-inbox-main text-truncate">
                   <span className="zettel-hub-inbox-title text-truncate">
