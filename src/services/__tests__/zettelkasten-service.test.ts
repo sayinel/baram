@@ -138,14 +138,7 @@ describe("captureFleeting", () => {
     expect(created.replace(/[-T:]/g, "")).toBe(id);
   });
 
-  it("records the capture type in the fleeting note's frontmatter (§99 M4)", async () => {
-    const { captureFleeting } = await import("../zettelkasten-service");
-    await captureFleeting("/z", "a quote to keep", "quote");
-    const [, content] = writeFile.mock.calls.at(-1)!;
-    expect(content).toContain("type: quote");
-  });
-
-  it("omits type: frontmatter when no capture type is given", async () => {
+  it("never writes a capture type: frontmatter (§99 A)", async () => {
     const { captureFleeting } = await import("../zettelkasten-service");
     await captureFleeting("/z", "untyped thought");
     const [, content] = writeFile.mock.calls.at(-1)!;

@@ -431,39 +431,15 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
     },
   });
 
-  // §56l Journal capture commands
+  // §99 Quick Capture — fleeting note into the Zettelkasten inbox
   items.push(
     {
-      id: "capture-idea",
-      label: "Capture Idea",
+      id: "quick-capture",
+      label: "Quick Capture",
       category: "Journal",
-      description: "Quick capture an idea",
-      mdHint: "/idea",
-      action: () => useUIStore.getState().openQuickCapture("idea"),
-    },
-    {
-      id: "capture-link",
-      label: "Capture Link",
-      category: "Journal",
-      description: "Quick capture a link",
-      mdHint: "/link",
-      action: () => useUIStore.getState().openQuickCapture("link"),
-    },
-    {
-      id: "capture-quote",
-      label: "Capture Quote",
-      category: "Journal",
-      description: "Quick capture a quote",
-      mdHint: "/quote",
-      action: () => useUIStore.getState().openQuickCapture("quote"),
-    },
-    {
-      id: "capture-note",
-      label: "Capture Note",
-      category: "Journal",
-      description: "Quick capture a note",
-      mdHint: "/note",
-      action: () => useUIStore.getState().openQuickCapture("note"),
+      description: "Capture a fleeting note to the Zettelkasten inbox",
+      mdHint: "/capture",
+      action: () => useUIStore.getState().openQuickCapture(),
     },
     {
       id: "photo",

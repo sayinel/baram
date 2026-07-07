@@ -26,15 +26,13 @@ import { openFileInTab } from "./journal-file-service";
 export async function captureFleeting(
   zettelDir: string,
   body: string,
-  /** §99 M4: Quick Capture type (idea/link/quote/note) — written to frontmatter. */
-  type?: string,
 ): Promise<null | { path: string }> {
   const inboxDir = `${zettelDir}/inbox`;
   await createDir(inboxDir);
   const existing = await collectExistingIds(zettelDir);
   const id = generateZettelId(existing);
   const created = localIsoMinute();
-  const { filename, content } = buildFleetingNote({ id, body, created, type });
+  const { filename, content } = buildFleetingNote({ id, body, created });
   const path = `${inboxDir}/${filename}`;
   await writeFile(path, content);
   useZettelIndexStore.getState().upsert({ id, path, title: id });
