@@ -53,13 +53,26 @@ describe("§52 Workspace Store", () => {
 
   // --- Apply Preset ---
 
-  it("applyPreset('writing') hides both sidebars", () => {
+  it("applyPreset('writing') preserves an open folder tree, closes right panel", () => {
+    // §82 sidebar starts open (beforeEach) — Writing must NOT force-close it.
     useWorkspaceStore.getState().applyPreset("writing");
 
     const ui = useUIStore.getState();
-    expect(ui.sidebarOpen).toBe(false);
+    expect(ui.sidebarOpen).toBe(true);
     expect(ui.rightPanelOpen).toBe(false);
     expect(useWorkspaceStore.getState().activePresetId).toBe("writing");
+  });
+
+  it("applyPreset never force-closes the sidebar but opens it when a preset wants it", () => {
+    // §82 closed → Writing (sidebarOpen:false) keeps it closed
+    useUIStore.setState({ sidebarOpen: false });
+    useWorkspaceStore.getState().applyPreset("writing");
+    expect(useUIStore.getState().sidebarOpen).toBe(false);
+
+    // closed → Skills (sidebarOpen:true) opens it
+    useUIStore.setState({ sidebarOpen: false });
+    useWorkspaceStore.getState().applyPreset("skills");
+    expect(useUIStore.getState().sidebarOpen).toBe(true);
   });
 
   it("applyPreset with unknown id does nothing", () => {
@@ -193,7 +206,9 @@ describe("§52 Workspace Store", () => {
     useWorkspaceStore.getState().applyPreset(id);
 
     const ui = useUIStore.getState();
-    expect(ui.sidebarOpen).toBe(false);
+    // §82 sidebar was open → preserved (a preset never force-closes it), even
+    // though this custom preset was saved with sidebarOpen:false.
+    expect(ui.sidebarOpen).toBe(true);
     expect(ui.sidebarPanel).toBe("graph");
     expect(ui.rightPanelOpen).toBe(true);
     expect(ui.rightPanelMode).toBe("help");
