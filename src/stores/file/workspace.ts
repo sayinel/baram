@@ -172,11 +172,16 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           if (zettelkastenEnabled && resolvedDir) {
             (async () => {
               try {
-                await ensureZettelkastenScaffold(resolvedDir);
-                await refreshZettelIndex(resolvedDir);
+                // Register the zettel dir as a context FIRST — createDir/writeFile
+                // are vault-constrained (check_vault → validate_path_any), so the
+                // scaffold folders can only be created after the dir is a
+                // registered context. (Otherwise createDir throws "Access denied",
+                // aborting this whole block: no folders, no context, no index.)
                 await useContextStore
                   .getState()
                   .ensureSpaceContext("zettelkasten", resolvedDir);
+                await ensureZettelkastenScaffold(resolvedDir);
+                await refreshZettelIndex(resolvedDir);
                 await getSpace("zettelkasten")?.startup?.();
               } catch (err) {
                 logger.error("[Workspace] Failed to open zettelkasten:", err);
