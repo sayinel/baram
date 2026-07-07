@@ -17,7 +17,9 @@ pub use extractor::{
 };
 
 use extractor::{extract_file_tags, extract_links};
-use normalizer::{normalize_file_path, normalize_target, resolve_target};
+use normalizer::{
+    extract_id_from_stem, is_id_target, normalize_file_path, normalize_target, resolve_target,
+};
 
 #[derive(Error, Debug)]
 pub enum IndexError {
@@ -97,6 +99,8 @@ pub struct LinkIndex {
     /// Normalized relative path (lowercase, no extension) → absolute file path
     /// Used to resolve [[path/name]] style wikilinks (e.g., [[notes/architecture]])
     relative_map: HashMap<String, String>,
+    /// Note id (12–14 digit filename prefix) → absolute file path (Zettelkasten `[[ID]]` links)
+    id_map: HashMap<String, String>,
     /// file_path → list of tags found in that file (for graph tag nodes)
     file_tags: HashMap<String, Vec<String>>,
 }
@@ -114,6 +118,7 @@ impl LinkIndex {
         self.incoming.clear();
         self.file_map.clear();
         self.relative_map.clear();
+        self.id_map.clear();
         self.file_tags.clear();
 
         let mut files_indexed: u32 = 0;
@@ -183,35 +188,43 @@ impl LinkIndex {
             }
         }
         self.relative_map.retain(|_, v| v != file_path);
+        self.id_map.retain(|_, v| v != file_path);
         self.file_tags.remove(file_path);
     }
 
     /// Get backlinks for a given file path
     pub fn get_backlinks(&self, file_path: &str) -> Vec<BacklinkResult> {
-        let normalized = normalize_file_path(file_path);
+        let stem = normalize_file_path(file_path);
+        let mut keys = vec![stem.clone()];
+        if let Some(id) = extract_id_from_stem(&stem) {
+            keys.push(id);
+        }
 
-        self.incoming
-            .get(&normalized)
-            .map(|entries| {
-                entries
-                    .iter()
-                    .map(|e| BacklinkResult {
-                        source_path: e.source_path.clone(),
-                        target_path: file_path.to_string(),
-                        context: e.context.clone(),
-                        line: e.line,
-                        link_type: e.link_type.clone(),
-                        block_id: e.block_id.clone(),
-                    })
-                    .collect()
-            })
-            .unwrap_or_default()
+        let mut seen = std::collections::HashSet::new();
+        let mut results = Vec::new();
+        for key in keys {
+            if let Some(entries) = self.incoming.get(&key) {
+                for e in entries {
+                    if seen.insert((e.source_path.clone(), e.line)) {
+                        results.push(BacklinkResult {
+                            source_path: e.source_path.clone(),
+                            target_path: file_path.to_string(),
+                            context: e.context.clone(),
+                            line: e.line,
+                            link_type: e.link_type.clone(),
+                            block_id: e.block_id.clone(),
+                        });
+                    }
+                }
+            }
+        }
+        results
     }
 
     /// Register a file path in file_map and relative_map for target resolution
     fn register_file_path(&mut self, file_path: &str, root_path: &str) {
         let stem = normalize_file_path(file_path);
-        let paths = self.file_map.entry(stem).or_default();
+        let paths = self.file_map.entry(stem.clone()).or_default();
         if !paths.contains(&file_path.to_string()) {
             paths.push(file_path.to_string());
         }
@@ -230,11 +243,28 @@ impl LinkIndex {
             self.relative_map
                 .insert(rel_normalized, file_path.to_string());
         }
+
+        // Register id → path for [[ID]] resolution (Zettelkasten)
+        if let Some(id) = extract_id_from_stem(&stem) {
+            self.id_map.insert(id, file_path.to_string());
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn id_map_len(&self) -> usize {
+        self.id_map.len()
     }
 
     /// Resolve a wikilink target to an actual file path using file maps.
     /// Falls back to None if no matching file is found.
     fn resolve_target_from_map(&self, target_normalized: &str) -> Option<String> {
+        // 0) Zettelkasten [[ID]] — bare timestamp id resolves via id_map (subfolder-agnostic)
+        if is_id_target(target_normalized) {
+            if let Some(path) = self.id_map.get(target_normalized) {
+                return Some(path.clone());
+            }
+        }
+
         // 1) Try relative path match (for [[path/name]] style targets)
         if let Some(path) = self.relative_map.get(target_normalized) {
             return Some(path.clone());
@@ -584,6 +614,55 @@ mod tests {
         assert_eq!(outgoing.len(), 1);
         assert_eq!(outgoing[0].target, "2026-03-22");
         assert_eq!(outgoing[0].target_vault_alias, Some("journal".to_string()));
+    }
+
+    #[test]
+    fn test_id_map_populated_and_cleared() {
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/z".to_string());
+        index.register_file_path("/z/notes/202607051530 원자적 노트.md", "/z");
+        index.register_file_path("/z/inbox/202607051531.md", "/z");
+        index.register_file_path("/z/notes/architecture.md", "/z"); // no id
+        assert_eq!(index.id_map_len(), 2);
+        index.remove_file("/z/notes/202607051530 원자적 노트.md");
+        assert_eq!(index.id_map_len(), 1);
+    }
+
+    #[test]
+    fn test_resolve_id_target_across_subfolders() {
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/z".to_string());
+        index.register_file_path("/z/notes/202607051530 원자적 노트.md", "/z");
+        // [[202607051530]] resolves to the id-prefixed file in the subfolder
+        assert_eq!(
+            index.resolve_target_from_map("202607051530"),
+            Some("/z/notes/202607051530 원자적 노트.md".to_string())
+        );
+        // a non-id target is unaffected (existing stem/relative behavior)
+        index.register_file_path("/z/architecture.md", "/z");
+        assert_eq!(
+            index.resolve_target_from_map("architecture"),
+            Some("/z/architecture.md".to_string())
+        );
+    }
+
+    #[test]
+    fn test_backlinks_by_id() {
+        let mut index = LinkIndex::new();
+        index.root_path = Some("/z".to_string());
+        index.register_file_path("/z/notes/202607051530 원자적 노트.md", "/z");
+        index.register_file_path("/z/notes/202607051600 다른 노트.md", "/z");
+        // "다른 노트" links to the first note via [[202607051530]]
+        index.update_file_from_content(
+            "/z/notes/202607051600 다른 노트.md",
+            "본문 [[202607051530]] 참조",
+        );
+        let backlinks = index.get_backlinks("/z/notes/202607051530 원자적 노트.md");
+        assert_eq!(backlinks.len(), 1);
+        assert_eq!(
+            backlinks[0].source_path,
+            "/z/notes/202607051600 다른 노트.md"
+        );
     }
 
     #[test]

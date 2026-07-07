@@ -168,3 +168,89 @@ describe("§56a Settings: journalUseHierarchy", () => {
     expect(useSettingsStore.getState().journalUseHierarchy).toBe(true);
   });
 });
+
+describe("§82 revertSpaceIfContextClosed", () => {
+  beforeEach(async () => {
+    await new Promise((r) => setTimeout(r, 0));
+    // Empty contexts so applyPreset('writing') has no context to switch to.
+    useContextStore.setState({ contexts: [], activeContextId: null });
+    useWorkspaceStore.setState({ activePresetId: null, customPresets: [] });
+  });
+
+  it("reverts to writing when the active journal space's context is closed", () => {
+    useWorkspaceStore.setState({ activePresetId: "journal" });
+    useWorkspaceStore.getState().revertSpaceIfContextClosed("journal");
+    expect(useWorkspaceStore.getState().activePresetId).toBe("writing");
+  });
+
+  it("reverts to writing when the active zettelkasten space's context is closed", () => {
+    useWorkspaceStore.setState({ activePresetId: "zettelkasten" });
+    useWorkspaceStore.getState().revertSpaceIfContextClosed("zettelkasten");
+    expect(useWorkspaceStore.getState().activePresetId).toBe("writing");
+  });
+
+  it("does not revert when a non-space (general) context is closed", () => {
+    useWorkspaceStore.setState({ activePresetId: "zettelkasten" });
+    useWorkspaceStore.getState().revertSpaceIfContextClosed("general");
+    expect(useWorkspaceStore.getState().activePresetId).toBe("zettelkasten");
+  });
+
+  it("does not revert when the closed context's space is not the active space", () => {
+    // In the Writing space, closing a leftover zettelkasten context tab must
+    // not change the space.
+    useWorkspaceStore.setState({ activePresetId: "writing" });
+    useWorkspaceStore.getState().revertSpaceIfContextClosed("zettelkasten");
+    expect(useWorkspaceStore.getState().activePresetId).toBe("writing");
+  });
+
+  it("does not revert when the closed context has no vaultType", () => {
+    useWorkspaceStore.setState({ activePresetId: "journal" });
+    useWorkspaceStore.getState().revertSpaceIfContextClosed(undefined);
+    expect(useWorkspaceStore.getState().activePresetId).toBe("journal");
+  });
+
+  it("keeps the sidebar open when reverting if it was open", () => {
+    useUIStore.setState({ sidebarOpen: true });
+    useWorkspaceStore.setState({ activePresetId: "zettelkasten" });
+    useWorkspaceStore.getState().revertSpaceIfContextClosed("zettelkasten");
+    expect(useWorkspaceStore.getState().activePresetId).toBe("writing");
+    expect(useUIStore.getState().sidebarOpen).toBe(true);
+  });
+
+  it("leaves the sidebar closed when reverting if it was closed", () => {
+    useUIStore.setState({ sidebarOpen: false });
+    useWorkspaceStore.setState({ activePresetId: "journal" });
+    useWorkspaceStore.getState().revertSpaceIfContextClosed("journal");
+    expect(useWorkspaceStore.getState().activePresetId).toBe("writing");
+    expect(useUIStore.getState().sidebarOpen).toBe(false);
+  });
+});
+
+describe("§93 applyPreset zettelkasten readiness guard", () => {
+  beforeEach(async () => {
+    await new Promise((r) => setTimeout(r, 0));
+    useWorkspaceStore.setState({ activePresetId: null, customPresets: [] });
+    useUIStore.setState({ toast: null });
+  });
+
+  it("does not switch + toasts when the Zettel feature is disabled", () => {
+    useSettingsStore.setState({ zettelkastenEnabled: false });
+    useWorkspaceStore.getState().applyPreset("zettelkasten");
+    expect(useWorkspaceStore.getState().activePresetId).not.toBe(
+      "zettelkasten",
+    );
+    expect(useUIStore.getState().toast?.message).toBeTruthy();
+  });
+
+  it("does not switch + toasts when enabled but no directory is set", () => {
+    useSettingsStore.setState({
+      zettelkastenEnabled: true,
+      zettelkastenDirectory: "",
+    });
+    useWorkspaceStore.getState().applyPreset("zettelkasten");
+    expect(useWorkspaceStore.getState().activePresetId).not.toBe(
+      "zettelkasten",
+    );
+    expect(useUIStore.getState().toast?.message).toBeTruthy();
+  });
+});

@@ -2,6 +2,8 @@
 import { createDir, readFile, writeFile } from "../ipc/invoke";
 import { useEditorStore } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
+import { useSettingsStore } from "../stores/settings/store";
+import { maybeRefreshForPath } from "../stores/zettelkasten/zettel-index";
 import {
   applyJournalTemplate,
   generateDefaultJournal,
@@ -9,6 +11,7 @@ import {
   getJournalFilePath,
   resolveJournalDir,
 } from "../utils/journal/journal";
+import { resolveZettelDir } from "../utils/zettelkasten/zettelkasten";
 
 export interface JournalFileOptions {
   journalDirectory: string;
@@ -104,4 +107,15 @@ export async function openFileInTab(
       isPinned: false,
     });
   }
+
+  // §95 M2: populate the zettel id index when opening a note under the
+  // zettel space, even if it was reached without activating the
+  // "zettelkasten" workspace preset. No-op for non-zettel paths (see
+  // maybeRefreshForPath) — cheap for the common (non-zettel) case.
+  const { zettelkastenDirectory } = useSettingsStore.getState();
+  const { rootPath } = useFileStore.getState();
+  maybeRefreshForPath(
+    filePath,
+    resolveZettelDir(rootPath, zettelkastenDirectory),
+  ).catch(() => {});
 }

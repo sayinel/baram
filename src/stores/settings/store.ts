@@ -24,18 +24,24 @@ import {
   createJournalSettingsSlice,
   type JournalSettingsSlice,
 } from "./journal-settings";
+import {
+  createZettelkastenSettingsSlice,
+  type ZettelkastenSettingsSlice,
+} from "./zettelkasten-settings";
 export type { ActivityBarItemConfig };
 export { DEFAULT_ACTIVITY_BAR_CONFIG };
 
 export type SettingsState = AppearanceSettingsSlice &
   EditorSettingsSlice &
   GeneralSettingsSlice &
-  JournalSettingsSlice;
+  JournalSettingsSlice &
+  ZettelkastenSettingsSlice;
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (...a) => ({
       ...createJournalSettingsSlice(...a),
+      ...createZettelkastenSettingsSlice(...a),
       ...createEditorSettingsSlice(...a),
       ...createAppearanceSettingsSlice(...a),
       ...createGeneralSettingsSlice(...a),
@@ -96,6 +102,10 @@ export const useSettingsStore = create<SettingsState>()(
         journalThemeId: state.journalThemeId,
         journalCustomThemes: state.journalCustomThemes,
         memoriesMode: state.memoriesMode,
+        zettelkastenEnabled: state.zettelkastenEnabled,
+        zettelkastenDirectory: state.zettelkastenDirectory,
+        zettelkastenStartupBehavior: state.zettelkastenStartupBehavior,
+        zettelkastenHomeNote: state.zettelkastenHomeNote,
         pandocPath: state.pandocPath,
         wordTemplatePath: state.wordTemplatePath,
         customExports: state.customExports,
@@ -106,7 +116,7 @@ export const useSettingsStore = create<SettingsState>()(
         locale: state.locale,
         keybindingOverrides: state.keybindingOverrides,
       }),
-      version: 13,
+      version: 14,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
 
@@ -268,6 +278,18 @@ export const useSettingsStore = create<SettingsState>()(
           delete state.journalPromptCategory;
           delete state.journalPromptMode;
           delete state.memoriesTab;
+        }
+
+        // v13 → v14: Zettelkasten space settings (§92). Additive; disabled by default.
+        if (version < 14) {
+          if (state.zettelkastenEnabled === undefined)
+            state.zettelkastenEnabled = false;
+          if (state.zettelkastenDirectory === undefined)
+            state.zettelkastenDirectory = "";
+          if (state.zettelkastenStartupBehavior === undefined)
+            state.zettelkastenStartupBehavior = "openInbox";
+          if (state.zettelkastenHomeNote === undefined)
+            state.zettelkastenHomeNote = "";
         }
 
         return state;

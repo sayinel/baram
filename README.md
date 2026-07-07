@@ -334,29 +334,37 @@ Customize the look and feel of Baram with built-in themes or create your own:
 
 ### Journal / Daily Notes
 
-A full daily-notes workspace, not just a dated file:
+A focused daily-diary workspace, not just a dated file:
 
 - **Auto-create** — Today's journal entry is automatically created on startup (configurable)
 - **Calendar sidebar** — Interactive mini calendar showing which days have entries; click a date to open/create
 - **Periodic notes** — Weekly, monthly, and yearly notes with their own templates
 - **@Mentions for dates** — Type `@` and select Today / Yesterday / Tomorrow, or `@[[YYYY-MM-DD]]` to link a specific day
-- **Mood & energy tracking** — Log mood/energy per day; visualize with Year-in-Pixels and 30-day trend charts
 - **Photo journal** — Drag, paste, or `/photo` to add images (auto-saved to `assets/`); browse them in a gallery with a lightbox
-- **Memories view** — Revisit past entries by year (Journal / Photos / Notes tabs), with inline one-line editing
+- **Memories view** — Revisit past entries by year (Journal / Photos tabs), with inline one-line editing
 - **Streaks & stats** — Consecutive-day streaks, monthly/yearly stats, and a contribution heatmap
-- **Daily prompts & AI reflection** — Get a writing prompt each day and generate AI reflections on your week or month
-- **Quick capture** — Capture ideas, links, quotes, and notes (`/idea`, `/link`, `/quote`, `/note`, or `Cmd+Shift+N`)
-- **Templates** — Custom `.md` templates with variables (`{{date}}`, `{{dayName}}`, `{{daily_prompt}}`, etc.)
+- **Templates** — Custom `.md` templates with variables (`{{date}}`, `{{dayName}}`, etc.)
 - **Journal themes** — Dedicated calendar/journal themes independent of the app theme
 - **Settings** — Enable and configure directory, filename format, hierarchy, templates, and startup behavior in **Settings > General > Journal**
+
+### Zettel (Zettelkasten Notes)
+
+A dedicated space for atomic, densely-linked notes — capture fast, refine into permanent notes, connect with `[[links]]`:
+
+- **Quick capture** — Drop a fleeting thought into `inbox/` with `Cmd+Shift+N` (or `/capture`); tags go to frontmatter, source URL optional
+- **Fleeting → permanent** — Promote an inbox note into a titled permanent note in `notes/` with `Cmd+Shift+U`
+- **New Zettel** — Create a permanent atomic note directly (`Cmd+Shift+V`), or turn a text selection into a new note + `[[link]]` with `Cmd+Shift+Y`
+- **ID-based links** — Notes are `{id} {title}.md`; `[[id]]` links render the live title and stay valid across renames. `[[` autocomplete searches by title
+- **MOCs** — Create a Map of Content index note (`#moc`) with `Cmd+Shift+C` to organize entry points
+- **Enable** — Turn on and set a directory in **Settings > General > Zettel**; open the space via the space menu, Command Palette, or `Cmd+Alt+3`
 
 ### Workspace Presets
 
 Save and restore your workspace layout:
 
-- **3 built-in presets** — Writing (`Cmd+Alt+1`), Journal (`Cmd+Alt+2`), Skills Editing (`Cmd+Alt+3`)
+- **4 built-in presets** — Writing (`Cmd+Alt+1`), Journal (`Cmd+Alt+2`), Zettel (`Cmd+Alt+3`), Skills Editing (`Cmd+Alt+4`)
 - **Custom presets** — Save your current sidebar, panel, and theme configuration as a named preset
-- **Quick switch** — Apply presets via keyboard shortcuts, Command Palette, or the Workspace menu
+- **Quick switch** — Apply presets via keyboard shortcuts, Command Palette, or the Workspace menu. Switching spaces never force-closes an open folder tree
 
 ### Internationalization
 
@@ -516,9 +524,14 @@ Create your own slash commands in **Settings > AI > Custom Commands**. Use varia
 | Tab Switcher (MRU) | `Ctrl+Tab` |
 | Workspace: Writing | `Cmd+Alt+1` |
 | Workspace: Journal | `Cmd+Alt+2` |
-| Workspace: Skills Editing | `Cmd+Alt+3` |
-| Quick Capture | `Cmd+Shift+N` |
+| Workspace: Zettel | `Cmd+Alt+3` |
+| Workspace: Skills Editing | `Cmd+Alt+4` |
+| Quick Capture (→ Zettel inbox) | `Cmd+Shift+N` |
 | Open Today's Journal | `Cmd+Shift+J` |
+| New Zettel | `Cmd+Shift+V` |
+| Promote to Permanent Note | `Cmd+Shift+U` |
+| New Note from Selection | `Cmd+Shift+Y` |
+| New MOC | `Cmd+Shift+C` |
 | Settings | `Cmd+,` |
 | Undo | `Cmd+Z` |
 | Redo | `Cmd+Shift+Z` |
@@ -667,7 +680,8 @@ Reverse:  ProseMirror Document → mdast → remark-stringify
 | Namespace | ✅ Done | Relative wikilinks, namespace filtering, graph coloring |
 | Skills Dedicated Mode | ✅ Done | Editing UI optimized for LLM Skills files |
 | Tag System | ✅ Done | Vault-wide index, nested tags, rename, colors, cloud view, AI suggestions |
-| Journal Workspace | ✅ Done | Mood, photos, memories, streaks, periodic notes, AI reflection, quick capture |
+| Journal Workspace | ✅ Done | Diary-focused daily notes: calendar, photos, memories, streaks, periodic notes, templates |
+| Zettel (Zettelkasten) | ✅ Done | Atomic-notes space: inbox capture, fleeting→permanent promote, `[[id]]` links with live titles, MOCs |
 | Settings Redesign & Keybinding Customization | ✅ Done | 9-tab settings, search, remap shortcuts with conflict detection |
 | Heading & List Folding | ✅ Done | Obsidian-style view-only folding |
 | Vault System | ✅ Done | Multi-context workspaces, context tabs, cross-vault links, 3-tier settings |

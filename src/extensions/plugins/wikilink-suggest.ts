@@ -18,12 +18,31 @@ import {
 } from "./suggestion-renderer";
 import { getSyntaxRevealExpanded, syntaxRevealKey } from "./syntax-reveal";
 import {
+  buildFileSuggestionItem,
   fileNameWithoutExtension,
   filterFiles,
   loadFileHeadings,
   longestCommonPrefix,
   type WikilinkSuggestionItem,
 } from "./wikilink-suggest-utils";
+
+/**
+ * §95 Zettelkasten: true when the query exactly matches a file's title
+ * (`searchText`, falling back to `target`) — used to suppress the redundant
+ * `Create "<query>"` fallback item. Zettel-note items store the note id in
+ * `target` (so the stored wikilink is `[[id]]`), so an exact TITLE match
+ * must compare against `searchText` instead. Regular (non-zettel) files have
+ * no `searchText`, so behavior there is unchanged.
+ */
+export function hasExactMatch(
+  files: WikilinkSuggestionItem[],
+  query: string,
+): boolean {
+  const queryLower = query.toLowerCase();
+  return files.some(
+    (f) => (f.searchText ?? f.target).toLowerCase() === queryLower,
+  );
+}
 
 /** Build suggestion items from the file store */
 function getFileItems(): WikilinkSuggestionItem[] {
@@ -33,12 +52,7 @@ function getFileItems(): WikilinkSuggestionItem[] {
   const flat = flattenFileTree(fileTree, rootPath);
   return flat
     .filter((f) => f.name.endsWith(".md") || f.name.endsWith(".markdown"))
-    .map((f, idx) => ({
-      id: String(idx),
-      target: fileNameWithoutExtension(f.name),
-      label: f.name,
-      path: f.path,
-    }));
+    .map((f, idx) => buildFileSuggestionItem(f, String(idx)));
 }
 
 export const WikilinkSuggest = Extension.create({
@@ -337,20 +351,14 @@ export const WikilinkSuggest = Extension.create({
           const filtered = filterFiles(files, query, 20);
 
           // Add "Create" option if query is non-empty and no exact match
-          if (query) {
-            const queryLower = query.toLowerCase();
-            const hasExact = files.some(
-              (f) => f.target.toLowerCase() === queryLower,
-            );
-            if (!hasExact) {
-              filtered.push({
-                id: "__create__",
-                target: query,
-                label: `Create "${query}"`,
-                path: "",
-                kind: "create",
-              });
-            }
+          if (query && !hasExactMatch(files, query)) {
+            filtered.push({
+              id: "__create__",
+              target: query,
+              label: `Create "${query}"`,
+              path: "",
+              kind: "create",
+            });
           }
 
           // §87 Cross-vault hint when multiple contexts are open
