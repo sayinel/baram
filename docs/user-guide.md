@@ -1002,7 +1002,7 @@ Custom templates support the following variables:
 | `{{dayName}}`   | Day of the week     | `Friday`     |
 | `{{monthName}}` | Month name          | `February`   |
 
-If no custom template is set, Baram uses a default template with YAML frontmatter, a date heading, and a Notes section.
+If no custom template is set, Baram uses a default template with YAML frontmatter and a date heading.
 
 ### Periodic Notes
 
@@ -1012,12 +1012,6 @@ Beyond daily entries, Baram supports weekly, monthly, and yearly notes:
 - In the Calendar sidebar, click the week-number column for a weekly note, the month header for a monthly note, or the year for a yearly note
 - Each periodic note type can have its own template
 
-### Mood & Energy Tracking
-
-- Use the MoodBar to log a mood (1–5) and energy level for the day
-- The calendar shows colored mood dots; a **Year-in-Pixels** grid and a **30-day trend** chart visualize patterns over time
-- AI can infer a mood from your writing and suggest one when the mood is unset
-
 ### Photo Journal
 
 - Drag, paste, or use the `/photo` slash command to add images — they are auto-saved to an `assets/` folder next to your journal
@@ -1026,24 +1020,50 @@ Beyond daily entries, Baram supports weekly, monthly, and yearly notes:
 ### Memories
 
 - Open the **Memories** view (`Cmd+Shift+R` / `Ctrl+Shift+R`) to revisit past entries by year
-- Three tabs: Journal (one-line or full), Photos, and Notes
+- Two tabs: Journal (one-line or full) and Photos
 - Edit the current year's one-line summaries inline
 
-### Streaks, Stats & Prompts
+### Streaks & Stats
 
 - Track consecutive-day **streaks** and view monthly/yearly stats plus a contribution heatmap
-- Get a **daily writing prompt** to spark entries
-- Generate an **AI reflection** on your week or month with the ✨ button in the Calendar sidebar (saved to a `notes/` file)
-
-### Quick Capture
-
-- Capture fleeting thoughts without leaving your flow: `/idea`, `/link`, `/quote`, `/note`, or the Quick Capture dialog (`Cmd+Shift+N` / `Ctrl+Shift+N`)
-- Promote a capture into its own note with `Cmd+Shift+U` / `Ctrl+Shift+U`
-- Jump to the Diary section (`Cmd+Shift+Y`) or Captures section (`Cmd+Shift+C`) of today's entry
 
 ### Journal Themes
 
 Choose a dedicated journal/calendar theme (independent of the app theme) in **Settings > General > Journal**.
+
+---
+
+## Zettel (Zettelkasten Notes)
+
+The **Zettel** space is a dedicated home for atomic, densely-linked notes. Unlike the diary-oriented Journal, it is built around the fleeting → permanent workflow and ID-based `[[links]]`.
+
+### Setup
+
+1. Open **Settings** (`Cmd+,`) → **General** → **Zettel**
+2. Enable the **Zettel** toggle and **Browse** for a directory (absolute path)
+3. Open the space from the space menu (status bar), the Command Palette ("Open Zettel"), or `Cmd+Alt+3`. Baram creates the `inbox/` and `notes/` folders automatically.
+
+> If you select the Zettel space before enabling it or setting a directory, Baram shows a hint instead of switching into an empty space.
+
+### Capturing (fleeting notes)
+
+- Press `Cmd+Shift+N` (or the `/capture` slash command) to open Quick Capture. Type your thought, an optional source URL, and tags — it is saved as a fleeting note in `inbox/{id}.md`. Tags are written to the note's frontmatter.
+- Fleeting notes accumulate silently in the inbox until you process them.
+
+### Promoting to permanent notes
+
+- Open an inbox note and press `Cmd+Shift+U` to **Promote** it: give it a title and it moves to `notes/{id} {title}.md`, carrying its body and tags forward.
+- To create a permanent note directly, press `Cmd+Shift+V` (**New Zettel**).
+- To turn a text selection into a new note, press `Cmd+Shift+Y` (**New Note from Selection**) — the selection is replaced with an `[[id]]` link to the new note.
+
+### Linking notes
+
+- Notes are stored as `{id} {title}.md`, where `id` is a timestamp. Links are stored as `[[id]]` but render the note's **live title** in the editor, so links never break when you rename a note.
+- Type `[[` and search by title; selecting a note inserts its `[[id]]` link. `Cmd+click` a link to open the target.
+
+### Maps of Content (MOC)
+
+- Press `Cmd+Shift+C` (**New MOC**) to create a `#moc`-tagged index note — a curated entry point that links to related notes. Find your MOCs by searching the `#moc` tag.
 
 ---
 
@@ -1055,11 +1075,12 @@ Workspace Presets let you save and quickly restore your preferred layout — sid
 
 | Preset         | Shortcut (macOS) | Shortcut (Win/Linux) | Layout                                                        |
 | -------------- | ---------------- | -------------------- | ------------------------------------------------------------ |
-| Writing        | `Cmd+Alt+1`      | `Ctrl+Alt+1`         | Sidebar closed, right panel closed — focused writing         |
+| Writing        | `Cmd+Alt+1`      | `Ctrl+Alt+1`         | Editor focus — right panel closed                            |
 | Journal        | `Cmd+Alt+2`      | `Ctrl+Alt+2`         | Calendar sidebar + today's journal + Memories view           |
-| Skills Editing | `Cmd+Alt+3`      | `Ctrl+Alt+3`         | File tree + Properties panel — LLM Skills editing            |
+| Zettel         | `Cmd+Alt+3`      | `Ctrl+Alt+3`         | File tree (`inbox/` + `notes/`) — atomic Zettelkasten notes  |
+| Skills Editing | `Cmd+Alt+4`      | `Ctrl+Alt+4`         | File tree + Properties panel — LLM Skills editing            |
 
-> The Writing and Journal shortcuts can also be customized in **Settings > Keybindings**; the Skills Editing shortcut is provided by the Workspace menu.
+> All four workspace presets are customizable in **Settings > Keybindings** and available from the Workspace menu. Switching to a space never force-closes an open folder tree.
 
 ### Custom Presets
 
