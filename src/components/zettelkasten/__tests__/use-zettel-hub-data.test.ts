@@ -125,6 +125,28 @@ describe("useZettelHubData", () => {
     expect(titles).not.toContain("Zeta");
   });
 
+  it("MOCs: normalizes Windows backslash separators before the notes/ filter", async () => {
+    listDir.mockResolvedValue([]);
+    readFile.mockResolvedValue("");
+    // getFilesByTag's Rust backend returns OS-native separators — on Windows
+    // that's backslash. A real MOC under notes\ must still be included, and
+    // a fleeting inbox\ note wrongly tagged #moc must still be excluded.
+    getFilesByTag.mockResolvedValue([
+      "notes\\202607071000 Alpha.md",
+      "inbox\\202607071200.md",
+    ]);
+
+    const { result } = renderHook(() => useZettelHubData("/z"));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.mocs).toHaveLength(1);
+    expect(result.current.mocs[0].path).toBe("/z/notes/202607071000 Alpha.md");
+    expect(result.current.mocs[0].title).toBe("Alpha");
+    expect(result.current.mocs.some((m) => m.path.includes("inbox"))).toBe(
+      false,
+    );
+  });
+
   it("returns empty lists and does not call IPC when zettelDir is null", async () => {
     const { result } = renderHook(() => useZettelHubData(null));
 
