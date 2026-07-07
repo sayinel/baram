@@ -61,10 +61,13 @@ interface UIState {
   ) => void;
   openExportDialog: (format?: ExportFormat) => void;
   openQuickCapture: () => void;
-  openZettelTitleDialog: (
-    onSubmit: (title: string) => void,
-    initialTitle?: string,
-  ) => void;
+  openZettelTitleDialog: (opts: {
+    confirmLabel: string;
+    description?: string;
+    initialTitle?: string;
+    onSubmit: (title: string) => void;
+    title: string;
+  }) => void;
   pendingApplyContent: null | string;
   pendingSearchHighlight: null | string;
   quickCaptureOpen: boolean;
@@ -103,10 +106,16 @@ interface UIState {
   triggerContentReload: (cursorEnd?: boolean) => void;
   /** §94: Inline title-input dialog (WKWebView has no window.prompt) */
   zettelTitleDialog: {
+    /** Confirm-button label (e.g. "Create" | "Promote") */
+    confirmLabel: string;
+    /** One-line explanation of what the action does */
+    description?: string;
     /** Prefill text (e.g. §94 new-from-selection's derived title) */
     initialTitle: string;
     onSubmit: ((title: string) => void) | null;
     open: boolean;
+    /** Dialog header (e.g. "Promote to Permanent Note") */
+    title: string;
   };
 }
 
@@ -132,7 +141,13 @@ export const useUIStore = create<UIState>((set) => ({
   pendingSearchHighlight: null,
   contentReloadVersion: 0,
   contentReloadCursorEnd: false,
-  zettelTitleDialog: { open: false, onSubmit: null, initialTitle: "" },
+  zettelTitleDialog: {
+    open: false,
+    onSubmit: null,
+    initialTitle: "",
+    title: "",
+    confirmLabel: "Create",
+  },
 
   openConflictModal: (filePath, externalMtime, base) =>
     set({ conflictModal: { base, externalMtime, filePath } }),
@@ -192,18 +207,27 @@ export const useUIStore = create<UIState>((set) => ({
 
   openQuickCapture: () => set({ quickCaptureOpen: true }),
 
-  openZettelTitleDialog: (onSubmit, initialTitle) =>
+  openZettelTitleDialog: (opts) =>
     set({
       zettelTitleDialog: {
         open: true,
-        onSubmit,
-        initialTitle: initialTitle ?? "",
+        onSubmit: opts.onSubmit,
+        initialTitle: opts.initialTitle ?? "",
+        title: opts.title,
+        description: opts.description,
+        confirmLabel: opts.confirmLabel,
       },
     }),
 
   closeZettelTitleDialog: () =>
     set({
-      zettelTitleDialog: { open: false, onSubmit: null, initialTitle: "" },
+      zettelTitleDialog: {
+        open: false,
+        onSubmit: null,
+        initialTitle: "",
+        title: "",
+        confirmLabel: "Create",
+      },
     }),
 
   setPendingApplyContent: (pendingApplyContent) => set({ pendingApplyContent }),

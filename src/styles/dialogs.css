@@ -52,6 +52,24 @@
   box-shadow: 0 8px 32px rgb(0 0 0 / 20%);
 }
 
+.zettel-title-dialog-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.zettel-title-dialog-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.zettel-title-dialog-desc {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
 .zettel-title-dialog input {
   width: 100%;
   padding: 8px 10px;

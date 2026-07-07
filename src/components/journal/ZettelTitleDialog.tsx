@@ -28,6 +28,12 @@ export function ZettelTitleDialog() {
   return (
     <div className="zettel-title-dialog-overlay" onClick={close}>
       <div className="zettel-title-dialog" onClick={(e) => e.stopPropagation()}>
+        <div className="zettel-title-dialog-header">
+          <h3>{dialog.title}</h3>
+          {dialog.description && (
+            <p className="zettel-title-dialog-desc">{dialog.description}</p>
+          )}
+        </div>
         <input
           autoFocus
           onChange={(e) => setTitle(e.target.value)}
@@ -46,7 +52,7 @@ export function ZettelTitleDialog() {
         />
         <div className="zettel-title-dialog-actions">
           <button onClick={close}>Cancel</button>
-          <button onClick={submit}>Create</button>
+          <button onClick={submit}>{dialog.confirmLabel}</button>
         </div>
       </div>
     </div>
