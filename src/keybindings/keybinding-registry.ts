@@ -283,7 +283,9 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
     id: "zettelkasten.newNote",
     label: "keybindings.zettelkasten.newNote",
     category: "zettelkasten",
-    defaultKey: "Mod+Shift+K",
+    // Mod+Shift+K collides with common global launchers (e.g. ChatGPT); K/N/Q/Z
+    // are otherwise taken or system-reserved, so use Mod+Shift+V (free everywhere).
+    defaultKey: "Mod+Shift+V",
     customizable: true,
   },
   {

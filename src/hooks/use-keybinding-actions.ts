@@ -493,7 +493,14 @@ export function useKeybindingActions({
         logger.warn("[Zettel] newFromSelection: selection is empty");
         return;
       }
-      const initialTitle = firstNonEmptyLine(selectionText).slice(0, 60);
+      // Seed the title with just the first few words of the selection — a long
+      // selection should not dump its whole first line into the title field.
+      const initialTitle = firstNonEmptyLine(selectionText)
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 3)
+        .join(" ")
+        .slice(0, 40);
       useUIStore.getState().openZettelTitleDialog((title) => {
         // openTab=false: stay on the current document — this note's own
         // selection is about to be replaced below, so the shared editor
