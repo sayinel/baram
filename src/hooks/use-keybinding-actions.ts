@@ -37,6 +37,7 @@ import { useUIStore } from "../stores/ui/ui";
 import { isDateString } from "../utils/journal/journal";
 import { logger } from "../utils/logger";
 import { showTableGridPicker } from "../utils/table-grid-picker";
+import { firstBodyLine } from "../utils/zettelkasten/parse-note-title";
 import {
   firstNonEmptyLine,
   getSelectionMarkdown,
@@ -471,10 +472,7 @@ export function useKeybindingActions({
         let initialTitle = "";
         try {
           const raw = await readFile(fleetingPath);
-          const body = raw.replace(/^---\n[\s\S]*?\n---\n?/, "");
-          initialTitle = firstNonEmptyLine(body)
-            .replace(/^#+\s*/, "")
-            .slice(0, 80);
+          initialTitle = firstBodyLine(raw).slice(0, 80);
         } catch {
           /* fall back to an empty title */
         }
