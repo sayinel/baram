@@ -15,6 +15,7 @@ import {
 import {
   buildFleetingNote,
   buildPermanentNote,
+  parseFrontmatterTags,
   sanitizeZettelTitle,
 } from "../utils/zettelkasten/zettel-note";
 import { openFileInTab } from "./journal-file-service";
@@ -26,13 +27,15 @@ import { openFileInTab } from "./journal-file-service";
 export async function captureFleeting(
   zettelDir: string,
   body: string,
+  /** §99 A: capture tags, stored in the fleeting note's frontmatter `tags:` array. */
+  tags?: string[],
 ): Promise<null | { path: string }> {
   const inboxDir = `${zettelDir}/inbox`;
   await createDir(inboxDir);
   const existing = await collectExistingIds(zettelDir);
   const id = generateZettelId(existing);
   const created = localIsoMinute();
-  const { filename, content } = buildFleetingNote({ id, body, created });
+  const { filename, content } = buildFleetingNote({ id, body, created, tags });
   const path = `${inboxDir}/${filename}`;
   await writeFile(path, content);
   useZettelIndexStore.getState().upsert({ id, path, title: id });
@@ -118,6 +121,9 @@ export async function promoteFleeting(
   const id = idMatch[1];
   const raw = await readFile(fleetingPath);
   const seedBody = stripFrontmatter(raw);
+  // §99 A: carry the fleeting note's frontmatter tags forward — stripFrontmatter
+  // discards them, so re-read them before rebuilding the permanent frontmatter.
+  const tags = parseFrontmatterTags(raw);
   const created =
     extractCreated(raw) ?? deriveCreatedFromId(id) ?? localIsoMinute();
   const notesDir = `${zettelDir}/notes`;
@@ -129,7 +135,7 @@ export async function promoteFleeting(
     `id: ${id}\n` +
     `title: ${title}\n` +
     `created: ${created}\n` +
-    `tags: []\n` +
+    `tags: [${tags.join(", ")}]\n` +
     `aliases: []\n` +
     `---\n\n` +
     `# ${title}\n\n${seedBody}\n`;

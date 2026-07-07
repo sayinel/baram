@@ -144,6 +144,14 @@ describe("captureFleeting", () => {
     const [, content] = writeFile.mock.calls.at(-1)!;
     expect(content).not.toContain("type:");
   });
+
+  it("writes provided tags into the frontmatter tags array (§99 A)", async () => {
+    const { captureFleeting } = await import("../zettelkasten-service");
+    await captureFleeting("/z", "a thought", ["idea", "todo"]);
+    const [, content] = writeFile.mock.calls.at(-1)!;
+    expect(content).toContain("tags: [idea, todo]");
+    expect(content).not.toContain("#idea");
+  });
 });
 
 describe("promoteFleeting", () => {
@@ -161,6 +169,19 @@ describe("promoteFleeting", () => {
     const call = writeFile.mock.calls.find((c) => c[0] === res!.path)!;
     expect(call[1]).toContain("# Real Idea");
     expect(call[1]).toContain("seed body");
+  });
+
+  it("carries the fleeting note's frontmatter tags into the permanent note (§99 A)", async () => {
+    readFile.mockResolvedValueOnce(
+      "---\nid: 202607051530\ncreated: 2026-07-05T15:30\ntags: [idea, todo]\n---\n\nseed\n",
+    );
+    const res = await promoteFleeting(
+      "/z",
+      "/z/inbox/202607051530.md",
+      "Kept Tags",
+    );
+    const call = writeFile.mock.calls.find((c) => c[0] === res!.path)!;
+    expect(call[1]).toContain("tags: [idea, todo]");
   });
 
   it("preserves the fleeting note's original `created` (does not stamp promotion time)", async () => {
