@@ -1,0 +1,38 @@
+/* §100/§101 Zettel hub panel */
+
+.zettel-hub {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.zettel-hub-actions {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+.zettel-hub-action {
+  display: flex;
+  flex: 1;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.zettel-hub-action:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-accent-default);
+}

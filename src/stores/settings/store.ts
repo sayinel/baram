@@ -116,7 +116,7 @@ export const useSettingsStore = create<SettingsState>()(
         locale: state.locale,
         keybindingOverrides: state.keybindingOverrides,
       }),
-      version: 14,
+      version: 15,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
 
@@ -290,6 +290,19 @@ export const useSettingsStore = create<SettingsState>()(
             state.zettelkastenStartupBehavior = "openInbox";
           if (state.zettelkastenHomeNote === undefined)
             state.zettelkastenHomeNote = "";
+        }
+
+        // v14 → v15: §100 add the Zettel hub activity-bar item
+        // (append-if-missing, preserving user customizations/order)
+        if (version < 15) {
+          const cfg = state.activityBarConfig as
+            undefined | { id: string; section: string; visible: boolean }[];
+          if (Array.isArray(cfg) && !cfg.some((c) => c.id === "zettel")) {
+            const item = { id: "zettel", visible: true, section: "top" };
+            const idx = cfg.findIndex((c) => c.id === "tags");
+            if (idx >= 0) cfg.splice(idx + 1, 0, item);
+            else cfg.push(item);
+          }
         }
 
         return state;

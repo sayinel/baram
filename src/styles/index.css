@@ -27,6 +27,7 @@
 @import "./journal-calendar.css";
 @import "./journal-notes.css";
 @import "./journal-extras.css";
+@import "./zettelkasten.css";
 
 /* 9. AI */
 @import "./ai.css";
