@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 
 import type { ZettelHubListItem } from "./use-zettel-hub-data";
 
-import { ChevronDown, ChevronRight, Star } from "lucide-react";
+import { ChevronDown, ChevronRight, Star, StickyNote } from "lucide-react";
 
 import { openZettelHubNote } from "./open-hub-note";
 
@@ -91,6 +91,11 @@ export function ZettelSectionList({
                       onClick={() => void openZettelHubNote(item.path)}
                       title={item.title}
                     >
+                      <StickyNote
+                        className="zettel-hub-row-icon"
+                        size={13}
+                        strokeWidth={1.5}
+                      />
                       <span className="text-truncate">{item.title}</span>
                     </button>
                   );
@@ -112,6 +117,11 @@ export function ZettelSectionList({
                     tabIndex={0}
                     title={item.title}
                   >
+                    <StickyNote
+                      className="zettel-hub-row-icon"
+                      size={13}
+                      strokeWidth={1.5}
+                    />
                     <span className="text-truncate">{item.title}</span>
                     <button
                       aria-label={active ? "Unfavorite" : "Favorite"}
