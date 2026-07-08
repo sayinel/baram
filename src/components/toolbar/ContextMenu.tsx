@@ -1,11 +1,5 @@
 // §4.8 Context Menu — right-click with node-type detection
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import type { MenuItem } from "./context-menu-types";
 import type { Editor } from "@tiptap/react";
@@ -19,6 +13,7 @@ import {
 import { buildMathBlockMenu, buildMathInlineMenu } from "./context-menu-math";
 import { buildMermaidBlockMenu } from "./context-menu-mermaid";
 import { buildTableMenu } from "./context-menu-table";
+import { MenuList } from "./MenuList";
 
 interface ContextMenuProps {
   editor: Editor;
@@ -29,7 +24,6 @@ export function ContextMenu({ editor }: ContextMenuProps) {
     null,
   );
   const [items, setItems] = useState<MenuItem[]>([]);
-  const menuRef = useRef<HTMLDivElement>(null);
 
   const closeMenu = useCallback(() => setPosition(null), []);
 
@@ -209,76 +203,14 @@ export function ContextMenu({ editor }: ContextMenuProps) {
       setPosition({ x: e.clientX, y: e.clientY });
     };
 
-    const handleClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        closeMenu();
-      }
-    };
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeMenu();
-    };
-
     document.addEventListener("contextmenu", handleContextMenu);
-    document.addEventListener("mousedown", handleClick);
-    document.addEventListener("keydown", handleKeyDown);
 
-    return () => {
-      document.removeEventListener("contextmenu", handleContextMenu);
-      document.removeEventListener("mousedown", handleClick);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [editor, buildMenuItems, findSpecialNode, closeMenu]);
-
-  // Clamp menu position so it stays within the viewport
-  const [adjustedPos, setAdjustedPos] = useState<null | {
-    x: number;
-    y: number;
-  }>(null);
-  useLayoutEffect(() => {
-    if (!position || !menuRef.current) {
-      setAdjustedPos(null);
-      return;
-    }
-    const rect = menuRef.current.getBoundingClientRect();
-    let { x, y } = position;
-    if (x + rect.width > window.innerWidth) {
-      x = window.innerWidth - rect.width - 4;
-    }
-    if (y + rect.height > window.innerHeight) {
-      y = window.innerHeight - rect.height - 4;
-    }
-    if (x < 0) x = 4;
-    if (y < 0) y = 4;
-    setAdjustedPos({ x, y });
-  }, [position, items]);
+    return () => document.removeEventListener("contextmenu", handleContextMenu);
+  }, [editor, buildMenuItems, findSpecialNode]);
 
   if (!position) return null;
 
-  const displayPos = adjustedPos ?? position;
-
   return (
-    <div
-      className="context-menu"
-      ref={menuRef}
-      style={{ left: displayPos.x, top: displayPos.y }}
-    >
-      {items.map((item, i) =>
-        item.separator ? (
-          <div className="context-menu-separator" key={i} />
-        ) : (
-          <button
-            className="context-menu-item"
-            key={i}
-            onClick={() => {
-              item.action();
-              closeMenu();
-            }}
-          >
-            {item.label}
-          </button>
-        ),
-      )}
-    </div>
+    <MenuList items={items} onClose={closeMenu} x={position.x} y={position.y} />
   );
 }
