@@ -405,6 +405,7 @@ function App() {
     codeAutoSaveTimer.current = setTimeout(async () => {
       try {
         await writeFile(tab.filePath!, sourceContentRef.current);
+        useFileStore.getState().updateLastSaveMtime(tab.filePath!, Date.now());
         setFileContent(tab.filePath!, sourceContentRef.current);
         markDirty(tab.id, false);
       } catch {
