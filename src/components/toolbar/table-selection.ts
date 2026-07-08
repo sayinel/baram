@@ -3,7 +3,11 @@
 // (mirrors table-insert-coords.ts).
 import type { Editor } from "@tiptap/react";
 
-import { CellSelection } from "@tiptap/pm/tables";
+import {
+  CellSelection,
+  moveTableColumn,
+  moveTableRow,
+} from "@tiptap/pm/tables";
 
 /** Anchor describing where a grip handle should sit (visual-viewport px). */
 export interface HandleAnchor {
@@ -19,6 +23,46 @@ export interface HandleAnchor {
 const HANDLE_MAIN = 18;
 const HANDLE_CROSS = 14;
 const HANDLE_GAP = 2; // lift off the table border
+
+/**
+ * True if any cell in the table spans more than one column ("col") or row ("row").
+ * Conservative merged-cell guard: reorder is disabled for spanned tables in v1
+ * because moveTable* can corrupt geometry across a span.
+ */
+export function axisHasSpan(
+  editor: Editor,
+  tablePos: number,
+  axis: "col" | "row",
+): boolean {
+  const table = editor.state.doc.nodeAt(tablePos);
+  if (!table) return false;
+  const attr = axis === "col" ? "colspan" : "rowspan";
+  let found = false;
+  table.descendants((n) => {
+    if (found) return false;
+    const role = n.type.spec.tableRole;
+    if (role === "cell" || role === "header_cell") {
+      if (((n.attrs[attr] as number | undefined) ?? 1) > 1) {
+        found = true;
+        return false;
+      }
+    }
+    return true;
+  });
+  return found;
+}
+
+/**
+ * Translate a drop boundary (0..N, the gridline the indicator snapped to) into the
+ * destination index for moveTable*'s remove-then-insert semantics. Dropping to the
+ * right of the source shifts the target left by one (the source is removed first).
+ */
+export function boundaryToDestIndex(
+  from: number,
+  boundaryIndex: number,
+): number {
+  return boundaryIndex > from ? boundaryIndex - 1 : boundaryIndex;
+}
 
 /** Cell-before pos for a column's top (row 0) cell — anchor for colSelection. */
 export function columnAnchorPos(
@@ -85,6 +129,36 @@ export function findCellPos(
   });
 
   return result;
+}
+
+/** Move a column; returns false on a no-op (same slot). */
+export function moveColumn(
+  editor: Editor,
+  tablePos: number,
+  from: number,
+  boundaryIndex: number,
+): boolean {
+  const to = boundaryToDestIndex(from, boundaryIndex);
+  if (to === from) return false;
+  return moveTableColumn({ from, to, pos: tablePos + 1 })(
+    editor.state,
+    editor.view.dispatch,
+  );
+}
+
+/** Move a row; returns false on a no-op (same slot). */
+export function moveRow(
+  editor: Editor,
+  tablePos: number,
+  from: number,
+  boundaryIndex: number,
+): boolean {
+  const to = boundaryToDestIndex(from, boundaryIndex);
+  if (to === from) return false;
+  return moveTableRow({ from, to, pos: tablePos + 1 })(
+    editor.state,
+    editor.view.dispatch,
+  );
 }
 
 /** Cell-before pos for a row's first (col 0) cell — anchor for rowSelection. */
