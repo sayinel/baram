@@ -12,6 +12,7 @@ vi.mock("../../../ipc/invoke", () => ({ listDir, readFile }));
 const { getFilesByTag } = vi.hoisted(() => ({ getFilesByTag: vi.fn() }));
 vi.mock("../../../ipc/tag", () => ({ getFilesByTag }));
 
+import { useZettelFavoritesStore } from "../../../stores/zettelkasten/zettel-favorites";
 import { useZettelIndexStore } from "../../../stores/zettelkasten/zettel-index";
 import { useZettelHubData } from "../use-zettel-hub-data";
 
@@ -49,6 +50,7 @@ function mockFixture(tag: string) {
 describe("useZettelHubData", () => {
   beforeEach(() => {
     useZettelIndexStore.getState().clear();
+    useZettelFavoritesStore.getState().setFavorites([]);
     listDir.mockReset();
     readFile.mockReset();
     getFilesByTag.mockReset();
@@ -208,5 +210,87 @@ describe("useZettelHubData", () => {
 
     // The slow, stale refresh must not clobber the fresher result.
     expect(result.current.inbox[0]?.path).toBe("/z/inbox/fresh.md");
+  });
+
+  it("favorites: resolves seeded ids against the index, dropping ids not present", async () => {
+    mockFixture("aaa");
+    useZettelIndexStore.getState().upsert({
+      id: "202607010001",
+      path: "/z/notes/202607010001 Foo.md",
+      title: "Foo",
+    });
+
+    const { result } = renderHook(() => useZettelHubData("/z"));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    act(() => {
+      useZettelFavoritesStore
+        .getState()
+        .setFavorites(["202607010001", "999999999999"]);
+    });
+
+    await waitFor(() => {
+      expect(result.current.favorites).toEqual([
+        {
+          id: "202607010001",
+          path: "/z/notes/202607010001 Foo.md",
+          title: "Foo",
+        },
+      ]);
+    });
+  });
+
+  it("favorites: toggling a favorite re-derives synchronously without re-scanning the inbox/notes", async () => {
+    mockFixture("aaa");
+    useZettelIndexStore.getState().upsert({
+      id: "202607010001",
+      path: "/z/notes/202607010001 Foo.md",
+      title: "Foo",
+    });
+
+    const { result } = renderHook(() => useZettelHubData("/z"));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const callsBefore = listDir.mock.calls.length;
+
+    act(() => {
+      useZettelFavoritesStore.getState().setFavorites(["202607010001"]);
+    });
+
+    expect(result.current.favorites).toEqual([
+      {
+        id: "202607010001",
+        path: "/z/notes/202607010001 Foo.md",
+        title: "Foo",
+      },
+    ]);
+    expect(listDir.mock.calls.length).toBe(callsBefore);
+  });
+
+  it("favorites: empty when zettelDir is null", () => {
+    const { result } = renderHook(() => useZettelHubData(null));
+    expect(result.current.favorites).toEqual([]);
+  });
+
+  it("RECENT is capped at 15 even when notes/ has more entries", async () => {
+    getFilesByTag.mockResolvedValue([]);
+    readFile.mockResolvedValue("");
+    listDir.mockImplementation(async (dir: string) => {
+      if (dir.endsWith("/notes")) {
+        return Array.from({ length: 20 }, (_, i) => ({
+          isDir: false,
+          modifiedAt: i,
+          name: `note-${i}.md`,
+          path: `/z/notes/note-${i}.md`,
+          size: 0,
+        }));
+      }
+      return [];
+    });
+
+    const { result } = renderHook(() => useZettelHubData("/z"));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.recent).toHaveLength(15);
   });
 });

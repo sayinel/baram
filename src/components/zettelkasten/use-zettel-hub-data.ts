@@ -7,6 +7,10 @@ import type { FileEntry } from "../../ipc/types";
 import { listDir, readFile } from "../../ipc/invoke";
 import { getFilesByTag } from "../../ipc/tag";
 import {
+  loadFavorites,
+  useZettelFavoritesStore,
+} from "../../stores/zettelkasten/zettel-favorites";
+import {
   titleForId,
   useZettelIndexStore,
 } from "../../stores/zettelkasten/zettel-index";
@@ -20,6 +24,7 @@ import {
 } from "../../utils/zettelkasten/parse-note-title";
 
 export interface ZettelHubData {
+  favorites: ZettelHubListItem[];
   inbox: ZettelHubInboxItem[];
   loading: boolean;
   mocs: ZettelHubListItem[];
@@ -35,6 +40,7 @@ export interface ZettelHubInboxItem {
 }
 
 export interface ZettelHubListItem {
+  id?: string;
   path: string;
   title: string;
 }
@@ -47,6 +53,7 @@ export function useZettelHubData(zettelDir: null | string): ZettelHubData {
   const [inbox, setInbox] = useState<ZettelHubInboxItem[]>([]);
   const [mocs, setMocs] = useState<ZettelHubListItem[]>([]);
   const [recent, setRecent] = useState<ZettelHubListItem[]>([]);
+  const [favorites, setFavorites] = useState<ZettelHubListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const mountedRef = useRef(true);
   // Bumped on every refresh() call; guards against an overlapping earlier
@@ -56,6 +63,10 @@ export function useZettelHubData(zettelDir: null | string): ZettelHubData {
   // every upsert/removeByPath/setAll/clear, so reference-change is exactly
   // the "something changed" signal this hook wants to react to.
   const indexById = useZettelIndexStore((s) => s.byId);
+  // Array selector — the favorites store replaces the whole array on every
+  // toggle, so reference-change is a reliable "something changed" signal
+  // (same reasoning as indexById above; useShallow isn't needed here).
+  const favoriteIds = useZettelFavoritesStore((s) => s.favoriteIds);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -63,6 +74,11 @@ export function useZettelHubData(zettelDir: null | string): ZettelHubData {
       mountedRef.current = false;
     };
   }, []);
+
+  // Load the persisted favorite ids whenever the zettel vault changes.
+  useEffect(() => {
+    if (zettelDir) void loadFavorites(zettelDir);
+  }, [zettelDir]);
 
   const refresh = useCallback(async () => {
     const gen = ++genRef.current;
@@ -93,7 +109,15 @@ export function useZettelHubData(zettelDir: null | string): ZettelHubData {
     void refresh();
   }, [refresh, indexById]);
 
-  return { inbox, mocs, recent, loading, refresh };
+  // Favorites are a pure, synchronous derivation of favoriteIds + the index
+  // (see resolveFavorites) — recompute them directly instead of routing
+  // through the async refresh() above, so a star toggle doesn't re-scan the
+  // inbox/notes directories just to update this list.
+  useEffect(() => {
+    setFavorites(zettelDir ? resolveFavorites() : []);
+  }, [favoriteIds, indexById, zettelDir]);
+
+  return { favorites, inbox, mocs, recent, loading, refresh };
 }
 
 /** inbox/ listing — newest first, title from the fleeting note's first body line. */
@@ -138,7 +162,7 @@ async function loadInbox(zettelDir: string): Promise<ZettelHubInboxItem[]> {
  * backend returns OS-native separators, so backslashes (Windows) are
  * normalized to `/` before the filter/basename/path-join below — mirrors
  * use-file-tree-search.ts. Sorted by title and soft-capped at MOC_LIMIT
- * (mirrors Recent's top-7 bounding; MOC sets are curated and typically small
+ * (mirrors Recent's top-15 bounding; MOC sets are curated and typically small
  * so this rarely truncates).
  */
 async function loadMocs(zettelDir: string): Promise<ZettelHubListItem[]> {
@@ -151,6 +175,7 @@ async function loadMocs(zettelDir: string): Promise<ZettelHubListItem[]> {
         const name = basename(rel);
         const id = extractLeadingId(name) ?? "";
         return {
+          id,
           path: `${zettelDir}/${rel}`,
           title: titleForId(id) ?? parseNoteTitle(name, ""),
         };
@@ -162,12 +187,30 @@ async function loadMocs(zettelDir: string): Promise<ZettelHubListItem[]> {
   }
 }
 
-/** notes/ listing — top 7 by modifiedAt desc, filename-derived titles only. */
+/** notes/ listing — top 15 by modifiedAt desc, filename-derived titles only. */
 async function loadRecent(zettelDir: string): Promise<ZettelHubListItem[]> {
   try {
     const entries = await listDir(`${zettelDir}/notes`, false);
-    return recentFromEntries(entries, 7);
+    return recentFromEntries(entries, 15);
   } catch {
     return [];
   }
+}
+
+/**
+ * Resolves the persisted favorite ids against the zettel index — a
+ * synchronous store-read (no IPC), so it's safe to call inline inside
+ * refresh() after the async loads settle. Ids not (yet) present in the
+ * index (note deleted, or index not loaded) are dropped; order mirrors
+ * favoriteIds.
+ */
+function resolveFavorites(): ZettelHubListItem[] {
+  const { favoriteIds } = useZettelFavoritesStore.getState();
+  const { byId } = useZettelIndexStore.getState();
+  const items: ZettelHubListItem[] = [];
+  for (const id of favoriteIds) {
+    const note = byId[id];
+    if (note) items.push({ id: note.id, path: note.path, title: note.title });
+  }
+  return items;
 }
