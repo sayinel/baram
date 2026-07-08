@@ -74,6 +74,34 @@ export function columnAnchorPos(
 }
 
 /**
+ * Fixed-overlay style for the drop indicator line. `boundaryCoord` is the visual x
+ * (col) or y (row) of the snapped gridline; tableRect gives the cross-axis span.
+ * Visual coords divide by zoom (fixed element inside the zoom container); the 2px
+ * thickness is content-space.
+ */
+export function computeDropIndicatorStyle(
+  axis: "col" | "row",
+  boundaryCoord: number,
+  tableRect: DOMRect,
+  zoom: number,
+): { height: number; left: number; top: number; width: number } {
+  if (axis === "col") {
+    return {
+      left: boundaryCoord / zoom,
+      top: tableRect.top / zoom,
+      width: 2,
+      height: tableRect.height / zoom,
+    };
+  }
+  return {
+    left: tableRect.left / zoom,
+    top: boundaryCoord / zoom,
+    width: tableRect.width / zoom,
+    height: 2,
+  };
+}
+
+/**
  * Zoom-aware `position: fixed` offset for a grip. The grip is a fixed element
  * inside the CSS-zoom container (`.editor-area-scroll`), which WKWebView renders
  * at (zoom × top, zoom × left). anchor.x/y are visual-viewport coords, so
@@ -159,6 +187,20 @@ export function moveRow(
     editor.state,
     editor.view.dispatch,
   );
+}
+
+/** Index of the gridline in `edges` nearest to `coord`. */
+export function nearestBoundaryIndex(edges: number[], coord: number): number {
+  let best = 0;
+  let bestDist = Infinity;
+  for (let i = 0; i < edges.length; i++) {
+    const d = Math.abs(edges[i] - coord);
+    if (d < bestDist) {
+      bestDist = d;
+      best = i;
+    }
+  }
+  return best;
 }
 
 /** Cell-before pos for a row's first (col 0) cell — anchor for rowSelection. */
