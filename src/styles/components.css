@@ -752,6 +752,20 @@
   height: 18px;
 }
 
+/* §5.5 Table drag-to-reorder drop indicator */
+.table-drop-indicator {
+  position: fixed;
+  z-index: 51;
+  pointer-events: none;
+  background: var(--color-accent-default);
+  border-radius: 1px;
+}
+
+body.table-dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
 /* §5.13 Query Block */
 .tiptap .query-block-wrapper {
   margin: 0.5rem 0;

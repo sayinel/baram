@@ -7,10 +7,12 @@ import {
   axisHasSpan,
   boundaryToDestIndex,
   columnAnchorPos,
+  computeDropIndicatorStyle,
   computeHandleStyle,
   findCellPos,
   moveColumn,
   moveRow,
+  nearestBoundaryIndex,
   rowAnchorPos,
   selectColumn,
   selectRow,
@@ -150,6 +152,13 @@ describe("moveColumn / moveRow", () => {
     // header row is now the old data row → first cell text is "1"
     expect(headerTexts(editor)[0]).toBe("1");
   });
+
+  it("no-ops when dropping a row onto its own edge", () => {
+    const editor = makeEditor();
+    const tp = tablePos(editor);
+    expect(moveRow(editor, tp, 1, 1)).toBe(false);
+    expect(headerTexts(editor)).toEqual(["A", "B", "C"]);
+  });
 });
 
 describe("axisHasSpan (merged-cell guard)", () => {
@@ -168,5 +177,45 @@ describe("axisHasSpan (merged-cell guard)", () => {
     });
     editors.push(e);
     expect(axisHasSpan(e, tablePos(e), "col")).toBe(true);
+  });
+
+  it("detects rowspan on the row axis", () => {
+    const e = new Editor({
+      extensions: createBaramExtensions(),
+      content:
+        "<table><tr><th rowspan='2'>A</th><th>B</th></tr>" +
+        "<tr><td>2</td></tr></table>",
+    });
+    editors.push(e);
+    expect(axisHasSpan(e, tablePos(e), "row")).toBe(true);
+  });
+});
+
+describe("nearestBoundaryIndex", () => {
+  it("snaps to the closest gridline", () => {
+    const edges = [100, 200, 320]; // 2 columns → 3 boundaries
+    expect(nearestBoundaryIndex(edges, 105)).toBe(0);
+    expect(nearestBoundaryIndex(edges, 170)).toBe(1);
+    expect(nearestBoundaryIndex(edges, 400)).toBe(2);
+  });
+});
+
+describe("computeDropIndicatorStyle", () => {
+  const rect = { left: 100, top: 50, width: 300, height: 120 } as DOMRect;
+  it("draws a vertical line for a column drop (zoom 1)", () => {
+    expect(computeDropIndicatorStyle("col", 200, rect, 1)).toEqual({
+      left: 200,
+      top: 50,
+      width: 2,
+      height: 120,
+    });
+  });
+  it("draws a horizontal line for a row drop and divides by zoom", () => {
+    expect(computeDropIndicatorStyle("row", 90, rect, 2)).toEqual({
+      left: 100 / 2,
+      top: 90 / 2,
+      width: 300 / 2,
+      height: 2,
+    });
   });
 });

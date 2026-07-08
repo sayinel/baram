@@ -12,6 +12,7 @@ import { buildTableMenu } from "./context-menu-table";
 import { MenuList } from "./MenuList";
 import { findTableNearPoint } from "./table-insert-coords";
 import {
+  axisHasSpan,
   columnAnchorPos,
   computeHandleStyle,
   type HandleAnchor,
@@ -19,6 +20,7 @@ import {
   selectColumn,
   selectRow,
 } from "./table-selection";
+import { computeDropIndicatorStyle, useTableDrag } from "./use-table-drag";
 
 // Detection bands around the table's top/left edges (content-space px × zoom).
 const BAND_OUTER = 28;
@@ -46,6 +48,7 @@ export function TableSelectionHandles({ editor }: { editor: Editor }) {
   const latestEventRef = useRef<MouseEvent | null>(null);
   const hoveringRef = useRef(false);
   const hideTimerRef = useRef(0);
+  const { indicator, isDragging, startDrag } = useTableDrag(editor);
 
   const scheduleHide = useCallback(() => {
     if (hideTimerRef.current) return;
@@ -236,12 +239,58 @@ export function TableSelectionHandles({ editor }: { editor: Editor }) {
     [editor],
   );
 
+  const collectEdges = useCallback(
+    (h: HandleState): null | { edges: number[]; tableRect: DOMRect } => {
+      const dom = editor.view.nodeDOM(h.tablePos);
+      const tableEl =
+        dom instanceof HTMLTableElement
+          ? dom
+          : dom instanceof HTMLElement
+            ? dom.querySelector("table")
+            : null;
+      if (!tableEl) return null;
+      const tableRect = tableEl.getBoundingClientRect();
+      if (h.axis === "col") {
+        const firstRow = tableEl.querySelector("tr");
+        if (!firstRow) return null;
+        const cells = Array.from(firstRow.children) as HTMLElement[];
+        const edges = [cells[0].getBoundingClientRect().left];
+        cells.forEach((c) => edges.push(c.getBoundingClientRect().right));
+        return { edges, tableRect };
+      }
+      const rows = Array.from(
+        tableEl.querySelectorAll(
+          ":scope > thead > tr, :scope > tbody > tr, :scope > tr",
+        ),
+      ) as HTMLElement[];
+      const edges = [rows[0].getBoundingClientRect().top];
+      rows.forEach((r) => edges.push(r.getBoundingClientRect().bottom));
+      return { edges, tableRect };
+    },
+    [editor],
+  );
+
   return (
     <>
       {handle && (
         <button
           className={`table-select-handle table-select-handle-${handle.axis}`}
-          onClick={(e) => openMenu(handle, e.clientX, e.clientY)}
+          onClick={(e) => {
+            if (isDragging) return; // a drag just ended — don't open the menu
+            openMenu(handle, e.clientX, e.clientY);
+          }}
+          onMouseDown={(e) => {
+            if (axisHasSpan(editor, handle.tablePos, handle.axis)) return; // merged cells → click-only
+            const info = collectEdges(handle);
+            if (!info) return;
+            startDrag(e, {
+              axis: handle.axis,
+              from: handle.index,
+              tablePos: handle.tablePos,
+              edges: info.edges,
+              tableRect: info.tableRect,
+            });
+          }}
           onMouseEnter={() => {
             hoveringRef.current = true;
             cancelHide();
@@ -251,7 +300,11 @@ export function TableSelectionHandles({ editor }: { editor: Editor }) {
             scheduleHide();
           }}
           style={computeHandleStyle(handle, getEditorZoom())}
-          title={handle.axis === "col" ? "Select column" : "Select row"}
+          title={
+            handle.axis === "col"
+              ? "Select or drag column"
+              : "Select or drag row"
+          }
           type="button"
         >
           <svg fill="currentColor" height="10" viewBox="0 0 10 10" width="10">
@@ -270,6 +323,17 @@ export function TableSelectionHandles({ editor }: { editor: Editor }) {
           onClose={() => setMenu(null)}
           x={menu.x}
           y={menu.y}
+        />
+      )}
+      {indicator && (
+        <div
+          className="table-drop-indicator"
+          style={computeDropIndicatorStyle(
+            indicator.axis,
+            indicator.boundaryCoord,
+            indicator.tableRect,
+            getEditorZoom(),
+          )}
         />
       )}
     </>
