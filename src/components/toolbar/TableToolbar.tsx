@@ -20,6 +20,7 @@ import {
 
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
+import { computeToolbarTop } from "./table-toolbar-position";
 
 // Mono-style inline SVG icons (16×16, stroke-based)
 const ICON_SIZE = 16;
@@ -303,30 +304,43 @@ export function TableToolbar({ editor }: TableToolbarProps) {
       }
     }
 
-    // Position toolbar above the table
+    // Position toolbar above the table, clamped to the top of the visible editor
+    // area so it stays reachable while scrolling a tall table (§5.5).
     const tableRect = tableDOM.getBoundingClientRect();
-    const editorRect = editor.view.dom
-      .closest(".editor-area-scroll")
-      ?.getBoundingClientRect();
-    if (!editorRect) {
+    const scrollEl = editor.view.dom.closest(".editor-area-scroll");
+    const scrollRect = scrollEl?.getBoundingClientRect();
+    if (!scrollRect) {
       setVisible(false);
       return;
     }
 
     const toolbarHeight = toolbarRef.current?.offsetHeight ?? 32;
-    const top = tableRect.top - editorRect.top - toolbarHeight - 6;
-    const left = tableRect.left - editorRect.left + tableRect.width / 2;
+    const placement = computeToolbarTop({
+      tableTop: tableRect.top,
+      tableBottom: tableRect.bottom,
+      scrollTop: scrollRect.top,
+      scrollHeight: scrollRect.height,
+      toolbarHeight,
+    });
+    if (!placement.visible) {
+      setVisible(false);
+      return;
+    }
 
-    setPosition({ top, left });
+    const left = tableRect.left - scrollRect.left + tableRect.width / 2;
+    setPosition({ top: placement.top, left });
     setVisible(true);
   }, [editor]);
 
   useEffect(() => {
     editor.on("selectionUpdate", updatePosition);
     editor.on("transaction", updatePosition);
+    const scrollEl = editor.view.dom.closest(".editor-area-scroll");
+    scrollEl?.addEventListener("scroll", updatePosition, { passive: true });
     return () => {
       editor.off("selectionUpdate", updatePosition);
       editor.off("transaction", updatePosition);
+      scrollEl?.removeEventListener("scroll", updatePosition);
     };
   }, [editor, updatePosition]);
 
