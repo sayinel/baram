@@ -45,6 +45,22 @@ export function TableSelectionHandles({ editor }: { editor: Editor }) {
   const rafRef = useRef(0);
   const latestEventRef = useRef<MouseEvent | null>(null);
   const hoveringRef = useRef(false);
+  const hideTimerRef = useRef(0);
+
+  const scheduleHide = useCallback(() => {
+    if (hideTimerRef.current) return;
+    hideTimerRef.current = window.setTimeout(() => {
+      hideTimerRef.current = 0;
+      if (!hoveringRef.current) setHandle(null);
+    }, 100);
+  }, []);
+
+  const cancelHide = useCallback(() => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = 0;
+    }
+  }, []);
 
   const computeHandle = useCallback(
     (e: MouseEvent) => {
@@ -153,7 +169,7 @@ export function TableSelectionHandles({ editor }: { editor: Editor }) {
       });
     };
     const onLeave = () => {
-      if (!hoveringRef.current) setHandle(null);
+      if (!hoveringRef.current) scheduleHide();
     };
     const onScroll = () => {
       setHandle(null);
@@ -167,12 +183,14 @@ export function TableSelectionHandles({ editor }: { editor: Editor }) {
       scroll.removeEventListener("mouseleave", onLeave);
       scroll.removeEventListener("scroll", onScroll);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     };
-  }, [editor, computeHandle]);
+  }, [editor, computeHandle, scheduleHide]);
 
   // Clear on doc change / zoom / resize (stale positions).
   useEffect(() => {
     const clear = () => {
+      cancelHide();
       setHandle(null);
       setMenu(null);
     };
@@ -182,7 +200,7 @@ export function TableSelectionHandles({ editor }: { editor: Editor }) {
       editor.off("update", clear);
       window.removeEventListener("resize", clear);
     };
-  }, [editor]);
+  }, [editor, cancelHide]);
 
   const openMenu = useCallback(
     (h: HandleState, clientX: number, clientY: number) => {
@@ -223,9 +241,11 @@ export function TableSelectionHandles({ editor }: { editor: Editor }) {
           onClick={(e) => openMenu(handle, e.clientX, e.clientY)}
           onMouseEnter={() => {
             hoveringRef.current = true;
+            cancelHide();
           }}
           onMouseLeave={() => {
             hoveringRef.current = false;
+            scheduleHide();
           }}
           style={computeHandleStyle(handle, getEditorZoom())}
           title={handle.axis === "col" ? "Select column" : "Select row"}
