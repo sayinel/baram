@@ -4,9 +4,13 @@ import { CellSelection } from "@tiptap/pm/tables";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  axisHasSpan,
+  boundaryToDestIndex,
   columnAnchorPos,
   computeHandleStyle,
   findCellPos,
+  moveColumn,
+  moveRow,
   rowAnchorPos,
   selectColumn,
   selectRow,
@@ -102,5 +106,67 @@ describe("selectColumn / selectRow", () => {
       count++;
     });
     expect(count).toBe(3);
+  });
+});
+
+/** First-row cell texts, left→right. */
+function headerTexts(editor: Editor): string[] {
+  const out: string[] = [];
+  const table = editor.state.doc.nodeAt(tablePos(editor));
+  table?.firstChild?.forEach((cell) => out.push(cell.textContent));
+  return out;
+}
+
+describe("boundaryToDestIndex", () => {
+  it("maps a right-side boundary to remove-then-insert index", () => {
+    expect(boundaryToDestIndex(0, 3)).toBe(2); // drag col0 to far right of 3 cols
+    expect(boundaryToDestIndex(2, 0)).toBe(0); // drag col2 to far left
+    expect(boundaryToDestIndex(1, 1)).toBe(1); // onto its own left edge
+  });
+});
+
+describe("moveColumn / moveRow", () => {
+  it("moves the first column to the far right", () => {
+    const editor = makeEditor();
+    const tp = tablePos(editor);
+    expect(headerTexts(editor)).toEqual(["A", "B", "C"]);
+    const ok = moveColumn(editor, tp, 0, 3); // boundary after last col
+    expect(ok).toBe(true);
+    expect(headerTexts(editor)).toEqual(["B", "C", "A"]);
+  });
+
+  it("no-ops when dropping onto its own edge", () => {
+    const editor = makeEditor();
+    const tp = tablePos(editor);
+    expect(moveColumn(editor, tp, 1, 1)).toBe(false);
+    expect(headerTexts(editor)).toEqual(["A", "B", "C"]);
+  });
+
+  it("moves a row (row 0 → below row 1) changing the header row", () => {
+    const editor = makeEditor();
+    const tp = tablePos(editor);
+    const ok = moveRow(editor, tp, 0, 2); // boundary after last row
+    expect(ok).toBe(true);
+    // header row is now the old data row → first cell text is "1"
+    expect(headerTexts(editor)[0]).toBe("1");
+  });
+});
+
+describe("axisHasSpan (merged-cell guard)", () => {
+  it("is false for a plain table", () => {
+    const editor = makeEditor();
+    expect(axisHasSpan(editor, tablePos(editor), "col")).toBe(false);
+    expect(axisHasSpan(editor, tablePos(editor), "row")).toBe(false);
+  });
+
+  it("detects colspan / rowspan", () => {
+    const e = new Editor({
+      extensions: createBaramExtensions(),
+      content:
+        "<table><tr><th colspan='2'>AB</th></tr>" +
+        "<tr><td>1</td><td>2</td></tr></table>",
+    });
+    editors.push(e);
+    expect(axisHasSpan(e, tablePos(e), "col")).toBe(true);
   });
 });
