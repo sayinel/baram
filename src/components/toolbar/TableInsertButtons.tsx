@@ -10,6 +10,7 @@ import {
   computeInsertButtonStyle,
   findTableNearPoint,
 } from "./table-insert-coords";
+import { findCellPos } from "./table-selection";
 
 interface ButtonState {
   /** Whether to insert before (true) or after (false) */
@@ -23,37 +24,6 @@ interface ButtonState {
 
 interface TableInsertButtonsProps {
   editor: Editor;
-}
-
-/** Find the PM position of a cell at given row/col indices within a table */
-function findCellPos(
-  editor: Editor,
-  tablePos: number,
-  targetRow: number,
-  targetCol: number,
-): null | number {
-  const tableNode = editor.state.doc.nodeAt(tablePos);
-  if (!tableNode) return null;
-
-  let rowIdx = 0;
-  let result: null | number = null;
-
-  tableNode.forEach((row, rowOffset) => {
-    if (result !== null) return;
-    if (rowIdx === targetRow) {
-      let colIdx = 0;
-      row.forEach((_cell, cellOffset) => {
-        if (result !== null) return;
-        if (colIdx === targetCol) {
-          result = tablePos + 1 + rowOffset + 1 + cellOffset;
-        }
-        colIdx++;
-      });
-    }
-    rowIdx++;
-  });
-
-  return result;
 }
 
 /** Find the ProseMirror position for a table DOM element */
