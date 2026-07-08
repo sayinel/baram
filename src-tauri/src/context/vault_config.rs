@@ -104,6 +104,13 @@ pub struct CrossVaultHint {
     pub last_known_path: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ZettelkastenSection {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub favorites: Option<Vec<String>>,
+}
+
 // ── VaultConfig ────────────────────────────────────────────────────────────────
 
 /// Per-vault configuration stored at `<vault_root>/.baram/config.json`.
@@ -130,6 +137,8 @@ pub struct VaultConfig {
     pub snapshot: Option<SnapshotSection>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cross_vault_hints: Option<HashMap<String, CrossVaultHint>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zettelkasten: Option<ZettelkastenSection>,
 }
 
 // ── ResolvedSettings ──────────────────────────────────────────────────────────
@@ -364,6 +373,25 @@ mod tests {
         let cfg = VaultConfig::default();
         let json = serde_json::to_string(&cfg).unwrap();
         assert_eq!(json, "{}");
+    }
+
+    #[test]
+    fn zettelkasten_favorites_survive_roundtrip() {
+        let dir = TempDir::new().unwrap();
+        let cfg = VaultConfig {
+            zettelkasten: Some(ZettelkastenSection {
+                favorites: Some(vec!["202601010900".to_string(), "202601020730".to_string()]),
+            }),
+            ..Default::default()
+        };
+        save_vault_config(dir.path(), &cfg).unwrap();
+
+        let loaded = load_vault_config(dir.path()).unwrap();
+        let favorites = loaded.zettelkasten.unwrap().favorites.unwrap();
+        assert_eq!(
+            favorites,
+            vec!["202601010900".to_string(), "202601020730".to_string()]
+        );
     }
 
     #[test]

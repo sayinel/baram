@@ -52,18 +52,6 @@ export const BUILTIN_PRESETS: WorkspacePreset[] = [
     },
   },
   {
-    id: "journal",
-    name: "Journal",
-    description: "Open calendar, today's journal, and Memories view together.",
-    builtIn: true,
-    layout: {
-      sidebarOpen: true,
-      sidebarPanel: "calendar",
-      rightPanelOpen: true,
-      rightPanelMode: "memories",
-    },
-  },
-  {
     id: "zettelkasten",
     name: "Zettel",
     description: "Capture ideas fast and refine them into linked notes.",
@@ -76,8 +64,20 @@ export const BUILTIN_PRESETS: WorkspacePreset[] = [
     },
   },
   {
+    id: "journal",
+    name: "Journal",
+    description: "Open calendar, today's journal, and Memories view together.",
+    builtIn: true,
+    layout: {
+      sidebarOpen: true,
+      sidebarPanel: "calendar",
+      rightPanelOpen: true,
+      rightPanelMode: "memories",
+    },
+  },
+  {
     id: "skills",
-    name: "Skills Editing",
+    name: "Skills",
     description: "Layout optimized for editing LLM Skills files.",
     builtIn: true,
     layout: {

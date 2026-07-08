@@ -14,7 +14,11 @@ describe("ZettelTitleDialog", () => {
 
   it("submits the typed title and closes", () => {
     const onSubmit = vi.fn();
-    useUIStore.getState().openZettelTitleDialog(onSubmit);
+    useUIStore.getState().openZettelTitleDialog({
+      onSubmit,
+      title: "New Zettel",
+      confirmLabel: "Create",
+    });
     render(<ZettelTitleDialog />);
     fireEvent.change(screen.getByRole("textbox"), {
       target: { value: "New Idea" },
@@ -26,7 +30,11 @@ describe("ZettelTitleDialog", () => {
 
   it("does not submit on Enter while an IME composition is in progress", () => {
     const onSubmit = vi.fn();
-    useUIStore.getState().openZettelTitleDialog(onSubmit);
+    useUIStore.getState().openZettelTitleDialog({
+      onSubmit,
+      title: "New Zettel",
+      confirmLabel: "Create",
+    });
     render(<ZettelTitleDialog />);
     fireEvent.change(screen.getByRole("textbox"), {
       target: { value: "제목" },
@@ -37,5 +45,20 @@ describe("ZettelTitleDialog", () => {
     });
     expect(onSubmit).not.toHaveBeenCalled();
     expect(useUIStore.getState().zettelTitleDialog.open).toBe(true);
+  });
+
+  it("renders the action's title, description, confirm label, and prefill", () => {
+    useUIStore.getState().openZettelTitleDialog({
+      onSubmit: vi.fn(),
+      title: "Promote to Permanent Note",
+      description: "Move this fleeting note from inbox/ to notes/.",
+      confirmLabel: "Promote",
+      initialTitle: "First line",
+    });
+    render(<ZettelTitleDialog />);
+    expect(screen.getByText("Promote to Permanent Note")).toBeInTheDocument();
+    expect(screen.getByText(/move this fleeting note/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Promote" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox")).toHaveValue("First line");
   });
 });

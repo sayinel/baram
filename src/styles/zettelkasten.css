@@ -1,0 +1,242 @@
+/* §100/§101 Zettel hub panel */
+
+.zettel-hub {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.zettel-hub-actions {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid var(--color-border-default);
+}
+
+.zettel-hub-action {
+  display: flex;
+  flex: 1;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.zettel-hub-action:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-accent-default);
+}
+
+/* ── Collapsible sections (Inbox / MOCs / Recent) ── */
+
+.zettel-hub-section {
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.zettel-hub-section-header {
+  width: 100%;
+  padding: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.zettel-hub-section-header:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-subtle);
+}
+
+.zettel-hub-section-title {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.zettel-hub-section-body {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 4px;
+}
+
+/* Per-row note marker — distinguishes file names from the section header. */
+.zettel-hub-row-icon {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}
+
+/* ── Inbox rows ── */
+
+.zettel-hub-inbox-row {
+  gap: 6px;
+  padding: 6px 8px 6px 32px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.zettel-hub-inbox-row:hover {
+  background: var(--color-bg-subtle);
+}
+
+.zettel-hub-inbox-main {
+  display: flex;
+  flex: 1;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--color-text-primary);
+}
+
+.zettel-hub-inbox-title {
+  min-width: 0;
+}
+
+.zettel-hub-tag-pills {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+.zettel-hub-tag-pill {
+  padding: 0 6px;
+  font-size: 10px;
+  color: var(--color-accent-default);
+  white-space: nowrap;
+  background: var(--color-bg-elevated);
+  border-radius: 8px;
+}
+
+.zettel-hub-inbox-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.zettel-hub-inbox-row:hover .zettel-hub-inbox-actions,
+.zettel-hub-inbox-row:focus-within .zettel-hub-inbox-actions {
+  opacity: 1;
+}
+
+.zettel-hub-inbox-action {
+  padding: 3px;
+  color: var(--color-text-muted);
+  border-radius: 4px;
+}
+
+.zettel-hub-inbox-action:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-elevated);
+}
+
+/* ── MOC / Recent rows ── */
+
+.zettel-hub-list-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  width: 100%;
+  padding: 6px 8px 6px 32px;
+  font-size: 12px;
+  color: var(--color-text-primary);
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.zettel-hub-list-row:hover {
+  background: var(--color-bg-subtle);
+}
+
+.zettel-hub-list-row > .text-truncate {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Row favorite-toggle star — hidden until hover/focus, always shown once active. */
+.zettel-hub-fav-btn {
+  flex-shrink: 0;
+  padding: 3px;
+  color: var(--color-text-muted);
+  border-radius: 4px;
+  opacity: 0;
+  transition:
+    opacity 0.15s,
+    color 0.15s;
+}
+
+.zettel-hub-list-row:hover .zettel-hub-fav-btn,
+.zettel-hub-list-row:focus-within .zettel-hub-fav-btn {
+  opacity: 1;
+}
+
+.zettel-hub-fav-btn:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-elevated);
+}
+
+.zettel-hub-fav-btn.zettel-hub-fav-active {
+  color: var(--color-accent-default);
+  opacity: 1;
+}
+
+/* §102 StatusBar favorite-toggle star for the active permanent Zettel note. */
+.status-fav-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 2px;
+  color: var(--color-text-muted);
+  border-radius: 3px;
+  transition: color 0.15s;
+}
+
+.status-fav-btn:hover {
+  color: var(--color-text-primary);
+}
+
+.status-fav-btn.status-fav-active {
+  color: var(--color-accent-default);
+}
+
+/* ── Empty / not-configured hints ── */
+
+.zettel-hub-empty-hint {
+  padding: 6px 8px 10px 32px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.zettel-hub-hint {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 12px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.zettel-hub-hint-link {
+  align-self: center;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--color-accent-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+}
+
+.zettel-hub-hint-link:hover {
+  background: var(--color-bg-subtle);
+}

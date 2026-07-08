@@ -356,13 +356,14 @@ A dedicated space for atomic, densely-linked notes — capture fast, refine into
 - **New Zettel** — Create a permanent atomic note directly (`Cmd+Shift+V`), or turn a text selection into a new note + `[[link]]` with `Cmd+Shift+Y`
 - **ID-based links** — Notes are `{id} {title}.md`; `[[id]]` links render the live title and stay valid across renames. `[[` autocomplete searches by title
 - **MOCs** — Create a Map of Content index note (`#moc`) with `Cmd+Shift+C` to organize entry points
-- **Enable** — Turn on and set a directory in **Settings > General > Zettel**; open the space via the space menu, Command Palette, or `Cmd+Alt+3`
+- **Hub panel** — In the Zettel space the sidebar becomes a dedicated hub: quick actions (New / Capture / MOC), an inbox queue (promote ↑ or delete ✕ inline, click to open), your MOCs, and recent notes — and it refreshes automatically as you capture and promote
+- **Enable** — Turn on and set a directory in **Settings > General > Zettel**; open the space via the space menu, Command Palette, or `Cmd+Alt+2`
 
 ### Workspace Presets
 
 Save and restore your workspace layout:
 
-- **4 built-in presets** — Writing (`Cmd+Alt+1`), Journal (`Cmd+Alt+2`), Zettel (`Cmd+Alt+3`), Skills Editing (`Cmd+Alt+4`)
+- **4 built-in presets** — Writing (`Cmd+Alt+1`), Zettel (`Cmd+Alt+2`), Journal (`Cmd+Alt+3`), Skills (`Cmd+Alt+4`)
 - **Custom presets** — Save your current sidebar, panel, and theme configuration as a named preset
 - **Quick switch** — Apply presets via keyboard shortcuts, Command Palette, or the Workspace menu. Switching spaces never force-closes an open folder tree
 
@@ -523,9 +524,9 @@ Create your own slash commands in **Settings > AI > Custom Commands**. Use varia
 | Global Search | `Cmd+Shift+F` |
 | Tab Switcher (MRU) | `Ctrl+Tab` |
 | Workspace: Writing | `Cmd+Alt+1` |
-| Workspace: Journal | `Cmd+Alt+2` |
-| Workspace: Zettel | `Cmd+Alt+3` |
-| Workspace: Skills Editing | `Cmd+Alt+4` |
+| Workspace: Zettel | `Cmd+Alt+2` |
+| Workspace: Journal | `Cmd+Alt+3` |
+| Workspace: Skills | `Cmd+Alt+4` |
 | Quick Capture (→ Zettel inbox) | `Cmd+Shift+N` |
 | Open Today's Journal | `Cmd+Shift+J` |
 | New Zettel | `Cmd+Shift+V` |

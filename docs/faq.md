@@ -375,7 +375,7 @@ Workspace Presets save your current layout (sidebar panel, right panel, theme) a
 
 Three ways:
 
-1. **Keyboard shortcuts** — `Cmd+Alt+1` (Writing), `Cmd+Alt+2` (Journal), `Cmd+Alt+3` (Zettel), `Cmd+Alt+4` (Skills Editing)
+1. **Keyboard shortcuts** — `Cmd+Alt+1` (Writing), `Cmd+Alt+2` (Zettel), `Cmd+Alt+3` (Journal), `Cmd+Alt+4` (Skills)
 2. **Command Palette** — `Cmd+Shift+P` then search for "Workspace"
 3. **Workspace menu** — Use the menu bar
 

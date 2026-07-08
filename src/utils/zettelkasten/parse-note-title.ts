@@ -1,3 +1,5 @@
+import { firstNonEmptyLine } from "./selection-markdown";
+
 /**
  * Extract the leading Zettelkasten id (12-14 digits) from a filename or bare
  * stem. Mirrors Rust's canonical `extract_id_from_stem`
@@ -10,6 +12,17 @@ export function extractLeadingId(nameOrStem: string): null | string {
   const stem = nameOrStem.replace(/\.(md|markdown)$/, "");
   const m = stem.match(/^(\d{12,14})(?:\s|$)/);
   return m ? m[1] : null;
+}
+
+/**
+ * §103 Hub inbox titles: strip a leading YAML frontmatter block, then return
+ * the first non-empty body line with any leading heading marker (`#`, `##`,
+ * ...) removed. Returns "" when the body has no non-empty content. Does NOT
+ * cap length — callers apply their own display truncation.
+ */
+export function firstBodyLine(md: string): string {
+  const body = md.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
+  return firstNonEmptyLine(body).replace(/^#+\s*/, "");
 }
 
 export function isZettelId(s: string): boolean {

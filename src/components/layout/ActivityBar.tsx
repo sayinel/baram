@@ -17,6 +17,7 @@ import {
   Search,
   Settings,
   Share2,
+  StickyNote,
   Tag,
   Zap,
 } from "lucide-react";
@@ -41,6 +42,7 @@ const PANEL_ICONS: { icon: ReactNode; id: SidebarPanel; label: string }[] = [
   { id: "git", label: "Source Control", icon: <GitBranch {...ICON_PROPS} /> },
   { id: "calendar", label: "Calendar", icon: <Calendar {...ICON_PROPS} /> },
   { id: "tags", label: "Tags", icon: <Tag {...ICON_PROPS} /> },
+  { id: "zettel", label: "Zettel", icon: <StickyNote {...ICON_PROPS} /> },
   {
     id: "skills-gallery",
     label: "Skills Gallery",

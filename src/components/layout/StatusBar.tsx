@@ -3,16 +3,34 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { Editor } from "@tiptap/react";
 
-import { Calendar, ChevronDown, Pencil, StickyNote, Zap } from "lucide-react";
+import {
+  Calendar,
+  ChevronDown,
+  Pencil,
+  Star,
+  StickyNote,
+  Zap,
+} from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useResolvedSettings } from "../../hooks/use-resolved-settings";
+import { useEditorStore } from "../../stores/editor/editor";
+import { useFileStore } from "../../stores/file/file";
 import {
   BUILTIN_PRESETS,
   useWorkspaceStore,
 } from "../../stores/file/workspace";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useGitStore } from "../../stores/system/git";
+import {
+  loadFavorites,
+  toggleFavorite,
+  useZettelFavoritesStore,
+} from "../../stores/zettelkasten/zettel-favorites";
+import { basename } from "../../utils/path-utils";
+import { extractLeadingId } from "../../utils/zettelkasten/parse-note-title";
+import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
+import "../../styles/zettelkasten.css";
 
 export type EditorMode = "graph" | "source" | "wysiwyg";
 
@@ -77,6 +95,37 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
       applyPreset: s.applyPreset,
     })),
   );
+
+  // §102 Favorite-toggle star for the active permanent Zettel note.
+  const { zettelkastenDirectory, zettelkastenEnabled } = useSettingsStore(
+    useShallow((s) => ({
+      zettelkastenEnabled: s.zettelkastenEnabled,
+      zettelkastenDirectory: s.zettelkastenDirectory,
+    })),
+  );
+  const { rootPath } = useFileStore(
+    useShallow((s) => ({ rootPath: s.rootPath })),
+  );
+  const zettelDir = resolveZettelDir(rootPath, zettelkastenDirectory);
+  const activeFilePath = useEditorStore(
+    useShallow(
+      (s) => s.tabs.find((t) => t.id === s.activeTabId)?.filePath ?? "",
+    ),
+  );
+  const favoriteIds = useZettelFavoritesStore((s) => s.favoriteIds);
+  const activeNoteId =
+    zettelkastenEnabled &&
+    zettelDir &&
+    activeFilePath.startsWith(`${zettelDir}/notes/`)
+      ? extractLeadingId(basename(activeFilePath))
+      : null;
+  const isFavoriteNote = activeNoteId
+    ? favoriteIds.includes(activeNoteId)
+    : false;
+
+  useEffect(() => {
+    if (zettelkastenEnabled && zettelDir) void loadFavorites(zettelDir);
+  }, [zettelkastenEnabled, zettelDir]);
 
   const [spaceMenuOpen, setSpaceMenuOpen] = useState(false);
   const spaceMenuRef = useRef<HTMLDivElement>(null);
@@ -156,6 +205,32 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
           >
             Privacy
           </span>
+        )}
+        {activeNoteId && (
+          <button
+            aria-label={isFavoriteNote ? "Unfavorite" : "Favorite"}
+            className={[
+              "status-fav-btn",
+              "btn-unstyled",
+              "icon-btn",
+              isFavoriteNote && "status-fav-active",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            onClick={() => {
+              if (zettelDir && activeNoteId)
+                void toggleFavorite(zettelDir, activeNoteId).catch(() => {});
+            }}
+            title={
+              isFavoriteNote ? "Remove from favorites" : "Add to favorites"
+            }
+          >
+            <Star
+              fill={isFavoriteNote ? "currentColor" : "none"}
+              size={12}
+              strokeWidth={1.5}
+            />
+          </button>
         )}
       </div>
       {mode !== "graph" && (

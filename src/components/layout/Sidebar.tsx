@@ -63,6 +63,11 @@ const VersionHistoryPanel = lazy(() =>
     default: m.VersionHistoryPanel,
   })),
 );
+const ZettelHubPanel = lazy(() =>
+  import("../zettelkasten/ZettelHubPanel").then((m) => ({
+    default: m.ZettelHubPanel,
+  })),
+);
 
 export function Sidebar() {
   const { sidebarPanel } = useUIStore();
@@ -83,6 +88,7 @@ export function Sidebar() {
           {sidebarPanel === "snapshots" && <VersionHistoryPanel />}
           {sidebarPanel === "skills-gallery" && <SkillGalleryPanel />}
           {sidebarPanel === "plugins" && <PluginMarketplace />}
+          {sidebarPanel === "zettel" && <ZettelHubPanel />}
         </div>
       </Suspense>
     </div>
