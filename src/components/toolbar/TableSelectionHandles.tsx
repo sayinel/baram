@@ -49,6 +49,11 @@ export function TableSelectionHandles({ editor }: { editor: Editor }) {
   const hoveringRef = useRef(false);
   const hideTimerRef = useRef(0);
   const { indicator, isDragging, startDrag } = useTableDrag(editor);
+  // Whether the popup was open at the moment the grip's mousedown fired — captured
+  // before MenuList's document-level outside-click listener closes it (the grip's
+  // synthetic mousedown runs first, React attaches below document). Lets onClick
+  // toggle the popup instead of always reopening it.
+  const menuWasOpenRef = useRef(false);
 
   const scheduleHide = useCallback(() => {
     if (hideTimerRef.current) return;
@@ -280,9 +285,17 @@ export function TableSelectionHandles({ editor }: { editor: Editor }) {
           className={`table-select-handle table-select-handle-${handle.axis}`}
           onClick={(e) => {
             if (isDragging) return; // a drag just ended — don't open the menu
+            // Toggle: if the popup was open when this click started, MenuList's
+            // outside-click already closed it — leave it closed (the column/row
+            // stays selected). Only open when it was closed.
+            if (menuWasOpenRef.current) return;
             openMenu(handle, e.clientX, e.clientY);
           }}
           onMouseDown={(e) => {
+            // Capture pre-click popup state before MenuList's outside-click closes
+            // it (see menuWasOpenRef). Must run before the merged-cell early return
+            // so the toggle also works for merged (click-only) axes.
+            menuWasOpenRef.current = menu !== null;
             if (axisHasSpan(editor, handle.tablePos, handle.axis)) return; // merged cells → click-only
             const info = collectEdges(handle);
             if (!info) return;
