@@ -2,20 +2,25 @@
 // Actions bar + Inbox queue + MOCs + Recent sections.
 import { useState } from "react";
 
-import { Clock, FileText, Map as MapIcon, Zap } from "lucide-react";
+import { Clock, FileText, Map as MapIcon, Star, Zap } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { getAction } from "../../keybindings/keybinding-actions";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
+import {
+  toggleFavorite,
+  useZettelFavoritesStore,
+} from "../../stores/zettelkasten/zettel-favorites";
+import { logger } from "../../utils/logger";
 import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
 import "../../styles/zettelkasten.css";
 import { useZettelHubData } from "./use-zettel-hub-data";
 import { ZettelInboxList } from "./ZettelInboxList";
 import { ZettelSectionList } from "./ZettelSectionList";
 
-type CollapseKey = "inbox" | "mocs" | "recent";
+type CollapseKey = "favorites" | "inbox" | "mocs" | "recent";
 
 export function ZettelHubPanel() {
   const { zettelkastenEnabled, zettelkastenDirectory } = useSettingsStore(
@@ -28,18 +33,28 @@ export function ZettelHubPanel() {
     useShallow((s) => ({ rootPath: s.rootPath })),
   );
   const dir = resolveZettelDir(rootPath, zettelkastenDirectory);
+  const favoriteIds = useZettelFavoritesStore((s) => s.favoriteIds);
 
-  const { inbox, loading, mocs, recent, refresh } = useZettelHubData(
+  const { favorites, inbox, loading, mocs, recent, refresh } = useZettelHubData(
     zettelkastenEnabled && dir ? dir : null,
   );
 
   const [collapsed, setCollapsed] = useState<Record<CollapseKey, boolean>>({
+    favorites: false,
     inbox: false,
     mocs: false,
     recent: false,
   });
   const toggle = (key: CollapseKey) =>
     setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  const onToggleFavorite = (id: string) => {
+    if (dir) {
+      void toggleFavorite(dir, id).catch((e: unknown) =>
+        logger.error("[Zettel] toggle favorite failed:", e),
+      );
+    }
+  };
 
   return (
     <div className="zettel-hub">
@@ -86,20 +101,35 @@ export function ZettelHubPanel() {
           <ZettelSectionList
             collapsed={collapsed.mocs}
             emptyHint="No MOCs yet — tag a note #moc to create one."
+            favoriteIds={favoriteIds}
             icon={<MapIcon size={14} strokeWidth={1.5} />}
             items={mocs}
             label="MOCs"
             loading={loading}
             onToggleCollapse={() => toggle("mocs")}
+            onToggleFavorite={onToggleFavorite}
+          />
+          <ZettelSectionList
+            collapsed={collapsed.favorites}
+            emptyHint="No favorites yet — star a note to pin it here."
+            favoriteIds={favoriteIds}
+            icon={<Star size={14} strokeWidth={1.5} />}
+            items={favorites}
+            label="FAVORITES"
+            loading={loading}
+            onToggleCollapse={() => toggle("favorites")}
+            onToggleFavorite={onToggleFavorite}
           />
           <ZettelSectionList
             collapsed={collapsed.recent}
             emptyHint="No notes yet."
+            favoriteIds={favoriteIds}
             icon={<Clock size={14} strokeWidth={1.5} />}
             items={recent}
             label="RECENT"
             loading={loading}
             onToggleCollapse={() => toggle("recent")}
+            onToggleFavorite={onToggleFavorite}
           />
         </>
       ) : (

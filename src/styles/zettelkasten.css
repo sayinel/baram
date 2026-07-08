@@ -139,7 +139,8 @@
 /* ── MOC / Recent rows ── */
 
 .zettel-hub-list-row {
-  display: block;
+  display: flex;
+  align-items: center;
   width: 100%;
   padding: 6px 8px 6px 24px;
   font-size: 12px;
@@ -150,6 +151,56 @@
 
 .zettel-hub-list-row:hover {
   background: var(--color-bg-subtle);
+}
+
+.zettel-hub-list-row > .text-truncate {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Row favorite-toggle star — hidden until hover/focus, always shown once active. */
+.zettel-hub-fav-btn {
+  flex-shrink: 0;
+  padding: 3px;
+  color: var(--color-text-muted);
+  border-radius: 4px;
+  opacity: 0;
+  transition:
+    opacity 0.15s,
+    color 0.15s;
+}
+
+.zettel-hub-list-row:hover .zettel-hub-fav-btn,
+.zettel-hub-list-row:focus-within .zettel-hub-fav-btn {
+  opacity: 1;
+}
+
+.zettel-hub-fav-btn:hover {
+  color: var(--color-text-primary);
+  background: var(--color-bg-elevated);
+}
+
+.zettel-hub-fav-btn.zettel-hub-fav-active {
+  color: var(--color-accent-default);
+  opacity: 1;
+}
+
+/* §102 StatusBar favorite-toggle star for the active permanent Zettel note. */
+.status-fav-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 2px;
+  color: var(--color-text-muted);
+  border-radius: 3px;
+  transition: color 0.15s;
+}
+
+.status-fav-btn:hover {
+  color: var(--color-text-primary);
+}
+
+.status-fav-btn.status-fav-active {
+  color: var(--color-accent-default);
 }
 
 /* ── Empty / not-configured hints ── */

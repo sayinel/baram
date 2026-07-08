@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 
 import type { ZettelHubListItem } from "./use-zettel-hub-data";
 
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Star } from "lucide-react";
 
 import { openZettelHubNote } from "./open-hub-note";
 
@@ -19,11 +19,13 @@ interface ZettelHubSectionHeaderProps {
 interface ZettelSectionListProps {
   collapsed: boolean;
   emptyHint: string;
+  favoriteIds?: string[];
   icon: ReactNode;
   items: ZettelHubListItem[];
   label: string;
   loading: boolean;
   onToggleCollapse: () => void;
+  onToggleFavorite?: (id: string) => void;
 }
 
 /** Collapsible section header: chevron + icon + label (count, if any, is baked into `label`). */
@@ -52,15 +54,17 @@ export function ZettelHubSectionHeader({
   );
 }
 
-/** Generic collapsible {path,title} list — used for MOCs and Recent. */
+/** Generic collapsible {path,title} list — used for MOCs, Favorites, and Recent. */
 export function ZettelSectionList({
   collapsed,
   emptyHint,
+  favoriteIds,
   icon,
   items,
   label,
   loading,
   onToggleCollapse,
+  onToggleFavorite,
 }: ZettelSectionListProps) {
   return (
     <div className="zettel-hub-section">
@@ -76,16 +80,58 @@ export function ZettelSectionList({
             ? !loading && (
                 <div className="zettel-hub-empty-hint">{emptyHint}</div>
               )
-            : items.map((item) => (
-                <button
-                  className="zettel-hub-list-row btn-unstyled text-truncate"
-                  key={item.path}
-                  onClick={() => void openZettelHubNote(item.path)}
-                  title={item.title}
-                >
-                  <span className="text-truncate">{item.title}</span>
-                </button>
-              ))}
+            : items.map((item) => {
+                const canFavorite =
+                  Boolean(item.id) && Boolean(onToggleFavorite);
+                if (!canFavorite) {
+                  return (
+                    <button
+                      className="zettel-hub-list-row btn-unstyled text-truncate"
+                      key={item.path}
+                      onClick={() => void openZettelHubNote(item.path)}
+                      title={item.title}
+                    >
+                      <span className="text-truncate">{item.title}</span>
+                    </button>
+                  );
+                }
+                const id = item.id!;
+                const active = favoriteIds?.includes(id) ?? false;
+                return (
+                  <div
+                    className="zettel-hub-list-row flex-header"
+                    key={item.path}
+                    onClick={() => void openZettelHubNote(item.path)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        void openZettelHubNote(item.path);
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    title={item.title}
+                  >
+                    <span className="text-truncate">{item.title}</span>
+                    <button
+                      aria-label={active ? "Unfavorite" : "Favorite"}
+                      className={`zettel-hub-fav-btn btn-unstyled icon-btn${
+                        active ? "zettel-hub-fav-active" : ""
+                      }`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleFavorite!(id);
+                      }}
+                    >
+                      <Star
+                        fill={active ? "currentColor" : "none"}
+                        size={13}
+                        strokeWidth={1.5}
+                      />
+                    </button>
+                  </div>
+                );
+              })}
         </div>
       )}
     </div>

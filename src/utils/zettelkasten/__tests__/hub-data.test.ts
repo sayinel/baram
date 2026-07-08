@@ -88,9 +88,17 @@ describe("recentFromEntries", () => {
     ];
     expect(recentFromEntries(entries, 10)).toEqual([
       {
+        id: "202607051530",
         path: "/vault/notes/202607051530 원자적 노트.md",
         title: "원자적 노트",
       },
     ]);
+  });
+
+  it("sets id to undefined when the filename has no leading Zettelkasten id", () => {
+    const entries = [
+      entry({ name: "no-id.md", path: "/vault/notes/no-id.md", modifiedAt: 1 }),
+    ];
+    expect(recentFromEntries(entries, 10)[0].id).toBeUndefined();
   });
 });
