@@ -70,11 +70,17 @@
   padding-bottom: 4px;
 }
 
+/* Per-row note marker — distinguishes file names from the section header. */
+.zettel-hub-row-icon {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}
+
 /* ── Inbox rows ── */
 
 .zettel-hub-inbox-row {
   gap: 6px;
-  padding: 6px 8px 6px 24px;
+  padding: 6px 8px 6px 32px;
   cursor: pointer;
   transition: background 0.15s;
 }
@@ -140,9 +146,10 @@
 
 .zettel-hub-list-row {
   display: flex;
+  gap: 6px;
   align-items: center;
   width: 100%;
-  padding: 6px 8px 6px 24px;
+  padding: 6px 8px 6px 32px;
   font-size: 12px;
   color: var(--color-text-primary);
   text-align: left;
@@ -206,7 +213,7 @@
 /* ── Empty / not-configured hints ── */
 
 .zettel-hub-empty-hint {
-  padding: 6px 8px 10px 24px;
+  padding: 6px 8px 10px 32px;
   font-size: 12px;
   color: var(--color-text-muted);
 }

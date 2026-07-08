@@ -3,7 +3,7 @@ import type { ZettelHubInboxItem } from "./use-zettel-hub-data";
 // §101 Zettel hub — Inbox queue: fleeting notes awaiting triage.
 // Row click opens the note; hover-revealed (but always-mounted, keyboard
 // reachable) actions promote or delete it.
-import { ArrowUp, Inbox, X } from "lucide-react";
+import { ArrowUp, Inbox, StickyNote, X } from "lucide-react";
 
 import { deleteFile } from "../../ipc/invoke";
 import { promoteFleeting } from "../../services/zettelkasten-service";
@@ -80,6 +80,11 @@ export function ZettelInboxList({
                   key={item.path}
                   onClick={() => void openZettelHubNote(item.path)}
                 >
+                  <StickyNote
+                    className="zettel-hub-row-icon"
+                    size={13}
+                    strokeWidth={1.5}
+                  />
                   <span className="zettel-hub-inbox-main text-truncate">
                     <span className="zettel-hub-inbox-title text-truncate">
                       {item.title}
