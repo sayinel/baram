@@ -398,6 +398,7 @@ export interface VaultConfig {
     folder?: string;
     template?: string;
   };
+  zettelkasten?: { favorites?: string[] };
 }
 
 export type VaultType = "general" | "journal" | "zettelkasten";

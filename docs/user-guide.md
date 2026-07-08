@@ -785,7 +785,7 @@ Create your own slash commands in **Settings > AI > Custom Commands**:
 - Use variable substitution: `{selection}`, `{document}`, `{clipboard}`
 - Custom commands appear in the slash menu alongside built-in AI commands
 
-### Skills Editing
+### Skills
 
 Baram includes tools for editing AI prompt files (Skills):
 
@@ -975,7 +975,7 @@ There are three ways to create or open a daily note:
 
 **Calendar sidebar:**
 
-1. Switch to the Journal workspace preset (`Cmd+Alt+2` / `Ctrl+Alt+2`) or select the Calendar panel in the sidebar
+1. Switch to the Journal workspace preset (`Cmd+Alt+3` / `Ctrl+Alt+3`) or select the Calendar panel in the sidebar
 2. Click any date in the mini calendar — if a journal entry doesn't exist, it is created from your template
 3. Dates with existing entries are marked with a dot
 
@@ -1041,9 +1041,20 @@ The **Zettel** space is a dedicated home for atomic, densely-linked notes. Unlik
 
 1. Open **Settings** (`Cmd+,`) → **General** → **Zettel**
 2. Enable the **Zettel** toggle and **Browse** for a directory (absolute path)
-3. Open the space from the space menu (status bar), the Command Palette ("Open Zettel"), or `Cmd+Alt+3`. Baram creates the `inbox/` and `notes/` folders automatically.
+3. Open the space from the space menu (status bar), the Command Palette ("Open Zettel"), or `Cmd+Alt+2`. Baram creates the `inbox/` and `notes/` folders automatically.
 
 > If you select the Zettel space before enabling it or setting a directory, Baram shows a hint instead of switching into an empty space.
+
+### The hub panel
+
+In the Zettel space the sidebar is a dedicated **hub** instead of the plain file tree:
+
+- **Actions** — New Zettel, Quick Capture, and New MOC, one click away (same as `Cmd+Shift+V` / `Cmd+Shift+N` / `Cmd+Shift+C`).
+- **Inbox queue** — every fleeting note in `inbox/`, newest first, showing its first line as the title plus up to two tags. Click a row to open it; hover to reveal **↑ Promote** (opens the promote dialog pre-filled with the note's first line) and **✕ Delete** (asks for confirmation first).
+- **MOCs** — your `#moc`-tagged index notes.
+- **Recent** — the notes you touched most recently in `notes/`.
+
+The three lists are collapsible, and the hub refreshes itself automatically whenever you capture, promote, create, or delete a note — including captures made from outside the panel. If the space isn't set up yet, the hub shows a short "set up Zettel" hint with a link into Settings.
 
 ### Capturing (fleeting notes)
 
@@ -1075,10 +1086,10 @@ Workspace Presets let you save and quickly restore your preferred layout — sid
 
 | Preset         | Shortcut (macOS) | Shortcut (Win/Linux) | Layout                                                        |
 | -------------- | ---------------- | -------------------- | ------------------------------------------------------------ |
-| Writing        | `Cmd+Alt+1`      | `Ctrl+Alt+1`         | Editor focus — right panel closed                            |
-| Journal        | `Cmd+Alt+2`      | `Ctrl+Alt+2`         | Calendar sidebar + today's journal + Memories view           |
-| Zettel         | `Cmd+Alt+3`      | `Ctrl+Alt+3`         | File tree (`inbox/` + `notes/`) — atomic Zettelkasten notes  |
-| Skills Editing | `Cmd+Alt+4`      | `Ctrl+Alt+4`         | File tree + Properties panel — LLM Skills editing            |
+| Writing | `Cmd+Alt+1`      | `Ctrl+Alt+1`         | Editor focus — right panel closed                            |
+| Zettel  | `Cmd+Alt+2`      | `Ctrl+Alt+2`         | Zettel hub (actions + inbox + MOCs + recent) — atomic Zettelkasten notes |
+| Journal | `Cmd+Alt+3`      | `Ctrl+Alt+3`         | Calendar sidebar + today's journal + Memories view           |
+| Skills  | `Cmd+Alt+4`      | `Ctrl+Alt+4`         | File tree + Properties panel — LLM Skills editing            |
 
 > All four workspace presets are customizable in **Settings > Keybindings** and available from the Workspace menu. Switching to a space never force-closes an open folder tree.
 
@@ -1094,7 +1105,7 @@ Custom presets can be renamed, deleted, and applied from the same Settings tab.
 
 ### Applying Presets
 
-- **Keyboard shortcuts** — `Cmd+Alt+1` (Writing), `Cmd+Alt+2` (Journal), `Cmd+Alt+3` (Skills Editing)
+- **Keyboard shortcuts** — `Cmd+Alt+1` (Writing), `Cmd+Alt+2` (Zettel), `Cmd+Alt+3` (Journal), `Cmd+Alt+4` (Skills)
 - **Command Palette** — Search for "Workspace" commands
 - **Workspace menu** — Use the Workspace menu in the menu bar
 

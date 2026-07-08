@@ -65,9 +65,9 @@ describe("zettelkasten space definition", () => {
     expect(zettelkastenSpace.type).toBe("zettelkasten");
     expect(zettelkastenSpace.maxInstances).toBe(1);
     expect(zettelkastenSpace.configFolders).toEqual(["inbox", "notes"]);
-    // Opening the space shows the file tree (inbox/ + notes/); an empty
-    // backlinks panel on open was confusing. Backlinks stays on the activity bar.
-    expect(zettelkastenSpace.layout.sidebarPanel).toBe("files");
+    // §100 Opening the space shows the Zettel hub panel (Actions + inbox +
+    // MOCs + Recent); the raw file tree is one click away via the Files item.
+    expect(zettelkastenSpace.layout.sidebarPanel).toBe("zettel");
     expect(zettelkastenSpace.layout.rightPanelMode).toBe("none");
   });
 });

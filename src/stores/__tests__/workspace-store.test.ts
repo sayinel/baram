@@ -27,8 +27,8 @@ describe("§52 Workspace Store", () => {
     expect(BUILTIN_PRESETS).toHaveLength(4);
     expect(BUILTIN_PRESETS.map((p) => p.id)).toEqual([
       "writing",
-      "journal",
       "zettelkasten",
+      "journal",
       "skills",
     ]);
   });
