@@ -77,7 +77,10 @@ export function TableSelectionHandles({ editor }: { editor: Editor }) {
         return;
       }
       const tablePos = findTablePos(editor, tableEl);
-      if (tablePos === null) return;
+      if (tablePos === null) {
+        if (!hoveringRef.current) setHandle(null);
+        return;
+      }
       const rect = tableEl.getBoundingClientRect();
 
       const inTop =
