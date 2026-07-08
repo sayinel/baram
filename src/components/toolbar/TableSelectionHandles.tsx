@@ -1,0 +1,277 @@
+// §5.5 — Notion-style row/column grip handles. Hovering the table's top edge
+// shows a grip centered over the hovered column; the left edge shows a grip
+// centered on the hovered row. Clicking selects the whole column/row (CellSelection)
+// and opens a popup of the cell context-menu actions. Drag-to-reorder is added by
+// use-table-drag (Task 6). Uses the position:fixed + getEditorZoom() divide pattern.
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import type { Editor } from "@tiptap/react";
+
+import { getEditorZoom } from "../../utils/zoom-coords";
+import { buildTableMenu } from "./context-menu-table";
+import { MenuList } from "./MenuList";
+import { findTableNearPoint } from "./table-insert-coords";
+import {
+  columnAnchorPos,
+  computeHandleStyle,
+  type HandleAnchor,
+  rowAnchorPos,
+  selectColumn,
+  selectRow,
+} from "./table-selection";
+
+// Detection bands around the table's top/left edges (content-space px × zoom).
+const BAND_OUTER = 28;
+const BAND_INNER = 18;
+// Suppress the grip within this distance of a gridline so TableInsertButtons' ⊕ wins.
+const BOUNDARY_DEADZONE = 8;
+
+interface HandleState extends HandleAnchor {
+  /** cell-before pos of the anchor cell (row 0 for col, col 0 for row). */
+  cellPos: number;
+  /** logical column/row index the grip labels. */
+  index: number;
+  /** PM position of the table node. */
+  tablePos: number;
+}
+
+export function TableSelectionHandles({ editor }: { editor: Editor }) {
+  const [handle, setHandle] = useState<HandleState | null>(null);
+  const [menu, setMenu] = useState<null | {
+    items: ReturnType<typeof buildTableMenu>;
+    x: number;
+    y: number;
+  }>(null);
+  const rafRef = useRef(0);
+  const latestEventRef = useRef<MouseEvent | null>(null);
+  const hoveringRef = useRef(false);
+
+  const computeHandle = useCallback(
+    (e: MouseEvent) => {
+      const zoom = getEditorZoom();
+      const mouse = { x: e.clientX, y: e.clientY };
+      const tableEl = findTableNearPoint(mouse.x, mouse.y, {
+        left: BAND_OUTER * zoom,
+        right: 0,
+        top: BAND_OUTER * zoom,
+        bottom: 0,
+      });
+      if (!tableEl) {
+        if (!hoveringRef.current) setHandle(null);
+        return;
+      }
+      const tablePos = findTablePos(editor, tableEl);
+      if (tablePos === null) return;
+      const rect = tableEl.getBoundingClientRect();
+
+      const inTop =
+        mouse.y >= rect.top - BAND_OUTER * zoom &&
+        mouse.y <= rect.top + BAND_INNER * zoom;
+      const inLeft =
+        mouse.x >= rect.left - BAND_OUTER * zoom &&
+        mouse.x <= rect.left + BAND_INNER * zoom;
+
+      if (inTop && mouse.x >= rect.left) {
+        // Column grip: which column does x fall into?
+        const firstRow = tableEl.querySelector("tr");
+        if (!firstRow) return;
+        const cells = Array.from(firstRow.children) as HTMLElement[];
+        for (let i = 0; i < cells.length; i++) {
+          const c = cells[i].getBoundingClientRect();
+          if (mouse.x >= c.left && mouse.x <= c.right) {
+            // Deadzone near either vertical gridline → let ⊕ handle inserts.
+            if (
+              mouse.x - c.left < BOUNDARY_DEADZONE * zoom ||
+              c.right - mouse.x < BOUNDARY_DEADZONE * zoom
+            ) {
+              if (!hoveringRef.current) setHandle(null);
+              return;
+            }
+            const cellPos = columnAnchorPos(editor, tablePos, i);
+            if (cellPos === null) return;
+            setHandle({
+              axis: "col",
+              x: (c.left + c.right) / 2,
+              y: rect.top,
+              cellPos,
+              index: i,
+              tablePos,
+            });
+            return;
+          }
+        }
+      } else if (inLeft && mouse.y >= rect.top) {
+        // Row grip: which row does y fall into?
+        const rows = Array.from(
+          tableEl.querySelectorAll(
+            ":scope > thead > tr, :scope > tbody > tr, :scope > tr",
+          ),
+        ) as HTMLElement[];
+        for (let i = 0; i < rows.length; i++) {
+          const r = rows[i].getBoundingClientRect();
+          if (mouse.y >= r.top && mouse.y <= r.bottom) {
+            if (
+              mouse.y - r.top < BOUNDARY_DEADZONE * zoom ||
+              r.bottom - mouse.y < BOUNDARY_DEADZONE * zoom
+            ) {
+              if (!hoveringRef.current) setHandle(null);
+              return;
+            }
+            const cellPos = rowAnchorPos(editor, tablePos, i);
+            if (cellPos === null) return;
+            setHandle({
+              axis: "row",
+              x: rect.left,
+              y: (r.top + r.bottom) / 2,
+              cellPos,
+              index: i,
+              tablePos,
+            });
+            return;
+          }
+        }
+      } else if (!hoveringRef.current) {
+        setHandle(null);
+      }
+    },
+    [editor],
+  );
+
+  useEffect(() => {
+    const scroll =
+      editor.view.dom.closest(".editor-area-scroll") ??
+      document.querySelector(".editor-area-scroll");
+    if (!scroll) return;
+
+    const onMove = (e: MouseEvent) => {
+      latestEventRef.current = e;
+      if (rafRef.current) return;
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = 0;
+        const ev = latestEventRef.current;
+        if (ev) computeHandle(ev);
+      });
+    };
+    const onLeave = () => {
+      if (!hoveringRef.current) setHandle(null);
+    };
+    const onScroll = () => {
+      setHandle(null);
+      setMenu(null);
+    };
+    scroll.addEventListener("mousemove", onMove as EventListener);
+    scroll.addEventListener("mouseleave", onLeave);
+    scroll.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      scroll.removeEventListener("mousemove", onMove as EventListener);
+      scroll.removeEventListener("mouseleave", onLeave);
+      scroll.removeEventListener("scroll", onScroll);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [editor, computeHandle]);
+
+  // Clear on doc change / zoom / resize (stale positions).
+  useEffect(() => {
+    const clear = () => {
+      setHandle(null);
+      setMenu(null);
+    };
+    editor.on("update", clear);
+    window.addEventListener("resize", clear);
+    return () => {
+      editor.off("update", clear);
+      window.removeEventListener("resize", clear);
+    };
+  }, [editor]);
+
+  const openMenu = useCallback(
+    (h: HandleState, clientX: number, clientY: number) => {
+      if (h.axis === "col") selectColumn(editor, h.cellPos);
+      else selectRow(editor, h.cellPos);
+      const resolved = editor.state.doc.resolve(h.cellPos + 1);
+      const baseItems = [
+        {
+          label: "Cut",
+          action: () => {
+            document.execCommand("cut");
+          },
+        },
+        {
+          label: "Copy",
+          action: () => {
+            document.execCommand("copy");
+          },
+        },
+        {
+          label: "Paste",
+          action: () => {
+            document.execCommand("paste");
+          },
+        },
+      ];
+      const items = buildTableMenu(editor, resolved, baseItems);
+      if (items) setMenu({ items, x: clientX, y: clientY });
+    },
+    [editor],
+  );
+
+  return (
+    <>
+      {handle && (
+        <button
+          className={`table-select-handle table-select-handle-${handle.axis}`}
+          onClick={(e) => openMenu(handle, e.clientX, e.clientY)}
+          onMouseEnter={() => {
+            hoveringRef.current = true;
+          }}
+          onMouseLeave={() => {
+            hoveringRef.current = false;
+          }}
+          style={computeHandleStyle(handle, getEditorZoom())}
+          title={handle.axis === "col" ? "Select column" : "Select row"}
+          type="button"
+        >
+          <svg fill="currentColor" height="10" viewBox="0 0 10 10" width="10">
+            <circle cx="2.5" cy="2.5" r="1" />
+            <circle cx="5" cy="2.5" r="1" />
+            <circle cx="7.5" cy="2.5" r="1" />
+            <circle cx="2.5" cy="7.5" r="1" />
+            <circle cx="5" cy="7.5" r="1" />
+            <circle cx="7.5" cy="7.5" r="1" />
+          </svg>
+        </button>
+      )}
+      {menu && menu.items && (
+        <MenuList
+          items={menu.items}
+          onClose={() => setMenu(null)}
+          x={menu.x}
+          y={menu.y}
+        />
+      )}
+    </>
+  );
+}
+
+/** Resolve the PM position of a table DOM element. */
+function findTablePos(
+  editor: Editor,
+  tableEl: HTMLTableElement,
+): null | number {
+  let found: null | number = null;
+  editor.state.doc.descendants((node, pos) => {
+    if (found !== null) return false;
+    if (node.type.name === "table") {
+      const dom = editor.view.nodeDOM(pos);
+      if (
+        dom === tableEl ||
+        (dom instanceof HTMLElement && dom.contains(tableEl))
+      ) {
+        found = pos;
+        return false;
+      }
+    }
+    return true;
+  });
+  return found;
+}

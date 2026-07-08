@@ -27,6 +27,7 @@ import { BlockHandle } from "./components/toolbar/BlockHandle";
 import { ContextMenu } from "./components/toolbar/ContextMenu";
 import { FloatingToolbar } from "./components/toolbar/FloatingToolbar";
 import { TableInsertButtons } from "./components/toolbar/TableInsertButtons";
+import { TableSelectionHandles } from "./components/toolbar/TableSelectionHandles";
 import { TableToolbar } from "./components/toolbar/TableToolbar";
 import { EditorProvider } from "./contexts/editor-context";
 import { createBaramExtensions } from "./extensions";
@@ -731,6 +732,7 @@ function App() {
                     <TableToolbar editor={activeEditor} />
                     <BlockHandle editor={activeEditor} />
                     <TableInsertButtons editor={activeEditor} />
+                    <TableSelectionHandles editor={activeEditor} />
                     <ContextMenu editor={activeEditor} />
                     {inlineAI.isActive && inlineAI.phase !== "idle" && (
                       <InlineAIPrompt
