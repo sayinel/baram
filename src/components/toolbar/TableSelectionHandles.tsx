@@ -54,6 +54,9 @@ export function TableSelectionHandles({ editor }: { editor: Editor }) {
   // synthetic mousedown runs first, React attaches below document). Lets onClick
   // toggle the popup instead of always reopening it.
   const menuWasOpenRef = useRef(false);
+  // Identity of the grip that owns the currently-open popup, so a re-click on the
+  // SAME grip toggles it off while a click on a DIFFERENT grip opens the new one.
+  const menuOwnerRef = useRef<null | string>(null);
 
   const scheduleHide = useCallback(() => {
     if (hideTimerRef.current) return;
@@ -242,7 +245,10 @@ export function TableSelectionHandles({ editor }: { editor: Editor }) {
         },
       ];
       const items = buildTableMenu(editor, resolved, baseItems);
-      if (items) setMenu({ items, x: clientX, y: clientY });
+      if (items) {
+        menuOwnerRef.current = handleKey(h);
+        setMenu({ items, x: clientX, y: clientY });
+      }
     },
     [editor],
   );
@@ -295,7 +301,8 @@ export function TableSelectionHandles({ editor }: { editor: Editor }) {
             // Capture pre-click popup state before MenuList's outside-click closes
             // it (see menuWasOpenRef). Must run before the merged-cell early return
             // so the toggle also works for merged (click-only) axes.
-            menuWasOpenRef.current = menu !== null;
+            menuWasOpenRef.current =
+              menu !== null && menuOwnerRef.current === handleKey(handle);
             if (axisHasSpan(editor, handle.tablePos, handle.axis)) return; // merged cells → click-only
             const info = collectEdges(handle);
             if (!info) return;
@@ -377,4 +384,9 @@ function findTablePos(
     return true;
   });
   return found;
+}
+
+/** Stable identity for a grip (axis + logical index + table position). */
+function handleKey(h: HandleState): string {
+  return `${h.axis}:${h.index}:${h.tablePos}`;
 }
