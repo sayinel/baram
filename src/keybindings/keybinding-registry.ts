@@ -237,14 +237,14 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
     id: "workspace.journal",
     label: "keybindings.workspace.journal",
     category: "workspace",
-    defaultKey: "Mod+Alt+2",
+    defaultKey: "Mod+Alt+3",
     customizable: true,
   },
   {
     id: "workspace.zettelkasten",
     label: "keybindings.workspace.zettelkasten",
     category: "workspace",
-    defaultKey: "Mod+Alt+3",
+    defaultKey: "Mod+Alt+2",
     customizable: true,
   },
   {

@@ -134,9 +134,9 @@ Complete list of keyboard shortcuts available in Baram.
 | Action                    | macOS          | Windows / Linux |
 | ------------------------- | -------------- | --------------- |
 | Workspace: Writing        | `Cmd+Option+1` | `Ctrl+Alt+1`    |
-| Workspace: Journal        | `Cmd+Option+2` | `Ctrl+Alt+2`    |
-| Workspace: Zettel         | `Cmd+Option+3` | `Ctrl+Alt+3`    |
-| Workspace: Skills Editing | `Cmd+Option+4` | `Ctrl+Alt+4`    |
+| Workspace: Zettel         | `Cmd+Option+2` | `Ctrl+Alt+2`    |
+| Workspace: Journal        | `Cmd+Option+3` | `Ctrl+Alt+3`    |
+| Workspace: Skills         | `Cmd+Option+4` | `Ctrl+Alt+4`    |
 
 > All four workspace presets are customizable in **Settings > Keybindings**. Switching to a space never force-closes an open folder tree.
 
