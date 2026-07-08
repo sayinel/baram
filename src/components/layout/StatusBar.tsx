@@ -209,9 +209,14 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
         {activeNoteId && (
           <button
             aria-label={isFavoriteNote ? "Unfavorite" : "Favorite"}
-            className={`status-fav-btn btn-unstyled icon-btn${
-              isFavoriteNote ? "status-fav-active" : ""
-            }`}
+            className={[
+              "status-fav-btn",
+              "btn-unstyled",
+              "icon-btn",
+              isFavoriteNote && "status-fav-active",
+            ]
+              .filter(Boolean)
+              .join(" ")}
             onClick={() => {
               if (zettelDir && activeNoteId)
                 void toggleFavorite(zettelDir, activeNoteId).catch(() => {});

@@ -115,9 +115,14 @@ export function ZettelSectionList({
                     <span className="text-truncate">{item.title}</span>
                     <button
                       aria-label={active ? "Unfavorite" : "Favorite"}
-                      className={`zettel-hub-fav-btn btn-unstyled icon-btn${
-                        active ? "zettel-hub-fav-active" : ""
-                      }`}
+                      className={[
+                        "zettel-hub-fav-btn",
+                        "btn-unstyled",
+                        "icon-btn",
+                        active && "zettel-hub-fav-active",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
                       onClick={(e) => {
                         e.stopPropagation();
                         onToggleFavorite!(id);
