@@ -196,6 +196,9 @@ export function TableSelectionHandles({ editor }: { editor: Editor }) {
   // Clear on doc change / zoom / resize (stale positions).
   useEffect(() => {
     const clear = () => {
+      // Also reset the hover ref — onMouseLeave won't fire if the grip is
+      // removed/moved by the update (e.g. drag-reorder), so we must reset manually.
+      hoveringRef.current = false;
       cancelHide();
       setHandle(null);
       setMenu(null);
