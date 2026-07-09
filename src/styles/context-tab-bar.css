@@ -175,6 +175,51 @@
   background: var(--color-border-default, #e5e7eb);
 }
 
+/* §82 Recent-items menu: constrain width so long paths ellipsize */
+.context-add-menu {
+  max-width: 320px;
+}
+
+.context-add-menu__label {
+  padding: 6px 10px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted, #6b7280);
+}
+
+.context-add-menu__item--recent {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.context-add-menu__icon {
+  flex-shrink: 0;
+  color: var(--color-text-muted, #6b7280);
+}
+
+.context-add-menu__text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-add-menu__badge {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-accent-default, #3b82f6);
+  border: 1px solid var(--color-accent-default, #3b82f6);
+  border-radius: 4px;
+}
+
+.context-add-menu__item--muted {
+  font-size: 12px;
+  color: var(--color-text-muted, #6b7280);
+}
+
 /* Context menu inline rename input */
 .context-ctx-menu__input {
   width: calc(100% - 8px);

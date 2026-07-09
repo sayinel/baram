@@ -3,19 +3,22 @@ import type { StateCreator } from "zustand";
 
 export interface GeneralSettingsSlice {
   addRecentFile: (path: string) => void;
-  addRecentFolder: (path: string) => void;
+  addRecentFolder: (path: string, isVault?: boolean) => void;
   autoSave: boolean;
   autoSaveDelay: number;
   autoUpdateLinks: boolean;
+  clearRecent: () => void;
   customExports: CustomExportItem[];
   keybindingOverrides: Record<string, string>;
   lastOpenedFile: null | string;
   lastOpenedFolder: null | string;
   onLaunch: OnLaunch;
   pandocPath: string;
-  recentFiles: { lastOpened: number; path: string }[];
-  recentFolders: { lastOpened: number; path: string }[];
+  recentFiles: RecentFileEntry[];
+  recentFolders: RecentFolderEntry[];
   removeKeybindingOverride: (id: string) => void;
+  removeRecentFile: (path: string) => void;
+  removeRecentFolder: (path: string) => void;
   resetAllKeybindings: () => void;
   setAutoSave: (enabled: boolean) => void;
   setAutoSaveDelay: (delay: number) => void;
@@ -37,6 +40,18 @@ export interface GeneralSettingsSlice {
   wikilinkFormat: WikilinkFormat;
   wordTemplatePath: string;
 }
+
+export interface RecentFileEntry {
+  lastOpened: number;
+  path: string;
+}
+
+export interface RecentFolderEntry {
+  isVault?: boolean;
+  lastOpened: number;
+  path: string;
+}
+
 type OnLaunch = "newFile" | "restoreLastFile" | "restoreLastFolder";
 
 type WikilinkFormat = "markdown" | "wikilink";
@@ -79,14 +94,17 @@ export const createGeneralSettingsSlice: StateCreator<
   setAutoSaveDelay: (autoSaveDelay) => set({ autoSaveDelay }),
   setShowWelcome: (showWelcome) => set({ showWelcome }),
 
-  addRecentFolder: (path) =>
+  addRecentFolder: (path, isVault) =>
     set((state) => {
+      const prev = state.recentFolders.find((f) => f.path === path);
       const filtered = state.recentFolders.filter((f) => f.path !== path);
+      // On re-add without an explicit flag, preserve the previously known value.
+      const resolvedIsVault = isVault ?? prev?.isVault;
       return {
-        recentFolders: [{ path, lastOpened: Date.now() }, ...filtered].slice(
-          0,
-          5,
-        ),
+        recentFolders: [
+          { path, lastOpened: Date.now(), isVault: resolvedIsVault },
+          ...filtered,
+        ].slice(0, 5),
         lastOpenedFolder: path,
       };
     }),
@@ -102,6 +120,18 @@ export const createGeneralSettingsSlice: StateCreator<
         lastOpenedFile: path,
       };
     }),
+
+  removeRecentFolder: (path) =>
+    set((state) => ({
+      recentFolders: state.recentFolders.filter((f) => f.path !== path),
+    })),
+
+  removeRecentFile: (path) =>
+    set((state) => ({
+      recentFiles: state.recentFiles.filter((f) => f.path !== path),
+    })),
+
+  clearRecent: () => set({ recentFolders: [], recentFiles: [] }),
 
   setLastOpenedFolder: (path) => set({ lastOpenedFolder: path }),
   setLastOpenedFile: (path) => set({ lastOpenedFile: path }),
