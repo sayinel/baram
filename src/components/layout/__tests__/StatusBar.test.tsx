@@ -17,8 +17,10 @@ vi.mock(
   },
 );
 
+import { t } from "../../../i18n";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
+import { useWorkspaceStore } from "../../../stores/file/workspace";
 import { useSettingsStore } from "../../../stores/settings/store";
 import {
   loadFavorites,
@@ -110,5 +112,48 @@ describe("StatusBar — Zettel favorite star", () => {
     render(<StatusBar editor={null} mode="wysiwyg" />);
 
     expect(mockedLoadFavorites).toHaveBeenCalledWith(ZETTEL_DIR);
+  });
+});
+
+describe("StatusBar — Perspective launcher", () => {
+  beforeEach(() => {
+    useWorkspaceStore.setState({ activePresetId: null });
+    useEditorStore.setState({ activeTabId: null, tabs: [] });
+    useFileStore.getState().setRootPath("/vault");
+  });
+
+  function expectedLabel() {
+    const locale = useSettingsStore.getState().locale;
+    return t("statusbar.perspective", locale);
+  }
+
+  it("shows a fixed perspective label, not 'Default', when no preset is active", () => {
+    render(<StatusBar editor={null} mode="wysiwyg" />);
+    const launcher = screen.getByTestId("perspective-launcher");
+    expect(launcher.textContent).toContain(expectedLabel());
+    expect(launcher.textContent).not.toContain("Default");
+  });
+
+  it("keeps the fixed label even when a preset is active (no stale badge)", () => {
+    useWorkspaceStore.setState({ activePresetId: "journal" });
+    render(<StatusBar editor={null} mode="wysiwyg" />);
+    const launcher = screen.getByTestId("perspective-launcher");
+    expect(launcher.textContent).toContain(expectedLabel());
+    expect(launcher.textContent).not.toContain("Journal");
+  });
+
+  it("opens a menu of all presets and applies one on click", () => {
+    render(<StatusBar editor={null} mode="wysiwyg" />);
+    fireEvent.click(screen.getByTestId("perspective-launcher"));
+    const writingItem = screen.getByText("Writing");
+    const journalItem = screen.getByText("Journal");
+    expect(writingItem).toBeTruthy();
+    expect(journalItem).toBeTruthy();
+    // No stateful active highlight on menu items.
+    expect(writingItem.closest("button")?.className).not.toContain(
+      "status-space-menu-active",
+    );
+    fireEvent.click(writingItem);
+    expect(useWorkspaceStore.getState().activePresetId).toBe("writing");
   });
 });
