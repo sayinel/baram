@@ -133,8 +133,8 @@
   "settings.appearance.customBadge": "커스텀",
   "settings.appearance.deleteTheme": "테마 삭제",
 
-  "settings.workspace.presetName": "프리셋 이름...",
-  "settings.workspace.deletePreset": "프리셋 삭제",
+  "settings.workspace.presetName": "화면구성 이름...",
+  "settings.workspace.deletePreset": "화면구성 삭제",
   "settings.workspace.builtIn": "기본 제공",
   "settings.workspace.editor": "에디터",
   "settings.workspace.preset.writing": "글쓰기",

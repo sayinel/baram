@@ -399,7 +399,3 @@
   color: var(--color-text-primary);
   background-color: var(--color-bg-subtle);
 }
-
-.status-space-menu-active {
-  color: var(--color-accent-default);
-}
