@@ -62,6 +62,16 @@ pub fn validate_path(path: &str) -> Result<(), FsError> {
             "Only absolute paths are allowed",
         )));
     }
+    // Defense-in-depth: reject any parent-dir (`..`) segment before path
+    // resolution. The vault boundary (check_vault) already canonicalizes and
+    // range-checks, but rejecting traversal here stops it one layer earlier and
+    // also guards the vault-unconstrained callers (export commands).
+    if path.split(['/', '\\']).any(|seg| seg == "..") {
+        return Err(FsError::ReadError(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Path traversal is not allowed",
+        )));
+    }
     Ok(())
 }
 
@@ -372,4 +382,35 @@ pub fn start_watching(
     });
 
     Ok(watcher)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_path_rejects_null_byte() {
+        assert!(validate_path("/tmp/a\0b.md").is_err());
+    }
+
+    #[test]
+    fn validate_path_rejects_relative() {
+        assert!(validate_path("notes/file.md").is_err());
+        assert!(validate_path("./file.md").is_err());
+    }
+
+    // §backlog #7 — defense-in-depth: reject `..` traversal segments.
+    #[test]
+    fn validate_path_rejects_traversal() {
+        assert!(validate_path("/vault/../etc/passwd").is_err());
+        assert!(validate_path("/vault/notes/../../etc").is_err());
+        assert!(validate_path("/vault/..").is_err());
+    }
+
+    #[test]
+    fn validate_path_accepts_clean_absolute() {
+        assert!(validate_path("/vault/notes/file.md").is_ok());
+        // A filename that merely contains dots (not a `..` segment) is fine.
+        assert!(validate_path("/vault/a..b.md").is_ok());
+    }
 }
