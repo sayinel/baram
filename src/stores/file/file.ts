@@ -105,8 +105,8 @@ export async function addFolder(path: string): Promise<void> {
 
   await _loadContextFileTree(path);
 
-  // Update settings
-  useSettingsStore.getState().addRecentFolder(path);
+  // Update settings (§81 tag the recent entry with vault-ness detected above)
+  useSettingsStore.getState().addRecentFolder(path, isVault);
 }
 
 /**
@@ -163,11 +163,11 @@ export async function openFolder(path: string): Promise<void> {
 
   // Check if already open as a context
   const existing = contextStore.contexts.find((c) => c.path === path);
+  let isVault = false;
   if (!existing) {
     // Detect vault via .baram/config.json (bypasses check_vault).
     // Must run BEFORE setVaultRoot to avoid Rust legacy "folder" dedup.
     const { getVaultConfigByPath } = await import("../../ipc/context");
-    let isVault = false;
     try {
       const cfg = await getVaultConfigByPath(path);
       isVault = cfg.vault !== undefined && cfg.vault !== null;
@@ -193,7 +193,7 @@ export async function openFolder(path: string): Promise<void> {
   await _loadContextFileTree(path);
 
   // Update settings
-  useSettingsStore.getState().addRecentFolder(path);
+  useSettingsStore.getState().addRecentFolder(path, isVault);
 }
 
 /**
