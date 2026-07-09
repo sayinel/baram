@@ -135,8 +135,8 @@
   "settings.appearance.customBadge": "Custom",
   "settings.appearance.deleteTheme": "Delete theme",
 
-  "settings.workspace.presetName": "Preset name...",
-  "settings.workspace.deletePreset": "Delete preset",
+  "settings.workspace.presetName": "Perspective name...",
+  "settings.workspace.deletePreset": "Delete perspective",
   "settings.workspace.builtIn": "Built-in",
   "settings.workspace.editor": "Editor",
   "settings.workspace.preset.writing": "Writing",
