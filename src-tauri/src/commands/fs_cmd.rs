@@ -38,14 +38,29 @@ async fn check_vault(
 
     // Fallback: VaultRootState (backward compat for cold start before any context registered)
     let root_guard = state.0.read().await;
-    if let Some(root) = root_guard.as_ref() {
-        let canonical_root = std::fs::canonicalize(root).unwrap_or_else(|_| root.clone());
-        let canonical_path = crate::context::manager::resolve_canonical(path)?;
-        if !canonical_path.starts_with(&canonical_root) {
-            return Err("Access denied: path is outside vault root".to_string());
+    vault_fallback_decision(root_guard.as_ref().map(|p| p.as_path()), path)
+}
+
+/// Decide FS access when no ContextManager context is registered, based on the
+/// optional legacy vault root. Extracted from `check_vault` for unit testing.
+///
+/// Deny-by-default: if neither a context nor a vault root is set — the cold-start
+/// window before any folder/file is opened — the path is rejected. Legitimate open
+/// flows (`openFolder`, `ensureFileContext`) register a context or vault root BEFORE
+/// issuing any file IPC, so this only blocks stray access (e.g. a compromised webview
+/// probing arbitrary absolute paths on launch), not normal usage.
+fn vault_fallback_decision(root: Option<&std::path::Path>, path: &str) -> Result<(), String> {
+    match root {
+        Some(root) => {
+            let canonical_root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+            let canonical_path = crate::context::manager::resolve_canonical(path)?;
+            if !canonical_path.starts_with(&canonical_root) {
+                return Err("Access denied: path is outside vault root".to_string());
+            }
+            Ok(())
         }
+        None => Err("Access denied: no vault, folder, or file context is open".to_string()),
     }
-    Ok(())
 }
 
 /// Register (or update) the open vault root.
@@ -55,8 +70,18 @@ pub async fn set_vault_root(
     path: String,
     state: tauri::State<'_, crate::VaultRootState>,
     ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
+    app: tauri::AppHandle,
 ) -> Result<(), String> {
     check(&path)?;
+
+    // §backlog #3 — grant asset:// read access to this vault directory at runtime
+    // (the static scope is limited to $APPDATA). Non-fatal on failure.
+    {
+        use tauri::Manager;
+        if let Err(e) = app.asset_protocol_scope().allow_directory(&path, true) {
+            log::warn!("§backlog#3 asset scope registration failed for {path}: {e}");
+        }
+    }
 
     // Keep old VaultRootState in sync (backward compat)
     let mut root = state.0.write().await;
@@ -301,4 +326,33 @@ pub async fn export_binary_file(path: String, data: Vec<u8>) -> Result<(), Strin
         let _ = std::fs::remove_file(&tmp_path);
         e.to_string()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // §backlog #2 — cold-start vault bypass. With no registered context, access
+    // must fall back to the legacy vault root, and deny when none is set.
+    #[test]
+    fn fallback_denies_when_no_context_and_no_root() {
+        assert!(vault_fallback_decision(None, "/etc/passwd").is_err());
+        assert!(vault_fallback_decision(None, "/tmp/anything.md").is_err());
+    }
+
+    #[test]
+    fn fallback_allows_inside_root_and_denies_outside() {
+        let base = std::env::temp_dir().join(format!("baram-cv-{}", std::process::id()));
+        std::fs::create_dir_all(&base).unwrap();
+        let inside = base.join("note.md");
+        std::fs::write(&inside, "x").unwrap();
+
+        assert!(vault_fallback_decision(Some(&base), inside.to_str().unwrap()).is_ok());
+
+        // Sibling of the root (not under it) is rejected.
+        let outside = std::env::temp_dir().join("baram-cv-outside.md");
+        assert!(vault_fallback_decision(Some(&base), outside.to_str().unwrap()).is_err());
+
+        std::fs::remove_dir_all(&base).ok();
+    }
 }

@@ -3,14 +3,35 @@
 // §87 Cross-vault link resolution
 
 use crate::context::vault_config::{self, ResolvedSettings, VaultConfig, VaultSection};
-use crate::context::{ContextInfo, ContextManager};
+use crate::context::{ContextInfo, ContextManager, ContextType};
+
+/// §backlog #3 — grant the `asset://` protocol read access to an opened context's
+/// location at runtime, so images render without a broad static Documents/Downloads
+/// scope. Failure is non-fatal (only asset:// images under this path won't load).
+pub fn register_asset_scope(app: &tauri::AppHandle, ctx: &ContextInfo) {
+    use tauri::Manager;
+    let scope = app.asset_protocol_scope();
+    let result = match ctx.context_type {
+        ContextType::File => scope.allow_file(&ctx.path),
+        ContextType::Vault | ContextType::Folder => scope.allow_directory(&ctx.path, true),
+    };
+    if let Err(e) = result {
+        log::warn!(
+            "§backlog#3 asset scope registration failed for {}: {e}",
+            ctx.path
+        );
+    }
+}
 
 #[tauri::command]
 pub async fn add_context(
     info: ContextInfo,
     state: tauri::State<'_, ContextManager>,
+    app: tauri::AppHandle,
 ) -> Result<ContextInfo, String> {
-    state.add(info).await
+    let added = state.add(info).await?;
+    register_asset_scope(&app, &added);
+    Ok(added)
 }
 
 #[tauri::command]
