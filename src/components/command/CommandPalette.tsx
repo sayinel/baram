@@ -594,22 +594,22 @@ function buildCommands(
     // §52 Workspace Presets
     {
       id: "workspace:writing",
-      label: "Workspace: 글쓰기",
-      category: "Workspace",
+      label: "화면구성: 글쓰기",
+      category: "화면구성",
       shortcut: "⌥⌘1",
       action: () => useWorkspaceStore.getState().applyPreset("writing"),
     },
     {
       id: "workspace:journal",
-      label: "Workspace: 저널",
-      category: "Workspace",
+      label: "화면구성: 저널",
+      category: "화면구성",
       shortcut: "⌥⌘2",
       action: () => useWorkspaceStore.getState().applyPreset("journal"),
     },
     {
       id: "space.zettelkasten",
       label: "Open Zettel",
-      category: "Workspace",
+      category: "화면구성",
       action: () => useWorkspaceStore.getState().applyPreset("zettelkasten"),
     },
     {
