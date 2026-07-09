@@ -8,8 +8,8 @@
 
 ## 보안 (Security)
 
-> 2026-07-09 트리아지: 아래 항목을 현재 코드 기준으로 재검증하고 5건을 수정했다(#8·#2·#7·#5·#1).
-> 심각도는 실제(로컬 IPC/ XSS 선행조건 등)를 반영해 재평가했다. 남은 보류: #3·#6(UX 트레이드오프).
+> 2026-07-09 트리아지: 아래 8개 항목을 현재 코드 기준으로 재검증하고 모두 해소했다.
+> 7건 수정(#8·#2·#7·#5·#1·#3·#6) + 1건 이미 수정됨(#4 Mermaid). 심각도는 실제(로컬 IPC/ XSS 선행조건 등)를 반영해 재평가.
 
 ### ✅ FIXED (`d09e5a1`, MEDIUM 실제) — API 키 IPC 전달 방식
 
@@ -24,12 +24,12 @@
 - **원인**: §88 이후 confinement는 `ContextManager.validate_path_any` + `VaultRootState` fallback 2단이나, **둘 다 미등록(콜드스타트)이면 `Ok(())`**로 빠져 임의 절대경로 허용
 - **수정**: fallback 로직을 `vault_fallback_decision()`으로 추출, 컨텍스트/루트 둘 다 없으면 **deny-by-default**. 정상 오픈 흐름(`openFolder`→`setVaultRoot`, `ensureFileContext`→`add_context`)은 FS IPC 전에 등록하므로 무영향. 단위 테스트 추가
 
-### ⏸️ DEFERRED (MEDIUM) — assetProtocol scope 과다
+### ✅ FIXED (`5e042c1`, MEDIUM) — assetProtocol scope 과다
 
-- **위치**: `src-tauri/tauri.conf.json` (assetProtocol.scope = `["$APPDATA/**", "$DOCUMENT/**", "$DOWNLOAD/**"]`) — **현재 유효**
-- **문제**: XSS 시 Documents/Downloads 전체를 `asset://`로 읽기 가능
-- **보류 사유**: 단순 축소 시 vault 밖/저널 이미지가 안 뜸 → vault 열 때 `AssetScope::allow_directory()` **동적 등록** 필요(UX 트레이드오프). 별도 논의
-- **권장 수정**: 정적 scope는 `$APPDATA`로 축소 + `set_vault_root` 시 동적 scope 추가
+- **위치**: `src-tauri/tauri.conf.json`, `context_cmd.rs` (`add_context`), `fs_cmd.rs` (`set_vault_root`)
+- **원인**: 정적 scope `["$APPDATA/**", "$DOCUMENT/**", "$DOWNLOAD/**"]` → XSS 시 Documents/Downloads 전체를 `asset://`로 읽기 가능
+- **수정**: 정적 scope를 `$APPDATA/**`(플러그인)만으로 축소하고, **열린 컨텍스트 위치를 런타임 등록**(`add_context`/`set_vault_root` 초크포인트 → vault/folder는 `allow_directory`, 단일 파일은 `allow_file`). 보안 강화 + vault가 어디 있든 이미지 렌더 되도록 잠재 제약도 해소
+- **비고**: 독립 외부 파일 컨텍스트는 파일 자체만 허용 → 그 옆 이미지는 asset:// 불가(폴더로 열면 렌더). 런타임 등록이라 단위 테스트 불가 → GUI 확인 필요
 
 ### ✅ ALREADY FIXED (조치 불요) — Mermaid SVG DOMPurify
 
@@ -41,12 +41,12 @@
 - **위치**: `src/components/journal/utils.ts`
 - **수정**: double-quote 전용 정규식 → `DOMParser` + `setAttribute` 기반 재작성. 단일따옴표/속성순서 우회 불가. 단위 테스트 추가
 
-### ⏸️ DEFERRED (LOW) — CSP connect-src localhost:\* 과다 허용
+### ✅ FIXED (`5e042c1`, LOW) — CSP connect-src localhost:\* 과다 허용
 
-- **위치**: `src-tauri/tauri.conf.json` (CSP connect-src `http://localhost:*`) — **현재 유효**
-- **문제**: XSS 시 로컬 임의 서비스 접근 가능
-- **보류 사유**: `:11434`로 제한하면 **커스텀 포트 Ollama** 사용자가 깨짐(UX 트레이드오프). 별도 논의
-- **권장 수정**: 기본 포트 제한 또는 런타임 CSP 수정
+- **위치**: `src-tauri/tauri.conf.json` (CSP connect-src)
+- **원인**: `http://localhost:*` / `https://localhost:*` 와일드카드 → XSS 시 로컬 임의 포트/서비스 접근 가능
+- **수정**: Ollama 기본값 `http://localhost:11434` + `http://127.0.0.1:11434`로 제한
+- **비고**: 커스텀 포트 Ollama 사용자는 CSP 위반됨(문서화 대상). 원격/LAN Ollama는 기존에도 미허용이었음
 
 ### ✅ FIXED (`970e3bb`, LOW, 방어심화) — validate_path traversal 미차단
 
@@ -285,3 +285,5 @@
 | 2026-07-09 | validate_path `..` traversal 거부 (LOW, 방어심화)                                    | `970e3bb` |
 | 2026-07-09 | resolveImageSrcs 정규식 → DOMParser 파싱 (LOW)                                       | `a3b6ce7` |
 | 2026-07-09 | LLM API 키 IPC 제거 — 백엔드 keyring 조회 (MEDIUM)                                     | `d09e5a1` |
+| 2026-07-09 | assetProtocol scope 축소 + 런타임 동적 등록 (MEDIUM)                                   | `5e042c1` |
+| 2026-07-09 | CSP connect-src localhost 와일드카드 → 기본 포트 제한 (LOW)                            | `5e042c1` |
