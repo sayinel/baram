@@ -23,10 +23,12 @@ declare module "@tiptap/core" {
   }
 }
 
-// Single ~ only (exclude ~~ which is strikethrough)
-// Use negative lookbehind (?<!~) instead of [^~] to avoid consuming the preceding character
-const inputRegex = /(?<!~)(~([^~\s][^~]*)~)$/;
-const pasteRegex = /(?<!~)(~([^~\s][^~]*)~)/g;
+// Single ~ only (exclude ~~ which is strikethrough).
+// Use negative lookbehind (?<!~) instead of [^~] to avoid consuming the preceding character.
+// The content must neither start nor end with whitespace so that prose merely
+// containing two tildes (e.g. "~2배 향상 또는 ~4배") is not treated as subscript.
+const inputRegex = /(?<!~)(~([^~\s](?:[^~]*[^~\s])?)~)$/;
+const pasteRegex = /(?<!~)(~([^~\s](?:[^~]*[^~\s])?)~)/g;
 
 export const Subscript = Mark.create<SubscriptOptions>({
   name: "subscript",

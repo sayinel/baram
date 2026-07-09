@@ -23,8 +23,10 @@ declare module "@tiptap/core" {
   }
 }
 
-const inputRegex = /(\^([^^]+)\^)$/;
-const pasteRegex = /(\^([^^]+)\^)/g;
+// The content must neither start nor end with whitespace so that prose merely
+// containing two carets (e.g. "^ up or ^ down") is not treated as superscript.
+const inputRegex = /(\^([^^\s](?:[^^]*[^^\s])?)\^)$/;
+const pasteRegex = /(\^([^^\s](?:[^^]*[^^\s])?)\^)/g;
 
 export const Superscript = Mark.create<SuperscriptOptions>({
   name: "superscript",
