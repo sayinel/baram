@@ -1,5 +1,5 @@
 // §perf-large-file C4 — true windowing (display:none + pseudo-element spacers).
-// Design: docs/plans/2026-06-20-large-file-windowing-design.md.
+// Design: dev/plans/2026-06-20-large-file-windowing-design.md.
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorState } from "@tiptap/pm/state";
 import type { EditorView, NodeView } from "@tiptap/pm/view";
