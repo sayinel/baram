@@ -214,7 +214,6 @@ export function useGhostText(editor: Editor | null) {
             : ghostConfig.systemPrompt;
 
           await llmComplete(
-            taskCfg.apiKey,
             ghostConfig.contextText,
             taskCfg.model,
             requestId,
@@ -274,7 +273,6 @@ export function useGhostText(editor: Editor | null) {
           },
         });
         llmComplete(
-          taskCfg.apiKey,
           textBefore,
           taskCfg.model,
           requestId,

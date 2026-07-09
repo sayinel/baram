@@ -7,7 +7,6 @@ use tauri::Emitter;
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn llm_complete(
-    api_key: String,
     prompt: String,
     model: String,
     system_prompt: Option<String>,
@@ -22,6 +21,10 @@ pub async fn llm_complete(
     let tokens = max_tokens.unwrap_or(4096);
     let prov = provider.as_deref().unwrap_or("claude");
     let privacy = privacy_mode.unwrap_or(false);
+
+    // §backlog #1 — read the API key from the OS keyring in the backend instead
+    // of accepting it over IPC (it no longer travels alongside prompt content).
+    let api_key = crate::commands::keyring_cmd::get_provider_api_key(prov)?;
 
     let cancel_rx = cancel_registry.register(&request_id).await;
 
