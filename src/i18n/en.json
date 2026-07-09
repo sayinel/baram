@@ -455,6 +455,13 @@
   "home.shortcut.newFile": "New file",
   "home.shortcut.commandPalette": "Command palette",
   "home.emptyWorkspace": "Select a file from the sidebar or press ⌘N to create a new file",
+
+  "recent.folders": "Recent Folders",
+  "recent.files": "Recent Files",
+  "recent.clear": "Clear Recent",
+  "recent.vaultBadge": "Vault",
+  "recent.notFound": "Path not found — removed from recents: {name}",
+
   "command.closeFolder": "Close Folder",
 
   "help.tab.guide": "User Guide",

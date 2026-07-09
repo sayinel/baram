@@ -455,6 +455,13 @@
   "home.shortcut.newFile": "새 파일",
   "home.shortcut.commandPalette": "커맨드 팔레트",
   "home.emptyWorkspace": "사이드바에서 파일을 선택하거나 ⌘N으로 새 파일을 생성하세요",
+
+  "recent.folders": "최근 폴더",
+  "recent.files": "최근 파일",
+  "recent.clear": "최근 항목 지우기",
+  "recent.vaultBadge": "볼트",
+  "recent.notFound": "경로를 찾을 수 없어 목록에서 제거했습니다: {name}",
+
   "command.closeFolder": "폴더 닫기",
 
   "help.tab.guide": "사용 설명서",
