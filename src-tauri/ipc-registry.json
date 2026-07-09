@@ -191,7 +191,7 @@
     },
     {
       "name": "llm_complete",
-      "input": { "apiKey": "string", "prompt": "string", "model": "string", "requestId": "string", "systemPrompt": "string?", "maxTokens": "number?", "provider": "string?", "baseUrl": "string?", "privacyMode": "boolean?" },
+      "input": { "prompt": "string", "model": "string", "requestId": "string", "systemPrompt": "string?", "maxTokens": "number?", "provider": "string?", "baseUrl": "string?", "privacyMode": "boolean?" },
       "output": "stream",
       "module": "llm",
       "spec": "§6.3",

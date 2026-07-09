@@ -30,9 +30,35 @@ pub fn keyring_delete(key: String) -> Result<(), String> {
     }
 }
 
+/// Read a provider's API key from the OS keyring for backend LLM calls, so the
+/// key never has to cross the IPC boundary. Ollama is keyless (returns empty).
+///
+/// The key name MUST match the frontend's `keyringKeyFor` (`src/stores/ai/ai.ts`):
+/// `baram-{provider}-api-key`, stored under the same `SERVICE`.
+pub fn get_provider_api_key(provider: &str) -> Result<String, String> {
+    if provider == "ollama" {
+        return Ok(String::new());
+    }
+    let key_name = format!("baram-{provider}-api-key");
+    let entry = Entry::new(SERVICE, &key_name).map_err(|e| e.to_string())?;
+    match entry.get_password() {
+        Ok(pw) => Ok(pw),
+        Err(keyring::Error::NoEntry) => Err(format!(
+            "No API key configured for '{provider}'. Add it in Settings → AI."
+        )),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // §backlog #1 — Ollama is keyless; this branch needs no OS keyring.
+    #[test]
+    fn get_provider_api_key_ollama_is_empty() {
+        assert_eq!(get_provider_api_key("ollama").unwrap(), "");
+    }
 
     #[test]
     #[ignore] // CI에서 OS keyring 접근 불가
