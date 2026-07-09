@@ -44,7 +44,7 @@
 
 ### 4. Phase/Milestone 진행 검증
 
-`docs/progress.json`과 실제 상태를 비교:
+`dev/progress.json`과 실제 상태를 비교:
 - 구현 완료로 표시된 기능의 테스트가 모두 통과하는지
 - 성능 기준이 달성되었는지 (측정 가능한 경우)
 
@@ -76,4 +76,4 @@ IPC Registry:
 Overall: 3 issues found
 ```
 
-발견된 이슈를 `docs/progress.json`에 반영한다.
+발견된 이슈를 `dev/progress.json`에 반영한다.

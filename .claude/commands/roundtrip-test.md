@@ -190,4 +190,4 @@ Target:  99.0% (Phase 1)
 Status:  ✅ PASS
 ```
 
-`docs/progress.json`의 roundtrip 필드를 업데이트한다.
+`dev/progress.json`의 roundtrip 필드를 업데이트한다.

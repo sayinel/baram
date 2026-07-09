@@ -78,7 +78,7 @@ Edit memory (10K):  250MB   target < 300MB   ✅ PASS
 Overall: 10/10 PASS ✅
 ```
 
-결과를 `docs/progress.json`의 performance 필드에 업데이트한다.
+결과를 `dev/progress.json`의 performance 필드에 업데이트한다.
 
 ## 기준 미달 시
 
