@@ -6,6 +6,7 @@ import type { Editor } from "@tiptap/react";
 import {
   Calendar,
   ChevronDown,
+  PanelsTopLeft,
   Pencil,
   Star,
   StickyNote,
@@ -14,6 +15,7 @@ import {
 import { useShallow } from "zustand/shallow";
 
 import { useResolvedSettings } from "../../hooks/use-resolved-settings";
+import { useTranslation } from "../../i18n/useTranslation";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import {
@@ -89,12 +91,8 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
   const zoomLevel = useSettingsStore((s) => s.zoomLevel);
   const zoomPercent = Math.round(zoomLevel * 100);
 
-  const { activePresetId, applyPreset } = useWorkspaceStore(
-    useShallow((s) => ({
-      activePresetId: s.activePresetId,
-      applyPreset: s.applyPreset,
-    })),
-  );
+  const applyPreset = useWorkspaceStore((s) => s.applyPreset);
+  const { t } = useTranslation();
 
   // §102 Favorite-toggle star for the active permanent Zettel note.
   const { zettelkastenDirectory, zettelkastenEnabled } = useSettingsStore(
@@ -152,21 +150,18 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [spaceMenuOpen]);
 
-  const currentPreset = BUILTIN_PRESETS.find((p) => p.id === activePresetId);
-  const SpaceIcon = (activePresetId && SPACE_ICONS[activePresetId]) || Pencil;
-  const spaceLabel = currentPreset?.name ?? "Default";
-
   return (
     <div className="status-bar">
       <div className="status-bar-left">
         <div className="status-space-wrapper" ref={spaceMenuRef}>
           <button
             className="status-space-btn"
+            data-testid="perspective-launcher"
             onClick={() => setSpaceMenuOpen((v) => !v)}
-            title="Switch Space"
+            title={t("statusbar.perspective")}
           >
-            <SpaceIcon size={12} strokeWidth={1.5} />
-            {spaceLabel}
+            <PanelsTopLeft size={12} strokeWidth={1.5} />
+            {t("statusbar.perspective")}
             <ChevronDown size={10} strokeWidth={1.5} />
           </button>
           {spaceMenuOpen && (
@@ -175,7 +170,7 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
                 const Icon = SPACE_ICONS[preset.id] || Pencil;
                 return (
                   <button
-                    className={`status-space-menu-item ${activePresetId === preset.id ? "status-space-menu-active" : ""}`}
+                    className="status-space-menu-item"
                     key={preset.id}
                     onClick={() => handleSpaceSelect(preset.id)}
                   >
