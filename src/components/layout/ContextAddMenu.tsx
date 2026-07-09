@@ -123,7 +123,7 @@ export function ContextAddMenu({ onClose, anchorRef }: Props) {
         <>
           <div className="context-add-menu__label">{t("recent.folders")}</div>
           {recentFolders.slice(0, 5).map((f) => {
-            const vault = f.isVault ?? isVaultPath(f.path);
+            const vault = f.isVault === true || isVaultPath(f.path);
             return (
               <button
                 className="context-add-menu__item context-add-menu__item--recent"
