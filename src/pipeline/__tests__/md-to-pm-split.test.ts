@@ -367,10 +367,73 @@ describe("splitTextWithCustomInlineMarks", () => {
     expect(nodes[1].marks[0].type.name).toBe("superscript");
   });
 
+  it("should NOT treat two carets around whitespace-flanked prose as superscript", () => {
+    // The closing ^ is preceded by a space, so this is prose, not superscript.
+    const nodes = splitTextWithCustomInlineMarks(
+      "^2배 향상 또는 ^4배 향상",
+      schema,
+      [],
+    );
+    expect(nodes).toEqual([]);
+  });
+
+  it("should require carets to hug content chars (leading/trailing space)", () => {
+    expect(splitTextWithCustomInlineMarks("a ^sup ^ b", schema, [])).toEqual(
+      [],
+    );
+    expect(splitTextWithCustomInlineMarks("a ^ sup^ b", schema, [])).toEqual(
+      [],
+    );
+  });
+
+  it("should still parse superscript whose content contains inner spaces", () => {
+    const nodes = splitTextWithCustomInlineMarks("x ^a b^ y", schema, []);
+    expect(nodes).toHaveLength(3);
+    expect(nodes[1].marks[0]?.type.name).toBe("superscript");
+    expect(nodes[1].textContent).toBe("a b");
+  });
+
   it("should parse subscript ~text~", () => {
     const nodes = splitTextWithCustomInlineMarks("H~2~O", schema, []);
     expect(nodes).toHaveLength(3);
     expect(nodes[1].marks[0].type.name).toBe("subscript");
+  });
+
+  it("should NOT treat two tildes around whitespace-flanked prose as subscript", () => {
+    // The closing ~ is preceded by a space, so this is prose, not subscript.
+    const nodes = splitTextWithCustomInlineMarks(
+      "~2배 향상 또는 ~4배 향상",
+      schema,
+      [],
+    );
+    expect(nodes).toEqual([]);
+  });
+
+  it("should require closing ~ to hug the last content char", () => {
+    // "~sub ~" — trailing space before the closing ~ ⇒ not subscript.
+    const nodes = splitTextWithCustomInlineMarks("a ~sub ~ b", schema, []);
+    expect(nodes).toEqual([]);
+  });
+
+  it("should require opening ~ to hug the first content char", () => {
+    // "~ sub~" — leading space after the opening ~ ⇒ not subscript.
+    const nodes = splitTextWithCustomInlineMarks("a ~ sub~ b", schema, []);
+    expect(nodes).toEqual([]);
+  });
+
+  it("should still parse subscript whose content contains inner spaces", () => {
+    const nodes = splitTextWithCustomInlineMarks("x ~a b~ y", schema, []);
+    expect(nodes).toHaveLength(3);
+    expect(nodes[1].marks[0]?.type.name).toBe("subscript");
+    expect(nodes[1].textContent).toBe("a b");
+  });
+
+  it("should NOT subscript prose with two '~approx' figures (real-world)", () => {
+    // Both ~ hug a digit on their right but the closing ~ is preceded by a
+    // space, so the long span between them must stay plain prose.
+    const input =
+      "AI가 ~90,000까지 올라가 ... predictor+latent 상주 ( ~1.05 GB cliff)다.";
+    expect(splitTextWithCustomInlineMarks(input, schema, [])).toEqual([]);
   });
 
   it("should return empty for no custom marks", () => {
