@@ -962,7 +962,6 @@ function SmartTemplateDialogWrapper({
         });
         try {
           await llmComplete(
-            inlineCfg.apiKey,
             prompt,
             inlineCfg.model,
             requestId,

@@ -7,8 +7,9 @@ export async function llmCancel(requestId: string): Promise<boolean> {
   return invoke<boolean>("llm_cancel", { requestId });
 }
 
+// §backlog #1 — no apiKey param: the Rust backend reads the provider's key from
+// the OS keyring, so the key never crosses the IPC boundary with prompt content.
 export async function llmComplete(
-  apiKey: string,
   prompt: string,
   model: string,
   requestId: string,
@@ -19,7 +20,6 @@ export async function llmComplete(
   privacyMode?: boolean,
 ): Promise<void> {
   return invoke<void>("llm_complete", {
-    apiKey,
     prompt,
     model,
     requestId,

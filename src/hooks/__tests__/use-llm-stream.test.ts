@@ -48,8 +48,8 @@ describe("useLLMStream — task-aware config", () => {
       });
     });
 
+    // §backlog #1 — apiKey is no longer passed over IPC (backend reads keyring)
     expect(llmComplete).toHaveBeenCalledWith(
-      "sk-openai", // apiKey for openai
       "test prompt",
       "gpt-4o-mini", // model for ghost-text
       expect.any(String), // requestId
@@ -71,7 +71,6 @@ describe("useLLMStream — task-aware config", () => {
 
     // No task → defaults to "chat" task, but providerForChat is "" so falls back to global
     expect(llmComplete).toHaveBeenCalledWith(
-      "sk-global", // apiKey for claude (global)
       "test prompt",
       "claude-sonnet-4-5", // global model
       expect.any(String),
