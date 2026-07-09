@@ -153,7 +153,6 @@ export async function executeBlockAIWithDiff(
 
   // Fire LLM request
   llmComplete(
-    inlineCfg.apiKey,
     prompt,
     inlineCfg.model,
     requestId,

@@ -84,7 +84,6 @@ export async function executeAICommand(
   // Fire LLM request; cleanup listeners always to prevent leaks
   try {
     await llmComplete(
-      inlineCfg.apiKey,
       prompt,
       inlineCfg.model,
       requestId,

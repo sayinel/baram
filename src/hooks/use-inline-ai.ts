@@ -189,7 +189,6 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
 
         const inlineCfg = getConfigForTask("inline-edit");
         await llmComplete(
-          inlineCfg.apiKey,
           prompt,
           inlineCfg.model,
           requestId,
