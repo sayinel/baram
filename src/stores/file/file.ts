@@ -105,8 +105,8 @@ export async function addFolder(path: string): Promise<void> {
 
   await _loadContextFileTree(path);
 
-  // Update settings
-  useSettingsStore.getState().addRecentFolder(path);
+  // Update settings (§81 tag the recent entry with vault-ness detected above)
+  useSettingsStore.getState().addRecentFolder(path, isVault);
 }
 
 /**
@@ -163,11 +163,16 @@ export async function openFolder(path: string): Promise<void> {
 
   // Check if already open as a context
   const existing = contextStore.contexts.find((c) => c.path === path);
+  // §82 Fix: for an already-open context (e.g. startup restore of the active
+  // vault via use-app-startup.ts), derive isVault from the known context type
+  // instead of defaulting to false — otherwise addRecentFolder(path, false)
+  // below would clobber a previously-stored isVault: true (nullish
+  // coalescing does not treat `false` as absent).
+  let isVault = existing?.contextType === "vault";
   if (!existing) {
     // Detect vault via .baram/config.json (bypasses check_vault).
     // Must run BEFORE setVaultRoot to avoid Rust legacy "folder" dedup.
     const { getVaultConfigByPath } = await import("../../ipc/context");
-    let isVault = false;
     try {
       const cfg = await getVaultConfigByPath(path);
       isVault = cfg.vault !== undefined && cfg.vault !== null;
@@ -193,7 +198,7 @@ export async function openFolder(path: string): Promise<void> {
   await _loadContextFileTree(path);
 
   // Update settings
-  useSettingsStore.getState().addRecentFolder(path);
+  useSettingsStore.getState().addRecentFolder(path, isVault);
 }
 
 /**
