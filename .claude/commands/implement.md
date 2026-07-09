@@ -20,9 +20,9 @@
 
 해당 설계 문서 섹션을 읽고 분석한다.
 
-1. `docs/design/` 에서 해당 `§` 번호가 포함된 파일을 찾아 읽는다
+1. `dev/design/` 에서 해당 `§` 번호가 포함된 파일을 찾아 읽는다
 2. 관련된 다른 섹션도 파악한다 (특히 Part 3 아키텍처, Part 7 데이터 모델)
-3. 다음을 분석하여 `docs/impl-notes/` 에 저장한다:
+3. 다음을 분석하여 `dev/impl-notes/` 에 저장한다:
 
 ```markdown
 # §{번호} {기능명} — 구현 노트
@@ -97,4 +97,4 @@ git commit -m "feat(§{번호}): implement {기능명}"
 - 테스트 통과율
 - 라운드트립 결과 (해당 시)
 - 남은 TODO 항목
-- `docs/progress.json` 업데이트
+- `dev/progress.json` 업데이트
