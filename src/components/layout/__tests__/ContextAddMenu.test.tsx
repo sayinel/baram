@@ -75,4 +75,26 @@ describe("ContextAddMenu — recents", () => {
     expect(screen.queryByText("Recent Folders")).toBeNull();
     expect(screen.queryByText("Clear Recent")).toBeNull();
   });
+
+  it("shows the vault badge via the isVaultPath fallback for a legacy entry (isVault undefined) whose path matches an open vault context", () => {
+    useSettingsStore.setState({
+      recentFolders: [{ path: "/c/LegacyVault", lastOpened: 1 }], // no isVault field at all
+    } as never);
+    useContextStore.setState({
+      contexts: [
+        {
+          id: "ctx1",
+          contextType: "vault",
+          path: "/c/LegacyVault",
+          label: "LegacyVault",
+          color: "#000",
+          addedAt: 0,
+        },
+      ],
+    } as never);
+
+    render(<ContextAddMenu anchorRef={anchor()} onClose={() => {}} />);
+    expect(screen.getByText("LegacyVault")).toBeInTheDocument();
+    expect(screen.getByText("Vault")).toBeInTheDocument();
+  });
 });

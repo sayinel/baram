@@ -6,6 +6,7 @@ import { useContextStore } from "../stores/context/context";
 import { useEditorStore } from "../stores/editor/editor";
 import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
+import { basename } from "./path-utils";
 
 export async function openFileByPath(filePath: string): Promise<void> {
   const { tabs } = useEditorStore.getState();
@@ -19,7 +20,7 @@ export async function openFileByPath(filePath: string): Promise<void> {
   // external) BEFORE readFile so the Rust check_vault guard passes.
   const context = await useContextStore.getState().ensureFileContext(filePath);
   const content = await readFile(filePath);
-  const fileName = filePath.split("/").pop() ?? "Unknown";
+  const fileName = basename(filePath);
 
   useFileStore.getState().setFileContent(filePath, content);
   useEditorStore.getState().openTab({
