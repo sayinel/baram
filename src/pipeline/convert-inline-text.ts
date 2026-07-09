@@ -207,8 +207,24 @@ const CUSTOM_MARK_PATTERNS: {
   re: RegExp;
 }[] = [
   { markName: "highlight", re: /==((?:[^=]|=[^=])+)==/g, fastCheck: "==" },
-  { markName: "superscript", re: /\^([^^]+)\^/g, fastCheck: "^" },
-  { markName: "subscript", re: /(?<![~])~([^~]+)~(?!~)/g, fastCheck: "~" },
+  // Superscript ^text^: like subscript, require the opening ^ to hug the first
+  // content char and the closing ^ to hug the last one, so prose containing two
+  // stray carets is not treated as superscript. Content must not start/end with
+  // whitespace.
+  {
+    markName: "superscript",
+    re: /\^([^^\s](?:[^^]*[^^\s])?)\^/g,
+    fastCheck: "^",
+  },
+  // Subscript ~text~ (single tilde). To distinguish from prose that merely
+  // contains two tildes (e.g. "~2배 향상 또는 ~4배"), require the opening ~ to
+  // hug the first content char and the closing ~ to hug the last one — i.e.
+  // the content must neither start nor end with whitespace.
+  {
+    markName: "subscript",
+    re: /(?<![~])~([^~\s](?:[^~]*[^~\s])?)~(?!~)/g,
+    fastCheck: "~",
+  },
 ];
 
 /**
