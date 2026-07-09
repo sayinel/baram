@@ -8,16 +8,15 @@
 
 ## 보안 (Security)
 
-> 2026-07-09 트리아지: 아래 항목을 현재 코드 기준으로 재검증하고 안전한 4건을 수정했다.
-> 심각도는 실제(로컬 IPC/ XSS 선행조건 등)를 반영해 재평가했다.
+> 2026-07-09 트리아지: 아래 항목을 현재 코드 기준으로 재검증하고 5건을 수정했다(#8·#2·#7·#5·#1).
+> 심각도는 실제(로컬 IPC/ XSS 선행조건 등)를 반영해 재평가했다. 남은 보류: #3·#6(UX 트레이드오프).
 
-### ⏸️ DEFERRED (MEDIUM, 실제) — API 키 IPC 전달 방식
+### ✅ FIXED (`d09e5a1`, MEDIUM 실제) — API 키 IPC 전달 방식
 
-- **위치**: `src-tauri/src/commands/llm_cmd.rs:10,72` (`llm_complete`/`llm_list_models`), 프론트 `src/ipc/llm.ts`
-- **문제**: `api_key`를 IPC JSON 파라미터로 전달 → Tauri IPC 버스(로컬 프로세스)에 평문 존재. **원격 악용 불가**(로컬 IPC), 방어심화 이슈
-- **현황**: 키는 이미 OS keyring에 저장/복원됨(`ai.ts` setApiKey→keyringStore, 복원 시 keyringGet). 단 LLM 호출 시엔 in-memory `apiKeys`에서 읽어 IPC로 전달
-- **보류 사유**: `llmComplete` 호출처 **7곳** + `llmListModels`(설정 모델로딩, 저장-전 입력값 사용) + `keyringKeyFor` 규칙 TS↔Rust 복제 필요 → 단독 집중 작업으로 분리
-- **권장 수정**: Rust가 `provider`로 keyring에서 직접 조회, `api_key` 파라미터 제거, 7개 호출처 인자 제거, 설정 모델로딩 저장-먼저 처리
+- **위치**: `src-tauri/src/commands/llm_cmd.rs` (`llm_complete`), `src/ipc/llm.ts` + 호출처 7곳
+- **원인**: `llm_complete`가 `api_key`를 IPC 파라미터로 수신 → AI 동작마다 키가 prompt/문서 내용과 함께 IPC 버스를 통과 (로컬 프로세스, 원격 악용 불가하나 방어심화 위반)
+- **수정**: 키는 이미 OS keyring에 저장되므로 백엔드가 `keyring_cmd::get_provider_api_key(provider)`로 직접 조회(`baram-{provider}-api-key`, ollama는 keyless). `api_key`를 `llm_complete`·`ipc/llm.ts`·`LLMCompleteInput`·`ipc-registry.json`에서 제거하고 7개 호출처 인자 제거. 테스트 갱신
+- **비고**: `llm_list_models`는 optional key 유지 — 설정에서 **저장 전 키 검증**이 정당한 용도이며 문서 내용을 싣지 않음
 
 ### ✅ FIXED (`cac04cc`, MEDIUM 실제) — Vault Root Bypass on Cold Start
 
@@ -285,3 +284,4 @@
 | 2026-07-09 | 콜드스타트 vault 우회 — check_vault deny-by-default (MEDIUM)                          | `cac04cc` |
 | 2026-07-09 | validate_path `..` traversal 거부 (LOW, 방어심화)                                    | `970e3bb` |
 | 2026-07-09 | resolveImageSrcs 정규식 → DOMParser 파싱 (LOW)                                       | `a3b6ce7` |
+| 2026-07-09 | LLM API 키 IPC 제거 — 백엔드 keyring 조회 (MEDIUM)                                     | `d09e5a1` |
