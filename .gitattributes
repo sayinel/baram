@@ -1,0 +1,4 @@
+# Exclude internal development docs from `git archive` exports (tarball/zip release assets).
+# NOTE: this does NOT hide dev/ from a public GitHub repo. To publish, build a clean
+# mirror that drops dev/ (e.g. `git filter-repo --path dev/ --invert-paths`).
+dev/ export-ignore

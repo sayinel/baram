@@ -124,10 +124,21 @@ baram/
 ├── scripts/
 │   ├── audit-css-vars.ts    # CSS 변수 감사 스크립트
 │   └── export-tokens-studio.ts  # Figma export 스크립트
-├── docs/
-│   ├── design/              # 설계 문서 (Part 1~9)
+├── docs/                    # 사용자/배포용 문서 (public)
+│   ├── user-guide.md        # 사용자 가이드 (앱 Help 패널에 ?raw 번들)
+│   ├── keyboard-shortcuts.md # 단축키 레퍼런스 (앱 Help 패널에 ?raw 번들)
+│   ├── faq.md               # FAQ (앱 Help 패널에 ?raw 번들)
+│   └── plugin-development.md # 플러그인 개발 가이드
+├── dev/                     # 내부 개발 문서 (public 배포 시 제외)
+│   ├── design/              # 설계 문서 (Part 1~14)
+│   ├── plans/               # 구현 계획
 │   ├── impl-notes/          # 구현 노트 (/implement 시 생성)
-│   └── progress.json        # 진행 상황 추적
+│   ├── superpowers/         # Brainstorm 스펙/플랜 (specs/, plans/)
+│   ├── features/            # 기능 카탈로그
+│   ├── backlog.md           # 기술부채 & 보안 백로그
+│   ├── next-steps.md        # 로드맵
+│   ├── progress.json        # 진행 상황 추적
+│   └── claude-automation-guide.md  # Claude Code 자동화 가이드
 ├── tests/                   # E2E 테스트 (Playwright)
 ├── skills/                  # Claude Code Skills
 └── .claude/
@@ -207,14 +218,14 @@ baram/
 
 | 영역        | 설계 문서                                  | 핵심 참조                                                                                                                                     |
 | --------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| 아키텍처      | `docs/design/part3-architecture.md`    | §3.1 스택, §3.2 IPC, §3.3 엔진, §3.4 Extension, §3.5 상태, §3.6 파일                                                                              |
-| UI/UX     | `docs/design/part4-uiux.md`            | §4.1 원칙, §4.2 레이아웃, §4.3\~§4.8 각 요소                                                                                                       |
-| 기능 상세     | `docs/design/part5-core-features.md`   | §5.1\~§5.15 각 기능 상세 스펙                                                                                                                    |
-| AI 통합     | `docs/design/part6-ai-integration.md`  | §6.1 전략, §6.2 5-Level, §6.3 Provider                                                                                                      |
-| 데이터 모델    | `docs/design/part7-data-models.md`     | §7.1 MD 규격, §7.2 PM 스키마, §7.3\~§7.5 DB                                                                                                    |
-| 로드맵       | `docs/design/part8-roadmap.md`         | §8.1 Phase, §8.2 마일스톤, §8.4 품질, §8.6 의존성                                                                                                  |
-| AI 고도화    | `docs/design/part11-ai-enhancement.md` | §11.2 빠른 개선, §11.3 Writing Flow, §11.4 Knowledge Q\&A, §11.5 Semantic Wikilink, §11.6 Agent Mode, §11.7 Authorship, §11.8 Smart Templates |
-| Vault 시스템 | `docs/design/part12-vault-system.md`   | §80 Context 모델, §81 워크스페이스, §82~§84 UI, §85 Journal, §86 설정 계층, §87 Cross-vault 링크, §88 ContextManager, §89~§90 파일/시작                     |
+| 아키텍처      | `dev/design/part3-architecture.md`    | §3.1 스택, §3.2 IPC, §3.3 엔진, §3.4 Extension, §3.5 상태, §3.6 파일                                                                              |
+| UI/UX     | `dev/design/part4-uiux.md`            | §4.1 원칙, §4.2 레이아웃, §4.3\~§4.8 각 요소                                                                                                       |
+| 기능 상세     | `dev/design/part5-core-features.md`   | §5.1\~§5.15 각 기능 상세 스펙                                                                                                                    |
+| AI 통합     | `dev/design/part6-ai-integration.md`  | §6.1 전략, §6.2 5-Level, §6.3 Provider                                                                                                      |
+| 데이터 모델    | `dev/design/part7-data-models.md`     | §7.1 MD 규격, §7.2 PM 스키마, §7.3\~§7.5 DB                                                                                                    |
+| 로드맵       | `dev/design/part8-roadmap.md`         | §8.1 Phase, §8.2 마일스톤, §8.4 품질, §8.6 의존성                                                                                                  |
+| AI 고도화    | `dev/design/part11-ai-enhancement.md` | §11.2 빠른 개선, §11.3 Writing Flow, §11.4 Knowledge Q\&A, §11.5 Semantic Wikilink, §11.6 Agent Mode, §11.7 Authorship, §11.8 Smart Templates |
+| Vault 시스템 | `dev/design/part12-vault-system.md`   | §80 Context 모델, §81 워크스페이스, §82~§84 UI, §85 Journal, §86 설정 계층, §87 Cross-vault 링크, §88 ContextManager, §89~§90 파일/시작                     |
 
 ## 성능 기준 (Part 8 §8.4)
 
