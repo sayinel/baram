@@ -20,12 +20,12 @@
 
 ### 1. 마일스톤 분석
 
-`docs/design/part8-roadmap.md`에서 해당 마일스톤의 정보를 추출한다:
+`dev/design/part8-roadmap.md`에서 해당 마일스톤의 정보를 추출한다:
 - 포함된 기능 목록 (번호, 이름, 설계 섹션 참조)
 - 완료 기준
 - 성능 기준 (해당 시)
 
-`docs/design/part8-roadmap.md` §8.6에서 의존성 체인을 확인한다.
+`dev/design/part8-roadmap.md` §8.6에서 의존성 체인을 확인한다.
 
 ### 2. 기능 의존성 분석 및 순서 결정
 
@@ -117,4 +117,4 @@
 - (있는 경우)
 ```
 
-`docs/progress.json`을 업데이트한다.
+`dev/progress.json`을 업데이트한다.
