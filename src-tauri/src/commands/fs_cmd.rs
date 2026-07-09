@@ -70,8 +70,18 @@ pub async fn set_vault_root(
     path: String,
     state: tauri::State<'_, crate::VaultRootState>,
     ctx_mgr: tauri::State<'_, crate::context::ContextManager>,
+    app: tauri::AppHandle,
 ) -> Result<(), String> {
     check(&path)?;
+
+    // §backlog #3 — grant asset:// read access to this vault directory at runtime
+    // (the static scope is limited to $APPDATA). Non-fatal on failure.
+    {
+        use tauri::Manager;
+        if let Err(e) = app.asset_protocol_scope().allow_directory(&path, true) {
+            log::warn!("§backlog#3 asset scope registration failed for {path}: {e}");
+        }
+    }
 
     // Keep old VaultRootState in sync (backward compat)
     let mut root = state.0.write().await;
