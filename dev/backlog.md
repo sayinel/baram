@@ -1,6 +1,6 @@
 # Baram — 기술 부채 & 백로그
 
-> 최종 업데이트: 2026-03-15
+> 최종 업데이트: 2026-07-09 (보안 항목 트리아지 + 안전 4건 수정)
 > 이 문서는 즉시 구현하지 않기로 결정한 항목들을 추적한다.
 > 기능 로드맵은 `dev/next-steps.md`, 리팩토링 계획은 `.omc/plans/refactoring-plan.md` 참고.
 
@@ -8,66 +8,51 @@
 
 ## 보안 (Security)
 
-### 🟠 HIGH — API 키 IPC 전달 방식
+> 2026-07-09 트리아지: 아래 8개 항목을 현재 코드 기준으로 재검증하고 모두 해소했다.
+> 7건 수정(#8·#2·#7·#5·#1·#3·#6) + 1건 이미 수정됨(#4 Mermaid). 심각도는 실제(로컬 IPC/ XSS 선행조건 등)를 반영해 재평가.
 
-- **위치**: `src-tauri/src/commands/llm_cmd.rs:9`
-- **문제**: `llm_complete` 커맨드가 `api_key: String`을 IPC JSON 파라미터로 수신 → Tauri DevTools Network 탭에서 평문 노출, 에러 메시지에 키 포함 가능성
-- **현황**: `keyring_cmd.rs`가 이미 구현되어 있음
-- **권장 수정**: `api_key` 파라미터 제거 → 백엔드에서 `keyring::Entry::new("baram", &provider).get_password()` 직접 조회
-- **재검토 조건**: LLM 기능 리팩토링 시
+### ✅ FIXED (`d09e5a1`, MEDIUM 실제) — API 키 IPC 전달 방식
 
-### 🟠 HIGH — Vault Root Bypass on Cold Start
+- **위치**: `src-tauri/src/commands/llm_cmd.rs` (`llm_complete`), `src/ipc/llm.ts` + 호출처 7곳
+- **원인**: `llm_complete`가 `api_key`를 IPC 파라미터로 수신 → AI 동작마다 키가 prompt/문서 내용과 함께 IPC 버스를 통과 (로컬 프로세스, 원격 악용 불가하나 방어심화 위반)
+- **수정**: 키는 이미 OS keyring에 저장되므로 백엔드가 `keyring_cmd::get_provider_api_key(provider)`로 직접 조회(`baram-{provider}-api-key`, ollama는 keyless). `api_key`를 `llm_complete`·`ipc/llm.ts`·`LLMCompleteInput`·`ipc-registry.json`에서 제거하고 7개 호출처 인자 제거. 테스트 갱신
+- **비고**: `llm_list_models`는 optional key 유지 — 설정에서 **저장 전 키 검증**이 정당한 용도이며 문서 내용을 싣지 않음
 
-- **위치**: `src-tauri/src/fs/mod.rs` (check\_vault), `src/hooks/use-app-startup.ts` (handleOpenFilePath)
-- **문제**: `check_vault`가 `VaultRootState::None`일 때 no-op이어서 앱 시작부터 사용자가 폴더를 열기 전까지 모든 FS IPC 커맨드가 임의 절대 경로를 허용함. `handleOpenFilePath`(OS 파일 연결) 경로에서 발생 가능
-- **권장 수정**:
-  - 옵션 A: vault root 미설정 시 FS IPC deny-by-default로 변경
-  - 옵션 B: OS 파일 연결 시 부모 디렉토리를 즉시 vault root로 설정
-- **재검토 조건**: 보안 감사 완료 시 우선 수정
+### ✅ FIXED (`cac04cc`, MEDIUM 실제) — Vault Root Bypass on Cold Start
 
-### 🟡 MEDIUM — assetProtocol scope 과다
+- **위치**: `src-tauri/src/commands/fs_cmd.rs` (`check_vault`)
+- **원인**: §88 이후 confinement는 `ContextManager.validate_path_any` + `VaultRootState` fallback 2단이나, **둘 다 미등록(콜드스타트)이면 `Ok(())`**로 빠져 임의 절대경로 허용
+- **수정**: fallback 로직을 `vault_fallback_decision()`으로 추출, 컨텍스트/루트 둘 다 없으면 **deny-by-default**. 정상 오픈 흐름(`openFolder`→`setVaultRoot`, `ensureFileContext`→`add_context`)은 FS IPC 전에 등록하므로 무영향. 단위 테스트 추가
 
-- **위치**: `src-tauri/tauri.conf.json` (assetProtocol.scope)
-- **문제**: `scope: ["$APPDATA/**", "$DOCUMENT/**", "$DOWNLOAD/**"]` → XSS 발생 시 Documents/Downloads 전체 파일을 `asset://`로 읽기 가능
-- **권장 수정**:
-  ```json
-  "scope": ["$APPDATA/com.inel.baram/**", "$DOCUMENT/**/*.{md,png,jpg,jpeg,gif,webp,svg}"]
-  ```
-- **재검토 조건**: 보안 감사 / XSS 취약점 패치 후
+### ✅ FIXED (`5e042c1`, MEDIUM) — assetProtocol scope 과다
 
-### 🟡 MEDIUM — Mermaid SVG DOMPurify 레이어 없음
+- **위치**: `src-tauri/tauri.conf.json`, `context_cmd.rs` (`add_context`), `fs_cmd.rs` (`set_vault_root`)
+- **원인**: 정적 scope `["$APPDATA/**", "$DOCUMENT/**", "$DOWNLOAD/**"]` → XSS 시 Documents/Downloads 전체를 `asset://`로 읽기 가능
+- **수정**: 정적 scope를 `$APPDATA/**`(플러그인)만으로 축소하고, **열린 컨텍스트 위치를 런타임 등록**(`add_context`/`set_vault_root` 초크포인트 → vault/folder는 `allow_directory`, 단일 파일은 `allow_file`). 보안 강화 + vault가 어디 있든 이미지 렌더 되도록 잠재 제약도 해소
+- **비고**: 독립 외부 파일 컨텍스트는 파일 자체만 허용 → 그 옆 이미지는 asset:// 불가(폴더로 열면 렌더). 런타임 등록이라 단위 테스트 불가 → GUI 확인 필요
 
-- **위치**: `src/extensions/nodes/mermaid-block-view.tsx:291,355,395,616`
-- **문제**: Mermaid 생성 SVG를 DOMPurify 없이 `dangerouslySetInnerHTML` 삽입. 현재 버전(^11.12.2)은 안전하나, 라이브러리 업그레이드 시 방어 레이어 없음
-- **권장 수정**:
-  ```tsx
-  import DOMPurify from "dompurify";
-  dangerouslySetInnerHTML={{
-    __html: DOMPurify.sanitize(svgHtml, { USE_PROFILES: { svg: true }, FORBID_TAGS: ["script"] })
-  }}
-  ```
-- **재검토 조건**: mermaid 패키지 메이저 업그레이드 시
+### ✅ ALREADY FIXED (조치 불요) — Mermaid SVG DOMPurify
 
-### 🟡 MEDIUM — resolveImageSrcs 정규식 파싱 취약
+- **위치**: `src/extensions/nodes/mermaid-block-view.tsx` → `sanitizeMermaidSvg()` → `sanitizeSvg()`(DOMPurify SVG 프로필)
+- **현황**: 4개 `dangerouslySetInnerHTML` 모두 sanitize 경유 + `securityLevel: "antiscript"`. 전용 테스트 `src/extensions/__tests__/mermaid-sanitize.test.ts` 존재. backlog 작성 이후 수정됨
 
-- **위치**: `src/components/journal/utils.ts:5-22`
-- **문제**: HTML 문자열을 정규식으로 파싱해 `src` 교체 → `onerror` 등 기타 속성 통과, `convertFileSrc(absolutePath)` 결과 미검증
-- **권장 수정**: DOM 파서 사용 또는 `DOMPurify.sanitize()` 호출 전후 적용
-- **재검토 조건**: Journal 이미지 처리 리팩토링 시
+### ✅ FIXED (`a3b6ce7`, LOW) — resolveImageSrcs 정규식 파싱 취약
 
-### 🔵 LOW — CSP connect-src localhost:\* 과다 허용
+- **위치**: `src/components/journal/utils.ts`
+- **수정**: double-quote 전용 정규식 → `DOMParser` + `setAttribute` 기반 재작성. 단일따옴표/속성순서 우회 불가. 단위 테스트 추가
+
+### ✅ FIXED (`5e042c1`, LOW) — CSP connect-src localhost:\* 과다 허용
 
 - **위치**: `src-tauri/tauri.conf.json` (CSP connect-src)
-- **문제**: `http://localhost:*` 허용 → XSS 발생 시 로컬 임의 서비스 접근 가능
-- **권장 수정**: Ollama 기본 포트로 제한 `http://localhost:11434`
-- **재검토 조건**: 보안 감사 시
+- **원인**: `http://localhost:*` / `https://localhost:*` 와일드카드 → XSS 시 로컬 임의 포트/서비스 접근 가능
+- **수정**: Ollama 기본값 `http://localhost:11434` + `http://127.0.0.1:11434`로 제한
+- **비고**: 커스텀 포트 Ollama 사용자는 CSP 위반됨(문서화 대상). 원격/LAN Ollama는 기존에도 미허용이었음
 
-### 🔵 LOW — fs::validate\_path canonicalize 미적용
+### ✅ FIXED (`970e3bb`, LOW, 방어심화) — validate_path traversal 미차단
 
-- **위치**: `src-tauri/src/fs/mod.rs:51-65`
-- **문제**: 절대 경로 체크만 하고 `../../etc/passwd` 같은 traverse 패턴 미차단. ZIP 추출은 canonicalize 적용 중이나 일반 읽기/쓰기는 미적용
-- **권장 수정**: `Path::new(path).exists()` 시 `canonicalize` 후 vault root 범위 검증
-- **재검토 조건**: 경로 traversal 취약점 보안 감사 시
+- **위치**: `src-tauri/src/fs/mod.rs` (`validate_path`)
+- **현황**: 실제 경계는 `check_vault`가 이미 canonicalize+범위검증. `validate_path`는 1차 sanity 체크
+- **수정**: `validate_path`에 `..` 세그먼트 거부 추가(방어심화). vault 미제약 호출처(export 커맨드)까지 커버. 단위 테스트 추가
 
 ---
 
@@ -173,12 +158,11 @@
   ```
 - **재검토 조건**: cytoscape 버전 업그레이드 시 또는 경고 실제 발생 시
 
-### 🟡 MEDIUM — MarkdownRenderer URL scheme 미검증
+### ✅ FIXED (`78a40ff`, MEDIUM) — MarkdownRenderer URL scheme 미검증
 
-- **위치**: AI 채팅 패널 (MarkdownRenderer, AIPanel)
-- **문제**: AI 응답 마크다운에서 링크/이미지 URL scheme을 검증하지 않아 `javascript:`, `data:` 등 위험 scheme이 렌더링될 수 있음
-- **권장 수정**: `href`/`src` 속성에 `javascript:`, `data:`, `vbscript:` scheme 필터링 또는 DOMPurify `ALLOWED_URI_REGEXP` 설정
-- **재검토 조건**: AI 응답 렌더링 리팩토링 시
+- **위치**: `src/components/ai/MarkdownRenderer.tsx` (링크/이미지 mdast 노드)
+- **문제**: AI 응답 마크다운의 링크/이미지 URL scheme 미검증 → `javascript:` 링크 클릭 시 Tauri 웹뷰에서 실행(IPC 브리지 접근 = RCE). raw HTML 노드는 이미 DOMPurify 처리되나 파싱된 link/image 노드는 우회
+- **수정**: `markdown-url.ts`의 `safeLinkHref`/`safeImageSrc` 허용목록 헬퍼(http(s)/mailto/tel/앵커/상대경로, 이미지는 `data:image/*` 허용)를 link/image 렌더러에 적용. 단위 테스트 추가
 
 ### 🟡 MEDIUM — use-file-watcher.ts shouldSkip 과도한 dotfile 필터
 
@@ -296,3 +280,10 @@
 | 2026-03-14 | fs\_cmd.rs write\_binary\_file 동일 tmp 충돌 (ARCH) → uuid tmp 경로 통일                | `92c0378` |
 | 2026-03-14 | gemini.rs list\_models 헤더 삽입 패닉 가능성 + 에러 타입 불일치 (MEDIUM)                        | `4fac079` |
 | 2026-03-14 | llm/mod.rs stale comment (query params → x-goog-api-key header)                 | `4fac079` |
+| 2026-07-09 | MarkdownRenderer AI 채팅 링크/이미지 URL scheme 검증 (MEDIUM)                          | `78a40ff` |
+| 2026-07-09 | 콜드스타트 vault 우회 — check_vault deny-by-default (MEDIUM)                          | `cac04cc` |
+| 2026-07-09 | validate_path `..` traversal 거부 (LOW, 방어심화)                                    | `970e3bb` |
+| 2026-07-09 | resolveImageSrcs 정규식 → DOMParser 파싱 (LOW)                                       | `a3b6ce7` |
+| 2026-07-09 | LLM API 키 IPC 제거 — 백엔드 keyring 조회 (MEDIUM)                                     | `d09e5a1` |
+| 2026-07-09 | assetProtocol scope 축소 + 런타임 동적 등록 (MEDIUM)                                   | `5e042c1` |
+| 2026-07-09 | CSP connect-src localhost 와일드카드 → 기본 포트 제한 (LOW)                            | `5e042c1` |

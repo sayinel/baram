@@ -74,7 +74,6 @@ export function useLLMStream(): UseLLMStreamReturn {
       const config = getConfigForTask(task);
       const provider = opts?.provider ?? config.provider;
       const model = opts?.model ?? config.model;
-      const apiKey = store.apiKeys[provider] ?? config.apiKey;
       const baseUrl =
         opts?.baseUrl ?? (provider === "ollama" ? store.ollamaUrl : undefined);
       const privacyMode = store.privacyMode;
@@ -123,7 +122,6 @@ export function useLLMStream(): UseLLMStreamReturn {
       // Invoke Rust backend
       try {
         await llmComplete(
-          apiKey,
           prompt,
           model,
           requestId,

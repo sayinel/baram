@@ -17,6 +17,7 @@ import { gfmFromMarkdown } from "mdast-util-gfm";
 import { gfm } from "micromark-extension-gfm";
 
 import { isSvgContent, sanitizeSvg } from "../../utils/markdown/svg-utils";
+import { safeImageSrc, safeLinkHref } from "./markdown-url";
 
 type MdastBlockContent = BlockContent | DefinitionContent | ListItem;
 type MdastNode = Nodes;
@@ -162,7 +163,7 @@ function renderInline(node: PhrasingContent, key: number): ReactNode {
           alt={node.alt ?? ""}
           className="max-w-full"
           key={key}
-          src={node.url}
+          src={safeImageSrc(node.url)}
           title={node.title ?? undefined}
         />
       );
@@ -179,7 +180,7 @@ function renderInline(node: PhrasingContent, key: number): ReactNode {
       return (
         <a
           className="text-[var(--color-accent-default)] underline"
-          href={node.url}
+          href={safeLinkHref(node.url)}
           key={key}
           rel="noopener noreferrer"
           target="_blank"

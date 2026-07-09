@@ -176,7 +176,7 @@ export interface LinkGraph {
 }
 
 export interface LLMCompleteInput {
-  apiKey: string;
+  // §backlog #1 — no apiKey: the backend reads the provider key from the OS keyring.
   baseUrl?: string;
   maxTokens?: number;
   model: string;
