@@ -30,7 +30,9 @@ pub fn build_menu(
         .accelerator("CmdOrCtrl+Shift+O")
         .build(app)?;
     // --- Open Recent submenu (§82; populated at runtime via update_recent_menu) ---
-    let file_open_recent = SubmenuBuilder::new(app, "Open Recent").build()?;
+    let file_open_recent = SubmenuBuilder::new(app, "Open Recent")
+        .enabled(false)
+        .build()?;
     let file_save = MenuItemBuilder::new("Save")
         .id("file_save")
         .accelerator("CmdOrCtrl+S")
