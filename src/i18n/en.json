@@ -260,6 +260,7 @@
   "menu.file.new": "New File",
   "menu.file.open": "Open File...",
   "menu.file.openFolder": "Open Folder...",
+  "menu.file.openRecent": "Open Recent",
   "menu.file.save": "Save",
   "menu.file.saveAs": "Save As...",
   "menu.file.closeTab": "Close Tab",
