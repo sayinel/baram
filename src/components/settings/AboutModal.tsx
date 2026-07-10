@@ -52,7 +52,7 @@ export function AboutModal() {
         <div className="about-details">
           <div className="about-row">
             <span className="about-label">{t("about.license")}</span>
-            <span className="about-value">Editor Core MIT / App AGPL-3.0</span>
+            <span className="about-value">Apache License 2.0</span>
           </div>
           <div className="about-row">
             <span className="about-label">{t("about.stack")}</span>

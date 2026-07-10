@@ -41,7 +41,7 @@
     "shortDescription": "Lightweight WYSIWYG Markdown Editor",
     "longDescription": "Baram is a lightweight WYSIWYG markdown editor built with Tauri, featuring rich content editing, AI integration, and blazing fast performance.",
     "copyright": "Copyright 2026 Baram Team",
-    "license": "AGPL-3.0",
+    "license": "Apache-2.0",
     "fileAssociations": [
       {
         "ext": ["md", "markdown", "mdown", "mkd"],

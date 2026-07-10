@@ -15,14 +15,14 @@ notice = "warn"
 # Example: yanked = "warn"
 
 [licenses]
-# Ensure dependency licenses are compatible with project license (AGPL-3.0 for app)
+# Ensure dependency licenses are compatible with project license (Apache-2.0 for app)
 unlicensed = "deny"
-# License compatibility check: deny copyleft GPL (unless project is also GPL)
-# Note: Baram app is AGPL-3.0, so other AGPL/GPL is OK.
-# But core editor might want MIT, so be permissive here and document in README.
-copyleft = "warn"
-allow-osi-fsf-free = "both"
-# Specific allow list for known-good licenses
+# Baram is licensed under Apache-2.0 (permissive). Copyleft dependencies (GPL/AGPL)
+# are incompatible and must NOT be pulled in — only the explicit permissive allow
+# list below is accepted.
+copyleft = "deny"
+allow-osi-fsf-free = "neither"
+# Specific allow list for known-good permissive licenses
 allow = [
     "MIT",
     "Apache-2.0",
@@ -33,15 +33,6 @@ allow = [
     "Unlicense",
     "0BSD",
     "MPL-2.0",
-    "AGPL-3.0",
-    "AGPL-3.0-only",
-    "AGPL-3.0-or-later",
-    "GPL-2.0",
-    "GPL-2.0-only",
-    "GPL-2.0-or-later",
-    "GPL-3.0",
-    "GPL-3.0-only",
-    "GPL-3.0-or-later",
 ]
 # Denials: licenses to block
 deny = [
@@ -73,4 +64,4 @@ allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 # 1. Run `cargo deny check advisories` regularly in CI/CD
 # 2. Add to pre-commit hook: cargo deny check --all-targets
 # 3. Update advisories: cargo update && cargo deny check
-# 4. Review copyleft crates before shipping (AGPL-3.0 has implications)
+# 4. Review copyleft crates before shipping (Apache-2.0 app: GPL/AGPL deps are not allowed)
