@@ -69,12 +69,7 @@ struct RecentMenuEntry {
     id: Option<String>,
     label: Option<String>,
     enabled: Option<bool>,
-    icon: Option<String>, // e.g. Some("vault") → render with the vault image icon
 }
-
-/// 32x32 RGBA icon shown next to recent folders that are vaults (§82). A custom
-/// image (not NativeIcon) so it renders cross-platform (macOS/Windows/Linux).
-const RECENT_VAULT_ICON: &[u8] = include_bytes!("../icons/recent-vault.rgba");
 
 #[tauri::command]
 fn update_recent_menu(
@@ -98,15 +93,6 @@ fn update_recent_menu(
             let sep =
                 tauri::menu::PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?;
             submenu.append(&sep).map_err(|e| e.to_string())?;
-        } else if entry.icon.as_deref() == Some("vault") {
-            let icon = tauri::image::Image::new(RECENT_VAULT_ICON, 32, 32);
-            let label = entry.label.clone().unwrap_or_default();
-            let mut builder = tauri::menu::IconMenuItemBuilder::new(label).icon(icon);
-            if let Some(id) = &entry.id {
-                builder = builder.id(id.clone());
-            }
-            let item = builder.build(&app).map_err(|e| e.to_string())?;
-            submenu.append(&item).map_err(|e| e.to_string())?;
         } else {
             let label = entry.label.clone().unwrap_or_default();
             let enabled = entry.enabled.unwrap_or(true);
