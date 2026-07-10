@@ -29,6 +29,8 @@ pub fn build_menu(
         .id("file_open_folder")
         .accelerator("CmdOrCtrl+Shift+O")
         .build(app)?;
+    // --- Open Recent submenu (§82; populated at runtime via update_recent_menu) ---
+    let file_open_recent = SubmenuBuilder::new(app, "Open Recent").build()?;
     let file_save = MenuItemBuilder::new("Save")
         .id("file_save")
         .accelerator("CmdOrCtrl+S")
@@ -53,6 +55,7 @@ pub fn build_menu(
         .item(&file_new)
         .item(&file_open)
         .item(&file_open_folder)
+        .item(&file_open_recent)
         .separator()
         .item(&file_save)
         .item(&file_save_as)
@@ -517,6 +520,7 @@ pub fn build_menu(
 
     let mut menu_subs: HashMap<String, tauri::menu::Submenu<tauri::Wry>> = HashMap::new();
     menu_subs.insert("menu_file".into(), file_menu);
+    menu_subs.insert("menu_file_open_recent".into(), file_open_recent);
     menu_subs.insert("menu_edit".into(), edit_menu);
     menu_subs.insert("menu_view".into(), view_menu);
     menu_subs.insert("menu_insert".into(), insert_menu);

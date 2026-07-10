@@ -62,6 +62,55 @@ fn update_menu_locale(
     Ok(())
 }
 
+#[derive(serde::Deserialize)]
+struct RecentMenuEntry {
+    kind: String, // "item" | "separator"
+    id: Option<String>,
+    label: Option<String>,
+    enabled: Option<bool>,
+}
+
+#[tauri::command]
+fn update_recent_menu(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, menu::MenuState>,
+    entries: Vec<RecentMenuEntry>,
+) -> Result<(), String> {
+    let submenu = state
+        .submenus
+        .get("menu_file_open_recent")
+        .ok_or_else(|| "open-recent submenu not found".to_string())?;
+
+    // Clear existing children (remove-then-append avoids duplicate accumulation).
+    let count = submenu.items().map_err(|e| e.to_string())?.len();
+    for _ in 0..count {
+        submenu.remove_at(0).map_err(|e| e.to_string())?;
+    }
+
+    for entry in &entries {
+        if entry.kind == "separator" {
+            let sep =
+                tauri::menu::PredefinedMenuItem::separator(&app).map_err(|e| e.to_string())?;
+            submenu.append(&sep).map_err(|e| e.to_string())?;
+        } else {
+            let label = entry.label.clone().unwrap_or_default();
+            let enabled = entry.enabled.unwrap_or(true);
+            let mut builder = tauri::menu::MenuItemBuilder::new(label).enabled(enabled);
+            if let Some(id) = &entry.id {
+                builder = builder.id(id.clone());
+            }
+            let item = builder.build(&app).map_err(|e| e.to_string())?;
+            submenu.append(&item).map_err(|e| e.to_string())?;
+        }
+    }
+
+    // Empty recents => grey out the whole submenu.
+    submenu
+        .set_enabled(!entries.is_empty())
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -150,6 +199,7 @@ pub fn run() {
             git_cmd::git_delete_branch,
             get_opened_urls,
             update_menu_locale,
+            update_recent_menu,
             tag_cmd::get_vault_tags,
             tag_cmd::rename_tag,
             tag_cmd::get_files_by_tag,
