@@ -268,6 +268,18 @@
       "_note": "TS wrapper: syncMenuLocale in src/ipc/menu-locale.ts"
     },
     {
+      "name": "update_recent_menu",
+      "input": { "entries": "RecentMenuEntry[]" },
+      "output": "void",
+      "module": "app",
+      "spec": "§82",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "File 메뉴의 Open Recent 서브메뉴를 최근 항목으로 재구성",
+      "_note": "TS wrapper: syncRecentMenu in src/ipc/recent-menu.ts"
+    },
+    {
       "name": "rename_block_id",
       "input": { "file_path": "string", "old_id": "string", "new_id": "string" },
       "output": "RenameResult",

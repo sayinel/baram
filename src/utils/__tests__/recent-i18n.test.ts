@@ -16,4 +16,9 @@ describe("recent-items i18n keys", () => {
       "notes.md",
     );
   });
+
+  it("resolves the Open Recent menu label", () => {
+    expect(t("menu.file.openRecent", "en")).toBe("Open Recent");
+    expect(t("menu.file.openRecent", "ko")).toBe("최근 항목");
+  });
 });
