@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { buildRecentMenuEntries, handleRecentMenuEvent } from "../recent-menu";
+import {
+  buildRecentMenuEntries,
+  handleRecentMenuEvent,
+  syncRecentMenu,
+} from "../recent-menu";
 
 const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
@@ -13,8 +17,18 @@ vi.mock("../../utils/recent-open", () => ({
 }));
 
 const clearRecentMock = vi.hoisted(() => vi.fn());
+const storeState = vi.hoisted(() => ({
+  clearRecent: clearRecentMock,
+  recentFolders: [] as {
+    isVault?: boolean;
+    lastOpened: number;
+    path: string;
+  }[],
+  recentFiles: [] as { lastOpened: number; path: string }[],
+  locale: "en" as string,
+}));
 vi.mock("../../stores/settings/store", () => ({
-  useSettingsStore: { getState: () => ({ clearRecent: clearRecentMock }) },
+  useSettingsStore: { getState: () => storeState },
 }));
 
 const folder = (path: string, isVault?: boolean) => ({
@@ -63,6 +77,20 @@ describe("buildRecentMenuEntries", () => {
     const fileItems = entries.filter((e) => e.id?.startsWith("recent_file:"));
     expect(fileItems).toHaveLength(5);
   });
+
+  it("omits the files section when there are no files", () => {
+    const entries = buildRecentMenuEntries(
+      [folder("/a/vault", true)],
+      [],
+      "en",
+    );
+    expect(entries).toEqual([
+      { kind: "item", label: "Recent Folders", enabled: false },
+      { kind: "item", id: "recent_folder:/a/vault", label: "vault — Vault" },
+      { kind: "separator" },
+      { kind: "item", id: "recent_clear", label: "Clear Recent" },
+    ]);
+  });
 });
 
 describe("handleRecentMenuEvent", () => {
@@ -90,5 +118,34 @@ describe("handleRecentMenuEvent", () => {
   it("returns false for unrelated payloads", () => {
     expect(handleRecentMenuEvent("file_save")).toBe(false);
     expect(openFolderMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("syncRecentMenu", () => {
+  beforeEach(() => {
+    invokeMock.mockReset();
+    storeState.recentFolders = [];
+    storeState.recentFiles = [];
+    storeState.locale = "en";
+  });
+
+  it("invokes update_recent_menu with the assembled entries", async () => {
+    storeState.recentFolders = [folder("/a/docs")];
+    storeState.recentFiles = [file("/a/n.md")];
+    await syncRecentMenu();
+    expect(invokeMock).toHaveBeenCalledWith("update_recent_menu", {
+      entries: buildRecentMenuEntries(
+        storeState.recentFolders,
+        storeState.recentFiles,
+        "en",
+      ),
+    });
+  });
+
+  it("sends an empty entries list when there are no recents", async () => {
+    await syncRecentMenu();
+    expect(invokeMock).toHaveBeenCalledWith("update_recent_menu", {
+      entries: [],
+    });
   });
 });

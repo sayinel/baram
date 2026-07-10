@@ -63,6 +63,7 @@ fn update_menu_locale(
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct RecentMenuEntry {
     kind: String, // "item" | "separator"
     id: Option<String>,
