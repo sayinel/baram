@@ -26,6 +26,7 @@ const MENU_I18N_MAP: Record<string, string> = {
   file_new: "menu.file.new",
   file_open: "menu.file.open",
   file_open_folder: "menu.file.openFolder",
+  menu_file_open_recent: "menu.file.openRecent",
   file_save: "menu.file.save",
   file_save_as: "menu.file.saveAs",
   file_close_tab: "menu.file.closeTab",
