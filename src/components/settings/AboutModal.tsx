@@ -1,5 +1,7 @@
 // About Baram modal
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
+
+import { getVersion } from "@tauri-apps/api/app";
 
 import baramLogo from "../../assets/baram-logo.png";
 import { useTranslation } from "../../i18n/useTranslation";
@@ -8,6 +10,7 @@ import { useUIStore } from "../../stores/ui/ui";
 export function AboutModal() {
   const { t } = useTranslation();
   const { aboutOpen, toggleAbout } = useUIStore();
+  const [version, setVersion] = useState("");
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -15,6 +18,20 @@ export function AboutModal() {
     },
     [toggleAbout],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    getVersion()
+      .then((v) => {
+        if (!cancelled) setVersion(v);
+      })
+      .catch(() => {
+        /* non-Tauri context (e.g. tests) — leave version blank */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!aboutOpen) return;
@@ -29,7 +46,7 @@ export function AboutModal() {
       <div className="about-modal" onClick={(e) => e.stopPropagation()}>
         <img alt="Baram" className="about-logo" src={baramLogo} />
         <div className="about-version">
-          {t("about.version").replace("{version}", "0.1.0")}
+          {t("about.version").replace("{version}", version)}
         </div>
         <div className="about-description">{t("about.description")}</div>
         <div className="about-details">
