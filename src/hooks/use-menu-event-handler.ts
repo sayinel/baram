@@ -7,6 +7,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 
 import type { Editor } from "@tiptap/react";
 
+import { handleRecentMenuEvent } from "../ipc/recent-menu";
 import { getAction } from "../keybindings/keybinding-actions";
 import { useWorkspaceStore } from "../stores/file/workspace";
 import { useUIStore } from "../stores/ui/ui";
@@ -57,6 +58,7 @@ export function useMenuEventHandler({
 }: MenuEventHandlerDeps): void {
   useEffect(() => {
     const unlisten = listen<string>("menu-event", async (event) => {
+      if (handleRecentMenuEvent(event.payload)) return;
       switch (event.payload) {
         case "app_about":
           useUIStore.getState().toggleAbout();

@@ -121,4 +121,13 @@ export function useSettingsEffects(editor: Editor | null) {
       syncMenuLocale(locale as "en" | "ko").catch((e) => logger.error(e));
     });
   }, [locale]);
+
+  // Sync the native "Open Recent" submenu on recent-list / locale change (and on mount)
+  const recentFolders = useSettingsStore((s) => s.recentFolders);
+  const recentFiles = useSettingsStore((s) => s.recentFiles);
+  useEffect(() => {
+    import("../ipc/recent-menu").then(({ syncRecentMenu }) => {
+      syncRecentMenu().catch((e) => logger.error(e));
+    });
+  }, [recentFolders, recentFiles, locale]);
 }
