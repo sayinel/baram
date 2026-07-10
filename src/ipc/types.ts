@@ -275,6 +275,14 @@ export interface PluginManifest {
   version: string;
 }
 
+// §82 Native "Open Recent" submenu payload (frontend → update_recent_menu)
+export interface RecentMenuEntry {
+  enabled?: boolean; // default true; false for non-clickable group headers
+  id?: string; // present for kind:"item"; "recent_folder:<path>" | "recent_file:<path>" | "recent_clear"
+  kind: "item" | "separator";
+  label?: string; // present for kind:"item"
+}
+
 export interface RegistryEntry {
   author: string;
   capabilities: string[];
@@ -354,12 +362,12 @@ export interface SnapshotFileEntry {
   path: string;
   sizeBytes: number;
 }
-
 // §56m Tag types
 export interface TagEntry {
   count: number;
   tag: string;
 }
+
 export interface TiptapExtensionDef {
   exportName: string;
   name: string;
