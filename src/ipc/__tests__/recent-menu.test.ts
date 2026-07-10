@@ -51,7 +51,7 @@ describe("buildRecentMenuEntries", () => {
     );
     expect(entries).toEqual([
       { kind: "item", label: "Recent Folders", enabled: false },
-      { kind: "item", id: "recent_folder:/a/vault", label: "vault · Vault" },
+      { kind: "item", id: "recent_folder:/a/vault", label: "vault [Vault]" },
       { kind: "item", id: "recent_folder:/a/docs", label: "docs" },
       { kind: "separator" },
       { kind: "item", label: "Recent Files", enabled: false },
@@ -86,7 +86,7 @@ describe("buildRecentMenuEntries", () => {
     );
     expect(entries).toEqual([
       { kind: "item", label: "Recent Folders", enabled: false },
-      { kind: "item", id: "recent_folder:/a/vault", label: "vault · Vault" },
+      { kind: "item", id: "recent_folder:/a/vault", label: "vault [Vault]" },
       { kind: "separator" },
       { kind: "item", id: "recent_clear", label: "Clear Recent" },
     ]);
