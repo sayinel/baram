@@ -278,6 +278,7 @@ export interface PluginManifest {
 // §82 Native "Open Recent" submenu payload (frontend → update_recent_menu)
 export interface RecentMenuEntry {
   enabled?: boolean; // default true; false for non-clickable group headers
+  icon?: string; // e.g. "vault" → native menu renders a distinguishing icon
   id?: string; // present for kind:"item"; "recent_folder:<path>" | "recent_file:<path>" | "recent_clear"
   kind: "item" | "separator";
   label?: string; // present for kind:"item"
