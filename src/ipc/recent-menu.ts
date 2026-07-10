@@ -38,7 +38,7 @@ export function buildRecentMenuEntries(
     });
     for (const f of topFolders) {
       const label = f.isVault
-        ? `${basename(f.path)} · ${t("recent.vaultBadge", locale)}`
+        ? `${basename(f.path)} [${t("recent.vaultBadge", locale)}]`
         : basename(f.path);
       entries.push({ kind: "item", id: `${FOLDER_PREFIX}${f.path}`, label });
     }
