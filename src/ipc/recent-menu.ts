@@ -37,13 +37,10 @@ export function buildRecentMenuEntries(
       enabled: false,
     });
     for (const f of topFolders) {
-      const entry: RecentMenuEntry = {
-        kind: "item",
-        id: `${FOLDER_PREFIX}${f.path}`,
-        label: basename(f.path),
-      };
-      if (f.isVault) entry.icon = "vault";
-      entries.push(entry);
+      const label = f.isVault
+        ? `${basename(f.path)} · ${t("recent.vaultBadge", locale)}`
+        : basename(f.path);
+      entries.push({ kind: "item", id: `${FOLDER_PREFIX}${f.path}`, label });
     }
   }
 
