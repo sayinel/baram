@@ -13,6 +13,7 @@ import {
   detectMermaidType,
   downloadMermaidPng,
   MERMAID_TEMPLATES,
+  normalizeMermaidSvgSize,
   sanitizeMermaidSvg,
 } from "../../utils/markdown/mermaid-utils";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
@@ -730,7 +731,9 @@ async function renderMermaid(
     // foreignObject hosts HTML labels (flowchart node text). DOMPurify must
     // treat it as an HTML integration point or the label markup is stripped —
     // see sanitizeMermaidSvg. <script>/event handlers stay forbidden.
-    onSuccess(sanitizeMermaidSvg(svg));
+    // normalizeMermaidSvgSize strips Mermaid's `width="100%"` + inline
+    // `max-width` cap so the resize frame controls the size (§5.5).
+    onSuccess(normalizeMermaidSvgSize(sanitizeMermaidSvg(svg)));
   } catch (err) {
     onError(err instanceof Error ? err.message : "Mermaid rendering error");
   }
