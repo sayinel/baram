@@ -29,7 +29,7 @@ allow = [
     "Zlib",
     "MPL-2.0",
     "CC0-1.0",
-    # Mozilla root-certificate data bundle (webpki-roots), via reqwest/headless_chrome
+    # Mozilla root-certificate data bundle (webpki-roots), via reqwest/chromiumoxide
     "CDLA-Permissive-2.0",
     # Boost Software License (permissive, OSI/FSF approved), via arboard/clipboard-win
     "BSL-1.0",
@@ -37,15 +37,6 @@ allow = [
     "bzip2-1.0.6",
 ]
 confidence-threshold = 0.8
-
-# Per-crate exceptions.
-# auto_generate_cdp is GPL-3.0, but it is a BUILD-TIME code generator used by
-# headless_chrome (it generates Chrome DevTools Protocol bindings at compile
-# time). It is not linked into or distributed with the Baram binary. Tracked as
-# a follow-up to eventually replace the headless_chrome PDF-export path.
-exceptions = [
-    { crate = "auto_generate_cdp", allow = ["GPL-3.0-or-later"] },
-]
 
 [bans]
 # Warn (do not fail) on multiple versions of the same crate.

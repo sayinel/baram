@@ -11,12 +11,9 @@ pub async fn export_pdf(
     output_path: String,
     options: Option<PdfOptions>,
 ) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || {
-        crate::export::generate_pdf(&html_content, &output_path, options)
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))?
-    .map_err(|e| e.to_string())
+    crate::export::generate_pdf(&html_content, &output_path, options)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// 통합 내보내기 커맨드 — format에 따라 PDF 또는 HTML 파일로 저장
@@ -32,12 +29,9 @@ pub async fn export_document(
             let pdf_options: Option<PdfOptions> = options
                 .map(|v| serde_json::from_value(v).map_err(|e| e.to_string()))
                 .transpose()?;
-            tokio::task::spawn_blocking(move || {
-                crate::export::generate_pdf(&html_content, &output_path, pdf_options)
-            })
-            .await
-            .map_err(|e| format!("Task join error: {}", e))?
-            .map_err(|e| e.to_string())
+            crate::export::generate_pdf(&html_content, &output_path, pdf_options)
+                .await
+                .map_err(|e| e.to_string())
         }
         "html" => {
             crate::fs::validate_path(&output_path).map_err(|e| e.to_string())?;
