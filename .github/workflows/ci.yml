@@ -78,6 +78,18 @@ jobs:
       - name: Run gitleaks
         run: gitleaks detect --source . --config .gitleaks.toml --verbose
 
+  # ── Dependency licenses & supply chain (cargo-deny) ────────────────
+  deny:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+      - name: cargo-deny (licenses, bans, sources)
+        working-directory: src-tauri
+        run: cargo deny check licenses bans sources
+
   # ── Test (PR + workflow_call) ──────────────────────────────────────
   test:
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_call'
@@ -134,7 +146,7 @@ jobs:
   # ── CI Gate ────────────────────────────────────────────────────────
   ci-pass:
     if: always()
-    needs: [lint, security, test, rust]
+    needs: [lint, security, deny, test, rust]
     runs-on: ubuntu-22.04
     steps:
       - name: Verify all jobs passed
@@ -142,10 +154,11 @@ jobs:
           EVENT: ${{ github.event_name }}
           LINT: ${{ needs.lint.result }}
           SECURITY: ${{ needs.security.result }}
+          DENY: ${{ needs.deny.result }}
           TEST: ${{ needs.test.result }}
           RUST: ${{ needs.rust.result }}
         run: |
-          for r in "$LINT" "$SECURITY" "$TEST" "$RUST"; do
+          for r in "$LINT" "$SECURITY" "$DENY" "$TEST" "$RUST"; do
             [[ "$r" =~ ^(success|skipped)$ ]] || { echo "Failed: $r"; exit 1; }
           done
           # On workflow_call (release), test and rust must actually run
