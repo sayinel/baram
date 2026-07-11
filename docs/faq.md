@@ -14,7 +14,7 @@ Baram runs on macOS (Apple Silicon and Intel), Windows (x64 and ARM), and Linux 
 
 ### Is Baram free?
 
-The editor core is licensed under MIT. The application is licensed under AGPL-3.0.
+Yes. Baram is free and open source software, licensed under the Apache License 2.0.
 
 ### What makes Baram different from other markdown editors?
 
