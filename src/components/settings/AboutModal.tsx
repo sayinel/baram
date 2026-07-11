@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { getVersion } from "@tauri-apps/api/app";
 
-import baramLogo from "../../assets/baram-logo.png";
+import baramSymbol from "../../assets/baram-symbol.png";
 import { useTranslation } from "../../i18n/useTranslation";
 import { useUIStore } from "../../stores/ui/ui";
 
@@ -44,7 +44,8 @@ export function AboutModal() {
   return (
     <div className="about-overlay" onClick={toggleAbout}>
       <div className="about-modal" onClick={(e) => e.stopPropagation()}>
-        <img alt="Baram" className="about-logo" src={baramLogo} />
+        <img alt="" className="about-symbol" src={baramSymbol} />
+        <div className="about-wordmark">Baram</div>
         <div className="about-version">
           {t("about.version").replace("{version}", version)}
         </div>

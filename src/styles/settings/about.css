@@ -25,12 +25,20 @@
   box-shadow: 0 16px 48px rgb(0 0 0 / 20%);
 }
 
-.about-logo {
-  width: 240px;
+.about-symbol {
+  width: 96px;
   height: auto;
-  margin-bottom: 16px;
+  margin-bottom: 8px;
   user-select: none;
   -webkit-user-drag: none;
+}
+
+.about-wordmark {
+  margin-bottom: 16px;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  letter-spacing: -0.01em;
 }
 
 .about-version {
