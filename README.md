@@ -1,10 +1,9 @@
 <p align="center">
-  <img src="src/assets/baram-symbol.png" alt="Baram" width="130" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="src/assets/baram-logo-dark.png" />
+    <img src="src/assets/baram-logo.png" alt="Baram — Like the wind, light and free" width="440" />
+  </picture>
 </p>
-
-<h1 align="center">Baram</h1>
-
-<p align="center"><em>Like the wind, light and free</em></p>
 
 <p align="center">
   <a href="https://github.com/sayinel/baram/releases"><img src="https://img.shields.io/github/v/release/sayinel/baram?style=flat-square&label=release" alt="Release" /></a>
