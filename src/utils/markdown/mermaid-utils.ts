@@ -3,6 +3,55 @@ import { copySvgAsPng, downloadSvgAsPng } from "./svg-export";
 import { copySvgSource, sanitizeSvg } from "./svg-utils";
 
 /**
+ * Give a Mermaid-rendered SVG an intrinsic pixel size so the `.media-resize-frame`
+ * can size it freely (§5.5 resize).
+ *
+ * Mermaid's `useMaxWidth: true` default emits the root as
+ * `<svg width="100%" style="max-width: <natural>px" viewBox="minX minY W H">`.
+ * That inline `max-width` is a hard ceiling — the diagram can never render wider
+ * than its natural width — and the `width="100%"` collapses to nothing inside the
+ * shrink-to-fit (inline-block) frame, so an unsized diagram renders tiny and a
+ * frame dragged past ~natural width stops growing and left-aligns.
+ *
+ * Rewrite the root to a plain, intrinsically-sized SVG (explicit `width`/`height`
+ * in px from the viewBox; no `width="100%"`, no inline `max-width`) so it behaves
+ * exactly like an image or authored SVG block: the shared frame CSS caps it to
+ * the container when unsized (centered at natural size) and stretches it to any
+ * percent when sized (`.media-resize-frame.is-sized … svg { width: 100% }`),
+ * preserving aspect ratio via `height: auto`. Only the root opening tag is
+ * touched — the diagram body (incl. `<foreignObject>` labels) is left untouched.
+ * A viewBox-less SVG is returned unchanged (no intrinsic size to derive).
+ */
+export function normalizeMermaidSvgSize(svg: string): string {
+  return svg.replace(/<svg\b([^>]*)>/i, (full, attrs: string) => {
+    const vb = /\bviewBox\s*=\s*("[^"]*"|'[^']*')/i.exec(attrs);
+    if (!vb) return full;
+    const nums = vb[1]
+      .slice(1, -1)
+      .trim()
+      .split(/[\s,]+/)
+      .map(Number);
+    if (nums.length !== 4 || !(nums[2] > 0) || !(nums[3] > 0)) return full;
+    const [, , width, height] = nums;
+    let a = attrs;
+    // Drop responsive width/height attributes (e.g. width="100%").
+    a = a.replace(/\s(?:width|height)\s*=\s*("[^"]*"|'[^']*'|[^\s"'>]+)/gi, "");
+    // Drop width/height/max-width declarations from the inline style (keeps the
+    // rest, e.g. background); remove the attribute entirely if nothing is left.
+    a = a.replace(/\sstyle\s*=\s*("[^"]*"|'[^']*')/i, (_m, quoted: string) => {
+      const cleaned = quoted
+        .slice(1, -1)
+        .split(";")
+        .map((d) => d.trim())
+        .filter((d) => d && !/^(?:max-width|width|height)\s*:/i.test(d))
+        .join("; ");
+      return cleaned ? ` style="${cleaned}"` : "";
+    });
+    return `<svg${a} width="${width}" height="${height}">`;
+  });
+}
+
+/**
  * Sanitize a Mermaid-rendered SVG for safe `dangerouslySetInnerHTML`.
  *
  * Delegates to the canonical {@link sanitizeSvg} so the SVG sanitize policy lives
