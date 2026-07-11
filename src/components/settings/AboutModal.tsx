@@ -46,6 +46,7 @@ export function AboutModal() {
       <div className="about-modal" onClick={(e) => e.stopPropagation()}>
         <img alt="" className="about-symbol" src={baramSymbol} />
         <div className="about-wordmark">Baram</div>
+        <div className="about-tagline">Like the wind, light and free</div>
         <div className="about-version">
           {t("about.version").replace("{version}", version)}
         </div>
