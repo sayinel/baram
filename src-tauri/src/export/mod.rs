@@ -1,9 +1,11 @@
-// §5.10 PDF/HTML 내보내기 모듈 — headless Chrome 기반 PDF 생성
+// §5.10 PDF/HTML 내보내기 모듈 — chromiumoxide 기반 PDF 생성
 // §55 Pandoc Extended Export — Pandoc 기반 다중 포맷 내보내기
 
 pub mod pandoc;
 
-use headless_chrome::{Browser, LaunchOptions};
+use chromiumoxide::browser::{Browser, BrowserConfig};
+use chromiumoxide_cdp::cdp::browser_protocol::page::PrintToPdfParams;
+use futures::StreamExt;
 use serde::Deserialize;
 use std::fs;
 use std::io::Write;
@@ -96,13 +98,13 @@ impl Default for PdfOptions {
     }
 }
 
-/// Generate a PDF from standalone HTML content using headless Chrome.
+/// Generate a PDF from standalone HTML content using headless Chrome (via chromiumoxide).
 ///
 /// 1. Writes HTML to a temp file (avoids data URI length limits)
 /// 2. Launches headless Chrome and navigates to the temp file
 /// 3. Calls print_to_pdf with configured options
 /// 4. Writes PDF atomically to output_path
-pub fn generate_pdf(
+pub async fn generate_pdf(
     html: &str,
     output_path: &str,
     options: Option<PdfOptions>,
@@ -120,13 +122,7 @@ pub fn generate_pdf(
     }
 
     // 2. Launch headless Chrome
-    let launch_options = LaunchOptions {
-        headless: true,
-        sandbox: false,
-        ..Default::default()
-    };
-
-    let browser = Browser::new(launch_options).map_err(|e| {
+    let config = BrowserConfig::builder().no_sandbox().build().map_err(|e| {
         let msg = e.to_string();
         if msg.contains("not found") || msg.contains("No such file") {
             ExportError::ChromeNotFound
@@ -135,43 +131,81 @@ pub fn generate_pdf(
         }
     })?;
 
-    let tab = browser
-        .new_tab()
-        .map_err(|e| ExportError::BrowserLaunchFailed(e.to_string()))?;
+    let (mut browser, mut handler) = Browser::launch(config).await.map_err(|e| {
+        let msg = e.to_string();
+        if msg.contains("not found") || msg.contains("No such file") {
+            ExportError::ChromeNotFound
+        } else {
+            ExportError::BrowserLaunchFailed(msg)
+        }
+    })?;
 
-    // 3. Navigate to temp HTML file
-    let file_url = format!("file://{}", html_path.display());
-    tab.navigate_to(&file_url)
-        .map_err(|e| ExportError::NavigationFailed(e.to_string()))?;
+    // Spawn a task to drive the browser handler — required for chromiumoxide to make progress
+    let handler_task = tokio::spawn(async move {
+        while let Some(h) = handler.next().await {
+            if h.is_err() {
+                break;
+            }
+        }
+    });
 
-    tab.wait_until_navigated()
-        .map_err(|e| ExportError::NavigationFailed(e.to_string()))?;
+    // Wrap page interaction in a block so we can clean up browser on error
+    let pdf_result = async {
+        // 3. Navigate to temp HTML file
+        let file_url = format!("file://{}", html_path.display());
+        let page = browser
+            .new_page(&file_url)
+            .await
+            .map_err(|e| ExportError::NavigationFailed(e.to_string()))?;
 
-    // 4. Print to PDF
-    let pdf_bytes = tab
-        .print_to_pdf(Some(headless_chrome::types::PrintToPdfOptions {
-            landscape: opts.landscape,
-            display_header_footer: Some(false),
-            print_background: opts.print_background,
-            scale: opts.scale,
-            paper_width: Some(opts.paper_width()),
-            paper_height: Some(opts.paper_height()),
-            margin_top: opts.margin_top,
-            margin_bottom: opts.margin_bottom,
-            margin_left: opts.margin_left,
-            margin_right: opts.margin_right,
-            page_ranges: None,
-            ignore_invalid_page_ranges: None,
-            header_template: None,
-            footer_template: None,
-            prefer_css_page_size: None,
-            transfer_mode: None,
-            generate_tagged_pdf: None,
-            generate_document_outline: None,
-        }))
-        .map_err(|e| ExportError::PdfGenerationFailed(e.to_string()))?;
+        page.wait_for_navigation()
+            .await
+            .map_err(|e| ExportError::NavigationFailed(e.to_string()))?;
 
-    // 5. Atomic write: .pdf.tmp → rename → done
+        // 4. Print to PDF
+        let mut pdf_params = PrintToPdfParams::builder()
+            .display_header_footer(false)
+            .paper_width(opts.paper_width())
+            .paper_height(opts.paper_height());
+
+        if let Some(landscape) = opts.landscape {
+            pdf_params = pdf_params.landscape(landscape);
+        }
+        if let Some(print_background) = opts.print_background {
+            pdf_params = pdf_params.print_background(print_background);
+        }
+        if let Some(scale) = opts.scale {
+            pdf_params = pdf_params.scale(scale);
+        }
+        if let Some(margin_top) = opts.margin_top {
+            pdf_params = pdf_params.margin_top(margin_top);
+        }
+        if let Some(margin_bottom) = opts.margin_bottom {
+            pdf_params = pdf_params.margin_bottom(margin_bottom);
+        }
+        if let Some(margin_left) = opts.margin_left {
+            pdf_params = pdf_params.margin_left(margin_left);
+        }
+        if let Some(margin_right) = opts.margin_right {
+            pdf_params = pdf_params.margin_right(margin_right);
+        }
+
+        let pdf_bytes = page
+            .pdf(pdf_params.build())
+            .await
+            .map_err(|e| ExportError::PdfGenerationFailed(e.to_string()))?;
+
+        Ok::<Vec<u8>, ExportError>(pdf_bytes)
+    }
+    .await;
+
+    // 5. Close browser and wait for handler task
+    let _ = browser.close().await;
+    handler_task.abort();
+
+    let pdf_bytes = pdf_result?;
+
+    // 6. Atomic write: .pdf.tmp → rename → done
     let tmp_pdf_path = format!("{}.tmp", output_path);
     fs::write(&tmp_pdf_path, &pdf_bytes).map_err(|e| ExportError::SaveError(e.to_string()))?;
     fs::rename(&tmp_pdf_path, output_path).map_err(|e| ExportError::SaveError(e.to_string()))?;
@@ -233,9 +267,9 @@ mod tests {
         assert_eq!(opts.margin_left, Some(0.75));
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore] // Requires Chrome installed — run with: cargo test -- --ignored
-    fn test_generate_pdf_integration() {
+    async fn test_generate_pdf_integration() {
         let html = r#"<!DOCTYPE html>
 <html><head><title>Test</title></head>
 <body><h1>Hello PDF</h1><p>Test content</p></body></html>"#;
@@ -244,7 +278,7 @@ mod tests {
         let output_path = tmp_dir.path().join("test-output.pdf");
         let output_str = output_path.to_str().unwrap();
 
-        let result = generate_pdf(html, output_str, None);
+        let result = generate_pdf(html, output_str, None).await;
         assert!(result.is_ok(), "generate_pdf failed: {:?}", result.err());
 
         // Verify PDF was created and has reasonable size
