@@ -34,11 +34,17 @@
 }
 
 .about-wordmark {
-  margin-bottom: 16px;
+  margin-bottom: 4px;
   font-size: 28px;
   font-weight: 700;
   color: var(--color-text-primary);
   letter-spacing: -0.01em;
+}
+
+.about-tagline {
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
 }
 
 .about-version {
