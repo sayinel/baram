@@ -4,6 +4,8 @@
 
 <h1 align="center">Baram</h1>
 
+<p align="center"><em>Like the wind, light and free</em></p>
+
 <p align="center">
   <a href="https://github.com/sayinel/baram/releases"><img src="https://img.shields.io/github/v/release/sayinel/baram?style=flat-square&label=release" alt="Release" /></a>
   <a href="https://github.com/sayinel/baram/releases"><img src="https://img.shields.io/github/downloads/sayinel/baram/total?style=flat-square" alt="Downloads" /></a>
