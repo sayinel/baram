@@ -68,7 +68,16 @@ export const MathBlock = Node.create<MathBlockOptions>({
   },
 
   addNodeView() {
-    return ReactNodeViewRenderer(MathBlockView);
+    // trackNodeViewPosition: keep the NodeView's cached position (`currentPos`)
+    // in sync when an edit ABOVE shifts this block (e.g. merging table cells,
+    // typing in a paragraph above). Without it, @tiptap/react only refreshes
+    // currentPos on mount / update(), and a pure position shift never calls
+    // update() on the unchanged atom — so handleSelectionUpdate compares the
+    // live NodeSelection against a stale pos, decides "not selected", and the
+    // block can no longer enter edit mode on click until the doc is reopened.
+    return ReactNodeViewRenderer(MathBlockView, {
+      trackNodeViewPosition: true,
+    });
   },
 
   addProseMirrorPlugins() {
