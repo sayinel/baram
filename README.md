@@ -1,6 +1,8 @@
 <p align="center">
-  <img src="src/assets/baram-logo.png" alt="Baram" width="280" />
+  <img src="src/assets/baram-symbol.png" alt="Baram" width="130" />
 </p>
+
+<h1 align="center">Baram</h1>
 
 <p align="center">
   <a href="https://github.com/sayinel/baram/releases"><img src="https://img.shields.io/github/v/release/sayinel/baram?style=flat-square&label=release" alt="Release" /></a>
