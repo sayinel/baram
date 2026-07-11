@@ -262,3 +262,5 @@ See **[CONTRIBUTING.md](CONTRIBUTING.md)** for how to set up your development en
 ## License
 
 Baram is licensed under the **[Apache License 2.0](LICENSE)**.
+
+Third-party open-source components and their licenses are listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
