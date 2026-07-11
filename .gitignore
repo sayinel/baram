@@ -575,3 +575,6 @@ blob-report/
 # Tauri updater signing keys
 *.tauri
 .tauri/
+
+# Internal development docs — managed locally, not published
+/dev/
