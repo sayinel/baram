@@ -55,7 +55,14 @@ export const HtmlBlock = Node.create<HtmlBlockOptions>({
   },
 
   addNodeView() {
-    return ReactNodeViewRenderer(HtmlBlockView);
+    // trackNodeViewPosition: keep the cached NodeView position fresh when an
+    // edit above shifts this atom (e.g. merging table cells / typing above).
+    // Without it, @tiptap/react's stale currentPos makes handleSelectionUpdate
+    // reject a valid NodeSelection, so the block can't enter edit mode on click
+    // until the doc is reopened. See math-block.ts for the full explanation.
+    return ReactNodeViewRenderer(HtmlBlockView, {
+      trackNodeViewPosition: true,
+    });
   },
 
   addCommands() {
