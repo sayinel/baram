@@ -562,3 +562,16 @@ blob-report/
 
 # Local large-file performance fixture (repo root) — never commit
 /CONTEXT.md
+
+# ===================================================================
+# Secrets / signing keys — never commit
+# ===================================================================
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+*.jks
+# Tauri updater signing keys
+*.tauri
+.tauri/
