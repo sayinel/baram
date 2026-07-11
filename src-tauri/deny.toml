@@ -1,28 +1,21 @@
-# deny.toml — Cargo Deny Configuration
-# Baram (Tauri 2.0 Backend)
+# deny.toml — cargo-deny configuration
+# Baram (Tauri 2.0 backend)
 #
-# Ensures supply chain security and license compliance.
-# Install: cargo install cargo-deny
-# Usage: cargo deny check
-# Reference: https://embarkstudios.github.io/cargo-deny/
+# Enforces license compliance and supply-chain hygiene.
+# Install: cargo install cargo-deny   (or: brew install cargo-deny)
+# Usage:   cargo deny check
+# Docs:    https://embarkstudios.github.io/cargo-deny/
 
 [advisories]
-# Check for known security vulnerabilities in dependencies
-vulnerability = "deny"
-unmaintained = "warn"
-notice = "warn"
-# Allow security advisories for specific time (vulnerable deps in transition)
-# Example: yanked = "warn"
+# Security advisories (RUSTSEC) are denied by default. Acknowledge specific
+# advisories by adding their ID here. Vulnerability scanning is also covered by
+# GitHub Dependabot.
+ignore = []
 
 [licenses]
-# Ensure dependency licenses are compatible with project license (Apache-2.0 for app)
-unlicensed = "deny"
-# Baram is licensed under Apache-2.0 (permissive). Copyleft dependencies (GPL/AGPL)
-# are incompatible and must NOT be pulled in — only the explicit permissive allow
-# list below is accepted.
-copyleft = "deny"
-allow-osi-fsf-free = "neither"
-# Specific allow list for known-good permissive licenses
+# Baram is licensed under Apache-2.0 (permissive). Only permissive licenses are
+# allowed — copyleft licenses (GPL / AGPL / …) are rejected by omission from
+# this list, so a copyleft dependency will fail the check.
 allow = [
     "MIT",
     "Apache-2.0",
@@ -30,38 +23,37 @@ allow = [
     "BSD-2-Clause",
     "BSD-3-Clause",
     "ISC",
+    "Unicode-3.0",
     "Unlicense",
     "0BSD",
+    "Zlib",
     "MPL-2.0",
+    "CC0-1.0",
+    # Mozilla root-certificate data bundle (webpki-roots), via reqwest/headless_chrome
+    "CDLA-Permissive-2.0",
+    # Boost Software License (permissive, OSI/FSF approved), via arboard/clipboard-win
+    "BSL-1.0",
+    # bzip2 license (permissive, BSD-like), via zip/bzip2
+    "bzip2-1.0.6",
 ]
-# Denials: licenses to block
-deny = [
-    "GPL-1.0",
-    "AGPL-1.0",
-    # Note: Commercial/proprietary software should be explicitly checked
+confidence-threshold = 0.8
+
+# Per-crate exceptions.
+# auto_generate_cdp is GPL-3.0, but it is a BUILD-TIME code generator used by
+# headless_chrome (it generates Chrome DevTools Protocol bindings at compile
+# time). It is not linked into or distributed with the Baram binary. Tracked as
+# a follow-up to eventually replace the headless_chrome PDF-export path.
+exceptions = [
+    { crate = "auto_generate_cdp", allow = ["GPL-3.0-or-later"] },
 ]
 
 [bans]
-# Prevent multiple versions of same crate (forces resolution)
+# Warn (do not fail) on multiple versions of the same crate.
 multiple-versions = "warn"
-# Prevent specific crates entirely
-deny = [
-    # Example: { name = "openssl", version = "*" }  # Force rustls instead
-    # Add specific problematic crates here
-]
-# Allow specific versions even if they have advisories (use sparingly)
-allow = []
-# Skip specific crate versions from vulnerability checks
-skip = []
+wildcards = "allow"
 
 [sources]
-# Control where dependencies can come from (disabled by default)
-# Uncomment to enforce supply chain restrictions
+# Only crates.io and workspace crates are allowed by default.
+unknown-registry = "deny"
+unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-# allow-git = []
-
-# Additional recommendations:
-# 1. Run `cargo deny check advisories` regularly in CI/CD
-# 2. Add to pre-commit hook: cargo deny check --all-targets
-# 3. Update advisories: cargo update && cargo deny check
-# 4. Review copyleft crates before shipping (Apache-2.0 app: GPL/AGPL deps are not allowed)
