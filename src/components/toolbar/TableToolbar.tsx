@@ -251,6 +251,12 @@ export function TableToolbar({ editor }: TableToolbarProps) {
 
   useEffect(() => () => setTableToolbarRect(null), []);
 
+  // Close the ⋯ overflow when the toolbar hides so it can't reopen stale on the
+  // next show (the toolbar unmounts its whole tree while hidden).
+  useEffect(() => {
+    if (!visible) setOverflow(null);
+  }, [visible]);
+
   const setAlign = useCallback(
     (align: null | string) => {
       editor.chain().focus().setCellAttribute("alignment", align).run();
