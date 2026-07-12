@@ -206,11 +206,17 @@ baram/
 - Playwright (E2E, 크로스 플랫폼)
 - **라운드트립 보존이 최우선 품질 기준**: MD → ProseMirror → MD 변환 시 원본과 정확히 일치해야 함
 
+### 의존성 관리
+
+- **tiptap 그룹 업데이트**: `@tiptap/*`는 core·extensions·bubble/floating-menu(숨은 멤버)까지 exact-version peer로 묶여 있어 `npm update`/`npm install`이 ERESOLVE로 교착한다. package-lock에서 `node_modules/@tiptap/*` 항목을 삭제한 뒤 `npm install`로 전체 재해결할 것
+- 설치 버전 확인은 `npm ls <pkg>` — exports 제한 패키지(@tiptap/react 등)는 `require('pkg/package.json')`이 실패
+
 ### Git
 
 - Conventional Commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`
 - 커밋 메시지에 설계 문서 섹션 참조 포함 (예: `feat(§5.3): implement KaTeX math block`)
 - 브랜치: `feature/m2-basic-editing`, `fix/roundtrip-heading-whitespace`
+- **pre-push hook**: `cargo clippy --all-targets` + `npx knip` 실행 — base 변경 후 첫 push는 cargo cold라 5~7분 소요. push는 백그라운드로 실행할 것
 
 ### 디자인 토큰
 
