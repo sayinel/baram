@@ -32,12 +32,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-14
-            args: '--target aarch64-apple-darwin'
+          # macOS: Universal Binary (Apple Silicon + Intel) from a single dmg.
+          # universal-apple-darwin requires both rust targets installed.
+          - platform: macos-15
+            args: '--target universal-apple-darwin'
+            rust-targets: 'aarch64-apple-darwin,x86_64-apple-darwin'
           - platform: ubuntu-22.04
             args: ''
+            rust-targets: ''
           - platform: windows-2022
             args: ''
+            rust-targets: ''
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v7
@@ -51,7 +56,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-14' && 'aarch64-apple-darwin' || '' }}
+          targets: ${{ matrix.rust-targets }}
 
       - uses: swatinem/rust-cache@v2
         with:
