@@ -11,6 +11,7 @@ import {
   findTableNearPoint,
 } from "./table-insert-coords";
 import { findCellPos } from "./table-selection";
+import { getTableToolbarRect, isUnderToolbar } from "./table-toolbar-rect";
 
 interface ButtonState {
   /** Whether to insert before (true) or after (false) */
@@ -138,6 +139,14 @@ export function TableInsertButtons({ editor }: TableInsertButtonsProps) {
         const refCol = isBeforeFirst ? 0 : bestColIdx - 1;
         const cellPos = findCellPos(editor, tablePos, 0, refCol);
         if (cellPos === null) return;
+
+        // §5.5 — the column ⊕ shares the top edge with the floating toolbar;
+        // hide it only where it would render under the toolbar (footprint-only).
+        if (isUnderToolbar(bestX, tableRect.top, getTableToolbarRect())) {
+          setButton(null);
+          lockedButtonRef.current = null;
+          return;
+        }
 
         const colBtn: ButtonState = {
           type: "col",
