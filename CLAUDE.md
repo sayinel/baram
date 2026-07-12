@@ -27,10 +27,12 @@ Typora의 WYSIWYG 품질 + Obsidian의 확장성 + AI 네이티브 통합을 목
 | ----------------- | --------------------------- | ------------- |
 | Desktop Framework | Tauri                       | 2.0           |
 | Backend           | Rust                        | latest stable |
-| Frontend          | React + TypeScript          | 19            |
-| Bundler           | Vite                        | 6             |
+| Dev Runtime       | Node.js                     | 24 LTS        |
+| Frontend          | React                       | 19            |
+| Language          | TypeScript                  | 6.0           |
+| Bundler           | Vite (rolldown)             | 8             |
 | Styling           | Tailwind CSS                | 4             |
-| Editor Engine     | Tiptap (ProseMirror)        | v2            |
+| Editor Engine     | Tiptap (ProseMirror)        | v3            |
 | Math Rendering    | KaTeX                       | latest        |
 | Code Blocks       | CodeMirror                  | 6             |
 | Diagrams          | Mermaid.js                  | latest        |
@@ -155,6 +157,8 @@ baram/
 ### TypeScript
 
 - strict mode 필수
+- `verbatimModuleSyntax` 활성 — 타입 전용 import는 반드시 `import type` 사용
+- `npm run typecheck`는 3개 프로젝트(앱 / node 도구 / 테스트)를 모두 검사 — 테스트 코드도 타입 검사 대상
 - React: 함수형 컴포넌트 + Hooks only (class 컴포넌트 사용 금지)
 - 파일명: kebab-case (`math-block.ts`)
 - export: PascalCase for 컴포넌트/Extension (`MathBlock`), camelCase for 함수/훅

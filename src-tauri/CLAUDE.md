@@ -107,6 +107,7 @@ app_handle.emit("file:changed", FileChangedPayload {
 ## macOS Universal Binary 릴리스
 
 릴리스 macOS 빌드는 `--target universal-apple-darwin`(arm64 + x86_64 fat binary)이다 (이슈 198 / PR 200, 2026-07-12).
+최소 지원 macOS는 **13.0** (`minimumSystemVersion`) — Vite 8 출력(Safari 16.4+ 기준)과 정합한다 (이슈 202).
 
 - **git2 `vendored-openssl` 필수**: x86_64 슬라이스는 Apple Silicon 호스트에서 cross-compile되는데,
   Homebrew OpenSSL은 arm64뿐이라 openssl-sys(libgit2-sys + libssh2-sys 경유)가 빌드 실패한다.
