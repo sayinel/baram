@@ -1,7 +1,7 @@
 // §3.6 File operation hooks — new, open, save, saveAs, close, openFolder
 import { useCallback } from "react";
 
-import { ask, open, save } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 
 import type { Editor } from "@tiptap/core";
 
@@ -251,12 +251,13 @@ export function useFileOperations({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- sourceContentRef is a stable ref
   }, [editor, isSourceMode, setFileContent, markDirty]);
 
-  const handleCloseTab = useCallback(async () => {
+  const handleCloseTab = useCallback(() => {
     const { activeTabId: tabId, tabs } = useEditorStore.getState();
     if (!tabId) return;
     const tab = tabs.find((t) => t.id === tabId);
     if (tab?.isDirty && tab.filePath) {
-      // Auto-save may not have fired yet — flush before closing
+      // §close-guard: file-backed tab — auto-save may not have fired yet; flush
+      // and close without a prompt (Cmd+W keeps its quick save-and-close flow).
       handleSave().then(
         () => {
           useEditorStore.getState().closeTab(tabId);
@@ -268,12 +269,10 @@ export function useFileOperations({
       return;
     }
     if (tab?.isDirty && !tab.filePath) {
-      // Untitled dirty tab — prompt before discarding (no file to auto-save to)
-      const confirmed = await ask(
-        "You have unsaved changes. Close without saving?",
-        { title: "Unsaved Changes", kind: "warning" },
-      );
-      if (!confirmed) return;
+      // §close-guard: Untitled tab has no file to auto-save to — use the shared
+      // 3-button modal (identical UI to app quit and the tab X-button).
+      useUIStore.getState().openUnsavedModal({ intent: "closeTab", tabId });
+      return;
     }
     useEditorStore.getState().closeTab(tabId);
   }, [handleSave]);
