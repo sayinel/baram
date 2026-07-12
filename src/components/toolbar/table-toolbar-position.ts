@@ -25,8 +25,12 @@ export interface ToolbarRects {
   toolbarHeight: number;
 }
 
-/** Gap between the toolbar bottom and the table top when the top is visible. */
-const GAP = 6;
+/**
+ * Gap between the toolbar bottom and the table top when the top is visible.
+ * Wide enough to clear the grip/⊕ upward protrusion (~16px) so the toolbar and
+ * the hover affordances never visually kiss at the table's top edge (§5.5).
+ */
+const GAP = 20;
 /** Sticky inset from the top of the visible editor area. */
 const MIN_TOP = 4;
 
