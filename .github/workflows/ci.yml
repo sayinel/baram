@@ -33,13 +33,12 @@ jobs:
   # Everything else (main push, release call): decide outputs true,
   # so rust always runs.
   changes:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       rust: ${{ steps.decide.outputs.rust }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        if: github.event_name == 'pull_request'
+      # No checkout: paths-filter reads PR changes via the API.
       - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
         id: filter
         if: github.event_name == 'pull_request'
@@ -47,7 +46,8 @@ jobs:
           filters: |
             rust:
               - 'src-tauri/**'
-              - 'Cargo.lock'
+              - 'rust-toolchain*'
+              - '.cargo/**'
               - '.github/workflows/ci.yml'
               - '.github/actions/setup-node/**'
       - name: Determine rust job necessity
@@ -62,7 +62,7 @@ jobs:
 
   # ── Lint (all events) ──────────────────────────────────────────────
   lint:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -72,7 +72,7 @@ jobs:
 
   # ── Security: Secret Detection (all events) ────────────────────────
   security:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -100,7 +100,7 @@ jobs:
 
   # ── Dependency licenses & supply chain (cargo-deny) ────────────────
   deny:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -113,7 +113,7 @@ jobs:
 
   # ── Test (all events) ──────────────────────────────────────────────
   test:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -127,7 +127,7 @@ jobs:
     # Runs only when changes succeeded AND said rust is needed
     # (main push / release call: decide always outputs true).
     if: needs.changes.outputs.rust == 'true'
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -174,7 +174,7 @@ jobs:
   ci-pass:
     if: always()
     needs: [changes, lint, security, deny, test, rust]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Verify all jobs passed

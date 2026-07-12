@@ -18,7 +18,7 @@ env:
 jobs:
   # ── Tag integrity: fail fast before spending CI/build minutes ──────
   verify-tag:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -60,10 +60,13 @@ jobs:
           - platform: macos-15
             args: '--target universal-apple-darwin'
             rust-targets: 'aarch64-apple-darwin,x86_64-apple-darwin'
+          # Linux stays on the OLDEST supported runner on purpose: binaries
+          # link against the build machine's glibc, so building on 22.04
+          # keeps .deb/.AppImage running on older distros. Do not "modernize".
           - platform: ubuntu-22.04
             args: ''
             rust-targets: ''
-          - platform: windows-2022
+          - platform: windows-2025
             args: ''
             rust-targets: ''
     runs-on: ${{ matrix.platform }}
