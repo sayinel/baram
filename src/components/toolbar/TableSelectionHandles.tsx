@@ -1,15 +1,15 @@
 // §5.5 — Notion-style row/column grip handles. Hovering the table's top edge
 // shows a grip centered over the hovered column; the left edge shows a grip
-// centered on the hovered row. Clicking selects the whole column/row (CellSelection)
-// and opens a popup of the cell context-menu actions. Drag-to-reorder is added by
-// use-table-drag (Task 6). Uses the position:fixed + getEditorZoom() divide pattern.
+// centered on the hovered row. Clicking selects the whole column/row
+// (CellSelection), which raises the floating TableToolbar's Selection variant.
+// Drag-to-reorder is added by use-table-drag. Uses the position:fixed +
+// getEditorZoom() divide pattern. The column grip suppresses itself where it
+// would render under the floating table toolbar (table-toolbar-rect.ts).
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Editor } from "@tiptap/react";
 
 import { getEditorZoom } from "../../utils/zoom-coords";
-import { buildTableMenu } from "./context-menu-table";
-import { MenuList } from "./MenuList";
 import { findTableNearPoint } from "./table-insert-coords";
 import {
   axisHasSpan,
@@ -20,6 +20,7 @@ import {
   selectColumn,
   selectRow,
 } from "./table-selection";
+import { getTableToolbarRect, isUnderToolbar } from "./table-toolbar-rect";
 import { computeDropIndicatorStyle, useTableDrag } from "./use-table-drag";
 
 // Detection bands around the table's top/left edges (content-space px × zoom).
@@ -39,24 +40,11 @@ interface HandleState extends HandleAnchor {
 
 export function TableSelectionHandles({ editor }: { editor: Editor }) {
   const [handle, setHandle] = useState<HandleState | null>(null);
-  const [menu, setMenu] = useState<null | {
-    items: ReturnType<typeof buildTableMenu>;
-    x: number;
-    y: number;
-  }>(null);
   const rafRef = useRef(0);
   const latestEventRef = useRef<MouseEvent | null>(null);
   const hoveringRef = useRef(false);
   const hideTimerRef = useRef(0);
   const { indicator, isDragging, startDrag } = useTableDrag(editor);
-  // Whether the popup was open at the moment the grip's mousedown fired — captured
-  // before MenuList's document-level outside-click listener closes it (the grip's
-  // synthetic mousedown runs first, React attaches below document). Lets onClick
-  // toggle the popup instead of always reopening it.
-  const menuWasOpenRef = useRef(false);
-  // Identity of the grip that owns the currently-open popup, so a re-click on the
-  // SAME grip toggles it off while a click on a DIFFERENT grip opens the new one.
-  const menuOwnerRef = useRef<null | string>(null);
 
   const scheduleHide = useCallback(() => {
     if (hideTimerRef.current) return;
@@ -119,6 +107,13 @@ export function TableSelectionHandles({ editor }: { editor: Editor }) {
             }
             const cellPos = columnAnchorPos(editor, tablePos, i);
             if (cellPos === null) return;
+            // §5.5 — don't place a column grip under the floating toolbar; that
+            // real estate belongs to the toolbar (footprint-only suppression).
+            const colCenterX = (c.left + c.right) / 2;
+            if (isUnderToolbar(colCenterX, rect.top, getTableToolbarRect())) {
+              if (!hoveringRef.current) setHandle(null);
+              return;
+            }
             setHandle({
               axis: "col",
               x: (c.left + c.right) / 2,
@@ -187,7 +182,6 @@ export function TableSelectionHandles({ editor }: { editor: Editor }) {
     };
     const onScroll = () => {
       setHandle(null);
-      setMenu(null);
     };
     scroll.addEventListener("mousemove", onMove as EventListener);
     scroll.addEventListener("mouseleave", onLeave);
@@ -209,7 +203,6 @@ export function TableSelectionHandles({ editor }: { editor: Editor }) {
       hoveringRef.current = false;
       cancelHide();
       setHandle(null);
-      setMenu(null);
     };
     editor.on("update", clear);
     window.addEventListener("resize", clear);
@@ -218,40 +211,6 @@ export function TableSelectionHandles({ editor }: { editor: Editor }) {
       window.removeEventListener("resize", clear);
     };
   }, [editor, cancelHide]);
-
-  const openMenu = useCallback(
-    (h: HandleState, clientX: number, clientY: number) => {
-      if (h.axis === "col") selectColumn(editor, h.cellPos);
-      else selectRow(editor, h.cellPos);
-      const resolved = editor.state.doc.resolve(h.cellPos + 1);
-      const baseItems = [
-        {
-          label: "Cut",
-          action: () => {
-            document.execCommand("cut");
-          },
-        },
-        {
-          label: "Copy",
-          action: () => {
-            document.execCommand("copy");
-          },
-        },
-        {
-          label: "Paste",
-          action: () => {
-            document.execCommand("paste");
-          },
-        },
-      ];
-      const items = buildTableMenu(editor, resolved, baseItems);
-      if (items) {
-        menuOwnerRef.current = handleKey(h);
-        setMenu({ items, x: clientX, y: clientY });
-      }
-    },
-    [editor],
-  );
 
   const collectEdges = useCallback(
     (h: HandleState): null | { edges: number[]; tableRect: DOMRect } => {
@@ -289,21 +248,13 @@ export function TableSelectionHandles({ editor }: { editor: Editor }) {
       {handle && (
         <button
           className={`table-select-handle table-select-handle-${handle.axis}`}
-          onClick={(e) => {
-            if (isDragging) return; // a drag just ended — don't open the menu
-            // Toggle: if the popup was open when this click started, MenuList's
-            // outside-click already closed it — leave it closed (the column/row
-            // stays selected). Only open when it was closed.
-            if (menuWasOpenRef.current) return;
-            openMenu(handle, e.clientX, e.clientY);
+          onClick={() => {
+            if (isDragging) return; // a drag just ended
+            if (handle.axis === "col") selectColumn(editor, handle.cellPos);
+            else selectRow(editor, handle.cellPos);
           }}
           onMouseDown={(e) => {
-            // Capture pre-click popup state before MenuList's outside-click closes
-            // it (see menuWasOpenRef). Must run before the merged-cell early return
-            // so the toggle also works for merged (click-only) axes.
-            menuWasOpenRef.current =
-              menu !== null && menuOwnerRef.current === handleKey(handle);
-            if (axisHasSpan(editor, handle.tablePos, handle.axis)) return; // merged cells → click-only
+            if (axisHasSpan(editor, handle.tablePos, handle.axis)) return; // merged → click-only
             const info = collectEdges(handle);
             if (!info) return;
             startDrag(e, {
@@ -339,14 +290,6 @@ export function TableSelectionHandles({ editor }: { editor: Editor }) {
             <circle cx="7.5" cy="7.5" r="1" />
           </svg>
         </button>
-      )}
-      {menu && menu.items && (
-        <MenuList
-          items={menu.items}
-          onClose={() => setMenu(null)}
-          x={menu.x}
-          y={menu.y}
-        />
       )}
       {indicator && (
         <div
@@ -384,9 +327,4 @@ function findTablePos(
     return true;
   });
   return found;
-}
-
-/** Stable identity for a grip (axis + logical index + table position). */
-function handleKey(h: HandleState): string {
-  return `${h.axis}:${h.index}:${h.tablePos}`;
 }

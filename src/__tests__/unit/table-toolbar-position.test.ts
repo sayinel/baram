@@ -15,9 +15,9 @@ const base: Omit<ToolbarRects, "tableBottom" | "tableTop"> = {
 
 describe("computeToolbarTop", () => {
   it("sits above the table when the table top is visible", () => {
-    // table top at viewport-relative 200 → desired = 200 - 32 - 6 = 162
+    // table top at viewport-relative 200 → desired = 200 - 32 - 20 = 148
     const r: ToolbarRects = { ...base, tableTop: 300, tableBottom: 500 };
-    expect(computeToolbarTop(r)).toEqual({ visible: true, top: 162 });
+    expect(computeToolbarTop(r)).toEqual({ visible: true, top: 148 });
   });
 
   it("clamps to MIN_TOP when the table top scrolls above the viewport", () => {

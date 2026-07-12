@@ -3,6 +3,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -10,17 +11,14 @@ import {
 import type { Editor } from "@tiptap/react";
 
 import { CellSelection } from "@tiptap/pm/tables";
-import {
-  AlignCenter,
-  AlignLeft,
-  AlignRight,
-  Sparkles,
-  Trash2,
-} from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, Sparkles } from "lucide-react";
 
 import { prosemirrorToMarkdown } from "../../pipeline/pm-to-md";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
+import { buildTableOverflowItems } from "./context-menu-table";
+import { MenuList } from "./MenuList";
 import { computeToolbarTop } from "./table-toolbar-position";
+import { setTableToolbarRect } from "./table-toolbar-rect";
 
 // Mono-style inline SVG icons (16×16, stroke-based)
 const ICON_SIZE = 16;
@@ -36,42 +34,6 @@ const S = {
 };
 
 const TABLE_ICON = { size: 16, strokeWidth: 1.5 } as const;
-// Header Row icon: table grid with bold top row
-const HeaderRowIcon = (): ReactNode => (
-  <svg {...S} strokeWidth={1.4}>
-    <rect height="12" rx="1" width="12" x="2" y="2" />
-    <line x1="2" x2="14" y1="6" y2="6" />
-    <line x1="2" x2="14" y1="10" y2="10" />
-    <rect
-      fill="currentColor"
-      height="4"
-      opacity="0.25"
-      rx="1"
-      stroke="none"
-      width="12"
-      x="2"
-      y="2"
-    />
-  </svg>
-);
-// Header Column icon: table grid with bold left column
-const HeaderColIcon = (): ReactNode => (
-  <svg {...S} strokeWidth={1.4}>
-    <rect height="12" rx="1" width="12" x="2" y="2" />
-    <line x1="6" x2="6" y1="2" y2="14" />
-    <line x1="10" x2="10" y1="2" y2="14" />
-    <rect
-      fill="currentColor"
-      height="12"
-      opacity="0.25"
-      rx="1"
-      stroke="none"
-      width="4"
-      x="2"
-      y="2"
-    />
-  </svg>
-);
 // Merge cells icon: 3×2 grid, middle row merged into one cell
 const MergeCellsIcon = (): ReactNode => (
   <svg {...S} strokeWidth={1.3}>
@@ -161,88 +123,12 @@ const DeleteColIcon = (): ReactNode => (
     />
   </svg>
 );
-// Copy as Markdown icon: two overlapping rectangles with "MD" label
-const CopyMdIcon = (): ReactNode => (
-  <svg
-    fill="none"
-    height="16"
-    viewBox="0 0 22 16"
-    width="22"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <rect
-      height="10"
-      rx="1.5"
-      stroke="currentColor"
-      strokeWidth="1.3"
-      width="13"
-      x="1"
-      y="1"
-    />
-    <rect
-      fill="var(--color-bg-default)"
-      height="10"
-      rx="1.5"
-      stroke="currentColor"
-      strokeWidth="1.3"
-      width="13"
-      x="8"
-      y="5"
-    />
-    <text
-      fill="currentColor"
-      fontFamily="system-ui, sans-serif"
-      fontSize="7"
-      fontWeight="700"
-      stroke="none"
-      textAnchor="middle"
-      x="14.5"
-      y="12.5"
-    >
-      MD
-    </text>
-  </svg>
-);
-// Copy as HTML icon: two overlapping rectangles with "</>" label
-const CopyHtmlIcon = (): ReactNode => (
-  <svg
-    fill="none"
-    height="16"
-    viewBox="0 0 22 16"
-    width="22"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <rect
-      height="10"
-      rx="1.5"
-      stroke="currentColor"
-      strokeWidth="1.3"
-      width="13"
-      x="1"
-      y="1"
-    />
-    <rect
-      fill="var(--color-bg-default)"
-      height="10"
-      rx="1.5"
-      stroke="currentColor"
-      strokeWidth="1.3"
-      width="13"
-      x="8"
-      y="5"
-    />
-    <text
-      fill="currentColor"
-      fontFamily="system-ui, sans-serif"
-      fontSize="6.5"
-      fontWeight="700"
-      stroke="none"
-      textAnchor="middle"
-      x="14.5"
-      y="12.5"
-    >
-      &lt;/&gt;
-    </text>
+// Overflow icon: horizontal three-dot "more" glyph
+const MoreIcon = (): ReactNode => (
+  <svg {...S} strokeWidth={1.6}>
+    <circle cx="3.5" cy="8" fill="currentColor" r="1.1" stroke="none" />
+    <circle cx="8" cy="8" fill="currentColor" r="1.1" stroke="none" />
+    <circle cx="12.5" cy="8" fill="currentColor" r="1.1" stroke="none" />
   </svg>
 );
 
@@ -257,11 +143,20 @@ export function TableToolbar({ editor }: TableToolbarProps) {
     left: 0,
   });
   const [currentAlign, setCurrentAlign] = useState<null | string>(null);
+  const [isSelection, setIsSelection] = useState(false);
+  const [overflow, setOverflow] = useState<null | { x: number; y: number }>(
+    null,
+  );
+  // Mirrors the grip popup's toggle guard: MenuList closes on the ⋯ mousedown
+  // (document listener) before onClick fires, so onClick must not re-open when it
+  // was already open. Captured in the ⋯ button's onMouseDown.
+  const overflowWasOpenRef = useRef(false);
   const toolbarRef = useRef<HTMLDivElement>(null);
 
   const updatePosition = useCallback(() => {
     const { selection } = editor.state;
     const isCellSel = selection instanceof CellSelection;
+    setIsSelection(isCellSel);
     const isTable =
       editor.isActive("tableCell") || editor.isActive("tableHeader");
 
@@ -344,6 +239,24 @@ export function TableToolbar({ editor }: TableToolbarProps) {
     };
   }, [editor, updatePosition]);
 
+  // §5.5 — publish our rect so TableInsertButtons/TableSelectionHandles can
+  // suppress the top-edge ⊕/grip that would render under this toolbar.
+  useLayoutEffect(() => {
+    setTableToolbarRect(
+      visible && toolbarRef.current
+        ? toolbarRef.current.getBoundingClientRect()
+        : null,
+    );
+  }, [visible, position]);
+
+  useEffect(() => () => setTableToolbarRect(null), []);
+
+  // Close the ⋯ overflow when the toolbar hides so it can't reopen stale on the
+  // next show (the toolbar unmounts its whole tree while hidden).
+  useEffect(() => {
+    if (!visible) setOverflow(null);
+  }, [visible]);
+
   const setAlign = useCallback(
     (align: null | string) => {
       editor.chain().focus().setCellAttribute("alignment", align).run();
@@ -351,139 +264,117 @@ export function TableToolbar({ editor }: TableToolbarProps) {
     [editor],
   );
 
-  const handleCopyAsMarkdown = useCallback(() => {
-    const table = findTable(editor);
-    if (!table || !table.node) return;
-    const tempDoc = editor.schema.nodes.doc.create(null, [table.node]);
-    const md = prosemirrorToMarkdown(tempDoc);
-    navigator.clipboard.writeText(md.trim());
-  }, [editor]);
-
-  const handleCopyAsHTML = useCallback(() => {
-    const table = findTable(editor);
-    if (!table) return;
-    const dom = editor.view.nodeDOM(table.pos);
-    if (dom && dom instanceof HTMLElement) {
-      navigator.clipboard.writeText(dom.outerHTML);
-    }
-  }, [editor]);
-
   if (!visible) return null;
 
   return (
-    <div
-      className="table-toolbar"
-      onMouseDown={(e) => e.preventDefault()}
-      ref={toolbarRef}
-      style={{ top: position.top, left: position.left }}
-    >
-      <button
-        className={`table-toolbar-btn icon-btn${currentAlign === "left" ? "table-toolbar-btn-active" : ""}`}
-        onClick={() => setAlign(currentAlign === "left" ? null : "left")}
-        title="Align Left"
+    <>
+      <div
+        className="table-toolbar"
+        onMouseDown={(e) => e.preventDefault()}
+        ref={toolbarRef}
+        style={{ top: position.top, left: position.left }}
       >
-        <AlignLeft {...TABLE_ICON} />
-      </button>
-      <button
-        className={`table-toolbar-btn${currentAlign === "center" ? "table-toolbar-btn-active" : ""}`}
-        onClick={() => setAlign(currentAlign === "center" ? null : "center")}
-        title="Align Center"
-      >
-        <AlignCenter {...TABLE_ICON} />
-      </button>
-      <button
-        className={`table-toolbar-btn${currentAlign === "right" ? "table-toolbar-btn-active" : ""}`}
-        onClick={() => setAlign(currentAlign === "right" ? null : "right")}
-        title="Align Right"
-      >
-        <AlignRight {...TABLE_ICON} />
-      </button>
-      <div className="table-toolbar-separator" />
-      <button
-        className="table-toolbar-btn"
-        onClick={() => editor.chain().focus().toggleHeaderRow().run()}
-        title="Toggle Header Row"
-      >
-        <HeaderRowIcon />
-      </button>
-      <button
-        className="table-toolbar-btn"
-        onClick={() => editor.chain().focus().toggleHeaderColumn().run()}
-        title="Toggle Header Column"
-      >
-        <HeaderColIcon />
-      </button>
-      <div className="table-toolbar-separator" />
-      <button
-        className="table-toolbar-btn"
-        disabled={!editor.can().mergeCells()}
-        onClick={() => editor.chain().focus().mergeCells().run()}
-        title="Merge Cells (⌘M)"
-      >
-        <MergeCellsIcon />
-      </button>
-      <button
-        className="table-toolbar-btn"
-        disabled={!editor.can().splitCell()}
-        onClick={() => editor.chain().focus().splitCell().run()}
-        title="Split Cell"
-      >
-        <SplitCellsIcon />
-      </button>
-      <div className="table-toolbar-separator" />
-      <button
-        className="table-toolbar-btn table-toolbar-btn-danger"
-        onClick={() => editor.chain().focus().deleteRow().run()}
-        title="Delete Row"
-      >
-        <DeleteRowIcon />
-      </button>
-      <button
-        className="table-toolbar-btn table-toolbar-btn-danger"
-        onClick={() => editor.chain().focus().deleteColumn().run()}
-        title="Delete Column"
-      >
-        <DeleteColIcon />
-      </button>
-      <div className="table-toolbar-separator" />
-      <button
-        className="table-toolbar-btn table-toolbar-btn-wide"
-        onClick={handleCopyAsMarkdown}
-        title="Copy as Markdown"
-      >
-        <CopyMdIcon />
-      </button>
-      <button
-        className="table-toolbar-btn table-toolbar-btn-wide"
-        onClick={handleCopyAsHTML}
-        title="Copy as HTML"
-      >
-        <CopyHtmlIcon />
-      </button>
-      <div className="table-toolbar-separator" />
-      <button
-        className="table-toolbar-btn table-toolbar-btn-ai"
-        onClick={(e) => {
-          const table = findTable(editor);
-          if (!table || !table.node) return;
-          const tempDoc = editor.schema.nodes.doc.create(null, [table.node]);
-          const md = prosemirrorToMarkdown(tempDoc).trim();
-          if (!md) return;
-          showNodeViewAIMenu(e.currentTarget, "table", md, editor, table.pos);
-        }}
-        title="AI Commands"
-      >
-        <Sparkles size={14} />
-      </button>
-      <div className="table-toolbar-separator" />
-      <button
-        className="table-toolbar-btn table-toolbar-btn-danger"
-        onClick={() => editor.chain().focus().deleteTable().run()}
-        title="Delete Table"
-      >
-        <Trash2 {...TABLE_ICON} />
-      </button>
-    </div>
+        <button
+          className={`table-toolbar-btn icon-btn${currentAlign === "left" ? "table-toolbar-btn-active" : ""}`}
+          onClick={() => setAlign(currentAlign === "left" ? null : "left")}
+          title="Align Left"
+        >
+          <AlignLeft {...TABLE_ICON} />
+        </button>
+        <button
+          className={`table-toolbar-btn${currentAlign === "center" ? "table-toolbar-btn-active" : ""}`}
+          onClick={() => setAlign(currentAlign === "center" ? null : "center")}
+          title="Align Center"
+        >
+          <AlignCenter {...TABLE_ICON} />
+        </button>
+        <button
+          className={`table-toolbar-btn${currentAlign === "right" ? "table-toolbar-btn-active" : ""}`}
+          onClick={() => setAlign(currentAlign === "right" ? null : "right")}
+          title="Align Right"
+        >
+          <AlignRight {...TABLE_ICON} />
+        </button>
+        {isSelection && (
+          <>
+            <div className="table-toolbar-separator" />
+            <button
+              className="table-toolbar-btn"
+              disabled={!editor.can().mergeCells()}
+              onClick={() => editor.chain().focus().mergeCells().run()}
+              title="Merge Cells (⌘M)"
+            >
+              <MergeCellsIcon />
+            </button>
+            <button
+              className="table-toolbar-btn"
+              disabled={!editor.can().splitCell()}
+              onClick={() => editor.chain().focus().splitCell().run()}
+              title="Split Cell"
+            >
+              <SplitCellsIcon />
+            </button>
+          </>
+        )}
+        <div className="table-toolbar-separator" />
+        <button
+          className="table-toolbar-btn table-toolbar-btn-danger"
+          onClick={() => editor.chain().focus().deleteRow().run()}
+          title="Delete Row"
+        >
+          <DeleteRowIcon />
+        </button>
+        <button
+          className="table-toolbar-btn table-toolbar-btn-danger"
+          onClick={() => editor.chain().focus().deleteColumn().run()}
+          title="Delete Column"
+        >
+          <DeleteColIcon />
+        </button>
+        <div className="table-toolbar-separator" />
+        <button
+          className="table-toolbar-btn table-toolbar-btn-ai"
+          onClick={(e) => {
+            const table = findTable(editor);
+            if (!table || !table.node) return;
+            const tempDoc = editor.schema.nodes.doc.create(null, [table.node]);
+            const md = prosemirrorToMarkdown(tempDoc).trim();
+            if (!md) return;
+            showNodeViewAIMenu(e.currentTarget, "table", md, editor, table.pos);
+          }}
+          title="AI Commands"
+        >
+          <Sparkles size={14} />
+        </button>
+        <div className="table-toolbar-separator" />
+        <button
+          aria-label="More table options"
+          className="table-toolbar-btn"
+          onClick={(e) => {
+            if (overflowWasOpenRef.current) {
+              setOverflow(null);
+              return;
+            }
+            const r = e.currentTarget.getBoundingClientRect();
+            setOverflow({ x: r.left, y: r.bottom + 4 });
+          }}
+          onMouseDown={() => {
+            overflowWasOpenRef.current = overflow !== null;
+          }}
+          title="More"
+        >
+          <MoreIcon />
+        </button>
+      </div>
+      {overflow && (
+        <MenuList
+          items={buildTableOverflowItems(editor)}
+          onClose={() => setOverflow(null)}
+          x={overflow.x}
+          y={overflow.y}
+        />
+      )}
+    </>
   );
 }
 

@@ -131,6 +131,50 @@ export function buildTableMenu(
   ];
 }
 
+/**
+ * The item list for the table toolbar's `⋯` overflow menu (§5.5). These are the
+ * lower-frequency commands kept out of the compact primary toolbar row. Rendered
+ * by the shared MenuList, same as the right-click context menu.
+ */
+export function buildTableOverflowItems(editor: Editor): MenuItem[] {
+  return [
+    {
+      label: "Toggle Header Row",
+      action: () => editor.chain().focus().toggleHeaderRow().run(),
+    },
+    {
+      label: "Toggle Header Column",
+      action: () => editor.chain().focus().toggleHeaderColumn().run(),
+    },
+    { label: "", action: () => {}, separator: true },
+    {
+      label: "Copy as Markdown",
+      action: () => {
+        const table = findTableAtCursor(editor);
+        if (!table || !table.node) return;
+        const tempDoc = editor.schema.nodes.doc.create(null, [table.node]);
+        navigator.clipboard.writeText(prosemirrorToMarkdown(tempDoc).trim());
+      },
+    },
+    {
+      label: "Copy as HTML",
+      action: () => {
+        const table = findTableAtCursor(editor);
+        if (!table) return;
+        const dom = editor.view.nodeDOM(table.pos);
+        if (dom && dom instanceof HTMLElement) {
+          navigator.clipboard.writeText(dom.outerHTML);
+        }
+      },
+    },
+    { label: "", action: () => {}, separator: true },
+    {
+      label: "Delete Table",
+      action: () => editor.chain().focus().deleteTable().run(),
+    },
+  ];
+}
+
 /** Walk up from resolved position to find the enclosing table node. */
 export function findTableAtCursor(editor: Editor): null | {
   depth: number;
