@@ -30,7 +30,11 @@ tempfile = "3"
 notify = "8"
 regex = "1"
 keyring = { version = "3", features = ["apple-native"] }
-git2 = "0.20"
+# vendored-openssl builds OpenSSL from source so the x86_64 slice of the
+# macOS Universal Binary cross-compiles without a host-arch system OpenSSL.
+# git2's https/ssh transports (see git/remote.rs: fetch/pull/push) pull
+# openssl-sys via libgit2-sys + libssh2-sys.
+git2 = { version = "0.20", features = ["vendored-openssl"] }
 zip = "8"
 similar = "3"
 sha2 = "0.10"
