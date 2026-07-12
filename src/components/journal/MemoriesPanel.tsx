@@ -1,11 +1,12 @@
 // §56c Memories View — right panel component
 import { useState } from "react";
 
+import type { MemoryEntry } from "./OneLineEditor";
+
 import { useSettingsStore } from "../../stores/settings/store";
 import { useUIStore } from "../../stores/ui/ui";
 import { JournalTab } from "./JournalTab";
 import { MiniCalendar } from "./MiniCalendar";
-import { MemoryEntry } from "./OneLineEditor";
 
 export function MemoriesPanel() {
   const { rightPanelOpen, rightPanelMode } = useUIStore();

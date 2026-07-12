@@ -49,6 +49,7 @@ class MockIntersectionObserver implements IntersectionObserver {
   elements = new Set<Element>();
   readonly root = null;
   readonly rootMargin = "";
+  readonly scrollMargin = "";
   readonly thresholds = [];
   private cb: IntersectionObserverCallback;
 

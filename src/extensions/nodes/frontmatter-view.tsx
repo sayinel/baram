@@ -1,5 +1,5 @@
 // §56m Frontmatter Tag Bar — NodeView for visual tag editing
-import { KeyboardEvent, useCallback, useRef, useState } from "react";
+import { type KeyboardEvent, useCallback, useRef, useState } from "react";
 
 import type { NodeViewProps } from "@tiptap/react";
 

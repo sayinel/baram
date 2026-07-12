@@ -11,7 +11,7 @@ import {
   renderSimpleMarkdown,
   updateOneLineFrontmatter,
 } from "../../utils/journal/journal-memories";
-import { MemoryEntry, OneLineEditor } from "./OneLineEditor";
+import { type MemoryEntry, OneLineEditor } from "./OneLineEditor";
 import { resolveImageSrcs, resolveJournalBase } from "./utils";
 
 export interface JournalTabProps {

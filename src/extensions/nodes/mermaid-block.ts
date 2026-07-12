@@ -6,7 +6,7 @@ import { ReactNodeViewRenderer } from "@tiptap/react";
 import { htmlAttributesOptions } from "../utils/html-attributes-options";
 import { resolveShortcut } from "../utils/shortcut-resolver";
 import {
-  AtomBlockEntryState,
+  type AtomBlockEntryState,
   createAtomBlockEntryPlugin,
 } from "./atom-block-entry-plugin";
 import { MermaidBlockView } from "./mermaid-block-view";
