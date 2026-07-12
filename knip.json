@@ -1,5 +1,5 @@
 {
-  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "$schema": "https://unpkg.com/knip@6/schema.json",
   "entry": [
     "src/extensions/index.ts",
     "src/extensions/marks/index.ts",
@@ -15,7 +15,6 @@
   "project": ["src/**/*.{ts,tsx}"],
   "ignore": ["src/ipc/**"],
   "ignoreDependencies": [
-    "@floating-ui/dom",
     "@tiptap/core",
     "@codemirror/autocomplete",
     "@lezer/highlight",
@@ -23,10 +22,7 @@
     "tailwindcss",
     "mdast-util-math",
     "mdast-util-to-string",
-    "unist-util-visit",
-    "@testing-library/react",
-    "@types/cytoscape",
-    "@types/katex"
+    "unist-util-visit"
   ],
   "ignoreExportsUsedInFile": true
 }
