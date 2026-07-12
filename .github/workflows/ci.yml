@@ -93,10 +93,10 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
-        run: gitleaks detect --source . --config .gitleaks.toml --verbose --log-opts "$BASE..$HEAD"
+        run: gitleaks detect --source . --config .gitleaks.toml --redact --verbose --log-opts "$BASE..$HEAD"
       - name: Run gitleaks (full history)
         if: github.event_name != 'pull_request'
-        run: gitleaks detect --source . --config .gitleaks.toml --verbose
+        run: gitleaks detect --source . --config .gitleaks.toml --redact --verbose
 
   # ── Dependency licenses & supply chain (cargo-deny) ────────────────
   deny:
