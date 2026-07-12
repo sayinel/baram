@@ -36,11 +36,18 @@ export interface ToastState {
   message: string;
 }
 
+/** §close-guard: What triggered the shared unsaved-changes modal. `quit` = app
+ *  close/quit (all dirty tabs); `closeTab` = closing a single tab. */
+export type UnsavedModalRequest =
+  { intent: "closeTab"; tabId: string } | { intent: "quit" };
+
 interface UIState {
   aboutOpen: boolean;
   /** §Phase5: Close the conflict modal (without resolution — used internally) */
   closeConflictModal: () => void;
   closeExportDialog: () => void;
+  /** §close-guard: Close the shared unsaved-changes modal */
+  closeUnsavedModal: () => void;
   closeZettelTitleDialog: () => void;
   commandPaletteOpen: boolean;
   /** §Phase5: External file change conflict modal state (null = closed) */
@@ -61,6 +68,8 @@ interface UIState {
   ) => void;
   openExportDialog: (format?: ExportFormat) => void;
   openQuickCapture: () => void;
+  /** §close-guard: Open the shared unsaved-changes modal (quit or single tab) */
+  openUnsavedModal: (req: UnsavedModalRequest) => void;
   openZettelTitleDialog: (opts: {
     confirmLabel: string;
     description?: string;
@@ -78,8 +87,8 @@ interface UIState {
   setPendingApplyContent: (content: null | string) => void;
   setPendingSearchHighlight: (term: null | string) => void;
   setRightPanelMode: (mode: RightPanelMode) => void;
-
   setRightPanelWidth: (width: number) => void;
+
   setSidebarPanel: (panel: SidebarPanel) => void;
   setSidebarWidth: (width: number) => void;
   settingsOpen: boolean;
@@ -104,6 +113,8 @@ interface UIState {
   toggleSkillTestDialog: () => void;
   toggleSmartTemplateDialog: () => void;
   triggerContentReload: (cursorEnd?: boolean) => void;
+  /** §close-guard: Shared unsaved-changes modal request (null = closed) */
+  unsavedModal: null | UnsavedModalRequest;
   /** §94: Inline title-input dialog (WKWebView has no window.prompt) */
   zettelTitleDialog: {
     /** Confirm-button label (e.g. "Create" | "Promote") */
@@ -138,6 +149,7 @@ export const useUIStore = create<UIState>((set) => ({
   smartTemplateDialogOpen: false,
   pendingApplyContent: null,
   quickCaptureOpen: false,
+  unsavedModal: null,
   pendingSearchHighlight: null,
   contentReloadVersion: 0,
   contentReloadCursorEnd: false,
@@ -206,6 +218,10 @@ export const useUIStore = create<UIState>((set) => ({
     set((state) => ({ quickCaptureOpen: !state.quickCaptureOpen })),
 
   openQuickCapture: () => set({ quickCaptureOpen: true }),
+
+  openUnsavedModal: (req) => set({ unsavedModal: req }),
+
+  closeUnsavedModal: () => set({ unsavedModal: null }),
 
   openZettelTitleDialog: (opts) =>
     set({

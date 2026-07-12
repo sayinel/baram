@@ -18,6 +18,7 @@ import { useShallow } from "zustand/shallow";
 import { InlineAIPrompt } from "./components/ai/InlineAIPrompt";
 import { PromptLintPanel } from "./components/ai/PromptLintPanel";
 import { FindReplaceBar } from "./components/editor/FindReplaceBar";
+import { UnsavedChangesModal } from "./components/editor/UnsavedChangesModal";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AppLayout } from "./components/layout/AppLayout";
 import { StatusBar } from "./components/layout/StatusBar";
@@ -33,6 +34,7 @@ import { EditorProvider } from "./contexts/editor-context";
 import { createBaramExtensions } from "./extensions";
 import { useAppStartup } from "./hooks/use-app-startup";
 import { useAutoSave } from "./hooks/use-auto-save";
+import { useCloseGuard } from "./hooks/use-close-guard";
 import { useEditorEffects } from "./hooks/use-editor-effects";
 import { useExternalDrop } from "./hooks/use-external-drop";
 import {
@@ -363,6 +365,9 @@ function App() {
 
   // Apply settings to DOM (theme, font, spellcheck, locale)
   useSettingsEffects(activeEditor);
+
+  // §close-guard: intercept app close (red X) / quit (Cmd+Q) when tabs are dirty
+  useCloseGuard();
 
   // [NEW-MODERATE-C] Shared ref for progressive append handles — owned here,
   // passed to both useSourceMode and useTabSwitching so cancelInflightAppend
@@ -784,6 +789,12 @@ function App() {
         <QuickSwitcher editor={activeEditor} onNewFile={handleNewFile} />
         <SettingsModal />
         <AboutModal />
+        <UnsavedChangesModal
+          editor={activeEditor}
+          handleSave={handleSave}
+          isSourceMode={isSourceMode}
+          sourceContentRef={sourceContentRef}
+        />
         <HoverPreview />
         <SkillGeneratorDialogWrapper />
         <SkillTestDialogWrapper />

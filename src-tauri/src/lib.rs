@@ -16,6 +16,7 @@ mod snapshot;
 mod tag;
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use commands::{
@@ -36,6 +37,11 @@ pub struct VaultRootState(pub tokio::sync::RwLock<Option<std::path::PathBuf>>);
 pub struct WatcherState(
     pub std::sync::Mutex<std::collections::HashMap<String, notify::RecommendedWatcher>>,
 );
+
+/// Unsaved-changes guard for app close/quit. When false, close/quit is
+/// intercepted and the frontend is asked to confirm (via the `app://close-requested`
+/// event). `confirm_quit` flips it to true so the subsequent exit proceeds.
+pub struct QuitGuard(pub AtomicBool);
 
 #[tauri::command]
 fn get_opened_urls(state: tauri::State<'_, PendingOpenFiles>) -> Result<Vec<String>, String> {
@@ -112,6 +118,15 @@ fn update_recent_menu(
     Ok(())
 }
 
+/// Frontend calls this after the user resolves the unsaved-changes prompt and
+/// chooses to quit. Flips the guard so the CloseRequested/ExitRequested
+/// interceptors let the exit through, then exits the app.
+#[tauri::command]
+fn confirm_quit(app: tauri::AppHandle, guard: tauri::State<QuitGuard>) {
+    guard.0.store(true, Ordering::Relaxed);
+    app.exit(0);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -130,6 +145,7 @@ pub fn run() {
             Ok(())
         })
         .manage(PendingOpenFiles(Mutex::new(Vec::new())))
+        .manage(QuitGuard(AtomicBool::new(false)))
         .manage(VaultRootState(tokio::sync::RwLock::new(None)))
         .manage(WatcherState(std::sync::Mutex::new(
             std::collections::HashMap::new(),
@@ -201,6 +217,7 @@ pub fn run() {
             get_opened_urls,
             update_menu_locale,
             update_recent_menu,
+            confirm_quit,
             tag_cmd::get_vault_tags,
             tag_cmd::rename_tag,
             tag_cmd::get_files_by_tag,
@@ -238,9 +255,35 @@ pub fn run() {
             context_cmd::set_vault_config_by_path,
             context_cmd::resolve_settings,
         ])
+        // Unsaved-changes guard: intercept the window close (red X) and ask the
+        // frontend to confirm. `confirm_quit` flips QuitGuard to let it through.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let guard = window.state::<QuitGuard>();
+                if !guard.0.load(Ordering::Relaxed) {
+                    api.prevent_close();
+                    let _ = window.emit("app://close-requested", ());
+                }
+            }
+        })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|_app_handle, _event| {
+            // Unsaved-changes guard: intercept Cmd+Q / Quit menu / Dock Quit.
+            // `code.is_none()` means a user-initiated quit (not app.exit(code)).
+            #[cfg(desktop)]
+            if let tauri::RunEvent::ExitRequested { api, code, .. } = &_event {
+                if code.is_none() {
+                    let guard = _app_handle.state::<QuitGuard>();
+                    if !guard.0.load(Ordering::Relaxed) {
+                        api.prevent_exit();
+                        if let Some(win) = _app_handle.get_webview_window("main") {
+                            let _ = win.emit("app://close-requested", ());
+                        }
+                    }
+                }
+            }
+
             // macOS file association: handle files opened from Finder / "Open With"
             #[cfg(any(target_os = "macos", target_os = "ios"))]
             if let tauri::RunEvent::Opened { urls } = &_event {

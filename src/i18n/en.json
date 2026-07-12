@@ -1,4 +1,11 @@
 {
+  "unsavedChanges.title": "Unsaved Changes",
+  "unsavedChanges.quitMessage": "You have {count} document(s) with unsaved changes.",
+  "unsavedChanges.closeMessage": "\"{name}\" has unsaved changes.",
+  "unsavedChanges.saveAndQuit": "Save & Quit",
+  "unsavedChanges.saveAndClose": "Save & Close",
+  "unsavedChanges.dontSave": "Don't Save",
+  "unsavedChanges.cancel": "Cancel",
   "settings.title": "Settings",
   "settings.search.placeholder": "Search settings...",
   "settings.search.empty": "No settings found for \"{query}\"",

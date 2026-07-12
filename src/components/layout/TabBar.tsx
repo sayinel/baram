@@ -2,14 +2,13 @@
 // §38 Tab Pin — context menu, pinned rendering, drag boundary clamping
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { ask } from "@tauri-apps/plugin-dialog";
-
 import { ExternalLink, Pin } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
 import { useContextStore } from "../../stores/context/context";
 import { isFileTab, useEditorStore } from "../../stores/editor/editor";
 import { switchContext } from "../../stores/file/file";
+import { useUIStore } from "../../stores/ui/ui";
 
 const DRAG_THRESHOLD = 3; // px before drag activates
 
@@ -115,16 +114,14 @@ export function TabBar() {
   }, []);
 
   const handleClose = useCallback(
-    async (tabId: string) => {
+    (tabId: string) => {
       const tab = tabs.find((t) => t.id === tabId);
       // §38 Pinned tabs can't be closed
       if (tab?.isPinned) return;
-      if (tab?.isDirty) {
-        const confirmed = await ask(
-          "You have unsaved changes. Close without saving?",
-          { title: "Unsaved Changes", kind: "warning" },
-        );
-        if (!confirmed) return;
+      // §close-guard: dirty tab → shared 3-button modal (same UI as app quit)
+      if (tab?.isDirty && isFileTab(tab)) {
+        useUIStore.getState().openUnsavedModal({ intent: "closeTab", tabId });
+        return;
       }
       closeTab(tabId);
     },
