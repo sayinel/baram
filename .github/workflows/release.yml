@@ -19,6 +19,10 @@ jobs:
   # ── Run full CI first ──────────────────────────────────────────────
   ci:
     uses: ./.github/workflows/ci.yml
+    with:
+      # Explicit signal for release-only CI steps — github.event_name inside
+      # a called workflow is the caller's event, never 'workflow_call'.
+      release: true
     permissions:
       contents: read
       pull-requests: read

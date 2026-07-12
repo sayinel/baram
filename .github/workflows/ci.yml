@@ -2,14 +2,22 @@ name: CI
 
 on:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_call:
+    inputs:
+      release:
+        description: 'Set by release.yml — enables release-only steps (build smoke test)'
+        type: boolean
+        default: false
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
+  # Only PRs cancel superseded runs. NOTE: github.event_name is NEVER
+  # 'workflow_call' in a called workflow (the caller's event propagates),
+  # so the old `!= 'workflow_call'` condition was always true.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -21,9 +29,9 @@ env:
 
 jobs:
   # ── Path Change Detection ────────────────────────────────────────
-  # On PR: detects if Rust-related files changed to skip rust job.
-  # On push/workflow_call: filter steps are skipped, decide step
-  # defaults to 'true' so rust job always runs when needed.
+  # PR: paths-filter decides whether the rust job must run.
+  # Everything else (main push, release call): decide outputs true,
+  # so rust always runs.
   changes:
     runs-on: ubuntu-22.04
     outputs:
@@ -90,9 +98,8 @@ jobs:
         working-directory: src-tauri
         run: cargo deny check licenses bans sources
 
-  # ── Test (PR + workflow_call) ──────────────────────────────────────
+  # ── Test (all events) ──────────────────────────────────────────────
   test:
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_call'
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v7
@@ -103,9 +110,9 @@ jobs:
   # ── Rust: fmt + clippy + test + build smoke ────────────────────────
   rust:
     needs: [changes]
-    if: |
-      github.event_name == 'workflow_call' ||
-      (github.event_name == 'pull_request' && needs.changes.outputs.rust == 'true')
+    # Runs only when changes succeeded AND said rust is needed
+    # (main push / release call: decide always outputs true).
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v7
@@ -136,8 +143,10 @@ jobs:
       - name: Cargo test
         run: npm run rust:_test
 
-      - name: Tauri build smoke test
-        if: github.event_name == 'workflow_call'
+      - name: Tauri build smoke test (release only)
+        # github.event_name is NEVER 'workflow_call' inside a called workflow —
+        # the caller's event propagates — so release.yml passes an input instead.
+        if: inputs.release == true
         run: npm run tauri build -- --no-bundle
         env:
           TAURI_SIGNING_PRIVATE_KEY: ''
@@ -146,24 +155,32 @@ jobs:
   # ── CI Gate ────────────────────────────────────────────────────────
   ci-pass:
     if: always()
-    needs: [lint, security, deny, test, rust]
+    needs: [changes, lint, security, deny, test, rust]
     runs-on: ubuntu-22.04
     steps:
       - name: Verify all jobs passed
         env:
           EVENT: ${{ github.event_name }}
+          CHANGES: ${{ needs.changes.result }}
+          RUST_NEEDED: ${{ needs.changes.outputs.rust }}
           LINT: ${{ needs.lint.result }}
           SECURITY: ${{ needs.security.result }}
           DENY: ${{ needs.deny.result }}
           TEST: ${{ needs.test.result }}
           RUST: ${{ needs.rust.result }}
         run: |
-          for r in "$LINT" "$SECURITY" "$DENY" "$TEST" "$RUST"; do
-            [[ "$r" =~ ^(success|skipped)$ ]] || { echo "Failed: $r"; exit 1; }
-          done
-          # On workflow_call (release), test and rust must actually run
-          if [[ "$EVENT" == "workflow_call" ]]; then
-            [[ "$TEST" == "success" && "$RUST" == "success" ]] || \
-              { echo "Release requires test and rust to pass (test=$TEST, rust=$RUST)"; exit 1; }
+          fail() { echo "::error::$1"; exit 1; }
+          # These must succeed on every event — a skip here means something
+          # upstream broke, not an intended skip.
+          [[ "$CHANGES"  == "success" ]] || fail "changes: $CHANGES"
+          [[ "$LINT"     == "success" ]] || fail "lint: $LINT"
+          [[ "$SECURITY" == "success" ]] || fail "security: $SECURITY"
+          [[ "$DENY"     == "success" ]] || fail "deny: $DENY"
+          [[ "$TEST"     == "success" ]] || fail "test: $TEST"
+          # rust must succeed everywhere, with exactly one legitimate skip:
+          # a PR whose changes touched no rust-related paths.
+          if [[ "$RUST" != "success" ]]; then
+            [[ "$EVENT" == "pull_request" && "$RUST_NEEDED" == "false" && "$RUST" == "skipped" ]] \
+              || fail "rust: $RUST (event=$EVENT, rust-needed=$RUST_NEEDED)"
           fi
           echo "All checks passed."
