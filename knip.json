@@ -15,9 +15,6 @@
   "project": ["src/**/*.{ts,tsx}"],
   "ignore": ["src/ipc/**"],
   "ignoreDependencies": [
-    "@tiptap/core",
-    "@codemirror/autocomplete",
-    "@lezer/highlight",
     "micromark-extension-gfm",
     "tailwindcss",
     "mdast-util-math",
