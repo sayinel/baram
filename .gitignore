@@ -578,3 +578,21 @@ blob-report/
 
 # Internal development docs — managed locally, not published
 /dev/
+.docs/
+
+# ===================================================================
+# Local AI-agent tooling state — never commit
+# (previously only in .git/info/exclude, which does not protect
+#  other clones/contributors)
+# ===================================================================
+.agent/
+.agents/
+.serena/
+# OMC deepinit hierarchical docs (generated per-machine)
+AGENTS.md
+skills-lock.json
+# Claude Code local state (settings.local.json was only ignored by the
+# unrelated *.LOCAL.* pattern via case-insensitive match — macOS only)
+.claude/settings.local.json
+.claude/worktrees/
+.claude/skills/
