@@ -1,4 +1,6 @@
 // Tests for §11.2.3 Block AI Utils — BlockHandle AI submenu helpers
+import type { Node as PmNode } from "@tiptap/pm/model";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -31,7 +33,7 @@ function mockNode(
   textContent: string,
   attrs: Record<string, unknown> = {},
   children?: MockRow[],
-): MockNode {
+): PmNode {
   const node: MockNode = {
     type: { name: typeName },
     textContent,
@@ -55,7 +57,7 @@ function mockNode(
       }
     };
   }
-  return node;
+  return node as unknown as PmNode;
 }
 
 describe("getBlockContentMode", () => {

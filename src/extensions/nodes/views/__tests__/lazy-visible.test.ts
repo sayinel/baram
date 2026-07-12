@@ -8,6 +8,7 @@ import {
 
 declare const MockIntersectionObserver: {
   instances: {
+    cb: IntersectionObserverCallback;
     elements: Set<Element>;
     triggerIntersect: (v?: boolean) => void;
   }[];
@@ -114,16 +115,31 @@ describe("onFirstVisible — shared observer + idle queue (C3.2)", () => {
     const io = MockIntersectionObserver.instances.at(-1)!;
     // Fire elements one at a time in order: el1, el3, el2.
     // Each unshift prepends to queue so final queue = [2, 3, 1].
-    io["cb"](
-      [{ target: el1, isIntersecting: true } as IntersectionObserverEntry],
+    io.cb(
+      [
+        {
+          target: el1,
+          isIntersecting: true,
+        } as unknown as IntersectionObserverEntry,
+      ],
       io as unknown as IntersectionObserver,
     );
-    io["cb"](
-      [{ target: el3, isIntersecting: true } as IntersectionObserverEntry],
+    io.cb(
+      [
+        {
+          target: el3,
+          isIntersecting: true,
+        } as unknown as IntersectionObserverEntry,
+      ],
       io as unknown as IntersectionObserver,
     );
-    io["cb"](
-      [{ target: el2, isIntersecting: true } as IntersectionObserverEntry],
+    io.cb(
+      [
+        {
+          target: el2,
+          isIntersecting: true,
+        } as unknown as IntersectionObserverEntry,
+      ],
       io as unknown as IntersectionObserver,
     );
 

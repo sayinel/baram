@@ -17,6 +17,8 @@ vi.mock(
   },
 );
 
+import type { Locale } from "../../../i18n";
+
 import { t } from "../../../i18n";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
@@ -124,7 +126,7 @@ describe("StatusBar — Perspective launcher", () => {
 
   function expectedLabel() {
     const locale = useSettingsStore.getState().locale;
-    return t("statusbar.perspective", locale);
+    return t("statusbar.perspective", locale as Locale);
   }
 
   it("shows a fixed perspective label, not 'Default', when no preset is active", () => {

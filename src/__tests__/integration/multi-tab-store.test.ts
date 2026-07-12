@@ -7,6 +7,7 @@ import { useUIStore } from "../../stores/ui/ui";
 function makeTab(id: string, filePath: string): EditorTab {
   return {
     id,
+    contextId: "",
     filePath,
     title: filePath.split("/").pop() || id,
     isDirty: false,

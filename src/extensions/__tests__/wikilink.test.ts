@@ -602,7 +602,7 @@ describe("InputRule: B2 eager normalization (§95)", () => {
     editor.commands.insertContentAt(insertPos, text);
     const endPos = editor.state.doc.content.size - 1;
     editor.view.someProp("handleTextInput", (f) =>
-      f(editor.view, endPos, endPos, ""),
+      f(editor.view, endPos, endPos, "", () => editor.state.tr),
     );
   }
 

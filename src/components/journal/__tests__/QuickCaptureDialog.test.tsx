@@ -20,7 +20,7 @@ describe("QuickCaptureDialog — zettel space gating (§95/§99 M4)", () => {
     vi.clearAllMocks();
     useSettingsStore.getState().setZettelkastenEnabled(false);
     useSettingsStore.getState().setZettelkastenDirectory("");
-    useFileStore.getState().setRootPath(null);
+    useFileStore.getState().setRootPath(null as unknown as string);
     useUIStore.setState({ quickCaptureOpen: true });
   });
 
