@@ -39,6 +39,10 @@
   <a href="docs/faq.md">FAQ</a>
 </p>
 
+<p align="center">
+  <img src="docs/assets/hero.png" alt="Baram editor — a beautiful WYSIWYG markdown workspace" width="800" />
+</p>
+
 ---
 
 ## What is Baram?
@@ -46,6 +50,12 @@
 Baram(바람) is a desktop markdown editor where formatting syntax disappears as you type. Move your cursor into a heading and the `## ` prefix reappears for editing; move away and only the styled text remains. This experience extends to bold, italic, links, images, math, and more — all while maintaining **lossless markdown roundtrip fidelity**.
 
 Your `.md` files stay 100% standard markdown. No proprietary format, no lock-in.
+
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="Baram demo — markdown syntax disappears as you type" width="800" />
+  <br />
+  <em>Formatting syntax appears while you edit, and disappears when you move on.</em>
+</p>
 
 ## Installation
 
