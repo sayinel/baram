@@ -842,6 +842,17 @@
       "description": "플러그인 설치 디렉토리 경로 조회"
     },
     {
+      "name": "plugin_prepare_scopes",
+      "input": {},
+      "output": "void",
+      "module": "plugin",
+      "spec": "§69",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "Grant asset protocol scope for the plugin install dir at startup"
+    },
+    {
       "name": "embed_text",
       "input": { "text": "string", "provider": "string", "model": "string", "api_key": "string?", "base_url": "string?" },
       "output": "number[]",
