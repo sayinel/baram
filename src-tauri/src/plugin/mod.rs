@@ -377,6 +377,14 @@ pub fn normalize_dev_list(
     out
 }
 
+/// Parse the persisted dev-folder list; corrupt/missing values degrade to empty.
+pub fn parse_dev_folders(raw: Option<String>) -> Vec<String> {
+    match raw {
+        Some(s) => serde_json::from_str(&s).unwrap_or_default(),
+        None => Vec::new(),
+    }
+}
+
 /// Read + validate a manifest from an arbitrary folder (dev plugin source).
 pub fn read_manifest_at(folder: &Path) -> Result<PluginManifest, PluginError> {
     let manifest_path = folder.join("baram-plugin.json");
@@ -532,5 +540,26 @@ mod tests {
         std::fs::write(tmp.path().join("baram-plugin.json"), json).unwrap();
         let m = read_manifest_at(tmp.path()).unwrap();
         assert_eq!(m.id, "dev-x");
+    }
+
+    #[test]
+    fn test_parse_dev_folders_none() {
+        assert_eq!(parse_dev_folders(None), Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_parse_dev_folders_corrupt_degrades() {
+        assert_eq!(
+            parse_dev_folders(Some("not json".to_string())),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn test_parse_dev_folders_valid() {
+        assert_eq!(
+            parse_dev_folders(Some(r#"["/a","/b"]"#.to_string())),
+            vec!["/a".to_string(), "/b".to_string()]
+        );
     }
 }

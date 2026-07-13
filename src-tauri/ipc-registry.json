@@ -853,6 +853,39 @@
       "description": "Grant asset protocol scope for the plugin install dir at startup"
     },
     {
+      "name": "plugin_add_dev_folder",
+      "input": { "path": "string" },
+      "output": "InstalledPluginInfo",
+      "module": "plugin",
+      "spec": "§69",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "Register a local dev plugin folder (validates manifest, grants asset scope, persists)"
+    },
+    {
+      "name": "plugin_remove_dev_folder",
+      "input": { "path": "string" },
+      "output": "void",
+      "module": "plugin",
+      "spec": "§69",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "Remove a registered dev plugin folder"
+    },
+    {
+      "name": "plugin_list_dev",
+      "input": {},
+      "output": "InstalledPluginInfo[]",
+      "module": "plugin",
+      "spec": "§69",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "List registered dev plugin folders"
+    },
+    {
       "name": "embed_text",
       "input": { "text": "string", "provider": "string", "model": "string", "api_key": "string?", "base_url": "string?" },
       "output": "number[]",

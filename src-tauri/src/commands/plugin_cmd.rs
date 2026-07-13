@@ -61,15 +61,8 @@ pub async fn plugin_prepare_scopes(app: tauri::AppHandle) -> Result<(), String> 
 const DEV_FOLDERS_KEY: &str = "plugin.devFolders";
 
 fn read_dev_folders(app: &tauri::AppHandle) -> Result<Vec<String>, String> {
-    match config::get_config(app, DEV_FOLDERS_KEY).map_err(|e| e.to_string())? {
-        Some(s) => serde_json::from_str(&s).map_err(|e| e.to_string()),
-        None => Ok(Vec::new()),
-    }
-}
-
-fn write_dev_folders(app: &tauri::AppHandle, list: &[String]) -> Result<(), String> {
-    let s = serde_json::to_string(list).map_err(|e| e.to_string())?;
-    config::set_config(app, DEV_FOLDERS_KEY, &s).map_err(|e| e.to_string())
+    let raw = config::get_config(app, DEV_FOLDERS_KEY).map_err(|e| e.to_string())?;
+    Ok(plugin::parse_dev_folders(raw))
 }
 
 fn dev_info(app: &tauri::AppHandle, path: &str) -> Result<plugin::InstalledPluginInfo, String> {
@@ -91,16 +84,22 @@ pub async fn plugin_add_dev_folder(
     app: tauri::AppHandle,
     path: String,
 ) -> Result<plugin::InstalledPluginInfo, String> {
-    let info = dev_info(&app, &path)?; // validates manifest + grants scope
-    let list = plugin::normalize_dev_list(&read_dev_folders(&app)?, Some(&path), None);
-    write_dev_folders(&app, &list)?;
+    let info = dev_info(&app, &path)?; // validate manifest + grant scope BEFORE persisting
+    config::update_config(&app, DEV_FOLDERS_KEY, |raw| {
+        let list = plugin::normalize_dev_list(&plugin::parse_dev_folders(raw), Some(&path), None);
+        serde_json::to_string(&list).unwrap_or_default()
+    })
+    .map_err(|e| e.to_string())?;
     Ok(info)
 }
 
 #[tauri::command]
 pub async fn plugin_remove_dev_folder(app: tauri::AppHandle, path: String) -> Result<(), String> {
-    let list = plugin::normalize_dev_list(&read_dev_folders(&app)?, None, Some(&path));
-    write_dev_folders(&app, &list)
+    config::update_config(&app, DEV_FOLDERS_KEY, |raw| {
+        let list = plugin::normalize_dev_list(&plugin::parse_dev_folders(raw), None, Some(&path));
+        serde_json::to_string(&list).unwrap_or_default()
+    })
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
