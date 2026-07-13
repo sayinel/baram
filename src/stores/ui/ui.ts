@@ -34,6 +34,7 @@ export interface ToastState {
   /** Monotonic id — changing it restarts the auto-dismiss timer */
   id: number;
   message: string;
+  type?: "error" | "info" | "warning";
 }
 
 /** §close-guard: What triggered the shared unsaved-changes modal. `quit` = app
@@ -93,7 +94,7 @@ interface UIState {
   setSidebarWidth: (width: number) => void;
   settingsOpen: boolean;
   /** Show a transient toast (auto-dismisses after a few seconds) */
-  showToast: (message: string) => void;
+  showToast: (message: string, type?: "error" | "info" | "warning") => void;
   sidebarOpen: boolean;
   sidebarPanel: SidebarPanel;
   sidebarWidth: number;
@@ -168,8 +169,10 @@ export const useUIStore = create<UIState>((set) => ({
 
   toast: null,
 
-  showToast: (message) =>
-    set((state) => ({ toast: { id: (state.toast?.id ?? 0) + 1, message } })),
+  showToast: (message, type) =>
+    set((state) => ({
+      toast: { id: (state.toast?.id ?? 0) + 1, message, type },
+    })),
 
   dismissToast: () => set({ toast: null }),
 
