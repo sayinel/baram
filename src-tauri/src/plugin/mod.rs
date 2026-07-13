@@ -67,6 +67,8 @@ pub struct InstalledPluginInfo {
     pub manifest: PluginManifest,
     pub install_path: String,
     pub checksum: String,
+    #[serde(default)]
+    pub is_dev: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -181,6 +183,7 @@ pub async fn install_plugin(
         install_path: target_dir.to_string_lossy().to_string(),
         checksum: actual_checksum,
         manifest,
+        is_dev: false,
     })
 }
 
@@ -223,6 +226,7 @@ pub async fn list_installed() -> Result<Vec<InstalledPluginInfo>, PluginError> {
                         manifest,
                         install_path: path.to_string_lossy().to_string(),
                         checksum,
+                        is_dev: false,
                     });
                 }
                 Err(_) => continue,
@@ -355,6 +359,38 @@ fn validate_manifest(manifest: &PluginManifest) -> Result<(), PluginError> {
     Ok(())
 }
 
+/// Dedup-aware add/remove for the persisted dev-folder list.
+pub fn normalize_dev_list(
+    existing: &[String],
+    add: Option<&str>,
+    remove: Option<&str>,
+) -> Vec<String> {
+    let mut out: Vec<String> = existing.to_vec();
+    if let Some(r) = remove {
+        out.retain(|p| p != r);
+    }
+    if let Some(a) = add {
+        if !out.iter().any(|p| p == a) {
+            out.push(a.to_string());
+        }
+    }
+    out
+}
+
+/// Read + validate a manifest from an arbitrary folder (dev plugin source).
+pub fn read_manifest_at(folder: &Path) -> Result<PluginManifest, PluginError> {
+    let manifest_path = folder.join("baram-plugin.json");
+    if !manifest_path.exists() {
+        return Err(PluginError::InvalidManifest(
+            "baram-plugin.json not found in dev folder".to_string(),
+        ));
+    }
+    let content = std::fs::read_to_string(&manifest_path)?;
+    let manifest: PluginManifest = serde_json::from_str(&content)?;
+    validate_manifest(&manifest)?;
+    Ok(manifest)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -462,5 +498,39 @@ mod tests {
             hash,
             "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
         );
+    }
+
+    #[test]
+    fn test_normalize_dev_list_add_dedups() {
+        let list = vec!["/a".to_string(), "/b".to_string()];
+        let out = normalize_dev_list(&list, Some("/a"), None);
+        assert_eq!(out, vec!["/a".to_string(), "/b".to_string()]); // no dupe
+        let out2 = normalize_dev_list(&list, Some("/c"), None);
+        assert_eq!(
+            out2,
+            vec!["/a".to_string(), "/b".to_string(), "/c".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_normalize_dev_list_remove() {
+        let list = vec!["/a".to_string(), "/b".to_string()];
+        let out = normalize_dev_list(&list, None, Some("/a"));
+        assert_eq!(out, vec!["/b".to_string()]);
+    }
+
+    #[test]
+    fn test_read_manifest_at_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(read_manifest_at(tmp.path()).is_err());
+    }
+
+    #[test]
+    fn test_read_manifest_at_valid() {
+        let tmp = tempfile::tempdir().unwrap();
+        let json = r#"{"id":"dev-x","name":"Dev X","description":"","version":"1.0.0","author":"","license":"MIT","main":"index.mjs","engines":{"baram":">=0.2.0"},"capabilities":["statusbar"]}"#;
+        std::fs::write(tmp.path().join("baram-plugin.json"), json).unwrap();
+        let m = read_manifest_at(tmp.path()).unwrap();
+        assert_eq!(m.id, "dev-x");
     }
 }

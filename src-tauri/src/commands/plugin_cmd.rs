@@ -1,4 +1,5 @@
 // §69 Plugin Marketplace — IPC command handlers
+use crate::config;
 use crate::plugin;
 use tauri::Manager;
 
@@ -55,4 +56,63 @@ pub async fn plugin_prepare_scopes(app: tauri::AppHandle) -> Result<(), String> 
         .allow_directory(&dir, true)
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+const DEV_FOLDERS_KEY: &str = "plugin.devFolders";
+
+fn read_dev_folders(app: &tauri::AppHandle) -> Result<Vec<String>, String> {
+    match config::get_config(app, DEV_FOLDERS_KEY).map_err(|e| e.to_string())? {
+        Some(s) => serde_json::from_str(&s).map_err(|e| e.to_string()),
+        None => Ok(Vec::new()),
+    }
+}
+
+fn write_dev_folders(app: &tauri::AppHandle, list: &[String]) -> Result<(), String> {
+    let s = serde_json::to_string(list).map_err(|e| e.to_string())?;
+    config::set_config(app, DEV_FOLDERS_KEY, &s).map_err(|e| e.to_string())
+}
+
+fn dev_info(app: &tauri::AppHandle, path: &str) -> Result<plugin::InstalledPluginInfo, String> {
+    let folder = std::path::Path::new(path);
+    let manifest = plugin::read_manifest_at(folder).map_err(|e| e.to_string())?;
+    app.asset_protocol_scope()
+        .allow_directory(folder, true)
+        .map_err(|e| e.to_string())?;
+    Ok(plugin::InstalledPluginInfo {
+        manifest,
+        install_path: path.to_string(),
+        checksum: String::new(),
+        is_dev: true,
+    })
+}
+
+#[tauri::command]
+pub async fn plugin_add_dev_folder(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<plugin::InstalledPluginInfo, String> {
+    let info = dev_info(&app, &path)?; // validates manifest + grants scope
+    let list = plugin::normalize_dev_list(&read_dev_folders(&app)?, Some(&path), None);
+    write_dev_folders(&app, &list)?;
+    Ok(info)
+}
+
+#[tauri::command]
+pub async fn plugin_remove_dev_folder(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    let list = plugin::normalize_dev_list(&read_dev_folders(&app)?, None, Some(&path));
+    write_dev_folders(&app, &list)
+}
+
+#[tauri::command]
+pub async fn plugin_list_dev(
+    app: tauri::AppHandle,
+) -> Result<Vec<plugin::InstalledPluginInfo>, String> {
+    let mut out = Vec::new();
+    for path in read_dev_folders(&app)? {
+        match dev_info(&app, &path) {
+            Ok(info) => out.push(info),
+            Err(e) => log::warn!("[plugin] skip dev folder {path}: {e}"),
+        }
+    }
+    Ok(out)
 }
