@@ -8,19 +8,22 @@ import { useShallow } from "zustand/shallow";
 import {
   pluginAddDevFolder,
   pluginRemoveDevFolder,
+  toInstalledDevPlugin,
 } from "../../ipc/plugin-invoke";
 import { pluginLoader } from "../../plugins/plugin-loader";
 import { usePluginStore } from "../../stores/system/plugin";
 import { useUIStore } from "../../stores/ui/ui";
 
 export function PluginDeveloperSection() {
-  const { devPlugins, addDevPlugin, removeDevPlugin } = usePluginStore(
-    useShallow((s) => ({
-      devPlugins: s.devPlugins,
-      addDevPlugin: s.addDevPlugin,
-      removeDevPlugin: s.removeDevPlugin,
-    })),
-  );
+  const { devPlugins, addDevPlugin, removeDevPlugin, setError } =
+    usePluginStore(
+      useShallow((s) => ({
+        devPlugins: s.devPlugins,
+        addDevPlugin: s.addDevPlugin,
+        removeDevPlugin: s.removeDevPlugin,
+        setError: s.setError,
+      })),
+    );
   const showToast = useUIStore((s) => s.showToast);
   const list = Object.values(devPlugins);
 
@@ -29,9 +32,9 @@ export function PluginDeveloperSection() {
     if (typeof picked !== "string") return;
     try {
       const info = await pluginAddDevFolder(picked);
-      const plugin = toInstalled(info);
-      addDevPlugin(plugin);
+      const plugin = toInstalledDevPlugin(info);
       await pluginLoader.loadPlugin(plugin.installPath, plugin.manifest);
+      addDevPlugin(plugin);
       showToast(`Loaded dev plugin: ${plugin.manifest.name}`);
     } catch (err) {
       showToast(`Failed to load dev plugin: ${String(err)}`);
@@ -41,9 +44,9 @@ export function PluginDeveloperSection() {
   async function handleReload(plugin: InstalledPlugin) {
     try {
       const info = await pluginAddDevFolder(plugin.installPath); // re-read manifest
-      const fresh = toInstalled(info);
-      addDevPlugin(fresh);
+      const fresh = toInstalledDevPlugin(info);
       await pluginLoader.reloadPlugin(fresh.installPath, fresh.manifest);
+      addDevPlugin(fresh);
       if (fresh.manifest.tiptapExtensions?.length) {
         showToast(
           `Reloaded ${fresh.manifest.name} — restart required for Tiptap extensions`,
@@ -52,6 +55,7 @@ export function PluginDeveloperSection() {
         showToast(`Reloaded dev plugin: ${fresh.manifest.name}`);
       }
     } catch (err) {
+      setError(plugin.manifest.id, String(err));
       showToast(`Reload failed: ${String(err)}`);
     }
   }
@@ -105,20 +109,4 @@ export function PluginDeveloperSection() {
       )}
     </section>
   );
-}
-
-function toInstalled(r: {
-  checksum: string;
-  install_path: string;
-  manifest: InstalledPlugin["manifest"];
-}): InstalledPlugin {
-  return {
-    checksum: r.checksum,
-    enabled: true,
-    installedAt: 0,
-    installPath: r.install_path,
-    isDev: true,
-    manifest: r.manifest,
-    updatedAt: 0,
-  };
 }

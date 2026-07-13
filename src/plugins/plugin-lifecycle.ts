@@ -1,6 +1,10 @@
 import type { InstalledPlugin } from "./types";
 
-import { pluginListDev, pluginPrepareScopes } from "../ipc/plugin-invoke";
+import {
+  pluginListDev,
+  pluginPrepareScopes,
+  toInstalledDevPlugin,
+} from "../ipc/plugin-invoke";
 import { usePluginStore } from "../stores/system/plugin";
 import { logger } from "../utils/logger";
 import { emitPluginEvent } from "./extension-context";
@@ -59,26 +63,27 @@ export async function initializePlugins(): Promise<void> {
   // Dev plugins (source of truth = Rust config; not persisted in the store).
   try {
     const devRaw = await pluginListDev();
-    const devPlugins: InstalledPlugin[] = devRaw.map((r) => ({
-      checksum: r.checksum,
-      enabled: true,
-      installedAt: 0,
-      installPath: r.install_path,
-      isDev: true,
-      manifest: r.manifest,
-      updatedAt: 0,
-    }));
+    const devPlugins: InstalledPlugin[] = devRaw.map(toInstalledDevPlugin);
     usePluginStore.getState().setDevPlugins(devPlugins);
     await Promise.allSettled(
-      devPlugins.map((p) =>
-        pluginLoader.loadPlugin(p.installPath, p.manifest).catch((err) => {
+      devPlugins.map(async (p) => {
+        try {
+          if (pluginLoader.isLoaded(p.manifest.id)) {
+            logger.warn(
+              `[PluginLifecycle] dev plugin ${p.manifest.id} overrides installed`,
+            );
+            await pluginLoader.reloadPlugin(p.installPath, p.manifest);
+          } else {
+            await pluginLoader.loadPlugin(p.installPath, p.manifest);
+          }
+        } catch (err) {
           logger.error(
             `[PluginLifecycle] dev load failed ${p.manifest.id}:`,
             err,
           );
           usePluginStore.getState().setError(p.manifest.id, String(err));
-        }),
-      ),
+        }
+      }),
     );
   } catch (err) {
     logger.error("[PluginLifecycle] dev plugin init failed:", err);

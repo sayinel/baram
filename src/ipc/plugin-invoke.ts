@@ -1,7 +1,11 @@
 // §69 Plugin Marketplace — IPC wrappers
 import { invoke } from "@tauri-apps/api/core";
 
-import type { PluginManifest, RegistryIndex } from "../plugins/types";
+import type {
+  InstalledPlugin,
+  PluginManifest,
+  RegistryIndex,
+} from "../plugins/types";
 
 export interface RustInstalledPluginInfo {
   checksum: string;
@@ -60,4 +64,19 @@ export async function pluginRemoveDevFolder(path: string): Promise<void> {
 
 export async function pluginUninstall(pluginId: string): Promise<void> {
   return invoke<void>("plugin_uninstall", { pluginId });
+}
+
+/** Map a Rust-reported plugin info payload into a dev `InstalledPlugin`. */
+export function toInstalledDevPlugin(
+  r: RustInstalledPluginInfo,
+): InstalledPlugin {
+  return {
+    checksum: r.checksum,
+    enabled: true,
+    installedAt: 0,
+    installPath: r.install_path,
+    isDev: true,
+    manifest: r.manifest,
+    updatedAt: 0,
+  };
 }
