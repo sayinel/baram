@@ -1,7 +1,7 @@
 import type { InstalledPlugin } from "../types";
 
 // §69 Plugin Store state transition tests
-import { beforeEach, describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, it, test } from "vitest";
 
 import { usePluginStore } from "../../stores/system/plugin";
 
@@ -217,5 +217,44 @@ describe("usePluginStore", () => {
         "https://custom-registry.example.com/index.json",
       );
     });
+  });
+});
+
+function devPlugin(id: string): InstalledPlugin {
+  return {
+    checksum: "",
+    enabled: true,
+    installedAt: 0,
+    installPath: `/dev/${id}`,
+    isDev: true,
+    updatedAt: 0,
+    manifest: {
+      id,
+      name: id,
+      description: "",
+      version: "1.0.0",
+      author: "",
+      license: "MIT",
+      main: "index.mjs",
+      engines: { baram: ">=0.2.0" },
+      capabilities: [],
+    },
+  };
+}
+
+describe("plugin store dev plugins", () => {
+  it("sets, adds, and removes dev plugins without persisting", () => {
+    usePluginStore.getState().setDevPlugins([devPlugin("a"), devPlugin("b")]);
+    expect(Object.keys(usePluginStore.getState().devPlugins)).toEqual([
+      "a",
+      "b",
+    ]);
+    usePluginStore.getState().removeDevPlugin("a");
+    expect(Object.keys(usePluginStore.getState().devPlugins)).toEqual(["b"]);
+    usePluginStore.getState().addDevPlugin(devPlugin("c"));
+    expect(Object.keys(usePluginStore.getState().devPlugins).sort()).toEqual([
+      "b",
+      "c",
+    ]);
   });
 });

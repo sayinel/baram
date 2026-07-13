@@ -8,8 +8,11 @@ import { tauriStorage } from "./tauri-storage";
 
 interface PluginState {
   // Actions
+  addDevPlugin: (plugin: InstalledPlugin) => void;
   addPlugin: (plugin: InstalledPlugin) => void;
   clearUpdateAvailable: (id: string) => void;
+  // Runtime state (not persisted; Rust config is the source of truth)
+  devPlugins: Record<string, InstalledPlugin>;
   getPluginSettings: (pluginId: string) => Record<string, unknown>;
 
   // Persisted state
@@ -22,7 +25,9 @@ interface PluginState {
 
   registryCacheTime: number;
   registryUrl: string;
+  removeDevPlugin: (id: string) => void;
   removePlugin: (id: string) => void;
+  setDevPlugins: (list: InstalledPlugin[]) => void;
   setEnabled: (id: string, enabled: boolean) => void;
   setError: (id: string, error: null | string) => void;
   setInstalling: (id: string, installing: boolean) => void;
@@ -58,6 +63,20 @@ export const usePluginStore = create<PluginState>()(
       registryCacheTime: 0,
       updateAvailable: {},
       installing: {},
+      devPlugins: {},
+
+      setDevPlugins: (list) =>
+        set({
+          devPlugins: Object.fromEntries(list.map((p) => [p.manifest.id, p])),
+        }),
+
+      addDevPlugin: (plugin) =>
+        set((state) => ({
+          devPlugins: { ...state.devPlugins, [plugin.manifest.id]: plugin },
+        })),
+
+      removeDevPlugin: (id) =>
+        set((state) => ({ devPlugins: omitKey(state.devPlugins, id) })),
 
       addPlugin: (plugin) =>
         set((state) => ({

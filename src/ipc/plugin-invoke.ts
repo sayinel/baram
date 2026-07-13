@@ -6,7 +6,14 @@ import type { PluginManifest, RegistryIndex } from "../plugins/types";
 export interface RustInstalledPluginInfo {
   checksum: string;
   install_path: string;
+  is_dev?: boolean;
   manifest: PluginManifest;
+}
+
+export async function pluginAddDevFolder(
+  path: string,
+): Promise<RustInstalledPluginInfo> {
+  return invoke<RustInstalledPluginInfo>("plugin_add_dev_folder", { path });
 }
 
 export async function pluginFetchRegistry(url: string): Promise<RegistryIndex> {
@@ -27,6 +34,10 @@ export async function pluginInstall(
   });
 }
 
+export async function pluginListDev(): Promise<RustInstalledPluginInfo[]> {
+  return invoke<RustInstalledPluginInfo[]>("plugin_list_dev");
+}
+
 export async function pluginListInstalled(): Promise<
   RustInstalledPluginInfo[]
 > {
@@ -41,6 +52,10 @@ export async function pluginReadManifest(
   pluginId: string,
 ): Promise<PluginManifest> {
   return invoke<PluginManifest>("plugin_read_manifest", { pluginId });
+}
+
+export async function pluginRemoveDevFolder(path: string): Promise<void> {
+  return invoke<void>("plugin_remove_dev_folder", { path });
 }
 
 export async function pluginUninstall(pluginId: string): Promise<void> {
