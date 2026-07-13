@@ -1,5 +1,6 @@
 // §69 Plugin Marketplace — IPC command handlers
 use crate::plugin;
+use tauri::Manager;
 
 #[tauri::command]
 pub async fn plugin_install(
@@ -42,4 +43,16 @@ pub async fn plugin_get_dir() -> Result<String, String> {
     plugin::get_plugin_dir()
         .map(|p| p.to_string_lossy().to_string())
         .map_err(|e| e.to_string())
+}
+
+/// Grant the asset protocol runtime scope for the plugin install dir so
+/// convertFileSrc(index.mjs) can load. ~/.baram/plugins is NOT covered by the
+/// static $APPDATA scope, so this MUST run before any plugin loads.
+#[tauri::command]
+pub async fn plugin_prepare_scopes(app: tauri::AppHandle) -> Result<(), String> {
+    let dir = plugin::get_plugin_dir().map_err(|e| e.to_string())?;
+    app.asset_protocol_scope()
+        .allow_directory(&dir, true)
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }

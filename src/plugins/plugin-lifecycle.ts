@@ -1,5 +1,6 @@
 import type { InstalledPlugin } from "./types";
 
+import { pluginPrepareScopes } from "../ipc/plugin-invoke";
 import { usePluginStore } from "../stores/system/plugin";
 import { logger } from "../utils/logger";
 import { emitPluginEvent } from "./extension-context";
@@ -8,6 +9,11 @@ import { pluginLoader } from "./plugin-loader";
 
 /** Initialize all enabled plugins at app startup. Budget: 200ms total. */
 export async function initializePlugins(): Promise<void> {
+  // Grant asset scope for ~/.baram/plugins before any load (see Global Constraints).
+  await pluginPrepareScopes().catch((err) =>
+    logger.error("[PluginLifecycle] prepare scopes failed:", err),
+  );
+
   const { installedPlugins } = usePluginStore.getState();
   const enabledPlugins = Object.values(installedPlugins).filter(
     (p) => p.enabled,

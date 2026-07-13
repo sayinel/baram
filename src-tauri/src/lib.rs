@@ -235,6 +235,7 @@ pub fn run() {
             plugin_cmd::plugin_read_manifest,
             plugin_cmd::plugin_fetch_registry,
             plugin_cmd::plugin_get_dir,
+            plugin_cmd::plugin_prepare_scopes,
             embedding_cmd::embed_text,
             embedding_cmd::search_knowledge,
             embedding_cmd::index_vault,

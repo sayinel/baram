@@ -33,6 +33,10 @@ export async function pluginListInstalled(): Promise<
   return invoke<RustInstalledPluginInfo[]>("plugin_list_installed");
 }
 
+export async function pluginPrepareScopes(): Promise<void> {
+  return invoke<void>("plugin_prepare_scopes");
+}
+
 export async function pluginReadManifest(
   pluginId: string,
 ): Promise<PluginManifest> {
