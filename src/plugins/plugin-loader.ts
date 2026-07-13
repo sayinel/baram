@@ -10,8 +10,18 @@ import { validateManifest } from "./manifest";
 
 const ACTIVATE_TIMEOUT = 5000; // 5 seconds
 
+type Importer = (url: string) => Promise<PluginModule>;
+
 export class PluginLoader {
+  private readonly importer: Importer;
   private loaded = new Map<string, LoadedPlugin>();
+  private reloadCounter = 0;
+
+  constructor(importer?: Importer) {
+    this.importer =
+      importer ??
+      ((url) => import(/* @vite-ignore */ url) as Promise<PluginModule>);
+  }
 
   /** Get all loaded plugins */
   getLoadedPlugins(): LoadedPlugin[] {
@@ -60,14 +70,14 @@ export class PluginLoader {
       );
     }
 
-    // 2. Construct asset URL for the main entry
+    // 2. Construct asset URL for the main entry (cache-busted for reload)
     const mainPath = `${installPath}/${manifest.main}`;
-    const assetUrl = convertFileSrc(mainPath);
+    const assetUrl = `${convertFileSrc(mainPath)}?v=${++this.reloadCounter}`;
 
-    // 3. Dynamic import
+    // 3. Dynamic import (via injectable importer)
     let module: PluginModule;
     try {
-      module = await import(/* @vite-ignore */ assetUrl);
+      module = await this.importer(assetUrl);
     } catch (err) {
       throw new Error(`Failed to load plugin module ${manifest.id}: ${err}`, {
         cause: err,
@@ -98,6 +108,15 @@ export class PluginLoader {
     logger.info(
       `[PluginLoader] Loaded plugin: ${manifest.id} v${manifest.version}`,
     );
+  }
+
+  /** Reload a plugin: clean unload (disposes subscriptions) then fresh load. */
+  async reloadPlugin(
+    installPath: string,
+    manifest: PluginManifest,
+  ): Promise<void> {
+    await this.unloadPlugin(manifest.id);
+    await this.loadPlugin(installPath, manifest);
   }
 
   /** Update the editor instance for plugin editor API */
