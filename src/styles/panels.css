@@ -838,28 +838,83 @@
   border-radius: 10px;
 }
 
-/* §69 Plugin Developer section — dev plugin load/reload/remove list */
+/* §69 Plugin Developer section — master-detail dev plugin load/reload/remove */
 .plugin-dev-section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px 0;
+  gap: 4px;
+  padding-top: 16px;
+  margin-top: 16px;
   border-top: 1px solid var(--color-border-default);
 }
 
-.plugin-dev-list {
+.plugin-dev-load-row {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
 }
 
-.plugin-dev-item {
+.plugin-dev-load-row__label {
+  font-size: 13px;
+  color: var(--color-text-default);
+}
+
+.plugin-dev-detail {
+  padding: 12px;
+  margin-top: 12px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
+}
+
+.plugin-dev-detail__name {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.plugin-dev-detail__meta {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.plugin-dev-detail__row {
   display: flex;
   gap: 8px;
   align-items: center;
-  padding: 6px 8px;
-  border: 1px solid var(--color-border-default);
-  border-radius: 6px;
+  padding: 4px 0;
+}
+
+.plugin-dev-detail__row-label {
+  flex-shrink: 0;
+  width: 90px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.plugin-dev-detail__path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.plugin-dev-detail__capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.plugin-dev-detail__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.plugin-dev-detail__error {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--color-status-danger, #ef4444);
 }
 
 /* §69 Plugin Shadow-DOM mount host — sizing only; the shadow root's inner

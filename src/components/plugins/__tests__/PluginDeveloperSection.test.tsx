@@ -112,6 +112,7 @@ describe("PluginDeveloperSection", () => {
     const showToastSpy = vi.spyOn(useUIStore.getState(), "showToast");
 
     render(<PluginDeveloperSection />);
+    fireEvent.click(screen.getByText("Dev X"));
     fireEvent.click(screen.getByRole("button", { name: "Reload" }));
 
     await waitFor(() =>
@@ -148,6 +149,7 @@ describe("PluginDeveloperSection", () => {
     const showToastSpy = vi.spyOn(useUIStore.getState(), "showToast");
 
     render(<PluginDeveloperSection />);
+    fireEvent.click(screen.getByText("Dev X"));
     fireEvent.click(screen.getByRole("button", { name: "Reload" }));
 
     await waitFor(() =>
@@ -168,6 +170,7 @@ describe("PluginDeveloperSection", () => {
 
     render(<PluginDeveloperSection />);
     expect(screen.getByText("Dev X")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Dev X"));
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
 
     await waitFor(() =>
