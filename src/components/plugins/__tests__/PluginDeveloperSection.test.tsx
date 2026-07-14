@@ -3,7 +3,7 @@ import type { PluginManifest } from "../../../plugins/types";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const open = vi.fn(async () => "/dev/dev-x");
+const open = vi.fn(async (..._a: unknown[]) => "/dev/dev-x");
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: (...a: unknown[]) => open(...a),
 }));
@@ -20,13 +20,13 @@ const baseManifest: PluginManifest = {
   capabilities: [],
 };
 
-const addDevFolder = vi.fn(async () => ({
+const addDevFolder = vi.fn(async (..._a: unknown[]) => ({
   install_path: "/dev/dev-x",
   checksum: "",
   is_dev: true,
   manifest: baseManifest,
 }));
-const removeDevFolder = vi.fn(async () => {});
+const removeDevFolder = vi.fn(async (..._a: unknown[]) => {});
 
 // Keep the real `toInstalledDevPlugin` mapper (Fix5: shared, pure, no invoke()
 // calls) so the component's actual transform logic runs under test; only the
