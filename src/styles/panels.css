@@ -872,3 +872,14 @@
 .text-muted {
   color: var(--color-text-muted);
 }
+
+.activity-bar-plugin-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.plugin-panel-empty {
+  padding: var(--space-4, 16px);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}

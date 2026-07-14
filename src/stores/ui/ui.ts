@@ -23,6 +23,10 @@ export type SidebarPanel =
   | "git"
   | "graph"
   | "outline"
+  // "plugin" (singular) = host slot for the active plugin-CONTRIBUTED panel
+  // (resolved via plugin-ui-store.activePluginPanelId). "plugins" (plural) =
+  // the built-in plugin manager/marketplace. Do NOT confuse the two.
+  | "plugin"
   | "plugins"
   | "search"
   | "skills-gallery"
