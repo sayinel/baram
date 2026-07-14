@@ -6,6 +6,8 @@ import type { Editor } from "@tiptap/react";
 import { useShallow } from "zustand/shallow";
 
 import { getAction } from "../../keybindings/keybinding-actions";
+import { executePluginCommand } from "../../plugins/extension-context";
+import { usePluginUIStore } from "../../plugins/plugin-ui-store";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useWorkspaceStore } from "../../stores/file/workspace";
@@ -59,30 +61,43 @@ export function CommandPalette({
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const pluginPaletteCommands = usePluginUIStore(
+    useShallow((s) => s.paletteCommands),
+  );
 
-  const commands = useMemo(
-    () =>
-      buildCommands(
-        toggleSidebar,
-        onToggleSourceMode,
-        onNewFile,
-        onOpenFile,
-        onSave,
-        onOpenFolder,
-        onSkillPreview ?? (() => {}),
-        onCloseFolder,
-      ),
-    [
+  const commands = useMemo(() => {
+    const base = buildCommands(
       toggleSidebar,
       onToggleSourceMode,
       onNewFile,
       onOpenFile,
       onSave,
       onOpenFolder,
-      onSkillPreview,
+      onSkillPreview ?? (() => {}),
       onCloseFolder,
-    ],
-  );
+    );
+    const plugin: CommandItem[] = pluginPaletteCommands.map((c) => ({
+      action: () => {
+        void executePluginCommand(c.commandId).catch((err) =>
+          useUIStore.getState().showToast(String(err), "error"),
+        );
+      },
+      category: "Plugin",
+      id: c.commandId,
+      label: c.title,
+    }));
+    return [...base, ...plugin];
+  }, [
+    toggleSidebar,
+    onToggleSourceMode,
+    onNewFile,
+    onOpenFile,
+    onSave,
+    onOpenFolder,
+    onSkillPreview,
+    onCloseFolder,
+    pluginPaletteCommands,
+  ]);
 
   const filtered = useMemo(() => {
     if (!query) return commands;

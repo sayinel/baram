@@ -47,6 +47,31 @@ describe("createExtensionContext", () => {
       const ctx = createExtensionContext(makeManifest([]), "/test");
       expect(() => ctx.commands.register("test", () => {})).toThrow(/commands/);
     });
+
+    test("register with paletteVisible exposes a palette command; dispose removes it", () => {
+      usePluginUIStore.setState({ paletteCommands: [] });
+      const ctx = createExtensionContext(makeManifest(["commands"]), "/p");
+      const d = ctx.commands.register("hello", () => {}, {
+        paletteVisible: true,
+        title: "Say Hello",
+      });
+      const cmds = usePluginUIStore.getState().paletteCommands;
+      expect(cmds).toHaveLength(1);
+      expect(cmds[0]).toMatchObject({
+        commandId: "test-plugin.hello",
+        pluginId: "test-plugin",
+        title: "Say Hello",
+      });
+      d.dispose();
+      expect(usePluginUIStore.getState().paletteCommands).toHaveLength(0);
+    });
+
+    test("register without palette opts does NOT expose a palette command", () => {
+      usePluginUIStore.setState({ paletteCommands: [] });
+      const ctx = createExtensionContext(makeManifest(["commands"]), "/p");
+      ctx.commands.register("silent", () => {});
+      expect(usePluginUIStore.getState().paletteCommands).toHaveLength(0);
+    });
   });
 
   describe("editor capability", () => {

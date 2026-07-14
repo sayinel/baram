@@ -1,5 +1,6 @@
 // §69 Plugin Extension Context — Capability-gated API surface
 import type {
+  CommandRegisterOptions,
   CommandsAPI,
   Disposable,
   EditorAPI,
@@ -54,12 +55,27 @@ function createCommandsAPI(
   disposables: Disposable[],
 ): CommandsAPI {
   return {
-    register(id: string, handler: (...args: unknown[]) => unknown): Disposable {
+    register(
+      id: string,
+      handler: (...args: unknown[]) => unknown,
+      opts?: CommandRegisterOptions,
+    ): Disposable {
       const fullId = `${pluginId}.${id}`;
       commandHandlers.set(fullId, handler);
+      const showInPalette = opts?.paletteVisible === true || !!opts?.title;
+      if (showInPalette) {
+        usePluginUIStore.getState().registerPaletteCommand({
+          commandId: fullId,
+          pluginId,
+          title: opts?.title ?? id,
+        });
+      }
       const disposable: Disposable = {
         dispose: () => {
           commandHandlers.delete(fullId);
+          if (showInPalette) {
+            usePluginUIStore.getState().removePaletteCommand(fullId);
+          }
         },
       };
       disposables.push(disposable);
