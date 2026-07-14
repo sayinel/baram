@@ -2,6 +2,7 @@
 import type { ReactNode } from "react";
 
 import {
+  Blocks,
   Bookmark,
   BookText,
   BotMessageSquare,
@@ -23,6 +24,7 @@ import {
 } from "lucide-react";
 import { useShallow } from "zustand/shallow";
 
+import { usePluginUIStore } from "../../plugins/plugin-ui-store";
 import { useSettingsStore } from "../../stores/settings/store";
 import {
   type RightPanelMode,
@@ -106,6 +108,14 @@ export function ActivityBar() {
     })),
   );
   const { activityBarConfig } = useSettingsStore();
+  const { activePluginPanelId, sidebarPanels, setActivePluginPanelId } =
+    usePluginUIStore(
+      useShallow((s) => ({
+        activePluginPanelId: s.activePluginPanelId,
+        setActivePluginPanelId: s.setActivePluginPanelId,
+        sidebarPanels: s.sidebarPanels,
+      })),
+    );
 
   const handlePanelClick = (panelId: SidebarPanel) => {
     if (!sidebarOpen) {
@@ -115,6 +125,22 @@ export function ActivityBar() {
       toggleSidebar();
     } else {
       setSidebarPanel(panelId);
+    }
+  };
+
+  // Dedicated handler — reusing handlePanelClick("plugin") would toggle-close
+  // the sidebar when switching between two different plugin panels (it only
+  // compares sidebarPanel, not activePluginPanelId).
+  const handlePluginPanelClick = (panelId: string) => {
+    const active = activePluginPanelId;
+    setActivePluginPanelId(panelId);
+    if (!sidebarOpen) {
+      setSidebarPanel("plugin");
+      toggleSidebar();
+    } else if (sidebarPanel === "plugin" && active === panelId) {
+      toggleSidebar(); // same panel already open → close
+    } else {
+      setSidebarPanel("plugin");
     }
   };
 
@@ -150,6 +176,26 @@ export function ActivityBar() {
             title={item.label}
           >
             {item.icon}
+          </button>
+        ))}
+        {sidebarPanels.map((panel) => (
+          <button
+            className={`activity-bar-btn ${
+              sidebarOpen &&
+              sidebarPanel === "plugin" &&
+              activePluginPanelId === panel.panelId
+                ? "activity-bar-btn-active"
+                : ""
+            }`}
+            key={panel.panelId}
+            onClick={() => handlePluginPanelClick(panel.panelId)}
+            title={panel.title}
+          >
+            {panel.icon ? (
+              <span className="activity-bar-plugin-icon">{panel.icon}</span>
+            ) : (
+              <Blocks {...ICON_PROPS} />
+            )}
           </button>
         ))}
       </div>

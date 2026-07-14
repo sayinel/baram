@@ -1,5 +1,6 @@
 // §69 Plugin Extension Context — Capability-gated API surface
 import type {
+  CommandRegisterOptions,
   CommandsAPI,
   Disposable,
   EditorAPI,
@@ -54,12 +55,27 @@ function createCommandsAPI(
   disposables: Disposable[],
 ): CommandsAPI {
   return {
-    register(id: string, handler: (...args: unknown[]) => unknown): Disposable {
+    register(
+      id: string,
+      handler: (...args: unknown[]) => unknown,
+      opts?: CommandRegisterOptions,
+    ): Disposable {
       const fullId = `${pluginId}.${id}`;
       commandHandlers.set(fullId, handler);
+      const showInPalette = opts?.paletteVisible === true || !!opts?.title;
+      if (showInPalette) {
+        usePluginUIStore.getState().registerPaletteCommand({
+          commandId: fullId,
+          pluginId,
+          title: opts?.title ?? id,
+        });
+      }
       const disposable: Disposable = {
         dispose: () => {
           commandHandlers.delete(fullId);
+          if (showInPalette) {
+            usePluginUIStore.getState().removePaletteCommand(fullId);
+          }
         },
       };
       disposables.push(disposable);
@@ -142,8 +158,10 @@ export function createExtensionContext(
     : (createDeniedProxy("events", "events") as EventsAPI);
 
   const ui: UIAPI =
-    hasCapability("sidebar") || hasCapability("statusbar")
-      ? createUIAPI(manifest.id, disposables)
+    hasCapability("sidebar") ||
+    hasCapability("statusbar") ||
+    hasCapability("settings")
+      ? createUIAPI(manifest.id, capabilities, disposables)
       : (createDeniedProxy("ui", "sidebar") as UIAPI);
 
   return {
@@ -246,7 +264,19 @@ export function unregisterPluginUI(pluginId: string): void {
     .forEach((n) => n.remove());
 }
 
-function createUIAPI(pluginId: string, disposables: Disposable[]): UIAPI {
+function createUIAPI(
+  pluginId: string,
+  capabilities: Set<PluginCapability>,
+  disposables: Disposable[],
+): UIAPI {
+  const require = (cap: PluginCapability, method: string) => {
+    if (!capabilities.has(cap)) {
+      throw new Error(
+        `Plugin requires "${cap}" capability to call ui.${method}. ` +
+          `Add "${cap}" to the capabilities array in baram-plugin.json.`,
+      );
+    }
+  };
   return {
     showNotification(
       message: string,
@@ -258,6 +288,7 @@ function createUIAPI(pluginId: string, disposables: Disposable[]): UIAPI {
       text: string,
       align: "left" | "right" = "right",
     ): StatusBarItem {
+      require("statusbar", "showStatusBarItem");
       const itemId = `${pluginId}:sb:${++uiItemCounter}`;
       usePluginUIStore
         .getState()
@@ -270,6 +301,41 @@ function createUIAPI(pluginId: string, disposables: Disposable[]): UIAPI {
       disposables.push({ dispose: item.dispose });
       return item;
     },
+    addSidebarPanel(opts) {
+      require("sidebar", "addSidebarPanel");
+      const panelId = `${pluginId}:${opts.id}`;
+      usePluginUIStore.getState().registerSidebarPanel({
+        icon: opts.icon,
+        onMount: opts.onMount,
+        onUnmount: opts.onUnmount,
+        panelId,
+        pluginId,
+        title: opts.title,
+      });
+      const disposable: Disposable = {
+        dispose: () => usePluginUIStore.getState().removeSidebarPanel(panelId),
+      };
+      disposables.push(disposable);
+      return disposable;
+    },
+    addSettingsTab(opts) {
+      require("settings", "addSettingsTab");
+      const tabId = `${pluginId}:${opts.id}`;
+      usePluginUIStore.getState().registerSettingsTab({
+        onMount: opts.onMount,
+        onUnmount: opts.onUnmount,
+        pluginId,
+        tabId,
+        title: opts.title,
+      });
+      const disposable: Disposable = {
+        dispose: () => usePluginUIStore.getState().removeSettingsTab(tabId),
+      };
+      disposables.push(disposable);
+      return disposable;
+    },
+    // Injects into document.head (light DOM); does NOT reach Shadow-DOM panel
+    // content — plugins style shadow content from inside onMount(el).
     addStyle(css: string): Disposable {
       const el = document.createElement("style");
       el.setAttribute("data-baram-plugin", pluginId);

@@ -862,6 +862,24 @@
   border-radius: 6px;
 }
 
+/* §69 Plugin Shadow-DOM mount host — sizing only; the shadow root's inner
+   .plugin-shadow-content is CSS-isolated and intentionally unreachable here. */
+.plugin-shadow-host {
+  width: 100%;
+  height: 100%;
+}
+
 .text-muted {
+  color: var(--color-text-muted);
+}
+
+.activity-bar-plugin-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.plugin-panel-empty {
+  padding: var(--space-4, 16px);
+  font-size: var(--font-size-sm);
   color: var(--color-text-muted);
 }

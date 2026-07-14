@@ -107,6 +107,16 @@
   text-align: center;
 }
 
+/* Plugin-contributed tabs group label (§69) */
+.settings-nav-group {
+  padding: 8px 16px 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 /* Content area */
 .settings-content {
   flex: 1;

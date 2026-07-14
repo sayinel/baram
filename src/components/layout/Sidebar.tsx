@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 
 // §4.3 Left sidebar container — panel switching via ActivityBar
 import { useUIStore } from "../../stores/ui/ui";
+import { PluginPanelHost } from "./PluginPanelHost";
 
 const PluginMarketplace = lazy(() =>
   import("../plugins/PluginMarketplace").then((m) => ({
@@ -88,6 +89,7 @@ export function Sidebar() {
           {sidebarPanel === "snapshots" && <VersionHistoryPanel />}
           {sidebarPanel === "skills-gallery" && <SkillGalleryPanel />}
           {sidebarPanel === "plugins" && <PluginMarketplace />}
+          {sidebarPanel === "plugin" && <PluginPanelHost />}
           {sidebarPanel === "zettel" && <ZettelHubPanel />}
         </div>
       </Suspense>

@@ -1,12 +1,16 @@
 // Settings Modal — 9-tab settings (General, Editor, Appearance, Markdown, AI, ActivityBar, Language, Keybindings, Plugins)
 // Obsidian-style layout: label + description per row, section headers for grouping
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { SearchableSetting, SettingsTab } from "./settings-registry";
 
+import { useShallow } from "zustand/shallow";
+
 import { useTranslation } from "../../i18n/useTranslation";
+import { usePluginUIStore } from "../../plugins/plugin-ui-store";
 import { useUIStore } from "../../stores/ui/ui";
 import { PluginMarketplace } from "../plugins/PluginMarketplace";
+import { PluginSettingsTabHost } from "./PluginSettingsTabHost";
 import { useSettingsRegistry } from "./settings-registry";
 import { SettingsSearchResults } from "./SettingsSearchResults";
 import { ActivityBarTab } from "./tabs/ActivityBarTab";
@@ -35,9 +39,20 @@ const TABS: { icon: string; id: SettingsTab; label: string }[] = [
 export function SettingsModal() {
   const { settingsOpen, toggleSettings } = useUIStore();
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
+  const [activePluginTab, setActivePluginTab] = useState<null | string>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const { t } = useTranslation();
   const registry = useSettingsRegistry();
+  const pluginTabs = usePluginUIStore(useShallow((s) => s.settingsTabs));
+
+  useEffect(() => {
+    if (
+      activePluginTab &&
+      !pluginTabs.some((t) => t.tabId === activePluginTab)
+    ) {
+      setActivePluginTab(null);
+    }
+  }, [pluginTabs, activePluginTab]);
 
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return null;
@@ -99,14 +114,32 @@ export function SettingsModal() {
           <nav className="settings-nav">
             {TABS.map((tab) => (
               <button
-                className={`settings-nav-item ${activeTab === tab.id ? "settings-nav-active" : ""}`}
+                className={`settings-nav-item ${activeTab === tab.id && !activePluginTab ? "settings-nav-active" : ""}`}
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  setActivePluginTab(null);
+                }}
               >
                 <span className="settings-nav-icon">{tab.icon}</span>
                 {t(`settings.tab.${tab.id}`)}
               </button>
             ))}
+            {pluginTabs.length > 0 && (
+              <>
+                <div className="settings-nav-group">Plugins</div>
+                {pluginTabs.map((tab) => (
+                  <button
+                    className={`settings-nav-item ${activePluginTab === tab.tabId ? "settings-nav-active" : ""}`}
+                    key={tab.tabId}
+                    onClick={() => setActivePluginTab(tab.tabId)}
+                  >
+                    <span className="settings-nav-icon">{"🧩"}</span>
+                    {tab.title}
+                  </button>
+                ))}
+              </>
+            )}
           </nav>
           <div className="settings-content">
             {searchQuery.trim() ? (
@@ -114,10 +147,15 @@ export function SettingsModal() {
                 grouped={groupedResults}
                 onNavigate={(tab) => {
                   setActiveTab(tab);
+                  setActivePluginTab(null);
                   setSearchQuery("");
                 }}
                 query={searchQuery}
               />
+            ) : activePluginTab ? (
+              <div className="settings-section">
+                <PluginSettingsTabHost tabId={activePluginTab} />
+              </div>
             ) : (
               <>
                 {activeTab === "general" && <GeneralTab />}

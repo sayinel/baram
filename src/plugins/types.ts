@@ -1,8 +1,17 @@
 // §69 Plugin Marketplace — Core Types
 
+export interface CommandRegisterOptions {
+  paletteVisible?: boolean;
+  title?: string;
+}
+
 export interface CommandsAPI {
   execute(id: string, ...args: unknown[]): Promise<unknown>;
-  register(id: string, handler: (...args: unknown[]) => unknown): Disposable;
+  register(
+    id: string,
+    handler: (...args: unknown[]) => unknown,
+    opts?: CommandRegisterOptions,
+  ): Disposable;
 }
 
 export interface Disposable {
@@ -93,6 +102,21 @@ export interface PluginModule {
   deactivate?(): Promise<void> | void;
 }
 
+export interface PluginSettingsTabOptions {
+  id: string;
+  onMount(el: HTMLElement): void;
+  onUnmount?(el: HTMLElement): void;
+  title: string;
+}
+
+export interface PluginSidebarPanelOptions {
+  icon?: string;
+  id: string;
+  onMount(el: HTMLElement): void;
+  onUnmount?(el: HTMLElement): void;
+  title: string;
+}
+
 export type PluginStatus =
   "disabled" | "enabled" | "installing" | "not-installed";
 
@@ -131,6 +155,8 @@ export interface TiptapExtensionDef {
 }
 
 export interface UIAPI {
+  addSettingsTab(opts: PluginSettingsTabOptions): Disposable;
+  addSidebarPanel(opts: PluginSidebarPanelOptions): Disposable;
   addStyle(css: string): Disposable;
   showNotification(message: string, type?: "error" | "info" | "warning"): void;
   showStatusBarItem(text: string, align?: "left" | "right"): StatusBarItem;
