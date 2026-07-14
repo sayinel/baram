@@ -5,7 +5,11 @@ import type { LoadedPlugin, PluginManifest, PluginModule } from "./types";
 import type { Extensions } from "@tiptap/core";
 
 import { logger } from "../utils/logger";
-import { createExtensionContext, setEditorInstance } from "./extension-context";
+import {
+  createExtensionContext,
+  setEditorInstance,
+  unregisterPluginUI,
+} from "./extension-context";
 import { validateManifest } from "./manifest";
 
 const ACTIVATE_TIMEOUT = 5000; // 5 seconds
@@ -158,6 +162,9 @@ export class PluginLoader {
         logger.error(`[PluginLoader] Dispose error:`, e);
       }
     }
+
+    // Belt-and-suspenders: sweep any UI state the plugin left behind
+    unregisterPluginUI(id);
 
     this.loaded.delete(id);
     logger.info(`[PluginLoader] Unloaded plugin: ${id}`);

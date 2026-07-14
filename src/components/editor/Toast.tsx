@@ -25,7 +25,10 @@ export function ToastHost() {
 
   return (
     <div aria-live="polite" className="toast-host">
-      <div className="toast" role="status">
+      <div
+        className={`toast${toast.type ? ` toast-${toast.type}` : ""}`}
+        role="status"
+      >
         {toast.message}
       </div>
     </div>

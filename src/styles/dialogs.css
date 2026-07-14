@@ -1598,3 +1598,15 @@
   border-radius: 8px;
   box-shadow: var(--shadow-lg);
 }
+
+.toast-info {
+  border-left: 3px solid var(--color-accent-default);
+}
+
+.toast-warning {
+  border-left: 3px solid var(--color-status-warning);
+}
+
+.toast-error {
+  border-left: 3px solid var(--color-status-danger);
+}

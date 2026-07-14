@@ -33,6 +33,7 @@ import { basename } from "../../utils/path-utils";
 import { extractLeadingId } from "../../utils/zettelkasten/parse-note-title";
 import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
 import "../../styles/zettelkasten.css";
+import { PluginStatusBarItems } from "./PluginStatusBarItems";
 
 export type EditorMode = "graph" | "source" | "wysiwyg";
 
@@ -227,6 +228,7 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
             />
           </button>
         )}
+        <PluginStatusBarItems align="left" />
       </div>
       {mode !== "graph" && (
         <div className="status-bar-right">
@@ -248,6 +250,7 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
               </span>
             </>
           )}
+          <PluginStatusBarItems align="right" />
         </div>
       )}
     </div>

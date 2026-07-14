@@ -8,11 +8,14 @@ import type {
   FilesAPI,
   PluginCapability,
   PluginManifest,
+  StatusBarItem,
   UIAPI,
 } from "./types";
 
 import { listDir, readFile, writeFile } from "../ipc/invoke";
+import { useUIStore } from "../stores/ui/ui";
 import { logger } from "../utils/logger";
+import { usePluginUIStore } from "./plugin-ui-store";
 
 /** Creates a denied proxy that throws on any property access */
 function createDeniedProxy(
@@ -140,7 +143,7 @@ export function createExtensionContext(
 
   const ui: UIAPI =
     hasCapability("sidebar") || hasCapability("statusbar")
-      ? createUIAPI(disposables)
+      ? createUIAPI(manifest.id, disposables)
       : (createDeniedProxy("ui", "sidebar") as UIAPI);
 
   return {
@@ -233,24 +236,46 @@ function createFilesAPI(readonly: boolean): FilesAPI {
 }
 
 // --- UI API ---
-function createUIAPI(disposables: Disposable[]): UIAPI {
+let uiItemCounter = 0;
+
+/** Unregister all UI state (status-bar items + injected styles) for a plugin. */
+export function unregisterPluginUI(pluginId: string): void {
+  usePluginUIStore.getState().unregisterPlugin(pluginId);
+  document.head
+    .querySelectorAll(`style[data-baram-plugin="${pluginId}"]`)
+    .forEach((n) => n.remove());
+}
+
+function createUIAPI(pluginId: string, disposables: Disposable[]): UIAPI {
   return {
     showNotification(
       message: string,
-      type: "error" | "info" | "warning" = "info",
+      type?: "error" | "info" | "warning",
     ): void {
-      // Use console for now; can be replaced with toast system
-      if (type === "error") logger.error(`[Plugin] ${message}`);
-      else if (type === "warning") logger.warn(`[Plugin] ${message}`);
-      else logger.info(`[Plugin] ${message}`);
+      useUIStore.getState().showToast(message, type);
     },
     showStatusBarItem(
       text: string,
-      _alignment: "left" | "right" = "right",
-    ): Disposable {
-      // Status bar integration placeholder
-      logger.info(`[Plugin StatusBar] ${text}`);
-      const disposable: Disposable = { dispose: () => {} };
+      align: "left" | "right" = "right",
+    ): StatusBarItem {
+      const itemId = `${pluginId}:sb:${++uiItemCounter}`;
+      usePluginUIStore
+        .getState()
+        .registerStatusBarItem({ align, itemId, pluginId, text });
+      const item: StatusBarItem = {
+        setText: (t) =>
+          usePluginUIStore.getState().updateStatusBarItem(itemId, t),
+        dispose: () => usePluginUIStore.getState().removeStatusBarItem(itemId),
+      };
+      disposables.push({ dispose: item.dispose });
+      return item;
+    },
+    addStyle(css: string): Disposable {
+      const el = document.createElement("style");
+      el.setAttribute("data-baram-plugin", pluginId);
+      el.textContent = css;
+      document.head.appendChild(el);
+      const disposable: Disposable = { dispose: () => el.remove() };
       disposables.push(disposable);
       return disposable;
     },

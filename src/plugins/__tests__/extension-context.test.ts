@@ -1,9 +1,11 @@
 import type { PluginManifest } from "../types";
 
 // §69 Plugin ExtensionContext capability gating tests
-import { describe, expect, test } from "vitest";
+import { beforeEach, describe, expect, test } from "vitest";
 
+import { useUIStore } from "../../stores/ui/ui";
 import { createExtensionContext } from "../extension-context";
+import { usePluginUIStore } from "../plugin-ui-store";
 
 function makeManifest(capabilities: string[]): PluginManifest {
   return {
@@ -181,5 +183,58 @@ describe("createExtensionContext", () => {
         (ctx.commands as unknown as Record<string, unknown>).then,
       ).toBeUndefined();
     });
+  });
+});
+
+describe("ExtensionContext ui API", () => {
+  beforeEach(() => {
+    usePluginUIStore.setState({ statusBarItems: [] });
+    useUIStore.setState({ toast: null });
+    document.head
+      .querySelectorAll("style[data-baram-plugin]")
+      .forEach((n) => n.remove());
+  });
+
+  test("denies ui without sidebar/statusbar capability", () => {
+    const ctx = createExtensionContext(makeManifest(["commands"]), "/p");
+    expect(() => ctx.ui.showNotification("x")).toThrow(
+      /statusbar|sidebar|capability/i,
+    );
+  });
+
+  test("showNotification fires a toast with the type", () => {
+    const ctx = createExtensionContext(makeManifest(["statusbar"]), "/p");
+    ctx.ui.showNotification("hello", "warning");
+    expect(useUIStore.getState().toast).toMatchObject({
+      message: "hello",
+      type: "warning",
+    });
+  });
+
+  test("showStatusBarItem registers, updates via setText, and disposes", () => {
+    const ctx = createExtensionContext(makeManifest(["statusbar"]), "/p");
+    const handle = ctx.ui.showStatusBarItem("A", "left");
+    expect(usePluginUIStore.getState().statusBarItems).toHaveLength(1);
+    expect(usePluginUIStore.getState().statusBarItems[0]).toMatchObject({
+      align: "left",
+      text: "A",
+    });
+    handle.setText("B");
+    expect(usePluginUIStore.getState().statusBarItems[0].text).toBe("B");
+    handle.dispose();
+    expect(usePluginUIStore.getState().statusBarItems).toHaveLength(0);
+  });
+
+  test("addStyle injects a tagged <style> and removes it on dispose", () => {
+    const ctx = createExtensionContext(makeManifest(["statusbar"]), "/p");
+    const d = ctx.ui.addStyle(".x{color:red}");
+    const el = document.head.querySelector(
+      'style[data-baram-plugin="test-plugin"]',
+    );
+    expect(el?.textContent).toBe(".x{color:red}");
+    d.dispose();
+    expect(
+      document.head.querySelector('style[data-baram-plugin="test-plugin"]'),
+    ).toBeNull();
   });
 });
