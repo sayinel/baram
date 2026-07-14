@@ -848,14 +848,40 @@
 
 .plugin-dev-load-row {
   display: flex;
+  gap: 8px;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 0;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
 }
 
 .plugin-dev-load-row__label {
   font-size: 13px;
+  font-weight: 500;
   color: var(--color-text-default);
+}
+
+.plugin-dev-load-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 9px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  transition:
+    color 0.15s,
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.plugin-dev-load-btn:hover {
+  color: var(--color-text-default);
+  background: var(--color-bg-hover, rgb(0 0 0 / 5%));
+  border-color: var(--color-text-muted);
 }
 
 .plugin-dev-detail {
@@ -909,6 +935,36 @@
   display: flex;
   gap: 8px;
   margin-top: 12px;
+}
+
+.plugin-dev-btn {
+  padding: 5px 14px;
+  font-size: 12px;
+  color: var(--color-text-default);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  transition:
+    color 0.15s,
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.plugin-dev-btn:hover {
+  background: var(--color-bg-hover, rgb(0 0 0 / 5%));
+  border-color: var(--color-text-muted);
+}
+
+.plugin-dev-btn--danger {
+  color: var(--color-status-danger, #ef4444);
+  border-color: var(--color-status-danger, #ef4444);
+}
+
+.plugin-dev-btn--danger:hover {
+  color: #fff;
+  background: var(--color-status-danger, #ef4444);
+  border-color: var(--color-status-danger, #ef4444);
 }
 
 .plugin-dev-detail__error {

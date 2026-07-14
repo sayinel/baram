@@ -92,7 +92,7 @@ export function PluginDeveloperSection() {
           Load dev plugin folder
         </span>
         <button
-          className="icon-btn"
+          className="plugin-dev-load-btn"
           onClick={handleLoad}
           title="Load dev plugin folder…"
           type="button"
@@ -113,7 +113,11 @@ export function PluginDeveloperSection() {
                 selectedId === p.manifest.id ? "vault-tab-item--selected" : ""
               }`}
               key={p.manifest.id}
-              onClick={() => setSelectedId(p.manifest.id)}
+              onClick={() =>
+                setSelectedId((cur) =>
+                  cur === p.manifest.id ? null : p.manifest.id,
+                )
+              }
             >
               <div className="vault-tab-item__info">
                 <span className="vault-tab-item__name">{p.manifest.name}</span>
@@ -174,10 +178,14 @@ function DevPluginDetail({
         </div>
       )}
       <div className="plugin-dev-detail__actions">
-        <button className="icon-btn" onClick={onReload} type="button">
+        <button className="plugin-dev-btn" onClick={onReload} type="button">
           Reload
         </button>
-        <button className="icon-btn" onClick={onRemove} type="button">
+        <button
+          className="plugin-dev-btn plugin-dev-btn--danger"
+          onClick={onRemove}
+          type="button"
+        >
           Remove
         </button>
       </div>
