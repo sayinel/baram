@@ -244,7 +244,7 @@ describe("VirtualizeController table windowing", () => {
 /** Doc position just before the Nth top-level block. */
 function posBeforeBlock(editor: Editor, n: number): number {
   let pos = 0;
-  editor.state.doc.forEach((node, offset, index) => {
+  editor.state.doc.forEach((_node, offset, index) => {
     if (index === n) pos = offset;
   });
   return pos;

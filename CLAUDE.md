@@ -27,17 +27,20 @@ Typora의 WYSIWYG 품질 + Obsidian의 확장성 + AI 네이티브 통합을 목
 | ----------------- | --------------------------- | ------------- |
 | Desktop Framework | Tauri                       | 2.0           |
 | Backend           | Rust                        | latest stable |
-| Frontend          | React + TypeScript          | 19            |
-| Bundler           | Vite                        | 6             |
+| Dev Runtime       | Node.js                     | 24 LTS        |
+| Frontend          | React                       | 19            |
+| Language          | TypeScript                  | 6.0           |
+| Bundler           | Vite (rolldown)             | 8             |
 | Styling           | Tailwind CSS                | 4             |
-| Editor Engine     | Tiptap (ProseMirror)        | v2            |
+| Editor Engine     | Tiptap (ProseMirror)        | v3            |
 | Math Rendering    | KaTeX                       | latest        |
 | Code Blocks       | CodeMirror                  | 6             |
 | Diagrams          | Mermaid.js                  | latest        |
 | State Management  | Zustand                     | latest        |
-| Full-text Search  | tantivy (Rust)              | latest        |
-| Database          | SQLite (rusqlite)           | latest        |
-| File Watcher      | notify (Rust)               | latest        |
+| Full-text Search  | regex 기반 자체 검색 (Rust)   | —             |
+| Link Index        | 인메모리 HashMap (Rust)      | —             |
+| PDF Export        | chromiumoxide (headless)    | 0.9           |
+| File Watcher      | notify (Rust)               | 8             |
 | Design Tokens     | Style Dictionary + W3C DTCG | 5.x           |
 
 ## 디렉토리 구조
@@ -51,21 +54,18 @@ baram/
 │   │   ├── main.rs
 │   │   ├── lib.rs
 │   │   ├── commands/        # IPC 커맨드 핸들러 (thin layer)
-│   │   │   ├── mod.rs
-│   │   │   ├── fs_cmd.rs
-│   │   │   ├── search_cmd.rs
-│   │   │   ├── index_cmd.rs
-│   │   │   ├── git_cmd.rs
-│   │   │   ├── llm_cmd.rs
-│   │   │   ├── export_cmd.rs
-│   │   │   ├── config_cmd.rs
-│   │   │   └── context_cmd.rs
+│   │   │   │                #   {fs,search,index,git,llm,export,config,context,
+│   │   │   │                #    embedding,keyring,plugin,snapshot,tag}_cmd.rs
 │   │   ├── context/         # 컨텍스트 관리자 (§88)
+│   │   ├── embedding/       # 임베딩 — Knowledge Q&A (§11.4)
 │   │   ├── fs/              # 파일 시스템 모듈
-│   │   ├── search/          # tantivy 검색 엔진
-│   │   ├── index/           # 링크 인덱서 (SQLite)
+│   │   ├── search/          # regex 기반 전문 검색 (§5.11)
+│   │   ├── index/           # 링크 인덱서 (인메모리 HashMap, §29)
 │   │   ├── git/             # Git 연동
 │   │   ├── llm/             # LLM API 프록시
+│   │   ├── plugin/          # 플러그인 설치/레지스트리 (§69)
+│   │   ├── snapshot/        # 파일 스냅샷/버전 히스토리 (§71)
+│   │   ├── tag/             # Vault 태그 인덱스 (§56m)
 │   │   ├── export/          # 내보내기 엔진 (PDF, HTML)
 │   │   └── config/          # 설정 관리
 │   ├── Cargo.toml
@@ -101,6 +101,7 @@ baram/
 │   │   │                    #   RightPanelMode, SidebarPanel 타입 canonical 위치
 │   │   ├── settings/        # store.ts — 사용자 설정 (테마, 폰트, Extension)
 │   │   ├── system/          # git.ts 등 시스템 상태
+│   │   ├── zettelkasten/    # 제텔카스텐 상태
 │   │   └── ai/              # ai.ts — AI 상태 (스트리밍, Ghost Text, provider)
 │   ├── styles/              # CSS 모듈 (19개 파일)
 │   │   ├── index.css        # @import 오케스트레이터 (App.css 대체)
@@ -112,6 +113,12 @@ baram/
 │   │   ├── journal-calendar.css, journal-mood.css, journal-notes.css, journal-extras.css
 │   │   ├── links.css, graph.css, panels.css, components.css
 │   ├── hooks/               # React Hooks
+│   ├── contexts/            # React Context 프로바이더
+│   ├── i18n/                # 다국어 리소스 (en, ko)
+│   ├── keybindings/         # 키바인딩 registry + 유틸
+│   ├── plugins/             # 플러그인 시스템 프론트엔드 (§69 loader/lifecycle)
+│   ├── services/            # 서비스 레이어
+│   ├── spaces/              # Space 시스템
 │   ├── ipc/                 # Tauri IPC 래퍼
 │   │   ├── types.ts         # IPC 타입 정의
 │   │   └── invoke.ts        # invoke 유틸리티
@@ -150,6 +157,8 @@ baram/
 ### TypeScript
 
 - strict mode 필수
+- `verbatimModuleSyntax` 활성 — 타입 전용 import는 반드시 `import type` 사용
+- `npm run typecheck`는 3개 프로젝트(앱 / node 도구 / 테스트)를 모두 검사 — 테스트 코드도 타입 검사 대상
 - React: 함수형 컴포넌트 + Hooks only (class 컴포넌트 사용 금지)
 - 파일명: kebab-case (`math-block.ts`)
 - export: PascalCase for 컴포넌트/Extension (`MathBlock`), camelCase for 함수/훅
@@ -197,11 +206,17 @@ baram/
 - Playwright (E2E, 크로스 플랫폼)
 - **라운드트립 보존이 최우선 품질 기준**: MD → ProseMirror → MD 변환 시 원본과 정확히 일치해야 함
 
+### 의존성 관리
+
+- **tiptap 그룹 업데이트**: `@tiptap/*`는 core·extensions·bubble/floating-menu(숨은 멤버)까지 exact-version peer로 묶여 있어 `npm update`/`npm install`이 ERESOLVE로 교착한다. package-lock에서 `node_modules/@tiptap/*` 항목을 삭제한 뒤 `npm install`로 전체 재해결할 것
+- 설치 버전 확인은 `npm ls <pkg>` — exports 제한 패키지(@tiptap/react 등)는 `require('pkg/package.json')`이 실패
+
 ### Git
 
 - Conventional Commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`
 - 커밋 메시지에 설계 문서 섹션 참조 포함 (예: `feat(§5.3): implement KaTeX math block`)
 - 브랜치: `feature/m2-basic-editing`, `fix/roundtrip-heading-whitespace`
+- **pre-push hook**: `cargo clippy --all-targets` + `npx knip` 실행 — base 변경 후 첫 push는 cargo cold라 5~7분 소요. push는 백그라운드로 실행할 것
 
 ### 디자인 토큰
 
@@ -264,7 +279,7 @@ Phase 3: 고급 기능 — 진행 중
   - 대형 파일 분리 (export-html, slash-command, ContextMenu)
   - 중복 코드 통합 (fuzzyMatch, RightPanelMode, journal regex, path utils)
   - 버그 수정 (listener leak, dead state, React hook 순서, useShallow)
-  - PR 미생성 — main 머지 전 상태
+  - main 머지 완료
 - **CSS 디자인 토큰 시스템** (`refactoring/design-tokens` 브랜치) — ✅ 완료 (2026-03-15)
   - Style Dictionary v5 + W3C DTCG 토큰 시스템
   - App.css (14,506줄) → 19개 모듈 CSS 파일 분리
@@ -272,7 +287,7 @@ Phase 3: 고급 기능 — 진행 중
   - 공유 유틸리티 클래스 5개 + shadow 토큰
   - 커스텀 테마 v10 마이그레이션
   - Figma Tokens Studio 호환 export
-  - PR 미생성 — refactoring/ai 머지 전 상태
+  - main 머지 완료
 - **Vault System (§80-§90)** — ✅ 완료
   - Context 모델 + 앱 워크스페이스 (§80-§81)
   - 컨텍스트 탭 바 UI + 에디터 탭 표시 (§82-§83)
@@ -283,4 +298,7 @@ Phase 3: 고급 기능 — 진행 중
   - ContextManager Rust 백엔드 (§88)
   - 독립 파일 열기 + FileContext (§89)
   - 앱 시작 흐름 + 마이그레이션 (§90)
+- **macOS Universal Binary 릴리스** — ✅ 완료 (2026-07-12, 이슈 198 / PR 200)
+  - 릴리스 macOS 타깃 universal-apple-darwin (Intel + Apple Silicon 단일 dmg)
+  - git2 vendored-openssl (x86_64 cross-compile 필수 — src-tauri/CLAUDE.md 참조)
 - Canvas, Agent Mode, Knowledge Q\&A, 실시간 협업 등 — 미착수

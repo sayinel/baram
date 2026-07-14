@@ -177,7 +177,9 @@ describe("createExtensionContext", () => {
     test("denied proxy ignores 'then' for Promise compatibility", () => {
       const ctx = createExtensionContext(makeManifest([]), "/test");
       // When `then` is accessed and returns undefined, it won't be treated as a thenable
-      expect((ctx.commands as Record<string, unknown>).then).toBeUndefined();
+      expect(
+        (ctx.commands as unknown as Record<string, unknown>).then,
+      ).toBeUndefined();
     });
   });
 });

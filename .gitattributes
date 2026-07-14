@@ -1,3 +1,7 @@
+# Normalize line endings: text files are stored as LF in the repo and
+# checked out as LF on every platform (binaries are auto-detected and skipped).
+* text=auto eol=lf
+
 # Exclude internal development docs from `git archive` exports (tarball/zip release assets).
 # NOTE: this does NOT hide dev/ from a public GitHub repo. To publish, build a clean
 # mirror that drops dev/ (e.g. `git filter-repo --path dev/ --invert-paths`).

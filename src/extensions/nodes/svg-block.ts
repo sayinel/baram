@@ -5,7 +5,7 @@ import { ReactNodeViewRenderer } from "@tiptap/react";
 
 import { htmlAttributesOptions } from "../utils/html-attributes-options";
 import {
-  AtomBlockEntryState,
+  type AtomBlockEntryState,
   createAtomBlockEntryPlugin,
 } from "./atom-block-entry-plugin";
 import { SvgBlockView } from "./svg-block-view";

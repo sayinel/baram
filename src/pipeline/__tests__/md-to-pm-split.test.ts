@@ -140,6 +140,7 @@ describe("mdast mutation-free: extractBlockIdFromMdast", () => {
     const originalText = { type: "text" as const, value: "Some text ^abc" };
     const node = {
       type: "heading" as const,
+      depth: 1 as const,
       children: [originalText],
     };
 

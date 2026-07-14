@@ -65,14 +65,14 @@ Pre-built binaries for macOS, Windows, and Linux are available on the [Releases]
 
 | Platform | Architecture | Format |
 |----------|-------------|--------|
-| macOS | Apple Silicon (M1+) | `.dmg` |
+| macOS 13+ | Universal (Apple Silicon + Intel) | `.dmg` |
 | Windows | x64 | `.msi`, `.exe` |
 | Linux | x64 | `.deb`, `.AppImage`, `.rpm` |
 
 ### Build from Source
 
 **Prerequisites:**
-- [Node.js](https://nodejs.org/) v20+
+- [Node.js](https://nodejs.org/) v24 (24.14+)
 - [Rust](https://rustup.rs/) (latest stable)
 - [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your platform
 
@@ -87,7 +87,7 @@ The built application will be in `src-tauri/target/release/bundle/`.
 
 ## Features
 
-Baram pairs a **beautiful WYSIWYG** editor with **lossless markdown**, **AI-native editing**, and **bidirectional links** — in a ~10MB desktop app.
+Baram pairs a **beautiful WYSIWYG** editor with **lossless markdown**, **AI-native editing**, and **bidirectional links** — in a lightweight desktop app (~10MB per architecture; the universal macOS bundle ships both and is ~19MB).
 
 ### Editing
 
@@ -104,7 +104,7 @@ Baram pairs a **beautiful WYSIWYG** editor with **lossless markdown**, **AI-nati
 - **Backlinks & unlinked mentions** — See what links here; links auto-update on rename.
 - **Block references & embeds** — Reference `((file#^id))` or embed `{{embed ((file#^id))}}` any block; embeds stay editable.
 - **@Mentions & tags** — Inline `@[[...]]` page/date chips and `#nested/tags` with a vault-wide index.
-- **Graph view & global search** — Visual map of your connections, plus full-text search (tantivy) with regex and replace.
+- **Graph view & global search** — Visual map of your connections, plus vault-wide full-text search with regex and replace.
 - **Query blocks** — Embed live, self-updating result lists with a visual query builder.
 
 ### Workspaces
@@ -117,7 +117,7 @@ Baram pairs a **beautiful WYSIWYG** editor with **lossless markdown**, **AI-nati
 ### Sharing & Customization
 
 - **Export** — HTML, PDF, and — via Pandoc — Word, LaTeX, EPUB, and RST, plus Notion-compatible markdown.
-- **Themes** — 8 built-in themes, system auto light/dark, and a full color editor with import/export.
+- **Themes** — 6 built-in editor themes (plus 6 journal themes), system auto light/dark, and a full color editor with import/export.
 - **Plugins** — Install community plugins from a built-in, capability-gated marketplace.
 - **Keyboard-first & i18n** — Command palette, quick switcher, slash commands, fully customizable shortcuts, and English/Korean UI.
 

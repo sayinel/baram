@@ -11,13 +11,17 @@ Tauri 2.0 기반 Rust 백엔드. 파일 I/O, 검색 엔진, 링크 인덱싱, LL
 commands/     ← IPC 핸들러 (thin layer, 로직은 각 모듈에 위임)
   ↓
 fs/           ← 파일 읽기/쓰기/감시/이름변경 (notify crate)
-search/       ← tantivy 기반 전문 검색 + 한글 2-gram 토크나이저
-index/        ← SQLite 기반 링크 인덱스, 블록 인덱스, 태그 인덱스
-git/          ← git2 crate 기반 Git 연동
+search/       ← regex 기반 전문 검색 — 파일 워킹 (§5.11)
+index/        ← 인메모리 링크/블록 인덱스 — HashMap (§29)
+context/      ← 컨텍스트 관리자 — Vault 시스템 (§88)
+embedding/    ← 임베딩 — Knowledge Q&A (§11.4)
+plugin/       ← 플러그인 설치/레지스트리 (§69)
+tag/          ← Vault 태그 인덱스 (§56m)
+git/          ← git2 crate 기반 Git 연동 (vendored-openssl)
 snapshot/     ← 파일 스냅샷/버전 히스토리 (similar + sha2)
-llm/          ← LLM API 프록시 (Claude, OpenAI, Ollama 지원, 스트리밍)
-export/       ← PDF (wkhtmltopdf 또는 headless), HTML 내보내기
-config/       ← 설정 파일 관리 (.baram/config.json)
+llm/          ← LLM API 프록시 (Claude/OpenAI/Gemini/Ollama, 스트리밍)
+export/       ← PDF (chromiumoxide headless Chrome), HTML 내보내기
+config/       ← 설정 파일 관리
 ```
 
 ## IPC 커맨드 규칙
@@ -49,63 +53,28 @@ app_handle.emit("file:changed", FileChangedPayload {
 }).unwrap();
 ```
 
-## IPC 커맨드 목록 (Part 3 §3.2)
+## IPC 커맨드 목록
 
-| Command | 모듈 | Phase | 설명 |
-|---------|------|-------|------|
-| `read_file` | fs | 1 (M2) | 파일 읽기 |
-| `write_file` | fs | 1 (M2) | 파일 쓰기 (원자적) |
-| `list_dir` | fs | 1 (M2) | 디렉토리 목록 |
-| `rename_file` | fs | 1 (M4) | 파일 이름 변경 |
-| `delete_file` | fs | 1 (M4) | 파일 삭제 |
-| `create_dir` | fs | 1 (M4) | 디렉토리 생성 |
-| `delete_dir` | fs | 1 (M4) | 디렉토리 삭제 |
-| `copy_file` | fs | 1 (M4) | 파일 복사 |
-| `extract_zip` | fs | 2 (M9) | ZIP 파일 추출 |
-| `watch_dir` | fs | 1 (M2) | 디렉토리 감시 시작 |
-| `get_config` | config | 1 (M2) | 설정 조회 |
-| `set_config` | config | 1 (M2) | 설정 저장 |
-| `remove_config` | config | 1 (M2) | 설정 삭제 |
-| `search_files` | search | 2 (M9) | 전역 텍스트 검색 |
-| `get_backlinks` | index | 2 (M7) | 백링크 조회 |
-| `get_link_index` | index | 2 (M7) | 링크 그래프 조회 |
-| `refresh_index` | index | 2 (M7) | 인덱스 재구축 |
-| `update_file_index` | index | 2 (M7) | 단일 파일 인덱스 갱신 |
-| `rename_file_with_links` | index | 2 (M7) | 파일 이름 변경 + 링크 갱신 |
-| `get_unlinked_mentions` | index | 2 (M7) | 언링크드 멘션 검색 |
-| `rename_block_id` | index | 2 (M7) | 블록 ID 이름 변경 |
-| `llm_complete` | llm | 1 (M5) | LLM 호출 (스트리밍) |
-| `llm_list_models` | llm | 2 (M8) | AI 모델 목록 조회 |
-| `llm_cancel` | llm | 2 (M8) | LLM 스트리밍 취소 |
-| `export_document` | export | 1 (M6) | HTML 내보내기 |
-| `export_pdf` | export | 1 (M6) | PDF 내보내기 |
-| `detect_pandoc` | export | 2 (M9) | Pandoc 감지 |
-| `export_pandoc` | export | 2 (M9) | Pandoc 내보내기 |
-| `run_custom_export` | export | 2 (M9) | 커스텀 내보내기 |
-| `git_status` | git | 2 (M9) | Git 상태 |
-| `git_commit` | git | 2 (M9) | Git 커밋 |
-| `git_stage` | git | 2 (M9) | Git 스테이징 |
-| `git_unstage` | git | 2 (M9) | Git 언스테이징 |
-| `git_diff_file` | git | 2 (M9) | Git diff |
-| `git_branches` | git | 2 (M9) | Git 브랜치 목록 |
-| `git_switch_branch` | git | 2 (M9) | Git 브랜치 전환 |
-| `git_discard` | git | 2 (M9) | Git 변경 되돌리기 |
-| `git_create_branch` | git | 2 (M9) | Git 브랜치 생성 |
-| `keyring_store` | keyring | 2 (M8) | Keychain 저장 |
-| `keyring_get` | keyring | 2 (M8) | Keychain 조회 |
-| `keyring_delete` | keyring | 2 (M8) | Keychain 삭제 |
-| `get_opened_urls` | app | 1 (M6) | macOS 파일 연결 |
-| `get_vault_tags` | tag | 2 (M9) | Vault 태그 목록 조회 |
-| `get_files_by_tag` | tag | 2 (M9) | 태그별 파일 검색 |
-| `rename_tag` | tag | 2 (M9) | 태그 이름 변경/병합 |
-| `write_binary_file` | fs | 2 (M9) | 바이너리 파일 쓰기 (vault 제약) |
-| `export_binary_file` | fs | 3 (M10) | 사용자 지정 경로로 바이너리 내보내기 (vault 제약 없음, SVG→PNG 등) |
-| `create_snapshot` | snapshot | 3 (M10) | 스냅샷 생성 |
-| `list_snapshots` | snapshot | 3 (M10) | 스냅샷 목록 조회 |
-| `get_snapshot_diff` | snapshot | 3 (M10) | 스냅샷 vs 현재 파일 diff |
-| `restore_snapshot` | snapshot | 3 (M10) | 스냅샷에서 파일 복원 |
-| `delete_snapshot` | snapshot | 3 (M10) | 스냅샷 삭제 |
-| `get_file_history` | snapshot | 3 (M10) | 파일별 스냅샷 히스토리 |
+**`ipc-registry.json`이 canonical이다** — 개별 커맨드의 시그니처/설명은 거기서 확인할 것.
+이 문서에는 전체 목록을 중복 기재하지 않는다 (과거 이 표가 실제 커맨드 수의 절반 수준으로 낡은 전례가 있음).
+
+모듈별 커맨드 패밀리 요약:
+
+| 모듈 | 커맨드 패밀리 |
+|------|--------------|
+| fs | read/write/list/rename/delete/copy, watch_dir, extract_zip, write_binary_file(vault 제약), export_binary_file(제약 없음) |
+| config | get/set/remove_config |
+| search | search_files (regex 전문 검색) |
+| index | 백링크/링크 그래프/인덱스 갱신, rename_file_with_links, unlinked mentions, block id |
+| context | 컨텍스트(Vault) 관리 (§88) |
+| embedding | Knowledge Q&A 임베딩 (§11.4) |
+| llm | llm_complete(스트리밍) / list_models / cancel |
+| export | HTML / PDF / Pandoc / 커스텀 내보내기 |
+| git | status/stage/commit/diff/branch + 고급(§67: log, stash, remote, pull/push) |
+| keyring | Keychain store/get/delete |
+| plugin | 설치/제거/레지스트리 (§69) |
+| snapshot | 생성/목록/diff/복원/삭제/히스토리 (§71) |
+| tag | Vault 태그 조회/검색/rename (§56m) |
 
 ## 이벤트 목록
 
@@ -128,24 +97,24 @@ app_handle.emit("file:changed", FileChangedPayload {
 3. `fs::rename()`으로 원본 파일을 교체 (OS 수준 원자적 보장)
 4. 실패 시 임시 파일 삭제
 
-## Cargo.toml 핵심 의존성
+## Cargo.toml 의존성
 
-```toml
-[dependencies]
-tauri = { version = "2", features = ["tray-icon", "protocol-asset"] }
-tauri-plugin-fs = "2"
-tauri-plugin-dialog = "2"
-tauri-plugin-updater = "2"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tokio = { version = "1", features = ["full"] }
-rusqlite = { version = "0.31", features = ["bundled"] }
-tantivy = "0.22"
-notify = "6"
-git2 = "0.18"
-reqwest = { version = "0.12", features = ["stream", "json"] }
-thiserror = "1"
-```
+**`Cargo.toml`이 canonical이다** — 이 문서에 버전 목록을 중복 기재하지 않는다 (과거 목록이 실제와 크게 어긋난 전례가 있음).
+
+- tantivy / rusqlite는 **사용하지 않는다** — 검색은 regex 파일 워킹, 인덱스는 인메모리
+- `git2`는 `vendored-openssl` feature 필수 — 아래 Universal Binary 참조
+
+## macOS Universal Binary 릴리스
+
+릴리스 macOS 빌드는 `--target universal-apple-darwin`(arm64 + x86_64 fat binary)이다 (이슈 198 / PR 200, 2026-07-12).
+최소 지원 macOS는 **13.0** (`minimumSystemVersion`) — Vite 8 출력(Safari 16.4+ 기준)과 정합한다 (이슈 202).
+
+- **git2 `vendored-openssl` 필수**: x86_64 슬라이스는 Apple Silicon 호스트에서 cross-compile되는데,
+  Homebrew OpenSSL은 arm64뿐이라 openssl-sys(libgit2-sys + libssh2-sys 경유)가 빌드 실패한다.
+  vendored feature가 타깃별로 OpenSSL을 소스 빌드하여 해결. 이 feature를 제거하면 릴리스 CI가 깨진다.
+- 로컬 universal 빌드: `rustup target add x86_64-apple-darwin` 후
+  `npm run tauri build -- --target universal-apple-darwin`
+- 검증: `lipo -archs <바이너리>` → `x86_64 arm64` 두 아키텍처가 나와야 한다
 
 ## ipc-registry.json 유지 규칙
 

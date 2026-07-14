@@ -6,6 +6,7 @@ import { type EditorTab, useEditorStore } from "../../stores/editor/editor";
 function makeTab(id: string, filePath: string): EditorTab {
   return {
     id,
+    contextId: "",
     filePath,
     title: filePath.split("/").pop() || id,
     isDirty: false,

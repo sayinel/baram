@@ -120,39 +120,13 @@ describe('MathBlock Extension', () => {
 })
 ```
 
-## Node Extension 목록 (Part 3 §3.3)
+## Extension 목록
 
-| Extension      | 마크다운 구문        | Phase | Milestone | InputRule        |
-| -------------- | -------------------- | ----- | --------- | ---------------- |
-| heading        | `# ~ ######`         | 1     | M2        | `# `, `## `, ... |
-| paragraph      | (기본)               | 1     | M2        | —                |
-| blockquote     | `> `                 | 1     | M2        | `> `             |
-| bulletList     | `- `, `* `           | 1     | M2        | `- `, `* `       |
-| orderedList    | `1. `                | 1     | M2        | `1. `            |
-| taskList       | `- [ ] `, `- [x] `   | 1     | M2        | `- [ ] `         |
-| horizontalRule | `---`, `***`         | 1     | M2        | `---`            |
-| codeBlock      | ` ``` `              | 1     | M3        | ` ``` `          |
-| mathBlock      | `$$...$$`            | 1     | M3        | `$$`             |
-| table          | `\| \| \|`           | 1     | M3        | —                |
-| image          | `![alt](url)`        | 1     | M2        | —                |
-| callout        | `> [!type] title`    | 2     | M7        | `> [!`           |
-| mermaid        | ` ```mermaid `       | 2     | M9        | —                |
-| definitionList | `Term\n: Definition` | 2     | M9        | `: `             |
+**`registry.json`이 canonical 레지스트리다** — 전체 Extension 목록(nodes/marks/plugins)과
+각각의 마크다운 구문·InputRule·마일스톤 메타데이터는 registry.json에서 확인할 것.
+이 문서에 목록을 중복 기재하지 않는다 (과거 이 표가 실제 등록 수의 절반 수준으로 낡은 전례가 있음).
 
-## Mark Extension 목록
-
-| Extension   | 마크다운 구문 | Phase | Milestone | InputRule |
-| ----------- | ------------- | ----- | --------- | --------- |
-| bold        | `**text**`    | 1     | M2        | `**`      |
-| italic      | `*text*`      | 1     | M2        | `*`       |
-| code        | `` `text` ``  | 1     | M2        | `` ` ``   |
-| strike      | `~~text~~`    | 1     | M2        | `~~`      |
-| link        | `[text](url)` | 1     | M2        | —         |
-| inlineMath  | `$text$`      | 1     | M3        | `$`       |
-| highlight   | `==text==`    | 2     | M9        | `==`      |
-| wikilink    | `[[page]]`    | 2     | M7        | `[[`      |
-| subscript   | `~text~`      | 2     | M9        | —         |
-| superscript | `^text^`      | 2     | M9        | —         |
+파일 위치 규칙: `nodes/{name}.ts`, `marks/{name}.ts`, `plugins/{name}.ts` (+ NodeView는 `{name}-view.tsx`).
 
 ## registry.json 유지 규칙
 

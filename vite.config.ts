@@ -3,54 +3,7 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 import { defineConfig } from "vite";
 
-// @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
-
-function manualChunks(id: string): string | undefined {
-  const normalizedId = id.replace(/\\/g, "/");
-  if (!normalizedId.includes("/node_modules/")) return undefined;
-
-  if (normalizedId.includes("/@tauri-apps/")) return "vendor-tauri";
-
-  if (
-    normalizedId.includes("/react/") ||
-    normalizedId.includes("/react-dom/") ||
-    normalizedId.includes("/scheduler/") ||
-    normalizedId.includes("/zustand/")
-  ) {
-    return "vendor-react";
-  }
-
-  if (
-    normalizedId.includes("/@tiptap/") ||
-    normalizedId.includes("/prosemirror-") ||
-    normalizedId.includes("/orderedmap/")
-  ) {
-    return "vendor-editor";
-  }
-
-  if (
-    /\/node_modules\/@codemirror\/(autocomplete|commands|language|search|state|view)\//.test(
-      normalizedId,
-    ) ||
-    normalizedId.includes("/@lezer/highlight/")
-  ) {
-    return "vendor-codemirror";
-  }
-
-  if (normalizedId.includes("/katex/")) return "vendor-katex";
-
-  if (
-    normalizedId.includes("/unified/") ||
-    normalizedId.includes("/remark-") ||
-    normalizedId.includes("/mdast-util-") ||
-    normalizedId.includes("/micromark") ||
-    normalizedId.includes("/unist-util-") ||
-    normalizedId.includes("/vfile/")
-  ) {
-    return "vendor-markdown";
-  }
-}
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
@@ -62,10 +15,39 @@ export default defineConfig(async () => ({
   },
 
   // §8.4 Build optimization — group large vendor families into stable chunks.
+  // rolldown codeSplitting groups replace the Vite 8-deprecated
+  // rollupOptions.manualChunks function; first matching group wins.
   build: {
-    rollupOptions: {
+    rolldownOptions: {
       output: {
-        manualChunks,
+        codeSplitting: {
+          groups: [
+            {
+              name: "vendor-tauri",
+              test: /[\\/]node_modules[\\/]@tauri-apps[\\/]/,
+            },
+            {
+              name: "vendor-react",
+              test: /[\\/]node_modules[\\/](react|react-dom|scheduler|zustand)[\\/]/,
+            },
+            {
+              name: "vendor-editor",
+              test: /[\\/]node_modules[\\/](@tiptap[\\/]|prosemirror-|orderedmap[\\/])/,
+            },
+            {
+              name: "vendor-codemirror",
+              test: /[\\/]node_modules[\\/](@codemirror[\\/](autocomplete|commands|language|search|state|view)|@lezer[\\/]highlight)[\\/]/,
+            },
+            {
+              name: "vendor-katex",
+              test: /[\\/]node_modules[\\/]katex[\\/]/,
+            },
+            {
+              name: "vendor-markdown",
+              test: /[\\/]node_modules[\\/](unified[\\/]|remark-|mdast-util-|micromark|unist-util-|vfile[\\/])/,
+            },
+          ],
+        },
       },
     },
   },
