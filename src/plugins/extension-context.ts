@@ -334,6 +334,8 @@ function createUIAPI(
       disposables.push(disposable);
       return disposable;
     },
+    // Injects into document.head (light DOM); does NOT reach Shadow-DOM panel
+    // content — plugins style shadow content from inside onMount(el).
     addStyle(css: string): Disposable {
       const el = document.createElement("style");
       el.setAttribute("data-baram-plugin", pluginId);

@@ -1,6 +1,6 @@
 // Settings Modal — 9-tab settings (General, Editor, Appearance, Markdown, AI, ActivityBar, Language, Keybindings, Plugins)
 // Obsidian-style layout: label + description per row, section headers for grouping
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import type { SearchableSetting, SettingsTab } from "./settings-registry";
 
@@ -44,6 +44,15 @@ export function SettingsModal() {
   const { t } = useTranslation();
   const registry = useSettingsRegistry();
   const pluginTabs = usePluginUIStore(useShallow((s) => s.settingsTabs));
+
+  useEffect(() => {
+    if (
+      activePluginTab &&
+      !pluginTabs.some((t) => t.tabId === activePluginTab)
+    ) {
+      setActivePluginTab(null);
+    }
+  }, [pluginTabs, activePluginTab]);
 
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return null;
