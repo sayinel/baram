@@ -103,15 +103,20 @@ export const usePluginUIStore = create<PluginUIState>()((set) => ({
 
   unregisterPlugin: (pluginId) =>
     set((state) => {
-      const removed = state.sidebarPanels
-        .filter((p) => p.pluginId === pluginId)
-        .map((p) => p.panelId);
+      // Namespace-prefix check, NOT array-membership: by the time this
+      // "belt-and-suspenders" sweep runs, the plugin's own addSidebarPanel
+      // disposable has typically already called removeSidebarPanel (every
+      // real caller disposes subscriptions before invoking this sweep — see
+      // plugin-loader.ts unloadPlugin), so state.sidebarPanels no longer
+      // contains this plugin's entry. Deriving ownership from the id's own
+      // `${pluginId}:` prefix instead of from the (already-empty) array is
+      // what makes this idempotent regardless of call order.
+      const activeBelongsToPlugin =
+        state.activePluginPanelId?.startsWith(`${pluginId}:`) ?? false;
       return {
-        activePluginPanelId:
-          state.activePluginPanelId &&
-          removed.includes(state.activePluginPanelId)
-            ? null
-            : state.activePluginPanelId,
+        activePluginPanelId: activeBelongsToPlugin
+          ? null
+          : state.activePluginPanelId,
         paletteCommands: state.paletteCommands.filter(
           (c) => c.pluginId !== pluginId,
         ),
