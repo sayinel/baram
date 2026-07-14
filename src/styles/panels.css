@@ -837,3 +837,31 @@
   background: var(--color-bg-subtle);
   border-radius: 10px;
 }
+
+/* §69 Plugin Developer section — dev plugin load/reload/remove list */
+.plugin-dev-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0;
+  border-top: 1px solid var(--color-border-default);
+}
+
+.plugin-dev-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.plugin-dev-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+}
+
+.text-muted {
+  color: var(--color-text-muted);
+}

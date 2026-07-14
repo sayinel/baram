@@ -174,6 +174,7 @@ import { CAPABILITY_DESCRIPTIONS } from "../../plugins/types";
 import { usePluginStore } from "../../stores/system/plugin";
 import { PluginCard } from "./PluginCard";
 import { PluginDetail } from "./PluginDetail";
+import { PluginDeveloperSection } from "./PluginDeveloperSection";
 
 type MarketplaceTab = "browse" | "installed" | "updates";
 
@@ -572,6 +573,8 @@ export function PluginMarketplace() {
             })
           ))}
       </div>
+
+      <PluginDeveloperSection />
     </div>
   );
 }

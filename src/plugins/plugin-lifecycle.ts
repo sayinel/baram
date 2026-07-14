@@ -1,5 +1,10 @@
 import type { InstalledPlugin } from "./types";
 
+import {
+  pluginListDev,
+  pluginPrepareScopes,
+  toInstalledDevPlugin,
+} from "../ipc/plugin-invoke";
 import { usePluginStore } from "../stores/system/plugin";
 import { logger } from "../utils/logger";
 import { emitPluginEvent } from "./extension-context";
@@ -8,46 +13,80 @@ import { pluginLoader } from "./plugin-loader";
 
 /** Initialize all enabled plugins at app startup. Budget: 200ms total. */
 export async function initializePlugins(): Promise<void> {
+  // Grant asset scope for ~/.baram/plugins before any load (see Global Constraints).
+  await pluginPrepareScopes().catch((err) =>
+    logger.error("[PluginLifecycle] prepare scopes failed:", err),
+  );
+
   const { installedPlugins } = usePluginStore.getState();
   const enabledPlugins = Object.values(installedPlugins).filter(
     (p) => p.enabled,
   );
 
-  if (enabledPlugins.length === 0) return;
+  if (enabledPlugins.length > 0) {
+    const startTime = performance.now();
 
-  const startTime = performance.now();
+    // Sort by dependencies (simple topological sort)
+    const sorted = sortByDependencies(enabledPlugins);
 
-  // Sort by dependencies (simple topological sort)
-  const sorted = sortByDependencies(enabledPlugins);
+    // Load plugins in parallel (no dependency ordering for now since dependencies are rare)
+    const results = await Promise.allSettled(
+      sorted.map((plugin) =>
+        pluginLoader
+          .loadPlugin(plugin.installPath, plugin.manifest)
+          .catch((err) => {
+            logger.error(
+              `[PluginLifecycle] Failed to load ${plugin.manifest.id}:`,
+              err,
+            );
+            usePluginStore.getState().setError(plugin.manifest.id, String(err));
+            throw err;
+          }),
+      ),
+    );
 
-  // Load plugins in parallel (no dependency ordering for now since dependencies are rare)
-  const results = await Promise.allSettled(
-    sorted.map((plugin) =>
-      pluginLoader
-        .loadPlugin(plugin.installPath, plugin.manifest)
-        .catch((err) => {
+    const loaded = results.filter((r) => r.status === "fulfilled").length;
+    const failed = results.filter((r) => r.status === "rejected").length;
+    const elapsed = performance.now() - startTime;
+
+    logger.info(
+      `[PluginLifecycle] Loaded ${loaded} plugins (${failed} failed) in ${elapsed.toFixed(0)}ms`,
+    );
+
+    if (elapsed > 200) {
+      logger.warn(
+        `[PluginLifecycle] Plugin loading exceeded 200ms budget: ${elapsed.toFixed(0)}ms`,
+      );
+    }
+  }
+
+  // Dev plugins (source of truth = Rust config; not persisted in the store).
+  try {
+    const devRaw = await pluginListDev();
+    const devPlugins: InstalledPlugin[] = devRaw.map(toInstalledDevPlugin);
+    usePluginStore.getState().setDevPlugins(devPlugins);
+    await Promise.allSettled(
+      devPlugins.map(async (p) => {
+        try {
+          if (pluginLoader.isLoaded(p.manifest.id)) {
+            logger.warn(
+              `[PluginLifecycle] dev plugin ${p.manifest.id} overrides installed`,
+            );
+            await pluginLoader.reloadPlugin(p.installPath, p.manifest);
+          } else {
+            await pluginLoader.loadPlugin(p.installPath, p.manifest);
+          }
+        } catch (err) {
           logger.error(
-            `[PluginLifecycle] Failed to load ${plugin.manifest.id}:`,
+            `[PluginLifecycle] dev load failed ${p.manifest.id}:`,
             err,
           );
-          usePluginStore.getState().setError(plugin.manifest.id, String(err));
-          throw err;
-        }),
-    ),
-  );
-
-  const loaded = results.filter((r) => r.status === "fulfilled").length;
-  const failed = results.filter((r) => r.status === "rejected").length;
-  const elapsed = performance.now() - startTime;
-
-  logger.info(
-    `[PluginLifecycle] Loaded ${loaded} plugins (${failed} failed) in ${elapsed.toFixed(0)}ms`,
-  );
-
-  if (elapsed > 200) {
-    logger.warn(
-      `[PluginLifecycle] Plugin loading exceeded 200ms budget: ${elapsed.toFixed(0)}ms`,
+          usePluginStore.getState().setError(p.manifest.id, String(err));
+        }
+      }),
     );
+  } catch (err) {
+    logger.error("[PluginLifecycle] dev plugin init failed:", err);
   }
 }
 

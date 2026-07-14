@@ -43,6 +43,7 @@ export interface InstalledPlugin {
   enabled: boolean;
   installedAt: number;
   installPath: string;
+  isDev?: boolean;
   manifest: PluginManifest;
   updatedAt: number;
 }
