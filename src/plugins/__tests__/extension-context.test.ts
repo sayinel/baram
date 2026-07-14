@@ -188,7 +188,11 @@ describe("createExtensionContext", () => {
 
 describe("ExtensionContext ui API", () => {
   beforeEach(() => {
-    usePluginUIStore.setState({ statusBarItems: [] });
+    usePluginUIStore.setState({
+      settingsTabs: [],
+      sidebarPanels: [],
+      statusBarItems: [],
+    });
     useUIStore.setState({ toast: null });
     document.head
       .querySelectorAll("style[data-baram-plugin]")
@@ -236,5 +240,58 @@ describe("ExtensionContext ui API", () => {
     expect(
       document.head.querySelector('style[data-baram-plugin="test-plugin"]'),
     ).toBeNull();
+  });
+
+  test("ui object exists with only 'settings' capability", () => {
+    const ctx = createExtensionContext(makeManifest(["settings"]), "/p");
+    expect(() => ctx.ui.showNotification("x")).not.toThrow();
+  });
+
+  test("addSidebarPanel requires 'sidebar' capability", () => {
+    const ctx = createExtensionContext(makeManifest(["settings"]), "/p");
+    expect(() =>
+      ctx.ui.addSidebarPanel({ id: "p", onMount: () => {}, title: "P" }),
+    ).toThrow(/sidebar/i);
+  });
+
+  test("addSidebarPanel registers a namespaced panel and disposes it", () => {
+    const ctx = createExtensionContext(makeManifest(["sidebar"]), "/p");
+    const d = ctx.ui.addSidebarPanel({
+      id: "notes",
+      onMount: () => {},
+      title: "Notes",
+    });
+    const panels = usePluginUIStore.getState().sidebarPanels;
+    expect(panels).toHaveLength(1);
+    expect(panels[0].panelId).toBe("test-plugin:notes");
+    expect(panels[0].pluginId).toBe("test-plugin");
+    d.dispose();
+    expect(usePluginUIStore.getState().sidebarPanels).toHaveLength(0);
+  });
+
+  test("addSettingsTab requires 'settings' capability", () => {
+    const ctx = createExtensionContext(makeManifest(["sidebar"]), "/p");
+    expect(() =>
+      ctx.ui.addSettingsTab({ id: "t", onMount: () => {}, title: "T" }),
+    ).toThrow(/settings/i);
+  });
+
+  test("addSettingsTab registers a namespaced tab and disposes it", () => {
+    const ctx = createExtensionContext(makeManifest(["settings"]), "/p");
+    const d = ctx.ui.addSettingsTab({
+      id: "cfg",
+      onMount: () => {},
+      title: "Cfg",
+    });
+    expect(usePluginUIStore.getState().settingsTabs[0].tabId).toBe(
+      "test-plugin:cfg",
+    );
+    d.dispose();
+    expect(usePluginUIStore.getState().settingsTabs).toHaveLength(0);
+  });
+
+  test("showStatusBarItem requires 'statusbar' capability", () => {
+    const ctx = createExtensionContext(makeManifest(["sidebar"]), "/p");
+    expect(() => ctx.ui.showStatusBarItem("x")).toThrow(/statusbar/i);
   });
 });
