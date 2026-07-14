@@ -119,6 +119,11 @@ export interface RegistryIndex {
   updatedAt?: string;
 }
 
+export interface StatusBarItem {
+  dispose(): void;
+  setText(text: string): void;
+}
+
 export interface TiptapExtensionDef {
   exportName: string;
   name: string;
@@ -126,8 +131,9 @@ export interface TiptapExtensionDef {
 }
 
 export interface UIAPI {
+  addStyle(css: string): Disposable;
   showNotification(message: string, type?: "error" | "info" | "warning"): void;
-  showStatusBarItem(text: string, alignment?: "left" | "right"): Disposable;
+  showStatusBarItem(text: string, align?: "left" | "right"): StatusBarItem;
 }
 
 /** Human-readable descriptions for capabilities */
