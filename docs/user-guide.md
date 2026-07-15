@@ -193,7 +193,7 @@ Baram hides markdown syntax while you write. The delimiters appear when your cur
 | Superscript       | `^text^`      | —                | —                    |
 | Subscript         | `~text~`      | —                | —                    |
 | `Inline Code`     | `` `text` ``  | `Cmd+E`          | `Ctrl+E`             |
-| [Link](url)       | `[text](url)` | `Cmd+K`          | `Ctrl+K`             |
+| [Link](url)       | `[text](url)` | —                | —                    |
 | Inline Math       | `$formula$`   | Type `$...$`     | Type `$...$`         |
 
 You can also apply formatting by selecting text and using the **Floating Toolbar** that appears above the selection. The toolbar includes buttons for Bold, Italic, Strikethrough, Highlight, Superscript, Subscript, Code, and more.

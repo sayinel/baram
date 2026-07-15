@@ -207,7 +207,6 @@ Create your own slash commands in **Settings > AI > Custom Commands**. Use varia
 | Action | Shortcut |
 |--------|----------|
 | Bold / Italic / Inline Code | `Cmd+B` / `Cmd+I` / `Cmd+E` |
-| Link | `Cmd+K` |
 | Heading 1–6 | `Cmd+1` – `Cmd+6` |
 | Code Block / Math Block | `Cmd+Alt+C` / `Cmd+Shift+M` |
 | Table | `Cmd+T` |
