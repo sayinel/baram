@@ -65,7 +65,7 @@ export default tseslint.config(
     },
   },
   {
-    ignores: ["dist/", "src-tauri/", "node_modules/"],
+    ignores: ["dist/", "examples/", "src-tauri/", "node_modules/"],
   },
   eslintConfigPrettier,
 );

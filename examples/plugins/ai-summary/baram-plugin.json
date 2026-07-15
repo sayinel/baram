@@ -1,0 +1,13 @@
+{
+  "id": "baram-ai-summary",
+  "name": "AI Summary",
+  "description": "Summarizes the current document with AI, in a sidebar panel; caches the last summary.",
+  "version": "1.0.0",
+  "author": "Baram",
+  "license": "Apache-2.0",
+  "main": "dist/index.mjs",
+  "engines": { "baram": ">=0.3.0" },
+  "capabilities": ["ai", "editor:readonly", "settings", "sidebar", "storage"],
+  "icon": "✨",
+  "keywords": ["ai", "summary", "llm"]
+}

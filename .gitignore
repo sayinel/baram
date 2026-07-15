@@ -596,3 +596,7 @@ skills-lock.json
 .claude/settings.local.json
 .claude/worktrees/
 .claude/skills/
+
+# §69 Phase E: committed example plugin bundles (override global dist/ ignore)
+!examples/plugins/**/dist/
+!examples/plugins/**/dist/index.mjs

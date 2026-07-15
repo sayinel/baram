@@ -1,0 +1,11 @@
+{
+  "name": "baram-word-count",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --format=esm --outfile=dist/index.mjs --external:@tiptap/core --external:@tiptap/pm",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": { "esbuild": "^0.28.1", "typescript": "^6.0.3" }
+}

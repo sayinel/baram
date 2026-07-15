@@ -106,6 +106,8 @@ export type PluginCapability =
   | "statusbar"
   | "storage";
 
+export type PluginEventName = "editor:ready" | "file:open" | "file:save";
+
 export interface PluginFetchInit {
   body?: string;
   headers?: Record<string, string>;

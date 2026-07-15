@@ -1,0 +1,13 @@
+{
+  "id": "baram-word-count",
+  "name": "Word Count",
+  "description": "Shows the current document's word and character count in the status bar.",
+  "version": "1.0.0",
+  "author": "Baram",
+  "license": "Apache-2.0",
+  "main": "dist/index.mjs",
+  "engines": { "baram": ">=0.3.0" },
+  "capabilities": ["editor:readonly", "events", "statusbar"],
+  "icon": "🔢",
+  "keywords": ["word", "count", "statistics"]
+}

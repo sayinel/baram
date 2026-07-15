@@ -1,0 +1,76 @@
+/* Not auto-loaded by Baram (no styles.css loader yet). Both Shadow-DOM
+   surfaces (sidebar panel + settings tab) inject their own <style> element
+   into the `el` passed to onMount() in src/index.ts — ctx.ui.addStyle()
+   targets document.head (light DOM) and cannot reach Shadow-DOM content, so
+   it is not used here. This file mirrors that injected CSS for
+   reference/authorship only. var(--color-*) tokens still resolve correctly
+   because CSS custom properties inherit across the shadow boundary. */
+
+.baram-ai-summary-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  font-size: 0.875rem;
+  color: var(--color-text-default);
+}
+.baram-ai-summary-panel button {
+  align-self: flex-start;
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--color-border-default);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-default);
+  cursor: pointer;
+}
+.baram-ai-summary-panel button:hover {
+  background: var(--color-bg-hover);
+}
+.baram-ai-summary-panel button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.baram-ai-summary-status {
+  color: var(--color-text-muted);
+  min-height: 1em;
+}
+.baram-ai-summary-output {
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.baram-ai-summary-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  font-size: 0.875rem;
+  color: var(--color-text-default);
+}
+.baram-ai-summary-settings label {
+  color: var(--color-text-muted);
+}
+.baram-ai-summary-settings textarea {
+  width: 100%;
+  min-height: 5rem;
+  resize: vertical;
+  box-sizing: border-box;
+  padding: 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--color-border-default);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-default);
+  font: inherit;
+}
+.baram-ai-summary-settings button {
+  align-self: flex-start;
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--color-border-default);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-default);
+  cursor: pointer;
+}
+.baram-ai-summary-settings button:hover {
+  background: var(--color-bg-hover);
+}
