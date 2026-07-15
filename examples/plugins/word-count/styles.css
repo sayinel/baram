@@ -1,0 +1,6 @@
+/* Not auto-loaded by Baram (no styles.css loader yet). The plugin injects this
+   via ctx.ui.addStyle() in src/index.ts; kept here for reference/authorship. */
+.baram-word-count-item {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
