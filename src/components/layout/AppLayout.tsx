@@ -3,8 +3,6 @@ import { lazy, Suspense, useCallback } from "react";
 
 import { useShallow } from "zustand/shallow";
 
-import { useContextStore } from "../../stores/context/context";
-import { isFileTab, useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useUIStore } from "../../stores/ui/ui";
 import { ActivityBar } from "./ActivityBar";
@@ -68,17 +66,13 @@ export function AppLayout({ children, statusBar }: AppLayoutProps) {
   );
   const rootPath = useFileStore((s) => s.rootPath);
 
-  // §89 Check if active tab is an external file (FileContext)
-  const isExternalTabActive = useEditorStore((s) => {
-    const tab = s.tabs.find((t) => t.id === s.activeTabId);
-    if (!tab || !isFileTab(tab)) return false;
-    const ctx = useContextStore.getState().getContextForPath(tab.filePath);
-    return ctx?.contextType === "file";
-  });
-
-  // Hide sidebar & activity bar when no folder is open (HomeScreen state)
-  // or when an external file tab is active
-  const showSidebar = !!rootPath && sidebarOpen && !isExternalTabActive;
+  // §89 Sidebar visibility follows the ACTIVE CONTEXT (via rootPath), not the
+  // active editor tab. rootPath is set for vault/folder contexts and cleared for
+  // standalone FileContexts, so the sidebar hides while an external file is
+  // focused and reappears when a Vault Tab is clicked (switchContext restores
+  // rootPath). Keying this off the active tab left the flag stuck hidden when
+  // the context changed but the external file tab stayed active.
+  const showSidebar = !!rootPath && sidebarOpen;
 
   const handleSidebarResize = useCallback(
     (delta: number) => {
