@@ -320,3 +320,59 @@ describe("ExtensionContext ui API", () => {
     expect(() => ctx.ui.showStatusBarItem("x")).toThrow(/statusbar/i);
   });
 });
+
+// Phase D integration guard: proves the capability→API gate matrix across
+// ai/network/storage, and that one capability does not unlock the others.
+// This file has no vi.mock for llm/plugin-invoke — only `typeof`/`toThrow`
+// assertions are used below, so no method is ever invoked (import-free).
+describe("Phase D capability gate matrix", () => {
+  test("no-cap context denies ai/network/storage (denied proxy throws)", () => {
+    const ctx = createExtensionContext(makeManifest([]), "/p");
+    expect(() => ctx.ai.complete).toThrow(/ai/i);
+    expect(() => ctx.network.fetch).toThrow(/network/i);
+    expect(() => ctx.storage.read).toThrow(/storage/i);
+  });
+
+  test("declared caps expose the real APIs (methods are functions)", () => {
+    const ctx = createExtensionContext(
+      makeManifest(["ai", "network", "storage"]),
+      "/p",
+    );
+    expect(typeof ctx.ai.complete).toBe("function");
+    expect(typeof ctx.ai.stream).toBe("function");
+    expect(typeof ctx.ai.listModels).toBe("function");
+    expect(typeof ctx.network.fetch).toBe("function");
+    expect(typeof ctx.storage.read).toBe("function");
+    expect(typeof ctx.storage.write).toBe("function");
+    expect(typeof ctx.storage.list).toBe("function");
+    expect(typeof ctx.storage.remove).toBe("function");
+  });
+
+  test("one cap does not unlock the others (ai only)", () => {
+    const ctx = createExtensionContext(makeManifest(["ai"]), "/p");
+    expect(typeof ctx.ai.complete).toBe("function");
+    expect(() => ctx.network.fetch).toThrow(/network/i);
+    expect(() => ctx.storage.read).toThrow(/storage/i);
+  });
+
+  test("one cap does not unlock the others (network only)", () => {
+    const ctx = createExtensionContext(makeManifest(["network"]), "/p");
+    expect(typeof ctx.network.fetch).toBe("function");
+    expect(() => ctx.ai.complete).toThrow(/ai/i);
+    expect(() => ctx.storage.read).toThrow(/storage/i);
+  });
+
+  test("one cap does not unlock the others (storage only)", () => {
+    const ctx = createExtensionContext(makeManifest(["storage"]), "/p");
+    expect(typeof ctx.storage.read).toBe("function");
+    expect(() => ctx.ai.complete).toThrow(/ai/i);
+    expect(() => ctx.network.fetch).toThrow(/network/i);
+  });
+
+  test("unrelated cap ('commands') does not unlock ai/network/storage", () => {
+    const ctx = createExtensionContext(makeManifest(["commands"]), "/p");
+    expect(() => ctx.ai.complete).toThrow(/ai/i);
+    expect(() => ctx.network.fetch).toThrow(/network/i);
+    expect(() => ctx.storage.read).toThrow(/storage/i);
+  });
+});
