@@ -1,6 +1,6 @@
 import type { PluginManifest } from "../types";
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const llmComplete = vi.fn(async () => {});
 const llmListModels = vi.fn(async () => [{ id: "m1", name: "Model One" }]);
@@ -10,18 +10,21 @@ let lastCbs: null | {
   onToken: (t: string) => void;
 } = null;
 const cleanup = vi.fn();
+const createLLMStream = vi.fn(async (_id: string, cbs: typeof lastCbs) => {
+  lastCbs = cbs;
+  return cleanup;
+});
 
 vi.mock("../../ipc/llm", () => ({
   llmComplete: (...a: unknown[]) => llmComplete(...(a as [])),
   llmListModels: (...a: unknown[]) => llmListModels(...(a as [])),
 }));
 vi.mock("../../utils/llm-stream", () => ({
-  createLLMStream: vi.fn(async (_id: string, cbs: typeof lastCbs) => {
-    lastCbs = cbs;
-    return cleanup;
-  }),
+  createLLMStream: (...a: unknown[]) =>
+    createLLMStream(...(a as [string, typeof lastCbs])),
 }));
 
+import { useAIStore } from "../../stores/ai/ai";
 import { createExtensionContext } from "../extension-context";
 
 function mf(caps: string[]): PluginManifest {
@@ -42,8 +45,15 @@ describe("ExtensionContext ai API", () => {
   beforeEach(() => {
     llmComplete.mockClear();
     llmListModels.mockClear();
+    createLLMStream.mockClear();
     cleanup.mockClear();
     lastCbs = null;
+  });
+
+  afterEach(() => {
+    // Guard against leaking privacy-mode overrides into the other ai tests,
+    // which all assume the default privacyMode=false / provider="claude".
+    useAIStore.setState({ privacyMode: false, provider: "claude" });
   });
 
   it("denies ai without the 'ai' capability", () => {
@@ -88,5 +98,19 @@ describe("ExtensionContext ai API", () => {
     await expect(ctx.ai.listModels()).resolves.toEqual([
       { id: "m1", name: "Model One" },
     ]);
+  });
+
+  it("complete/stream both reject when privacy mode forbids the resolved provider, before touching the LLM", async () => {
+    // Real store + real isLLMAllowed: privacyMode=true + a cloud provider
+    // ("claude") makes isLLMAllowed() return false, so start() must throw
+    // before any createLLMStream/llmComplete call.
+    useAIStore.setState({ privacyMode: true, provider: "claude" });
+    const ctx = createExtensionContext(mf(["ai"]), "/p");
+
+    await expect(ctx.ai.complete("hi")).rejects.toThrow(/privacy/i);
+    await expect(ctx.ai.stream("hi", {}, () => {})).rejects.toThrow(/privacy/i);
+
+    expect(createLLMStream).not.toHaveBeenCalled();
+    expect(llmComplete).not.toHaveBeenCalled();
   });
 });

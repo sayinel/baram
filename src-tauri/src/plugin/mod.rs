@@ -397,11 +397,25 @@ pub async fn storage_write(plugin_id: String, key: String, value: String) -> Res
 /// plugin has no storage directory yet.
 pub async fn storage_list(plugin_id: String) -> Result<Vec<String>, String> {
     let dir = plugin_data_dir(&plugin_id)?;
+    list_storage_keys(&dir)
+}
+
+/// Pure directory-listing helper behind `storage_list` — kept separate (and
+/// synchronous) so it is unit-testable against an arbitrary tempdir without
+/// depending on `plugin_data_dir`'s real-HOME resolution. Skips `.tmp`
+/// intermediates — the atomic `storage_write` above briefly creates
+/// `{key}.{uuid}.tmp` siblings, and a crash mid-write can leave one orphaned;
+/// neither should surface as a storage key (same pattern as
+/// `fs::mod::start_watching`'s `.tmp` skip).
+fn list_storage_keys(dir: &Path) -> Result<Vec<String>, String> {
     let mut out = Vec::new();
-    for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())? {
+    for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         if entry.path().is_file() {
             if let Some(name) = entry.file_name().to_str() {
+                if name.ends_with(".tmp") {
+                    continue;
+                }
                 out.push(name.to_string());
             }
         }
@@ -804,6 +818,17 @@ mod tests {
         let path = resolve_key_path(tmp.path(), "data.json").unwrap();
         std::fs::write(&path, "hello").unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello");
+    }
+
+    #[test]
+    fn test_storage_list_filters_tmp_intermediates() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("foo"), "value").unwrap();
+        // Orphaned/in-flight atomic-write intermediate — must never be listed.
+        std::fs::write(tmp.path().join("foo.9c1f2b3a4e5d6789.tmp"), "partial").unwrap();
+
+        let out = list_storage_keys(tmp.path()).unwrap();
+        assert_eq!(out, vec!["foo".to_string()]);
     }
 
     #[test]
