@@ -11,11 +11,11 @@ access to Baram's internal source.
 
 ## Capabilities
 
-| Capability        | Why it's needed                                         |
-| ------------------ | -------------------------------------------------------- |
-| `editor:readonly`  | `ctx.editor.getContent()` to read the document text       |
-| `events`           | `ctx.events.on(...)` to recompute on load/open/save        |
-| `statusbar`        | `ctx.ui.showStatusBarItem(...)` / `ctx.ui.addStyle(...)`   |
+| Capability        | Why it's needed                                          |
+| ----------------- | -------------------------------------------------------- |
+| `editor:readonly` | `ctx.editor.getContent()` to read the document text      |
+| `events`          | `ctx.events.on(...)` to recompute on load/open/save      |
+| `statusbar`       | `ctx.ui.showStatusBarItem(...)` / `ctx.ui.addStyle(...)` |
 
 ## Build
 

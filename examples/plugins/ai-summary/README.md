@@ -33,13 +33,13 @@ tokens without needing to duplicate their values.
 
 ## Capabilities
 
-| Capability        | Why it's needed                                                                 |
-| ------------------ | -------------------------------------------------------------------------------- |
-| `ai`               | `ctx.ai.complete(...)` to summarize the document                                 |
-| `editor:readonly`  | `ctx.editor.getContent()` to read the document text to summarize                 |
-| `settings`         | `ctx.ui.addSettingsTab(...)` for the prompt-prefix configuration surface          |
-| `sidebar`          | `ctx.ui.addSidebarPanel(...)` for the "Summarize" panel                          |
-| `storage`          | `ctx.storage.read/write(...)` to cache the last summary and the saved prefix      |
+| Capability        | Why it's needed                                                              |
+| ----------------- | ---------------------------------------------------------------------------- |
+| `ai`              | `ctx.ai.complete(...)` to summarize the document                             |
+| `editor:readonly` | `ctx.editor.getContent()` to read the document text to summarize             |
+| `settings`        | `ctx.ui.addSettingsTab(...)` for the prompt-prefix configuration surface     |
+| `sidebar`         | `ctx.ui.addSidebarPanel(...)` for the "Summarize" panel                      |
+| `storage`         | `ctx.storage.read/write(...)` to cache the last summary and the saved prefix |
 
 `network` is deliberately **not** declared: `ctx.ai.complete()` routes
 through the app's own LLM proxy/plumbing (Rust-side `llmComplete`), not

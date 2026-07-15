@@ -160,12 +160,6 @@ export interface IndexUpdatedPayload {
   filesIndexed: number;
 }
 
-export interface InstalledPluginInfo {
-  checksum: string;
-  installPath: string;
-  manifest: PluginManifest;
-}
-
 // §3.2 Config types
 export type JsonValue =
   boolean | JsonValue[] | null | number | string | { [key: string]: JsonValue };
