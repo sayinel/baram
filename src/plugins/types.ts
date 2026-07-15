@@ -56,6 +56,7 @@ export interface ExtensionContext {
   editor: EditorAPI;
   events: EventsAPI;
   files: FilesAPI;
+  network: NetworkAPI;
   pluginId: string;
   pluginPath: string;
   subscriptions: Disposable[];
@@ -84,6 +85,10 @@ export interface LoadedPlugin {
   id: string;
   manifest: PluginManifest;
   module: PluginModule;
+}
+
+export interface NetworkAPI {
+  fetch(url: string, init?: PluginFetchInit): Promise<PluginFetchResponse>;
 }
 
 export type PluginCapability =

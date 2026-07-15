@@ -9,6 +9,7 @@ import type {
   EventsAPI,
   ExtensionContext,
   FilesAPI,
+  NetworkAPI,
   PluginCapability,
   PluginManifest,
   StatusBarItem,
@@ -17,6 +18,7 @@ import type {
 
 import { listDir, readFile, writeFile } from "../ipc/invoke";
 import { llmComplete, llmListModels } from "../ipc/llm";
+import { pluginHttpFetch } from "../ipc/plugin-invoke";
 import { useAIStore } from "../stores/ai/ai";
 import { useUIStore } from "../stores/ui/ui";
 import { createLLMStream } from "../utils/llm-stream";
@@ -116,6 +118,15 @@ function createDeniedProxy(
       },
     },
   );
+}
+
+// --- Network API ---
+function createNetworkAPI(): NetworkAPI {
+  return {
+    fetch(url, init) {
+      return pluginHttpFetch(url, init);
+    },
+  };
 }
 
 // --- Command Registry (shared across all plugins) ---
@@ -235,6 +246,10 @@ export function createExtensionContext(
     ? createEventsAPI(disposables)
     : (createDeniedProxy("events", "events") as EventsAPI);
 
+  const network: NetworkAPI = hasCapability("network")
+    ? createNetworkAPI()
+    : (createDeniedProxy("network", "network") as NetworkAPI);
+
   const ui: UIAPI =
     hasCapability("sidebar") ||
     hasCapability("statusbar") ||
@@ -251,6 +266,7 @@ export function createExtensionContext(
     editor,
     files,
     events,
+    network,
     ui,
   };
 }
