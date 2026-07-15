@@ -112,6 +112,7 @@ describe("PluginDeveloperSection", () => {
     const showToastSpy = vi.spyOn(useUIStore.getState(), "showToast");
 
     render(<PluginDeveloperSection />);
+    fireEvent.click(screen.getByText("Dev X"));
     fireEvent.click(screen.getByRole("button", { name: "Reload" }));
 
     await waitFor(() =>
@@ -148,6 +149,7 @@ describe("PluginDeveloperSection", () => {
     const showToastSpy = vi.spyOn(useUIStore.getState(), "showToast");
 
     render(<PluginDeveloperSection />);
+    fireEvent.click(screen.getByText("Dev X"));
     fireEvent.click(screen.getByRole("button", { name: "Reload" }));
 
     await waitFor(() =>
@@ -168,6 +170,7 @@ describe("PluginDeveloperSection", () => {
 
     render(<PluginDeveloperSection />);
     expect(screen.getByText("Dev X")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Dev X"));
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
 
     await waitFor(() =>
@@ -179,5 +182,30 @@ describe("PluginDeveloperSection", () => {
     await waitFor(() =>
       expect(screen.queryByText("Dev X")).not.toBeInTheDocument(),
     );
+  });
+
+  it("toggles the detail panel on repeated title clicks", () => {
+    usePluginStore.getState().setDevPlugins([makeDevPlugin()]);
+
+    render(<PluginDeveloperSection />);
+    // Scope to the list-item name — once selected, the plugin name also
+    // appears in the detail heading (plugin-dev-detail__name).
+    const title = () =>
+      screen.getByText("Dev X", { selector: ".vault-tab-item__name" });
+
+    // Not selected: no detail (Reload lives in the detail panel).
+    expect(
+      screen.queryByRole("button", { name: "Reload" }),
+    ).not.toBeInTheDocument();
+
+    // First click selects → detail shown.
+    fireEvent.click(title());
+    expect(screen.getByRole("button", { name: "Reload" })).toBeInTheDocument();
+
+    // Second click on the same title deselects → detail hidden.
+    fireEvent.click(title());
+    expect(
+      screen.queryByRole("button", { name: "Reload" }),
+    ).not.toBeInTheDocument();
   });
 });
