@@ -115,3 +115,42 @@ pub async fn plugin_list_dev(
     }
     Ok(out)
 }
+
+/// Plugin network proxy — reqwest fetch bypassing browser CORS (§69 Phase D).
+/// Logic + the http/https scheme guard live in `plugin::http_fetch`.
+#[tauri::command]
+pub async fn plugin_http_fetch(
+    url: String,
+    init: Option<plugin::PluginFetchInit>,
+) -> Result<plugin::PluginFetchResponse, String> {
+    plugin::http_fetch(url, init).await
+}
+
+/// Plugin app-global key/value storage — read (§69 Phase D).
+/// Logic + the path-traversal guard live in `plugin::storage_read`.
+#[tauri::command]
+pub async fn plugin_storage_read(plugin_id: String, key: String) -> Result<Option<String>, String> {
+    plugin::storage_read(plugin_id, key).await
+}
+
+/// Plugin app-global key/value storage — write (§69 Phase D).
+#[tauri::command]
+pub async fn plugin_storage_write(
+    plugin_id: String,
+    key: String,
+    value: String,
+) -> Result<(), String> {
+    plugin::storage_write(plugin_id, key, value).await
+}
+
+/// Plugin app-global key/value storage — list keys (§69 Phase D).
+#[tauri::command]
+pub async fn plugin_storage_list(plugin_id: String) -> Result<Vec<String>, String> {
+    plugin::storage_list(plugin_id).await
+}
+
+/// Plugin app-global key/value storage — remove a key (§69 Phase D).
+#[tauri::command]
+pub async fn plugin_storage_remove(plugin_id: String, key: String) -> Result<(), String> {
+    plugin::storage_remove(plugin_id, key).await
+}

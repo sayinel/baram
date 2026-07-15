@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type {
   InstalledPlugin,
+  PluginFetchInit,
+  PluginFetchResponse,
   PluginManifest,
   RegistryIndex,
 } from "../plugins/types";
@@ -26,6 +28,13 @@ export async function pluginFetchRegistry(url: string): Promise<RegistryIndex> {
 
 export async function pluginGetDir(): Promise<string> {
   return invoke<string>("plugin_get_dir");
+}
+
+export async function pluginHttpFetch(
+  url: string,
+  init?: PluginFetchInit,
+): Promise<PluginFetchResponse> {
+  return invoke<PluginFetchResponse>("plugin_http_fetch", { url, init });
 }
 
 export async function pluginInstall(
@@ -60,6 +69,32 @@ export async function pluginReadManifest(
 
 export async function pluginRemoveDevFolder(path: string): Promise<void> {
   return invoke<void>("plugin_remove_dev_folder", { path });
+}
+
+export async function pluginStorageList(pluginId: string): Promise<string[]> {
+  return invoke<string[]>("plugin_storage_list", { pluginId });
+}
+
+export async function pluginStorageRead(
+  pluginId: string,
+  key: string,
+): Promise<null | string> {
+  return invoke<null | string>("plugin_storage_read", { pluginId, key });
+}
+
+export async function pluginStorageRemove(
+  pluginId: string,
+  key: string,
+): Promise<void> {
+  return invoke<void>("plugin_storage_remove", { pluginId, key });
+}
+
+export async function pluginStorageWrite(
+  pluginId: string,
+  key: string,
+  value: string,
+): Promise<void> {
+  return invoke<void>("plugin_storage_write", { pluginId, key, value });
 }
 
 export async function pluginUninstall(pluginId: string): Promise<void> {

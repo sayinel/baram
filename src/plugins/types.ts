@@ -1,5 +1,25 @@
 // §69 Plugin Marketplace — Core Types
 
+export interface AIAPI {
+  complete(prompt: string, opts?: AICompleteOptions): Promise<string>;
+  listModels(): Promise<AIModel[]>;
+  stream(
+    prompt: string,
+    opts: AICompleteOptions,
+    onToken: (token: string) => void,
+  ): Promise<void>;
+}
+
+export interface AICompleteOptions {
+  maxTokens?: number;
+  systemPrompt?: string;
+}
+
+export interface AIModel {
+  id: string;
+  name: string;
+}
+
 export interface CommandRegisterOptions {
   paletteVisible?: boolean;
   title?: string;
@@ -31,12 +51,15 @@ export interface EventsAPI {
 }
 
 export interface ExtensionContext {
+  ai: AIAPI;
   commands: CommandsAPI;
   editor: EditorAPI;
   events: EventsAPI;
   files: FilesAPI;
+  network: NetworkAPI;
   pluginId: string;
   pluginPath: string;
+  storage: StorageAPI;
   subscriptions: Disposable[];
   ui: UIAPI;
 }
@@ -65,6 +88,10 @@ export interface LoadedPlugin {
   module: PluginModule;
 }
 
+export interface NetworkAPI {
+  fetch(url: string, init?: PluginFetchInit): Promise<PluginFetchResponse>;
+}
+
 export type PluginCapability =
   | "ai"
   | "commands"
@@ -76,7 +103,20 @@ export type PluginCapability =
   | "network"
   | "settings"
   | "sidebar"
-  | "statusbar";
+  | "statusbar"
+  | "storage";
+
+export interface PluginFetchInit {
+  body?: string;
+  headers?: Record<string, string>;
+  method?: string;
+}
+
+export interface PluginFetchResponse {
+  body: string;
+  headers: Record<string, string>;
+  status: number;
+}
 
 export interface PluginManifest {
   author: string;
@@ -148,6 +188,13 @@ export interface StatusBarItem {
   setText(text: string): void;
 }
 
+export interface StorageAPI {
+  list(): Promise<string[]>;
+  read(key: string): Promise<null | string>;
+  remove(key: string): Promise<void>;
+  write(key: string, value: string): Promise<void>;
+}
+
 export interface TiptapExtensionDef {
   exportName: string;
   name: string;
@@ -175,4 +222,5 @@ export const CAPABILITY_DESCRIPTIONS: Record<PluginCapability, string> = {
   events: "에디터 이벤트를 수신할 수 있습니다",
   ai: "AI/LLM 기능을 사용할 수 있습니다",
   network: "네트워크 요청을 보낼 수 있습니다",
+  storage: "플러그인 전용 저장소를 사용할 수 있습니다",
 };

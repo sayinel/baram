@@ -117,6 +117,7 @@ describe("validateManifest", () => {
       "events",
       "ai",
       "network",
+      "storage",
     ];
     const result = validateManifest({
       ...validManifest,

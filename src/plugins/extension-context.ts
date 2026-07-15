@@ -1,5 +1,7 @@
 // §69 Plugin Extension Context — Capability-gated API surface
 import type {
+  AIAPI,
+  AICompleteOptions,
   CommandRegisterOptions,
   CommandsAPI,
   Disposable,
@@ -7,16 +9,97 @@ import type {
   EventsAPI,
   ExtensionContext,
   FilesAPI,
+  NetworkAPI,
   PluginCapability,
   PluginManifest,
   StatusBarItem,
+  StorageAPI,
   UIAPI,
 } from "./types";
 
 import { listDir, readFile, writeFile } from "../ipc/invoke";
+import { llmComplete, llmListModels } from "../ipc/llm";
+import {
+  pluginHttpFetch,
+  pluginStorageList,
+  pluginStorageRead,
+  pluginStorageRemove,
+  pluginStorageWrite,
+} from "../ipc/plugin-invoke";
+import { useAIStore } from "../stores/ai/ai";
 import { useUIStore } from "../stores/ui/ui";
+import { createLLMStream } from "../utils/llm-stream";
 import { logger } from "../utils/logger";
+import { getConfigForTask } from "../utils/model-selection";
+import { isLLMAllowed } from "../utils/privacy-check";
 import { usePluginUIStore } from "./plugin-ui-store";
+
+// --- AI API ---
+function createAIAPI(pluginId: string): AIAPI {
+  const start = async (
+    prompt: string,
+    opts: AICompleteOptions | undefined,
+    onToken: (t: string) => void,
+  ): Promise<void> => {
+    const cfg = getConfigForTask("chat");
+    const { privacyMode } = useAIStore.getState();
+    if (!isLLMAllowed(privacyMode, cfg.provider)) {
+      throw new Error(
+        "Privacy mode is active — only local (Ollama) models are allowed.",
+      );
+    }
+    const requestId = `plugin-${pluginId}-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
+    let resolveDone: () => void;
+    let rejectDone: (e: unknown) => void;
+    const done = new Promise<void>((res, rej) => {
+      resolveDone = res;
+      rejectDone = rej;
+    });
+    const cleanup = await createLLMStream(requestId, {
+      onToken,
+      onDone: () => resolveDone(),
+      onError: (e) => rejectDone(new Error(e)),
+    });
+    try {
+      await llmComplete(
+        prompt,
+        cfg.model,
+        requestId,
+        opts?.systemPrompt,
+        opts?.maxTokens,
+        cfg.provider,
+        cfg.baseUrl,
+        privacyMode,
+      );
+      await done;
+    } finally {
+      cleanup();
+    }
+  };
+  return {
+    async complete(prompt, opts) {
+      let buffer = "";
+      await start(prompt, opts, (t) => {
+        buffer += t;
+      });
+      return buffer;
+    },
+    async listModels() {
+      const cfg = getConfigForTask("chat");
+      const models = await llmListModels(
+        cfg.provider,
+        cfg.apiKey || undefined,
+        cfg.baseUrl,
+      );
+      return models.map((m) => ({ id: m.id, name: m.name }));
+    },
+    async stream(prompt, opts, onToken) {
+      await start(prompt, opts, onToken);
+    },
+  };
+}
 
 /** Creates a denied proxy that throws on any property access */
 function createDeniedProxy(
@@ -42,6 +125,33 @@ function createDeniedProxy(
       },
     },
   );
+}
+
+// --- Network API ---
+function createNetworkAPI(): NetworkAPI {
+  return {
+    fetch(url, init) {
+      return pluginHttpFetch(url, init);
+    },
+  };
+}
+
+// --- Storage API ---
+function createStorageAPI(pluginId: string): StorageAPI {
+  return {
+    list() {
+      return pluginStorageList(pluginId);
+    },
+    read(key) {
+      return pluginStorageRead(pluginId, key);
+    },
+    remove(key) {
+      return pluginStorageRemove(pluginId, key);
+    },
+    write(key, value) {
+      return pluginStorageWrite(pluginId, key, value);
+    },
+  };
 }
 
 // --- Command Registry (shared across all plugins) ---
@@ -137,6 +247,10 @@ export function createExtensionContext(
 
   const hasCapability = (cap: PluginCapability) => capabilities.has(cap);
 
+  const ai: AIAPI = hasCapability("ai")
+    ? createAIAPI(manifest.id)
+    : (createDeniedProxy("ai", "ai") as AIAPI);
+
   const commands: CommandsAPI = hasCapability("commands")
     ? createCommandsAPI(manifest.id, disposables)
     : (createDeniedProxy("commands", "commands") as CommandsAPI);
@@ -157,6 +271,14 @@ export function createExtensionContext(
     ? createEventsAPI(disposables)
     : (createDeniedProxy("events", "events") as EventsAPI);
 
+  const network: NetworkAPI = hasCapability("network")
+    ? createNetworkAPI()
+    : (createDeniedProxy("network", "network") as NetworkAPI);
+
+  const storage: StorageAPI = hasCapability("storage")
+    ? createStorageAPI(manifest.id)
+    : (createDeniedProxy("storage", "storage") as StorageAPI);
+
   const ui: UIAPI =
     hasCapability("sidebar") ||
     hasCapability("statusbar") ||
@@ -165,6 +287,7 @@ export function createExtensionContext(
       : (createDeniedProxy("ui", "sidebar") as UIAPI);
 
   return {
+    ai,
     pluginId: manifest.id,
     pluginPath,
     subscriptions: disposables,
@@ -172,6 +295,8 @@ export function createExtensionContext(
     editor,
     files,
     events,
+    network,
+    storage,
     ui,
   };
 }
