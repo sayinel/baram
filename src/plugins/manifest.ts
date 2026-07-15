@@ -13,6 +13,7 @@ const VALID_CAPABILITIES: PluginCapability[] = [
   "events",
   "ai",
   "network",
+  "storage",
 ];
 
 export interface ManifestValidationError {

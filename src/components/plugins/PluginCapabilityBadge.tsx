@@ -15,6 +15,7 @@ const CAPABILITY_COLORS: Record<string, string> = {
   events: "#10b981",
   ai: "#ec4899",
   network: "#ef4444",
+  storage: "#14b8a6",
 };
 
 interface PluginCapabilityBadgeProps {

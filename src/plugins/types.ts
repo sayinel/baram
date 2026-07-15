@@ -59,6 +59,7 @@ export interface ExtensionContext {
   network: NetworkAPI;
   pluginId: string;
   pluginPath: string;
+  storage: StorageAPI;
   subscriptions: Disposable[];
   ui: UIAPI;
 }
@@ -102,7 +103,8 @@ export type PluginCapability =
   | "network"
   | "settings"
   | "sidebar"
-  | "statusbar";
+  | "statusbar"
+  | "storage";
 
 export interface PluginFetchInit {
   body?: string;
@@ -186,6 +188,13 @@ export interface StatusBarItem {
   setText(text: string): void;
 }
 
+export interface StorageAPI {
+  list(): Promise<string[]>;
+  read(key: string): Promise<null | string>;
+  remove(key: string): Promise<void>;
+  write(key: string, value: string): Promise<void>;
+}
+
 export interface TiptapExtensionDef {
   exportName: string;
   name: string;
@@ -213,4 +222,5 @@ export const CAPABILITY_DESCRIPTIONS: Record<PluginCapability, string> = {
   events: "에디터 이벤트를 수신할 수 있습니다",
   ai: "AI/LLM 기능을 사용할 수 있습니다",
   network: "네트워크 요청을 보낼 수 있습니다",
+  storage: "플러그인 전용 저장소를 사용할 수 있습니다",
 };

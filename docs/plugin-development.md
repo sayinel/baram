@@ -74,6 +74,7 @@ Plugins must declare required capabilities in the manifest. Users are prompted t
 | `events`          | Listen to editor events                 |
 | `ai`              | Access AI/LLM features                  |
 | `network`         | Make network requests                   |
+| `storage`         | Use a plugin-private key/value store    |
 
 Accessing an API without declaring its capability throws an error with a clear message.
 
