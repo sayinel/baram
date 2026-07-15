@@ -897,6 +897,50 @@
       "description": "Plugin network proxy — reqwest fetch, http/https only, 30s timeout, 10MiB cap (§69 Phase D)"
     },
     {
+      "name": "plugin_storage_read",
+      "input": { "pluginId": "string", "key": "string" },
+      "output": "string?",
+      "module": "plugin",
+      "spec": "§69",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "Plugin app-global key/value storage (~/.baram/plugin-data/<id>), path-traversal-guarded (§69 Phase D)"
+    },
+    {
+      "name": "plugin_storage_write",
+      "input": { "pluginId": "string", "key": "string", "value": "string" },
+      "output": "void",
+      "module": "plugin",
+      "spec": "§69",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "Plugin app-global key/value storage (~/.baram/plugin-data/<id>), path-traversal-guarded (§69 Phase D)"
+    },
+    {
+      "name": "plugin_storage_list",
+      "input": { "pluginId": "string" },
+      "output": "string[]",
+      "module": "plugin",
+      "spec": "§69",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "Plugin app-global key/value storage (~/.baram/plugin-data/<id>), path-traversal-guarded (§69 Phase D)"
+    },
+    {
+      "name": "plugin_storage_remove",
+      "input": { "pluginId": "string", "key": "string" },
+      "output": "void",
+      "module": "plugin",
+      "spec": "§69",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "description": "Plugin app-global key/value storage (~/.baram/plugin-data/<id>), path-traversal-guarded (§69 Phase D)"
+    },
+    {
       "name": "embed_text",
       "input": { "text": "string", "provider": "string", "model": "string", "api_key": "string?", "base_url": "string?" },
       "output": "number[]",
