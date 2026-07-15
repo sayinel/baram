@@ -879,4 +879,16 @@ mod tests {
         assert_eq!(idx.plugins[0].download_url, "https://x/p.zip");
         assert_eq!(idx.updated_at, Some("2026-01-01".to_string()));
     }
+
+    #[test]
+    fn test_committed_registry_seed_deserializes() {
+        const SEED: &str = include_str!("../../../registry/index.json");
+        let idx: RegistryIndex = serde_json::from_str(SEED).unwrap();
+        assert_eq!(idx.plugins.len(), 2);
+        let ids: Vec<&str> = idx.plugins.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(ids, vec!["baram-word-count", "baram-ai-summary"]);
+        for entry in &idx.plugins {
+            assert_eq!(entry.download_url, "TBD");
+        }
+    }
 }
