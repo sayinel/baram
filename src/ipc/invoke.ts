@@ -10,7 +10,6 @@ export * from "./git";
 export * from "./keyring";
 export * from "./link-index";
 export * from "./llm";
-export * from "./plugin";
 export * from "./search";
 export * from "./snapshot";
 export * from "./tag";
