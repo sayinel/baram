@@ -1,5 +1,25 @@
 // §69 Plugin Marketplace — Core Types
 
+export interface AIAPI {
+  complete(prompt: string, opts?: AICompleteOptions): Promise<string>;
+  listModels(): Promise<AIModel[]>;
+  stream(
+    prompt: string,
+    opts: AICompleteOptions,
+    onToken: (token: string) => void,
+  ): Promise<void>;
+}
+
+export interface AICompleteOptions {
+  maxTokens?: number;
+  systemPrompt?: string;
+}
+
+export interface AIModel {
+  id: string;
+  name: string;
+}
+
 export interface CommandRegisterOptions {
   paletteVisible?: boolean;
   title?: string;
@@ -31,6 +51,7 @@ export interface EventsAPI {
 }
 
 export interface ExtensionContext {
+  ai: AIAPI;
   commands: CommandsAPI;
   editor: EditorAPI;
   events: EventsAPI;
