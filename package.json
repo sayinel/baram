@@ -37,6 +37,7 @@
     "tokens:build": "npx tsx style-dictionary.config.ts",
     "tokens:export": "npx tsx scripts/export-tokens-studio.ts",
     "types:plugin": "tsc -p tsconfig.plugin-api.json && mv examples/plugins/public-api.d.ts examples/plugins/plugin-api.d.ts",
+    "types:plugin:check": "npm run types:plugin && git diff --exit-code examples/plugins/*.d.ts",
     "audit:css-vars": "npx tsx scripts/audit-css-vars.ts",
     "version:check": "node ./scripts/check-version-sync.mjs",
     "prepare": "husky"
