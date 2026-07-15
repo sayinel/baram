@@ -5,15 +5,42 @@
 use crate::context::vault_config::{self, ResolvedSettings, VaultConfig, VaultSection};
 use crate::context::{ContextInfo, ContextManager, ContextType};
 
+/// §backlog #3 / §89 — the `asset://` scope a context should be granted.
+#[derive(Debug, PartialEq)]
+enum AssetScopeGrant {
+    /// Allow a single file (fallback when a file path has no parent directory).
+    File(std::path::PathBuf),
+    /// Allow a directory (recursively).
+    Dir(std::path::PathBuf),
+}
+
+/// Decide the asset-protocol scope grant for a context.
+///
+/// §89 A standalone external `File` context grants its *parent directory*
+/// (recursive) — not just the `.md` file — so images referenced relative to the
+/// file (siblings and subfolders such as the Typora-style `./assets/img.png`)
+/// resolve over `asset://`. `Vault`/`Folder` contexts grant their own directory.
+fn asset_scope_grant(ctx: &ContextInfo) -> AssetScopeGrant {
+    match ctx.context_type {
+        ContextType::File => match std::path::Path::new(&ctx.path).parent() {
+            Some(dir) => AssetScopeGrant::Dir(dir.to_path_buf()),
+            None => AssetScopeGrant::File(std::path::PathBuf::from(&ctx.path)),
+        },
+        ContextType::Vault | ContextType::Folder => {
+            AssetScopeGrant::Dir(std::path::PathBuf::from(&ctx.path))
+        }
+    }
+}
+
 /// §backlog #3 — grant the `asset://` protocol read access to an opened context's
 /// location at runtime, so images render without a broad static Documents/Downloads
 /// scope. Failure is non-fatal (only asset:// images under this path won't load).
 pub fn register_asset_scope(app: &tauri::AppHandle, ctx: &ContextInfo) {
     use tauri::Manager;
     let scope = app.asset_protocol_scope();
-    let result = match ctx.context_type {
-        ContextType::File => scope.allow_file(&ctx.path),
-        ContextType::Vault | ContextType::Folder => scope.allow_directory(&ctx.path, true),
+    let result = match asset_scope_grant(ctx) {
+        AssetScopeGrant::File(path) => scope.allow_file(&path),
+        AssetScopeGrant::Dir(path) => scope.allow_directory(&path, true),
     };
     if let Err(e) = result {
         log::warn!(
@@ -295,4 +322,52 @@ pub async fn resolve_settings(
         &global,
         vault_config.as_ref(),
     ))
+}
+
+#[cfg(test)]
+mod asset_scope_tests {
+    use super::*;
+
+    fn ctx(context_type: ContextType, path: &str) -> ContextInfo {
+        ContextInfo {
+            id: "id".into(),
+            context_type,
+            path: path.into(),
+            label: "label".into(),
+            color: "#ffffff".into(),
+            alias: None,
+            vault_type: None,
+            added_at: 0,
+        }
+    }
+
+    #[test]
+    fn file_context_grants_parent_directory() {
+        // §89 external single file → grant its parent dir (recursive) so sibling
+        // and subfolder images resolve over asset:// (they were previously
+        // outside the scope because only the .md file itself was allowed).
+        let grant = asset_scope_grant(&ctx(ContextType::File, "/Users/x/Desktop/note.md"));
+        assert_eq!(
+            grant,
+            AssetScopeGrant::Dir(std::path::PathBuf::from("/Users/x/Desktop"))
+        );
+    }
+
+    #[test]
+    fn vault_context_grants_own_directory() {
+        let grant = asset_scope_grant(&ctx(ContextType::Vault, "/Users/x/vault"));
+        assert_eq!(
+            grant,
+            AssetScopeGrant::Dir(std::path::PathBuf::from("/Users/x/vault"))
+        );
+    }
+
+    #[test]
+    fn folder_context_grants_own_directory() {
+        let grant = asset_scope_grant(&ctx(ContextType::Folder, "/Users/x/folder"));
+        assert_eq!(
+            grant,
+            AssetScopeGrant::Dir(std::path::PathBuf::from("/Users/x/folder"))
+        );
+    }
 }
