@@ -82,6 +82,7 @@ pub struct RegistryEntry {
     pub version: String,
     pub author: String,
     pub license: String,
+    #[serde(rename = "downloadUrl")]
     pub download_url: String,
     pub checksum: String,
     pub capabilities: Vec<String>,
@@ -101,7 +102,7 @@ pub struct RegistryEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegistryIndex {
     pub plugins: Vec<RegistryEntry>,
-    #[serde(default)]
+    #[serde(default, rename = "updatedAt")]
     pub updated_at: Option<String>,
 }
 
@@ -853,5 +854,41 @@ mod tests {
             keywords: vec![],
         };
         assert!(validate_manifest(&manifest).is_ok());
+    }
+
+    #[test]
+    fn test_registry_index_deserializes_camelcase() {
+        const JSON: &str = r#"{
+            "plugins": [
+                {
+                    "id": "test-plugin",
+                    "name": "Test Plugin",
+                    "description": "A test plugin",
+                    "version": "1.0.0",
+                    "author": "Test Author",
+                    "license": "MIT",
+                    "downloadUrl": "https://x/p.zip",
+                    "checksum": "abc123",
+                    "capabilities": ["editor:readonly"],
+                    "engines": { "baram": ">=0.2.0" }
+                }
+            ],
+            "updatedAt": "2026-01-01"
+        }"#;
+        let idx: RegistryIndex = serde_json::from_str(JSON).unwrap();
+        assert_eq!(idx.plugins[0].download_url, "https://x/p.zip");
+        assert_eq!(idx.updated_at, Some("2026-01-01".to_string()));
+    }
+
+    #[test]
+    fn test_committed_registry_seed_deserializes() {
+        const SEED: &str = include_str!("../../../registry/index.json");
+        let idx: RegistryIndex = serde_json::from_str(SEED).unwrap();
+        assert_eq!(idx.plugins.len(), 2);
+        let ids: Vec<&str> = idx.plugins.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(ids, vec!["baram-word-count", "baram-ai-summary"]);
+        for entry in &idx.plugins {
+            assert_eq!(entry.download_url, "TBD");
+        }
     }
 }

@@ -512,18 +512,114 @@ npx esbuild src/index.ts --bundle --format=esm --outfile=dist/index.mjs \
 
 ## Publishing to the Registry
 
-> The community registry repository (`baram-community/plugin-registry`) is
-> not live yet — this section describes the intended flow (Phase F) so
-> plugin authors can prepare ahead of time; treat it as forward-looking, not
-> a working URL today.
+### The registry JSON shape
+
+The marketplace fetches a single JSON document — a `RegistryIndex` — and
+deserializes it on the Rust side (`fetch_registry`,
+`serde_json::from_str::<RegistryIndex>`):
+
+```typescript
+interface RegistryIndex {
+  plugins: RegistryEntry[];
+  updatedAt?: string;
+}
+
+interface RegistryEntry {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  author: string;
+  license: string;
+  downloadUrl: string; // URL of a hosted plugin ZIP
+  checksum: string; // SHA-256 of that ZIP, hex-encoded
+  capabilities: PluginCapability[];
+  engines: { baram: string };
+  icon?: string;
+  keywords?: string[];
+  downloads?: number;
+  repository?: string;
+  homepage?: string;
+}
+```
+
+All keys are camelCase on the wire (matching `baram-plugin.json` and the TS
+types in `src/plugins/types.ts`). `downloadUrl` must point at a hosted ZIP
+containing the plugin (same contents as the packaging step below); `checksum`
+is that ZIP's SHA-256, hex-encoded. Registry installs verify `checksum`
+before extracting the ZIP — the host refuses to install a package whose hash
+doesn't match.
+
+### How Baram loads the registry
+
+The marketplace (`PluginMarketplace.tsx`, via `fetchRegistryIndex()` in
+`src/plugins/registry-client.ts`) fetches whatever URL is stored in
+`registryUrl` — a persisted field of the plugin Zustand store
+(`src/stores/system/plugin.ts`), read by the Rust `fetch_registry` command.
+There is currently **no settings-screen field to edit it** — it is a plain
+persisted store value defaulting to `DEFAULT_REGISTRY_URL`:
+
+```
+https://raw.githubusercontent.com/baram-community/plugin-registry/main/index.json
+```
+
+`baram-community/plugin-registry` is an **aspirational** external repository
+that is **not yet created** — creating and hosting that community registry
+is an explicit **non-goal** of this work. The default URL is left pointing
+at it so the store has a sensible-looking placeholder, but until that repo
+is created, fetching the default URL will fail (404). This is expected, not
+a bug to chase.
+
+### Local testing
+
+To exercise the marketplace UI without a live registry, point `registryUrl`
+at the repo's own committed seed instead of the default:
+[`registry/index.json`](../registry/index.json). There is no settings-screen
+field for this yet, but `registryUrl` is a Zustand-`persist`ed value stored
+under the `"baram:plugins"` key in this app's config file (Tauri
+`app_data_dir/config.json`, keyed by the app identifier `com.inel.baram` —
+on macOS that's
+`~/Library/Application Support/com.inel.baram/config.json`). The value at
+that key is itself a JSON string of the shape
+`{"state":{...,"registryUrl":"..."},"version":1}`. With the app closed, edit
+the nested `state.registryUrl` field to a local URL, then relaunch:
+
+- **Local static server** (recommended) — serve `registry/` with any static
+  file server, e.g. `npx serve registry` or
+  `python3 -m http.server --directory registry 8000`, and set `registryUrl`
+  to `http://localhost:8000/index.json`.
+- **File path** — some platforms accept a `file://` path directly at your
+  local checkout's `registry/index.json`; a local static server is more
+  portable since Tauri's webview may restrict `file://` fetches.
+
+Once `registryUrl` points at the local seed, open **Settings → Plugins**
+(the "Browse" tab) — it calls `fetchRegistryIndex()` on mount and has a
+refresh action that forces a re-fetch (`fetchRegistryIndex(true)`), bypassing
+the 24h cache. `registry/index.json` is the canonical example of a valid
+`RegistryIndex`: it lists the two example plugins (`baram-word-count`,
+`baram-ai-summary`) with every required field populated from their real
+manifests.
+
+### The seed's placeholder fields
+
+In the committed seed, both example entries have `downloadUrl: "TBD"` and
+`checksum: "TBD"`. These are honest placeholders, not fake URLs — the
+example plugins are only dev-loaded from source via **Settings → Plugins →
+Developer** (see [Local development loop](#local-development-loop)); they
+have not been packaged into a ZIP or published anywhere. A real registry
+entry needs an actual hosted ZIP and its real SHA-256 checksum, computed as
+in the packaging steps below.
+
+### Publishing your own plugin
 
 1. Create a GitHub repository for your plugin.
 2. Build your plugin: `npm run build`.
 3. Create a ZIP containing `baram-plugin.json`, your built `main` bundle
    (e.g. `dist/index.mjs`), and `assets/` (if any).
-4. Create a GitHub Release with the ZIP as an asset.
-5. Submit a PR to `baram-community/plugin-registry` adding a `RegistryEntry`
-   to its index:
+4. Create a GitHub Release with the ZIP as an asset, and compute its SHA-256
+   checksum (e.g. `shasum -a 256 your-plugin-1.0.0.zip`).
+5. Add a `RegistryEntry` to whichever `RegistryIndex` you're publishing to
+   (your own registry URL, or — once it exists — `baram-community/plugin-registry`):
 
 ```json
 {
@@ -540,9 +636,6 @@ npx esbuild src/index.ts --bundle --format=esm --outfile=dist/index.mjs \
   "engines": { "baram": ">=0.3.0" }
 }
 ```
-
-Registry installs verify `checksum` (SHA-256) before extracting the ZIP; the
-host refuses to install a package whose hash doesn't match.
 
 ## Trust model & security
 

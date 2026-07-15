@@ -1,0 +1,39 @@
+{
+  "plugins": [
+    {
+      "id": "baram-word-count",
+      "name": "Word Count",
+      "description": "Shows the current document's word and character count in the status bar.",
+      "version": "1.0.0",
+      "author": "Baram",
+      "license": "Apache-2.0",
+      "downloadUrl": "TBD",
+      "checksum": "TBD",
+      "capabilities": ["editor:readonly", "events", "statusbar"],
+      "engines": { "baram": ">=0.3.0" },
+      "icon": "🔢",
+      "keywords": ["word", "count", "statistics"]
+    },
+    {
+      "id": "baram-ai-summary",
+      "name": "AI Summary",
+      "description": "Summarizes the current document with AI, in a sidebar panel; caches the last summary.",
+      "version": "1.0.0",
+      "author": "Baram",
+      "license": "Apache-2.0",
+      "downloadUrl": "TBD",
+      "checksum": "TBD",
+      "capabilities": [
+        "ai",
+        "editor:readonly",
+        "settings",
+        "sidebar",
+        "storage"
+      ],
+      "engines": { "baram": ">=0.3.0" },
+      "icon": "✨",
+      "keywords": ["ai", "summary", "llm"]
+    }
+  ],
+  "updatedAt": "2026-07-15"
+}
