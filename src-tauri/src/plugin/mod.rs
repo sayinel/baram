@@ -1,8 +1,10 @@
 // §69 Plugin Marketplace — Rust 백엔드 모듈
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -100,6 +102,26 @@ pub struct RegistryIndex {
     pub plugins: Vec<RegistryEntry>,
     #[serde(default)]
     pub updated_at: Option<String>,
+}
+
+/// Response body cap for `http_fetch` (§69 Phase D network API).
+const MAX_FETCH_BYTES: usize = 10 * 1024 * 1024; // 10 MiB
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PluginFetchInit {
+    #[serde(default)]
+    pub body: Option<String>,
+    #[serde(default)]
+    pub headers: Option<HashMap<String, String>>,
+    #[serde(default)]
+    pub method: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PluginFetchResponse {
+    pub body: String,
+    pub headers: HashMap<String, String>,
+    pub status: u16,
 }
 
 /// Returns the plugin installation base directory: ~/.baram/plugins/
@@ -261,6 +283,82 @@ pub async fn fetch_registry(url: &str) -> Result<RegistryIndex, PluginError> {
     let text = response.text().await?;
     let index: RegistryIndex = serde_json::from_str(&text)?;
     Ok(index)
+}
+
+/// USER DECISION: allow only http/https; do NOT block loopback/private IPs
+/// (local LLMs / dev servers are legitimate plugin fetch targets).
+pub fn validate_http_url(url: &str) -> Result<reqwest::Url, String> {
+    let parsed = reqwest::Url::parse(url).map_err(|e| format!("invalid URL: {e}"))?;
+    match parsed.scheme() {
+        "http" | "https" => Ok(parsed),
+        other => Err(format!(
+            "blocked URL scheme '{other}': only http/https are allowed"
+        )),
+    }
+}
+
+/// Plugin network proxy — bypasses browser CORS via a Rust-side reqwest call.
+/// Enforces the http/https scheme guard, a 30s timeout, and a 10 MiB response cap.
+pub async fn http_fetch(
+    url: String,
+    init: Option<PluginFetchInit>,
+) -> Result<PluginFetchResponse, String> {
+    let parsed = validate_http_url(&url)?;
+    let init = init.unwrap_or(PluginFetchInit {
+        body: None,
+        headers: None,
+        method: None,
+    });
+    let method = match init.method {
+        Some(m) => {
+            reqwest::Method::from_bytes(m.as_bytes()).map_err(|e| format!("invalid method: {e}"))?
+        }
+        None => reqwest::Method::GET,
+    };
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let mut req = client.request(method, parsed);
+    if let Some(headers) = init.headers {
+        for (k, v) in headers {
+            let name = reqwest::header::HeaderName::from_bytes(k.as_bytes())
+                .map_err(|e| format!("invalid header name '{k}': {e}"))?;
+            let value = reqwest::header::HeaderValue::from_str(&v)
+                .map_err(|e| format!("invalid header value for '{k}': {e}"))?;
+            req = req.header(name, value);
+        }
+    }
+    if let Some(body) = init.body {
+        req = req.body(body);
+    }
+    let mut resp = req.send().await.map_err(|e| e.to_string())?;
+    let status = resp.status().as_u16();
+    let headers = resp
+        .headers()
+        .iter()
+        // Non-UTF8/opaque header values decode to "" (most HTTP headers are ASCII).
+        .map(|(k, v)| (k.as_str().to_string(), v.to_str().unwrap_or("").to_string()))
+        .collect();
+    // Stream the body incrementally so an unbounded/hostile response can never
+    // buffer past MAX_FETCH_BYTES in memory before we notice — reqwest has no
+    // default response-size limit, and `resp.bytes()` would read the whole
+    // body before any check ran.
+    let mut buf: Vec<u8> = Vec::new();
+    while let Some(chunk) = resp.chunk().await.map_err(|e| e.to_string())? {
+        if buf.len() + chunk.len() > MAX_FETCH_BYTES {
+            return Err(format!(
+                "response too large: exceeds {MAX_FETCH_BYTES} byte limit"
+            ));
+        }
+        buf.extend_from_slice(&chunk);
+    }
+    let body = String::from_utf8_lossy(&buf).to_string();
+    Ok(PluginFetchResponse {
+        body,
+        headers,
+        status,
+    })
 }
 
 // --- Helper functions ---
@@ -561,5 +659,21 @@ mod tests {
             parse_dev_folders(Some(r#"["/a","/b"]"#.to_string())),
             vec!["/a".to_string(), "/b".to_string()]
         );
+    }
+
+    #[test]
+    fn test_validate_http_url_allows_http_and_https() {
+        assert!(validate_http_url("http://localhost:11434/api").is_ok()); // loopback NOT blocked
+        assert!(validate_http_url("https://api.example.com/x").is_ok());
+        assert!(validate_http_url("HTTP://example.com").is_ok()); // scheme matching is case-insensitive
+    }
+
+    #[test]
+    fn test_validate_http_url_rejects_non_http_schemes() {
+        assert!(validate_http_url("file:///etc/passwd").is_err());
+        assert!(validate_http_url("data:text/plain,hi").is_err());
+        assert!(validate_http_url("ftp://host/x").is_err());
+        assert!(validate_http_url("not a url").is_err());
+        assert!(validate_http_url("javascript:alert(1)").is_err());
     }
 }

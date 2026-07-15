@@ -115,3 +115,13 @@ pub async fn plugin_list_dev(
     }
     Ok(out)
 }
+
+/// Plugin network proxy — reqwest fetch bypassing browser CORS (§69 Phase D).
+/// Logic + the http/https scheme guard live in `plugin::http_fetch`.
+#[tauri::command]
+pub async fn plugin_http_fetch(
+    url: String,
+    init: Option<plugin::PluginFetchInit>,
+) -> Result<plugin::PluginFetchResponse, String> {
+    plugin::http_fetch(url, init).await
+}

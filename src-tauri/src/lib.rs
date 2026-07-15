@@ -239,6 +239,7 @@ pub fn run() {
             plugin_cmd::plugin_add_dev_folder,
             plugin_cmd::plugin_remove_dev_folder,
             plugin_cmd::plugin_list_dev,
+            plugin_cmd::plugin_http_fetch,
             embedding_cmd::embed_text,
             embedding_cmd::search_knowledge,
             embedding_cmd::index_vault,

@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type {
   InstalledPlugin,
+  PluginFetchInit,
+  PluginFetchResponse,
   PluginManifest,
   RegistryIndex,
 } from "../plugins/types";
@@ -26,6 +28,13 @@ export async function pluginFetchRegistry(url: string): Promise<RegistryIndex> {
 
 export async function pluginGetDir(): Promise<string> {
   return invoke<string>("plugin_get_dir");
+}
+
+export async function pluginHttpFetch(
+  url: string,
+  init?: PluginFetchInit,
+): Promise<PluginFetchResponse> {
+  return invoke<PluginFetchResponse>("plugin_http_fetch", { url, init });
 }
 
 export async function pluginInstall(

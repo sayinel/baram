@@ -78,6 +78,18 @@ export type PluginCapability =
   | "sidebar"
   | "statusbar";
 
+export interface PluginFetchInit {
+  body?: string;
+  headers?: Record<string, string>;
+  method?: string;
+}
+
+export interface PluginFetchResponse {
+  body: string;
+  headers: Record<string, string>;
+  status: number;
+}
+
 export interface PluginManifest {
   author: string;
   capabilities: PluginCapability[];
