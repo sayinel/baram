@@ -125,6 +125,9 @@ export function PluginDetail({
             color: "var(--color-status-danger)",
             fontSize: "13px",
             border: "1px solid var(--color-status-error-border)",
+            // Checksums are unbroken 64-char tokens — without this they
+            // overflow the banner horizontally.
+            overflowWrap: "anywhere",
           }}
         >
           {error}
