@@ -153,6 +153,14 @@ const STYLES = {
     borderBottom: "2px solid transparent",
     marginBottom: "-1px",
   } as React.CSSProperties,
+  refreshButton: {
+    marginLeft: "auto",
+    marginBottom: "-1px",
+    padding: "6px 12px",
+    fontSize: "12px",
+    backgroundColor: "transparent",
+    border: "none",
+  } as React.CSSProperties,
 };
 
 import type {
@@ -167,11 +175,13 @@ import { readFile } from "../../ipc/invoke";
 import { pluginInstall, pluginUninstall } from "../../ipc/plugin-invoke";
 import { pluginLoader } from "../../plugins/plugin-loader";
 import {
+  checkForUpdates,
   fetchRegistryIndex,
   searchRegistry,
 } from "../../plugins/registry-client";
 import { CAPABILITY_DESCRIPTIONS } from "../../plugins/types";
 import { usePluginStore } from "../../stores/system/plugin";
+import { logger } from "../../utils/logger";
 import { PluginCard } from "./PluginCard";
 import { PluginDetail } from "./PluginDetail";
 import { PluginDeveloperSection } from "./PluginDeveloperSection";
@@ -246,6 +256,25 @@ export function PluginMarketplace() {
 
   const installedList = Object.values(installedPlugins);
   const updatesCount = Object.keys(updateAvailable).length;
+
+  // Force-refresh the registry (bypasses the 24h cache) and re-run the
+  // update check against the fresh index. Shared by the always-available
+  // header button and the error-state Retry button.
+  const handleRefresh = useCallback(() => {
+    setLoading(true);
+    fetchRegistryIndex(true)
+      .then(async (index) => {
+        setRegistryIndex(index);
+        setFetchError(null);
+        try {
+          await checkForUpdates();
+        } catch (err) {
+          logger.warn("[Marketplace] update check after refresh failed:", err);
+        }
+      })
+      .catch((e) => setFetchError(String(e)))
+      .finally(() => setLoading(false));
+  }, []);
 
   // --- Install handler with capability review ---
   const handleInstall = useCallback(
@@ -405,6 +434,16 @@ export function PluginMarketplace() {
               </button>
             ),
           )}
+          {(activeTab === "browse" || activeTab === "updates") && (
+            <button
+              className="marketplace-refresh-btn"
+              disabled={loading}
+              onClick={handleRefresh}
+              style={STYLES.refreshButton}
+            >
+              {loading ? "↻ Refreshing…" : "↻ Refresh"}
+            </button>
+          )}
         </div>
 
         {/* Search (browse tab only) */}
@@ -427,13 +466,8 @@ export function PluginMarketplace() {
             <p>Failed to load registry</p>
             <p style={STYLES.errorSubtext}>{error}</p>
             <button
-              onClick={() => {
-                setLoading(true);
-                fetchRegistryIndex(true)
-                  .then(setRegistryIndex)
-                  .catch((e) => setFetchError(String(e)))
-                  .finally(() => setLoading(false));
-              }}
+              disabled={loading}
+              onClick={handleRefresh}
               style={STYLES.retryButton}
             >
               Retry
@@ -465,6 +499,7 @@ export function PluginMarketplace() {
               return (
                 <PluginCard
                   entry={entry}
+                  error={pluginErrors[entry.id]}
                   key={entry.id}
                   onInstall={() => handleInstall(entry)}
                   onSelect={() => setSelectedEntry(entry)}
@@ -561,6 +596,7 @@ export function PluginMarketplace() {
               return (
                 <PluginCard
                   entry={entry}
+                  error={pluginErrors[id]}
                   key={id}
                   onInstall={() => {}}
                   onSelect={() => setSelectedEntry(entry)}

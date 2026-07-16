@@ -609,11 +609,14 @@ the nested `state.registryUrl` field to a local URL, then relaunch:
 
 Once `registryUrl` points at the local seed, open **Settings → Plugins**
 (the "Browse" tab) — it calls `fetchRegistryIndex()` on mount. Note the
-registry response is cached for 24 hours, and there is no always-available
-refresh button: the only UI that forces a re-fetch
-(`fetchRegistryIndex(true)`) is the **Retry** button shown when the fetch
-errored. The cache lives in memory only, so restarting the app is the
-simplest way to force a fresh fetch. `registry/index.json` is the canonical
+registry response is cached for 24 hours; the **Browse** and **Updates** tabs
+show an always-available **↻ Refresh** button that bypasses the cache
+(`fetchRegistryIndex(true)`) and re-runs the update check
+(`checkForUpdates()`) against the fresh index, so you don't need to restart
+the app to pick up a new `registry/index.json`. The **Retry** button shown
+when the fetch errored does the same thing. The cache lives in memory only,
+so restarting the app also forces a fresh fetch if needed.
+`registry/index.json` is the canonical
 example of a valid `RegistryIndex`: it lists the two example plugins
 (`baram-word-count`, `baram-ai-summary`) with every required field populated
 from their real manifests.

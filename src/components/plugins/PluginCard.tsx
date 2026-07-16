@@ -9,6 +9,7 @@ import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
 
 interface PluginCardProps {
   entry: RegistryEntry;
+  error?: string;
   onInstall: () => void;
   onSelect: () => void;
   onUninstall: () => void;
@@ -19,6 +20,7 @@ interface PluginCardProps {
 
 export function PluginCard({
   entry,
+  error,
   status,
   updateAvailable,
   onInstall,
@@ -94,6 +96,24 @@ export function PluginCard({
           >
             {entry.description}
           </p>
+          {error && (
+            <div
+              style={{
+                padding: "8px 12px",
+                margin: "0 0 8px",
+                borderRadius: "6px",
+                backgroundColor: "var(--color-status-error-bg)",
+                color: "var(--color-status-danger)",
+                fontSize: "12px",
+                border: "1px solid var(--color-status-error-border)",
+                // Checksums are unbroken 64-char tokens — without this they
+                // overflow the banner horizontally.
+                overflowWrap: "anywhere",
+              }}
+            >
+              ⚠ {error}
+            </div>
+          )}
           <div
             style={{
               display: "flex",

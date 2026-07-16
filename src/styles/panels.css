@@ -973,6 +973,27 @@
   color: var(--color-status-danger, #ef4444);
 }
 
+/* §69 Marketplace header refresh button — inline styles (STYLES.refreshButton
+   in PluginMarketplace.tsx) can't express pseudo-classes, so hover/active/
+   disabled feedback lives here instead. */
+.marketplace-refresh-btn {
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.marketplace-refresh-btn:hover:not(:disabled) {
+  color: var(--color-text-default);
+}
+
+.marketplace-refresh-btn:active:not(:disabled) {
+  color: var(--color-accent-default);
+}
+
+.marketplace-refresh-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
 /* §69 Plugin Shadow-DOM mount host — sizing only; the shadow root's inner
    .plugin-shadow-content is CSS-isolated and intentionally unreachable here. */
 .plugin-shadow-host {
