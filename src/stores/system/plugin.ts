@@ -39,8 +39,38 @@ interface PluginState {
   updatePluginVersion: (id: string, version: string, checksum: string) => void;
 }
 
-const DEFAULT_REGISTRY_URL =
+export const DEFAULT_REGISTRY_URL =
+  "https://sayinel.github.io/baram-plugins/index.json";
+
+// §69 The registry moved off the dead baram-community repo. Any app that
+// ever ran (including the published v0.3.0) may have this old URL persisted,
+// which would otherwise shadow DEFAULT_REGISTRY_URL forever on rehydration.
+export const OLD_DEFAULT_REGISTRY_URL =
   "https://raw.githubusercontent.com/baram-community/plugin-registry/main/index.json";
+
+/**
+ * v1 -> v2: rewrite a persisted `registryUrl` that still points at the dead
+ * baram-community registry to the live DEFAULT_REGISTRY_URL. Any other value
+ * (including custom registry URLs) is preserved unchanged. Defensive against
+ * malformed/missing persisted state — returns it untouched rather than
+ * throwing, matching Zustand's expectation that migrate never throws.
+ */
+export function migratePluginPersistedState(
+  persisted: unknown,
+  version: number,
+): unknown {
+  if (persisted === null || typeof persisted !== "object") {
+    return persisted;
+  }
+  const state = persisted as Record<string, unknown>;
+
+  // v0/v1 -> v2: dead registry default -> live registry default
+  if (version < 2 && state.registryUrl === OLD_DEFAULT_REGISTRY_URL) {
+    state.registryUrl = DEFAULT_REGISTRY_URL;
+  }
+
+  return state;
+}
 
 /** Remove a key from an object, returning a new object without it */
 function omitKey<T extends Record<string, unknown>>(obj: T, key: string): T {
@@ -177,7 +207,8 @@ export const usePluginStore = create<PluginState>()(
         pluginSettings: state.pluginSettings,
         registryUrl: state.registryUrl,
       }),
-      version: 1,
+      version: 2,
+      migrate: migratePluginPersistedState,
     },
   ),
 );

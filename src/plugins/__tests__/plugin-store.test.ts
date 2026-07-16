@@ -3,7 +3,12 @@ import type { InstalledPlugin } from "../types";
 // §69 Plugin Store state transition tests
 import { beforeEach, describe, expect, it, test } from "vitest";
 
-import { usePluginStore } from "../../stores/system/plugin";
+import {
+  DEFAULT_REGISTRY_URL,
+  migratePluginPersistedState,
+  OLD_DEFAULT_REGISTRY_URL,
+  usePluginStore,
+} from "../../stores/system/plugin";
 
 function makePlugin(id: string, version = "1.0.0"): InstalledPlugin {
   return {
@@ -204,8 +209,8 @@ describe("usePluginStore", () => {
 
   describe("registry URL", () => {
     test("has default registry URL", () => {
-      expect(usePluginStore.getState().registryUrl).toContain(
-        "baram-community",
+      expect(usePluginStore.getState().registryUrl).toBe(
+        "https://sayinel.github.io/baram-plugins/index.json",
       );
     });
 
@@ -216,6 +221,69 @@ describe("usePluginStore", () => {
       expect(usePluginStore.getState().registryUrl).toBe(
         "https://custom-registry.example.com/index.json",
       );
+    });
+  });
+
+  describe("registry URL migration (v1 -> v2)", () => {
+    test("migrates the old dead default to the live registry default", () => {
+      const persisted = {
+        installedPlugins: {},
+        pluginSettings: {},
+        registryUrl: OLD_DEFAULT_REGISTRY_URL,
+      };
+      const migrated = migratePluginPersistedState(persisted, 1) as {
+        registryUrl: string;
+      };
+      expect(migrated.registryUrl).toBe(DEFAULT_REGISTRY_URL);
+    });
+
+    test("preserves a custom registry URL unchanged", () => {
+      const persisted = {
+        installedPlugins: {},
+        pluginSettings: {},
+        registryUrl: "https://custom-registry.example.com/index.json",
+      };
+      const migrated = migratePluginPersistedState(persisted, 1) as {
+        registryUrl: string;
+      };
+      expect(migrated.registryUrl).toBe(
+        "https://custom-registry.example.com/index.json",
+      );
+    });
+
+    test("is a no-op when already at version 2", () => {
+      const persisted = {
+        installedPlugins: {},
+        pluginSettings: {},
+        registryUrl: OLD_DEFAULT_REGISTRY_URL,
+      };
+      const migrated = migratePluginPersistedState(persisted, 2) as {
+        registryUrl: string;
+      };
+      // Even though this literally equals the old default string, a store
+      // already at version >= 2 should not be rewritten again (idempotent
+      // migrate should only rewrite when coming from a version < 2).
+      expect(migrated.registryUrl).toBe(OLD_DEFAULT_REGISTRY_URL);
+    });
+
+    test("returns null persisted state untouched instead of throwing", () => {
+      expect(migratePluginPersistedState(null, 1)).toBeNull();
+    });
+
+    test("returns non-object persisted state untouched instead of throwing", () => {
+      expect(migratePluginPersistedState(undefined, 1)).toBeUndefined();
+      expect(migratePluginPersistedState("not-an-object", 1)).toBe(
+        "not-an-object",
+      );
+    });
+
+    test("does not touch state with no registryUrl field", () => {
+      const persisted = { installedPlugins: {}, pluginSettings: {} };
+      const migrated = migratePluginPersistedState(persisted, 1) as Record<
+        string,
+        unknown
+      >;
+      expect(migrated.registryUrl).toBeUndefined();
     });
   });
 });
