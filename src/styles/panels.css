@@ -976,6 +976,11 @@
 /* §69 Marketplace header refresh button — inline styles (STYLES.refreshButton
    in PluginMarketplace.tsx) can't express pseudo-classes, so hover/active/
    disabled feedback lives here instead. */
+.marketplace-refresh-btn {
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
 .marketplace-refresh-btn:hover:not(:disabled) {
   color: var(--color-text-default);
 }

@@ -59,6 +59,17 @@ describe("PluginMarketplace registry refresh button", () => {
     ).toBeInTheDocument();
   });
 
+  it("does not set color/cursor inline so the stylesheet's hover/active/disabled feedback can apply", async () => {
+    // Inline styles beat stylesheet pseudo-class rules. If `color` or `cursor`
+    // were set inline here, the .marketplace-refresh-btn:hover/:active color
+    // changes and :disabled { cursor } in panels.css would never take effect.
+    render(<PluginMarketplace />);
+    await waitFor(() => expect(fetchRegistryIndex).toHaveBeenCalled());
+    const btn = screen.getByRole("button", { name: /refresh/i });
+    expect(btn.style.color).toBe("");
+    expect(btn.style.cursor).toBe("");
+  });
+
   it("does not render on the installed tab", async () => {
     render(<PluginMarketplace />);
     await waitFor(() => expect(fetchRegistryIndex).toHaveBeenCalled());

@@ -158,10 +158,8 @@ const STYLES = {
     marginBottom: "-1px",
     padding: "6px 12px",
     fontSize: "12px",
-    color: "var(--color-text-muted)",
     backgroundColor: "transparent",
     border: "none",
-    cursor: "pointer",
   } as React.CSSProperties,
 };
 

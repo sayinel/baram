@@ -97,17 +97,19 @@ export function PluginCard({
             {entry.description}
           </p>
           {error && (
-            <p
+            <div
               style={{
+                padding: "8px 12px",
                 margin: "0 0 8px",
-                fontSize: "12px",
+                borderRadius: "6px",
+                backgroundColor: "var(--color-status-error-bg)",
                 color: "var(--color-status-danger)",
-                lineHeight: 1.4,
-                wordBreak: "break-word",
+                fontSize: "12px",
+                border: "1px solid var(--color-status-error-border)",
               }}
             >
               ⚠ {error}
-            </p>
+            </div>
           )}
           <div
             style={{
