@@ -18,6 +18,23 @@ import { PluginMarketplace } from "../PluginMarketplace";
 
 const emptyIndex: RegistryIndex = { plugins: [], updatedAt: "2026-01-01" };
 
+const samplePlugin = {
+  author: "test-author",
+  capabilities: [],
+  checksum: "abc123",
+  description: "A test plugin",
+  downloadUrl: "https://example.com/plugin.zip",
+  engines: { baram: "^1.0.0" },
+  id: "test-plugin",
+  license: "MIT",
+  name: "Test Plugin",
+  version: "1.0.0",
+};
+const populatedIndex: RegistryIndex = {
+  plugins: [samplePlugin],
+  updatedAt: "2026-01-01",
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   fetchRegistryIndex.mockResolvedValue(emptyIndex);
@@ -74,5 +91,41 @@ describe("PluginMarketplace registry refresh button", () => {
     );
     expect(screen.getByText("Error: network down")).toBeInTheDocument();
     expect(checkForUpdates).not.toHaveBeenCalled();
+  });
+
+  it("disables both Retry and Refresh buttons while a retry is in flight", async () => {
+    fetchRegistryIndex.mockRejectedValueOnce(new Error("network down"));
+    render(<PluginMarketplace />);
+
+    await waitFor(() =>
+      expect(screen.getByText("Failed to load registry")).toBeInTheDocument(),
+    );
+
+    // The retry's fetch never resolves so we can inspect the in-flight state.
+    fetchRegistryIndex.mockReturnValueOnce(new Promise(() => {}));
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Retry" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: /refresh/i })).toBeDisabled();
+    });
+  });
+
+  it("does not surface an error when checkForUpdates rejects after a successful refresh", async () => {
+    render(<PluginMarketplace />);
+    await waitFor(() => expect(fetchRegistryIndex).toHaveBeenCalled());
+
+    fetchRegistryIndex.mockResolvedValueOnce(populatedIndex);
+    checkForUpdates.mockRejectedValueOnce(new Error("update check failed"));
+
+    fireEvent.click(screen.getByRole("button", { name: /refresh/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText("Test Plugin")).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByText("Failed to load registry"),
+    ).not.toBeInTheDocument();
   });
 });

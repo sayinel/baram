@@ -183,6 +183,7 @@ import {
 } from "../../plugins/registry-client";
 import { CAPABILITY_DESCRIPTIONS } from "../../plugins/types";
 import { usePluginStore } from "../../stores/system/plugin";
+import { logger } from "../../utils/logger";
 import { PluginCard } from "./PluginCard";
 import { PluginDetail } from "./PluginDetail";
 import { PluginDeveloperSection } from "./PluginDeveloperSection";
@@ -267,7 +268,11 @@ export function PluginMarketplace() {
       .then(async (index) => {
         setRegistryIndex(index);
         setFetchError(null);
-        await checkForUpdates();
+        try {
+          await checkForUpdates();
+        } catch (err) {
+          logger.warn("[Marketplace] update check after refresh failed:", err);
+        }
       })
       .catch((e) => setFetchError(String(e)))
       .finally(() => setLoading(false));
@@ -461,7 +466,11 @@ export function PluginMarketplace() {
           <div style={STYLES.errorMessage}>
             <p>Failed to load registry</p>
             <p style={STYLES.errorSubtext}>{error}</p>
-            <button onClick={handleRefresh} style={STYLES.retryButton}>
+            <button
+              disabled={loading}
+              onClick={handleRefresh}
+              style={STYLES.retryButton}
+            >
               Retry
             </button>
           </div>
