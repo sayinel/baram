@@ -40,7 +40,7 @@ interface PluginState {
 }
 
 const DEFAULT_REGISTRY_URL =
-  "https://raw.githubusercontent.com/baram-community/plugin-registry/main/index.json";
+  "https://sayinel.github.io/baram-plugins/index.json";
 
 /** Remove a key from an object, returning a new object without it */
 function omitKey<T extends Record<string, unknown>>(obj: T, key: string): T {

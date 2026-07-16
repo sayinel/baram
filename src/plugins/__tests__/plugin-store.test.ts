@@ -204,8 +204,8 @@ describe("usePluginStore", () => {
 
   describe("registry URL", () => {
     test("has default registry URL", () => {
-      expect(usePluginStore.getState().registryUrl).toContain(
-        "baram-community",
+      expect(usePluginStore.getState().registryUrl).toBe(
+        "https://sayinel.github.io/baram-plugins/index.json",
       );
     });
 
