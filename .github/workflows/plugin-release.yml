@@ -1,0 +1,100 @@
+name: Plugin Release
+
+# Publishes a first-party plugin to the sayinel/baram-plugins registry
+# (GitHub Pages). Trigger: push a tag `plugin-<dir>-v<version>` where <dir>
+# is the directory under examples/plugins/ and <version> matches that
+# plugin's baram-plugin.json. Spec: dev plugin-registry-hosting design.
+on:
+  push:
+    tags: ['plugin-*']
+
+# Serialize releases: two plugin tags at once must not race on the
+# registry-repo push.
+concurrency:
+  group: plugin-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  TZ: Asia/Seoul
+  REGISTRY_REPO: sayinel/baram-plugins
+  BASE_URL: https://sayinel.github.io/baram-plugins/
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Parse and verify tag
+        id: meta
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+          TAG="${GITHUB_REF_NAME}"
+          [[ "$TAG" =~ ^plugin-(.+)-v([0-9]+\.[0-9]+\.[0-9]+)$ ]] \
+            || fail "tag $TAG does not match plugin-<dir>-v<semver>"
+          DIR="${BASH_REMATCH[1]}"; VERSION="${BASH_REMATCH[2]}"
+          MANIFEST="examples/plugins/$DIR/baram-plugin.json"
+          [[ -f "$MANIFEST" ]] || fail "no manifest at $MANIFEST"
+          MANIFEST_VERSION="$(node -p "require('./$MANIFEST').version")"
+          [[ "$VERSION" == "$MANIFEST_VERSION" ]] \
+            || fail "tag version $VERSION != manifest version $MANIFEST_VERSION"
+          PLUGIN_ID="$(node -p "require('./$MANIFEST').id")"
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
+            || fail "tag commit $GITHUB_SHA is not on main"
+          {
+            echo "dir=$DIR"
+            echo "version=$VERSION"
+            echo "plugin_id=$PLUGIN_ID"
+            echo "zip_name=$PLUGIN_ID-$VERSION.zip"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build plugin
+        working-directory: examples/plugins/${{ steps.meta.outputs.dir }}
+        run: |
+          npm ci
+          npm run build
+
+      # Packaging contract: baram-plugin.json at the archive ROOT — zip the
+      # directory CONTENTS, never a wrapping folder. Runtime files only.
+      - name: Package ZIP
+        working-directory: examples/plugins/${{ steps.meta.outputs.dir }}
+        run: |
+          zip -r "$RUNNER_TEMP/${{ steps.meta.outputs.zip_name }}" \
+            baram-plugin.json dist README.md
+
+      - name: Compute checksum
+        id: sum
+        run: |
+          CHECKSUM="$(sha256sum "$RUNNER_TEMP/${{ steps.meta.outputs.zip_name }}" | cut -d' ' -f1)"
+          echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
+
+      - name: Push ZIP + updated index to registry repo
+        env:
+          DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$DEPLOY_KEY" > ~/.ssh/plugins_deploy
+          chmod 600 ~/.ssh/plugins_deploy
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/plugins_deploy -o IdentitiesOnly=yes"
+          git clone --depth 1 "git@github.com:${REGISTRY_REPO}.git" "$RUNNER_TEMP/registry"
+          mkdir -p "$RUNNER_TEMP/registry/plugins"
+          cp "$RUNNER_TEMP/${{ steps.meta.outputs.zip_name }}" "$RUNNER_TEMP/registry/plugins/"
+          node scripts/update-registry-index.mjs \
+            --index "$RUNNER_TEMP/registry/index.json" \
+            --manifest "examples/plugins/${{ steps.meta.outputs.dir }}/baram-plugin.json" \
+            --zip-name "${{ steps.meta.outputs.zip_name }}" \
+            --checksum "${{ steps.sum.outputs.checksum }}" \
+            --base-url "$BASE_URL"
+          cd "$RUNNER_TEMP/registry"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "plugins/${{ steps.meta.outputs.zip_name }}" index.json
+          git commit -m "release: ${{ steps.meta.outputs.plugin_id }} ${{ steps.meta.outputs.version }}"
+          git push origin main
