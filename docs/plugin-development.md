@@ -560,15 +560,22 @@ There is currently **no settings-screen field to edit it** — it is a plain
 persisted store value defaulting to `DEFAULT_REGISTRY_URL`:
 
 ```
-https://raw.githubusercontent.com/baram-community/plugin-registry/main/index.json
+https://sayinel.github.io/baram-plugins/index.json
 ```
 
-`baram-community/plugin-registry` is an **aspirational** external repository
-that is **not yet created** — creating and hosting that community registry
-is an explicit **non-goal** of this work. The default URL is left pointing
-at it so the store has a sensible-looking placeholder, but until that repo
-is created, fetching the default URL will fail (404). This is expected, not
-a bug to chase.
+The registry lives at
+[`sayinel/baram-plugins`](https://github.com/sayinel/baram-plugins) — a
+public repo served via GitHub Pages that hosts `index.json` plus the plugin
+ZIPs under `plugins/`. It accepts **first-party plugins only** for now;
+community submissions are a future consideration.
+
+Publishing is driven from this repo's CI: pushing a tag
+`plugin-<dir>-v<version>` (e.g. `plugin-word-count-v1.0.0`, where `<dir>` is
+the directory under `examples/plugins/` and the version must match that
+plugin's `baram-plugin.json`) runs `.github/workflows/plugin-release.yml`,
+which builds the plugin, packages the ZIP per the contract above, computes
+its SHA-256, and pushes the ZIP plus an updated `index.json` to the registry
+repo.
 
 ### Local testing
 
@@ -618,8 +625,11 @@ in the packaging steps below.
    (e.g. `dist/index.mjs`), and `assets/` (if any).
 4. Create a GitHub Release with the ZIP as an asset, and compute its SHA-256
    checksum (e.g. `shasum -a 256 your-plugin-1.0.0.zip`).
-5. Add a `RegistryEntry` to whichever `RegistryIndex` you're publishing to
-   (your own registry URL, or — once it exists — `baram-community/plugin-registry`):
+5. Add a `RegistryEntry` to whichever `RegistryIndex` you're publishing to —
+   typically your own self-hosted `index.json`. (First-party plugins in this
+   repo don't do this by hand: pushing a `plugin-<dir>-v<version>` tag drives
+   [`sayinel/baram-plugins`](https://github.com/sayinel/baram-plugins)'
+   `index.json` automatically, as described above.)
 
 ```json
 {
