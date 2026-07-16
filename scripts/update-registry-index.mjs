@@ -45,15 +45,55 @@ const MANIFEST_REQUIRED = [
   "engines",
 ];
 
+function isNonEmptyString(value) {
+  return typeof value === "string" && value.length > 0;
+}
+
 const args = parseArgs(process.argv.slice(2));
 
 if (!/^[0-9a-f]{64}$/.test(args.checksum)) {
   fail("checksum must be 64 lowercase hex chars");
 }
 
+if (!/^[a-z0-9][a-z0-9.-]*\.zip$/.test(args["zip-name"])) {
+  fail("--zip-name must match /^[a-z0-9][a-z0-9.-]*\\.zip$/");
+}
+
 const manifest = JSON.parse(readFileSync(args.manifest, "utf8"));
 for (const field of MANIFEST_REQUIRED) {
   if (manifest[field] === undefined) fail(`manifest missing required field: ${field}`);
+}
+
+if (!isNonEmptyString(manifest.id) || !/^[a-z0-9][a-z0-9-]*$/.test(manifest.id)) {
+  fail("manifest field 'id' must be a non-empty string matching /^[a-z0-9][a-z0-9-]*$/");
+}
+for (const field of ["name", "description", "author", "license"]) {
+  if (!isNonEmptyString(manifest[field])) {
+    fail(`manifest field '${field}' must be a non-empty string`);
+  }
+}
+if (!isNonEmptyString(manifest.version) || !/^\d+\.\d+\.\d+$/.test(manifest.version)) {
+  fail("manifest field 'version' must be a string matching /^\\d+\\.\\d+\\.\\d+$/");
+}
+if (!Array.isArray(manifest.capabilities) || !manifest.capabilities.every(isNonEmptyString)) {
+  fail("manifest field 'capabilities' must be an array of non-empty strings");
+}
+if (
+  typeof manifest.engines !== "object" ||
+  manifest.engines === null ||
+  Array.isArray(manifest.engines) ||
+  !Object.values(manifest.engines).every(isNonEmptyString)
+) {
+  fail("manifest field 'engines' must be a plain object whose values are non-empty strings");
+}
+if (manifest.icon !== undefined && !isNonEmptyString(manifest.icon)) {
+  fail("manifest field 'icon' must be a non-empty string when present");
+}
+if (
+  manifest.keywords !== undefined &&
+  (!Array.isArray(manifest.keywords) || !manifest.keywords.every(isNonEmptyString))
+) {
+  fail("manifest field 'keywords' must be an array of non-empty strings when present");
 }
 
 const baseUrl = args["base-url"].endsWith("/") ? args["base-url"] : `${args["base-url"]}/`;

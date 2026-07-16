@@ -45,6 +45,8 @@ jobs:
           [[ "$VERSION" == "$MANIFEST_VERSION" ]] \
             || fail "tag version $VERSION != manifest version $MANIFEST_VERSION"
           PLUGIN_ID="$(node -p "require('./$MANIFEST').id")"
+          [[ "$PLUGIN_ID" =~ ^[a-z0-9][a-z0-9-]*$ ]] \
+            || fail "manifest id '$PLUGIN_ID' must match ^[a-z0-9][a-z0-9-]*$"
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
             || fail "tag commit $GITHUB_SHA is not on main"
           {
@@ -64,19 +66,28 @@ jobs:
       # directory CONTENTS, never a wrapping folder. Runtime files only.
       - name: Package ZIP
         working-directory: examples/plugins/${{ steps.meta.outputs.dir }}
+        env:
+          ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
         run: |
-          zip -r "$RUNNER_TEMP/${{ steps.meta.outputs.zip_name }}" \
+          zip -r "$RUNNER_TEMP/$ZIP_NAME" \
             baram-plugin.json dist README.md
 
       - name: Compute checksum
         id: sum
+        env:
+          ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
         run: |
-          CHECKSUM="$(sha256sum "$RUNNER_TEMP/${{ steps.meta.outputs.zip_name }}" | cut -d' ' -f1)"
+          CHECKSUM="$(sha256sum "$RUNNER_TEMP/$ZIP_NAME" | cut -d' ' -f1)"
           echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
 
       - name: Push ZIP + updated index to registry repo
         env:
           DEPLOY_KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}
+          DIR: ${{ steps.meta.outputs.dir }}
+          ZIP_NAME: ${{ steps.meta.outputs.zip_name }}
+          PLUGIN_ID: ${{ steps.meta.outputs.plugin_id }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          CHECKSUM: ${{ steps.sum.outputs.checksum }}
         run: |
           mkdir -p ~/.ssh
           echo "$DEPLOY_KEY" > ~/.ssh/plugins_deploy
@@ -85,16 +96,20 @@ jobs:
           export GIT_SSH_COMMAND="ssh -i ~/.ssh/plugins_deploy -o IdentitiesOnly=yes"
           git clone --depth 1 "git@github.com:${REGISTRY_REPO}.git" "$RUNNER_TEMP/registry"
           mkdir -p "$RUNNER_TEMP/registry/plugins"
-          cp "$RUNNER_TEMP/${{ steps.meta.outputs.zip_name }}" "$RUNNER_TEMP/registry/plugins/"
+          cp "$RUNNER_TEMP/$ZIP_NAME" "$RUNNER_TEMP/registry/plugins/"
           node scripts/update-registry-index.mjs \
             --index "$RUNNER_TEMP/registry/index.json" \
-            --manifest "examples/plugins/${{ steps.meta.outputs.dir }}/baram-plugin.json" \
-            --zip-name "${{ steps.meta.outputs.zip_name }}" \
-            --checksum "${{ steps.sum.outputs.checksum }}" \
+            --manifest "examples/plugins/$DIR/baram-plugin.json" \
+            --zip-name "$ZIP_NAME" \
+            --checksum "$CHECKSUM" \
             --base-url "$BASE_URL"
           cd "$RUNNER_TEMP/registry"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "plugins/${{ steps.meta.outputs.zip_name }}" index.json
-          git commit -m "release: ${{ steps.meta.outputs.plugin_id }} ${{ steps.meta.outputs.version }}"
+          git add "plugins/$ZIP_NAME" index.json
+          if git diff --cached --quiet; then
+            echo "::notice::Registry already contains this exact release — nothing to publish."
+            exit 0
+          fi
+          git commit -m "release: $PLUGIN_ID $VERSION"
           git push origin main
