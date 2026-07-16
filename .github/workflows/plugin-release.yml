@@ -45,6 +45,8 @@ jobs:
           [[ "$VERSION" == "$MANIFEST_VERSION" ]] \
             || fail "tag version $VERSION != manifest version $MANIFEST_VERSION"
           PLUGIN_ID="$(node -p "require('./$MANIFEST').id")"
+          [[ "$PLUGIN_ID" =~ ^[a-z0-9][a-z0-9-]*$ ]] \
+            || fail "manifest id '$PLUGIN_ID' must match ^[a-z0-9][a-z0-9-]*$"
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
             || fail "tag commit $GITHUB_SHA is not on main"
           {
