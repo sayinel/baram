@@ -153,6 +153,16 @@ const STYLES = {
     borderBottom: "2px solid transparent",
     marginBottom: "-1px",
   } as React.CSSProperties,
+  refreshButton: {
+    marginLeft: "auto",
+    marginBottom: "-1px",
+    padding: "6px 12px",
+    fontSize: "12px",
+    color: "var(--color-text-muted)",
+    backgroundColor: "transparent",
+    border: "none",
+    cursor: "pointer",
+  } as React.CSSProperties,
 };
 
 import type {
@@ -167,6 +177,7 @@ import { readFile } from "../../ipc/invoke";
 import { pluginInstall, pluginUninstall } from "../../ipc/plugin-invoke";
 import { pluginLoader } from "../../plugins/plugin-loader";
 import {
+  checkForUpdates,
   fetchRegistryIndex,
   searchRegistry,
 } from "../../plugins/registry-client";
@@ -246,6 +257,21 @@ export function PluginMarketplace() {
 
   const installedList = Object.values(installedPlugins);
   const updatesCount = Object.keys(updateAvailable).length;
+
+  // Force-refresh the registry (bypasses the 24h cache) and re-run the
+  // update check against the fresh index. Shared by the always-available
+  // header button and the error-state Retry button.
+  const handleRefresh = useCallback(() => {
+    setLoading(true);
+    fetchRegistryIndex(true)
+      .then(async (index) => {
+        setRegistryIndex(index);
+        setFetchError(null);
+        await checkForUpdates();
+      })
+      .catch((e) => setFetchError(String(e)))
+      .finally(() => setLoading(false));
+  }, []);
 
   // --- Install handler with capability review ---
   const handleInstall = useCallback(
@@ -405,6 +431,15 @@ export function PluginMarketplace() {
               </button>
             ),
           )}
+          {(activeTab === "browse" || activeTab === "updates") && (
+            <button
+              disabled={loading}
+              onClick={handleRefresh}
+              style={STYLES.refreshButton}
+            >
+              ↻ Refresh
+            </button>
+          )}
         </div>
 
         {/* Search (browse tab only) */}
@@ -426,16 +461,7 @@ export function PluginMarketplace() {
           <div style={STYLES.errorMessage}>
             <p>Failed to load registry</p>
             <p style={STYLES.errorSubtext}>{error}</p>
-            <button
-              onClick={() => {
-                setLoading(true);
-                fetchRegistryIndex(true)
-                  .then(setRegistryIndex)
-                  .catch((e) => setFetchError(String(e)))
-                  .finally(() => setLoading(false));
-              }}
-              style={STYLES.retryButton}
-            >
+            <button onClick={handleRefresh} style={STYLES.retryButton}>
               Retry
             </button>
           </div>
