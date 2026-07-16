@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { readFile } from "../../ipc/fs";
+import { notifyFileOpen } from "../../plugins/plugin-lifecycle";
 import { useContextStore } from "../../stores/context/context";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useSettingsStore } from "../../stores/settings/store";
@@ -36,6 +37,13 @@ describe("openFileByPath", () => {
     expect(useSettingsStore.getState().recentFiles[0].path).toBe(
       "/vault/note.md",
     );
+  });
+
+  it("does NOT notify plugins of file:open — the tab-switch effect emits it once content loads", async () => {
+    mockReadFile.mockResolvedValue("# hello");
+    await openFileByPath("/vault/note.md");
+
+    expect(notifyFileOpen).not.toHaveBeenCalled();
   });
 
   it("throws when reading the file fails (stale path)", async () => {

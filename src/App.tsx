@@ -290,8 +290,11 @@ function App() {
       if (e) setMountedKeepaliveEditor(e);
       // When switching away (e=null), do NOT unmount — the pool keeps it alive.
       // mountedKeepaliveEditor stays set so the DOM is preserved (hidden).
+      // Keep plugin editor API pointed at the ACTIVE editor (keep-alive or shared)
+      // synchronously — the tab-switch effect emits file:open in the same tick.
+      pluginLoader.setEditor(e ?? editor);
     },
-    [],
+    [editor],
   );
 
   // [MINOR-11] Destroy pooled editors on App unmount / HMR cleanup.
