@@ -2,10 +2,19 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { getVersion } from "@tauri-apps/api/app";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 import baramSymbol from "../../assets/baram-symbol.png";
 import { useTranslation } from "../../i18n/useTranslation";
 import { useUIStore } from "../../stores/ui/ui";
+
+const APACHE_LICENSE_URL = "https://www.apache.org/licenses/LICENSE-2.0";
+
+// Authors ordered by GitHub contribution (commit count, bots excluded).
+const AUTHORS: ReadonlyArray<{ name: string; url: string }> = [
+  { name: "Donghoon Yoo", url: "https://github.com/sayinel" },
+  { name: "Hanyul ryu", url: "https://github.com/pignuante" },
+];
 
 export function AboutModal() {
   const { t } = useTranslation();
@@ -54,7 +63,16 @@ export function AboutModal() {
         <div className="about-details">
           <div className="about-row">
             <span className="about-label">{t("about.license")}</span>
-            <span className="about-value">Apache License 2.0</span>
+            <button
+              className="btn-unstyled about-license-link"
+              onClick={() =>
+                openUrl(APACHE_LICENSE_URL).catch(() => {
+                  /* non-Tauri context or opener unavailable */
+                })
+              }
+            >
+              Apache License 2.0
+            </button>
           </div>
           <div className="about-row">
             <span className="about-label">{t("about.stack")}</span>
@@ -64,6 +82,25 @@ export function AboutModal() {
           </div>
         </div>
         <div className="about-copyright">{t("about.copyright")}</div>
+        <div className="about-authors">
+          {"("}
+          {AUTHORS.map((author, i) => (
+            <span key={author.url}>
+              {i > 0 ? ", " : ""}
+              <button
+                className="btn-unstyled about-author-link"
+                onClick={() =>
+                  openUrl(author.url).catch(() => {
+                    /* non-Tauri context or opener unavailable */
+                  })
+                }
+              >
+                {author.name}
+              </button>
+            </span>
+          ))}
+          {")"}
+        </div>
         <button className="about-close" onClick={toggleAbout}>
           {t("common.close")}
         </button>
