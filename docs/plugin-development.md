@@ -608,22 +608,28 @@ the nested `state.registryUrl` field to a local URL, then relaunch:
   portable since Tauri's webview may restrict `file://` fetches.
 
 Once `registryUrl` points at the local seed, open **Settings → Plugins**
-(the "Browse" tab) — it calls `fetchRegistryIndex()` on mount and has a
-refresh action that forces a re-fetch (`fetchRegistryIndex(true)`), bypassing
-the 24h cache. `registry/index.json` is the canonical example of a valid
-`RegistryIndex`: it lists the two example plugins (`baram-word-count`,
-`baram-ai-summary`) with every required field populated from their real
-manifests.
+(the "Browse" tab) — it calls `fetchRegistryIndex()` on mount. Note the
+registry response is cached for 24 hours, and there is no always-available
+refresh button: the only UI that forces a re-fetch
+(`fetchRegistryIndex(true)`) is the **Retry** button shown when the fetch
+errored. The cache lives in memory only, so restarting the app is the
+simplest way to force a fresh fetch. `registry/index.json` is the canonical
+example of a valid `RegistryIndex`: it lists the two example plugins
+(`baram-word-count`, `baram-ai-summary`) with every required field populated
+from their real manifests.
 
-### The seed's placeholder fields
+### The committed seed
 
-In the committed seed, both example entries have `downloadUrl: "TBD"` and
-`checksum: "TBD"`. These are honest placeholders, not fake URLs — the
-example plugins are only dev-loaded from source via **Settings → Plugins →
-Developer** (see [Local development loop](#local-development-loop)); they
-have not been packaged into a ZIP or published anywhere. A real registry
-entry needs an actual hosted ZIP and its real SHA-256 checksum, computed as
-in the packaging steps below.
+The committed seed is a verbatim snapshot of the live registry index: both
+example entries carry the real `downloadUrl` (under
+`https://sayinel.github.io/baram-plugins/plugins/`) and the real SHA-256
+checksum of the published ZIP. It exists so the repo has an offline,
+schema-correct `RegistryIndex` fixture — a Rust drift-guard test
+(`test_committed_registry_seed_deserializes`) deserializes it on every test
+run and fails if its shape or values stop looking like the live registry.
+The example plugins are therefore installable two ways: from the live
+registry via the marketplace, or dev-loaded from source via **Settings →
+Plugins → Developer** (see [Local development loop](#local-development-loop)).
 
 ### Publishing your own plugin
 
