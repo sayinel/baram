@@ -9,6 +9,7 @@ import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
 
 interface PluginCardProps {
   entry: RegistryEntry;
+  error?: string;
   onInstall: () => void;
   onSelect: () => void;
   onUninstall: () => void;
@@ -19,6 +20,7 @@ interface PluginCardProps {
 
 export function PluginCard({
   entry,
+  error,
   status,
   updateAvailable,
   onInstall,
@@ -94,6 +96,19 @@ export function PluginCard({
           >
             {entry.description}
           </p>
+          {error && (
+            <p
+              style={{
+                margin: "0 0 8px",
+                fontSize: "12px",
+                color: "var(--color-status-danger)",
+                lineHeight: 1.4,
+                wordBreak: "break-word",
+              }}
+            >
+              ⚠ {error}
+            </p>
+          )}
           <div
             style={{
               display: "flex",

@@ -438,11 +438,12 @@ export function PluginMarketplace() {
           )}
           {(activeTab === "browse" || activeTab === "updates") && (
             <button
+              className="marketplace-refresh-btn"
               disabled={loading}
               onClick={handleRefresh}
               style={STYLES.refreshButton}
             >
-              ↻ Refresh
+              {loading ? "↻ Refreshing…" : "↻ Refresh"}
             </button>
           )}
         </div>
@@ -500,6 +501,7 @@ export function PluginMarketplace() {
               return (
                 <PluginCard
                   entry={entry}
+                  error={pluginErrors[entry.id]}
                   key={entry.id}
                   onInstall={() => handleInstall(entry)}
                   onSelect={() => setSelectedEntry(entry)}
@@ -596,6 +598,7 @@ export function PluginMarketplace() {
               return (
                 <PluginCard
                   entry={entry}
+                  error={pluginErrors[id]}
                   key={id}
                   onInstall={() => {}}
                   onSelect={() => setSelectedEntry(entry)}

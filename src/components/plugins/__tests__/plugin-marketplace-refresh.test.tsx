@@ -128,4 +128,66 @@ describe("PluginMarketplace registry refresh button", () => {
       screen.queryByText("Failed to load registry"),
     ).not.toBeInTheDocument();
   });
+
+  it("shows a Refreshing… label while the refresh fetch is in flight", async () => {
+    render(<PluginMarketplace />);
+    await waitFor(() => expect(fetchRegistryIndex).toHaveBeenCalled());
+
+    // Deferred promise so we can observe the in-flight label before resolving.
+    let resolveFetch: (index: RegistryIndex) => void = () => {};
+    fetchRegistryIndex.mockReturnValueOnce(
+      new Promise<RegistryIndex>((resolve) => {
+        resolveFetch = resolve;
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /refresh/i }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "↻ Refreshing…" }),
+      ).toBeInTheDocument(),
+    );
+
+    resolveFetch(emptyIndex);
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "↻ Refresh" }),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("surfaces a store-level plugin error on the Browse tab card", async () => {
+    const wordCountEntry = {
+      author: "baram",
+      capabilities: [],
+      checksum: "abc123",
+      description: "Word count plugin",
+      downloadUrl: "https://example.com/word-count.zip",
+      engines: { baram: "^1.0.0" },
+      id: "baram-word-count",
+      license: "MIT",
+      name: "Word Count",
+      version: "1.0.0",
+    };
+    fetchRegistryIndex.mockResolvedValue({
+      plugins: [wordCountEntry],
+      updatedAt: "2026-01-01",
+    });
+    usePluginStore.setState({
+      pluginErrors: {
+        "baram-word-count": "Checksum mismatch: expected abc123, got def456",
+      },
+    });
+
+    render(<PluginMarketplace />);
+
+    await waitFor(() =>
+      expect(screen.getByText("Word Count")).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByText(/Checksum mismatch: expected abc123, got def456/),
+    ).toBeInTheDocument();
+  });
 });
