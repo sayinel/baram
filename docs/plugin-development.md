@@ -226,6 +226,14 @@ edits, recompute on `editor:ready`/`file:open`/`file:save` instead of polling
 or expecting a `"editor:change"`-style event (it does not exist). See the
 word-count example for the pattern.
 
+`"file:open"` fires once the opened file's content is actually loaded into the
+editor — not at the moment the tab opens — so for markdown files
+`ctx.editor.getContent()` reads the right document inside the handler. It also
+fires when switching to a tab that was already open (not just on first open).
+For non-markdown files the event still fires after the source editor loads,
+but `ctx.editor` wraps the ProseMirror (markdown) editor, so `getContent()`
+does not reflect code-file content.
+
 ### `context.ui`
 
 ```typescript

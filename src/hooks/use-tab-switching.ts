@@ -18,6 +18,7 @@ import {
 } from "../pipeline/md-to-pm";
 import { parseMdastAsync } from "../pipeline/parse-async";
 import { prosemirrorToMarkdown } from "../pipeline/pm-to-md";
+import { notifyFileOpen } from "../plugins/plugin-lifecycle";
 import { isFileTab, isGraphTab } from "../stores/editor/editor";
 import { useEditorStore } from "../stores/editor/editor";
 import { useFoldStore } from "../stores/editor/fold";
@@ -258,6 +259,7 @@ export function useTabSwitching({
         }
       });
       markContentLoaded(activeTabId!);
+      if (incomingTab.filePath) notifyFileOpen(incomingTab.filePath);
 
       // [MINOR-a] Consume pending scroll/search so backlink navigation to a
       // pooled tab scrolls correctly — not just pendingSearchHighlight.
@@ -361,6 +363,7 @@ export function useTabSwitching({
         onActiveEditorChange(null);
         sourceContentRef.current = content;
         setSourceContent(content);
+        if (incomingTab.filePath) notifyFileOpen(incomingTab.filePath);
         return;
       }
 
@@ -445,6 +448,7 @@ export function useTabSwitching({
             editor.view.updateState(cachedState),
           );
           markContentLoaded(activeTabId!);
+          if (incomingTab.filePath) notifyFileOpen(incomingTab.filePath);
         });
         // Restore exact scroll position (not just cursor visibility)
         // §perf-large-file C3.4: scope via editor.view.dom.closest() so this
@@ -548,6 +552,7 @@ export function useTabSwitching({
               }
               setTabLoading(activeTabId!, false);
               markContentLoaded(activeTabId!);
+              if (incomingTab.filePath) notifyFileOpen(incomingTab.filePath);
 
               // [NEW-CRITICAL-B] Mark the pool entry as complete so
               // switch-back uses it rather than discarding it.

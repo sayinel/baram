@@ -1,7 +1,6 @@
 // §89 Open a file by absolute path — shared by the file-op hook, the "+" menu,
 // and recent-item reopening. Throws on failure so callers can self-heal.
 import { readFile } from "../ipc/fs";
-import { notifyFileOpen } from "../plugins/plugin-lifecycle";
 import { useContextStore } from "../stores/context/context";
 import { useEditorStore } from "../stores/editor/editor";
 import { switchContext, useFileStore } from "../stores/file/file";
@@ -41,7 +40,6 @@ export async function openFileByPath(filePath: string): Promise<void> {
     isDirty: false,
     isPinned: false,
   });
-  notifyFileOpen(filePath);
   useSettingsStore.getState().addRecentFile(filePath);
   useSettingsStore.getState().setLastOpenedFile(filePath);
 }
