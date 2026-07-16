@@ -885,10 +885,19 @@ mod tests {
         const SEED: &str = include_str!("../../../registry/index.json");
         let idx: RegistryIndex = serde_json::from_str(SEED).unwrap();
         assert_eq!(idx.plugins.len(), 2);
-        let ids: Vec<&str> = idx.plugins.iter().map(|p| p.id.as_str()).collect();
-        assert_eq!(ids, vec!["baram-word-count", "baram-ai-summary"]);
+        let mut ids: Vec<&str> = idx.plugins.iter().map(|p| p.id.as_str()).collect();
+        ids.sort_unstable();
+        assert_eq!(ids, vec!["baram-ai-summary", "baram-word-count"]);
         for entry in &idx.plugins {
-            assert_eq!(entry.download_url, "TBD");
+            assert!(
+                entry
+                    .download_url
+                    .starts_with("https://sayinel.github.io/baram-plugins/plugins/"),
+                "downloadUrl should point at the live registry: {}",
+                entry.download_url
+            );
+            assert_eq!(entry.checksum.len(), 64, "checksum must be sha256 hex");
+            assert!(entry.checksum.chars().all(|c| c.is_ascii_hexdigit()));
         }
     }
 }
