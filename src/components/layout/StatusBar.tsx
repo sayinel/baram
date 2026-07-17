@@ -1,5 +1,5 @@
 // §4.8 Status bar — word count, cursor position, mode indicator, git branch
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Editor } from "@tiptap/react";
 
@@ -29,6 +29,7 @@ import {
   toggleFavorite,
   useZettelFavoritesStore,
 } from "../../stores/zettelkasten/zettel-favorites";
+import { subscribeContentLoaded } from "../../utils/editor/programmatic-update";
 import { basename } from "../../utils/path-utils";
 import { extractLeadingId } from "../../utils/zettelkasten/parse-note-title";
 import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
@@ -56,26 +57,77 @@ interface StatusBarProps {
 }
 
 export function StatusBar({ editor, mode }: StatusBarProps) {
-  const stats = useMemo(() => {
-    if (!editor) return { words: 0, chars: 0, line: 0, col: 0 };
+  // §4.8 Live word count + cursor position. The Tiptap Editor instance is a
+  // stable reference whose `.state` mutates in place, so a `useMemo([editor])`
+  // never recomputes on typing or cursor moves — it stayed frozen at the empty
+  // document's 0 words / Ln 1, Col 1. Subscribe to editor events instead.
+  const [stats, setStats] = useState({ chars: 0, col: 1, line: 1, words: 0 });
+  const wordsDebounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-    const text = editor.state.doc.textContent;
-    const words = countWords(text);
-    const chars = text.length;
+  useEffect(() => {
+    if (!editor) {
+      setStats({ chars: 0, col: 1, line: 1, words: 0 });
+      return;
+    }
 
-    // Get cursor position
-    const { from } = editor.state.selection;
-    const resolved = editor.state.doc.resolve(from);
-    const col = from - resolved.start(resolved.depth) + 1;
-    let line = 0;
-    editor.state.doc.nodesBetween(0, from, (node) => {
-      if (node.isBlock && node.isTextblock) {
-        line++;
-      }
-    });
-    if (line === 0) line = 1;
+    const computeCursor = () => {
+      const { from } = editor.state.selection;
+      const resolved = editor.state.doc.resolve(from);
+      const col = from - resolved.start(resolved.depth) + 1;
+      let line = 0;
+      editor.state.doc.nodesBetween(0, from, (node) => {
+        if (node.isBlock && node.isTextblock) line++;
+      });
+      if (line === 0) line = 1;
+      return { col, line };
+    };
 
-    return { words, chars, line, col };
+    const computeWords = () => {
+      const text = editor.state.doc.textContent;
+      return { chars: text.length, words: countWords(text) };
+    };
+
+    const refreshAll = () => {
+      if (editor.isDestroyed) return;
+      setStats({ ...computeWords(), ...computeCursor() });
+    };
+
+    // Initial snapshot for the freshly-mounted editor.
+    refreshAll();
+
+    // Cursor position updates immediately for responsiveness. Any content edit
+    // above the caret remaps the selection, so `selectionUpdate` alone keeps
+    // Ln/Col fresh without a redundant walk on every keystroke's `update`.
+    const syncCursor = () => {
+      if (editor.isDestroyed) return;
+      setStats((s) => ({ ...s, ...computeCursor() }));
+    };
+
+    // §perf-large-file: word/char count is a whole-doc text scan, so debounce it
+    // on `update` (matching Outline.tsx) rather than paying it per keystroke.
+    const syncWords = () => {
+      if (editor.isDestroyed) return;
+      if (wordsDebounceRef.current) clearTimeout(wordsDebounceRef.current);
+      wordsDebounceRef.current = setTimeout(() => {
+        if (editor.isDestroyed) return;
+        setStats((s) => ({ ...s, ...computeWords() }));
+      }, 200);
+    };
+
+    editor.on("selectionUpdate", syncCursor);
+    editor.on("update", syncWords);
+    // Tab switches / source-mode swaps load content via a direct
+    // editor.view.updateState() that fires no Tiptap event and reuses the stable
+    // shared editor, so neither the listeners above nor this [editor] effect
+    // re-run. Recompute on the explicit content-loaded signal so the word count
+    // (and cursor) reflect the newly shown document.
+    const unsubscribeLoaded = subscribeContentLoaded(refreshAll);
+    return () => {
+      editor.off("selectionUpdate", syncCursor);
+      editor.off("update", syncWords);
+      unsubscribeLoaded();
+      if (wordsDebounceRef.current) clearTimeout(wordsDebounceRef.current);
+    };
   }, [editor]);
 
   const { isRepo, branch, changes } = useGitStore(
