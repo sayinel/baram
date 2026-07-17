@@ -416,9 +416,6 @@ export function GraphView() {
     <div className="graph-view-container">
       <div className="graph-view-header">
         <span className="graph-view-title">Graph View</span>
-        <span className="graph-view-stats">
-          {nodeCount} nodes, {edgeCount} edges
-        </span>
         <div className="graph-scope">
           <button
             className={`graph-scope__btn ${graphScope === "current" ? "graph-scope__btn--active" : ""}`}
@@ -512,6 +509,9 @@ export function GraphView() {
         onContextMenu={(e) => e.preventDefault()}
         ref={containerRef}
       />
+      <span className="graph-view-stats">
+        {nodeCount} nodes · {edgeCount} edges
+      </span>
     </div>
   );
 }

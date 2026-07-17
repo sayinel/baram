@@ -5,12 +5,14 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  container-type: inline-size;
   overflow: hidden;
 }
 
 .graph-view-header {
   display: flex;
   flex-shrink: 0;
+  flex-flow: row wrap;
   gap: 8px;
   align-items: center;
   padding: 8px 12px;
@@ -23,11 +25,33 @@
   color: var(--color-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  white-space: nowrap;
 }
 
+/* Node/edge count overlaid on the canvas corner */
 .graph-view-stats {
+  position: absolute;
+  bottom: 8px;
+  left: 10px;
+  z-index: 5;
+  padding: 2px 6px;
   font-size: 10px;
   color: var(--color-text-muted);
+  pointer-events: none;
+  background: color-mix(in srgb, var(--color-bg-default) 75%, transparent);
+  border-radius: 4px;
+}
+
+/* Narrow container (sidebar): title + actions on row 1, scope drops to row 2 */
+@container (width < 400px) {
+  .graph-scope {
+    flex-basis: 100%;
+    order: 1;
+  }
+
+  .graph-settings-panel {
+    top: 70px;
+  }
 }
 
 .graph-view-expand-btn {
@@ -46,6 +70,11 @@
 /* Graph View rendered in editor area (tab) */
 .editor-area-scroll > .graph-view-container {
   height: 100%;
+}
+
+/* The editor tab's title already says "Graph View" — skip the header title */
+.editor-area-scroll > .graph-view-container .graph-view-title {
+  display: none;
 }
 
 .graph-view-canvas {
