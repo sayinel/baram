@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   displayName,
+  localSubgraph,
   matchesFilter,
   mergeGraphs,
   nodeSize,
@@ -238,6 +239,34 @@ describe("mergeGraphs", () => {
 
   it("returns empty graph for empty input", () => {
     expect(mergeGraphs([])).toEqual({ nodes: [], edges: [] });
+  });
+});
+
+// ─── localSubgraph ───────────────────────────────────
+
+describe("localSubgraph", () => {
+  const edges = [
+    { source: "a", target: "b" },
+    { source: "c", target: "b" }, // undirected: b↔c
+    { source: "c", target: "d" },
+    { source: "e", target: "f" }, // disconnected island
+  ];
+
+  it("depth 1 returns center + direct neighbors (both directions)", () => {
+    expect(localSubgraph(edges, "b", 1)).toEqual(new Set(["a", "b", "c"]));
+  });
+
+  it("depth 2 expands transitively", () => {
+    expect(localSubgraph(edges, "a", 2)).toEqual(new Set(["a", "b", "c"]));
+    expect(localSubgraph(edges, "b", 2)).toEqual(new Set(["a", "b", "c", "d"]));
+  });
+
+  it("unknown center returns only the center", () => {
+    expect(localSubgraph(edges, "zzz", 2)).toEqual(new Set(["zzz"]));
+  });
+
+  it("depth 0 returns only the center", () => {
+    expect(localSubgraph(edges, "b", 0)).toEqual(new Set(["b"]));
   });
 });
 

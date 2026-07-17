@@ -91,6 +91,40 @@ export function displayName(filePath: string): string {
 }
 
 /**
+ * §30.3 Local graph — undirected BFS from centerId up to `depth` hops.
+ * Returns the set of node ids in the local subgraph (center included).
+ */
+export function localSubgraph(
+  edges: ReadonlyArray<{ source: string; target: string }>,
+  centerId: string,
+  depth: number,
+): Set<string> {
+  const adjacency = new Map<string, string[]>();
+  for (const e of edges) {
+    if (!adjacency.has(e.source)) adjacency.set(e.source, []);
+    if (!adjacency.has(e.target)) adjacency.set(e.target, []);
+    adjacency.get(e.source)!.push(e.target);
+    adjacency.get(e.target)!.push(e.source);
+  }
+
+  const visited = new Set<string>([centerId]);
+  let frontier = [centerId];
+  for (let hop = 0; hop < depth && frontier.length > 0; hop++) {
+    const next: string[] = [];
+    for (const id of frontier) {
+      for (const neighbor of adjacency.get(id) ?? []) {
+        if (!visited.has(neighbor)) {
+          visited.add(neighbor);
+          next.push(neighbor);
+        }
+      }
+    }
+    frontier = next;
+  }
+  return visited;
+}
+
+/**
  * Case-insensitive substring match for graph node filtering.
  * Empty query matches everything.
  */
