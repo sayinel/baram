@@ -1,6 +1,7 @@
 // §30 Graph View — interactive link graph visualization
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import type { GraphNodeMenuTarget } from "./graph-context-menu";
 import type { GraphSimulation } from "./graph-simulation";
 import type { Core, EventObject } from "cytoscape";
 
@@ -10,6 +11,8 @@ import { isGraphTab, useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useGraphSettingsStore } from "../../stores/ui/graph-settings";
 import { logger } from "../../utils/logger";
+import { MenuList } from "../toolbar/MenuList";
+import { buildGraphNodeMenu } from "./graph-context-menu";
 import { createGraphSimulation } from "./graph-simulation";
 import { buildGraphStyle } from "./graph-style";
 import { nodeSize } from "./graph-utils";
@@ -45,6 +48,12 @@ export function GraphView() {
   });
   const [showSettings, setShowSettings] = useState(false);
   const [frozen, setFrozen] = useState(false);
+  // §30.3b Right-click node context menu
+  const [nodeMenu, setNodeMenu] = useState<null | {
+    target: GraphNodeMenuTarget;
+    x: number;
+    y: number;
+  }>(null);
 
   // §30.3 Freeze = stop the physics; Re-layout = unfreeze + vigorous reheat
   const handleToggleFreeze = useCallback(() => {
@@ -135,14 +144,8 @@ export function GraphView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Handle node click → open file
-  const handleNodeTap = useCallback(async (evt: EventObject) => {
-    const filePath = evt.target.id();
-    if (!filePath) return;
-
-    // Don't open ghost or tag nodes
-    if (evt.target.data("isGhost") || evt.target.data("isTag")) return;
-
+  // Open a file node in an editor tab (activate existing tab if open)
+  const openFileInTab = useCallback(async (filePath: string) => {
     const { tabs, setActiveTab, openTab } = useEditorStore.getState();
 
     const existing = tabs.find((t) => t.filePath === filePath);
@@ -167,6 +170,20 @@ export function GraphView() {
       logger.error("§30 GraphView: failed to open file", err);
     }
   }, []);
+
+  // Handle node click → open file
+  const handleNodeTap = useCallback(
+    (evt: EventObject) => {
+      const filePath = evt.target.id();
+      if (!filePath) return;
+
+      // Don't open ghost or tag nodes
+      if (evt.target.data("isGhost") || evt.target.data("isTag")) return;
+
+      void openFileInTab(filePath);
+    },
+    [openFileInTab],
+  );
 
   // Effect 2: Fetch data + populate cytoscape (extracted hook)
   const { nodeCount, edgeCount } = useGraphData({
@@ -216,6 +233,53 @@ export function GraphView() {
       cy.off("free", "node", handleFree);
     };
   }, [cyReady]);
+
+  // Effect: right-click on a node → context menu (§30.3b)
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+
+    const handleCxtTap = (evt: EventObject) => {
+      const node = evt.target;
+      const id = node.id() as string;
+      const oe = evt.originalEvent as MouseEvent | undefined;
+      if (!oe) return;
+      setNodeMenu({
+        x: oe.clientX,
+        y: oe.clientY,
+        target: {
+          nodeId: id,
+          isTag: Boolean(node.data("isTag")),
+          isGhost: Boolean(node.data("isGhost")),
+          pinned: simRef.current?.isPinned(id) ?? false,
+        },
+      });
+    };
+
+    cy.on("cxttap", "node", handleCxtTap);
+    return () => {
+      cy.off("cxttap", "node", handleCxtTap);
+    };
+  }, [cyReady]);
+
+  // §30.3c Pin toggle from the context menu
+  const handleTogglePin = useCallback((nodeId: string, pinned: boolean) => {
+    const sim = simRef.current;
+    const cy = cyRef.current;
+    if (!sim || !cy) return;
+    if (pinned) {
+      sim.unpin(nodeId);
+      cy.getElementById(nodeId).removeClass("pinned");
+    } else {
+      sim.pin(nodeId);
+      cy.getElementById(nodeId).addClass("pinned");
+    }
+  }, []);
+
+  // §30.4a Exclude from graph via context menu
+  const handleExclude = useCallback((nodeId: string) => {
+    useGraphSettingsStore.getState().excludeNode(nodeId);
+  }, []);
 
   // Effect 5: Hover highlight events
   useEffect(() => {
@@ -432,7 +496,23 @@ export function GraphView() {
         </div>
       </div>
       {showSettings && <GraphSettingsPanel />}
-      <div className="graph-view-canvas" ref={containerRef} />
+      {nodeMenu && (
+        <MenuList
+          items={buildGraphNodeMenu(nodeMenu.target, {
+            onOpen: (id) => void openFileInTab(id),
+            onTogglePin: handleTogglePin,
+            onExclude: handleExclude,
+          })}
+          onClose={() => setNodeMenu(null)}
+          x={nodeMenu.x}
+          y={nodeMenu.y}
+        />
+      )}
+      <div
+        className="graph-view-canvas"
+        onContextMenu={(e) => e.preventDefault()}
+        ref={containerRef}
+      />
     </div>
   );
 }

@@ -165,6 +165,12 @@ export function useGraphData(params: {
           }
         });
 
+        // §30.3c Restore pinned indicators after element re-creation
+        simRef.current?.getPinnedIds().forEach((id) => {
+          const el = cy.getElementById(id);
+          if (el.length > 0) el.addClass("pinned");
+        });
+
         // Ensure container dimensions are available before first paint
         cy.resize();
         // §87 Force style recalculation for newly added nodes
