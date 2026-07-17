@@ -13,7 +13,8 @@ import type { Core } from "cytoscape";
 import { useContextStore } from "../../stores/context/context";
 import { useFileStore } from "../../stores/file/file";
 import { useGraphSettingsStore } from "../../stores/ui/graph-settings";
-import { localSubgraph, matchesFilter } from "./graph-utils";
+import { applySearchHighlight } from "./graph-highlight";
+import { localSubgraph } from "./graph-utils";
 
 /**
  * Apply visibility filters (workspace/local scope, search, orphans, ghosts,
@@ -114,7 +115,6 @@ export function useGraphFilter(params: {
 
     cy.nodes().forEach((node) => {
       const id = node.id();
-      const label = node.data("label") as string;
       const isGhost = node.data("isGhost") as boolean | undefined;
       const isOrphan = node.degree() === 0;
 
@@ -132,11 +132,6 @@ export function useGraphFilter(params: {
         !scopeNodes.has(id) &&
         !neighborNodes.has(id)
       ) {
-        visible = false;
-      }
-
-      // Search filter
-      if (visible && !matchesFilter(label, searchQuery)) {
         visible = false;
       }
 
@@ -216,6 +211,10 @@ export function useGraphFilter(params: {
         }
       }
     }
+
+    // §30.3a Search highlights matches instead of filtering — visibility
+    // (and therefore the simulation) is unaffected by typing.
+    applySearchHighlight(cy, searchQuery);
   }, [
     cyRef,
     simRef,
