@@ -22,6 +22,7 @@ import {
   JOURNAL_FILENAME_COMPACT_RE,
   resolveJournalDir,
 } from "../../utils/journal/journal";
+import { subscribeJournalChanged } from "../../utils/journal/journal-events";
 import {
   applyPeriodicTemplate,
   generateDefaultWeekly,
@@ -94,6 +95,13 @@ export function CalendarPanel() {
 
   // Fetch journal files via IPC — supports both flat and hierarchical layouts
   const [dirFiles, setDirFiles] = useState<string[]>([]);
+  // §56 Bumped when a journal entry is created/saved so the dir listing (and
+  // thus the calendar dots) refresh in real time instead of only on remount.
+  const [journalRefreshTick, setJournalRefreshTick] = useState(0);
+  useEffect(
+    () => subscribeJournalChanged(() => setJournalRefreshTick((t) => t + 1)),
+    [],
+  );
   useEffect(() => {
     if (!journalEnabled || !resolvedDir) return;
     let cancelled = false;
@@ -123,7 +131,14 @@ export function CalendarPanel() {
     return () => {
       cancelled = true;
     };
-  }, [journalEnabled, resolvedDir, journalUseHierarchy, viewYear, viewMonth]);
+  }, [
+    journalEnabled,
+    resolvedDir,
+    journalUseHierarchy,
+    viewYear,
+    viewMonth,
+    journalRefreshTick,
+  ]);
 
   // Extract "YYYY-MM-DD" date strings from filenames
   const journalDates = useMemo(() => {

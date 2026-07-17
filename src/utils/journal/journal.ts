@@ -306,6 +306,24 @@ export function isDateString(s: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(s);
 }
 
+/**
+ * True when `filePath` lives inside the resolved journal directory. Used to
+ * decide whether a save should notify the journal sidebars (calendar dots,
+ * Memories) to refresh. Covers both flat (`{dir}/2026-07-17.md`) and
+ * hierarchical (`{dir}/daily/2026/07/...`) layouts via a prefix match.
+ */
+export function isJournalPath(
+  filePath: null | string | undefined,
+  rootPath: null | string,
+  journalDir: string,
+): boolean {
+  if (!filePath) return false;
+  const dir = resolveJournalDir(rootPath, journalDir);
+  if (!dir) return false;
+  const prefix = dir.endsWith("/") ? dir : `${dir}/`;
+  return filePath === dir || filePath.startsWith(prefix);
+}
+
 /** Resolve date aliases: "today" → "2026-02-27", "yesterday" → ... */
 export function resolveDateAlias(alias: string): null | string {
   const now = new Date();

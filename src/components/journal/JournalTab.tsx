@@ -5,6 +5,7 @@ import { readFile, writeFile } from "../../ipc/invoke";
 import { useEditorStore } from "../../stores/editor/editor";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
+import { subscribeJournalChanged } from "../../utils/journal/journal-events";
 import {
   extractDiarySection,
   extractOneLine,
@@ -87,6 +88,13 @@ export function JournalTab({
   useEffect(() => {
     loadMemories();
   }, [loadMemories]);
+
+  // §56 Refresh in real time when a journal entry is created/saved elsewhere
+  // (e.g. editing today's entry in the main editor) instead of only on remount.
+  useEffect(
+    () => subscribeJournalChanged(() => void loadMemories()),
+    [loadMemories],
+  );
 
   const handleOpenEntry = (path: string) => {
     const { tabs } = useEditorStore.getState();
