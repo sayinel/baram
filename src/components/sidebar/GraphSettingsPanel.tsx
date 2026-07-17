@@ -1,10 +1,46 @@
 // §30 Graph View — inline settings panel overlay
 import { useState } from "react";
 
+import { useShallow } from "zustand/shallow";
+
 import { useGraphSettingsStore } from "../../stores/ui/graph-settings";
 
 export function GraphSettingsPanel() {
-  const s = useGraphSettingsStore();
+  const s = useGraphSettingsStore(
+    useShallow((state) => ({
+      searchQuery: state.searchQuery,
+      setSearchQuery: state.setSearchQuery,
+      showOrphans: state.showOrphans,
+      setShowOrphans: state.setShowOrphans,
+      existingFilesOnly: state.existingFilesOnly,
+      setExistingFilesOnly: state.setExistingFilesOnly,
+      showTags: state.showTags,
+      setShowTags: state.setShowTags,
+      colorByNamespace: state.colorByNamespace,
+      setColorByNamespace: state.setColorByNamespace,
+      namespaceFilter: state.namespaceFilter,
+      setNamespaceFilter: state.setNamespaceFilter,
+      graphScope: state.graphScope,
+      localDepth: state.localDepth,
+      setLocalDepth: state.setLocalDepth,
+      nodeSize: state.nodeSize,
+      setNodeSize: state.setNodeSize,
+      linkThickness: state.linkThickness,
+      setLinkThickness: state.setLinkThickness,
+      textFadeThreshold: state.textFadeThreshold,
+      setTextFadeThreshold: state.setTextFadeThreshold,
+      showArrows: state.showArrows,
+      setShowArrows: state.setShowArrows,
+      centerForce: state.centerForce,
+      setCenterForce: state.setCenterForce,
+      repelForce: state.repelForce,
+      setRepelForce: state.setRepelForce,
+      linkForce: state.linkForce,
+      setLinkForce: state.setLinkForce,
+      linkDistance: state.linkDistance,
+      setLinkDistance: state.setLinkDistance,
+    })),
+  );
 
   return (
     <div className="graph-settings-panel">
@@ -45,6 +81,16 @@ export function GraphSettingsPanel() {
             value={s.namespaceFilter}
           />
         </div>
+        {s.graphScope === "local" && (
+          <SliderRow
+            label="Local depth"
+            max={3}
+            min={1}
+            onChange={s.setLocalDepth}
+            step={1}
+            value={s.localDepth}
+          />
+        )}
       </SettingsSection>
 
       <SettingsSection title="Display">

@@ -1,14 +1,21 @@
 // §30 Graph View — settings store for graph visualization
 import { create } from "zustand";
 
+/** §30.3 Graph scope — current vault / all vaults (§87) / active-file local */
+export type GraphScope = "all" | "current" | "local";
+
 export interface GraphSettingsState {
   // Forces
   centerForce: number;
   colorByNamespace: boolean;
   existingFilesOnly: boolean;
+  // §30.3 Scope
+  graphScope: GraphScope;
   linkDistance: number;
   linkForce: number;
   linkThickness: number;
+  /** §30.3 Local scope BFS depth (1..3) */
+  localDepth: number;
 
   namespaceFilter: string;
   // Display
@@ -20,10 +27,12 @@ export interface GraphSettingsState {
   setCenterForce: (v: number) => void;
   setColorByNamespace: (v: boolean) => void;
   setExistingFilesOnly: (v: boolean) => void;
+  setGraphScope: (v: GraphScope) => void;
   setLinkDistance: (v: number) => void;
 
   setLinkForce: (v: number) => void;
   setLinkThickness: (v: number) => void;
+  setLocalDepth: (v: number) => void;
   setNamespaceFilter: (v: string) => void;
   setNodeSize: (v: number) => void;
   setRepelForce: (v: number) => void;
@@ -48,6 +57,10 @@ export const useGraphSettingsStore = create<GraphSettingsState>((set) => ({
   colorByNamespace: true,
   namespaceFilter: "",
 
+  // §30.3 Scope
+  graphScope: "current",
+  localDepth: 1,
+
   // Display
   nodeSize: 20,
   linkThickness: 1,
@@ -71,6 +84,8 @@ export const useGraphSettingsStore = create<GraphSettingsState>((set) => ({
   setLinkThickness: (v) => set({ linkThickness: v }),
   setTextFadeThreshold: (v) => set({ textFadeThreshold: v }),
   setShowArrows: (v) => set({ showArrows: v }),
+  setGraphScope: (v) => set({ graphScope: v }),
+  setLocalDepth: (v) => set({ localDepth: v }),
   setCenterForce: (v) => set({ centerForce: v }),
   setRepelForce: (v) => set({ repelForce: v }),
   setLinkForce: (v) => set({ linkForce: v }),

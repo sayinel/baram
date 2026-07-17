@@ -20,6 +20,7 @@ import { createGraphSimulation } from "./graph-simulation";
 import { buildGraphStyle } from "./graph-style";
 import {
   assignNamespaceColors,
+  localSubgraph,
   matchesFilter,
   mergeGraphs,
   nodeSize,
@@ -36,7 +37,9 @@ export function GraphView() {
   const lastSyncKeyRef = useRef<null | string>(null);
   const [cyReady, setCyReady] = useState(false);
   const rootPath = useFileStore((s) => s.rootPath);
-  const [graphScope, setGraphScope] = useState<"all" | "current">("current");
+  const graphScope = useGraphSettingsStore((s) => s.graphScope);
+  const setGraphScope = useGraphSettingsStore((s) => s.setGraphScope);
+  const localDepth = useGraphSettingsStore((s) => s.localDepth);
   const contexts = useContextStore((s) => s.contexts);
   // Detect if rendered inside editor tab (vs sidebar)
   const isInEditorTab = useEditorStore((s) => {
@@ -437,17 +440,33 @@ export function GraphView() {
     const cy = cyRef.current;
     if (!cy || cy.nodes().length === 0) return;
 
+    // §30.3 Local scope: BFS neighborhood of the active file replaces the
+    // workspace path scope entirely.
+    let localIds: null | Set<string> = null;
+    if (graphScope === "local" && activeFilePath) {
+      const allEdges: Array<{ source: string; target: string }> = [];
+      cy.edges().forEach((edge) => {
+        allEdges.push({
+          source: edge.source().id(),
+          target: edge.target().id(),
+        });
+      });
+      localIds = localSubgraph(allEdges, activeFilePath, localDepth);
+    }
+
     // Pass 1: find nodes under current workspace rootPath
     // §87 In All mode, include all vault paths (not just active rootPath)
     const scopePaths =
-      graphScope === "all"
-        ? useContextStore
-            .getState()
-            .contexts.filter((c) => c.contextType !== "file")
-            .map((c) => c.path)
-        : rootPath
-          ? [rootPath]
-          : [];
+      graphScope === "local"
+        ? []
+        : graphScope === "all"
+          ? useContextStore
+              .getState()
+              .contexts.filter((c) => c.contextType !== "file")
+              .map((c) => c.path)
+          : rootPath
+            ? [rootPath]
+            : [];
 
     const scopeNodes = new Set<string>();
     if (scopePaths.length > 0) {
@@ -484,8 +503,18 @@ export function GraphView() {
 
       let visible = true;
 
+      // §30.3 Local scope filter (active file's N-hop neighborhood)
+      if (localIds && !localIds.has(id)) {
+        visible = false;
+      }
+
       // Workspace scope filter
-      if (hasScope && !scopeNodes.has(id) && !neighborNodes.has(id)) {
+      if (
+        visible &&
+        hasScope &&
+        !scopeNodes.has(id) &&
+        !neighborNodes.has(id)
+      ) {
         visible = false;
       }
 
@@ -580,6 +609,8 @@ export function GraphView() {
     nodeCount,
     edgeCount,
     graphScope,
+    activeFilePath,
+    localDepth,
     cyReady,
   ]);
 
@@ -652,22 +683,30 @@ export function GraphView() {
         <span className="graph-view-stats">
           {nodeCount} nodes, {edgeCount} edges
         </span>
-        {contexts.length > 1 && (
-          <div className="graph-scope">
-            <button
-              className={`graph-scope__btn ${graphScope === "current" ? "graph-scope__btn--active" : ""}`}
-              onClick={() => setGraphScope("current")}
-            >
-              Current
-            </button>
+        <div className="graph-scope">
+          <button
+            className={`graph-scope__btn ${graphScope === "current" ? "graph-scope__btn--active" : ""}`}
+            onClick={() => setGraphScope("current")}
+          >
+            Current
+          </button>
+          {contexts.length > 1 && (
             <button
               className={`graph-scope__btn ${graphScope === "all" ? "graph-scope__btn--active" : ""}`}
               onClick={() => setGraphScope("all")}
             >
               All
             </button>
-          </div>
-        )}
+          )}
+          <button
+            className={`graph-scope__btn ${graphScope === "local" ? "graph-scope__btn--active" : ""}`}
+            disabled={!activeFilePath}
+            onClick={() => setGraphScope("local")}
+            title="Show only the active file's neighborhood"
+          >
+            Local
+          </button>
+        </div>
         <div className="graph-view-header-actions">
           <button
             className="graph-view-settings-btn btn-unstyled"
