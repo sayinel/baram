@@ -1,45 +1,31 @@
 // §30 Graph View — interactive link graph visualization
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { LinkGraph } from "../../ipc/types";
-import type {
-  GraphSimulation,
-  SimLinkInput,
-  SimNodeInput,
-} from "./graph-simulation";
+import type { GraphSimulation } from "./graph-simulation";
 import type { Core, EventObject } from "cytoscape";
 
-import { getLinkIndex, readFile, refreshIndex } from "../../ipc/invoke";
+import { readFile } from "../../ipc/invoke";
 import { useContextStore } from "../../stores/context/context";
 import { isGraphTab, useEditorStore } from "../../stores/editor/editor";
-import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
 import { useGraphSettingsStore } from "../../stores/ui/graph-settings";
 import { logger } from "../../utils/logger";
 import { createGraphSimulation } from "./graph-simulation";
 import { buildGraphStyle } from "./graph-style";
-import {
-  assignNamespaceColors,
-  localSubgraph,
-  matchesFilter,
-  mergeGraphs,
-  nodeSize,
-  toGraphElements,
-} from "./graph-utils";
+import { nodeSize } from "./graph-utils";
 import { GraphSettingsPanel } from "./GraphSettingsPanel";
+import { useGraphData } from "./use-graph-data";
+import { useGraphFilter } from "./use-graph-filter";
 
 export function GraphView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
   const simRef = useRef<GraphSimulation | null>(null);
   const draggedIdRef = useRef<null | string>(null);
-  const simSyncedOnceRef = useRef(false);
-  const lastSyncKeyRef = useRef<null | string>(null);
   const [cyReady, setCyReady] = useState(false);
   const rootPath = useFileStore((s) => s.rootPath);
   const graphScope = useGraphSettingsStore((s) => s.graphScope);
   const setGraphScope = useGraphSettingsStore((s) => s.setGraphScope);
-  const localDepth = useGraphSettingsStore((s) => s.localDepth);
   const contexts = useContextStore((s) => s.contexts);
   // Detect if rendered inside editor tab (vs sidebar)
   const isInEditorTab = useEditorStore((s) => {
@@ -57,9 +43,6 @@ export function GraphView() {
     }
     return null;
   });
-  const indexVersion = useLinkStore((s) => s.indexVersion);
-  const [nodeCount, setNodeCount] = useState(0);
-  const [edgeCount, setEdgeCount] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [frozen, setFrozen] = useState(false);
 
@@ -86,12 +69,7 @@ export function GraphView() {
   const linkThickness = useGraphSettingsStore((s) => s.linkThickness);
   const textFadeThreshold = useGraphSettingsStore((s) => s.textFadeThreshold);
   const showArrows = useGraphSettingsStore((s) => s.showArrows);
-  const searchQuery = useGraphSettingsStore((s) => s.searchQuery);
-  const showOrphans = useGraphSettingsStore((s) => s.showOrphans);
-  const existingFilesOnly = useGraphSettingsStore((s) => s.existingFilesOnly);
-  const showTags = useGraphSettingsStore((s) => s.showTags);
   const colorByNamespace = useGraphSettingsStore((s) => s.colorByNamespace);
-  const namespaceFilter = useGraphSettingsStore((s) => s.namespaceFilter);
 
   const handleOpenInTab = useCallback(() => {
     useEditorStore.getState().openGraphTab();
@@ -190,164 +168,14 @@ export function GraphView() {
     }
   }, []);
 
-  // Effect 2: Fetch data + initial layout
-  useEffect(() => {
-    if (!rootPath) return;
-    const cy = cyRef.current;
-    if (!cy) return;
-
-    let cancelled = false;
-
-    (async () => {
-      try {
-        let graph: LinkGraph;
-        let effectiveRootPath = rootPath;
-        let nodeVaultMapRef: Map<string, string> | undefined;
-
-        // §87 Read contexts fresh from store (not closure) to avoid stale data
-        const freshContexts = useContextStore.getState().contexts;
-        if (graphScope === "all" && freshContexts.length > 1) {
-          // §87 Multi-vault: fetch and merge graphs from all contexts
-          const vaultFolderContexts = freshContexts.filter(
-            (c) => c.contextType !== "file",
-          );
-          const graphs: Array<{
-            ctx: (typeof vaultFolderContexts)[0];
-            graph: LinkGraph;
-          }> = [];
-
-          // §87 Fetch existing indices for each vault. Don't call refreshIndex
-          // here — it changes indexVersion which re-triggers this effect and
-          // cancels before completion. Indices are built when vaults are opened.
-          for (const ctx of vaultFolderContexts) {
-            try {
-              const g = await getLinkIndex(ctx.path);
-              if (g.nodes.length > 0) {
-                graphs.push({ ctx, graph: g });
-              }
-            } catch {
-              // Skip contexts that fail
-            }
-          }
-
-          // Merge all graphs into one, tracking node→vault membership
-          const merged = mergeGraphs(graphs.map((g) => g.graph));
-          graph = merged;
-          // §87 Build nodeVaultMap for cross-vault edge detection
-          nodeVaultMapRef = new Map<string, string>();
-          for (const { ctx, graph: g } of graphs) {
-            for (const node of g.nodes) {
-              if (!nodeVaultMapRef.has(node)) {
-                nodeVaultMapRef.set(node, ctx.id);
-              }
-            }
-          }
-          // Use empty string as rootPath so namespace extraction works per-node
-          effectiveRootPath = "";
-        } else {
-          // Single-vault: existing behavior
-          await refreshIndex(rootPath);
-          if (cancelled) return;
-          graph = await getLinkIndex();
-          if (cancelled) return;
-          nodeVaultMapRef = undefined;
-        }
-
-        const { nodes, edges } = toGraphElements(
-          graph,
-          effectiveRootPath || rootPath,
-          nodeVaultMapRef,
-        );
-        const maxNodeSize = Math.min(settingsNodeSize * 3, 80);
-
-        const nodesWithSize = nodes.map((n) => {
-          // §87 In All mode, assign vault color to each node
-          let vaultColor: string | undefined;
-          if (nodeVaultMapRef) {
-            const ctxId = nodeVaultMapRef.get(n.data.id);
-            if (ctxId) {
-              const ctx = useContextStore
-                .getState()
-                .contexts.find((c) => c.id === ctxId);
-              if (ctx) vaultColor = ctx.color;
-            }
-          }
-          return {
-            ...n,
-            data: {
-              ...n.data,
-              size: nodeSize(n.data.degree, settingsNodeSize, maxNodeSize),
-              ...(vaultColor && { vaultColor }),
-            },
-          };
-        });
-
-        // §61 Namespace colors
-        if (colorByNamespace) {
-          const namespaces = nodesWithSize
-            .filter((n) => !n.data.isTag)
-            .map((n) => n.data.namespace ?? "");
-          const nsColorMap = assignNamespaceColors(namespaces);
-          for (const n of nodesWithSize) {
-            if (!n.data.isTag && !n.data.isGhost) {
-              (n.data as Record<string, unknown>).nsColor =
-                nsColorMap.get(n.data.namespace ?? "") ?? "";
-            }
-          }
-        }
-
-        // §30.2 Seed added elements with their last known simulation positions
-        // so index refreshes don't flash at the origin.
-        const posMap = simRef.current?.getPositions();
-        cy.elements().remove();
-        cy.add([
-          ...nodesWithSize.map((n) => {
-            const prev = posMap?.get(n.data.id);
-            return prev ? { ...n, position: { ...prev } } : n;
-          }),
-          ...edges,
-        ] as cytoscape.ElementDefinition[]);
-
-        // Mark orphan nodes
-        cy.nodes().forEach((node) => {
-          if (node.degree() === 0) {
-            node.addClass("orphan");
-          }
-        });
-
-        // Ensure container dimensions are available before first paint
-        cy.resize();
-        // §87 Force style recalculation for newly added nodes
-        // (without this, nodes from non-active vaults may not render)
-        cy.style().update();
-
-        setNodeCount(nodes.length);
-        setEdgeCount(edges.length);
-
-        // Bind click handler
-        cy.off("tap", "node");
-        cy.on("tap", "node", handleNodeTap);
-      } catch (err) {
-        logger.error("§30 GraphView: failed to load link graph", err);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-    // settingsNodeSize/centerForce/repelForce/linkForce/linkDistance intentionally
-    // omitted: adding them would re-fetch all graph data on every settings tweak,
-    // but dedicated effects (Effect 3, node-size effect) handle those updates.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    rootPath,
-    indexVersion,
-    handleNodeTap,
-    colorByNamespace,
+  // Effect 2: Fetch data + populate cytoscape (extracted hook)
+  const { nodeCount, edgeCount } = useGraphData({
     cyReady,
+    cyRef,
     graphScope,
-    contexts,
-  ]);
+    handleNodeTap,
+    simRef,
+  });
 
   // Effect 3: Apply force settings to the simulation (gentle reheat)
   useEffect(() => {
@@ -448,186 +276,16 @@ export function GraphView() {
     });
   }, [activeFilePath, nodeCount]);
 
-  // Effect 7: Filter logic (rootPath scope, search, orphans, existingFilesOnly)
-  // Scope filter: show nodes under current rootPath + their direct neighbors (1-hop),
-  // so journal workspace shows journal files and the notes they link to.
-  useEffect(() => {
-    const cy = cyRef.current;
-    if (!cy || cy.nodes().length === 0) return;
-
-    // §30.3 Local scope: BFS neighborhood of the active file replaces the
-    // workspace path scope entirely.
-    let localIds: null | Set<string> = null;
-    if (graphScope === "local" && activeFilePath) {
-      const allEdges: Array<{ source: string; target: string }> = [];
-      cy.edges().forEach((edge) => {
-        allEdges.push({
-          source: edge.source().id(),
-          target: edge.target().id(),
-        });
-      });
-      localIds = localSubgraph(allEdges, activeFilePath, localDepth);
-    }
-
-    // Pass 1: find nodes under current workspace rootPath
-    // §87 In All mode, include all vault paths (not just active rootPath)
-    const scopePaths =
-      graphScope === "local"
-        ? []
-        : graphScope === "all"
-          ? useContextStore
-              .getState()
-              .contexts.filter((c) => c.contextType !== "file")
-              .map((c) => c.path)
-          : rootPath
-            ? [rootPath]
-            : [];
-
-    const scopeNodes = new Set<string>();
-    if (scopePaths.length > 0) {
-      cy.nodes().forEach((node) => {
-        if (scopePaths.some((p) => node.id().startsWith(p))) {
-          scopeNodes.add(node.id());
-        }
-      });
-    }
-
-    // Pass 2: include 1-hop neighbors (link targets/sources outside scope)
-    const neighborNodes = new Set<string>();
-    if (scopePaths.length > 0 && scopeNodes.size > 0) {
-      cy.edges().forEach((edge) => {
-        const srcId = edge.source().id();
-        const tgtId = edge.target().id();
-        if (scopeNodes.has(srcId) && !scopeNodes.has(tgtId)) {
-          neighborNodes.add(tgtId);
-        }
-        if (scopeNodes.has(tgtId) && !scopeNodes.has(srcId)) {
-          neighborNodes.add(srcId);
-        }
-      });
-    }
-
-    // If any scope paths exist, apply scope filter
-    const hasScope = scopePaths.length > 0;
-
-    cy.nodes().forEach((node) => {
-      const id = node.id();
-      const label = node.data("label") as string;
-      const isGhost = node.data("isGhost") as boolean | undefined;
-      const isOrphan = node.degree() === 0;
-
-      let visible = true;
-
-      // §30.3 Local scope filter (active file's N-hop neighborhood)
-      if (localIds && !localIds.has(id)) {
-        visible = false;
-      }
-
-      // Workspace scope filter
-      if (
-        visible &&
-        hasScope &&
-        !scopeNodes.has(id) &&
-        !neighborNodes.has(id)
-      ) {
-        visible = false;
-      }
-
-      // Search filter
-      if (visible && !matchesFilter(label, searchQuery)) {
-        visible = false;
-      }
-
-      // Orphan filter
-      if (visible && !showOrphans && isOrphan) {
-        visible = false;
-      }
-
-      // Existing files only filter
-      if (visible && existingFilesOnly && isGhost) {
-        visible = false;
-      }
-
-      // Tag nodes filter
-      const isTag = node.data("isTag") as boolean | undefined;
-      if (visible && !showTags && isTag) {
-        visible = false;
-      }
-
-      // §61 Namespace filter
-      if (visible && namespaceFilter) {
-        const nodeNs = (node.data("namespace") as string) ?? "";
-        if (!nodeNs.toLowerCase().includes(namespaceFilter.toLowerCase())) {
-          visible = false;
-        }
-      }
-
-      node.style("display", visible ? "element" : "none");
-    });
-
-    // Hide edges whose source or target is hidden
-    cy.edges().forEach((edge) => {
-      const src = edge.source();
-      const tgt = edge.target();
-      if (src.style("display") === "none" || tgt.style("display") === "none") {
-        edge.style("display", "none");
-      } else {
-        edge.style("display", "element");
-      }
-    });
-
-    // §30.2 Sync visible elements into the simulation (positions preserved
-    // by id). First sync warms up synchronously and fits the viewport.
-    const sim = simRef.current;
-    if (sim) {
-      const visibleNodes: SimNodeInput[] = [];
-      cy.nodes().forEach((node) => {
-        if (node.style("display") === "none") return;
-        visibleNodes.push({
-          id: node.id(),
-          radius: ((node.data("size") as number) ?? 20) / 2,
-        });
-      });
-      const visibleEdges: SimLinkInput[] = [];
-      cy.edges().forEach((edge) => {
-        if (edge.style("display") === "none") return;
-        visibleEdges.push({
-          source: edge.source().id(),
-          target: edge.target().id(),
-        });
-      });
-      const syncKey = `${visibleNodes
-        .map((n) => n.id)
-        .sort()
-        .join("|")}#${visibleEdges.length}`;
-      if (syncKey !== lastSyncKeyRef.current) {
-        lastSyncKeyRef.current = syncKey;
-        if (!simSyncedOnceRef.current) {
-          simSyncedOnceRef.current = true;
-          sim.setGraph(visibleNodes, visibleEdges, {
-            warmupTicks: 100,
-            alpha: 0.3,
-          });
-          cy.fit(undefined, 30);
-        } else {
-          sim.setGraph(visibleNodes, visibleEdges, { alpha: 0.3 });
-        }
-      }
-    }
-  }, [
-    rootPath,
-    searchQuery,
-    showOrphans,
-    existingFilesOnly,
-    showTags,
-    namespaceFilter,
-    nodeCount,
+  // Effect 7: Visibility filters + simulation sync (extracted hook)
+  useGraphFilter({
+    activeFilePath,
+    cyReady,
+    cyRef,
     edgeCount,
     graphScope,
-    activeFilePath,
-    localDepth,
-    cyReady,
-  ]);
+    nodeCount,
+    simRef,
+  });
 
   // Effect: Update styles when display settings change
   useEffect(() => {
