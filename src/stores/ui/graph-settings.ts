@@ -24,6 +24,12 @@ export interface GraphSettingsState {
   linkThickness: number;
   /** §30.3 Local scope BFS depth (1..3) */
   localDepth: number;
+  /** §30.3d Local scope: follow backlinks (links pointing to the file) */
+  localIncoming: boolean;
+  /** §30.3e Local scope: show links between same-depth neighbors */
+  localNeighborLinks: boolean;
+  /** §30.3d Local scope: follow forward links (links from the file) */
+  localOutgoing: boolean;
 
   namespaceFilter: string;
   // Display
@@ -41,6 +47,9 @@ export interface GraphSettingsState {
   setLinkForce: (v: number) => void;
   setLinkThickness: (v: number) => void;
   setLocalDepth: (v: number) => void;
+  setLocalIncoming: (v: boolean) => void;
+  setLocalNeighborLinks: (v: boolean) => void;
+  setLocalOutgoing: (v: boolean) => void;
   setNamespaceFilter: (v: string) => void;
   setNodeSize: (v: number) => void;
   setRepelForce: (v: number) => void;
@@ -73,6 +82,9 @@ export const useGraphSettingsStore = create<GraphSettingsState>()(
       // §30.3 Scope
       graphScope: "current",
       localDepth: 1,
+      localIncoming: true,
+      localOutgoing: true,
+      localNeighborLinks: true,
 
       // §30.4a Exclusions
       excludedPaths: [],
@@ -102,6 +114,9 @@ export const useGraphSettingsStore = create<GraphSettingsState>()(
       setShowArrows: (v) => set({ showArrows: v }),
       setGraphScope: (v) => set({ graphScope: v }),
       setLocalDepth: (v) => set({ localDepth: v }),
+      setLocalIncoming: (v) => set({ localIncoming: v }),
+      setLocalOutgoing: (v) => set({ localOutgoing: v }),
+      setLocalNeighborLinks: (v) => set({ localNeighborLinks: v }),
       excludeNode: (path) =>
         set((state) =>
           state.excludedPaths.includes(path)

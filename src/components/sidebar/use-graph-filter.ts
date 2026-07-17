@@ -14,7 +14,7 @@ import { useContextStore } from "../../stores/context/context";
 import { useFileStore } from "../../stores/file/file";
 import { useGraphSettingsStore } from "../../stores/ui/graph-settings";
 import { applySearchHighlight } from "./graph-highlight";
-import { localSubgraph } from "./graph-utils";
+import { localSubgraphDepths } from "./graph-utils";
 
 /**
  * Apply visibility filters (workspace/local scope, search, orphans, ghosts,
@@ -51,6 +51,9 @@ export function useGraphFilter(params: {
   const showTags = useGraphSettingsStore((s) => s.showTags);
   const namespaceFilter = useGraphSettingsStore((s) => s.namespaceFilter);
   const localDepth = useGraphSettingsStore((s) => s.localDepth);
+  const localIncoming = useGraphSettingsStore((s) => s.localIncoming);
+  const localOutgoing = useGraphSettingsStore((s) => s.localOutgoing);
+  const localNeighborLinks = useGraphSettingsStore((s) => s.localNeighborLinks);
   const excludedPaths = useGraphSettingsStore((s) => s.excludedPaths);
   const simSyncedOnceRef = useRef(false);
   const lastSyncKeyRef = useRef<null | string>(null);
@@ -60,8 +63,8 @@ export function useGraphFilter(params: {
     if (!cy || cy.nodes().length === 0) return;
 
     // §30.3 Local scope: BFS neighborhood of the active file replaces the
-    // workspace path scope entirely.
-    let localIds: null | Set<string> = null;
+    // workspace path scope entirely. §30.3d direction toggles steer the BFS.
+    let localDepths: Map<string, number> | null = null;
     if (graphScope === "local" && activeFilePath) {
       const allEdges: Array<{ source: string; target: string }> = [];
       cy.edges().forEach((edge) => {
@@ -70,7 +73,10 @@ export function useGraphFilter(params: {
           target: edge.target().id(),
         });
       });
-      localIds = localSubgraph(allEdges, activeFilePath, localDepth);
+      localDepths = localSubgraphDepths(allEdges, activeFilePath, localDepth, {
+        incoming: localIncoming,
+        outgoing: localOutgoing,
+      });
     }
 
     // Pass 1: find nodes under current workspace rootPath
@@ -129,7 +135,7 @@ export function useGraphFilter(params: {
       }
 
       // §30.3 Local scope filter (active file's N-hop neighborhood)
-      if (visible && localIds && !localIds.has(id)) {
+      if (visible && localDepths && !localDepths.has(id)) {
         visible = false;
       }
 
@@ -170,15 +176,25 @@ export function useGraphFilter(params: {
       node.style("display", visible ? "element" : "none");
     });
 
-    // Hide edges whose source or target is hidden
+    // Hide edges whose source or target is hidden.
+    // §30.3e With neighbor-links off, also hide edges between two nodes at
+    // the same BFS depth (links among neighbors); consecutive-depth edges
+    // stay so the local tree skeleton never breaks apart.
     cy.edges().forEach((edge) => {
       const src = edge.source();
       const tgt = edge.target();
-      if (src.style("display") === "none" || tgt.style("display") === "none") {
-        edge.style("display", "none");
-      } else {
-        edge.style("display", "element");
+      let edgeVisible =
+        src.style("display") !== "none" && tgt.style("display") !== "none";
+
+      if (edgeVisible && localDepths && !localNeighborLinks) {
+        const srcDepth = localDepths.get(src.id());
+        const tgtDepth = localDepths.get(tgt.id());
+        if (srcDepth !== undefined && srcDepth === tgtDepth) {
+          edgeVisible = false;
+        }
       }
+
+      edge.style("display", edgeVisible ? "element" : "none");
     });
 
     // §30.2 Sync visible elements into the simulation (positions preserved
@@ -237,6 +253,9 @@ export function useGraphFilter(params: {
     graphScope,
     activeFilePath,
     localDepth,
+    localIncoming,
+    localOutgoing,
+    localNeighborLinks,
     excludedPaths,
     cyReady,
   ]);

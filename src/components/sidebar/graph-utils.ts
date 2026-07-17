@@ -58,6 +58,14 @@ const NS_PALETTE = [
   "#6366f1",
 ];
 
+/** §30.3d BFS edge-direction toggles (both true = undirected traversal) */
+export interface LocalGraphDirections {
+  /** follow links pointing TO the current frontier (backlinks) */
+  incoming: boolean;
+  /** follow links pointing FROM the current frontier (forward links) */
+  outgoing: boolean;
+}
+
 /**
  * Transform a LinkGraph (from Rust IPC) into cytoscape-compatible elements.
  * Deduplicates edges and computes node degrees.
@@ -99,29 +107,44 @@ export function localSubgraph(
   centerId: string,
   depth: number,
 ): Set<string> {
+  return new Set(localSubgraphDepths(edges, centerId, depth).keys());
+}
+
+/**
+ * §30.3d Local graph — BFS from centerId up to `depth` hops, following edge
+ * directions per `directions`. Returns node id → hop depth (center = 0).
+ */
+export function localSubgraphDepths(
+  edges: ReadonlyArray<{ source: string; target: string }>,
+  centerId: string,
+  depth: number,
+  directions: LocalGraphDirections = { incoming: true, outgoing: true },
+): Map<string, number> {
   const adjacency = new Map<string, string[]>();
+  const add = (from: string, to: string) => {
+    if (!adjacency.has(from)) adjacency.set(from, []);
+    adjacency.get(from)!.push(to);
+  };
   for (const e of edges) {
-    if (!adjacency.has(e.source)) adjacency.set(e.source, []);
-    if (!adjacency.has(e.target)) adjacency.set(e.target, []);
-    adjacency.get(e.source)!.push(e.target);
-    adjacency.get(e.target)!.push(e.source);
+    if (directions.outgoing) add(e.source, e.target);
+    if (directions.incoming) add(e.target, e.source);
   }
 
-  const visited = new Set<string>([centerId]);
+  const depths = new Map<string, number>([[centerId, 0]]);
   let frontier = [centerId];
-  for (let hop = 0; hop < depth && frontier.length > 0; hop++) {
+  for (let hop = 1; hop <= depth && frontier.length > 0; hop++) {
     const next: string[] = [];
     for (const id of frontier) {
       for (const neighbor of adjacency.get(id) ?? []) {
-        if (!visited.has(neighbor)) {
-          visited.add(neighbor);
+        if (!depths.has(neighbor)) {
+          depths.set(neighbor, hop);
           next.push(neighbor);
         }
       }
     }
     frontier = next;
   }
-  return visited;
+  return depths;
 }
 
 /**
