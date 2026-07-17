@@ -1,6 +1,8 @@
 // §102 StatusBar favorite-toggle star for the active permanent Zettel note.
-import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { Editor } from "@tiptap/core";
+import { EditorState } from "@tiptap/pm/state";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock(
   "../../../stores/zettelkasten/zettel-favorites",
@@ -19,7 +21,9 @@ vi.mock(
 
 import type { Locale } from "../../../i18n";
 
+import { createBaramExtensions } from "../../../extensions";
 import { t } from "../../../i18n";
+import { markdownToProsemirror } from "../../../pipeline/md-to-pm";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
 import { useWorkspaceStore } from "../../../stores/file/workspace";
@@ -29,6 +33,7 @@ import {
   toggleFavorite,
   useZettelFavoritesStore,
 } from "../../../stores/zettelkasten/zettel-favorites";
+import { markContentLoaded } from "../../../utils/editor/programmatic-update";
 import { StatusBar } from "../StatusBar";
 
 const mockedLoadFavorites = vi.mocked(loadFavorites);
@@ -157,5 +162,54 @@ describe("StatusBar — Perspective launcher", () => {
     );
     fireEvent.click(writingItem);
     expect(useWorkspaceStore.getState().activePresetId).toBe("writing");
+  });
+});
+
+describe("StatusBar — live word count", () => {
+  let editor: Editor | null = null;
+
+  beforeEach(() => {
+    useEditorStore.setState({ activeTabId: null, tabs: [] });
+    useFileStore.getState().setRootPath("/vault");
+  });
+
+  afterEach(() => {
+    editor?.destroy();
+    editor = null;
+  });
+
+  function makeEditor(content: string): Editor {
+    return new Editor({ content, extensions: createBaramExtensions() });
+  }
+
+  it("shows the word count for the document the editor mounts with", () => {
+    editor = makeEditor("alpha beta gamma");
+    render(<StatusBar editor={editor} mode="wysiwyg" />);
+    expect(screen.getByText("3 words")).toBeInTheDocument();
+  });
+
+  it("refreshes the word count on a content-loaded signal even when the swap bypasses editor events (tab switch)", () => {
+    editor = makeEditor("one two");
+    render(<StatusBar editor={editor} mode="wysiwyg" />);
+    expect(screen.getByText("2 words")).toBeInTheDocument();
+
+    // Reproduce a tab switch: content is installed via a direct view.updateState()
+    // (fires no Tiptap update/selectionUpdate event) and then markContentLoaded()
+    // is called — exactly what use-tab-switching does on the shared editor.
+    const nextDoc = markdownToProsemirror(
+      "alpha beta gamma delta epsilon",
+      editor.schema,
+    );
+    const nextState = EditorState.create({
+      doc: nextDoc,
+      plugins: editor.state.plugins,
+    });
+    act(() => {
+      editor!.view.updateState(nextState);
+      markContentLoaded("tab-next");
+    });
+
+    expect(screen.getByText("5 words")).toBeInTheDocument();
+    expect(screen.queryByText("2 words")).not.toBeInTheDocument();
   });
 });

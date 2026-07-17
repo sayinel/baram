@@ -19,6 +19,27 @@ const pendingTabs = new Set<string>();
 const loadingTabs = new Set<string>();
 
 /**
+ * Listeners notified after a tab's content is (re)loaded into the editor.
+ *
+ * Tab switches and source-mode swaps install content via a direct
+ * `editor.view.updateState()`, which bypasses Tiptap's `update`/`selectionUpdate`
+ * events AND reuses the same (stable-reference) shared editor. UI derived from
+ * doc content — e.g. the status-bar word count — therefore has no editor event
+ * to react to on a switch. Subscribing to this signal fills that gap.
+ */
+const contentLoadedListeners = new Set<(tabId: string) => void>();
+
+/** Subscribe to content-loaded notifications. Returns an unsubscribe function. */
+export function subscribeContentLoaded(
+  fn: (tabId: string) => void,
+): () => void {
+  contentLoadedListeners.add(fn);
+  return () => {
+    contentLoadedListeners.delete(fn);
+  };
+}
+
+/**
  * Transaction meta key set by the table colwidth auto-init plugin
  * (createColResizePlugin). Transactions carrying this meta apply auto-measured
  * colwidths with `userResized: false` — load-time normalization that is never
@@ -47,6 +68,9 @@ export function isTabLoading(tabId: string): boolean {
 /** Mark a tab as having just loaded content — the next update will capture baseline */
 export function markContentLoaded(tabId: string): void {
   pendingTabs.add(tabId);
+  // Called synchronously right after the content is installed into the editor,
+  // so listeners read the freshly-loaded doc. See contentLoadedListeners.
+  for (const fn of contentLoadedListeners) fn(tabId);
 }
 
 /**
