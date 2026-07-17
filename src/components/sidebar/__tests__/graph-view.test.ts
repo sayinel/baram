@@ -5,7 +5,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   displayName,
+  localSubgraph,
   matchesFilter,
+  mergeGraphs,
   nodeSize,
   toGraphElements,
 } from "../graph-utils";
@@ -204,6 +206,67 @@ describe("toGraphElements", () => {
     expect(ghosts).toHaveLength(1);
     expect(ghosts[0].data.isGhost).toBe(true);
     expect(ghosts[0].data.degree).toBe(2);
+  });
+});
+
+// ─── mergeGraphs ─────────────────────────────────────
+
+describe("mergeGraphs", () => {
+  it("dedups nodes and edges across graphs", () => {
+    const merged = mergeGraphs([
+      { nodes: ["/a.md", "/b.md"], edges: [{ from: "/a.md", to: "/b.md" }] },
+      {
+        nodes: ["/b.md", "/c.md"],
+        edges: [
+          { from: "/a.md", to: "/b.md" },
+          { from: "/b.md", to: "/c.md" },
+        ],
+      },
+    ]);
+    expect(merged.nodes).toHaveLength(3);
+    expect(merged.edges).toHaveLength(2);
+  });
+
+  it("preserves crossVault flag on edges", () => {
+    const merged = mergeGraphs([
+      {
+        nodes: ["/a.md"],
+        edges: [{ from: "/a.md", to: "/x.md", crossVault: true }],
+      },
+    ]);
+    expect(merged.edges[0].crossVault).toBe(true);
+  });
+
+  it("returns empty graph for empty input", () => {
+    expect(mergeGraphs([])).toEqual({ nodes: [], edges: [] });
+  });
+});
+
+// ─── localSubgraph ───────────────────────────────────
+
+describe("localSubgraph", () => {
+  const edges = [
+    { source: "a", target: "b" },
+    { source: "c", target: "b" }, // undirected: b↔c
+    { source: "c", target: "d" },
+    { source: "e", target: "f" }, // disconnected island
+  ];
+
+  it("depth 1 returns center + direct neighbors (both directions)", () => {
+    expect(localSubgraph(edges, "b", 1)).toEqual(new Set(["a", "b", "c"]));
+  });
+
+  it("depth 2 expands transitively", () => {
+    expect(localSubgraph(edges, "a", 2)).toEqual(new Set(["a", "b", "c"]));
+    expect(localSubgraph(edges, "b", 2)).toEqual(new Set(["a", "b", "c", "d"]));
+  });
+
+  it("unknown center returns only the center", () => {
+    expect(localSubgraph(edges, "zzz", 2)).toEqual(new Set(["zzz"]));
+  });
+
+  it("depth 0 returns only the center", () => {
+    expect(localSubgraph(edges, "b", 0)).toEqual(new Set(["b"]));
   });
 });
 

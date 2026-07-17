@@ -1,30 +1,31 @@
 // §30 Graph View — interactive link graph visualization
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { LinkGraph } from "../../ipc/types";
-import type { Core, EventObject, StylesheetStyle } from "cytoscape";
+import type { GraphSimulation } from "./graph-simulation";
+import type { Core, EventObject } from "cytoscape";
 
-import { getLinkIndex, readFile, refreshIndex } from "../../ipc/invoke";
+import { readFile } from "../../ipc/invoke";
 import { useContextStore } from "../../stores/context/context";
 import { isGraphTab, useEditorStore } from "../../stores/editor/editor";
-import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
 import { useGraphSettingsStore } from "../../stores/ui/graph-settings";
 import { logger } from "../../utils/logger";
-import {
-  assignNamespaceColors,
-  matchesFilter,
-  nodeSize,
-  toGraphElements,
-} from "./graph-utils";
+import { createGraphSimulation } from "./graph-simulation";
+import { buildGraphStyle } from "./graph-style";
+import { nodeSize } from "./graph-utils";
 import { GraphSettingsPanel } from "./GraphSettingsPanel";
+import { useGraphData } from "./use-graph-data";
+import { useGraphFilter } from "./use-graph-filter";
 
 export function GraphView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
+  const simRef = useRef<GraphSimulation | null>(null);
+  const draggedIdRef = useRef<null | string>(null);
   const [cyReady, setCyReady] = useState(false);
   const rootPath = useFileStore((s) => s.rootPath);
-  const [graphScope, setGraphScope] = useState<"all" | "current">("current");
+  const graphScope = useGraphSettingsStore((s) => s.graphScope);
+  const setGraphScope = useGraphSettingsStore((s) => s.setGraphScope);
   const contexts = useContextStore((s) => s.contexts);
   // Detect if rendered inside editor tab (vs sidebar)
   const isInEditorTab = useEditorStore((s) => {
@@ -42,10 +43,22 @@ export function GraphView() {
     }
     return null;
   });
-  const indexVersion = useLinkStore((s) => s.indexVersion);
-  const [nodeCount, setNodeCount] = useState(0);
-  const [edgeCount, setEdgeCount] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
+  const [frozen, setFrozen] = useState(false);
+
+  // §30.3 Freeze = stop the physics; Re-layout = unfreeze + vigorous reheat
+  const handleToggleFreeze = useCallback(() => {
+    setFrozen((prev) => {
+      const next = !prev;
+      simRef.current?.setFrozen(next);
+      return next;
+    });
+  }, []);
+
+  const handleReheat = useCallback(() => {
+    setFrozen(false);
+    simRef.current?.reheat();
+  }, []);
 
   // Graph settings
   const centerForce = useGraphSettingsStore((s) => s.centerForce);
@@ -56,12 +69,7 @@ export function GraphView() {
   const linkThickness = useGraphSettingsStore((s) => s.linkThickness);
   const textFadeThreshold = useGraphSettingsStore((s) => s.textFadeThreshold);
   const showArrows = useGraphSettingsStore((s) => s.showArrows);
-  const searchQuery = useGraphSettingsStore((s) => s.searchQuery);
-  const showOrphans = useGraphSettingsStore((s) => s.showOrphans);
-  const existingFilesOnly = useGraphSettingsStore((s) => s.existingFilesOnly);
-  const showTags = useGraphSettingsStore((s) => s.showTags);
   const colorByNamespace = useGraphSettingsStore((s) => s.colorByNamespace);
-  const namespaceFilter = useGraphSettingsStore((s) => s.namespaceFilter);
 
   const handleOpenInTab = useCallback(() => {
     useEditorStore.getState().openGraphTab();
@@ -75,31 +83,46 @@ export function GraphView() {
     let destroyed = false;
 
     (async () => {
-      const [{ default: cytoscape }, { default: fcose }] = await Promise.all([
-        import("cytoscape"),
-        import("cytoscape-fcose"),
-      ]);
-
-      // Register fcose layout (idempotent — safe to call multiple times)
-      cytoscape.use(fcose);
+      const { default: cytoscape } = await import("cytoscape");
 
       if (destroyed || !containerRef.current) return;
 
       cy = cytoscape({
         container: containerRef.current,
         style: buildGraphStyle({ linkThickness, showArrows, colorByNamespace }),
-        layout: { name: "grid" },
+        layout: { name: "preset" },
         minZoom: 0.1,
         maxZoom: 5,
         wheelSensitivity: 0.3,
       });
 
       cyRef.current = cy;
+
+      // §30.2 Continuous d3-force simulation drives node positions each tick
+      const { centerForce, repelForce, linkForce, linkDistance } =
+        useGraphSettingsStore.getState();
+      simRef.current = createGraphSimulation(
+        { centerForce, repelForce, linkForce, linkDistance },
+        (simNodes) => {
+          const inst = cyRef.current;
+          if (!inst) return;
+          inst.batch(() => {
+            for (const n of simNodes) {
+              // The grabbed node is moved natively by cytoscape
+              if (n.id === draggedIdRef.current) continue;
+              const el = inst.getElementById(n.id);
+              if (el.length > 0) el.position({ x: n.x ?? 0, y: n.y ?? 0 });
+            }
+          });
+        },
+      );
       setCyReady(true);
     })();
 
     return () => {
       destroyed = true;
+      simRef.current?.stop();
+      simRef.current = null;
       if (cy) {
         cy.destroy();
       }
@@ -145,240 +168,54 @@ export function GraphView() {
     }
   }, []);
 
-  // Effect 2: Fetch data + initial layout
-  useEffect(() => {
-    if (!rootPath) return;
-    const cy = cyRef.current;
-    if (!cy) return;
-
-    let cancelled = false;
-
-    (async () => {
-      try {
-        let graph: LinkGraph;
-        let effectiveRootPath = rootPath;
-        let nodeVaultMapRef: Map<string, string> | undefined;
-
-        // §87 Read contexts fresh from store (not closure) to avoid stale data
-        const freshContexts = useContextStore.getState().contexts;
-        if (graphScope === "all" && freshContexts.length > 1) {
-          // §87 Multi-vault: fetch and merge graphs from all contexts
-          const vaultFolderContexts = freshContexts.filter(
-            (c) => c.contextType !== "file",
-          );
-          const graphs: Array<{
-            ctx: (typeof vaultFolderContexts)[0];
-            graph: LinkGraph;
-          }> = [];
-
-          // §87 Fetch existing indices for each vault. Don't call refreshIndex
-          // here — it changes indexVersion which re-triggers this effect and
-          // cancels before completion. Indices are built when vaults are opened.
-          for (const ctx of vaultFolderContexts) {
-            try {
-              const g = await getLinkIndex(ctx.path);
-              if (g.nodes.length > 0) {
-                graphs.push({ ctx, graph: g });
-              }
-            } catch {
-              // Skip contexts that fail
-            }
-          }
-
-          // Merge all graphs into one, tracking node→vault membership
-          const merged = mergeGraphs(graphs.map((g) => g.graph));
-          graph = merged;
-          // §87 Build nodeVaultMap for cross-vault edge detection
-          nodeVaultMapRef = new Map<string, string>();
-          for (const { ctx, graph: g } of graphs) {
-            for (const node of g.nodes) {
-              if (!nodeVaultMapRef.has(node)) {
-                nodeVaultMapRef.set(node, ctx.id);
-              }
-            }
-          }
-          // Use empty string as rootPath so namespace extraction works per-node
-          effectiveRootPath = "";
-        } else {
-          // Single-vault: existing behavior
-          await refreshIndex(rootPath);
-          if (cancelled) return;
-          graph = await getLinkIndex();
-          if (cancelled) return;
-          nodeVaultMapRef = undefined;
-        }
-
-        const { nodes, edges } = toGraphElements(
-          graph,
-          effectiveRootPath || rootPath,
-          nodeVaultMapRef,
-        );
-        const maxNodeSize = Math.min(settingsNodeSize * 3, 80);
-
-        const nodesWithSize = nodes.map((n) => {
-          // §87 In All mode, assign vault color to each node
-          let vaultColor: string | undefined;
-          if (nodeVaultMapRef) {
-            const ctxId = nodeVaultMapRef.get(n.data.id);
-            if (ctxId) {
-              const ctx = useContextStore
-                .getState()
-                .contexts.find((c) => c.id === ctxId);
-              if (ctx) vaultColor = ctx.color;
-            }
-          }
-          return {
-            ...n,
-            data: {
-              ...n.data,
-              size: nodeSize(n.data.degree, settingsNodeSize, maxNodeSize),
-              ...(vaultColor && { vaultColor }),
-            },
-          };
-        });
-
-        // §61 Namespace colors
-        if (colorByNamespace) {
-          const namespaces = nodesWithSize
-            .filter((n) => !n.data.isTag)
-            .map((n) => n.data.namespace ?? "");
-          const nsColorMap = assignNamespaceColors(namespaces);
-          for (const n of nodesWithSize) {
-            if (!n.data.isTag && !n.data.isGhost) {
-              (n.data as Record<string, unknown>).nsColor =
-                nsColorMap.get(n.data.namespace ?? "") ?? "";
-            }
-          }
-        }
-
-        cy.elements().remove();
-        cy.add([...nodesWithSize, ...edges] as cytoscape.ElementDefinition[]);
-
-        // Mark orphan nodes
-        cy.nodes().forEach((node) => {
-          if (node.degree() === 0) {
-            node.addClass("orphan");
-          }
-        });
-
-        // Ensure container dimensions are available before layout
-        cy.resize();
-
-        // Run initial fcose layout and fit after completion
-        await new Promise<void>((resolve) => {
-          const layout = cy.layout(
-            buildLayoutOptions(
-              { centerForce, repelForce, linkForce, linkDistance },
-              { randomize: true, animate: false, fit: true },
-            ),
-          );
-          layout.one("layoutstop", () => {
-            // §87 Force style recalculation for newly added nodes
-            // (without this, nodes from non-active vaults may not render)
-            cy.style().update();
-            cy.fit(undefined, 30);
-            resolve();
-          });
-          layout.run();
-        });
-        setNodeCount(nodes.length);
-        setEdgeCount(edges.length);
-
-        // Bind click handler
-        cy.off("tap", "node");
-        cy.on("tap", "node", handleNodeTap);
-      } catch (err) {
-        logger.error("§30 GraphView: failed to load link graph", err);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-    // settingsNodeSize/centerForce/repelForce/linkForce/linkDistance intentionally
-    // omitted: adding them would re-fetch all graph data on every settings tweak,
-    // but dedicated effects (Effect 3, node-size effect) handle those updates.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    rootPath,
-    indexVersion,
-    handleNodeTap,
-    colorByNamespace,
+  // Effect 2: Fetch data + populate cytoscape (extracted hook)
+  const { nodeCount, edgeCount } = useGraphData({
     cyReady,
+    cyRef,
     graphScope,
-    contexts,
-  ]);
+    handleNodeTap,
+    simRef,
+  });
 
-  // Effect 3: Re-layout on force settings change
+  // Effect 3: Apply force settings to the simulation (gentle reheat)
   useEffect(() => {
-    const cy = cyRef.current;
-    if (!cy || cy.nodes().length === 0) return;
-
-    cy.layout(
-      buildLayoutOptions(
-        { centerForce, repelForce, linkForce, linkDistance },
-        { randomize: false, animate: true, fit: false },
-      ),
-    ).run();
+    simRef.current?.updateForces({
+      centerForce,
+      repelForce,
+      linkForce,
+      linkDistance,
+    });
   }, [centerForce, repelForce, linkForce, linkDistance]);
 
-  // Effect 4: Real-time spring physics during drag + settle on release
+  // Effect 4: Drag → pin node in the simulation and reheat so linked
+  // neighbors follow and the whole graph re-settles (Logseq-style). §30.2
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
 
-    const SPRING_K = 0.06; // spring constant — how strongly neighbors follow
-    const DAMPING = 0.5; // reduce overshoot
-
+    const handleGrab = (evt: EventObject) => {
+      const id = evt.target.id() as string;
+      draggedIdRef.current = id;
+      simRef.current?.startDrag(id);
+    };
     const handleDrag = (evt: EventObject) => {
-      const node = evt.target;
-      const pos = node.position();
-      const neighbors = node.neighborhood().nodes();
-
-      neighbors.forEach((neighbor: cytoscape.NodeSingular) => {
-        if (neighbor.grabbed()) return;
-        const nPos = neighbor.position();
-        const dx = pos.x - nPos.x;
-        const dy = pos.y - nPos.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 1) return;
-
-        const idealDist = linkDistance;
-        const displacement = dist - idealDist;
-        const force = displacement * SPRING_K * DAMPING;
-        const fx = (dx / dist) * force;
-        const fy = (dy / dist) * force;
-
-        neighbor.position({
-          x: nPos.x + fx,
-          y: nPos.y + fy,
-        });
-      });
+      const pos = evt.target.position();
+      simRef.current?.drag(evt.target.id() as string, pos.x, pos.y);
     };
-
     const handleFree = (evt: EventObject) => {
-      const node = evt.target;
-      const pos = node.position();
-      cy.layout(
-        buildLayoutOptions(
-          { centerForce, repelForce, linkForce, linkDistance },
-          {
-            randomize: false,
-            animate: true,
-            fit: false,
-            fixedNodeConstraint: [{ nodeId: node.id(), position: pos }],
-          },
-        ),
-      ).run();
+      draggedIdRef.current = null;
+      simRef.current?.endDrag(evt.target.id() as string);
     };
 
+    cy.on("grab", "node", handleGrab);
     cy.on("drag", "node", handleDrag);
     cy.on("free", "node", handleFree);
     return () => {
+      cy.off("grab", "node", handleGrab);
       cy.off("drag", "node", handleDrag);
       cy.off("free", "node", handleFree);
     };
-  }, [centerForce, repelForce, linkForce, linkDistance]);
+  }, [cyReady]);
 
   // Effect 5: Hover highlight events
   useEffect(() => {
@@ -411,7 +248,7 @@ export function GraphView() {
       cy.off("mouseover", "node", handleMouseOver);
       cy.off("mouseout", "node", handleMouseOut);
     };
-  }, []);
+  }, [cyReady]);
 
   // Effect 6: Highlight active file node
   useEffect(() => {
@@ -439,117 +276,16 @@ export function GraphView() {
     });
   }, [activeFilePath, nodeCount]);
 
-  // Effect 7: Filter logic (rootPath scope, search, orphans, existingFilesOnly)
-  // Scope filter: show nodes under current rootPath + their direct neighbors (1-hop),
-  // so journal workspace shows journal files and the notes they link to.
-  useEffect(() => {
-    const cy = cyRef.current;
-    if (!cy || cy.nodes().length === 0) return;
-
-    // Pass 1: find nodes under current workspace rootPath
-    // §87 In All mode, include all vault paths (not just active rootPath)
-    const scopePaths =
-      graphScope === "all"
-        ? useContextStore
-            .getState()
-            .contexts.filter((c) => c.contextType !== "file")
-            .map((c) => c.path)
-        : rootPath
-          ? [rootPath]
-          : [];
-
-    const scopeNodes = new Set<string>();
-    if (scopePaths.length > 0) {
-      cy.nodes().forEach((node) => {
-        if (scopePaths.some((p) => node.id().startsWith(p))) {
-          scopeNodes.add(node.id());
-        }
-      });
-    }
-
-    // Pass 2: include 1-hop neighbors (link targets/sources outside scope)
-    const neighborNodes = new Set<string>();
-    if (scopePaths.length > 0 && scopeNodes.size > 0) {
-      cy.edges().forEach((edge) => {
-        const srcId = edge.source().id();
-        const tgtId = edge.target().id();
-        if (scopeNodes.has(srcId) && !scopeNodes.has(tgtId)) {
-          neighborNodes.add(tgtId);
-        }
-        if (scopeNodes.has(tgtId) && !scopeNodes.has(srcId)) {
-          neighborNodes.add(srcId);
-        }
-      });
-    }
-
-    // If any scope paths exist, apply scope filter
-    const hasScope = scopePaths.length > 0;
-
-    cy.nodes().forEach((node) => {
-      const id = node.id();
-      const label = node.data("label") as string;
-      const isGhost = node.data("isGhost") as boolean | undefined;
-      const isOrphan = node.degree() === 0;
-
-      let visible = true;
-
-      // Workspace scope filter
-      if (hasScope && !scopeNodes.has(id) && !neighborNodes.has(id)) {
-        visible = false;
-      }
-
-      // Search filter
-      if (visible && !matchesFilter(label, searchQuery)) {
-        visible = false;
-      }
-
-      // Orphan filter
-      if (visible && !showOrphans && isOrphan) {
-        visible = false;
-      }
-
-      // Existing files only filter
-      if (visible && existingFilesOnly && isGhost) {
-        visible = false;
-      }
-
-      // Tag nodes filter
-      const isTag = node.data("isTag") as boolean | undefined;
-      if (visible && !showTags && isTag) {
-        visible = false;
-      }
-
-      // §61 Namespace filter
-      if (visible && namespaceFilter) {
-        const nodeNs = (node.data("namespace") as string) ?? "";
-        if (!nodeNs.toLowerCase().includes(namespaceFilter.toLowerCase())) {
-          visible = false;
-        }
-      }
-
-      node.style("display", visible ? "element" : "none");
-    });
-
-    // Hide edges whose source or target is hidden
-    cy.edges().forEach((edge) => {
-      const src = edge.source();
-      const tgt = edge.target();
-      if (src.style("display") === "none" || tgt.style("display") === "none") {
-        edge.style("display", "none");
-      } else {
-        edge.style("display", "element");
-      }
-    });
-  }, [
-    rootPath,
-    searchQuery,
-    showOrphans,
-    existingFilesOnly,
-    showTags,
-    namespaceFilter,
-    nodeCount,
+  // Effect 7: Visibility filters + simulation sync (extracted hook)
+  useGraphFilter({
+    activeFilePath,
+    cyReady,
+    cyRef,
+    edgeCount,
     graphScope,
-  ]);
+    nodeCount,
+    simRef,
+  });
 
   // Effect: Update styles when display settings change
   useEffect(() => {
@@ -573,6 +309,13 @@ export function GraphView() {
       const degree = node.data("degree") as number;
       node.data("size", nodeSize(degree, settingsNodeSize, maxSize));
     });
+
+    // §30.2 Keep collide radii in sync with rendered node sizes
+    const radii = new Map<string, number>();
+    cy.nodes().forEach((node) => {
+      radii.set(node.id(), (node.data("size") as number) / 2);
+    });
+    simRef.current?.updateRadii(radii);
   }, [settingsNodeSize]);
 
   // Effect: Zoom label fade
@@ -596,7 +339,7 @@ export function GraphView() {
     return () => {
       cy.off("zoom", handleZoom);
     };
-  }, [textFadeThreshold]);
+  }, [textFadeThreshold, cyReady]);
 
   if (!rootPath) {
     return (
@@ -613,23 +356,53 @@ export function GraphView() {
         <span className="graph-view-stats">
           {nodeCount} nodes, {edgeCount} edges
         </span>
-        {contexts.length > 1 && (
-          <div className="graph-scope">
-            <button
-              className={`graph-scope__btn ${graphScope === "current" ? "graph-scope__btn--active" : ""}`}
-              onClick={() => setGraphScope("current")}
-            >
-              Current
-            </button>
+        <div className="graph-scope">
+          <button
+            className={`graph-scope__btn ${graphScope === "current" ? "graph-scope__btn--active" : ""}`}
+            onClick={() => setGraphScope("current")}
+          >
+            Current
+          </button>
+          {contexts.length > 1 && (
             <button
               className={`graph-scope__btn ${graphScope === "all" ? "graph-scope__btn--active" : ""}`}
               onClick={() => setGraphScope("all")}
             >
               All
             </button>
-          </div>
-        )}
+          )}
+          <button
+            className={`graph-scope__btn ${graphScope === "local" ? "graph-scope__btn--active" : ""}`}
+            disabled={!activeFilePath}
+            onClick={() => setGraphScope("local")}
+            title="Show only the active file's neighborhood"
+          >
+            Local
+          </button>
+        </div>
         <div className="graph-view-header-actions">
+          <button
+            className="graph-view-settings-btn btn-unstyled"
+            onClick={handleToggleFreeze}
+            title={frozen ? "Resume physics" : "Freeze layout"}
+          >
+            <svg fill="currentColor" height="14" viewBox="0 0 16 16" width="14">
+              {frozen ? (
+                <path d="M5 3.5v9l7-4.5-7-4.5z" />
+              ) : (
+                <path d="M5 3h2.2v10H5zM8.8 3H11v10H8.8z" />
+              )}
+            </svg>
+          </button>
+          <button
+            className="graph-view-settings-btn btn-unstyled"
+            onClick={handleReheat}
+            title="Re-layout"
+          >
+            <svg fill="currentColor" height="14" viewBox="0 0 16 16" width="14">
+              <path d="M8 3a5 5 0 1 0 4.9 4h-1.5A3.6 3.6 0 1 1 8 4.4V7l4-3-4-3v2z" />
+            </svg>
+          </button>
           <button
             className="graph-view-settings-btn btn-unstyled"
             onClick={() => setShowSettings((v) => !v)}
@@ -662,234 +435,4 @@ export function GraphView() {
       <div className="graph-view-canvas" ref={containerRef} />
     </div>
   );
-}
-
-/** Build dynamic Cytoscape stylesheet from settings */
-function buildGraphStyle(settings: {
-  colorByNamespace: boolean;
-  linkThickness: number;
-  showArrows: boolean;
-}): StylesheetStyle[] {
-  return [
-    {
-      selector: "node",
-      style: {
-        label: "data(label)",
-        "font-size": 10,
-        "text-valign": "bottom",
-        "text-margin-y": 4,
-        "text-max-width": "80px",
-        "text-wrap": "ellipsis",
-        "background-color": "var(--graph-node-color, #6b7280)",
-        width: "data(size)",
-        height: "data(size)",
-        color: "var(--graph-label-color, #d1d5db)",
-        "transition-property":
-          "opacity, border-width, border-color, background-color",
-        "transition-duration": 150,
-      } as cytoscape.Css.Node,
-    },
-    // §61 Namespace coloring — uses data(nsColor) set per-node
-    ...(settings.colorByNamespace
-      ? [
-          {
-            selector: "node[nsColor]",
-            style: {
-              "background-color": "data(nsColor)",
-            } as cytoscape.Css.Node,
-          },
-        ]
-      : []),
-    {
-      selector: "node:selected",
-      style: {
-        "background-color": "var(--graph-active-color, #3b82f6)",
-        "border-width": 2,
-        "border-color": "var(--graph-active-border, #60a5fa)",
-        "background-blacken": 0,
-      } as cytoscape.Css.Node,
-    },
-    {
-      selector: "node.active",
-      style: {
-        "background-color": "var(--graph-active-color, #3b82f6)",
-        "border-width": 2,
-        "border-color": "var(--graph-active-border, #60a5fa)",
-      },
-    },
-    {
-      selector: "node.neighbor",
-      style: {
-        "background-color": "var(--graph-neighbor-color, #8b5cf6)",
-      },
-    },
-    {
-      selector: "node.orphan",
-      style: {
-        "background-color": "var(--graph-orphan-color, #4b5563)",
-        opacity: 0.6,
-      },
-    },
-    // §87 Multi-vault: color nodes by vault context color
-    {
-      selector: "node[vaultColor]",
-      style: {
-        "background-color": "data(vaultColor)",
-      } as cytoscape.Css.Node,
-    },
-    {
-      selector: "node[?isGhost]",
-      style: {
-        "background-color": "transparent",
-        "border-width": 1.5,
-        "border-color": "var(--graph-node-color, #6b7280)",
-        "border-style": "dashed" as never,
-      },
-    },
-    {
-      selector: "node[?isTag]",
-      style: {
-        shape: "diamond",
-        "background-color": "var(--color-graph-tag, #f59e0b)",
-        "font-size": 9,
-        "text-valign": "bottom",
-        "text-margin-y": 6,
-      } as cytoscape.Css.Node,
-    },
-    {
-      selector: "edge",
-      style: {
-        width: settings.linkThickness,
-        "line-color": "var(--graph-edge-color, #374151)",
-        "curve-style": "bezier",
-        "target-arrow-shape": settings.showArrows ? "triangle" : "none",
-        "target-arrow-color": "var(--graph-edge-color, #374151)",
-        "arrow-scale": 0.6,
-        opacity: 0.5,
-        "transition-property": "opacity, line-color, width",
-        "transition-duration": 150,
-      } as cytoscape.Css.Edge,
-    },
-    {
-      selector: "edge.highlighted",
-      style: {
-        "line-color": "var(--graph-active-color, #3b82f6)",
-        "target-arrow-color": "var(--graph-active-color, #3b82f6)",
-        opacity: 1,
-        width: Math.max(settings.linkThickness * 2, 2),
-      },
-    },
-    // Hover effects
-    {
-      selector: "node.faded",
-      style: {
-        opacity: 0.15,
-      },
-    },
-    {
-      selector: "edge.faded",
-      style: {
-        opacity: 0.08,
-      },
-    },
-    {
-      selector: "node.hover",
-      style: {
-        "border-width": 2,
-        "border-color": "var(--graph-active-border, #60a5fa)",
-        "z-index": 10,
-      },
-    },
-    {
-      selector: "node.hover-neighbor",
-      style: {
-        opacity: 1,
-        "border-width": 1,
-        "border-color": "var(--graph-neighbor-color, #8b5cf6)",
-      },
-    },
-    {
-      selector: "edge.hover-edge",
-      style: {
-        opacity: 0.8,
-        "line-color": "var(--graph-active-color, #3b82f6)",
-        "target-arrow-color": "var(--graph-active-color, #3b82f6)",
-        width: Math.max(settings.linkThickness * 1.5, 1.5),
-      },
-    },
-    // §87 Cross-vault edges: dashed line
-    {
-      selector: "edge[?crossVault]",
-      style: {
-        "line-style": "dashed",
-        "line-dash-pattern": [6, 3],
-        "line-color": "var(--graph-cross-vault-edge, #8b5cf6)",
-        "target-arrow-color": "var(--graph-cross-vault-edge, #8b5cf6)",
-        opacity: 0.6,
-      } as cytoscape.Css.Edge,
-    },
-    // Zoom label fade
-    {
-      selector: "node.labels-hidden",
-      style: {
-        "text-opacity": 0,
-      },
-    },
-  ];
-}
-
-/** Build fcose layout options from settings */
-function buildLayoutOptions(
-  settings: {
-    centerForce: number;
-    linkDistance: number;
-    linkForce: number;
-    repelForce: number;
-  },
-  opts?: {
-    animate?: boolean;
-    fit?: boolean;
-    fixedNodeConstraint?: unknown[];
-    randomize?: boolean;
-  },
-) {
-  return {
-    name: "fcose" as const,
-    randomize: opts?.randomize ?? true,
-    animate: opts?.animate ?? false,
-    animationDuration: 250,
-    fit: opts?.fit ?? true,
-    padding: 30,
-    nodeRepulsion: () => settings.repelForce * 1000,
-    idealEdgeLength: () => settings.linkDistance,
-    edgeElasticity: () => settings.linkForce * 200,
-    gravity: settings.centerForce,
-    numIter: 500,
-    fixedNodeConstraint: opts?.fixedNodeConstraint,
-  };
-}
-
-/**
- * §87 Merge multiple LinkGraphs into one.
- * Deduplicates nodes and edges across vaults.
- */
-function mergeGraphs(graphs: LinkGraph[]): LinkGraph {
-  const nodeSet = new Set<string>();
-  const edgeSet = new Set<string>();
-  const edges: Array<{ from: string; to: string }> = [];
-
-  for (const g of graphs) {
-    for (const node of g.nodes) {
-      nodeSet.add(node);
-    }
-    for (const edge of g.edges) {
-      const key = `${edge.from}\0${edge.to}`;
-      if (!edgeSet.has(key)) {
-        edgeSet.add(key);
-        edges.push(edge);
-      }
-    }
-  }
-
-  return { nodes: [...nodeSet], edges };
 }
