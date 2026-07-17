@@ -117,6 +117,37 @@ export function buildGraphStyle(settings: {
         width: Math.max(settings.linkThickness * 2, 2),
       },
     },
+    // §30.3a Search highlight (defined before hover so hover wins during it)
+    {
+      selector: "node.search-match",
+      style: {
+        opacity: 1,
+        "border-width": 2,
+        "border-color": "var(--graph-active-border, #60a5fa)",
+        "z-index": 9,
+      },
+    },
+    {
+      selector: "node.search-dim",
+      style: {
+        opacity: 0.15,
+      },
+    },
+    {
+      selector: "edge.search-dim",
+      style: {
+        opacity: 0.08,
+      },
+    },
+    // §30.3c Pinned nodes
+    {
+      selector: "node.pinned",
+      style: {
+        "border-width": 2,
+        "border-color": "var(--graph-pinned-color, #f59e0b)",
+        "border-style": "double" as never,
+      },
+    },
     // Hover effects
     {
       selector: "node.faded",

@@ -187,6 +187,81 @@ describe("createGraphSimulation", () => {
     sim.stop();
   });
 
+  it("pin fixes a node against simulation forces", () => {
+    const sim = makeSim();
+    sim.setGraph(
+      [
+        { id: "a", radius: 10 },
+        { id: "b", radius: 10 },
+      ],
+      [{ source: "a", target: "b" }],
+    );
+    sim.tickSync(50);
+    sim.pin("a");
+    const a = sim.getNodes().find((n) => n.id === "a")!;
+    const pinned = { x: a.x, y: a.y };
+    sim.tickSync(200);
+    expect(a.x).toBe(pinned.x);
+    expect(a.y).toBe(pinned.y);
+    expect(sim.isPinned("a")).toBe(true);
+    sim.stop();
+  });
+
+  it("unpin releases the node back to the simulation", () => {
+    const sim = makeSim();
+    sim.setGraph([{ id: "a", radius: 10 }], []);
+    sim.pin("a");
+    sim.unpin("a");
+    const a = sim.getNodes()[0];
+    expect(a.fx).toBeNull();
+    expect(a.fy).toBeNull();
+    expect(sim.isPinned("a")).toBe(false);
+    sim.stop();
+  });
+
+  it("endDrag keeps a pinned node at its drop position", () => {
+    const sim = makeSim();
+    sim.setGraph(
+      [
+        { id: "a", radius: 10 },
+        { id: "b", radius: 10 },
+      ],
+      [{ source: "a", target: "b" }],
+    );
+    sim.tickSync(50);
+    sim.pin("a");
+    sim.startDrag("a");
+    sim.drag("a", 300, 200);
+    sim.endDrag("a");
+    expect(sim.getNodes().find((n) => n.id === "a")!.fx).toBe(300);
+    sim.tickSync(100);
+    const a = sim.getNodes().find((n) => n.id === "a")!;
+    expect(a.x).toBe(300);
+    expect(a.y).toBe(200);
+    sim.stop();
+  });
+
+  it("pins survive setGraph swaps", () => {
+    const sim = makeSim();
+    sim.setGraph([{ id: "a", radius: 10 }], []);
+    sim.tickSync(10);
+    sim.pin("a");
+    const a = { ...sim.getNodes()[0] };
+    sim.setGraph(
+      [
+        { id: "a", radius: 10 },
+        { id: "b", radius: 10 },
+      ],
+      [],
+    );
+    const after = sim.getNodes().find((n) => n.id === "a")!;
+    expect(sim.isPinned("a")).toBe(true);
+    expect(after.fx).toBeCloseTo(a.x ?? 0, 5);
+    expect(after.fy).toBeCloseTo(a.y ?? 0, 5);
+    expect(sim.getPinnedIds().has("a")).toBe(true);
+    sim.stop();
+  });
+
   it("updateRadii changes collide footprint", () => {
     const sim = makeSim();
     sim.setGraph(

@@ -13,7 +13,8 @@ import type { Core } from "cytoscape";
 import { useContextStore } from "../../stores/context/context";
 import { useFileStore } from "../../stores/file/file";
 import { useGraphSettingsStore } from "../../stores/ui/graph-settings";
-import { localSubgraph, matchesFilter } from "./graph-utils";
+import { applySearchHighlight } from "./graph-highlight";
+import { localSubgraph } from "./graph-utils";
 
 /**
  * Apply visibility filters (workspace/local scope, search, orphans, ghosts,
@@ -50,6 +51,7 @@ export function useGraphFilter(params: {
   const showTags = useGraphSettingsStore((s) => s.showTags);
   const namespaceFilter = useGraphSettingsStore((s) => s.namespaceFilter);
   const localDepth = useGraphSettingsStore((s) => s.localDepth);
+  const excludedPaths = useGraphSettingsStore((s) => s.excludedPaths);
   const simSyncedOnceRef = useRef(false);
   const lastSyncKeyRef = useRef<null | string>(null);
 
@@ -111,17 +113,23 @@ export function useGraphFilter(params: {
 
     // If any scope paths exist, apply scope filter
     const hasScope = scopePaths.length > 0;
+    // §30.4a Context-menu exclusions
+    const excluded = new Set(excludedPaths);
 
     cy.nodes().forEach((node) => {
       const id = node.id();
-      const label = node.data("label") as string;
       const isGhost = node.data("isGhost") as boolean | undefined;
       const isOrphan = node.degree() === 0;
 
       let visible = true;
 
+      // §30.4a Excluded via context menu
+      if (excluded.has(id)) {
+        visible = false;
+      }
+
       // §30.3 Local scope filter (active file's N-hop neighborhood)
-      if (localIds && !localIds.has(id)) {
+      if (visible && localIds && !localIds.has(id)) {
         visible = false;
       }
 
@@ -132,11 +140,6 @@ export function useGraphFilter(params: {
         !scopeNodes.has(id) &&
         !neighborNodes.has(id)
       ) {
-        visible = false;
-      }
-
-      // Search filter
-      if (visible && !matchesFilter(label, searchQuery)) {
         visible = false;
       }
 
@@ -216,6 +219,10 @@ export function useGraphFilter(params: {
         }
       }
     }
+
+    // §30.3a Search highlights matches instead of filtering — visibility
+    // (and therefore the simulation) is unaffected by typing.
+    applySearchHighlight(cy, searchQuery);
   }, [
     cyRef,
     simRef,
@@ -230,6 +237,7 @@ export function useGraphFilter(params: {
     graphScope,
     activeFilePath,
     localDepth,
+    excludedPaths,
     cyReady,
   ]);
 }
