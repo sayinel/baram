@@ -100,6 +100,31 @@ export function matchesFilter(label: string, query: string): boolean {
 }
 
 /**
+ * §87 Merge multiple LinkGraphs into one.
+ * Deduplicates nodes and edges across vaults.
+ */
+export function mergeGraphs(graphs: LinkGraph[]): LinkGraph {
+  const nodeSet = new Set<string>();
+  const edgeSet = new Set<string>();
+  const edges: LinkGraph["edges"] = [];
+
+  for (const g of graphs) {
+    for (const node of g.nodes) {
+      nodeSet.add(node);
+    }
+    for (const edge of g.edges) {
+      const key = `${edge.from}\0${edge.to}`;
+      if (!edgeSet.has(key)) {
+        edgeSet.add(key);
+        edges.push(edge);
+      }
+    }
+  }
+
+  return { nodes: [...nodeSet], edges };
+}
+
+/**
  * Compute node size based on degree (more connections = larger node).
  * Returns a value between minSize and maxSize.
  */

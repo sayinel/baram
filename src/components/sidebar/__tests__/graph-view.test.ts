@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   displayName,
   matchesFilter,
+  mergeGraphs,
   nodeSize,
   toGraphElements,
 } from "../graph-utils";
@@ -204,6 +205,39 @@ describe("toGraphElements", () => {
     expect(ghosts).toHaveLength(1);
     expect(ghosts[0].data.isGhost).toBe(true);
     expect(ghosts[0].data.degree).toBe(2);
+  });
+});
+
+// ─── mergeGraphs ─────────────────────────────────────
+
+describe("mergeGraphs", () => {
+  it("dedups nodes and edges across graphs", () => {
+    const merged = mergeGraphs([
+      { nodes: ["/a.md", "/b.md"], edges: [{ from: "/a.md", to: "/b.md" }] },
+      {
+        nodes: ["/b.md", "/c.md"],
+        edges: [
+          { from: "/a.md", to: "/b.md" },
+          { from: "/b.md", to: "/c.md" },
+        ],
+      },
+    ]);
+    expect(merged.nodes).toHaveLength(3);
+    expect(merged.edges).toHaveLength(2);
+  });
+
+  it("preserves crossVault flag on edges", () => {
+    const merged = mergeGraphs([
+      {
+        nodes: ["/a.md"],
+        edges: [{ from: "/a.md", to: "/x.md", crossVault: true }],
+      },
+    ]);
+    expect(merged.edges[0].crossVault).toBe(true);
+  });
+
+  it("returns empty graph for empty input", () => {
+    expect(mergeGraphs([])).toEqual({ nodes: [], edges: [] });
   });
 });
 
