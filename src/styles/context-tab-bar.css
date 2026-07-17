@@ -70,9 +70,13 @@
   border-radius: 3px;
 }
 
-/* Close button on tab */
+/* Close button on tab — always laid out (space reserved) so revealing the X on
+   hover doesn't widen the tab and shove the tabs after it to the right. Only its
+   visibility toggles on hover; a hidden element also drops pointer events, so the
+   X stays unclickable until the tab is hovered. */
 .context-tab__close {
-  display: none;
+  display: inline-flex;
+  visibility: hidden;
   align-items: center;
   justify-content: center;
   padding: 1px;
@@ -85,7 +89,7 @@
 }
 
 .context-tab:hover .context-tab__close {
-  display: inline-flex;
+  visibility: visible;
 }
 
 .context-tab__close:hover {
