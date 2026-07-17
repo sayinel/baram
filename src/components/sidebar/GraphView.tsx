@@ -61,6 +61,21 @@ export function GraphView() {
   const [nodeCount, setNodeCount] = useState(0);
   const [edgeCount, setEdgeCount] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
+  const [frozen, setFrozen] = useState(false);
+
+  // §30.3 Freeze = stop the physics; Re-layout = unfreeze + vigorous reheat
+  const handleToggleFreeze = useCallback(() => {
+    setFrozen((prev) => {
+      const next = !prev;
+      simRef.current?.setFrozen(next);
+      return next;
+    });
+  }, []);
+
+  const handleReheat = useCallback(() => {
+    setFrozen(false);
+    simRef.current?.reheat();
+  }, []);
 
   // Graph settings
   const centerForce = useGraphSettingsStore((s) => s.centerForce);
@@ -708,6 +723,28 @@ export function GraphView() {
           </button>
         </div>
         <div className="graph-view-header-actions">
+          <button
+            className="graph-view-settings-btn btn-unstyled"
+            onClick={handleToggleFreeze}
+            title={frozen ? "Resume physics" : "Freeze layout"}
+          >
+            <svg fill="currentColor" height="14" viewBox="0 0 16 16" width="14">
+              {frozen ? (
+                <path d="M5 3.5v9l7-4.5-7-4.5z" />
+              ) : (
+                <path d="M5 3h2.2v10H5zM8.8 3H11v10H8.8z" />
+              )}
+            </svg>
+          </button>
+          <button
+            className="graph-view-settings-btn btn-unstyled"
+            onClick={handleReheat}
+            title="Re-layout"
+          >
+            <svg fill="currentColor" height="14" viewBox="0 0 16 16" width="14">
+              <path d="M8 3a5 5 0 1 0 4.9 4h-1.5A3.6 3.6 0 1 1 8 4.4V7l4-3-4-3v2z" />
+            </svg>
+          </button>
           <button
             className="graph-view-settings-btn btn-unstyled"
             onClick={() => setShowSettings((v) => !v)}
