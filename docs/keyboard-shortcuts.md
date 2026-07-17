@@ -86,10 +86,10 @@ Complete list of keyboard shortcuts available in Baram.
 
 <!-- colwidths:182,130,153 -->
 
-| Action               | macOS         | Windows / Linux |
-| -------------------- | ------------- | --------------- |
-| Source Mode Toggle   | `Cmd+/`       | `Ctrl+/`        |
-| Toggle Left Sidebar  | `Cmd+Shift+L` | `Ctrl+Shift+L`  |
+| Action              | macOS         | Windows / Linux |
+| ------------------- | ------------- | --------------- |
+| Source Mode Toggle  | `Cmd+/`       | `Ctrl+/`        |
+| Toggle Left Sidebar | `Cmd+Shift+L` | `Ctrl+Shift+L`  |
 
 ## Navigation
 
@@ -131,12 +131,12 @@ Complete list of keyboard shortcuts available in Baram.
 
 <!-- colwidths:188,139,153 -->
 
-| Action                    | macOS          | Windows / Linux |
-| ------------------------- | -------------- | --------------- |
-| Workspace: Writing        | `Cmd+Option+1` | `Ctrl+Alt+1`    |
-| Workspace: Zettel         | `Cmd+Option+2` | `Ctrl+Alt+2`    |
-| Workspace: Journal        | `Cmd+Option+3` | `Ctrl+Alt+3`    |
-| Workspace: Skills         | `Cmd+Option+4` | `Ctrl+Alt+4`    |
+| Action             | macOS          | Windows / Linux |
+| ------------------ | -------------- | --------------- |
+| Workspace: Writing | `Cmd+Option+1` | `Ctrl+Alt+1`    |
+| Workspace: Zettel  | `Cmd+Option+2` | `Ctrl+Alt+2`    |
+| Workspace: Journal | `Cmd+Option+3` | `Ctrl+Alt+3`    |
+| Workspace: Skills  | `Cmd+Option+4` | `Ctrl+Alt+4`    |
 
 > All four workspace presets are customizable in **Settings > Keybindings**. Switching to a space never force-closes an open folder tree.
 
@@ -144,11 +144,11 @@ Complete list of keyboard shortcuts available in Baram.
 
 > Journal shortcuts use dedicated `Cmd+Shift` letters chosen to avoid the editor and app shortcuts (Mermaid, Math Block, Export, Command Palette), so there are no conflicts.
 
-| Action                    | macOS         | Windows / Linux |
-| ------------------------- | ------------- | --------------- |
-| Open Today's Journal      | `Cmd+Shift+J` | `Ctrl+Shift+J`  |
-| Toggle Memories View      | `Cmd+Shift+R` | `Ctrl+Shift+R`  |
-| Photo Gallery             | `Cmd+Shift+I` | `Ctrl+Shift+I`  |
+| Action               | macOS         | Windows / Linux |
+| -------------------- | ------------- | --------------- |
+| Open Today's Journal | `Cmd+Shift+J` | `Ctrl+Shift+J`  |
+| Toggle Memories View | `Cmd+Shift+R` | `Ctrl+Shift+R`  |
+| Photo Gallery        | `Cmd+Shift+I` | `Ctrl+Shift+I`  |
 
 ## Zettel
 
@@ -157,6 +157,7 @@ Complete list of keyboard shortcuts available in Baram.
 | Action                    | macOS         | Windows / Linux |
 | ------------------------- | ------------- | --------------- |
 | Quick Capture (→ inbox)   | `Cmd+Shift+N` | `Ctrl+Shift+N`  |
+| Save capture (in dialog)  | `Cmd+Enter`   | `Ctrl+Enter`    |
 | New Zettel                | `Cmd+Shift+V` | `Ctrl+Shift+V`  |
 | Promote to Permanent Note | `Cmd+Shift+U` | `Ctrl+Shift+U`  |
 | New Note from Selection   | `Cmd+Shift+Y` | `Ctrl+Shift+Y`  |
