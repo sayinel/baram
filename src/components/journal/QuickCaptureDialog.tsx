@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/shallow";
 
 import { listDir, readFile } from "../../ipc/invoke";
+import { formatKeyForDisplay } from "../../keybindings/key-utils";
 import { captureFleeting } from "../../services/zettelkasten-service";
 import { useFileStore } from "../../stores/file/file";
 import { useSettingsStore } from "../../stores/settings/store";
@@ -12,6 +13,12 @@ import { buildTagIndex, filterTags } from "../../utils/journal/journal-tags";
 import { logger } from "../../utils/logger";
 import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
 import { TagSuggest } from "./TagSuggest";
+
+// ⌘↩ on macOS, Ctrl+Enter elsewhere — shown on the Save button.
+const saveKeyLabel = formatKeyForDisplay(
+  "Mod+Enter",
+  navigator.platform.includes("Mac"),
+);
 
 export function QuickCaptureDialog() {
   const { quickCaptureOpen, toggleQuickCapture } = useUIStore();
@@ -215,27 +222,37 @@ export function QuickCaptureDialog() {
     [tagSuggestVisible, tagQuery, tagIndex, tagActiveIndex, handleTagSelect],
   );
 
+  // Data-loss guard: with anything typed, only the Cancel button (or a
+  // successful save) may dismiss the dialog — not outside clicks or Escape.
+  const hasContent = !!(body.trim() || source.trim() || tags.trim());
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === "Enter" && !e.shiftKey) {
+      // Plain Enter inserts a newline in the memo textarea; save is Mod+Enter.
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
         // Korean IME: Enter during composition commits the syllable.
         // Do NOT preventDefault or save — let the IME finish naturally.
-        // User presses Enter again (not composing) to save.
         if (e.nativeEvent.isComposing) return;
         e.preventDefault();
         handleSave();
       }
       if (e.key === "Escape") {
+        if (hasContent) return;
         toggleQuickCapture();
       }
     },
-    [handleSave, toggleQuickCapture],
+    [handleSave, toggleQuickCapture, hasContent],
   );
+
+  const handleOverlayClick = useCallback(() => {
+    if (hasContent) return;
+    toggleQuickCapture();
+  }, [hasContent, toggleQuickCapture]);
 
   if (!quickCaptureOpen) return null;
 
   return (
-    <div className="quick-capture-overlay" onClick={toggleQuickCapture}>
+    <div className="quick-capture-overlay" onClick={handleOverlayClick}>
       <div
         className="quick-capture-dialog"
         onClick={(e) => e.stopPropagation()}
@@ -309,7 +326,7 @@ export function QuickCaptureDialog() {
             disabled={!body.trim() || !zettelReady}
             onClick={handleSave}
           >
-            저장 (Enter)
+            {`저장 (${saveKeyLabel})`}
           </button>
         </div>
       </div>
