@@ -25,8 +25,11 @@ export interface GraphSimulation {
   drag(id: string, x: number, y: number): void;
   endDrag(id: string): void;
   getNodes(): ReadonlyArray<SimNode>;
+  getPinnedIds(): ReadonlySet<string>;
   getPositions(): ReadonlyMap<string, { x: number; y: number }>;
   isFrozen(): boolean;
+  isPinned(id: string): boolean;
+  pin(id: string): void;
   reheat(): void;
   setFrozen(frozen: boolean): void;
   setGraph(
@@ -37,6 +40,7 @@ export interface GraphSimulation {
   startDrag(id: string): void;
   stop(): void;
   tickSync(iterations: number): void;
+  unpin(id: string): void;
   updateForces(settings: ForceSettings): void;
   updateRadii(radii: ReadonlyMap<string, number>): void;
 }
@@ -96,6 +100,8 @@ export function createGraphSimulation(
   let settings: ForceSettings = { ...initialSettings };
   /** last known positions — survives setGraph so graphs don't jump on refresh */
   const positions = new Map<string, { x: number; y: number }>();
+  /** §30.3c pinned node ids — pins survive setGraph swaps (session-scoped) */
+  const pinnedIds = new Set<string>();
 
   const chargeForce = forceManyBody<SimNode>().distanceMax(REPEL_DISTANCE_MAX);
   const xForce = forceX<SimNode>(0);
@@ -144,6 +150,11 @@ export function createGraphSimulation(
         if (prev) {
           node.x = prev.x;
           node.y = prev.y;
+          // §30.3c re-apply surviving pins at their preserved position
+          if (pinnedIds.has(input.id)) {
+            node.fx = prev.x;
+            node.fy = prev.y;
+          }
         }
         return node;
       });
@@ -202,11 +213,40 @@ export function createGraphSimulation(
     endDrag(id) {
       const node = nodeById.get(id);
       if (!node) return;
-      node.fx = null;
-      node.fy = null;
+      // §30.3c pinned nodes stay where they were dropped (fx/fy already at
+      // the drop position from drag()); unpinned nodes rejoin the physics
+      if (!pinnedIds.has(id)) {
+        node.fx = null;
+        node.fy = null;
+      }
       if (!manual && !frozen) {
         simulation.alphaTarget(0);
       }
+    },
+
+    pin(id) {
+      const node = nodeById.get(id);
+      if (!node) return;
+      pinnedIds.add(id);
+      node.fx = node.x;
+      node.fy = node.y;
+    },
+
+    unpin(id) {
+      pinnedIds.delete(id);
+      const node = nodeById.get(id);
+      if (!node) return;
+      node.fx = null;
+      node.fy = null;
+      restart(DEFAULT_SWAP_ALPHA);
+    },
+
+    isPinned(id) {
+      return pinnedIds.has(id);
+    },
+
+    getPinnedIds() {
+      return pinnedIds;
     },
 
     updateForces(next) {
