@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   displayName,
   localSubgraph,
+  localSubgraphDepths,
   matchesFilter,
   mergeGraphs,
   nodeSize,
@@ -267,6 +268,64 @@ describe("localSubgraph", () => {
 
   it("depth 0 returns only the center", () => {
     expect(localSubgraph(edges, "b", 0)).toEqual(new Set(["b"]));
+  });
+});
+
+// ─── localSubgraphDepths ─────────────────────────────
+
+describe("localSubgraphDepths", () => {
+  // a→b, c→b, c→d
+  const edges = [
+    { source: "a", target: "b" },
+    { source: "c", target: "b" },
+    { source: "c", target: "d" },
+  ];
+
+  it("assigns hop depths (undirected default)", () => {
+    const depths = localSubgraphDepths(edges, "b", 2);
+    expect(depths.get("b")).toBe(0);
+    expect(depths.get("a")).toBe(1);
+    expect(depths.get("c")).toBe(1);
+    expect(depths.get("d")).toBe(2);
+  });
+
+  it("outgoing-only follows link direction", () => {
+    const fromC = localSubgraphDepths(edges, "c", 2, {
+      incoming: false,
+      outgoing: true,
+    });
+    expect([...fromC.keys()].sort()).toEqual(["b", "c", "d"]);
+
+    // b has no outgoing links → center only
+    const fromB = localSubgraphDepths(edges, "b", 2, {
+      incoming: false,
+      outgoing: true,
+    });
+    expect([...fromB.keys()]).toEqual(["b"]);
+  });
+
+  it("incoming-only follows reverse direction", () => {
+    const toB = localSubgraphDepths(edges, "b", 2, {
+      incoming: true,
+      outgoing: false,
+    });
+    expect([...toB.keys()].sort()).toEqual(["a", "b", "c"]);
+    // d is NOT included: c→d is an outgoing link from c, not a backlink path to b
+    expect(toB.has("d")).toBe(false);
+  });
+
+  it("both directions off yields only the center", () => {
+    const depths = localSubgraphDepths(edges, "b", 3, {
+      incoming: false,
+      outgoing: false,
+    });
+    expect([...depths.keys()]).toEqual(["b"]);
+  });
+
+  it("localSubgraph stays consistent with the depths map", () => {
+    expect(localSubgraph(edges, "b", 2)).toEqual(
+      new Set(localSubgraphDepths(edges, "b", 2).keys()),
+    );
   });
 });
 

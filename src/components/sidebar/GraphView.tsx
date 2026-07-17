@@ -186,7 +186,7 @@ export function GraphView() {
   );
 
   // Effect 2: Fetch data + populate cytoscape (extracted hook)
-  const { nodeCount, edgeCount } = useGraphData({
+  const { nodeCount, edgeCount, graphEpoch } = useGraphData({
     cyReady,
     cyRef,
     graphScope,
@@ -345,9 +345,8 @@ export function GraphView() {
     activeFilePath,
     cyReady,
     cyRef,
-    edgeCount,
+    graphEpoch,
     graphScope,
-    nodeCount,
     simRef,
   });
 

@@ -31,7 +31,7 @@ export function useGraphData(params: {
   graphScope: GraphScope;
   handleNodeTap: (evt: EventObject) => void;
   simRef: RefObject<GraphSimulation | null>;
-}): { edgeCount: number; nodeCount: number } {
+}): { edgeCount: number; graphEpoch: number; nodeCount: number } {
   const { cyReady, cyRef, graphScope, handleNodeTap, simRef } = params;
   const rootPath = useFileStore((s) => s.rootPath);
   const indexVersion = useLinkStore((s) => s.indexVersion);
@@ -40,6 +40,10 @@ export function useGraphData(params: {
   const colorByNamespace = useGraphSettingsStore((s) => s.colorByNamespace);
   const [nodeCount, setNodeCount] = useState(0);
   const [edgeCount, setEdgeCount] = useState(0);
+  // Monotonic populate counter. Counts alone can stay identical across a
+  // refresh while element identity / bypass styles changed — downstream
+  // filters key on this so they re-apply after EVERY re-population.
+  const [graphEpoch, setGraphEpoch] = useState(0);
 
   useEffect(() => {
     if (!rootPath) return;
@@ -179,6 +183,7 @@ export function useGraphData(params: {
 
         setNodeCount(nodes.length);
         setEdgeCount(edges.length);
+        setGraphEpoch((v) => v + 1);
 
         // Bind click handler
         cy.off("tap", "node");
@@ -205,5 +210,5 @@ export function useGraphData(params: {
     contexts,
   ]);
 
-  return { edgeCount, nodeCount };
+  return { edgeCount, graphEpoch, nodeCount };
 }

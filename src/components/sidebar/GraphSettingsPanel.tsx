@@ -25,6 +25,12 @@ export function GraphSettingsPanel() {
       graphScope: state.graphScope,
       localDepth: state.localDepth,
       setLocalDepth: state.setLocalDepth,
+      localIncoming: state.localIncoming,
+      setLocalIncoming: state.setLocalIncoming,
+      localOutgoing: state.localOutgoing,
+      setLocalOutgoing: state.setLocalOutgoing,
+      localNeighborLinks: state.localNeighborLinks,
+      setLocalNeighborLinks: state.setLocalNeighborLinks,
       nodeSize: state.nodeSize,
       setNodeSize: state.setNodeSize,
       linkThickness: state.linkThickness,
@@ -84,14 +90,31 @@ export function GraphSettingsPanel() {
           />
         </div>
         {s.graphScope === "local" && (
-          <SliderRow
-            label="Local depth"
-            max={3}
-            min={1}
-            onChange={s.setLocalDepth}
-            step={1}
-            value={s.localDepth}
-          />
+          <>
+            <SliderRow
+              label="Local depth"
+              max={3}
+              min={1}
+              onChange={s.setLocalDepth}
+              step={1}
+              value={s.localDepth}
+            />
+            <ToggleRow
+              checked={s.localIncoming}
+              label="Incoming links"
+              onChange={s.setLocalIncoming}
+            />
+            <ToggleRow
+              checked={s.localOutgoing}
+              label="Outgoing links"
+              onChange={s.setLocalOutgoing}
+            />
+            <ToggleRow
+              checked={s.localNeighborLinks}
+              label="Neighbor links"
+              onChange={s.setLocalNeighborLinks}
+            />
+          </>
         )}
         {s.excludedPaths.length > 0 && (
           <div className="graph-settings-row">
