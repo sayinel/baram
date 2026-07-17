@@ -20,6 +20,8 @@ export function GraphSettingsPanel() {
       setColorByNamespace: state.setColorByNamespace,
       namespaceFilter: state.namespaceFilter,
       setNamespaceFilter: state.setNamespaceFilter,
+      excludedPaths: state.excludedPaths,
+      clearExcluded: state.clearExcluded,
       graphScope: state.graphScope,
       localDepth: state.localDepth,
       setLocalDepth: state.setLocalDepth,
@@ -90,6 +92,18 @@ export function GraphSettingsPanel() {
             step={1}
             value={s.localDepth}
           />
+        )}
+        {s.excludedPaths.length > 0 && (
+          <div className="graph-settings-row">
+            <label className="graph-settings-label">Excluded</label>
+            <button
+              className="graph-settings-clear-btn"
+              onClick={s.clearExcluded}
+              title="Show all excluded nodes again"
+            >
+              Clear ({s.excludedPaths.length})
+            </button>
+          </div>
         )}
       </SettingsSection>
 

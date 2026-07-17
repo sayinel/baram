@@ -51,6 +51,7 @@ export function useGraphFilter(params: {
   const showTags = useGraphSettingsStore((s) => s.showTags);
   const namespaceFilter = useGraphSettingsStore((s) => s.namespaceFilter);
   const localDepth = useGraphSettingsStore((s) => s.localDepth);
+  const excludedPaths = useGraphSettingsStore((s) => s.excludedPaths);
   const simSyncedOnceRef = useRef(false);
   const lastSyncKeyRef = useRef<null | string>(null);
 
@@ -112,6 +113,8 @@ export function useGraphFilter(params: {
 
     // If any scope paths exist, apply scope filter
     const hasScope = scopePaths.length > 0;
+    // §30.4a Context-menu exclusions
+    const excluded = new Set(excludedPaths);
 
     cy.nodes().forEach((node) => {
       const id = node.id();
@@ -120,8 +123,13 @@ export function useGraphFilter(params: {
 
       let visible = true;
 
+      // §30.4a Excluded via context menu
+      if (excluded.has(id)) {
+        visible = false;
+      }
+
       // §30.3 Local scope filter (active file's N-hop neighborhood)
-      if (localIds && !localIds.has(id)) {
+      if (visible && localIds && !localIds.has(id)) {
         visible = false;
       }
 
@@ -229,6 +237,7 @@ export function useGraphFilter(params: {
     graphScope,
     activeFilePath,
     localDepth,
+    excludedPaths,
     cyReady,
   ]);
 }

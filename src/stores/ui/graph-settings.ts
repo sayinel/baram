@@ -11,7 +11,11 @@ export type GraphScope = "all" | "current" | "local";
 export interface GraphSettingsState {
   // Forces
   centerForce: number;
+  clearExcluded: () => void;
   colorByNamespace: boolean;
+  /** §30.4a Node ids excluded via the context menu (persisted) */
+  excludedPaths: string[];
+  excludeNode: (path: string) => void;
   existingFilesOnly: boolean;
   // §30.3 Scope
   graphScope: GraphScope;
@@ -70,6 +74,9 @@ export const useGraphSettingsStore = create<GraphSettingsState>()(
       graphScope: "current",
       localDepth: 1,
 
+      // §30.4a Exclusions
+      excludedPaths: [],
+
       // Display
       nodeSize: 20,
       linkThickness: 1,
@@ -95,6 +102,13 @@ export const useGraphSettingsStore = create<GraphSettingsState>()(
       setShowArrows: (v) => set({ showArrows: v }),
       setGraphScope: (v) => set({ graphScope: v }),
       setLocalDepth: (v) => set({ localDepth: v }),
+      excludeNode: (path) =>
+        set((state) =>
+          state.excludedPaths.includes(path)
+            ? state
+            : { excludedPaths: [...state.excludedPaths, path] },
+        ),
+      clearExcluded: () => set({ excludedPaths: [] }),
       setCenterForce: (v) => set({ centerForce: v }),
       setRepelForce: (v) => set({ repelForce: v }),
       setLinkForce: (v) => set({ linkForce: v }),
