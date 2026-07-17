@@ -49,6 +49,16 @@ export function subscribeContentLoaded(
  */
 export const COLWIDTH_AUTO_INIT_META = "colwidthAutoInit";
 
+/**
+ * Transaction meta key set when a freshly-created journal file is loaded and we
+ * drop the caret onto an empty body paragraph below the date title (see
+ * use-journal-initial-cursor.ts). Like the colwidth init, this is load-time
+ * normalization — an empty trailing paragraph is never serialized back to
+ * markdown — so it must never mark the tab dirty nor trigger an auto-save on
+ * open. The auto-save update handler folds it into the dirty baseline.
+ */
+export const JOURNAL_CURSOR_INIT_META = "journalCursorInit";
+
 /** Clean up when tab is closed */
 export function clearOriginalDoc(tabId: string): void {
   originalDocs.delete(tabId);

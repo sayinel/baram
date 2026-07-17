@@ -14,11 +14,14 @@ import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
 import {
   COLWIDTH_AUTO_INIT_META,
+  JOURNAL_CURSOR_INIT_META,
   noteColwidthInit,
   shouldSkipDirty,
   updateOriginalDoc,
 } from "../utils/editor/programmatic-update";
 import { isMarkdownFile } from "../utils/file-type";
+import { isJournalPath } from "../utils/journal/journal";
+import { notifyJournalChanged } from "../utils/journal/journal-events";
 import { logger } from "../utils/logger";
 
 /**
@@ -96,6 +99,17 @@ export function useAutoSave(editor: Editor | null) {
       updateOriginalDoc(pending.id, editor.state.doc);
       // Phase 4: record save time so future mtime comparisons have a baseline
       useFileStore.getState().updateLastSaveMtime(pending.filePath, Date.now());
+      // §56 If a journal entry's content changed, refresh the journal sidebars
+      // (Memories One Line/Full) in real time instead of only on remount.
+      if (
+        isJournalPath(
+          pending.filePath,
+          useFileStore.getState().rootPath,
+          useSettingsStore.getState().journalDirectory,
+        )
+      ) {
+        notifyJournalChanged();
+      }
       updateFileIndex(pending.filePath)
         .then(() => useLinkStore.getState().invalidate())
         .catch(() => {});
@@ -123,6 +137,15 @@ export function useAutoSave(editor: Editor | null) {
       // lacking `<!-- colwidths -->` goes dirty on open: each table dispatches
       // its own colwidth tx and only the first is absorbed as the baseline.
       if (transaction?.getMeta(COLWIDTH_AUTO_INIT_META)) {
+        noteColwidthInit(tab.id, editor.state.doc);
+        return;
+      }
+
+      // Journal initial-caret placement (use-journal-initial-cursor.ts) inserts
+      // an empty body paragraph below the date title. That paragraph is never
+      // serialized to markdown, so — like colwidth init — fold it into the
+      // dirty baseline instead of marking the just-opened journal dirty.
+      if (transaction?.getMeta(JOURNAL_CURSOR_INIT_META)) {
         noteColwidthInit(tab.id, editor.state.doc);
         return;
       }

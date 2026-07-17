@@ -45,6 +45,7 @@ import { useFileWatcher } from "./hooks/use-file-watcher";
 import { useGhostText } from "./hooks/use-ghost-text";
 import { useInlineAI } from "./hooks/use-inline-ai";
 import { useJournal } from "./hooks/use-journal";
+import { useJournalInitialCursor } from "./hooks/use-journal-initial-cursor";
 import {
   useGlobalKeyboard,
   useKeybindingActions,
@@ -349,6 +350,10 @@ function App() {
   // Auto-save hook (markdown files — Tiptap editor.on("update") based)
   // §perf-large-file C3.5: use activeEditor so keep-alive tabs auto-save correctly
   useAutoSave(activeEditor);
+
+  // §56 Place the caret on a body line below the date title when a freshly
+  // created journal template loads (instead of at the end of the title).
+  useJournalInitialCursor(activeEditor);
 
   // File system watcher — auto-refresh FileTree on external changes
   useFileWatcher();

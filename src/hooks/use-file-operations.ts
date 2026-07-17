@@ -14,6 +14,8 @@ import { openFolder, useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
 import { useUIStore } from "../stores/ui/ui";
 import { isMarkdownFile } from "../utils/file-type";
+import { isJournalPath } from "../utils/journal/journal";
+import { notifyJournalChanged } from "../utils/journal/journal-events";
 import { logger } from "../utils/logger";
 import { openFileByPath } from "../utils/open-file";
 import { basename } from "../utils/path-utils";
@@ -156,6 +158,16 @@ export function useFileOperations({
         setFileContent(saveTab.filePath, md);
         markDirty(saveTab.id, false);
         notifyFileSave(saveTab.filePath);
+        // §56 Refresh journal sidebars in real time on a manual save.
+        if (
+          isJournalPath(
+            saveTab.filePath,
+            useFileStore.getState().rootPath,
+            useSettingsStore.getState().journalDirectory,
+          )
+        ) {
+          notifyJournalChanged();
+        }
         // Only index markdown files (link indexing not relevant for code files)
         if (!isCode) {
           updateFileIndex(saveTab.filePath)

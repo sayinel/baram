@@ -11,6 +11,10 @@ import {
   getJournalFilePath,
   resolveJournalDir,
 } from "../utils/journal/journal";
+import {
+  notifyJournalChanged,
+  requestJournalBodyCursor,
+} from "../utils/journal/journal-events";
 import { resolveZettelDir } from "../utils/zettelkasten/zettelkasten";
 
 export interface JournalFileOptions {
@@ -74,6 +78,12 @@ export async function ensureJournalFile(
     }
 
     await writeFile(journalPath, content);
+
+    // A new entry now exists on disk — refresh the calendar dots / Memories,
+    // and ask the editor to drop the caret on a body line below the date title
+    // once this template loads (§56 journal-events).
+    notifyJournalChanged();
+    requestJournalBodyCursor(journalPath);
   }
 
   return { path: journalPath, content };
