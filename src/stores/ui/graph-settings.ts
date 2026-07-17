@@ -1,5 +1,9 @@
 // §30 Graph View — settings store for graph visualization
+// Persisted via tauriStorage (§30.4); pattern: stores/editor/fold.ts
 import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
+
+import { tauriStorage } from "../system/tauri-storage";
 
 /** §30.3 Graph scope — current vault / all vaults (§87) / active-file local */
 export type GraphScope = "all" | "current" | "local";
@@ -48,46 +52,65 @@ export interface GraphSettingsState {
   textFadeThreshold: number;
 }
 
-export const useGraphSettingsStore = create<GraphSettingsState>((set) => ({
-  // Filters
-  searchQuery: "",
-  showOrphans: true,
-  existingFilesOnly: false,
-  showTags: true,
-  colorByNamespace: true,
-  namespaceFilter: "",
+/** §30.4 Session-only text filters — excluded from persistence */
+const TRANSIENT_KEYS = new Set(["namespaceFilter", "searchQuery"]);
 
-  // §30.3 Scope
-  graphScope: "current",
-  localDepth: 1,
+export const useGraphSettingsStore = create<GraphSettingsState>()(
+  persist(
+    (set) => ({
+      // Filters
+      searchQuery: "",
+      showOrphans: true,
+      existingFilesOnly: false,
+      showTags: true,
+      colorByNamespace: true,
+      namespaceFilter: "",
 
-  // Display
-  nodeSize: 20,
-  linkThickness: 1,
-  textFadeThreshold: 0.5,
-  showArrows: true,
+      // §30.3 Scope
+      graphScope: "current",
+      localDepth: 1,
 
-  // Forces
-  centerForce: 0.25,
-  repelForce: 8,
-  linkForce: 0.45,
-  linkDistance: 80,
+      // Display
+      nodeSize: 20,
+      linkThickness: 1,
+      textFadeThreshold: 0.5,
+      showArrows: true,
 
-  // Actions
-  setSearchQuery: (v) => set({ searchQuery: v }),
-  setShowOrphans: (v) => set({ showOrphans: v }),
-  setExistingFilesOnly: (v) => set({ existingFilesOnly: v }),
-  setShowTags: (v) => set({ showTags: v }),
-  setColorByNamespace: (v) => set({ colorByNamespace: v }),
-  setNamespaceFilter: (v) => set({ namespaceFilter: v }),
-  setNodeSize: (v) => set({ nodeSize: v }),
-  setLinkThickness: (v) => set({ linkThickness: v }),
-  setTextFadeThreshold: (v) => set({ textFadeThreshold: v }),
-  setShowArrows: (v) => set({ showArrows: v }),
-  setGraphScope: (v) => set({ graphScope: v }),
-  setLocalDepth: (v) => set({ localDepth: v }),
-  setCenterForce: (v) => set({ centerForce: v }),
-  setRepelForce: (v) => set({ repelForce: v }),
-  setLinkForce: (v) => set({ linkForce: v }),
-  setLinkDistance: (v) => set({ linkDistance: v }),
-}));
+      // Forces
+      centerForce: 0.25,
+      repelForce: 8,
+      linkForce: 0.45,
+      linkDistance: 80,
+
+      // Actions
+      setSearchQuery: (v) => set({ searchQuery: v }),
+      setShowOrphans: (v) => set({ showOrphans: v }),
+      setExistingFilesOnly: (v) => set({ existingFilesOnly: v }),
+      setShowTags: (v) => set({ showTags: v }),
+      setColorByNamespace: (v) => set({ colorByNamespace: v }),
+      setNamespaceFilter: (v) => set({ namespaceFilter: v }),
+      setNodeSize: (v) => set({ nodeSize: v }),
+      setLinkThickness: (v) => set({ linkThickness: v }),
+      setTextFadeThreshold: (v) => set({ textFadeThreshold: v }),
+      setShowArrows: (v) => set({ showArrows: v }),
+      setGraphScope: (v) => set({ graphScope: v }),
+      setLocalDepth: (v) => set({ localDepth: v }),
+      setCenterForce: (v) => set({ centerForce: v }),
+      setRepelForce: (v) => set({ repelForce: v }),
+      setLinkForce: (v) => set({ linkForce: v }),
+      setLinkDistance: (v) => set({ linkDistance: v }),
+    }),
+    {
+      name: "baram-graph-settings",
+      version: 1,
+      storage: createJSONStorage(() => tauriStorage),
+      partialize: (state) =>
+        Object.fromEntries(
+          Object.entries(state).filter(
+            ([key, value]) =>
+              typeof value !== "function" && !TRANSIENT_KEYS.has(key),
+          ),
+        ) as Partial<GraphSettingsState>,
+    },
+  ),
+);
