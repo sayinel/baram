@@ -2,6 +2,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { LinkGraph } from "../../ipc/types";
+import type {
+  GraphSimulation,
+  SimLinkInput,
+  SimNodeInput,
+} from "./graph-simulation";
 import type { Core, EventObject } from "cytoscape";
 
 import { getLinkIndex, readFile, refreshIndex } from "../../ipc/invoke";
@@ -11,6 +16,7 @@ import { useLinkStore } from "../../stores/editor/link";
 import { useFileStore } from "../../stores/file/file";
 import { useGraphSettingsStore } from "../../stores/ui/graph-settings";
 import { logger } from "../../utils/logger";
+import { createGraphSimulation } from "./graph-simulation";
 import { buildGraphStyle } from "./graph-style";
 import {
   assignNamespaceColors,
@@ -24,6 +30,10 @@ import { GraphSettingsPanel } from "./GraphSettingsPanel";
 export function GraphView() {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
+  const simRef = useRef<GraphSimulation | null>(null);
+  const draggedIdRef = useRef<null | string>(null);
+  const simSyncedOnceRef = useRef(false);
+  const lastSyncKeyRef = useRef<null | string>(null);
   const [cyReady, setCyReady] = useState(false);
   const rootPath = useFileStore((s) => s.rootPath);
   const [graphScope, setGraphScope] = useState<"all" | "current">("current");
@@ -77,31 +87,46 @@ export function GraphView() {
     let destroyed = false;
 
     (async () => {
-      const [{ default: cytoscape }, { default: fcose }] = await Promise.all([
-        import("cytoscape"),
-        import("cytoscape-fcose"),
-      ]);
-
-      // Register fcose layout (idempotent — safe to call multiple times)
-      cytoscape.use(fcose);
+      const { default: cytoscape } = await import("cytoscape");
 
       if (destroyed || !containerRef.current) return;
 
       cy = cytoscape({
         container: containerRef.current,
         style: buildGraphStyle({ linkThickness, showArrows, colorByNamespace }),
-        layout: { name: "grid" },
+        layout: { name: "preset" },
         minZoom: 0.1,
         maxZoom: 5,
         wheelSensitivity: 0.3,
       });
 
       cyRef.current = cy;
+
+      // §30.2 Continuous d3-force simulation drives node positions each tick
+      const { centerForce, repelForce, linkForce, linkDistance } =
+        useGraphSettingsStore.getState();
+      simRef.current = createGraphSimulation(
+        { centerForce, repelForce, linkForce, linkDistance },
+        (simNodes) => {
+          const inst = cyRef.current;
+          if (!inst) return;
+          inst.batch(() => {
+            for (const n of simNodes) {
+              // The grabbed node is moved natively by cytoscape
+              if (n.id === draggedIdRef.current) continue;
+              const el = inst.getElementById(n.id);
+              if (el.length > 0) el.position({ x: n.x ?? 0, y: n.y ?? 0 });
+            }
+          });
+        },
+      );
       setCyReady(true);
     })();
 
     return () => {
       destroyed = true;
+      simRef.current?.stop();
+      simRef.current = null;
       if (cy) {
         cy.destroy();
       }
@@ -253,8 +278,17 @@ export function GraphView() {
           }
         }
 
+        // §30.2 Seed added elements with their last known simulation positions
+        // so index refreshes don't flash at the origin.
+        const posMap = simRef.current?.getPositions();
         cy.elements().remove();
-        cy.add([...nodesWithSize, ...edges] as cytoscape.ElementDefinition[]);
+        cy.add([
+          ...nodesWithSize.map((n) => {
+            const prev = posMap?.get(n.data.id);
+            return prev ? { ...n, position: { ...prev } } : n;
+          }),
+          ...edges,
+        ] as cytoscape.ElementDefinition[]);
 
         // Mark orphan nodes
         cy.nodes().forEach((node) => {
@@ -263,26 +297,12 @@ export function GraphView() {
           }
         });
 
-        // Ensure container dimensions are available before layout
+        // Ensure container dimensions are available before first paint
         cy.resize();
+        // §87 Force style recalculation for newly added nodes
+        // (without this, nodes from non-active vaults may not render)
+        cy.style().update();
 
-        // Run initial fcose layout and fit after completion
-        await new Promise<void>((resolve) => {
-          const layout = cy.layout(
-            buildLayoutOptions(
-              { centerForce, repelForce, linkForce, linkDistance },
-              { randomize: true, animate: false, fit: true },
-            ),
-          );
-          layout.one("layoutstop", () => {
-            // §87 Force style recalculation for newly added nodes
-            // (without this, nodes from non-active vaults may not render)
-            cy.style().update();
-            cy.fit(undefined, 30);
-            resolve();
-          });
-          layout.run();
-        });
         setNodeCount(nodes.length);
         setEdgeCount(edges.length);
 
@@ -311,76 +331,45 @@ export function GraphView() {
     contexts,
   ]);
 
-  // Effect 3: Re-layout on force settings change
+  // Effect 3: Apply force settings to the simulation (gentle reheat)
   useEffect(() => {
-    const cy = cyRef.current;
-    if (!cy || cy.nodes().length === 0) return;
-
-    cy.layout(
-      buildLayoutOptions(
-        { centerForce, repelForce, linkForce, linkDistance },
-        { randomize: false, animate: true, fit: false },
-      ),
-    ).run();
+    simRef.current?.updateForces({
+      centerForce,
+      repelForce,
+      linkForce,
+      linkDistance,
+    });
   }, [centerForce, repelForce, linkForce, linkDistance]);
 
-  // Effect 4: Real-time spring physics during drag + settle on release
+  // Effect 4: Drag → pin node in the simulation and reheat so linked
+  // neighbors follow and the whole graph re-settles (Logseq-style). §30.2
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
 
-    const SPRING_K = 0.06; // spring constant — how strongly neighbors follow
-    const DAMPING = 0.5; // reduce overshoot
-
+    const handleGrab = (evt: EventObject) => {
+      const id = evt.target.id() as string;
+      draggedIdRef.current = id;
+      simRef.current?.startDrag(id);
+    };
     const handleDrag = (evt: EventObject) => {
-      const node = evt.target;
-      const pos = node.position();
-      const neighbors = node.neighborhood().nodes();
-
-      neighbors.forEach((neighbor: cytoscape.NodeSingular) => {
-        if (neighbor.grabbed()) return;
-        const nPos = neighbor.position();
-        const dx = pos.x - nPos.x;
-        const dy = pos.y - nPos.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 1) return;
-
-        const idealDist = linkDistance;
-        const displacement = dist - idealDist;
-        const force = displacement * SPRING_K * DAMPING;
-        const fx = (dx / dist) * force;
-        const fy = (dy / dist) * force;
-
-        neighbor.position({
-          x: nPos.x + fx,
-          y: nPos.y + fy,
-        });
-      });
+      const pos = evt.target.position();
+      simRef.current?.drag(evt.target.id() as string, pos.x, pos.y);
     };
-
     const handleFree = (evt: EventObject) => {
-      const node = evt.target;
-      const pos = node.position();
-      cy.layout(
-        buildLayoutOptions(
-          { centerForce, repelForce, linkForce, linkDistance },
-          {
-            randomize: false,
-            animate: true,
-            fit: false,
-            fixedNodeConstraint: [{ nodeId: node.id(), position: pos }],
-          },
-        ),
-      ).run();
+      draggedIdRef.current = null;
+      simRef.current?.endDrag(evt.target.id() as string);
     };
 
+    cy.on("grab", "node", handleGrab);
     cy.on("drag", "node", handleDrag);
     cy.on("free", "node", handleFree);
     return () => {
+      cy.off("grab", "node", handleGrab);
       cy.off("drag", "node", handleDrag);
       cy.off("free", "node", handleFree);
     };
-  }, [centerForce, repelForce, linkForce, linkDistance]);
+  }, [cyReady]);
 
   // Effect 5: Hover highlight events
   useEffect(() => {
@@ -413,7 +402,7 @@ export function GraphView() {
       cy.off("mouseover", "node", handleMouseOver);
       cy.off("mouseout", "node", handleMouseOut);
     };
-  }, []);
+  }, [cyReady]);
 
   // Effect 6: Highlight active file node
   useEffect(() => {
@@ -542,6 +531,45 @@ export function GraphView() {
         edge.style("display", "element");
       }
     });
+
+    // §30.2 Sync visible elements into the simulation (positions preserved
+    // by id). First sync warms up synchronously and fits the viewport.
+    const sim = simRef.current;
+    if (sim) {
+      const visibleNodes: SimNodeInput[] = [];
+      cy.nodes().forEach((node) => {
+        if (node.style("display") === "none") return;
+        visibleNodes.push({
+          id: node.id(),
+          radius: ((node.data("size") as number) ?? 20) / 2,
+        });
+      });
+      const visibleEdges: SimLinkInput[] = [];
+      cy.edges().forEach((edge) => {
+        if (edge.style("display") === "none") return;
+        visibleEdges.push({
+          source: edge.source().id(),
+          target: edge.target().id(),
+        });
+      });
+      const syncKey = `${visibleNodes
+        .map((n) => n.id)
+        .sort()
+        .join("|")}#${visibleEdges.length}`;
+      if (syncKey !== lastSyncKeyRef.current) {
+        lastSyncKeyRef.current = syncKey;
+        if (!simSyncedOnceRef.current) {
+          simSyncedOnceRef.current = true;
+          sim.setGraph(visibleNodes, visibleEdges, {
+            warmupTicks: 100,
+            alpha: 0.3,
+          });
+          cy.fit(undefined, 30);
+        } else {
+          sim.setGraph(visibleNodes, visibleEdges, { alpha: 0.3 });
+        }
+      }
+    }
   }, [
     rootPath,
     searchQuery,
@@ -550,7 +578,9 @@ export function GraphView() {
     showTags,
     namespaceFilter,
     nodeCount,
+    edgeCount,
     graphScope,
+    cyReady,
   ]);
 
   // Effect: Update styles when display settings change
@@ -575,6 +605,13 @@ export function GraphView() {
       const degree = node.data("degree") as number;
       node.data("size", nodeSize(degree, settingsNodeSize, maxSize));
     });
+
+    // §30.2 Keep collide radii in sync with rendered node sizes
+    const radii = new Map<string, number>();
+    cy.nodes().forEach((node) => {
+      radii.set(node.id(), (node.data("size") as number) / 2);
+    });
+    simRef.current?.updateRadii(radii);
   }, [settingsNodeSize]);
 
   // Effect: Zoom label fade
@@ -598,7 +635,7 @@ export function GraphView() {
     return () => {
       cy.off("zoom", handleZoom);
     };
-  }, [textFadeThreshold]);
+  }, [textFadeThreshold, cyReady]);
 
   if (!rootPath) {
     return (
@@ -664,35 +701,4 @@ export function GraphView() {
       <div className="graph-view-canvas" ref={containerRef} />
     </div>
   );
-}
-
-/** Build fcose layout options from settings */
-function buildLayoutOptions(
-  settings: {
-    centerForce: number;
-    linkDistance: number;
-    linkForce: number;
-    repelForce: number;
-  },
-  opts?: {
-    animate?: boolean;
-    fit?: boolean;
-    fixedNodeConstraint?: unknown[];
-    randomize?: boolean;
-  },
-) {
-  return {
-    name: "fcose" as const,
-    randomize: opts?.randomize ?? true,
-    animate: opts?.animate ?? false,
-    animationDuration: 250,
-    fit: opts?.fit ?? true,
-    padding: 30,
-    nodeRepulsion: () => settings.repelForce * 1000,
-    idealEdgeLength: () => settings.linkDistance,
-    edgeElasticity: () => settings.linkForce * 200,
-    gravity: settings.centerForce,
-    numIter: 500,
-    fixedNodeConstraint: opts?.fixedNodeConstraint,
-  };
 }
