@@ -160,4 +160,36 @@ describe("FileTree focus-steal on tab-sync vs. keyboard nav (§4.4)", () => {
     const rowB = screen.getByText("b.md").closest('[role="treeitem"]')!;
     expect(document.activeElement).toBe(rowB);
   });
+
+  // Regression guard for the stale-ref reopening of the focus-steal bug:
+  // a keyboard action can arm shouldStealFocusRef = true WITHOUT changing
+  // focusedPath (e.g. ArrowDown at the bottom boundary -- nextPath() returns
+  // the same path there). The focus effect's dep is [focusedPath], so it
+  // never reruns to consume+reset the ref. If a later, unrelated tab-sync
+  // change flips focusedPath, it must NOT inherit that stale armed ref.
+  it("경계에서 포커스 이동 없는 키보드 동작 이후 tab-sync가 발생해도 DOM 포커스를 훔치지 않는다", () => {
+    // Start already on the LAST visible row (b.md) so ArrowDown is a
+    // boundary no-op: it arms the ref but focusedPath stays "/r/b.md".
+    useEditorStore.setState({ activeTabId: "t2" });
+    render(<FileTree />);
+    const tree = screen.getByRole("tree", { name: "File tree" });
+
+    fireEvent.keyDown(tree, { key: "ArrowDown" });
+
+    const rowB = screen.getByText("b.md").closest('[role="treeitem"]')!;
+    expect(document.activeElement).not.toBe(rowB);
+
+    // Unrelated tab-sync (wikilink click, Quick Switcher, journal, ...)
+    // switches the active tab back to a.md. Pre-fix, this consumes the
+    // leftover stale `true` from the boundary ArrowDown above and steals
+    // DOM focus into row a.md even though the user never keyboard-navigated
+    // there.
+    act(() => {
+      useEditorStore.setState({ activeTabId: "t1" });
+    });
+
+    const rowA = screen.getByText("a.md").closest('[role="treeitem"]')!;
+    expect(document.activeElement).not.toBe(rowA);
+    expect(document.activeElement).not.toBe(rowB);
+  });
 });

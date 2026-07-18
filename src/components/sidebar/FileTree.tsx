@@ -153,6 +153,7 @@ export function FileTree(): React.JSX.Element {
   const activeFilePath = activeTab?.filePath ?? null;
   useEffect(() => {
     if (activeFilePath) {
+      shouldStealFocusRef.current = false;
       selectSingle(activeFilePath);
       setFocusedPath(activeFilePath);
     }
