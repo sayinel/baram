@@ -292,6 +292,7 @@ async function _loadContextFileTree(path: string): Promise<void> {
         );
     }
     logger.warn("§4.3 _loadContextFileTree: load failed", err);
+    throw err; // §4.3 preserve original resolve/reject contract for openFolder/addFolder/switchContext
   } finally {
     _loadingPath = null;
   }
@@ -313,7 +314,12 @@ export const useFileStore = create<FileState>((set, get) => ({
   retryLoadFileTree: async () => {
     const path = get().rootPath;
     if (!path) return;
-    await _loadContextFileTree(path);
+    try {
+      await _loadContextFileTree(path);
+    } catch {
+      // §4.3 loadError state already reflects the failure; the retry button is
+      // driven by that state, so swallow the rethrow here.
+    }
   },
 
   setFileContent: (path, content) =>

@@ -59,4 +59,21 @@ describe("file store — loadError surfacing", () => {
     await useFileStore.getState().retryLoadFileTree();
     expect(useFileStore.getState().loadError).toBeNull();
   });
+
+  it("retryLoadFileTree resolves (does not reject) when the load fails", async () => {
+    listDirMock.mockRejectedValueOnce(new FolderAccessDeniedError(DIR));
+    await expect(
+      useFileStore.getState().retryLoadFileTree(),
+    ).resolves.toBeUndefined();
+    expect(useFileStore.getState().loadError).toEqual({
+      kind: "permission-denied",
+      path: DIR,
+    });
+  });
+
+  it("retryLoadFileTree no-ops when no folder is open", async () => {
+    useFileStore.setState({ rootPath: null } as never);
+    await useFileStore.getState().retryLoadFileTree();
+    expect(listDirMock).not.toHaveBeenCalled();
+  });
 });
