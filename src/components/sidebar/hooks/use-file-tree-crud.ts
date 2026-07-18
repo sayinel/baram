@@ -43,8 +43,8 @@ export function useFileTreeCrud(): UseFileTreeCrudReturn {
       if (!entry) return;
       const confirmed = await showConfirm(
         entry.isDir
-          ? `Delete folder "${entry.name}" and all its contents?`
-          : `Delete file "${entry.name}"?`,
+          ? `Move folder "${entry.name}" and all its contents to Trash?`
+          : `Move file "${entry.name}" to Trash?`,
       );
       if (!confirmed) return;
       try {

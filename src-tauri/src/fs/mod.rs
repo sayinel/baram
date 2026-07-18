@@ -16,6 +16,8 @@ pub enum FsError {
     ReadError(#[from] std::io::Error),
     #[error("파일 감시 실패: {0}")]
     WatchError(String),
+    #[error("휴지통 이동 실패: {0}")]
+    TrashError(String),
 }
 
 /// Directories excluded from markdown file collection.
@@ -179,14 +181,12 @@ pub async fn create_dir(path: &str) -> Result<(), FsError> {
         .map_err(FsError::ReadError)
 }
 
-/// 디렉토리 재귀 삭제
+/// 디렉토리를 OS 휴지통으로 이동 (영구 삭제 아님)
 pub async fn delete_dir(path: &str) -> Result<(), FsError> {
     if !Path::new(path).exists() {
         return Err(FsError::NotFound(path.to_string()));
     }
-    tokio::fs::remove_dir_all(path)
-        .await
-        .map_err(FsError::ReadError)
+    move_to_trash(path).await
 }
 
 /// 바이너리 파일 복사
@@ -200,14 +200,22 @@ pub async fn copy_file(from: &str, to: &str) -> Result<(), FsError> {
     Ok(())
 }
 
-/// 파일 삭제
+/// 파일을 OS 휴지통으로 이동 (영구 삭제 아님)
 pub async fn delete_file(path: &str) -> Result<(), FsError> {
     if !Path::new(path).exists() {
         return Err(FsError::NotFound(path.to_string()));
     }
-    tokio::fs::remove_file(path)
+    move_to_trash(path).await
+}
+
+/// trash crate는 blocking API이므로 spawn_blocking으로 감싼다.
+/// 실패 시 영구 삭제로 폴백하지 않는다 (안전 우선 — spec §4.2).
+async fn move_to_trash(path: &str) -> Result<(), FsError> {
+    let owned = path.to_string();
+    tokio::task::spawn_blocking(move || trash::delete(&owned))
         .await
-        .map_err(FsError::ReadError)
+        .map_err(|e| FsError::TrashError(e.to_string()))?
+        .map_err(|e| FsError::TrashError(e.to_string()))
 }
 
 /// §53 ZIP 파일 추출 — Notion 내보내기 호환
@@ -412,5 +420,34 @@ mod tests {
         assert!(validate_path("/vault/notes/file.md").is_ok());
         // A filename that merely contains dots (not a `..` segment) is fine.
         assert!(validate_path("/vault/a..b.md").is_ok());
+    }
+
+    /// delete_file은 영구 삭제가 아니라 휴지통 이동이어야 한다.
+    /// CI 컨테이너 등 휴지통 백엔드가 없는 환경에서는 TrashError로 조기 반환(스킵).
+    #[tokio::test]
+    async fn delete_file_moves_entry_out_of_place() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("trash-me.md");
+        std::fs::write(&file, "bye").unwrap();
+        let res = delete_file(file.to_str().unwrap()).await;
+        if let Err(FsError::TrashError(_)) = res {
+            return; // trash 백엔드 없는 환경 — 스킵
+        }
+        res.unwrap();
+        assert!(!file.exists());
+    }
+
+    #[tokio::test]
+    async fn delete_dir_moves_entry_out_of_place() {
+        let dir = tempfile::tempdir().unwrap();
+        let sub = dir.path().join("subdir");
+        std::fs::create_dir(&sub).unwrap();
+        std::fs::write(sub.join("inner.md"), "x").unwrap();
+        let res = delete_dir(sub.to_str().unwrap()).await;
+        if let Err(FsError::TrashError(_)) = res {
+            return;
+        }
+        res.unwrap();
+        assert!(!sub.exists());
     }
 }
