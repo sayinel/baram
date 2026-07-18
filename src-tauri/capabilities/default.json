@@ -9,6 +9,8 @@
     "core:webview:allow-create-webview-window",
     "opener:default",
     "dialog:default",
-    "clipboard-manager:allow-write-image"
+    "clipboard-manager:allow-write-image",
+    "clipboard-manager:allow-write-text",
+    "opener:allow-reveal-item-in-dir"
   ]
 }
