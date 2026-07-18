@@ -14,7 +14,7 @@ import { useFileTreeContext } from "./FileTreeContext";
 export function FileTreeNode({
   entry,
   depth,
-  onToggleDir,
+  onDirClick,
   onFileClick,
   onContextMenu,
   onStartRename,
@@ -30,12 +30,12 @@ export function FileTreeNode({
   onConfirmCreate: (name: string) => void;
   onConfirmRename: (oldPath: string, newName: string) => void;
   onContextMenu: (e: React.MouseEvent, path: string, isDir: boolean) => void;
-  onFileClick: (entry: FileEntry) => void;
+  onDirClick: (entry: FileEntry, e: React.MouseEvent) => void;
+  onFileClick: (entry: FileEntry, e: React.MouseEvent) => void;
   onStartRename: (path: string) => void;
-  onToggleDir: (path: string) => void;
 }): React.JSX.Element {
   const {
-    selectedPath,
+    selectedPaths,
     renamingPath,
     creatingEntry,
     expandedDirs,
@@ -46,7 +46,7 @@ export function FileTreeNode({
   const paddingLeft = `${depth * TREE_INDENT_PX + TREE_BASE_PADDING_PX}px`;
   const isExpanded = expandedDirs.has(entry.path);
   const isRenaming = renamingPath === entry.path;
-  const isSelected = selectedPath === entry.path;
+  const isSelected = selectedPaths.has(entry.path);
   const isDragOver = dragOverPath === entry.path;
   const isDragSource = dragSourcePath === entry.path;
   const inputRef = useRef<HTMLInputElement>(null);
@@ -70,8 +70,8 @@ export function FileTreeNode({
         data-drop-path={entry.path}
       >
         <div
-          className="file-tree-item file-tree-dir"
-          onClick={() => onToggleDir(entry.path)}
+          className={`file-tree-item file-tree-dir ${isSelected ? "file-tree-item-active" : ""}`}
+          onClick={(e) => onDirClick(entry, e)}
           onContextMenu={(e) => onContextMenu(e, entry.path, true)}
           style={{ paddingLeft }}
         >
@@ -122,9 +122,9 @@ export function FileTreeNode({
                 onConfirmCreate={onConfirmCreate}
                 onConfirmRename={onConfirmRename}
                 onContextMenu={onContextMenu}
+                onDirClick={onDirClick}
                 onFileClick={onFileClick}
                 onStartRename={onStartRename}
-                onToggleDir={onToggleDir}
               />
             ))}
           </>
@@ -138,7 +138,7 @@ export function FileTreeNode({
     <div
       className={`file-tree-item file-tree-file ${isSelected ? "file-tree-item-active" : ""} ${isDragSource ? "opacity-40" : ""}`}
       data-file-path={entry.path}
-      onClick={() => !isRenaming && onFileClick(entry)}
+      onClick={(e) => !isRenaming && onFileClick(entry, e)}
       onContextMenu={(e) => onContextMenu(e, entry.path, false)}
       style={{ paddingLeft }}
     >

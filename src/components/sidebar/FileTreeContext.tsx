@@ -10,7 +10,7 @@ export interface FileTreeContextValue {
   dragSourcePath: null | string;
   expandedDirs: Set<string>;
   renamingPath: null | string;
-  selectedPath: null | string;
+  selectedPaths: Set<string>;
 }
 
 const FileTreeCtx = createContext<FileTreeContextValue | null>(null);
