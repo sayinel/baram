@@ -11,6 +11,7 @@ import { renameFile } from "../../../ipc/invoke";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useLinkStore } from "../../../stores/editor/link";
 import { useFileStore } from "../../../stores/file/file";
+import { showAlert } from "../../../utils/confirm-dialog";
 import {
   hideDropIndicator,
   insertNodeAtPos,
@@ -19,6 +20,7 @@ import {
 } from "../../../utils/editor/drop-indicator";
 import { logger } from "../../../utils/logger";
 import { getRelativePath, isImageFile } from "../../../utils/path-utils";
+import { planMultiMove, resolveDragSet } from "../file-tree-multi-ops";
 import {
   DRAG_THRESHOLD_PX,
   EDITOR_SCROLL_SELECTOR,
@@ -28,7 +30,7 @@ import {
 
 interface UseFileTreeDnDReturn {
   dragOverPath: null | string;
-  dragSourcePath: null | string;
+  dragSourcePaths: string[];
   handleTreeMouseDown: (e: React.MouseEvent) => void;
   isDragging: boolean;
   suppressClickRef: React.RefObject<boolean>;
@@ -36,12 +38,13 @@ interface UseFileTreeDnDReturn {
 
 export function useFileTreeDnD(
   editor: Editor | null | undefined,
+  selectedPaths: Set<string>,
 ): UseFileTreeDnDReturn {
   const moveFileEntry = useFileStore((s) => s.moveFileEntry);
   const renameTab = useEditorStore((s) => s.renameTab);
 
   const [dragOverPath, setDragOverPath] = useState<null | string>(null);
-  const [dragSourcePath, setDragSourcePath] = useState<null | string>(null);
+  const [dragSourcePaths, setDragSourcePaths] = useState<string[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const dragRef = useRef<DragState | null>(null);
   const dragGhostRef = useRef<HTMLDivElement | null>(null);
@@ -79,10 +82,16 @@ export function useFileTreeDnD(
         if (Math.abs(dx) + Math.abs(dy) <= DRAG_THRESHOLD_PX) return;
         state.active = true;
         setIsDragging(true);
-        setDragSourcePath(state.sourcePath);
+        setDragSourcePaths(state.sourcePaths);
         // Clear any text selection that started between mousedown and threshold
         window.getSelection()?.removeAllRanges();
-        createDragGhost(state.sourceName, e.clientX, e.clientY);
+        createDragGhost(
+          state.sourcePaths.length > 1
+            ? `${state.sourcePaths.length} items`
+            : state.sourceName,
+          e.clientX,
+          e.clientY,
+        );
       }
       // Prevent text selection -- must preventDefault on EVERY mousemove, not just once
       e.preventDefault();
@@ -97,8 +106,11 @@ export function useFileTreeDnD(
       const folderEl = el?.closest<HTMLElement>("[data-drop-path]");
       setDragOverPath(folderEl?.dataset.dropPath ?? null);
 
+      const singleSource =
+        state.sourcePaths.length === 1 ? state.sourcePaths[0] : null;
+
       // Feature 3: editor drop indicator bar for image files
-      if (editor && isImageFile(state.sourcePath)) {
+      if (editor && singleSource && isImageFile(singleSource)) {
         const scrollEl = document.querySelector(EDITOR_SCROLL_SELECTOR);
         const scrollRect = scrollEl?.getBoundingClientRect();
         if (
@@ -126,7 +138,7 @@ export function useFileTreeDnD(
 
       if (!state.active) {
         setIsDragging(false);
-        setDragSourcePath(null);
+        setDragSourcePaths([]);
         return; // Was a click, not a drag -- let onClick handle it
       }
 
@@ -137,12 +149,14 @@ export function useFileTreeDnD(
       }, 0);
 
       setIsDragging(false);
-      setDragSourcePath(null);
+      setDragSourcePaths([]);
       setDragOverPath(null);
 
       const currentRootPath = useFileStore.getState().rootPath;
       if (!currentRootPath) return;
-      const sourcePath = state.sourcePath;
+
+      const singleSource =
+        state.sourcePaths.length === 1 ? state.sourcePaths[0] : null;
 
       // Feature 3: Drop image file onto editor -- insert relative-path image
       const el = document.elementFromPoint(e.clientX, e.clientY);
@@ -154,7 +168,7 @@ export function useFileTreeDnD(
         e.clientX <= scrollRect.right &&
         e.clientY >= scrollRect.top &&
         e.clientY <= scrollRect.bottom;
-      if (overEditor && editor && isImageFile(sourcePath)) {
+      if (overEditor && editor && singleSource && isImageFile(singleSource)) {
         const { activeTabId: tabId, tabs: currentTabs } =
           useEditorStore.getState();
         const tab = currentTabs.find((t) => t.id === tabId);
@@ -163,8 +177,8 @@ export function useFileTreeDnD(
             0,
             tab.filePath.lastIndexOf("/"),
           );
-          const relativeSrc = getRelativePath(fileDir, sourcePath);
-          const fileName = sourcePath.split("/").pop() ?? "";
+          const relativeSrc = getRelativePath(fileDir, singleSource);
+          const fileName = singleSource.split("/").pop() ?? "";
 
           const target = resolveInsertTarget(editor, e.clientX, e.clientY);
           const insertPos = target?.pos ?? editor.state.doc.content.size;
@@ -178,33 +192,46 @@ export function useFileTreeDnD(
         return; // Skip folder move logic
       }
 
+      // Multi-item drag released over the editor: no-op (do not fall through to a root move)
+      if (overEditor && state.sourcePaths.length > 1) return;
+
       // Determine drop target folder
       const folderEl = el?.closest<HTMLElement>("[data-drop-path]");
       const targetPath = folderEl?.dataset.dropPath || currentRootPath;
 
-      // Validation
-      if (sourcePath === targetPath) return;
-      if (
-        targetPath !== currentRootPath &&
-        targetPath.startsWith(sourcePath + "/")
-      )
-        return;
-      const sourceParent = sourcePath.substring(0, sourcePath.lastIndexOf("/"));
-      if (sourceParent === targetPath) return;
+      const { moves } = planMultiMove(
+        state.sourcePaths,
+        targetPath,
+        currentRootPath,
+      );
+      if (moves.length === 0) return;
 
-      const parts = sourcePath.split("/");
-      const fileName = parts[parts.length - 1];
-      const newPath = targetPath + "/" + fileName;
-
-      try {
-        await renameFile(sourcePath, newPath);
-        moveFileEntry(sourcePath, targetPath);
-        const { tabs: currentTabs } = useEditorStore.getState();
-        const openedTab = currentTabs.find((t) => t.filePath === sourcePath);
-        if (openedTab) renameTab(sourcePath, newPath, fileName);
-        useLinkStore.getState().invalidate();
-      } catch (err) {
-        logger.error("[FileTree] Move failed:", err);
+      const failed: string[] = [];
+      for (const { from, to } of moves) {
+        try {
+          await renameFile(from, to);
+          moveFileEntry(from, targetPath);
+          const { tabs: currentTabs } = useEditorStore.getState();
+          for (const tab of currentTabs) {
+            if (tab.filePath === from) {
+              renameTab(from, to, to.split("/").pop() ?? "");
+            } else if (tab.filePath?.startsWith(from + "/")) {
+              // 폴더 이동: 내부 파일 탭 경로 갱신 (제목 불변)
+              renameTab(
+                tab.filePath,
+                to + tab.filePath.slice(from.length),
+                tab.title,
+              );
+            }
+          }
+        } catch (err) {
+          logger.error("[FileTree] Move failed:", from, err);
+          failed.push(from.split("/").pop() ?? from);
+        }
+      }
+      useLinkStore.getState().invalidate();
+      if (failed.length > 0) {
+        await showAlert(`Failed to move: ${failed.join(", ")}`);
       }
     };
 
@@ -219,28 +246,30 @@ export function useFileTreeDnD(
   }, [editor, moveFileEntry, renameTab, createDragGhost, removeDragGhost]);
 
   // Start drag from file items via mousedown on root (event delegation)
-  const handleTreeMouseDown = useCallback((e: React.MouseEvent): void => {
-    if (e.button !== 0) return;
-    // Don't start drag when clicking inside rename input
-    const tag = (e.target as HTMLElement).tagName;
-    if (tag === "INPUT" || tag === "TEXTAREA") return;
-    const fileEl = (e.target as HTMLElement).closest<HTMLElement>(
-      "[data-file-path]",
-    );
-    if (!fileEl?.dataset.filePath) return;
-    const parts = fileEl.dataset.filePath.split("/");
-    dragRef.current = {
-      sourcePath: fileEl.dataset.filePath,
-      sourceName: parts[parts.length - 1],
-      startX: e.clientX,
-      startY: e.clientY,
-      active: false,
-    };
-  }, []);
+  const handleTreeMouseDown = useCallback(
+    (e: React.MouseEvent): void => {
+      if (e.button !== 0) return;
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      const fileEl = (e.target as HTMLElement).closest<HTMLElement>(
+        "[data-file-path]",
+      );
+      if (!fileEl?.dataset.filePath) return;
+      const parts = fileEl.dataset.filePath.split("/");
+      dragRef.current = {
+        sourcePaths: resolveDragSet(fileEl.dataset.filePath, selectedPaths),
+        sourceName: parts[parts.length - 1],
+        startX: e.clientX,
+        startY: e.clientY,
+        active: false,
+      };
+    },
+    [selectedPaths],
+  );
 
   return {
     dragOverPath,
-    dragSourcePath,
+    dragSourcePaths,
     isDragging,
     handleTreeMouseDown,
     suppressClickRef,

@@ -27,12 +27,14 @@ import {
   IconNewFolder,
 } from "./file-tree-icons";
 import { DRAG_EXPAND_DELAY_MS, TREE_BASE_PADDING_PX } from "./file-tree-types";
+import { computeVisibleEntries } from "./file-tree-visible";
 import { FileTreeProvider } from "./FileTreeContext";
 import { FileTreeNode } from "./FileTreeNode";
 import { useFileTreeCrud } from "./hooks/use-file-tree-crud";
 import { useFileTreeDnD } from "./hooks/use-file-tree-dnd";
 import { useFileTreeRename } from "./hooks/use-file-tree-rename";
 import { useFileTreeSearch } from "./hooks/use-file-tree-search";
+import { useFileTreeSelection } from "./hooks/use-file-tree-selection";
 
 export function FileTree(): React.JSX.Element {
   const editor = useEditorContext();
@@ -55,7 +57,8 @@ export function FileTree(): React.JSX.Element {
       activeTabId: s.activeTabId,
     })),
   );
-  const [selectedPath, setSelectedPath] = useState<null | string>(null);
+  const { selectedPaths, selectSingle, toggleSelect, selectRange } =
+    useFileTreeSelection();
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const treeRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -68,6 +71,19 @@ export function FileTree(): React.JSX.Element {
     filteredPaths,
     entryMatchesTagFilter,
   } = useFileTreeSearch();
+
+  const visiblePaths = useMemo(
+    () =>
+      computeVisibleEntries(
+        fileTree,
+        expandedDirs,
+        filteredPaths,
+        entryMatchesTagFilter,
+      ).map((e) => e.path),
+    [fileTree, expandedDirs, filteredPaths, entryMatchesTagFilter],
+  );
+  // 단일 선택일 때만 유효한 대상 (F2 rename 등 단일 작업용)
+  const primaryPath = selectedPaths.size === 1 ? [...selectedPaths][0] : null;
 
   const {
     renamingPath,
@@ -83,22 +99,23 @@ export function FileTree(): React.JSX.Element {
     handleConfirmCreate,
     handleCancelCreate,
     handleDelete,
+    handleDeleteMany,
   } = useFileTreeCrud();
 
   const {
     dragOverPath,
-    dragSourcePath,
+    dragSourcePaths,
     isDragging,
     handleTreeMouseDown,
     suppressClickRef,
-  } = useFileTreeDnD(editor);
+  } = useFileTreeDnD(editor, selectedPaths);
 
-  // --- Sync selectedPath with active tab ---
+  // --- Sync selectedPaths with active tab ---
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const activeFilePath = activeTab?.filePath ?? null;
   useEffect(() => {
-    if (activeFilePath) setSelectedPath(activeFilePath);
-  }, [activeFilePath]);
+    if (activeFilePath) selectSingle(activeFilePath);
+  }, [activeFilePath, selectSingle]);
 
   // --- Close context menu on click outside or Escape ---
   useEffect(() => {
@@ -127,22 +144,22 @@ export function FileTree(): React.JSX.Element {
   // --- Keyboard shortcuts ---
   const handleTreeKeyDown = useCallback(
     (e: React.KeyboardEvent): void => {
-      if (e.key === "F2" && selectedPath && !renamingPath) {
+      if (e.key === "F2" && primaryPath && !renamingPath) {
         e.preventDefault();
-        setRenamingPath(selectedPath);
+        setRenamingPath(primaryPath);
       }
       if (
         (e.key === "Delete" || e.key === "Backspace") &&
-        selectedPath &&
+        selectedPaths.size > 0 &&
         !renamingPath &&
         e.metaKey
       ) {
         e.preventDefault();
-        handleDelete(selectedPath);
+        handleDeleteMany([...selectedPaths]);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectedPath, renamingPath],
+    [primaryPath, renamingPath, selectedPaths],
   );
 
   const handleOpenFolder = useCallback(async (): Promise<void> => {
@@ -150,18 +167,44 @@ export function FileTree(): React.JSX.Element {
     if (selected) await openFolder(selected);
   }, []);
 
-  const handleToggleDir = useCallback(
-    (path: string): void => {
-      toggleExpandedDir(path);
+  const handleDirClick = useCallback(
+    (entry: FileEntry, e: React.MouseEvent): void => {
+      if (suppressClickRef.current) return;
+      treeRef.current?.focus();
+      if (e.shiftKey) {
+        selectRange(entry.path, visiblePaths);
+        return;
+      }
+      if (e.metaKey || e.ctrlKey) {
+        toggleSelect(entry.path);
+        return;
+      }
+      selectSingle(entry.path);
+      toggleExpandedDir(entry.path);
     },
-    [toggleExpandedDir],
+    [
+      toggleExpandedDir,
+      selectRange,
+      selectSingle,
+      toggleSelect,
+      visiblePaths,
+      suppressClickRef,
+    ],
   );
 
   const handleFileClick = useCallback(
-    async (entry: FileEntry): Promise<void> => {
+    async (entry: FileEntry, e: React.MouseEvent): Promise<void> => {
       if (suppressClickRef.current) return;
-      setSelectedPath(entry.path);
       treeRef.current?.focus();
+      if (e.shiftKey) {
+        selectRange(entry.path, visiblePaths);
+        return;
+      }
+      if (e.metaKey || e.ctrlKey) {
+        toggleSelect(entry.path);
+        return;
+      }
+      selectSingle(entry.path);
       const existing = tabs.find((t) => t.filePath === entry.path);
       if (existing) {
         useEditorStore.getState().setActiveTab(existing.id);
@@ -182,7 +225,16 @@ export function FileTree(): React.JSX.Element {
         logger.error("[FileTree] Failed to read file:", err);
       }
     },
-    [tabs, setFileContent, openTab, suppressClickRef],
+    [
+      tabs,
+      setFileContent,
+      openTab,
+      suppressClickRef,
+      selectRange,
+      selectSingle,
+      toggleSelect,
+      visiblePaths,
+    ],
   );
 
   // --- Context menu ---
@@ -250,20 +302,20 @@ export function FileTree(): React.JSX.Element {
   // --- Context value (memoized to avoid unnecessary re-renders) ---
   const ctxValue = useMemo(
     (): FileTreeContextValue => ({
-      selectedPath,
+      selectedPaths,
       renamingPath,
       creatingEntry,
       expandedDirs,
       dragOverPath,
-      dragSourcePath,
+      dragSourcePaths,
     }),
     [
-      selectedPath,
+      selectedPaths,
       renamingPath,
       creatingEntry,
       expandedDirs,
       dragOverPath,
-      dragSourcePath,
+      dragSourcePaths,
     ],
   );
 
@@ -339,14 +391,13 @@ export function FileTree(): React.JSX.Element {
           <div className="file-tree-results">
             {searchResults.map((file) => (
               <div
-                className={`file-tree-item file-tree-file ${selectedPath === file.path ? "file-tree-item-active" : ""}`}
+                className={`file-tree-item file-tree-file ${selectedPaths.has(file.path) ? "file-tree-item-active" : ""}`}
                 key={file.path}
-                onClick={() => {
-                  handleFileClick({
-                    name: file.name,
-                    path: file.path,
-                    isDir: false,
-                  });
+                onClick={(e) => {
+                  handleFileClick(
+                    { name: file.name, path: file.path, isDir: false },
+                    e,
+                  );
                   setSearchQuery("");
                 }}
                 style={{ paddingLeft: `${TREE_BASE_PADDING_PX}px` }}
@@ -419,9 +470,9 @@ export function FileTree(): React.JSX.Element {
                 onConfirmCreate={handleConfirmCreate}
                 onConfirmRename={handleConfirmRename}
                 onContextMenu={handleContextMenu}
+                onDirClick={handleDirClick}
                 onFileClick={handleFileClick}
                 onStartRename={handleStartRename}
-                onToggleDir={handleToggleDir}
               />
             ))}
           </>

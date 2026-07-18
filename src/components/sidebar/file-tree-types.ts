@@ -14,8 +14,9 @@ export interface CreatingEntryState {
 
 export interface DragState {
   active: boolean;
+  /** 단일 드래그 시 고스트에 표시할 파일명 */
   sourceName: string;
-  sourcePath: string;
+  sourcePaths: string[];
   startX: number;
   startY: number;
 }

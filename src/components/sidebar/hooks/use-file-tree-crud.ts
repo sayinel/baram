@@ -13,14 +13,16 @@ import {
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useLinkStore } from "../../../stores/editor/link";
 import { useFileStore } from "../../../stores/file/file";
-import { showConfirm } from "../../../utils/confirm-dialog";
+import { showAlert, showConfirm } from "../../../utils/confirm-dialog";
 import { logger } from "../../../utils/logger";
+import { pruneNestedPaths } from "../file-tree-multi-ops";
 
 interface UseFileTreeCrudReturn {
   creatingEntry: CreatingEntryState | null;
   handleCancelCreate: () => void;
   handleConfirmCreate: (name: string) => Promise<void>;
   handleDelete: (path: string) => Promise<void>;
+  handleDeleteMany: (paths: string[]) => Promise<void>;
   handleStartCreate: (parentPath: string, isDir: boolean) => void;
 }
 
@@ -43,8 +45,8 @@ export function useFileTreeCrud(): UseFileTreeCrudReturn {
       if (!entry) return;
       const confirmed = await showConfirm(
         entry.isDir
-          ? `Delete folder "${entry.name}" and all its contents?`
-          : `Delete file "${entry.name}"?`,
+          ? `Move folder "${entry.name}" and all its contents to Trash?`
+          : `Move file "${entry.name}" to Trash?`,
       );
       if (!confirmed) return;
       try {
@@ -62,6 +64,52 @@ export function useFileTreeCrud(): UseFileTreeCrudReturn {
       }
     },
     [rootPath, closeTab, removeFileEntry],
+  );
+
+  const handleDeleteMany = useCallback(
+    async (paths: string[]): Promise<void> => {
+      if (!rootPath || paths.length === 0) return;
+      const targets = pruneNestedPaths(new Set(paths));
+      if (targets.length === 1) {
+        await handleDelete(targets[0]);
+        return;
+      }
+      const entries = targets
+        .map((p) => findEntryByPath(useFileStore.getState().fileTree, p))
+        .filter((e): e is FileEntry => e !== null);
+      if (entries.length === 0) return;
+      const hasDir = entries.some((e) => e.isDir);
+      const confirmed = await showConfirm(
+        hasDir
+          ? `Move ${entries.length} items (including folders) to Trash?`
+          : `Move ${entries.length} items to Trash?`,
+      );
+      if (!confirmed) return;
+      const failed: string[] = [];
+      for (const entry of entries) {
+        try {
+          if (entry.isDir) await deleteDir(entry.path);
+          else await deleteFile(entry.path);
+          const { tabs: currentTabs } = useEditorStore.getState();
+          for (const tab of currentTabs) {
+            if (
+              tab.filePath === entry.path ||
+              tab.filePath?.startsWith(entry.path + "/")
+            )
+              closeTab(tab.id);
+          }
+          removeFileEntry(entry.path);
+        } catch (err) {
+          logger.error("[FileTree] Delete failed:", entry.path, err);
+          failed.push(entry.name);
+        }
+      }
+      useLinkStore.getState().invalidate();
+      if (failed.length > 0) {
+        await showAlert(`Failed to move to Trash: ${failed.join(", ")}`);
+      }
+    },
+    [rootPath, closeTab, removeFileEntry, handleDelete],
   );
 
   const handleStartCreate = useCallback(
@@ -127,6 +175,7 @@ export function useFileTreeCrud(): UseFileTreeCrudReturn {
     handleConfirmCreate,
     handleCancelCreate,
     handleDelete,
+    handleDeleteMany,
   };
 }
 

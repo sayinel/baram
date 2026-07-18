@@ -438,14 +438,30 @@ export const useFileStore = create<FileState>((set, get) => ({
       if (!entry) return state;
 
       const newPath = newParentPath + "/" + entry.name;
-      const movedEntry: FileEntry = { ...entry, path: newPath };
 
-      // Update openFiles key
+      // Dir move: recursively update children paths (mirrors renameFileEntry)
+      function updateChildren(children: FileEntry[]): FileEntry[] {
+        return children.map((c) => {
+          const childNewPath = newPath + c.path.slice(oldPath.length);
+          const updated = { ...c, path: childNewPath };
+          if (c.isDir && c.children) {
+            updated.children = updateChildren(c.children);
+          }
+          return updated;
+        });
+      }
+      const movedEntry: FileEntry = { ...entry, path: newPath };
+      if (entry.isDir && entry.children) {
+        movedEntry.children = updateChildren(entry.children);
+      }
+
+      // Update openFiles keys (dir move includes children keys)
       const openFiles = new Map(state.openFiles);
-      const content = openFiles.get(oldPath);
-      if (content !== undefined) {
-        openFiles.delete(oldPath);
-        openFiles.set(newPath, content);
+      for (const [key, value] of state.openFiles) {
+        if (key === oldPath || key.startsWith(oldPath + "/")) {
+          openFiles.delete(key);
+          openFiles.set(newPath + key.slice(oldPath.length), value);
+        }
       }
 
       // Remove from old location

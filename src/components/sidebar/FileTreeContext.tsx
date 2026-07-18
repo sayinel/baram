@@ -7,10 +7,10 @@ import type { CreatingEntryState } from "./file-tree-types";
 export interface FileTreeContextValue {
   creatingEntry: CreatingEntryState | null;
   dragOverPath: null | string;
-  dragSourcePath: null | string;
+  dragSourcePaths: string[];
   expandedDirs: Set<string>;
   renamingPath: null | string;
-  selectedPath: null | string;
+  selectedPaths: Set<string>;
 }
 
 const FileTreeCtx = createContext<FileTreeContextValue | null>(null);
