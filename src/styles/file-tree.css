@@ -581,6 +581,13 @@
   line-height: 1.4;
 }
 
+.file-tree-access-error-path {
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  word-break: break-all;
+}
+
 .file-tree-access-error-actions {
   display: flex;
   flex-direction: column;

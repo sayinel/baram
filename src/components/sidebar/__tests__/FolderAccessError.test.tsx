@@ -64,6 +64,7 @@ describe("FolderAccessError", () => {
     expect(
       screen.getByRole("button", { name: /다시 시도|Retry/i }),
     ).toBeTruthy();
+    expect(screen.getByText("/x")).toBeTruthy();
   });
 
   it("hides the macOS deep-link buttons on a non-macOS platform", () => {

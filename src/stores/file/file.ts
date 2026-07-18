@@ -244,6 +244,7 @@ export async function switchContext(contextId: string): Promise<void> {
     // FileContext: clear file tree
     useFileStore.getState().setRootPath(null as unknown as string);
     useFileStore.getState().setFileTree([]);
+    useFileStore.getState().setLoadError(null);
   }
 }
 

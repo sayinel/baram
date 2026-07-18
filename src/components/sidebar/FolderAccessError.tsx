@@ -38,6 +38,7 @@ export function FolderAccessError({
           ? t("fileTree.accessDenied.bodyMac")
           : t("fileTree.accessDenied.bodyGeneric")}
       </p>
+      <p className="file-tree-access-error-path">{loadError.path}</p>
 
       {mac && permission && (
         <div className="file-tree-access-error-actions">
@@ -62,7 +63,7 @@ export function FolderAccessError({
           className="file-tree-access-error-disclosure btn-unstyled"
           onClick={() => setShowDetails((v) => !v)}
         >
-          {showDetails ? "▾ " : "▸ "}
+          <span aria-hidden="true">{showDetails ? "▾ " : "▸ "}</span>
           {t("fileTree.accessDenied.details")}
         </button>
       )}
