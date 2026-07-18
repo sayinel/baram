@@ -45,4 +45,53 @@ describe("FolderAccessError", () => {
       "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles",
     );
   });
+
+  it("renders the generic body and no deep-link buttons for a generic error", () => {
+    render(
+      <FolderAccessError
+        loadError={{ kind: "generic", path: "/x", message: "disk exploded" }}
+        onRetry={vi.fn()}
+      />,
+    );
+    expect(
+      screen.queryByRole("button", {
+        name: /전체 디스크 접근|Full Disk Access/i,
+      }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /파일 및 폴더|Files & Folders/i }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /다시 시도|Retry/i }),
+    ).toBeTruthy();
+  });
+
+  it("hides the macOS deep-link buttons on a non-macOS platform", () => {
+    const original = navigator.userAgent;
+    Object.defineProperty(navigator, "userAgent", {
+      value: "Mozilla/5.0 (X11; Linux x86_64)",
+      configurable: true,
+    });
+    try {
+      render(
+        <FolderAccessError
+          loadError={{ kind: "permission-denied", path: "/x" }}
+          onRetry={vi.fn()}
+        />,
+      );
+      expect(
+        screen.queryByRole("button", {
+          name: /전체 디스크 접근|Full Disk Access/i,
+        }),
+      ).toBeNull();
+      expect(
+        screen.getByRole("button", { name: /다시 시도|Retry/i }),
+      ).toBeTruthy();
+    } finally {
+      Object.defineProperty(navigator, "userAgent", {
+        value: original,
+        configurable: true,
+      });
+    }
+  });
 });
