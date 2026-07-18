@@ -5,6 +5,7 @@ import { useZettelIndexStore } from "../../../stores/zettelkasten/zettel-index";
 import {
   buildFileSuggestionItem,
   filterFiles,
+  shouldBlockCompletedWikilink,
   type WikilinkSuggestionItem,
 } from "../wikilink-suggest-utils";
 
@@ -109,5 +110,24 @@ describe("wikilink-suggest-utils — §95 zettel autocomplete", () => {
 
       expect(filterFiles(files, "", 20)).toHaveLength(2);
     });
+  });
+});
+
+describe("shouldBlockCompletedWikilink — bugfix for pasted [[wikilink]] triggering autocomplete", () => {
+  it("blocks when matched text contains a closing ]] (complete/pasted wikilink)", () => {
+    expect(shouldBlockCompletedWikilink("[[blanky]]")).toBe(true);
+  });
+
+  it("blocks even with a heading/alias inside a complete wikilink", () => {
+    expect(shouldBlockCompletedWikilink("[[blanky#Section]]")).toBe(true);
+    expect(shouldBlockCompletedWikilink("[[vault::blanky]]")).toBe(true);
+  });
+
+  it("allows an in-progress query with no closing ]]", () => {
+    expect(shouldBlockCompletedWikilink("[[blan")).toBe(false);
+  });
+
+  it("allows an empty query right after typing [[", () => {
+    expect(shouldBlockCompletedWikilink("[[")).toBe(false);
   });
 });

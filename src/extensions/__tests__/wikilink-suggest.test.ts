@@ -1,13 +1,24 @@
+import { Editor } from "@tiptap/core";
+import { findSuggestionMatch } from "@tiptap/suggestion";
 // §31 wikilink autocomplete — search/filter logic tests
 import { describe, expect, it } from "vitest";
 
+import { createBaramExtensions } from "../../extensions";
 import { hasExactMatch } from "../plugins/wikilink-suggest";
 import {
   fileNameWithoutExtension,
   filterFiles,
   longestCommonPrefix,
+  shouldBlockCompletedWikilink,
   type WikilinkSuggestionItem,
 } from "../plugins/wikilink-suggest-utils";
+
+function createEditor(): Editor {
+  return new Editor({
+    extensions: createBaramExtensions(),
+    content: "<p></p>",
+  });
+}
 
 const testFiles: WikilinkSuggestionItem[] = [
   {
@@ -204,6 +215,73 @@ describe("§61 Namespace: filterFiles with relative-prefix items", () => {
     const result = filterFiles(namespacedFiles, "mod");
     expect(result.length).toBeGreaterThanOrEqual(1);
     expect(result[0].target).toMatch(/^\.\//);
+  });
+});
+
+describe("bugfix: pasted complete [[wikilink]] should not trigger autocomplete", () => {
+  it("root cause: findSuggestionMatch on a pasted [[blanky]] captures the trailing ]] into the query", () => {
+    const editor = createEditor();
+    // Simulate a paste: insertContent inserts literal text, bypassing
+    // InputRules (which only fire on real keystrokes via handleTextInput),
+    // so this lands as plain text "[[blanky]]" — exactly like a clipboard paste.
+    editor.commands.insertContent("[[blanky]]");
+    const $position = editor.state.selection.$from;
+
+    const match = findSuggestionMatch({
+      char: "[[",
+      allowSpaces: true,
+      allowToIncludeChar: false,
+      allowedPrefixes: [" "],
+      startOfLine: false,
+      $position,
+    });
+
+    expect(match).not.toBeNull();
+    // KEY FINDING: query captures the trailing ]] instead of stopping at it —
+    // this is exactly the "blanky]]" query from the bug report.
+    expect(match!.query).toBe("blanky]]");
+    expect(match!.text).toBe("[[blanky]]");
+
+    // KEY FINDING: range spans the ENTIRE "[[blanky]]" text, so reading the
+    // matched text back out of the doc reveals the closing ]] is included.
+    const matchedText = editor.state.doc.textBetween(
+      match!.range.from,
+      match!.range.to,
+      undefined,
+      "￼",
+    );
+    expect(matchedText).toBe("[[blanky]]");
+    expect(shouldBlockCompletedWikilink(matchedText)).toBe(true);
+
+    editor.destroy();
+  });
+
+  it("in-progress [[blan (no closing ]]) still allows autocomplete", () => {
+    const editor = createEditor();
+    editor.commands.insertContent("[[blan");
+    const $position = editor.state.selection.$from;
+
+    const match = findSuggestionMatch({
+      char: "[[",
+      allowSpaces: true,
+      allowToIncludeChar: false,
+      allowedPrefixes: [" "],
+      startOfLine: false,
+      $position,
+    });
+
+    expect(match).not.toBeNull();
+    expect(match!.query).toBe("blan");
+
+    const matchedText = editor.state.doc.textBetween(
+      match!.range.from,
+      match!.range.to,
+      undefined,
+      "￼",
+    );
+    expect(shouldBlockCompletedWikilink(matchedText)).toBe(false);
+
+    editor.destroy();
   });
 });
 
