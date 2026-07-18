@@ -50,6 +50,27 @@ export function FileTreeContextMenu({
           >
             Delete
           </div>
+          <div className="file-tree-context-menu-separator" />
+          <div
+            className="file-tree-context-menu-item"
+            onClick={() => onAction("copyPath")}
+          >
+            Copy Path
+          </div>
+          <div
+            className="file-tree-context-menu-item"
+            onClick={() => onAction("copyRelativePath")}
+          >
+            Copy Relative Path
+          </div>
+          {!menu.targetIsDir && (
+            <div
+              className="file-tree-context-menu-item"
+              onClick={() => onAction("copyWikilink")}
+            >
+              Copy as Wikilink
+            </div>
+          )}
         </>
       )}
     </div>

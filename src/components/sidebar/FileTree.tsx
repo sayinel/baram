@@ -31,6 +31,7 @@ import { DRAG_EXPAND_DELAY_MS, TREE_BASE_PADDING_PX } from "./file-tree-types";
 import { computeVisibleEntries } from "./file-tree-visible";
 import { FileTreeProvider } from "./FileTreeContext";
 import { FileTreeNode } from "./FileTreeNode";
+import { useFileTreeActions } from "./hooks/use-file-tree-actions";
 import { useFileTreeCrud } from "./hooks/use-file-tree-crud";
 import { useFileTreeDnD } from "./hooks/use-file-tree-dnd";
 import { useFileTreeRename } from "./hooks/use-file-tree-rename";
@@ -110,6 +111,8 @@ export function FileTree(): React.JSX.Element {
     handleTreeMouseDown,
     suppressClickRef,
   } = useFileTreeDnD(editor, selectedPaths);
+
+  const actions = useFileTreeActions();
 
   // --- Sync selectedPaths with active tab ---
   const activeTab = tabs.find((t) => t.id === activeTabId);
@@ -283,6 +286,15 @@ export function FileTree(): React.JSX.Element {
           : target.targetPath.substring(0, target.targetPath.lastIndexOf("/"))
         : rootPath;
       switch (action) {
+        case "copyPath":
+          if (target.targetPath) actions.copyPath(target.targetPath);
+          break;
+        case "copyRelativePath":
+          if (target.targetPath) actions.copyRelativePath(target.targetPath);
+          break;
+        case "copyWikilink":
+          if (target.targetPath) actions.copyWikilink(target.targetPath);
+          break;
         case "delete":
           if (target.targetPath) handleDelete(target.targetPath);
           break;
@@ -297,7 +309,14 @@ export function FileTree(): React.JSX.Element {
           break;
       }
     },
-    [contextMenu, rootPath, handleStartCreate, handleDelete, setRenamingPath],
+    [
+      contextMenu,
+      rootPath,
+      handleStartCreate,
+      handleDelete,
+      setRenamingPath,
+      actions,
+    ],
   );
 
   // --- Context value (memoized to avoid unnecessary re-renders) ---
