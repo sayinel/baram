@@ -1,9 +1,12 @@
+import type { FileEntry } from "../../../stores/file/file";
+
 import { describe, expect, it } from "vitest";
 
 import {
   planMultiMove,
   pruneNestedPaths,
   resolveDragSet,
+  someSelectedIsDir,
 } from "../file-tree-multi-ops";
 
 describe("pruneNestedPaths", () => {
@@ -76,5 +79,31 @@ describe("planMultiMove", () => {
       { from: "/r/a/index.md", to: "/r/target/index.md" },
     ]);
     expect(plan.skipped).toEqual(["/r/b/index.md"]);
+  });
+});
+
+describe("someSelectedIsDir", () => {
+  const tree: FileEntry[] = [
+    { name: "a.md", path: "/r/a.md", isDir: false },
+    {
+      name: "docs",
+      path: "/r/docs",
+      isDir: true,
+      children: [{ name: "b.md", path: "/r/docs/b.md", isDir: false }],
+    },
+  ];
+
+  it("선택된 경로 중 폴더가 있으면 true를 반환한다", () => {
+    expect(someSelectedIsDir(tree, new Set(["/r/a.md", "/r/docs"]))).toBe(true);
+  });
+
+  it("선택된 경로가 모두 파일이면 false를 반환한다", () => {
+    expect(someSelectedIsDir(tree, new Set(["/r/a.md", "/r/docs/b.md"]))).toBe(
+      false,
+    );
+  });
+
+  it("중첩된 자식 경로도 순회하여 확인한다", () => {
+    expect(someSelectedIsDir(tree, new Set(["/r/docs/b.md"]))).toBe(false);
   });
 });

@@ -10,6 +10,8 @@ const base: ContextMenuState = {
   y: 20,
   targetPath: null,
   targetIsDir: false,
+  selectionCount: 1,
+  selectionHasDir: false,
 };
 
 describe("FileTreeContextMenu (baseline actions)", () => {
@@ -66,5 +68,46 @@ describe("FileTreeContextMenu (baseline actions)", () => {
     const el = container.querySelector<HTMLElement>(".file-tree-context-menu")!;
     expect(el.style.left).toBe("42px");
     expect(el.style.top).toBe("99px");
+  });
+});
+
+describe("FileTreeContextMenu (multi-selection)", () => {
+  it("selectionCount>1이면 축소 세트(Duplicate/Move/Delete/Copy Path)만 보여주고 Rename은 숨긴다", () => {
+    render(
+      <FileTreeContextMenu
+        menu={{
+          x: 0,
+          y: 0,
+          targetPath: "/r/a.md",
+          targetIsDir: false,
+          selectionCount: 3,
+          selectionHasDir: false,
+        }}
+        onAction={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Move to…")).toBeInTheDocument();
+    expect(screen.getByText("Delete")).toBeInTheDocument();
+    expect(screen.getByText("Copy Path")).toBeInTheDocument();
+    expect(screen.queryByText("Rename")).not.toBeInTheDocument();
+    expect(screen.queryByText("Open in New Tab")).not.toBeInTheDocument();
+  });
+
+  it("selectionCount>1이고 폴더 포함이면 Duplicate를 비활성(disabled)으로 표시한다", () => {
+    render(
+      <FileTreeContextMenu
+        menu={{
+          x: 0,
+          y: 0,
+          targetPath: "/r/docs",
+          targetIsDir: true,
+          selectionCount: 2,
+          selectionHasDir: true,
+        }}
+        onAction={vi.fn()}
+      />,
+    );
+    const dup = screen.getByText("Duplicate");
+    expect(dup.className).toContain("file-tree-context-menu-item-disabled");
   });
 });

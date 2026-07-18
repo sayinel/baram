@@ -1,4 +1,5 @@
 // §4.3 File tree — 멀티 선택 일괄 작업 헬퍼 (순수 함수)
+import type { FileEntry } from "../../stores/file/file";
 
 export interface MultiMovePlan {
   moves: { from: string; to: string }[];
@@ -51,4 +52,19 @@ export function resolveDragSet(
 ): string[] {
   if (selectedPaths.has(sourcePath)) return pruneNestedPaths(selectedPaths);
   return [sourcePath];
+}
+
+/** 선택된 경로 중 하나라도 폴더면 true (트리를 순회해 확인). */
+export function someSelectedIsDir(
+  tree: FileEntry[],
+  selectedPaths: ReadonlySet<string>,
+): boolean {
+  const stack = [...tree];
+  while (stack.length > 0) {
+    const entry = stack.pop();
+    if (!entry) continue;
+    if (selectedPaths.has(entry.path) && entry.isDir) return true;
+    if (entry.children) stack.push(...entry.children);
+  }
+  return false;
 }

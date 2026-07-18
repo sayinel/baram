@@ -27,6 +27,7 @@ import {
   IconNewFile,
   IconNewFolder,
 } from "./file-tree-icons";
+import { someSelectedIsDir } from "./file-tree-multi-ops";
 import { DRAG_EXPAND_DELAY_MS, TREE_BASE_PADDING_PX } from "./file-tree-types";
 import { computeVisibleEntries } from "./file-tree-visible";
 import { FileTreeProvider } from "./FileTreeContext";
@@ -250,14 +251,24 @@ export function FileTree(): React.JSX.Element {
     (e: React.MouseEvent, path: string, isDir: boolean): void => {
       e.preventDefault();
       e.stopPropagation();
+      let count = 1;
+      let hasDir = isDir;
+      if (selectedPaths.has(path) && selectedPaths.size > 1) {
+        count = selectedPaths.size;
+        hasDir = someSelectedIsDir(fileTree, selectedPaths);
+      } else {
+        selectSingle(path);
+      }
       setContextMenu({
         x: e.clientX,
         y: e.clientY,
         targetPath: path,
         targetIsDir: isDir,
+        selectionCount: count,
+        selectionHasDir: hasDir,
       });
     },
-    [],
+    [selectedPaths, selectSingle, fileTree],
   );
 
   const handleEmptyAreaContextMenu = useCallback(
@@ -272,6 +283,8 @@ export function FileTree(): React.JSX.Element {
           y: e.clientY,
           targetPath: null,
           targetIsDir: false,
+          selectionCount: 1,
+          selectionHasDir: false,
         });
       }
     },
@@ -291,7 +304,9 @@ export function FileTree(): React.JSX.Element {
         : rootPath;
       switch (action) {
         case "copyPath":
-          if (target.targetPath) actions.copyPath(target.targetPath);
+          if (target.selectionCount > 1)
+            actions.copyPath([...selectedPaths].join("\n"));
+          else if (target.targetPath) actions.copyPath(target.targetPath);
           break;
         case "copyRelativePath":
           if (target.targetPath) actions.copyRelativePath(target.targetPath);
@@ -300,18 +315,25 @@ export function FileTree(): React.JSX.Element {
           if (target.targetPath) actions.copyWikilink(target.targetPath);
           break;
         case "delete":
-          if (target.targetPath) handleDelete(target.targetPath);
+          if (target.selectionCount > 1) handleDeleteMany([...selectedPaths]);
+          else if (target.targetPath) handleDelete(target.targetPath);
           break;
         case "duplicate":
-          if (target.targetPath && !target.targetIsDir)
+          if (target.selectionCount > 1) {
+            // 파일만 복제 (selectionHasDir면 메뉴에서 이미 비활성)
+            for (const p of selectedPaths) actions.duplicateFile(p);
+          } else if (target.targetPath && !target.targetIsDir) {
             actions.duplicateFile(target.targetPath);
+          }
           break;
         case "export":
           if (target.targetPath && !target.targetIsDir)
             actions.exportFile(target.targetPath);
           break;
         case "move":
-          if (target.targetPath) setMoveModalSources([target.targetPath]);
+          if (target.selectionCount > 1)
+            setMoveModalSources([...selectedPaths]);
+          else if (target.targetPath) setMoveModalSources([target.targetPath]);
           break;
         case "newFile":
           handleStartCreate(parentPath, false);
@@ -336,8 +358,10 @@ export function FileTree(): React.JSX.Element {
       rootPath,
       handleStartCreate,
       handleDelete,
+      handleDeleteMany,
       setRenamingPath,
       actions,
+      selectedPaths,
     ],
   );
 

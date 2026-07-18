@@ -16,6 +16,42 @@ export function FileTreeContextMenu({
   onAction,
 }: FileTreeContextMenuProps): React.JSX.Element {
   const isEmptyArea = menu.targetPath === null;
+  const isMulti = menu.selectionCount > 1;
+  if (isMulti) {
+    return (
+      <div
+        className="file-tree-context-menu"
+        onClick={(e) => e.stopPropagation()}
+        style={{ left: menu.x, top: menu.y }}
+      >
+        <div
+          className={`file-tree-context-menu-item ${menu.selectionHasDir ? "file-tree-context-menu-item-disabled" : ""}`}
+          onClick={() => !menu.selectionHasDir && onAction("duplicate")}
+        >
+          Duplicate
+        </div>
+        <div
+          className="file-tree-context-menu-item"
+          onClick={() => onAction("move")}
+        >
+          Move to…
+        </div>
+        <div
+          className="file-tree-context-menu-item file-tree-context-menu-item-danger"
+          onClick={() => onAction("delete")}
+        >
+          Delete
+        </div>
+        <div className="file-tree-context-menu-separator" />
+        <div
+          className="file-tree-context-menu-item"
+          onClick={() => onAction("copyPath")}
+        >
+          Copy Path
+        </div>
+      </div>
+    );
+  }
   return (
     <div
       className="file-tree-context-menu"
