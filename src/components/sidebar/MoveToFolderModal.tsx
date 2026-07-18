@@ -106,7 +106,7 @@ export function MoveToFolderModal({
           ) : (
             folders.map((f, idx) => (
               <div
-                className={`move-modal-item${idx === selectedIndex ? "move-modal-item-selected" : ""}`}
+                className={`move-modal-item ${idx === selectedIndex ? "move-modal-item-selected" : ""}`}
                 key={f.path}
                 onClick={() => handlePick(f.path)}
                 onMouseEnter={() => setSelectedIndex(idx)}
