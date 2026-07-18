@@ -69,6 +69,12 @@ export function FileTreeContextMenu({
             Rename
           </div>
           <div
+            className="file-tree-context-menu-item"
+            onClick={() => onAction("move")}
+          >
+            Move to…
+          </div>
+          <div
             className="file-tree-context-menu-item file-tree-context-menu-item-danger"
             onClick={() => onAction("delete")}
           >

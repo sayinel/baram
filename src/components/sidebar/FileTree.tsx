@@ -37,6 +37,7 @@ import { useFileTreeDnD } from "./hooks/use-file-tree-dnd";
 import { useFileTreeRename } from "./hooks/use-file-tree-rename";
 import { useFileTreeSearch } from "./hooks/use-file-tree-search";
 import { useFileTreeSelection } from "./hooks/use-file-tree-selection";
+import { MoveToFolderModal } from "./MoveToFolderModal";
 
 export function FileTree(): React.JSX.Element {
   const editor = useEditorContext();
@@ -62,6 +63,9 @@ export function FileTree(): React.JSX.Element {
   const { selectedPaths, selectSingle, toggleSelect, selectRange } =
     useFileTreeSelection();
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [moveModalSources, setMoveModalSources] = useState<null | string[]>(
+    null,
+  );
   const treeRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -306,6 +310,9 @@ export function FileTree(): React.JSX.Element {
           if (target.targetPath && !target.targetIsDir)
             actions.exportFile(target.targetPath);
           break;
+        case "move":
+          if (target.targetPath) setMoveModalSources([target.targetPath]);
+          break;
         case "newFile":
           handleStartCreate(parentPath, false);
           break;
@@ -517,6 +524,12 @@ export function FileTree(): React.JSX.Element {
           <FileTreeContextMenu
             menu={contextMenu}
             onAction={handleContextMenuAction}
+          />
+        )}
+        {moveModalSources && (
+          <MoveToFolderModal
+            onClose={() => setMoveModalSources(null)}
+            sources={moveModalSources}
           />
         )}
       </div>
