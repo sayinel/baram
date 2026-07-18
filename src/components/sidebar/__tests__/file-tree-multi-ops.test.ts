@@ -59,4 +59,10 @@ describe("planMultiMove", () => {
     const plan = planMultiMove(["/r/docs/a.md"], "/r", "/r");
     expect(plan.moves).toEqual([{ from: "/r/docs/a.md", to: "/r/a.md" }]);
   });
+
+  it("자기 자신으로의 이동은 skipped된다", () => {
+    const plan = planMultiMove(["/r/docs"], "/r/docs", "/r");
+    expect(plan.moves).toEqual([]);
+    expect(plan.skipped).toEqual(["/r/docs"]);
+  });
 });
