@@ -1,5 +1,6 @@
 // §4.3 File tree — Move-to-folder picker modal
 import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { useShallow } from "zustand/shallow";
 
@@ -42,7 +43,7 @@ export function MoveToFolderModal({
     onClose();
   };
 
-  return (
+  return createPortal(
     <div className="move-modal-overlay" onClick={onClose}>
       <div className="move-modal" onClick={(e) => e.stopPropagation()}>
         <div className="move-modal-title">
@@ -71,7 +72,8 @@ export function MoveToFolderModal({
           ))}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
