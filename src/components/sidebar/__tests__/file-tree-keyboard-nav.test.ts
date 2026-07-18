@@ -35,6 +35,9 @@ describe("nextPath / prevPath", () => {
   it("current가 목록에 없으면 첫 항목을 반환한다", () => {
     expect(nextPath(paths, "/gone")).toBe("/r/docs");
   });
+  it("prevPath: current가 목록에 없으면 첫 항목을 반환한다", () => {
+    expect(prevPath(paths, "/gone")).toBe("/r/docs");
+  });
 });
 
 describe("firstChildPath", () => {
@@ -67,5 +70,31 @@ describe("isDirPath", () => {
     expect(isDirPath(entries, "/r/docs")).toBe(true);
     expect(isDirPath(entries, "/r/z.md")).toBe(false);
     expect(isDirPath(entries, "/gone")).toBe(false);
+  });
+});
+
+describe("empty inputs", () => {
+  it("빈 배열은 안전하게 null/false를 반환한다", () => {
+    expect(nextPath([], null)).toBeNull();
+    expect(prevPath([], null)).toBeNull();
+    expect(firstChildPath([], "/r/docs")).toBeNull();
+    expect(parentPath([], "/r/docs/a.md", "/r")).toBeNull();
+    expect(isDirPath([], "/r/docs")).toBe(false);
+  });
+});
+
+describe("sibling-prefix safety", () => {
+  const sib: NavEntry[] = [
+    { path: "/r/doc", isDir: true },
+    { path: "/r/docs", isDir: true },
+    { path: "/r/docs/a.md", isDir: false },
+  ];
+  it("firstChildPath는 형제 접두어를 자식으로 오인하지 않는다", () => {
+    // /r/doc의 바로 뒤는 /r/docs (형제, 자식 아님) → null
+    expect(firstChildPath(sib, "/r/doc")).toBeNull();
+    expect(firstChildPath(sib, "/r/docs")).toBe("/r/docs/a.md");
+  });
+  it("parentPath는 형제 접두어를 부모로 오인하지 않는다", () => {
+    expect(parentPath(sib, "/r/docs/a.md", "/r")).toBe("/r/docs");
   });
 });
