@@ -74,6 +74,10 @@ export function FileTree(): React.JSX.Element {
   );
   const treeRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  // §4.4 Roving-tabindex bookkeeping (focusedPath state) happens on every
+  // active-tab change; imperatively stealing real DOM focus must only
+  // happen when the change originated from keyboard nav, not tab-sync.
+  const shouldStealFocusRef = useRef(false);
 
   // --- Hooks ---
   const {
@@ -161,7 +165,10 @@ export function FileTree(): React.JSX.Element {
       `[data-tree-path="${CSS.escape(focusedPath)}"]`,
     );
     el?.scrollIntoView({ block: "nearest" });
-    el?.focus();
+    if (shouldStealFocusRef.current) {
+      el?.focus();
+      shouldStealFocusRef.current = false;
+    }
   }, [focusedPath]);
 
   // --- Close context menu on click outside or Escape ---
@@ -209,7 +216,10 @@ export function FileTree(): React.JSX.Element {
         handleDeleteMany([...selectedPaths]);
         return;
       }
-      if (!renamingPath) handleNavKeyDown(e);
+      if (!renamingPath) {
+        shouldStealFocusRef.current = true;
+        handleNavKeyDown(e);
+      }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [primaryPath, renamingPath, selectedPaths, handleNavKeyDown],
