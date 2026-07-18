@@ -3,12 +3,19 @@ import type { FileEntry as IpcFileEntry } from "../../ipc/types";
 // §3.5 파일 시스템 스토어
 import { create } from "zustand";
 
-import { listDir, refreshIndex, setVaultRoot } from "../../ipc/invoke";
+import { type Locale, t } from "../../i18n";
+import {
+  isFolderAccessDeniedError,
+  listDir,
+  refreshIndex,
+  setVaultRoot,
+} from "../../ipc/invoke";
 import { logger } from "../../utils/logger";
 import { useContextStore } from "../context/context";
 import { useEditorStore } from "../editor/editor";
 import { useLinkStore } from "../editor/link";
 import { useSettingsStore } from "../settings/store";
+import { useUIStore } from "../ui/ui";
 
 export interface FileEntry {
   children?: FileEntry[];
@@ -23,6 +30,11 @@ export interface FileMtimeEntry {
   /** mtime at the time of the last save (ms since epoch, 0 = unknown) */
   lastSaveMtime: number;
 }
+
+/** §4.3 Why the file tree failed to load (drives the FolderAccessError panel). */
+export type FileTreeLoadError =
+  | { kind: "generic"; message: string; path: string }
+  | { kind: "permission-denied"; path: string };
 
 interface FileState {
   /** Add a file/folder entry under parentPath (sorted: dirs first, then name) */
@@ -40,6 +52,8 @@ interface FileState {
   getFileMtime: (path: string) => FileMtimeEntry | undefined;
   /** Initialize mtime tracking when a file is opened (sets both fields to 0) */
   initFileMtime: (path: string) => void;
+  /** §4.3 Non-null when the last file-tree load failed (permission or other) */
+  loadError: FileTreeLoadError | null;
   /** Move a file/folder entry to a new parent directory */
   moveFileEntry: (oldPath: string, newParentPath: string) => void;
   openFiles: Map<string, string>; // path → content
@@ -48,10 +62,13 @@ interface FileState {
   removeFileEntry: (path: string) => void;
   /** §33 Rename a file entry in the tree and update openFiles cache key */
   renameFileEntry: (oldPath: string, newPath: string, newName: string) => void;
+  /** §4.3 Re-run the current folder's file-tree load (used by the retry button) */
+  retryLoadFileTree: () => Promise<void>;
   rootPath: null | string;
 
   setFileContent: (path: string, content: string) => void;
   setFileTree: (tree: FileEntry[]) => void;
+  setLoadError: (e: FileTreeLoadError | null) => void;
 
   setRootPath: (path: string) => void;
   setTagFilter: (tag: null | string) => void;
@@ -227,6 +244,7 @@ export async function switchContext(contextId: string): Promise<void> {
     // FileContext: clear file tree
     useFileStore.getState().setRootPath(null as unknown as string);
     useFileStore.getState().setFileTree([]);
+    useFileStore.getState().setLoadError(null);
   }
 }
 
@@ -246,6 +264,7 @@ async function _loadContextFileTree(path: string): Promise<void> {
     const tree = buildFileTree(entries, path);
     useFileStore.getState().setRootPath(path);
     useFileStore.getState().setFileTree(tree);
+    useFileStore.getState().setLoadError(null); // §4.3 clear prior error on success
 
     // Build link index in background
     refreshIndex(path)
@@ -253,6 +272,28 @@ async function _loadContextFileTree(path: string): Promise<void> {
       .catch((err) =>
         logger.warn("§81 _loadContextFileTree: refreshIndex failed", err),
       );
+  } catch (err) {
+    // §4.3 Surface the failure instead of silently leaving an empty tree.
+    useFileStore.getState().setRootPath(path); // keep context so the panel renders in place
+    useFileStore.getState().setFileTree([]);
+    const { locale } = useSettingsStore.getState();
+    if (isFolderAccessDeniedError(err)) {
+      useFileStore.getState().setLoadError({ kind: "permission-denied", path });
+      useUIStore
+        .getState()
+        .showToast(t("fileTree.accessDenied.toast", locale as Locale), "error");
+    } else {
+      const message = err instanceof Error ? err.message : String(err);
+      useFileStore.getState().setLoadError({ kind: "generic", path, message });
+      useUIStore
+        .getState()
+        .showToast(
+          t("fileTree.accessDenied.toastGeneric", locale as Locale),
+          "error",
+        );
+    }
+    logger.warn("§4.3 _loadContextFileTree: load failed", err);
+    throw err; // §4.3 preserve original resolve/reject contract for openFolder/addFolder/switchContext
   } finally {
     _loadingPath = null;
   }
@@ -263,10 +304,24 @@ export const useFileStore = create<FileState>((set, get) => ({
   fileTree: [],
   openFiles: new Map(),
   fileMtimes: new Map(),
+  loadError: null,
 
   setRootPath: (path) => set({ rootPath: path }),
 
   setFileTree: (tree) => set({ fileTree: tree }),
+
+  setLoadError: (e) => set({ loadError: e }),
+
+  retryLoadFileTree: async () => {
+    const path = get().rootPath;
+    if (!path) return;
+    try {
+      await _loadContextFileTree(path);
+    } catch {
+      // §4.3 loadError state already reflects the failure; the retry button is
+      // driven by that state, so swallow the rethrow here.
+    }
+  },
 
   setFileContent: (path, content) =>
     set((state) => {
@@ -538,7 +593,12 @@ export const useFileStore = create<FileState>((set, get) => ({
     // Clear last-opened so onLaunch won't reopen the closed folder
     useSettingsStore.getState().setLastOpenedFolder(null);
     useSettingsStore.getState().setLastOpenedFile(null);
-    set({ rootPath: null, fileTree: [], expandedDirs: new Set() });
+    set({
+      rootPath: null,
+      fileTree: [],
+      expandedDirs: new Set(),
+      loadError: null,
+    });
 
     // §81 Remove all contexts so the context tab bar clears
     const ctxStore = useContextStore.getState();
