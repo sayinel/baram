@@ -18,6 +18,10 @@ pub enum FsError {
     WatchError(String),
     #[error("휴지통 이동 실패: {0}")]
     TrashError(String),
+    /// §4.3 Folder access denied (macOS TCC / Unix EACCES). The Display string is a
+    /// stable, locale-independent sentinel parsed by the frontend `listDir` wrapper.
+    #[error("PERMISSION_DENIED:{0}")]
+    PermissionDenied(String),
 }
 
 /// Directories excluded from markdown file collection.
@@ -118,7 +122,14 @@ async fn list_dir_inner(
     recursive: bool,
     entries: &mut Vec<FileEntry>,
 ) -> Result<(), FsError> {
-    let mut read_dir = tokio::fs::read_dir(path).await?;
+    let mut read_dir = tokio::fs::read_dir(path).await.map_err(|e| {
+        if e.kind() == std::io::ErrorKind::PermissionDenied {
+            // §4.3 Surface a specific, path-tagged error the frontend can recognize.
+            FsError::PermissionDenied(path.to_string_lossy().to_string())
+        } else {
+            FsError::ReadError(e)
+        }
+    })?;
     while let Some(entry) = read_dir.next_entry().await? {
         let metadata = entry.metadata().await?;
         let name = entry.file_name().to_string_lossy().to_string();
@@ -449,5 +460,37 @@ mod tests {
         }
         res.unwrap();
         assert!(!sub.exists());
+    }
+}
+
+#[cfg(all(test, unix))]
+mod permission_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn list_dir_maps_permission_denied_to_sentinel() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().join("locked");
+        std::fs::create_dir(&dir).unwrap();
+        // Remove all permissions so read_dir fails with EACCES (mirrors macOS TCC EPERM,
+        // both map to std::io::ErrorKind::PermissionDenied).
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+        let result = list_dir(dir.to_str().unwrap(), false).await;
+
+        // Restore permissions so TempDir cleanup succeeds.
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let err = result.expect_err("read of a 0o000 dir must fail");
+        assert!(
+            matches!(err, FsError::PermissionDenied(_)),
+            "expected PermissionDenied, got {err:?}"
+        );
+        assert_eq!(
+            err.to_string(),
+            format!("PERMISSION_DENIED:{}", dir.to_str().unwrap())
+        );
     }
 }
