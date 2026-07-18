@@ -1,6 +1,11 @@
 // §4.3 File tree — context menu component (extracted from FileTree.tsx)
 import type { ContextMenuState } from "./file-tree-types";
 
+const REVEAL_LABEL =
+  typeof navigator !== "undefined" && navigator.platform.startsWith("Mac")
+    ? "Reveal in Finder"
+    : "Show in File Manager";
+
 export interface FileTreeContextMenuProps {
   menu: ContextMenuState;
   onAction: (action: string) => void;
@@ -79,6 +84,13 @@ export function FileTreeContextMenu({
               Copy as Wikilink
             </div>
           )}
+          <div className="file-tree-context-menu-separator" />
+          <div
+            className="file-tree-context-menu-item"
+            onClick={() => onAction("reveal")}
+          >
+            {REVEAL_LABEL}
+          </div>
         </>
       )}
     </div>

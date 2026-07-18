@@ -311,6 +311,9 @@ export function FileTree(): React.JSX.Element {
         case "rename":
           if (target.targetPath) setRenamingPath(target.targetPath);
           break;
+        case "reveal":
+          if (target.targetPath) actions.revealInFileManager(target.targetPath);
+          break;
       }
     },
     [

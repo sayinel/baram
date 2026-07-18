@@ -2,6 +2,7 @@
 import { useCallback } from "react";
 
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
 import type { FileEntry } from "../../../stores/file/file";
 
@@ -21,6 +22,7 @@ export interface UseFileTreeActionsReturn {
   copyRelativePath: (path: string) => Promise<void>;
   copyWikilink: (path: string) => Promise<void>;
   duplicateFile: (path: string) => Promise<void>;
+  revealInFileManager: (path: string) => Promise<void>;
 }
 
 export function useFileTreeActions(): UseFileTreeActionsReturn {
@@ -58,7 +60,24 @@ export function useFileTreeActions(): UseFileTreeActionsReturn {
     }
   }, []);
 
-  return { copyPath, copyRelativePath, copyWikilink, duplicateFile };
+  const revealInFileManager = useCallback(
+    async (path: string): Promise<void> => {
+      try {
+        await revealItemInDir(path);
+      } catch (err) {
+        logger.error("[FileTree] Reveal failed:", err);
+      }
+    },
+    [],
+  );
+
+  return {
+    copyPath,
+    copyRelativePath,
+    copyWikilink,
+    duplicateFile,
+    revealInFileManager,
+  };
 }
 
 function collectSiblingNames(

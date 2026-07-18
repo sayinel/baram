@@ -19,6 +19,11 @@ vi.mock("../../../ipc/invoke", () => ({
   removeConfig: vi.fn().mockResolvedValue(undefined),
 }));
 
+const revealItemInDir = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+vi.mock("@tauri-apps/plugin-opener", () => ({ revealItemInDir }));
+
+import { revealItemInDir as revealMock } from "@tauri-apps/plugin-opener";
+
 import { useFileStore } from "../../../stores/file/file";
 import { useFileTreeActions } from "../hooks/use-file-tree-actions";
 
@@ -63,5 +68,13 @@ describe("useFileTreeActions duplicate", () => {
     expect(copyFile).toHaveBeenCalledWith("/r/a.md", "/r/a-1.md");
     const tree = useFileStore.getState().fileTree;
     expect(tree.some((e) => e.path === "/r/a-1.md")).toBe(true);
+  });
+});
+
+describe("useFileTreeActions reveal", () => {
+  it("revealInFileManager는 경로로 revealItemInDir를 호출한다", async () => {
+    const { result } = renderHook(() => useFileTreeActions());
+    await act(() => result.current.revealInFileManager("/r/docs/a.md"));
+    expect(revealMock).toHaveBeenCalledWith("/r/docs/a.md");
   });
 });
