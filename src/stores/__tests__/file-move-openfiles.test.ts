@@ -35,4 +35,15 @@ describe("moveFileEntry openFiles key migration", () => {
     expect(files.has("/r/docs/a.md")).toBe(false);
     expect(files.get("/r/unrelated.md")).toBe("keep");
   });
+
+  it("폴더 이동 시 fileTree 하위 항목의 path도 새 경로로 갱신된다", () => {
+    useFileStore.getState().moveFileEntry("/r/docs", "/r/dest");
+    const tree = useFileStore.getState().fileTree;
+    const dest = tree.find((e) => e.path === "/r/dest");
+    const movedDocs = dest?.children?.find((e) => e.path === "/r/dest/docs");
+    expect(movedDocs).toBeDefined();
+    expect(movedDocs?.children?.map((c) => c.path)).toEqual([
+      "/r/dest/docs/a.md",
+    ]);
+  });
 });
