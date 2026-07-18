@@ -298,6 +298,10 @@ export function FileTree(): React.JSX.Element {
         case "delete":
           if (target.targetPath) handleDelete(target.targetPath);
           break;
+        case "duplicate":
+          if (target.targetPath && !target.targetIsDir)
+            actions.duplicateFile(target.targetPath);
+          break;
         case "newFile":
           handleStartCreate(parentPath, false);
           break;

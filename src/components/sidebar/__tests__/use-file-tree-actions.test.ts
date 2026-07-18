@@ -6,6 +6,19 @@ const { writeText } = vi.hoisted(() => ({
 }));
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({ writeText }));
 
+const { copyFile } = vi.hoisted(() => ({
+  copyFile: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("../../../ipc/invoke", () => ({
+  copyFile,
+  listDir: vi.fn(),
+  refreshIndex: vi.fn(),
+  setVaultRoot: vi.fn(),
+  getConfig: vi.fn().mockResolvedValue(null),
+  setConfig: vi.fn().mockResolvedValue(undefined),
+  removeConfig: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { useFileStore } from "../../../stores/file/file";
 import { useFileTreeActions } from "../hooks/use-file-tree-actions";
 
@@ -40,5 +53,15 @@ describe("useFileTreeActions copy", () => {
     const { result } = renderHook(() => useFileTreeActions());
     await act(() => result.current.copyWikilink("/r/docs/a.md"));
     expect(writeText).toHaveBeenCalledWith("[[docs/a]]");
+  });
+});
+
+describe("useFileTreeActions duplicate", () => {
+  it("파일을 name-1.ext로 복제하고 트리에 추가한다", async () => {
+    const { result } = renderHook(() => useFileTreeActions());
+    await act(() => result.current.duplicateFile("/r/a.md"));
+    expect(copyFile).toHaveBeenCalledWith("/r/a.md", "/r/a-1.md");
+    const tree = useFileStore.getState().fileTree;
+    expect(tree.some((e) => e.path === "/r/a-1.md")).toBe(true);
   });
 });

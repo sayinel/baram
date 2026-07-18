@@ -38,6 +38,14 @@ export function FileTreeContextMenu({
           {menu.targetIsDir && (
             <div className="file-tree-context-menu-separator" />
           )}
+          {!menu.targetIsDir && (
+            <div
+              className="file-tree-context-menu-item"
+              onClick={() => onAction("duplicate")}
+            >
+              Duplicate
+            </div>
+          )}
           <div
             className="file-tree-context-menu-item"
             onClick={() => onAction("rename")}
