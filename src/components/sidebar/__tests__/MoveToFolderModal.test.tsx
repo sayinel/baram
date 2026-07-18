@@ -41,6 +41,18 @@ describe("MoveToFolderModal", () => {
     }
   });
 
+  it("marks the highlighted row with both base and selected classes as distinct tokens", () => {
+    render(<MoveToFolderModal onClose={vi.fn()} sources={["/r/a.md"]} />);
+
+    // Guards against the template-literal missing-space bug that merged the two
+    // class names into one token ("move-modal-itemmove-modal-item-selected"),
+    // which broke .move-modal-item styling on the active/hovered row.
+    const selected = document.body.querySelector(".move-modal-item-selected");
+    expect(selected).not.toBeNull();
+    expect(selected!.classList.contains("move-modal-item")).toBe(true);
+    expect(selected!.classList.contains("move-modal-item-selected")).toBe(true);
+  });
+
   it("shows a muted empty-state message when the filter matches no folders", () => {
     render(<MoveToFolderModal onClose={vi.fn()} sources={["/r/a.md"]} />);
 

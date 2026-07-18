@@ -618,17 +618,19 @@
   display: flex;
   gap: 6px;
   align-items: center;
-  padding: 6px 8px;
+  padding: 6px 12px;
+  margin: 0 4px;
   overflow: hidden;
-  font-size: 0.8rem;
-  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  color: var(--color-text-primary);
   cursor: pointer;
-  transition: background-color 0.1s;
+  border-radius: 4px;
+  transition: background-color 0.1s ease;
 }
 
 .move-modal-item:hover,
 .move-modal-item-selected {
-  background: var(--color-bg-hover);
+  background-color: var(--color-bg-subtle);
 }
 
 .move-modal-item-name {
