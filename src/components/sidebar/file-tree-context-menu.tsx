@@ -22,6 +22,17 @@ export function FileTreeContextMenu({
       onClick={(e) => e.stopPropagation()}
       style={{ left: menu.x, top: menu.y }}
     >
+      {!isEmptyArea && !menu.targetIsDir && (
+        <>
+          <div
+            className="file-tree-context-menu-item"
+            onClick={() => onAction("openInNewTab")}
+          >
+            Open in New Tab
+          </div>
+          <div className="file-tree-context-menu-separator" />
+        </>
+      )}
       {(isEmptyArea || menu.targetIsDir) && (
         <>
           <div
@@ -91,6 +102,14 @@ export function FileTreeContextMenu({
           >
             {REVEAL_LABEL}
           </div>
+          {!menu.targetIsDir && (
+            <div
+              className="file-tree-context-menu-item"
+              onClick={() => onAction("export")}
+            >
+              Export…
+            </div>
+          )}
         </>
       )}
     </div>

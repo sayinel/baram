@@ -6,8 +6,10 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
 import type { FileEntry } from "../../../stores/file/file";
 
-import { copyFile } from "../../../ipc/invoke";
+import { copyFile, readFile } from "../../../ipc/invoke";
+import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
+import { useUIStore } from "../../../stores/ui/ui";
 import { flattenFileTree } from "../../../utils/file-search";
 import { logger } from "../../../utils/logger";
 import {
@@ -22,6 +24,8 @@ export interface UseFileTreeActionsReturn {
   copyRelativePath: (path: string) => Promise<void>;
   copyWikilink: (path: string) => Promise<void>;
   duplicateFile: (path: string) => Promise<void>;
+  exportFile: (path: string) => Promise<void>;
+  openInNewTab: (path: string) => Promise<void>;
   revealInFileManager: (path: string) => Promise<void>;
 }
 
@@ -71,11 +75,44 @@ export function useFileTreeActions(): UseFileTreeActionsReturn {
     [],
   );
 
+  const openInNewTab = useCallback(async (path: string): Promise<void> => {
+    const editorState = useEditorStore.getState();
+    const existing = editorState.tabs.find((t) => t.filePath === path);
+    if (existing) {
+      editorState.setActiveTab(existing.id);
+      return;
+    }
+    try {
+      const content = await readFile(path);
+      useFileStore.getState().setFileContent(path, content);
+      editorState.openTab({
+        contextId: "",
+        id: crypto.randomUUID(),
+        filePath: path,
+        title: basename(path),
+        isDirty: false,
+        isPinned: false,
+      });
+    } catch (err) {
+      logger.error("[FileTree] Open in new tab failed:", err);
+    }
+  }, []);
+
+  const exportFile = useCallback(
+    async (path: string): Promise<void> => {
+      await openInNewTab(path);
+      useUIStore.getState().openExportDialog("pdf");
+    },
+    [openInNewTab],
+  );
+
   return {
     copyPath,
     copyRelativePath,
     copyWikilink,
     duplicateFile,
+    exportFile,
+    openInNewTab,
     revealInFileManager,
   };
 }

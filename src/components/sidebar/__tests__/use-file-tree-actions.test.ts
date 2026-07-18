@@ -17,6 +17,7 @@ vi.mock("../../../ipc/invoke", () => ({
   getConfig: vi.fn().mockResolvedValue(null),
   setConfig: vi.fn().mockResolvedValue(undefined),
   removeConfig: vi.fn().mockResolvedValue(undefined),
+  readFile: vi.fn().mockResolvedValue(""),
 }));
 
 const revealItemInDir = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
@@ -24,7 +25,9 @@ vi.mock("@tauri-apps/plugin-opener", () => ({ revealItemInDir }));
 
 import { revealItemInDir as revealMock } from "@tauri-apps/plugin-opener";
 
+import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
+import { useUIStore } from "../../../stores/ui/ui";
 import { useFileTreeActions } from "../hooks/use-file-tree-actions";
 
 beforeEach(() => {
@@ -41,6 +44,7 @@ beforeEach(() => {
       },
     ],
   });
+  useEditorStore.setState({ tabs: [], activeTabId: null, mruOrder: [] });
 });
 
 describe("useFileTreeActions copy", () => {
@@ -76,5 +80,20 @@ describe("useFileTreeActions reveal", () => {
     const { result } = renderHook(() => useFileTreeActions());
     await act(() => result.current.revealInFileManager("/r/docs/a.md"));
     expect(revealMock).toHaveBeenCalledWith("/r/docs/a.md");
+  });
+});
+
+describe("useFileTreeActions open/export", () => {
+  it("openInNewTab은 파일을 읽어 탭을 연다", async () => {
+    const { result } = renderHook(() => useFileTreeActions());
+    await act(() => result.current.openInNewTab("/r/a.md"));
+    const tabs = useEditorStore.getState().tabs;
+    expect(tabs.some((t) => t.filePath === "/r/a.md")).toBe(true);
+  });
+  it("exportFile은 탭을 열고 export 다이얼로그를 연다", async () => {
+    const spy = vi.spyOn(useUIStore.getState(), "openExportDialog");
+    const { result } = renderHook(() => useFileTreeActions());
+    await act(() => result.current.exportFile("/r/a.md"));
+    expect(spy).toHaveBeenCalledWith("pdf");
   });
 });

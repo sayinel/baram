@@ -302,11 +302,19 @@ export function FileTree(): React.JSX.Element {
           if (target.targetPath && !target.targetIsDir)
             actions.duplicateFile(target.targetPath);
           break;
+        case "export":
+          if (target.targetPath && !target.targetIsDir)
+            actions.exportFile(target.targetPath);
+          break;
         case "newFile":
           handleStartCreate(parentPath, false);
           break;
         case "newFolder":
           handleStartCreate(parentPath, true);
+          break;
+        case "openInNewTab":
+          if (target.targetPath && !target.targetIsDir)
+            actions.openInNewTab(target.targetPath);
           break;
         case "rename":
           if (target.targetPath) setRenamingPath(target.targetPath);
