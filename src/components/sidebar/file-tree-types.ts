@@ -1,6 +1,8 @@
 // §4.3 File tree — shared type definitions
 
 export interface ContextMenuState {
+  selectionCount: number;
+  selectionHasDir: boolean;
   targetIsDir: boolean;
   targetPath: null | string;
   x: number;

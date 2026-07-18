@@ -7,26 +7,23 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { DragState } from "../file-tree-types";
 import type { Editor } from "@tiptap/react";
 
-import { renameFile } from "../../../ipc/invoke";
 import { useEditorStore } from "../../../stores/editor/editor";
-import { useLinkStore } from "../../../stores/editor/link";
 import { useFileStore } from "../../../stores/file/file";
-import { showAlert } from "../../../utils/confirm-dialog";
 import {
   hideDropIndicator,
   insertNodeAtPos,
   resolveInsertTarget,
   showDropIndicator,
 } from "../../../utils/editor/drop-indicator";
-import { logger } from "../../../utils/logger";
 import { getRelativePath, isImageFile } from "../../../utils/path-utils";
-import { planMultiMove, resolveDragSet } from "../file-tree-multi-ops";
+import { resolveDragSet } from "../file-tree-multi-ops";
 import {
   DRAG_THRESHOLD_PX,
   EDITOR_SCROLL_SELECTOR,
   GHOST_OFFSET_X,
   GHOST_OFFSET_Y,
 } from "../file-tree-types";
+import { useFileTreeMove } from "./use-file-tree-move";
 
 interface UseFileTreeDnDReturn {
   dragOverPath: null | string;
@@ -40,8 +37,7 @@ export function useFileTreeDnD(
   editor: Editor | null | undefined,
   selectedPaths: Set<string>,
 ): UseFileTreeDnDReturn {
-  const moveFileEntry = useFileStore((s) => s.moveFileEntry);
-  const renameTab = useEditorStore((s) => s.renameTab);
+  const { moveEntries } = useFileTreeMove();
 
   const [dragOverPath, setDragOverPath] = useState<null | string>(null);
   const [dragSourcePaths, setDragSourcePaths] = useState<string[]>([]);
@@ -199,40 +195,7 @@ export function useFileTreeDnD(
       const folderEl = el?.closest<HTMLElement>("[data-drop-path]");
       const targetPath = folderEl?.dataset.dropPath || currentRootPath;
 
-      const { moves } = planMultiMove(
-        state.sourcePaths,
-        targetPath,
-        currentRootPath,
-      );
-      if (moves.length === 0) return;
-
-      const failed: string[] = [];
-      for (const { from, to } of moves) {
-        try {
-          await renameFile(from, to);
-          moveFileEntry(from, targetPath);
-          const { tabs: currentTabs } = useEditorStore.getState();
-          for (const tab of currentTabs) {
-            if (tab.filePath === from) {
-              renameTab(from, to, to.split("/").pop() ?? "");
-            } else if (tab.filePath?.startsWith(from + "/")) {
-              // 폴더 이동: 내부 파일 탭 경로 갱신 (제목 불변)
-              renameTab(
-                tab.filePath,
-                to + tab.filePath.slice(from.length),
-                tab.title,
-              );
-            }
-          }
-        } catch (err) {
-          logger.error("[FileTree] Move failed:", from, err);
-          failed.push(from.split("/").pop() ?? from);
-        }
-      }
-      useLinkStore.getState().invalidate();
-      if (failed.length > 0) {
-        await showAlert(`Failed to move: ${failed.join(", ")}`);
-      }
+      await moveEntries(state.sourcePaths, targetPath);
     };
 
     document.addEventListener("mousemove", handleMouseMove);
@@ -243,7 +206,7 @@ export function useFileTreeDnD(
       hideDropIndicator();
       removeDragGhost(); // cleanup on unmount
     };
-  }, [editor, moveFileEntry, renameTab, createDragGhost, removeDragGhost]);
+  }, [editor, moveEntries, createDragGhost, removeDragGhost]);
 
   // Start drag from file items via mousedown on root (event delegation)
   const handleTreeMouseDown = useCallback(

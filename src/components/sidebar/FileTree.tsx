@@ -20,22 +20,26 @@ import {
 } from "../../stores/file/file";
 import { logger } from "../../utils/logger";
 import { getFileIcon } from "./file-icon";
+import { FileTreeContextMenu } from "./file-tree-context-menu";
 import {
   IconFile,
   IconFolder,
   IconNewFile,
   IconNewFolder,
 } from "./file-tree-icons";
+import { someSelectedIsDir } from "./file-tree-multi-ops";
 import { DRAG_EXPAND_DELAY_MS, TREE_BASE_PADDING_PX } from "./file-tree-types";
 import { computeVisibleEntries } from "./file-tree-visible";
 import { FileTreeProvider } from "./FileTreeContext";
 import { FileTreeNode } from "./FileTreeNode";
 import { FolderAccessError } from "./FolderAccessError";
+import { useFileTreeActions } from "./hooks/use-file-tree-actions";
 import { useFileTreeCrud } from "./hooks/use-file-tree-crud";
 import { useFileTreeDnD } from "./hooks/use-file-tree-dnd";
 import { useFileTreeRename } from "./hooks/use-file-tree-rename";
 import { useFileTreeSearch } from "./hooks/use-file-tree-search";
 import { useFileTreeSelection } from "./hooks/use-file-tree-selection";
+import { MoveToFolderModal } from "./MoveToFolderModal";
 
 export function FileTree(): React.JSX.Element {
   const editor = useEditorContext();
@@ -64,6 +68,9 @@ export function FileTree(): React.JSX.Element {
   const { selectedPaths, selectSingle, toggleSelect, selectRange } =
     useFileTreeSelection();
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [moveModalSources, setMoveModalSources] = useState<null | string[]>(
+    null,
+  );
   const treeRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -113,6 +120,8 @@ export function FileTree(): React.JSX.Element {
     handleTreeMouseDown,
     suppressClickRef,
   } = useFileTreeDnD(editor, selectedPaths);
+
+  const actions = useFileTreeActions();
 
   // --- Sync selectedPaths with active tab ---
   const activeTab = tabs.find((t) => t.id === activeTabId);
@@ -246,14 +255,24 @@ export function FileTree(): React.JSX.Element {
     (e: React.MouseEvent, path: string, isDir: boolean): void => {
       e.preventDefault();
       e.stopPropagation();
+      let count = 1;
+      let hasDir = isDir;
+      if (selectedPaths.has(path) && selectedPaths.size > 1) {
+        count = selectedPaths.size;
+        hasDir = someSelectedIsDir(fileTree, selectedPaths);
+      } else {
+        selectSingle(path);
+      }
       setContextMenu({
         x: e.clientX,
         y: e.clientY,
         targetPath: path,
         targetIsDir: isDir,
+        selectionCount: count,
+        selectionHasDir: hasDir,
       });
     },
-    [],
+    [selectedPaths, selectSingle, fileTree],
   );
 
   const handleEmptyAreaContextMenu = useCallback(
@@ -268,6 +287,8 @@ export function FileTree(): React.JSX.Element {
           y: e.clientY,
           targetPath: null,
           targetIsDir: false,
+          selectionCount: 1,
+          selectionHasDir: false,
         });
       }
     },
@@ -275,7 +296,7 @@ export function FileTree(): React.JSX.Element {
   );
 
   const handleContextMenuAction = useCallback(
-    (action: string): void => {
+    async (action: string): Promise<void> => {
       if (!rootPath) return;
       const target = contextMenu;
       setContextMenu(null);
@@ -286,8 +307,40 @@ export function FileTree(): React.JSX.Element {
           : target.targetPath.substring(0, target.targetPath.lastIndexOf("/"))
         : rootPath;
       switch (action) {
+        case "copyPath":
+          if (target.selectionCount > 1)
+            actions.copyPath([...selectedPaths].join("\n"));
+          else if (target.targetPath) actions.copyPath(target.targetPath);
+          break;
+        case "copyRelativePath":
+          if (target.targetPath) actions.copyRelativePath(target.targetPath);
+          break;
+        case "copyWikilink":
+          if (target.targetPath) actions.copyWikilink(target.targetPath);
+          break;
         case "delete":
-          if (target.targetPath) handleDelete(target.targetPath);
+          if (target.selectionCount > 1) handleDeleteMany([...selectedPaths]);
+          else if (target.targetPath) handleDelete(target.targetPath);
+          break;
+        case "duplicate":
+          if (target.selectionCount > 1) {
+            // 폴더 포함 시 전체 중단 (메뉴 비활성과 이중 방어)
+            if (target.selectionHasDir) break;
+            for (const p of [...selectedPaths]) {
+              await actions.duplicateFile(p);
+            }
+          } else if (target.targetPath && !target.targetIsDir) {
+            actions.duplicateFile(target.targetPath);
+          }
+          break;
+        case "export":
+          if (target.targetPath && !target.targetIsDir)
+            actions.exportFile(target.targetPath);
+          break;
+        case "move":
+          if (target.selectionCount > 1)
+            setMoveModalSources([...selectedPaths]);
+          else if (target.targetPath) setMoveModalSources([target.targetPath]);
           break;
         case "newFile":
           handleStartCreate(parentPath, false);
@@ -295,12 +348,28 @@ export function FileTree(): React.JSX.Element {
         case "newFolder":
           handleStartCreate(parentPath, true);
           break;
+        case "openInNewTab":
+          if (target.targetPath && !target.targetIsDir)
+            actions.openInNewTab(target.targetPath);
+          break;
         case "rename":
           if (target.targetPath) setRenamingPath(target.targetPath);
           break;
+        case "reveal":
+          if (target.targetPath) actions.revealInFileManager(target.targetPath);
+          break;
       }
     },
-    [contextMenu, rootPath, handleStartCreate, handleDelete, setRenamingPath],
+    [
+      contextMenu,
+      rootPath,
+      handleStartCreate,
+      handleDelete,
+      handleDeleteMany,
+      setRenamingPath,
+      actions,
+      selectedPaths,
+    ],
   );
 
   // --- Context value (memoized to avoid unnecessary re-renders) ---
@@ -489,47 +558,16 @@ export function FileTree(): React.JSX.Element {
         )}
 
         {contextMenu && (
-          <div
-            className="file-tree-context-menu"
-            onClick={(e) => e.stopPropagation()}
-            style={{ left: contextMenu.x, top: contextMenu.y }}
-          >
-            {(contextMenu.targetPath === null || contextMenu.targetIsDir) && (
-              <>
-                <div
-                  className="file-tree-context-menu-item"
-                  onClick={() => handleContextMenuAction("newFile")}
-                >
-                  New File
-                </div>
-                <div
-                  className="file-tree-context-menu-item"
-                  onClick={() => handleContextMenuAction("newFolder")}
-                >
-                  New Folder
-                </div>
-              </>
-            )}
-            {contextMenu.targetPath !== null && (
-              <>
-                {contextMenu.targetIsDir && (
-                  <div className="file-tree-context-menu-separator" />
-                )}
-                <div
-                  className="file-tree-context-menu-item"
-                  onClick={() => handleContextMenuAction("rename")}
-                >
-                  Rename
-                </div>
-                <div
-                  className="file-tree-context-menu-item file-tree-context-menu-item-danger"
-                  onClick={() => handleContextMenuAction("delete")}
-                >
-                  Delete
-                </div>
-              </>
-            )}
-          </div>
+          <FileTreeContextMenu
+            menu={contextMenu}
+            onAction={handleContextMenuAction}
+          />
+        )}
+        {moveModalSources && (
+          <MoveToFolderModal
+            onClose={() => setMoveModalSources(null)}
+            sources={moveModalSources}
+          />
         )}
       </div>
     </FileTreeProvider>

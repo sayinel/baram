@@ -1,5 +1,5 @@
 // §28 Wikilink Node Extension — [[page]], [[page|display]], [[page#heading]]
-import { InputRule, mergeAttributes, Node } from "@tiptap/core";
+import { InputRule, mergeAttributes, Node, nodePasteRule } from "@tiptap/core";
 import { Plugin } from "@tiptap/pm/state";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 
@@ -34,6 +34,13 @@ declare module "@tiptap/core" {
 // [[target]], [[target|display]], [[target#heading]], [[alias::target]], etc.
 const wikilinkInputRegex =
   /\[\[(?:([a-zA-Z][\w-]*)::)?([^\]|#^]+)(?:#([^\]|^]+))?(?:\^([^\]|]+))?(?:\|([^\]]+))?\]\]$/;
+
+// Same shape as wikilinkInputRegex but WITHOUT the trailing `$` end-anchor
+// and WITH the `g` flag — paste content is matched anywhere (and possibly
+// multiple times) within the pasted text, unlike typed input which only
+// ever matches at the caret (end of input).
+const wikilinkPasteRegex =
+  /\[\[(?:([a-zA-Z][\w-]*)::)?([^\]|#^]+)(?:#([^\]|^]+))?(?:\^([^\]|]+))?(?:\|([^\]]+))?\]\]/g;
 
 export const Wikilink = Node.create<WikilinkOptions>({
   name: "wikilink",
@@ -141,6 +148,31 @@ export const Wikilink = Node.create<WikilinkOptions>({
         },
       }),
       // §57: @today/@yesterday/@tomorrow/@date InputRules moved to mention-suggest.ts
+    ];
+  },
+
+  // ProseMirror InputRules only fire on typed input, never on paste — so
+  // pasted `[[...]]` text needs its own conversion path here, using the
+  // same capture groups (incl. §95 eager normalization) as the InputRule.
+  addPasteRules() {
+    return [
+      nodePasteRule({
+        find: wikilinkPasteRegex,
+        type: this.type,
+        getAttributes: (match) => {
+          const [, vaultAlias, target, heading, blockId, display] = match;
+          const effectiveTarget =
+            (!vaultAlias && !isZettelId(target) && idForTitle(target)) ||
+            target;
+          return {
+            vaultAlias: vaultAlias || null,
+            target: effectiveTarget,
+            display: display || null,
+            heading: heading || null,
+            blockId: blockId || null,
+          };
+        },
+      }),
     ];
   },
 

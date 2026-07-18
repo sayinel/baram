@@ -23,6 +23,7 @@ import {
   filterFiles,
   loadFileHeadings,
   longestCommonPrefix,
+  shouldBlockCompletedWikilink,
   type WikilinkSuggestionItem,
 } from "./wikilink-suggest-utils";
 
@@ -69,10 +70,23 @@ export const WikilinkSuggest = Extension.create({
         pluginKey: new PluginKey("wikilinkSuggest"),
         // Block autocomplete when SyntaxReveal is editing non-wikilink expansions (marks, links, images).
         // Allow during wikilink expansion so user can change the target via autocomplete.
-        allow: ({ state }) => {
+        allow: ({ state, range }) => {
           const expanded = getSyntaxRevealExpanded(state);
-          if (!expanded) return true;
-          return expanded.kind === "wikilink";
+          if (expanded) return expanded.kind === "wikilink";
+
+          // Bugfix: block autocomplete for an already-complete/pasted [[...]]
+          // whose matched text contains a closing ]] — otherwise pasting
+          // [[name]] shows `Create "name]]"` and would create a bogus file
+          // on accept (allowSpaces:true has no stopping point at ]]).
+          const matchText = state.doc.textBetween(
+            range.from,
+            range.to,
+            undefined,
+            "￼",
+          );
+          if (shouldBlockCompletedWikilink(matchText)) return false;
+
+          return true;
         },
         command: ({
           editor: ed,

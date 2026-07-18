@@ -16,6 +16,38 @@ import { useZettelIndexStore } from "../../stores/zettelkasten/zettel-index";
 import { Paragraph } from "../nodes/paragraph";
 import { Wikilink } from "../nodes/wikilink";
 
+class MockClipboardEvent extends Event {
+  readonly clipboardData: DataTransfer | null;
+  constructor(type: string, eventInit?: { clipboardData?: DataTransfer }) {
+    super(type);
+    this.clipboardData = eventInit?.clipboardData ?? null;
+  }
+}
+
+// jsdom implements neither `ClipboardEvent` nor `DataTransfer`. Tiptap's
+// simulated-paste path (insertContentAt's `applyPasteRules` option, used
+// below to exercise addPasteRules()/nodePasteRule without a real DOM paste)
+// unconditionally constructs a `ClipboardEvent` internally
+// (createClipboardPasteEvent in @tiptap/core's PasteRule.ts), so both need a
+// minimal polyfill here, scoped to this test file only.
+class MockDataTransfer {
+  private store = new Map<string, string>();
+  getData(format: string): string {
+    return this.store.get(format) ?? "";
+  }
+  setData(format: string, data: string): void {
+    this.store.set(format, data);
+  }
+}
+
+if (typeof globalThis.DataTransfer === "undefined") {
+  globalThis.DataTransfer = MockDataTransfer as unknown as typeof DataTransfer;
+}
+if (typeof globalThis.ClipboardEvent === "undefined") {
+  globalThis.ClipboardEvent =
+    MockClipboardEvent as unknown as typeof ClipboardEvent;
+}
+
 // Schema with wikilink node
 const schema = new Schema({
   nodes: {
@@ -672,6 +704,87 @@ describe("InputRule: B2 eager normalization (§95)", () => {
     expect(wl.type.name).toBe("wikilink");
     expect(wl.attrs.vaultAlias).toBe("journal");
     expect(wl.attrs.target).toBe("2026-03-22");
+    editor.destroy();
+  });
+});
+
+// --- Paste conversion: pasted [[...]] text converts to a wikilink node ---
+//
+// ProseMirror InputRules never run on paste — only on typed input. Pasting
+// `[[blanky]]` must still produce a wikilink node via addPasteRules(), not
+// stay as raw text until a full md-to-pm re-parse (e.g. Source Mode round
+// trip). See PasteRule vs InputRule distinction: tiptap's pasteRulesPlugin
+// listens for the "applyPasteRules" transaction meta (set by a real DOM
+// paste, or here directly via insertContentAt's `applyPasteRules` option —
+// the same mechanism, without needing a synthetic ClipboardEvent).
+describe("PasteRule: wikilink paste conversion", () => {
+  function createWikilinkEditor(): Editor {
+    return new Editor({
+      extensions: [Document, Paragraph, Text, Wikilink],
+      content: "<p></p>",
+    });
+  }
+
+  function pasteText(editor: Editor, text: string): void {
+    const insertPos = editor.state.doc.content.size - 1;
+    editor.commands.insertContentAt(insertPos, text, {
+      applyPasteRules: true,
+    });
+  }
+
+  beforeEach(() => {
+    useZettelIndexStore.getState().clear();
+  });
+
+  it("converts pasted [[blanky]] into a wikilink node (not raw text)", () => {
+    const editor = createWikilinkEditor();
+    pasteText(editor, "[[blanky]]");
+    const para = editor.state.doc.firstChild!;
+    const wl = para.firstChild!;
+    expect(wl.type.name).toBe("wikilink");
+    expect(wl.attrs.target).toBe("blanky");
+    editor.destroy();
+  });
+
+  it("converts pasted [[alias::note#heading|disp]] with full attrs", () => {
+    const editor = createWikilinkEditor();
+    pasteText(editor, "[[alias::note#heading|disp]]");
+    const para = editor.state.doc.firstChild!;
+    const wl = para.firstChild!;
+    expect(wl.type.name).toBe("wikilink");
+    expect(wl.attrs.vaultAlias).toBe("alias");
+    expect(wl.attrs.target).toBe("note");
+    expect(wl.attrs.heading).toBe("heading");
+    expect(wl.attrs.display).toBe("disp");
+    editor.destroy();
+  });
+
+  it("converts multiple [[...]] occurrences in one paste (no $ anchor, global match)", () => {
+    const editor = createWikilinkEditor();
+    pasteText(editor, "[[page1]] and [[page2]]");
+    const para = editor.state.doc.firstChild!;
+    const wikilinkChildren: string[] = [];
+    para.forEach((node) => {
+      if (node.type.name === "wikilink") {
+        wikilinkChildren.push(node.attrs.target as string);
+      }
+    });
+    expect(wikilinkChildren).toEqual(["page1", "page2"]);
+    editor.destroy();
+  });
+
+  it("applies §95 eager normalization to pasted titles, same as typed input", () => {
+    useZettelIndexStore
+      .getState()
+      .setAll([
+        { id: "202607051530", path: "notes/atom.md", title: "원자적 노트" },
+      ]);
+    const editor = createWikilinkEditor();
+    pasteText(editor, "[[원자적 노트]]");
+    const para = editor.state.doc.firstChild!;
+    const wl = para.firstChild!;
+    expect(wl.type.name).toBe("wikilink");
+    expect(wl.attrs.target).toBe("202607051530");
     editor.destroy();
   });
 });

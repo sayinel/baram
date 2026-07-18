@@ -133,3 +133,16 @@ export function longestCommonPrefix(strings: string[]): string {
   }
   return first.slice(0, len);
 }
+
+/**
+ * Bugfix: true when a Suggestion match's text already contains a closing `]]`
+ * — i.e. the matched range spans a complete (e.g. pasted) wikilink like
+ * `[[blanky]]` rather than an in-progress query like `[[blan`. The Suggestion
+ * plugin (`char: "[["`, `allowSpaces: true`) has no stopping point at `]]`, so
+ * pasting a complete wikilink and landing the cursor after it makes the query
+ * capture the trailing `]]` (e.g. `Create "blanky]]"`). Used by the `allow`
+ * callback to block the popup in that case.
+ */
+export function shouldBlockCompletedWikilink(matchText: string): boolean {
+  return matchText.includes("]]");
+}
