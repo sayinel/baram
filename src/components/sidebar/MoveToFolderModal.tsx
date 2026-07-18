@@ -111,7 +111,7 @@ export function MoveToFolderModal({
                 onClick={() => handlePick(f.path)}
                 onMouseEnter={() => setSelectedIndex(idx)}
                 ref={idx === selectedIndex ? selectedRef : null}
-                style={{ paddingLeft: `${8 + f.depth * 12}px` }}
+                style={{ paddingLeft: `${16 + f.depth * 12}px` }}
               >
                 <span className="file-tree-icon">
                   <IconFolder />
