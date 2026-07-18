@@ -12,6 +12,15 @@ if (typeof Document.prototype.elementFromPoint !== "function") {
   Document.prototype.elementFromPoint = () => null;
 }
 
+// jsdom does not implement `scrollIntoView`. Keyboard-navigable list/picker
+// components (Quick Switcher, Move-to-folder modal, etc.) call it
+// unconditionally on the highlighted row to keep it visible while navigating.
+// A no-op is the correct stand-in — scrolling has no visible effect in a
+// headless test DOM anyway.
+if (typeof Element.prototype.scrollIntoView !== "function") {
+  Element.prototype.scrollIntoView = () => {};
+}
+
 const mockInvoke = vi.fn(
   async (command: string): Promise<null | string[] | undefined> => {
     switch (command) {

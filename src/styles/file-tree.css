@@ -615,13 +615,32 @@
 }
 
 .move-modal-item {
+  display: flex;
+  gap: 6px;
+  align-items: center;
   padding: 6px 8px;
+  overflow: hidden;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background-color 0.1s;
+}
+
+.move-modal-item:hover,
+.move-modal-item-selected {
+  background: var(--color-bg-hover);
+}
+
+.move-modal-item-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  cursor: pointer;
 }
 
-.move-modal-item:hover {
-  background: var(--color-bg-hover);
+.move-modal-empty {
+  padding: 24px 12px;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  text-align: center;
 }
