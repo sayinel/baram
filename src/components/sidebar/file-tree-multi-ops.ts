@@ -13,6 +13,7 @@ export function planMultiMove(
 ): MultiMovePlan {
   const moves: { from: string; to: string }[] = [];
   const skipped: string[] = [];
+  const claimedTargets = new Set<string>();
   for (const source of sourcePaths) {
     const parent = source.substring(0, source.lastIndexOf("/"));
     const invalid =
@@ -24,7 +25,13 @@ export function planMultiMove(
       continue;
     }
     const name = source.split("/").pop() ?? "";
-    moves.push({ from: source, to: targetPath + "/" + name });
+    const to = targetPath + "/" + name;
+    if (claimedTargets.has(to)) {
+      skipped.push(source);
+      continue;
+    }
+    claimedTargets.add(to);
+    moves.push({ from: source, to });
   }
   return { moves, skipped };
 }

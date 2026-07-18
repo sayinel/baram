@@ -69,11 +69,24 @@ describe("FileTreeNode click wiring", () => {
     expect(onDirClick.mock.calls[0][1].shiftKey).toBe(true);
   });
 
-  it("selectedPaths에 있는 파일·폴더 행은 active 클래스를 가진다", () => {
+  it("selectedPaths에 있는 파일 행은 active 클래스를 가진다", () => {
     const file: FileEntry = { name: "a.md", path: "/r/a.md", isDir: false };
     renderNode(file, {}, { selectedPaths: new Set(["/r/a.md"]) });
     expect(
       screen.getByText("a.md").closest(".file-tree-item")!.className,
+    ).toContain("file-tree-item-active");
+  });
+
+  it("selectedPaths에 있는 폴더 행도 active 클래스를 가진다", () => {
+    const dir: FileEntry = {
+      name: "docs",
+      path: "/r/docs",
+      isDir: true,
+      children: [],
+    };
+    renderNode(dir, {}, { selectedPaths: new Set(["/r/docs"]) });
+    expect(
+      screen.getByText("docs").closest(".file-tree-item")!.className,
     ).toContain("file-tree-item-active");
   });
 });

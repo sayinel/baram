@@ -45,9 +45,7 @@ export function ZettelInboxList({
   };
 
   const handleDelete = async (item: ZettelHubInboxItem) => {
-    const ok = await showConfirm(
-      `Delete "${item.title}"? This cannot be undone.`,
-    );
+    const ok = await showConfirm(`Move "${item.title}" to Trash?`);
     if (!ok) return;
     try {
       await deleteFile(item.path);

@@ -192,6 +192,9 @@ export function useFileTreeDnD(
         return; // Skip folder move logic
       }
 
+      // Multi-item drag released over the editor: no-op (do not fall through to a root move)
+      if (overEditor && state.sourcePaths.length > 1) return;
+
       // Determine drop target folder
       const folderEl = el?.closest<HTMLElement>("[data-drop-path]");
       const targetPath = folderEl?.dataset.dropPath || currentRootPath;

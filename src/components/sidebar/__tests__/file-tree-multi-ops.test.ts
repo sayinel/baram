@@ -65,4 +65,16 @@ describe("planMultiMove", () => {
     expect(plan.moves).toEqual([]);
     expect(plan.skipped).toEqual(["/r/docs"]);
   });
+
+  it("배치 내 동일 파일명 충돌 시 뒤의 항목은 skipped된다 (덮어쓰기 방지)", () => {
+    const plan = planMultiMove(
+      ["/r/a/index.md", "/r/b/index.md"],
+      "/r/target",
+      "/r",
+    );
+    expect(plan.moves).toEqual([
+      { from: "/r/a/index.md", to: "/r/target/index.md" },
+    ]);
+    expect(plan.skipped).toEqual(["/r/b/index.md"]);
+  });
 });
