@@ -292,7 +292,7 @@ export function FileTree(): React.JSX.Element {
   );
 
   const handleContextMenuAction = useCallback(
-    (action: string): void => {
+    async (action: string): Promise<void> => {
       if (!rootPath) return;
       const target = contextMenu;
       setContextMenu(null);
@@ -320,8 +320,11 @@ export function FileTree(): React.JSX.Element {
           break;
         case "duplicate":
           if (target.selectionCount > 1) {
-            // 파일만 복제 (selectionHasDir면 메뉴에서 이미 비활성)
-            for (const p of selectedPaths) actions.duplicateFile(p);
+            // 폴더 포함 시 전체 중단 (메뉴 비활성과 이중 방어)
+            if (target.selectionHasDir) break;
+            for (const p of [...selectedPaths]) {
+              await actions.duplicateFile(p);
+            }
           } else if (target.targetPath && !target.targetIsDir) {
             actions.duplicateFile(target.targetPath);
           }

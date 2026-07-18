@@ -110,4 +110,23 @@ describe("FileTreeContextMenu (multi-selection)", () => {
     const dup = screen.getByText("Duplicate");
     expect(dup.className).toContain("file-tree-context-menu-item-disabled");
   });
+
+  it("selectionHasDir일 때 Duplicate 클릭은 onAction을 호출하지 않는다", () => {
+    const onAction = vi.fn();
+    render(
+      <FileTreeContextMenu
+        menu={{
+          x: 0,
+          y: 0,
+          targetPath: "/r/docs",
+          targetIsDir: true,
+          selectionCount: 2,
+          selectionHasDir: true,
+        }}
+        onAction={onAction}
+      />,
+    );
+    fireEvent.click(screen.getByText("Duplicate"));
+    expect(onAction).not.toHaveBeenCalledWith("duplicate");
+  });
 });

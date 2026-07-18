@@ -210,6 +210,10 @@
   opacity: 0.4;
 }
 
+.file-tree-context-menu-item-disabled:hover {
+  background: transparent;
+}
+
 .file-tree-context-menu-separator {
   height: 1px;
   margin: 4px 0;
