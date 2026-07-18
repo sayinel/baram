@@ -25,7 +25,7 @@ export interface UseFileTreeActionsReturn {
   copyWikilink: (path: string) => Promise<void>;
   duplicateFile: (path: string) => Promise<void>;
   exportFile: (path: string) => Promise<void>;
-  openInNewTab: (path: string) => Promise<void>;
+  openInNewTab: (path: string) => Promise<boolean>;
   revealInFileManager: (path: string) => Promise<void>;
 }
 
@@ -75,12 +75,12 @@ export function useFileTreeActions(): UseFileTreeActionsReturn {
     [],
   );
 
-  const openInNewTab = useCallback(async (path: string): Promise<void> => {
+  const openInNewTab = useCallback(async (path: string): Promise<boolean> => {
     const editorState = useEditorStore.getState();
     const existing = editorState.tabs.find((t) => t.filePath === path);
     if (existing) {
       editorState.setActiveTab(existing.id);
-      return;
+      return true;
     }
     try {
       const content = await readFile(path);
@@ -93,14 +93,17 @@ export function useFileTreeActions(): UseFileTreeActionsReturn {
         isDirty: false,
         isPinned: false,
       });
+      return true;
     } catch (err) {
       logger.error("[FileTree] Open in new tab failed:", err);
+      return false;
     }
   }, []);
 
   const exportFile = useCallback(
     async (path: string): Promise<void> => {
-      await openInNewTab(path);
+      const opened = await openInNewTab(path);
+      if (!opened) return;
       useUIStore.getState().openExportDialog("pdf");
     },
     [openInNewTab],
