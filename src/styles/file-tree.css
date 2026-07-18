@@ -646,3 +646,89 @@
   color: var(--color-text-muted);
   text-align: center;
 }
+
+/* §4.3 Folder access denied panel */
+.file-tree-access-error {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1.25rem 1rem;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.file-tree-access-error-icon {
+  font-size: 1.5rem;
+  color: var(--color-accent-default);
+}
+
+.file-tree-access-error-title {
+  font-weight: 600;
+  color: var(--color-text-default);
+}
+
+.file-tree-access-error-body {
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.file-tree-access-error-path {
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  word-break: break-all;
+}
+
+.file-tree-access-error-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+}
+
+.file-tree-access-error-btn {
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+  color: var(--color-text-default);
+  cursor: pointer;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md, 6px);
+}
+
+.file-tree-access-error-btn.primary {
+  color: white;
+  background: var(--color-accent-default);
+  border-color: var(--color-accent-default);
+}
+
+.file-tree-access-error-btn:hover {
+  filter: brightness(1.05);
+}
+
+.file-tree-access-error-disclosure {
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.file-tree-access-error-steps {
+  padding-left: 1.1rem;
+  margin: 0.25rem 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+  text-align: left;
+}
+
+.file-tree-access-error-retry {
+  padding: 0.4rem 0.6rem;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--color-text-default);
+  cursor: pointer;
+  background: var(--color-bg-default);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md, 6px);
+}

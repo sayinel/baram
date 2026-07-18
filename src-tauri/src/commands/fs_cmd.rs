@@ -2,7 +2,7 @@
 
 use serde::Serialize;
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct FileEntry {
     pub name: String,
     pub path: String,

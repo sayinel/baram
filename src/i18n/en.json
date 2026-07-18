@@ -474,5 +474,18 @@
 
   "help.tab.guide": "User Guide",
   "help.tab.shortcuts": "Shortcuts",
-  "help.tab.faq": "FAQ"
+  "help.tab.faq": "FAQ",
+
+  "fileTree.accessDenied.title": "Folder access denied",
+  "fileTree.accessDenied.bodyMac": "macOS blocked Baram from reading this folder. Grant access in System Settings, then retry.",
+  "fileTree.accessDenied.bodyGeneric": "Baram doesn't have permission to read this folder. Check the folder's permissions, then retry.",
+  "fileTree.accessDenied.fullDiskAccess": "Open Full Disk Access",
+  "fileTree.accessDenied.filesAndFolders": "Open Files & Folders",
+  "fileTree.accessDenied.details": "Show manual steps",
+  "fileTree.accessDenied.step1": "System Settings → Privacy & Security → Files and Folders → enable Baram.",
+  "fileTree.accessDenied.step2": "Or: Privacy & Security → Full Disk Access → add Baram.app and enable it.",
+  "fileTree.accessDenied.step3": "Then click Retry below (no app restart needed).",
+  "fileTree.accessDenied.retry": "Retry",
+  "fileTree.accessDenied.toast": "Folder access was denied by the system.",
+  "fileTree.accessDenied.toastGeneric": "Couldn't read the folder."
 }

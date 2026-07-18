@@ -3,6 +3,19 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type { FileEntry } from "./types";
 
+/** §4.3 Sentinel emitted by the Rust `list_dir` command when read_dir is denied. */
+const PERMISSION_DENIED_PREFIX = "PERMISSION_DENIED:";
+
+/** §4.3 Thrown by `listDir` when the OS denied folder access (macOS TCC / EACCES). */
+export class FolderAccessDeniedError extends Error {
+  readonly path: string;
+  constructor(path: string) {
+    super(`Folder access denied: ${path}`);
+    this.name = "FolderAccessDeniedError";
+    this.path = path;
+  }
+}
+
 export async function copyFile(from: string, to: string): Promise<void> {
   return invoke<void>("copy_file", { from, to });
 }
@@ -50,11 +63,27 @@ export async function importFile(from: string, to: string): Promise<void> {
   return invoke<void>("import_file", { from, to });
 }
 
+export function isFolderAccessDeniedError(
+  e: unknown,
+): e is FolderAccessDeniedError {
+  return e instanceof FolderAccessDeniedError;
+}
+
 export async function listDir(
   path: string,
   recursive?: boolean,
 ): Promise<FileEntry[]> {
-  return invoke<FileEntry[]>("list_dir", { path, recursive });
+  try {
+    return await invoke<FileEntry[]>("list_dir", { path, recursive });
+  } catch (e) {
+    // Tauri rejects with the command's error String.
+    if (typeof e === "string" && e.startsWith(PERMISSION_DENIED_PREFIX)) {
+      throw new FolderAccessDeniedError(
+        e.slice(PERMISSION_DENIED_PREFIX.length),
+      );
+    }
+    throw e;
+  }
 }
 
 // §3.2 File System commands
