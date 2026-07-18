@@ -99,6 +99,7 @@ export function FileTree(): React.JSX.Element {
     handleConfirmCreate,
     handleCancelCreate,
     handleDelete,
+    handleDeleteMany,
   } = useFileTreeCrud();
 
   const {
@@ -149,16 +150,16 @@ export function FileTree(): React.JSX.Element {
       }
       if (
         (e.key === "Delete" || e.key === "Backspace") &&
-        primaryPath &&
+        selectedPaths.size > 0 &&
         !renamingPath &&
         e.metaKey
       ) {
         e.preventDefault();
-        handleDelete(primaryPath);
+        handleDeleteMany([...selectedPaths]);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [primaryPath, renamingPath],
+    [primaryPath, renamingPath, selectedPaths],
   );
 
   const handleOpenFolder = useCallback(async (): Promise<void> => {
