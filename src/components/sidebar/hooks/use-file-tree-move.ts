@@ -7,7 +7,7 @@ import { useLinkStore } from "../../../stores/editor/link";
 import { useFileStore } from "../../../stores/file/file";
 import { showAlert } from "../../../utils/confirm-dialog";
 import { logger } from "../../../utils/logger";
-import { planMultiMove } from "../file-tree-multi-ops";
+import { planMultiMove, pruneNestedPaths } from "../file-tree-multi-ops";
 
 export interface UseFileTreeMoveReturn {
   moveEntries: (sourcePaths: string[], targetPath: string) => Promise<void>;
@@ -18,7 +18,8 @@ export function useFileTreeMove(): UseFileTreeMoveReturn {
     async (sourcePaths: string[], targetPath: string): Promise<void> => {
       const root = useFileStore.getState().rootPath;
       if (!root) return;
-      const { moves } = planMultiMove(sourcePaths, targetPath, root);
+      const pruned = pruneNestedPaths(new Set(sourcePaths));
+      const { moves } = planMultiMove(pruned, targetPath, root);
       if (moves.length === 0) return;
       const { moveFileEntry } = useFileStore.getState();
       const { renameTab } = useEditorStore.getState();

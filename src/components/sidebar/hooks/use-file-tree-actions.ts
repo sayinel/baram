@@ -31,20 +31,32 @@ export interface UseFileTreeActionsReturn {
 
 export function useFileTreeActions(): UseFileTreeActionsReturn {
   const copyPath = useCallback(async (path: string): Promise<void> => {
-    await writeText(path);
+    try {
+      await writeText(path);
+    } catch (err) {
+      logger.error("[FileTree] Copy failed:", err);
+    }
   }, []);
 
   const copyRelativePath = useCallback(async (path: string): Promise<void> => {
     const root = useFileStore.getState().rootPath;
     if (!root) return;
-    await writeText(toRelativePath(path, root));
+    try {
+      await writeText(toRelativePath(path, root));
+    } catch (err) {
+      logger.error("[FileTree] Copy failed:", err);
+    }
   }, []);
 
   const copyWikilink = useCallback(async (path: string): Promise<void> => {
     const { rootPath: root, fileTree } = useFileStore.getState();
     if (!root) return;
     const allPaths = flattenFileTree(fileTree, root).map((f) => f.path);
-    await writeText(`[[${toWikilinkLabel(path, root, allPaths)}]]`);
+    try {
+      await writeText(`[[${toWikilinkLabel(path, root, allPaths)}]]`);
+    } catch (err) {
+      logger.error("[FileTree] Copy failed:", err);
+    }
   }, []);
 
   const duplicateFile = useCallback(async (path: string): Promise<void> => {

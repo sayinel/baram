@@ -58,4 +58,26 @@ describe("useFileTreeMove", () => {
     expect(renameFile).toHaveBeenCalledTimes(2);
     expect(showAlert).toHaveBeenCalledTimes(1);
   });
+
+  it("조상과 자손이 함께 이동 대상이면 자손을 prune하여 폴더만 이동한다", async () => {
+    useFileStore.setState({
+      rootPath: "/r",
+      fileTree: [
+        {
+          name: "docs",
+          path: "/r/docs",
+          isDir: true,
+          children: [{ name: "a.md", path: "/r/docs/a.md", isDir: false }],
+        },
+        { name: "dest", path: "/r/dest", isDir: true, children: [] },
+      ],
+    });
+    const { result } = renderHook(() => useFileTreeMove());
+    await act(() =>
+      result.current.moveEntries(["/r/docs", "/r/docs/a.md"], "/r/dest"),
+    );
+    // only the folder is renamed on disk; the descendant rides along inside it
+    expect(renameFile).toHaveBeenCalledWith("/r/docs", "/r/dest/docs");
+    expect(renameFile).not.toHaveBeenCalledWith("/r/docs/a.md", "/r/dest/a.md");
+  });
 });
