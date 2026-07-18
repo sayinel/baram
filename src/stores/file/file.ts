@@ -440,12 +440,13 @@ export const useFileStore = create<FileState>((set, get) => ({
       const newPath = newParentPath + "/" + entry.name;
       const movedEntry: FileEntry = { ...entry, path: newPath };
 
-      // Update openFiles key
+      // Update openFiles keys (dir move includes children keys)
       const openFiles = new Map(state.openFiles);
-      const content = openFiles.get(oldPath);
-      if (content !== undefined) {
-        openFiles.delete(oldPath);
-        openFiles.set(newPath, content);
+      for (const [key, value] of state.openFiles) {
+        if (key === oldPath || key.startsWith(oldPath + "/")) {
+          openFiles.delete(key);
+          openFiles.set(newPath + key.slice(oldPath.length), value);
+        }
       }
 
       // Remove from old location

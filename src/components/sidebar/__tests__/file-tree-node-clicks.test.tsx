@@ -10,7 +10,7 @@ import { FileTreeNode } from "../FileTreeNode";
 const ctx: FileTreeContextValue = {
   creatingEntry: null,
   dragOverPath: null,
-  dragSourcePath: null,
+  dragSourcePaths: [],
   expandedDirs: new Set<string>(),
   renamingPath: null,
   selectedPaths: new Set<string>(),

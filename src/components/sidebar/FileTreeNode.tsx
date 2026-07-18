@@ -40,7 +40,7 @@ export function FileTreeNode({
     creatingEntry,
     expandedDirs,
     dragOverPath,
-    dragSourcePath,
+    dragSourcePaths,
   } = useFileTreeContext();
 
   const paddingLeft = `${depth * TREE_INDENT_PX + TREE_BASE_PADDING_PX}px`;
@@ -48,7 +48,7 @@ export function FileTreeNode({
   const isRenaming = renamingPath === entry.path;
   const isSelected = selectedPaths.has(entry.path);
   const isDragOver = dragOverPath === entry.path;
-  const isDragSource = dragSourcePath === entry.path;
+  const isDragSource = dragSourcePaths.includes(entry.path);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {

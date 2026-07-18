@@ -104,11 +104,11 @@ export function FileTree(): React.JSX.Element {
 
   const {
     dragOverPath,
-    dragSourcePath,
+    dragSourcePaths,
     isDragging,
     handleTreeMouseDown,
     suppressClickRef,
-  } = useFileTreeDnD(editor);
+  } = useFileTreeDnD(editor, selectedPaths);
 
   // --- Sync selectedPaths with active tab ---
   const activeTab = tabs.find((t) => t.id === activeTabId);
@@ -307,7 +307,7 @@ export function FileTree(): React.JSX.Element {
       creatingEntry,
       expandedDirs,
       dragOverPath,
-      dragSourcePath,
+      dragSourcePaths,
     }),
     [
       selectedPaths,
@@ -315,7 +315,7 @@ export function FileTree(): React.JSX.Element {
       creatingEntry,
       expandedDirs,
       dragOverPath,
-      dragSourcePath,
+      dragSourcePaths,
     ],
   );
 
