@@ -1,0 +1,57 @@
+// §4.3 File tree — context menu component (extracted from FileTree.tsx)
+import type { ContextMenuState } from "./file-tree-types";
+
+export interface FileTreeContextMenuProps {
+  menu: ContextMenuState;
+  onAction: (action: string) => void;
+}
+
+export function FileTreeContextMenu({
+  menu,
+  onAction,
+}: FileTreeContextMenuProps): React.JSX.Element {
+  const isEmptyArea = menu.targetPath === null;
+  return (
+    <div
+      className="file-tree-context-menu"
+      onClick={(e) => e.stopPropagation()}
+      style={{ left: menu.x, top: menu.y }}
+    >
+      {(isEmptyArea || menu.targetIsDir) && (
+        <>
+          <div
+            className="file-tree-context-menu-item"
+            onClick={() => onAction("newFile")}
+          >
+            New File
+          </div>
+          <div
+            className="file-tree-context-menu-item"
+            onClick={() => onAction("newFolder")}
+          >
+            New Folder
+          </div>
+        </>
+      )}
+      {!isEmptyArea && (
+        <>
+          {menu.targetIsDir && (
+            <div className="file-tree-context-menu-separator" />
+          )}
+          <div
+            className="file-tree-context-menu-item"
+            onClick={() => onAction("rename")}
+          >
+            Rename
+          </div>
+          <div
+            className="file-tree-context-menu-item file-tree-context-menu-item-danger"
+            onClick={() => onAction("delete")}
+          >
+            Delete
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

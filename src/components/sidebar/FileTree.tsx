@@ -20,6 +20,7 @@ import {
 } from "../../stores/file/file";
 import { logger } from "../../utils/logger";
 import { getFileIcon } from "./file-icon";
+import { FileTreeContextMenu } from "./file-tree-context-menu";
 import {
   IconFile,
   IconFolder,
@@ -479,47 +480,10 @@ export function FileTree(): React.JSX.Element {
         )}
 
         {contextMenu && (
-          <div
-            className="file-tree-context-menu"
-            onClick={(e) => e.stopPropagation()}
-            style={{ left: contextMenu.x, top: contextMenu.y }}
-          >
-            {(contextMenu.targetPath === null || contextMenu.targetIsDir) && (
-              <>
-                <div
-                  className="file-tree-context-menu-item"
-                  onClick={() => handleContextMenuAction("newFile")}
-                >
-                  New File
-                </div>
-                <div
-                  className="file-tree-context-menu-item"
-                  onClick={() => handleContextMenuAction("newFolder")}
-                >
-                  New Folder
-                </div>
-              </>
-            )}
-            {contextMenu.targetPath !== null && (
-              <>
-                {contextMenu.targetIsDir && (
-                  <div className="file-tree-context-menu-separator" />
-                )}
-                <div
-                  className="file-tree-context-menu-item"
-                  onClick={() => handleContextMenuAction("rename")}
-                >
-                  Rename
-                </div>
-                <div
-                  className="file-tree-context-menu-item file-tree-context-menu-item-danger"
-                  onClick={() => handleContextMenuAction("delete")}
-                >
-                  Delete
-                </div>
-              </>
-            )}
-          </div>
+          <FileTreeContextMenu
+            menu={contextMenu}
+            onAction={handleContextMenuAction}
+          />
         )}
       </div>
     </FileTreeProvider>
