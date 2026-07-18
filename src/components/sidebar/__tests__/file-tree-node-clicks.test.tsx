@@ -12,6 +12,7 @@ const ctx: FileTreeContextValue = {
   dragOverPath: null,
   dragSourcePaths: [],
   expandedDirs: new Set<string>(),
+  focusedPath: null,
   renamingPath: null,
   selectedPaths: new Set<string>(),
 };
