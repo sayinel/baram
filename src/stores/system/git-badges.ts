@@ -26,13 +26,14 @@ export function buildGitBadgeIndex(
 ): GitBadgeIndex {
   if (!repoRoot || !rootPath) return { files: new Map(), dirs: new Set() };
 
-  const root = repoRoot.replace(/\/+$/, "");
+  const root = toBadgeKey(repoRoot).replace(/\/+$/, "");
   const files = new Map<string, GitBadgeStatus>();
   const dirs = new Set<string>();
-  const underRoot = rootPath + "/";
+  const rp = toBadgeKey(rootPath);
+  const underRoot = rp + "/";
 
   for (const change of changes) {
-    const abs = `${root}/${change.path}`;
+    const abs = `${root}/${toBadgeKey(change.path)}`;
     if (!abs.startsWith(underRoot)) continue; // outside the vault — not in tree
 
     const badge = badgeFor(change.status);
@@ -44,13 +45,19 @@ export function buildGitBadgeIndex(
 
     // roll up to every ancestor dir strictly between the file and rootPath
     let dir = dirname(abs);
-    while (dir.length > rootPath.length && dir.startsWith(underRoot)) {
+    while (dir.length > rp.length && dir.startsWith(underRoot)) {
       dirs.add(dir);
       dir = dirname(dir);
     }
   }
 
   return { files, dirs };
+}
+
+/** Normalize a path to forward slashes so Windows (backslash) tree paths
+    match libgit2's forward-slash change paths. No-op on macOS/Linux. */
+export function toBadgeKey(path: string): string {
+  return path.replace(/\\/g, "/");
 }
 
 function badgeFor(status: string): GitBadgeStatus | null {

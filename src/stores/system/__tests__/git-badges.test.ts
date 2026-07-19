@@ -81,4 +81,16 @@ describe("buildGitBadgeIndex", () => {
     expect(EMPTY_GIT_BADGE_INDEX.files.size).toBe(0);
     expect(EMPTY_GIT_BADGE_INDEX.dirs.size).toBe(0);
   });
+
+  it("normalizes backslash paths (Windows) to match forward-slash change paths", () => {
+    // rootPath/repoRoot come from Tauri with backslashes on Windows;
+    // git change paths use forward slashes.
+    const idx = buildGitBadgeIndex(
+      [{ path: "a/b.md", status: "modified", staged: false }],
+      "C:\\repo",
+      "C:\\repo",
+    );
+    expect(idx.files.get("C:/repo/a/b.md")).toBe("modified");
+    expect(idx.dirs.has("C:/repo/a")).toBe(true);
+  });
 });
