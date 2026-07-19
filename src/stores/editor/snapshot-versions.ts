@@ -16,7 +16,7 @@ export function distinctFileVersions(
       checksum: entry.files.find((f) => f.path === filePath)?.checksum,
     }))
     .filter(
-      (x): x is { checksum: string; entry: SnapshotEntry; } =>
+      (x): x is { checksum: string; entry: SnapshotEntry } =>
         x.checksum != null,
     )
     .sort((a, b) => b.entry.timestamp.localeCompare(a.entry.timestamp));
