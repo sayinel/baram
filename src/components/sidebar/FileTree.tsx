@@ -165,10 +165,18 @@ export function FileTree(): React.JSX.Element {
   // --- Sync selectedPaths with active tab ---
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const activeFilePath = activeTab?.filePath ?? null;
+  // §4.5 This effect must react ONLY to tab switches, not filter keystrokes:
+  // read the filter state non-reactively (ref + getState()) so searchQuery
+  // and tagFilter changes don't re-run it and collapse a multi-selection /
+  // steal keyboard focus back to the active file on every keystroke.
+  const searchQueryRef = useRef(searchQuery);
+  searchQueryRef.current = searchQuery;
   useEffect(() => {
     if (!activeFilePath) return;
     shouldStealFocusRef.current = false;
-    const filterActive = searchQuery.trim() !== "" || tagFilter !== null;
+    const filterActive =
+      searchQueryRef.current.trim() !== "" ||
+      useFileStore.getState().tagFilter !== null;
     if (!filterActive && rootPath) {
       // auto-reveal: expand ancestor dirs so the row renders and can scroll in
       for (const dir of ancestorDirs(activeFilePath, rootPath)) {
@@ -177,15 +185,7 @@ export function FileTree(): React.JSX.Element {
     }
     selectSingle(activeFilePath);
     setFocusedPath(activeFilePath);
-  }, [
-    activeFilePath,
-    searchQuery,
-    tagFilter,
-    rootPath,
-    expandDir,
-    selectSingle,
-    setFocusedPath,
-  ]);
+  }, [activeFilePath, rootPath, expandDir, selectSingle, setFocusedPath]);
 
   // --- Scroll focused row into view + roving focus ---
   useEffect(() => {

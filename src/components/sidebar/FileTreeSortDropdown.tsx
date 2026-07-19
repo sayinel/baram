@@ -36,6 +36,7 @@ export function FileTreeSortDropdown({
   return (
     <div className="file-tree-sort" ref={ref}>
       <button
+        aria-expanded={open}
         aria-haspopup="listbox"
         className="file-tree-action-btn"
         onClick={() => setOpen((o) => !o)}

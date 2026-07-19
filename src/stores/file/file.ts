@@ -274,8 +274,11 @@ async function _loadContextFileTree(path: string): Promise<void> {
 
   try {
     // §4.5 Load the persisted sort order before building the tree; fall back
-    // to the current/default order if the config read fails or is stale.
-    let order = useFileStore.getState().fileTreeSortOrder;
+    // to the DEFAULT order (not the previous vault's in-memory value) if the
+    // config read fails or has no saved order, so each vault without its own
+    // saved order renders with the default rather than inheriting whatever
+    // the last-opened vault happened to use.
+    let order: SortOrder = DEFAULT_SORT_ORDER;
     try {
       const cfg = await getVaultConfigByPath(path);
       const saved = cfg.fileTree?.sortOrder;
@@ -287,8 +290,12 @@ async function _loadContextFileTree(path: string): Promise<void> {
       ) {
         order = saved;
       }
-    } catch {
-      // use current/default order
+    } catch (err) {
+      // vault config unreadable → keep default order; tree load must not fail on this
+      logger.debug(
+        "§4.5 _loadContextFileTree: vault config read failed, using default sort",
+        err,
+      );
     }
     useFileStore.setState({ fileTreeSortOrder: order });
 
@@ -481,6 +488,16 @@ export const useFileStore = create<FileState>((set, get) => ({
 
   addFileEntry: (parentPath, entry) =>
     set((state) => {
+      // §4.5 Normalize modifiedAt at this single insert choke point (create
+      // file/folder, duplicate, external drop, watcher-add) so mtime sort
+      // places new entries correctly. Rust `modified_at` is epoch SECONDS
+      // (duration.as_secs()), not milliseconds — mixing units would make new
+      // files sort as absurdly-newer.
+      const normalizedEntry: FileEntry =
+        entry.modifiedAt == null
+          ? { ...entry, modifiedAt: Math.floor(Date.now() / 1000) }
+          : entry;
+
       function insertSorted(
         entries: FileEntry[],
         newEntry: FileEntry,
@@ -494,14 +511,17 @@ export const useFileStore = create<FileState>((set, get) => ({
 
       // If parentPath is rootPath, insert at top level
       if (parentPath === state.rootPath) {
-        return { fileTree: insertSorted(state.fileTree, entry) };
+        return { fileTree: insertSorted(state.fileTree, normalizedEntry) };
       }
 
       // Otherwise, find parent dir and insert there
       function addToTree(entries: FileEntry[]): FileEntry[] {
         return entries.map((e) => {
           if (e.path === parentPath && e.isDir) {
-            return { ...e, children: insertSorted(e.children || [], entry) };
+            return {
+              ...e,
+              children: insertSorted(e.children || [], normalizedEntry),
+            };
           }
           if (e.isDir && e.children) {
             return { ...e, children: addToTree(e.children) };
