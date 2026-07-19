@@ -449,6 +449,9 @@ export function FileTree(): React.JSX.Element {
         case "reveal":
           if (target.targetPath) actions.revealInFileManager(target.targetPath);
           break;
+        case "versionHistory":
+          if (target.targetPath) actions.showVersionHistory(target.targetPath);
+          break;
       }
     },
     [
