@@ -111,6 +111,13 @@ pub struct ZettelkastenSection {
     pub favorites: Option<Vec<String>>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct FileTreeSection {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sort_order: Option<String>,
+}
+
 // ── VaultConfig ────────────────────────────────────────────────────────────────
 
 /// Per-vault configuration stored at `<vault_root>/.baram/config.json`.
@@ -139,6 +146,8 @@ pub struct VaultConfig {
     pub cross_vault_hints: Option<HashMap<String, CrossVaultHint>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub zettelkasten: Option<ZettelkastenSection>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_tree: Option<FileTreeSection>,
 }
 
 // ── ResolvedSettings ──────────────────────────────────────────────────────────
@@ -406,5 +415,25 @@ mod tests {
         let result = load_vault_config(dir.path());
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("1MB size limit"));
+    }
+
+    #[test]
+    fn file_tree_section_roundtrips() {
+        let json = r#"{ "fileTree": { "sortOrder": "mtime-desc" } }"#;
+        let cfg: VaultConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            cfg.file_tree.as_ref().and_then(|f| f.sort_order.as_deref()),
+            Some("mtime-desc")
+        );
+        // re-serialize and confirm the camelCase key survives
+        let out = serde_json::to_string(&cfg).unwrap();
+        assert!(out.contains("\"fileTree\""));
+        assert!(out.contains("\"sortOrder\""));
+    }
+
+    #[test]
+    fn file_tree_section_defaults_to_none_when_absent() {
+        let cfg: VaultConfig = serde_json::from_str("{}").unwrap();
+        assert!(cfg.file_tree.is_none());
     }
 }

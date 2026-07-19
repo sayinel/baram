@@ -386,6 +386,9 @@ export interface VaultConfig {
     skillsFolder?: string;
   };
   extensions?: { disabled?: string[]; enabled?: string[] };
+  fileTree?: {
+    sortOrder?: string;
+  };
   git?: { autoFetchInterval?: number; autoPushOnCommit?: boolean };
   markdown?: {
     enableMermaid?: boolean;
