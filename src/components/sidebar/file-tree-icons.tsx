@@ -12,19 +12,23 @@ const S = {
 };
 
 export function IconCollapseAll(): React.JSX.Element {
+  // Converging chevrons (∨ over ∧) with a center gap = "fold together".
+  // Gap keeps the two tips apart so it reads as "> <", not a merged X.
   return (
     <svg {...S}>
-      <path d="m7 15 5-5 5 5" />
-      <path d="m7 9 5-5 5 5" />
+      <path d="m7 5 5 4 5-4" />
+      <path d="m7 19 5-4 5 4" />
     </svg>
   );
 }
 
 export function IconExpandAll(): React.JSX.Element {
+  // Diverging chevrons (∧ over ∨) with a center gap = "unfold outward".
+  // Gap keeps the two bodies apart so it reads as "< >", not a merged diamond.
   return (
     <svg {...S}>
-      <path d="m7 9 5 5 5-5" />
-      <path d="m7 15 5 5 5-5" />
+      <path d="m7 9 5-4 5 4" />
+      <path d="m7 15 5 4 5-4" />
     </svg>
   );
 }
