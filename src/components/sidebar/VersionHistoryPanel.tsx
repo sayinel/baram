@@ -4,6 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import type { SnapshotEntry } from "../../ipc/types";
 
 import { useSnapshotStore } from "../../stores/editor/snapshot";
+import {
+  formatSnapshotTime,
+  parseTimestamp,
+} from "../../stores/editor/snapshot-time";
 import { useFileStore } from "../../stores/file/file";
 import { DiffView } from "../editor/DiffView";
 import { FileHistoryView } from "./FileHistoryView";
@@ -16,6 +20,7 @@ export function VersionHistoryPanel() {
     error,
     selectedSnapshotId,
     fileHistoryPath,
+    fileHistoryVault,
     creating,
     loadSnapshots,
     selectSnapshot,
@@ -41,7 +46,7 @@ export function VersionHistoryPanel() {
     );
   }
 
-  if (fileHistoryPath) {
+  if (fileHistoryPath && fileHistoryVault === rootPath) {
     return <FileHistoryView />;
   }
 
@@ -149,27 +154,6 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatSnapshotTime(timestamp: string): string {
-  const date = parseTimestamp(timestamp);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMin = Math.floor(diffMs / 60000);
-  if (diffMin < 1) return "just now";
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
-  const diffDay = Math.floor(diffHr / 24);
-  if (diffDay < 7) return `${diffDay}d ago`;
-  return date.toLocaleDateString();
-}
-
-function parseTimestamp(timestamp: string): Date {
-  // Rust backend uses filesystem-safe UTC format: "2026-03-07T10-00-00" (hyphens instead of colons)
-  // Convert to standard ISO 8601 with UTC indicator: "2026-03-07T10:00:00Z"
-  const iso = timestamp.replace(/T(\d{2})-(\d{2})-(\d{2})$/, "T$1:$2:$3Z");
-  return new Date(iso);
 }
 
 // SnapshotDetail -- shows files in selected snapshot

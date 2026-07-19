@@ -2,6 +2,7 @@
 import { useShallow } from "zustand/shallow";
 
 import { useSnapshotStore } from "../../stores/editor/snapshot";
+import { formatSnapshotTime } from "../../stores/editor/snapshot-time";
 import { distinctFileVersions } from "../../stores/editor/snapshot-versions";
 import { useFileStore } from "../../stores/file/file";
 import { basename } from "../../utils/path-utils";
@@ -18,6 +19,9 @@ export function FileHistoryView() {
     performRestore,
     clearFileHistory,
     closeDiff,
+    restoring,
+    error,
+    restoreMessage,
   } = useSnapshotStore(
     useShallow((s) => ({
       fileHistory: s.fileHistory,
@@ -28,6 +32,9 @@ export function FileHistoryView() {
       performRestore: s.performRestore,
       clearFileHistory: s.clearFileHistory,
       closeDiff: s.closeDiff,
+      restoring: s.restoring,
+      error: s.error,
+      restoreMessage: s.restoreMessage,
     })),
   );
 
@@ -68,24 +75,32 @@ export function FileHistoryView() {
                 onClick={() => loadDiff(rootPath, v.id, fileHistoryPath)}
                 title="View changes"
               >
-                <span className="file-history-version-time">{v.timestamp}</span>
+                <span className="file-history-version-time">
+                  {formatSnapshotTime(v.timestamp)}
+                </span>
                 {v.label && (
                   <span className="file-history-version-label">{v.label}</span>
                 )}
               </button>
               <button
                 className="file-history-version-restore"
+                disabled={restoring}
                 onClick={() =>
                   performRestore(rootPath, v.id, [fileHistoryPath])
                 }
                 title="Restore this version"
               >
-                Restore
+                {restoring ? "Restoring..." : "Restore"}
               </button>
             </div>
           ))}
         </div>
       )}
+
+      {restoreMessage && (
+        <div className="snapshot-restore-message">{restoreMessage}</div>
+      )}
+      {error && <div className="snapshot-error">{error}</div>}
 
       {activeDiff && (
         <DiffView

@@ -10,6 +10,7 @@ import { prosemirrorToMarkdown } from "../pipeline/pm-to-md";
 import { notifyFileSave } from "../plugins/plugin-lifecycle";
 import { isGraphTab, useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
+import { useSnapshotStore } from "../stores/editor/snapshot";
 import { openFolder, useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
 import { useUIStore } from "../stores/ui/ui";
@@ -152,6 +153,7 @@ export function useFileOperations({
       // Existing file — save directly
       try {
         await writeFile(saveTab.filePath, md);
+        useSnapshotStore.getState().markPendingAutoSnapshot();
         useFileStore
           .getState()
           .updateLastSaveMtime(saveTab.filePath, Date.now());
@@ -189,6 +191,7 @@ export function useFileOperations({
 
       try {
         await writeFile(savePath, md);
+        useSnapshotStore.getState().markPendingAutoSnapshot();
         useFileStore.getState().updateLastSaveMtime(savePath, Date.now());
         if (!isCode) {
           updateFileIndex(savePath)
@@ -237,6 +240,7 @@ export function useFileOperations({
 
     try {
       await writeFile(savePath, md);
+      useSnapshotStore.getState().markPendingAutoSnapshot();
       useFileStore.getState().updateLastSaveMtime(savePath, Date.now());
       if (!isCode) {
         updateFileIndex(savePath)

@@ -43,4 +43,15 @@ describe("FileHistoryView", () => {
     fireEvent.click(screen.getByRole("button", { name: /all snapshots/i }));
     expect(useSnapshotStore.getState().fileHistoryPath).toBeNull();
   });
+
+  it("disables the Restore button while a restore is in flight", () => {
+    useSnapshotStore.setState({ restoring: true });
+    render(<FileHistoryView />);
+    const restoreButtons = screen.getAllByRole("button", {
+      name: /restoring/i,
+    });
+    for (const btn of restoreButtons) {
+      expect(btn).toBeDisabled();
+    }
+  });
 });

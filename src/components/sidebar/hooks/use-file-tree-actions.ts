@@ -126,9 +126,7 @@ export function useFileTreeActions(): UseFileTreeActionsReturn {
   const showVersionHistory = useCallback((absPath: string): void => {
     const root = useFileStore.getState().rootPath;
     if (!root) return;
-    const relPath = absPath.startsWith(root + "/")
-      ? absPath.slice(root.length + 1)
-      : absPath;
+    const relPath = toRelativePath(absPath, root);
     void useSnapshotStore.getState().loadFileHistory(root, relPath);
     useUIStore.getState().setSidebarPanel("snapshots");
   }, []);
