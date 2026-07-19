@@ -49,23 +49,37 @@ export function useGitBadges(rootPath: null | string): GitBadgeIndex {
       }, REFRESH_DEBOUNCE_MS);
     };
 
-    void (async () => {
+    (async () => {
       const fns = await Promise.all([
         listen("file:created", schedule),
         listen("file:deleted", schedule),
         listen("file:changed", schedule),
       ]);
       if (cleanedUp) {
-        for (const fn of fns) fn();
+        for (const fn of fns) {
+          try {
+            fn();
+          } catch {
+            /* listener already removed */
+          }
+        }
         return;
       }
       unlistenFns.push(...fns);
-    })();
+    })().catch(() => {
+      /* Prevent unhandled rejection if listen() itself fails */
+    });
 
     return () => {
       cleanedUp = true;
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      for (const fn of unlistenFns) fn();
+      for (const fn of unlistenFns) {
+        try {
+          fn();
+        } catch {
+          /* listener already removed */
+        }
+      }
     };
   }, [rootPath]);
 
