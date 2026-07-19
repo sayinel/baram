@@ -17,6 +17,7 @@ pub fn status(path: &str) -> Result<GitStatusInfo, GitError> {
                 branch: String::new(),
                 changes: Vec::new(),
                 is_repo: false,
+                repo_root: None,
             });
         }
         Err(e) => return Err(GitError::Git(e)),
@@ -107,6 +108,7 @@ pub fn status(path: &str) -> Result<GitStatusInfo, GitError> {
         branch,
         changes,
         is_repo: true,
+        repo_root: repo.workdir().map(|p| p.to_string_lossy().to_string()),
     })
 }
 
@@ -337,4 +339,29 @@ pub fn log(path: &str, max_count: usize) -> Result<Vec<GitLogEntry>, GitError> {
         });
     }
     Ok(entries)
+}
+
+#[cfg(test)]
+mod repo_root_tests {
+    use super::*;
+
+    #[test]
+    fn status_reports_repo_root_for_a_repo() {
+        let dir = tempfile::tempdir().unwrap();
+        git2::Repository::init(dir.path()).unwrap();
+        let info = status(dir.path().to_str().unwrap()).unwrap();
+        assert!(info.is_repo);
+        assert!(info.repo_root.is_some());
+        // workdir path resolves to the temp dir (allow trailing slash / symlink canonicalization differences)
+        let root = info.repo_root.unwrap();
+        assert!(!root.is_empty());
+    }
+
+    #[test]
+    fn status_reports_none_repo_root_outside_a_repo() {
+        let dir = tempfile::tempdir().unwrap();
+        let info = status(dir.path().to_str().unwrap()).unwrap();
+        assert!(!info.is_repo);
+        assert!(info.repo_root.is_none());
+    }
 }

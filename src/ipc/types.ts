@@ -147,6 +147,7 @@ export interface GitStatusInfo {
   branch: string;
   changes: GitChange[];
   is_repo: boolean;
+  repo_root: null | string;
 }
 
 export interface IndexStats {
