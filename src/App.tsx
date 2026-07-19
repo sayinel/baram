@@ -76,6 +76,7 @@ import {
 import { useAIStore } from "./stores/ai/ai";
 import { useEditorStore } from "./stores/editor/editor";
 import { isFileTab, isGraphTab } from "./stores/editor/editor";
+import { useSnapshotStore } from "./stores/editor/snapshot";
 import { useFileStore } from "./stores/file/file";
 import { useSettingsStore } from "./stores/settings/store";
 import { useUIStore } from "./stores/ui/ui";
@@ -422,6 +423,8 @@ function App() {
         useFileStore.getState().updateLastSaveMtime(tab.filePath!, Date.now());
         setFileContent(tab.filePath!, sourceContentRef.current);
         markDirty(tab.id, false);
+        // §71 Mark the auto-snapshot dirty gate for non-md/code file saves.
+        useSnapshotStore.getState().markPendingAutoSnapshot();
       } catch {
         // Save failed — keep dirty state
       }
@@ -848,6 +851,8 @@ function App() {
                   useEditorStore.getState().requestContentRefresh();
                   const { activeTabId: tid } = useEditorStore.getState();
                   if (tid) markDirty(tid, false);
+                  // §71 A conflict-merge write is a real content change.
+                  useSnapshotStore.getState().markPendingAutoSnapshot();
                 } catch (err) {
                   logger.error("[App] merge apply failed", err);
                 }
