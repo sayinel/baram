@@ -201,6 +201,9 @@ export function FileTree(): React.JSX.Element {
     (e: React.KeyboardEvent): void => {
       // 인라인 입력(검색/rename)에 포커스가 있으면 트리 내비 무시
       const tag = (e.target as HTMLElement).tagName;
+      // MoveToFolderModal (portal) keydown bubbles through the React tree to
+      // here; its input doesn't stopPropagation, so this guard is the defense
+      // that stops modal ArrowDown/Enter from driving tree nav. Do NOT remove.
       if (tag === "INPUT" || tag === "TEXTAREA") return;
       if (e.key === "F2" && primaryPath && !renamingPath) {
         e.preventDefault();
@@ -218,7 +221,7 @@ export function FileTree(): React.JSX.Element {
         return;
       }
       if (!renamingPath) {
-        shouldStealFocusRef.current = true;
+        if (e.key.startsWith("Arrow")) shouldStealFocusRef.current = true;
         handleNavKeyDown(e);
       }
     },
@@ -469,13 +472,11 @@ export function FileTree(): React.JSX.Element {
   return (
     <FileTreeProvider value={ctxValue}>
       <div
-        aria-label="File tree"
         className={`file-tree ${isDragging ? "file-tree-dragging" : ""}`}
         onContextMenu={handleEmptyAreaContextMenu}
         onKeyDown={handleTreeKeyDown}
         onMouseDown={handleTreeMouseDown}
         ref={treeRef}
-        role="tree"
         tabIndex={0}
       >
         <div className="file-tree-header">
@@ -593,26 +594,28 @@ export function FileTree(): React.JSX.Element {
                 />
               </div>
             )}
-            {(filteredPaths
-              ? fileTree.filter((entry) =>
-                  entryMatchesTagFilter(entry, filteredPaths),
-                )
-              : fileTree
-            ).map((entry) => (
-              <FileTreeNode
-                depth={0}
-                entry={entry}
-                key={entry.path}
-                onCancelCreate={handleCancelCreate}
-                onCancelRename={handleCancelRename}
-                onConfirmCreate={handleConfirmCreate}
-                onConfirmRename={handleConfirmRename}
-                onContextMenu={handleContextMenu}
-                onDirClick={handleDirClick}
-                onFileClick={handleFileClick}
-                onStartRename={handleStartRename}
-              />
-            ))}
+            <div aria-label="File tree" aria-multiselectable="true" role="tree">
+              {(filteredPaths
+                ? fileTree.filter((entry) =>
+                    entryMatchesTagFilter(entry, filteredPaths),
+                  )
+                : fileTree
+              ).map((entry) => (
+                <FileTreeNode
+                  depth={0}
+                  entry={entry}
+                  key={entry.path}
+                  onCancelCreate={handleCancelCreate}
+                  onCancelRename={handleCancelRename}
+                  onConfirmCreate={handleConfirmCreate}
+                  onConfirmRename={handleConfirmRename}
+                  onContextMenu={handleContextMenu}
+                  onDirClick={handleDirClick}
+                  onFileClick={handleFileClick}
+                  onStartRename={handleStartRename}
+                />
+              ))}
+            </div>
           </>
         )}
 

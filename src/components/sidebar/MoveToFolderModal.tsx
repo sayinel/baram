@@ -59,6 +59,7 @@ export function MoveToFolderModal({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent): void => {
+    e.stopPropagation();
     if (e.key === "Escape") {
       onClose();
       return;
