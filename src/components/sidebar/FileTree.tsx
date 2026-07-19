@@ -28,6 +28,7 @@ import {
   IconNewFolder,
 } from "./file-tree-icons";
 import { someSelectedIsDir } from "./file-tree-multi-ops";
+import { ancestorDirs } from "./file-tree-reveal";
 import { DRAG_EXPAND_DELAY_MS, TREE_BASE_PADDING_PX } from "./file-tree-types";
 import { computeVisibleEntries } from "./file-tree-visible";
 import { FileTreeProvider } from "./FileTreeContext";
@@ -152,12 +153,26 @@ export function FileTree(): React.JSX.Element {
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const activeFilePath = activeTab?.filePath ?? null;
   useEffect(() => {
-    if (activeFilePath) {
-      shouldStealFocusRef.current = false;
-      selectSingle(activeFilePath);
-      setFocusedPath(activeFilePath);
+    if (!activeFilePath) return;
+    shouldStealFocusRef.current = false;
+    const filterActive = searchQuery.trim() !== "" || tagFilter !== null;
+    if (!filterActive && rootPath) {
+      // auto-reveal: expand ancestor dirs so the row renders and can scroll in
+      for (const dir of ancestorDirs(activeFilePath, rootPath)) {
+        expandDir(dir);
+      }
     }
-  }, [activeFilePath, selectSingle, setFocusedPath]);
+    selectSingle(activeFilePath);
+    setFocusedPath(activeFilePath);
+  }, [
+    activeFilePath,
+    searchQuery,
+    tagFilter,
+    rootPath,
+    expandDir,
+    selectSingle,
+    setFocusedPath,
+  ]);
 
   // --- Scroll focused row into view + roving focus ---
   useEffect(() => {
