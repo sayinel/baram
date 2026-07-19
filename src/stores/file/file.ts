@@ -4,6 +4,7 @@ import type { FileEntry as IpcFileEntry } from "../../ipc/types";
 import { create } from "zustand";
 
 import { type Locale, t } from "../../i18n";
+import { getVaultConfigByPath, setVaultConfigByPath } from "../../ipc/context";
 import {
   isFolderAccessDeniedError,
   listDir,
@@ -16,6 +17,12 @@ import { useEditorStore } from "../editor/editor";
 import { useLinkStore } from "../editor/link";
 import { useSettingsStore } from "../settings/store";
 import { useUIStore } from "../ui/ui";
+import {
+  compareEntries,
+  DEFAULT_SORT_ORDER,
+  type SortOrder,
+  sortTreeNodes,
+} from "./file-tree-sort";
 
 export interface FileEntry {
   children?: FileEntry[];
@@ -42,6 +49,8 @@ interface FileState {
   addFileEntry: (parentPath: string, entry: FileEntry) => void;
   /** Close the current folder and return to home screen */
   closeFolder: () => void;
+  /** §4.5 Collapse every expanded directory in the file tree */
+  collapseAllDirs: () => void;
   expandDir: (path: string) => void;
 
   // FileTree expanded directories (persisted across sidebar tab switches)
@@ -49,6 +58,8 @@ interface FileState {
   /** path → mtime tracking for external change detection */
   fileMtimes: Map<string, FileMtimeEntry>;
   fileTree: FileEntry[];
+  /** §4.5 Active file-tree sort order (persisted per-vault) */
+  fileTreeSortOrder: SortOrder;
   /** Return the mtime entry for a path, or undefined if not tracked */
   getFileMtime: (path: string) => FileMtimeEntry | undefined;
   /** Initialize mtime tracking when a file is opened (sets both fields to 0) */
@@ -69,6 +80,8 @@ interface FileState {
 
   setFileContent: (path: string, content: string) => void;
   setFileTree: (tree: FileEntry[]) => void;
+  /** §4.5 Set the active sort order, resort the tree, and persist it */
+  setFileTreeSortOrder: (order: SortOrder) => void;
   setLoadError: (e: FileTreeLoadError | null) => void;
 
   setRootPath: (path: string) => void;
@@ -130,11 +143,12 @@ export async function addFolder(path: string): Promise<void> {
 /**
  * Convert flat IPC FileEntry[] into nested tree structure.
  * Groups entries by parent directory, then recursively attaches children.
- * Directories sorted first, then alphabetical.
+ * Directories sorted first, then per `order` (§4.5).
  */
 export function buildFileTree(
   flatEntries: IpcFileEntry[],
   rootPath: string,
+  order: SortOrder = DEFAULT_SORT_ORDER,
 ): FileEntry[] {
   // Group by parent path
   const childrenMap = new Map<string, IpcFileEntry[]>();
@@ -150,23 +164,21 @@ export function buildFileTree(
 
   function buildChildren(parentPath: string): FileEntry[] {
     const entries = childrenMap.get(parentPath) || [];
-    // dirs first, then alphabetical
-    entries.sort((a, b) => {
-      if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    });
 
-    return entries.map((e) => {
-      const node: FileEntry = {
-        name: e.name,
-        path: e.path,
-        isDir: e.isDir,
-      };
-      if (e.isDir) {
-        node.children = buildChildren(e.path);
-      }
-      return node;
-    });
+    return entries
+      .map((e) => {
+        const node: FileEntry = {
+          name: e.name,
+          path: e.path,
+          isDir: e.isDir,
+          modifiedAt: e.modifiedAt,
+        };
+        if (e.isDir) {
+          node.children = buildChildren(e.path);
+        }
+        return node;
+      })
+      .sort((a, b) => compareEntries(a, b, order));
   }
 
   return buildChildren(rootPath);
@@ -261,8 +273,27 @@ async function _loadContextFileTree(path: string): Promise<void> {
   _loadingPath = path;
 
   try {
+    // §4.5 Load the persisted sort order before building the tree; fall back
+    // to the current/default order if the config read fails or is stale.
+    let order = useFileStore.getState().fileTreeSortOrder;
+    try {
+      const cfg = await getVaultConfigByPath(path);
+      const saved = cfg.fileTree?.sortOrder;
+      if (
+        saved === "name-asc" ||
+        saved === "name-desc" ||
+        saved === "mtime-asc" ||
+        saved === "mtime-desc"
+      ) {
+        order = saved;
+      }
+    } catch {
+      // use current/default order
+    }
+    useFileStore.setState({ fileTreeSortOrder: order });
+
     const entries = await listDir(path, true);
-    const tree = buildFileTree(entries, path);
+    const tree = buildFileTree(entries, path, order);
     useFileStore.getState().setRootPath(path);
     useFileStore.getState().setFileTree(tree);
     useFileStore.getState().setLoadError(null); // §4.3 clear prior error on success
@@ -300,16 +331,49 @@ async function _loadContextFileTree(path: string): Promise<void> {
   }
 }
 
+/**
+ * §4.5 Persist the active sort order to `.baram/config.json` (read-merge-write).
+ * Fire-and-forget: failures are non-fatal since the sort still applies in-session.
+ */
+async function persistSortOrder(
+  vaultPath: string,
+  order: SortOrder,
+): Promise<void> {
+  try {
+    const current = await getVaultConfigByPath(vaultPath);
+    await setVaultConfigByPath(vaultPath, {
+      ...current,
+      fileTree: { ...current.fileTree, sortOrder: order },
+    });
+  } catch {
+    // non-fatal: sort still applies in-session
+  }
+}
+
 export const useFileStore = create<FileState>((set, get) => ({
   rootPath: null,
   fileTree: [],
   openFiles: new Map(),
   fileMtimes: new Map(),
   loadError: null,
+  fileTreeSortOrder: DEFAULT_SORT_ORDER,
 
   setRootPath: (path) => set({ rootPath: path }),
 
   setFileTree: (tree) => set({ fileTree: tree }),
+
+  setFileTreeSortOrder: (order) => {
+    set((state) => ({
+      fileTreeSortOrder: order,
+      fileTree: sortTreeNodes(state.fileTree, order),
+    }));
+    const { rootPath } = get();
+    if (!rootPath) return;
+    // persist to vault config (fire-and-forget; merge with existing config)
+    void persistSortOrder(rootPath, order);
+  },
+
+  collapseAllDirs: () => set({ expandedDirs: new Set() }),
 
   setLoadError: (e) => set({ loadError: e }),
 
@@ -424,10 +488,7 @@ export const useFileStore = create<FileState>((set, get) => ({
         // Skip if already exists (idempotent)
         if (entries.some((e) => e.path === newEntry.path)) return entries;
         const result = [...entries, newEntry];
-        result.sort((a, b) => {
-          if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
-          return a.name.localeCompare(b.name);
-        });
+        result.sort((a, b) => compareEntries(a, b, get().fileTreeSortOrder));
         return result;
       }
 
@@ -538,10 +599,7 @@ export const useFileStore = create<FileState>((set, get) => ({
         newEntry: FileEntry,
       ): FileEntry[] {
         const result = [...entries, newEntry];
-        result.sort((a, b) => {
-          if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
-          return a.name.localeCompare(b.name);
-        });
+        result.sort((a, b) => compareEntries(a, b, get().fileTreeSortOrder));
         return result;
       }
 
