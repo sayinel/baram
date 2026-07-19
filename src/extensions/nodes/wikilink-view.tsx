@@ -68,13 +68,13 @@ export function WikilinkView({ node, selected, extension }: NodeViewProps) {
   return (
     <NodeViewWrapper
       as="span"
-      className={`wikilink ${selected ? "wikilink-selected" : ""}${isDate ? "wikilink-date" : ""}${isDangling ? "wikilink--dangling" : ""}`}
+      className={`wikilink ${selected ? "wikilink-selected" : ""} ${isDate ? "wikilink-date" : ""} ${isDangling ? "wikilink--dangling" : ""}`}
       data-target={target}
       onClick={handleClick}
     >
       {vaultAlias && vaultInfo && (
         <span
-          className={`wikilink-vault-badge${isDangling ? "wikilink-vault-badge--dangling" : ""}`}
+          className={`wikilink-vault-badge ${isDangling ? "wikilink-vault-badge--dangling" : ""}`}
           style={
             vaultInfo.color ? { backgroundColor: vaultInfo.color } : undefined
           }

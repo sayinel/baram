@@ -127,7 +127,7 @@ export function KeybindingsTab() {
           <SettingsSectionHeader title={t(CATEGORY_LABELS[cat])} />
           {grouped.get(cat)!.map((entry) => (
             <div
-              className={`keybinding-row${entry.isOverridden ? "keybinding-overridden" : ""}${!entry.customizable ? "keybinding-readonly-row" : ""}`}
+              className={`keybinding-row ${entry.isOverridden ? "keybinding-overridden" : ""} ${!entry.customizable ? "keybinding-readonly-row" : ""}`}
               key={entry.id}
             >
               <span className="keybinding-label">{t(entry.label)}</span>

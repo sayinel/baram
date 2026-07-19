@@ -395,7 +395,7 @@ export function TabBar() {
                 {tab.isPinned ? "Unpin Tab" : "Pin Tab"}
               </div>
               <div
-                className={`tab-context-item${tab.isPinned ? "tab-context-item--disabled" : ""}`}
+                className={`tab-context-item ${tab.isPinned ? "tab-context-item--disabled" : ""}`}
                 onClick={() => {
                   if (!tab.isPinned) {
                     handleClose(tab.id);

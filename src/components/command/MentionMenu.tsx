@@ -82,7 +82,7 @@ export const MentionMenuList = forwardRef<MentionMenuRef, MentionMenuProps>(
               const idx = globalIdx++;
               return (
                 <div
-                  className={`mention-menu-item mention-menu-item-date${idx === selectedIndex ? "mention-item-selected" : ""}`}
+                  className={`mention-menu-item mention-menu-item-date ${idx === selectedIndex ? "mention-item-selected" : ""}`}
                   key={item.id}
                   onClick={() => selectItem(idx)}
                   onMouseEnter={() => setSelectedIndex(idx)}
@@ -101,7 +101,7 @@ export const MentionMenuList = forwardRef<MentionMenuRef, MentionMenuProps>(
               const idx = globalIdx++;
               return (
                 <div
-                  className={`mention-menu-item mention-menu-item-page${idx === selectedIndex ? "mention-item-selected" : ""}`}
+                  className={`mention-menu-item mention-menu-item-page ${idx === selectedIndex ? "mention-item-selected" : ""}`}
                   key={item.id}
                   onClick={() => selectItem(idx)}
                   onMouseEnter={() => setSelectedIndex(idx)}

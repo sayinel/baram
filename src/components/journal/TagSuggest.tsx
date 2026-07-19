@@ -48,7 +48,7 @@ export function TagSuggest({
       {suggestions.map((tag, i) => (
         <li
           aria-selected={i === activeIndex}
-          className={`tag-suggest-item${i === activeIndex ? "tag-suggest-item-active" : ""}`}
+          className={`tag-suggest-item ${i === activeIndex ? "tag-suggest-item-active" : ""}`}
           key={tag}
           onMouseDown={(e) => {
             // Prevent input blur before selection

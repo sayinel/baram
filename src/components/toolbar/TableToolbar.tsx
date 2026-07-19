@@ -275,21 +275,21 @@ export function TableToolbar({ editor }: TableToolbarProps) {
         style={{ top: position.top, left: position.left }}
       >
         <button
-          className={`table-toolbar-btn icon-btn${currentAlign === "left" ? "table-toolbar-btn-active" : ""}`}
+          className={`table-toolbar-btn icon-btn ${currentAlign === "left" ? "table-toolbar-btn-active" : ""}`}
           onClick={() => setAlign(currentAlign === "left" ? null : "left")}
           title="Align Left"
         >
           <AlignLeft {...TABLE_ICON} />
         </button>
         <button
-          className={`table-toolbar-btn${currentAlign === "center" ? "table-toolbar-btn-active" : ""}`}
+          className={`table-toolbar-btn ${currentAlign === "center" ? "table-toolbar-btn-active" : ""}`}
           onClick={() => setAlign(currentAlign === "center" ? null : "center")}
           title="Align Center"
         >
           <AlignCenter {...TABLE_ICON} />
         </button>
         <button
-          className={`table-toolbar-btn${currentAlign === "right" ? "table-toolbar-btn-active" : ""}`}
+          className={`table-toolbar-btn ${currentAlign === "right" ? "table-toolbar-btn-active" : ""}`}
           onClick={() => setAlign(currentAlign === "right" ? null : "right")}
           title="Align Right"
         >

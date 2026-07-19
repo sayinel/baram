@@ -25,7 +25,7 @@ export function TabSwitcher({ mruTabs, selectedIndex }: TabSwitcherProps) {
         <div className="tab-switcher-list">
           {mruTabs.map((tab, i) => (
             <div
-              className={`tab-switcher-item${i === selectedIndex ? "tab-switcher-item--selected" : ""}`}
+              className={`tab-switcher-item ${i === selectedIndex ? "tab-switcher-item--selected" : ""}`}
               key={tab.id}
               ref={i === selectedIndex ? selectedRef : null}
             >

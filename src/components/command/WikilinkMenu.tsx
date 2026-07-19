@@ -142,7 +142,7 @@ export const WikilinkMenuList = forwardRef<WikilinkMenuRef, WikilinkMenuProps>(
           const selectableIdx = selectableItems.indexOf(item);
           return (
             <div
-              className={`wikilink-menu-item ${selectableIdx === selectedIndex ? "wikilink-item-selected" : ""}${item.kind === "create" ? "wikilink-item-create" : ""}${item.folder && item.folder !== "/" ? "wikilink-item-indented" : ""}`}
+              className={`wikilink-menu-item ${selectableIdx === selectedIndex ? "wikilink-item-selected" : ""} ${item.kind === "create" ? "wikilink-item-create" : ""} ${item.folder && item.folder !== "/" ? "wikilink-item-indented" : ""}`}
               key={item.id}
               onClick={() => selectItem(selectableIdx)}
               onMouseEnter={() => setSelectedIndex(selectableIdx)}
