@@ -120,6 +120,27 @@
   display: block;
 }
 
+.file-tree-git-badge {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  margin-right: 4px;
+  margin-left: auto;
+  border-radius: 50%;
+}
+
+.file-tree-git-badge-modified {
+  background: var(--color-git-modified);
+}
+
+.file-tree-git-badge-added {
+  background: var(--color-git-added);
+}
+
+.file-tree-git-badge-dir {
+  background: var(--color-text-muted);
+}
+
 .file-tree-item-active {
   font-weight: 500;
   color: var(--color-text-primary);

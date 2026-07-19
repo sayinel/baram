@@ -4,6 +4,7 @@ import type { FileTreeContextValue } from "../FileTreeContext";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { EMPTY_GIT_BADGE_INDEX } from "../../../stores/system/git-badges";
 import { FileTreeProvider } from "../FileTreeContext";
 import { FileTreeNode } from "../FileTreeNode";
 
@@ -13,6 +14,7 @@ const ctx: FileTreeContextValue = {
   dragSourcePaths: [],
   expandedDirs: new Set<string>(),
   focusedPath: null,
+  gitBadges: EMPTY_GIT_BADGE_INDEX,
   renamingPath: null,
   selectedPaths: new Set<string>(),
 };

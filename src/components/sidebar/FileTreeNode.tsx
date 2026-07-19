@@ -42,6 +42,7 @@ export function FileTreeNode({
     dragOverPath,
     dragSourcePaths,
     focusedPath,
+    gitBadges,
   } = useFileTreeContext();
 
   const paddingLeft = `${depth * TREE_INDENT_PX + TREE_BASE_PADDING_PX}px`;
@@ -109,6 +110,12 @@ export function FileTreeNode({
               {entry.name}
             </span>
           )}
+          {gitBadges.dirs.has(entry.path) && (
+            <span
+              aria-label="contains changes"
+              className="file-tree-git-badge file-tree-git-badge-dir"
+            />
+          )}
         </div>
         {isExpanded && (
           <>
@@ -174,6 +181,15 @@ export function FileTreeNode({
           {entry.name}
         </span>
       )}
+      {(() => {
+        const badge = gitBadges.files.get(entry.path);
+        return badge ? (
+          <span
+            aria-label={badge === "modified" ? "modified" : "added"}
+            className={`file-tree-git-badge file-tree-git-badge-${badge}`}
+          />
+        ) : null;
+      })()}
     </div>
   );
 }

@@ -2,6 +2,7 @@
 // Eliminates props drilling of 6 frequently-read states through FileTreeNode
 import { createContext, useContext } from "react";
 
+import type { GitBadgeIndex } from "../../stores/system/git-badges";
 import type { CreatingEntryState } from "./file-tree-types";
 
 export interface FileTreeContextValue {
@@ -10,6 +11,7 @@ export interface FileTreeContextValue {
   dragSourcePaths: string[];
   expandedDirs: Set<string>;
   focusedPath: null | string;
+  gitBadges: GitBadgeIndex;
   renamingPath: null | string;
   selectedPaths: Set<string>;
 }
