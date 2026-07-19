@@ -8,6 +8,7 @@ import type { FileEntry } from "../../../stores/file/file";
 
 import { copyFile, readFile } from "../../../ipc/invoke";
 import { useEditorStore } from "../../../stores/editor/editor";
+import { useSnapshotStore } from "../../../stores/editor/snapshot";
 import { useFileStore } from "../../../stores/file/file";
 import { useUIStore } from "../../../stores/ui/ui";
 import { flattenFileTree } from "../../../utils/file-search";
@@ -27,6 +28,7 @@ export interface UseFileTreeActionsReturn {
   exportFile: (path: string) => Promise<void>;
   openInNewTab: (path: string) => Promise<boolean>;
   revealInFileManager: (path: string) => Promise<void>;
+  showVersionHistory: (absPath: string) => void;
 }
 
 export function useFileTreeActions(): UseFileTreeActionsReturn {
@@ -121,6 +123,14 @@ export function useFileTreeActions(): UseFileTreeActionsReturn {
     [openInNewTab],
   );
 
+  const showVersionHistory = useCallback((absPath: string): void => {
+    const root = useFileStore.getState().rootPath;
+    if (!root) return;
+    const relPath = toRelativePath(absPath, root);
+    void useSnapshotStore.getState().loadFileHistory(root, relPath);
+    useUIStore.getState().setSidebarPanel("snapshots");
+  }, []);
+
   return {
     copyPath,
     copyRelativePath,
@@ -129,6 +139,7 @@ export function useFileTreeActions(): UseFileTreeActionsReturn {
     exportFile,
     openInNewTab,
     revealInFileManager,
+    showVersionHistory,
   };
 }
 

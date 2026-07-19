@@ -34,6 +34,7 @@ import { EditorProvider } from "./contexts/editor-context";
 import { createBaramExtensions } from "./extensions";
 import { useAppStartup } from "./hooks/use-app-startup";
 import { useAutoSave } from "./hooks/use-auto-save";
+import { useAutoSnapshot } from "./hooks/use-auto-snapshot";
 import { useCloseGuard } from "./hooks/use-close-guard";
 import { useEditorEffects } from "./hooks/use-editor-effects";
 import { useExternalDrop } from "./hooks/use-external-drop";
@@ -76,6 +77,7 @@ import {
 import { useAIStore } from "./stores/ai/ai";
 import { useEditorStore } from "./stores/editor/editor";
 import { isFileTab, isGraphTab } from "./stores/editor/editor";
+import { useSnapshotStore } from "./stores/editor/snapshot";
 import { useFileStore } from "./stores/file/file";
 import { useSettingsStore } from "./stores/settings/store";
 import { useUIStore } from "./stores/ui/ui";
@@ -358,6 +360,9 @@ function App() {
   // File system watcher — auto-refresh FileTree on external changes
   useFileWatcher();
 
+  // §71 Periodic auto-snapshot — fires performAutoSnapshot on the configured interval
+  useAutoSnapshot();
+
   // Page zoom — trackpad pinch + Cmd+/Cmd-/Cmd+0
   // §perf-large-file C3.5: zoom against activeEditor's DOM
   useZoom(activeEditor);
@@ -422,6 +427,8 @@ function App() {
         useFileStore.getState().updateLastSaveMtime(tab.filePath!, Date.now());
         setFileContent(tab.filePath!, sourceContentRef.current);
         markDirty(tab.id, false);
+        // §71 Mark the auto-snapshot dirty gate for non-md/code file saves.
+        useSnapshotStore.getState().markPendingAutoSnapshot();
       } catch {
         // Save failed — keep dirty state
       }
@@ -848,6 +855,8 @@ function App() {
                   useEditorStore.getState().requestContentRefresh();
                   const { activeTabId: tid } = useEditorStore.getState();
                   if (tid) markDirty(tid, false);
+                  // §71 A conflict-merge write is a real content change.
+                  useSnapshotStore.getState().markPendingAutoSnapshot();
                 } catch (err) {
                   logger.error("[App] merge apply failed", err);
                 }

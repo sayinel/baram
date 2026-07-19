@@ -10,6 +10,7 @@ import { updateFileIndex, writeFile } from "../ipc/invoke";
 import { prosemirrorToMarkdown } from "../pipeline";
 import { useEditorStore } from "../stores/editor/editor";
 import { useLinkStore } from "../stores/editor/link";
+import { useSnapshotStore } from "../stores/editor/snapshot";
 import { useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
 import {
@@ -113,6 +114,9 @@ export function useAutoSave(editor: Editor | null) {
       updateFileIndex(pending.filePath)
         .then(() => useLinkStore.getState().invalidate())
         .catch(() => {});
+      // §71 Mark the auto-snapshot dirty gate — periodic snapshot hook only
+      // snapshots when something actually changed since the last snapshot.
+      useSnapshotStore.getState().markPendingAutoSnapshot();
     } catch {
       // Save failed — keep dirty state, will retry on next edit
     }

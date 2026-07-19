@@ -152,6 +152,14 @@ export function FileTreeContextMenu({
               Export…
             </div>
           )}
+          {!menu.targetIsDir && (
+            <div
+              className="file-tree-context-menu-item"
+              onClick={() => onAction("versionHistory")}
+            >
+              Version History
+            </div>
+          )}
         </>
       )}
     </div>

@@ -18,6 +18,7 @@ vi.mock("../../../ipc/invoke", () => ({
   setConfig: vi.fn().mockResolvedValue(undefined),
   removeConfig: vi.fn().mockResolvedValue(undefined),
   readFile: vi.fn().mockResolvedValue(""),
+  getFileHistory: vi.fn().mockResolvedValue([]),
 }));
 
 const revealItemInDir = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
@@ -27,6 +28,7 @@ import { revealItemInDir as revealMock } from "@tauri-apps/plugin-opener";
 
 import { readFile } from "../../../ipc/invoke";
 import { useEditorStore } from "../../../stores/editor/editor";
+import { useSnapshotStore } from "../../../stores/editor/snapshot";
 import { useFileStore } from "../../../stores/file/file";
 import { useUIStore } from "../../../stores/ui/ui";
 import { useFileTreeActions } from "../hooks/use-file-tree-actions";
@@ -105,5 +107,27 @@ describe("useFileTreeActions open/export", () => {
     spy.mockClear(); // 이전 테스트에서 동일 스파이가 누적한 호출 기록 제거
     await act(() => result.current.exportFile("/r/missing.md"));
     expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe("useFileTreeActions showVersionHistory", () => {
+  beforeEach(() => {
+    useSnapshotStore.setState({ fileHistoryPath: null, fileHistory: [] });
+    useUIStore.setState({ sidebarPanel: "files" });
+  });
+
+  it("절대 경로를 vault-relative 경로로 변환해 loadFileHistory를 호출하고 Snapshots 패널을 연다", () => {
+    const { result } = renderHook(() => useFileTreeActions());
+    result.current.showVersionHistory("/r/docs/a.md");
+    expect(useSnapshotStore.getState().fileHistoryPath).toBe("docs/a.md");
+    expect(useUIStore.getState().sidebarPanel).toBe("snapshots");
+  });
+
+  it("rootPath가 없으면 아무 것도 하지 않는다", () => {
+    useFileStore.setState({ rootPath: null });
+    const { result } = renderHook(() => useFileTreeActions());
+    result.current.showVersionHistory("/r/docs/a.md");
+    expect(useSnapshotStore.getState().fileHistoryPath).toBeNull();
+    expect(useUIStore.getState().sidebarPanel).toBe("files");
   });
 });

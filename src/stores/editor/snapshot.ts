@@ -31,6 +31,8 @@ interface SnapshotState {
   fileHistory: SnapshotEntry[];
   // File history mode
   fileHistoryPath: null | string;
+  // Vault the current file history belongs to — guards against cross-vault staleness
+  fileHistoryVault: null | string;
 
   loadDiff: (
     vaultPath: string,
@@ -43,6 +45,10 @@ interface SnapshotState {
 
   // Actions
   loadSnapshots: (vaultPath: string) => Promise<void>;
+  markPendingAutoSnapshot: () => void;
+  // Auto-snapshot dirty gate (§71)
+  pendingAutoSnapshot: boolean;
+  performAutoSnapshot: (vaultPath: string) => Promise<void>;
   performCreate: (vaultPath: string, label?: string) => Promise<string>;
   performDelete: (vaultPath: string, snapshotId: string) => Promise<void>;
   performRestore: (
@@ -72,10 +78,12 @@ export const useSnapshotStore = create<SnapshotState>((set, get) => ({
   activeDiff: null,
   diffLoading: false,
   fileHistoryPath: null,
+  fileHistoryVault: null,
   fileHistory: [],
   restoring: false,
   restoreMessage: null,
   creating: false,
+  pendingAutoSnapshot: false,
 
   loadSnapshots: async (vaultPath) => {
     set({ loading: true, error: null });
@@ -167,6 +175,14 @@ export const useSnapshotStore = create<SnapshotState>((set, get) => ({
       // Reload snapshots after restore (a new auto-snapshot was created)
       await get().loadSnapshots(vaultPath);
 
+      // §71 File history mode: the pre-restore backup snapshot must show up,
+      // and any open diff is now stale (it would show the inverse of what
+      // just happened) — reload history + close the diff.
+      if (get().fileHistoryPath) {
+        await get().loadFileHistory(vaultPath, get().fileHistoryPath!);
+        set({ activeDiff: null });
+      }
+
       const fileCount = restoredPaths.length;
       const msg = `Restored ${fileCount} file${fileCount !== 1 ? "s" : ""}`;
       set({ restoring: false, selectedFiles: [], restoreMessage: msg });
@@ -188,6 +204,22 @@ export const useSnapshotStore = create<SnapshotState>((set, get) => ({
     }
   },
 
+  markPendingAutoSnapshot: () => {
+    if (!get().pendingAutoSnapshot) set({ pendingAutoSnapshot: true });
+  },
+
+  performAutoSnapshot: async (vaultPath) => {
+    if (!get().pendingAutoSnapshot) return;
+    set({ pendingAutoSnapshot: false });
+    try {
+      await createSnapshot(vaultPath, "auto", undefined);
+      await get().loadSnapshots(vaultPath);
+    } catch (e) {
+      // re-arm so the next tick retries; surface the error
+      set({ pendingAutoSnapshot: true, error: String(e) });
+    }
+  },
+
   performDelete: async (vaultPath, snapshotId) => {
     set({ error: null });
     try {
@@ -203,7 +235,12 @@ export const useSnapshotStore = create<SnapshotState>((set, get) => ({
   },
 
   loadFileHistory: async (vaultPath, filePath) => {
-    set({ loading: true, error: null, fileHistoryPath: filePath });
+    set({
+      loading: true,
+      error: null,
+      fileHistoryPath: filePath,
+      fileHistoryVault: vaultPath,
+    });
     try {
       const fileHistory = await getFileHistory(vaultPath, filePath);
       set({ fileHistory, loading: false });
@@ -212,5 +249,6 @@ export const useSnapshotStore = create<SnapshotState>((set, get) => ({
     }
   },
 
-  clearFileHistory: () => set({ fileHistoryPath: null, fileHistory: [] }),
+  clearFileHistory: () =>
+    set({ fileHistoryPath: null, fileHistoryVault: null, fileHistory: [] }),
 }));

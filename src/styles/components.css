@@ -1205,6 +1205,65 @@ body.table-dragging {
   color: var(--color-text-muted);
 }
 
+/* File-scoped version history rows */
+
+.file-history-version {
+  display: flex;
+  gap: 0.4em;
+  align-items: center;
+  padding: 0.4em 0.75em;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.file-history-version-open {
+  display: flex;
+  flex: 1;
+  gap: 0.5em;
+  align-items: baseline;
+  min-width: 0;
+  padding: 0.3em 0.4em;
+  font-family: var(--font-family-mono);
+  font-size: 0.8rem;
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-radius: 3px;
+}
+
+.file-history-version-open:hover {
+  background: var(--color-bg-subtle);
+}
+
+.file-history-version-time {
+  color: var(--color-text-primary);
+}
+
+.file-history-version-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.file-history-version-restore {
+  flex-shrink: 0;
+  padding: 0.15em 0.5em;
+  font-family: var(--font-family-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  background: none;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 3px;
+}
+
+.file-history-version-restore:hover {
+  color: var(--color-text-primary);
+  border-color: var(--color-accent-default);
+}
+
 /* Snapshot detail */
 
 .snapshot-detail {
