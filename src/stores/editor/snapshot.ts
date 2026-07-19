@@ -43,6 +43,10 @@ interface SnapshotState {
 
   // Actions
   loadSnapshots: (vaultPath: string) => Promise<void>;
+  markPendingAutoSnapshot: () => void;
+  // Auto-snapshot dirty gate (§71)
+  pendingAutoSnapshot: boolean;
+  performAutoSnapshot: (vaultPath: string) => Promise<void>;
   performCreate: (vaultPath: string, label?: string) => Promise<string>;
   performDelete: (vaultPath: string, snapshotId: string) => Promise<void>;
   performRestore: (
@@ -76,6 +80,7 @@ export const useSnapshotStore = create<SnapshotState>((set, get) => ({
   restoring: false,
   restoreMessage: null,
   creating: false,
+  pendingAutoSnapshot: false,
 
   loadSnapshots: async (vaultPath) => {
     set({ loading: true, error: null });
@@ -185,6 +190,20 @@ export const useSnapshotStore = create<SnapshotState>((set, get) => ({
     } catch (e) {
       set({ creating: false, error: String(e) });
       throw e;
+    }
+  },
+
+  markPendingAutoSnapshot: () => set({ pendingAutoSnapshot: true }),
+
+  performAutoSnapshot: async (vaultPath) => {
+    if (!get().pendingAutoSnapshot) return;
+    set({ pendingAutoSnapshot: false });
+    try {
+      await createSnapshot(vaultPath, "auto", undefined);
+      await get().loadSnapshots(vaultPath);
+    } catch (e) {
+      // re-arm so the next tick retries; surface the error
+      set({ pendingAutoSnapshot: true, error: String(e) });
     }
   },
 
