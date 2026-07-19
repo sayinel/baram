@@ -6,7 +6,6 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 
 import { logger } from "../../utils/logger";
 import { syntaxRevealKey } from "../plugins/syntax-reveal";
-import { resolveShortcut } from "../utils/shortcut-resolver";
 
 export interface LinkOptions {
   autolink: boolean;
@@ -102,16 +101,6 @@ export const Link = Mark.create<LinkOptions>({
         () =>
         ({ commands }) =>
           commands.unsetMark(this.name, { extendEmptyMarkRange: true }),
-    };
-  },
-
-  addKeyboardShortcuts() {
-    const key = resolveShortcut("formatting.link", "Mod-k");
-    return {
-      [key]: () => {
-        // TODO: Open link editing dialog (M4 UI framework)
-        return true;
-      },
     };
   },
 

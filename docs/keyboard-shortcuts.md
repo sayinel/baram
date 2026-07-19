@@ -54,7 +54,6 @@ Complete list of keyboard shortcuts available in Baram.
 | Strikethrough | `Cmd+Shift+X` | `Ctrl+Shift+X`  |
 | Highlight     | `Cmd+Shift+H` | `Ctrl+Shift+H`  |
 | Inline Code   | `Cmd+E`       | `Ctrl+E`        |
-| Link          | `Cmd+K`       | `Ctrl+K`        |
 
 ## Block Formatting
 

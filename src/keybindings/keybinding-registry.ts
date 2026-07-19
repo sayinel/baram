@@ -434,13 +434,6 @@ export const KEYBINDING_REGISTRY: KeybindingEntry[] = [
     customizable: false,
   },
   {
-    id: "formatting.link",
-    label: "keybindings.formatting.link",
-    category: "formatting",
-    defaultKey: "Mod+K",
-    customizable: false,
-  },
-  {
     id: "formatting.tableMerge",
     label: "keybindings.formatting.tableMerge",
     category: "formatting",
