@@ -11,6 +11,15 @@ const S = {
   strokeLinecap: "round" as const,
 };
 
+export function IconCollapseAll(): React.JSX.Element {
+  return (
+    <svg {...S}>
+      <path d="m7 15 5-5 5 5" />
+      <path d="m7 9 5-5 5 5" />
+    </svg>
+  );
+}
+
 export function IconFile({
   label,
   color,
@@ -66,6 +75,18 @@ export function IconNewFolder(): React.JSX.Element {
       <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
       <line x1="12" x2="12" y1="11" y2="17" />
       <line x1="9" x2="15" y1="14" y2="14" />
+    </svg>
+  );
+}
+
+export function IconSort(): React.JSX.Element {
+  return (
+    <svg {...S}>
+      <path d="M11 5h10" />
+      <path d="M11 9h7" />
+      <path d="M11 13h4" />
+      <path d="m3 17 3 3 3-3" />
+      <path d="M6 4v16" />
     </svg>
   );
 }

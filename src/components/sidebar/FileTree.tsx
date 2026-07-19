@@ -22,6 +22,7 @@ import { logger } from "../../utils/logger";
 import { getFileIcon } from "./file-icon";
 import { FileTreeContextMenu } from "./file-tree-context-menu";
 import {
+  IconCollapseAll,
   IconFile,
   IconFolder,
   IconNewFile,
@@ -33,6 +34,7 @@ import { DRAG_EXPAND_DELAY_MS, TREE_BASE_PADDING_PX } from "./file-tree-types";
 import { computeVisibleEntries } from "./file-tree-visible";
 import { FileTreeProvider } from "./FileTreeContext";
 import { FileTreeNode } from "./FileTreeNode";
+import { FileTreeSortDropdown } from "./FileTreeSortDropdown";
 import { FolderAccessError } from "./FolderAccessError";
 import { useFileTreeActions } from "./hooks/use-file-tree-actions";
 import { useFileTreeCrud } from "./hooks/use-file-tree-crud";
@@ -45,16 +47,27 @@ import { MoveToFolderModal } from "./MoveToFolderModal";
 
 export function FileTree(): React.JSX.Element {
   const editor = useEditorContext();
-  const { fileTree, loadError, retryLoadFileTree, rootPath, setFileContent } =
-    useFileStore(
-      useShallow((s) => ({
-        fileTree: s.fileTree,
-        loadError: s.loadError,
-        retryLoadFileTree: s.retryLoadFileTree,
-        rootPath: s.rootPath,
-        setFileContent: s.setFileContent,
-      })),
-    );
+  const {
+    collapseAllDirs,
+    fileTree,
+    fileTreeSortOrder,
+    loadError,
+    retryLoadFileTree,
+    rootPath,
+    setFileContent,
+    setFileTreeSortOrder,
+  } = useFileStore(
+    useShallow((s) => ({
+      collapseAllDirs: s.collapseAllDirs,
+      fileTree: s.fileTree,
+      fileTreeSortOrder: s.fileTreeSortOrder,
+      loadError: s.loadError,
+      retryLoadFileTree: s.retryLoadFileTree,
+      rootPath: s.rootPath,
+      setFileContent: s.setFileContent,
+      setFileTreeSortOrder: s.setFileTreeSortOrder,
+    })),
+  );
   const tagFilter = useFileStore((s) => s.tagFilter);
   const setTagFilter = useFileStore((s) => s.setTagFilter);
   const expandedDirs = useFileStore((s) => s.expandedDirs);
@@ -524,6 +537,18 @@ export function FileTree(): React.JSX.Element {
             title="New Folder"
           >
             <IconNewFolder />
+          </button>
+          <FileTreeSortDropdown
+            onChange={setFileTreeSortOrder}
+            value={fileTreeSortOrder}
+          />
+          <button
+            className="file-tree-action-btn"
+            onClick={collapseAllDirs}
+            title="Collapse all"
+            type="button"
+          >
+            <IconCollapseAll />
           </button>
         </div>
         {tagFilter && (

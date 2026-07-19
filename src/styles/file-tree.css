@@ -220,6 +220,43 @@
   background: var(--color-border-default);
 }
 
+/* §4.5 File tree header — sort dropdown */
+.file-tree-sort {
+  position: relative;
+  display: inline-flex;
+}
+
+.file-tree-sort-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 20;
+  min-width: 160px;
+  padding: 4px;
+  margin: 2px 0 0;
+  list-style: none;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 6px;
+  box-shadow: var(--shadow-md);
+}
+
+.file-tree-sort-option {
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.file-tree-sort-option:hover {
+  background: var(--color-bg-hover);
+}
+
+.file-tree-sort-option-active {
+  color: var(--color-accent-default);
+}
+
 /* Drag and drop */
 .file-tree-drop-target {
   outline: 1px dashed var(--color-accent-default);
