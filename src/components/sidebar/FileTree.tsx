@@ -22,16 +22,20 @@ import { logger } from "../../utils/logger";
 import { getFileIcon } from "./file-icon";
 import { FileTreeContextMenu } from "./file-tree-context-menu";
 import {
+  IconCollapseAll,
+  IconExpandAll,
   IconFile,
   IconFolder,
   IconNewFile,
   IconNewFolder,
 } from "./file-tree-icons";
 import { someSelectedIsDir } from "./file-tree-multi-ops";
+import { ancestorDirs } from "./file-tree-reveal";
 import { DRAG_EXPAND_DELAY_MS, TREE_BASE_PADDING_PX } from "./file-tree-types";
 import { computeVisibleEntries } from "./file-tree-visible";
 import { FileTreeProvider } from "./FileTreeContext";
 import { FileTreeNode } from "./FileTreeNode";
+import { FileTreeSortDropdown } from "./FileTreeSortDropdown";
 import { FolderAccessError } from "./FolderAccessError";
 import { useFileTreeActions } from "./hooks/use-file-tree-actions";
 import { useFileTreeCrud } from "./hooks/use-file-tree-crud";
@@ -44,16 +48,29 @@ import { MoveToFolderModal } from "./MoveToFolderModal";
 
 export function FileTree(): React.JSX.Element {
   const editor = useEditorContext();
-  const { fileTree, loadError, retryLoadFileTree, rootPath, setFileContent } =
-    useFileStore(
-      useShallow((s) => ({
-        fileTree: s.fileTree,
-        loadError: s.loadError,
-        retryLoadFileTree: s.retryLoadFileTree,
-        rootPath: s.rootPath,
-        setFileContent: s.setFileContent,
-      })),
-    );
+  const {
+    collapseAllDirs,
+    expandAllDirs,
+    fileTree,
+    fileTreeSortOrder,
+    loadError,
+    retryLoadFileTree,
+    rootPath,
+    setFileContent,
+    setFileTreeSortOrder,
+  } = useFileStore(
+    useShallow((s) => ({
+      collapseAllDirs: s.collapseAllDirs,
+      expandAllDirs: s.expandAllDirs,
+      fileTree: s.fileTree,
+      fileTreeSortOrder: s.fileTreeSortOrder,
+      loadError: s.loadError,
+      retryLoadFileTree: s.retryLoadFileTree,
+      rootPath: s.rootPath,
+      setFileContent: s.setFileContent,
+      setFileTreeSortOrder: s.setFileTreeSortOrder,
+    })),
+  );
   const tagFilter = useFileStore((s) => s.tagFilter);
   const setTagFilter = useFileStore((s) => s.setTagFilter);
   const expandedDirs = useFileStore((s) => s.expandedDirs);
@@ -151,13 +168,27 @@ export function FileTree(): React.JSX.Element {
   // --- Sync selectedPaths with active tab ---
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const activeFilePath = activeTab?.filePath ?? null;
+  // §4.5 This effect must react ONLY to tab switches, not filter keystrokes:
+  // read the filter state non-reactively (ref + getState()) so searchQuery
+  // and tagFilter changes don't re-run it and collapse a multi-selection /
+  // steal keyboard focus back to the active file on every keystroke.
+  const searchQueryRef = useRef(searchQuery);
+  searchQueryRef.current = searchQuery;
   useEffect(() => {
-    if (activeFilePath) {
-      shouldStealFocusRef.current = false;
-      selectSingle(activeFilePath);
-      setFocusedPath(activeFilePath);
+    if (!activeFilePath) return;
+    shouldStealFocusRef.current = false;
+    const filterActive =
+      searchQueryRef.current.trim() !== "" ||
+      useFileStore.getState().tagFilter !== null;
+    if (!filterActive && rootPath) {
+      // auto-reveal: expand ancestor dirs so the row renders and can scroll in
+      for (const dir of ancestorDirs(activeFilePath, rootPath)) {
+        expandDir(dir);
+      }
     }
-  }, [activeFilePath, selectSingle, setFocusedPath]);
+    selectSingle(activeFilePath);
+    setFocusedPath(activeFilePath);
+  }, [activeFilePath, rootPath, expandDir, selectSingle, setFocusedPath]);
 
   // --- Scroll focused row into view + roving focus ---
   useEffect(() => {
@@ -510,6 +541,29 @@ export function FileTree(): React.JSX.Element {
           >
             <IconNewFolder />
           </button>
+          <FileTreeSortDropdown
+            onChange={setFileTreeSortOrder}
+            value={fileTreeSortOrder}
+          />
+          {expandedDirs.size > 0 ? (
+            <button
+              className="file-tree-action-btn"
+              onClick={collapseAllDirs}
+              title="Collapse all"
+              type="button"
+            >
+              <IconCollapseAll />
+            </button>
+          ) : (
+            <button
+              className="file-tree-action-btn"
+              onClick={expandAllDirs}
+              title="Expand all"
+              type="button"
+            >
+              <IconExpandAll />
+            </button>
+          )}
         </div>
         {tagFilter && (
           <div className="filetree-tag-filter">
