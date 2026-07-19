@@ -74,6 +74,10 @@ import {
   startUpdateChecker,
   stopUpdateChecker,
 } from "./plugins/update-checker";
+import {
+  startAppUpdateChecker,
+  stopAppUpdateChecker,
+} from "./services/app-update";
 import { useAIStore } from "./stores/ai/ai";
 import { useEditorStore } from "./stores/editor/editor";
 import { isFileTab, isGraphTab } from "./stores/editor/editor";
@@ -129,6 +133,11 @@ const SettingsModal = lazy(() =>
 const AboutModal = lazy(() =>
   import("./components/settings/AboutModal").then((m) => ({
     default: m.AboutModal,
+  })),
+);
+const UpdateDialog = lazy(() =>
+  import("./components/settings/UpdateDialog").then((m) => ({
+    default: m.UpdateDialog,
   })),
 );
 const GraphViewTab = lazy(() =>
@@ -320,8 +329,10 @@ function App() {
       logger.error("[App] Plugin initialization failed:", err),
     );
     startUpdateChecker();
+    startAppUpdateChecker();
     return () => {
       stopUpdateChecker();
+      stopAppUpdateChecker();
       shutdownPlugins().catch((e) => logger.error(e));
     };
   }, []);
@@ -804,6 +815,7 @@ function App() {
         <QuickSwitcher editor={activeEditor} onNewFile={handleNewFile} />
         <SettingsModal />
         <AboutModal />
+        <UpdateDialog />
         <UnsavedChangesModal
           editor={activeEditor}
           handleSave={handleSave}

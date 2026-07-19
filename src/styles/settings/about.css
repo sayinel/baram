@@ -129,3 +129,21 @@
 .about-close:hover {
   background: var(--color-bg-elevated);
 }
+
+/* §206 "Check for updates" link near the version row */
+.about-check-updates {
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--color-accent-default);
+  cursor: pointer;
+}
+
+.about-check-updates:hover {
+  text-decoration: underline;
+}
+
+.about-check-updates:disabled {
+  text-decoration: none;
+  cursor: default;
+  opacity: 0.6;
+}

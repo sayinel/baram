@@ -7,3 +7,4 @@
 @import "./settings/keybindings.css"; /* keybindings tab */
 @import "./settings/smart-template.css"; /* §11.8 smart template dialog */
 @import "./settings/vault.css"; /* §86 vault tab + vault settings override */
+@import "./settings/update-dialog.css"; /* §206 app update dialog */

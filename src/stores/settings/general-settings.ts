@@ -4,6 +4,7 @@ import type { StateCreator } from "zustand";
 export interface GeneralSettingsSlice {
   addRecentFile: (path: string) => void;
   addRecentFolder: (path: string, isVault?: boolean) => void;
+  autoCheckUpdates: boolean;
   autoSave: boolean;
   autoSaveDelay: number;
   autoUpdateLinks: boolean;
@@ -20,6 +21,7 @@ export interface GeneralSettingsSlice {
   removeRecentFile: (path: string) => void;
   removeRecentFolder: (path: string) => void;
   resetAllKeybindings: () => void;
+  setAutoCheckUpdates: (enabled: boolean) => void;
   setAutoSave: (enabled: boolean) => void;
   setAutoSaveDelay: (delay: number) => void;
   setAutoUpdateLinks: (enabled: boolean) => void;
@@ -88,11 +90,15 @@ export const createGeneralSettingsSlice: StateCreator<
   // Keybinding overrides
   keybindingOverrides: {},
 
+  // §206 App auto-update
+  autoCheckUpdates: true,
+
   // General setters
   setOnLaunch: (onLaunch) => set({ onLaunch }),
   setAutoSave: (autoSave) => set({ autoSave }),
   setAutoSaveDelay: (autoSaveDelay) => set({ autoSaveDelay }),
   setShowWelcome: (showWelcome) => set({ showWelcome }),
+  setAutoCheckUpdates: (autoCheckUpdates) => set({ autoCheckUpdates }),
 
   addRecentFolder: (path, isVault) =>
     set((state) => {

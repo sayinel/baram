@@ -4,8 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
+import { useShallow } from "zustand/shallow";
+
 import baramSymbol from "../../assets/baram-symbol.png";
 import { useTranslation } from "../../i18n/useTranslation";
+import { checkForAppUpdate } from "../../services/app-update";
+import { useAppUpdateStore } from "../../stores/system/app-update";
 import { useUIStore } from "../../stores/ui/ui";
 
 const APACHE_LICENSE_URL = "https://www.apache.org/licenses/LICENSE-2.0";
@@ -19,6 +23,9 @@ const AUTHORS: ReadonlyArray<{ name: string; url: string }> = [
 export function AboutModal() {
   const { t } = useTranslation();
   const { aboutOpen, toggleAbout } = useUIStore();
+  const { updateStatus } = useAppUpdateStore(
+    useShallow((s) => ({ updateStatus: s.status })),
+  );
   const [version, setVersion] = useState("");
 
   const handleKeyDown = useCallback(
@@ -59,6 +66,19 @@ export function AboutModal() {
         <div className="about-version">
           {t("about.version").replace("{version}", version)}
         </div>
+        <button
+          className="btn-unstyled about-check-updates"
+          disabled={updateStatus === "checking"}
+          onClick={() => {
+            checkForAppUpdate(true).catch(() => {
+              /* errors are surfaced via the store's error status */
+            });
+          }}
+        >
+          {updateStatus === "checking"
+            ? t("settings.general.updates.checking")
+            : t("about.checkUpdates")}
+        </button>
         <div className="about-description">{t("about.description")}</div>
         <div className="about-details">
           <div className="about-row">
