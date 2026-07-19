@@ -6,6 +6,7 @@ import type { SnapshotEntry } from "../../ipc/types";
 import { useSnapshotStore } from "../../stores/editor/snapshot";
 import { useFileStore } from "../../stores/file/file";
 import { DiffView } from "../editor/DiffView";
+import { FileHistoryView } from "./FileHistoryView";
 
 export function VersionHistoryPanel() {
   const rootPath = useFileStore((s) => s.rootPath);
@@ -14,6 +15,7 @@ export function VersionHistoryPanel() {
     loading,
     error,
     selectedSnapshotId,
+    fileHistoryPath,
     creating,
     loadSnapshots,
     selectSnapshot,
@@ -37,6 +39,10 @@ export function VersionHistoryPanel() {
         <div className="snapshot-empty">Open a vault to view snapshots</div>
       </div>
     );
+  }
+
+  if (fileHistoryPath) {
+    return <FileHistoryView />;
   }
 
   // Detail view when snapshot is selected
