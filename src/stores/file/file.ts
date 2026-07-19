@@ -20,6 +20,7 @@ import { useUIStore } from "../ui/ui";
 export interface FileEntry {
   children?: FileEntry[];
   isDir: boolean;
+  modifiedAt?: number;
   name: string;
   path: string;
 }
