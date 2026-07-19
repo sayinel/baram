@@ -9,6 +9,7 @@ export interface FileTreeContextValue {
   dragOverPath: null | string;
   dragSourcePaths: string[];
   expandedDirs: Set<string>;
+  focusedPath: null | string;
   renamingPath: null | string;
   selectedPaths: Set<string>;
 }

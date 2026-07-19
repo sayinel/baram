@@ -41,6 +41,7 @@ export function FileTreeNode({
     expandedDirs,
     dragOverPath,
     dragSourcePaths,
+    focusedPath,
   } = useFileTreeContext();
 
   const paddingLeft = `${depth * TREE_INDENT_PX + TREE_BASE_PADDING_PX}px`;
@@ -49,6 +50,7 @@ export function FileTreeNode({
   const isSelected = selectedPaths.has(entry.path);
   const isDragOver = dragOverPath === entry.path;
   const isDragSource = dragSourcePaths.includes(entry.path);
+  const isFocused = focusedPath === entry.path;
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -70,10 +72,16 @@ export function FileTreeNode({
         data-drop-path={entry.path}
       >
         <div
+          aria-expanded={isExpanded}
+          aria-level={depth + 1}
+          aria-selected={isSelected}
           className={`file-tree-item file-tree-dir ${isSelected ? "file-tree-item-active" : ""}`}
+          data-tree-path={entry.path}
           onClick={(e) => onDirClick(entry, e)}
           onContextMenu={(e) => onContextMenu(e, entry.path, true)}
+          role="treeitem"
           style={{ paddingLeft }}
+          tabIndex={isFocused ? 0 : -1}
         >
           <span
             className={`file-tree-icon file-tree-chevron ${isExpanded ? "file-tree-chevron-open" : ""}`}
@@ -136,11 +144,16 @@ export function FileTreeNode({
   // File item -- drag source (detected by data-file-path via mouse events at root)
   return (
     <div
+      aria-level={depth + 1}
+      aria-selected={isSelected}
       className={`file-tree-item file-tree-file ${isSelected ? "file-tree-item-active" : ""} ${isDragSource ? "opacity-40" : ""}`}
       data-file-path={entry.path}
+      data-tree-path={entry.path}
       onClick={(e) => !isRenaming && onFileClick(entry, e)}
       onContextMenu={(e) => onContextMenu(e, entry.path, false)}
+      role="treeitem"
       style={{ paddingLeft }}
+      tabIndex={isFocused ? 0 : -1}
     >
       <span className="file-tree-icon">{getFileIcon(entry.name)}</span>
       {isRenaming ? (

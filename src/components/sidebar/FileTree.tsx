@@ -36,6 +36,7 @@ import { FolderAccessError } from "./FolderAccessError";
 import { useFileTreeActions } from "./hooks/use-file-tree-actions";
 import { useFileTreeCrud } from "./hooks/use-file-tree-crud";
 import { useFileTreeDnD } from "./hooks/use-file-tree-dnd";
+import { useFileTreeKeyboard } from "./hooks/use-file-tree-keyboard";
 import { useFileTreeRename } from "./hooks/use-file-tree-rename";
 import { useFileTreeSearch } from "./hooks/use-file-tree-search";
 import { useFileTreeSelection } from "./hooks/use-file-tree-selection";
@@ -73,6 +74,10 @@ export function FileTree(): React.JSX.Element {
   );
   const treeRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  // §4.4 Roving-tabindex bookkeeping (focusedPath state) happens on every
+  // active-tab change; imperatively stealing real DOM focus must only
+  // happen when the change originated from keyboard nav, not tab-sync.
+  const shouldStealFocusRef = useRef(false);
 
   // --- Hooks ---
   const {
@@ -83,15 +88,19 @@ export function FileTree(): React.JSX.Element {
     entryMatchesTagFilter,
   } = useFileTreeSearch();
 
-  const visiblePaths = useMemo(
+  const visibleEntries = useMemo(
     () =>
       computeVisibleEntries(
         fileTree,
         expandedDirs,
         filteredPaths,
         entryMatchesTagFilter,
-      ).map((e) => e.path),
+      ).map((e) => ({ path: e.path, isDir: e.isDir })),
     [fileTree, expandedDirs, filteredPaths, entryMatchesTagFilter],
+  );
+  const visiblePaths = useMemo(
+    () => visibleEntries.map((e) => e.path),
+    [visibleEntries],
   );
   // 단일 선택일 때만 유효한 대상 (F2 rename 등 단일 작업용)
   const primaryPath = selectedPaths.size === 1 ? [...selectedPaths][0] : null;
@@ -123,12 +132,45 @@ export function FileTree(): React.JSX.Element {
 
   const actions = useFileTreeActions();
 
+  const { focusedPath, setFocusedPath, handleNavKeyDown } = useFileTreeKeyboard(
+    {
+      navEntries: visibleEntries,
+      visiblePaths,
+      rootPath: rootPath ?? "",
+      expandedDirs,
+      expandDir,
+      toggleExpandedDir,
+      selectSingle,
+      selectRange,
+      onOpenFile: (path) => {
+        void actions.openInNewTab(path);
+      },
+    },
+  );
+
   // --- Sync selectedPaths with active tab ---
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const activeFilePath = activeTab?.filePath ?? null;
   useEffect(() => {
-    if (activeFilePath) selectSingle(activeFilePath);
-  }, [activeFilePath, selectSingle]);
+    if (activeFilePath) {
+      shouldStealFocusRef.current = false;
+      selectSingle(activeFilePath);
+      setFocusedPath(activeFilePath);
+    }
+  }, [activeFilePath, selectSingle, setFocusedPath]);
+
+  // --- Scroll focused row into view + roving focus ---
+  useEffect(() => {
+    if (!focusedPath || !treeRef.current) return;
+    const el = treeRef.current.querySelector<HTMLElement>(
+      `[data-tree-path="${CSS.escape(focusedPath)}"]`,
+    );
+    el?.scrollIntoView({ block: "nearest" });
+    if (shouldStealFocusRef.current) {
+      el?.focus();
+      shouldStealFocusRef.current = false;
+    }
+  }, [focusedPath]);
 
   // --- Close context menu on click outside or Escape ---
   useEffect(() => {
@@ -157,9 +199,16 @@ export function FileTree(): React.JSX.Element {
   // --- Keyboard shortcuts ---
   const handleTreeKeyDown = useCallback(
     (e: React.KeyboardEvent): void => {
+      // 인라인 입력(검색/rename)에 포커스가 있으면 트리 내비 무시
+      const tag = (e.target as HTMLElement).tagName;
+      // MoveToFolderModal (portal) keydown bubbles through the React tree to
+      // here; its input doesn't stopPropagation, so this guard is the defense
+      // that stops modal ArrowDown/Enter from driving tree nav. Do NOT remove.
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
       if (e.key === "F2" && primaryPath && !renamingPath) {
         e.preventDefault();
         setRenamingPath(primaryPath);
+        return;
       }
       if (
         (e.key === "Delete" || e.key === "Backspace") &&
@@ -169,10 +218,15 @@ export function FileTree(): React.JSX.Element {
       ) {
         e.preventDefault();
         handleDeleteMany([...selectedPaths]);
+        return;
+      }
+      if (!renamingPath) {
+        if (e.key.startsWith("Arrow")) shouldStealFocusRef.current = true;
+        handleNavKeyDown(e);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [primaryPath, renamingPath, selectedPaths],
+    [primaryPath, renamingPath, selectedPaths, handleNavKeyDown],
   );
 
   const handleOpenFolder = useCallback(async (): Promise<void> => {
@@ -184,6 +238,7 @@ export function FileTree(): React.JSX.Element {
     (entry: FileEntry, e: React.MouseEvent): void => {
       if (suppressClickRef.current) return;
       treeRef.current?.focus();
+      setFocusedPath(entry.path);
       if (e.shiftKey) {
         selectRange(entry.path, visiblePaths);
         return;
@@ -202,6 +257,7 @@ export function FileTree(): React.JSX.Element {
       toggleSelect,
       visiblePaths,
       suppressClickRef,
+      setFocusedPath,
     ],
   );
 
@@ -209,6 +265,7 @@ export function FileTree(): React.JSX.Element {
     async (entry: FileEntry, e: React.MouseEvent): Promise<void> => {
       if (suppressClickRef.current) return;
       treeRef.current?.focus();
+      setFocusedPath(entry.path);
       if (e.shiftKey) {
         selectRange(entry.path, visiblePaths);
         return;
@@ -247,6 +304,7 @@ export function FileTree(): React.JSX.Element {
       selectSingle,
       toggleSelect,
       visiblePaths,
+      setFocusedPath,
     ],
   );
 
@@ -381,6 +439,7 @@ export function FileTree(): React.JSX.Element {
       expandedDirs,
       dragOverPath,
       dragSourcePaths,
+      focusedPath,
     }),
     [
       selectedPaths,
@@ -389,6 +448,7 @@ export function FileTree(): React.JSX.Element {
       expandedDirs,
       dragOverPath,
       dragSourcePaths,
+      focusedPath,
     ],
   );
 
@@ -534,26 +594,28 @@ export function FileTree(): React.JSX.Element {
                 />
               </div>
             )}
-            {(filteredPaths
-              ? fileTree.filter((entry) =>
-                  entryMatchesTagFilter(entry, filteredPaths),
-                )
-              : fileTree
-            ).map((entry) => (
-              <FileTreeNode
-                depth={0}
-                entry={entry}
-                key={entry.path}
-                onCancelCreate={handleCancelCreate}
-                onCancelRename={handleCancelRename}
-                onConfirmCreate={handleConfirmCreate}
-                onConfirmRename={handleConfirmRename}
-                onContextMenu={handleContextMenu}
-                onDirClick={handleDirClick}
-                onFileClick={handleFileClick}
-                onStartRename={handleStartRename}
-              />
-            ))}
+            <div aria-label="File tree" aria-multiselectable="true" role="tree">
+              {(filteredPaths
+                ? fileTree.filter((entry) =>
+                    entryMatchesTagFilter(entry, filteredPaths),
+                  )
+                : fileTree
+              ).map((entry) => (
+                <FileTreeNode
+                  depth={0}
+                  entry={entry}
+                  key={entry.path}
+                  onCancelCreate={handleCancelCreate}
+                  onCancelRename={handleCancelRename}
+                  onConfirmCreate={handleConfirmCreate}
+                  onConfirmRename={handleConfirmRename}
+                  onContextMenu={handleContextMenu}
+                  onDirClick={handleDirClick}
+                  onFileClick={handleFileClick}
+                  onStartRename={handleStartRename}
+                />
+              ))}
+            </div>
           </>
         )}
 
