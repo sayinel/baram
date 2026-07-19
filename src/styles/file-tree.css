@@ -120,6 +120,13 @@
   display: block;
 }
 
+/* Allow the name to shrink below its content width so long names ellipsize
+   (flexbox min-content default + white-space:nowrap otherwise blocks it) and
+   the trailing git badge stays visible at the right edge. */
+.file-tree-name {
+  min-width: 0;
+}
+
 .file-tree-git-badge {
   flex: 0 0 auto;
   width: 6px;
