@@ -23,6 +23,7 @@ import { getFileIcon } from "./file-icon";
 import { FileTreeContextMenu } from "./file-tree-context-menu";
 import {
   IconCollapseAll,
+  IconExpandAll,
   IconFile,
   IconFolder,
   IconNewFile,
@@ -49,6 +50,7 @@ export function FileTree(): React.JSX.Element {
   const editor = useEditorContext();
   const {
     collapseAllDirs,
+    expandAllDirs,
     fileTree,
     fileTreeSortOrder,
     loadError,
@@ -59,6 +61,7 @@ export function FileTree(): React.JSX.Element {
   } = useFileStore(
     useShallow((s) => ({
       collapseAllDirs: s.collapseAllDirs,
+      expandAllDirs: s.expandAllDirs,
       fileTree: s.fileTree,
       fileTreeSortOrder: s.fileTreeSortOrder,
       loadError: s.loadError,
@@ -542,14 +545,25 @@ export function FileTree(): React.JSX.Element {
             onChange={setFileTreeSortOrder}
             value={fileTreeSortOrder}
           />
-          <button
-            className="file-tree-action-btn"
-            onClick={collapseAllDirs}
-            title="Collapse all"
-            type="button"
-          >
-            <IconCollapseAll />
-          </button>
+          {expandedDirs.size > 0 ? (
+            <button
+              className="file-tree-action-btn"
+              onClick={collapseAllDirs}
+              title="Collapse all"
+              type="button"
+            >
+              <IconCollapseAll />
+            </button>
+          ) : (
+            <button
+              className="file-tree-action-btn"
+              onClick={expandAllDirs}
+              title="Expand all"
+              type="button"
+            >
+              <IconExpandAll />
+            </button>
+          )}
         </div>
         {tagFilter && (
           <div className="filetree-tag-filter">

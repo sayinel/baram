@@ -18,6 +18,44 @@ describe("file store — sort order", () => {
     expect(useFileStore.getState().expandedDirs.size).toBe(0);
   });
 
+  it("expandAllDirs collects every directory path at every depth, excluding files", () => {
+    useFileStore.setState({
+      fileTree: [
+        {
+          isDir: true,
+          name: "a",
+          path: "/r/a",
+          children: [
+            {
+              isDir: true,
+              name: "b",
+              path: "/r/a/b",
+              children: [],
+            },
+            {
+              isDir: false,
+              name: "nested.md",
+              path: "/r/a/nested.md",
+            },
+          ],
+        },
+        {
+          isDir: false,
+          name: "top.md",
+          path: "/r/top.md",
+        },
+      ],
+      expandedDirs: new Set(),
+    });
+    useFileStore.getState().expandAllDirs();
+    const { expandedDirs } = useFileStore.getState();
+    expect(expandedDirs.has("/r/a")).toBe(true);
+    expect(expandedDirs.has("/r/a/b")).toBe(true);
+    expect(expandedDirs.size).toBe(2);
+    expect(expandedDirs.has("/r/a/nested.md")).toBe(false);
+    expect(expandedDirs.has("/r/top.md")).toBe(false);
+  });
+
   it("setFileTreeSortOrder resorts the existing tree (dirs stay first)", () => {
     // seed a tree ordered name-asc
     useFileStore.setState({

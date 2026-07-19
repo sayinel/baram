@@ -20,6 +20,15 @@ export function IconCollapseAll(): React.JSX.Element {
   );
 }
 
+export function IconExpandAll(): React.JSX.Element {
+  return (
+    <svg {...S}>
+      <path d="m7 9 5 5 5-5" />
+      <path d="m7 15 5 5 5-5" />
+    </svg>
+  );
+}
+
 export function IconFile({
   label,
   color,

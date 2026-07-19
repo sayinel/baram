@@ -51,6 +51,7 @@ interface FileState {
   closeFolder: () => void;
   /** §4.5 Collapse every expanded directory in the file tree */
   collapseAllDirs: () => void;
+  expandAllDirs: () => void;
   expandDir: (path: string) => void;
 
   // FileTree expanded directories (persisted across sidebar tab switches)
@@ -381,6 +382,21 @@ export const useFileStore = create<FileState>((set, get) => ({
   },
 
   collapseAllDirs: () => set({ expandedDirs: new Set() }),
+
+  expandAllDirs: () =>
+    set((state) => {
+      const dirs = new Set<string>();
+      const walk = (nodes: FileEntry[]) => {
+        for (const n of nodes) {
+          if (n.isDir) {
+            dirs.add(n.path);
+            if (n.children) walk(n.children);
+          }
+        }
+      };
+      walk(state.fileTree);
+      return { expandedDirs: dirs };
+    }),
 
   setLoadError: (e) => set({ loadError: e }),
 
