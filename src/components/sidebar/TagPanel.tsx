@@ -220,14 +220,14 @@ export function TagPanel() {
             </>
           )}
           <button
-            className={`tag-panel-action-btn${viewMode === "tree" ? "tag-panel-action-active" : ""}`}
+            className={`tag-panel-action-btn ${viewMode === "tree" ? "tag-panel-action-active" : ""}`}
             onClick={() => setViewMode("tree")}
             title="Tree view"
           >
             ☰
           </button>
           <button
-            className={`tag-panel-action-btn${viewMode === "cloud" ? "tag-panel-action-active" : ""}`}
+            className={`tag-panel-action-btn ${viewMode === "cloud" ? "tag-panel-action-active" : ""}`}
             onClick={() => setViewMode("cloud")}
             title="Cloud view"
           >
@@ -343,7 +343,7 @@ export function TagPanel() {
           <div className="tag-color-palette">
             {TAG_COLOR_PRESETS.map((color) => (
               <button
-                className={`tag-color-dot${tagColors[contextMenu.tag] === color ? "tag-color-dot-active" : ""}`}
+                className={`tag-color-dot ${tagColors[contextMenu.tag] === color ? "tag-color-dot-active" : ""}`}
                 key={color}
                 onClick={() => {
                   setTagColor(contextMenu.tag, color);

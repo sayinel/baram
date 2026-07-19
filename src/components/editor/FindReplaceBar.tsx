@@ -273,7 +273,7 @@ export function FindReplaceBar({
         <div className="find-replace-toggles">
           <button
             aria-pressed={caseSensitive}
-            className={`find-replace-toggle${caseSensitive ? "active" : ""}`}
+            className={`find-replace-toggle ${caseSensitive ? "active" : ""}`}
             onClick={() => dispatchToggleCaseSensitive(editor.view)}
             title="Case Sensitive (Aa)"
           >
@@ -281,7 +281,7 @@ export function FindReplaceBar({
           </button>
           <button
             aria-pressed={useRegex}
-            className={`find-replace-toggle${useRegex ? "active" : ""}`}
+            className={`find-replace-toggle ${useRegex ? "active" : ""}`}
             onClick={() => dispatchToggleRegex(editor.view)}
             title="Regular Expression (.*)"
           >
@@ -289,7 +289,7 @@ export function FindReplaceBar({
           </button>
           <button
             aria-pressed={wholeWord}
-            className={`find-replace-toggle${wholeWord ? "active" : ""}`}
+            className={`find-replace-toggle ${wholeWord ? "active" : ""}`}
             onClick={() => dispatchToggleWholeWord(editor.view)}
             title="Whole Word"
           >
@@ -323,7 +323,7 @@ export function FindReplaceBar({
           <button
             aria-expanded={mode === "replace"}
             aria-label={mode === "replace" ? "Hide replace" : "Show replace"}
-            className={`find-replace-toggle-replace${mode === "replace" ? "active" : ""}`}
+            className={`find-replace-toggle-replace ${mode === "replace" ? "active" : ""}`}
             onClick={() => onSetMode(mode === "replace" ? "find" : "replace")}
             title={mode === "replace" ? "Hide Replace" : "Show Replace (Cmd+H)"}
           >

@@ -153,19 +153,19 @@ export function GitPanel() {
       {/* Tab bar */}
       <div className="git-tabs">
         <button
-          className={`git-tab${activeTab === "changes" ? "active" : ""}`}
+          className={`git-tab ${activeTab === "changes" ? "active" : ""}`}
           onClick={() => setActiveTab("changes")}
         >
           Changes
         </button>
         <button
-          className={`git-tab${activeTab === "history" ? "active" : ""}`}
+          className={`git-tab ${activeTab === "history" ? "active" : ""}`}
           onClick={() => setActiveTab("history")}
         >
           History
         </button>
         <button
-          className={`git-tab${activeTab === "stash" ? "active" : ""}`}
+          className={`git-tab ${activeTab === "stash" ? "active" : ""}`}
           onClick={() => setActiveTab("stash")}
         >
           Stash

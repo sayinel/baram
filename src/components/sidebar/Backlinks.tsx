@@ -276,7 +276,7 @@ export function Backlinks() {
                   >
                     <span className="backlinks-line">L{entry.line}</span>
                     <span
-                      className={`backlinks-text${wrapBacklinks ? "wrap" : ""}`}
+                      className={`backlinks-text ${wrapBacklinks ? "wrap" : ""}`}
                     >
                       {entry.context}
                     </span>
@@ -330,7 +330,7 @@ export function Backlinks() {
             {group.entries.map((entry, i) => (
               <div className="backlinks-context" key={i}>
                 <span
-                  className={`backlinks-text${wrapUnlinked ? "wrap" : ""}`}
+                  className={`backlinks-text ${wrapUnlinked ? "wrap" : ""}`}
                   onClick={() => handleClick(group.sourcePath, entry.line)}
                 >
                   {entry.context}

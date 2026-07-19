@@ -30,7 +30,7 @@ export function MentionView({ node, selected, extension }: NodeViewProps) {
   return (
     <NodeViewWrapper
       as="span"
-      className={`mention mention-${mentionType}${selected ? "mention-selected" : ""}`}
+      className={`mention mention-${mentionType} ${selected ? "mention-selected" : ""}`}
       data-mention-type={mentionType}
       data-value={value}
       onClick={handleClick}

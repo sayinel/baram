@@ -362,7 +362,7 @@ export function PropertiesPanel() {
                       const isFileRef = entry.key === "requires";
                       return (
                         <span
-                          className={`properties-chip${isFileRef ? "file-ref" : ""}`}
+                          className={`properties-chip ${isFileRef ? "file-ref" : ""}`}
                           key={idx}
                           onClick={
                             isFileRef ? () => handleOpenFile(chip) : undefined
