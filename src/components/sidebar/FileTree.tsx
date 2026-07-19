@@ -44,6 +44,7 @@ import { useFileTreeKeyboard } from "./hooks/use-file-tree-keyboard";
 import { useFileTreeRename } from "./hooks/use-file-tree-rename";
 import { useFileTreeSearch } from "./hooks/use-file-tree-search";
 import { useFileTreeSelection } from "./hooks/use-file-tree-selection";
+import { useGitBadges } from "./hooks/use-git-badges";
 import { MoveToFolderModal } from "./MoveToFolderModal";
 
 export function FileTree(): React.JSX.Element {
@@ -148,6 +149,7 @@ export function FileTree(): React.JSX.Element {
   } = useFileTreeDnD(editor, selectedPaths);
 
   const actions = useFileTreeActions();
+  const gitBadges = useGitBadges(rootPath);
 
   const { focusedPath, setFocusedPath, handleNavKeyDown } = useFileTreeKeyboard(
     {
@@ -471,6 +473,7 @@ export function FileTree(): React.JSX.Element {
       dragOverPath,
       dragSourcePaths,
       focusedPath,
+      gitBadges,
     }),
     [
       selectedPaths,
@@ -480,6 +483,7 @@ export function FileTree(): React.JSX.Element {
       dragOverPath,
       dragSourcePaths,
       focusedPath,
+      gitBadges,
     ],
   );
 

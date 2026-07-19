@@ -16,6 +16,8 @@ pub struct GitStatusInfo {
     pub changes: Vec<GitChange>,
     /// true if the path is inside a git repository
     pub is_repo: bool,
+    /// absolute path to the repository's working directory (None if not a repo or bare)
+    pub repo_root: Option<String>,
 }
 
 #[derive(Debug, Serialize, Clone)]

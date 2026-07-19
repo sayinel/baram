@@ -91,6 +91,8 @@ interface GitState {
   refresh: (path: string) => Promise<void>;
   // §67 Remote
   remotes: GitRemoteInfo[];
+  // Status
+  repoRoot: null | string;
 
   saveStash: (
     path: string,
@@ -115,6 +117,7 @@ export const useGitStore = create<GitState>((set, get) => ({
   isRepo: false,
   branch: "",
   changes: [],
+  repoRoot: null,
   loading: false,
   error: null,
   branchList: [],
@@ -141,6 +144,7 @@ export const useGitStore = create<GitState>((set, get) => ({
         isRepo: info.is_repo,
         branch: info.branch,
         changes: info.changes,
+        repoRoot: info.repo_root,
         loading: false,
       });
       // Also refresh ahead/behind after status

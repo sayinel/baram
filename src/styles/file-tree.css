@@ -120,6 +120,34 @@
   display: block;
 }
 
+/* Allow the name to shrink below its content width so long names ellipsize
+   (flexbox min-content default + white-space:nowrap otherwise blocks it) and
+   the trailing git badge stays visible at the right edge. */
+.file-tree-name {
+  min-width: 0;
+}
+
+.file-tree-git-badge {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  margin-right: 4px;
+  margin-left: auto;
+  border-radius: 50%;
+}
+
+.file-tree-git-badge-modified {
+  background: var(--color-git-modified);
+}
+
+.file-tree-git-badge-added {
+  background: var(--color-git-added);
+}
+
+.file-tree-git-badge-dir {
+  background: var(--color-text-muted);
+}
+
 .file-tree-item-active {
   font-weight: 500;
   color: var(--color-text-primary);

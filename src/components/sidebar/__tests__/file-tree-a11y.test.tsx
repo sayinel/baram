@@ -18,6 +18,7 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
 
 import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
+import { EMPTY_GIT_BADGE_INDEX } from "../../../stores/system/git-badges";
 import { FileTree } from "../FileTree";
 import { FileTreeProvider } from "../FileTreeContext";
 import { FileTreeNode } from "../FileTreeNode";
@@ -28,6 +29,7 @@ const ctx: FileTreeContextValue = {
   dragSourcePaths: [],
   expandedDirs: new Set<string>(["/r/docs"]),
   focusedPath: "/r/docs",
+  gitBadges: EMPTY_GIT_BADGE_INDEX,
   renamingPath: null,
   selectedPaths: new Set<string>(["/r/docs"]),
 };
