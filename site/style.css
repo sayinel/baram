@@ -12,7 +12,6 @@
   --color-border-subtle: #f3f4f6;
   --color-accent-default: #3b82f6;
   --color-accent-hover: #2563eb;
-  --color-accent-subtle: #eff6ff;
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 10%);
   --shadow-md: 0 4px 12px rgb(0 0 0 / 15%);
   --shadow-lg: 0 8px 24px rgb(0 0 0 / 20%);
@@ -34,7 +33,6 @@
     --color-border-subtle: #1e293b;
     --color-accent-default: #60a5fa;
     --color-accent-hover: #3b82f6;
-    --color-accent-subtle: #172554;
   }
 }
 
