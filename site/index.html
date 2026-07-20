@@ -30,6 +30,7 @@
       <a href="#features" data-i18n="nav.features">Features</a>
       <a href="#shortcuts" data-i18n="nav.shortcuts">Shortcuts</a>
       <a href="#plugins" data-i18n="nav.plugins">Plugins</a>
+      <a href="#install" data-i18n="nav.install">Install</a>
       <a href="#faq" data-i18n="nav.faq">FAQ</a>
       <a href="docs/user-guide.html" data-i18n="nav.docs">Docs</a>
     </nav>
@@ -81,11 +82,15 @@
         </article>
         <article class="card">
           <h3 data-i18n="features.rich.t">Math, code &amp; diagrams</h3>
-          <p data-i18n="features.rich.d">KaTeX math, code blocks with highlighting for 14+ languages, Mermaid diagrams, and advanced tables with cell merge.</p>
+          <p data-i18n="features.rich.d">KaTeX math, code blocks with highlighting for 14+ languages, Mermaid diagrams, SVG blocks, and advanced tables with cell merge.</p>
         </article>
         <article class="card">
-          <h3 data-i18n="features.vault.t">Vaults &amp; workspaces</h3>
-          <p data-i18n="features.vault.d">Open multiple vaults and folders side by side — each with its own tree, tabs, settings, journal, and Zettelkasten space.</p>
+          <h3 data-i18n="features.vault.t">Vaults &amp; perspectives</h3>
+          <p data-i18n="features.vault.d">Open multiple vaults, folders, and files side by side — each with its own tree, tabs, and settings — and switch layouts instantly with perspectives.</p>
+        </article>
+        <article class="card">
+          <h3 data-i18n="features.journal.t">Journal &amp; Zettelkasten</h3>
+          <p data-i18n="features.journal.d">A diary-focused daily-notes space with calendar, photos, and streaks — plus an atomic-notes space with inbox capture and permanent-note promotion.</p>
         </article>
         <article class="card">
           <h3 data-i18n="features.plugins.t">Plugins</h3>
@@ -146,7 +151,34 @@
     </div>
   </section>
 
-  <section id="faq" class="section">
+  <section id="install" class="section">
+    <div class="container">
+      <h2 data-i18n="install.title">Requirements &amp; Install</h2>
+      <table class="sc-table">
+        <thead>
+          <tr>
+            <th data-i18n="install.hPlatform">Platform</th>
+            <th data-i18n="install.hReq">Requirements</th>
+            <th data-i18n="install.hFormat">Format</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>macOS</td><td data-i18n="install.macReq">macOS 13+ · Universal (Apple Silicon + Intel)</td><td><code>.dmg</code></td></tr>
+          <tr><td>Windows</td><td data-i18n="install.winReq">Windows 10+ · x64</td><td><code>.msi</code>, <code>.exe</code></td></tr>
+          <tr><td>Linux</td><td data-i18n="install.linuxReq">x64</td><td><code>.deb</code>, <code>.AppImage</code>, <code>.rpm</code></td></tr>
+        </tbody>
+      </table>
+      <ol class="install-steps">
+        <li data-i18n="install.s1">Grab the installer for your platform from the download button above, or browse all builds on the releases page.</li>
+        <li data-i18n="install.s2">macOS: open the .dmg and drag Baram into Applications. Windows: run the setup wizard. Linux: install the .deb/.rpm, or make the AppImage executable and run it.</li>
+        <li data-i18n="install.s3">Launch Baram and open any folder or markdown file — no account, no setup.</li>
+      </ol>
+      <p class="install-note" data-i18n="install.note">First launch: if macOS shows a "damaged" warning, choose Open Anyway under Privacy &amp; Security; if Windows SmartScreen blocks the app, choose More info → Run anyway.</p>
+      <a class="see-all" href="https://github.com/sayinel/baram#build-from-source" data-i18n="install.buildFromSource">Build from source →</a>
+    </div>
+  </section>
+
+  <section id="faq" class="section section-alt">
     <div class="container">
       <h2 data-i18n="faq.title">FAQ</h2>
       <details class="faq-item">
@@ -174,6 +206,17 @@
         <p data-i18n="faq.a6">Baram currently supports English and Korean for the entire user interface — menus, dialogs, settings, and all UI elements.</p>
       </details>
       <a class="see-all" href="docs/faq.html" data-i18n="faq.seeAll">All questions →</a>
+    </div>
+  </section>
+
+  <section id="support" class="section">
+    <div class="container">
+      <h2 data-i18n="support.title">Support Baram</h2>
+      <p data-i18n="support.desc">Baram is free and open source under Apache-2.0. If it makes your writing lighter, you can help keep it flying.</p>
+      <div class="support-cta">
+        <a class="btn btn-primary" href="https://ko-fi.com/sayinel" data-i18n="support.kofi">Support on Ko-fi ☕</a>
+        <a class="btn btn-secondary" href="https://github.com/sayinel/baram" data-i18n="support.star">Star on GitHub</a>
+      </div>
     </div>
   </section>
 </main>

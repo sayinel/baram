@@ -144,6 +144,14 @@ code, kbd { font-family: var(--font-mono); font-size: 0.9em; }
 /* ---- plugins ---- */
 .plugin-links { display: flex; gap: 1.5rem; flex-wrap: wrap; margin-top: 0.75rem; }
 
+/* ---- install ---- */
+.install-steps { max-width: 640px; padding-left: 1.25rem; margin: 1.25rem 0 0.75rem; }
+.install-steps li { margin: 0.4rem 0; }
+.install-note { max-width: 640px; color: var(--color-text-muted); font-size: 0.9rem; }
+
+/* ---- support ---- */
+.support-cta { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1.25rem; }
+
 /* ---- faq ---- */
 .faq-item {
   border-bottom: 1px solid var(--color-border-subtle);
