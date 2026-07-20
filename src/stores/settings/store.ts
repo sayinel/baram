@@ -115,8 +115,9 @@ export const useSettingsStore = create<SettingsState>()(
         activityBarConfig: state.activityBarConfig,
         locale: state.locale,
         keybindingOverrides: state.keybindingOverrides,
+        autoCheckUpdates: state.autoCheckUpdates,
       }),
-      version: 15,
+      version: 16,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
 
@@ -302,6 +303,13 @@ export const useSettingsStore = create<SettingsState>()(
             const idx = cfg.findIndex((c) => c.id === "tags");
             if (idx >= 0) cfg.splice(idx + 1, 0, item);
             else cfg.push(item);
+          }
+        }
+
+        // v15 → v16: §206 App auto-update — periodic check toggle (default on)
+        if (version < 16) {
+          if (state.autoCheckUpdates === undefined) {
+            state.autoCheckUpdates = true;
           }
         }
 

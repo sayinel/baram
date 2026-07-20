@@ -11,6 +11,8 @@
     "dialog:default",
     "clipboard-manager:allow-write-image",
     "clipboard-manager:allow-write-text",
-    "opener:allow-reveal-item-in-dir"
+    "opener:allow-reveal-item-in-dir",
+    "updater:default",
+    "process:allow-restart"
   ]
 }
