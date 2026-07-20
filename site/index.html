@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Baram — Lightweight WYSIWYG Markdown Editor</title>
+  <meta name="description" content="A lightweight, beautiful WYSIWYG markdown editor with AI integration. Free and open source." />
+  <link rel="canonical" href="https://sayinel.github.io/baram/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Baram — Lightweight WYSIWYG Markdown Editor" />
+  <meta property="og:description" content="Beautiful WYSIWYG · Lossless Markdown · AI-native Editing · Bidirectional Links" />
+  <meta property="og:image" content="https://sayinel.github.io/baram/assets/hero.png" />
+  <meta property="og:url" content="https://sayinel.github.io/baram/" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" type="image/png" href="assets/favicon.png" />
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+  <link rel="stylesheet" href="style.css" />
+  <script type="module" src="main.js"></script>
+</head>
+<body>
+<header class="nav">
+  <div class="container nav-inner">
+    <a class="nav-logo" href="./">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="assets/baram-logo-dark.png" />
+        <img src="assets/baram-logo.png" alt="Baram" />
+      </picture>
+    </a>
+    <nav class="nav-links">
+      <a href="#features" data-i18n="nav.features">Features</a>
+      <a href="#shortcuts" data-i18n="nav.shortcuts">Shortcuts</a>
+      <a href="#plugins" data-i18n="nav.plugins">Plugins</a>
+      <a href="#faq" data-i18n="nav.faq">FAQ</a>
+      <a href="docs/user-guide.html" data-i18n="nav.docs">Docs</a>
+    </nav>
+    <div class="nav-actions">
+      <button id="lang-toggle" class="lang-toggle" type="button" aria-label="Switch language">KO</button>
+      <a class="nav-github" href="https://github.com/sayinel/baram">GitHub</a>
+    </div>
+  </div>
+</header>
+<main>
+  <section class="hero">
+    <div class="container">
+      <h1 data-i18n="hero.title">Like the wind, light and free.</h1>
+      <p class="hero-sub" data-i18n="hero.sub">A lightweight, beautiful WYSIWYG markdown editor with AI integration — syntax disappears as you type, and your files stay 100% standard markdown.</p>
+      <div class="hero-cta">
+        <a id="download-primary" class="btn btn-primary" href="https://github.com/sayinel/baram/releases/latest"><span data-i18n="hero.download">Download</span><span id="download-os"></span></a>
+        <a class="btn btn-secondary" href="https://github.com/sayinel/baram" data-i18n="hero.github">View on GitHub</a>
+      </div>
+      <p class="hero-meta"><span id="release-version">Latest release</span> · macOS · Windows · Linux · Apache-2.0</p>
+      <details class="downloads-all">
+        <summary data-i18n="hero.allDownloads">All downloads</summary>
+        <ul id="asset-list">
+          <li><a href="https://github.com/sayinel/baram/releases/latest" data-i18n="hero.releasesPage">Browse all releases on GitHub →</a></li>
+        </ul>
+      </details>
+      <img class="hero-shot" src="assets/hero.png" alt="Baram editor — a beautiful WYSIWYG markdown workspace" width="1600" />
+    </div>
+  </section>
+
+  <section id="features" class="section">
+    <div class="container">
+      <h2 data-i18n="features.title">Features</h2>
+      <div class="grid">
+        <article class="card">
+          <h3 data-i18n="features.wysiwyg.t">Disappearing syntax</h3>
+          <p data-i18n="features.wysiwyg.d">Markdown delimiters show only when your cursor enters the range — and vanish when you leave. What remains is beautifully styled text.</p>
+        </article>
+        <article class="card">
+          <h3 data-i18n="features.roundtrip.t">Lossless roundtrip</h3>
+          <p data-i18n="features.roundtrip.d">MD → editor → MD preserves your document exactly. 100% standard markdown — no proprietary format, no lock-in.</p>
+        </article>
+        <article class="card">
+          <h3 data-i18n="features.ai.t">AI-native editing</h3>
+          <p data-i18n="features.ai.d">Inline AI edits (Cmd+J), Ghost Text autocomplete, and AI chat — powered by Claude, OpenAI, Gemini, or local Ollama.</p>
+        </article>
+        <article class="card">
+          <h3 data-i18n="features.links.t">Wikilinks &amp; graph</h3>
+          <p data-i18n="features.links.d">[[links]] with autocomplete, backlinks, block references, tags — and a visual graph of your knowledge.</p>
+        </article>
+        <article class="card">
+          <h3 data-i18n="features.rich.t">Math, code &amp; diagrams</h3>
+          <p data-i18n="features.rich.d">KaTeX math, code blocks with highlighting for 14+ languages, Mermaid diagrams, and advanced tables with cell merge.</p>
+        </article>
+        <article class="card">
+          <h3 data-i18n="features.vault.t">Vaults &amp; workspaces</h3>
+          <p data-i18n="features.vault.d">Open multiple vaults and folders side by side — each with its own tree, tabs, settings, journal, and Zettelkasten space.</p>
+        </article>
+        <article class="card">
+          <h3 data-i18n="features.plugins.t">Plugins</h3>
+          <p data-i18n="features.plugins.d">Install community plugins from a built-in, capability-gated marketplace — or build your own with the plugin API.</p>
+        </article>
+        <article class="card">
+          <h3 data-i18n="features.light.t">Featherweight</h3>
+          <p data-i18n="features.light.d">~10MB binary, instant startup, low memory. A desktop app that feels like the wind.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="action" class="section section-alt">
+    <div class="container">
+      <h2 data-i18n="action.title">In Action</h2>
+      <p data-i18n="action.desc">Syntax melts away as you type — watch Baram in action.</p>
+      <img class="demo" src="assets/demo.gif" alt="Baram live editing demo — markdown syntax disappearing as you type" loading="lazy" />
+    </div>
+  </section>
+
+  <section id="shortcuts" class="section">
+    <div class="container">
+      <h2 data-i18n="shortcuts.title">Shortcuts</h2>
+      <table class="sc-table">
+        <thead>
+          <tr>
+            <th data-i18n="shortcuts.hAction">Action</th>
+            <th>macOS</th>
+            <th>Windows / Linux</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td data-i18n="sc.quickSwitcher">Quick Switcher</td><td><kbd>Cmd+K</kbd></td><td><kbd>Ctrl+K</kbd></td></tr>
+          <tr><td data-i18n="sc.commandPalette">Command Palette</td><td><kbd>Cmd+P</kbd></td><td><kbd>Ctrl+P</kbd></td></tr>
+          <tr><td data-i18n="sc.inlineAi">Inline AI Edit</td><td><kbd>Cmd+J</kbd></td><td><kbd>Ctrl+J</kbd></td></tr>
+          <tr><td data-i18n="sc.sourceMode">Source Mode</td><td><kbd>Cmd+/</kbd></td><td><kbd>Ctrl+/</kbd></td></tr>
+          <tr><td data-i18n="sc.save">Save</td><td><kbd>Cmd+S</kbd></td><td><kbd>Ctrl+S</kbd></td></tr>
+          <tr><td data-i18n="sc.find">Find</td><td><kbd>Cmd+F</kbd></td><td><kbd>Ctrl+F</kbd></td></tr>
+          <tr><td data-i18n="sc.bold">Bold</td><td><kbd>Cmd+B</kbd></td><td><kbd>Ctrl+B</kbd></td></tr>
+          <tr><td data-i18n="sc.toggleFold">Toggle Fold</td><td><kbd>Cmd+Shift+[</kbd></td><td><kbd>Ctrl+Shift+[</kbd></td></tr>
+          <tr><td data-i18n="sc.export">Export</td><td><kbd>Cmd+Shift+E</kbd></td><td><kbd>Ctrl+Shift+E</kbd></td></tr>
+          <tr><td data-i18n="sc.settings">Settings</td><td><kbd>Cmd+,</kbd></td><td><kbd>Ctrl+,</kbd></td></tr>
+        </tbody>
+      </table>
+      <a class="see-all" href="docs/keyboard-shortcuts.html" data-i18n="shortcuts.seeAll">Full shortcut reference →</a>
+    </div>
+  </section>
+
+  <section id="plugins" class="section section-alt">
+    <div class="container">
+      <h2 data-i18n="plugins.title">Plugins &amp; Ecosystem</h2>
+      <p data-i18n="plugins.desc">Browse community plugins in the built-in, capability-gated marketplace — themes, tools, and editor extensions installed in one click. Want to build your own? Start with the development guide.</p>
+      <div class="plugin-links">
+        <a href="https://github.com/sayinel/baram-plugins" data-i18n="plugins.registry">Plugin registry →</a>
+        <a href="https://github.com/sayinel/baram/blob/main/docs/plugin-development.md" data-i18n="plugins.devGuide">Plugin development guide →</a>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq" class="section">
+    <div class="container">
+      <h2 data-i18n="faq.title">FAQ</h2>
+      <details class="faq-item">
+        <summary data-i18n="faq.q1">What is Baram?</summary>
+        <p data-i18n="faq.a1">Baram(바람) is a lightweight desktop WYSIWYG markdown editor built with Tauri 2.0, React, and Tiptap/ProseMirror. It combines Typora-style "disappearing syntax" WYSIWYG editing with bidirectional links and AI-powered writing assistance.</p>
+      </details>
+      <details class="faq-item">
+        <summary data-i18n="faq.q2">What platforms does Baram support?</summary>
+        <p data-i18n="faq.a2">Baram runs on macOS (Apple Silicon and Intel), Windows (x64 and ARM), and Linux (x64).</p>
+      </details>
+      <details class="faq-item">
+        <summary data-i18n="faq.q3">Is Baram free?</summary>
+        <p data-i18n="faq.a3">Yes. Baram is free and open source software, licensed under the Apache License 2.0.</p>
+      </details>
+      <details class="faq-item">
+        <summary data-i18n="faq.q4">Does Baram preserve my markdown exactly?</summary>
+        <p data-i18n="faq.a4">Yes. Baram's core principle is lossless roundtrip fidelity. When you open a markdown file, edit it, and save it, the formatting and structure of the original file are preserved exactly. No proprietary format, no hidden changes.</p>
+      </details>
+      <details class="faq-item">
+        <summary data-i18n="faq.q5">Can I customize keyboard shortcuts?</summary>
+        <p data-i18n="faq.a5">Yes. Open Settings &gt; Keybindings to see all shortcuts organized by category. Click Edit on any shortcut, press the new key combination, and click Apply.</p>
+      </details>
+      <details class="faq-item">
+        <summary data-i18n="faq.q6">What languages does Baram support?</summary>
+        <p data-i18n="faq.a6">Baram currently supports English and Korean for the entire user interface — menus, dialogs, settings, and all UI elements.</p>
+      </details>
+      <a class="see-all" href="docs/faq.html" data-i18n="faq.seeAll">All questions →</a>
+    </div>
+  </section>
+</main>
+<footer class="footer">
+  <div class="container">
+    <span data-i18n="footer.tagline">Free &amp; open source, Apache-2.0 licensed.</span>
+    <nav>
+      <a href="https://github.com/sayinel/baram">GitHub</a>
+      <a href="https://github.com/sayinel/baram/releases" data-i18n="footer.releases">Releases</a>
+      <a href="docs/user-guide.html" data-i18n="footer.docs">Docs</a>
+    </nav>
+  </div>
+</footer>
+</body>
+</html>
