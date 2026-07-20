@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { MESSAGES } from "./i18n.js";
-import { pickLanguage, detectOS, pickPrimaryAsset, isDownloadableAsset } from "./main.js";
+import { pickLanguage, detectOS, pickPrimaryAsset, isDownloadableAsset, formatStarCount } from "./main.js";
 
 const SITE = dirname(fileURLToPath(import.meta.url));
 
@@ -83,4 +83,12 @@ test("isDownloadableAsset filters updater artifacts", () => {
   assert.equal(isDownloadableAsset("Baram_0.4.0_universal.dmg"), true);
   assert.equal(isDownloadableAsset("Baram_0.4.0_universal.dmg.sig"), false);
   assert.equal(isDownloadableAsset("latest.json"), false);
+});
+
+test("formatStarCount formats counts compactly", () => {
+  assert.equal(formatStarCount(42), "42");
+  assert.equal(formatStarCount(999), "999");
+  assert.equal(formatStarCount(1000), "1k");
+  assert.equal(formatStarCount(1234), "1.2k");
+  assert.equal(formatStarCount(undefined), null);
 });

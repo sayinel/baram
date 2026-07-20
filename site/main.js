@@ -33,6 +33,12 @@ export function isDownloadableAsset(name) {
   return !/\.sig$/.test(name) && name !== "latest.json";
 }
 
+export function formatStarCount(count) {
+  if (typeof count !== "number" || !Number.isFinite(count)) return null;
+  if (count >= 1000) return `${(count / 1000).toFixed(1).replace(/\.0$/, "")}k`;
+  return String(count);
+}
+
 // --- DOM wiring (browser only) ---
 
 function readStoredLang() {
@@ -87,6 +93,20 @@ async function initDownload() {
   }
 }
 
+async function initStarBadge() {
+  const el = document.getElementById("github-stars");
+  if (!el) return;
+  try {
+    const res = await fetch("https://api.github.com/repos/sayinel/baram");
+    if (!res.ok) return; // keep "GitHub" fallback text
+    const repo = await res.json();
+    const formatted = formatStarCount(repo.stargazers_count);
+    if (formatted) el.textContent = formatted;
+  } catch {
+    // network/rate-limit failure: keep "GitHub" fallback text
+  }
+}
+
 function init() {
   const lang = pickLanguage(readStoredLang(), navigator.language);
   applyLanguage(lang);
@@ -100,6 +120,7 @@ function init() {
     applyLanguage(next);
   });
   initDownload();
+  initStarBadge();
 }
 
 if (typeof document !== "undefined") init();
