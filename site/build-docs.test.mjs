@@ -5,7 +5,13 @@ import { slugify, extractToc, addHeadingIds, rewriteDocLinks } from "./build-doc
 test("slugify lowercases, strips punctuation, inline markup, and tags", () => {
   assert.equal(slugify("What is Baram?"), "what-is-baram");
   assert.equal(slugify("Math & `Code` Blocks"), "math-code-blocks");
-  assert.equal(slugify("Themes <code>&amp;</code> Appearance"), "themes-amp-appearance");
+  assert.equal(slugify("Themes <code>&amp;</code> Appearance"), "themes-appearance");
+});
+
+test("slugify yields identical ids for raw markdown and marked-escaped HTML", () => {
+  assert.equal(slugify("Vault & Context System"), "vault-context-system");
+  assert.equal(slugify("Vault &amp; Context System"), "vault-context-system");
+  assert.equal(slugify("a key that's already in use"), slugify("a key that&#39;s already in use"));
 });
 
 test("extractToc collects h2/h3, skipping fenced code blocks", () => {

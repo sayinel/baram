@@ -20,6 +20,7 @@ export const DOCS = [
 export function slugify(text) {
   return text
     .replace(/<[^>]+>/g, "")
+    .replace(/&#?[a-z0-9]+;/gi, "")
     .replace(/[`*_~]/g, "")
     .trim()
     .toLowerCase()
