@@ -453,8 +453,8 @@ venv.bak/
 # Rope project settings
 .ropeproject
 
-# mkdocs documentation
-/site
+# mkdocs documentation (but allow site/ for Baram GitHub Pages homepage)
+# /site
 
 # mypy
 .mypy_cache/
@@ -505,6 +505,7 @@ rust-project.json
 ### Vite ###
 dist/
 dist-ssr/
+/dist-site/
 *.local
 
 # ===================================================================

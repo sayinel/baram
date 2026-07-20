@@ -29,6 +29,7 @@
 </p>
 
 <p align="center">
+  <a href="https://sayinel.github.io/baram/">Homepage</a> &nbsp;|&nbsp;
   <a href="#installation">Installation</a> &nbsp;|&nbsp;
   <a href="#features">Features</a> &nbsp;|&nbsp;
   <a href="#keyboard-shortcuts">Shortcuts</a> &nbsp;|&nbsp;

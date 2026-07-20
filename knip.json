@@ -10,9 +10,12 @@
     "src/keybindings/*.ts",
     "src/stores/**/*.ts",
     "src/**/__tests__/**/*.{ts,tsx}",
-    "src/**/*.test.{ts,tsx}"
+    "src/**/*.test.{ts,tsx}",
+    "site/main.js",
+    "site/build-docs.mjs",
+    "site/*.test.mjs"
   ],
-  "project": ["src/**/*.{ts,tsx}"],
+  "project": ["src/**/*.{ts,tsx}", "site/**/*.{js,mjs}"],
   "ignore": ["src/ipc/**"],
   "ignoreDependencies": [
     "micromark-extension-gfm",

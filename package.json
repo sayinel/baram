@@ -40,6 +40,8 @@
     "types:plugin:check": "npm run types:plugin && git diff --exit-code examples/plugins/*.d.ts",
     "audit:css-vars": "npx tsx scripts/audit-css-vars.ts",
     "version:check": "node ./scripts/check-version-sync.mjs",
+    "site:build": "node site/build-docs.mjs",
+    "site:test": "node --test site/*.test.mjs",
     "prepare": "husky"
   },
   "dependencies": {
@@ -130,6 +132,7 @@
     "jsdom": "^29.1.1",
     "knip": "^6.26.0",
     "lint-staged": "^17.1.0",
+    "marked": "^18.0.6",
     "prettier": "^3.9.5",
     "prettier-plugin-tailwindcss": "^0.8.1",
     "style-dictionary": "^5.5.0",
