@@ -63,3 +63,18 @@ test("pickPrimaryAsset prefers universal dmg, falls back to aarch64 (v0.3.0 layo
   assert.equal(pickPrimaryAsset(v030, "unknown"), null);
   assert.equal(pickPrimaryAsset([], "mac"), null);
 });
+
+test("pickPrimaryAsset picks the primary pattern when both candidates are present", () => {
+  // fallback assets listed FIRST so a reversed pattern order would fail this test
+  const both = [
+    { name: "Baram_0.4.0_aarch64.dmg", browser_download_url: "a" },
+    { name: "Baram_0.4.0_universal.dmg", browser_download_url: "u" },
+    { name: "Baram_0.4.0_x64_en-US.msi", browser_download_url: "m" },
+    { name: "Baram_0.4.0_x64-setup.exe", browser_download_url: "w" },
+    { name: "Baram_0.4.0_amd64.deb", browser_download_url: "d" },
+    { name: "Baram_0.4.0_amd64.AppImage", browser_download_url: "l" },
+  ];
+  assert.equal(pickPrimaryAsset(both, "mac").browser_download_url, "u");
+  assert.equal(pickPrimaryAsset(both, "win").browser_download_url, "w");
+  assert.equal(pickPrimaryAsset(both, "linux").browser_download_url, "l");
+});
