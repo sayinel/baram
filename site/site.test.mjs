@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { MESSAGES } from "./i18n.js";
-import { pickLanguage, detectOS, pickPrimaryAsset } from "./main.js";
+import { pickLanguage, detectOS, pickPrimaryAsset, isDownloadableAsset } from "./main.js";
 
 const SITE = dirname(fileURLToPath(import.meta.url));
 
@@ -77,4 +77,10 @@ test("pickPrimaryAsset picks the primary pattern when both candidates are presen
   assert.equal(pickPrimaryAsset(both, "mac").browser_download_url, "u");
   assert.equal(pickPrimaryAsset(both, "win").browser_download_url, "w");
   assert.equal(pickPrimaryAsset(both, "linux").browser_download_url, "l");
+});
+
+test("isDownloadableAsset filters updater artifacts", () => {
+  assert.equal(isDownloadableAsset("Baram_0.4.0_universal.dmg"), true);
+  assert.equal(isDownloadableAsset("Baram_0.4.0_universal.dmg.sig"), false);
+  assert.equal(isDownloadableAsset("latest.json"), false);
 });

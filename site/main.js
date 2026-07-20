@@ -29,7 +29,19 @@ export function pickPrimaryAsset(assets, os) {
   return null;
 }
 
+export function isDownloadableAsset(name) {
+  return !/\.sig$/.test(name) && name !== "latest.json";
+}
+
 // --- DOM wiring (browser only) ---
+
+function readStoredLang() {
+  try {
+    return localStorage.getItem("baram-lang");
+  } catch {
+    return null;
+  }
+}
 
 function applyLanguage(lang) {
   const dict = MESSAGES[lang];
@@ -61,6 +73,7 @@ async function initDownload() {
     if (list && release.assets?.length) {
       list.textContent = "";
       for (const asset of release.assets) {
+        if (!isDownloadableAsset(asset.name)) continue;
         const li = document.createElement("li");
         const link = document.createElement("a");
         link.href = asset.browser_download_url;
@@ -75,11 +88,15 @@ async function initDownload() {
 }
 
 function init() {
-  const lang = pickLanguage(localStorage.getItem("baram-lang"), navigator.language);
+  const lang = pickLanguage(readStoredLang(), navigator.language);
   applyLanguage(lang);
   document.getElementById("lang-toggle")?.addEventListener("click", () => {
     const next = document.documentElement.lang === "en" ? "ko" : "en";
-    localStorage.setItem("baram-lang", next);
+    try {
+      localStorage.setItem("baram-lang", next);
+    } catch {
+      // storage unavailable (private mode) — toggle still applies for this page
+    }
     applyLanguage(next);
   });
   initDownload();
