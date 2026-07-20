@@ -35,11 +35,31 @@ test("addHeadingIds stamps slug ids on h2/h3 only", () => {
   assert.equal(addHeadingIds("<h1>Title</h1>"), "<h1>Title</h1>");
 });
 
+test("extractToc and addHeadingIds disambiguate duplicate heading texts identically", () => {
+  const md = "## Setup\n\ntext\n\n## Setup\n\n### Setup\n";
+  assert.deepEqual(extractToc(md).map((t) => t.id), ["setup", "setup-1", "setup-2"]);
+  assert.equal(
+    addHeadingIds("<h2>Setup</h2><h2>Setup</h2><h3>Setup</h3>"),
+    '<h2 id="setup">Setup</h2><h2 id="setup-1">Setup</h2><h3 id="setup-2">Setup</h3>',
+  );
+});
+
 test("rewriteDocLinks converts local .md hrefs to .html, leaves externals", () => {
   assert.equal(rewriteDocLinks('<a href="faq.md">'), '<a href="faq.html">');
   assert.equal(rewriteDocLinks('<a href="user-guide.md#editing">'), '<a href="user-guide.html#editing">');
   assert.equal(
     rewriteDocLinks('<a href="https://example.com/x.md">'),
     '<a href="https://example.com/x.md">',
+  );
+});
+
+test("rewriteDocLinks sends non-rendered md targets to GitHub", () => {
+  assert.equal(
+    rewriteDocLinks('<a href="plugin-development.md">'),
+    '<a href="https://github.com/sayinel/baram/blob/main/docs/plugin-development.md">',
+  );
+  assert.equal(
+    rewriteDocLinks('<a href="../README.md#build-from-source">'),
+    '<a href="https://github.com/sayinel/baram/blob/main/README.md#build-from-source">',
   );
 });

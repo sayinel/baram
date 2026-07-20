@@ -28,30 +28,50 @@ export function slugify(text) {
     .replace(/\s+/g, "-");
 }
 
+function makeIdAllocator() {
+  const seen = new Map();
+  return (base) => {
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    return n === 0 ? base : `${base}-${n}`;
+  };
+}
+
 export function extractToc(md) {
   const toc = [];
   let inFence = false;
+  const allocId = makeIdAllocator();
   for (const line of md.split("\n")) {
     if (/^\s*(```|~~~)/.test(line)) { inFence = !inFence; continue; }
     if (inFence) continue;
     const m = /^(#{2,3})\s+(.+?)\s*$/.exec(line);
     if (m) {
       const text = m[2].replace(/`/g, "");
-      toc.push({ level: m[1].length, text, id: slugify(m[2]) });
+      toc.push({ level: m[1].length, text, id: allocId(slugify(m[2])) });
     }
   }
   return toc;
 }
 
 export function addHeadingIds(html) {
+  const allocId = makeIdAllocator();
   return html.replace(
     /<h([23])>([\s\S]*?)<\/h\1>/g,
-    (_, level, inner) => `<h${level} id="${slugify(inner)}">${inner}</h${level}>`,
+    (_, level, inner) => `<h${level} id="${allocId(slugify(inner))}">${inner}</h${level}>`,
   );
 }
 
+const DOC_PAGES = new Set(DOCS.map((d) => d.src));
+
 export function rewriteDocLinks(html) {
-  return html.replace(/href="([a-z0-9-]+)\.md(#[^"]*)?"/g, 'href="$1.html$2"');
+  return html.replace(
+    /href="(\.\.\/)?([A-Za-z0-9._-]+)\.md(#[^"]*)?"/g,
+    (_, up, base, hash = "") => {
+      if (!up && DOC_PAGES.has(`${base}.md`)) return `href="${base}.html${hash}"`;
+      const repoPath = up ? `${base}.md` : `docs/${base}.md`;
+      return `href="https://github.com/sayinel/baram/blob/main/${repoPath}${hash}"`;
+    },
+  );
 }
 
 export function renderDocPage({ title, bodyHtml, tocHtml, current }) {
