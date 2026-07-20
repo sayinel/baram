@@ -96,7 +96,7 @@ Baram hides markdown delimiters (like `**`, `*`, `` ` ``) when your cursor is ou
 
 ### Does Baram preserve my markdown exactly?
 
-Yes. Baram's core principle is **lossless roundtrip fidelity**. When you open a markdown file, edit it, and save it, the formatting and structure of the original file are preserved exactly. No proprietary format, no hidden changes.
+Yes. Baram's core principle is **lossless roundtrip fidelity** — when you open a markdown file, edit it, and save it, your content is preserved exactly. No proprietary format, no hidden database. When you use layout features such as table column resizing or diagram sizing, Baram stores that metadata as plain, visible markdown comments right in the file — standard markdown that other editors simply ignore.
 
 ### What file formats does Baram support?
 
