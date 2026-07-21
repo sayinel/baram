@@ -338,6 +338,10 @@
 .sidebar-content {
   flex: 1;
   overflow: hidden auto;
+
+  /* Classic (space-taking) scrollbars would shrink the panel when the tree
+     overflows, shifting the header buttons; reserve the gutter permanently */
+  scrollbar-gutter: stable;
 }
 
 /* Space indicator (StatusBar) — from PR #26 */

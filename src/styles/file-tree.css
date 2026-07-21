@@ -4,10 +4,16 @@
 }
 
 .file-tree-header {
+  position: sticky;
+
+  /* Pin above scrolling tree rows; solid bg hides rows passing underneath */
+  top: 0;
+  z-index: 10;
   display: flex;
   gap: 4px;
   align-items: center;
   padding: 4px 8px;
+  background: var(--color-bg-panel);
   border-bottom: 1px solid var(--color-border-default);
 }
 
@@ -100,6 +106,10 @@
   cursor: pointer;
   -webkit-user-select: none;
   user-select: none;
+
+  /* Keep rows clear of the sticky .file-tree-header when scrollIntoView
+     aligns them to the scrollport top (keyboard nav / reveal) */
+  scroll-margin-top: 36px;
   transition: background-color 0.1s;
 }
 
