@@ -580,6 +580,8 @@ blob-report/
 # Internal development docs — managed locally, not published
 /dev/
 .docs/
+# Project AI-authoring skills — reference non-public dev/design/ (useless without it)
+/skills/
 
 # ===================================================================
 # Local AI-agent tooling state — never commit
@@ -597,6 +599,8 @@ skills-lock.json
 .claude/settings.local.json
 .claude/worktrees/
 .claude/skills/
+# Project slash commands — reference non-public dev/design/ (useless without it)
+.claude/commands/
 
 # §69 Phase E: committed example plugin bundles (override global dist/ ignore)
 !examples/plugins/**/dist/
