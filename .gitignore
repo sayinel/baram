@@ -591,6 +591,8 @@ blob-report/
 .agent/
 .agents/
 .serena/
+# Superpowers skill scratch output (PR review diffs, task reports — local-only)
+.superpowers/
 # OMC deepinit hierarchical docs (generated per-machine)
 AGENTS.md
 skills-lock.json
