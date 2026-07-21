@@ -104,3 +104,18 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+      # macOS ships ad-hoc signed (tauri.conf.json → bundle.macOS.signingIdentity: "-").
+      # A valid, stable code seal is what lets macOS TCC persist folder-access grants
+      # across launches; without it every launch re-prompts. This guards against the
+      # universal-binary merge silently invalidating the seal. NOT a substitute for
+      # Developer ID + notarization (Gatekeeper still warns) — that needs a paid cert.
+      - name: Verify macOS ad-hoc code signature
+        if: runner.os == 'macOS'
+        run: |
+          APP="$(find src-tauri/target -type d -name 'Baram.app' | head -n1)"
+          [ -n "$APP" ] || { echo "::error::Baram.app not found under src-tauri/target"; exit 1; }
+          echo "Verifying code signature: $APP"
+          codesign -dvv "$APP" || true
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          echo "macOS ad-hoc signature verified."

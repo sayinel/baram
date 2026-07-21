@@ -539,9 +539,19 @@ See the [Plugin Development Guide](plugin-development.md). A plugin is a directo
 
 ### The app won't start
 
-- **macOS**: If you see a "damaged" warning, open **System Preferences > Security & Privacy** and click "Open Anyway"
+- **macOS**: If you see a "damaged" or "can't verify" warning, open **System Settings > Privacy & Security** and click "Open Anyway"
 - **Windows**: If SmartScreen blocks the app, click "More info" then "Run anyway"
 - **Linux**: Make sure the AppImage has execute permissions: `chmod +x Baram-*.AppImage`
+
+### macOS keeps asking for folder access every launch
+
+macOS shows a system permission prompt when an app reads files in a protected location — **Documents, Desktop, Downloads, or iCloud Drive**. Because Baram isn't notarized by Apple yet, macOS can't reliably remember your "Allow" choice, so the prompt may reappear every time you launch Baram or open a file. To stop it:
+
+- **Keep your vault outside protected folders** (recommended) — e.g. `~/Notes` or `~/baram-notes` rather than inside Documents/Desktop/Downloads. Baram then never triggers the prompt.
+- **Grant Full Disk Access** — open **System Settings > Privacy & Security > Full Disk Access** and add Baram.
+- **Clear the quarantine flag** — in Terminal: `xattr -cr /Applications/Baram.app` (optionally followed by `codesign --force --deep --sign - /Applications/Baram.app`).
+
+This is a limitation of distributing without an Apple Developer certificate; a future notarized build will remember the grant permanently.
 
 ### The editor feels slow
 
