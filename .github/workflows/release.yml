@@ -103,7 +103,12 @@ jobs:
           releaseBody: 'See the assets to download and install this version.'
           releaseDraft: true
           prerelease: false
-          args: ${{ matrix.args }}
+          # Updater signing is release-only: base tauri.conf.json leaves
+          # createUpdaterArtifacts off (so local/dev `tauri build` needs no
+          # signing key and still produces a dmg). This release-only config
+          # merge (RFC 7396) turns it on so tauri-action signs the .sig files
+          # and generates latest.json. Path is relative to projectPath (./).
+          args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
 
       # macOS ships ad-hoc signed (tauri.conf.json → bundle.macOS.signingIdentity: "-").
       # A valid, stable code seal is what lets macOS TCC persist folder-access grants
