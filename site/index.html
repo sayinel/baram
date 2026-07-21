@@ -173,7 +173,16 @@
         <li data-i18n="install.s2">macOS: open the .dmg and drag Baram into Applications. Windows: run the setup wizard. Linux: install the .deb/.rpm, or make the AppImage executable and run it.</li>
         <li data-i18n="install.s3">Launch Baram and open any folder or markdown file — no account, no setup.</li>
       </ol>
-      <p class="install-note" data-i18n="install.note">First launch: if macOS shows a "damaged" warning, choose Open Anyway under Privacy &amp; Security; if Windows SmartScreen blocks the app, choose More info → Run anyway.</p>
+      <div class="install-note">
+        <p data-i18n="install.noteMacLead">macOS first launch: Baram isn't notarized by Apple yet, so macOS warns it "can't verify the app is free of malware". This is expected for an app distributed without an Apple Developer certificate — allow it once:</p>
+        <ol>
+          <li data-i18n="install.noteMac1">In the warning dialog, click "Done" — not "Move to Trash".</li>
+          <li data-i18n="install.noteMac2">Open System Settings → Privacy &amp; Security, scroll down to "'Baram' was blocked", and click "Open Anyway".</li>
+          <li data-i18n="install.noteMac3">Approve with your password or Touch ID — Baram opens normally from then on.</li>
+        </ol>
+        <p><span data-i18n="install.noteMacAlt">On macOS 15 and later, the old right-click → Open bypass no longer works for unnotarized apps. Terminal alternative:</span> <code>xattr -cr /Applications/Baram.app</code></p>
+        <p data-i18n="install.noteWin">Windows: if SmartScreen blocks the app, choose More info → Run anyway.</p>
+      </div>
       <a class="see-all" href="https://github.com/sayinel/baram#build-from-source" data-i18n="install.buildFromSource">Build from source →</a>
     </div>
   </section>
