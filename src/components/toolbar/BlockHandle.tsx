@@ -5,6 +5,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -68,6 +69,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
   const [turnIntoOpen, setTurnIntoOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const aiSubRef = useRef<HTMLDivElement>(null);
+  const turnIntoRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<HTMLDivElement>(null);
   const hideTimeoutRef = useRef<null | ReturnType<typeof setTimeout>>(null);
 
@@ -250,22 +252,51 @@ export function BlockHandle({ editor }: BlockHandleProps) {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [menuOpen]);
 
-  // Reposition AI submenu to avoid going off-screen
-  useEffect(() => {
-    if (!aiSubOpen || !aiSubRef.current || !menuRef.current) return;
+  // §4.8 Clamp the dropdown to the viewport. The menu is position:fixed and
+  // opens downward from the handle, so near the window bottom it would be cut
+  // off at the app window edge. Layout effect → repositioned before paint (no
+  // flash at the unclamped spot). rect is visual-viewport px while style.top
+  // is a pre-zoom coordinate (see handlePos below), so the measured overflow
+  // is divided by zoom before applying.
+  useLayoutEffect(() => {
+    if (!menuOpen || !menuRef.current) return;
+    const el = menuRef.current;
+    const zoom = getEditorZoom();
+    const overflow =
+      el.getBoundingClientRect().bottom - (window.innerHeight - 8);
+    if (overflow > 0) {
+      const top = parseFloat(el.style.top) || 0;
+      el.style.top = `${Math.max(8 / zoom, top - overflow / zoom)}px`;
+    }
+  }, [menuOpen]);
+
+  // Reposition submenus (Turn into / Ask AI) to avoid going off-screen.
+  // Submenus are position:absolute inside the zoomed editor area, so CSS
+  // lengths render at ×zoom — divide the measured (visual) overflow by zoom.
+  const repositionSubmenu = useCallback((subEl: HTMLDivElement | null) => {
+    if (!subEl || !menuRef.current) return;
+    const zoom = getEditorZoom();
     const menuRect = menuRef.current.getBoundingClientRect();
-    const subRect = aiSubRef.current.getBoundingClientRect();
+    const subRect = subEl.getBoundingClientRect();
     // If submenu goes off right edge, flip to left side
     if (menuRect.right + subRect.width > window.innerWidth - 8) {
-      aiSubRef.current.style.left = "auto";
-      aiSubRef.current.style.right = "100%";
+      subEl.style.left = "auto";
+      subEl.style.right = "100%";
     }
-    // If submenu goes off bottom edge, align to bottom of parent
-    if (subRect.bottom > window.innerHeight - 8) {
-      const overflow = subRect.bottom - window.innerHeight + 8;
-      aiSubRef.current.style.marginTop = `-${overflow}px`;
+    // If submenu goes off bottom edge, shift up to fit
+    const overflow = subRect.bottom - (window.innerHeight - 8);
+    if (overflow > 0) {
+      subEl.style.marginTop = `-${overflow / zoom}px`;
     }
-  }, [aiSubOpen]);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (aiSubOpen) repositionSubmenu(aiSubRef.current);
+  }, [aiSubOpen, repositionSubmenu]);
+
+  useLayoutEffect(() => {
+    if (turnIntoOpen) repositionSubmenu(turnIntoRef.current);
+  }, [turnIntoOpen, repositionSubmenu]);
 
   // §4.8 Drag-to-reorder — must be called before any early return (hooks rule)
   const { startDrag, isDragging } = useBlockDrag(editor);
@@ -561,7 +592,7 @@ export function BlockHandle({ editor }: BlockHandleProps) {
                 <span className="block-handle-ai-arrow">{"▸"}</span>
               </button>
               {turnIntoOpen && (
-                <div className="block-handle-ai-submenu">
+                <div className="block-handle-ai-submenu" ref={turnIntoRef}>
                   {turnIntoItems.map((item) => (
                     <Fragment key={item.label}>
                       {item.separator && (

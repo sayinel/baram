@@ -65,6 +65,7 @@ import { Toggle } from "./nodes/toggle";
 import { Wikilink } from "./nodes/wikilink";
 import { AIDiff } from "./plugins/ai-diff";
 import { BlockIdDecoration } from "./plugins/block-id-decoration";
+import { ClickBelowAppend } from "./plugins/click-below-append";
 import { DropHandler } from "./plugins/drop-handler";
 import { FindReplace } from "./plugins/find-replace";
 import { Fold } from "./plugins/fold";
@@ -223,6 +224,9 @@ export function createBaramExtensions(
 
     // Plugins — §56m Tag Click → Search (Cmd/Ctrl+Click on #tag)
     TagClick,
+
+    // Plugins — §4.2 Click below last block appends a paragraph (Notion-style)
+    ClickBelowAppend,
 
     // Plugins — §30a Block ID Decoration (Focus-Reveal + Hint)
     BlockIdDecoration,
