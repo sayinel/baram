@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window and file-mode windows",
+  "description": "Capability for the main window and file-mode windows. §259: this ACL only governs Tauri plugin permissions (core:*, opener, dialog, …); the app's own custom #[tauri::command]s (fs read/write, llm_*, keyring_*, plugin_*, git_*, export_*) are NOT ACL-gated and are callable by anything in the window's JS realm, including a loaded plugin — an ACL cannot distinguish app calls from same-realm plugin calls (see #260). window/webview allow-create are required by §89 file-mode (src/utils/file-window.ts) and MUST NOT be removed; they are a plugin-reachable privileged surface until plugin execution is isolated.",
   "windows": ["main", "file-*"],
   "permissions": [
     "core:default",

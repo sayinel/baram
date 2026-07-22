@@ -2,7 +2,7 @@
 import type { RegistryIndex } from "../../../plugins/types";
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchRegistryIndex = vi.fn();
 const checkForUpdates = vi.fn();
@@ -37,6 +37,9 @@ const populatedIndex: RegistryIndex = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // §259 — the marketplace renders its browse UI only when plugins are enabled;
+  // this suite exercises that opt-in path.
+  vi.stubEnv("VITE_ENABLE_PLUGINS", "1");
   fetchRegistryIndex.mockResolvedValue(emptyIndex);
   checkForUpdates.mockResolvedValue({});
   usePluginStore.setState({
@@ -48,6 +51,10 @@ beforeEach(() => {
     registryCacheTime: 0,
     updateAvailable: {},
   });
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe("PluginMarketplace registry refresh button", () => {
@@ -200,5 +207,18 @@ describe("PluginMarketplace registry refresh button", () => {
     expect(
       screen.getByText(/Checksum mismatch: expected abc123, got def456/),
     ).toBeInTheDocument();
+  });
+});
+
+describe("PluginMarketplace when plugins are disabled (#259)", () => {
+  it("shows a security notice and no browse UI in shipped builds", async () => {
+    vi.stubEnv("VITE_ENABLE_PLUGINS", "");
+    render(<PluginMarketplace />);
+    expect(screen.getByText(/temporarily disabled/i)).toBeInTheDocument();
+    // The registry is never fetched and the browse/refresh controls never render.
+    expect(fetchRegistryIndex).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("button", { name: /refresh/i }),
+    ).not.toBeInTheDocument();
   });
 });

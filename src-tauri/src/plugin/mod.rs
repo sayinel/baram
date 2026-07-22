@@ -8,6 +8,22 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use thiserror::Error;
 
+/// §259 containment — plugins execute in the app's own JS realm with no
+/// isolation, so a plugin can bypass the ExtensionContext capability layer and
+/// call privileged commands directly. Until the execution model is redesigned
+/// (#260), installing / side-loading / networking on behalf of untrusted plugin
+/// code is gated off in shipped (release) builds. Dev builds keep it enabled to
+/// continue #260 work, mirroring the frontend `VITE_ENABLE_PLUGINS` opt-in.
+pub fn plugins_runtime_enabled() -> bool {
+    cfg!(debug_assertions)
+}
+
+/// Error surfaced when a privileged plugin command is invoked in a build where
+/// plugins are gated off.
+pub fn plugins_disabled_error() -> String {
+    "Plugins are disabled in this build for security (see #259/#260).".to_string()
+}
+
 #[derive(Error, Debug)]
 pub enum PluginError {
     #[error("IO error: {0}")]

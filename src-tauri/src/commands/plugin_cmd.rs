@@ -8,6 +8,10 @@ pub async fn plugin_install(
     url: String,
     checksum: Option<String>,
 ) -> Result<plugin::InstalledPluginInfo, String> {
+    // §259 — installing untrusted plugin code is gated off in shipped builds.
+    if !plugin::plugins_runtime_enabled() {
+        return Err(plugin::plugins_disabled_error());
+    }
     plugin::install_plugin(&url, checksum.as_deref())
         .await
         .map_err(|e| e.to_string())
@@ -84,6 +88,10 @@ pub async fn plugin_add_dev_folder(
     app: tauri::AppHandle,
     path: String,
 ) -> Result<plugin::InstalledPluginInfo, String> {
+    // §259 — side-loading untrusted plugin code is gated off in shipped builds.
+    if !plugin::plugins_runtime_enabled() {
+        return Err(plugin::plugins_disabled_error());
+    }
     let info = dev_info(&app, &path)?; // validate manifest + grant scope BEFORE persisting
     config::update_config(&app, DEV_FOLDERS_KEY, |raw| {
         let list = plugin::normalize_dev_list(&plugin::parse_dev_folders(raw), Some(&path), None);
@@ -123,6 +131,11 @@ pub async fn plugin_http_fetch(
     url: String,
     init: Option<plugin::PluginFetchInit>,
 ) -> Result<plugin::PluginFetchResponse, String> {
+    // §259 — the CORS-free network proxy is a data-exfiltration primitive for
+    // untrusted plugin code; gate it off in shipped builds.
+    if !plugin::plugins_runtime_enabled() {
+        return Err(plugin::plugins_disabled_error());
+    }
     plugin::http_fetch(url, init).await
 }
 
