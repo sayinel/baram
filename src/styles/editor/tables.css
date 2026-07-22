@@ -107,17 +107,21 @@
   contain: layout;
 }
 
-/* Empty paragraphs: WKWebView skips painting the text caret in an EMPTY
- * top-level paragraph while `contain: paint` is applied — the contained block
- * has nothing to paint, so its paint layer isn't updated for a caret-only
- * change (typing a character forces a repaint and the caret reappears). In a
- * tall, scrolled document this leaves a newly-created empty line (Enter, or a
- * click) with no visible caret. Scope the fix to `.is-empty` (the class the
- * Placeholder extension puts on empty nodes) so non-empty paragraphs keep the
- * §perf-large-file C3.1c paint isolation; an empty paragraph has nothing to
- * clip, so dropping paint here has no visual cost. */
+/* Empty paragraphs: in a tall document a newly-created empty line (Enter, or a
+ * click) shows NO text caret in WKWebView until something forces a full reflow.
+ * Diagnosis in-app: scrolling and refocusing (repaint-only) do nothing, but a
+ * horizontal window resize (which re-wraps text → relayout) makes the caret
+ * appear. So this is a LAYOUT bug, not paint: `contain: layout` (applied to
+ * every top-level block by §perf-large-file C3.1c) stops WKWebView from
+ * establishing the empty block's caret line-box on a caret-only change; only a
+ * size-driven reflow updates it. Typing works because inserting a character
+ * relayouts the block. Drop ALL containment for empty paragraphs (scoped to
+ * `.is-empty`, the Placeholder extension's class) so normal layout runs and the
+ * caret is placed. Cost-free: an empty paragraph has nothing to lay out or
+ * clip, and non-empty paragraphs keep `contain: layout paint` (C3.1c perf
+ * isolation) — the class flips back the moment a character is typed. */
 .tiptap > p.is-empty {
-  contain: layout;
+  contain: none;
 }
 
 /* §5.8 Frontmatter */
