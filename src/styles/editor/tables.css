@@ -107,6 +107,19 @@
   contain: layout;
 }
 
+/* Empty paragraphs: WKWebView skips painting the text caret in an EMPTY
+ * top-level paragraph while `contain: paint` is applied — the contained block
+ * has nothing to paint, so its paint layer isn't updated for a caret-only
+ * change (typing a character forces a repaint and the caret reappears). In a
+ * tall, scrolled document this leaves a newly-created empty line (Enter, or a
+ * click) with no visible caret. Scope the fix to `.is-empty` (the class the
+ * Placeholder extension puts on empty nodes) so non-empty paragraphs keep the
+ * §perf-large-file C3.1c paint isolation; an empty paragraph has nothing to
+ * clip, so dropping paint here has no visual cost. */
+.tiptap > p.is-empty {
+  contain: layout;
+}
+
 /* §5.8 Frontmatter */
 .tiptap .frontmatter {
   padding: 0.5em 1em;
