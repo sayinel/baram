@@ -38,19 +38,27 @@ pub struct IndexStatus {
     pub is_indexing: bool,
 }
 
+/// Read a provider's API key from the OS keyring for backend embedding calls.
+/// §259 — the key is never accepted over IPC. Empty (e.g. Ollama or unset)
+/// becomes `None` so `EmbedConfig` behaves as "keyless".
+fn provider_key(provider: &str) -> Option<String> {
+    crate::commands::keyring_cmd::get_provider_api_key(provider)
+        .ok()
+        .filter(|k| !k.is_empty())
+}
+
 /// Embed a single text and return the embedding vector.
 #[command]
 pub async fn embed_text(
     text: String,
     provider: String,
     model: String,
-    api_key: Option<String>,
     base_url: Option<String>,
 ) -> Result<Vec<f32>, String> {
     let client = reqwest::Client::new();
     let config = EmbedConfig {
         model,
-        api_key,
+        api_key: provider_key(&provider),
         base_url,
     };
     let results = crate::embedding::embed_texts(&client, vec![text], &provider, &config)
@@ -74,14 +82,13 @@ pub async fn search_knowledge(
     current_file: Option<String>,
     provider: String,
     model: String,
-    api_key: Option<String>,
     base_url: Option<String>,
 ) -> Result<Vec<SearchResultPayload>, String> {
     let k = top_k.unwrap_or(5);
     let client = reqwest::Client::new();
     let config = EmbedConfig {
         model,
-        api_key,
+        api_key: provider_key(&provider),
         base_url,
     };
 
@@ -190,7 +197,6 @@ pub async fn index_vault(
     vault_path: String,
     provider: String,
     model: String,
-    api_key: Option<String>,
     base_url: Option<String>,
 ) -> Result<IndexStatus, String> {
     // Set indexing flag
@@ -204,7 +210,7 @@ pub async fn index_vault(
 
     let config = EmbedConfig {
         model,
-        api_key,
+        api_key: provider_key(&provider),
         base_url,
     };
     let client = reqwest::Client::new();
@@ -286,12 +292,11 @@ pub async fn index_file(
     relative_path: String,
     provider: String,
     model: String,
-    api_key: Option<String>,
     base_url: Option<String>,
 ) -> Result<usize, String> {
     let config = EmbedConfig {
         model,
-        api_key,
+        api_key: provider_key(&provider),
         base_url,
     };
     let client = reqwest::Client::new();

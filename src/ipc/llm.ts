@@ -31,11 +31,11 @@ export async function llmComplete(
   });
 }
 
-// §6.3 LLM commands
+// §6.3 / §259 — no apiKey param: the backend reads the provider key from the OS
+// keyring, so the secret never crosses the IPC boundary.
 export async function llmListModels(
   provider: string,
-  apiKey?: string,
   baseUrl?: string,
 ): Promise<ModelInfo[]> {
-  return invoke<ModelInfo[]>("llm_list_models", { provider, apiKey, baseUrl });
+  return invoke<ModelInfo[]>("llm_list_models", { provider, baseUrl });
 }

@@ -32,7 +32,7 @@ export async function executeAICommand(
 
   const inlineCfg = getConfigForTask("inline-edit");
 
-  if (!inlineCfg.apiKey && inlineCfg.provider !== "ollama") {
+  if (!inlineCfg.configured && inlineCfg.provider !== "ollama") {
     logger.error("AI command: no API key configured");
     return;
   }

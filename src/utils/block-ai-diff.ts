@@ -108,7 +108,7 @@ export async function executeBlockAIWithDiff(
   const store = useAIStore.getState();
   const inlineCfg = getConfigForTask("inline-edit");
 
-  if (!inlineCfg.apiKey && inlineCfg.provider !== "ollama") {
+  if (!inlineCfg.configured && inlineCfg.provider !== "ollama") {
     logger.error("Block AI diff: no API key configured");
     return;
   }

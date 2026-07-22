@@ -72,14 +72,13 @@ pub async fn llm_cancel(
 #[tauri::command]
 pub async fn llm_list_models(
     provider: String,
-    api_key: Option<String>,
     base_url: Option<String>,
 ) -> Result<Vec<ModelInfo>, String> {
-    crate::llm::list_models(
-        &provider,
-        api_key.as_deref().unwrap_or(""),
-        base_url.as_deref(),
-    )
-    .await
-    .map_err(|e| e.to_string())
+    // §259 — read the provider key from the OS keyring in the backend instead of
+    // accepting it over IPC. Ollama is keyless (empty). Providers with no key
+    // configured surface the keyring error directly to the caller.
+    let api_key = crate::commands::keyring_cmd::get_provider_api_key(&provider)?;
+    crate::llm::list_models(&provider, &api_key, base_url.as_deref())
+        .await
+        .map_err(|e| e.to_string())
 }
