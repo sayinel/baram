@@ -104,17 +104,37 @@ describe("handleEmptyAreaMousedown: press on the editor root below the last bloc
     expect(editor.state.doc.eq(docBefore)).toBe(true);
   });
 
-  it("ignores presses whose target is a document node (real content)", () => {
+  it("ignores presses within the last block (target is content, at/above its bottom)", () => {
     const p = editor.view.dom.querySelector("p")!;
     const docBefore = editor.state.doc;
 
+    // clientY inside the block → the geometry guard rejects it as real content.
     expect(
       handleEmptyAreaMousedown(
         editor.view,
-        fakeEvent(p, LAST_BLOCK_BOTTOM + 30),
+        fakeEvent(p, LAST_BLOCK_BOTTOM - 10),
       ),
     ).toBe(false);
     expect(editor.state.doc.eq(docBefore)).toBe(true);
+  });
+
+  // Regression (01_corpus_definition.md): when the document fills the viewport,
+  // WKWebView hit-tests the thin padding band below the last block as the last
+  // block's own <p> — so event.target is a document node even though the press
+  // is genuinely in the empty area. The geometry guard (below the last block's
+  // bottom) must win over the target's identity.
+  it("appends when the target is the last block's <p> but the press is below it", () => {
+    const p = editor.view.dom.querySelector("p")!;
+    const before = editor.state.doc.childCount;
+
+    const handled = handleEmptyAreaMousedown(
+      editor.view,
+      fakeEvent(p, LAST_BLOCK_BOTTOM + 30),
+    );
+
+    expect(handled).toBe(true);
+    expect(editor.state.doc.childCount).toBe(before + 1);
+    expect(editor.state.selection.from).toBe(editor.state.doc.content.size - 1);
   });
 
   it("ignores modified presses (shift / meta / ctrl / alt / non-left)", () => {

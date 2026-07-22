@@ -34,11 +34,15 @@ import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
  * - windowing spacer inactive (see windowingSpacerActive)
  * - this editor instance is visible (keep-alive editors stay mounted with
  *   display:none; their rects are all-zero, so geometry alone can't tell)
- * - target is the empty band, not real content: the editor root itself
- *   (its bottom padding) or the scroll container / a wrapper that contains the
- *   root — never a document node's own DOM, never an overlay (block handle,
- *   toolbars) which don't contain the root
- * - the pointer is below the bottom edge of the last rendered block
+ * - the press is below the bottom edge of the last rendered block — this is
+ *   the real "empty area" test and, being geometric, it also excludes every
+ *   mid-content click (those land at or above the last block's bottom)
+ * - the target belongs to this editor (its own subtree or the ancestor chain
+ *   up to the scroll container), excluding sibling overlays (block handle,
+ *   toolbars). NOT an identity check against the root: when the document fills
+ *   the viewport, WKWebView hit-tests the thin padding band below the last
+ *   block as the last <p> itself, so requiring target === root wrongly killed
+ *   the append there (the bug this replaced).
  */
 export function handleEmptyAreaMousedown(
   view: EditorView,
@@ -48,11 +52,11 @@ export function handleEmptyAreaMousedown(
   if (document.querySelector(".block-handle-menu")) return false;
   if (windowingSpacerActive(view)) return false;
   if (isHiddenInstance(view)) return false;
-  if (!isEmptyAreaTarget(view, event)) return false;
 
   const lastEl = view.dom.lastElementChild;
   if (lastEl && event.clientY <= lastEl.getBoundingClientRect().bottom)
     return false;
+  if (!belongsToEditor(view, event)) return false;
 
   // Stop WKWebView from starting a text-selection drag into the last block.
   event.preventDefault();
@@ -87,22 +91,24 @@ function appendOrFocusTrailingParagraph(view: EditorView): boolean {
 }
 
 /**
- * True when the target is the empty band around the editor content and not a
- * document node or overlay:
- * - the `.tiptap` root itself (a click on its own bottom padding), or
- * - the `[data-editor-scroll]` container or a wrapper between it and the root
- *   (clicks below where the root ends).
- * Document nodes (`<p>`, `<li>`, …) and overlays (block handle, toolbars, menus)
- * are neither the root nor an ancestor of it, so they never match.
+ * True when the event target belongs to this editor rather than a sibling
+ * overlay. Accepts:
+ * - the editor root or any descendant of it (real editor DOM — the geometry
+ *   guard already restricts these to the empty area below the last block), or
+ * - the scroll container or a wrapper on the ancestor chain between it and the
+ *   root (the empty band below where the root ends).
+ * Overlays (block handle, toolbars, menus) are siblings of the editor wrapper:
+ * inside the scroll container but neither an ancestor nor a descendant of the
+ * root, so they never match. Clicks outside the scroll container (body/html)
+ * are excluded too.
  */
-function isEmptyAreaTarget(view: EditorView, event: MouseEvent): boolean {
+function belongsToEditor(view: EditorView, event: MouseEvent): boolean {
   const root = view.dom;
   const target = event.target;
   if (!(target instanceof Element)) return false;
-  if (target === root) return true;
+  if (root.contains(target)) return true;
   const scroll = root.closest("[data-editor-scroll]");
-  if (!scroll || !scroll.contains(target)) return false;
-  return target === scroll || target.contains(root);
+  return !!scroll && scroll.contains(target) && target.contains(root);
 }
 
 /**
