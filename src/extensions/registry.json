@@ -766,6 +766,15 @@
       "status": "implemented",
       "shortcuts": { "{{": "skill variable autocomplete" },
       "_note": "Tiptap Suggestion plugin for {{variable}} autocomplete in skill files. Default variables: selection, document, input, clipboard. Only active when isSkill=true."
+    },
+    {
+      "name": "clickBelowAppend",
+      "file": "plugins/click-below-append.ts",
+      "spec": "§4.2",
+      "phase": 3,
+      "milestone": "M10",
+      "status": "implemented",
+      "_note": "Notion/Logseq-style: clicking the empty editor area below the last block appends an empty paragraph and places the caret there (focuses the existing one if the last block is already an empty paragraph). Skipped while the C4 windowing bottom spacer (--vbot) is active."
     }
   ]
 }
