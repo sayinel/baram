@@ -387,6 +387,25 @@ export function PluginMarketplace() {
     [installedPlugins, setEnabled, setError],
   );
 
+  // §259 — plugins run in the app's own JS realm with no isolation, so untrusted
+  // plugin code must not be installed/run in shipped builds. Surface a notice
+  // instead of any marketplace UI (including the detail view) until the
+  // execution model is redesigned (#260).
+  if (!arePluginsEnabled()) {
+    return (
+      <div className="plugin-marketplace" style={STYLES.container}>
+        <div style={STYLES.header}>
+          <h2 style={STYLES.title}>Plugins</h2>
+        </div>
+        <div style={STYLES.centeredMessage}>
+          Plugins are temporarily disabled while the plugin security model is
+          hardened (see issues #259 / #260). Installing and running third-party
+          plugins is turned off in this build.
+        </div>
+      </div>
+    );
+  }
+
   // If detail view is showing
   if (selectedEntry) {
     const plugin = installedPlugins[selectedEntry.id];
@@ -408,24 +427,6 @@ export function PluginMarketplace() {
         status={detailStatus}
         updateAvailable={updateAvailable[selectedEntry.id]}
       />
-    );
-  }
-
-  // §259 — plugins run in the app's own JS realm with no isolation, so untrusted
-  // plugin code must not be installed/run in shipped builds. Surface a notice
-  // instead of the marketplace until the execution model is redesigned (#260).
-  if (!arePluginsEnabled()) {
-    return (
-      <div className="plugin-marketplace" style={STYLES.container}>
-        <div style={STYLES.header}>
-          <h2 style={STYLES.title}>Plugins</h2>
-        </div>
-        <div style={STYLES.centeredMessage}>
-          Plugins are temporarily disabled while the plugin security model is
-          hardened (see issues #259 / #260). Installing and running third-party
-          plugins is turned off in this build.
-        </div>
-      </div>
     );
   }
 
