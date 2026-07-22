@@ -34,9 +34,12 @@ import { Plugin, PluginKey, TextSelection } from "@tiptap/pm/state";
  * - windowing spacer inactive (see windowingSpacerActive)
  * - this editor instance is visible (keep-alive editors stay mounted with
  *   display:none; their rects are all-zero, so geometry alone can't tell)
- * - the press is below the bottom edge of the last rendered block — this is
- *   the real "empty area" test and, being geometric, it also excludes every
- *   mid-content click (those land at or above the last block's bottom)
+ * - the press is below the last rendered content — the real "empty area" test.
+ *   Geometric, so it also excludes every mid-content click. The threshold is
+ *   the last block's bottom edge, EXCEPT when the last block is an empty
+ *   paragraph: that trailing blank line is itself empty area, so its top edge
+ *   is used and a press inside it lands the caret there (WKWebView won't place
+ *   the caret in a trailing empty paragraph on its own — the corpus-doc bug)
  * - the target belongs to this editor (its own subtree or the ancestor chain
  *   up to the scroll container), excluding sibling overlays (block handle,
  *   toolbars). NOT an identity check against the root: when the document fills
@@ -54,8 +57,20 @@ export function handleEmptyAreaMousedown(
   if (isHiddenInstance(view)) return false;
 
   const lastEl = view.dom.lastElementChild;
-  if (lastEl && event.clientY <= lastEl.getBoundingClientRect().bottom)
-    return false;
+  if (lastEl) {
+    // A trailing empty paragraph is itself empty area: a press anywhere from
+    // its top downward should land the caret in it (WKWebView doesn't reliably
+    // place the caret there natively, so the user gets no caret at all). For a
+    // non-empty last block only the region below its bottom is the empty area,
+    // so real content stays clickable. Either way the threshold is the bottom
+    // edge of the last *rendered content* — the trailing empty line is not it.
+    const lastNode = view.state.doc.lastChild;
+    const lastIsEmptyParagraph =
+      lastNode?.type.name === "paragraph" && lastNode.content.size === 0;
+    const rect = lastEl.getBoundingClientRect();
+    const contentBottom = lastIsEmptyParagraph ? rect.top : rect.bottom;
+    if (event.clientY <= contentBottom) return false;
+  }
   if (!belongsToEditor(view, event)) return false;
 
   // Stop WKWebView from starting a text-selection drag into the last block.

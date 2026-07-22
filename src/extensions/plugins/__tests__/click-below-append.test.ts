@@ -95,6 +95,45 @@ describe("handleEmptyAreaMousedown: press on the editor root below the last bloc
     expect(editor.state.selection.from).toBe(editor.state.doc.content.size - 1);
   });
 
+  // Regression (01_corpus_definition.md): a document ending in an empty
+  // paragraph. The blank trailing line IS the empty area the user clicks, but
+  // the press lands INSIDE that paragraph's box (above its bottom), and
+  // WKWebView won't place the caret there natively — so nothing happened. The
+  // guard must treat a trailing empty paragraph's whole box as empty area.
+  it("focuses a trailing empty paragraph when the press lands inside its box", () => {
+    editor.commands.setContent("<p>hello</p><p></p>");
+    // Empty paragraph spans top=80..bottom=100 (mockRect derives top).
+    const emptyPara = editor.view.dom.lastElementChild!;
+    mockRect(emptyPara, LAST_BLOCK_BOTTOM);
+    const before = editor.state.doc.childCount;
+
+    // y=90 is inside the empty paragraph (80..100) — above its bottom, which
+    // the old bottom-edge guard wrongly rejected.
+    const handled = handleEmptyAreaMousedown(
+      editor.view,
+      fakeEvent(emptyPara, LAST_BLOCK_BOTTOM - 10),
+    );
+
+    expect(handled).toBe(true);
+    expect(editor.state.doc.childCount).toBe(before); // focus, not append
+    expect(editor.state.selection.from).toBe(editor.state.doc.content.size - 1);
+  });
+
+  it("ignores presses above a trailing empty paragraph (on real content)", () => {
+    editor.commands.setContent("<p>hello</p><p></p>");
+    mockRect(editor.view.dom.lastElementChild!, LAST_BLOCK_BOTTOM); // top=80
+    const docBefore = editor.state.doc;
+
+    // y=70 is above the empty paragraph's top (80) → real content, not empty area.
+    expect(
+      handleEmptyAreaMousedown(
+        editor.view,
+        fakeEvent(editor.view.dom, LAST_BLOCK_BOTTOM - 30),
+      ),
+    ).toBe(false);
+    expect(editor.state.doc.eq(docBefore)).toBe(true);
+  });
+
   it("ignores presses above the last block's bottom edge", () => {
     const docBefore = editor.state.doc;
     const event = fakeEvent(editor.view.dom, LAST_BLOCK_BOTTOM - 30);
