@@ -92,6 +92,27 @@ export function validateManifest(
     }
   }
 
+  // Trust tier (§260) — required discriminator
+  if (obj.trust !== "trusted" && obj.trust !== "sandboxed") {
+    errors.push({
+      field: "trust",
+      message: 'trust is required and must be "trusted" or "sandboxed"',
+    });
+  }
+
+  // Contributions (optional, sandboxed tier) — shallow shape check only
+  if (
+    obj.contributions !== undefined &&
+    (typeof obj.contributions !== "object" ||
+      obj.contributions === null ||
+      Array.isArray(obj.contributions))
+  ) {
+    errors.push({
+      field: "contributions",
+      message: "contributions must be an object",
+    });
+  }
+
   // tiptapExtensions (optional)
   if (obj.tiptapExtensions !== undefined) {
     if (!Array.isArray(obj.tiptapExtensions)) {

@@ -18,6 +18,7 @@ function makeManifest(capabilities: string[]): PluginManifest {
     main: "index.mjs",
     engines: { baram: ">=0.2.0" },
     capabilities: capabilities as PluginManifest["capabilities"],
+    trust: "sandboxed",
   };
 }
 

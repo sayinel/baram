@@ -1,5 +1,5 @@
 // §69 Plugin Manifest validation tests
-import { describe, expect, test } from "vitest";
+import { describe, expect, it, test } from "vitest";
 
 import { validateManifest } from "../manifest";
 
@@ -13,6 +13,7 @@ const validManifest = {
   main: "index.mjs",
   engines: { baram: ">=0.2.0" },
   capabilities: ["editor:readonly", "statusbar"],
+  trust: "sandboxed",
 };
 
 describe("validateManifest", () => {
@@ -186,6 +187,50 @@ describe("validateManifest", () => {
     if (!result.valid) {
       // Should have errors for: id format, name, description, version, author, license, main, engines, capabilities
       expect(result.errors.length).toBeGreaterThan(3);
+    }
+  });
+});
+
+describe("validateManifest — trust tier (§260)", () => {
+  const base = {
+    id: "x",
+    name: "X",
+    description: "d",
+    version: "1.0.0",
+    author: "a",
+    license: "MIT",
+    main: "index.mjs",
+    engines: { baram: "*" },
+    capabilities: [],
+  };
+
+  it("rejects a manifest with no trust field", () => {
+    const r = validateManifest(base);
+    expect(r.valid).toBe(false);
+    if (!r.valid) {
+      expect(r.errors.some((e) => e.field === "trust")).toBe(true);
+    }
+  });
+
+  it("rejects an invalid trust value", () => {
+    const r = validateManifest({ ...base, trust: "full" });
+    expect(r.valid).toBe(false);
+  });
+
+  it("accepts trust=sandboxed and trust=trusted", () => {
+    expect(validateManifest({ ...base, trust: "sandboxed" }).valid).toBe(true);
+    expect(validateManifest({ ...base, trust: "trusted" }).valid).toBe(true);
+  });
+
+  it("rejects a non-object contributions field", () => {
+    const r = validateManifest({
+      ...base,
+      trust: "sandboxed",
+      contributions: [],
+    });
+    expect(r.valid).toBe(false);
+    if (!r.valid) {
+      expect(r.errors.some((e) => e.field === "contributions")).toBe(true);
     }
   });
 });
