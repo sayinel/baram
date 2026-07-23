@@ -88,11 +88,7 @@ function createAIAPI(pluginId: string): AIAPI {
     },
     async listModels() {
       const cfg = getConfigForTask("chat");
-      const models = await llmListModels(
-        cfg.provider,
-        cfg.apiKey || undefined,
-        cfg.baseUrl,
-      );
+      const models = await llmListModels(cfg.provider, cfg.baseUrl);
       return models.map((m) => ({ id: m.id, name: m.name }));
     },
     async stream(prompt, opts, onToken) {
@@ -238,6 +234,19 @@ let editorInstance: null | {
 } = null;
 
 /** Create an ExtensionContext with capability-gated API access */
+// §259 SECURITY LIMITATION — this capability gate is NOT a trust boundary.
+//
+// Plugins execute in the app's own JavaScript realm (see plugin-loader.ts), so
+// the `DeniedProxy` / `hasCapability` checks below only constrain a *cooperating*
+// plugin that goes through the ExtensionContext. A malicious plugin can ignore
+// this object entirely and `import { invoke } from "@tauri-apps/api/core"` to
+// call any Tauri command directly (FS, LLM, keyring, plugin storage, …). The
+// Rust backend does not — and in the same realm cannot — verify which plugin a
+// call came from, so an ACL alone can never distinguish the app's own calls
+// from a plugin's. Real enforcement requires isolating plugin execution and
+// verifying caller identity + capabilities per call — tracked in #260. Until
+// then, untrusted plugin code is contained by NOT loading it in shipped builds
+// (see plugins-enabled.ts + the backend `plugins_runtime_enabled` gate).
 export function createExtensionContext(
   manifest: PluginManifest,
   pluginPath: string,

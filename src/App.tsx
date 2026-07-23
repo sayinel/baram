@@ -973,7 +973,7 @@ function SmartTemplateDialogWrapper({
 
       // Accumulate all tokens, then insert parsed markdown (not raw text)
       const inlineCfg = getConfigForTask("inline-edit");
-      if (!inlineCfg.apiKey && inlineCfg.provider !== "ollama") {
+      if (!inlineCfg.configured && inlineCfg.provider !== "ollama") {
         logger.error("SmartTemplate: no API key configured");
         return;
       }

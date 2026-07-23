@@ -1,4 +1,6 @@
-// §11.4 Knowledge Q&A — embedding and knowledge search IPC commands
+// §11.4 Knowledge Q&A — embedding and knowledge search IPC commands.
+// §259 — no apiKey params: the backend reads the provider key from the OS
+// keyring, so the secret never crosses the IPC boundary.
 import { invoke } from "@tauri-apps/api/core";
 
 // Types mirroring Rust structs in embedding_cmd.rs
@@ -23,14 +25,12 @@ export async function embedText(
   text: string,
   provider: string,
   model: string,
-  apiKey?: string,
   baseUrl?: string,
 ): Promise<number[]> {
   return invoke<number[]>("embed_text", {
     text,
     provider,
     model,
-    apiKey: apiKey ?? null,
     baseUrl: baseUrl ?? null,
   });
 }
@@ -41,7 +41,6 @@ export async function indexFile(
   relativePath: string,
   provider: string,
   model: string,
-  apiKey?: string,
   baseUrl?: string,
 ): Promise<number> {
   return invoke<number>("index_file", {
@@ -49,7 +48,6 @@ export async function indexFile(
     relativePath,
     provider,
     model,
-    apiKey: apiKey ?? null,
     baseUrl: baseUrl ?? null,
   });
 }
@@ -64,14 +62,12 @@ export async function indexVault(
   vaultPath: string,
   provider: string,
   model: string,
-  apiKey?: string,
   baseUrl?: string,
 ): Promise<IndexStatus> {
   return invoke<IndexStatus>("index_vault", {
     vaultPath,
     provider,
     model,
-    apiKey: apiKey ?? null,
     baseUrl: baseUrl ?? null,
   });
 }
@@ -83,7 +79,6 @@ export async function searchKnowledge(
   model: string,
   topK?: number,
   currentFile?: string,
-  apiKey?: string,
   baseUrl?: string,
 ): Promise<KnowledgeSearchResult[]> {
   return invoke<KnowledgeSearchResult[]>("search_knowledge", {
@@ -92,7 +87,6 @@ export async function searchKnowledge(
     currentFile: currentFile ?? null,
     provider,
     model,
-    apiKey: apiKey ?? null,
     baseUrl: baseUrl ?? null,
   });
 }

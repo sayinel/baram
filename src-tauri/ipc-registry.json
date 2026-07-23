@@ -180,7 +180,7 @@
     },
     {
       "name": "llm_list_models",
-      "input": { "provider": "string", "apiKey": "string?", "baseUrl": "string?" },
+      "input": { "provider": "string", "baseUrl": "string?" },
       "output": "ModelInfo[]",
       "module": "llm",
       "spec": "§6.3",
@@ -589,37 +589,37 @@
       "description": "Git 브랜치 삭제"
     },
     {
-      "name": "keyring_store",
-      "input": { "key": "string", "value": "string" },
+      "name": "keyring_set_provider_key",
+      "input": { "provider": "\"claude\" | \"gemini\" | \"openai\"", "value": "string" },
       "output": "void",
       "module": "keyring",
-      "spec": "§6.3",
+      "spec": "§6.3/§259",
       "phase": 2,
       "milestone": "M8",
       "status": "implemented",
-      "description": "OS Keychain에 암호화 저장 (API key 등)"
+      "description": "OS Keychain에 provider API key 저장 (임의 key명 불가)"
     },
     {
-      "name": "keyring_get",
-      "input": { "key": "string" },
-      "output": "string | null",
+      "name": "keyring_provider_configured",
+      "input": { "provider": "\"claude\" | \"gemini\" | \"openai\"" },
+      "output": "boolean",
       "module": "keyring",
-      "spec": "§6.3",
+      "spec": "§6.3/§259",
       "phase": 2,
       "milestone": "M8",
       "status": "implemented",
-      "description": "OS Keychain에서 값 조회"
+      "description": "provider에 API key가 설정됐는지 여부만 반환 (secret 미반환)"
     },
     {
-      "name": "keyring_delete",
-      "input": { "key": "string" },
+      "name": "keyring_delete_provider_key",
+      "input": { "provider": "\"claude\" | \"gemini\" | \"openai\"" },
       "output": "void",
       "module": "keyring",
-      "spec": "§6.3",
+      "spec": "§6.3/§259",
       "phase": 2,
       "milestone": "M8",
       "status": "implemented",
-      "description": "OS Keychain에서 값 삭제"
+      "description": "OS Keychain에서 provider API key 삭제"
     },
     {
       "name": "llm_cancel",
@@ -942,7 +942,7 @@
     },
     {
       "name": "embed_text",
-      "input": { "text": "string", "provider": "string", "model": "string", "api_key": "string?", "base_url": "string?" },
+      "input": { "text": "string", "provider": "string", "model": "string", "base_url": "string?" },
       "output": "number[]",
       "module": "embedding",
       "spec": "§11.4",
@@ -953,7 +953,7 @@
     },
     {
       "name": "search_knowledge",
-      "input": { "query": "string", "top_k": "number?", "current_file": "string?", "provider": "string", "model": "string", "api_key": "string?", "base_url": "string?" },
+      "input": { "query": "string", "top_k": "number?", "current_file": "string?", "provider": "string", "model": "string", "base_url": "string?" },
       "output": "SearchResultPayload[]",
       "module": "embedding",
       "spec": "§11.4",
@@ -964,7 +964,7 @@
     },
     {
       "name": "index_vault",
-      "input": { "vault_path": "string", "provider": "string", "model": "string", "api_key": "string?", "base_url": "string?" },
+      "input": { "vault_path": "string", "provider": "string", "model": "string", "base_url": "string?" },
       "output": "IndexStatus",
       "module": "embedding",
       "spec": "§11.4",
@@ -986,7 +986,7 @@
     },
     {
       "name": "index_file",
-      "input": { "file_path": "string", "relative_path": "string", "provider": "string", "model": "string", "api_key": "string?", "base_url": "string?" },
+      "input": { "file_path": "string", "relative_path": "string", "provider": "string", "model": "string", "base_url": "string?" },
       "output": "number",
       "module": "embedding",
       "spec": "§11.4",

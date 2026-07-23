@@ -25,7 +25,6 @@ const mockInvoke = vi.fn(
   async (command: string): Promise<null | string[] | undefined> => {
     switch (command) {
       case "get_config":
-      case "keyring_get":
         return null;
       case "get_opened_urls":
         return [];

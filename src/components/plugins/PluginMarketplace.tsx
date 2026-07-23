@@ -174,6 +174,7 @@ import type {
 import { readFile } from "../../ipc/invoke";
 import { pluginInstall, pluginUninstall } from "../../ipc/plugin-invoke";
 import { pluginLoader } from "../../plugins/plugin-loader";
+import { arePluginsEnabled } from "../../plugins/plugins-enabled";
 import {
   checkForUpdates,
   fetchRegistryIndex,
@@ -240,6 +241,9 @@ export function PluginMarketplace() {
 
   // Fetch registry on mount
   useEffect(() => {
+    // §259 — don't touch the registry when plugins are disabled; the panel
+    // renders only a security notice in that case.
+    if (!arePluginsEnabled()) return;
     setLoading(true);
     fetchRegistryIndex()
       .then((index) => {
@@ -382,6 +386,25 @@ export function PluginMarketplace() {
     },
     [installedPlugins, setEnabled, setError],
   );
+
+  // §259 — plugins run in the app's own JS realm with no isolation, so untrusted
+  // plugin code must not be installed/run in shipped builds. Surface a notice
+  // instead of any marketplace UI (including the detail view) until the
+  // execution model is redesigned (#260).
+  if (!arePluginsEnabled()) {
+    return (
+      <div className="plugin-marketplace" style={STYLES.container}>
+        <div style={STYLES.header}>
+          <h2 style={STYLES.title}>Plugins</h2>
+        </div>
+        <div style={STYLES.centeredMessage}>
+          Plugins are temporarily disabled while the plugin security model is
+          hardened (see issues #259 / #260). Installing and running third-party
+          plugins is turned off in this build.
+        </div>
+      </div>
+    );
+  }
 
   // If detail view is showing
   if (selectedEntry) {

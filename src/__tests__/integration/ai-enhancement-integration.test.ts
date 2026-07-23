@@ -35,8 +35,7 @@ describe("Integration: Per-task Model Routing", () => {
     useAIStore.setState({
       provider: "claude",
       model: "claude-sonnet-4-5-20250929",
-      apiKeys: { claude: "sk-claude", openai: "sk-openai" },
-      apiKey: "sk-claude",
+      configured: { claude: true, openai: true },
       ollamaUrl: "http://localhost:11434",
       autoModelEnabled: false,
       providerForGhostText: "",
@@ -73,7 +72,7 @@ describe("Integration: Per-task Model Routing", () => {
     expect(chatCfg.model).toBe("claude-sonnet-4-5-20250929");
   });
 
-  it("resolves API key for the per-task provider", () => {
+  it("reports configured for the per-task provider", () => {
     useAIStore.setState({
       autoModelEnabled: true,
       providerForGhostText: "openai",
@@ -81,7 +80,7 @@ describe("Integration: Per-task Model Routing", () => {
 
     const cfg = getConfigForTask("ghost-text");
     expect(cfg.provider).toBe("openai");
-    expect(cfg.apiKey).toBe("sk-openai");
+    expect(cfg.configured).toBe(true);
   });
 
   it("returns ollama base URL for ollama provider", () => {
@@ -633,8 +632,7 @@ describe("Integration: Cross-feature Pipelines", () => {
     useAIStore.setState({
       provider: "claude",
       model: "claude-sonnet-4-5-20250929",
-      apiKeys: { claude: "sk-claude", openai: "sk-openai", ollama: "" },
-      apiKey: "sk-claude",
+      configured: { claude: true, openai: true },
       autoModelEnabled: true,
       providerForGhostText: "openai",
       modelForGhostText: "gpt-4o-mini",

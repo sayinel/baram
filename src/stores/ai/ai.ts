@@ -1,15 +1,21 @@
+import type { KeyringProvider } from "../../ipc/invoke";
+
 // §3.5 AI 상태 스토어 (§6.1)
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { keyringGet, keyringStore } from "../../ipc/invoke";
+import {
+  keyringDeleteProviderKey,
+  keyringProviderConfigured,
+  keyringSetProviderKey,
+} from "../../ipc/invoke";
 import { logger } from "../../utils/logger";
 import { tauriStorage } from "../system/tauri-storage";
 
 export type AIProvider = "claude" | "gemini" | "ollama" | "openai";
 export type AITask = "agent" | "chat" | "ghost-text" | "inline-edit";
 
-const KEYRING_PROVIDERS: AIProvider[] = ["claude", "openai", "gemini"];
+const KEYRING_PROVIDERS: KeyringProvider[] = ["claude", "gemini", "openai"];
 
 export interface CustomAICommand {
   icon?: string;
@@ -22,14 +28,13 @@ interface AIState {
   // M8 additions
   activeRequestId: null | string;
   addCustomCommand: (cmd: CustomAICommand) => void;
-  /** Computed getter: API key for the current provider */
-  apiKey: string;
-  /** Per-provider API keys (in-memory only — persisted in OS keyring) */
-  apiKeys: Record<string, string>;
   // Auto model selection
   autoModelEnabled: boolean;
   /** §44 Clipboard content captured for @clipboard reference */
   clipboardContent: string;
+  /** Which providers have an API key configured in the OS keyring (booleans
+   *  only — the secret is never held in the frontend; §259). */
+  configured: Partial<Record<AIProvider, boolean>>;
   customCommands: CustomAICommand[];
   ghostText: null | string;
   /** D3: Include open tab context in Ghost Text prompts */
@@ -39,7 +44,6 @@ interface AIState {
   ghostTextEnabled: boolean;
   isStreaming: boolean;
   keychainReady: boolean;
-  loadApiKeysFromKeyring: () => Promise<void>;
 
   maxSuggestionLength: number;
   model: string;
@@ -56,6 +60,8 @@ interface AIState {
 
   providerForGhostText: "" | AIProvider;
   providerForInlineEdit: "" | AIProvider;
+  /** Recompute `configured` from the OS keyring (booleans only). */
+  refreshConfiguredProviders: () => Promise<void>;
   removeCustomCommand: (id: string) => void;
   setActiveRequestId: (id: null | string) => void;
   setApiKey: (key: string) => void;
@@ -78,8 +84,8 @@ interface AIState {
   updateCustomCommand: (id: string, updates: Partial<CustomAICommand>) => void;
 }
 
-function keyringKeyFor(provider: string): string {
-  return `baram-${provider}-api-key`;
+function isKeyringProvider(p: string): p is KeyringProvider {
+  return (KEYRING_PROVIDERS as string[]).includes(p);
 }
 
 export const useAIStore = create<AIState>()(
@@ -87,8 +93,7 @@ export const useAIStore = create<AIState>()(
     (set) => ({
       provider: "claude",
       model: "claude-sonnet-4-5-20250929",
-      apiKeys: {},
-      apiKey: "",
+      configured: {},
       ollamaUrl: "http://localhost:11434",
       privacyMode: false,
       isStreaming: false,
@@ -111,25 +116,23 @@ export const useAIStore = create<AIState>()(
       providerForChat: "",
       providerForAgent: "",
 
-      setProvider: (provider) =>
-        set((state) => ({
-          provider,
-          apiKey: state.apiKeys[provider] ?? "",
-        })),
+      setProvider: (provider) => set({ provider }),
       setModel: (model) => set({ model }),
       setApiKey: (key) => {
-        // Update in-memory state immediately
-        set((state) => ({
-          apiKey: key,
-          apiKeys: { ...state.apiKeys, [state.provider]: key },
-        }));
-        // Persist to OS keyring asynchronously
+        // §259 — the secret is written straight to the OS keyring and never
+        // held in frontend state; we only track whether it is configured.
         const { provider } = useAIStore.getState();
-        if (KEYRING_PROVIDERS.includes(provider)) {
-          keyringStore(keyringKeyFor(provider), key).catch((err) => {
-            logger.warn("[AI Store] Failed to save API key to keyring:", err);
-          });
-        }
+        if (!isKeyringProvider(provider)) return;
+        const trimmed = key.trim();
+        set((state) => ({
+          configured: { ...state.configured, [provider]: trimmed.length > 0 },
+        }));
+        const op = trimmed
+          ? keyringSetProviderKey(provider, key)
+          : keyringDeleteProviderKey(provider);
+        op.catch((err) => {
+          logger.warn("[AI Store] Failed to update API key in keyring:", err);
+        });
       },
       setOllamaUrl: (ollamaUrl) => set({ ollamaUrl }),
       setPrivacyMode: (privacyMode) => set({ privacyMode }),
@@ -190,27 +193,20 @@ export const useAIStore = create<AIState>()(
       setClipboardContent: (clipboardContent) => set({ clipboardContent }),
       setGhostTextCrossFileEnabled: (ghostTextCrossFileEnabled) =>
         set({ ghostTextCrossFileEnabled }),
-      loadApiKeysFromKeyring: async () => {
-        const loadedKeys: Record<string, string> = {};
+      refreshConfiguredProviders: async () => {
+        const configured: Partial<Record<AIProvider, boolean>> = {};
         for (const provider of KEYRING_PROVIDERS) {
           try {
-            const key = await keyringGet(keyringKeyFor(provider));
-            if (key) {
-              loadedKeys[provider] = key;
-            }
+            configured[provider] = await keyringProviderConfigured(provider);
           } catch {
-            // Keyring access failed — skip this provider
+            // Keyring access failed — treat as not configured
+            configured[provider] = false;
           }
         }
-
-        set((state) => {
-          const mergedKeys = { ...state.apiKeys, ...loadedKeys };
-          return {
-            apiKeys: mergedKeys,
-            apiKey: mergedKeys[state.provider] ?? state.apiKey,
-            keychainReady: true,
-          };
-        });
+        set((state) => ({
+          configured: { ...state.configured, ...configured },
+          keychainReady: true,
+        }));
       },
     }),
     {
@@ -275,24 +271,26 @@ export const useAIStore = create<AIState>()(
         const pendingMigration = (state as unknown as Record<string, unknown>)
           ._pendingKeyringMigration as Record<string, string> | undefined;
         if (pendingMigration) {
-          // Migrate plaintext keys to keyring
-          for (const [provider, key] of Object.entries(pendingMigration)) {
-            if (key && KEYRING_PROVIDERS.includes(provider as AIProvider)) {
-              keyringStore(keyringKeyFor(provider), key).catch(() => {});
-            }
-          }
-          // Set in-memory while keyring loads
-          useAIStore.setState((s) => ({
-            apiKeys: { ...s.apiKeys, ...pendingMigration },
-            apiKey: pendingMigration[s.provider] ?? s.apiKey,
-          }));
-          // Clean up migration flag
+          // Migrate any plaintext keys still in persisted config into the OS
+          // keyring, then drop them from frontend state (§259). Refresh the
+          // `configured` flags once the writes settle.
+          const writes = Object.entries(pendingMigration)
+            .filter(([provider, key]) => key && isKeyringProvider(provider))
+            .map(([provider, key]) =>
+              keyringSetProviderKey(provider as KeyringProvider, key).catch(
+                () => {},
+              ),
+            );
           delete (state as unknown as Record<string, unknown>)
             ._pendingKeyringMigration;
+          void Promise.all(writes).then(() =>
+            useAIStore.getState().refreshConfiguredProviders(),
+          );
+          return;
         }
 
-        // Load keys from keyring
-        useAIStore.getState().loadApiKeysFromKeyring();
+        // Derive which providers are configured (booleans only).
+        useAIStore.getState().refreshConfiguredProviders();
       },
     },
   ),

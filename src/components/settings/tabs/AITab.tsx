@@ -31,7 +31,6 @@ export function AITab() {
     setProvider,
     model,
     setModel,
-    apiKey,
     setApiKey,
     ollamaUrl,
     setOllamaUrl,
@@ -51,7 +50,7 @@ export function AITab() {
     modelForChat,
     modelForAgent,
     setModelForTask,
-    apiKeys,
+    configured,
     providerForGhostText,
     providerForInlineEdit,
     providerForChat,
@@ -59,6 +58,9 @@ export function AITab() {
     setProviderForTask,
   } = useAIStore();
   const [showKey, setShowKey] = useState(false);
+  // §259 — write-only draft. The stored secret is never loaded back into the
+  // frontend, so this input only ever holds a key the user types this session.
+  const [draft, setDraft] = useState("");
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState<null | string>(null);
@@ -71,10 +73,8 @@ export function AITab() {
     async (prov: AIProvider): Promise<ModelInfo[]> => {
       if (modelCacheRef.current[prov]) return modelCacheRef.current[prov];
       try {
-        const keys = useAIStore.getState().apiKeys;
-        const key = prov === "ollama" ? undefined : keys[prov];
         const baseUrl = prov === "ollama" ? ollamaUrl || undefined : undefined;
-        const result = await llmListModels(prov, key, baseUrl);
+        const result = await llmListModels(prov, baseUrl);
         modelCacheRef.current[prov] = result;
         return result;
       } catch {
@@ -86,12 +86,12 @@ export function AITab() {
 
   const configuredProviders = useMemo((): AIProvider[] => {
     const result: AIProvider[] = [];
-    if (apiKeys.claude) result.push("claude");
-    if (apiKeys.openai) result.push("openai");
-    if (apiKeys.gemini) result.push("gemini");
+    if (configured.claude) result.push("claude");
+    if (configured.openai) result.push("openai");
+    if (configured.gemini) result.push("gemini");
     result.push("ollama");
     return result;
-  }, [apiKeys]);
+  }, [configured]);
 
   const handleProviderChange = useCallback(
     (newProvider: "claude" | "gemini" | "ollama" | "openai") => {
@@ -103,6 +103,7 @@ export function AITab() {
       setModels([]);
       setModelsError(null);
       setCustomMode(false);
+      setDraft("");
     },
     [setProvider, setModel],
   );
@@ -113,8 +114,7 @@ export function AITab() {
     try {
       const baseUrl =
         provider === "ollama" ? ollamaUrl || undefined : undefined;
-      const key = provider === "ollama" ? undefined : apiKey;
-      const result = await llmListModels(provider, key, baseUrl);
+      const result = await llmListModels(provider, baseUrl);
       setModels(result);
       setCustomMode(false);
     } catch (err) {
@@ -123,10 +123,20 @@ export function AITab() {
     } finally {
       setModelsLoading(false);
     }
-  }, [provider, apiKey, ollamaUrl]);
+  }, [provider, ollamaUrl]);
 
-  const canFetchModels = provider === "ollama" || apiKey.length > 0;
+  const providerConfigured =
+    provider === "ollama" ? true : (configured[provider] ?? false);
+  const canFetchModels = providerConfigured || draft.length > 0;
   const showApiKey = provider !== "ollama";
+  // §259 — when a key is already stored we show a masked marker (locale-neutral)
+  // rather than the secret, since the frontend never receives it.
+  const keyPlaceholder =
+    providerConfigured && !draft
+      ? "••••••••••••••••"
+      : keychainReady
+        ? t("settings.ai.apiKey.placeholder")
+        : t("settings.ai.apiKey.loading");
 
   return (
     <div className="settings-section">
@@ -165,14 +175,13 @@ export function AITab() {
             <input
               className="settings-input settings-input-key"
               disabled={!keychainReady}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder={
-                keychainReady
-                  ? t("settings.ai.apiKey.placeholder")
-                  : t("settings.ai.apiKey.loading")
-              }
+              onChange={(e) => {
+                setDraft(e.target.value);
+                setApiKey(e.target.value);
+              }}
+              placeholder={keyPlaceholder}
               type={showKey ? "text" : "password"}
-              value={apiKey}
+              value={draft}
             />
             <button
               className="settings-key-toggle"

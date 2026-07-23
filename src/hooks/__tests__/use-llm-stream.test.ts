@@ -11,9 +11,10 @@ vi.mock("../../ipc/invoke", () => ({
   // tauri-storage calls these via ipc/invoke re-exports
   getConfig: vi.fn().mockResolvedValue(null),
   setConfig: vi.fn().mockResolvedValue(undefined),
-  // ai-store keyring calls
-  keyringGet: vi.fn().mockResolvedValue(null),
-  keyringStore: vi.fn().mockResolvedValue(undefined),
+  // ai-store keyring calls (§259 provider-scoped, secret-free)
+  keyringSetProviderKey: vi.fn().mockResolvedValue(undefined),
+  keyringDeleteProviderKey: vi.fn().mockResolvedValue(undefined),
+  keyringProviderConfigured: vi.fn().mockResolvedValue(false),
 }));
 
 describe("useLLMStream — task-aware config", () => {
@@ -22,7 +23,6 @@ describe("useLLMStream — task-aware config", () => {
     useAIStore.setState({
       provider: "claude",
       model: "claude-sonnet-4-5",
-      apiKey: "sk-global",
       autoModelEnabled: true,
       providerForGhostText: "openai",
       modelForGhostText: "gpt-4o-mini",
@@ -32,7 +32,7 @@ describe("useLLMStream — task-aware config", () => {
       modelForChat: "",
       providerForAgent: "",
       modelForAgent: "",
-      apiKeys: { claude: "sk-global", openai: "sk-openai" },
+      configured: { claude: true, openai: true },
       privacyMode: false,
       ollamaUrl: "http://localhost:11434",
     });

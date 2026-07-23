@@ -10,9 +10,20 @@ import { logger } from "../utils/logger";
 import { emitPluginEvent } from "./extension-context";
 // §69 Plugin Lifecycle — App-level plugin management
 import { pluginLoader } from "./plugin-loader";
+import { arePluginsEnabled } from "./plugins-enabled";
 
 /** Initialize all enabled plugins at app startup. Budget: 200ms total. */
 export async function initializePlugins(): Promise<void> {
+  // §259 containment — plugins run in the app's own JS realm and can bypass the
+  // capability layer, so untrusted plugin code must not auto-execute in shipped
+  // builds. Skip the entire load path unless a build explicitly opts in.
+  if (!arePluginsEnabled()) {
+    logger.info(
+      "[PluginLifecycle] Plugins disabled (see #259/#260) — skipping auto-load",
+    );
+    return;
+  }
+
   // Grant asset scope for ~/.baram/plugins before any load (see Global Constraints).
   await pluginPrepareScopes().catch((err) =>
     logger.error("[PluginLifecycle] prepare scopes failed:", err),

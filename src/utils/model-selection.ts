@@ -4,16 +4,18 @@ import type { AIProvider, AITask } from "../stores/ai/ai";
 import { useAIStore } from "../stores/ai/ai";
 
 export interface TaskConfig {
-  apiKey: string;
   baseUrl: string | undefined;
+  /** Whether the resolved provider has an API key configured (§259 — the
+   *  secret itself is never exposed to the frontend). */
+  configured: boolean;
   model: string;
   provider: AIProvider;
 }
 
 /**
- * Resolves the effective provider, model, API key, and base URL for a task.
- * When autoModelEnabled is off, returns the main (default) config.
- * When on, uses per-task overrides with fallback to defaults.
+ * Resolves the effective provider, model, and base URL for a task, plus whether
+ * that provider is configured. When autoModelEnabled is off, returns the main
+ * (default) config. When on, uses per-task overrides with fallback to defaults.
  */
 export function getConfigForTask(task: AITask): TaskConfig {
   const s = useAIStore.getState();
@@ -22,7 +24,7 @@ export function getConfigForTask(task: AITask): TaskConfig {
     return {
       provider: s.provider,
       model: s.model,
-      apiKey: s.apiKey,
+      configured: s.configured[s.provider] ?? false,
       baseUrl: s.provider === "ollama" ? s.ollamaUrl : undefined,
     };
   }
@@ -50,7 +52,7 @@ export function getConfigForTask(task: AITask): TaskConfig {
 
   const provider = tp || s.provider;
   const model = tm || s.model;
-  const apiKey = s.apiKeys[provider] ?? "";
+  const configured = s.configured[provider] ?? false;
   const baseUrl = provider === "ollama" ? s.ollamaUrl : undefined;
-  return { provider, model, apiKey, baseUrl };
+  return { provider, model, configured, baseUrl };
 }

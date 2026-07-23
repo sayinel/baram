@@ -11,6 +11,7 @@ import {
   unregisterPluginUI,
 } from "./extension-context";
 import { validateManifest } from "./manifest";
+import { arePluginsEnabled } from "./plugins-enabled";
 
 const ACTIVATE_TIMEOUT = 5000; // 5 seconds
 
@@ -61,6 +62,15 @@ export class PluginLoader {
     installPath: string,
     manifest: PluginManifest,
   ): Promise<void> {
+    // §259 — final choke point: never load/execute plugin code unless the build
+    // explicitly opts in. Guards every load path (startup, dev reload, install),
+    // regardless of how the caller was reached.
+    if (!arePluginsEnabled()) {
+      throw new Error(
+        "Plugins are disabled in this build for security (see #259/#260).",
+      );
+    }
+
     if (this.loaded.has(manifest.id)) {
       logger.warn(`[PluginLoader] Plugin ${manifest.id} is already loaded`);
       return;

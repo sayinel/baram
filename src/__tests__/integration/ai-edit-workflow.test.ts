@@ -10,7 +10,7 @@ describe("Integration: AI Edit Workflow", () => {
     useAIStore.setState({
       provider: "claude",
       model: "claude-sonnet-4-5-20250929",
-      apiKey: "",
+      configured: {},
       isStreaming: false,
       ghostText: null,
     });
@@ -100,7 +100,9 @@ describe("Integration: AI Edit Workflow", () => {
 
     expect(useAIStore.getState().provider).toBe("openai");
     expect(useAIStore.getState().model).toBe("gpt-4o");
-    expect(useAIStore.getState().apiKey).toBe("sk-test-key");
+    // §259 — the secret is written to the keyring, never held in state; we only
+    // track that the provider is now configured.
+    expect(useAIStore.getState().configured.openai).toBe(true);
 
     // Settings store theme change doesn't affect AI store
     useSettingsStore.getState().setTheme("dark");

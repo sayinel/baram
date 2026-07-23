@@ -8,7 +8,6 @@ describe("getConfigForTask — full config", () => {
     useAIStore.setState({
       provider: "claude",
       model: "claude-sonnet-4-5",
-      apiKey: "sk-global",
       autoModelEnabled: false,
       providerForGhostText: "openai",
       modelForGhostText: "gpt-4o-mini",
@@ -18,7 +17,7 @@ describe("getConfigForTask — full config", () => {
       modelForChat: "",
       providerForAgent: "",
       modelForAgent: "",
-      apiKeys: { claude: "sk-global", openai: "sk-openai-key" },
+      configured: { claude: true, openai: true },
       ollamaUrl: "http://localhost:11434",
     });
   });
@@ -43,10 +42,10 @@ describe("getConfigForTask — full config", () => {
     expect(config.model).toBe("claude-sonnet-4-5");
   });
 
-  it("returns apiKey for the resolved provider", () => {
+  it("reports configured=true for the resolved provider", () => {
     useAIStore.setState({ autoModelEnabled: true });
     const config = getConfigForTask("ghost-text");
-    expect(config.apiKey).toBe("sk-openai-key");
+    expect(config.configured).toBe(true);
   });
 
   it("returns ollamaUrl as baseUrl for ollama provider", () => {
