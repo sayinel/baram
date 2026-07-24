@@ -1,0 +1,19 @@
+/* §5.1 HTML file viewer — sandboxed iframe preview + preview/source toggle */
+
+.html-preview-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+
+  /* Standalone HTML documents assume a white canvas regardless of app theme */
+  background: #fff;
+  border: none;
+}
+
+/* Floating view toggle in the editor area (shares .mode-toggle-btn chrome) */
+.html-view-toggle {
+  position: absolute;
+  top: 8px;
+  right: 16px;
+  z-index: 10;
+}

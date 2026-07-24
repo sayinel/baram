@@ -10,3 +10,4 @@
 @import "./editor/media-block.css"; /* shared media-block chrome — resize handles + caption */
 @import "./editor/svg-block.css"; /* §5.1 svg block (```svg) + inline SVG in HTML block */
 @import "./editor/html-block.css"; /* §5.1 html block — render + source editor chrome */
+@import "./editor/html-preview.css"; /* §5.1 html file viewer — sandboxed iframe + toggle */

@@ -86,7 +86,11 @@ import { useFileStore } from "./stores/file/file";
 import { useSettingsStore } from "./stores/settings/store";
 import { useUIStore } from "./stores/ui/ui";
 import { initPerfTrace, instrumentEditor } from "./utils/editor/perf-trace";
-import { getLanguageForFile, isMarkdownFile } from "./utils/file-type";
+import {
+  getLanguageForFile,
+  isHtmlFile,
+  isMarkdownFile,
+} from "./utils/file-type";
 import { createLLMStream } from "./utils/llm-stream";
 import { logger } from "./utils/logger";
 import { getConfigForTask } from "./utils/model-selection";
@@ -98,6 +102,11 @@ import "./styles/index.css";
 const SourceCodeEditor = lazy(() =>
   import("./components/editor/SourceCodeEditor").then((m) => ({
     default: m.SourceCodeEditor,
+  })),
+);
+const HtmlPreview = lazy(() =>
+  import("./components/editor/HtmlPreview").then((m) => ({
+    default: m.HtmlPreview,
   })),
 );
 const CommandPalette = lazy(() =>
@@ -236,6 +245,20 @@ function App() {
   const codeLanguage = activeTabFilePath
     ? getLanguageForFile(activeTabFilePath)
     : null;
+
+  // HTML file viewer — rendered preview (default) vs raw source, tracked
+  // per tab so toggling one tab doesn't affect others.
+  const isHtmlTab = !!activeTabFilePath && isHtmlFile(activeTabFilePath);
+  const [htmlSourceTabs, setHtmlSourceTabs] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const isHtmlSourceView = !!activeTabId && htmlSourceTabs.has(activeTabId);
+  // Preview reloads whenever the file is saved (manual, auto, or toggle-flush)
+  const htmlPreviewMtime = useFileStore((s) =>
+    isHtmlTab && activeTabFilePath
+      ? (s.fileMtimes.get(activeTabFilePath)?.lastSaveMtime ?? 0)
+      : 0,
+  );
 
   // §5.6 Find/Replace state
   const [findReplaceOpen, setFindReplaceOpen] = useState(false);
@@ -553,6 +576,51 @@ function App() {
     [markDirty],
   );
 
+  // Toggle rendered preview ↔ raw source for the active HTML tab.
+  // The preview iframe loads the file from disk (asset: protocol), so when
+  // leaving source view with unsaved edits, flush them first — the mtime bump
+  // then reloads the iframe with the fresh content.
+  const toggleHtmlView = useCallback(() => {
+    const { activeTabId: tabId, tabs: currentTabs } = useEditorStore.getState();
+    const tab = currentTabs.find((t) => t.id === tabId);
+    if (!tab || !isFileTab(tab) || !isHtmlFile(tab.filePath)) return;
+    const leavingSourceView = htmlSourceTabs.has(tab.id);
+    if (leavingSourceView && tab.isDirty && tab.filePath) {
+      const filePath = tab.filePath;
+      const content = sourceContentRef.current;
+      void writeFile(filePath, content)
+        .then(() => {
+          useFileStore.getState().updateLastSaveMtime(filePath, Date.now());
+          useFileStore.getState().setFileContent(filePath, content);
+          markDirty(tab.id, false);
+          useSnapshotStore.getState().markPendingAutoSnapshot();
+        })
+        .catch(() => {
+          // Save failed — keep dirty state; preview shows last saved version
+        });
+    }
+    setHtmlSourceTabs((prev) => {
+      const next = new Set(prev);
+      if (next.has(tab.id)) next.delete(tab.id);
+      else next.add(tab.id);
+      return next;
+    });
+    // sourceContentRef (useRef) is stable — intentionally omitted from deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [htmlSourceTabs, markDirty]);
+
+  // Cmd+/ — route to the HTML preview/source toggle when an HTML tab is
+  // active; otherwise fall through to the markdown source-mode toggle.
+  const handleToggleSourceMode = useCallback(() => {
+    const { activeTabId: tabId, tabs: currentTabs } = useEditorStore.getState();
+    const tab = currentTabs.find((t) => t.id === tabId);
+    if (tab && isFileTab(tab) && isHtmlFile(tab.filePath)) {
+      toggleHtmlView();
+      return;
+    }
+    toggleSourceMode();
+  }, [toggleHtmlView, toggleSourceMode]);
+
   // §56 Journal — auto-create today's journal on startup
   useJournal(handleOpenFilePath);
 
@@ -595,7 +663,7 @@ function App() {
     toggleQuickSwitcher,
     toggleSettings,
     toggleSidebar,
-    toggleSourceMode,
+    toggleSourceMode: handleToggleSourceMode,
   });
 
   // --- Global keyboard shortcuts ---
@@ -629,7 +697,7 @@ function App() {
     toggleQuickSwitcher,
     toggleSettings,
     toggleSidebar,
-    toggleSourceMode,
+    toggleSourceMode: handleToggleSourceMode,
   });
 
   return (
@@ -640,7 +708,13 @@ function App() {
             <StatusBar
               editor={activeEditor}
               mode={
-                isGraphTabActive ? "graph" : isSourceMode ? "source" : "wysiwyg"
+                isGraphTabActive
+                  ? "graph"
+                  : isHtmlTab && !isHtmlSourceView
+                    ? "preview"
+                    : isCodeFile || isSourceMode
+                      ? "source"
+                      : "wysiwyg"
               }
             />
           ) : undefined
@@ -694,14 +768,34 @@ function App() {
             </div>
           ) : isCodeFile ? (
             <div className="editor-area-scroll" data-editor-scroll>
+              {isHtmlTab && (
+                <button
+                  className="mode-toggle-btn html-view-toggle"
+                  onClick={toggleHtmlView}
+                  title={t("htmlPreview.toggleTitle")}
+                  type="button"
+                >
+                  {isHtmlSourceView
+                    ? t("htmlPreview.showPreview")
+                    : t("htmlPreview.showSource")}
+                </button>
+              )}
               <Suspense fallback={null}>
-                <SourceCodeEditor
-                  content={sourceContent}
-                  key={`code-${activeTabId}`}
-                  language={codeLanguage ?? undefined}
-                  onChange={handleCodeFileChange}
-                  ref={sourceEditorRef}
-                />
+                {isHtmlTab && !isHtmlSourceView && activeTabFilePath ? (
+                  <HtmlPreview
+                    filePath={activeTabFilePath}
+                    refreshKey={htmlPreviewMtime}
+                    title={activeTabFilePath}
+                  />
+                ) : (
+                  <SourceCodeEditor
+                    content={sourceContent}
+                    key={`code-${activeTabId}`}
+                    language={codeLanguage ?? undefined}
+                    onChange={handleCodeFileChange}
+                    ref={sourceEditorRef}
+                  />
+                )}
               </Suspense>
             </div>
           ) : isSourceMode ? (
@@ -809,7 +903,7 @@ function App() {
           onOpenFolder={handleOpenFolder}
           onSave={handleSave}
           onSkillPreview={() => setSkillPreviewOpen((v) => !v)}
-          onToggleSourceMode={toggleSourceMode}
+          onToggleSourceMode={handleToggleSourceMode}
         />
         <ExportDialog editor={activeEditor} />
         <QuickSwitcher editor={activeEditor} onNewFile={handleNewFile} />
