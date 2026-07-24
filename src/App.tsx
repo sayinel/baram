@@ -90,6 +90,7 @@ import {
   getLanguageForFile,
   isHtmlFile,
   isMarkdownFile,
+  isPdfFile,
 } from "./utils/file-type";
 import { createLLMStream } from "./utils/llm-stream";
 import { logger } from "./utils/logger";
@@ -107,6 +108,11 @@ const SourceCodeEditor = lazy(() =>
 const HtmlPreview = lazy(() =>
   import("./components/editor/HtmlPreview").then((m) => ({
     default: m.HtmlPreview,
+  })),
+);
+const PdfPreview = lazy(() =>
+  import("./components/editor/PdfPreview").then((m) => ({
+    default: m.PdfPreview,
   })),
 );
 const CommandPalette = lazy(() =>
@@ -246,6 +252,9 @@ function App() {
     ? getLanguageForFile(activeTabFilePath)
     : null;
 
+  // PDF file viewer — read-only, rendered by the webview's native PDF engine
+  const isPdfTab = !!activeTabFilePath && isPdfFile(activeTabFilePath);
+
   // HTML file viewer — rendered preview (default) vs raw source, tracked
   // per tab so toggling one tab doesn't affect others.
   const isHtmlTab = !!activeTabFilePath && isHtmlFile(activeTabFilePath);
@@ -253,9 +262,10 @@ function App() {
     () => new Set(),
   );
   const isHtmlSourceView = !!activeTabId && htmlSourceTabs.has(activeTabId);
-  // Preview reloads whenever the file is saved (manual, auto, or toggle-flush)
-  const htmlPreviewMtime = useFileStore((s) =>
-    isHtmlTab && activeTabFilePath
+  // Viewer iframes reload whenever the file's saved/reloaded mtime bumps
+  // (manual save, auto-save, toggle-flush, or external auto-reload)
+  const previewFileMtime = useFileStore((s) =>
+    (isHtmlTab || isPdfTab) && activeTabFilePath
       ? (s.fileMtimes.get(activeTabFilePath)?.lastSaveMtime ?? 0)
       : 0,
   );
@@ -710,7 +720,7 @@ function App() {
               mode={
                 isGraphTabActive
                   ? "graph"
-                  : isHtmlTab && !isHtmlSourceView
+                  : isPdfTab || (isHtmlTab && !isHtmlSourceView)
                     ? "preview"
                     : isCodeFile || isSourceMode
                       ? "source"
@@ -766,6 +776,19 @@ function App() {
                 <GraphViewTab />
               </Suspense>
             </div>
+          ) : isPdfTab && activeTabFilePath ? (
+            <div
+              className="editor-area-scroll pdf-preview-scroll"
+              data-editor-scroll
+            >
+              <Suspense fallback={null}>
+                <PdfPreview
+                  filePath={activeTabFilePath}
+                  refreshKey={previewFileMtime}
+                  title={activeTabFilePath}
+                />
+              </Suspense>
+            </div>
           ) : isCodeFile ? (
             <div className="editor-area-scroll" data-editor-scroll>
               {isHtmlTab && (
@@ -784,7 +807,7 @@ function App() {
                 {isHtmlTab && !isHtmlSourceView && activeTabFilePath ? (
                   <HtmlPreview
                     filePath={activeTabFilePath}
-                    refreshKey={htmlPreviewMtime}
+                    refreshKey={previewFileMtime}
                     title={activeTabFilePath}
                   />
                 ) : (

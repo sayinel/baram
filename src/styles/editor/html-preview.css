@@ -1,4 +1,64 @@
-/* §5.1 HTML file viewer — sandboxed iframe preview + preview/source toggle */
+/* §5.1 HTML/PDF file viewers — iframe previews + preview/source toggle */
+
+/* PDF zoom re-renders pages at the target scale (see PdfPreview.tsx) —
+   neutralize the container's CSS zoom so the two mechanisms don't multiply,
+   and allow horizontal scroll for zoom levels above 100%. */
+.editor-area-scroll.pdf-preview-scroll {
+  overflow: auto;
+  zoom: 1;
+}
+
+.pdf-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: center;
+  width: max-content;
+  min-width: 100%;
+  min-height: 100%;
+  padding: 24px;
+}
+
+.pdf-page {
+  position: relative;
+  background: #fff;
+  box-shadow: var(--shadow-md);
+}
+
+.pdf-page canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Transparent selectable text overlay (PDF.js TextLayer output) */
+.pdf-text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  line-height: 1;
+  user-select: text;
+  transform-origin: 0 0;
+}
+
+.pdf-text-layer span,
+.pdf-text-layer br {
+  position: absolute;
+  color: transparent;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.pdf-text-layer ::selection {
+  background: color-mix(in srgb, var(--color-accent-default) 30%, transparent);
+}
+
+.pdf-preview-error {
+  padding: 2em;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
 
 .html-preview-frame {
   display: block;

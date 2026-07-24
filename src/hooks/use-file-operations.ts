@@ -14,7 +14,7 @@ import { useSnapshotStore } from "../stores/editor/snapshot";
 import { openFolder, useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
 import { useUIStore } from "../stores/ui/ui";
-import { isMarkdownFile } from "../utils/file-type";
+import { isMarkdownFile, isPdfFile } from "../utils/file-type";
 import { isJournalPath } from "../utils/journal/journal";
 import { notifyJournalChanged } from "../utils/journal/journal-events";
 import { logger } from "../utils/logger";
@@ -48,7 +48,9 @@ export async function triggerAutoReload(
   filePath: string,
   externalMtime: number,
 ): Promise<void> {
-  const freshContent = await readFile(filePath);
+  // PDFs are binary — keep the "" cache sentinel; the mtime bump below
+  // refreshes the viewer iframe instead.
+  const freshContent = isPdfFile(filePath) ? "" : await readFile(filePath);
 
   // Update the in-memory content cache
   useFileStore.getState().setFileContent(filePath, freshContent);
@@ -106,6 +108,7 @@ export function useFileOperations({
       filters: [
         { name: "Markdown", extensions: ["md", "markdown", "mdx"] },
         { name: "HTML", extensions: ["html", "htm"] },
+        { name: "PDF", extensions: ["pdf"] },
         { name: "Text", extensions: ["txt", "text"] },
         { name: "All Files", extensions: ["*"] },
       ],
@@ -121,7 +124,9 @@ export function useFileOperations({
     }
 
     try {
-      const content = await readFile(selected);
+      // PDFs are binary — never read through the UTF-8 IPC (viewer loads
+      // them via asset:). Cache "" so tab switching treats the tab as loaded.
+      const content = isPdfFile(selected) ? "" : await readFile(selected);
       const fileName = selected.split("/").pop() ?? "Unknown";
       setFileContent(selected, content);
       openTab({
@@ -143,6 +148,9 @@ export function useFileOperations({
     const saveTab = currentTabs.find((t) => t.id === tabId);
     if (!saveTab) return;
     if (isGraphTab(saveTab)) return;
+    // PDF tabs are read-only viewers — writing sourceContentRef (which holds
+    // another tab's text) into a .pdf would destroy the binary.
+    if (isPdfFile(saveTab.filePath)) return;
 
     const isCode = saveTab.filePath && !isMarkdownFile(saveTab.filePath);
     const md =
@@ -225,6 +233,8 @@ export function useFileOperations({
     const saveAsTab = currentTabs.find((t) => t.id === tabId);
     if (!saveAsTab) return;
     if (isGraphTab(saveAsTab)) return;
+    // PDF tabs are read-only viewers — Save As would write text, not the PDF.
+    if (isPdfFile(saveAsTab.filePath)) return;
 
     const isCode = saveAsTab.filePath && !isMarkdownFile(saveAsTab.filePath);
     const md =
