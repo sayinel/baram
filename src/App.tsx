@@ -1020,21 +1020,10 @@ function AppRoot() {
 }
 
 function AppWithErrorBoundary() {
+  // No custom fallback — ErrorBoundary's default UI shows the error message
+  // and stack, so release-build crashes are diagnosable without devtools.
   return (
-    <ErrorBoundary
-      fallback={
-        <div
-          style={{
-            padding: 24,
-            fontFamily: "monospace",
-            color: "red",
-          }}
-        >
-          <h2>Something went wrong</h2>
-          <button onClick={() => window.location.reload()}>Reload</button>
-        </div>
-      }
-    >
+    <ErrorBoundary>
       <AppRoot />
     </ErrorBoundary>
   );
