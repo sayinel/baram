@@ -5,6 +5,7 @@ import { useContextStore } from "../stores/context/context";
 import { useEditorStore } from "../stores/editor/editor";
 import { switchContext, useFileStore } from "../stores/file/file";
 import { useSettingsStore } from "../stores/settings/store";
+import { isPdfFile } from "./file-type";
 import { basename } from "./path-utils";
 
 export async function openFileByPath(filePath: string): Promise<void> {
@@ -28,7 +29,10 @@ export async function openFileByPath(filePath: string): Promise<void> {
     await switchContext(context.id);
   }
 
-  const content = await readFile(filePath);
+  // PDFs are binary — never read through the UTF-8 IPC; the viewer loads
+  // them via the asset: protocol. Cache "" so tab switching treats the tab
+  // as loaded.
+  const content = isPdfFile(filePath) ? "" : await readFile(filePath);
   const fileName = basename(filePath);
 
   useFileStore.getState().setFileContent(filePath, content);

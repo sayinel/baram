@@ -57,3 +57,13 @@ export function isMarkdownFile(filePath: string | undefined): boolean {
   if (!ext) return true; // no extension → treat as markdown
   return MARKDOWN_EXTENSIONS.has(ext);
 }
+
+/**
+ * Returns true for .pdf files — binary, rendered read-only in an iframe via
+ * the asset: protocol. Never read with the UTF-8 readFile IPC and never
+ * written by any save path.
+ */
+export function isPdfFile(filePath: string | undefined): boolean {
+  if (!filePath) return false;
+  return filePath.split(".").pop()?.toLowerCase() === "pdf";
+}

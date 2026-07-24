@@ -8,19 +8,21 @@ interface Props {
 }
 
 interface State {
+  componentStack: null | string;
   error: Error | null;
   hasError: boolean;
 }
 
 export class ErrorBoundary extends Component<Props, State> {
-  state: State = { hasError: false, error: null };
+  state: State = { componentStack: null, error: null, hasError: false };
 
-  static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
+  static getDerivedStateFromError(error: Error): Partial<State> {
+    return { error, hasError: true };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
     logger.error("ErrorBoundary caught:", error, info.componentStack);
+    this.setState({ componentStack: info.componentStack ?? null });
   }
 
   render(): ReactNode {
@@ -36,15 +38,43 @@ export class ErrorBoundary extends Component<Props, State> {
           >
             {this.state.error?.message}
           </p>
+          {/* Surface the stack so release-build crashes are diagnosable
+              without devtools access */}
+          <details
+            style={{ margin: "1rem auto", maxWidth: 720, textAlign: "left" }}
+          >
+            <summary style={{ cursor: "pointer" }}>Details</summary>
+            <pre
+              style={{
+                fontSize: 12,
+                overflow: "auto",
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {this.state.error?.stack}
+              {this.state.componentStack}
+            </pre>
+          </details>
           <button
             onClick={this.handleRetry}
+            style={{
+              marginTop: "1rem",
+              marginRight: "0.5rem",
+              padding: "0.5rem 1rem",
+              cursor: "pointer",
+            }}
+          >
+            Retry
+          </button>
+          <button
+            onClick={() => window.location.reload()}
             style={{
               marginTop: "1rem",
               padding: "0.5rem 1rem",
               cursor: "pointer",
             }}
           >
-            Retry
+            Reload
           </button>
         </div>
       );
@@ -53,6 +83,6 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   private handleRetry = (): void => {
-    this.setState({ hasError: false, error: null });
+    this.setState({ componentStack: null, error: null, hasError: false });
   };
 }

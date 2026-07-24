@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { getLanguageForFile, isHtmlFile, isMarkdownFile } from "../file-type";
+import {
+  getLanguageForFile,
+  isHtmlFile,
+  isMarkdownFile,
+  isPdfFile,
+} from "../file-type";
 
 describe("isMarkdownFile", () => {
   it("returns true for markdown extensions", () => {
@@ -34,6 +39,21 @@ describe("isHtmlFile", () => {
     expect(isHtmlFile("/vault/README")).toBe(false);
     expect(isHtmlFile(undefined)).toBe(false);
     expect(isHtmlFile("")).toBe(false);
+  });
+});
+
+describe("isPdfFile", () => {
+  it("returns true for .pdf", () => {
+    expect(isPdfFile("/vault/doc.pdf")).toBe(true);
+    expect(isPdfFile("/vault/DOC.PDF")).toBe(true);
+  });
+
+  it("returns false for other files and untitled", () => {
+    expect(isPdfFile("/vault/note.md")).toBe(false);
+    expect(isPdfFile("/vault/page.html")).toBe(false);
+    expect(isPdfFile("/vault/pdf")).toBe(false);
+    expect(isPdfFile(undefined)).toBe(false);
+    expect(isPdfFile("")).toBe(false);
   });
 });
 
