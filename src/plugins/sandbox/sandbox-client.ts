@@ -5,6 +5,8 @@
 import type { HostToSandbox, SandboxToHost } from "./protocol";
 import type { SandboxTransport } from "./transport";
 
+import { logger } from "../../utils/logger";
+
 export interface SandboxContext {
   commands: {
     register(id: string, handler: (...args: unknown[]) => unknown): void;
@@ -35,7 +37,9 @@ export function startSandboxClient(
           assertSerializable(args);
           transport.send({ type: "emitEvent", event, args });
         } catch {
-          /* drop unserializable emit */
+          logger.warn(
+            `[Sandbox] dropped unserializable emit for event "${event}"`,
+          );
         }
       },
       on(event, handler) {
@@ -49,6 +53,8 @@ export function startSandboxClient(
   async function onActivate(pluginUrl: string): Promise<void> {
     if (activateState !== "idle") return; // M4: ignore repeated activate
     activateState = "activating";
+    commands.clear(); // each attempt starts clean — no stale regs from a failed retry
+    eventHandlers.clear();
     try {
       const mod = await importer(pluginUrl);
       if (typeof mod.activate === "function") await mod.activate(ctx);
@@ -117,8 +123,8 @@ export function startSandboxClient(
 }
 
 function assertSerializable(value: unknown): void {
-  // Throws on functions/BigInt/cycles/undefined-as-value that JSON (the wire
-  // format for Tauri events) cannot faithfully carry.
+  // Throws on functions/BigInt/cycles that JSON (the wire format for Tauri
+  // events) cannot faithfully carry.
   JSON.stringify(value, (_k, v) => {
     if (typeof v === "function" || typeof v === "bigint")
       throw new Error("value is not serializable");

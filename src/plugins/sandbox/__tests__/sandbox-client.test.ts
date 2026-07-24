@@ -16,12 +16,9 @@ const DECLARED: PluginContributions = {
   ],
 };
 
-function wire(activate: (ctx: SandboxContext) => void, importCount = { n: 0 }) {
+function wire(activate: (ctx: SandboxContext) => void) {
   const { host, sandbox } = createChannelPair();
-  startSandboxClient(sandbox, async () => {
-    importCount.n++;
-    return { activate };
-  });
+  startSandboxClient(sandbox, async () => ({ activate }));
   return new SandboxSession(host);
 }
 
@@ -91,18 +88,61 @@ describe("startSandboxClient (§260 sandbox shim)", () => {
     );
   });
 
-  it("ignores a repeated activate (M4) — imports only once", async () => {
+  it("ignores a SECOND activate arriving while the first import is still pending (M4)", async () => {
     const count = { n: 0 };
+    let resolveImport!: (mod: {
+      activate: (ctx: SandboxContext) => void;
+    }) => void;
+    const pendingImport = new Promise<{
+      activate: (ctx: SandboxContext) => void;
+    }>((resolve) => {
+      resolveImport = resolve;
+    });
     const { host, sandbox } = createChannelPair();
     startSandboxClient(sandbox, async () => {
       count.n++;
-      return { activate: () => {} };
+      return pendingImport;
+    });
+
+    // Drive host->sandbox directly: the first activate starts importing and
+    // never resolves yet, so a genuine re-entrant guard is the only thing
+    // that can stop the second activate from importing again.
+    host.send({ type: "activate", pluginId: "p", pluginUrl: "u" });
+    await Promise.resolve();
+    host.send({ type: "activate", pluginId: "p", pluginUrl: "u" });
+    await Promise.resolve();
+
+    resolveImport({ activate: () => {} });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(count.n).toBe(1);
+  });
+
+  it("recovers after activateError — a retry re-activates cleanly with no stale registrations", async () => {
+    let attempt = 0;
+    const { host, sandbox } = createChannelPair();
+    startSandboxClient(sandbox, async () => {
+      attempt++;
+      if (attempt === 1) {
+        return {
+          activate: (ctx: SandboxContext) => {
+            ctx.commands.register("stale", () => 0);
+            throw new Error("first attempt fails");
+          },
+        };
+      }
+      return {
+        activate: (ctx: SandboxContext) => {
+          ctx.commands.register("fresh", () => 0);
+        },
+      };
     });
     const s = new SandboxSession(host);
+    await expect(s.activate("p", "u", { commands: [] })).rejects.toThrow(
+      /first attempt fails/,
+    );
+
     await s.activate("p", "u", { commands: [] });
-    // Session retries stop after ready, but simulate an extra inbound activate:
-    sandbox.onMessage(() => {});
-    await new Promise((r) => setTimeout(r, 300));
-    expect(count.n).toBe(1);
+    expect(s.registered).toEqual({ commands: ["fresh"], events: [] });
   });
 });
