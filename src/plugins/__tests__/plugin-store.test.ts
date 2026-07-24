@@ -22,6 +22,7 @@ function makePlugin(id: string, version = "1.0.0"): InstalledPlugin {
       main: "index.mjs",
       engines: { baram: ">=0.2.0" },
       capabilities: ["editor:readonly"],
+      trust: "sandboxed",
     },
     installPath: `/test/plugins/${id}`,
     enabled: true,
@@ -306,6 +307,7 @@ function devPlugin(id: string): InstalledPlugin {
       main: "index.mjs",
       engines: { baram: ">=0.2.0" },
       capabilities: [],
+      trust: "sandboxed",
     },
   };
 }

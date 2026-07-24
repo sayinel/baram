@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import type {
   PluginCapability,
   PluginStatus,
@@ -6,6 +8,7 @@ import type {
 
 // §69 Plugin Detail Panel — Full info view for a selected plugin
 import { PluginCapabilityBadge } from "./PluginCapabilityBadge";
+import { PluginTrustBadge } from "./PluginTrustBadge";
 
 interface PluginDetailProps {
   entry: RegistryEntry;
@@ -32,6 +35,15 @@ export function PluginDetail({
   readme,
   onBack,
 }: PluginDetailProps) {
+  const [showTrustWarning, setShowTrustWarning] = useState(false);
+  const handleInstallClick = () => {
+    if (entry.trust === "trusted" && !showTrustWarning) {
+      setShowTrustWarning(true);
+      return;
+    }
+    onInstall();
+  };
+
   return (
     <div
       className="plugin-detail"
@@ -110,6 +122,9 @@ export function PluginDetail({
             >
               {entry.license}
             </span>
+          </div>
+          <div style={{ marginTop: "6px" }}>
+            <PluginTrustBadge trust={entry.trust} />
           </div>
         </div>
       </div>
@@ -209,21 +224,39 @@ export function PluginDetail({
             </button>
           </>
         ) : (
-          <button
-            onClick={onInstall}
-            style={{
-              padding: "8px 20px",
-              borderRadius: "6px",
-              fontSize: "13px",
-              fontWeight: 500,
-              backgroundColor: "var(--color-accent-default)",
-              color: "#fff",
-              border: "none",
-              cursor: "pointer",
-            }}
-          >
-            Install
-          </button>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {showTrustWarning && (
+              <div
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: "6px",
+                  backgroundColor: "var(--color-status-error-bg)",
+                  color: "var(--color-status-danger)",
+                  fontSize: "13px",
+                  border: "1px solid var(--color-status-error-border)",
+                }}
+              >
+                This plugin runs with full app access and is not sandboxed.
+                Install it only if you trust the author and source.
+              </div>
+            )}
+            <button
+              onClick={handleInstallClick}
+              style={{
+                alignSelf: "flex-start",
+                padding: "8px 20px",
+                borderRadius: "6px",
+                fontSize: "13px",
+                fontWeight: 500,
+                backgroundColor: "var(--color-accent-default)",
+                color: "#fff",
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              {showTrustWarning ? "Install anyway" : "Install"}
+            </button>
+          </div>
         )}
       </div>
 

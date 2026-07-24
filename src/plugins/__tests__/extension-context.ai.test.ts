@@ -38,6 +38,7 @@ function mf(caps: string[]): PluginManifest {
     main: "index.mjs",
     engines: { baram: ">=0.2.0" },
     capabilities: caps as PluginManifest["capabilities"],
+    trust: "sandboxed",
   };
 }
 

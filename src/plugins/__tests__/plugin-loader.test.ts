@@ -28,6 +28,7 @@ const manifest: PluginManifest = {
   main: "index.mjs",
   engines: { baram: ">=0.2.0" },
   capabilities: ["commands"],
+  trust: "sandboxed",
 };
 
 describe("PluginLoader.reloadPlugin", () => {

@@ -42,6 +42,13 @@ pub enum PluginError {
     NotFound(String),
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum PluginTrust {
+    Sandboxed,
+    Trusted,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginManifest {
     pub id: String,
@@ -65,6 +72,10 @@ pub struct PluginManifest {
     pub icon: Option<String>,
     #[serde(default)]
     pub keywords: Vec<String>,
+    #[serde(default)]
+    pub trust: Option<PluginTrust>,
+    #[serde(default)]
+    pub contributions: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -645,6 +656,8 @@ mod tests {
             homepage: None,
             icon: None,
             keywords: vec![],
+            trust: None,
+            contributions: None,
         };
         assert!(validate_manifest(&manifest).is_ok());
     }
@@ -669,6 +682,8 @@ mod tests {
             homepage: None,
             icon: None,
             keywords: vec![],
+            trust: None,
+            contributions: None,
         };
         assert!(validate_manifest(&manifest).is_err());
     }
@@ -693,6 +708,8 @@ mod tests {
             homepage: None,
             icon: None,
             keywords: vec![],
+            trust: None,
+            contributions: None,
         };
         assert!(validate_manifest(&manifest).is_err());
     }
@@ -717,6 +734,8 @@ mod tests {
             homepage: None,
             icon: None,
             keywords: vec![],
+            trust: None,
+            contributions: None,
         };
         assert!(validate_manifest(&manifest).is_err());
     }
@@ -868,6 +887,8 @@ mod tests {
             homepage: None,
             icon: None,
             keywords: vec![],
+            trust: None,
+            contributions: None,
         };
         assert!(validate_manifest(&manifest).is_ok());
     }
@@ -894,6 +915,20 @@ mod tests {
         let idx: RegistryIndex = serde_json::from_str(JSON).unwrap();
         assert_eq!(idx.plugins[0].download_url, "https://x/p.zip");
         assert_eq!(idx.updated_at, Some("2026-01-01".to_string()));
+    }
+
+    #[test]
+    fn manifest_parses_trust_sandboxed() {
+        let json = r#"{"id":"x","name":"X","description":"d","version":"1.0.0","author":"a","license":"MIT","main":"index.mjs","engines":{"baram":"*"},"capabilities":[],"trust":"sandboxed"}"#;
+        let m: PluginManifest = serde_json::from_str(json).unwrap();
+        assert_eq!(m.trust, Some(PluginTrust::Sandboxed));
+    }
+
+    #[test]
+    fn manifest_without_trust_is_none_for_legacy() {
+        let json = r#"{"id":"x","name":"X","description":"d","version":"1.0.0","author":"a","license":"MIT","main":"index.mjs","engines":{"baram":"*"},"capabilities":[]}"#;
+        let m: PluginManifest = serde_json::from_str(json).unwrap();
+        assert_eq!(m.trust, None);
     }
 
     #[test]

@@ -106,6 +106,28 @@ export type PluginCapability =
   | "statusbar"
   | "storage";
 
+/**
+ * §260 declarative contribution surface for sandboxed plugins. Populated in
+ * the manifest; consumed by the sandbox runtime in later phases. Every field
+ * is serializable (crosses the plugin/host boundary as data).
+ */
+export interface PluginContributions {
+  commands?: Array<{ id: string; palette?: boolean; title: string }>;
+  menu?: Array<{ command: string; id: string; title: string; when?: string }>;
+  settings?: Array<{
+    default?: boolean | number | string;
+    key: string;
+    label: string;
+    type: "boolean" | "number" | "string";
+  }>;
+  statusBar?: Array<{
+    command?: string;
+    id: string;
+    text: string;
+    tooltip?: string;
+  }>;
+}
+
 export type PluginEventName = "editor:ready" | "file:open" | "file:save";
 
 export interface PluginFetchInit {
@@ -123,6 +145,7 @@ export interface PluginFetchResponse {
 export interface PluginManifest {
   author: string;
   capabilities: PluginCapability[];
+  contributions?: PluginContributions;
   dependencies?: string[];
   description: string;
   engines: { baram: string };
@@ -135,6 +158,7 @@ export interface PluginManifest {
   name: string;
   repository?: string;
   tiptapExtensions?: TiptapExtensionDef[];
+  trust: PluginTrust;
   version: string;
 }
 
@@ -162,6 +186,8 @@ export interface PluginSidebarPanelOptions {
 export type PluginStatus =
   "disabled" | "enabled" | "installing" | "not-installed";
 
+export type PluginTrust = "sandboxed" | "trusted";
+
 export interface RegistryEntry {
   author: string;
   capabilities: PluginCapability[];
@@ -177,6 +203,7 @@ export interface RegistryEntry {
   license: string;
   name: string;
   repository?: string;
+  trust?: PluginTrust;
   version: string;
 }
 

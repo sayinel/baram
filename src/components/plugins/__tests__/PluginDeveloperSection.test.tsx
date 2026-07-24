@@ -18,6 +18,7 @@ const baseManifest: PluginManifest = {
   main: "index.mjs",
   engines: { baram: ">=0.2.0" },
   capabilities: [],
+  trust: "sandboxed",
 };
 
 const addDevFolder = vi.fn(async (..._a: unknown[]) => ({

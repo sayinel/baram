@@ -20,6 +20,7 @@ function manifest(caps: string[]): PluginManifest {
     license: "MIT",
     main: "index.mjs",
     name: "Life",
+    trust: "sandboxed",
     version: "1.0.0",
   };
 }
