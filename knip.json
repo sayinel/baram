@@ -6,6 +6,7 @@
     "src/extensions/nodes/index.ts",
     "src/pipeline/index.ts",
     "src/plugins/*.ts",
+    "src/sandbox/sandbox-entry.ts",
     "src/extensions/plugins/*.ts",
     "src/keybindings/*.ts",
     "src/stores/**/*.ts",

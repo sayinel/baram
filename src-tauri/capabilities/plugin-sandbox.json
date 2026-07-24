@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "plugin-sandbox",
+  "description": "§260 — capability for per-plugin sandbox WebviewWindows (label plugin-*). Grants ONLY the Tauri event channel the sandbox client needs (global emit for s2h, listen for h2s). NO fs/keyring/llm/git. The `plugin_call` broker command + the sensitive-command ACL lockdown land in Phase 3.",
+  "windows": ["plugin-*"],
+  "permissions": ["core:event:allow-emit", "core:event:allow-listen", "core:event:allow-unlisten"]
+}

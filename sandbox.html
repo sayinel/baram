@@ -1,0 +1,17 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <!-- §260 sandbox-strict CSP. No direct network; scripts only from app origin
+         (Phase 2 loads no asset: plugin — that + the global asset: allowance land
+         in Phase 3). Meta CSP can only tighten vs the global config. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; connect-src ipc: http://ipc.localhost"
+    />
+    <title>Baram plugin sandbox</title>
+  </head>
+  <body>
+    <script type="module" src="/src/sandbox/sandbox-entry.ts"></script>
+  </body>
+</html>

@@ -19,6 +19,13 @@ export default defineConfig(async () => ({
   // rollupOptions.manualChunks function; first matching group wins.
   build: {
     rolldownOptions: {
+      // §260 multi-page build — sandbox.html is the isolated plugin realm's
+      // entry point (src/sandbox/sandbox-entry.ts). "main" must stay listed so
+      // index.html still emits at the dist root (Tauri frontendDist needs it).
+      input: {
+        main: path.resolve(__dirname, "index.html"),
+        sandbox: path.resolve(__dirname, "sandbox.html"),
+      },
       output: {
         codeSplitting: {
           groups: [
