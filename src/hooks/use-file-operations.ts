@@ -105,6 +105,7 @@ export function useFileOperations({
     const selected = await open({
       filters: [
         { name: "Markdown", extensions: ["md", "markdown", "mdx"] },
+        { name: "HTML", extensions: ["html", "htm"] },
         { name: "Text", extensions: ["txt", "text"] },
         { name: "All Files", extensions: ["*"] },
       ],

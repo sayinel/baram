@@ -40,6 +40,16 @@ export function getLanguageForFile(filePath: string): null | string {
   return EXT_TO_LANG[ext] ?? null;
 }
 
+const HTML_EXTENSIONS = new Set(["htm", "html"]);
+
+/** Returns true for .html / .htm files — they get a rendered preview + source toggle. */
+export function isHtmlFile(filePath: string | undefined): boolean {
+  if (!filePath) return false;
+  const ext = filePath.split(".").pop()?.toLowerCase();
+  if (!ext) return false;
+  return HTML_EXTENSIONS.has(ext);
+}
+
 /** Returns true for .md, .markdown, .mdx — and for untitled files (no path). */
 export function isMarkdownFile(filePath: string | undefined): boolean {
   if (!filePath) return true; // untitled → treat as markdown

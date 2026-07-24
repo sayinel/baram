@@ -36,10 +36,11 @@ import { resolveZettelDir } from "../../utils/zettelkasten/zettelkasten";
 import "../../styles/zettelkasten.css";
 import { PluginStatusBarItems } from "./PluginStatusBarItems";
 
-export type EditorMode = "graph" | "source" | "wysiwyg";
+export type EditorMode = "graph" | "preview" | "source" | "wysiwyg";
 
 const MODE_LABELS: Record<EditorMode, string> = {
   graph: "Graph",
+  preview: "Preview",
   source: "Source",
   wysiwyg: "WYSIWYG",
 };

@@ -507,5 +507,9 @@
   "fileTree.accessDenied.step3": "그런 다음 아래 다시 시도를 누르세요 (앱 재시작 불필요).",
   "fileTree.accessDenied.retry": "다시 시도",
   "fileTree.accessDenied.toast": "시스템이 폴더 접근을 거부했습니다.",
-  "fileTree.accessDenied.toastGeneric": "폴더를 읽을 수 없습니다."
+  "fileTree.accessDenied.toastGeneric": "폴더를 읽을 수 없습니다.",
+
+  "htmlPreview.showPreview": "미리보기",
+  "htmlPreview.showSource": "소스",
+  "htmlPreview.toggleTitle": "HTML 미리보기 / 소스 전환"
 }

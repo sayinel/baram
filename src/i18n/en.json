@@ -507,5 +507,9 @@
   "fileTree.accessDenied.step3": "Then click Retry below (no app restart needed).",
   "fileTree.accessDenied.retry": "Retry",
   "fileTree.accessDenied.toast": "Folder access was denied by the system.",
-  "fileTree.accessDenied.toastGeneric": "Couldn't read the folder."
+  "fileTree.accessDenied.toastGeneric": "Couldn't read the folder.",
+
+  "htmlPreview.showPreview": "Preview",
+  "htmlPreview.showSource": "Source",
+  "htmlPreview.toggleTitle": "Toggle HTML preview / source"
 }
