@@ -24,7 +24,6 @@ export class SandboxHost {
     string,
     { session: SandboxSession; window: SandboxWindow }
   >();
-  private seq = 0;
 
   constructor(
     private readonly windowFactory: SandboxWindowFactory = defaultWindowFactory,
@@ -39,7 +38,9 @@ export class SandboxHost {
     const existing = this.live.get(pluginId);
     if (existing) return existing.session;
     const label = `plugin-${pluginId}`;
-    const token = `${pluginId}-${++this.seq}-${Math.floor(performance.now())}`;
+    // §260 — unguessable per-session token so another plugin's sandbox cannot
+    // guess this session's event-channel name and inject onto it.
+    const token = `${pluginId}-${crypto.randomUUID()}`;
     const window = await this.windowFactory(label, token);
     const session = new SandboxSession(window.transport);
     this.live.set(pluginId, { session, window });
