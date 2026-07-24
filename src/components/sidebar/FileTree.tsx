@@ -18,6 +18,7 @@ import {
   openFolder,
   useFileStore,
 } from "../../stores/file/file";
+import { isPdfFile } from "../../utils/file-type";
 import { logger } from "../../utils/logger";
 import { getFileIcon } from "./file-icon";
 import { FileTreeContextMenu } from "./file-tree-context-menu";
@@ -314,7 +315,10 @@ export function FileTree(): React.JSX.Element {
         return;
       }
       try {
-        const content = await readFile(entry.path);
+        // PDFs are binary — never read through the UTF-8 IPC; the viewer
+        // loads them via the asset: protocol. Cache "" so tab switching
+        // treats the tab as loaded.
+        const content = isPdfFile(entry.path) ? "" : await readFile(entry.path);
         setFileContent(entry.path, content);
         openTab({
           contextId: "",
