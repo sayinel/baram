@@ -97,12 +97,42 @@ fn every_command_granted_to_exactly_one_tier() {
 }
 
 #[test]
-fn sandbox_tier_gets_only_plugin_call() {
-    let sandbox = capability_allowed_commands("capabilities/plugin-sandbox.json");
-    let expected: BTreeSet<String> = [norm("plugin_call")].into_iter().collect();
+fn sandbox_tier_grants_exactly_its_allowlist() {
+    // Guard the WHOLE permissions array of the sandbox capability, not just its
+    // bare app-command (allow-*) grants. A future colon-prefixed core/plugin
+    // permission added to plugin-sandbox.json — e.g. `core:webview:allow-create-
+    // webview-window`, `core:default`, or a plugin scope like `fs:allow-read` —
+    // would be a boundary leak, exactly the class this lockdown exists to prevent,
+    // yet a bare-`allow-*` check would miss it. A plugin-* window may hold ONLY
+    // the event channel the sandbox client needs plus the single broker command.
+    // `norm()` maps `-`->`_` on both sides, so `allow-plugin-call` (kebab, as
+    // tauri-build generates) and `core:event:allow-emit` compare stably.
+    let json: serde_json::Value = serde_json::from_str(&read("capabilities/plugin-sandbox.json"))
+        .expect("parse capability json");
+    let perms: BTreeSet<String> = json["permissions"]
+        .as_array()
+        .expect("permissions array")
+        .iter()
+        .filter_map(|p| p.as_str())
+        .map(norm)
+        .collect();
+    // Expected set, normalized (norm collapses `-`->`_`):
+    //   core:event:allow-emit / -listen / -unlisten  + the broker  allow-plugin-call
+    let expected: BTreeSet<String> = [
+        "core:event:allow_emit",
+        "core:event:allow_listen",
+        "core:event:allow_unlisten",
+        "allow_plugin_call",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect();
     assert_eq!(
-        sandbox, expected,
-        "plugin-sandbox capability must grant exactly `plugin_call` (got {sandbox:?})"
+        perms, expected,
+        "plugin-sandbox capability must grant EXACTLY the event channel + plugin_call.\n\
+         unexpected (possible boundary leak): {:?}\nmissing: {:?}",
+        perms.difference(&expected).collect::<Vec<_>>(),
+        expected.difference(&perms).collect::<Vec<_>>(),
     );
 }
 
