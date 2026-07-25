@@ -44,8 +44,7 @@ pub enum PluginError {
 
 mod authorizer;
 // Re-exported for the `plugin_call` broker + sandbox register/deregister
-// commands (Phase 3a Task 2 / 3b), not yet wired.
-#[allow(unused_imports)]
+// commands (Phase 3a Task 2, src-tauri/src/commands/plugin_cmd.rs).
 pub use authorizer::{plugin_id_from_label, PluginAuthorizer, PluginOp};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

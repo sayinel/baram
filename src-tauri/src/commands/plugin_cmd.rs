@@ -176,3 +176,100 @@ pub async fn plugin_storage_list(plugin_id: String) -> Result<Vec<String>, Strin
 pub async fn plugin_storage_remove(plugin_id: String, key: String) -> Result<(), String> {
     plugin::storage_remove(plugin_id, key).await
 }
+
+/// Only a host window (main / file-mode) may register or deregister a plugin's
+/// capabilities — a sandbox window must never grant itself anything.
+fn host_window_guard(label: &str) -> Result<(), String> {
+    if plugin::plugin_id_from_label(label).is_some() {
+        return Err("sandbox windows may not register/deregister capabilities".to_string());
+    }
+    Ok(())
+}
+
+/// Execute an authorized op using the CALLER-derived plugin id (never a
+/// client-supplied id). Storage is namespaced per plugin id → isolation.
+async fn execute_op(plugin_id: &str, op: plugin::PluginOp) -> Result<serde_json::Value, String> {
+    use plugin::PluginOp::*;
+    match op {
+        StorageRead { key } => Ok(serde_json::json!(
+            plugin::storage_read(plugin_id.to_string(), key).await?
+        )),
+        StorageWrite { key, value } => {
+            plugin::storage_write(plugin_id.to_string(), key, value).await?;
+            Ok(serde_json::Value::Null)
+        }
+        StorageList => Ok(serde_json::json!(
+            plugin::storage_list(plugin_id.to_string()).await?
+        )),
+        StorageRemove { key } => {
+            plugin::storage_remove(plugin_id.to_string(), key).await?;
+            Ok(serde_json::Value::Null)
+        }
+        HttpFetch { url, init } => Ok(serde_json::json!(plugin::http_fetch(url, init).await?)),
+    }
+}
+
+/// §260 host-only — register a sandbox plugin's granted capabilities. Rejects
+/// callers whose window label is itself a sandbox (`plugin-<id>`).
+#[tauri::command]
+pub async fn plugin_sandbox_register(
+    window: tauri::WebviewWindow,
+    plugin_id: String,
+    capabilities: Vec<String>,
+    authorizer: tauri::State<'_, plugin::PluginAuthorizer>,
+) -> Result<(), String> {
+    host_window_guard(window.label())?;
+    authorizer.register(format!("plugin-{plugin_id}"), capabilities);
+    Ok(())
+}
+
+/// §260 host-only — drop a sandbox plugin's registered capabilities.
+#[tauri::command]
+pub async fn plugin_sandbox_deregister(
+    window: tauri::WebviewWindow,
+    plugin_id: String,
+    authorizer: tauri::State<'_, plugin::PluginAuthorizer>,
+) -> Result<(), String> {
+    host_window_guard(window.label())?;
+    authorizer.deregister(&format!("plugin-{plugin_id}"));
+    Ok(())
+}
+
+/// The sole IPC entry point a sandboxed plugin may use for privileged ops. Every
+/// call is authorized by the Tauri-verified caller label + registered capability.
+#[tauri::command]
+pub async fn plugin_call(
+    window: tauri::WebviewWindow,
+    op: plugin::PluginOp,
+    authorizer: tauri::State<'_, plugin::PluginAuthorizer>,
+) -> Result<serde_json::Value, String> {
+    let plugin_id = authorizer
+        .authorize(window.label(), op.required_capability())
+        .map_err(|e| e.to_string())?;
+    execute_op(&plugin_id, op).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn host_window_guard_rejects_plugin_windows() {
+        assert!(host_window_guard("plugin-evil").is_err());
+        assert!(host_window_guard("main").is_ok());
+        assert!(host_window_guard("file-1").is_ok());
+    }
+
+    #[test]
+    fn execute_op_maps_storage_ok_to_json_null() {
+        // StorageWrite/Remove return JSON null on success; StorageList returns an
+        // array. We assert the mapping shape for a list against an empty tempdir
+        // id (a fresh plugin id has no storage dir yet → []).
+        let out = tauri::async_runtime::block_on(execute_op(
+            "phase3a-test-empty",
+            plugin::PluginOp::StorageList,
+        ))
+        .unwrap();
+        assert!(out.is_array());
+    }
+}

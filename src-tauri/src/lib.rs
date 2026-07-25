@@ -158,6 +158,7 @@ pub fn run() {
         )))
         .manage(llm::cancel::CancelRegistry::new())
         .manage(embedding_cmd::EmbeddingState::new())
+        .manage(plugin::PluginAuthorizer::new())
         .invoke_handler(tauri::generate_handler![
             fs_cmd::set_vault_root,
             fs_cmd::read_file,
@@ -246,6 +247,9 @@ pub fn run() {
             plugin_cmd::plugin_storage_write,
             plugin_cmd::plugin_storage_list,
             plugin_cmd::plugin_storage_remove,
+            plugin_cmd::plugin_call,
+            plugin_cmd::plugin_sandbox_register,
+            plugin_cmd::plugin_sandbox_deregister,
             embedding_cmd::embed_text,
             embedding_cmd::search_knowledge,
             embedding_cmd::index_vault,

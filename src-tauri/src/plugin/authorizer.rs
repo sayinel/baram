@@ -3,9 +3,6 @@
 // authorizes each brokered op by caller identity + capability. The label is
 // unforgeable (Tauri sets it); the granted set is populated by the host window
 // via `plugin_sandbox_register` (a plugin window is rejected from registering).
-// Not yet wired into IPC commands (that's the `plugin_call` broker, Phase 3a
-// Task 2) — suppress dead-code until then.
-#![allow(dead_code)]
 use std::collections::HashMap;
 use std::sync::Mutex;
 
