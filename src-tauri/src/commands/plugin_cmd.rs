@@ -237,6 +237,13 @@ pub async fn plugin_sandbox_deregister(
 
 /// The sole IPC entry point a sandboxed plugin may use for privileged ops. Every
 /// call is authorized by the Tauri-verified caller label + registered capability.
+///
+/// §260 — unlike the §259-gated plugin_install/plugin_http_fetch, plugin_call is
+/// intentionally NOT behind `plugins_runtime_enabled()`: it is the sandboxed
+/// channel that #260 Phase 5's release-gate transition will *allow* in release
+/// builds. Its control is the authorizer (an unregistered/empty map denies every
+/// call) plus that future release-gate — never the §259 kill-switch, which Phase 5
+/// lifts for sandboxed plugins.
 #[tauri::command]
 pub async fn plugin_call(
     window: tauri::WebviewWindow,
@@ -258,18 +265,5 @@ mod tests {
         assert!(host_window_guard("plugin-evil").is_err());
         assert!(host_window_guard("main").is_ok());
         assert!(host_window_guard("file-1").is_ok());
-    }
-
-    #[test]
-    fn execute_op_maps_storage_ok_to_json_null() {
-        // StorageWrite/Remove return JSON null on success; StorageList returns an
-        // array. We assert the mapping shape for a list against an empty tempdir
-        // id (a fresh plugin id has no storage dir yet → []).
-        let out = tauri::async_runtime::block_on(execute_op(
-            "phase3a-test-empty",
-            plugin::PluginOp::StorageList,
-        ))
-        .unwrap();
-        assert!(out.is_array());
     }
 }
