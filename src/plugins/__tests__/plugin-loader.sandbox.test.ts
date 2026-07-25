@@ -102,6 +102,30 @@ describe("PluginLoader sandboxed path (§260 3c-1)", () => {
     expect(f.invokeCommand).toHaveBeenCalledWith("hello");
   });
 
+  it("honors palette:false — registers the handler but hides it from the palette", async () => {
+    const f = fakeHost();
+    const loader = new PluginLoader(undefined, f.host);
+    await loader.loadPlugin(
+      "/p/demo",
+      sandboxedManifest({
+        contributions: {
+          commands: [
+            { id: "shown", title: "Shown" },
+            { id: "hidden", palette: false, title: "Hidden" },
+          ],
+        },
+      }),
+    );
+
+    // Only the visible command reaches the palette...
+    expect(
+      usePluginUIStore.getState().paletteCommands.map((c) => c.commandId),
+    ).toEqual(["demo.shown"]);
+    // ...but the hidden command is still invocable (menu/programmatic path).
+    await executePluginCommand("demo.hidden");
+    expect(f.invokeCommand).toHaveBeenCalledWith("hidden");
+  });
+
   it("stops the sandbox, deregisters, and removes palette commands on unload", async () => {
     const f = fakeHost();
     const loader = new PluginLoader(undefined, f.host);

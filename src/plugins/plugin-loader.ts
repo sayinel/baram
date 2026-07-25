@@ -238,25 +238,39 @@ export class PluginLoader {
         manifest.contributions ?? {},
       );
     } catch (err) {
-      // roll back the capability grant if the sandbox failed to start
-      await pluginSandboxDeregister(manifest.id);
+      // roll back the capability grant if the sandbox failed to start; never let a
+      // deregister failure mask the original start error.
+      try {
+        await pluginSandboxDeregister(manifest.id);
+      } catch (deregErr) {
+        logger.error(
+          `[PluginLoader] rollback deregister failed for ${manifest.id}:`,
+          deregErr,
+        );
+      }
       throw err;
     }
 
     const disposables: Disposable[] = [];
     for (const cmd of session.contributions?.commands ?? []) {
       const fullId = `${manifest.id}.${cmd.id}`;
+      // Always register the handler so a command can be invoked via menu or
+      // programmatically; only surface it in the palette unless the manifest
+      // opted out (palette: false) — mirrors the trusted path's visibility rule.
       disposables.push(
         registerHostCommandHandler(fullId, () => session.invokeCommand(cmd.id)),
       );
-      usePluginUIStore.getState().registerPaletteCommand({
-        commandId: fullId,
-        pluginId: manifest.id,
-        title: cmd.title,
-      });
-      disposables.push({
-        dispose: () => usePluginUIStore.getState().removePaletteCommand(fullId),
-      });
+      if (cmd.palette !== false) {
+        usePluginUIStore.getState().registerPaletteCommand({
+          commandId: fullId,
+          pluginId: manifest.id,
+          title: cmd.title,
+        });
+        disposables.push({
+          dispose: () =>
+            usePluginUIStore.getState().removePaletteCommand(fullId),
+        });
+      }
     }
     // stop the sandbox + drop its capability grant on unload
     disposables.push({
