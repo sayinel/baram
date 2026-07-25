@@ -24,9 +24,13 @@ fn norm(s: &str) -> String {
 /// `module::` path prefix stripped. Authoritative registered set.
 fn generate_handler_commands() -> BTreeSet<String> {
     let src = read("src/lib.rs");
-    let start = src.find("generate_handler![").expect("generate_handler! not found");
+    let start = src
+        .find("generate_handler![")
+        .expect("generate_handler! not found");
     let rest = &src[start + "generate_handler![".len()..];
-    let end = rest.find("])").expect("generate_handler! close `])` not found");
+    let end = rest
+        .find("])")
+        .expect("generate_handler! close `])` not found");
     rest[..end]
         .split(',')
         .map(str::trim)
@@ -38,7 +42,9 @@ fn generate_handler_commands() -> BTreeSet<String> {
 /// Command list passed to `AppManifest::new().commands(&[ ... ])` in build.rs.
 fn build_manifest_commands() -> BTreeSet<String> {
     let src = read("build.rs");
-    let start = src.find(".commands(&[").expect(".commands(&[ not found in build.rs");
+    let start = src
+        .find(".commands(&[")
+        .expect(".commands(&[ not found in build.rs");
     let rest = &src[start + ".commands(&[".len()..];
     let end = rest.find("])").expect(".commands close `])` not found");
     rest[..end]
@@ -69,7 +75,8 @@ fn app_manifest_matches_registered_commands() {
     let registered = generate_handler_commands();
     let manifest = build_manifest_commands();
     assert_eq!(
-        registered, manifest,
+        registered,
+        manifest,
         "build.rs AppManifest::commands must list exactly the generate_handler! commands.\n\
          missing from build.rs: {:?}\nextra in build.rs: {:?}",
         registered.difference(&manifest).collect::<Vec<_>>(),
@@ -84,11 +91,15 @@ fn every_command_granted_to_exactly_one_tier() {
     let sandbox = capability_allowed_commands("capabilities/plugin-sandbox.json");
 
     let both: Vec<_> = main.intersection(&sandbox).collect();
-    assert!(both.is_empty(), "commands granted to BOTH main and sandbox: {both:?}");
+    assert!(
+        both.is_empty(),
+        "commands granted to BOTH main and sandbox: {both:?}"
+    );
 
     let union: BTreeSet<_> = main.union(&sandbox).cloned().collect();
     assert_eq!(
-        registered, union,
+        registered,
+        union,
         "every registered command must be granted to exactly one tier.\n\
          ungranted (breaks host app): {:?}\nstray grant (no such command): {:?}",
         registered.difference(&union).collect::<Vec<_>>(),
@@ -128,7 +139,8 @@ fn sandbox_tier_grants_exactly_its_allowlist() {
     .map(str::to_string)
     .collect();
     assert_eq!(
-        perms, expected,
+        perms,
+        expected,
         "plugin-sandbox capability must grant EXACTLY the event channel + plugin_call.\n\
          unexpected (possible boundary leak): {:?}\nmissing: {:?}",
         perms.difference(&expected).collect::<Vec<_>>(),
@@ -143,7 +155,8 @@ fn main_tier_gets_everything_except_plugin_call() {
     let mut expected = registered;
     expected.remove(&norm("plugin_call"));
     assert_eq!(
-        main, expected,
+        main,
+        expected,
         "main/file-* capability must grant every command except plugin_call.\n\
          missing: {:?}\nextra: {:?}",
         expected.difference(&main).collect::<Vec<_>>(),
