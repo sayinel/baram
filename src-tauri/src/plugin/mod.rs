@@ -42,6 +42,12 @@ pub enum PluginError {
     NotFound(String),
 }
 
+mod authorizer;
+// Re-exported for the `plugin_call` broker + sandbox register/deregister
+// commands (Phase 3a Task 2 / 3b), not yet wired.
+#[allow(unused_imports)]
+pub use authorizer::{plugin_id_from_label, PluginAuthorizer, PluginOp};
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum PluginTrust {
