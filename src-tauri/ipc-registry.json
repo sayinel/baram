@@ -941,6 +941,33 @@
       "description": "Plugin app-global key/value storage (~/.baram/plugin-data/<id>), path-traversal-guarded (§69 Phase D)"
     },
     {
+      "name": "plugin_call",
+      "input": { "op": "PluginOp (internally-tagged on \"kind\")" },
+      "output": "unknown (op-specific JSON)",
+      "module": "plugin",
+      "spec": "§260",
+      "status": "implemented",
+      "description": "§260 broker — authorizes a sandbox op by window.label() + registered capability, executes bounded (caller-derived plugin id)"
+    },
+    {
+      "name": "plugin_sandbox_register",
+      "input": { "plugin_id": "string", "capabilities": "string[]" },
+      "output": "void",
+      "module": "plugin",
+      "spec": "§260",
+      "status": "implemented",
+      "description": "§260 host-only — register a sandbox plugin's granted capabilities (rejects sandbox-window callers)"
+    },
+    {
+      "name": "plugin_sandbox_deregister",
+      "input": { "plugin_id": "string" },
+      "output": "void",
+      "module": "plugin",
+      "spec": "§260",
+      "status": "implemented",
+      "description": "§260 host-only — drop a sandbox plugin's registered capabilities"
+    },
+    {
       "name": "embed_text",
       "input": { "text": "string", "provider": "string", "model": "string", "base_url": "string?" },
       "output": "number[]",
