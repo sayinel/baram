@@ -28,9 +28,13 @@ function fakeFactory(created: string[], closed: string[]) {
   } => {
     created.push(label);
     const { host, sandbox } = createChannelPair();
-    startSandboxClient(sandbox, async () => ({
-      activate: (ctx) => ctx.commands.register("ping", () => "pong"),
-    }));
+    startSandboxClient(
+      sandbox,
+      async () => ({
+        activate: (ctx) => ctx.commands.register("ping", () => "pong"),
+      }),
+      async () => undefined,
+    );
     return { close: () => closed.push(label), transport: host };
   };
 }

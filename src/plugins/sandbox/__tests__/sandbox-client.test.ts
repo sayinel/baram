@@ -16,9 +16,11 @@ const DECLARED: PluginContributions = {
   ],
 };
 
+const noopBroker = async () => undefined;
+
 function wire(activate: (ctx: SandboxContext) => void) {
   const { host, sandbox } = createChannelPair();
-  startSandboxClient(sandbox, async () => ({ activate }));
+  startSandboxClient(sandbox, async () => ({ activate }), noopBroker);
   return new SandboxSession(host);
 }
 
@@ -99,10 +101,14 @@ describe("startSandboxClient (§260 sandbox shim)", () => {
       resolveImport = resolve;
     });
     const { host, sandbox } = createChannelPair();
-    startSandboxClient(sandbox, async () => {
-      count.n++;
-      return pendingImport;
-    });
+    startSandboxClient(
+      sandbox,
+      async () => {
+        count.n++;
+        return pendingImport;
+      },
+      noopBroker,
+    );
 
     // Drive host->sandbox directly: the first activate starts importing and
     // never resolves yet, so a genuine re-entrant guard is the only thing
@@ -121,22 +127,26 @@ describe("startSandboxClient (§260 sandbox shim)", () => {
   it("recovers after activateError — a retry re-activates cleanly with no stale registrations", async () => {
     let attempt = 0;
     const { host, sandbox } = createChannelPair();
-    startSandboxClient(sandbox, async () => {
-      attempt++;
-      if (attempt === 1) {
+    startSandboxClient(
+      sandbox,
+      async () => {
+        attempt++;
+        if (attempt === 1) {
+          return {
+            activate: (ctx: SandboxContext) => {
+              ctx.commands.register("stale", () => 0);
+              throw new Error("first attempt fails");
+            },
+          };
+        }
         return {
           activate: (ctx: SandboxContext) => {
-            ctx.commands.register("stale", () => 0);
-            throw new Error("first attempt fails");
+            ctx.commands.register("fresh", () => 0);
           },
         };
-      }
-      return {
-        activate: (ctx: SandboxContext) => {
-          ctx.commands.register("fresh", () => 0);
-        },
-      };
-    });
+      },
+      noopBroker,
+    );
     const s = new SandboxSession(host);
     await expect(s.activate("p", "u", { commands: [] })).rejects.toThrow(
       /first attempt fails/,

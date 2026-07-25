@@ -2,6 +2,8 @@
 // only outward channel is the transport. Guards re-activation and serializes
 // outbound payloads defensively (real Tauri events are serde-JSON, not
 // structured clone — functions/BigInt/etc. would corrupt silently).
+import type { NetworkAPI, StorageAPI } from "../types";
+import type { PluginOp } from "./plugin-op";
 import type { HostToSandbox, SandboxToHost } from "./protocol";
 import type { SandboxTransport } from "./transport";
 
@@ -15,6 +17,12 @@ export interface SandboxContext {
     emit(event: string, ...args: unknown[]): void;
     on(event: string, handler: (...args: unknown[]) => void): void;
   };
+  // §260 3c-1 — brokered privileged APIs. Routed through `broker` (= plugin_call
+  // in production). Exposed unconditionally: the Rust authorizer, keyed on the
+  // Tauri-verified window.label(), is the real per-call capability gate — an
+  // op for an unregistered capability fails closed there, not here.
+  network: NetworkAPI;
+  storage: StorageAPI;
 }
 
 interface PluginModule {
@@ -24,10 +32,26 @@ interface PluginModule {
 export function startSandboxClient(
   transport: SandboxTransport<HostToSandbox, SandboxToHost>,
   importer: (url: string) => Promise<PluginModule>,
+  broker: (op: PluginOp) => Promise<unknown>,
 ): void {
   const commands = new Map<string, (...args: unknown[]) => unknown>();
   const eventHandlers = new Map<string, Array<(...args: unknown[]) => void>>();
   let activateState: "activating" | "done" | "idle" = "idle";
+
+  const storage: StorageAPI = {
+    list: () => broker({ kind: "storage_list" }) as Promise<string[]>,
+    read: (key) =>
+      broker({ key, kind: "storage_read" }) as Promise<null | string>,
+    remove: (key) => broker({ key, kind: "storage_remove" }) as Promise<void>,
+    write: (key, value) =>
+      broker({ key, kind: "storage_write", value }) as Promise<void>,
+  };
+  const network: NetworkAPI = {
+    fetch: (url, init) =>
+      broker({ init, kind: "http_fetch", url }) as ReturnType<
+        NetworkAPI["fetch"]
+      >,
+  };
 
   const ctx: SandboxContext = {
     commands: { register: (id, handler) => void commands.set(id, handler) },
@@ -48,6 +72,8 @@ export function startSandboxClient(
         eventHandlers.set(event, list);
       },
     },
+    network,
+    storage,
   };
 
   async function onActivate(pluginUrl: string): Promise<void> {
