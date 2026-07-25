@@ -1,7 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "plugin-sandbox",
-  "description": "§260 — capability for per-plugin sandbox WebviewWindows (label plugin-*). Grants ONLY the Tauri event channel the sandbox client needs (global emit for s2h, listen for h2s). NO fs/keyring/llm/git. The `plugin_call` broker command + the sensitive-command ACL lockdown land in Phase 3.",
+  "description": "§260 — capability for per-plugin sandbox WebviewWindows (label plugin-*). Grants the Tauri event channel the sandbox client needs (emit for s2h, listen/unlisten for h2s) plus the single privileged broker command plugin_call. It grants NO other app command: every other #[tauri::command] is ACL-gated (Phase 3b AppManifest) and withheld here, so a sandbox webview cannot invoke fs/keyring/llm/git/etc. directly — only the authorizer-checked plugin_call. Host-only plugin_sandbox_register/deregister are intentionally NOT granted here (host windows only).",
   "windows": ["plugin-*"],
-  "permissions": ["core:event:allow-emit", "core:event:allow-listen", "core:event:allow-unlisten"]
+  "permissions": [
+    "core:event:allow-emit",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "allow-plugin-call"
+  ]
 }
