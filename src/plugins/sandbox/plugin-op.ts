@@ -4,8 +4,8 @@
 import type { PluginFetchInit } from "../types";
 
 export type PluginOp =
-  | { init?: PluginFetchInit; kind: "http_fetch"; url: string; }
-  | { key: string; kind: "storage_read"; }
-  | { key: string; kind: "storage_remove"; }
+  | { init?: PluginFetchInit; kind: "http_fetch"; url: string }
+  | { key: string; kind: "storage_read" }
+  | { key: string; kind: "storage_remove" }
   | { key: string; kind: "storage_write"; value: string }
   | { kind: "storage_list" };

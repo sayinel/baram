@@ -64,7 +64,7 @@ export interface InstalledPlugin {
     updatedAt: number;
 }
 export interface LoadedPlugin {
-    context: ExtensionContext;
+    context?: ExtensionContext;
     disposables: Disposable[];
     id: string;
     manifest: PluginManifest;
