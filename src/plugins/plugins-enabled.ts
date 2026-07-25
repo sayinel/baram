@@ -16,3 +16,11 @@
 export function arePluginsEnabled(): boolean {
   return import.meta.env.VITE_ENABLE_PLUGINS === "1";
 }
+
+// §260 — creating a per-plugin sandbox WebviewWindow stays dev-only until Phase 5
+// lifts the release gate. Even if a packaged build somehow enabled plugins, it
+// must never spawn a `plugin-*` webview. `import.meta.env.DEV` is false in every
+// production (`vite build`) bundle. Belt-and-suspenders over `arePluginsEnabled`.
+export function isSandboxRuntimeAllowed(): boolean {
+  return import.meta.env.DEV && arePluginsEnabled();
+}

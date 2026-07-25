@@ -81,7 +81,9 @@ export interface InstalledPlugin {
 }
 
 export interface LoadedPlugin {
-  context: ExtensionContext;
+  // §260 3c-1 — absent for sandboxed plugins (they run in a separate webview, not
+  // via a main-realm ExtensionContext); present for trusted (same-realm) plugins.
+  context?: ExtensionContext;
   disposables: Disposable[];
   id: string;
   manifest: PluginManifest;
