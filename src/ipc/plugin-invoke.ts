@@ -1,6 +1,7 @@
 // §69 Plugin Marketplace — IPC wrappers
 import { invoke } from "@tauri-apps/api/core";
 
+import type { PluginOp } from "../plugins/sandbox/plugin-op";
 import type {
   InstalledPlugin,
   PluginFetchInit,
@@ -20,6 +21,11 @@ export async function pluginAddDevFolder(
   path: string,
 ): Promise<RustInstalledPluginInfo> {
   return invoke<RustInstalledPluginInfo>("plugin_add_dev_folder", { path });
+}
+
+/** §260 sandbox broker — the only privileged channel a plugin-* window has. */
+export async function pluginCall(op: PluginOp): Promise<unknown> {
+  return invoke<unknown>("plugin_call", { op });
 }
 
 export async function pluginFetchRegistry(url: string): Promise<RegistryIndex> {
@@ -69,6 +75,19 @@ export async function pluginReadManifest(
 
 export async function pluginRemoveDevFolder(path: string): Promise<void> {
   return invoke<void>("plugin_remove_dev_folder", { path });
+}
+
+/** §260 host-only — drop a sandbox plugin's registered capabilities. */
+export async function pluginSandboxDeregister(pluginId: string): Promise<void> {
+  return invoke<void>("plugin_sandbox_deregister", { pluginId });
+}
+
+/** §260 host-only — register a sandbox plugin's granted capabilities. */
+export async function pluginSandboxRegister(
+  pluginId: string,
+  capabilities: string[],
+): Promise<void> {
+  return invoke<void>("plugin_sandbox_register", { pluginId, capabilities });
 }
 
 export async function pluginStorageList(pluginId: string): Promise<string[]> {
