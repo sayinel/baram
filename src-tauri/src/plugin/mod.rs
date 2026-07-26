@@ -563,23 +563,28 @@ pub fn read_bundle_in(dir: &Path, main: &str) -> Result<String, String> {
             "plugin entry \"{main}\" resolves outside its own directory"
         ));
     }
-    // Size-check via metadata BEFORE reading (§260 3c-2b security review, F2): the
-    // bundle is attacker-shipped and every activate pulls it across IPC into the
-    // sandbox's JS heap, so an oversized `main` must be refused without first
-    // allocating it — the same "never allocate to measure" rule as
-    // `serialized_len_capped`. A bundled ESM is normally well under 1 MiB.
-    let size = std::fs::metadata(&canonical_file)
-        // Distinct from the canonicalize failure above, so a diagnosis can tell
-        // "entry does not resolve" from "entry resolved but cannot be stat'ed".
-        .map_err(|e| format!("plugin entry \"{main}\" cannot be measured: {e}"))?
+    // Space-joined, not colon-joined: the helper's messages are written to read as
+    // predicates ("is N bytes, over the …"), so this composes into a sentence.
+    read_text_capped(&canonical_file, MAX_BUNDLE_BYTES)
+        .map_err(|e| format!("plugin entry \"{main}\" {e}"))
+}
+
+/// Read a file as text, refusing an over-cap file by `metadata` FIRST.
+///
+/// The "never allocate to measure" rule (§260 3c-2b security review, F2, and M6
+/// before it): every byte here crosses IPC into a sandbox's JS heap, so the cost of
+/// refusing must not scale with the input being refused. Shared by the bundle read
+/// and the brokered `files` read (Phase 3c-2c) so there is one implementation of it.
+pub fn read_text_capped(path: &Path, cap: u64) -> Result<String, String> {
+    let size = std::fs::metadata(path)
+        // Distinct from a read failure, so a diagnosis can tell "cannot be stat'ed"
+        // from "stat'ed fine but unreadable".
+        .map_err(|e| format!("cannot be measured: {e}"))?
         .len();
-    if size > MAX_BUNDLE_BYTES {
-        return Err(format!(
-            "plugin entry \"{main}\" is {size} bytes, over the {MAX_BUNDLE_BYTES}-byte limit"
-        ));
+    if size > cap {
+        return Err(format!("is {size} bytes, over the {cap}-byte limit"));
     }
-    std::fs::read_to_string(&canonical_file)
-        .map_err(|e| format!("could not read plugin entry \"{main}\": {e}"))
+    std::fs::read_to_string(path).map_err(|e| format!("could not be read: {e}"))
 }
 
 /// Resolves `key` to a path inside `dir`, rejecting any key that is not a
@@ -767,6 +772,33 @@ mod tests {
         let err = read_bundle_in(&base, "big.mjs").expect_err("oversized must be refused");
         assert!(err.contains("over the"), "unexpected error: {err}");
         assert!(read_bundle_in(&base, "ok.mjs").is_ok());
+
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    /// §260 3c-2c — the extracted helper keeps the stat-before-read rule for the
+    /// brokered `files` read too, and reports the size it refused (so a plugin author
+    /// can tell "too big" from "unreadable").
+    #[test]
+    fn read_text_capped_refuses_over_cap_and_admits_at_cap() {
+        let base = std::env::temp_dir().join(format!("baram-capped-{}", std::process::id()));
+        std::fs::create_dir_all(&base).unwrap();
+        let exact = base.join("exact.md");
+        std::fs::write(&exact, "12345").unwrap();
+
+        assert_eq!(read_text_capped(&exact, 5).unwrap(), "12345"); // == cap → admitted
+        let err = read_text_capped(&exact, 4).expect_err("one over the cap must be refused");
+        assert!(err.contains("is 5 bytes"), "unexpected error: {err}");
+        assert!(
+            err.contains("over the 4-byte limit"),
+            "unexpected error: {err}"
+        );
+        // A missing file is a distinct failure, not "too large".
+        let missing = read_text_capped(&base.join("nope.md"), 5).expect_err("missing must fail");
+        assert!(
+            missing.contains("cannot be measured"),
+            "unexpected: {missing}"
+        );
 
         std::fs::remove_dir_all(&base).ok();
     }

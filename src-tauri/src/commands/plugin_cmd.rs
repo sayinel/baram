@@ -317,6 +317,74 @@ fn is_plugin_directory(app: &tauri::AppHandle, dir: &std::path::Path) -> Result<
     Ok(false)
 }
 
+/// Upper bound on one brokered file payload (§260 Phase 3c-2c) — 8 MiB, in both
+/// directions. Baram targets 10,000-line documents (~hundreds of KiB), so this
+/// bounds a pathological call without touching real notes: a read is refused by
+/// `metadata` before allocating, and a write is refused before touching the disk.
+/// It bounds SIZE PER CALL, not total bytes written — the rate limiter bounds the
+/// loop, and neither claims to bound a patient plugin's cumulative writes.
+const MAX_PLUGIN_FILE_BYTES: u64 = 8 * 1024 * 1024;
+
+/// The app's own per-vault state directory, which brokered file ops refuse.
+const VAULT_STATE_DIR: &str = ".baram";
+
+/// §260 Phase 3c-2c — refuse the `.baram` tree even inside an open vault.
+///
+/// The `files` capability is consented to as "read and write notes in the vault",
+/// and `.baram/` is not notes — it is app state, and letting a plugin write it is a
+/// strictly larger privilege than the grant describes:
+///
+/// - `.baram/config.json` holds the vault's `ai` section, **including `baseUrl`**.
+///   A plugin that can rewrite it redirects every later LLM call in the app — the
+///   user's own prompts and document context — to an endpoint of its choosing. That
+///   is an exfiltration channel obtained without the `network` capability.
+/// - `.baram/snapshots/` holds copies of earlier file versions (§71), i.e. content
+///   the user may believe they deleted.
+///
+/// Matched on path COMPONENTS after canonicalization, so `..` tricks, a nested
+/// `sub/.baram/x`, and a symlink into the tree are all covered, while a file merely
+/// named `.baramish` is not.
+/// Returns the resolved path so the caller can operate on THAT, not the original —
+/// see `check_plugin_file_path`.
+fn reject_app_state_path(path: &str) -> Result<std::path::PathBuf, String> {
+    let resolved = crate::context::manager::resolve_canonical(path)?;
+    if resolved
+        .components()
+        .any(|c| c.as_os_str() == VAULT_STATE_DIR)
+    {
+        return Err(format!(
+            "access denied: {VAULT_STATE_DIR}/ is app state, not vault content"
+        ));
+    }
+    Ok(resolved)
+}
+
+/// Every check a brokered file op needs, cheapest-failing first: the vault rule
+/// shared with `read_file` (§88 multi-context, canonicalizing, deny-by-default when
+/// nothing is open), then the app-state carve-out.
+///
+/// Returns the CANONICAL path, and the ops use it instead of the caller's string.
+/// Unlike the app's own file commands, both halves of a symlink swap are available to
+/// this caller: a `files`-granted plugin can create a symlink inside the vault
+/// (pointing in-vault, so the check passes) and repoint it at `/etc` before the read
+/// lands. Acting on the canonical path closes that window — it names only real
+/// directories, so no later symlink change can redirect it.
+async fn check_plugin_file_path(
+    app: &tauri::AppHandle,
+    path: &str,
+) -> Result<std::path::PathBuf, String> {
+    super::fs_cmd::ensure_path_in_vault(app, path).await?;
+    reject_app_state_path(path)
+}
+
+/// The canonical path as a `&str` for the `crate::fs` helpers, which take one. A
+/// non-UTF-8 path is refused rather than lossily converted: a lossy string would
+/// name a DIFFERENT file than the one just authorized.
+fn authorized_path_str(path: &std::path::Path) -> Result<&str, String> {
+    path.to_str()
+        .ok_or_else(|| "path is not valid UTF-8".to_string())
+}
+
 /// Execute an authorized op using the CALLER-derived plugin id (never a
 /// client-supplied id). Storage is namespaced per plugin id → isolation.
 async fn execute_op(
@@ -346,6 +414,45 @@ async fn execute_op(
             Ok(serde_json::Value::Null)
         }
         HttpFetch { url, init } => Ok(serde_json::json!(plugin::http_fetch(url, init).await?)),
+        // §260 3c-2c — vault-bounded file ops. Authorization (files / files:readonly)
+        // already happened in `plugin_call`; what is left is WHERE, which is the same
+        // decision `read_file` makes, plus the `.baram` carve-out.
+        FilesRead { path } => {
+            let resolved = check_plugin_file_path(app, &path).await?;
+            let text = plugin::read_text_capped(&resolved, MAX_PLUGIN_FILE_BYTES)
+                .map_err(|e| format!("file \"{path}\" {e}"))?;
+            Ok(serde_json::json!(text))
+        }
+        FilesWrite { path, content } => {
+            let resolved = check_plugin_file_path(app, &path).await?;
+            // Measured on the string we already hold (Tauri parsed the op before this
+            // command ran), so unlike the read there is nothing to save by checking
+            // first — this bounds what reaches the DISK, not what reaches memory.
+            let len = content.len() as u64;
+            if len > MAX_PLUGIN_FILE_BYTES {
+                return Err(format!(
+                    "file \"{path}\" write is {len} bytes, over the {MAX_PLUGIN_FILE_BYTES}-byte limit"
+                ));
+            }
+            crate::fs::write_file(authorized_path_str(&resolved)?, &content)
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(serde_json::Value::Null)
+        }
+        FilesList { path } => {
+            let resolved = check_plugin_file_path(app, &path).await?;
+            // Names only — parity with the trusted tier's `FilesAPI.listDir`, and
+            // strictly less than `FileEntry` (no sizes, no mtimes) for the same call.
+            // Non-recursive: a recursive walk of a large vault is a cost a plugin
+            // should have to pay per directory, where the rate limiter can see it.
+            let entries = crate::fs::list_dir(authorized_path_str(&resolved)?, false)
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(serde_json::json!(entries
+                .into_iter()
+                .map(|e| e.name)
+                .collect::<Vec<_>>()))
+        }
     }
 }
 
@@ -517,7 +624,9 @@ mod tests {
             .send("plugin-alpha", serde_json::json!({}))
             .is_err());
         assert!(authorize_sandbox_caller("plugin-alpha", &authorizer).is_err());
-        assert!(authorizer.authorize("plugin-alpha", "storage").is_err());
+        assert!(authorizer
+            .authorize_any("plugin-alpha", &["storage"])
+            .is_err());
     }
 
     #[test]
@@ -566,6 +675,69 @@ mod tests {
         let huge = serde_json::json!({ "type": "emitEvent", "args": ["x".repeat(MAX_SANDBOX_REPORT_BYTES)] });
         let err = check_report_size(&huge).expect_err("oversized frame must be refused");
         assert!(err.contains("too large"), "unexpected error: {err}");
+    }
+
+    /// §260 3c-2c — `.baram/` is app state, and a plugin that can WRITE
+    /// `.baram/config.json` can repoint the vault's AI `baseUrl` and exfiltrate every
+    /// later prompt without holding `network`. Component-matched after
+    /// canonicalization, so nesting and `..` are covered and a similarly-named file
+    /// is not.
+    #[test]
+    fn app_state_paths_are_refused_at_any_depth() {
+        let base = std::env::temp_dir().join(format!("baram-state-{}", std::process::id()));
+        let state = base.join(VAULT_STATE_DIR);
+        let nested = base.join("notes").join(VAULT_STATE_DIR);
+        std::fs::create_dir_all(state.join("snapshots").join("data")).unwrap();
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(state.join("config.json"), "{}").unwrap();
+        std::fs::write(base.join("note.md").as_path(), "# hi").unwrap();
+        std::fs::write(base.join(".baramish").as_path(), "not app state").unwrap();
+
+        let denied = |p: std::path::PathBuf| {
+            let e = reject_app_state_path(p.to_str().unwrap())
+                .expect_err(&format!("must be refused: {}", p.display()));
+            assert!(e.contains("app state"), "unexpected error: {e}");
+        };
+        denied(state.join("config.json"));
+        denied(state.join("snapshots").join("data").join("old.md"));
+        denied(nested.join("anything.md")); // not just at the vault root
+        denied(state.join("does-not-exist-yet.json")); // a WRITE target need not exist
+                                                       // Nor can a traversal launder it.
+        denied(
+            base.join("notes")
+                .join("..")
+                .join(VAULT_STATE_DIR)
+                .join("config.json"),
+        );
+
+        // Ordinary content, and a file merely NAMED like the state dir, are fine.
+        assert!(reject_app_state_path(base.join("note.md").to_str().unwrap()).is_ok());
+        assert!(reject_app_state_path(base.join(".baramish").to_str().unwrap()).is_ok());
+
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    /// §260 3c-2c — the ops act on the RESOLVED path, which is what closes the
+    /// symlink-swap window a `files`-granted plugin could otherwise open (it controls
+    /// both the path it asks for and, inside the vault, what that path points at).
+    #[cfg(unix)]
+    #[test]
+    fn the_authorized_path_is_the_resolved_one() {
+        let base = std::env::temp_dir().join(format!("baram-link-{}", std::process::id()));
+        std::fs::create_dir_all(base.join("real")).unwrap();
+        let target = base.join("real").join("note.md");
+        std::fs::write(&target, "# hi").unwrap();
+        let link = base.join("link.md");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        let resolved = reject_app_state_path(link.to_str().unwrap()).unwrap();
+        assert_eq!(
+            resolved,
+            std::fs::canonicalize(&target).unwrap(),
+            "a symlinked path must resolve to its target before the op runs"
+        );
+
+        std::fs::remove_dir_all(&base).ok();
     }
 
     #[test]
