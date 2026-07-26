@@ -26,9 +26,12 @@ const CALL_TIMEOUT_MS = 30_000;
 export const MAX_INFLIGHT_HOST_REQUESTS = 4;
 
 /**
- * Host-side bound on one mediated request. Generous because a long completion is
- * legitimately slow, but finite: without it a provider that never answers would
- * hold an in-flight slot forever and the plugin's `ai` would be dead until reload.
+ * Host-side bound on one mediated request — a STALL detector, not a wall-clock
+ * ceiling: the timer is restarted by every streamed token (§260 3c-2c code review,
+ * MEDIUM-4), so a completion that is visibly producing output is never cut off, while
+ * a provider that goes quiet still releases its slot. Without any bound, a provider
+ * that never answers would hold a slot forever and the plugin's `ai` would be dead
+ * until reload.
  */
 export const HOST_REQUEST_TIMEOUT_MS = 120_000;
 
@@ -135,17 +138,13 @@ export class SandboxSession {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    this.transport.send({ type: "deactivate" });
-    this.offMessage();
-    this.activateSettle?.reject(new Error("Sandbox session disposed"));
-    for (const p of this.pending.values()) {
-      clearTimeout(p.timer);
-      p.reject(new Error("Sandbox session disposed"));
-    }
-    this.pending.clear();
-    // Answer, don't just forget: the awaiting promise lives in the SANDBOX, so a
-    // dropped frame would hang the plugin's `await` instead of failing it. Sent
-    // before `transport.close()` below, which is why dispose's order matters.
+    // Answer outstanding host requests BEFORE `deactivate` (§260 3c-2c code review,
+    // MEDIUM-1). Answering matters because the awaiting promise lives in the SANDBOX,
+    // so a dropped frame hangs the plugin's `await` instead of failing it — and the
+    // client closes its transport the moment it sees `deactivate`
+    // (`startSandboxClient`), which would drop exactly the frames this loop exists to
+    // send. The original comment blamed `transport.close()` below for the ordering
+    // constraint; the frame that actually stops delivery is `deactivate`.
     // (`answerHostRequest` skips ids already answered, e.g. timed out.)
     for (const requestId of [...this.inflightHost.keys()]) {
       this.answerHostRequest(requestId, {
@@ -155,6 +154,14 @@ export class SandboxSession {
         error: "Sandbox session disposed",
       });
     }
+    this.transport.send({ type: "deactivate" });
+    this.offMessage();
+    this.activateSettle?.reject(new Error("Sandbox session disposed"));
+    for (const p of this.pending.values()) {
+      clearTimeout(p.timer);
+      p.reject(new Error("Sandbox session disposed"));
+    }
+    this.pending.clear();
     // Timers were cleared as each id was answered; anything still answered-but-held
     // only occupied a slot, and the slot dies with the session.
     for (const entry of this.inflightHost.values()) {
@@ -190,7 +197,12 @@ export class SandboxSession {
    * answered twice. Does NOT free the slot — see `inflightHost` and
    * `releaseHostRequest`.
    */
-  private answerHostRequest(requestId: string, msg: HostToSandbox): void {
+  private answerHostRequest(
+    requestId: string,
+    // Narrowed (3c-2c code review, LOW-2): this path consumes an in-flight entry, so
+    // it must only ever emit the frame that answers one — not, say, a `deactivate`.
+    msg: Extract<HostToSandbox, { type: "hostResponse" }>,
+  ): void {
     const entry = this.inflightHost.get(requestId);
     if (!entry || entry.answered) return;
     entry.answered = true;
@@ -260,23 +272,30 @@ export class SandboxSession {
       );
       return;
     }
-    const timer = setTimeout(() => {
-      this.answerHostRequest(requestId, {
-        type: "hostResponse",
-        requestId,
-        ok: false,
-        error: `Host request timed out after ${HOST_REQUEST_TIMEOUT_MS}ms`,
-      });
-    }, HOST_REQUEST_TIMEOUT_MS);
-    this.inflightHost.set(requestId, { answered: false, timer });
+    const startTimer = () =>
+      setTimeout(() => {
+        this.answerHostRequest(requestId, {
+          type: "hostResponse",
+          requestId,
+          ok: false,
+          error: `Host request produced nothing for ${HOST_REQUEST_TIMEOUT_MS}ms`,
+        });
+      }, HOST_REQUEST_TIMEOUT_MS);
+    const entry = { answered: false, timer: startTimer() };
+    this.inflightHost.set(requestId, entry);
 
-    // Tokens stop once the request is answered (timed out or disposed): the sandbox
-    // has already rejected, so a later token would arrive for an id whose promise is
-    // settled — and after `dispose` the transport is closed anyway.
     const onToken = (token: string) => {
-      if (this.inflightHost.get(requestId)?.answered === false) {
-        this.transport.send({ type: "hostStreamToken", requestId, token });
-      }
+      // Compare the ENTRY, not just the id (3c-2c code review, MEDIUM-5): `requestId`
+      // is sandbox-supplied, so a closure that trusts the id alone can deliver an old
+      // stream's tokens under a newer request that reused it. Reference identity ties
+      // each token to the request that actually started this handler.
+      if (this.inflightHost.get(requestId) !== entry) return;
+      // A token is proof of life, so the stall timer restarts (MEDIUM-4). Otherwise a
+      // long completion that is streaming fine would be cut off at the bound.
+      if (entry.answered) return;
+      if (entry.timer) clearTimeout(entry.timer);
+      entry.timer = startTimer();
+      this.transport.send({ type: "hostStreamToken", requestId, token });
     };
     this.hostRequestHandler(request, onToken)
       .then(

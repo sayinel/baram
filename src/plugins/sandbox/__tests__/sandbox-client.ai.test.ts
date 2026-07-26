@@ -138,7 +138,7 @@ describe("startSandboxClient ai (§260 3c-2c)", () => {
     await vi.advanceTimersByTimeAsync(1);
     await ready;
     const promise = getCtx().ai.complete("hello");
-    const assertion = expect(promise).rejects.toThrow(/timed out/);
+    const assertion = expect(promise).rejects.toThrow(/produced nothing/);
     await vi.advanceTimersByTimeAsync(HOST_REQUEST_CLIENT_TIMEOUT_MS + 1);
     await assertion;
     expect(requests).toHaveLength(1);

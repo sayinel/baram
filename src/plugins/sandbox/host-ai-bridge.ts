@@ -18,8 +18,15 @@ import type { HostRequestHandler } from "./sandbox-session";
 
 import { createAIAPI } from "../extension-context";
 
+/**
+ * The trusted tier's own AI factory, named so a test can pin the identity rather
+ * than merely that a default exists (§260 3c-2c code review). Sharing it is the
+ * point: one implementation of privacy mode and model selection for both tiers.
+ */
+export const DEFAULT_AI_FACTORY = createAIAPI;
+
 export interface HostRequestHandlerOptions {
-  /** Injectable for tests; defaults to the trusted tier's own AI surface. */
+  /** Injectable for tests; defaults to `DEFAULT_AI_FACTORY`. */
   aiFactory?: (pluginId: string) => AIAPI;
   /** The grants recorded at install, as the manifest declared them. */
   capabilities: readonly PluginCapability[];
@@ -36,7 +43,7 @@ export interface HostRequestHandlerOptions {
 export function createHostRequestHandler(
   options: HostRequestHandlerOptions,
 ): HostRequestHandler {
-  const { aiFactory = createAIAPI, capabilities, pluginId } = options;
+  const { aiFactory = DEFAULT_AI_FACTORY, capabilities, pluginId } = options;
   const granted = capabilities.includes("ai");
   // Built on first use, not up front: a plugin without the grant never gets a
   // privileged object constructed for it at all.

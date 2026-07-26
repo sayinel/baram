@@ -449,6 +449,13 @@ async fn execute_op(
             // Measured on the string we already hold (Tauri parsed the op before this
             // command ran), so unlike the read there is nothing to save by checking
             // first — this bounds what reaches the DISK, not what reaches memory.
+            //
+            // KNOWN RESIDUAL (§260 3c-2c code review, LOW-1): because the whole op is
+            // deserialized before the command body runs, a 500 MB `content` is fully
+            // allocated and only then refused — an allocation primitive the rate limit
+            // bounds in frequency but not in size. Closing it needs an IPC-layer limit
+            // Tauri v2 does not expose (the same gap `check_report_size` records for
+            // the frame direction).
             let len = content.len() as u64;
             if len > MAX_PLUGIN_FILE_BYTES {
                 return Err(format!(
@@ -457,7 +464,10 @@ async fn execute_op(
             }
             crate::fs::write_file(authorized_path_str(&resolved)?, &content)
                 .await
-                .map_err(|e| e.to_string())?;
+                // Report the caller's own path, not the resolved one (LOW-7): the read
+                // arm already did, and echoing the canonical target would tell a plugin
+                // where an in-vault symlink actually points.
+                .map_err(|_| format!("file \"{path}\" could not be written"))?;
             Ok(serde_json::Value::Null)
         }
         FilesList { path } => {
@@ -592,20 +602,75 @@ pub async fn plugin_call(
     authorizer: tauri::State<'_, plugin::PluginAuthorizer>,
     limiter: tauri::State<'_, plugin::PluginRateLimiter>,
 ) -> Result<serde_json::Value, String> {
+    let plugin_id = admit_op(window.label(), &op, &authorizer, &limiter)?;
+    let result = execute_op(&app, window.label(), &plugin_id, op, &authorizer).await;
+    if let Ok(value) = &result {
+        warn_if_result_enters_the_shared_queue(value);
+    }
+    result
+}
+
+/// Tauri's direct-eval threshold: at or above this, an `ipc::Channel` payload — and
+/// an invoke RESULT travels as one — is staged in the app-global `ChannelDataIpcQueue`
+/// and fetched via the ACL-exempt `FETCH_CHANNEL_DATA_COMMAND` with a sequential id
+/// (see `capabilities/plugin-sandbox.json`).
+const CHANNEL_QUEUE_THRESHOLD: usize = 8 * 1024;
+
+/// §260 3c-2c code review (MEDIUM-2) — warn in dev when a broker RESULT gets big
+/// enough to enter that shared queue.
+///
+/// `sandbox-client.ts` records the invariant for `source_read` (a bare JSON string
+/// never matches tauri's `{`/`[` condition, so the bundle stays out of the queue), but
+/// `files_list` and `storage_list` return arrays and `http_fetch` an object — those DO
+/// match, and `files_list` is the first op likely to cross 8 KiB in ordinary use (a
+/// directory of a few hundred notes). On the postMessage IPC path a second sandbox can
+/// race the sequential id, so this is a real if narrow disclosure between plugins.
+///
+/// Dev-only and advisory on purpose: refusing an over-threshold listing would break a
+/// legitimate op, and the real fix is chunking (owed with Phase 4's document
+/// transforms, which will exceed this routinely). Measured with the short-circuiting
+/// counter so the check never allocates the payload twice.
+#[cfg(debug_assertions)]
+fn warn_if_result_enters_the_shared_queue(value: &serde_json::Value) {
+    let staged = matches!(
+        value,
+        serde_json::Value::Array(_) | serde_json::Value::Object(_)
+    );
+    if staged && plugin::serialized_len_capped(value, CHANNEL_QUEUE_THRESHOLD).is_none() {
+        log::warn!(
+            "[plugin] a plugin_call result exceeds tauri's {CHANNEL_QUEUE_THRESHOLD}-byte \
+             direct-eval threshold and is a JSON array/object, so it is staged in the \
+             app-global channel-data queue that FETCH_CHANNEL_DATA_COMMAND exposes to \
+             any webview. Chunk this op before Phase 4 ships larger payloads."
+        );
+    }
+}
+
+#[cfg(not(debug_assertions))]
+fn warn_if_result_enters_the_shared_queue(_value: &serde_json::Value) {}
+
+/// Authorize, then meter — the gate every brokered op passes before any work runs.
+///
+/// A free function (§260 3c-2a review M4's pattern) so the ORDER is unit-testable:
+/// authorization first means a denied call spends no tokens, so a caller that cannot
+/// pass the gate also cannot drain the budget of the plugin whose label it is using.
+/// Metering before execution is what makes the limit bound the work rather than
+/// merely count it afterwards. Returns the caller-derived plugin id.
+fn admit_op(
+    label: &str,
+    op: &plugin::PluginOp,
+    authorizer: &plugin::PluginAuthorizer,
+    limiter: &plugin::PluginRateLimiter,
+) -> Result<String, String> {
     // `authorize_op` keeps the "does this op need a grant?" decision on the op
     // (§260 3c-2b: `SourceRead` needs none), so no call site can get it wrong.
     let plugin_id = authorizer
-        .authorize_op(window.label(), &op)
+        .authorize_op(label, op)
         .map_err(|e| e.to_string())?;
-    // §260 3c-2c — rate-limit AFTER authorization and BEFORE execution: an
-    // unauthorized caller must not be able to drain a registered plugin's budget
-    // (it is keyed by label, so it could only drain its own — but checking second
-    // also means a denied call costs nothing), and the limit has to precede the work
-    // it exists to bound.
     limiter
-        .check(window.label(), op.rate_class())
+        .check(label, op.rate_class())
         .map_err(|e| e.to_string())?;
-    execute_op(&app, window.label(), &plugin_id, op, &authorizer).await
+    Ok(plugin_id)
 }
 
 #[cfg(test)]
@@ -820,6 +885,41 @@ mod tests {
         assert!(err.contains("app state"), "unexpected error: {err}");
 
         std::fs::remove_dir_all(&base).ok();
+    }
+
+    /// §260 3c-2c code review — the ordering claim ("a denied call costs no tokens")
+    /// had no test: swapping the two checks broke nothing. It matters because the
+    /// budget is keyed on the caller's label, so metering an UNAUTHORIZED call would
+    /// let anything that can reach the command spend the budget of the plugin whose
+    /// label it presents.
+    #[test]
+    fn a_denied_op_spends_no_tokens() {
+        let (authorizer, _, limiter) = state();
+        let op = plugin::PluginOp::StorageList;
+        // Unregistered: refused by authorization, and the bucket is untouched.
+        let burst = plugin::RateClass::Default.burst();
+        for _ in 0..burst * 2 {
+            assert!(admit_op("plugin-alpha", &op, &authorizer, &limiter).is_err());
+        }
+
+        // Now grant it: a full burst is still available, which proves none of the
+        // refused calls above was metered.
+        authorizer.register(
+            "plugin-alpha".into(),
+            vec!["storage".into()],
+            "/p/alpha".into(),
+        );
+        for i in 0..burst {
+            assert!(
+                admit_op("plugin-alpha", &op, &authorizer, &limiter).is_ok(),
+                "call {i} of the fresh burst must be admitted"
+            );
+        }
+        // …and the limiter is genuinely in the path: the next one is refused, with the
+        // rate-limit error rather than an authorization error.
+        let err = admit_op("plugin-alpha", &op, &authorizer, &limiter)
+            .expect_err("past the burst must be refused");
+        assert!(err.contains("rate limit"), "unexpected error: {err}");
     }
 
     #[test]

@@ -34,6 +34,14 @@ pub enum RateClass {
 }
 
 impl RateClass {
+    /// How many calls this class admits back-to-back from a full bucket. Exists for
+    /// tests in other modules (`plugin_cmd`) so they can exercise "exactly the burst"
+    /// without restating the number; production code never needs to ask.
+    #[cfg(test)]
+    pub fn burst(self) -> u32 {
+        self.budget().0 as u32
+    }
+
     /// (burst capacity, refill per second).
     const fn budget(self) -> (f64, f64) {
         match self {
@@ -50,11 +58,13 @@ impl RateClass {
     }
 }
 
+/// `f64` fields, not `u32` (§260 3c-2c code review NIT): a future sub-1/s class would
+/// otherwise print "0 requests/second", which reads like a bug in the limiter.
 #[derive(Debug, Error)]
 #[error("rate limit exceeded for this plugin ({limit} requests/second, burst {burst}); slow down")]
 pub struct RateLimitError {
-    burst: u32,
-    limit: u32,
+    burst: f64,
+    limit: f64,
 }
 
 struct Bucket {
@@ -100,11 +110,16 @@ impl PluginRateLimiter {
         // earlier instant) must not panic or mint tokens.
         let elapsed = now.saturating_duration_since(bucket.updated).as_secs_f64();
         bucket.tokens = (bucket.tokens + elapsed * per_second).min(burst);
-        bucket.updated = now;
+        // Never move the clock BACKWARD (code review NIT): with an earlier `now`, the
+        // saturating subtraction above already refuses to mint, but rewinding `updated`
+        // would hand the NEXT call a larger elapsed and mint then instead.
+        if now > bucket.updated {
+            bucket.updated = now;
+        }
         if bucket.tokens < 1.0 {
             return Err(RateLimitError {
-                burst: burst as u32,
-                limit: per_second as u32,
+                burst,
+                limit: per_second,
             });
         }
         bucket.tokens -= 1.0;
@@ -124,12 +139,10 @@ mod tests {
     use super::*;
     use std::time::Duration;
 
-    const T0: fn() -> Instant = Instant::now;
-
     #[test]
     fn admits_the_burst_then_refuses() {
         let limiter = PluginRateLimiter::new();
-        let now = T0();
+        let now = Instant::now();
         let (burst, _) = RateClass::Default.budget();
         for i in 0..burst as u32 {
             assert!(
@@ -152,7 +165,7 @@ mod tests {
     #[test]
     fn refills_over_time() {
         let limiter = PluginRateLimiter::new();
-        let now = T0();
+        let now = Instant::now();
         let (burst, per_second) = RateClass::Default.budget();
         for _ in 0..burst as u32 {
             limiter
@@ -178,7 +191,7 @@ mod tests {
         // Otherwise an idle plugin would accumulate an unbounded credit and could
         // spend a day's budget in one instant — the flood this exists to prevent.
         let limiter = PluginRateLimiter::new();
-        let now = T0();
+        let now = Instant::now();
         let (burst, _) = RateClass::Default.budget();
         limiter
             .check_at("plugin-a", RateClass::Default, now)
@@ -204,7 +217,7 @@ mod tests {
         // And the classes are separate buckets: draining the network budget must not
         // stop a plugin from reading its own storage.
         let limiter = PluginRateLimiter::new();
-        let now = T0();
+        let now = Instant::now();
         for _ in 0..net_burst as u32 {
             limiter
                 .check_at("plugin-a", RateClass::Network, now)
@@ -224,7 +237,7 @@ mod tests {
     #[test]
     fn the_transport_class_is_bounded_and_independent() {
         let limiter = PluginRateLimiter::new();
-        let now = T0();
+        let now = Instant::now();
         let (burst, rate) = RateClass::Transport.budget();
         assert!(burst.is_finite() && rate.is_finite());
 
@@ -248,7 +261,7 @@ mod tests {
     #[test]
     fn one_plugin_cannot_spend_anothers_budget() {
         let limiter = PluginRateLimiter::new();
-        let now = T0();
+        let now = Instant::now();
         let (burst, _) = RateClass::Network.budget();
         for _ in 0..burst as u32 {
             limiter
@@ -269,7 +282,7 @@ mod tests {
     #[test]
     fn forget_drops_every_class_for_that_label_only() {
         let limiter = PluginRateLimiter::new();
-        let now = T0();
+        let now = Instant::now();
         let (net_burst, _) = RateClass::Network.budget();
         for _ in 0..net_burst as u32 {
             limiter
@@ -297,10 +310,13 @@ mod tests {
         );
     }
 
+    /// A rewound clock must neither panic nor mint — not on this call, and not on the
+    /// NEXT one either (code review NIT: the old version only pinned the former,
+    /// because the refusal path still wrote the earlier `now` back).
     #[test]
     fn an_earlier_instant_neither_panics_nor_mints_tokens() {
         let limiter = PluginRateLimiter::new();
-        let now = T0() + Duration::from_secs(10);
+        let now = Instant::now() + Duration::from_secs(10);
         let (burst, _) = RateClass::Network.budget();
         for _ in 0..burst as u32 {
             limiter
@@ -310,6 +326,11 @@ mod tests {
         let earlier = now - Duration::from_secs(5);
         assert!(limiter
             .check_at("plugin-a", RateClass::Network, earlier)
+            .is_err());
+        // …and the rewind must not have credited the NEXT call either: at the original
+        // instant the bucket is still empty.
+        assert!(limiter
+            .check_at("plugin-a", RateClass::Network, now)
             .is_err());
     }
 }

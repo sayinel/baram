@@ -24,6 +24,8 @@ import { logger } from "../../utils/logger";
  * host's own bound (`HOST_REQUEST_TIMEOUT_MS`), so in the normal case the HOST's
  * timeout fires first and the plugin gets a real error; this one only covers a lost
  * or never-delivered frame, whose pending entry would otherwise leak forever.
+ * Restarted by each streamed token for the same reason the host's is (code review
+ * MEDIUM-4): a token proves the request is alive.
  */
 export const HOST_REQUEST_CLIENT_TIMEOUT_MS = 150_000;
 
@@ -77,6 +79,8 @@ export function startSandboxClient(
       reject: (e: Error) => void;
       resolve: (v: unknown) => void;
       timer: ReturnType<typeof setTimeout>;
+      /** Restart the stall timer — called on each streamed token. */
+      touch: () => void;
     }
   >();
   let hostSeq = 0;
@@ -87,15 +91,27 @@ export function startSandboxClient(
   ): Promise<unknown> {
     const requestId = `host-${++hostSeq}`;
     return new Promise<unknown>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        hostPending.delete(requestId);
-        reject(
-          new Error(
-            `Host request "${request.kind}" timed out after ${HOST_REQUEST_CLIENT_TIMEOUT_MS}ms`,
-          ),
-        );
-      }, HOST_REQUEST_CLIENT_TIMEOUT_MS);
-      hostPending.set(requestId, { onToken, reject, resolve, timer });
+      const startTimer = () =>
+        setTimeout(() => {
+          hostPending.delete(requestId);
+          reject(
+            new Error(
+              `Host request "${request.kind}" produced nothing for ${HOST_REQUEST_CLIENT_TIMEOUT_MS}ms`,
+            ),
+          );
+        }, HOST_REQUEST_CLIENT_TIMEOUT_MS);
+      hostPending.set(requestId, {
+        onToken,
+        reject,
+        resolve,
+        timer: startTimer(),
+        touch: () => {
+          const p = hostPending.get(requestId);
+          if (!p) return;
+          clearTimeout(p.timer);
+          p.timer = startTimer();
+        },
+      });
       transport.send({ type: "hostRequest", requestId, request });
     });
   }
@@ -167,6 +183,15 @@ export function startSandboxClient(
     activateState = "activating";
     commands.clear(); // each attempt starts clean — no stale regs from a failed retry
     eventHandlers.clear();
+    // …including host requests the previous attempt left outstanding (3c-2c code
+    // review, LOW-4). Their promises belong to plugin code that is about to be
+    // replaced, and each still holds a stall timer; rejecting them is both the honest
+    // answer and what keeps a retry loop from accumulating timers.
+    for (const [requestId, p] of hostPending) {
+      clearTimeout(p.timer);
+      hostPending.delete(requestId);
+      p.reject(new Error("Sandbox re-activated before this request completed"));
+    }
     try {
       // Our own bundle, resolved in Rust from this window's label.
       //
@@ -182,6 +207,13 @@ export function startSandboxClient(
       // (e.g. `{source, hash}`) and a 4 MiB bundle becomes stealable by another
       // sandbox on non-macOS — so if that shape must change, chunk it or keep it out
       // of the channel path deliberately.
+      //
+      // ‼️ The invariant holds for THIS op, not for the broker generally (§260 3c-2c
+      // code review, MEDIUM-2): `files_list`/`storage_list` return arrays and
+      // `http_fetch` an object, so they DO match the condition once they cross 8 KiB —
+      // `files_list` first, on a directory of a few hundred notes. Rust warns in dev
+      // when a result crosses it (`warn_if_result_enters_the_shared_queue`); chunking
+      // is owed with Phase 4's document transforms.
       const source = await broker({ kind: "source_read" });
       if (typeof source !== "string") {
         throw new Error("broker returned a non-string plugin source");
@@ -256,9 +288,13 @@ export function startSandboxClient(
         else p.reject(new Error(m.error));
         break;
       }
-      case "hostStreamToken":
-        hostPending.get(m.requestId)?.onToken?.(m.token);
+      case "hostStreamToken": {
+        const p = hostPending.get(m.requestId);
+        if (!p) break;
+        p.touch(); // a token proves the request is alive (code review MEDIUM-4)
+        p.onToken?.(m.token);
         break;
+      }
       case "invokeCommand":
         void onInvoke(m.callId, m.commandId, m.args);
         break;

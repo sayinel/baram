@@ -2,7 +2,11 @@ import type { AIAPI } from "../../types";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { createHostRequestHandler } from "../host-ai-bridge";
+import { createAIAPI } from "../../extension-context";
+import {
+  createHostRequestHandler,
+  DEFAULT_AI_FACTORY,
+} from "../host-ai-bridge";
 
 // §260 Phase 3c-2c — the host applies the policy for `ai`, so this is where the
 // capability check has to be enforcing. It IS enforcing because a `plugin-*` window
@@ -148,11 +152,12 @@ describe("createHostRequestHandler (§260 3c-2c)", () => {
     expect(factory).toHaveBeenCalledWith("p");
   });
 
-  it("defaults to the trusted tier's AI policy when no factory is injected", () => {
-    // The default must be the SAME `createAIAPI` the trusted tier uses, so privacy
-    // mode and model selection cannot drift between the two tiers.
-    expect(() =>
-      createHostRequestHandler({ capabilities: ["ai"], pluginId: "p" }),
-    ).not.toThrow();
+  it("defaults to the trusted tier's own createAIAPI", () => {
+    // §260 3c-2c code review — the previous version of this test only asserted that
+    // construction did not throw, which (because the surface is built lazily) passed
+    // for ANY default, including one that throws when called. The property that
+    // matters is identity: the sandboxed tier must run the SAME policy object factory
+    // as the trusted tier, or privacy mode and model selection can drift between them.
+    expect(DEFAULT_AI_FACTORY).toBe(createAIAPI);
   });
 });

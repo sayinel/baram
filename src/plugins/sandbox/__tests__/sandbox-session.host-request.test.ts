@@ -147,7 +147,7 @@ describe("SandboxSession host requests (§260 3c-2c)", () => {
       type: "hostResponse",
       requestId: "r0",
       ok: false,
-      error: expect.stringContaining("timed out") as unknown as string,
+      error: expect.stringContaining("produced nothing") as unknown as string,
     });
 
     ask("after-timeout");
@@ -229,17 +229,65 @@ describe("SandboxSession host requests (§260 3c-2c)", () => {
     expect(answers).toHaveLength(1);
   });
 
-  it("answers in-flight requests on dispose so the sandbox does not hang", async () => {
+  it("answers in-flight requests on dispose BEFORE deactivate", async () => {
+    // §260 3c-2c code review (MEDIUM-1): the real client closes its transport the
+    // moment it sees `deactivate`, so answering after it would drop exactly the
+    // frames the loop exists to send — and a harness that ignores `deactivate` (as
+    // this one deliberately does not, below) cannot tell the difference.
     const { ask, seen, session } = harness(async () => new Promise(() => {}));
     ask("r1");
     await flush();
     session.dispose();
     await flush();
+
+    const kinds = seen.map((m) => (m as { type: string }).type);
+    expect(kinds).toContain("hostResponse");
+    expect(kinds).toContain("deactivate");
+    expect(kinds.indexOf("hostResponse")).toBeLessThan(
+      kinds.indexOf("deactivate"),
+    );
     expect(seen).toContainEqual({
       type: "hostResponse",
       requestId: "r1",
       ok: false,
       error: expect.stringContaining("disposed") as unknown as string,
+    });
+  });
+
+  it("restarts the stall timer on every streamed token", async () => {
+    // §260 3c-2c code review (MEDIUM-4): the bound is a stall detector, not a
+    // wall-clock ceiling — a completion that is visibly streaming must not be cut off.
+    vi.useFakeTimers();
+    let emit: (t: string) => void = () => {};
+    const { ask, seen } = harness(
+      async (_req, onToken) =>
+        new Promise(() => {
+          emit = onToken;
+        }),
+    );
+    ask("r1");
+    await vi.advanceTimersByTimeAsync(1);
+
+    // Stream a token every 80% of the bound, well past the un-refreshed deadline.
+    for (let i = 0; i < 5; i++) {
+      await vi.advanceTimersByTimeAsync(HOST_REQUEST_TIMEOUT_MS * 0.8);
+      emit(`t${i}`);
+    }
+    await vi.advanceTimersByTimeAsync(1); // let the last token's frame land
+    expect(
+      seen.filter((m) => (m as { type: string }).type === "hostResponse"),
+    ).toEqual([]);
+    expect(
+      seen.filter((m) => (m as { type: string }).type === "hostStreamToken"),
+    ).toHaveLength(5);
+
+    // …and going quiet still ends it.
+    await vi.advanceTimersByTimeAsync(HOST_REQUEST_TIMEOUT_MS + 1);
+    expect(seen).toContainEqual({
+      type: "hostResponse",
+      requestId: "r1",
+      ok: false,
+      error: expect.stringContaining("produced nothing") as unknown as string,
     });
   });
 
