@@ -31,7 +31,7 @@ import { getHighlightStyle } from "../../extensions/nodes/code-block-highlight";
 import { getLanguageExtension } from "../../extensions/nodes/code-block-languages";
 import { useSettingsStore } from "../../stores/settings/store";
 import { logger } from "../../utils/logger";
-import { loadVimExtension } from "./vim-mode";
+import { createVimController } from "./vim-controller";
 
 export interface SourceCodeEditorRef {
   getContent(): string;
@@ -171,37 +171,18 @@ export function SourceCodeEditor({
       });
     }
 
-    // §298 Vim keybindings (Phase 0a) — async load + live toggle.
-    //
-    // Local `vimDisposed`/`vimRevision` instead of the shared isDestroyingRef:
-    // that ref is reset to false by the NEXT effect run (StrictMode double
-    // invoke), so a late promise from a destroyed generation could dispatch
-    // into a dead view. The revision token also drops a stale load that
-    // resolves after the user toggled the setting off (Codex plan review).
-    let vimDisposed = false;
-    let vimRevision = 0;
-    const applyVim = (enabled: boolean) => {
-      const token = ++vimRevision;
-      if (!enabled) {
-        view.dispatch({ effects: vimCompartment.reconfigure([]) });
-        return;
-      }
-      loadVimExtension()
-        .then((ext) => {
-          if (vimDisposed || token !== vimRevision) return;
-          view.dispatch({ effects: vimCompartment.reconfigure(ext) });
-        })
-        .catch((err: unknown) => {
-          // Editor stays fully usable without vim; the loader does not cache
-          // rejections, so the next toggle/mount retries the chunk load.
-          if (!vimDisposed) logger.error("[vim] Failed to load vim:", err);
-        });
-    };
-    applyVim(useSettingsStore.getState().vimMode);
+    // §298 Vim keybindings (Phase 0a) — the load/toggle/race/guard lifecycle
+    // lives in the controller, which is unit-tested with fakes. The editor
+    // stays fully usable if the vim chunk fails to load (controller reports
+    // here; the loader does not cache rejections, so the next toggle retries).
+    const vimController = createVimController(view, vimCompartment, {
+      onError: (err) => logger.error("[vim] Failed to load vim:", err),
+    });
+    vimController.apply(useSettingsStore.getState().vimMode);
     // Apply setting changes while the editor is open (mount-time read alone
     // would ignore a toggle until the next source-mode entry).
     const unsubscribeVim = useSettingsStore.subscribe((s, prev) => {
-      if (s.vimMode !== prev.vimMode) applyVim(s.vimMode);
+      if (s.vimMode !== prev.vimMode) vimController.apply(s.vimMode);
     });
 
     // Two-phase init: focus first (triggers WebKit artifacts), then clean up
@@ -243,8 +224,7 @@ export function SourceCodeEditor({
 
     return () => {
       isDestroyingRef.current = true;
-      vimDisposed = true;
-      vimRevision++;
+      vimController.dispose();
       unsubscribeVim();
       view.destroy();
       viewRef.current = null;
