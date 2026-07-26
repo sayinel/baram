@@ -64,11 +64,16 @@ function sandboxedManifest(
 beforeEach(() => {
   arePluginsEnabled.mockReturnValue(true);
   isSandboxRuntimeAllowed.mockReturnValue(true);
-  pluginSandboxRegister.mockClear();
-  pluginSandboxDeregister.mockClear();
+  // mockReset, not mockClear: some tests install a mockImplementation (a hanging
+  // deregister, a rejecting stop) that must not leak into the next test.
+  pluginSandboxRegister.mockReset().mockImplementation(async () => {});
+  pluginSandboxDeregister.mockReset().mockImplementation(async () => {});
   usePluginUIStore.setState({ paletteCommands: [] });
 });
-afterEach(() => vi.clearAllMocks());
+afterEach(() => {
+  vi.clearAllMocks();
+  vi.useRealTimers();
+});
 
 describe("PluginLoader sandboxed path (§260 3c-1)", () => {
   it("registers capabilities, starts the sandbox, and maps commands to the palette", async () => {
@@ -211,6 +216,49 @@ describe("PluginLoader sandboxed path (§260 3c-1)", () => {
     await loader.reloadPlugin("/p/demo", sandboxedManifest());
 
     // The teardown pair must be fully ordered BEFORE the re-registration.
+    expect(calls).toEqual(["register", "stop", "deregister", "register"]);
+  });
+
+  // §260 3c-2b (deferred from the 3c-2a re-review, Q2) — the outer teardown timeout
+  // does not cancel the in-flight `deregister`, so it can still land AFTER the next
+  // `plugin_sandbox_register` and revoke the NEW grant: the fresh sandbox's connect
+  // then fails closed and activate times out, with nothing linking the symptom to
+  // the log line. A load must therefore WAIT for a teardown still in flight.
+  it("waits for an in-flight teardown before registering the next load", async () => {
+    vi.useFakeTimers();
+    const calls: string[] = [];
+    const f = fakeHost();
+    let releaseDeregister: () => void = () => {};
+    f.stop.mockImplementation(async () => {
+      calls.push("stop");
+    });
+    pluginSandboxDeregister.mockImplementation(async () => {
+      await new Promise<void>((resolve) => {
+        releaseDeregister = resolve;
+      });
+      calls.push("deregister");
+    });
+    pluginSandboxRegister.mockImplementation(async () => {
+      calls.push("register");
+    });
+
+    const loader = new PluginLoader(undefined, f.host);
+    await loader.loadPlugin("/p/demo", sandboxedManifest());
+
+    // Unload with a deregister that hangs: the loader gives up waiting (outer
+    // timeout) so shutdown cannot wedge, but the teardown is still running.
+    const unloading = loader.unloadPlugin("demo");
+    await vi.advanceTimersByTimeAsync(6000);
+    await unloading;
+    expect(calls).toEqual(["register", "stop"]); // deregister has NOT landed
+
+    // A reload must not register while that deregister is outstanding.
+    const reloading = loader.loadPlugin("/p/demo", sandboxedManifest());
+    await vi.advanceTimersByTimeAsync(50);
+    expect(calls).toEqual(["register", "stop"]); // still waiting, no new register
+
+    releaseDeregister();
+    await reloading;
     expect(calls).toEqual(["register", "stop", "deregister", "register"]);
   });
 
