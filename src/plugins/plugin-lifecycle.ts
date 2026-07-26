@@ -11,12 +11,31 @@ import { emitPluginEvent } from "./extension-context";
 // §69 Plugin Lifecycle — App-level plugin management
 import { pluginLoader } from "./plugin-loader";
 import { arePluginsEnabled } from "./plugins-enabled";
+import { closeOrphanSandboxWebviews } from "./sandbox/sandbox-orphans";
 
 /** Initialize all enabled plugins at app startup. Budget: 200ms total. */
 export async function initializePlugins(): Promise<void> {
   // §259 containment — plugins run in the app's own JS realm and can bypass the
   // capability layer, so untrusted plugin code must not auto-execute in shipped
   // builds. Skip the entire load path unless a build explicitly opts in.
+  // §260 3c-3 — close sandbox webviews left over from a previous main-realm
+  // lifetime, BEFORE the enabled gate and before any load. A reload (HMR, refresh,
+  // remount) empties this realm's bookkeeping while the `plugin-*` webview keeps
+  // running with its Rust capabilities intact, and the next load then fails on a
+  // taken label. Found by the live smoke.
+  //
+  // Above the gate on purpose (3c-3 security review, M4): revoking a leftover sandbox
+  // is right whether or not plugins are enabled — arguably *more* right when they are
+  // disabled. Today the gate is a build-time constant so no orphan can exist in a
+  // disabled build, but Phase 5 changes what that gate is, and "disable plugins"
+  // must never mean "skip revoking the sandboxes that most need it".
+  // `ownedIds` is what keeps a SECOND call from closing what the first one started
+  // (3c-3 code review, HIGH-1) — `React.StrictMode` double-invokes this effect in
+  // dev, which is the only environment where the sandbox runs at all.
+  await closeOrphanSandboxWebviews({
+    ownedIds: pluginLoader.liveSandboxIds(),
+  });
+
   if (!arePluginsEnabled()) {
     logger.info(
       "[PluginLifecycle] Plugins disabled (see #259/#260) — skipping auto-load",
@@ -87,6 +106,9 @@ export async function initializePlugins(): Promise<void> {
           } else {
             await pluginLoader.loadPlugin(p.installPath, p.manifest);
           }
+          // Clear any failure from a previous run: the store is persisted, so
+          // without this a one-off startup error outlives the run that caused it.
+          usePluginStore.getState().setError(p.manifest.id, null);
         } catch (err) {
           logger.error(
             `[PluginLifecycle] dev load failed ${p.manifest.id}:`,

@@ -8,6 +8,7 @@ import type { HostToSandbox, SandboxToHost } from "./protocol";
 import type { HostRequestHandler } from "./sandbox-session";
 import type { SandboxTransport } from "./transport";
 
+import { logger } from "../../utils/logger";
 import { SandboxSession } from "./sandbox-session";
 
 export interface SandboxWindow {
@@ -30,10 +31,25 @@ export class SandboxHost {
     string,
     { session: SandboxSession; window: SandboxWindow }
   >();
+  /**
+   * §260 3c-3 — ids whose webview exists (or is being created) but is not in `live`
+   * yet. Without this, the window between `windowFactory` returning and `live.set`
+   * is a hole the orphan sweep would happily close.
+   */
+  private readonly starting = new Set<string>();
 
   constructor(
     private readonly windowFactory: SandboxWindowFactory = defaultWindowFactory,
   ) {}
+
+  /**
+   * Plugin ids this realm owns — running or starting. The orphan sweep must not
+   * touch these: they are supervised, so closing one breaks a working plugin instead
+   * of recovering a leaked one (§260 3c-3 code review, HIGH-1).
+   */
+  ownedIds(): string[] {
+    return [...new Set([...this.live.keys(), ...this.starting])];
+  }
 
   /**
    * §260 3c-2b — no install path or entry file: the sandbox pulls its own bundle
@@ -54,14 +70,29 @@ export class SandboxHost {
     const existing = this.live.get(pluginId);
     if (existing) return existing.session;
     const label = `plugin-${pluginId}`;
-    const window = await this.windowFactory(label, pluginId);
+    // Claimed before the webview exists and released only once `live` has it, so
+    // `ownedIds()` never has a gap for the sweep to fall into.
+    this.starting.add(pluginId);
+    let window: SandboxWindow;
+    try {
+      window = await this.windowFactory(label, pluginId);
+    } catch (err) {
+      this.starting.delete(pluginId);
+      throw err;
+    }
     const session = new SandboxSession(window.transport, hostRequestHandler);
-    this.live.set(pluginId, { session, window });
+    const entry = { session, window };
+    this.live.set(pluginId, entry);
+    this.starting.delete(pluginId);
     try {
       await session.activate(pluginId, declared);
       return session;
     } catch (err) {
-      this.live.delete(pluginId);
+      // Identity check (§260 3c-3 security review, M2), the same guard
+      // `unloadPlugin` uses on `pendingTeardowns`: with two loads in flight for one
+      // id, a failing activate must not evict the OTHER load's live entry — that
+      // leaves `stop()` a permanent no-op and its webview running until app exit.
+      if (this.live.get(pluginId) === entry) this.live.delete(pluginId);
       session.dispose();
       // Awaited for the same reason as `stop()`: the label must be free before the
       // caller's rollback finishes, or a retry collides with a dying webview.
@@ -90,6 +121,16 @@ async function defaultWindowFactory(
 ): Promise<SandboxWindow> {
   const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
   const { createHostTransport } = await import("./tauri-host-transport");
+  // §260 3c-3 — the label may still be held by a webview this realm does not know
+  // about (see `sandbox-orphans.ts`): the startup sweep covers a reload, this covers
+  // anything it cannot see, such as a close that resolved late. Deliberately does NOT
+  // deregister — the caller already registered the grant for THIS load, and revoking
+  // here would revoke the new one.
+  const stale = await WebviewWindow.getByLabel(label);
+  if (stale) {
+    logger.warn(`[Sandbox] closing a stale webview holding the label ${label}`);
+    await stale.close(); // awaited: the label is only free once close completes
+  }
   const win = new WebviewWindow(label, {
     decorations: false,
     focus: false,

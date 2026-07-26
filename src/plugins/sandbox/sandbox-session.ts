@@ -13,7 +13,15 @@ import type { SandboxTransport } from "./transport";
 
 import { logger } from "../../utils/logger";
 
-const ACTIVATE_TIMEOUT_MS = 5000;
+/**
+ * §260 3c-3 — the live smoke hit "Sandbox activate timed out" on the FIRST load of a
+ * cold `tauri dev`, then worked on reload. In dev the first activate also pays for
+ * Vite compiling `sandbox.html` + the sandbox entry on demand, while the app's own
+ * startup competes for the same main thread — none of which says anything about the
+ * plugin. A packaged build loads that entry from disk, so the tight budget (which
+ * exists to catch a wedged sandbox) stays where it can mean something.
+ */
+const ACTIVATE_TIMEOUT_MS = import.meta.env.DEV ? 15_000 : 5_000;
 const ACTIVATE_RETRY_MS = 250;
 const CALL_TIMEOUT_MS = 30_000;
 

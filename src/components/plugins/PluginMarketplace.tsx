@@ -1,5 +1,5 @@
 // §69 Plugin Marketplace — Main sidebar panel with Browse / Installed / Updates tabs
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 
 // Module-level style constants — avoids creating new object references on every render
 const STYLES = {
@@ -204,6 +204,8 @@ export function PluginMarketplace() {
   } = usePluginStore();
 
   const [activeTab, setActiveTab] = useState<MarketplaceTab>("browse");
+  /** Plugin ids whose enable/disable is in flight — see `handleToggleEnabled`. */
+  const togglingRef = useRef<Set<string>>(new Set());
   const [registryIndex, setRegistryIndex] = useState<null | RegistryIndex>(
     null,
   );
@@ -371,17 +373,44 @@ export function PluginMarketplace() {
     (id: string) => {
       const plugin = installedPlugins[id];
       if (!plugin) return;
+      // §260 3c-3 review (M5) — one toggle at a time. The store flips immediately, so
+      // a second click read the ALREADY-flipped value and called `unloadPlugin` while
+      // the load was still in flight; that unload early-returned (nothing in `loaded`
+      // yet), the load then completed, and the session ended with a running, granted
+      // sandbox that the UI showed as disabled and nothing would ever tear down.
+      if (togglingRef.current.has(id)) return;
+      togglingRef.current.add(id);
+      const done = () => togglingRef.current.delete(id);
+
       const newEnabled = !plugin.enabled;
       setEnabled(id, newEnabled);
       if (newEnabled) {
         pluginLoader
           .loadPlugin(plugin.installPath, plugin.manifest)
-          .catch((err) => {
-            setError(id, String(err));
-            setEnabled(id, false);
-          });
+          .then(
+            // Clear the previous failure once the plugin loads. Same defect as the
+            // dev-plugin card: the error was written on failure and never removed, so
+            // a plugin the user has since fixed kept displaying why it once failed.
+            () => setError(id, null),
+            (err: unknown) => {
+              setError(id, String(err));
+              setEnabled(id, false);
+            },
+          )
+          .finally(done);
       } else {
-        pluginLoader.unloadPlugin(id);
+        // `unloadPlugin` swallows a failed teardown by design (`unloadAll` must keep
+        // going) and reports it through `pluginErrors` itself — see the loader. This
+        // catch covers what still propagates: a synchronous throw from `teardown()`
+        // or from the UI sweep. Roll `enabled` back then, so the store never claims
+        // a plugin is off while it is still loaded (M3/L4).
+        pluginLoader
+          .unloadPlugin(id)
+          .catch((err: unknown) => {
+            setError(id, String(err));
+            setEnabled(id, true);
+          })
+          .finally(done);
       }
     },
     [installedPlugins, setEnabled, setError],

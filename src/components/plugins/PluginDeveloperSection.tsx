@@ -43,6 +43,10 @@ export function PluginDeveloperSection() {
       const plugin = toInstalledDevPlugin(info);
       await pluginLoader.loadPlugin(plugin.installPath, plugin.manifest);
       addDevPlugin(plugin);
+      // §260 3c-3 — a load that SUCCEEDS must clear the last failure. Nothing did,
+      // so a transient error (e.g. one activate timeout at startup) stayed on the
+      // card forever, describing a plugin that is now running fine.
+      setError(plugin.manifest.id, null);
       showToast(`Loaded dev plugin: ${plugin.manifest.name}`);
     } catch (err) {
       showToast(`Failed to load dev plugin: ${String(err)}`);
@@ -55,6 +59,7 @@ export function PluginDeveloperSection() {
       const fresh = toInstalledDevPlugin(info);
       await pluginLoader.reloadPlugin(fresh.installPath, fresh.manifest);
       addDevPlugin(fresh);
+      setError(fresh.manifest.id, null); // the reload worked — drop the stale failure
       if (fresh.manifest.tiptapExtensions?.length) {
         showToast(
           `Reloaded ${fresh.manifest.name} — restart required for Tiptap extensions`,
