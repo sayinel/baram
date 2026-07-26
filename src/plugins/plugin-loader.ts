@@ -1,17 +1,31 @@
 // §69 Plugin Loader — Dynamic ESM import with lifecycle management
 import { convertFileSrc } from "@tauri-apps/api/core";
 
-import type { LoadedPlugin, PluginManifest, PluginModule } from "./types";
+import type { SandboxSession } from "./sandbox/sandbox-session";
+import type {
+  Disposable,
+  LoadedPlugin,
+  PluginManifest,
+  PluginModule,
+} from "./types";
 import type { Extensions } from "@tiptap/core";
 
+import {
+  pluginSandboxDeregister,
+  pluginSandboxRegister,
+} from "../ipc/plugin-invoke";
 import { logger } from "../utils/logger";
 import {
   createExtensionContext,
+  registerHostCommandHandler,
   setEditorInstance,
   unregisterPluginUI,
 } from "./extension-context";
 import { validateManifest } from "./manifest";
-import { arePluginsEnabled } from "./plugins-enabled";
+import { pluginTrustOf } from "./plugin-trust";
+import { usePluginUIStore } from "./plugin-ui-store";
+import { arePluginsEnabled, isSandboxRuntimeAllowed } from "./plugins-enabled";
+import { SandboxHost } from "./sandbox/sandbox-host";
 
 const ACTIVATE_TIMEOUT = 5000; // 5 seconds
 
@@ -21,11 +35,13 @@ export class PluginLoader {
   private readonly importer: Importer;
   private loaded = new Map<string, LoadedPlugin>();
   private reloadCounter = 0;
+  private readonly sandboxHost: SandboxHost;
 
-  constructor(importer?: Importer) {
+  constructor(importer?: Importer, sandboxHost?: SandboxHost) {
     this.importer =
       importer ??
       ((url) => import(/* @vite-ignore */ url) as Promise<PluginModule>);
+    this.sandboxHost = sandboxHost ?? new SandboxHost();
   }
 
   /** Get all loaded plugins */
@@ -82,6 +98,20 @@ export class PluginLoader {
       throw new Error(
         `Invalid manifest for ${manifest.id}: ${validation.errors.map((e) => e.message).join(", ")}`,
       );
+    }
+
+    // §260 — route by trust tier. `validateManifest` above already rejects a
+    // legacy (trust-less) manifest ("trust is required …"), which the install UI
+    // surfaces for re-validation, so here trust is guaranteed "trusted" |
+    // "sandboxed". `sandboxed` runs in an isolated webview via SandboxHost
+    // (declarative contributions + brokered ops); `trusted` keeps the same-realm
+    // path below.
+    if (pluginTrustOf(manifest) === "sandboxed") {
+      await this.loadSandboxedPlugin(installPath, manifest);
+      logger.info(
+        `[PluginLoader] Loaded sandboxed plugin: ${manifest.id} v${manifest.version}`,
+      );
+      return;
     }
 
     // 2. Construct asset URL for the main entry (cache-busted for reload)
@@ -178,6 +208,84 @@ export class PluginLoader {
 
     this.loaded.delete(id);
     logger.info(`[PluginLoader] Unloaded plugin: ${id}`);
+  }
+
+  /**
+   * §260 — start a sandboxed plugin in a hidden `plugin-*` WebviewWindow and map
+   * its declared commands onto the host command palette (each routed back to the
+   * sandbox via `session.invokeCommand`). The plugin's own code never runs in the
+   * main realm; storage/network reach the Rust broker (`plugin_call`) from inside
+   * the sandbox, authorized by window label + capability.
+   */
+  private async loadSandboxedPlugin(
+    installPath: string,
+    manifest: PluginManifest,
+  ): Promise<void> {
+    // Belt-and-suspenders over arePluginsEnabled: never create a sandbox webview
+    // in a packaged build (release gate lifts in Phase 5).
+    if (!isSandboxRuntimeAllowed()) {
+      throw new Error(
+        `Plugin ${manifest.id}: sandbox runtime is gated off in this build (#260 Phase 5).`,
+      );
+    }
+    await pluginSandboxRegister(manifest.id, manifest.capabilities);
+    let session: SandboxSession;
+    try {
+      session = await this.sandboxHost.start(
+        manifest.id,
+        installPath,
+        manifest.main,
+        manifest.contributions ?? {},
+      );
+    } catch (err) {
+      // roll back the capability grant if the sandbox failed to start; never let a
+      // deregister failure mask the original start error.
+      try {
+        await pluginSandboxDeregister(manifest.id);
+      } catch (deregErr) {
+        logger.error(
+          `[PluginLoader] rollback deregister failed for ${manifest.id}:`,
+          deregErr,
+        );
+      }
+      throw err;
+    }
+
+    const disposables: Disposable[] = [];
+    for (const cmd of session.contributions?.commands ?? []) {
+      const fullId = `${manifest.id}.${cmd.id}`;
+      // Always register the handler so a command can be invoked via menu or
+      // programmatically; only surface it in the palette unless the manifest
+      // opted out (palette: false) — mirrors the trusted path's visibility rule.
+      disposables.push(
+        registerHostCommandHandler(fullId, () => session.invokeCommand(cmd.id)),
+      );
+      if (cmd.palette !== false) {
+        usePluginUIStore.getState().registerPaletteCommand({
+          commandId: fullId,
+          pluginId: manifest.id,
+          title: cmd.title,
+        });
+        disposables.push({
+          dispose: () =>
+            usePluginUIStore.getState().removePaletteCommand(fullId),
+        });
+      }
+    }
+    // stop the sandbox + drop its capability grant on unload
+    disposables.push({
+      dispose: () => {
+        void this.sandboxHost.stop(manifest.id);
+        void pluginSandboxDeregister(manifest.id);
+      },
+    });
+
+    this.loaded.set(manifest.id, {
+      id: manifest.id,
+      manifest,
+      module: {},
+      disposables,
+    });
   }
 }
 

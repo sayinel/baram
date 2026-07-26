@@ -7,6 +7,7 @@ import { emit, listen } from "@tauri-apps/api/event";
 import type { HostToSandbox, SandboxToHost } from "../plugins/sandbox/protocol";
 import type { SandboxTransport } from "../plugins/sandbox/transport";
 
+import { pluginCall } from "../ipc/plugin-invoke";
 import { startSandboxClient } from "../plugins/sandbox/sandbox-client";
 
 const params = new URLSearchParams(location.search);
@@ -25,4 +26,8 @@ const transport: SandboxTransport<HostToSandbox, SandboxToHost> = {
   send: (m) => void emit(`plugin:s2h:${token}`, m),
 };
 
-startSandboxClient(transport, (url) => import(/* @vite-ignore */ url));
+startSandboxClient(
+  transport,
+  (url) => import(/* @vite-ignore */ url),
+  (op) => pluginCall(op),
+);

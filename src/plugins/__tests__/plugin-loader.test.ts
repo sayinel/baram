@@ -28,7 +28,9 @@ const manifest: PluginManifest = {
   main: "index.mjs",
   engines: { baram: ">=0.2.0" },
   capabilities: ["commands"],
-  trust: "sandboxed",
+  // These suites exercise the same-realm (importer/activate/ui) load path, which
+  // is the `trusted` tier's behavior (§260 3c-1 routes `sandboxed` to SandboxHost).
+  trust: "trusted",
 };
 
 describe("PluginLoader.reloadPlugin", () => {

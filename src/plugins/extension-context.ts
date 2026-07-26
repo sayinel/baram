@@ -331,6 +331,21 @@ export async function executePluginCommand(
   return handler(...args);
 }
 
+/**
+ * §260 3c-1 — register a host-side command handler by its full id
+ * (`${pluginId}.${commandId}`). Sandboxed plugins have no main-realm
+ * ExtensionContext; their command bodies run in the sandbox webview, so the
+ * loader registers a thin handler here that forwards to `session.invokeCommand`.
+ * Reuses the same registry the CommandPalette executes through.
+ */
+export function registerHostCommandHandler(
+  fullId: string,
+  handler: (...args: unknown[]) => unknown,
+): Disposable {
+  commandHandlers.set(fullId, handler);
+  return { dispose: () => void commandHandlers.delete(fullId) };
+}
+
 export function setEditorInstance(editor: unknown): void {
   editorInstance = editor as typeof editorInstance;
 }
