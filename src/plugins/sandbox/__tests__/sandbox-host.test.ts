@@ -37,6 +37,9 @@ function fakeFactory(
   } => {
     created.push(label);
     pluginIds.push(pluginId);
+    // NOTE: `close` must have a void body — `SandboxWindow.close` is
+    // `() => Promise<void> | void`, and TS's return-value-for-void allowance does
+    // not apply to a union, so `() => closed.push(x)` (number) is rejected.
     const { host, sandbox } = createChannelPair();
     startSandboxClient(
       sandbox,
@@ -45,7 +48,12 @@ function fakeFactory(
       }),
       async () => undefined,
     );
-    return { close: () => closed.push(label), transport: host };
+    return {
+      close: () => {
+        closed.push(label);
+      },
+      transport: host,
+    };
   };
 }
 
@@ -75,6 +83,44 @@ describe("SandboxHost (§260 lifecycle)", () => {
     expect(closed).toEqual(["plugin-beta"]);
   });
 
+  // §260 3c-2a re-review (N1) — `stop()` must not resolve until the webview is
+  // actually gone, or a fast reload collides on the `plugin-<id>` label (the real
+  // `WebviewWindow.close()` is async, and its promise used to be discarded).
+  it("stop() awaits an async window close before resolving", async () => {
+    let releaseClose: () => void = () => {};
+    let closeFinished = false;
+    const host = new SandboxHost((label) => {
+      const { host: h, sandbox } = createChannelPair();
+      startSandboxClient(
+        sandbox,
+        async () => ({}),
+        async () => undefined,
+      );
+      void label;
+      return {
+        close: async () => {
+          await new Promise<void>((resolve) => {
+            releaseClose = resolve;
+          });
+          closeFinished = true;
+        },
+        transport: h,
+      };
+    });
+    await host.start("beta", "/p/beta", "index.mjs", {});
+
+    let stopped = false;
+    const stopping = host.stop("beta").then(() => {
+      stopped = true;
+    });
+    await Promise.resolve();
+    expect(stopped).toBe(false); // still waiting on the close
+
+    releaseClose();
+    await stopping;
+    expect(closeFinished).toBe(true);
+  });
+
   it("start() cleans up (no zombie) when activation fails (I3)", async () => {
     const closed: string[] = [];
     const host = new SandboxHost((label) => {
@@ -86,7 +132,12 @@ describe("SandboxHost (§260 lifecycle)", () => {
             error: "fail",
           });
       });
-      return { close: () => closed.push(label), transport: h };
+      return {
+        close: () => {
+          closed.push(label);
+        },
+        transport: h,
+      };
     });
     await expect(
       host.start("gamma", "/p/gamma", "index.mjs", DECLARED),

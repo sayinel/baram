@@ -193,48 +193,22 @@ fn host_window_guard(label: &str) -> Result<(), String> {
 /// Rate limiting is a separate follow-up (a cap alone does not stop a flood).
 const MAX_SANDBOX_REPORT_BYTES: usize = 8 * 1024 * 1024;
 
-/// A sink that only counts, and stops the serializer as soon as the cap is passed —
-/// so measuring an oversized frame neither allocates it nor walks all of it.
-struct CapCounter {
-    cap: usize,
-    written: usize,
-}
-
-impl std::io::Write for CapCounter {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.written += buf.len();
-        if self.written > self.cap {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "over cap",
-            ));
-        }
-        Ok(buf.len())
-    }
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
 /// Bound an attacker-controlled sandbox→host frame before forwarding it: the emit
 /// re-serializes into the main window's event loop and JS heap, so one plugin must
 /// not be able to stall the editor with a multi-MB frame. Tauri has already parsed
 /// `msg` by the time a command runs, so this caps the FORWARD, not the initial
 /// parse — the latter would need an IPC-layer limit Tauri v2 does not expose.
 ///
-/// Measured through `CapCounter` rather than `to_vec().len()` (§260 3c-2a review,
-/// M6): the naive form allocates the whole frame just to learn its size, so the
-/// cost of refusing scaled with the input the check exists to refuse.
+/// Measured through `plugin::serialized_len_capped` rather than `to_vec().len()`
+/// (§260 3c-2a review, M6): the naive form allocates the whole frame just to learn
+/// its size, so the cost of refusing scaled with the input the check exists to
+/// refuse. Soundness of attributing failure to the cap depends on the parameter
+/// being concretely `&serde_json::Value` — widen it to `impl Serialize` and a custom
+/// `Serialize` could fail for its own reasons, making "too large" a lie.
 fn check_report_size(msg: &serde_json::Value) -> Result<(), String> {
-    let mut counter = CapCounter {
-        cap: MAX_SANDBOX_REPORT_BYTES,
-        written: 0,
-    };
-    match serde_json::to_writer(&mut counter, msg) {
-        Ok(()) => Ok(()),
-        // Any serializer error here is the cap tripping (a `Value` cannot fail to
-        // serialize otherwise); report the bound, not the unknown true size.
-        Err(_) => Err(format!(
+    match plugin::serialized_len_capped(msg, MAX_SANDBOX_REPORT_BYTES) {
+        Some(_) => Ok(()),
+        None => Err(format!(
             "sandbox message too large: over {MAX_SANDBOX_REPORT_BYTES} bytes"
         )),
     }

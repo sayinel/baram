@@ -12,7 +12,13 @@ import type { SandboxTransport } from "./transport";
 import { SandboxSession } from "./sandbox-session";
 
 export interface SandboxWindow {
-  close: () => void;
+  /**
+   * §260 3c-2a re-review (N1) — may return a promise, and `stop()` awaits it. The
+   * real `WebviewWindow.close()` is async; discarding it made `stop()` resolve
+   * before the webview was gone, so a fast reload could still collide on the
+   * `plugin-<id>` label — the exact ordering the loader's teardown claims to give.
+   */
+  close: () => Promise<void> | void;
   transport: SandboxTransport<SandboxToHost, HostToSandbox>;
 }
 export type SandboxWindowFactory = (
@@ -49,7 +55,9 @@ export class SandboxHost {
     } catch (err) {
       this.live.delete(pluginId);
       session.dispose();
-      window.close();
+      // Awaited for the same reason as `stop()`: the label must be free before the
+      // caller's rollback finishes, or a retry collides with a dying webview.
+      await window.close();
       throw err;
     }
   }
@@ -59,7 +67,8 @@ export class SandboxHost {
     if (!entry) return;
     this.live.delete(pluginId);
     entry.session.dispose();
-    entry.window.close();
+    // Awaited so the `plugin-<id>` label is actually free when this resolves.
+    await entry.window.close();
   }
 
   async stopAll(): Promise<void> {
@@ -87,5 +96,5 @@ async function defaultWindowFactory(
     void win.once("tauri://error", (e) => reject(new Error(String(e.payload))));
   });
   const transport = await createHostTransport(pluginId);
-  return { close: () => void win.close(), transport };
+  return { close: () => win.close(), transport };
 }

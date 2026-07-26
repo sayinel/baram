@@ -28,6 +28,12 @@ import { arePluginsEnabled, isSandboxRuntimeAllowed } from "./plugins-enabled";
 import { SandboxHost } from "./sandbox/sandbox-host";
 
 const ACTIVATE_TIMEOUT = 5000; // 5 seconds
+/** §260 3c-2a — bound on closing a sandbox webview, so a wedged close cannot eat
+ *  the teardown budget before capability revocation runs. */
+const SANDBOX_STOP_TIMEOUT = 1000;
+/** Backstop on the whole sandbox teardown, so one hung IPC cannot wedge
+ *  `unloadAll()` → `shutdownPlugins()` and leave later plugins loaded. */
+const TEARDOWN_TIMEOUT = 5000;
 
 type Importer = (url: string) => Promise<PluginModule>;
 
@@ -209,9 +215,21 @@ export class PluginLoader {
     // disable/enable — would revoke the NEW registration, so the freshly booted
     // sandbox's `plugin_sandbox_connect` fails closed and activate times out; the
     // not-yet-closed webview would also collide on the `plugin-<id>` label.
+    //
+    // Bounded (3c-2a re-review N3): awaiting is the fix, but an unbounded await
+    // would let one wedged IPC hang `unloadPlugin` → the sequential `unloadAll()`
+    // → `shutdownPlugins()` on unmount, leaving every later plugin loaded. The old
+    // fire-and-forget could not do that. On timeout the inner teardown keeps
+    // running, so revocation still lands — just late enough that a reload inside
+    // the window could race it, hence the loud log.
     if (plugin.teardown) {
       try {
-        await plugin.teardown();
+        await withTimeout(
+          plugin.teardown(),
+          TEARDOWN_TIMEOUT,
+          `Plugin ${id} sandbox teardown timed out after ${TEARDOWN_TIMEOUT}ms — ` +
+            `capability revocation may still be in flight; a reload right now could race it`,
+        );
       } catch (e) {
         logger.error(`[PluginLoader] Sandbox teardown error for ${id}:`, e);
       }
@@ -291,13 +309,28 @@ export class PluginLoader {
       manifest,
       module: {},
       disposables,
-      // Ordered and awaited by `unloadPlugin`: stop the session (which closes the
-      // webview, freeing the `plugin-<id>` label) BEFORE dropping the grant, so a
-      // subsequent load cannot race either. Awaiting the deregister is what keeps
+      // Ordered and awaited by `unloadPlugin`: stop the session (closing the
+      // webview, which frees the `plugin-<id>` label) BEFORE dropping the grant, so
+      // a subsequent load cannot race either. Awaiting the deregister is what keeps
       // it from landing after the next `plugin_sandbox_register`.
+      //
+      // `finally` is load-bearing (3c-2a re-review N2): revocation is the
+      // security-relevant half and must not be conditional on the teardown half
+      // succeeding. A rejected `stop()` used to skip `deregister` entirely, leaving
+      // Rust authorizing `plugin_call` for a plugin the loader had already forgotten
+      // — worst of all when `stop()` failed *because* the webview is still alive.
+      // `stop()` is separately bounded so a wedged window-close cannot swallow the
+      // whole teardown budget before revocation gets its turn.
       teardown: async () => {
-        await this.sandboxHost.stop(manifest.id);
-        await pluginSandboxDeregister(manifest.id);
+        try {
+          await withTimeout(
+            this.sandboxHost.stop(manifest.id),
+            SANDBOX_STOP_TIMEOUT,
+            `Sandbox stop for ${manifest.id} timed out after ${SANDBOX_STOP_TIMEOUT}ms`,
+          );
+        } finally {
+          await pluginSandboxDeregister(manifest.id);
+        }
       },
     });
   }

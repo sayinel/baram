@@ -109,12 +109,20 @@ describe("createHostTransport (§260 host end)", () => {
       pluginId: "alpha",
       msg: { type: "callResult", callId: "c1", ok: true, value: 1 },
     });
+    // A handler that returns nothing produces `value: undefined`, which JSON drops —
+    // so the frame legitimately arrives with no `value` key at all. Pinned so a
+    // future tightening to `"value" in m` fails loudly instead of silently dropping
+    // every void command result (3c-2a re-review N7).
+    deliver({
+      pluginId: "alpha",
+      msg: { type: "callResult", callId: "c2", ok: true },
+    });
     deliver({
       pluginId: "alpha",
       msg: { type: "emitEvent", event: "e", args: [] },
     });
     deliver({ pluginId: "alpha", msg: { type: "activateError", error: "x" } });
-    expect(seen).toHaveLength(4);
+    expect(seen).toHaveLength(5);
   });
 
   it("swallows a rejected send — the sandbox may not have connected yet", async () => {

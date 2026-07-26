@@ -41,7 +41,7 @@ export async function createHostTransport(
       // during window/app teardown — but Tauri types `UnlistenFn` as `() => void`
       // while the implementation returns a promise, so wrap before catching or the
       // rejection is unhandled (and `.catch` does not typecheck).
-      void Promise.resolve(unlisten() as unknown).catch(() => {});
+      void Promise.resolve<unknown>(unlisten()).catch(() => {});
       handlers.clear();
     },
     onMessage: (h) => {

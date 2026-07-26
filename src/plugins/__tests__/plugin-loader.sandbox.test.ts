@@ -181,6 +181,23 @@ describe("PluginLoader sandboxed path (§260 3c-1)", () => {
     expect(order).toEqual(["stop", "deregister"]);
   });
 
+  // §260 3c-2a re-review (N2) — revocation is the security-relevant half of
+  // teardown and must not depend on the other half succeeding. A rejected `stop()`
+  // used to skip `deregister`, leaving Rust authorizing `plugin_call` for a plugin
+  // the loader had already forgotten — worst when stop failed BECAUSE the sandbox
+  // is still alive.
+  it("deregisters even when stopping the sandbox fails", async () => {
+    const f = fakeHost();
+    f.stop.mockRejectedValue(new Error("webview refused to close"));
+    const loader = new PluginLoader(undefined, f.host);
+    await loader.loadPlugin("/p/demo", sandboxedManifest());
+
+    await loader.unloadPlugin("demo");
+
+    expect(pluginSandboxDeregister).toHaveBeenCalledWith("demo");
+    expect(loader.isLoaded("demo")).toBe(false);
+  });
+
   it("reload does not let a late deregister revoke the new registration", async () => {
     const calls: string[] = [];
     const f = fakeHost();

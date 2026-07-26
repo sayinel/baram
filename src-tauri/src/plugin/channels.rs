@@ -103,16 +103,16 @@ impl SandboxChannels {
         // far under it; warn loudly in dev if that ever stops being true.
         #[cfg(debug_assertions)]
         {
+            // tauri's direct-eval path is `len < MAX_JSON_DIRECT_EXECUTE_THRESHOLD`,
+            // so the queue is taken at `>= 8192`; `serialized_len_capped` reports
+            // None once the length passes its cap, hence `threshold - 1`.
             const CHANNEL_QUEUE_THRESHOLD: usize = 8192;
-            if let Ok(bytes) = serde_json::to_vec(&msg) {
-                if bytes.len() >= CHANNEL_QUEUE_THRESHOLD {
-                    log::warn!(
-                        "§260: h2s frame for {label} is {} bytes (≥{CHANNEL_QUEUE_THRESHOLD}) — it \
-                         takes tauri's shared channel-data queue, which is ACL-exempt and \
-                         guessable; chunk it before this ships",
-                        bytes.len()
-                    );
-                }
+            if super::serialized_len_capped(&msg, CHANNEL_QUEUE_THRESHOLD - 1).is_none() {
+                log::warn!(
+                    "§260: h2s frame for {label} is ≥{CHANNEL_QUEUE_THRESHOLD} bytes — it takes \
+                     tauri's shared channel-data queue, which is ACL-exempt and guessable; chunk \
+                     it before this ships"
+                );
             }
         }
         channel.send(msg).map_err(|e| e.to_string())
