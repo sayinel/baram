@@ -281,9 +281,16 @@ pub async fn plugin_sandbox_report(
     window: tauri::WebviewWindow,
     msg: serde_json::Value,
     app: tauri::AppHandle,
+    authorizer: tauri::State<'_, plugin::PluginAuthorizer>,
 ) -> Result<(), String> {
     use tauri::Emitter;
     let plugin_id = sandbox_window_guard(window.label())?;
+    // Symmetric with connect, and it makes a deregistered sandbox fully mute: the
+    // host registers capabilities BEFORE creating the webview, so a live session
+    // is always registered; a stopped one can no longer talk to the host at all.
+    if !authorizer.is_registered(window.label()) {
+        return Err("this sandbox is not registered".to_string());
+    }
     app.emit(
         "plugin:s2h",
         serde_json::json!({ "pluginId": plugin_id, "msg": msg }),

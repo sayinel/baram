@@ -1,5 +1,6 @@
 // §69 Plugin Marketplace — IPC wrappers
 import { invoke } from "@tauri-apps/api/core";
+import type { Channel } from "@tauri-apps/api/core";
 
 import type { PluginOp } from "../plugins/sandbox/plugin-op";
 import type {
@@ -77,6 +78,17 @@ export async function pluginRemoveDevFolder(path: string): Promise<void> {
   return invoke<void>("plugin_remove_dev_folder", { path });
 }
 
+/**
+ * §260 sandbox-only — hand the host an IPC channel for inbound (host→sandbox)
+ * messages. Called once when the sandbox client boots; a `plugin-*` window has
+ * no event permission, so this channel is its only way to receive anything.
+ */
+export async function pluginSandboxConnect<T>(
+  channel: Channel<T>,
+): Promise<void> {
+  return invoke<void>("plugin_sandbox_connect", { channel });
+}
+
 /** §260 host-only — drop a sandbox plugin's registered capabilities. */
 export async function pluginSandboxDeregister(pluginId: string): Promise<void> {
   return invoke<void>("plugin_sandbox_deregister", { pluginId });
@@ -88,6 +100,23 @@ export async function pluginSandboxRegister(
   capabilities: string[],
 ): Promise<void> {
   return invoke<void>("plugin_sandbox_register", { pluginId, capabilities });
+}
+
+/**
+ * §260 sandbox-only — the sandbox→host direction. Carries no plugin id: Rust
+ * stamps it from the caller's window label, so one sandbox cannot impersonate
+ * another on the host's `plugin:s2h` channel.
+ */
+export async function pluginSandboxReport(msg: unknown): Promise<void> {
+  return invoke<void>("plugin_sandbox_report", { msg });
+}
+
+/** §260 host-only — deliver one message to a sandbox over its own IPC channel. */
+export async function pluginSandboxSend(
+  pluginId: string,
+  msg: unknown,
+): Promise<void> {
+  return invoke<void>("plugin_sandbox_send", { pluginId, msg });
 }
 
 export async function pluginStorageList(pluginId: string): Promise<string[]> {
