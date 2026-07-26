@@ -3,16 +3,13 @@ import type { AIAPI } from "../../types";
 import { describe, expect, it, vi } from "vitest";
 
 import { createAIAPI } from "../../extension-context";
-import {
-  createHostRequestHandler,
-  DEFAULT_AI_FACTORY,
-} from "../host-ai-bridge";
+import { createAIRequestHandler, DEFAULT_AI_FACTORY } from "../host-ai-bridge";
 
 // §260 Phase 3c-2c — the host applies the policy for `ai`, so this is where the
 // capability check has to be enforcing. It IS enforcing because a `plugin-*` window
 // holds no `llm_*` ACL grant (see capabilities/plugin-sandbox.json): the host is the
 // only route from a sandbox to a model.
-describe("createHostRequestHandler (§260 3c-2c)", () => {
+describe("createAIRequestHandler (§260 3c-2c)", () => {
   /** A stand-in for the real `createAIAPI`, so a denial is provable by absence. */
   function fakeAi(): { ai: AIAPI; calls: string[] } {
     const calls: string[] = [];
@@ -40,7 +37,7 @@ describe("createHostRequestHandler (§260 3c-2c)", () => {
 
   it("refuses every ai request when the capability was not granted", async () => {
     const { ai, calls } = fakeAi();
-    const handler = createHostRequestHandler({
+    const handler = createAIRequestHandler({
       aiFactory: () => ai,
       capabilities: ["storage"],
       pluginId: "p",
@@ -59,7 +56,7 @@ describe("createHostRequestHandler (§260 3c-2c)", () => {
 
   it("completes through the host's AI policy when granted", async () => {
     const { ai, calls } = fakeAi();
-    const handler = createHostRequestHandler({
+    const handler = createAIRequestHandler({
       aiFactory: () => ai,
       capabilities: ["ai"],
       pluginId: "p",
@@ -72,7 +69,7 @@ describe("createHostRequestHandler (§260 3c-2c)", () => {
 
   it("lists models", async () => {
     const { ai } = fakeAi();
-    const handler = createHostRequestHandler({
+    const handler = createAIRequestHandler({
       aiFactory: () => ai,
       capabilities: ["ai"],
       pluginId: "p",
@@ -84,7 +81,7 @@ describe("createHostRequestHandler (§260 3c-2c)", () => {
 
   it("forwards stream tokens through onToken and resolves", async () => {
     const { ai } = fakeAi();
-    const handler = createHostRequestHandler({
+    const handler = createAIRequestHandler({
       aiFactory: () => ai,
       capabilities: ["ai"],
       pluginId: "p",
@@ -102,7 +99,7 @@ describe("createHostRequestHandler (§260 3c-2c)", () => {
       listModels: () => Promise.reject(new Error("nope")),
       stream: () => Promise.reject(new Error("nope")),
     };
-    const handler = createHostRequestHandler({
+    const handler = createAIRequestHandler({
       aiFactory: () => ai,
       capabilities: ["ai"],
       pluginId: "p",
@@ -112,11 +109,13 @@ describe("createHostRequestHandler (§260 3c-2c)", () => {
     ).rejects.toThrow(/Privacy mode/);
   });
 
-  it("rejects an unknown request kind instead of resolving undefined", async () => {
+  it("rejects an unknown ai kind instead of resolving undefined", async () => {
     // A newer sandbox bundle against an older host: better a clear error than a
-    // silent `undefined` the plugin mistakes for a result.
+    // silent `undefined` the plugin mistakes for a result. (Routing between services
+    // is the router's job — see host-request-router.test.ts; this is the ai-local
+    // fallthrough.)
     const { ai } = fakeAi();
-    const handler = createHostRequestHandler({
+    const handler = createAIRequestHandler({
       aiFactory: () => ai,
       capabilities: ["ai"],
       pluginId: "p",
@@ -133,14 +132,14 @@ describe("createHostRequestHandler (§260 3c-2c)", () => {
     const { ai } = fakeAi();
     const factory = vi.fn(() => ai);
 
-    createHostRequestHandler({
+    createAIRequestHandler({
       aiFactory: factory,
       capabilities: ["storage"],
       pluginId: "p",
     });
     expect(factory).not.toHaveBeenCalled();
 
-    const granted = createHostRequestHandler({
+    const granted = createAIRequestHandler({
       aiFactory: factory,
       capabilities: ["ai"],
       pluginId: "p",

@@ -40,12 +40,17 @@ describe("sandbox smoke fixture (§260 3c-3)", () => {
     ]);
   });
 
-  it("defaults VAULT_DIR to empty — a personal path must not ship", () => {
-    // §260 3c-3 code review (M1): the committed value was the maintainer's absolute
-    // home path, in a public repo, and it contradicted the README's documented
-    // `files~(set VAULT_DIR)` path for an unset fixture.
+  it("hard-codes no local path at all", () => {
+    // §260 3c-3 code review (M1): this fixture once shipped the maintainer's absolute
+    // home path to a public repo, as the `VAULT_DIR` a tester had to edit. Phase 4a
+    // removed the need — paths are context-relative and the open file arrives in an
+    // event — so the guard is now the stronger one: no absolute path in the source.
     const source = readFileSync(resolve(dir, manifest.main), "utf8");
-    expect(source).toMatch(/const VAULT_DIR = "";/);
+    expect(source).not.toMatch(/"\/(Users|home)\//);
+    expect(source).not.toMatch(/[A-Za-z]:\\\\/);
+    // The one absolute-looking string that belongs here is the path the fixture expects
+    // to be REFUSED, which is the point of the `abs` check.
+    expect(source).toMatch(/readFile\("\/etc\/hosts"\)/);
   });
 
   it("grants exactly the capabilities the checks need — including readonly files", () => {
@@ -56,9 +61,33 @@ describe("sandbox smoke fixture (§260 3c-3)", () => {
     expect([...manifest.capabilities].sort()).toEqual([
       "ai",
       "commands",
+      // §260 Phase 4a — `events` is how it learns a path at all, and `statusbar` is how
+      // it reports; without them the fixture is back to throwing to be heard.
+      "events",
       "files:readonly",
+      "statusbar",
       "storage",
     ]);
+  });
+
+  it("declares the status-bar items it addresses at runtime", () => {
+    // The host refuses `setStatusBarText` for an id that is not declared, so a
+    // fixture whose manifest and code disagree would report nothing and look broken.
+    const declared = (manifest.contributions?.statusBar ?? []).map((i) => i.id);
+    expect(declared).toEqual(["smoke", "file"]);
+    const source = readFileSync(resolve(dir, manifest.main), "utf8");
+    // Extracted with a regex rather than searched for as a literal call: a formatter
+    // wrapping the arguments onto the next line broke the substring form, which made the
+    // guard fail for a reason that had nothing to do with what it guards.
+    const addressed = [
+      ...source.matchAll(/setStatusBarText\(\s*"([^"]+)"/g),
+    ].map((m) => m[1]);
+    for (const id of declared) {
+      expect(addressed, `"${id}" is declared but never set`).toContain(id);
+    }
+    // …and it deliberately addresses one UNDECLARED id, to show the refusal in the
+    // sandbox console.
+    expect(addressed).toContain("not-declared");
   });
 
   it("ships a single self-contained ESM — no imports, since a blob module has no base URL", () => {

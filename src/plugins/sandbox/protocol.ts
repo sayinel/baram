@@ -59,6 +59,24 @@ export type HostToSandbox =
  * neither pick an endpoint nor step around privacy mode. Prompt in, tokens out.
  */
 export type SandboxHostRequest =
+  | {
+      // §260 Phase 4a — set the text of one DECLARED status-bar item. `id` is the
+      // manifest-declared id, not a store key: the host namespaces it and refuses one
+      // this plugin did not declare, so the frame cannot reach another plugin's item.
+      id: string;
+      kind: "ui_status_bar";
+      text: string;
+    }
+  | {
+      // §260 Phase 4a — show a toast. Host-mediated for the same reason `ai` is: the
+      // decision is main-realm policy. The host supplies the ATTRIBUTION (the plugin's
+      // name), so this frame cannot ask to speak as the app, and the rate limit lives
+      // there too — the app's toast slot is single, so an unbounded plugin could hold
+      // it against the app's own messages.
+      kind: "ui_notify";
+      message: string;
+      type?: "error" | "info" | "warning";
+    }
   | { kind: "ai_complete"; opts?: AICompleteOptions; prompt: string }
   | { kind: "ai_list_models" }
   | { kind: "ai_stream"; opts?: AICompleteOptions; prompt: string };

@@ -1,14 +1,21 @@
 {
   "id": "baram-sandbox-smoke",
   "name": "Sandbox Smoke",
-  "description": "§260 Phase 3c-3 — exercises the sandboxed tier's brokered surface (storage, files allow+deny, ai) from inside a real plugin webview and reports the outcome as one toast.",
-  "version": "1.0.0",
+  "description": "§260 Phase 3c-3/4a — exercises the sandboxed tier's brokered surface (storage, relative-path files allow+deny, delivered events, ai) from inside a real plugin webview and reports through ctx.ui.",
+  "version": "1.1.0",
   "author": "Baram",
   "license": "Apache-2.0",
   "main": "index.mjs",
   "engines": { "baram": ">=0.4.0" },
   "trust": "sandboxed",
-  "capabilities": ["ai", "commands", "files:readonly", "storage"],
+  "capabilities": [
+    "ai",
+    "commands",
+    "events",
+    "files:readonly",
+    "statusbar",
+    "storage"
+  ],
   "contributions": {
     "commands": [
       {
@@ -21,6 +28,15 @@
         "title": "Sandbox Smoke: AI checks (slow)",
         "palette": true
       }
+    ],
+    "statusBar": [
+      {
+        "command": "run",
+        "id": "smoke",
+        "text": "🧪 smoke",
+        "tooltip": "Click to run the sandbox boundary checks"
+      },
+      { "id": "file", "text": "📄 —", "tooltip": "File the sandbox was told about" }
     ]
   },
   "icon": "🧪",

@@ -29,9 +29,42 @@ examples in [`examples/plugins/`](../examples/plugins/):
   capabilities.
 
 There is a third folder, `examples/plugins/sandbox-smoke/`, which is an internal test
-fixture for the §260 sandboxed tier — **not a template**. It reports results by
-throwing, ships as one hand-written file with no build step, and exists to probe deny
-paths during a manual smoke run.
+fixture for the §260 sandboxed tier — **not a template**. It ships as one hand-written
+file with no build step and exists to probe deny paths during a manual smoke run.
+
+### The sandboxed tier's API differs
+
+A plugin with `"trust": "sandboxed"` runs in its own isolated webview and gets a
+narrower, data-only context. Two differences matter when writing one:
+
+- **`files` paths are relative to a vault root you are never told.** `readFile("a.md")`,
+  `listDir("")` for the vault root; an absolute path or a `..` is refused. Pass
+  `{ context }` from a file event to keep a call aimed at the vault the event came from:
+  ```js
+  ctx.events.on("file:open", async ({ context, path }) => {
+    const text = await ctx.files.readFile(path, { context });
+  });
+  ```
+- **`ui` is data, not DOM.** `ctx.ui.showNotification(message, type?)` (the host labels
+  the toast with your plugin's name in its own badge, and rate-limits you to one every
+  four seconds — the app has a single toast slot) and
+  `ctx.ui.setStatusBarText(id, text)` for an item your manifest declared in
+  `contributions.statusBar`. No `addStyle`, no panel `onMount(el)` — those need
+  `"trust": "trusted"`.
+
+Declared status-bar items are registered from the manifest before your plugin's code
+runs — so they show up while the sandbox is still booting — and one with a `command` is
+clickable. They are removed again if the load fails.
+
+When your plugin finishes activating, the host delivers a synthetic `file:open` for the
+file that is already open, if any. That way a plugin loaded at startup does not have to
+wait for the user to switch tabs before it knows where it is.
+
+Contribution ids (`commands[].id`, `statusBar[].id`, and the `command` a status-bar item
+points at) must match `^[A-Za-z0-9_-]+$` and be unique within their section, and at most
+five status-bar items may be declared. The host namespaces them as
+`<pluginId>.<command>` and `<pluginId>:sb:<item>`, so a `.` or `:` in the trailing part
+would make those ids ambiguous.
 
 A plugin project looks like this:
 

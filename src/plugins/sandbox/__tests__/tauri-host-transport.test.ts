@@ -188,6 +188,50 @@ describe("createHostTransport (§260 host end)", () => {
     expect(seen).toHaveLength(5);
   });
 
+  // §260 Phase 4a — the same coverage for the frames THIS phase adds, written in the
+  // same commit as the union members. That ordering is the lesson from F1: a member
+  // without its validator entry ships the feature dead, and no other suite can see it.
+  it("delivers well-formed ui requests and drops broken ones", async () => {
+    const transport = await createHostTransport("alpha");
+    const seen: SandboxToHost[] = [];
+    transport.onMessage((m) => seen.push(m));
+
+    for (const request of [
+      { kind: "ui_notify" }, // no message
+      { kind: "ui_notify", message: 42 },
+      { kind: "ui_notify", message: "m", type: "fatal" }, // not a toast kind
+      { kind: "ui_notify", message: "m", type: 1 },
+      { kind: "ui_status_bar", text: "t" }, // no id
+      { kind: "ui_status_bar", id: "s" }, // no text
+      { kind: "ui_status_bar", id: 1, text: "t" },
+      { kind: "ui_status_bar", id: "s", text: null },
+    ]) {
+      expect(() =>
+        deliver({
+          pluginId: "alpha",
+          msg: { type: "hostRequest", requestId: "r", request },
+        }),
+      ).not.toThrow();
+    }
+    expect(seen).toEqual([]);
+
+    for (const request of [
+      { kind: "ui_notify", message: "m" },
+      { kind: "ui_notify", message: "m", type: "error" },
+      { kind: "ui_notify", message: "m", type: "info" },
+      { kind: "ui_notify", message: "m", type: "warning" },
+      { kind: "ui_status_bar", id: "s", text: "t" },
+      // An empty string is legitimate: it is how a plugin clears its own item.
+      { kind: "ui_status_bar", id: "s", text: "" },
+    ]) {
+      deliver({
+        pluginId: "alpha",
+        msg: { type: "hostRequest", requestId: "r", request },
+      });
+    }
+    expect(seen).toHaveLength(6);
+  });
+
   it("swallows a rejected send — the sandbox may not have connected yet", async () => {
     const transport = await createHostTransport("alpha");
     invoke.mockRejectedValueOnce(new Error("sandbox is not connected"));
