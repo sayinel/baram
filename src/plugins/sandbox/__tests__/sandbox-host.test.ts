@@ -1,5 +1,6 @@
 import type { PluginContributions } from "../../types";
 import type { HostToSandbox, SandboxToHost } from "../protocol";
+import type { SandboxWindow } from "../sandbox-host";
 import type { SandboxTransport } from "../transport";
 
 import { describe, expect, it, vi } from "vitest";
@@ -31,10 +32,10 @@ function fakeFactory(
   return (
     label: string,
     pluginId: string,
-  ): {
-    close: () => void;
-    transport: SandboxTransport<SandboxToHost, HostToSandbox>;
-  } => {
+    // Typed as the real interface so the annotation cannot drift from it — an
+    // inline `close: () => void` would locally reject an async close the real
+    // `SandboxWindow` allows (3c-2a final pass, Q4).
+  ): SandboxWindow => {
     created.push(label);
     pluginIds.push(pluginId);
     // NOTE: `close` must have a void body — `SandboxWindow.close` is

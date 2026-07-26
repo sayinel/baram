@@ -328,6 +328,15 @@ export class PluginLoader {
             SANDBOX_STOP_TIMEOUT,
             `Sandbox stop for ${manifest.id} timed out after ${SANDBOX_STOP_TIMEOUT}ms`,
           );
+        } catch (e) {
+          // Logged HERE, not left to propagate: an exception from `finally`
+          // replaces the one in flight, so if both halves fail only the
+          // deregister error would surface — and a failed stop is the more
+          // alarming of the two, because it means a live, still-capable sandbox.
+          logger.error(
+            `[PluginLoader] Sandbox stop failed for ${manifest.id}:`,
+            e,
+          );
         } finally {
           await pluginSandboxDeregister(manifest.id);
         }

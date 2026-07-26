@@ -679,6 +679,18 @@ pub fn read_manifest_at(folder: &Path) -> Result<PluginManifest, PluginError> {
 mod tests {
     use super::*;
 
+    /// §260 3c-2a final pass (Q3) — two callers want OPPOSITE comparisons off this
+    /// helper (`>` for the report cap, `>=` for the 8 KiB channel-queue threshold,
+    /// hence its `threshold - 1`), so pin the boundary here rather than leaving the
+    /// `-1` safe only by careful reading. A JSON string is `len + 2` bytes.
+    #[test]
+    fn serialized_len_capped_admits_exactly_cap_and_refuses_one_over() {
+        let five = serde_json::Value::String("xyz".to_string()); // "xyz" → 5 bytes
+        assert_eq!(serialized_len_capped(&five, 5), Some(5)); // == cap → admitted
+        assert_eq!(serialized_len_capped(&five, 6), Some(5)); // under cap
+        assert_eq!(serialized_len_capped(&five, 4), None); // one over → refused
+    }
+
     #[test]
     fn test_validate_manifest_valid() {
         let manifest = PluginManifest {
