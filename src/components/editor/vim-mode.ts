@@ -6,6 +6,8 @@
 // Prec.highest(mod.vim()) — see SourceCodeEditor for why Prec cannot put any
 // keymap "above" vim's own ViewPlugin handler.
 
+import type { Transaction } from "@codemirror/state";
+
 import { insertNewlineContinueMarkup } from "@codemirror/lang-markdown";
 
 import { getAction } from "../../keybindings/keybinding-actions";
@@ -64,9 +66,17 @@ export function registerExCommands(mod: VimModule): void {
  * CM5 comment-addon slot `newlineAndIndentContinueComment` empty and prefers
  * it when set — that slot IS the designed extension point, so we fill it.
  *
- * Markdown contexts get `insertNewlineContinueMarkup`; everything else (code
- * file tabs, non-list lines) returns false and falls back to the adapter's
- * own `newlineAndIndent`, keeping its dispatchChange/undo plumbing intact.
+ * The Enter command cannot be reused verbatim (Codex BLOCK review,
+ * session 019f9c90): its transaction is captured, inspected, and rebuilt —
+ * - r<CR> keeps a plain line break: `o`/`O` set vim.insertMode BEFORE the
+ *   slot runs, `replace` never does, which discriminates the call sites;
+ * - the Enter command's empty-item branch DELETES the marker — destructive
+ *   for `o`. Any replaced range starting before the cursor is that branch
+ *   (renumbering rewrites start after the cursor), so it falls back;
+ * - the rebuilt dispatch tags input.type.compose(.start) exactly like the
+ *   adapter's internal dispatchChange, so one `u` undoes o + typed text.
+ * Known limitation: `O` on the FIRST document line bypasses this slot inside
+ * the adapter (special-cased replaceRange) and opens without a bullet.
  * Global singleton, same contract as registerExCommands.
  */
 export function registerListContinuation(mod: VimModule): void {
@@ -80,11 +90,44 @@ export function registerListContinuation(mod: VimModule): void {
     // writes under state.readOnly, but insertNewlineContinueMarkup has no
     // such guard (verified: no readOnly check in @codemirror/lang-markdown).
     if (view.state.readOnly) return;
+    if (!cm.state.vim?.insertMode) {
+      commands.newlineAndIndent(cm);
+      return;
+    }
+    const head = view.state.selection.main.head;
+    let captured: null | Transaction = null;
     const ran = insertNewlineContinueMarkup({
-      dispatch: (tr) => view.dispatch(tr),
+      dispatch: (tr) => {
+        captured = tr;
+      },
       state: view.state,
     });
-    if (!ran) commands.newlineAndIndent(cm);
+    // TS cannot see the synchronous callback assignment above and narrows
+    // `captured` back to null — re-widen at the read site.
+    const tr = captured as null | Transaction;
+    if (!ran || !tr) {
+      commands.newlineAndIndent(cm);
+      return;
+    }
+    let destructive = false;
+    tr.changes.iterChangedRanges((fromA, toA) => {
+      if (toA > fromA && fromA < head) destructive = true;
+    });
+    if (destructive) {
+      commands.newlineAndIndent(cm);
+      return;
+    }
+    const op = (cm as { curOp?: null | { lastChange?: unknown } }).curOp;
+    view.dispatch({
+      changes: tr.changes,
+      effects: tr.effects,
+      scrollIntoView: true,
+      selection: tr.selection,
+      userEvent:
+        op && !op.lastChange
+          ? "input.type.compose.start"
+          : "input.type.compose",
+    });
   };
   listContinuationRegistered = true;
 }

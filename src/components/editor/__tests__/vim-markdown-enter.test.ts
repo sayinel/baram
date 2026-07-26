@@ -127,6 +127,72 @@ describe("markdown list continuation under vim (§298 smoke bug)", () => {
     expect(view.state.doc.toString()).toBe(NESTED);
   });
 
+  it("undo parity: o + typed text takes the SAME two steps as stock vim", () => {
+    // Codex finding 2 claimed the markdown path breaks single-u atomicity.
+    // Probe against the STOCK adapter path (non-markdown doc, pure
+    // newlineAndIndent) showed upstream is ALSO two-step: u #1 removes the
+    // typed text, u #2 removes the opened line. Single-u atomicity does not
+    // exist upstream; the contract here is parity, pinned in both steps.
+    const view = makeEditor(NESTED, END - 1, true);
+    const cm = getCM(view);
+    Vim.handleKey(cm!, "o", "user");
+    const head = view.state.selection.main.head;
+    // Simulate insert-mode typing via the native input userEvent.
+    view.dispatch({
+      changes: { from: head, insert: "typed" },
+      selection: EditorSelection.cursor(head + 5),
+      userEvent: "input.type",
+    });
+    Vim.handleKey(cm!, "<Esc>", "user");
+    Vim.handleKey(cm!, "u", "user");
+    expect(view.state.doc.toString()).toBe(`${NESTED}\n  - `);
+    Vim.handleKey(cm!, "u", "user");
+    expect(view.state.doc.toString()).toBe(NESTED);
+  });
+
+  it("vim ON: r<CR> stays a plain line break (Codex BLOCK finding 1)", () => {
+    // replace-with-newline must NOT run markdown Enter semantics — vim's
+    // `replace` action never sets insertMode before hitting the slot.
+    const view = makeEditor("- item", 2, true); // cursor on "i"
+    const cm = getCM(view);
+    Vim.handleKey(cm!, "r", "user");
+    Vim.handleKey(cm!, "<CR>", "user");
+    expect(view.state.doc.toString()).toBe("- \ntem");
+    Vim.handleKey(cm!, "u", "user");
+    expect(view.state.doc.toString()).toBe("- item");
+  });
+
+  it("vim ON: o on an EMPTY list item never deletes the marker (finding 3)", () => {
+    // The Enter command's empty-item branch deletes/dedents markup — for
+    // `o` that would eat the current line. The destructive-change detector
+    // must reroute to a plain newline instead.
+    const view = makeEditor("- ", 2, true);
+    const cm = getCM(view);
+    Vim.handleKey(cm!, "o", "user");
+    expect(view.state.doc.toString()).toBe("- \n");
+    expect(cm!.state.vim?.insertMode).toBe(true);
+  });
+
+  it("vim ON: o inside an ordered list still renumbers following items", () => {
+    // Renumbering rewrites start AFTER the cursor — the destructive
+    // detector must not misfire on them.
+    const doc = "1. a\n2. b";
+    const view = makeEditor(doc, 3, true); // cursor inside "1. a"
+    const cm = getCM(view);
+    Vim.handleKey(cm!, "o", "user");
+    expect(view.state.doc.toString()).toBe("1. a\n2. \n3. b");
+  });
+
+  it("known limitation: O on the FIRST document line opens without a bullet", () => {
+    // The adapter special-cases first-line O with a raw replaceRange and
+    // never consults the continuation slot — pinned so an upstream change
+    // surfaces here.
+    const view = makeEditor("- item", 3, true);
+    const cm = getCM(view);
+    Vim.handleKey(cm!, "O", "user");
+    expect(view.state.doc.toString()).toBe("\n- item");
+  });
+
   it("readOnly state: o writes nothing (parity with the adapter's guard)", () => {
     // The adapter's dispatchChange refuses writes under state.readOnly; the
     // markdown branch must not differ (insertNewlineContinueMarkup itself
