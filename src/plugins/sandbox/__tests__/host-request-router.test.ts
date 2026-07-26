@@ -20,14 +20,15 @@ describe("createHostRequestHandler routing (§260 Phase 4a)", () => {
       typeof createHostRequestHandler
     >[0]["capabilities"],
   ) {
-    const toasts: string[] = [];
+    const toasts: Array<{ message: string; source?: string }> = [];
     const handler = createHostRequestHandler({
       aiFactory: () => ai,
       capabilities,
       declaredStatusBarIds: ["s"],
       pluginId: "p",
       pluginName: "P",
-      showToast: (m) => void toasts.push(m),
+      showToast: (message, _type, source) =>
+        void toasts.push({ message, source }),
     });
     return { handler, toasts };
   }
@@ -35,7 +36,7 @@ describe("createHostRequestHandler routing (§260 Phase 4a)", () => {
   it("answers a ui request for a plugin that holds no ai grant", async () => {
     const { handler, toasts } = handlerFor(["statusbar"]);
     await handler({ kind: "ui_notify", message: "hello" }, noop);
-    expect(toasts).toEqual(["P: hello"]);
+    expect(toasts).toEqual([{ message: "hello", source: "P" }]);
   });
 
   it("answers an ai request for a plugin that holds no ui capability", async () => {

@@ -451,6 +451,139 @@ describe("PluginLoader sandboxed path (§260 3c-1)", () => {
     });
   });
 
+  // §260 Phase 4a security review (HIGH-2) — the worst state this loader can be in.
+  describe("rollback when wiring fails after the sandbox started", () => {
+    // A manifest that is VALID (so `validateManifest` lets it through) whose wiring
+    // fails at the last step. `validateManifest` now rejects the malformed
+    // `statusBar` entry that motivated this review finding, so reaching the rollback
+    // needs a failure validation cannot see — here the session's own transport dying
+    // during the post-activate state replay. That ordering is the point: by then a
+    // status-bar item, a palette command and an event subscription have all landed.
+    const wiredManifest = () =>
+      sandboxedManifest({
+        capabilities: ["statusbar", "commands", "events"],
+        contributions: {
+          commands: [{ id: "hello", title: "Say Hi" }],
+          statusBar: [{ id: "ok", text: "fine" }],
+        },
+      });
+
+    /** Arrange a failure in the last wiring step, after everything else registered. */
+    function failDuringReplay(f: ReturnType<typeof fakeHost>) {
+      setContextResolver(() => ({ context: "ctx-1", path: "open.md" }));
+      useEditorStore.setState({
+        activeTabId: "t1",
+        tabs: [{ filePath: "/v/open.md", id: "t1" }] as never,
+      });
+      f.deliverEvent.mockImplementation(() => {
+        throw new Error("transport is gone");
+      });
+    }
+
+    it("stops the sandbox and REVOKES its capabilities", async () => {
+      // Before the fix: the throw landed between the rollback try and
+      // `this.loaded.set`, so nothing was recorded, `unloadPlugin` early-returned, and
+      // the still-running sandbox kept its Rust grants for the rest of the session —
+      // while the user saw a plugin that simply failed to load.
+      const f = fakeHost();
+      failDuringReplay(f);
+      const loader = new PluginLoader(undefined, f.host);
+
+      await expect(
+        loader.loadPlugin("/p/demo", wiredManifest()),
+      ).rejects.toThrow(/transport is gone/);
+
+      expect(f.stop).toHaveBeenCalledWith("demo");
+      expect(pluginSandboxDeregister).toHaveBeenCalledWith("demo");
+      expect(loader.isLoaded("demo")).toBe(false);
+    });
+
+    it("leaves no status-bar item, palette command, or event subscription behind", async () => {
+      const f = fakeHost();
+      failDuringReplay(f);
+      const loader = new PluginLoader(undefined, f.host);
+
+      await expect(
+        loader.loadPlugin("/p/demo", wiredManifest()),
+      ).rejects.toThrow();
+
+      // Everything registered before the failure must be gone: each step pushed a
+      // disposable, and the rollback runs them all.
+      expect(usePluginUIStore.getState().statusBarItems).toEqual([]);
+      expect(usePluginUIStore.getState().paletteCommands).toEqual([]);
+      f.deliverEvent.mockClear();
+      deliverSandboxEvent("editor:ready", []);
+      expect(f.deliverEvent).not.toHaveBeenCalled();
+    });
+
+    it("still revokes when stopping the sandbox also fails", async () => {
+      // Revocation is the security-relevant half and must not depend on the other one
+      // (3c-2a re-review N2), on the rollback path as much as on the teardown path.
+      const f = fakeHost();
+      failDuringReplay(f);
+      f.stop.mockRejectedValue(new Error("webview refused to close"));
+      const loader = new PluginLoader(undefined, f.host);
+
+      await expect(
+        loader.loadPlugin("/p/demo", wiredManifest()),
+      ).rejects.toThrow();
+
+      expect(pluginSandboxDeregister).toHaveBeenCalledWith("demo");
+    });
+
+    it("reports the ORIGINAL failure, not a rollback error", async () => {
+      const f = fakeHost();
+      failDuringReplay(f);
+      f.stop.mockRejectedValue(new Error("secondary"));
+      pluginSandboxDeregister.mockRejectedValue(new Error("also secondary"));
+      const loader = new PluginLoader(undefined, f.host);
+
+      // The wiring error is what the user needs to see; rollback problems are logged.
+      await expect(
+        loader.loadPlugin("/p/demo", wiredManifest()),
+      ).rejects.toThrow(/transport is gone/);
+    });
+
+    it("a later load of the same id can still succeed", async () => {
+      // The point of rolling back: the `plugin-<id>` label is free and the grant is
+      // gone, so a fixed manifest loads cleanly instead of colliding.
+      const f = fakeHost();
+      failDuringReplay(f);
+      const loader = new PluginLoader(undefined, f.host);
+      await expect(
+        loader.loadPlugin("/p/demo", wiredManifest()),
+      ).rejects.toThrow();
+
+      f.deliverEvent.mockReset();
+      await loader.loadPlugin("/p/demo", sandboxedManifest());
+      expect(loader.isLoaded("demo")).toBe(true);
+    });
+  });
+
+  // §260 Phase 4a security review (MEDIUM-3) — creating chrome must need the same
+  // capability as updating it.
+  it("ignores declared status-bar items when the plugin lacks the statusbar capability", async () => {
+    const f = fakeHost();
+    const loader = new PluginLoader(undefined, f.host);
+    await loader.loadPlugin(
+      "/p/demo",
+      sandboxedManifest({
+        capabilities: ["commands"],
+        contributions: {
+          commands: [{ id: "hello", title: "Say Hi" }],
+          statusBar: [{ id: "sneaky", text: "free real estate" }],
+        },
+      }),
+    );
+
+    expect(usePluginUIStore.getState().statusBarItems).toEqual([]);
+    // The rest of the plugin still loads — an ignored decoration is not a load failure.
+    expect(loader.isLoaded("demo")).toBe(true);
+    expect(
+      usePluginUIStore.getState().paletteCommands.map((c) => c.commandId),
+    ).toEqual(["demo.hello"]);
+  });
+
   it("refuses to create a sandbox webview when the dev release gate is off", async () => {
     isSandboxRuntimeAllowed.mockReturnValue(false);
     const f = fakeHost();

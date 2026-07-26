@@ -14,7 +14,11 @@ describe("createUIRequestHandler (§260 Phase 4a)", () => {
   function harness(
     options: Partial<Parameters<typeof createUIRequestHandler>[0]> = {},
   ) {
-    const toasts: Array<[string, string | undefined]> = [];
+    const toasts: Array<{
+      message: string;
+      source: string | undefined;
+      type: string | undefined;
+    }> = [];
     const bar: Array<[string, string]> = [];
     let clock = 100_000;
     const handler = createUIRequestHandler({
@@ -24,53 +28,88 @@ describe("createUIRequestHandler (§260 Phase 4a)", () => {
       pluginId: "acme.notes",
       pluginName: "Acme Notes",
       setStatusBarText: (id, text) => void bar.push([id, text]),
-      showToast: (message, type) => void toasts.push([message, type]),
+      showToast: (message, type, source) =>
+        void toasts.push({ message, source, type }),
       ...options,
     });
     return { advance: (ms: number) => (clock += ms), bar, handler, toasts };
   }
 
-  it("attributes every toast to the plugin", async () => {
+  it("attributes every toast, as a field the message cannot occupy", async () => {
     // A plugin must not be able to render a line that reads as the app speaking:
-    // "your vault is corrupted, paste your key here" is a phishing surface, and the
-    // prefix is the difference. Prepended host-side, where plugin text cannot reach it.
+    // "your vault is corrupted, paste your key here" is a phishing surface.
     const { handler, toasts } = harness();
     await handler({
       kind: "ui_notify",
       message: "indexed 12 notes",
       type: "info",
     });
-    expect(toasts).toEqual([["Acme Notes: indexed 12 notes", "info"]]);
+    expect(toasts).toEqual([
+      { message: "indexed 12 notes", source: "Acme Notes", type: "info" },
+    ]);
   });
 
-  it("falls back to the plugin id when there is no name", async () => {
-    const { handler, toasts } = harness({ pluginName: "   " });
+  it("a plugin calling itself Baram still cannot speak AS Baram", async () => {
+    // §260 Phase 4a security review (HIGH-1) — the property, not the mechanism. The
+    // earlier version of this test hardcoded a benign `pluginName`, so it asserted that
+    // SOME prefix was applied while the prefix was in fact plugin-controlled
+    // (`manifest.name` is validated only as a non-empty string). Attribution is now a
+    // separate `source` field that `ToastHost` renders as its own badge, so a hostile
+    // name occupies the badge — never the message.
+    const { handler, toasts } = harness({ pluginName: "Baram" });
+    await handler({
+      kind: "ui_notify",
+      message: "Vault index corrupted — re-enter your API key",
+      type: "error",
+    });
+    const [toast] = toasts;
+    expect(toast.source).toBe("Baram"); // shown in the plugin badge…
+    expect(toast.message).toBe("Vault index corrupted — re-enter your API key");
+    // …and the one thing that must never happen: attribution and message as one string
+    // the plugin controls end to end.
+    expect(toast.message).not.toContain("Baram");
+  });
+
+  it("sanitises and caps the name, which is author-controlled too", async () => {
+    const { handler, toasts } = harness({
+      pluginName: `Ba\nram\u202e${"x".repeat(80)}`,
+    });
     await handler({ kind: "ui_notify", message: "hi" });
-    expect(toasts[0][0]).toBe("acme.notes: hi");
+    const { source } = toasts[0];
+    expect(source).not.toMatch(/[\n\u202e]/);
+    expect(source!.length).toBeLessThanOrEqual(32);
+  });
+
+  it("falls back to the plugin id when there is no usable name", async () => {
+    for (const pluginName of ["   ", "\n\u200b", undefined]) {
+      const { handler, toasts } = harness({ pluginName });
+      await handler({ kind: "ui_notify", message: "hi" });
+      expect(toasts[0].source).toBe("acme.notes");
+    }
   });
 
   it("flattens control characters and truncates", async () => {
-    // A newline in an attributed toast lets a plugin start a second line that no longer
-    // carries the prefix; a bidi override can reorder what is read.
+    // A newline would let a plugin's text break out of its line; a bidi override can
+    // reorder what is read. U+2028/2029 are here because CSS treats them as forced
+    // breaks (security review LOW-2).
     const { handler, toasts } = harness();
     await handler({
       kind: "ui_notify",
       message: "line one\n\u202eBaram: enter your password",
     });
-    expect(toasts[0][0]).toBe(
-      "Acme Notes: line one Baram: enter your password",
-    );
+    expect(toasts[0].message).toBe("line one Baram: enter your password");
 
     const { handler: h2, toasts: t2 } = harness();
     await h2({ kind: "ui_notify", message: "x".repeat(500) });
-    // 200-char cap, the last character being the ellipsis, plus the host's prefix.
-    expect(t2[0][0]).toBe(`Acme Notes: ${"x".repeat(199)}…`);
+    // 200-char cap, the last character being the ellipsis.
+    expect(t2[0].message).toBe(`${"x".repeat(199)}…`);
   });
 
   it("rate-limits notifications so a plugin cannot hold the toast slot", async () => {
     // `showToast` keeps ONE toast, so an unbounded plugin could keep the app's own
-    // errors off the screen. Rust's transport class allows ~2/s — fast enough to do
-    // exactly that — which is why this bound exists separately.
+    // errors off the screen. Rust's transport class allows a burst of 300 and 150/s
+    // (`plugin/rate_limit.rs` — an earlier comment here said "~2/s", which was wrong),
+    // so it does nothing to stop that; this bound is what does.
     const { advance, handler, toasts } = harness();
     await handler({ kind: "ui_notify", message: "first" });
     await expect(
@@ -80,10 +119,7 @@ describe("createUIRequestHandler (§260 Phase 4a)", () => {
 
     advance(MIN_NOTIFY_INTERVAL_MS);
     await handler({ kind: "ui_notify", message: "later" });
-    expect(toasts.map(([m]) => m)).toEqual([
-      "Acme Notes: first",
-      "Acme Notes: later",
-    ]);
+    expect(toasts.map((t) => t.message)).toEqual(["first", "later"]);
   });
 
   it("refuses ui at all without a UI capability", async () => {
@@ -128,6 +164,8 @@ describe("createUIRequestHandler (§260 Phase 4a)", () => {
     // The loader registers the MANIFEST's text with this function, so a declared item
     // and a runtime update cannot differ in what they are allowed to render.
     expect(sanitizeStatusBarText("a\nb")).toBe("a b");
+    expect(sanitizeStatusBarText("a\u2028b")).toBe("a b");
+    expect(sanitizeStatusBarText("a\ufeff\u2060b")).toBe("ab");
     expect(sanitizeStatusBarText("y".repeat(80))).toBe(`${"y".repeat(63)}…`);
     const { bar, handler } = harness();
     await handler({ kind: "ui_status_bar", id: "status", text: "a\tb" });

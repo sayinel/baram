@@ -112,16 +112,13 @@ const HOST_REQUEST_VALIDATORS: {
   ai_complete: (r) => typeof r.prompt === "string" && isAiOptions(r.opts),
   ai_list_models: () => true,
   ai_stream: (r) => typeof r.prompt === "string" && isAiOptions(r.opts),
-  // Length and content are the HOST's business (`host-ui-bridge` truncates and strips
-  // control characters); what a validator can say is that the fields it dereferences
-  // are strings of the right kind.
   ui_notify: (r) =>
-    typeof r.message === "string" &&
+    isRenderableText(r.message) &&
     (r.type === undefined ||
       r.type === "error" ||
       r.type === "info" ||
       r.type === "warning"),
-  ui_status_bar: (r) => typeof r.id === "string" && typeof r.text === "string",
+  ui_status_bar: (r) => typeof r.id === "string" && isRenderableText(r.text),
 };
 
 // A `Map`, not the record itself, for the lookup: indexing a plain object with an
@@ -129,6 +126,18 @@ const HOST_REQUEST_VALIDATORS: {
 // hand back a function and pass the truthiness test.
 const FRAME_LOOKUP = new Map(Object.entries(FRAME_VALIDATORS));
 const HOST_REQUEST_LOOKUP = new Map(Object.entries(HOST_REQUEST_VALIDATORS));
+
+/**
+ * §260 Phase 4a security review (MEDIUM-1) — a string bounded before any work touches it.
+ *
+ * `ui_*` are the first frame types whose payload gets O(n) MAIN-REALM processing (two
+ * regex passes in `host-ui-bridge`, then a Zustand commit). Rust caps a frame at 8 MiB
+ * and allows 150/s, so without a length check here a plugin could aim ~1 GB/s of regex at
+ * the thread this tier exists to protect. The host truncates to 200 (toast) / 64 (status
+ * bar) anyway, so anything past this bound cannot be a real message — it is dropped like
+ * any other malformed frame.
+ */
+const MAX_UI_TEXT_CHARS = 4096;
 
 /** `AICompleteOptions`, or nothing. Type-checked only — a plugin may legitimately
  *  ask for a large `maxTokens`; that is within its `ai` grant, and the in-flight
@@ -149,6 +158,10 @@ function isHostRequest(v: unknown): boolean {
   const validate =
     typeof r.kind === "string" ? HOST_REQUEST_LOOKUP.get(r.kind) : undefined;
   return validate ? validate(r) : false;
+}
+
+function isRenderableText(v: unknown): boolean {
+  return typeof v === "string" && v.length <= MAX_UI_TEXT_CHARS;
 }
 
 function isWellFormed(msg: unknown): msg is SandboxToHost {

@@ -314,7 +314,15 @@ export class PluginLoader {
       manifest.capabilities,
       installPath,
     );
-    let session: SandboxSession;
+    // §260 Phase 4a security review (HIGH-2) — everything from here to
+    // `this.loaded.set` is one unit of work, because a throw anywhere in it used to
+    // leave the WORST possible state: the sandbox running with its Rust grants, the
+    // webview holding its label, and NOTHING in `this.loaded` — so `unloadPlugin`
+    // early-returned and the user disabling the plugin was a no-op. A malformed
+    // `contributions.statusBar` entry was enough to reach it. `disposables` is declared
+    // out here so the rollback can undo whatever had already landed.
+    const disposables: Disposable[] = [];
+    let session: SandboxSession | undefined;
     try {
       // §260 3c-2b — no path is handed over: the sandbox pulls its own bundle
       // through the broker, resolved in Rust from its window label.
@@ -337,111 +345,56 @@ export class PluginLoader {
           pluginName: manifest.name,
         }),
       );
+      this.wireSandboxContributions(manifest, session, disposables);
+      this.loaded.set(manifest.id, {
+        id: manifest.id,
+        manifest,
+        module: {},
+        disposables,
+        teardown: this.sandboxTeardown(manifest.id),
+      });
     } catch (err) {
-      // roll back the capability grant if the sandbox failed to start; never let a
-      // deregister failure mask the original start error.
+      // Roll back everything that landed, in the reverse order it landed, and revoke the
+      // grant UNCONDITIONALLY (3c-2a re-review N2: revocation must not depend on the
+      // teardown half succeeding — the worst case is a stop that failed *because* the
+      // sandbox is alive). Never let a rollback failure mask the original error.
+      await this.rollbackSandboxLoad(manifest.id, session, disposables);
+      throw err;
+    }
+  }
+
+  /**
+   * Undo a partial sandboxed load: drop the UI it registered, stop the session, then
+   * revoke its capabilities whatever happened.
+   */
+  private async rollbackSandboxLoad(
+    id: string,
+    session: SandboxSession | undefined,
+    disposables: Disposable[],
+  ): Promise<void> {
+    for (const disposable of disposables.reverse()) {
       try {
-        await pluginSandboxDeregister(manifest.id);
+        disposable.dispose();
+      } catch (e) {
+        logger.error(`[PluginLoader] rollback dispose error for ${id}:`, e);
+      }
+    }
+    // Belt-and-suspenders for anything a disposable missed, matching `unloadPlugin`.
+    unregisterPluginUI(id);
+    try {
+      if (session) await this.sandboxHost.stop(id);
+    } catch (e) {
+      logger.error(`[PluginLoader] rollback stop failed for ${id}:`, e);
+    } finally {
+      try {
+        await pluginSandboxDeregister(id);
       } catch (deregErr) {
         logger.error(
-          `[PluginLoader] rollback deregister failed for ${manifest.id}:`,
+          `[PluginLoader] rollback deregister failed for ${id}:`,
           deregErr,
         );
       }
-      throw err;
     }
-
-    const disposables: Disposable[] = [];
-    // §260 Phase 4a — declarative status bar: registered from the MANIFEST, so an item
-    // appears without the plugin's code having run (and stays if `activate` never binds
-    // anything). Text is sanitised on the way in — it is author-controlled and reaches
-    // the bar directly — and `command` becomes the full id the handler registry knows.
-    for (const item of manifest.contributions?.statusBar ?? []) {
-      const itemId = statusBarItemId(manifest.id, item.id);
-      usePluginUIStore.getState().registerStatusBarItem({
-        align: "right",
-        command: item.command ? `${manifest.id}.${item.command}` : undefined,
-        itemId,
-        pluginId: manifest.id,
-        text: sanitizeStatusBarText(item.text),
-        tooltip: item.tooltip && sanitizeStatusBarText(item.tooltip),
-      });
-      disposables.push({
-        dispose: () => usePluginUIStore.getState().removeStatusBarItem(itemId),
-      });
-    }
-    for (const cmd of session.contributions?.commands ?? []) {
-      const fullId = `${manifest.id}.${cmd.id}`;
-      // Always register the handler so a command can be invoked via menu or
-      // programmatically; only surface it in the palette unless the manifest
-      // opted out (palette: false) — mirrors the trusted path's visibility rule.
-      disposables.push(
-        registerHostCommandHandler(fullId, () => session.invokeCommand(cmd.id)),
-      );
-      if (cmd.palette !== false) {
-        usePluginUIStore.getState().registerPaletteCommand({
-          commandId: fullId,
-          pluginId: manifest.id,
-          title: cmd.title,
-        });
-        disposables.push({
-          dispose: () =>
-            usePluginUIStore.getState().removePaletteCommand(fullId),
-        });
-      }
-    }
-    // §260 Phase 4a — from here the sandbox hears app events (`events`-gated inside the
-    // bridge, which also strips absolute paths). Subscribing AFTER activate resolved is
-    // deliberate: a frame delivered mid-activate would arrive before the plugin's
-    // `events.on` had run and be dropped by its client.
-    const subscriber = {
-      capabilities: manifest.capabilities,
-      pluginId: manifest.id,
-      session,
-    };
-    disposables.push({ dispose: subscribeSandbox(subscriber) });
-    // …and tell it what is already open, so its first useful moment does not depend on
-    // the user switching tabs (the normal case at startup).
-    replayCurrentState(subscriber, activeFilePath());
-
-    this.loaded.set(manifest.id, {
-      id: manifest.id,
-      manifest,
-      module: {},
-      disposables,
-      // Ordered and awaited by `unloadPlugin`: stop the session (closing the
-      // webview, which frees the `plugin-<id>` label) BEFORE dropping the grant, so
-      // a subsequent load cannot race either. Awaiting the deregister is what keeps
-      // it from landing after the next `plugin_sandbox_register`.
-      //
-      // `finally` is load-bearing (3c-2a re-review N2): revocation is the
-      // security-relevant half and must not be conditional on the teardown half
-      // succeeding. A rejected `stop()` used to skip `deregister` entirely, leaving
-      // Rust authorizing `plugin_call` for a plugin the loader had already forgotten
-      // — worst of all when `stop()` failed *because* the webview is still alive.
-      // `stop()` is separately bounded so a wedged window-close cannot swallow the
-      // whole teardown budget before revocation gets its turn.
-      teardown: async () => {
-        try {
-          await withTimeout(
-            this.sandboxHost.stop(manifest.id),
-            SANDBOX_STOP_TIMEOUT,
-            `Sandbox stop for ${manifest.id} timed out after ${SANDBOX_STOP_TIMEOUT}ms`,
-          );
-        } catch (e) {
-          // Logged HERE, not left to propagate: an exception from `finally`
-          // replaces the one in flight, so if both halves fail only the
-          // deregister error would surface — and a failed stop is the more
-          // alarming of the two, because it means a live, still-capable sandbox.
-          logger.error(
-            `[PluginLoader] Sandbox stop failed for ${manifest.id}:`,
-            e,
-          );
-        } finally {
-          await pluginSandboxDeregister(manifest.id);
-        }
-      },
-    });
   }
 
   private async runLoad(
@@ -513,6 +466,123 @@ export class PluginLoader {
     logger.info(
       `[PluginLoader] Loaded plugin: ${manifest.id} v${manifest.version}`,
     );
+  }
+
+  /**
+   * The teardown `unloadPlugin` awaits for a sandboxed plugin.
+   *
+   * Ordered: stop the session (closing the webview, which frees the `plugin-<id>`
+   * label) BEFORE dropping the grant, so a subsequent load cannot race either.
+   * Awaiting the deregister is what keeps it from landing after the next
+   * `plugin_sandbox_register`.
+   *
+   * `finally` is load-bearing (3c-2a re-review N2): revocation is the
+   * security-relevant half and must not be conditional on the teardown half
+   * succeeding. A rejected `stop()` used to skip `deregister` entirely, leaving Rust
+   * authorizing `plugin_call` for a plugin the loader had already forgotten — worst of
+   * all when `stop()` failed *because* the webview is still alive. `stop()` is
+   * separately bounded so a wedged window-close cannot swallow the whole teardown
+   * budget before revocation gets its turn.
+   */
+  private sandboxTeardown(id: string): () => Promise<void> {
+    return async () => {
+      try {
+        await withTimeout(
+          this.sandboxHost.stop(id),
+          SANDBOX_STOP_TIMEOUT,
+          `Sandbox stop for ${id} timed out after ${SANDBOX_STOP_TIMEOUT}ms`,
+        );
+      } catch (e) {
+        // Logged HERE, not left to propagate: an exception from `finally` replaces the
+        // one in flight, so if both halves fail only the deregister error would
+        // surface — and a failed stop is the more alarming of the two, because it means
+        // a live, still-capable sandbox.
+        logger.error(`[PluginLoader] Sandbox stop failed for ${id}:`, e);
+      } finally {
+        await pluginSandboxDeregister(id);
+      }
+    };
+  }
+
+  /**
+   * Map a started sandbox's declared contributions onto the host: status-bar items,
+   * palette commands, event delivery. Everything it registers is pushed onto
+   * `disposables`, which is both the unload path and the rollback path.
+   */
+  private wireSandboxContributions(
+    manifest: PluginManifest,
+    session: SandboxSession,
+    disposables: Disposable[],
+  ): void {
+    // §260 Phase 4a — declarative status bar: registered from the MANIFEST, so an item
+    // appears without the plugin's code having run (and stays if `activate` never binds
+    // anything). Text is sanitised on the way in — it is author-controlled and reaches
+    // the bar directly — and `command` becomes the full id the handler registry knows.
+    //
+    // Gated on `statusbar` (security review MEDIUM-3): updating an item already required
+    // it, so creating one must too, or `capabilities: []` still buys space in the app
+    // chrome — and declining the capability at Phase 5 would not take it away. Skipped
+    // with a warning rather than failing the load: an ignored decoration should not stop
+    // a plugin whose commands are fine.
+    const declaredItems = manifest.contributions?.statusBar ?? [];
+    if (
+      declaredItems.length > 0 &&
+      !manifest.capabilities.includes("statusbar")
+    ) {
+      logger.warn(
+        `[PluginLoader] ${manifest.id} declares statusBar items without the ` +
+          `"statusbar" capability — ignoring them`,
+      );
+    } else {
+      for (const item of declaredItems) {
+        const itemId = statusBarItemId(manifest.id, item.id);
+        usePluginUIStore.getState().registerStatusBarItem({
+          align: "right",
+          command: item.command ? `${manifest.id}.${item.command}` : undefined,
+          itemId,
+          pluginId: manifest.id,
+          text: sanitizeStatusBarText(item.text),
+          tooltip: item.tooltip && sanitizeStatusBarText(item.tooltip),
+        });
+        disposables.push({
+          dispose: () =>
+            usePluginUIStore.getState().removeStatusBarItem(itemId),
+        });
+      }
+    }
+    for (const cmd of session.contributions?.commands ?? []) {
+      const fullId = `${manifest.id}.${cmd.id}`;
+      // Always register the handler so a command can be invoked via menu or
+      // programmatically; only surface it in the palette unless the manifest
+      // opted out (palette: false) — mirrors the trusted path's visibility rule.
+      disposables.push(
+        registerHostCommandHandler(fullId, () => session.invokeCommand(cmd.id)),
+      );
+      if (cmd.palette !== false) {
+        usePluginUIStore.getState().registerPaletteCommand({
+          commandId: fullId,
+          pluginId: manifest.id,
+          title: cmd.title,
+        });
+        disposables.push({
+          dispose: () =>
+            usePluginUIStore.getState().removePaletteCommand(fullId),
+        });
+      }
+    }
+    // §260 Phase 4a — from here the sandbox hears app events (`events`-gated inside the
+    // bridge, which also strips absolute paths). Subscribing AFTER activate resolved is
+    // deliberate: a frame delivered mid-activate would arrive before the plugin's
+    // `events.on` had run and be dropped by its client.
+    const subscriber = {
+      capabilities: manifest.capabilities,
+      pluginId: manifest.id,
+      session,
+    };
+    disposables.push({ dispose: subscribeSandbox(subscriber) });
+    // …and tell it what is already open, so its first useful moment does not depend on
+    // the user switching tabs (the normal case at startup).
+    replayCurrentState(subscriber, activeFilePath());
   }
 }
 

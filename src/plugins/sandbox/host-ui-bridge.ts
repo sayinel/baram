@@ -18,15 +18,23 @@ import { UI_CAPABILITIES } from "../types";
 
 /**
  * A toast replaces the previous one (`useUIStore.showToast` keeps a single slot), so an
- * unbounded plugin could keep the app's own errors off the screen indefinitely. Rust's
- * `RateClass::Transport` bounds the pipe at ~2/s, which is exactly fast enough to do
- * that — hence a second, purpose-built bound here.
+ * unbounded plugin could keep the app's own messages off the screen. Rust's
+ * `RateClass::Transport` allows a **burst of 300 and 150 frames per second**
+ * (`plugin/rate_limit.rs`) — the earlier claim of "~2/s" here was simply wrong — so the
+ * transport bound does nothing to stop that, hence a purpose-built one.
+ *
+ * Set ABOVE `TOAST_DURATION_MS` (3000, `components/editor/Toast.tsx`) so a plugin cannot
+ * keep a toast on screen continuously (security review LOW-1). RESIDUAL, stated honestly:
+ * within its allowance a plugin can still replace an app toast that is mid-display. The
+ * real fix is a queue or a separate plugin slot, which is app-wide UX work.
  */
-export const MIN_NOTIFY_INTERVAL_MS = 2_000;
+export const MIN_NOTIFY_INTERVAL_MS = 4_000;
 
 /** A toast is one line in a small box; a status-bar slot is narrower still. */
 const MAX_NOTIFY_CHARS = 200;
 const MAX_STATUS_BAR_CHARS = 64;
+/** Attribution is a badge, not a sentence. */
+const MAX_SOURCE_CHARS = 32;
 
 export interface UIRequestHandlerOptions {
   /** Grants recorded at install, as the manifest declared them. */
@@ -39,7 +47,11 @@ export interface UIRequestHandlerOptions {
   /** Display name for attribution; falls back to the id. */
   pluginName?: string;
   setStatusBarText?: (itemId: string, text: string) => void;
-  showToast?: (message: string, type?: "error" | "info" | "warning") => void;
+  showToast?: (
+    message: string,
+    type?: "error" | "info" | "warning",
+    source?: string,
+  ) => void;
 }
 
 type UIRequest = Extract<SandboxHostRequest, { kind: `ui_${string}` }>;
@@ -61,10 +73,18 @@ export function createUIRequestHandler(
     pluginName,
     setStatusBarText = (itemId, text) =>
       usePluginUIStore.getState().updateStatusBarItem(itemId, text),
-    showToast = (message, type) =>
-      useUIStore.getState().showToast(message, type),
+    showToast = (message, type, source) =>
+      useUIStore.getState().showToast(message, type, source),
   } = options;
-  const label = pluginName?.trim() || pluginId;
+  // §260 Phase 4a security review (HIGH-1) — `pluginName` is `manifest.name`, which
+  // `validateManifest` only requires to be a non-empty string: a plugin can call itself
+  // "Baram". So the name is NOT trusted as attribution — it is sanitised, capped, and
+  // passed as the toast's `source`, which `ToastHost` renders as its own badge element
+  // that the plugin's message text cannot occupy. Sanitised for the same reason as the
+  // message: it is rendered, and unbounded author-controlled text with newlines or a bidi
+  // override could otherwise reshape the line.
+  const label =
+    sanitizePluginText(pluginName ?? "", MAX_SOURCE_CHARS) || pluginId;
   const granted = new Set(capabilities);
   const declared = new Set(declaredStatusBarIds);
   let lastNotifyAt = -Infinity;
@@ -93,12 +113,10 @@ export function createUIRequestHandler(
           );
         }
         lastNotifyAt = at;
-        // Attribution is prepended HERE, where the plugin cannot reach it. A plugin may
-        // still write anything it likes after the prefix; what it cannot do is make the
-        // line read as the app itself.
         showToast(
-          `${label}: ${sanitizePluginText(request.message, MAX_NOTIFY_CHARS)}`,
+          sanitizePluginText(request.message, MAX_NOTIFY_CHARS),
           request.type,
+          label,
         );
         return undefined;
       }
@@ -146,12 +164,15 @@ export function statusBarItemId(pluginId: string, declaredId: string): string {
  */
 function sanitizePluginText(raw: string, max: number): string {
   const flattened = raw
-    // C0 + DEL + C1, then the bidi/invisible formatting range (U+200B-U+200F,
-    // U+202A-U+202E, U+2066-U+2069) that could rewrite the reading order of an
-    // attributed toast.
+    // C0 + DEL + C1, plus U+2028/U+2029 — those are LINE and PARAGRAPH SEPARATOR, which
+    // CSS treats as forced breaks (security review LOW-2), so without them the stated
+    // "a newline breaks the status bar's layout" was still reachable.
     // eslint-disable-next-line no-control-regex -- stripping control chars is the point
-    .replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
-    .replace(/[\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, "")
+    .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, " ")
+    // Invisible formatting: bidi overrides/isolates that could rewrite the reading order
+    // of a line, plus the zero-width and BOM characters that pad a string invisibly past
+    // the length cap.
+    .replace(/[\u061c\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/g, "")
     .trim();
   return flattened.length > max
     ? `${flattened.slice(0, max - 1)}\u2026`

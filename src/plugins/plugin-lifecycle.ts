@@ -1,4 +1,8 @@
-import type { InstalledPlugin, PluginFileEvent } from "./types";
+import type {
+  InstalledPlugin,
+  PluginEventName,
+  PluginFileEvent,
+} from "./types";
 
 import {
   pluginListDev,
@@ -190,7 +194,7 @@ export async function shutdownPlugins(): Promise<void> {
  * two are called together here, at the app's own notification points, so a new event
  * cannot be wired to one tier and forgotten for the other.
  */
-function notifyPlugins(event: string, ...args: unknown[]): void {
+function notifyPlugins(event: PluginEventName, ...args: unknown[]): void {
   emitPluginEvent(event, ...args);
   deliverSandboxEvent(event, args);
 }

@@ -72,8 +72,10 @@ Phase 5.
 
 Also check, by eye:
 
-- the toast says **`Sandbox Smoke: …`** — the host adds that prefix, and a plugin must
-  not be able to render a line that reads as the app itself;
+- the toast carries a **`Sandbox Smoke` badge** next to the message — the host renders
+  that as its own element from the manifest name, so a plugin cannot write a line that
+  reads as the app itself (a plugin that named itself "Baram" would get a *badge* saying
+  Baram, never an unbadged app-looking toast);
 - the sandbox console logs one `ui_status_bar refused` for the item the fixture
   deliberately does not declare (`not-declared`);
 - opening another note updates the `📄` item.
@@ -85,9 +87,10 @@ Also check, by eye:
 - `ai✗` with a provider/key/privacy-mode message if no model is configured — that is
   the host's shared AI policy refusing, which still proves the bridge works. Configure
   a provider and re-run to see `ai1✓`.
-- Running both commands within two seconds of each other: the second toast is refused
-  ("limited to one every 2000ms"), by design — the app has a single toast slot. The
-  status-bar item still carries the line.
+- Running both commands within four seconds of each other: the second toast is refused
+  ("limited to one every 4000ms"), by design — the app has a single toast slot and that
+  bound is deliberately longer than a toast's own lifetime. The status-bar item still
+  carries the line.
 
 ## Still missing (Phase 4b)
 

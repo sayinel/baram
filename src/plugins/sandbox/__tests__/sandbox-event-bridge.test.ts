@@ -91,6 +91,23 @@ describe("sandbox event bridge (§260 Phase 4a)", () => {
     expect(without.delivered).toEqual([]);
   });
 
+  it("drops an event it has no declared rule for", () => {
+    // §260 Phase 4a security review (MEDIUM-4) — translation used to be opt-IN per
+    // event ("these carry a path"), so a future `file:rename` would have forwarded its
+    // absolute path through the untouched `else` branch. The rule is now a record over
+    // `PluginEventName`, which makes `tsc` refuse a new event until someone declares
+    // which kind it is; an unknown NAME (the call site takes a plain string) is dropped
+    // rather than guessed at.
+    setContextResolver(vaultResolver());
+    const { delivered, subscriber } = sandbox("p", ["events"]);
+    subscribeSandbox(subscriber);
+
+    deliverSandboxEvent("file:rename" as never, ["/v/a.md", "/v/b.md"]);
+    deliverSandboxEvent("constructor" as never, ["x"]);
+
+    expect(delivered).toEqual([]);
+  });
+
   it("passes non-path events through untouched", () => {
     setContextResolver(vaultResolver());
     const { delivered, subscriber } = sandbox("p", ["events"]);

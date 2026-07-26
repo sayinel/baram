@@ -389,7 +389,20 @@ fn vault_relative(path: &str) -> Result<&std::path::Path, String> {
     let relative = std::path::Path::new(path);
     for component in relative.components() {
         match component {
-            Component::CurDir | Component::Normal(_) => {}
+            Component::CurDir => {}
+            // §260 Phase 4a security review (LOW-4) — on Windows a colon inside a
+            // component names an alternate data stream (`note.md:hidden`), which
+            // `components()` hands back as one ordinary `Normal`. Such a write lands on
+            // an in-vault file, so it is within what `files` grants, but it is invisible
+            // to `files_list` and to the user. Precautionary: `:` is legal in a POSIX
+            // filename, so the refusal is Windows-only, and the reviewer could not
+            // verify the behaviour on a Windows host.
+            Component::Normal(name) if cfg!(windows) && contains_colon(name) => {
+                return Err(format!(
+                    "path \"{path}\" must not contain \":\" (alternate data stream)"
+                ))
+            }
+            Component::Normal(_) => {}
             // Deliberately does not echo which rule was hit: one message for every
             // rejected shape is less to keep in sync, and a plugin learns nothing
             // useful from the distinction.
@@ -402,6 +415,33 @@ fn vault_relative(path: &str) -> Result<&std::path::Path, String> {
         }
     }
     Ok(relative)
+}
+
+/// Does one path component contain a colon? Compared on the raw bytes so a non-UTF-8
+/// component is judged too, rather than passing by virtue of being unreadable.
+fn contains_colon(name: &std::ffi::OsStr) -> bool {
+    name.as_encoded_bytes().contains(&b':')
+}
+
+/// An `FsError` with any absolute path replaced by the caller's own relative one.
+///
+/// §260 Phase 4a — the sandboxed tier must never receive an absolute path, and two
+/// `FsError` variants carry one in their `Display`. Matched EXHAUSTIVELY on purpose: a
+/// wildcard arm would silently pass through the next variant that happens to embed a
+/// path, which is the fail-open shape this phase's review kept finding.
+fn redact_fs_error(error: &crate::fs::FsError, caller_path: &str) -> String {
+    use crate::fs::FsError;
+    match error {
+        // Keep the sentinel — the frontend's `listDir` wrapper parses it (§4.3) — and
+        // swap only the path after the colon.
+        FsError::PermissionDenied(_) => format!("PERMISSION_DENIED:{caller_path}"),
+        FsError::NotFound(_) => format!("file \"{caller_path}\" was not found"),
+        // These carry an `io::Error` or a watcher message, neither of which embeds a
+        // path on any platform we build for.
+        FsError::ReadError(_) | FsError::TrashError(_) | FsError::WatchError(_) => {
+            error.to_string()
+        }
+    }
 }
 
 /// Where a sandboxed plugin's relative path lands, given its anchor context.
@@ -470,6 +510,18 @@ async fn plugin_path_anchor(
 /// `files`-granted plugin can create a symlink inside the vault (pointing in-vault, so
 /// the check passes) and repoint it before the read lands. A canonical path names only
 /// real directories, so no later symlink change can redirect it.
+///
+/// ‼️ EXACT GUARANTEE (§260 Phase 4a security review) — canonicalisation resolves a
+/// symlink that EXISTS. A **dangling** in-vault symlink is different: `resolve_canonical`
+/// falls back to the nearest existing ancestor plus the remaining components
+/// (`context/manager.rs`), so the result is an in-vault path and every check here passes,
+/// while the OS would follow the link on write. What actually neutralises that today is
+/// `crate::fs::write_file`, which writes a sibling `.tmp` and `rename`s it over the link
+/// rather than opening the link itself (§3.6 atomic write). That dependency is
+/// load-bearing: if this arm ever writes with a plain `tokio::fs::write`, a dangling
+/// in-vault symlink becomes arbitrary file creation anywhere the user can write
+/// (`~/Library/LaunchAgents/…`). Do not describe the vault rule as catching symlinks
+/// generally — it catches the ones that resolve.
 ///
 /// The vault rule itself is `fs_cmd::ensure_path_in_vault` — the same §88
 /// multi-context, deny-when-nothing-is-open decision `read_file` makes, not a copy.
@@ -577,7 +629,15 @@ async fn execute_op(
             // should have to pay per directory, where the rate limiter can see it.
             let entries = crate::fs::list_dir(authorized_path_str(&resolved)?, false)
                 .await
-                .map_err(|e| e.to_string())?;
+                // §260 Phase 4a security review (MEDIUM-2) — the ONLY channel that leaked
+                // an absolute path into the sandboxed realm, which is the one thing this
+                // tier's path model exists to prevent. `FsError::PermissionDenied`
+                // Displays as `PERMISSION_DENIED:<canonical path>` (`fs/mod.rs`), so a
+                // TCC-blocked vault answered `ctx.files.listDir("")` with the user's home
+                // directory — and macOS TCC denial is a recurring state for this app
+                // (#252, #285), not a hypothetical. Keeps the sentinel the frontend parses
+                // and substitutes the caller's OWN relative path, like the write arm.
+                .map_err(|e| redact_fs_error(&e, &path))?;
             Ok(serde_json::json!(entries
                 .into_iter()
                 .map(|e| e.name)
@@ -948,6 +1008,18 @@ mod tests {
             refused(r"C:\Windows\System32\x"); // a drive prefix is absolute here
             refused(r"\\server\share\x"); // and so is a UNC path
             refused(r"\Windows\x"); // rooted, no prefix
+                                    // …and an alternate data stream, which `components()` reports as one
+                                    // ordinary component (security review LOW-4). Message differs, so assert
+                                    // separately rather than through `refused`.
+            let e = vault("note.md:hidden").expect_err("an ADS must be refused");
+            assert!(e.contains("alternate data stream"), "unexpected error: {e}");
+        } else {
+            // A colon is a legal POSIX filename character, so the refusal above must
+            // NOT apply here — refusing it would break real vaults.
+            assert_eq!(
+                vault("note:with:colons.md").unwrap(),
+                root.join("note:with:colons.md")
+            );
         }
 
         // §89 single-file context: it anchors only itself.
@@ -955,6 +1027,33 @@ mod tests {
         assert_eq!(file("").unwrap(), root);
         let e = file("sibling.md").expect_err("a file context has no directory");
         assert!(e.contains("single file"), "unexpected error: {e}");
+    }
+
+    /// §260 Phase 4a security review (MEDIUM-2) — an error must not carry an absolute
+    /// path back into the sandboxed realm. This was the only channel that did: a
+    /// TCC-blocked vault answered `listDir("")` with the user's home directory.
+    #[test]
+    fn a_filesystem_error_never_carries_an_absolute_path_to_the_sandbox() {
+        use crate::fs::FsError;
+        let secret = "/Users/someone/Documents/Private Vault";
+
+        let denied = redact_fs_error(&FsError::PermissionDenied(secret.into()), "notes");
+        // The sentinel survives — the frontend's `listDir` wrapper parses it (§4.3) —
+        // but the path is the caller's own.
+        assert_eq!(denied, "PERMISSION_DENIED:notes");
+        assert!(!denied.contains(secret));
+
+        let missing = redact_fs_error(&FsError::NotFound(secret.into()), "notes/a.md");
+        assert!(!missing.contains(secret), "leaked: {missing}");
+        assert!(missing.contains("notes/a.md"), "unexpected: {missing}");
+
+        // A variant that carries no path is passed through unchanged, so a real cause is
+        // not flattened into a generic message.
+        let io = redact_fs_error(
+            &FsError::ReadError(std::io::Error::other("disk on fire")),
+            "notes",
+        );
+        assert!(io.contains("disk on fire"), "unexpected: {io}");
     }
 
     /// §260 3c-2c — `.baram/` is the app's own per-vault state, so a plugin that could

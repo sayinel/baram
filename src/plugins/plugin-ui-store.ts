@@ -68,12 +68,20 @@ export const usePluginUIStore = create<PluginUIState>()((set) => ({
   registerStatusBarItem: (item) =>
     set((state) => ({ statusBarItems: [...state.statusBarItems, item] })),
 
+  // §260 Phase 4a security review (MEDIUM-1) — no-op when the text is unchanged.
+  // Without this, every update allocated a fresh array and committed, so a sandboxed
+  // plugin calling `setStatusBarText` in a loop re-rendered the status bar at its full
+  // frame rate while displaying nothing new.
   updateStatusBarItem: (itemId, text) =>
-    set((state) => ({
-      statusBarItems: state.statusBarItems.map((i) =>
-        i.itemId === itemId ? { ...i, text } : i,
-      ),
-    })),
+    set((state) => {
+      const current = state.statusBarItems.find((i) => i.itemId === itemId);
+      if (!current || current.text === text) return state;
+      return {
+        statusBarItems: state.statusBarItems.map((i) =>
+          i.itemId === itemId ? { ...i, text } : i,
+        ),
+      };
+    }),
 
   removeStatusBarItem: (itemId) =>
     set((state) => ({

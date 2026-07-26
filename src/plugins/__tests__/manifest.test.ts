@@ -283,4 +283,98 @@ describe("validateManifest — trust tier (§260)", () => {
       expect(r.errors.some((e) => e.field === "contributions")).toBe(true);
     }
   });
+
+  // §260 Phase 4a security review (HIGH-2) — the entries, not just the container.
+  // `"statusBar": [{}]` used to pass validation and then throw inside the LOADER, after
+  // the sandbox had started: no rollback ran, `this.loaded` never got the plugin, and
+  // disabling it became a no-op while it kept its capabilities. The loader now rolls
+  // back structurally; this stops it at install time, where the author can see it.
+  describe("contribution entries (§260 Phase 4a)", () => {
+    const sandboxed = (contributions: unknown) =>
+      validateManifest({ ...base, contributions, trust: "sandboxed" });
+    const fieldsOf = (r: ReturnType<typeof validateManifest>) =>
+      r.valid ? [] : r.errors.map((e) => e.field);
+
+    it("accepts a well-formed declaration", () => {
+      const r = sandboxed({
+        commands: [{ id: "run", palette: false, title: "Run" }],
+        statusBar: [
+          { command: "run", id: "count", text: "0", tooltip: "recount" },
+        ],
+      });
+      expect(fieldsOf(r)).toEqual([]);
+      expect(r.valid).toBe(true);
+    });
+
+    it("rejects an entry that is not an object", () => {
+      expect(fieldsOf(sandboxed({ statusBar: [{}] }))).toContain(
+        "contributions.statusBar[0].id",
+      );
+      expect(fieldsOf(sandboxed({ statusBar: ["nope"] }))).toContain(
+        "contributions.statusBar[0]",
+      );
+      expect(fieldsOf(sandboxed({ commands: "run" }))).toContain(
+        "contributions.commands",
+      );
+    });
+
+    it("requires the fields the loader dereferences", () => {
+      // `text` is the one that threw: `sanitizeStatusBarText(undefined)`.
+      expect(fieldsOf(sandboxed({ statusBar: [{ id: "a" }] }))).toContain(
+        "contributions.statusBar[0].text",
+      );
+      expect(
+        fieldsOf(sandboxed({ statusBar: [{ id: "a", text: 42 }] })),
+      ).toContain("contributions.statusBar[0].text");
+      expect(fieldsOf(sandboxed({ commands: [{ id: "a" }] }))).toContain(
+        "contributions.commands[0].title",
+      );
+      expect(
+        fieldsOf(
+          sandboxed({ commands: [{ id: "a", palette: "yes", title: "A" }] }),
+        ),
+      ).toContain("contributions.commands[0].palette");
+    });
+
+    it("keeps namespaced ids unambiguous", () => {
+      // The host builds `${pluginId}.${command}` and `${pluginId}:sb:${item}`; keeping
+      // the separators out of the trailing part is what makes those unforgeable.
+      for (const id of ["a.b", "a:b", "", "a b", "../x"]) {
+        expect(
+          fieldsOf(sandboxed({ statusBar: [{ id, text: "t" }] })),
+          `id ${JSON.stringify(id)} must be refused`,
+        ).toContain("contributions.statusBar[0].id");
+      }
+      expect(
+        fieldsOf(
+          sandboxed({ statusBar: [{ command: "a.b", id: "x", text: "t" }] }),
+        ),
+      ).toContain("contributions.statusBar[0].command");
+    });
+
+    it("caps how many status-bar items one plugin may declare", () => {
+      // Unbounded, a manifest alone could fill the app chrome — no code, and (before
+      // MEDIUM-3) no capability either.
+      const many = Array.from({ length: 6 }, (_, i) => ({
+        id: `i${i}`,
+        text: "x",
+      }));
+      expect(fieldsOf(sandboxed({ statusBar: many }))).toContain(
+        "contributions.statusBar",
+      );
+    });
+
+    it("checks menu/settings as arrays of objects without freezing their shape", () => {
+      // Nothing consumes them yet (Phase 4b). Asserting a shape the loader does not
+      // read would freeze an unsettled design; leaving them unchecked would repeat the
+      // very mistake above the moment 4b reads one.
+      expect(fieldsOf(sandboxed({ menu: "nope" }))).toContain(
+        "contributions.menu",
+      );
+      expect(fieldsOf(sandboxed({ settings: [1] }))).toContain(
+        "contributions.settings[0]",
+      );
+      expect(sandboxed({ menu: [{ anything: true }] }).valid).toBe(true);
+    });
+  });
 });

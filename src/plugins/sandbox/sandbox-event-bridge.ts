@@ -12,13 +12,34 @@
 //   2. an absolute path becomes `{context, path}` with a VAULT-RELATIVE path, or the
 //      event is dropped. No absolute path crosses the boundary, which is what keeps the
 //      user's home directory out of the tier (see `SandboxFilesAPI`).
-import type { PluginCapability, PluginFileEvent } from "../types";
+import type {
+  PluginCapability,
+  PluginEventName,
+  PluginFileEvent,
+} from "../types";
 import type { SandboxSession } from "./sandbox-session";
 
 import { logger } from "../../utils/logger";
 
-/** App events a sandboxed plugin may receive, and whether they carry a path. */
-const PATH_EVENTS = new Set(["file:open", "file:save"]);
+/**
+ * Every app event a sandboxed plugin may receive, and how its payload crosses.
+ *
+ * ‼️ A discriminant-keyed RECORD, not a set of "these ones carry a path" (§260 Phase 4a
+ * security review, MEDIUM-4). As a set, translation was opt-IN per event: adding
+ * `file:rename`/`file:delete` later would have forwarded its absolute path to the sandbox
+ * silently, because the `else` branch passes `args` through untouched. This form makes
+ * `tsc` refuse a new `PluginEventName` until someone declares which it is — the same
+ * shape as the frame-validator record, and for the same reason, except that omission
+ * failed CLOSED (a dead feature) while this one would fail OPEN (a leaked path).
+ *
+ * - `"path"` — `args[0]` is an absolute path; translate it or drop the event.
+ * - `"none"` — no payload to translate; forwarded as-is.
+ */
+const EVENT_PAYLOADS: Record<PluginEventName, "none" | "path"> = {
+  "editor:ready": "none",
+  "file:open": "path",
+  "file:save": "path",
+};
 
 /**
  * Resolves an absolute file path to the context that contains it. Injected so tests
@@ -44,10 +65,22 @@ let resolveContext: ContextResolver = () => null;
  * happens once; a plugin without `events` is skipped without the payload ever being
  * built for it.
  */
-export function deliverSandboxEvent(event: string, args: unknown[]): void {
+export function deliverSandboxEvent(
+  event: PluginEventName,
+  args: unknown[],
+): void {
   if (subscribers.size === 0) return;
+  // An event this module has no rule for is DROPPED, not guessed at: `event` arrives from
+  // a plain string call site, so the type alone cannot be the whole guard.
+  const kind = Object.hasOwn(EVENT_PAYLOADS, event)
+    ? EVENT_PAYLOADS[event]
+    : undefined;
+  if (kind === undefined) {
+    logger.debug(`[Sandbox] no delivery rule for event "${event}" — dropped`);
+    return;
+  }
   let payload: unknown[];
-  if (PATH_EVENTS.has(event)) {
+  if (kind === "path") {
     const absolute = args[0];
     if (typeof absolute !== "string") return;
     const located = resolveContext(absolute);

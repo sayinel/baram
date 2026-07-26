@@ -18,7 +18,7 @@ describe("ui end-to-end: real client ↔ real session (§260 Phase 4a)", () => {
     op.kind === "source_read" ? "// bundle" : undefined;
 
   async function pair(capabilities: string[]) {
-    const toasts: string[] = [];
+    const toasts: Array<{ message: string; source?: string }> = [];
     const bar: Array<[string, string]> = [];
     const { host, sandbox } = createChannelPair();
     let ctx: SandboxContext | undefined;
@@ -39,7 +39,8 @@ describe("ui end-to-end: real client ↔ real session (§260 Phase 4a)", () => {
         pluginId: "p",
         pluginName: "Plugin P",
         setStatusBarText: (id, text) => void bar.push([id, text]),
-        showToast: (m) => void toasts.push(m),
+        showToast: (message, _type, source) =>
+          void toasts.push({ message, source }),
       }),
     );
     await session.activate("p", { commands: [] });
@@ -54,7 +55,9 @@ describe("ui end-to-end: real client ↔ real session (§260 Phase 4a)", () => {
     const { ctx, toasts } = await pair(["statusbar"]);
     ctx.ui.showNotification("indexed 3 notes", "info");
     await settle();
-    expect(toasts).toEqual(["Plugin P: indexed 3 notes"]);
+    expect(toasts).toEqual([
+      { message: "indexed 3 notes", source: "Plugin P" },
+    ]);
   });
 
   it("carries a status-bar update to the namespaced item", async () => {
@@ -92,6 +95,6 @@ describe("ui end-to-end: real client ↔ real session (§260 Phase 4a)", () => {
     }
     ctx.ui.showNotification("still working");
     await settle();
-    expect(toasts).toEqual(["Plugin P: still working"]);
+    expect(toasts).toEqual([{ message: "still working", source: "Plugin P" }]);
   });
 });

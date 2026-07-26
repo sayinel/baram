@@ -109,3 +109,38 @@ describe("plugin-ui-store panels/tabs/palette", () => {
     expect(usePluginUIStore.getState().activePluginPanelId).toBe("p2:b");
   });
 });
+
+// §260 Phase 4a security review (MEDIUM-1) — a sandboxed plugin can call
+// `setStatusBarText` at the transport's full rate (burst 300, 150/s). Committing an
+// identical value re-rendered the status bar for nothing, in the realm this tier exists
+// to protect.
+describe("updateStatusBarItem identity (§260 Phase 4a)", () => {
+  beforeEach(() => usePluginUIStore.setState({ statusBarItems: [] }));
+
+  it("does not commit when the text is unchanged", () => {
+    usePluginUIStore.getState().registerStatusBarItem({
+      align: "right",
+      itemId: "p:sb:x",
+      pluginId: "p",
+      text: "same",
+    });
+    const before = usePluginUIStore.getState().statusBarItems;
+
+    usePluginUIStore.getState().updateStatusBarItem("p:sb:x", "same");
+    // Reference identity, not deep equality: an unchanged array is what stops the
+    // subscribed component from re-rendering.
+    expect(usePluginUIStore.getState().statusBarItems).toBe(before);
+
+    usePluginUIStore.getState().updateStatusBarItem("p:sb:x", "different");
+    expect(usePluginUIStore.getState().statusBarItems).not.toBe(before);
+    expect(usePluginUIStore.getState().statusBarItems[0].text).toBe(
+      "different",
+    );
+  });
+
+  it("ignores an unknown item id", () => {
+    const before = usePluginUIStore.getState().statusBarItems;
+    usePluginUIStore.getState().updateStatusBarItem("nope", "x");
+    expect(usePluginUIStore.getState().statusBarItems).toBe(before);
+  });
+});
