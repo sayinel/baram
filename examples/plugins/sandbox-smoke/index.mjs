@@ -103,23 +103,29 @@ export async function activate(ctx) {
         return `(${models.length})`;
       }),
     );
-    // 8. ai.complete + ai.stream under IDENTICAL options, reported by LENGTH.
+    // 8. ai — complete, stream, complete AGAIN, all with identical options.
     //
-    // The first live run returned `ai✓()` — resolved, but with an empty string. These
-    // two checks separate the candidate causes instead of guessing at one:
-    //   • both empty            → no token ever reached the host (relay or provider)
-    //   • stream>0, complete=0  → the host's buffering in `createAIAPI.complete`
-    //   • both non-empty now    → the first run's `maxTokens: 8` was simply too tight
-    //     for the configured model (a reasoning model can spend that budget before
-    //     emitting content), i.e. a fixture artifact, not a product defect
+    // Run 2 gave `ai(len=0)` with `stream(1tok/2ch)`, which looks like a
+    // complete-only bug — but that comparison was confounded: it changed the API AND
+    // the call order at once (complete first, stream second). `complete` and `stream`
+    // go through the very same `start()` in `createAIAPI` and differ only in where
+    // `onToken` points, so a complete-only buffering defect is close to impossible;
+    // "the FIRST request of a session yields no tokens" fits the same data.
+    //
+    // A second `complete` after the stream separates them:
+    //   • ai1=0, ai2>0  → order/warm-up. The API is fine; the first request of a
+    //     session produces `llm:done` with no tokens (provider or Rust SSE path).
+    //   • ai1=0, ai2=0, stream>0 → genuinely complete-vs-stream after all.
+    //   • all >0 → not reproducible; suspect the earlier `maxTokens: 8`.
     const PROMPT = "Reply with the single word OK.";
     const OPTS = { maxTokens: 64 };
-    out.push(
-      await expectOk("ai", async () => {
+    const completeCheck = (label) =>
+      expectOk(label, async () => {
         const text = await ctx.ai.complete(PROMPT, OPTS);
-        return `(len=${text.length}:${text.trim().slice(0, 12)})`;
-      }),
-    );
+        return `(len=${text.length}:${text.trim().slice(0, 8)})`;
+      });
+
+    out.push(await completeCheck("ai1"));
     out.push(
       await expectOk("stream", async () => {
         let tokens = 0;
@@ -131,6 +137,7 @@ export async function activate(ctx) {
         return `(${tokens}tok/${chars}ch)`;
       }),
     );
+    out.push(await completeCheck("ai2"));
 
     // The report IS the rejection — see the header comment.
     throw new Error(`SMOKE ${out.join(" ")}`);
