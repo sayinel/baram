@@ -107,6 +107,10 @@ export function SourceCodeEditor({
     // §298 vim slot — empty unless the setting is on; filled asynchronously so
     // users who never enable vim never download the module.
     const vimCompartment = new Compartment();
+    // §298 3v mechanism — the controller removes the editing host
+    // (editable=false) in normal/visual mode so WebKit's non-cancelable
+    // composition path can never start. Empty = default (editable).
+    const vimEditableCompartment = new Compartment();
 
     const state = EditorState.create({
       doc: content,
@@ -119,6 +123,7 @@ export function SourceCodeEditor({
         // source-mode escape hatch is the window-level dispatcher (S3).
         Prec.highest(keymap.of([{ key: "Mod-/", run: () => true }])),
         vimCompartment.of([]),
+        vimEditableCompartment.of([]),
         keymap.of([
           ...defaultKeymap,
           ...historyKeymap,
@@ -177,6 +182,7 @@ export function SourceCodeEditor({
     // stays fully usable if the vim chunk fails to load (controller reports
     // here; the loader does not cache rejections, so the next toggle retries).
     const vimController = createVimController(view, vimCompartment, {
+      editableCompartment: vimEditableCompartment,
       onError: (err) => logger.error("[vim] Failed to load vim:", err),
       // §298 S3 — StatusBar mode indicator. The controller emits null on
       // toggle-off and on dispose, so unmount resets the store too.

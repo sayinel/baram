@@ -6,11 +6,15 @@
 // create controller → apply(setting) → subscribe → dispose.
 
 import type { Compartment } from "@codemirror/state";
-import type { EditorView } from "@codemirror/view";
 
 import { Prec } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 
-import { attachVimImeGuard, type VimModeName } from "./vim-ime-guard";
+import {
+  attachVimImeGuard,
+  shouldBlockImeInput,
+  type VimModeName,
+} from "./vim-ime-guard";
 import { loadVimModule } from "./vim-mode";
 
 export interface VimController {
@@ -23,6 +27,17 @@ export interface VimController {
 export interface VimControllerDeps {
   /** Test seam — defaults to the real IME guard. */
   attachGuard?: typeof attachVimImeGuard;
+  /**
+   * Mechanism 3v (measured fallback, promoted after the real-surface smoke):
+   * in normal/visual mode `contenteditable` is removed entirely so WebKit has
+   * NO editing host — the composition path (insertCompositionText, which is
+   * non-cancelable per spec) can never start, and CodeMirror's
+   * composition-adjacent keydown suppression never engages. `tabindex` keeps
+   * contentDOM focusable so keys still flow through the normal CM path.
+   * The smoke trace showed candidate C alone fails on the production
+   * surface: WebKit switches Korean input to the composition path there.
+   */
+  editableCompartment?: Compartment;
   /** Test seam — defaults to the cached dynamic loader. */
   loadModule?: () => Promise<VimModule>;
   onError?: (err: unknown) => void;
@@ -49,6 +64,35 @@ export function createVimController(
     guardDispose = null;
   };
 
+  /** 3v: remove/restore the editing host. No editing host = the composition
+   *  path cannot start, so the non-cancelable insertCompositionText problem
+   *  never arises. `readOnly` stays false — vim's programmatic edits (x/dd)
+   *  keep working (measured, probe step 4). */
+  const setEditingHost = (editable: boolean) => {
+    const comp = deps.editableCompartment;
+    if (!comp) return;
+    view.dispatch({
+      effects: comp.reconfigure(editable ? [] : EditorView.editable.of(false)),
+    });
+    if (!editable && document.activeElement !== view.contentDOM) {
+      // Keys must keep landing on contentDOM (tabindex makes it focusable —
+      // measured, probe step 3v).
+      view.contentDOM.focus();
+    }
+  };
+
+  /** Single funnel for every mode transition: flips the editing host, then
+   *  forwards to the caller (StatusBar feed). null = vim off. */
+  const handleMode = (mode: null | VimModeName) => {
+    if (mode === null) {
+      setEditingHost(true);
+      view.contentDOM.removeAttribute("tabindex");
+    } else {
+      setEditingHost(!shouldBlockImeInput(mode));
+    }
+    deps.onModeChange?.(mode);
+  };
+
   return {
     apply(enabled: boolean): void {
       if (disposed) return;
@@ -57,7 +101,7 @@ export function createVimController(
       // cancelling IME input with vim off.
       detachGuard();
       if (!enabled) {
-        deps.onModeChange?.(null);
+        handleMode(null);
         view.dispatch({ effects: compartment.reconfigure([]) });
         return;
       }
@@ -67,11 +111,13 @@ export function createVimController(
           view.dispatch({
             effects: compartment.reconfigure(Prec.highest(mod.vim())),
           });
+          // Focusable BEFORE the first editable flip, so focus never drops.
+          view.contentDOM.setAttribute("tabindex", "-1");
           // The vim ViewPlugin is created synchronously during the dispatch
           // above, so getCM is non-null unless plugin creation itself failed —
           // in that unlikely case we simply run without the IME guard.
           const cm = mod.getCM(view);
-          if (cm) guardDispose = attach(view, cm, deps.onModeChange);
+          if (cm) guardDispose = attach(view, cm, handleMode);
         })
         .catch((err: unknown) => {
           // token check: a STALE load's rejection is not this apply's error —
@@ -84,7 +130,7 @@ export function createVimController(
       disposed = true;
       revision++;
       detachGuard();
-      deps.onModeChange?.(null);
+      handleMode(null);
     },
   };
 }

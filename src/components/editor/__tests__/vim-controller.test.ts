@@ -6,6 +6,7 @@
 // and unmount-before-resolve silence.
 
 import type { VimControllerDeps } from "../vim-controller";
+import type { VimModeName } from "../vim-ime-guard";
 import type { EditorView } from "@codemirror/view";
 
 import { Compartment } from "@codemirror/state";
@@ -177,6 +178,45 @@ describe("createVimController", () => {
     await flush();
     expect(f.view.dispatch).toHaveBeenCalledTimes(1);
     expect(f.attachGuard).not.toHaveBeenCalled();
+  });
+
+  it("3v mechanism: removes the editing host per mode and restores it on off", async () => {
+    // Real-surface smoke finding: WebKit uses the composition path
+    // (insertCompositionText — non-cancelable) in the production editor, so
+    // beforeinput canceling alone cannot work. 3v removes the editing host in
+    // normal/visual (no host = no composition, ever) and keeps contentDOM
+    // focusable via tabindex (measured, probe step 3v).
+    const f = makeFakes();
+    const editableCompartment = new Compartment();
+    let modeCb: ((m: null | VimModeName) => void) | undefined;
+    const attachGuard = vi.fn((_view: unknown, _cm: unknown, cb?: unknown) => {
+      modeCb = cb as (m: null | VimModeName) => void;
+      return f.guardDispose;
+    });
+    const onModeChange = vi.fn();
+    const controller = createVimController(asView(f.view), f.compartment, {
+      attachGuard,
+      editableCompartment,
+      loadModule: () => Promise.resolve(asModule(f.mod)),
+      onModeChange,
+    });
+    controller.apply(true);
+    await flush();
+    // Focusable before any editable flip so focus never drops.
+    expect(f.view.contentDOM.getAttribute("tabindex")).toBe("-1");
+
+    const base = f.view.dispatch.mock.calls.length;
+    modeCb!("normal"); // → editing host removed (one editable dispatch)
+    expect(f.view.dispatch.mock.calls.length).toBe(base + 1);
+    expect(onModeChange).toHaveBeenLastCalledWith("normal");
+
+    modeCb!("insert"); // → editing host restored
+    expect(f.view.dispatch.mock.calls.length).toBe(base + 2);
+    expect(onModeChange).toHaveBeenLastCalledWith("insert");
+
+    controller.apply(false); // → restore host + clear vim slot + tabindex off
+    expect(f.view.contentDOM.getAttribute("tabindex")).toBeNull();
+    expect(onModeChange).toHaveBeenLastCalledWith(null);
   });
 
   it("apply after dispose is a no-op (does not even hit the loader)", () => {
