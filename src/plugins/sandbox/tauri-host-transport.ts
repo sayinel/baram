@@ -6,11 +6,17 @@ import { listen } from "@tauri-apps/api/event";
 // the reporting plugin's id stamped from its window label, so this end filters by
 // id rather than trusting a channel name. Thin adapter — the machinery is tested
 // against the in-memory pair; this file is covered by its own unit test.
-import type { HostToSandbox, SandboxToHost } from "./protocol";
+import type {
+  HostToSandbox,
+  SandboxHostRequest,
+  SandboxToHost,
+} from "./protocol";
 import type { SandboxTransport } from "./transport";
 
 import { pluginSandboxSend } from "../../ipc/plugin-invoke";
 import { logger } from "../../utils/logger";
+
+type Fields = Record<string, unknown>;
 
 /** What Rust puts on `plugin:s2h` (see `plugin_sandbox_report`). */
 interface S2HEnvelope {
@@ -60,35 +66,85 @@ export async function createHostTransport(
 }
 
 /**
- * §260 3c-2a review (M1) — `msg` is fully attacker-controlled: Rust forwards an
- * unvalidated `serde_json::Value`, so the sandbox picks the shape. Validate the
- * discriminant AND the fields each branch of `SandboxSession.handle` dereferences,
- * or e.g. `{type:"ready",registered:null}` reaches `report.commands` and throws out
- * of this listener. Unknown shapes are dropped, not repaired.
+ * §260 3c-2a review (M1) — one validator per frame type. `msg` is fully
+ * attacker-controlled: Rust forwards an unvalidated `serde_json::Value`, so the
+ * sandbox picks the shape. Each validator must check the discriminant AND every
+ * field the corresponding consumer dereferences, or e.g.
+ * `{type:"ready",registered:null}` reaches `report.commands` and throws out of the
+ * listener. Unknown shapes are dropped, not repaired.
+ *
+ * ‼️ A RECORD keyed on the discriminant, not a `switch` (§260 3c-2c security review,
+ * F1): the switch's `default: return false` silently swallowed the new `hostRequest`
+ * frame — `ctx.ai` was dead on the real path for a whole phase while every test
+ * passed, because the machinery suites drive the in-memory transport, which has no
+ * validator. This form makes TypeScript refuse to compile when a frame type is added
+ * without one, so the same omission cannot be made twice.
  */
+const FRAME_VALIDATORS: {
+  [K in SandboxToHost["type"]]: (m: Fields) => boolean;
+} = {
+  activateError: (m) => typeof m.error === "string",
+  callResult: (m) =>
+    typeof m.callId === "string" &&
+    (m.ok === true || (m.ok === false && typeof m.error === "string")),
+  emitEvent: (m) => typeof m.event === "string" && Array.isArray(m.args),
+  hostRequest: (m) =>
+    typeof m.requestId === "string" && isHostRequest(m.request),
+  ready: (m) => {
+    const r = m.registered as Fields | null | undefined;
+    return (
+      typeof r === "object" &&
+      r !== null &&
+      Array.isArray(r.commands) &&
+      Array.isArray(r.events)
+    );
+  },
+};
+
+/**
+ * Same shape, same reason, for the host-mediated request inside a `hostRequest`
+ * frame: `host-ai-bridge` dereferences `prompt`, so an `ai_complete` without one
+ * would reach `llmComplete` as `undefined`.
+ */
+const HOST_REQUEST_VALIDATORS: {
+  [K in SandboxHostRequest["kind"]]: (r: Fields) => boolean;
+} = {
+  ai_complete: (r) => typeof r.prompt === "string" && isAiOptions(r.opts),
+  ai_list_models: () => true,
+  ai_stream: (r) => typeof r.prompt === "string" && isAiOptions(r.opts),
+};
+
+// A `Map`, not the record itself, for the lookup: indexing a plain object with an
+// attacker-chosen string reaches `Object.prototype` — `type: "constructor"` would
+// hand back a function and pass the truthiness test.
+const FRAME_LOOKUP = new Map(Object.entries(FRAME_VALIDATORS));
+const HOST_REQUEST_LOOKUP = new Map(Object.entries(HOST_REQUEST_VALIDATORS));
+
+/** `AICompleteOptions`, or nothing. Type-checked only — a plugin may legitimately
+ *  ask for a large `maxTokens`; that is within its `ai` grant, and the in-flight
+ *  bound plus the host's model policy are what constrain cost. */
+function isAiOptions(v: unknown): boolean {
+  if (v === undefined || v === null) return true;
+  if (typeof v !== "object") return false;
+  const o = v as Fields;
+  return (
+    (o.maxTokens === undefined || typeof o.maxTokens === "number") &&
+    (o.systemPrompt === undefined || typeof o.systemPrompt === "string")
+  );
+}
+
+function isHostRequest(v: unknown): boolean {
+  if (typeof v !== "object" || v === null) return false;
+  const r = v as Fields;
+  const validate =
+    typeof r.kind === "string" ? HOST_REQUEST_LOOKUP.get(r.kind) : undefined;
+  return validate ? validate(r) : false;
+}
+
 function isWellFormed(msg: unknown): msg is SandboxToHost {
   if (typeof msg !== "object" || msg === null) return false;
-  const m = msg as Record<string, unknown>;
-  switch (m.type) {
-    case "activateError":
-      return typeof m.error === "string";
-    case "callResult":
-      return (
-        typeof m.callId === "string" &&
-        (m.ok === true || (m.ok === false && typeof m.error === "string"))
-      );
-    case "emitEvent":
-      return typeof m.event === "string" && Array.isArray(m.args);
-    case "ready": {
-      const r = m.registered as null | Record<string, unknown> | undefined;
-      return (
-        typeof r === "object" &&
-        r !== null &&
-        Array.isArray(r.commands) &&
-        Array.isArray(r.events)
-      );
-    }
-    default:
-      return false;
-  }
+  const m = msg as Fields;
+  const validate =
+    typeof m.type === "string" ? FRAME_LOOKUP.get(m.type) : undefined;
+  return validate ? validate(m) : false;
 }

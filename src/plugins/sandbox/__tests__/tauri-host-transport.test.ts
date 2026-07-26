@@ -125,6 +125,69 @@ describe("createHostTransport (§260 host end)", () => {
     expect(seen).toHaveLength(5);
   });
 
+  // §260 3c-2c security review (F1) — this suite's whole purpose, and it did not
+  // cover the frame the phase added: `hostRequest` had no validator, so every
+  // `ctx.ai.*` call was dropped here and failed 150s later on the sandbox's own
+  // timeout. The machinery suites all drive the in-memory pair, which has no
+  // validator, so they passed. The validator is now a discriminant-keyed record that
+  // TypeScript will not let anyone extend the union without updating — this test
+  // pins the runtime half of that.
+  it("delivers a well-formed hostRequest and drops broken ones", async () => {
+    const transport = await createHostTransport("alpha");
+    const seen: SandboxToHost[] = [];
+    transport.onMessage((m) => seen.push(m));
+
+    for (const msg of [
+      { type: "hostRequest", request: { kind: "ai_complete", prompt: "p" } }, // no requestId
+      { type: "hostRequest", requestId: "r1" }, // no request
+      { type: "hostRequest", requestId: "r1", request: null },
+      { type: "hostRequest", requestId: "r1", request: { kind: "ai_dream" } },
+      // `host-ai-bridge` dereferences `prompt`; without this check an `ai_complete`
+      // with none would reach `llmComplete` as `undefined`.
+      {
+        type: "hostRequest",
+        requestId: "r1",
+        request: { kind: "ai_complete" },
+      },
+      {
+        type: "hostRequest",
+        requestId: "r1",
+        request: { kind: "ai_stream", prompt: 42 },
+      },
+      {
+        type: "hostRequest",
+        requestId: "r1",
+        request: { kind: "ai_complete", prompt: "p", opts: { maxTokens: "8" } },
+      },
+      // Indexing a plain object with an attacker-chosen discriminant would reach
+      // Object.prototype and hand back a truthy function; the lookup is a Map.
+      { type: "constructor" },
+      { type: "toString" },
+      {
+        type: "hostRequest",
+        requestId: "r1",
+        request: { kind: "constructor" },
+      },
+    ]) {
+      expect(() => deliver({ pluginId: "alpha", msg })).not.toThrow();
+    }
+    expect(seen).toEqual([]);
+
+    for (const request of [
+      { kind: "ai_complete", prompt: "p" },
+      { kind: "ai_complete", prompt: "p", opts: { maxTokens: 10 } },
+      { kind: "ai_complete", prompt: "p", opts: { systemPrompt: "s" } },
+      { kind: "ai_list_models" },
+      { kind: "ai_stream", prompt: "p" },
+    ]) {
+      deliver({
+        pluginId: "alpha",
+        msg: { type: "hostRequest", requestId: "r", request },
+      });
+    }
+    expect(seen).toHaveLength(5);
+  });
+
   it("swallows a rejected send — the sandbox may not have connected yet", async () => {
     const transport = await createHostTransport("alpha");
     invoke.mockRejectedValueOnce(new Error("sandbox is not connected"));
