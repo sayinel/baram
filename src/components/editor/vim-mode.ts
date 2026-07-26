@@ -76,6 +76,10 @@ export function registerListContinuation(mod: VimModule): void {
     cm: InstanceType<VimModule["CodeMirror"]>,
   ) => {
     const view = cm.cm6;
+    // Parity with the adapter's own commands: its dispatchChange refuses
+    // writes under state.readOnly, but insertNewlineContinueMarkup has no
+    // such guard (verified: no readOnly check in @codemirror/lang-markdown).
+    if (view.state.readOnly) return;
     const ran = insertNewlineContinueMarkup({
       dispatch: (tr) => view.dispatch(tr),
       state: view.state,

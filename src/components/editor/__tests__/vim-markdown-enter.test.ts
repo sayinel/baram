@@ -127,6 +127,32 @@ describe("markdown list continuation under vim (§298 smoke bug)", () => {
     expect(view.state.doc.toString()).toBe(NESTED);
   });
 
+  it("readOnly state: o writes nothing (parity with the adapter's guard)", () => {
+    // The adapter's dispatchChange refuses writes under state.readOnly; the
+    // markdown branch must not differ (insertNewlineContinueMarkup itself
+    // has no readOnly guard).
+    const parent = document.createElement("div");
+    document.body.appendChild(parent);
+    const view = new EditorView({
+      parent,
+      state: EditorState.create({
+        doc: NESTED,
+        extensions: [
+          Prec.highest(vim()),
+          keymap.of([...defaultKeymap, ...historyKeymap]),
+          history(),
+          markdown(),
+          EditorState.readOnly.of(true),
+        ],
+        selection: EditorSelection.cursor(END - 1),
+      }),
+    });
+    views.push(view);
+    const cm = getCM(view);
+    Vim.handleKey(cm!, "o", "user");
+    expect(view.state.doc.toString()).toBe(NESTED);
+  });
+
   it("non-markdown doc: o falls back to plain newline+indent, no crash", () => {
     // Code-file tabs share the vim path but have no markdown context;
     // insertNewlineContinueMarkup must return false and delegate.
