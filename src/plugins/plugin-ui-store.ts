@@ -34,6 +34,14 @@ export interface PluginStatusBarItem {
    */
   command?: string;
   itemId: string;
+  /**
+   * §260 Phase 4a security re-review (LOW-5) — true between the item's declaration and
+   * the moment its command handler exists. Declared items are registered before the
+   * sandbox starts (so they show up while it boots), but the handler is only registered
+   * once `activate` resolves — up to 15s in dev. Without this the user saw an enabled
+   * button that silently did nothing for that whole window.
+   */
+  pending?: boolean;
   pluginId: string;
   text: string;
   tooltip?: string;
@@ -41,6 +49,7 @@ export interface PluginStatusBarItem {
 
 interface PluginUIState {
   activePluginPanelId: null | string;
+  markPluginCommandsReady: (pluginId: string) => void;
   paletteCommands: PluginPaletteCommand[];
   registerPaletteCommand: (cmd: PluginPaletteCommand) => void;
   registerSettingsTab: (tab: PluginSettingsTab) => void;
@@ -79,6 +88,21 @@ export const usePluginUIStore = create<PluginUIState>()((set) => ({
       return {
         statusBarItems: state.statusBarItems.map((i) =>
           i.itemId === itemId ? { ...i, text } : i,
+        ),
+      };
+    }),
+
+  /** The plugin's command handlers are registered: its items are clickable now. */
+  markPluginCommandsReady: (pluginId) =>
+    set((state) => {
+      if (
+        !state.statusBarItems.some((i) => i.pluginId === pluginId && i.pending)
+      ) {
+        return state;
+      }
+      return {
+        statusBarItems: state.statusBarItems.map((i) =>
+          i.pluginId === pluginId ? { ...i, pending: false } : i,
         ),
       };
     }),

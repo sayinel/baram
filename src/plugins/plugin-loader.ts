@@ -218,48 +218,22 @@ export class PluginLoader {
     // running, so revocation still lands — just late enough that a reload inside
     // the window could race it, hence the loud log.
     if (plugin.teardown) {
-      // Track the UN-timed-out promise: after the timeout below the teardown is
-      // still running, and the next load has to wait for it (see
-      // `loadSandboxedPlugin`) or its `deregister` lands after the new register and
-      // revokes the fresh grant. `.catch` keeps the tracked copy from becoming an
-      // unhandled rejection — the real error is reported here.
-      const running = plugin.teardown();
-      // Identity check before deleting (§260 3c-2b review, M3): `unloadPlugin` only
-      // removes from `this.loaded` at the very end, so two concurrent calls for the
-      // same id both start a teardown. Without this, whichever finishes first would
-      // delete the OTHER one's entry and the next load would stop waiting —
-      // resurrecting the exact race this map exists to prevent.
-      const tracked: Promise<void> = running
-        .catch(() => {})
-        .finally(() => {
-          if (this.pendingTeardowns.get(id) === tracked) {
-            this.pendingTeardowns.delete(id);
-          }
-        });
-      this.pendingTeardowns.set(id, tracked);
-      try {
-        await withTimeout(
-          running,
-          TEARDOWN_TIMEOUT,
-          `Plugin ${id} sandbox teardown timed out after ${TEARDOWN_TIMEOUT}ms — ` +
-            `capability revocation is still in flight; the next load will wait for it`,
-        );
-      } catch (e) {
-        logger.error(`[PluginLoader] Sandbox teardown error for ${id}:`, e);
-        // …and make it VISIBLE (§260 3c-3 security review, M3). This catch is
-        // exactly where the dangerous case lands: `plugin_sandbox_deregister`
-        // rejecting inside the teardown's `finally` leaves the Rust grant REGISTERED
-        // while the lines below forget the plugin entirely. Logging alone meant the
-        // user saw a clean disable while an unsupervised sandbox kept its
-        // capabilities — the one path where that can still happen. Rethrowing is not
-        // an option: `unloadAll()` is sequential, so it would strand every later
-        // plugin (the bound that 3c-2a's N3 added exists for that reason).
+      const failure = await this.runTrackedTeardown(id, plugin.teardown);
+      if (failure) {
+        // Make it VISIBLE (§260 3c-3 security review, M3). This is exactly where the
+        // dangerous case lands: `plugin_sandbox_deregister` rejecting inside the
+        // teardown's `finally` leaves the Rust grant REGISTERED while the lines below
+        // forget the plugin entirely. Logging alone meant the user saw a clean disable
+        // while an unsupervised sandbox kept its capabilities — the one path where that
+        // can still happen. Rethrowing is not an option: `unloadAll()` is sequential, so
+        // it would strand every later plugin (the bound that 3c-2a's N3 added exists for
+        // that reason).
         usePluginStore
           .getState()
           .setError(
             id,
             `Teardown failed — this plugin may still hold its capabilities until ` +
-              `restart: ${e instanceof Error ? e.message : String(e)}`,
+              `restart: ${failure instanceof Error ? failure.message : String(failure)}`,
           );
       }
     }
@@ -316,7 +290,6 @@ export class PluginLoader {
     // `pluginSandboxRegister` is inside so the rollback's `deregister` covers it too
     // (that call is idempotent in Rust, so covering a grant that was never made is free).
     const disposables: Disposable[] = [];
-    let session: SandboxSession | undefined;
     try {
       // Declared status-bar items go up FIRST, before any grant or webview exists
       // (code review M1). Four comments claimed the tier's items "appear before the
@@ -334,7 +307,7 @@ export class PluginLoader {
       );
       // §260 3c-2b — no path is handed over: the sandbox pulls its own bundle
       // through the broker, resolved in Rust from its window label.
-      session = await this.sandboxHost.start(
+      const session = await this.sandboxHost.start(
         manifest.id,
         manifest.contributions ?? {},
         // §260 3c-2c — `ai` is mediated by the host, not brokered in Rust, because
@@ -366,7 +339,7 @@ export class PluginLoader {
       // grant UNCONDITIONALLY (3c-2a re-review N2: revocation must not depend on the
       // teardown half succeeding — the worst case is a stop that failed *because* the
       // sandbox is alive). Never let a rollback failure mask the original error.
-      await this.rollbackSandboxLoad(manifest.id, session, disposables);
+      await this.rollbackSandboxLoad(manifest.id, disposables);
       throw err;
     }
   }
@@ -407,6 +380,8 @@ export class PluginLoader {
         align: "right",
         command: item.command ? `${manifest.id}.${item.command}` : undefined,
         itemId,
+        // Not clickable until its handler exists (re-review LOW-5).
+        pending: true,
         pluginId: manifest.id,
         text: sanitizeStatusBarText(item.text),
         tooltip: item.tooltip && sanitizeStatusBarText(item.tooltip),
@@ -423,7 +398,6 @@ export class PluginLoader {
    */
   private async rollbackSandboxLoad(
     id: string,
-    session: SandboxSession | undefined,
     disposables: Disposable[],
   ): Promise<void> {
     for (const disposable of disposables.reverse()) {
@@ -434,21 +408,20 @@ export class PluginLoader {
       }
     }
     // Belt-and-suspenders for anything a disposable missed, matching `unloadPlugin`.
-    unregisterPluginUI(id);
+    // Guarded (re-review LOW-1): it was the one bare statement on this path, and it sits
+    // BEFORE revocation — so a throw here would have skipped the revoke and replaced the
+    // original error with its own.
     try {
-      if (session) await this.sandboxHost.stop(id);
+      unregisterPluginUI(id);
     } catch (e) {
-      logger.error(`[PluginLoader] rollback stop failed for ${id}:`, e);
-    } finally {
-      try {
-        await pluginSandboxDeregister(id);
-      } catch (deregErr) {
-        logger.error(
-          `[PluginLoader] rollback deregister failed for ${id}:`,
-          deregErr,
-        );
-      }
+      logger.error(`[PluginLoader] rollback UI sweep failed for ${id}:`, e);
     }
+    // The same bounded, tracked teardown `unloadPlugin` runs — not a second
+    // stop-then-deregister written out by hand, which is how this path came to lack the
+    // timeout the other one documents (re-review MEDIUM). Safe even when no session was
+    // ever created: `SandboxHost.stop` returns early for an unknown id, and Rust's
+    // `deregister` is a map removal, so revoking a grant that was never made is free.
+    await this.runTrackedTeardown(id, this.sandboxTeardown(id));
   }
 
   private async runLoad(
@@ -538,6 +511,53 @@ export class PluginLoader {
    * separately bounded so a wedged window-close cannot swallow the whole teardown
    * budget before revocation gets its turn.
    */
+  /**
+   * Run a sandbox teardown with the two guarantees every caller needs, in one place.
+   *
+   * BOUNDED (3c-2a re-review N3): an unbounded await lets one wedged IPC hang the caller.
+   * For `unloadPlugin` that meant stranding every later plugin in `unloadAll()`; for the
+   * load rollback it was worse (§260 Phase 4a security re-review, MEDIUM) — a hang is not
+   * a rejection, so the `finally` that revokes the grant never ran, the rollback never
+   * settled, and with it `inFlightLoads` never cleared and `initializePlugins` never
+   * returned. `finally` buys unconditional-on-rejection, not unconditional-on-hang; only
+   * a timeout buys that.
+   *
+   * TRACKED: on timeout the inner teardown keeps running, so its `deregister` can still
+   * land AFTER the next load's `register` and revoke the fresh grant. `pendingTeardowns`
+   * is what the next load waits on. The identity check before deleting is 3c-2b M3: two
+   * concurrent teardowns for one id must not delete each other's entry.
+   *
+   * Returns the failure (for the caller to report as it sees fit) or `null`.
+   */
+  private async runTrackedTeardown(
+    id: string,
+    teardown: () => Promise<void>,
+  ): Promise<null | unknown> {
+    const running = teardown();
+    // `.catch` keeps the tracked copy from becoming an unhandled rejection — the real
+    // error is returned to the caller.
+    const tracked: Promise<void> = running
+      .catch(() => {})
+      .finally(() => {
+        if (this.pendingTeardowns.get(id) === tracked) {
+          this.pendingTeardowns.delete(id);
+        }
+      });
+    this.pendingTeardowns.set(id, tracked);
+    try {
+      await withTimeout(
+        running,
+        TEARDOWN_TIMEOUT,
+        `Plugin ${id} sandbox teardown timed out after ${TEARDOWN_TIMEOUT}ms — ` +
+          `capability revocation is still in flight; the next load will wait for it`,
+      );
+      return null;
+    } catch (e) {
+      logger.error(`[PluginLoader] Sandbox teardown error for ${id}:`, e);
+      return e;
+    }
+  }
+
   private sandboxTeardown(id: string): () => Promise<void> {
     return async () => {
       try {
@@ -583,6 +603,8 @@ export class PluginLoader {
         });
       }
     }
+    // Handlers are registered: the declared items may be clicked (re-review LOW-5).
+    usePluginUIStore.getState().markPluginCommandsReady(manifest.id);
     // §260 Phase 4a — from here the sandbox hears app events (`events`-gated inside the
     // bridge, which also strips absolute paths). Subscribing AFTER activate resolved is
     // deliberate: a frame delivered mid-activate would arrive before the plugin's

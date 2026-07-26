@@ -58,6 +58,28 @@ describe("PluginStatusBarItems", () => {
     disposable.dispose();
   });
 
+  it("disables a pending item so a click cannot silently do nothing", async () => {
+    // §260 Phase 4a security re-review (LOW-5) — declared items are registered before
+    // the sandbox activates, so for a moment the command they name does not exist.
+    usePluginUIStore.setState({
+      statusBarItems: [
+        {
+          align: "right",
+          command: "p.later",
+          itemId: "r1",
+          pending: true,
+          pluginId: "p",
+          text: "starting",
+          tooltip: "real tooltip",
+        },
+      ],
+    });
+    render(<PluginStatusBarItems align="right" />);
+    const button = screen.getByRole("button", { name: "starting" });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("title", "Plugin is still starting…");
+  });
+
   it("does not let a failing command escape into React", async () => {
     // The handler forwards to `session.invokeCommand`, whose rejection is the plugin's
     // problem: an unhandled rejection in an onClick would surface as an app error.

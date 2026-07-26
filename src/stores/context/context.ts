@@ -95,6 +95,20 @@ interface ContextState {
 
 // --- Types ---
 
+/**
+ * A context path with trailing separators removed — the string every "is this file inside
+ * that context, and where?" answer must be measured against.
+ *
+ * Exported because §260's `locateInContext` slices a relative path at exactly this
+ * boundary. While it used the RAW `path.length` and this rule stripped separators, a
+ * stored root with two trailing slashes made the two disagree and ate the first character
+ * of the relative path — silently aiming a `files` plugin at a different file (Phase 4a
+ * security re-review, LOW-4). One rule, one place.
+ */
+export function contextRootOf(path: string): string {
+  return path.replace(/[/\\]+$/, "");
+}
+
 function generateId(): string {
   return `ctx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -133,6 +147,8 @@ function pinSpaceContexts(contexts: ContextInfo[]): ContextInfo[] | null {
   return pinned;
 }
 
+// --- Store ---
+
 /**
  * §95/§98 M1: Keep the zettel id index scoped to the active zettel space.
  * When the newly active context's path is under the configured zettel dir,
@@ -165,8 +181,6 @@ function syncZettelIndexForContext(ctx: ContextInfo | null): void {
     useZettelIndexStore.getState().clear();
   }
 }
-
-// --- Store ---
 
 export const useContextStore = create<ContextState>()(
   persist(
@@ -271,7 +285,7 @@ export const useContextStore = create<ContextState>()(
           // broke POSIX, where a backslash is a legal character in a directory name:
           // a vault at `/home/me/my\dir` would have inferred `"\\"` and then never
           // matched its own files.
-          const root = ctx.path.replace(/[/\\]+$/, "");
+          const root = contextRootOf(ctx.path);
           const boundary = filePath[root.length];
           const contains =
             filePath.startsWith(root) &&

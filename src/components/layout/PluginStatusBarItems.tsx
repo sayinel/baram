@@ -38,6 +38,10 @@ export function PluginStatusBarItems({
         return (
           <button
             className="status-plugin-item btn-unstyled"
+            // §260 Phase 4a — a declared item exists before its sandbox finishes
+            // activating; clicking then would hit a handler that is not registered yet
+            // and fail silently (re-review LOW-5).
+            disabled={item.pending}
             key={item.itemId}
             onClick={() => {
               // The handler routes to `session.invokeCommand`, whose rejection is the
@@ -49,7 +53,7 @@ export function PluginStatusBarItems({
                 );
               });
             }}
-            title={item.tooltip}
+            title={item.pending ? "Plugin is still starting…" : item.tooltip}
             type="button"
           >
             {item.text}

@@ -298,7 +298,7 @@ export function createExtensionContext(
   // still hand-written here; a comment that says "one list" over two lists is how one
   // gets fixed and the other forgotten.
   const ui: UIAPI = UI_CAPABILITIES.some(hasCapability)
-    ? createUIAPI(manifest.id, capabilities, disposables)
+    ? createUIAPI(manifest.id, capabilities, disposables, manifest.name)
     : (createDeniedProxy("ui", "sidebar") as UIAPI);
 
   return {
@@ -423,6 +423,13 @@ function createUIAPI(
   pluginId: string,
   capabilities: Set<PluginCapability>,
   disposables: Disposable[],
+  /**
+   * §260 Phase 4a security re-review — the trusted tier attributes its toasts too, or
+   * "no badge" would not actually mean "the app is speaking": a trusted plugin's message
+   * would read as the app's own. Out of §260's boundary scope (a trusted plugin can call
+   * the store directly), but it is what makes the badge a usable signal for the user.
+   */
+  displayName?: string,
 ): UIAPI {
   const require = (cap: PluginCapability, method: string) => {
     if (!capabilities.has(cap)) {
@@ -437,7 +444,9 @@ function createUIAPI(
       message: string,
       type?: "error" | "info" | "warning",
     ): void {
-      useUIStore.getState().showToast(message, type);
+      useUIStore
+        .getState()
+        .showToast(message, type, displayName?.trim() || pluginId);
     },
     showStatusBarItem(
       text: string,

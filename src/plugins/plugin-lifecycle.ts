@@ -9,7 +9,7 @@ import {
   pluginPrepareScopes,
   toInstalledDevPlugin,
 } from "../ipc/plugin-invoke";
-import { useContextStore } from "../stores/context/context";
+import { contextRootOf, useContextStore } from "../stores/context/context";
 import { usePluginStore } from "../stores/system/plugin";
 import { logger } from "../utils/logger";
 import { emitPluginEvent } from "./extension-context";
@@ -158,8 +158,10 @@ export function locateInContext(absolutePath: string): null | PluginFileEvent {
   // A `file` context IS the file (§89), so it has no interior path; Rust accepts `""`
   // for exactly this case and refuses anything else against such a context.
   if (context.contextType === "file") return { context: context.id, path: "" };
+  // Sliced at the SAME boundary `getContextForPath` matched on, through the shared
+  // `contextRootOf` rather than a second copy of the rule (security re-review LOW-4).
   const relative = absolutePath
-    .slice(context.path.length)
+    .slice(contextRootOf(context.path).length)
     .replace(/^[/\\]+/, "")
     .replace(/\\/g, "/");
   return { context: context.id, path: relative };

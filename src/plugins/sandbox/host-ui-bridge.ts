@@ -172,7 +172,16 @@ function sanitizePluginText(raw: string, max: number): string {
     // Invisible formatting: bidi overrides/isolates that could rewrite the reading order
     // of a line, plus the zero-width and BOM characters that pad a string invisibly past
     // the length cap.
-    .replace(/[\u061c\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/g, "")
+    // U+200C ZWNJ and U+200D ZWJ are deliberately NOT stripped (§260 Phase 4a security
+    // re-review, LOW-2): they carry no reordering power, they are orthographically
+    // required in Persian/Arabic and Indic scripts, and ZWJ is what joins emoji
+    // sequences — removing it split 👨‍💻 into two glyphs, in a tier whose status-bar text
+    // is emoji-first. Korean/CJK were never affected: no Hangul, jamo, kana or ideograph
+    // falls in any stripped range.
+    .replace(
+      /[\u061c\u200b\u200e\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/g,
+      "",
+    )
     .trim();
   return flattened.length > max
     ? `${flattened.slice(0, max - 1)}\u2026`

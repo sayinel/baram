@@ -369,6 +369,34 @@ describe("PluginLoader sandboxed path (§260 3c-1)", () => {
       expect(usePluginUIStore.getState().statusBarItems).toEqual([]);
     });
 
+    it("marks an item pending until its command handler exists", async () => {
+      // §260 Phase 4a security re-review (LOW-5) — registering items before `start()`
+      // (so they show while the sandbox boots) means the handler does not exist yet.
+      // An enabled button that silently does nothing for up to 15s is worse than a
+      // visibly disabled one.
+      const f = fakeHost();
+      let pendingWhenStarting: (boolean | undefined)[] = [];
+      f.start.mockImplementation(async (_id, declared) => {
+        pendingWhenStarting = usePluginUIStore
+          .getState()
+          .statusBarItems.map((i) => i.pending);
+        return {
+          contributions: declared,
+          deliverEvent: f.deliverEvent,
+          invokeCommand: f.invokeCommand,
+        };
+      });
+      const loader = new PluginLoader(undefined, f.host);
+
+      await loader.loadPlugin("/p/demo", withStatusBar());
+
+      expect(pendingWhenStarting).toEqual([true, true]);
+      // …and cleared once the handlers are registered.
+      expect(
+        usePluginUIStore.getState().statusBarItems.map((i) => i.pending),
+      ).toEqual([false, false]);
+    });
+
     it("registers declared status-bar items from the MANIFEST", async () => {
       // No plugin code has run at this point beyond `activate`; the item exists because
       // the manifest declared it, which is what makes it the tier's first UI presence.
@@ -381,6 +409,7 @@ describe("PluginLoader sandboxed path (§260 3c-1)", () => {
           align: "right",
           command: "demo.hello", // namespaced to the handler registry
           itemId: "demo:sb:count",
+          pending: false, // handlers are live by the time the load resolves
           pluginId: "demo",
           text: "0 notes",
           tooltip: "click to recount",
@@ -389,6 +418,7 @@ describe("PluginLoader sandboxed path (§260 3c-1)", () => {
           align: "right",
           command: undefined, // display-only
           itemId: "demo:sb:plain",
+          pending: false,
           pluginId: "demo",
           text: "idle",
           tooltip: undefined,
@@ -553,6 +583,78 @@ describe("PluginLoader sandboxed path (§260 3c-1)", () => {
       f.deliverEvent.mockClear();
       deliverSandboxEvent("editor:ready", []);
       expect(f.deliverEvent).not.toHaveBeenCalled();
+    });
+
+    it("revokes even when closing the webview HANGS, and still settles", async () => {
+      // §260 Phase 4a security re-review (MEDIUM) — the fix for HIGH-2 introduced this:
+      // the rollback awaited `sandboxHost.stop()` with no timeout. A hang is not a
+      // rejection, so the `catch` never fired and the `finally` that revokes never ran —
+      // the grant stayed registered forever, `runLoad` never settled, `inFlightLoads`
+      // never cleared, and `initializePlugins`'s `Promise.allSettled` never returned.
+      // The rollback now runs the same BOUNDED teardown `unloadPlugin` uses.
+      vi.useFakeTimers();
+      const f = fakeHost();
+      failDuringReplay(f);
+      f.stop.mockImplementation(() => new Promise<void>(() => {})); // never settles
+      const loader = new PluginLoader(undefined, f.host);
+
+      let settled = false;
+      const loading = loader
+        .loadPlugin("/p/demo", wiredManifest())
+        .catch(() => {})
+        .finally(() => {
+          settled = true;
+        });
+
+      // Nothing has revoked yet: the stop is still in flight, within its budget.
+      await vi.advanceTimersByTimeAsync(500);
+      expect(pluginSandboxDeregister).not.toHaveBeenCalled();
+      expect(settled).toBe(false);
+
+      // Past the stop bound, revocation runs and the load settles.
+      await vi.advanceTimersByTimeAsync(1000);
+      await loading;
+      expect(pluginSandboxDeregister).toHaveBeenCalledWith("demo");
+      expect(settled).toBe(true);
+      expect(loader.isLoaded("demo")).toBe(false);
+    });
+
+    it("makes the next load wait for a rollback's revocation", async () => {
+      // The bound above means the rollback can return while its `deregister` is still in
+      // flight — which is the 3c-2b Q2 race (a late revoke killing the NEXT load's
+      // grant). The rollback therefore has to be tracked in `pendingTeardowns` too, not
+      // just awaited.
+      vi.useFakeTimers();
+      const calls: string[] = [];
+      const f = fakeHost();
+      failDuringReplay(f);
+      let releaseDeregister: () => void = () => {};
+      pluginSandboxRegister.mockImplementation(async () => {
+        calls.push("register");
+      });
+      pluginSandboxDeregister.mockImplementation(async () => {
+        await new Promise<void>((resolve) => {
+          releaseDeregister = resolve;
+        });
+        calls.push("deregister");
+      });
+      const loader = new PluginLoader(undefined, f.host);
+
+      const failing = loader
+        .loadPlugin("/p/demo", wiredManifest())
+        .catch(() => {});
+      await vi.advanceTimersByTimeAsync(6000); // outlast the teardown bound
+      await failing;
+      expect(calls).toEqual(["register"]); // deregister has NOT landed
+
+      f.deliverEvent.mockReset();
+      const retry = loader.loadPlugin("/p/demo", sandboxedManifest());
+      await vi.advanceTimersByTimeAsync(50);
+      expect(calls).toEqual(["register"]); // still waiting — no second register
+
+      releaseDeregister();
+      await retry;
+      expect(calls).toEqual(["register", "deregister", "register"]);
     });
 
     it("still revokes when stopping the sandbox also fails", async () => {
