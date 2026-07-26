@@ -79,11 +79,14 @@ pub fn serialized_len_capped(value: &serde_json::Value, cap: usize) -> Option<us
 
 mod authorizer;
 mod channels;
+mod rate_limit;
 // Re-exported for the `plugin_call` broker + sandbox register/deregister
 // commands (Phase 3a Task 2, src-tauri/src/commands/plugin_cmd.rs).
 pub use authorizer::{plugin_id_from_label, PluginAuthorizer, PluginOp};
 // Phase 3c-2a — host→sandbox message channels (src-tauri/src/commands/plugin_cmd.rs).
 pub use channels::SandboxChannels;
+// Phase 3c-2c — per-plugin, per-op-class rate limiting for `plugin_call`.
+pub use rate_limit::{PluginRateLimiter, RateClass};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]

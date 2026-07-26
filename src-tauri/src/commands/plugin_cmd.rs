@@ -248,11 +248,15 @@ fn deregister_sandbox(
     plugin_id: &str,
     authorizer: &plugin::PluginAuthorizer,
     channels: &plugin::SandboxChannels,
+    limiter: &plugin::PluginRateLimiter,
 ) -> Result<(), String> {
     host_window_guard(caller_label)?;
     let label = format!("plugin-{plugin_id}");
     authorizer.deregister(&label);
     channels.disconnect(&label);
+    // §260 3c-2c — drop the rate buckets too, so a stopped plugin leaves no state
+    // and a reload does not inherit a drained budget from its previous life.
+    limiter.forget(&label);
     Ok(())
 }
 
@@ -482,8 +486,9 @@ pub async fn plugin_sandbox_deregister(
     plugin_id: String,
     authorizer: tauri::State<'_, plugin::PluginAuthorizer>,
     channels: tauri::State<'_, plugin::SandboxChannels>,
+    limiter: tauri::State<'_, plugin::PluginRateLimiter>,
 ) -> Result<(), String> {
-    deregister_sandbox(window.label(), &plugin_id, &authorizer, &channels)
+    deregister_sandbox(window.label(), &plugin_id, &authorizer, &channels, &limiter)
 }
 
 /// §260 Phase 3c-2a sandbox-only — hand the host an IPC channel for inbound
@@ -558,11 +563,20 @@ pub async fn plugin_call(
     op: plugin::PluginOp,
     app: tauri::AppHandle,
     authorizer: tauri::State<'_, plugin::PluginAuthorizer>,
+    limiter: tauri::State<'_, plugin::PluginRateLimiter>,
 ) -> Result<serde_json::Value, String> {
     // `authorize_op` keeps the "does this op need a grant?" decision on the op
     // (§260 3c-2b: `SourceRead` needs none), so no call site can get it wrong.
     let plugin_id = authorizer
         .authorize_op(window.label(), &op)
+        .map_err(|e| e.to_string())?;
+    // §260 3c-2c — rate-limit AFTER authorization and BEFORE execution: an
+    // unauthorized caller must not be able to drain a registered plugin's budget
+    // (it is keyed by label, so it could only drain its own — but checking second
+    // also means a denied call costs nothing), and the limit has to precede the work
+    // it exists to bound.
+    limiter
+        .check(window.label(), op.rate_class())
         .map_err(|e| e.to_string())?;
     execute_op(&app, window.label(), &plugin_id, op, &authorizer).await
 }
@@ -578,12 +592,17 @@ mod tests {
         assert!(host_window_guard("file-1").is_ok());
     }
 
-    /// A registered authorizer + an empty channel map, the state every sandbox
-    /// transport command runs against.
-    fn state() -> (plugin::PluginAuthorizer, plugin::SandboxChannels) {
+    /// The managed state every sandbox transport command runs against: authorizer,
+    /// channel map, rate buckets.
+    fn state() -> (
+        plugin::PluginAuthorizer,
+        plugin::SandboxChannels,
+        plugin::PluginRateLimiter,
+    ) {
         (
             plugin::PluginAuthorizer::new(),
             plugin::SandboxChannels::new(),
+            plugin::PluginRateLimiter::new(),
         )
     }
 
@@ -593,7 +612,7 @@ mod tests {
 
     #[test]
     fn sandbox_caller_gate_requires_a_sandbox_label_and_registration() {
-        let (authorizer, _) = state();
+        let (authorizer, _, _) = state();
         // A host window may never use the sandbox-side transport commands.
         assert!(authorize_sandbox_caller("main", &authorizer).is_err());
         assert!(authorize_sandbox_caller("file-1", &authorizer).is_err());
@@ -608,7 +627,7 @@ mod tests {
 
     #[test]
     fn deregister_revokes_capabilities_and_the_channel_together() {
-        let (authorizer, channels) = state();
+        let (authorizer, channels, limiter) = state();
         authorizer.register(
             "plugin-alpha".into(),
             vec!["storage".into()],
@@ -616,8 +635,13 @@ mod tests {
         );
         channels.connect("plugin-alpha".into(), dummy_channel());
         assert!(channels.send("plugin-alpha", serde_json::json!({})).is_ok());
+        // Drain this plugin's network budget so the bucket is observably non-fresh.
+        while limiter
+            .check("plugin-alpha", plugin::RateClass::Network)
+            .is_ok()
+        {}
 
-        deregister_sandbox("main", "alpha", &authorizer, &channels).unwrap();
+        deregister_sandbox("main", "alpha", &authorizer, &channels, &limiter).unwrap();
 
         // Mute in both directions: cannot be messaged, cannot report or broker.
         assert!(channels
@@ -627,15 +651,25 @@ mod tests {
         assert!(authorizer
             .authorize_any("plugin-alpha", &["storage"])
             .is_err());
+        // …and it leaves no rate state behind (§260 3c-2c): a reload gets a fresh
+        // budget rather than inheriting the previous life's drained bucket.
+        assert!(
+            limiter
+                .check("plugin-alpha", plugin::RateClass::Network)
+                .is_ok(),
+            "deregister must drop the plugin's rate buckets"
+        );
     }
 
     #[test]
     fn deregister_and_send_are_host_only() {
-        let (authorizer, channels) = state();
+        let (authorizer, channels, limiter) = state();
         authorizer.register("plugin-alpha".into(), vec![], "/p/alpha".into());
         channels.connect("plugin-alpha".into(), dummy_channel());
         // A sandbox must not be able to revoke, or message, another sandbox.
-        assert!(deregister_sandbox("plugin-evil", "alpha", &authorizer, &channels).is_err());
+        assert!(
+            deregister_sandbox("plugin-evil", "alpha", &authorizer, &channels, &limiter).is_err()
+        );
         assert!(send_to_sandbox("plugin-evil", "alpha", serde_json::json!({}), &channels).is_err());
         // …and the host still can, proving the guard is what rejected above.
         assert!(send_to_sandbox("main", "alpha", serde_json::json!({}), &channels).is_ok());
@@ -643,7 +677,7 @@ mod tests {
 
     #[test]
     fn send_targets_the_label_derived_from_the_plugin_id() {
-        let (_, channels) = state();
+        let (_, channels, _) = state();
         channels.connect("plugin-alpha".into(), dummy_channel());
         assert!(send_to_sandbox("main", "alpha", serde_json::json!({}), &channels).is_ok());
         // Guards against passing a label where an id belongs (would key plugin-plugin-alpha).

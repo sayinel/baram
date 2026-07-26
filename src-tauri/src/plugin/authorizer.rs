@@ -9,7 +9,7 @@ use std::sync::Mutex;
 use serde::Deserialize;
 use thiserror::Error;
 
-use super::PluginFetchInit;
+use super::{PluginFetchInit, RateClass};
 
 /// `"plugin-<id>"` → `Some("<id>")`; `None` for any non-sandbox window label.
 pub fn plugin_id_from_label(label: &str) -> Option<String> {
@@ -92,6 +92,17 @@ impl PluginOp {
             // Reading one's own code is not a grantable privilege: it is the bytes
             // the host was about to hand over anyway, and the op names no file.
             PluginOp::SourceRead => None,
+        }
+    }
+
+    /// Which rate budget this op spends (§260 3c-2c). On the op for the same reason
+    /// the capability requirement is: so a new variant cannot quietly inherit the
+    /// wrong bucket by being handled at some call site.
+    pub fn rate_class(&self) -> RateClass {
+        match self {
+            // The CORS-free proxy is the one op whose cost lands on a third party.
+            PluginOp::HttpFetch { .. } => RateClass::Network,
+            _ => RateClass::Default,
         }
     }
 }
