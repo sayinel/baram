@@ -995,6 +995,15 @@
       "description": "§260 host-only — host→sandbox message over that sandbox's own IPC channel (fails closed if it has not connected)"
     },
     {
+      "name": "plugin_sandbox_stage",
+      "input": { "plugin_id": "string", "payload": "string" },
+      "output": "void",
+      "module": "plugin",
+      "spec": "§260",
+      "status": "implemented",
+      "description": "§260 Phase 4b host-only — park a large payload (e.g. the document as markdown) for one sandbox to pull with PluginOp::StagedRead, so it arrives as an invoke result instead of a channel frame that would enter tauri's ACL-exempt channel-data queue"
+    },
+    {
       "name": "embed_text",
       "input": { "text": "string", "provider": "string", "model": "string", "base_url": "string?" },
       "output": "number[]",

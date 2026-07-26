@@ -88,6 +88,7 @@ fn main() {
         "plugin_sandbox_register",
         "plugin_sandbox_report",
         "plugin_sandbox_send",
+        "plugin_sandbox_stage",
         "plugin_storage_list",
         "plugin_storage_read",
         "plugin_storage_remove",

@@ -81,6 +81,12 @@ pub enum PluginOp {
     /// the label-derived id, which is why the sandbox realm needs no `asset:` (and
     /// therefore has no file-read capability at all).
     SourceRead,
+    /// §260 Phase 4b — collect the payload the HOST staged for this sandbox
+    /// (`StagedPayloads`), delivered as an invoke result rather than a channel frame so a
+    /// document never enters tauri's app-global channel-data queue. Takes no handle: Rust
+    /// resolves the slot from the caller's window label, so a sandbox cannot name whose
+    /// payload it wants.
+    StagedRead,
 }
 
 impl PluginOp {
@@ -102,6 +108,13 @@ impl PluginOp {
             // Reading one's own code is not a grantable privilege: it is the bytes
             // the host was about to hand over anyway, and the op names no file.
             PluginOp::SourceRead => None,
+            // Nor is collecting an answer the host already decided to give: whatever is
+            // in this sandbox's slot was put there by the host AFTER it checked the
+            // capability for the request that produced it (`editor:readonly` for a
+            // document read). A plugin that holds nothing has nothing staged, so the pull
+            // returns an error rather than someone else's document. Identity and
+            // registration are still enforced, as for every op.
+            PluginOp::StagedRead => None,
         }
     }
 
