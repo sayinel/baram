@@ -94,7 +94,14 @@ describe("PluginLoader sandboxed path (§260 3c-1)", () => {
     );
     // …but the SANDBOX still gets no path: Rust resolves the plugin's own
     // directory from the sandbox's window label when it asks for its bundle.
-    expect(f.start).toHaveBeenCalledWith("demo", manifest.contributions);
+    // The third argument (§260 3c-2c) is the host-mediated service handler, which
+    // carries the `ai` capability check — hence a function, and hence the assertion
+    // that it is one: a session started WITHOUT it silently loses `ai`.
+    expect(f.start).toHaveBeenCalledWith(
+      "demo",
+      manifest.contributions,
+      expect.any(Function),
+    );
     expect(loader.isLoaded("demo")).toBe(true);
 
     const palette = usePluginUIStore.getState().paletteCommands;

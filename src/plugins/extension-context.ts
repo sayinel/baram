@@ -35,7 +35,11 @@ import { isLLMAllowed } from "../utils/privacy-check";
 import { usePluginUIStore } from "./plugin-ui-store";
 
 // --- AI API ---
-function createAIAPI(pluginId: string): AIAPI {
+// Exported (§260 3c-2c) so the SANDBOXED tier's host-mediated `ai` runs the very
+// same policy — privacy mode, per-task model/provider, `createLLMStream` cleanup in
+// `finally`. A separate implementation for the sandbox would be a second place for
+// privacy mode to be forgotten. See `sandbox/host-ai-bridge.ts`.
+export function createAIAPI(pluginId: string): AIAPI {
   const start = async (
     prompt: string,
     opts: AICompleteOptions | undefined,
