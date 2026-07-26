@@ -317,6 +317,18 @@ function validateContributions(
     });
     if (item.command !== undefined) {
       requireId(item.command, `contributions.statusBar[${i}].command`);
+      // …and it must name a command this manifest declares (code review NIT-2).
+      // Otherwise the item renders as a button whose handler never exists: a permanently
+      // dead control, with nothing anywhere to explain it.
+      if (
+        typeof item.command === "string" &&
+        !(commands ?? []).some((c) => c.id === item.command)
+      ) {
+        errors.push({
+          field: `contributions.statusBar[${i}].command`,
+          message: `no command "${item.command}" is declared in contributions.commands`,
+        });
+      }
     }
   });
 

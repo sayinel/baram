@@ -298,9 +298,18 @@ export const useContextStore = create<ContextState>()(
         return best;
       },
 
-      addContext: async (type, path, opts) => {
+      addContext: async (type, rawPath, opts) => {
         const { contexts } = get();
         const colorIndex = contexts.length % DEFAULT_COLORS.length;
+        // §260 Phase 4a security re-review (LOW-2) — normalise trailing separators ONCE,
+        // here, where a path enters the store. Five consumers currently compute a
+        // relative remainder as `filePath.slice(ctx.path.length + 1)` or similar
+        // (`getContextForPath`, §260's `locateInContext`, `chat-context`,
+        // `wikilink-suggest`), so a stored root with a trailing separator was an
+        // off-by-one in each of them — and `journalDirectory` is a user-editable settings
+        // field that can carry one (its zettelkasten twin strips, `resolveJournalDir`
+        // does not). One point of truth beats five compensations.
+        const path = contextRootOf(rawPath) || rawPath;
         const info: ContextInfo = {
           id: generateId(),
           contextType: type,

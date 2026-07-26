@@ -82,6 +82,21 @@ describe("§81 contextStore", () => {
     expect(found).toBeNull();
   });
 
+  // §260 Phase 4a security re-review (LOW-2) — one point of truth for the stored path.
+  it("addContext strips trailing separators from the stored path", async () => {
+    // Five consumers compute a relative remainder from `ctx.path.length`, so a stored
+    // root with a trailing separator was an off-by-one in each — and `journalDirectory`
+    // is a user-editable field that can carry one.
+    const created = await useContextStore
+      .getState()
+      .addContext("vault", "/Users/test/notes/");
+    expect(created.path).toBe("/Users/test/notes");
+    expect(
+      useContextStore.getState().getContextForPath("/Users/test/notes/a.md")
+        ?.id,
+    ).toBe(created.id);
+  });
+
   // §260 Phase 4a code review (I3) — this rule decides which vault a file belongs to,
   // and since Phase 4a it also decides what a sandboxed plugin may read. It had NO test
   // for its separator handling: a change here stayed green either way.

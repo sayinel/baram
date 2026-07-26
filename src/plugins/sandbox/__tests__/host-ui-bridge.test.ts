@@ -81,6 +81,27 @@ describe("createUIRequestHandler (§260 Phase 4a)", () => {
     expect(source!.length).toBeLessThanOrEqual(32);
   });
 
+  it("caps the id fallback too, not just the name", async () => {
+    // §260 Phase 4a code review (R3) — `validateManifest` charset-checks the id but does
+    // not bound its LENGTH, and the badge has no width limit, so the uncapped fallback
+    // branch was a layout attack reachable with a name that sanitises to nothing.
+    let captured: string | undefined;
+    const handler = createUIRequestHandler({
+      capabilities: ["statusbar"],
+      declaredStatusBarIds: [],
+      pluginId: "a".repeat(300),
+      pluginName: "\u200b", // sanitises to "" → falls back to the id
+      showToast: (_message, _type, source) => {
+        captured = source;
+      },
+    });
+
+    await handler({ kind: "ui_notify", message: "x" });
+
+    expect(captured).toMatch(/^a+…$/);
+    expect(captured!.length).toBeLessThanOrEqual(32);
+  });
+
   it("falls back to the plugin id when there is no usable name", async () => {
     for (const pluginName of ["   ", "\n\u200b", undefined]) {
       const { handler, toasts } = harness({ pluginName });

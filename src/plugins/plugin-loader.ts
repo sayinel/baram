@@ -339,16 +339,21 @@ export class PluginLoader {
       // grant UNCONDITIONALLY (3c-2a re-review N2: revocation must not depend on the
       // teardown half succeeding — the worst case is a stop that failed *because* the
       // sandbox is alive). Never let a rollback failure mask the original error.
-      await this.rollbackSandboxLoad(manifest.id, disposables);
+      // §260 Phase 4a code review (R1) — a FAILED revocation has to reach the user, and
+      // `setError` cannot carry it: `initializePlugins` and `PluginMarketplace` both call
+      // `setError(id, String(err))` immediately after this rejects, overwriting anything
+      // written here. So it rides the thrown error instead. This is the one remaining path
+      // where a live sandbox could keep its capabilities unreported — the exact state
+      // HIGH-2 set out to eliminate.
+      const revocation = await this.rollbackSandboxLoad(
+        manifest.id,
+        disposables,
+      );
+      if (revocation) throw withRevocationFailure(err, revocation);
       throw err;
     }
   }
 
-  /**
-   * Map a started sandbox's declared contributions onto the host: status-bar items,
-   * palette commands, event delivery. Everything it registers is pushed onto
-   * `disposables`, which is both the unload path and the rollback path.
-   */
   /**
    * §260 Phase 4a — declarative status bar, straight from the MANIFEST: no plugin code
    * has run when this happens, which is what lets an item show up while the sandbox is
@@ -399,7 +404,7 @@ export class PluginLoader {
   private async rollbackSandboxLoad(
     id: string,
     disposables: Disposable[],
-  ): Promise<void> {
+  ): Promise<Error | null> {
     for (const disposable of disposables.reverse()) {
       try {
         disposable.dispose();
@@ -421,7 +426,7 @@ export class PluginLoader {
     // timeout the other one documents (re-review MEDIUM). Safe even when no session was
     // ever created: `SandboxHost.stop` returns early for an unknown id, and Rust's
     // `deregister` is a map removal, so revoking a grant that was never made is free.
-    await this.runTrackedTeardown(id, this.sandboxTeardown(id));
+    return this.runTrackedTeardown(id, this.sandboxTeardown(id));
   }
 
   private async runLoad(
@@ -532,7 +537,7 @@ export class PluginLoader {
   private async runTrackedTeardown(
     id: string,
     teardown: () => Promise<void>,
-  ): Promise<null | unknown> {
+  ): Promise<Error | null> {
     const running = teardown();
     // `.catch` keeps the tracked copy from becoming an unhandled rejection — the real
     // error is returned to the caller.
@@ -554,7 +559,11 @@ export class PluginLoader {
       return null;
     } catch (e) {
       logger.error(`[PluginLoader] Sandbox teardown error for ${id}:`, e);
-      return e;
+      // Normalised to an Error (code review R4): `Promise<null | unknown>` collapses to
+      // `Promise<unknown>`, so the "null means success" discriminant this function
+      // advertises would not have existed — and a falsy thrown value (`throw ""`) would
+      // have read as success at every call site.
+      return e instanceof Error ? e : new Error(String(e));
     }
   }
 
@@ -578,6 +587,12 @@ export class PluginLoader {
     };
   }
 
+  /**
+   * Map a started sandbox's declared commands onto the host and subscribe it to app
+   * events. Everything it registers is pushed onto `disposables`, which is both the
+   * unload path and the rollback path. (The status bar is registered earlier, before the
+   * sandbox starts — see `registerDeclaredStatusBar`.)
+   */
   private wireSandboxContributions(
     manifest: PluginManifest,
     session: SandboxSession,
@@ -628,6 +643,21 @@ export class PluginLoader {
 function activeFilePath(): null | string {
   const { activeTabId, tabs } = useEditorStore.getState();
   return tabs.find((t) => t.id === activeTabId)?.filePath ?? null;
+}
+
+/**
+ * The load error, with a failed capability revocation appended.
+ *
+ * Keeps the original message as a PREFIX: it is what the user needs first, and callers
+ * (and tests) match on it.
+ */
+function withRevocationFailure(original: unknown, failure: Error): Error {
+  const base = original instanceof Error ? original.message : String(original);
+  return new Error(
+    `${base} — and revoking its capabilities did not complete: ${failure.message}. ` +
+      `This plugin may keep its granted capabilities until the app restarts.`,
+    { cause: original },
+  );
 }
 
 function withTimeout<T>(

@@ -672,6 +672,49 @@ describe("PluginLoader sandboxed path (§260 3c-1)", () => {
       expect(pluginSandboxDeregister).toHaveBeenCalledWith("demo");
     });
 
+    it("puts a FAILED revocation on the thrown error, where nothing overwrites it", async () => {
+      // §260 Phase 4a code review (R1) — `setError` cannot carry this: both
+      // `initializePlugins` and `PluginMarketplace` call `setError(id, String(err))`
+      // right after this rejects, so anything written to the store here is overwritten.
+      // A live sandbox that kept its capabilities must not be the one failure the user
+      // never hears about.
+      const f = fakeHost();
+      failDuringReplay(f);
+      pluginSandboxDeregister.mockRejectedValue(new Error("broker is gone"));
+      const loader = new PluginLoader(undefined, f.host);
+
+      let error: Error | undefined;
+      try {
+        await loader.loadPlugin("/p/demo", wiredManifest());
+      } catch (e) {
+        error = e as Error;
+      }
+      expect(error, "the load must reject").toBeDefined();
+
+      // The original cause still leads — it is what the user needs first — and the
+      // revocation failure rides behind it.
+      expect(error!.message).toMatch(/^transport is gone/);
+      expect(error!.message).toContain(
+        "revoking its capabilities did not complete",
+      );
+      expect(error!.message).toContain("broker is gone");
+      expect(error!.message).toMatch(/until the app restarts/);
+    });
+
+    it("does not mention revocation when it succeeded", async () => {
+      const f = fakeHost();
+      failDuringReplay(f);
+      const loader = new PluginLoader(undefined, f.host);
+
+      let error: Error | undefined;
+      try {
+        await loader.loadPlugin("/p/demo", wiredManifest());
+      } catch (e) {
+        error = e as Error;
+      }
+      expect(error!.message).toBe("transport is gone");
+    });
+
     it("reports the ORIGINAL failure, not a rollback error", async () => {
       const f = fakeHost();
       failDuringReplay(f);

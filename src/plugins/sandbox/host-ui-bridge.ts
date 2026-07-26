@@ -83,8 +83,14 @@ export function createUIRequestHandler(
   // that the plugin's message text cannot occupy. Sanitised for the same reason as the
   // message: it is rendered, and unbounded author-controlled text with newlines or a bidi
   // override could otherwise reshape the line.
+  //
+  // Both branches are capped (code review R3): the fallback is the plugin id, which
+  // `validateManifest` charset-checks but does NOT length-limit, and `.toast-source` had
+  // no width bound — so a name that sanitises to nothing plus a 300-character id produced
+  // a 300-character badge.
   const label =
-    sanitizePluginText(pluginName ?? "", MAX_SOURCE_CHARS) || pluginId;
+    sanitizePluginText(pluginName ?? "", MAX_SOURCE_CHARS) ||
+    sanitizePluginText(pluginId, MAX_SOURCE_CHARS);
   const granted = new Set(capabilities);
   const declared = new Set(declaredStatusBarIds);
   let lastNotifyAt = -Infinity;

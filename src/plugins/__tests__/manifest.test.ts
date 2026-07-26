@@ -384,6 +384,30 @@ describe("validateManifest — trust tier (§260)", () => {
       ).toBe(true);
     });
 
+    it("refuses a status-bar item pointing at a command that is not declared", () => {
+      // Such an item renders as a button whose handler never exists — a permanently dead
+      // control with nothing to explain it (code review NIT-2).
+      expect(
+        fieldsOf(
+          sandboxed({
+            commands: [{ id: "run", title: "Run" }],
+            statusBar: [{ command: "nope", id: "x", text: "t" }],
+          }),
+        ),
+      ).toContain("contributions.statusBar[0].command");
+      // …and accepts one that does.
+      expect(
+        sandboxed({
+          commands: [{ id: "run", title: "Run" }],
+          statusBar: [{ command: "run", id: "x", text: "t" }],
+        }).valid,
+      ).toBe(true);
+      // A command-less item is unaffected.
+      expect(sandboxed({ statusBar: [{ id: "x", text: "t" }] }).valid).toBe(
+        true,
+      );
+    });
+
     it("caps how many status-bar items one plugin may declare", () => {
       // Unbounded, a manifest alone could fill the app chrome — no code, and (before
       // MEDIUM-3) no capability either.

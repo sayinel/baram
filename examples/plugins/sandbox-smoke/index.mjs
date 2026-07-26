@@ -58,12 +58,20 @@ export async function activate(ctx) {
    * line is ~77, so putting it there silently dropped the last few checks — and the bar
    * is the only report left when the toast is throttled.
    */
-  const report = (line) => {
-    const failed = line.split(" ").filter((f) => f.includes("✗") || f.includes("~"));
-    ctx.ui.showNotification(line, failed.length ? "error" : "info");
+  const report = (prefix, out) => {
+    // Computed from the ARRAY, not by re-splitting the joined line (§260 Phase 4a code
+    // review, R2): `brief(e)` can contain spaces, so splitting on " " both invented
+    // phantom failures and truncated the first one mid-message. One element per check.
+    const failed = out.filter((f) => f.includes("✗") || f.includes("~"));
+    ctx.ui.showNotification(
+      `${prefix} ${out.join(" ")}`,
+      failed.length ? "error" : "info",
+    );
     ctx.ui.setStatusBarText(
       "smoke",
-      failed.length ? `🧪 ${failed.length} failed: ${failed[0]}` : "🧪 all ✓",
+      failed.length
+        ? `🧪 ${failed.length}✗ ${failed[0].slice(0, 40)}`
+        : `🧪 ${prefix} all ✓`,
     );
   };
 
@@ -159,9 +167,8 @@ export async function activate(ctx) {
     //    check here is only that calling it does not break the command.
     ctx.ui.setStatusBarText("not-declared", "should not appear");
 
-    const line = `SMOKE ${out.join(" ")}`;
-    report(line);
-    return line;
+    report("SMOKE", out);
+    return `SMOKE ${out.join(" ")}`;
   });
 
   // The AI checks, separately, because they are the slow ones. Host-mediated: this
@@ -207,8 +214,7 @@ export async function activate(ctx) {
     );
     out.push(await completeCheck("ai2"));
 
-    const line = `SMOKE-AI ${out.join(" ")}`;
-    report(line);
-    return line;
+    report("SMOKE-AI", out);
+    return `SMOKE-AI ${out.join(" ")}`;
   });
 }
