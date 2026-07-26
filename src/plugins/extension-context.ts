@@ -16,6 +16,8 @@ import type {
   StorageAPI,
   UIAPI,
 } from "./types";
+import type { Schema } from "@tiptap/pm/model";
+import type { EditorState, Transaction } from "@tiptap/pm/state";
 
 import { listDir, readFile, writeFile } from "../ipc/invoke";
 import { llmComplete, llmListModels } from "../ipc/llm";
@@ -202,6 +204,27 @@ function createCommandsAPI(
 }
 const eventListeners = new Map<string, Set<EventHandler>>();
 
+// --- Editor API ---
+/**
+ * What the plugin tiers need from the live editor.
+ *
+ * §260 Phase 4b widened this from a hand-written structural shape to the real
+ * ProseMirror types, because the sandboxed tier's `editor` service serialises the
+ * document through the app's own pipeline (`state.doc` → markdown) and writes through a
+ * single transaction (`state.tr` → `view.dispatch`). Structural guesses were what let the
+ * selection bug below survive: `{ selection: { from, to } }` typechecks fine while saying
+ * nothing about what those numbers index into.
+ */
+export interface PluginEditorHandle {
+  chain: () => Record<string, unknown>;
+  commands: Record<string, unknown>;
+  getHTML: () => string;
+  getText: () => string;
+  schema: Schema;
+  state: EditorState;
+  view: { dispatch: (tr: Transaction) => void };
+}
+
 function createEventsAPI(disposables: Disposable[]): EventsAPI {
   return {
     on(event: string, handler: EventHandler): Disposable {
@@ -229,14 +252,7 @@ function createEventsAPI(disposables: Disposable[]): EventsAPI {
   };
 }
 
-// --- Editor API ---
-let editorInstance: null | {
-  chain: () => Record<string, unknown>;
-  commands: Record<string, unknown>;
-  getHTML: () => string;
-  getText: () => string;
-  state: { selection: { from: number; to: number } };
-} = null;
+let editorInstance: null | PluginEditorHandle = null;
 
 /** Create an ExtensionContext with capability-gated API access */
 // §259 SECURITY LIMITATION — this capability gate is NOT a trust boundary.
@@ -338,6 +354,36 @@ export async function executePluginCommand(
 }
 
 /**
+ * The live editor, or `null` before one is mounted (and in a §89 file-mode window until
+ * its editor is ready). Exported for the sandboxed tier's host bridge, which needs the
+ * document and the schema rather than the trusted tier's convenience methods.
+ */
+export function getEditorInstance(): null | PluginEditorHandle {
+  return editorInstance;
+}
+
+/**
+ * The selected text, and the ProseMirror positions it came from.
+ *
+ * ‼️ `from`/`to` are ProseMirror DOCUMENT positions — they count node boundaries — so they
+ * cannot index a flat string. This used to be `getText().slice(from, to)`, which silently
+ * returns the wrong text for any document with more than one block: the offsets diverge by
+ * one per block boundary crossed. `doc.textBetween` is the app's own idiom for this
+ * (`utils/ai-commands.ts`), and `"\n"` as the block separator is what makes a multi-block
+ * selection read as the user sees it rather than as one run-on line.
+ *
+ * Shared by both tiers (§260 Phase 4b) so the fix cannot land in one and not the other.
+ */
+export function readSelection(editor: PluginEditorHandle): {
+  from: number;
+  text: string;
+  to: number;
+} {
+  const { from, to } = editor.state.selection;
+  return { from, text: editor.state.doc.textBetween(from, to, "\n"), to };
+}
+
+/**
  * §260 3c-1 — register a host-side command handler by its full id
  * (`${pluginId}.${commandId}`). Sandboxed plugins have no main-realm
  * ExtensionContext; their command bodies run in the sandbox webview, so the
@@ -353,7 +399,7 @@ export function registerHostCommandHandler(
 }
 
 export function setEditorInstance(editor: unknown): void {
-  editorInstance = editor as typeof editorInstance;
+  editorInstance = editor as null | PluginEditorHandle;
 }
 
 function createEditorAPI(readonly: boolean): EditorAPI {
@@ -375,9 +421,7 @@ function createEditorAPI(readonly: boolean): EditorAPI {
     },
     getSelection(): { from: number; text: string; to: number } {
       if (!editorInstance) return { from: 0, to: 0, text: "" };
-      const { from, to } = editorInstance.state.selection;
-      const text = editorInstance.getText().slice(from, to);
-      return { from, to, text };
+      return readSelection(editorInstance);
     },
     insertText(text: string): void {
       if (readonly)

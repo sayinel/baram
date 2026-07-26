@@ -12,9 +12,15 @@ vi.mock("../plugins-enabled", () => ({
 // register/deregister call Tauri invoke in production — stub them.
 const pluginSandboxRegister = vi.fn(async (..._a: unknown[]) => {});
 const pluginSandboxDeregister = vi.fn(async (..._a: unknown[]) => {});
+// §260 Phase 4b — `pluginSandboxStage` joins the mock because the host EDITOR bridge
+// imports it (through the request router). Added to the DOUBLE rather than made optional
+// in production: the real module always exports it, and a fake that quietly lacks a member
+// is how a dead call path stays green (3c-2c F1).
+const pluginSandboxStage = vi.fn(async (..._a: unknown[]) => {});
 vi.mock("../../ipc/plugin-invoke", () => ({
   pluginSandboxDeregister: (...a: unknown[]) => pluginSandboxDeregister(...a),
   pluginSandboxRegister: (...a: unknown[]) => pluginSandboxRegister(...a),
+  pluginSandboxStage: (...a: unknown[]) => pluginSandboxStage(...a),
 }));
 
 import type { PluginManifest } from "../types";

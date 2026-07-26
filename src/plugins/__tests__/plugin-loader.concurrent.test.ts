@@ -19,6 +19,8 @@ const pluginSandboxDeregister = vi.fn(async (..._a: unknown[]) => {});
 vi.mock("../../ipc/plugin-invoke", () => ({
   pluginSandboxDeregister: (...a: unknown[]) => pluginSandboxDeregister(...a),
   pluginSandboxRegister: (...a: unknown[]) => pluginSandboxRegister(...a),
+  // §260 Phase 4b — the host editor bridge imports this through the request router.
+  pluginSandboxStage: async (..._a: unknown[]) => {},
 }));
 
 import type { PluginManifest } from "../types";

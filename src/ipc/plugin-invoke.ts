@@ -130,6 +130,18 @@ export async function pluginSandboxSend(
   return invoke<void>("plugin_sandbox_send", { pluginId, msg });
 }
 
+/**
+ * §260 Phase 4b host-only — park a large payload for one sandbox to pull as an invoke
+ * result. See `plugin/staging.rs`: pushing it as a frame would put it in tauri's
+ * ACL-exempt channel-data queue.
+ */
+export async function pluginSandboxStage(
+  pluginId: string,
+  payload: string,
+): Promise<void> {
+  return invoke<void>("plugin_sandbox_stage", { pluginId, payload });
+}
+
 export async function pluginStorageList(pluginId: string): Promise<string[]> {
   return invoke<string[]>("plugin_storage_list", { pluginId });
 }

@@ -77,6 +77,31 @@ export type SandboxHostRequest =
       message: string;
       type?: "error" | "info" | "warning";
     }
+  | {
+      // §260 Phase 4b — plain text at the cursor, one undoable step.
+      kind: "editor_insert_text";
+      text: string;
+    }
+  | {
+      // §260 Phase 4b — positions plus the text they cover. Small by nature, so unlike
+      // `editor_get_markdown` this one answers inline.
+      kind: "editor_get_selection";
+    }
+  | {
+      // §260 Phase 4b — replace the whole document, one undoable step. Travels INBOUND
+      // (sandbox→host), which needs no staging: that direction is a `plugin_sandbox_report`
+      // capped at 8 MiB, and a sandbox holds no event permission to eavesdrop on it.
+      kind: "editor_set_markdown";
+      markdown: string;
+    }
+  | {
+      // §260 Phase 4b — the document as markdown. The answer does NOT ride this response:
+      // a document routinely exceeds tauri's 8 KiB channel-data threshold, past which a
+      // frame enters the app-global queue that `FETCH_CHANNEL_DATA_COMMAND` exposes to
+      // every webview. The host stages it in Rust and the sandbox pulls it with
+      // `PluginOp::StagedRead`, which arrives as an invoke result instead.
+      kind: "editor_get_markdown";
+    }
   | { kind: "ai_complete"; opts?: AICompleteOptions; prompt: string }
   | { kind: "ai_list_models" }
   | { kind: "ai_stream"; opts?: AICompleteOptions; prompt: string };

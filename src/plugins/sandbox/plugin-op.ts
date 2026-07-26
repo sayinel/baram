@@ -18,6 +18,12 @@ import type { PluginFetchInit } from "../types";
 
 export type PluginOp =
   | {
+      // §260 Phase 4b — collect the payload the HOST staged for this sandbox. No handle:
+      // Rust resolves the slot from the caller's window label, so a sandbox cannot name
+      // whose payload it wants, and the slot is consumed by the read.
+      kind: "staged_read";
+    }
+  | {
       // §260 3c-2b — this sandbox's OWN bundle. No path field exists by design: Rust
       // reads it from the directory the host BOUND at registration, so the op cannot
       // be pointed at another plugin's file or anywhere else on disk.

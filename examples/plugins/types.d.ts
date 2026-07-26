@@ -198,6 +198,35 @@ export interface RegistryIndex {
     plugins: RegistryEntry[];
     updatedAt?: string;
 }
+/**
+ * §260 Phase 4b — the sandboxed tier's editor surface.
+ *
+ * Markdown, not "content": this is a markdown editor, and the trusted tier's
+ * `EditorAPI` reads flat text (`getText()`) while its `setContent` hands the string to
+ * Tiptap, which parses HTML — so what you read there is not what you can write back.
+ * These names say what crosses, and both directions go through the app's own round-trip
+ * pipeline, so `setMarkdown(await getMarkdown())` is a no-op on the document.
+ *
+ * Every method is async even where the trusted tier's is sync: the editor lives in the
+ * main realm, so each of these is a mediated round trip.
+ */
+export interface SandboxEditorAPI {
+    /** The whole document as markdown. Requires `editor` or `editor:readonly`. */
+    getMarkdown(): Promise<string>;
+    /**
+     * The selection, as ProseMirror document positions plus the text they cover.
+     * Requires `editor` or `editor:readonly`.
+     */
+    getSelection(): Promise<{
+        from: number;
+        text: string;
+        to: number;
+    }>;
+    /** Insert plain text at the cursor, as one undoable step. Requires `editor`. */
+    insertText(text: string): Promise<void>;
+    /** Replace the whole document, as one undoable step. Requires `editor`. */
+    setMarkdown(markdown: string): Promise<void>;
+}
 export interface SandboxFileOptions {
     /** Registered context id to resolve `path` against. Default: the active context. */
     context?: string;

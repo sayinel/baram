@@ -5,14 +5,17 @@
 // and this file owns only the routing.
 
 import type { HostRequestHandlerOptions } from "./host-ai-bridge";
+import type { EditorRequestHandlerOptions } from "./host-editor-bridge";
 import type { UIRequestHandlerOptions } from "./host-ui-bridge";
 import type { SandboxHostRequest } from "./protocol";
 import type { HostRequestHandler } from "./sandbox-session";
 
 import { createAIRequestHandler } from "./host-ai-bridge";
+import { createEditorRequestHandler } from "./host-editor-bridge";
 import { createUIRequestHandler } from "./host-ui-bridge";
 
 export type HostServicesOptions = HostRequestHandlerOptions &
+  Omit<EditorRequestHandlerOptions, "capabilities" | "pluginId"> &
   Omit<UIRequestHandlerOptions, "capabilities" | "pluginId">;
 
 /**
@@ -28,6 +31,7 @@ export function createHostRequestHandler(
   options: HostServicesOptions,
 ): HostRequestHandler {
   const ai = createAIRequestHandler(options);
+  const editor = createEditorRequestHandler(options);
   const ui = createUIRequestHandler(options);
   return async (request: SandboxHostRequest, onToken) => {
     switch (request.kind) {
@@ -35,6 +39,11 @@ export function createHostRequestHandler(
       case "ai_list_models":
       case "ai_stream":
         return ai(request, onToken);
+      case "editor_get_markdown":
+      case "editor_get_selection":
+      case "editor_insert_text":
+      case "editor_set_markdown":
+        return editor(request);
       case "ui_notify":
       case "ui_status_bar":
         return ui(request);

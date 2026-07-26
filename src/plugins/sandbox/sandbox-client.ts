@@ -7,6 +7,7 @@ import type {
   AIModel,
   NetworkAPI,
   PluginFileEvent,
+  SandboxEditorAPI,
   SandboxFilesAPI,
   SandboxUIAPI,
   StorageAPI,
@@ -31,6 +32,22 @@ import { logger } from "../../utils/logger";
  */
 export const HOST_REQUEST_CLIENT_TIMEOUT_MS = 150_000;
 
+/**
+ * What a sandboxed plugin's `activate` receives.
+ *
+ * ‼️ Per-member notes go INSIDE the member's doc comment. `perfectionist` sorts these
+ * members on every lint run, and a bare `//` block between two of them stays put while the
+ * member it described moves away — which already happened once here, leaving the 3c-1
+ * broker note sitting above `editor`. The same rule is written at the top of `protocol.ts`
+ * for the same reason.
+ *
+ * §260 3c-1 — the BROKERED members (`files`, `network`, `storage`) are routed through
+ * `broker` (= `plugin_call` in production) and exposed unconditionally: the Rust
+ * authorizer, keyed on the Tauri-verified `window.label()`, is the real per-call capability
+ * gate, so an op for an unregistered capability fails closed there rather than here. The
+ * HOST-MEDIATED members (`ai`, `editor`, `ui`) are gated in the main realm instead, because
+ * their policy or their subject lives there.
+ */
 export interface SandboxContext {
   /**
    * §260 3c-2c — host-mediated, NOT brokered in Rust: the model, provider and
@@ -42,6 +59,12 @@ export interface SandboxContext {
   commands: {
     register(id: string, handler: (...args: unknown[]) => unknown): void;
   };
+  /**
+   * §260 Phase 4b — the document, mediated by the host (it lives in the main realm). A
+   * read arrives as a STAGED payload pulled through the broker rather than in the response
+   * frame; `getMarkdown` hides that round trip.
+   */
+  editor: SandboxEditorAPI;
   events: {
     emit(event: string, ...args: unknown[]): void;
     /**
@@ -55,10 +78,6 @@ export interface SandboxContext {
     ): void;
     on(event: string, handler: (...args: unknown[]) => void): void;
   };
-  // §260 3c-1 — brokered privileged APIs. Routed through `broker` (= plugin_call
-  // in production). Exposed unconditionally: the Rust authorizer, keyed on the
-  // Tauri-verified window.label(), is the real per-call capability gate — an
-  // op for an unregistered capability fails closed there, not here.
   files: SandboxFilesAPI;
   network: NetworkAPI;
   storage: StorageAPI;
@@ -205,6 +224,44 @@ export function startSandboxClient(
       fireUI({ kind: "ui_notify", message, type }),
   };
 
+  // §260 Phase 4b — Rust holds ONE staged slot per plugin, so two reads in flight would
+  // race: the first pull would take the second document and the second would find the slot
+  // empty. Serialised here rather than given a per-request handle, because the slot's
+  // single-ness is what keeps a document from lingering in memory after delivery. A plugin
+  // that bypasses this and calls the broker directly can only confuse its OWN reads — the
+  // slot is keyed by window label, so no other plugin is reachable either way.
+  let stagedReads: Promise<unknown> = Promise.resolve();
+  const readStaged = async (request: SandboxHostRequest): Promise<string> => {
+    const run = async () => {
+      await hostRequest(request);
+      const payload = await broker({ kind: "staged_read" });
+      if (typeof payload !== "string") {
+        throw new Error("the host staged a non-string payload");
+      }
+      return payload;
+    };
+    // `.then` on a settled-or-rejected chain: a failed read must not wedge the next one.
+    const next = stagedReads.then(run, run);
+    stagedReads = next.catch(() => undefined);
+    return next;
+  };
+
+  const editor: SandboxEditorAPI = {
+    getMarkdown: () => readStaged({ kind: "editor_get_markdown" }),
+    getSelection: () =>
+      hostRequest({ kind: "editor_get_selection" }) as Promise<{
+        from: number;
+        text: string;
+        to: number;
+      }>,
+    insertText: async (text) => {
+      await hostRequest({ kind: "editor_insert_text", text });
+    },
+    setMarkdown: async (markdown) => {
+      await hostRequest({ kind: "editor_set_markdown", markdown });
+    },
+  };
+
   const ctx: SandboxContext = {
     ai,
     commands: { register: (id, handler) => void commands.set(id, handler) },
@@ -228,6 +285,7 @@ export function startSandboxClient(
         eventHandlers.set(event, list);
       },
     },
+    editor,
     files,
     network,
     storage,

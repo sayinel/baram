@@ -112,6 +112,13 @@ const HOST_REQUEST_VALIDATORS: {
   ai_complete: (r) => typeof r.prompt === "string" && isAiOptions(r.opts),
   ai_list_models: () => true,
   ai_stream: (r) => typeof r.prompt === "string" && isAiOptions(r.opts),
+  editor_get_markdown: () => true,
+  editor_get_selection: () => true,
+  editor_insert_text: (r) => isRenderableText(r.text),
+  // Not `isRenderableText`: a whole document legitimately exceeds the 4 KiB bound that
+  // exists for one-line UI strings. The size limit for this one is Rust's 8 MiB report
+  // cap, which already refused the frame before it reached this validator.
+  editor_set_markdown: (r) => typeof r.markdown === "string",
   ui_notify: (r) =>
     isRenderableText(r.message) &&
     (r.type === undefined ||
