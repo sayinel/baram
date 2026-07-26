@@ -221,9 +221,24 @@ Complete list of keyboard shortcuts available in Baram.
 
 ---
 
+## Vim Mode (Source Mode)
+
+Enable **Settings > Editor > Vim Keybindings** (off by default), then enter Source Mode with `Cmd+/` / `Ctrl+/`. The full vim engine runs in Source Mode: modal editing (normal/insert/visual/replace), motions, operators, counts, registers, marks, macros, and search. The current mode is shown in the status bar (`-- NORMAL --`).
+
+| Command | Action |
+| ------- | ------------------------ |
+| `:w`    | Save the current file    |
+| `:q`    | Close the current tab (unsaved-changes guard applies) |
+
+**Korean IME**: vim commands work with the Korean input source active — in normal/visual mode keys are resolved by physical position (pressing the `j` key moves down even when it would type `ㅓ`), and stray jamo insertion is blocked. Insert mode types Korean normally. This behavior is verified on macOS; Windows/Linux are not yet validated.
+
+Vim mode currently applies to Source Mode only (not the WYSIWYG editor or code blocks). Vim key sequences are not remappable via Settings > Keybindings.
+
+---
+
 ## Customization
 
-All keyboard shortcuts can be remapped in **Settings > Keybindings**. Search for a shortcut by name or key, click **Edit**, then press the new key combination. Conflicts are detected automatically. Use the ↺ button to reset individual shortcuts, or **Reset All Keybindings** to restore defaults.
+All keyboard shortcuts can be remapped in **Settings > Keybindings**. Search for a shortcut by name or key, click **Edit**, then press the new key combination. Conflicts are detected automatically. Use the ↺ button to reset individual shortcuts, or **Reset All Keybindings** to restore defaults. Vim key sequences (see above) are a separate layer and are not remappable here.
 
 ---
 
