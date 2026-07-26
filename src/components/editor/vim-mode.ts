@@ -74,7 +74,9 @@ export function registerExCommands(mod: VimModule): void {
  *   for `o`. Any replaced range starting before the cursor is that branch
  *   (renumbering rewrites start after the cursor), so it falls back;
  * - the rebuilt dispatch tags input.type.compose(.start) exactly like the
- *   adapter's internal dispatchChange, so one `u` undoes o + typed text.
+ *   adapter's internal dispatchChange, keeping undo-group PARITY with the
+ *   stock path (which is itself two-step for o + typed text — probe-verified;
+ *   single-u atomicity does not exist upstream).
  * Known limitation: `O` on the FIRST document line bypasses this slot inside
  * the adapter (special-cased replaceRange) and opens without a bullet.
  * Global singleton, same contract as registerExCommands.
@@ -90,7 +92,14 @@ export function registerListContinuation(mod: VimModule): void {
     // writes under state.readOnly, but insertNewlineContinueMarkup has no
     // such guard (verified: no readOnly check in @codemirror/lang-markdown).
     if (view.state.readOnly) return;
-    if (!cm.state.vim?.insertMode) {
+    // Call-site discrimination (probe-verified: vim state flags are IDENTICAL
+    // for `o` and `<C-o>r<CR>` at slot time, so flags alone cannot work):
+    // - !insertMode → plain/visual r<CR> (replace never enters insert);
+    // - op.lastChange → a change already ran in this op. o/O reach the slot
+    //   as the op's FIRST change; every r<CR> variant (incl. <C-o>r<CR>)
+    //   deletes the replaced character through the adapter first.
+    const op = (cm as { curOp?: null | { lastChange?: unknown } }).curOp;
+    if (!cm.state.vim?.insertMode || op?.lastChange) {
       commands.newlineAndIndent(cm);
       return;
     }
@@ -109,24 +118,36 @@ export function registerListContinuation(mod: VimModule): void {
       commands.newlineAndIndent(cm);
       return;
     }
-    let destructive = false;
+    // `o` must never restructure existing text. Acceptable changes are:
+    // pure insertions at the cursor (the continuation itself), anything
+    // starting after the cursor (ordered-list renumbering), and ONE benign
+    // before-cursor case — the Enter command's trailing-whitespace trim
+    // (whitespace-only replacement ending exactly at the cursor). Everything
+    // else is a destructive Enter branch: empty-item deletion/dedent, or the
+    // tight-list blank-line insertion BEFORE the item (re-review finding 3).
+    let unsafe = false;
     tr.changes.iterChangedRanges((fromA, toA) => {
-      if (toA > fromA && fromA < head) destructive = true;
+      if (fromA > head) return;
+      if (fromA === head) {
+        if (toA > head) unsafe = true;
+        return;
+      }
+      if (toA !== head || !/^[ \t]+$/.test(view.state.sliceDoc(fromA, toA))) {
+        unsafe = true;
+      }
     });
-    if (destructive) {
+    if (unsafe) {
       commands.newlineAndIndent(cm);
       return;
     }
-    const op = (cm as { curOp?: null | { lastChange?: unknown } }).curOp;
     view.dispatch({
       changes: tr.changes,
       effects: tr.effects,
       scrollIntoView: true,
       selection: tr.selection,
-      userEvent:
-        op && !op.lastChange
-          ? "input.type.compose.start"
-          : "input.type.compose",
+      // The discriminator above guarantees this is the op's first change,
+      // matching what the adapter's dispatchChange would tag here.
+      userEvent: "input.type.compose.start",
     });
   };
   listContinuationRegistered = true;

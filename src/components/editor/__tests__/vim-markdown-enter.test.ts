@@ -183,6 +183,43 @@ describe("markdown list continuation under vim (§298 smoke bug)", () => {
     expect(view.state.doc.toString()).toBe("1. a\n2. \n3. b");
   });
 
+  it("insert-mode <C-o>r<CR> stays a plain break (re-review finding 1)", () => {
+    // Probe-verified: at slot time <C-o>r<CR> and plain `o` carry IDENTICAL
+    // vim state flags (insertMode=true, insertModeReturn=false). The real
+    // discriminator is curOp.lastChange — replace deletes the character
+    // through the adapter BEFORE the slot runs, o/O never touch the doc
+    // first. This test pins the only state-flag-invisible call site.
+    const view = makeEditor("- item", 2, true); // cursor on "i"
+    const cm = getCM(view);
+    Vim.handleKey(cm!, "i", "user");
+    Vim.handleKey(cm!, "<C-o>", "user");
+    Vim.handleKey(cm!, "r", "user");
+    Vim.handleKey(cm!, "<CR>", "user");
+    expect(view.state.doc.toString()).toBe("- \ntem");
+  });
+
+  it("o on a tight list's empty second item opens BELOW (finding 3a)", () => {
+    // The Enter command's branch here INSERTS a blank line before the empty
+    // item (insertion-only, before the cursor) — the safety check must catch
+    // changes that start before the cursor even when nothing is deleted.
+    const doc = "- first\n- ";
+    const view = makeEditor(doc, doc.length, true);
+    const cm = getCM(view);
+    Vim.handleKey(cm!, "o", "user");
+    expect(view.state.doc.toString()).toBe("- first\n- \n");
+  });
+
+  it("o on a bullet with trailing spaces still continues (finding 3b)", () => {
+    // The Enter command trims trailing whitespace by replacing a range that
+    // ends at the cursor — whitespace-only replacement is the one benign
+    // before-cursor change and must not trigger the fallback.
+    const doc = "- item  ";
+    const view = makeEditor(doc, doc.length, true);
+    const cm = getCM(view);
+    Vim.handleKey(cm!, "o", "user");
+    expect(view.state.doc.toString()).toBe("- item\n- ");
+  });
+
   it("known limitation: O on the FIRST document line opens without a bullet", () => {
     // The adapter special-cases first-line O with a raw replaceRange and
     // never consults the continuation slot — pinned so an upstream change
