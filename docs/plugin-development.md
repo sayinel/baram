@@ -29,9 +29,30 @@ examples in [`examples/plugins/`](../examples/plugins/):
   capabilities.
 
 There is a third folder, `examples/plugins/sandbox-smoke/`, which is an internal test
-fixture for the §260 sandboxed tier — **not a template**. It reports results by
-throwing, ships as one hand-written file with no build step, and exists to probe deny
-paths during a manual smoke run.
+fixture for the §260 sandboxed tier — **not a template**. It ships as one hand-written
+file with no build step and exists to probe deny paths during a manual smoke run.
+
+### The sandboxed tier's API differs
+
+A plugin with `"trust": "sandboxed"` runs in its own isolated webview and gets a
+narrower, data-only context. Two differences matter when writing one:
+
+- **`files` paths are relative to a vault root you are never told.** `readFile("a.md")`,
+  `listDir("")` for the vault root; an absolute path or a `..` is refused. Pass
+  `{ context }` from a file event to keep a call aimed at the vault the event came from:
+  ```js
+  ctx.events.on("file:open", async ({ context, path }) => {
+    const text = await ctx.files.readFile(path, { context });
+  });
+  ```
+- **`ui` is data, not DOM.** `ctx.ui.showNotification(message, type?)` (the host prefixes
+  your plugin's name and rate-limits it to one per two seconds) and
+  `ctx.ui.setStatusBarText(id, text)` for an item your manifest declared in
+  `contributions.statusBar`. No `addStyle`, no panel `onMount(el)` — those need
+  `"trust": "trusted"`.
+
+Declared status-bar items appear as soon as the plugin loads, before `activate` runs, and
+one with a `command` is clickable.
 
 A plugin project looks like this:
 

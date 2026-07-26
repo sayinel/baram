@@ -1,57 +1,62 @@
-# Sandbox Smoke (§260 Phase 3c-3)
+# Sandbox Smoke (§260 Phase 3c-3 / 4a)
 
 An internal fixture, not a real plugin: it exercises everything a **sandboxed** plugin
-can reach and reports the outcome in one toast. Headless CI cannot create a real
-`WebviewWindow`, so this is the only way to verify that the sandboxed runtime works
-outside unit tests.
+can reach and reports the outcome through `ctx.ui`. Headless CI cannot create a real
+`WebviewWindow`, a real toast, or a real vault, so this is the only way to verify that
+the sandboxed runtime works outside unit tests.
 
 ## What it costs you
 
-Running the command sends **three real LLM requests** (`complete`, `stream`, `complete`)
-plus a `listModels` to whichever provider you have configured, using your key. The
-prompt is one sentence and `maxTokens` is 64, so the spend is negligible — but it is
-not zero, and the prompt does leave your machine. Its only file access is a single
-`listDir`; it never reads a file's contents.
+The **AI** command sends three real LLM requests (`complete`, `stream`, `complete`) plus
+a `listModels` to whichever provider you have configured, using your key. The prompt is
+one sentence and `maxTokens` is 64, so the spend is negligible — but it is not zero, and
+the prompt does leave your machine. The **boundary** command costs nothing: it reads at
+most the file you already have open.
 
 ## Run it
 
-1. Open `index.mjs` and set `VAULT_DIR` to the absolute path of the vault folder you
-   will open in the app. Leaving it empty still runs the rest (the report says
-   `files~(set VAULT_DIR)`), but skips the only *allowed* file read.
-2. Start the app with plugins enabled:
+1. Start the app with plugins enabled:
    ```sh
    VITE_ENABLE_PLUGINS=1 npm run tauri dev
    ```
-3. Open that vault folder (the brokered file ops are deny-by-default until a folder or
-   file context is open — that is the §88 rule, not a plugin rule).
-4. Settings → Plugins → **Add dev folder** → pick `examples/plugins/sandbox-smoke`.
+2. Open a vault folder (the brokered file ops are deny-by-default until a folder or file
+   context is open — that is the §88 rule, not a plugin rule), then open a note in it.
+3. Settings → Plugins → **Add dev folder** → pick `examples/plugins/sandbox-smoke`.
    It should install and show the **sandboxed** trust badge.
-5. Enable it. A hidden `plugin-baram-sandbox-smoke` webview is created and the plugin's
-   bundle is imported from a `blob:` URL.
-6. Command palette — **`Cmd+P`** (`Cmd+K` is the Quick Switcher) → run
-   **Sandbox Smoke: boundary checks**, then **Sandbox Smoke: AI checks (slow)**.
+4. Enable it. A hidden `plugin-baram-sandbox-smoke` webview is created and the plugin's
+   bundle is imported from a `blob:` URL. **Two status-bar items appear immediately** —
+   they come from the manifest, before any plugin code runs.
+5. Click the **🧪 smoke** status-bar item, or run **Sandbox Smoke: boundary checks** from
+   the command palette (**`Cmd+P`** — `Cmd+K` is the Quick Switcher). Then run
+   **Sandbox Smoke: AI checks (slow)**.
 
-They are two commands on purpose: `SandboxSession` bounds a whole command at 30s while
-one mediated `ai` request may legitimately take 120s, so a slow model must not be able
-to discard the boundary results that already passed.
+No path to configure: since Phase 4a a sandboxed plugin's paths are relative to a vault
+root it is never told, and it learns which file you are on from a delivered `file:open`
+event. (Earlier versions needed a hand-edited absolute `VAULT_DIR`.)
+
+The two commands are separate on purpose: `SandboxSession` bounds a whole command at 30s
+while one mediated `ai` request may legitimately take 120s, so a slow model must not be
+able to discard boundary results that already passed.
 
 ## Reading the result
 
-One error toast per command — `SMOKE …` for the boundary checks, `SMOKE-AI …` for the
-AI ones. **The rejection is the report** — a sandboxed plugin
-has no `ui` API, nothing consumes its `events.emit` yet, and the palette shows only
-rejections, so throwing is the only channel that reaches the screen today.
+Each command reports twice: an attributed **toast** (`Sandbox Smoke: SMOKE …`) and the
+**🧪 status-bar item**, which keeps the line after the toast fades. The `📄` item shows
+the vault-relative path the sandbox was told about.
 
 | Field | Means |
 | --- | --- |
 | `cmd✓` | palette → host → sandbox → handler round-trip works |
 | `storage✓(n)` | `storage` read/write/list/remove through `plugin_call`, `n` keys seen |
-| `out✓` | reading `/etc/hosts` was refused for being OUTSIDE the open context — the needle excludes the "no context open" refusal, so this also proves step 3 was done |
-| `list✓(n)` | `files:readonly` read of `VAULT_DIR` returned `n` entries |
+| `evt✓(n)` | the host delivered `n` file events, carrying a context id + relative path |
+| `list✓(n)` | `listDir("")` — the context ROOT, with no path supplied — returned `n` entries |
+| `read✓(nb)` | the file the event named read back through the context it named |
+| `abs✓` | an absolute path (`/etc/hosts`) was refused as not relative — this tier cannot express one |
+| `dotdot✓` | `../../../etc/hosts` was refused the same way |
 | `ro✓` | a write was refused — the readonly grant does not admit it (any-of authz) |
-| `state✓` | `<vault>/.baram/config.json` was refused as app state |
+| `state✓` | `.baram/config.json` was refused as app state, inside the vault |
 | `models✓(n)` | `ai.listModels()` through the host bridge |
-| `ai✓(len=n:…)` | `ai.complete()` — **the path 3c-2c's review found was dead** |
+| `ai1✓(len=n:…)` | `ai.complete()` — **the path 3c-2c's review found was dead** |
 | `stream✓(n tok/m ch)` | `ai.stream()` under the SAME options as `complete` |
 
 `ai1`/`stream`/`ai2` run with identical options and are reported by size, because the
@@ -65,20 +70,27 @@ issue #304 (a non-`STOP` Gemini finish reason resolves as an empty success). An
 worth reporting verbatim). Anything other than all-`✓` means stop and fix before
 Phase 5.
 
+Also check, by eye:
+
+- the toast says **`Sandbox Smoke: …`** — the host adds that prefix, and a plugin must
+  not be able to render a line that reads as the app itself;
+- the sandbox console logs one `ui_status_bar refused` for the item the fixture
+  deliberately does not declare (`not-declared`);
+- opening another note updates the `📄` item.
+
 ## Expected noise, not failures
 
 - A CSP refusal for `ws://localhost:1420/` in the sandbox realm. Vite's HMR socket is
   blocked there on purpose (`connect-src ipc: http://ipc.localhost`).
 - `ai✗` with a provider/key/privacy-mode message if no model is configured — that is
   the host's shared AI policy refusing, which still proves the bridge works. Configure
-  a provider and re-run to see `ai✓`.
+  a provider and re-run to see `ai1✓`.
+- Running both commands within two seconds of each other: the second toast is refused
+  ("limited to one every 2000ms"), by design — the app has a single toast slot. The
+  status-bar item still carries the line.
 
-## Known gap this fixture exposes
+## Still missing (Phase 4b)
 
-A sandboxed plugin has **no way to learn a path**: the activate frame carries only
-`pluginId`, `SandboxContext` exposes no vault or plugin path, and no app event is
-forwarded to a sandbox yet (`SandboxSession.deliverEvent` exists but nothing calls it).
-That is why `VAULT_DIR` is a hand-edited constant here. `files` is therefore enforced
-but not yet *usable* by a real sandboxed plugin — Phase 4 has to supply paths, whether
-through the activate frame, a brokered "which contexts are open" op, or command
-arguments from contributions.
+`editor` content and selection, document transforms, declarative `settings`, `menu`
+mapping, and sidebar panels. A sandboxed plugin can now orient itself and report; it
+still cannot read or change the document.
