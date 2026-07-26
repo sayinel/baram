@@ -47,7 +47,8 @@ function fakeFactory(
       async () => ({
         activate: (ctx) => ctx.commands.register("ping", () => "pong"),
       }),
-      async () => undefined,
+      // §260 3c-2b — the client fetches its own source through the broker.
+      async () => "// bundle",
     );
     return {
       close: () => {
@@ -63,12 +64,7 @@ describe("SandboxHost (§260 lifecycle)", () => {
     const created: string[] = [];
     const pluginIds: string[] = [];
     const host = new SandboxHost(fakeFactory(created, [], pluginIds));
-    const session = await host.start(
-      "alpha",
-      "/p/alpha",
-      "index.mjs",
-      DECLARED,
-    );
+    const session = await host.start("alpha", DECLARED);
     expect(created).toEqual(["plugin-alpha"]);
     // The label is prefixed; the transport must get the BARE id (see fakeFactory).
     expect(pluginIds).toEqual(["alpha"]);
@@ -79,7 +75,7 @@ describe("SandboxHost (§260 lifecycle)", () => {
   it("stop() disposes the session and closes the window", async () => {
     const closed: string[] = [];
     const host = new SandboxHost(fakeFactory([], closed));
-    await host.start("beta", "/p/beta", "index.mjs", DECLARED);
+    await host.start("beta", DECLARED);
     await host.stop("beta");
     expect(closed).toEqual(["plugin-beta"]);
   });
@@ -95,7 +91,8 @@ describe("SandboxHost (§260 lifecycle)", () => {
       startSandboxClient(
         sandbox,
         async () => ({}),
-        async () => undefined,
+        // §260 3c-2b — the client fetches its own source through the broker.
+        async () => "// bundle",
       );
       void label;
       return {
@@ -108,7 +105,7 @@ describe("SandboxHost (§260 lifecycle)", () => {
         transport: h,
       };
     });
-    await host.start("beta", "/p/beta", "index.mjs", {});
+    await host.start("beta", {});
 
     let stopped = false;
     const stopping = host.stop("beta").then(() => {
@@ -140,15 +137,13 @@ describe("SandboxHost (§260 lifecycle)", () => {
         transport: h,
       };
     });
-    await expect(
-      host.start("gamma", "/p/gamma", "index.mjs", DECLARED),
-    ).rejects.toThrow(/fail/);
+    await expect(host.start("gamma", DECLARED)).rejects.toThrow(/fail/);
     expect(closed).toEqual(["plugin-gamma"]); // window closed, entry removed
     // a fresh start must build a NEW window, proving the dead entry was deleted
     closed.length = 0;
     const created2: string[] = [];
     const host2 = new SandboxHost(fakeFactory(created2, []));
-    await host2.start("gamma", "/p/gamma", "index.mjs", DECLARED);
+    await host2.start("gamma", DECLARED);
     expect(created2).toEqual(["plugin-gamma"]);
   });
 });

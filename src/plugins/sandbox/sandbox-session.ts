@@ -47,13 +47,11 @@ export class SandboxSession {
 
   activate(
     pluginId: string,
-    pluginUrl: string,
     declared: PluginContributions,
   ): Promise<PluginContributions> {
     this.declared = declared;
     return new Promise<PluginContributions>((resolve, reject) => {
-      const send = () =>
-        this.transport.send({ type: "activate", pluginId, pluginUrl });
+      const send = () => this.transport.send({ type: "activate", pluginId });
       const retry = setInterval(send, ACTIVATE_RETRY_MS);
       const timeout = setTimeout(() => {
         finish();

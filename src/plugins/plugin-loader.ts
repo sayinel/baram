@@ -113,7 +113,7 @@ export class PluginLoader {
     // (declarative contributions + brokered ops); `trusted` keeps the same-realm
     // path below.
     if (pluginTrustOf(manifest) === "sandboxed") {
-      await this.loadSandboxedPlugin(installPath, manifest);
+      await this.loadSandboxedPlugin(manifest);
       logger.info(
         `[PluginLoader] Loaded sandboxed plugin: ${manifest.id} v${manifest.version}`,
       );
@@ -249,10 +249,7 @@ export class PluginLoader {
    * main realm; storage/network reach the Rust broker (`plugin_call`) from inside
    * the sandbox, authorized by window label + capability.
    */
-  private async loadSandboxedPlugin(
-    installPath: string,
-    manifest: PluginManifest,
-  ): Promise<void> {
+  private async loadSandboxedPlugin(manifest: PluginManifest): Promise<void> {
     // Belt-and-suspenders over arePluginsEnabled: never create a sandbox webview
     // in a packaged build (release gate lifts in Phase 5).
     if (!isSandboxRuntimeAllowed()) {
@@ -263,10 +260,10 @@ export class PluginLoader {
     await pluginSandboxRegister(manifest.id, manifest.capabilities);
     let session: SandboxSession;
     try {
+      // §260 3c-2b — no path is handed over: the sandbox pulls its own bundle
+      // through the broker, resolved in Rust from its window label.
       session = await this.sandboxHost.start(
         manifest.id,
-        installPath,
-        manifest.main,
         manifest.contributions ?? {},
       );
     } catch (err) {

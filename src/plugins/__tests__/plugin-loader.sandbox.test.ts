@@ -28,14 +28,12 @@ import { SandboxHost } from "../sandbox/sandbox-host";
 function fakeHost() {
   const invokeCommand = vi.fn(async () => "ok");
   const stop = vi.fn(async () => {});
-  const start = vi.fn(
-    async (
-      _id: string,
-      _install: string,
-      _main: string,
-      declared: unknown,
-    ) => ({ contributions: declared, invokeCommand }),
-  );
+  // §260 3c-2b — `start(pluginId, declared)`: no install path or entry file, since
+  // the sandbox resolves its own bundle through the broker.
+  const start = vi.fn(async (_id: string, declared: unknown) => ({
+    contributions: declared,
+    invokeCommand,
+  }));
   return {
     host: { start, stop } as unknown as SandboxHost,
     start,
@@ -84,12 +82,9 @@ describe("PluginLoader sandboxed path (§260 3c-1)", () => {
       "storage",
       "commands",
     ]);
-    expect(f.start).toHaveBeenCalledWith(
-      "demo",
-      "/p/demo",
-      "index.mjs",
-      manifest.contributions,
-    );
+    // §260 3c-2b — the host passes NO path: Rust resolves the plugin's own
+    // directory from the sandbox's window label when it asks for its bundle.
+    expect(f.start).toHaveBeenCalledWith("demo", manifest.contributions);
     expect(loader.isLoaded("demo")).toBe(true);
 
     const palette = usePluginUIStore.getState().paletteCommands;
