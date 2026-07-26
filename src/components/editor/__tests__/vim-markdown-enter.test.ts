@@ -185,10 +185,9 @@ describe("markdown list continuation under vim (§298 smoke bug)", () => {
 
   it("insert-mode <C-o>r<CR> stays a plain break (re-review finding 1)", () => {
     // Probe-verified: at slot time <C-o>r<CR> and plain `o` carry IDENTICAL
-    // vim state flags (insertMode=true, insertModeReturn=false). The real
-    // discriminator is curOp.lastChange — replace deletes the character
-    // through the adapter BEFORE the slot runs, o/O never touch the doc
-    // first. This test pins the only state-flag-invisible call site.
+    // vim state flags (insertMode=true, insertModeReturn=false), so the
+    // discriminator is positional — the mid-line replace sits at the
+    // replaced character, never at the line end where every o/O path runs.
     const view = makeEditor("- item", 2, true); // cursor on "i"
     const cm = getCM(view);
     Vim.handleKey(cm!, "i", "user");
@@ -258,23 +257,32 @@ describe("markdown list continuation under vim (§298 smoke bug)", () => {
     });
     Vim.handleKey(cm!, "<Esc>", "user");
     expect(view.state.doc.toString()).toBe("- item\n- x\n- x\n- x");
+    // Two stock-parity steps: u #1 removes the typed text plus the Esc-time
+    // replayed lines (joined via .compose), u #2 removes the opened line.
     Vim.handleKey(cm!, "u", "user");
+    expect(view.state.doc.toString()).toBe("- item\n- ");
     Vim.handleKey(cm!, "u", "user");
     expect(view.state.doc.toString()).toBe("- item");
   });
 
-  it("accepted deviation: <C-o>r<CR> on a line's LAST char gains a bullet", () => {
-    // The EOL discriminator cannot see this one case (the pre-delete puts
-    // the cursor exactly at the new line end). It behaves like Enter at
-    // EOL — benign, pinned so a future fix surfaces here.
-    const view = makeEditor("- item", 5, true); // cursor on "m"
-    const cm = getCM(view);
-    Vim.handleKey(cm!, "i", "user");
-    Vim.handleKey(cm!, "<C-o>", "user");
-    Vim.handleKey(cm!, "r", "user");
-    Vim.handleKey(cm!, "<CR>", "user");
-    expect(view.state.doc.toString()).toBe("- ite\n- ");
-  });
+  it.each([
+    ["last character", 5, ["i", "<C-o>", "r", "<CR>"], "- ite\n- "],
+    ["counted suffix", 4, ["i", "<C-o>", "2", "r", "<CR>"], "- it\n- "],
+    ["already at EOL", 2, ["A", "<C-o>", "r", "<CR>"], "- item\n- "],
+  ] as [string, number, string[], string][])(
+    "accepted deviation family: <C-o> replace reaching EOL gains a bullet (%s)",
+    (_label, cursor, keys, expected) => {
+      // Codex round 4: the blind spot is a FAMILY, not one case — every
+      // <C-o>[count]r<CR> whose (possibly empty) pre-delete lands the cursor
+      // at EOL is indistinguishable from o/O by any state predicate. All
+      // members behave like Enter at EOL — benign, deterministic, pinned so
+      // a future real call-site discriminator surfaces here.
+      const view = makeEditor("- item", cursor, true);
+      const cm = getCM(view);
+      for (const k of keys) Vim.handleKey(cm!, k, "user");
+      expect(view.state.doc.toString()).toBe(expected);
+    },
+  );
 
   it("known limitation: O on the FIRST document line opens without a bullet", () => {
     // The adapter special-cases first-line O with a raw replaceRange and

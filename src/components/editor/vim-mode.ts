@@ -103,9 +103,10 @@ export function registerListContinuation(mod: VimModule): void {
     // dot-repeat, macro, mapping). Plain/visual/replayed r<CR> run with
     // insertMode=false (visual skips the pre-delete entirely and is caught
     // here too); <C-o>r<CR> runs in insert mode but sits at the replaced
-    // character — mid-line except for a line's LAST character, the one
-    // accepted micro-deviation (pinned by test: it behaves like Enter at
-    // EOL and gains a continued bullet).
+    // character — mid-line except when the (possibly counted or empty)
+    // replacement reaches the line's END. That <C-o>-only family is the
+    // accepted deviation (Codex round 4: no state predicate can split it
+    // from o/O; pinned by tests — it behaves like Enter at EOL).
     if (!cm.state.vim?.insertMode || head !== view.state.doc.lineAt(head).to) {
       commands.newlineAndIndent(cm);
       return;
