@@ -2,8 +2,9 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 
 // §260 SandboxHost — lifecycle of per-plugin sandbox WebviewWindows + sessions.
 // windowFactory is injectable (unit-testable); production uses a hidden
-// WebviewWindow + per-session-token Tauri transport. NOT yet called by the live
-// loader (Phase 3).
+// WebviewWindow whose transport is the Phase-3c-2a per-webview IPC channel
+// (commands, not events — a plugin-* window holds no event permission, so there
+// is no session token to keep secret any more).
 import type { PluginContributions } from "../types";
 import type { HostToSandbox, SandboxToHost } from "./protocol";
 import type { SandboxTransport } from "./transport";
@@ -11,12 +12,18 @@ import type { SandboxTransport } from "./transport";
 import { SandboxSession } from "./sandbox-session";
 
 export interface SandboxWindow {
-  close: () => void;
+  /**
+   * §260 3c-2a re-review (N1) — may return a promise, and `stop()` awaits it. The
+   * real `WebviewWindow.close()` is async; discarding it made `stop()` resolve
+   * before the webview was gone, so a fast reload could still collide on the
+   * `plugin-<id>` label — the exact ordering the loader's teardown claims to give.
+   */
+  close: () => Promise<void> | void;
   transport: SandboxTransport<SandboxToHost, HostToSandbox>;
 }
 export type SandboxWindowFactory = (
   label: string,
-  token: string,
+  pluginId: string,
 ) => Promise<SandboxWindow> | SandboxWindow;
 
 export class SandboxHost {
@@ -38,10 +45,7 @@ export class SandboxHost {
     const existing = this.live.get(pluginId);
     if (existing) return existing.session;
     const label = `plugin-${pluginId}`;
-    // §260 — unguessable per-session token so another plugin's sandbox cannot
-    // guess this session's event-channel name and inject onto it.
-    const token = `${pluginId}-${crypto.randomUUID()}`;
-    const window = await this.windowFactory(label, token);
+    const window = await this.windowFactory(label, pluginId);
     const session = new SandboxSession(window.transport);
     this.live.set(pluginId, { session, window });
     try {
@@ -51,7 +55,9 @@ export class SandboxHost {
     } catch (err) {
       this.live.delete(pluginId);
       session.dispose();
-      window.close();
+      // Awaited for the same reason as `stop()`: the label must be free before the
+      // caller's rollback finishes, or a retry collides with a dying webview.
+      await window.close();
       throw err;
     }
   }
@@ -61,7 +67,8 @@ export class SandboxHost {
     if (!entry) return;
     this.live.delete(pluginId);
     entry.session.dispose();
-    entry.window.close();
+    // Awaited so the `plugin-<id>` label is actually free when this resolves.
+    await entry.window.close();
   }
 
   async stopAll(): Promise<void> {
@@ -71,21 +78,23 @@ export class SandboxHost {
 
 async function defaultWindowFactory(
   label: string,
-  token: string,
+  pluginId: string,
 ): Promise<SandboxWindow> {
   const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
-  const { createTauriTransport } = await import("./tauri-transport");
+  const { createHostTransport } = await import("./tauri-host-transport");
   const win = new WebviewWindow(label, {
     decorations: false,
     focus: false,
     skipTaskbar: true,
-    url: `sandbox.html?label=${encodeURIComponent(label)}&token=${encodeURIComponent(token)}`,
+    // `label` is a debugging aid only — the sandbox reads no URL params (its
+    // identity is the Tauri window label, which Rust derives, never the query).
+    url: `sandbox.html?label=${encodeURIComponent(label)}`,
     visible: false,
   });
   await new Promise<void>((resolve, reject) => {
     void win.once("tauri://created", () => resolve());
     void win.once("tauri://error", (e) => reject(new Error(String(e.payload))));
   });
-  const transport = await createTauriTransport(label, token);
-  return { close: () => void win.close(), transport };
+  const transport = await createHostTransport(pluginId);
+  return { close: () => win.close(), transport };
 }

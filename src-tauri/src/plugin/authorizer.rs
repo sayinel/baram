@@ -79,6 +79,13 @@ impl PluginAuthorizer {
         self.granted.lock().unwrap().remove(label);
     }
 
+    /// Whether the host has registered this label at all (any capability set,
+    /// including an empty one). Phase 3c-2a gates `plugin_sandbox_connect` on
+    /// this so a window the host never started cannot park an inbound channel.
+    pub fn is_registered(&self, label: &str) -> bool {
+        plugin_id_from_label(label).is_some() && self.granted.lock().unwrap().contains_key(label)
+    }
+
     /// On success returns the caller's plugin id (derived from the label) so the
     /// broker uses the CALLER identity — never a client-supplied id — for the op.
     pub fn authorize(&self, label: &str, cap: &str) -> Result<String, AuthzError> {
@@ -171,6 +178,18 @@ mod tests {
             a.authorize("plugin-alpha", "storage"),
             Err(AuthzError::Unregistered)
         ));
+    }
+
+    #[test]
+    fn is_registered_tracks_registration_and_rejects_non_sandbox() {
+        let a = PluginAuthorizer::new();
+        assert!(!a.is_registered("plugin-alpha"));
+        a.register("plugin-alpha".into(), vec![]); // zero capabilities still counts
+        assert!(a.is_registered("plugin-alpha"));
+        a.deregister("plugin-alpha");
+        assert!(!a.is_registered("plugin-alpha"));
+        a.register("main".into(), vec!["storage".into()]); // not a sandbox label
+        assert!(!a.is_registered("main"));
     }
 
     #[test]

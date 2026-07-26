@@ -2,12 +2,25 @@
 <html>
   <head>
     <meta charset="UTF-8" />
-    <!-- §260 sandbox-strict CSP. No direct network; scripts only from app origin
-         (Phase 2 loads no asset: plugin — that + the global asset: allowance land
-         in Phase 3). Meta CSP can only tighten vs the global config. -->
+    <!-- §260 sandbox-strict CSP. A meta CSP can only TIGHTEN the global one, so
+         script-src must mirror the global `asset:` allowance or the plugin ESM this
+         realm exists to import is blocked here (3c-1 widened only the global CSP;
+         3c-2a fixes the sandbox). Everything else stays 'none': no styles, images,
+         fonts, frames or direct network — connect-src is the IPC channel only
+         (invoke + the ipc::Channel large-payload fetch path).
+
+         KNOWN RESIDUAL (§260, security review of PR #300): Tauri v2's asset scope
+         is APP-GLOBAL — there is no per-webview scope — and it currently covers
+         $APPDATA/**, the plugins dir (recursive), dev plugin folders and the open
+         vault root. So `asset:` here lets a malicious sandboxed plugin `import()`
+         any VALID-JS file in those trees (another plugin's bundle, a .js note in
+         the vault) and probe path existence via error shape. `connect-src` omits
+         asset: on purpose, so non-JS content cannot be fetched as text. Root fix
+         is to drop asset: from this realm entirely and have the host hand the
+         plugin's source to the sandbox for a blob: import — tracked for 3c-2b. -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self'; connect-src ipc: http://ipc.localhost"
+      content="default-src 'none'; script-src 'self' asset: http://asset.localhost; connect-src ipc: http://ipc.localhost"
     />
     <title>Baram plugin sandbox</title>
   </head>

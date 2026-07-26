@@ -42,10 +42,48 @@ pub enum PluginError {
     NotFound(String),
 }
 
+/// Serialized byte length of `value`, or `None` once it would exceed `cap` — the
+/// serializer is aborted at that point, so an oversized value is never allocated
+/// and never fully walked. One home for the "count, never allocate" rule, shared by
+/// the sandbox report cap and the h2s frame warning (§260 3c-2a review, M6).
+pub fn serialized_len_capped(value: &serde_json::Value, cap: usize) -> Option<usize> {
+    struct CapCounter {
+        cap: usize,
+        written: usize,
+    }
+    impl std::io::Write for CapCounter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.written += buf.len();
+            if self.written > self.cap {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "over cap",
+                ));
+            }
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut counter = CapCounter { cap, written: 0 };
+    // A `serde_json::Value` cannot fail to serialize for any reason but the writer:
+    // it holds no non-finite floats (`Number::from_f64` rejects them), all keys are
+    // strings, and serde_json's deserializer caps nesting at 128 so Tauri rejects an
+    // over-deep payload before we see it. So an error here means the cap tripped.
+    match serde_json::to_writer(&mut counter, value) {
+        Ok(()) => Some(counter.written),
+        Err(_) => None,
+    }
+}
+
 mod authorizer;
+mod channels;
 // Re-exported for the `plugin_call` broker + sandbox register/deregister
 // commands (Phase 3a Task 2, src-tauri/src/commands/plugin_cmd.rs).
 pub use authorizer::{plugin_id_from_label, PluginAuthorizer, PluginOp};
+// Phase 3c-2a — host→sandbox message channels (src-tauri/src/commands/plugin_cmd.rs).
+pub use channels::SandboxChannels;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -640,6 +678,18 @@ pub fn read_manifest_at(folder: &Path) -> Result<PluginManifest, PluginError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// §260 3c-2a final pass (Q3) — two callers want OPPOSITE comparisons off this
+    /// helper (`>` for the report cap, `>=` for the 8 KiB channel-queue threshold,
+    /// hence its `threshold - 1`), so pin the boundary here rather than leaving the
+    /// `-1` safe only by careful reading. A JSON string is `len + 2` bytes.
+    #[test]
+    fn serialized_len_capped_admits_exactly_cap_and_refuses_one_over() {
+        let five = serde_json::Value::String("xyz".to_string()); // "xyz" → 5 bytes
+        assert_eq!(serialized_len_capped(&five, 5), Some(5)); // == cap → admitted
+        assert_eq!(serialized_len_capped(&five, 6), Some(5)); // under cap
+        assert_eq!(serialized_len_capped(&five, 4), None); // one over → refused
+    }
 
     #[test]
     fn test_validate_manifest_valid() {

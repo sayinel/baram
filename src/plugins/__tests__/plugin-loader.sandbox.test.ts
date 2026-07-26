@@ -143,6 +143,82 @@ describe("PluginLoader sandboxed path (§260 3c-1)", () => {
     );
   });
 
+  // §260 3c-2a review (I2) — teardown must COMPLETE before unloadPlugin resolves,
+  // and stop must precede deregister. Otherwise a reload's `loadPlugin` races the
+  // outgoing deregister: it would revoke the NEW registration, the fresh sandbox's
+  // `plugin_sandbox_connect` would fail closed, and activate would time out — plus
+  // the old webview might still hold the `plugin-<id>` label.
+  it("awaits sandbox teardown on unload, stopping before deregistering", async () => {
+    const order: string[] = [];
+    const f = fakeHost();
+    let releaseStop: () => void = () => {};
+    f.stop.mockImplementation(async () => {
+      await new Promise<void>((resolve) => {
+        releaseStop = resolve;
+      });
+      order.push("stop");
+    });
+    pluginSandboxDeregister.mockImplementation(async () => {
+      order.push("deregister");
+    });
+
+    const loader = new PluginLoader(undefined, f.host);
+    await loader.loadPlugin("/p/demo", sandboxedManifest());
+
+    let unloaded = false;
+    const unloading = loader.unloadPlugin("demo").then(() => {
+      unloaded = true;
+    });
+
+    // stop() is still in flight: unload must NOT have resolved, and deregister
+    // must not have run yet.
+    await Promise.resolve();
+    expect(unloaded).toBe(false);
+    expect(order).toEqual([]);
+
+    releaseStop();
+    await unloading;
+    expect(order).toEqual(["stop", "deregister"]);
+  });
+
+  // §260 3c-2a re-review (N2) — revocation is the security-relevant half of
+  // teardown and must not depend on the other half succeeding. A rejected `stop()`
+  // used to skip `deregister`, leaving Rust authorizing `plugin_call` for a plugin
+  // the loader had already forgotten — worst when stop failed BECAUSE the sandbox
+  // is still alive.
+  it("deregisters even when stopping the sandbox fails", async () => {
+    const f = fakeHost();
+    f.stop.mockRejectedValue(new Error("webview refused to close"));
+    const loader = new PluginLoader(undefined, f.host);
+    await loader.loadPlugin("/p/demo", sandboxedManifest());
+
+    await loader.unloadPlugin("demo");
+
+    expect(pluginSandboxDeregister).toHaveBeenCalledWith("demo");
+    expect(loader.isLoaded("demo")).toBe(false);
+  });
+
+  it("reload does not let a late deregister revoke the new registration", async () => {
+    const calls: string[] = [];
+    const f = fakeHost();
+    f.stop.mockImplementation(async () => {
+      calls.push("stop");
+    });
+    pluginSandboxDeregister.mockImplementation(async () => {
+      calls.push("deregister");
+    });
+    pluginSandboxRegister.mockImplementation(async () => {
+      calls.push("register");
+    });
+
+    const loader = new PluginLoader(undefined, f.host);
+    await loader.loadPlugin("/p/demo", sandboxedManifest());
+    await loader.reloadPlugin("/p/demo", sandboxedManifest());
+
+    // The teardown pair must be fully ordered BEFORE the re-registration.
+    expect(calls).toEqual(["register", "stop", "deregister", "register"]);
+  });
+
   it("refuses a legacy (trust-less) manifest (validateManifest gate)", async () => {
     const f = fakeHost();
     const loader = new PluginLoader(undefined, f.host);

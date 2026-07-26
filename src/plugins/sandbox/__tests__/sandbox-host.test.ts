@@ -1,5 +1,6 @@
 import type { PluginContributions } from "../../types";
 import type { HostToSandbox, SandboxToHost } from "../protocol";
+import type { SandboxWindow } from "../sandbox-host";
 import type { SandboxTransport } from "../transport";
 
 import { describe, expect, it, vi } from "vitest";
@@ -19,14 +20,27 @@ const DECLARED: PluginContributions = {
   commands: [{ id: "ping", title: "Ping" }],
 };
 
-function fakeFactory(created: string[], closed: string[]) {
+function fakeFactory(
+  created: string[],
+  closed: string[],
+  // §260 3c-2a review (M3): the factory's 2nd arg is the plugin ID, not the label.
+  // Confusing them silently breaks the whole transport (`plugin_sandbox_send` would
+  // target `plugin-plugin-alpha` and the s2h filter would never match), so record
+  // it and assert.
+  pluginIds: string[] = [],
+) {
   return (
     label: string,
-  ): {
-    close: () => void;
-    transport: SandboxTransport<SandboxToHost, HostToSandbox>;
-  } => {
+    pluginId: string,
+    // Typed as the real interface so the annotation cannot drift from it — an
+    // inline `close: () => void` would locally reject an async close the real
+    // `SandboxWindow` allows (3c-2a final pass, Q4).
+  ): SandboxWindow => {
     created.push(label);
+    pluginIds.push(pluginId);
+    // NOTE: `close` must have a void body — `SandboxWindow.close` is
+    // `() => Promise<void> | void`, and TS's return-value-for-void allowance does
+    // not apply to a union, so `() => closed.push(x)` (number) is rejected.
     const { host, sandbox } = createChannelPair();
     startSandboxClient(
       sandbox,
@@ -35,14 +49,20 @@ function fakeFactory(created: string[], closed: string[]) {
       }),
       async () => undefined,
     );
-    return { close: () => closed.push(label), transport: host };
+    return {
+      close: () => {
+        closed.push(label);
+      },
+      transport: host,
+    };
   };
 }
 
 describe("SandboxHost (§260 lifecycle)", () => {
   it("start() creates one window per plugin, activates, returns a live session", async () => {
     const created: string[] = [];
-    const host = new SandboxHost(fakeFactory(created, []));
+    const pluginIds: string[] = [];
+    const host = new SandboxHost(fakeFactory(created, [], pluginIds));
     const session = await host.start(
       "alpha",
       "/p/alpha",
@@ -50,6 +70,8 @@ describe("SandboxHost (§260 lifecycle)", () => {
       DECLARED,
     );
     expect(created).toEqual(["plugin-alpha"]);
+    // The label is prefixed; the transport must get the BARE id (see fakeFactory).
+    expect(pluginIds).toEqual(["alpha"]);
     expect(session.contributions).toBe(DECLARED);
     await expect(session.invokeCommand("ping")).resolves.toBe("pong");
   });
@@ -60,6 +82,44 @@ describe("SandboxHost (§260 lifecycle)", () => {
     await host.start("beta", "/p/beta", "index.mjs", DECLARED);
     await host.stop("beta");
     expect(closed).toEqual(["plugin-beta"]);
+  });
+
+  // §260 3c-2a re-review (N1) — `stop()` must not resolve until the webview is
+  // actually gone, or a fast reload collides on the `plugin-<id>` label (the real
+  // `WebviewWindow.close()` is async, and its promise used to be discarded).
+  it("stop() awaits an async window close before resolving", async () => {
+    let releaseClose: () => void = () => {};
+    let closeFinished = false;
+    const host = new SandboxHost((label) => {
+      const { host: h, sandbox } = createChannelPair();
+      startSandboxClient(
+        sandbox,
+        async () => ({}),
+        async () => undefined,
+      );
+      void label;
+      return {
+        close: async () => {
+          await new Promise<void>((resolve) => {
+            releaseClose = resolve;
+          });
+          closeFinished = true;
+        },
+        transport: h,
+      };
+    });
+    await host.start("beta", "/p/beta", "index.mjs", {});
+
+    let stopped = false;
+    const stopping = host.stop("beta").then(() => {
+      stopped = true;
+    });
+    await Promise.resolve();
+    expect(stopped).toBe(false); // still waiting on the close
+
+    releaseClose();
+    await stopping;
+    expect(closeFinished).toBe(true);
   });
 
   it("start() cleans up (no zombie) when activation fails (I3)", async () => {
@@ -73,7 +133,12 @@ describe("SandboxHost (§260 lifecycle)", () => {
             error: "fail",
           });
       });
-      return { close: () => closed.push(label), transport: h };
+      return {
+        close: () => {
+          closed.push(label);
+        },
+        transport: h,
+      };
     });
     await expect(
       host.start("gamma", "/p/gamma", "index.mjs", DECLARED),
