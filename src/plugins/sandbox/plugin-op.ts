@@ -4,6 +4,10 @@
 import type { PluginFetchInit } from "../types";
 
 export type PluginOp =
+  // §260 3c-2c — vault-bounded file ops. The path is the plugin's to name and
+  // Rust's to judge: it goes through the same vault rule as `read_file`, minus the
+  // app's `.baram` state, capped, and acted on as its canonical form.
+  | { content: string; kind: "files_write"; path: string }
   | { init?: PluginFetchInit; kind: "http_fetch"; url: string }
   | { key: string; kind: "storage_read" }
   | { key: string; kind: "storage_remove" }
@@ -13,5 +17,7 @@ export type PluginOp =
   // pointed at another plugin's file or anywhere else on disk. (Comment sits with
   // its variant — union members are lint-sorted alphabetically, which once carried
   // the members away and left this behind.)
+  | { kind: "files_list"; path: string }
+  | { kind: "files_read"; path: string }
   | { kind: "source_read" }
   | { kind: "storage_list" };

@@ -2,7 +2,7 @@
 // only outward channel is the transport. Guards re-activation and serializes
 // outbound payloads defensively (real Tauri events are serde-JSON, not
 // structured clone — functions/BigInt/etc. would corrupt silently).
-import type { NetworkAPI, StorageAPI } from "../types";
+import type { FilesAPI, NetworkAPI, StorageAPI } from "../types";
 import type { PluginOp } from "./plugin-op";
 import type { HostToSandbox, SandboxToHost } from "./protocol";
 import type { SandboxTransport } from "./transport";
@@ -21,6 +21,7 @@ export interface SandboxContext {
   // in production). Exposed unconditionally: the Rust authorizer, keyed on the
   // Tauri-verified window.label(), is the real per-call capability gate — an
   // op for an unregistered capability fails closed there, not here.
+  files: FilesAPI;
   network: NetworkAPI;
   storage: StorageAPI;
 }
@@ -55,6 +56,18 @@ export function startSandboxClient(
         NetworkAPI["fetch"]
       >,
   };
+  // §260 3c-2c — same shape as the trusted tier's FilesAPI, so a plugin's file code
+  // is tier-independent. Nothing is interpreted here: a broker rejection (denied
+  // capability, path outside the vault, `.baram`, over the cap) propagates to the
+  // plugin, because a sandbox that softened a deny into `undefined` would let the
+  // plugin proceed as though the write had landed.
+  const files: FilesAPI = {
+    listDir: (path) =>
+      broker({ kind: "files_list", path }) as Promise<string[]>,
+    readFile: (path) => broker({ kind: "files_read", path }) as Promise<string>,
+    writeFile: (path, content) =>
+      broker({ content, kind: "files_write", path }) as Promise<void>,
+  };
 
   const ctx: SandboxContext = {
     commands: { register: (id, handler) => void commands.set(id, handler) },
@@ -75,6 +88,7 @@ export function startSandboxClient(
         eventHandlers.set(event, list);
       },
     },
+    files,
     network,
     storage,
   };
