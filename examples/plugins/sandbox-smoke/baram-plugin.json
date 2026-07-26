@@ -13,7 +13,12 @@
     "commands": [
       {
         "id": "run",
-        "title": "Sandbox Smoke: run all checks",
+        "title": "Sandbox Smoke: boundary checks",
+        "palette": true
+      },
+      {
+        "id": "ai",
+        "title": "Sandbox Smoke: AI checks (slow)",
         "palette": true
       }
     ]

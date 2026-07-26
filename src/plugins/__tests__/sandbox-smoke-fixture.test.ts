@@ -29,8 +29,23 @@ describe("sandbox smoke fixture (§260 3c-3)", () => {
     expect(pluginTrustOf(manifest)).toBe("sandboxed");
   });
 
-  it("declares the command the README tells the tester to run", () => {
-    expect(manifest.contributions?.commands?.map((c) => c.id)).toEqual(["run"]);
+  it("declares both commands the README tells the tester to run", () => {
+    // Two, not one (§260 3c-3 code review, M3): `CALL_TIMEOUT_MS` bounds the whole
+    // command at 30s while one mediated `ai` request may take up to 120s, so folding
+    // the AI checks into `run` let a slow model discard every boundary result that
+    // had already passed.
+    expect(manifest.contributions?.commands?.map((c) => c.id)).toEqual([
+      "run",
+      "ai",
+    ]);
+  });
+
+  it("defaults VAULT_DIR to empty — a personal path must not ship", () => {
+    // §260 3c-3 code review (M1): the committed value was the maintainer's absolute
+    // home path, in a public repo, and it contradicted the README's documented
+    // `files~(set VAULT_DIR)` path for an unset fixture.
+    const source = readFileSync(resolve(dir, manifest.main), "utf8");
+    expect(source).toMatch(/const VAULT_DIR = "";/);
   });
 
   it("grants exactly the capabilities the checks need — including readonly files", () => {

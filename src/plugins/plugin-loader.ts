@@ -93,6 +93,15 @@ export class PluginLoader {
   }
 
   /**
+   * §260 3c-3 — plugin ids whose sandbox THIS realm owns (running or starting), for
+   * the orphan sweep to leave alone. Exposed here because the sweep runs from
+   * `plugin-lifecycle`, which has the loader but not the host.
+   */
+  liveSandboxIds(): string[] {
+    return this.sandboxHost.ownedIds();
+  }
+
+  /**
    * Load and activate a single plugin.
    *
    * §260 3c-3 (security review, M2) — CONCURRENT calls for the same id join the

@@ -15,25 +15,30 @@ not zero, and the prompt does leave your machine. Its only file access is a sing
 
 ## Run it
 
-1. `git checkout` a build that has §260 3c-2c (PR #302) merged.
-2. Open `index.mjs` and set `VAULT_DIR` to the absolute path of the vault folder you
+1. Open `index.mjs` and set `VAULT_DIR` to the absolute path of the vault folder you
    will open in the app. Leaving it empty still runs the rest (the report says
    `files~(set VAULT_DIR)`), but skips the only *allowed* file read.
-3. Start the app with plugins enabled:
+2. Start the app with plugins enabled:
    ```sh
    VITE_ENABLE_PLUGINS=1 npm run tauri dev
    ```
-4. Open that vault folder (the brokered file ops are deny-by-default until a folder or
+3. Open that vault folder (the brokered file ops are deny-by-default until a folder or
    file context is open — that is the §88 rule, not a plugin rule).
-5. Settings → Plugins → **Add dev folder** → pick `examples/plugins/sandbox-smoke`.
+4. Settings → Plugins → **Add dev folder** → pick `examples/plugins/sandbox-smoke`.
    It should install and show the **sandboxed** trust badge.
-6. Enable it. A hidden `plugin-baram-sandbox-smoke` webview is created and the plugin's
+5. Enable it. A hidden `plugin-baram-sandbox-smoke` webview is created and the plugin's
    bundle is imported from a `blob:` URL.
-7. Command palette (`Cmd+K`) → **Sandbox Smoke: run all checks**.
+6. Command palette — **`Cmd+P`** (`Cmd+K` is the Quick Switcher) → run
+   **Sandbox Smoke: boundary checks**, then **Sandbox Smoke: AI checks (slow)**.
+
+They are two commands on purpose: `SandboxSession` bounds a whole command at 30s while
+one mediated `ai` request may legitimately take 120s, so a slow model must not be able
+to discard the boundary results that already passed.
 
 ## Reading the result
 
-One error toast beginning `SMOKE`. **The rejection is the report** — a sandboxed plugin
+One error toast per command — `SMOKE …` for the boundary checks, `SMOKE-AI …` for the
+AI ones. **The rejection is the report** — a sandboxed plugin
 has no `ui` API, nothing consumes its `events.emit` yet, and the palette shows only
 rejections, so throwing is the only channel that reaches the screen today.
 
@@ -41,7 +46,7 @@ rejections, so throwing is the only channel that reaches the screen today.
 | --- | --- |
 | `cmd✓` | palette → host → sandbox → handler round-trip works |
 | `storage✓(n)` | `storage` read/write/list/remove through `plugin_call`, `n` keys seen |
-| `out✓` | reading `/etc/hosts` was refused by the vault rule |
+| `out✓` | reading `/etc/hosts` was refused for being OUTSIDE the open context — the needle excludes the "no context open" refusal, so this also proves step 3 was done |
 | `list✓(n)` | `files:readonly` read of `VAULT_DIR` returned `n` entries |
 | `ro✓` | a write was refused — the readonly grant does not admit it (any-of authz) |
 | `state✓` | `<vault>/.baram/config.json` was refused as app state |
@@ -49,12 +54,12 @@ rejections, so throwing is the only channel that reaches the screen today.
 | `ai✓(len=n:…)` | `ai.complete()` — **the path 3c-2c's review found was dead** |
 | `stream✓(n tok/m ch)` | `ai.stream()` under the SAME options as `complete` |
 
-`ai` and `stream` are deliberately reported by size and run with identical options,
-because the first live run (2026-07-26) returned `ai✓()` — resolved, but empty. The
-pair localizes that without guessing: both empty ⇒ no token reached the host; stream
-non-empty while complete is empty ⇒ the host's buffering; both non-empty ⇒ the first
-run's `maxTokens: 8` was simply too tight for the configured model (a reasoning model
-can spend that budget before emitting any content), i.e. a fixture artifact.
+`ai1`/`stream`/`ai2` run with identical options and are reported by size, because the
+first live runs returned an empty-but-successful `complete`. Comparing the same API at
+two positions is what separates "which API" from "which call" — the answer turned out
+to be neither: it is intermittent, and it lives in the shared LLM path, tracked as
+issue #304 (a non-`STOP` Gemini finish reason resolves as an empty success). An
+`ai1`/`ai2` disagreement here is that issue, not a §260 regression.
 
 `✗` = that check failed. `~` = it was refused, but with an unexpected message (still
 worth reporting verbatim). Anything other than all-`✓` means stop and fix before

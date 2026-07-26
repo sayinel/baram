@@ -8,7 +8,7 @@
 import type { InstalledPlugin, RegistryIndex } from "../../../plugins/types";
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const loadPlugin = vi.fn();
 const unloadPlugin = vi.fn();
@@ -67,6 +67,10 @@ describe("marketplace enable toggle (§260 3c-3)", () => {
       pluginErrors: { demo: "Sandbox activate timed out for demo" },
       updateAvailable: {},
     });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs(); // siblings all unstub; vitest does not do it for us
   });
 
   it("clears the stale error when enabling succeeds", async () => {

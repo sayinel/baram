@@ -23,7 +23,15 @@ examples/plugins/
   types.d.ts          # generated sibling the barrel re-exports from (commit this)
   word-count/         # minimal example plugin
   ai-summary/          # advanced example plugin
+  sandbox-smoke/      # §260 internal test fixture — NOT a template (see below)
 ```
+
+`sandbox-smoke/` is **not an example to copy**. It is the §260 Phase 3c-3 fixture for
+the human-run sandbox smoke, and it is written to be diagnostic rather than idiomatic:
+it reports by THROWING (a sandboxed plugin has no `ui` API yet), it is a hand-written
+single file with no build step, and it deliberately probes deny paths. Copy
+`word-count/` or `ai-summary/` instead — or, for the sandboxed tier, wait for the
+reference ports in Phase 6.
 
 ## The examples
 

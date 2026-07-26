@@ -31,10 +31,25 @@ export class SandboxHost {
     string,
     { session: SandboxSession; window: SandboxWindow }
   >();
+  /**
+   * §260 3c-3 — ids whose webview exists (or is being created) but is not in `live`
+   * yet. Without this, the window between `windowFactory` returning and `live.set`
+   * is a hole the orphan sweep would happily close.
+   */
+  private readonly starting = new Set<string>();
 
   constructor(
     private readonly windowFactory: SandboxWindowFactory = defaultWindowFactory,
   ) {}
+
+  /**
+   * Plugin ids this realm owns — running or starting. The orphan sweep must not
+   * touch these: they are supervised, so closing one breaks a working plugin instead
+   * of recovering a leaked one (§260 3c-3 code review, HIGH-1).
+   */
+  ownedIds(): string[] {
+    return [...new Set([...this.live.keys(), ...this.starting])];
+  }
 
   /**
    * §260 3c-2b — no install path or entry file: the sandbox pulls its own bundle
@@ -55,10 +70,20 @@ export class SandboxHost {
     const existing = this.live.get(pluginId);
     if (existing) return existing.session;
     const label = `plugin-${pluginId}`;
-    const window = await this.windowFactory(label, pluginId);
+    // Claimed before the webview exists and released only once `live` has it, so
+    // `ownedIds()` never has a gap for the sweep to fall into.
+    this.starting.add(pluginId);
+    let window: SandboxWindow;
+    try {
+      window = await this.windowFactory(label, pluginId);
+    } catch (err) {
+      this.starting.delete(pluginId);
+      throw err;
+    }
     const session = new SandboxSession(window.transport, hostRequestHandler);
     const entry = { session, window };
     this.live.set(pluginId, entry);
+    this.starting.delete(pluginId);
     try {
       await session.activate(pluginId, declared);
       return session;

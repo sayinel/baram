@@ -29,7 +29,12 @@ export async function initializePlugins(): Promise<void> {
   // disabled. Today the gate is a build-time constant so no orphan can exist in a
   // disabled build, but Phase 5 changes what that gate is, and "disable plugins"
   // must never mean "skip revoking the sandboxes that most need it".
-  await closeOrphanSandboxWebviews();
+  // `ownedIds` is what keeps a SECOND call from closing what the first one started
+  // (3c-3 code review, HIGH-1) — `React.StrictMode` double-invokes this effect in
+  // dev, which is the only environment where the sandbox runs at all.
+  await closeOrphanSandboxWebviews({
+    ownedIds: pluginLoader.liveSandboxIds(),
+  });
 
   if (!arePluginsEnabled()) {
     logger.info(

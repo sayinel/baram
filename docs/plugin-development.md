@@ -28,6 +28,11 @@ examples in [`examples/plugins/`](../examples/plugins/):
   advanced: Shadow-DOM sidebar panel + settings tab, `ai` + `storage`
   capabilities.
 
+There is a third folder, `examples/plugins/sandbox-smoke/`, which is an internal test
+fixture for the §260 sandboxed tier — **not a template**. It reports results by
+throwing, ships as one hand-written file with no build step, and exists to probe deny
+paths during a manual smoke run.
+
 A plugin project looks like this:
 
 ```

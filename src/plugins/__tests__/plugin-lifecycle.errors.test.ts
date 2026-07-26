@@ -7,12 +7,14 @@
 // message a maintainer would chase.
 import type { InstalledPlugin } from "../types";
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   isLoaded: vi.fn().mockReturnValue(false),
+  liveSandboxIds: vi.fn().mockReturnValue([]),
   loadPlugin: vi.fn().mockResolvedValue(undefined),
   pluginListDev: vi.fn().mockResolvedValue([]),
+  pluginSandboxDeregister: vi.fn().mockResolvedValue(undefined),
   pluginPrepareScopes: vi.fn().mockResolvedValue(undefined),
   reloadPlugin: vi.fn().mockResolvedValue(undefined),
   unloadAll: vi.fn().mockResolvedValue(undefined),
@@ -21,6 +23,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../plugin-loader", () => ({
   pluginLoader: {
     isLoaded: mocks.isLoaded,
+    liveSandboxIds: mocks.liveSandboxIds,
     loadPlugin: mocks.loadPlugin,
     reloadPlugin: mocks.reloadPlugin,
     unloadAll: mocks.unloadAll,
@@ -29,6 +32,7 @@ vi.mock("../plugin-loader", () => ({
 
 vi.mock("../../ipc/plugin-invoke", () => ({
   pluginListDev: mocks.pluginListDev,
+  pluginSandboxDeregister: mocks.pluginSandboxDeregister,
   pluginPrepareScopes: mocks.pluginPrepareScopes,
   toInstalledDevPlugin: (r: unknown) => r,
 }));
@@ -65,6 +69,10 @@ describe("dev plugin error lifecycle (§260 3c-3)", () => {
     mocks.loadPlugin.mockClear().mockResolvedValue(undefined);
     mocks.isLoaded.mockReturnValue(false);
     mocks.pluginListDev.mockResolvedValue([devPlugin]);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs(); // siblings all unstub; vitest does not do it for us
   });
 
   it("clears a stale error once the plugin loads successfully", async () => {

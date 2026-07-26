@@ -118,11 +118,20 @@ fn update_recent_menu(
     Ok(())
 }
 
-/// Does the unsaved-changes close guard apply to this window?
+/// What the close guard does about one `CloseRequested`.
+#[derive(Debug, PartialEq, Eq)]
+enum CloseAction {
+    /// Let the window close.
+    Allow,
+    /// Cancel the close and ask the frontend to resolve unsaved changes first.
+    PreventAndAsk,
+}
+
+/// The whole close-guard decision, in one testable place.
 ///
-/// §260 Phase 3c-3 — it must NOT apply to a `plugin-*` sandbox window. Those are
-/// opened and closed programmatically by the plugin loader, never by a user gesture,
-/// and intercepting their close did two things at once:
+/// §260 Phase 3c-3 — the guard must NOT apply to a `plugin-*` sandbox window. Those
+/// are opened and closed programmatically by the plugin loader, never by a user
+/// gesture, and intercepting their close did two things at once:
 ///
 /// 1. `api.prevent_close()` cancelled the close, so unloading a plugin left its
 ///    webview running with its capabilities — the orphan this phase set out to fix.
@@ -130,12 +139,19 @@ fn update_recent_menu(
 ///    `useCloseGuard` received it, found no dirty tabs, and called `confirm_quit`,
 ///    which calls `app.exit(0)`. **Unloading a plugin quit the app.**
 ///
-/// Invisible until now only because `core:window:allow-close` was missing, so the
-/// close never reached the window manager and `CloseRequested` never fired for a
+/// Invisible until this phase only because `core:window:allow-close` was missing, so
+/// the close never reached the window manager and `CloseRequested` never fired for a
 /// plugin window. Host windows (`main`, `file-*`) keep the guard: closing one of
 /// those IS a user gesture that may need the unsaved-changes prompt.
-fn intercepts_close(label: &str) -> bool {
-    plugin::plugin_id_from_label(label).is_none()
+///
+/// A function rather than a predicate the handler combines with the quit flag (3c-3
+/// code review, M4): the previous shape let a test pass while the guard's only call
+/// site was deleted, leaving the defect above untested.
+fn close_action(label: &str, quit_confirmed: bool) -> CloseAction {
+    if plugin::plugin_id_from_label(label).is_some() || quit_confirmed {
+        return CloseAction::Allow;
+    }
+    CloseAction::PreventAndAsk
 }
 
 /// Frontend calls this after the user resolves the unsaved-changes prompt and
@@ -299,11 +315,10 @@ pub fn run() {
         // frontend to confirm. `confirm_quit` flips QuitGuard to let it through.
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if !intercepts_close(window.label()) {
-                    return;
-                }
                 let guard = window.state::<QuitGuard>();
-                if !guard.0.load(Ordering::Relaxed) {
+                if close_action(window.label(), guard.0.load(Ordering::Relaxed))
+                    == CloseAction::PreventAndAsk
+                {
                     api.prevent_close();
                     let _ = window.emit("app://close-requested", ());
                 }
@@ -363,12 +378,26 @@ mod tests {
     /// the main window answers by running its quit flow.
     #[test]
     fn the_close_guard_skips_sandbox_windows_only() {
-        // Host windows keep the guard — closing one IS a user gesture.
-        assert!(intercepts_close("main"));
-        assert!(intercepts_close("file-1"));
-        assert!(intercepts_close("file-abc123"));
+        // Host windows keep the guard — closing one IS a user gesture that may need
+        // the unsaved-changes prompt.
+        for host in ["main", "file-1", "file-abc123"] {
+            assert_eq!(
+                close_action(host, false),
+                CloseAction::PreventAndAsk,
+                "{host} must still be intercepted"
+            );
+            // …and once the user has confirmed the quit, it goes through.
+            assert_eq!(close_action(host, true), CloseAction::Allow);
+        }
         // Sandbox windows are opened and closed by the loader, never by the user.
-        assert!(!intercepts_close("plugin-baram-sandbox-smoke"));
-        assert!(!intercepts_close("plugin-x"));
+        // Intercepting one cancelled the loader's close AND broadcast
+        // `app://close-requested`, which the main window answers by quitting the app.
+        for sandbox in ["plugin-baram-sandbox-smoke", "plugin-x"] {
+            assert_eq!(
+                close_action(sandbox, false),
+                CloseAction::Allow,
+                "{sandbox} must never be intercepted"
+            );
+        }
     }
 }
