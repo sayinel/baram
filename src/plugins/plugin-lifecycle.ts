@@ -94,6 +94,9 @@ export async function initializePlugins(): Promise<void> {
           } else {
             await pluginLoader.loadPlugin(p.installPath, p.manifest);
           }
+          // Clear any failure from a previous run: the store is persisted, so
+          // without this a one-off startup error outlives the run that caused it.
+          usePluginStore.getState().setError(p.manifest.id, null);
         } catch (err) {
           logger.error(
             `[PluginLifecycle] dev load failed ${p.manifest.id}:`,
