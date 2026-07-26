@@ -947,7 +947,7 @@
       "module": "plugin",
       "spec": "§260",
       "status": "implemented",
-      "description": "§260 broker — authorizes a sandbox op by window.label() + registered capability, executes bounded (caller-derived plugin id)"
+      "description": "§260 broker — authorizes a sandbox op by window.label() + registered capability (any-of for files/files:readonly), rate-limits per plugin and op class, executes bounded (caller-derived plugin id). Ops: storage_*, http_fetch, source_read, files_read/write/list (vault-bounded, .baram refused). NOT ai — that is host-mediated over the sandbox transport"
     },
     {
       "name": "plugin_sandbox_register",

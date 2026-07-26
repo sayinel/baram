@@ -9,18 +9,48 @@ use std::sync::Mutex;
 use serde::Deserialize;
 use thiserror::Error;
 
-use super::PluginFetchInit;
+use super::{PluginFetchInit, RateClass};
 
 /// `"plugin-<id>"` → `Some("<id>")`; `None` for any non-sandbox window label.
 pub fn plugin_id_from_label(label: &str) -> Option<String> {
     label.strip_prefix("plugin-").map(str::to_string)
 }
 
-/// An operation a sandboxed plugin asks the broker to perform. Execution wiring
-/// for network/files/ai lands in Phase 3c; their authorization lives here now.
+/// What a caller must hold for one op.
+///
+/// `AnyOf` exists because `files` and `files:readonly` are alternatives, not a
+/// hierarchy: a read is admitted by either. The rejected alternative was a
+/// "capability implies capability" table — that would be a second place to encode
+/// the semantics (and to get them wrong), for a relation only files/editor have.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CapabilityRequirement {
+    /// Any ONE of these admits the op.
+    AnyOf(&'static [&'static str]),
+    /// A verified, registered identity is enough — no grant needed.
+    None,
+}
+
+/// An operation a sandboxed plugin asks the broker to perform. `ai` is deliberately
+/// absent: its policy (privacy mode, per-task model/provider) is frontend state, so
+/// it is host-mediated over the sandbox transport instead — an `ai` op here would
+/// have to take a model/provider FROM the sandbox (Phase 3c-2c).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PluginOp {
+    /// §260 Phase 3c-2c — vault-bounded file ops. The path is checked against the
+    /// SAME vault rule as `read_file` (`fs_cmd::ensure_path_in_vault`), so a
+    /// sandboxed plugin reaches exactly the tree the trusted tier does, minus the
+    /// app's own `.baram` state (see `plugin_cmd::reject_app_state_path`).
+    FilesList {
+        path: String,
+    },
+    FilesRead {
+        path: String,
+    },
+    FilesWrite {
+        content: String,
+        path: String,
+    },
     StorageRead {
         key: String,
     },
@@ -44,18 +74,35 @@ pub enum PluginOp {
 }
 
 impl PluginOp {
-    /// The capability a caller must have been granted, or `None` for an op that
-    /// needs no grant — only a verified, registered identity.
-    pub fn required_capability(&self) -> Option<&'static str> {
+    /// What the caller must hold for this op. Lives on the op so no call site has to
+    /// re-derive it (and none can get it wrong) — see `authorize_op`.
+    pub fn capability_requirement(&self) -> CapabilityRequirement {
+        use CapabilityRequirement::{AnyOf, None};
         match self {
             PluginOp::StorageRead { .. }
             | PluginOp::StorageWrite { .. }
             | PluginOp::StorageList
-            | PluginOp::StorageRemove { .. } => Some("storage"),
-            PluginOp::HttpFetch { .. } => Some("network"),
+            | PluginOp::StorageRemove { .. } => AnyOf(&["storage"]),
+            PluginOp::HttpFetch { .. } => AnyOf(&["network"]),
+            // Reading is admitted by either files grant; writing needs the rw one.
+            PluginOp::FilesRead { .. } | PluginOp::FilesList { .. } => {
+                AnyOf(&["files", "files:readonly"])
+            }
+            PluginOp::FilesWrite { .. } => AnyOf(&["files"]),
             // Reading one's own code is not a grantable privilege: it is the bytes
             // the host was about to hand over anyway, and the op names no file.
             PluginOp::SourceRead => None,
+        }
+    }
+
+    /// Which rate budget this op spends (§260 3c-2c). On the op for the same reason
+    /// the capability requirement is: so a new variant cannot quietly inherit the
+    /// wrong bucket by being handled at some call site.
+    pub fn rate_class(&self) -> RateClass {
+        match self {
+            // The CORS-free proxy is the one op whose cost lands on a third party.
+            PluginOp::HttpFetch { .. } => RateClass::Network,
+            _ => RateClass::Default,
         }
     }
 }
@@ -66,7 +113,9 @@ pub enum AuthzError {
     NotASandbox,
     #[error("caller is not a registered sandbox")]
     Unregistered,
-    #[error("capability \"{0}\" not granted to this plugin")]
+    /// Phrased to carry a LIST (`"files or files:readonly"`), because an any-of op
+    /// has several acceptable grants and naming only one misleads the author.
+    #[error("this plugin was not granted {0}")]
     Denied(String),
 }
 
@@ -125,13 +174,13 @@ impl PluginAuthorizer {
     }
 
     /// Authorize one op by the caller's label: verifies identity + registration
-    /// always, and the op's capability when it declares one. Preferred over
-    /// `authorize` at call sites, so the "does this op need a grant?" decision lives
+    /// always, and the op's capability requirement when it declares one. The only
+    /// form a call site should use, so the "what does this op need?" decision lives
     /// with the op rather than being re-derived by every caller.
     pub fn authorize_op(&self, label: &str, op: &PluginOp) -> Result<String, AuthzError> {
-        match op.required_capability() {
-            Some(cap) => self.authorize(label, cap),
-            None => {
+        match op.capability_requirement() {
+            CapabilityRequirement::AnyOf(caps) => self.authorize_any(label, caps),
+            CapabilityRequirement::None => {
                 let plugin_id = plugin_id_from_label(label).ok_or(AuthzError::NotASandbox)?;
                 if self.granted.lock().unwrap().contains_key(label) {
                     Ok(plugin_id)
@@ -142,16 +191,26 @@ impl PluginAuthorizer {
         }
     }
 
-    /// On success returns the caller's plugin id (derived from the label) so the
-    /// broker uses the CALLER identity — never a client-supplied id — for the op.
-    pub fn authorize(&self, label: &str, cap: &str) -> Result<String, AuthzError> {
+    /// Holding ANY of `caps` admits the caller; on success returns the caller's
+    /// plugin id (derived from the label) so the broker uses the CALLER identity —
+    /// never a client-supplied id — for the op. The denial names every acceptable
+    /// capability, because a plugin author reading "files not granted" cannot tell
+    /// that `files:readonly` would also have worked.
+    ///
+    /// There is no single-capability convenience wrapper: one entry point means one
+    /// place where a capability comparison can be wrong.
+    pub fn authorize_any(&self, label: &str, caps: &[&str]) -> Result<String, AuthzError> {
         let plugin_id = plugin_id_from_label(label).ok_or(AuthzError::NotASandbox)?;
         let map = self.granted.lock().unwrap();
         let grant = map.get(label).ok_or(AuthzError::Unregistered)?;
-        if grant.capabilities.iter().any(|c| c == cap) {
+        if grant
+            .capabilities
+            .iter()
+            .any(|c| caps.iter().any(|want| c == want))
+        {
             Ok(plugin_id)
         } else {
-            Err(AuthzError::Denied(cap.to_string()))
+            Err(AuthzError::Denied(caps.join(" or ")))
         }
     }
 }
@@ -172,7 +231,10 @@ mod tests {
         // Reading one's OWN bundle is not a grantable privilege: it is the bytes the
         // host was about to hand over anyway, and the op names no file. Identity is
         // still verified, and an unregistered or non-sandbox caller is still refused.
-        assert_eq!(PluginOp::SourceRead.required_capability(), None);
+        assert_eq!(
+            PluginOp::SourceRead.capability_requirement(),
+            CapabilityRequirement::None
+        );
         let a = PluginAuthorizer::new();
         assert!(matches!(
             a.authorize_op("plugin-alpha", &PluginOp::SourceRead),
@@ -217,19 +279,100 @@ mod tests {
 
     #[test]
     fn required_capability_mapping() {
-        assert_eq!(PluginOp::StorageList.required_capability(), Some("storage"));
+        use CapabilityRequirement::AnyOf;
         assert_eq!(
-            PluginOp::StorageRead { key: "k".into() }.required_capability(),
-            Some("storage")
+            PluginOp::StorageList.capability_requirement(),
+            AnyOf(&["storage"])
+        );
+        assert_eq!(
+            PluginOp::StorageRead { key: "k".into() }.capability_requirement(),
+            AnyOf(&["storage"])
         );
         assert_eq!(
             PluginOp::HttpFetch {
                 url: "http://x".into(),
                 init: None
             }
-            .required_capability(),
-            Some("network")
+            .capability_requirement(),
+            AnyOf(&["network"])
         );
+    }
+
+    /// The point of `AnyOf`: a read-only grant is a real grant for reads, and the
+    /// write op must not silently accept it.
+    #[test]
+    fn readonly_files_grant_admits_reads_and_refuses_writes() {
+        let a = PluginAuthorizer::new();
+        a.register(
+            "plugin-alpha".into(),
+            vec!["files:readonly".into()],
+            "/p/alpha".into(),
+        );
+        let read = PluginOp::FilesRead {
+            path: "/v/note.md".into(),
+        };
+        let list = PluginOp::FilesList { path: "/v".into() };
+        let write = PluginOp::FilesWrite {
+            path: "/v/note.md".into(),
+            content: "x".into(),
+        };
+        assert_eq!(a.authorize_op("plugin-alpha", &read).unwrap(), "alpha");
+        assert_eq!(a.authorize_op("plugin-alpha", &list).unwrap(), "alpha");
+        assert!(matches!(
+            a.authorize_op("plugin-alpha", &write),
+            Err(AuthzError::Denied(_))
+        ));
+        // A files grant of either kind is not a storage grant.
+        assert!(matches!(
+            a.authorize_op("plugin-alpha", &PluginOp::StorageList),
+            Err(AuthzError::Denied(_))
+        ));
+    }
+
+    #[test]
+    fn read_write_files_grant_admits_both() {
+        let a = PluginAuthorizer::new();
+        a.register(
+            "plugin-alpha".into(),
+            vec!["files".into()],
+            "/p/alpha".into(),
+        );
+        assert!(a
+            .authorize_op(
+                "plugin-alpha",
+                &PluginOp::FilesRead {
+                    path: "/v/note.md".into()
+                }
+            )
+            .is_ok());
+        assert!(a
+            .authorize_op(
+                "plugin-alpha",
+                &PluginOp::FilesWrite {
+                    path: "/v/note.md".into(),
+                    content: "x".into()
+                }
+            )
+            .is_ok());
+    }
+
+    /// A plugin author who reads "files not granted" cannot tell that
+    /// `files:readonly` would also have admitted the call — so say both.
+    #[test]
+    fn denial_names_every_acceptable_capability() {
+        let a = PluginAuthorizer::new();
+        a.register("plugin-alpha".into(), vec![], "/p/alpha".into());
+        let err = a
+            .authorize_op(
+                "plugin-alpha",
+                &PluginOp::FilesRead {
+                    path: "/v/note.md".into(),
+                },
+            )
+            .expect_err("no grant must be refused");
+        let msg = err.to_string();
+        assert!(msg.contains("files"), "unexpected message: {msg}");
+        assert!(msg.contains("files:readonly"), "unexpected message: {msg}");
     }
 
     #[test]
@@ -247,8 +390,14 @@ mod tests {
             vec!["storage".into(), "network".into()],
             "/p/plugin-alpha".into(),
         );
-        assert_eq!(a.authorize("plugin-alpha", "storage").unwrap(), "alpha");
-        assert_eq!(a.authorize("plugin-alpha", "network").unwrap(), "alpha");
+        assert_eq!(
+            a.authorize_any("plugin-alpha", &["storage"]).unwrap(),
+            "alpha"
+        );
+        assert_eq!(
+            a.authorize_any("plugin-alpha", &["network"]).unwrap(),
+            "alpha"
+        );
     }
 
     #[test]
@@ -260,7 +409,7 @@ mod tests {
             "/p/plugin-alpha".into(),
         );
         assert!(matches!(
-            a.authorize("plugin-alpha", "network"),
+            a.authorize_any("plugin-alpha", &["network"]),
             Err(AuthzError::Denied(_))
         ));
     }
@@ -269,11 +418,11 @@ mod tests {
     fn authorize_rejects_unregistered_and_non_sandbox() {
         let a = PluginAuthorizer::new();
         assert!(matches!(
-            a.authorize("plugin-ghost", "storage"),
+            a.authorize_any("plugin-ghost", &["storage"]),
             Err(AuthzError::Unregistered)
         ));
         assert!(matches!(
-            a.authorize("main", "storage"),
+            a.authorize_any("main", &["storage"]),
             Err(AuthzError::NotASandbox)
         ));
     }
@@ -288,7 +437,7 @@ mod tests {
         );
         a.deregister("plugin-alpha");
         assert!(matches!(
-            a.authorize("plugin-alpha", "storage"),
+            a.authorize_any("plugin-alpha", &["storage"]),
             Err(AuthzError::Unregistered)
         ));
     }
@@ -320,7 +469,7 @@ mod tests {
             vec!["storage".into()],
             "/p/plugin-b".into(),
         );
-        assert_eq!(a.authorize("plugin-a", "storage").unwrap(), "a");
-        assert_eq!(a.authorize("plugin-b", "storage").unwrap(), "b");
+        assert_eq!(a.authorize_any("plugin-a", &["storage"]).unwrap(), "a");
+        assert_eq!(a.authorize_any("plugin-b", &["storage"]).unwrap(), "b");
     }
 }

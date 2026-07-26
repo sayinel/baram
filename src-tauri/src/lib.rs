@@ -160,6 +160,7 @@ pub fn run() {
         .manage(embedding_cmd::EmbeddingState::new())
         .manage(plugin::PluginAuthorizer::new())
         .manage(plugin::SandboxChannels::new())
+        .manage(plugin::PluginRateLimiter::new())
         .invoke_handler(tauri::generate_handler![
             fs_cmd::set_vault_root,
             fs_cmd::read_file,

@@ -5,6 +5,7 @@
 // is no session token to keep secret any more).
 import type { PluginContributions } from "../types";
 import type { HostToSandbox, SandboxToHost } from "./protocol";
+import type { HostRequestHandler } from "./sandbox-session";
 import type { SandboxTransport } from "./transport";
 
 import { SandboxSession } from "./sandbox-session";
@@ -42,12 +43,19 @@ export class SandboxHost {
   async start(
     pluginId: string,
     declared: PluginContributions,
+    /**
+     * §260 3c-2c — host-mediated services for this plugin (`ai`). Passed through
+     * rather than built here: the capability check and the policy belong to the
+     * caller that holds the manifest (`plugin-loader`), and this class stays a
+     * lifecycle manager with no knowledge of what a service does.
+     */
+    hostRequestHandler?: HostRequestHandler,
   ): Promise<SandboxSession> {
     const existing = this.live.get(pluginId);
     if (existing) return existing.session;
     const label = `plugin-${pluginId}`;
     const window = await this.windowFactory(label, pluginId);
-    const session = new SandboxSession(window.transport);
+    const session = new SandboxSession(window.transport, hostRequestHandler);
     this.live.set(pluginId, { session, window });
     try {
       await session.activate(pluginId, declared);

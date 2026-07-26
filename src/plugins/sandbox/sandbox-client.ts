@@ -2,14 +2,41 @@
 // only outward channel is the transport. Guards re-activation and serializes
 // outbound payloads defensively (real Tauri events are serde-JSON, not
 // structured clone — functions/BigInt/etc. would corrupt silently).
-import type { NetworkAPI, StorageAPI } from "../types";
+import type {
+  AIAPI,
+  AIModel,
+  FilesAPI,
+  NetworkAPI,
+  StorageAPI,
+} from "../types";
 import type { PluginOp } from "./plugin-op";
-import type { HostToSandbox, SandboxToHost } from "./protocol";
+import type {
+  HostToSandbox,
+  SandboxHostRequest,
+  SandboxToHost,
+} from "./protocol";
 import type { SandboxTransport } from "./transport";
 
 import { logger } from "../../utils/logger";
 
+/**
+ * §260 3c-2c — sandbox-side bound on a host-mediated request. Longer than the
+ * host's own bound (`HOST_REQUEST_TIMEOUT_MS`), so in the normal case the HOST's
+ * timeout fires first and the plugin gets a real error; this one only covers a lost
+ * or never-delivered frame, whose pending entry would otherwise leak forever.
+ * Restarted by each streamed token for the same reason the host's is (code review
+ * MEDIUM-4): a token proves the request is alive.
+ */
+export const HOST_REQUEST_CLIENT_TIMEOUT_MS = 150_000;
+
 export interface SandboxContext {
+  /**
+   * §260 3c-2c — host-mediated, NOT brokered in Rust: the model, provider and
+   * privacy-mode decisions live in the main realm, and the request carries none of
+   * them (see `SandboxHostRequest`). The `ai` capability is checked host-side, which
+   * is enforcing because a `plugin-*` window holds no `llm_*` ACL grant.
+   */
+  ai: AIAPI;
   commands: {
     register(id: string, handler: (...args: unknown[]) => unknown): void;
   };
@@ -21,6 +48,7 @@ export interface SandboxContext {
   // in production). Exposed unconditionally: the Rust authorizer, keyed on the
   // Tauri-verified window.label(), is the real per-call capability gate — an
   // op for an unregistered capability fails closed there, not here.
+  files: FilesAPI;
   network: NetworkAPI;
   storage: StorageAPI;
 }
@@ -41,6 +69,63 @@ export function startSandboxClient(
   const eventHandlers = new Map<string, Array<(...args: unknown[]) => void>>();
   let activateState: "activating" | "done" | "idle" = "idle";
 
+  // §260 3c-2c — host-mediated requests awaiting an answer, by our own correlation
+  // id. Bounded by a timer so a frame the host never answers cannot leak an entry
+  // (and the plugin's promise) for the life of the sandbox.
+  const hostPending = new Map<
+    string,
+    {
+      onToken?: (token: string) => void;
+      reject: (e: Error) => void;
+      resolve: (v: unknown) => void;
+      timer: ReturnType<typeof setTimeout>;
+      /** Restart the stall timer — called on each streamed token. */
+      touch: () => void;
+    }
+  >();
+  let hostSeq = 0;
+
+  function hostRequest(
+    request: SandboxHostRequest,
+    onToken?: (token: string) => void,
+  ): Promise<unknown> {
+    const requestId = `host-${++hostSeq}`;
+    return new Promise<unknown>((resolve, reject) => {
+      const startTimer = () =>
+        setTimeout(() => {
+          hostPending.delete(requestId);
+          reject(
+            new Error(
+              `Host request "${request.kind}" produced nothing for ${HOST_REQUEST_CLIENT_TIMEOUT_MS}ms`,
+            ),
+          );
+        }, HOST_REQUEST_CLIENT_TIMEOUT_MS);
+      hostPending.set(requestId, {
+        onToken,
+        reject,
+        resolve,
+        timer: startTimer(),
+        touch: () => {
+          const p = hostPending.get(requestId);
+          if (!p) return;
+          clearTimeout(p.timer);
+          p.timer = startTimer();
+        },
+      });
+      transport.send({ type: "hostRequest", requestId, request });
+    });
+  }
+
+  const ai: AIAPI = {
+    complete: (prompt, opts) =>
+      hostRequest({ kind: "ai_complete", opts, prompt }) as Promise<string>,
+    listModels: () =>
+      hostRequest({ kind: "ai_list_models" }) as Promise<AIModel[]>,
+    stream: async (prompt, opts, onToken) => {
+      await hostRequest({ kind: "ai_stream", opts, prompt }, onToken);
+    },
+  };
+
   const storage: StorageAPI = {
     list: () => broker({ kind: "storage_list" }) as Promise<string[]>,
     read: (key) =>
@@ -55,8 +140,21 @@ export function startSandboxClient(
         NetworkAPI["fetch"]
       >,
   };
+  // §260 3c-2c — same shape as the trusted tier's FilesAPI, so a plugin's file code
+  // is tier-independent. Nothing is interpreted here: a broker rejection (denied
+  // capability, path outside the vault, `.baram`, over the cap) propagates to the
+  // plugin, because a sandbox that softened a deny into `undefined` would let the
+  // plugin proceed as though the write had landed.
+  const files: FilesAPI = {
+    listDir: (path) =>
+      broker({ kind: "files_list", path }) as Promise<string[]>,
+    readFile: (path) => broker({ kind: "files_read", path }) as Promise<string>,
+    writeFile: (path, content) =>
+      broker({ content, kind: "files_write", path }) as Promise<void>,
+  };
 
   const ctx: SandboxContext = {
+    ai,
     commands: { register: (id, handler) => void commands.set(id, handler) },
     events: {
       emit(event, ...args) {
@@ -75,6 +173,7 @@ export function startSandboxClient(
         eventHandlers.set(event, list);
       },
     },
+    files,
     network,
     storage,
   };
@@ -84,6 +183,15 @@ export function startSandboxClient(
     activateState = "activating";
     commands.clear(); // each attempt starts clean — no stale regs from a failed retry
     eventHandlers.clear();
+    // …including host requests the previous attempt left outstanding (3c-2c code
+    // review, LOW-4). Their promises belong to plugin code that is about to be
+    // replaced, and each still holds a stall timer; rejecting them is both the honest
+    // answer and what keeps a retry loop from accumulating timers.
+    for (const [requestId, p] of hostPending) {
+      clearTimeout(p.timer);
+      hostPending.delete(requestId);
+      p.reject(new Error("Sandbox re-activated before this request completed"));
+    }
     try {
       // Our own bundle, resolved in Rust from this window's label.
       //
@@ -99,6 +207,13 @@ export function startSandboxClient(
       // (e.g. `{source, hash}`) and a 4 MiB bundle becomes stealable by another
       // sandbox on non-macOS — so if that shape must change, chunk it or keep it out
       // of the channel path deliberately.
+      //
+      // ‼️ The invariant holds for THIS op, not for the broker generally (§260 3c-2c
+      // code review, MEDIUM-2): `files_list`/`storage_list` return arrays and
+      // `http_fetch` an object, so they DO match the condition once they cross 8 KiB —
+      // `files_list` first, on a directory of a few hundred notes. Rust warns in dev
+      // when a result crosses it (`warn_if_result_enters_the_shared_queue`); chunking
+      // is owed with Phase 4's document transforms.
       const source = await broker({ kind: "source_read" });
       if (typeof source !== "string") {
         throw new Error("broker returned a non-string plugin source");
@@ -162,6 +277,24 @@ export function startSandboxClient(
       case "deliverEvent":
         (eventHandlers.get(m.event) ?? []).forEach((h) => h(...m.args));
         break;
+      case "hostResponse": {
+        // An unknown id is ignored, not thrown on: it means our own timeout already
+        // rejected (or a host bug), and the plugin's promise is settled either way.
+        const p = hostPending.get(m.requestId);
+        if (!p) break;
+        clearTimeout(p.timer);
+        hostPending.delete(m.requestId);
+        if (m.ok) p.resolve(m.value);
+        else p.reject(new Error(m.error));
+        break;
+      }
+      case "hostStreamToken": {
+        const p = hostPending.get(m.requestId);
+        if (!p) break;
+        p.touch(); // a token proves the request is alive (code review MEDIUM-4)
+        p.onToken?.(m.token);
+        break;
+      }
       case "invokeCommand":
         void onInvoke(m.callId, m.commandId, m.args);
         break;

@@ -25,6 +25,7 @@ import { validateManifest } from "./manifest";
 import { pluginTrustOf } from "./plugin-trust";
 import { usePluginUIStore } from "./plugin-ui-store";
 import { arePluginsEnabled, isSandboxRuntimeAllowed } from "./plugins-enabled";
+import { createHostRequestHandler } from "./sandbox/host-ai-bridge";
 import { SandboxHost } from "./sandbox/sandbox-host";
 
 const ACTIVATE_TIMEOUT = 5000; // 5 seconds
@@ -317,6 +318,15 @@ export class PluginLoader {
       session = await this.sandboxHost.start(
         manifest.id,
         manifest.contributions ?? {},
+        // §260 3c-2c — `ai` is mediated by the host, not brokered in Rust, because
+        // its policy (privacy mode, model/provider for the task) is main-realm
+        // state. The capability check lives in the handler and is enforcing: a
+        // `plugin-*` window holds no `llm_*` ACL grant, so this is the only route
+        // from the sandbox to a model.
+        createHostRequestHandler({
+          capabilities: manifest.capabilities,
+          pluginId: manifest.id,
+        }),
       );
     } catch (err) {
       // roll back the capability grant if the sandbox failed to start; never let a
