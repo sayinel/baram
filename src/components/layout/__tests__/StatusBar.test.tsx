@@ -28,6 +28,7 @@ import { useEditorStore } from "../../../stores/editor/editor";
 import { useFileStore } from "../../../stores/file/file";
 import { useWorkspaceStore } from "../../../stores/file/workspace";
 import { useSettingsStore } from "../../../stores/settings/store";
+import { useUIStore } from "../../../stores/ui/ui";
 import {
   loadFavorites,
   toggleFavorite,
@@ -211,5 +212,40 @@ describe("StatusBar — live word count", () => {
 
     expect(screen.getByText("5 words")).toBeInTheDocument();
     expect(screen.queryByText("2 words")).not.toBeInTheDocument();
+  });
+});
+
+describe("StatusBar — vim mode indicator (§298 S3)", () => {
+  beforeEach(() => {
+    useUIStore.getState().setVimStatusMode(null);
+  });
+
+  afterEach(() => {
+    act(() => useUIStore.getState().setVimStatusMode(null));
+  });
+
+  it("shows the vim mode only in source mode with a live session", () => {
+    act(() => useUIStore.getState().setVimStatusMode("normal"));
+    render(<StatusBar editor={null} mode="source" />);
+    expect(screen.getByText("-- NORMAL --")).toBeInTheDocument();
+  });
+
+  it("stays hidden outside source mode even if a stale value lingers", () => {
+    // The store is reset by the controller on toggle-off/unmount, but the
+    // mode gate must hold even if a stale value survives (Codex plan review).
+    act(() => useUIStore.getState().setVimStatusMode("insert"));
+    render(<StatusBar editor={null} mode="wysiwyg" />);
+    expect(screen.queryByText("-- INSERT --")).toBeNull();
+  });
+
+  it("stays hidden in source mode when vim is off (null)", () => {
+    render(<StatusBar editor={null} mode="source" />);
+    expect(screen.queryByText(/^-- [A-Z]+ --$/)).toBeNull();
+  });
+
+  it("renders REPLACE for R mode (was missing from the original plan)", () => {
+    act(() => useUIStore.getState().setVimStatusMode("replace"));
+    render(<StatusBar editor={null} mode="source" />);
+    expect(screen.getByText("-- REPLACE --")).toBeInTheDocument();
   });
 });

@@ -215,6 +215,28 @@ export function useGlobalKeyboard({
 
       const overrides = useSettingsStore.getState().keybindingOverrides;
       const command = findCommandByKey(normalized, overrides);
+
+      // §298 vim S3 — the source editor swallows Mod-/ (preventDefault) so
+      // vim's Prec.highest handler cannot eat it; the event still bubbles
+      // here with defaultPrevented=true. The source-mode toggle is the ONE
+      // command that must survive that, or the user is trapped in source
+      // mode. Runs before the guard below (Codex plan-review correction).
+      if (isSourceMode && command?.id === "view.sourceMode") {
+        const action = getAction(command.id);
+        if (action) {
+          e.preventDefault();
+          action();
+        }
+        return;
+      }
+
+      // §298 vim S3 — keys consumed inside an editor (vim preventDefaults
+      // everything it handles) must not double-fire registry commands: on
+      // Windows/Linux vim's Ctrl+D/Ctrl+O/Ctrl+F would otherwise ALSO run
+      // bookmark/open/find (research §4.1). Hardcoded branches above keep
+      // their own preventDefault handling.
+      if (e.defaultPrevented) return;
+
       if (command) {
         const action = getAction(command.id);
         if (action) {

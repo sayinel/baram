@@ -46,6 +46,11 @@ export interface ToastState {
 export type UnsavedModalRequest =
   { intent: "closeTab"; tabId: string } | { intent: "quit" };
 
+/** §298 vim S3 — current vim mode shown in the StatusBar (null = vim off or
+ *  not in source mode). Mirrors vim-ime-guard's VimModeName; defined here
+ *  because ui.ts is the canonical home for UI-facing unions. */
+export type VimStatusMode = "insert" | "normal" | "replace" | "visual";
+
 interface UIState {
   aboutOpen: boolean;
   /** §Phase5: Close the conflict modal (without resolution — used internally) */
@@ -97,6 +102,8 @@ interface UIState {
   setSidebarPanel: (panel: SidebarPanel) => void;
   setSidebarWidth: (width: number) => void;
   settingsOpen: boolean;
+  /** §298 vim S3 — fed by SourceCodeEditor's vim controller */
+  setVimStatusMode: (mode: null | VimStatusMode) => void;
   /** Show a transient toast (auto-dismisses after a few seconds) */
   showToast: (message: string, type?: "error" | "info" | "warning") => void;
   sidebarOpen: boolean;
@@ -120,6 +127,7 @@ interface UIState {
   triggerContentReload: (cursorEnd?: boolean) => void;
   /** §close-guard: Shared unsaved-changes modal request (null = closed) */
   unsavedModal: null | UnsavedModalRequest;
+  vimStatusMode: null | VimStatusMode;
   /** §94: Inline title-input dialog (WKWebView has no window.prompt) */
   zettelTitleDialog: {
     /** Confirm-button label (e.g. "Create" | "Promote") */
@@ -155,6 +163,7 @@ export const useUIStore = create<UIState>((set) => ({
   pendingApplyContent: null,
   quickCaptureOpen: false,
   unsavedModal: null,
+  vimStatusMode: null,
   pendingSearchHighlight: null,
   contentReloadVersion: 0,
   contentReloadCursorEnd: false,
@@ -185,6 +194,7 @@ export const useUIStore = create<UIState>((set) => ({
   setSidebarPanel: (panel) => set({ sidebarPanel: panel }),
 
   setSidebarWidth: (width) => set({ sidebarWidth: width }),
+  setVimStatusMode: (mode) => set({ vimStatusMode: mode }),
 
   toggleRightPanel: () =>
     set((state) => ({ rightPanelOpen: !state.rightPanelOpen })),

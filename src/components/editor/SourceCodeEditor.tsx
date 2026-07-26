@@ -30,6 +30,7 @@ import {
 import { getHighlightStyle } from "../../extensions/nodes/code-block-highlight";
 import { getLanguageExtension } from "../../extensions/nodes/code-block-languages";
 import { useSettingsStore } from "../../stores/settings/store";
+import { useUIStore } from "../../stores/ui/ui";
 import { logger } from "../../utils/logger";
 import { createVimController } from "./vim-controller";
 
@@ -177,6 +178,9 @@ export function SourceCodeEditor({
     // here; the loader does not cache rejections, so the next toggle retries).
     const vimController = createVimController(view, vimCompartment, {
       onError: (err) => logger.error("[vim] Failed to load vim:", err),
+      // §298 S3 — StatusBar mode indicator. The controller emits null on
+      // toggle-off and on dispose, so unmount resets the store too.
+      onModeChange: (mode) => useUIStore.getState().setVimStatusMode(mode),
     });
     vimController.apply(useSettingsStore.getState().vimMode);
     // Apply setting changes while the editor is open (mount-time read alone

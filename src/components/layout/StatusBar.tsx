@@ -24,6 +24,7 @@ import {
 } from "../../stores/file/workspace";
 import { useSettingsStore } from "../../stores/settings/store";
 import { useGitStore } from "../../stores/system/git";
+import { useUIStore } from "../../stores/ui/ui";
 import {
   loadFavorites,
   toggleFavorite,
@@ -58,6 +59,8 @@ interface StatusBarProps {
 }
 
 export function StatusBar({ editor, mode }: StatusBarProps) {
+  // §298 vim S3 — single-field selector (no useShallow needed for a scalar)
+  const vimStatusMode = useUIStore((s) => s.vimStatusMode);
   // §4.8 Live word count + cursor position. The Tiptap Editor instance is a
   // stable reference whose `.state` mutates in place, so a `useMemo([editor])`
   // never recomputes on typing or cursor moves — it stayed frozen at the empty
@@ -237,6 +240,14 @@ export function StatusBar({ editor, mode }: StatusBarProps) {
           )}
         </div>
         <span className="status-mode">{MODE_LABELS[mode]}</span>
+        {/* §298 vim S3 — only in source mode AND with a live vim session:
+            the store is reset on toggle-off/unmount, and the mode gate
+            defends against any stale value (Codex plan review). */}
+        {mode === "source" && vimStatusMode && (
+          <span className="status-mode status-vim-mode">
+            -- {vimStatusMode.toUpperCase()} --
+          </span>
+        )}
         {isRepo && branch && (
           <span
             className={`status-git-branch ${hasChanges ? "status-git-dirty" : ""}`}

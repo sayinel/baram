@@ -74,7 +74,9 @@ export function createVimController(
           if (cm) guardDispose = attach(view, cm, deps.onModeChange);
         })
         .catch((err: unknown) => {
-          if (!disposed) deps.onError?.(err);
+          // token check: a STALE load's rejection is not this apply's error —
+          // without it a dropped generation would still ring onError (Codex).
+          if (!disposed && token === revision) deps.onError?.(err);
         });
     },
     dispose(): void {
