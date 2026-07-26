@@ -8,6 +8,7 @@ import type { HostToSandbox, SandboxToHost } from "./protocol";
 import type { HostRequestHandler } from "./sandbox-session";
 import type { SandboxTransport } from "./transport";
 
+import { logger } from "../../utils/logger";
 import { SandboxSession } from "./sandbox-session";
 
 export interface SandboxWindow {
@@ -90,6 +91,16 @@ async function defaultWindowFactory(
 ): Promise<SandboxWindow> {
   const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
   const { createHostTransport } = await import("./tauri-host-transport");
+  // §260 3c-3 — the label may still be held by a webview this realm does not know
+  // about (see `sandbox-orphans.ts`): the startup sweep covers a reload, this covers
+  // anything it cannot see, such as a close that resolved late. Deliberately does NOT
+  // deregister — the caller already registered the grant for THIS load, and revoking
+  // here would revoke the new one.
+  const stale = await WebviewWindow.getByLabel(label);
+  if (stale) {
+    logger.warn(`[Sandbox] closing a stale webview holding the label ${label}`);
+    await stale.close(); // awaited: the label is only free once close completes
+  }
   const win = new WebviewWindow(label, {
     decorations: false,
     focus: false,

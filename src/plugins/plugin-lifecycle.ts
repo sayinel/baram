@@ -11,6 +11,7 @@ import { emitPluginEvent } from "./extension-context";
 // §69 Plugin Lifecycle — App-level plugin management
 import { pluginLoader } from "./plugin-loader";
 import { arePluginsEnabled } from "./plugins-enabled";
+import { closeOrphanSandboxWebviews } from "./sandbox/sandbox-orphans";
 
 /** Initialize all enabled plugins at app startup. Budget: 200ms total. */
 export async function initializePlugins(): Promise<void> {
@@ -23,6 +24,12 @@ export async function initializePlugins(): Promise<void> {
     );
     return;
   }
+
+  // §260 3c-3 — before ANY load: close sandbox webviews left over from a previous
+  // main-realm lifetime. A reload (HMR, refresh, remount) empties this realm's
+  // bookkeeping while the `plugin-*` webview keeps running with its Rust capabilities
+  // intact, and the next load then fails on a taken label. Found by the live smoke.
+  await closeOrphanSandboxWebviews();
 
   // Grant asset scope for ~/.baram/plugins before any load (see Global Constraints).
   await pluginPrepareScopes().catch((err) =>
