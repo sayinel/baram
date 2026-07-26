@@ -14,6 +14,7 @@ import {
   pluginSandboxDeregister,
   pluginSandboxRegister,
 } from "../ipc/plugin-invoke";
+import { useEditorStore } from "../stores/editor/editor";
 import { usePluginStore } from "../stores/system/plugin";
 import { logger } from "../utils/logger";
 import {
@@ -26,7 +27,15 @@ import { validateManifest } from "./manifest";
 import { pluginTrustOf } from "./plugin-trust";
 import { usePluginUIStore } from "./plugin-ui-store";
 import { arePluginsEnabled, isSandboxRuntimeAllowed } from "./plugins-enabled";
-import { createHostRequestHandler } from "./sandbox/host-ai-bridge";
+import { createHostRequestHandler } from "./sandbox/host-request-router";
+import {
+  sanitizeStatusBarText,
+  statusBarItemId,
+} from "./sandbox/host-ui-bridge";
+import {
+  replayCurrentState,
+  subscribeSandbox,
+} from "./sandbox/sandbox-event-bridge";
 import { SandboxHost } from "./sandbox/sandbox-host";
 
 const ACTIVATE_TIMEOUT = 5000; // 5 seconds
@@ -319,7 +328,13 @@ export class PluginLoader {
         // from the sandbox to a model.
         createHostRequestHandler({
           capabilities: manifest.capabilities,
+          // §260 Phase 4a — `ui` rides the same mediated channel. The declared item ids
+          // travel with it because the host, not the plugin, decides which items exist.
+          declaredStatusBarIds: (manifest.contributions?.statusBar ?? []).map(
+            (i) => i.id,
+          ),
           pluginId: manifest.id,
+          pluginName: manifest.name,
         }),
       );
     } catch (err) {
@@ -337,6 +352,24 @@ export class PluginLoader {
     }
 
     const disposables: Disposable[] = [];
+    // §260 Phase 4a — declarative status bar: registered from the MANIFEST, so an item
+    // appears without the plugin's code having run (and stays if `activate` never binds
+    // anything). Text is sanitised on the way in — it is author-controlled and reaches
+    // the bar directly — and `command` becomes the full id the handler registry knows.
+    for (const item of manifest.contributions?.statusBar ?? []) {
+      const itemId = statusBarItemId(manifest.id, item.id);
+      usePluginUIStore.getState().registerStatusBarItem({
+        align: "right",
+        command: item.command ? `${manifest.id}.${item.command}` : undefined,
+        itemId,
+        pluginId: manifest.id,
+        text: sanitizeStatusBarText(item.text),
+        tooltip: item.tooltip && sanitizeStatusBarText(item.tooltip),
+      });
+      disposables.push({
+        dispose: () => usePluginUIStore.getState().removeStatusBarItem(itemId),
+      });
+    }
     for (const cmd of session.contributions?.commands ?? []) {
       const fullId = `${manifest.id}.${cmd.id}`;
       // Always register the handler so a command can be invoked via menu or
@@ -357,6 +390,20 @@ export class PluginLoader {
         });
       }
     }
+    // §260 Phase 4a — from here the sandbox hears app events (`events`-gated inside the
+    // bridge, which also strips absolute paths). Subscribing AFTER activate resolved is
+    // deliberate: a frame delivered mid-activate would arrive before the plugin's
+    // `events.on` had run and be dropped by its client.
+    const subscriber = {
+      capabilities: manifest.capabilities,
+      pluginId: manifest.id,
+      session,
+    };
+    disposables.push({ dispose: subscribeSandbox(subscriber) });
+    // …and tell it what is already open, so its first useful moment does not depend on
+    // the user switching tabs (the normal case at startup).
+    replayCurrentState(subscriber, activeFilePath());
+
     this.loaded.set(manifest.id, {
       id: manifest.id,
       manifest,
@@ -467,6 +514,15 @@ export class PluginLoader {
       `[PluginLoader] Loaded plugin: ${manifest.id} v${manifest.version}`,
     );
   }
+}
+
+/**
+ * The file the user is looking at, or `null`. Read at load time only — live updates come
+ * from `notifyFileOpen`, not from here.
+ */
+function activeFilePath(): null | string {
+  const { activeTabId, tabs } = useEditorStore.getState();
+  return tabs.find((t) => t.id === activeTabId)?.filePath ?? null;
 }
 
 function withTimeout<T>(

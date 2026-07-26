@@ -27,9 +27,16 @@ export interface PluginSidebarPanel {
 
 export interface PluginStatusBarItem {
   align: "left" | "right";
+  /**
+   * §260 Phase 4a — full command id (`${pluginId}.${command}`) to run when the item is
+   * clicked, from a sandboxed plugin's `contributions.statusBar[].command`. Absent means
+   * the item is display-only, which is every trusted-tier item today.
+   */
+  command?: string;
   itemId: string;
   pluginId: string;
   text: string;
+  tooltip?: string;
 }
 
 interface PluginUIState {

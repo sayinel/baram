@@ -4,7 +4,7 @@ import type { SandboxContext } from "../sandbox-client";
 
 import { describe, expect, it } from "vitest";
 
-import { createHostRequestHandler } from "../host-ai-bridge";
+import { createHostRequestHandler } from "../host-request-router";
 import { startSandboxClient } from "../sandbox-client";
 import { SandboxSession } from "../sandbox-session";
 import { createChannelPair } from "./channel-pair";
@@ -36,6 +36,7 @@ describe("ai end-to-end: real client ↔ real session (§260 3c-2c)", () => {
       createHostRequestHandler({
         aiFactory: () => ai,
         capabilities,
+        declaredStatusBarIds: [],
         pluginId: "p",
       }),
     );

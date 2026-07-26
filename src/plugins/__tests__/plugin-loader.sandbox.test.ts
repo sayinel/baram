@@ -19,23 +19,44 @@ vi.mock("../../ipc/plugin-invoke", () => ({
 
 import type { PluginManifest } from "../types";
 
+import { useEditorStore } from "../../stores/editor/editor";
 import { executePluginCommand } from "../extension-context";
 import { PluginLoader } from "../plugin-loader";
 import { usePluginUIStore } from "../plugin-ui-store";
+import {
+  deliverSandboxEvent,
+  resetSandboxEventBridge,
+  setContextResolver,
+} from "../sandbox/sandbox-event-bridge";
 import { SandboxHost } from "../sandbox/sandbox-host";
 
 /** A fake SandboxHost that never creates a real webview. */
 function fakeHost() {
   const invokeCommand = vi.fn(async () => "ok");
   const stop = vi.fn(async () => {});
+  // §260 Phase 4a — the loader subscribes the session to app events, so the fake session
+  // must carry `deliverEvent`. Added to the DOUBLE rather than making the loader
+  // defensive: a real `SandboxSession` always has it, and a fake that silently lacks a
+  // member is how a dead call path stays green (3c-2c F1).
+  const deliverEvent = vi.fn();
   // §260 3c-2b — `start(pluginId, declared)`: no install path or entry file, since
   // the sandbox resolves its own bundle through the broker.
-  const start = vi.fn(async (_id: string, declared: unknown) => ({
-    contributions: declared,
-    invokeCommand,
-  }));
+  const start = vi.fn(
+    async (
+      _id: string,
+      declared: unknown,
+      // §260 3c-2c/4a — the host-mediated service handler. Typed here so a test can
+      // reach it: it is where the `ui` capability check and the declared-item set live.
+      _hostRequestHandler?: (request: unknown) => Promise<unknown>,
+    ) => ({
+      contributions: declared,
+      deliverEvent,
+      invokeCommand,
+    }),
+  );
   return {
     host: { start, stop } as unknown as SandboxHost,
+    deliverEvent,
     start,
     stop,
     invokeCommand,
@@ -68,7 +89,9 @@ beforeEach(() => {
   // deregister, a rejecting stop) that must not leak into the next test.
   pluginSandboxRegister.mockReset().mockImplementation(async () => {});
   pluginSandboxDeregister.mockReset().mockImplementation(async () => {});
-  usePluginUIStore.setState({ paletteCommands: [] });
+  usePluginUIStore.setState({ paletteCommands: [], statusBarItems: [] });
+  useEditorStore.setState({ activeTabId: null, tabs: [] });
+  resetSandboxEventBridge();
 });
 afterEach(() => {
   vi.clearAllMocks();
@@ -286,6 +309,146 @@ describe("PluginLoader sandboxed path (§260 3c-1)", () => {
     );
     expect(f.start).not.toHaveBeenCalled();
     expect(pluginSandboxRegister).not.toHaveBeenCalled();
+  });
+
+  // §260 Phase 4a — the declarative contributions the tier could not use before.
+  describe("contribution mapping (§260 Phase 4a)", () => {
+    const withStatusBar = () =>
+      sandboxedManifest({
+        capabilities: ["statusbar", "commands", "events"],
+        contributions: {
+          commands: [{ id: "hello", title: "Say Hi" }],
+          statusBar: [
+            {
+              command: "hello",
+              id: "count",
+              text: "0 notes",
+              tooltip: "click to recount",
+            },
+            { id: "plain", text: "idle" },
+          ],
+        },
+      });
+
+    it("registers declared status-bar items from the MANIFEST", async () => {
+      // No plugin code has run at this point beyond `activate`; the item exists because
+      // the manifest declared it, which is what makes it the tier's first UI presence.
+      const f = fakeHost();
+      const loader = new PluginLoader(undefined, f.host);
+      await loader.loadPlugin("/p/demo", withStatusBar());
+
+      expect(usePluginUIStore.getState().statusBarItems).toEqual([
+        {
+          align: "right",
+          command: "demo.hello", // namespaced to the handler registry
+          itemId: "demo:sb:count",
+          pluginId: "demo",
+          text: "0 notes",
+          tooltip: "click to recount",
+        },
+        {
+          align: "right",
+          command: undefined, // display-only
+          itemId: "demo:sb:plain",
+          pluginId: "demo",
+          text: "idle",
+          tooltip: undefined,
+        },
+      ]);
+    });
+
+    it("sanitises declared text, which is author-controlled", async () => {
+      const f = fakeHost();
+      const loader = new PluginLoader(undefined, f.host);
+      await loader.loadPlugin(
+        "/p/demo",
+        sandboxedManifest({
+          capabilities: ["statusbar"],
+          contributions: {
+            statusBar: [{ id: "x", text: "a\nb", tooltip: "t\u0000t" }],
+          },
+        }),
+      );
+      const [item] = usePluginUIStore.getState().statusBarItems;
+      expect(item.text).toBe("a b");
+      expect(item.tooltip).toBe("t t");
+    });
+
+    it("removes its status-bar items on unload", async () => {
+      const f = fakeHost();
+      const loader = new PluginLoader(undefined, f.host);
+      await loader.loadPlugin("/p/demo", withStatusBar());
+      await loader.unloadPlugin("demo");
+      expect(usePluginUIStore.getState().statusBarItems).toEqual([]);
+    });
+
+    it("passes the declared item ids to the host services, so ui can address them", async () => {
+      const f = fakeHost();
+      const loader = new PluginLoader(undefined, f.host);
+      await loader.loadPlugin("/p/demo", withStatusBar());
+      // The handler is built from the manifest — a plugin cannot widen this set.
+      const handler = f.start.mock.calls[0][2]!;
+      await expect(
+        handler({ kind: "ui_status_bar", id: "count", text: "7" }),
+      ).resolves.toBeUndefined();
+      await expect(
+        handler({ kind: "ui_status_bar", id: "undeclared", text: "7" }),
+      ).rejects.toThrow(/not declared/);
+      expect(
+        usePluginUIStore
+          .getState()
+          .statusBarItems.find((i) => i.itemId === "demo:sb:count")?.text,
+      ).toBe("7");
+    });
+
+    it("replays the open file to a just-loaded plugin, as a relative path", async () => {
+      // The startup case: a file is already restored, so without a replay the plugin
+      // learns nothing until the user switches tabs.
+      setContextResolver((absolute) =>
+        absolute.startsWith("/v/")
+          ? { context: "ctx-1", path: absolute.slice(3) }
+          : null,
+      );
+      useEditorStore.setState({
+        activeTabId: "t1",
+        tabs: [{ filePath: "/v/notes/open.md", id: "t1" }] as never,
+      });
+      const f = fakeHost();
+      const loader = new PluginLoader(undefined, f.host);
+      await loader.loadPlugin("/p/demo", withStatusBar());
+
+      expect(f.deliverEvent).toHaveBeenCalledWith("file:open", [
+        { context: "ctx-1", path: "notes/open.md" },
+      ]);
+    });
+
+    it("does not replay to a plugin without the events capability", async () => {
+      setContextResolver(() => ({ context: "ctx-1", path: "open.md" }));
+      useEditorStore.setState({
+        activeTabId: "t1",
+        tabs: [{ filePath: "/v/open.md", id: "t1" }] as never,
+      });
+      const f = fakeHost();
+      const loader = new PluginLoader(undefined, f.host);
+      await loader.loadPlugin(
+        "/p/demo",
+        sandboxedManifest({ capabilities: ["statusbar"] }),
+      );
+      expect(f.deliverEvent).not.toHaveBeenCalled();
+    });
+
+    it("stops delivering events after unload", async () => {
+      setContextResolver(() => ({ context: "ctx-1", path: "open.md" }));
+      const f = fakeHost();
+      const loader = new PluginLoader(undefined, f.host);
+      await loader.loadPlugin("/p/demo", withStatusBar());
+      await loader.unloadPlugin("demo");
+      f.deliverEvent.mockClear();
+
+      deliverSandboxEvent("editor:ready", []);
+
+      expect(f.deliverEvent).not.toHaveBeenCalled();
+    });
   });
 
   it("refuses to create a sandbox webview when the dev release gate is off", async () => {

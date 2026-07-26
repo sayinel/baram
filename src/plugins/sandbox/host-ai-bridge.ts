@@ -14,7 +14,6 @@
 // suggestion — the same argument that makes storage isolation real, one layer up.
 import type { AIAPI, PluginCapability } from "../types";
 import type { SandboxHostRequest } from "./protocol";
-import type { HostRequestHandler } from "./sandbox-session";
 
 import { createAIAPI } from "../extension-context";
 
@@ -33,16 +32,23 @@ export interface HostRequestHandlerOptions {
   pluginId: string;
 }
 
+/** The `ai_*` members of `SandboxHostRequest` — what this bridge answers. */
+type AIRequest = Extract<SandboxHostRequest, { kind: `ai_${string}` }>;
+
 /**
- * Build the `HostRequestHandler` for one sandboxed plugin: capability check, then
- * the SHARED AI policy. Reusing `createAIAPI` (rather than a sandbox-specific copy)
+ * Build the `ai` half of one sandboxed plugin's host-request handler: capability check,
+ * then the SHARED AI policy. Reusing `createAIAPI` (rather than a sandbox-specific copy)
  * is deliberate — it already carries the privacy-mode refusal, the per-task model
  * choice, and the `createLLMStream` cleanup-in-`finally` rule, and a second
  * implementation would be a second place for privacy mode to be forgotten.
+ *
+ * Answers only `ai_*` kinds (§260 Phase 4a): this used to be the whole handler, with the
+ * `ai` check ahead of the switch, so a second service added there would have inherited
+ * the `ai` requirement. Routing now lives in `host-request-router`.
  */
-export function createHostRequestHandler(
+export function createAIRequestHandler(
   options: HostRequestHandlerOptions,
-): HostRequestHandler {
+): (request: AIRequest, onToken: (token: string) => void) => Promise<unknown> {
   const { aiFactory = DEFAULT_AI_FACTORY, capabilities, pluginId } = options;
   const granted = capabilities.includes("ai");
   // Built on first use, not up front: a plugin without the grant never gets a
@@ -50,7 +56,7 @@ export function createHostRequestHandler(
   let ai: AIAPI | undefined;
   const aiApi = (): AIAPI => (ai ??= aiFactory(pluginId));
 
-  return async (request: SandboxHostRequest, onToken) => {
+  return async (request: AIRequest, onToken) => {
     if (!granted) {
       throw new Error(
         `Plugin ${pluginId} requires the "ai" capability. ` +
@@ -70,7 +76,7 @@ export function createHostRequestHandler(
         // A newer sandbox bundle against an older host: a clear error beats an
         // `undefined` the plugin would mistake for a result.
         const unknown: never = request;
-        throw new Error(`unsupported host request: ${JSON.stringify(unknown)}`);
+        throw new Error(`unsupported ai request: ${JSON.stringify(unknown)}`);
       }
     }
   };

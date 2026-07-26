@@ -112,6 +112,16 @@ const HOST_REQUEST_VALIDATORS: {
   ai_complete: (r) => typeof r.prompt === "string" && isAiOptions(r.opts),
   ai_list_models: () => true,
   ai_stream: (r) => typeof r.prompt === "string" && isAiOptions(r.opts),
+  // Length and content are the HOST's business (`host-ui-bridge` truncates and strips
+  // control characters); what a validator can say is that the fields it dereferences
+  // are strings of the right kind.
+  ui_notify: (r) =>
+    typeof r.message === "string" &&
+    (r.type === undefined ||
+      r.type === "error" ||
+      r.type === "info" ||
+      r.type === "warning"),
+  ui_status_bar: (r) => typeof r.id === "string" && typeof r.text === "string",
 };
 
 // A `Map`, not the record itself, for the lookup: indexing a plain object with an
