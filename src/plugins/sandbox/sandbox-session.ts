@@ -5,6 +5,7 @@
 import type { PluginContributions } from "../types";
 import type {
   HostToSandbox,
+  SandboxHostRequest,
   SandboxRegisteredReport,
   SandboxToHost,
 } from "./protocol";
@@ -15,6 +16,32 @@ import { logger } from "../../utils/logger";
 const ACTIVATE_TIMEOUT_MS = 5000;
 const ACTIVATE_RETRY_MS = 250;
 const CALL_TIMEOUT_MS = 30_000;
+
+/**
+ * §260 3c-2c — how many host-mediated requests one plugin may have outstanding.
+ * Each `ai` request costs the user tokens (money) and holds a provider connection,
+ * so a plugin must not be able to park an unbounded number. Low on purpose: a
+ * plugin doing real work awaits its completion before asking for the next.
+ */
+export const MAX_INFLIGHT_HOST_REQUESTS = 4;
+
+/**
+ * Host-side bound on one mediated request. Generous because a long completion is
+ * legitimately slow, but finite: without it a provider that never answers would
+ * hold an in-flight slot forever and the plugin's `ai` would be dead until reload.
+ */
+export const HOST_REQUEST_TIMEOUT_MS = 120_000;
+
+/**
+ * §260 3c-2c — services the host performs on a sandbox's behalf. Returns the value
+ * to send back; tokens go through `onToken` as they arrive. The handler owns the
+ * capability check and the policy — the session only routes (see
+ * `host-ai-bridge.ts`).
+ */
+export type HostRequestHandler = (
+  request: SandboxHostRequest,
+  onToken: (token: string) => void,
+) => Promise<unknown>;
 
 interface Pending {
   reject: (e: Error) => void;
@@ -36,11 +63,24 @@ export class SandboxSession {
   private readonly emitHandlers = new Set<
     (event: string, args: unknown[]) => void
   >();
+  /**
+   * §260 3c-2c — in-flight mediated requests, by the sandbox's correlation id.
+   * Membership IS the "unanswered" state: `answerHostRequest` deletes before
+   * sending, which is what makes exactly one response per id (a handler settling
+   * after its timeout finds no entry) and what frees the in-flight slot. The timer
+   * guarantees an entry is eventually removed even if the handler never settles.
+   */
+  private readonly inflightHost = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
   private readonly offMessage: () => void;
   private readonly pending = new Map<string, Pending>();
 
   constructor(
     private readonly transport: SandboxTransport<SandboxToHost, HostToSandbox>,
+    /** Absent when this plugin gets no host-mediated services (see `ai`). */
+    private readonly hostRequestHandler?: HostRequestHandler,
   ) {
     this.offMessage = transport.onMessage((m) => this.handle(m));
   }
@@ -92,6 +132,18 @@ export class SandboxSession {
       p.reject(new Error("Sandbox session disposed"));
     }
     this.pending.clear();
+    // Answer, don't just forget: the awaiting promise lives in the SANDBOX, so a
+    // dropped frame would hang the plugin's `await` instead of failing it. Sent
+    // before `transport.close()` below, which is why dispose's order matters.
+    for (const requestId of [...this.inflightHost.keys()]) {
+      this.answerHostRequest(requestId, {
+        type: "hostResponse",
+        requestId,
+        ok: false,
+        error: "Sandbox session disposed",
+      });
+    }
+    this.inflightHost.clear();
     this.emitHandlers.clear();
     this.transport.close();
   }
@@ -115,6 +167,20 @@ export class SandboxSession {
     return () => this.emitHandlers.delete(handler);
   }
 
+  /**
+   * Send the one response an id gets, and free its slot. Idempotent because the
+   * entry is removed first: whichever of {handler settles, timeout, dispose} arrives
+   * second finds nothing and drops out, so no id can be answered twice (and the
+   * in-flight bound can never be silently over-subscribed).
+   */
+  private answerHostRequest(requestId: string, msg: HostToSandbox): void {
+    const timer = this.inflightHost.get(requestId);
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    this.inflightHost.delete(requestId);
+    this.transport.send(msg);
+  }
+
   private handle(m: SandboxToHost): void {
     switch (m.type) {
       case "activateError":
@@ -132,6 +198,9 @@ export class SandboxSession {
       case "emitEvent":
         this.emitHandlers.forEach((h) => h(m.event, m.args));
         break;
+      case "hostRequest":
+        this.onHostRequest(m.requestId, m.request);
+        break;
       case "ready":
         if (!this.activateSettle || !this.declared) break; // late/duplicate ready
         this.registered = m.registered;
@@ -140,6 +209,72 @@ export class SandboxSession {
         this.activateSettle.resolve(this.declared);
         break;
     }
+  }
+
+  private handleHostRequestRefusal(requestId: string, error: string): void {
+    // Not routed through `answerHostRequest`: a refusal has no in-flight entry (that
+    // is precisely why it is refused), so it answers directly.
+    this.transport.send({ type: "hostResponse", requestId, ok: false, error });
+  }
+
+  private onHostRequest(requestId: string, request: SandboxHostRequest): void {
+    if (this.disposed) return;
+    if (!this.hostRequestHandler) {
+      // Say so rather than dropping the frame: the plugin is awaiting a promise.
+      this.handleHostRequestRefusal(
+        requestId,
+        "host-mediated services are not available to this plugin",
+      );
+      return;
+    }
+    if (this.inflightHost.has(requestId)) {
+      this.handleHostRequestRefusal(
+        requestId,
+        `host request "${requestId}" is already in flight`,
+      );
+      return;
+    }
+    if (this.inflightHost.size >= MAX_INFLIGHT_HOST_REQUESTS) {
+      this.handleHostRequestRefusal(
+        requestId,
+        `too many host requests in flight (max ${MAX_INFLIGHT_HOST_REQUESTS})`,
+      );
+      return;
+    }
+    const timer = setTimeout(() => {
+      this.answerHostRequest(requestId, {
+        type: "hostResponse",
+        requestId,
+        ok: false,
+        error: `Host request timed out after ${HOST_REQUEST_TIMEOUT_MS}ms`,
+      });
+    }, HOST_REQUEST_TIMEOUT_MS);
+    this.inflightHost.set(requestId, timer);
+
+    // Tokens stop once the request is answered (timed out or disposed): the sandbox
+    // has already rejected, so a later token would arrive for an id it no longer
+    // knows — and after `dispose` the transport is closed anyway.
+    const onToken = (token: string) => {
+      if (this.inflightHost.has(requestId)) {
+        this.transport.send({ type: "hostStreamToken", requestId, token });
+      }
+    };
+    this.hostRequestHandler(request, onToken).then(
+      (value) =>
+        this.answerHostRequest(requestId, {
+          type: "hostResponse",
+          requestId,
+          ok: true,
+          value,
+        }),
+      (err: unknown) =>
+        this.answerHostRequest(requestId, {
+          type: "hostResponse",
+          requestId,
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+    );
   }
 
   private validate(

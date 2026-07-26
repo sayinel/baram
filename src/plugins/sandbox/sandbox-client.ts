@@ -2,14 +2,39 @@
 // only outward channel is the transport. Guards re-activation and serializes
 // outbound payloads defensively (real Tauri events are serde-JSON, not
 // structured clone — functions/BigInt/etc. would corrupt silently).
-import type { FilesAPI, NetworkAPI, StorageAPI } from "../types";
+import type {
+  AIAPI,
+  AIModel,
+  FilesAPI,
+  NetworkAPI,
+  StorageAPI,
+} from "../types";
 import type { PluginOp } from "./plugin-op";
-import type { HostToSandbox, SandboxToHost } from "./protocol";
+import type {
+  HostToSandbox,
+  SandboxHostRequest,
+  SandboxToHost,
+} from "./protocol";
 import type { SandboxTransport } from "./transport";
 
 import { logger } from "../../utils/logger";
 
+/**
+ * §260 3c-2c — sandbox-side bound on a host-mediated request. Longer than the
+ * host's own bound (`HOST_REQUEST_TIMEOUT_MS`), so in the normal case the HOST's
+ * timeout fires first and the plugin gets a real error; this one only covers a lost
+ * or never-delivered frame, whose pending entry would otherwise leak forever.
+ */
+export const HOST_REQUEST_CLIENT_TIMEOUT_MS = 150_000;
+
 export interface SandboxContext {
+  /**
+   * §260 3c-2c — host-mediated, NOT brokered in Rust: the model, provider and
+   * privacy-mode decisions live in the main realm, and the request carries none of
+   * them (see `SandboxHostRequest`). The `ai` capability is checked host-side, which
+   * is enforcing because a `plugin-*` window holds no `llm_*` ACL grant.
+   */
+  ai: AIAPI;
   commands: {
     register(id: string, handler: (...args: unknown[]) => unknown): void;
   };
@@ -42,6 +67,49 @@ export function startSandboxClient(
   const eventHandlers = new Map<string, Array<(...args: unknown[]) => void>>();
   let activateState: "activating" | "done" | "idle" = "idle";
 
+  // §260 3c-2c — host-mediated requests awaiting an answer, by our own correlation
+  // id. Bounded by a timer so a frame the host never answers cannot leak an entry
+  // (and the plugin's promise) for the life of the sandbox.
+  const hostPending = new Map<
+    string,
+    {
+      onToken?: (token: string) => void;
+      reject: (e: Error) => void;
+      resolve: (v: unknown) => void;
+      timer: ReturnType<typeof setTimeout>;
+    }
+  >();
+  let hostSeq = 0;
+
+  function hostRequest(
+    request: SandboxHostRequest,
+    onToken?: (token: string) => void,
+  ): Promise<unknown> {
+    const requestId = `host-${++hostSeq}`;
+    return new Promise<unknown>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        hostPending.delete(requestId);
+        reject(
+          new Error(
+            `Host request "${request.kind}" timed out after ${HOST_REQUEST_CLIENT_TIMEOUT_MS}ms`,
+          ),
+        );
+      }, HOST_REQUEST_CLIENT_TIMEOUT_MS);
+      hostPending.set(requestId, { onToken, reject, resolve, timer });
+      transport.send({ type: "hostRequest", requestId, request });
+    });
+  }
+
+  const ai: AIAPI = {
+    complete: (prompt, opts) =>
+      hostRequest({ kind: "ai_complete", opts, prompt }) as Promise<string>,
+    listModels: () =>
+      hostRequest({ kind: "ai_list_models" }) as Promise<AIModel[]>,
+    stream: async (prompt, opts, onToken) => {
+      await hostRequest({ kind: "ai_stream", opts, prompt }, onToken);
+    },
+  };
+
   const storage: StorageAPI = {
     list: () => broker({ kind: "storage_list" }) as Promise<string[]>,
     read: (key) =>
@@ -70,6 +138,7 @@ export function startSandboxClient(
   };
 
   const ctx: SandboxContext = {
+    ai,
     commands: { register: (id, handler) => void commands.set(id, handler) },
     events: {
       emit(event, ...args) {
@@ -175,6 +244,20 @@ export function startSandboxClient(
         break;
       case "deliverEvent":
         (eventHandlers.get(m.event) ?? []).forEach((h) => h(...m.args));
+        break;
+      case "hostResponse": {
+        // An unknown id is ignored, not thrown on: it means our own timeout already
+        // rejected (or a host bug), and the plugin's promise is settled either way.
+        const p = hostPending.get(m.requestId);
+        if (!p) break;
+        clearTimeout(p.timer);
+        hostPending.delete(m.requestId);
+        if (m.ok) p.resolve(m.value);
+        else p.reject(new Error(m.error));
+        break;
+      }
+      case "hostStreamToken":
+        hostPending.get(m.requestId)?.onToken?.(m.token);
         break;
       case "invokeCommand":
         void onInvoke(m.callId, m.commandId, m.args);
