@@ -6,9 +6,13 @@
 // Prec.highest(mod.vim()) — see SourceCodeEditor for why Prec cannot put any
 // keymap "above" vim's own ViewPlugin handler.
 
+import { insertNewlineContinueMarkup } from "@codemirror/lang-markdown";
+
 import { getAction } from "../../keybindings/keybinding-actions";
 
 let exCommandsRegistered = false;
+
+let listContinuationRegistered = false;
 
 let modulePromise: null | Promise<VimModule> = null;
 
@@ -20,6 +24,7 @@ export function loadVimModule(): Promise<VimModule> {
   modulePromise ??= import("@replit/codemirror-vim")
     .then((m) => {
       registerExCommands(m);
+      registerListContinuation(m);
       return m;
     })
     .catch((err: unknown) => {
@@ -50,4 +55,32 @@ export function registerExCommands(mod: VimModule): void {
   // Set AFTER both registrations succeed — if defineEx ever threw mid-way, a
   // pre-set flag would skip retries forever (Codex final gate, hardening).
   exCommandsRegistered = true;
+}
+
+/**
+ * §298 smoke fix — vim's `o`/`O` (and `r<CR>`) never reach CodeMirror keymaps;
+ * they call the adapter's `newlineAndIndent` directly, losing markdown list /
+ * quote continuation ("- ", "1. ", "> "). The adapter deliberately leaves the
+ * CM5 comment-addon slot `newlineAndIndentContinueComment` empty and prefers
+ * it when set — that slot IS the designed extension point, so we fill it.
+ *
+ * Markdown contexts get `insertNewlineContinueMarkup`; everything else (code
+ * file tabs, non-list lines) returns false and falls back to the adapter's
+ * own `newlineAndIndent`, keeping its dispatchChange/undo plumbing intact.
+ * Global singleton, same contract as registerExCommands.
+ */
+export function registerListContinuation(mod: VimModule): void {
+  if (listContinuationRegistered) return;
+  const commands = mod.CodeMirror.commands;
+  commands.newlineAndIndentContinueComment = (
+    cm: InstanceType<VimModule["CodeMirror"]>,
+  ) => {
+    const view = cm.cm6;
+    const ran = insertNewlineContinueMarkup({
+      dispatch: (tr) => view.dispatch(tr),
+      state: view.state,
+    });
+    if (!ran) commands.newlineAndIndent(cm);
+  };
+  listContinuationRegistered = true;
 }
