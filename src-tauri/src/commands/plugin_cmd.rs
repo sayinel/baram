@@ -186,6 +186,14 @@ fn host_window_guard(label: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// The mirror of `host_window_guard`: only a `plugin-<id>` window may use the
+/// sandbox-side channel commands, and the id it acts as is derived from the
+/// Tauri-verified label — never from an argument.
+fn sandbox_window_guard(label: &str) -> Result<String, String> {
+    plugin::plugin_id_from_label(label)
+        .ok_or_else(|| "only sandbox windows may use the sandbox message channel".to_string())
+}
+
 /// Execute an authorized op using the CALLER-derived plugin id (never a
 /// client-supplied id). Storage is namespaced per plugin id → isolation.
 async fn execute_op(plugin_id: &str, op: plugin::PluginOp) -> Result<serde_json::Value, String> {
@@ -223,16 +231,77 @@ pub async fn plugin_sandbox_register(
     Ok(())
 }
 
-/// §260 host-only — drop a sandbox plugin's registered capabilities.
+/// §260 host-only — drop a sandbox plugin's registered capabilities. Also drops
+/// its inbound channel (Phase 3c-2a) so a stopped sandbox cannot be messaged.
 #[tauri::command]
 pub async fn plugin_sandbox_deregister(
     window: tauri::WebviewWindow,
     plugin_id: String,
     authorizer: tauri::State<'_, plugin::PluginAuthorizer>,
+    channels: tauri::State<'_, plugin::SandboxChannels>,
 ) -> Result<(), String> {
     host_window_guard(window.label())?;
-    authorizer.deregister(&format!("plugin-{plugin_id}"));
+    let label = format!("plugin-{plugin_id}");
+    authorizer.deregister(&label);
+    channels.disconnect(&label);
     Ok(())
+}
+
+/// §260 Phase 3c-2a sandbox-only — hand the host an IPC channel for inbound
+/// messages. Called once when the sandbox client boots. Requires the host to
+/// have registered this plugin first (fail closed: a window nobody started
+/// cannot park a channel).
+#[tauri::command]
+pub async fn plugin_sandbox_connect(
+    window: tauri::WebviewWindow,
+    channel: tauri::ipc::Channel<serde_json::Value>,
+    authorizer: tauri::State<'_, plugin::PluginAuthorizer>,
+    channels: tauri::State<'_, plugin::SandboxChannels>,
+) -> Result<(), String> {
+    let label = window.label().to_string();
+    sandbox_window_guard(&label)?;
+    if !authorizer.is_registered(&label) {
+        return Err("this sandbox is not registered".to_string());
+    }
+    channels.connect(label, channel);
+    Ok(())
+}
+
+/// §260 Phase 3c-2a sandbox-only — the sandbox→host direction. The plugin id is
+/// stamped from the caller's label, so a sandbox cannot impersonate another on
+/// the host's `plugin:s2h` channel.
+///
+/// A plain broadcast `emit` is safe here: no `plugin-*` window holds any
+/// `core:event:*` permission, so only host windows can receive it. `emit_filter`
+/// is deliberately NOT used — it cannot withhold an event from a JS listener
+/// registered with the default `EventTarget::Any` (`match_any_or_filter`,
+/// tauri/src/event/listener.rs), so it would imply a guarantee it does not give.
+#[tauri::command]
+pub async fn plugin_sandbox_report(
+    window: tauri::WebviewWindow,
+    msg: serde_json::Value,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    use tauri::Emitter;
+    let plugin_id = sandbox_window_guard(window.label())?;
+    app.emit(
+        "plugin:s2h",
+        serde_json::json!({ "pluginId": plugin_id, "msg": msg }),
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// §260 Phase 3c-2a host-only — the host→sandbox direction, delivered over the
+/// target sandbox's own IPC channel (never an event, so no other window sees it).
+#[tauri::command]
+pub async fn plugin_sandbox_send(
+    window: tauri::WebviewWindow,
+    plugin_id: String,
+    msg: serde_json::Value,
+    channels: tauri::State<'_, plugin::SandboxChannels>,
+) -> Result<(), String> {
+    host_window_guard(window.label())?;
+    channels.send(&format!("plugin-{plugin_id}"), msg)
 }
 
 /// The sole IPC entry point a sandboxed plugin may use for privileged ops. Every
@@ -265,5 +334,12 @@ mod tests {
         assert!(host_window_guard("plugin-evil").is_err());
         assert!(host_window_guard("main").is_ok());
         assert!(host_window_guard("file-1").is_ok());
+    }
+
+    #[test]
+    fn sandbox_window_guard_is_the_mirror_and_derives_the_id() {
+        assert_eq!(sandbox_window_guard("plugin-alpha").unwrap(), "alpha");
+        assert!(sandbox_window_guard("main").is_err());
+        assert!(sandbox_window_guard("file-1").is_err());
     }
 }

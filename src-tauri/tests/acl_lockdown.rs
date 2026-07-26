@@ -114,10 +114,18 @@ fn sandbox_tier_grants_exactly_its_allowlist() {
     // permission added to plugin-sandbox.json — e.g. `core:webview:allow-create-
     // webview-window`, `core:default`, or a plugin scope like `fs:allow-read` —
     // would be a boundary leak, exactly the class this lockdown exists to prevent,
-    // yet a bare-`allow-*` check would miss it. A plugin-* window may hold ONLY
-    // the event channel the sandbox client needs plus the single broker command.
-    // `norm()` maps `-`->`_` on both sides, so `allow-plugin-call` (kebab, as
-    // tauri-build generates) and `core:event:allow-emit` compare stably.
+    // yet a bare-`allow-*` check would miss it.
+    //
+    // §260 Phase 3c-2a — `core:event:*` is now WITHHELD and must never come back.
+    // Tauri delivers a broadcast event to any JS listener registered with the
+    // default `EventTarget::Any`, and `emit_to`/`emit_filter` cannot withhold it
+    // (`match_any_or_filter`, tauri/src/event/listener.rs). So `allow-listen` on a
+    // plugin-* window = a sandboxed plugin with ZERO capabilities can eavesdrop on
+    // `llm:token`, `file:changed`, etc. The sandbox transport therefore uses
+    // per-webview IPC instead: `plugin_sandbox_connect` (inbound ipc::Channel) +
+    // `plugin_sandbox_report` (outbound, caller-identified), plus the broker
+    // `plugin_call`. Nothing else.
+    // `norm()` maps `-`->`_`, so kebab permission ids compare stably.
     let json: serde_json::Value = serde_json::from_str(&read("capabilities/plugin-sandbox.json"))
         .expect("parse capability json");
     let perms: BTreeSet<String> = json["permissions"]
@@ -127,13 +135,12 @@ fn sandbox_tier_grants_exactly_its_allowlist() {
         .filter_map(|p| p.as_str())
         .map(norm)
         .collect();
-    // Expected set, normalized (norm collapses `-`->`_`):
-    //   core:event:allow-emit / -listen / -unlisten  + the broker  allow-plugin-call
+    // Expected set, normalized (norm collapses `-`->`_`): the two transport
+    // commands + the broker. NO core:event:* — see the note above.
     let expected: BTreeSet<String> = [
-        "core:event:allow_emit",
-        "core:event:allow_listen",
-        "core:event:allow_unlisten",
         "allow_plugin_call",
+        "allow_plugin_sandbox_connect",
+        "allow_plugin_sandbox_report",
     ]
     .into_iter()
     .map(str::to_string)
@@ -141,7 +148,7 @@ fn sandbox_tier_grants_exactly_its_allowlist() {
     assert_eq!(
         perms,
         expected,
-        "plugin-sandbox capability must grant EXACTLY the event channel + plugin_call.\n\
+        "plugin-sandbox capability must grant EXACTLY connect + report + plugin_call.\n\
          unexpected (possible boundary leak): {:?}\nmissing: {:?}",
         perms.difference(&expected).collect::<Vec<_>>(),
         expected.difference(&perms).collect::<Vec<_>>(),
@@ -149,15 +156,23 @@ fn sandbox_tier_grants_exactly_its_allowlist() {
 }
 
 #[test]
-fn main_tier_gets_everything_except_plugin_call() {
+fn main_tier_gets_everything_except_sandbox_only_commands() {
     let registered = generate_handler_commands();
     let main = capability_allowed_commands("capabilities/default.json");
     let mut expected = registered;
-    expected.remove(&norm("plugin_call"));
+    // The sandbox-only surface: the broker plus the two transport commands whose
+    // caller must be a `plugin-*` window (they'd be rejected from main anyway).
+    for sandbox_only in [
+        "plugin_call",
+        "plugin_sandbox_connect",
+        "plugin_sandbox_report",
+    ] {
+        expected.remove(&norm(sandbox_only));
+    }
     assert_eq!(
         main,
         expected,
-        "main/file-* capability must grant every command except plugin_call.\n\
+        "main/file-* capability must grant every command except the sandbox-only ones.\n\
          missing: {:?}\nextra: {:?}",
         expected.difference(&main).collect::<Vec<_>>(),
         main.difference(&expected).collect::<Vec<_>>(),

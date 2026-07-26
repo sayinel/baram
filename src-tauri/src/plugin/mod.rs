@@ -43,9 +43,12 @@ pub enum PluginError {
 }
 
 mod authorizer;
+mod channels;
 // Re-exported for the `plugin_call` broker + sandbox register/deregister
 // commands (Phase 3a Task 2, src-tauri/src/commands/plugin_cmd.rs).
 pub use authorizer::{plugin_id_from_label, PluginAuthorizer, PluginOp};
+// Phase 3c-2a — host→sandbox message channels (src-tauri/src/commands/plugin_cmd.rs).
+pub use channels::SandboxChannels;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
