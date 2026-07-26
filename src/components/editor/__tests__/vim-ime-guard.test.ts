@@ -29,6 +29,12 @@ interface FakeCm {
   };
 }
 
+interface FakeView {
+  compositionStarted: boolean;
+  contentDOM: HTMLElement;
+  dom: HTMLElement;
+}
+
 function fireBeforeInput(el: HTMLElement, inputType: string): InputEvent {
   const e = new InputEvent("beforeinput", {
     bubbles: true,
@@ -65,15 +71,16 @@ function makeCm(
   };
 }
 
-function makeView(): { contentDOM: HTMLElement; dom: HTMLElement } {
+function makeView(): FakeView {
   const dom = document.createElement("div");
   const contentDOM = document.createElement("div");
   dom.appendChild(contentDOM);
-  return { contentDOM, dom };
+  // Mirrors EditorView.compositionStarted — CodeMirror's OWN composition
+  // state, which the guard reads instead of tracking DOM events itself.
+  return { compositionStarted: false, contentDOM, dom };
 }
 
-const asView = (v: { contentDOM: HTMLElement; dom: HTMLElement }) =>
-  v as unknown as EditorView;
+const asView = (v: FakeView) => v as unknown as EditorView;
 const asCm = (c: FakeCm) => c as unknown as CodeMirror;
 
 describe("shouldBlockImeInput — mode matrix", () => {
@@ -244,15 +251,13 @@ describe("attachVimImeGuard", () => {
 
 // Replace-mode double input (2026-07-27 smoke): vim's overwrite branch
 // inserts e.key manually while the composition commits it again. Fix shape
-// per Codex round 5: keydowns are NEVER touched (CodeMirror's
-// compositionPendingKey bookkeeping must keep running); instead the
-// adapter's overWriteSelection is wrapped and skipped only when the IME
-// owns the text.
+// per Codex rounds 5–6: keydowns are NEVER touched (CodeMirror's
+// compositionPendingKey bookkeeping must keep running); the adapter's
+// overWriteSelection is wrapped and skipped only when the IME owns the
+// text, with view.compositionStarted as the composition signal (NOT local
+// DOM listeners — Safari can drop compositionend and CM recovers via an
+// internal timer with no DOM event).
 describe("replace-mode IME overwrite dedupe", () => {
-  function fireComposition(el: HTMLElement, type: string) {
-    el.dispatchEvent(new Event(type, { bubbles: true }));
-  }
-
   function fireImeBeforeInput(el: HTMLElement, data: string) {
     el.dispatchEvent(
       new InputEvent("beforeinput", {
@@ -277,14 +282,31 @@ describe("replace-mode IME overwrite dedupe", () => {
     expect(reached).toBe(true);
   });
 
-  it("skips the manual overwrite while a composition is active", () => {
+  it("skips the manual overwrite while CM reports a composition", () => {
     const view = makeView();
     const cm = makeCm({ insertMode: true }, true);
     const orig = cm.overWriteSelection;
     attachVimImeGuard(asView(view), asCm(cm));
-    fireComposition(view.contentDOM, "compositionstart");
+    view.compositionStarted = true;
     cm.overWriteSelection("ㅇ");
     expect(orig).not.toHaveBeenCalled();
+  });
+
+  it("follows CM's recovery even without a compositionend DOM event", () => {
+    // Round-6 HIGH: Safari can drop compositionend; CM recovers internally
+    // (compositionStarted flips false with no DOM event). The guard must
+    // follow CM's state, not its own listener — otherwise replace input
+    // would be permanently bricked.
+    const view = makeView();
+    const cm = makeCm({ insertMode: true }, true);
+    const orig = cm.overWriteSelection;
+    attachVimImeGuard(asView(view), asCm(cm));
+    view.compositionStarted = true;
+    cm.overWriteSelection("á");
+    expect(orig).not.toHaveBeenCalled();
+    view.compositionStarted = false; // CM's internal recovery, no DOM event
+    cm.overWriteSelection("x");
+    expect(orig).toHaveBeenCalledWith("x");
   });
 
   it("direct-layout characters keep full overwrite semantics", () => {
@@ -298,18 +320,7 @@ describe("replace-mode IME overwrite dedupe", () => {
     expect(orig).toHaveBeenCalledWith("é");
   });
 
-  it("composition end restores overwrite for subsequent direct keys", () => {
-    const view = makeView();
-    const cm = makeCm({ insertMode: true }, true);
-    const orig = cm.overWriteSelection;
-    attachVimImeGuard(asView(view), asCm(cm));
-    fireComposition(view.contentDOM, "compositionstart");
-    fireComposition(view.contentDOM, "compositionend");
-    cm.overWriteSelection("x");
-    expect(orig).toHaveBeenCalledWith("x");
-  });
-
-  it("skips when a just-seen insertText beforeinput carries the same text", () => {
+  it("skips on a just-seen matching beforeinput, consuming the evidence", () => {
     // Probe-page IME mode: cancelable insertText arrives BEFORE the keydown.
     const view = makeView();
     const cm = makeCm({ insertMode: true }, true);
@@ -318,9 +329,34 @@ describe("replace-mode IME overwrite dedupe", () => {
     fireImeBeforeInput(view.contentDOM, "한");
     cm.overWriteSelection("한");
     expect(orig).not.toHaveBeenCalled();
-    // A DIFFERENT character is not the IME's — it must overwrite.
-    cm.overWriteSelection("z");
-    expect(orig).toHaveBeenCalledWith("z");
+    // Consumed: an immediate same-character DIRECT key must still overwrite
+    // (round-6 false-positive scenario).
+    cm.overWriteSelection("한");
+    expect(orig).toHaveBeenCalledWith("한");
+  });
+
+  it("matches beforeinput evidence across NFC/NFD normalization forms", () => {
+    // InputEvent.data has no normalization contract (round 6): the IME may
+    // deliver NFD ("e" + U+0301) while e.key carries NFC ("é").
+    const view = makeView();
+    const cm = makeCm({ insertMode: true }, true);
+    const orig = cm.overWriteSelection;
+    attachVimImeGuard(asView(view), asCm(cm));
+    fireImeBeforeInput(view.contentDOM, "é");
+    cm.overWriteSelection("é");
+    expect(orig).not.toHaveBeenCalled();
+  });
+
+  it("clears stale beforeinput evidence on mode transitions", () => {
+    const view = makeView();
+    const cm = makeCm({ insertMode: true }, true);
+    const orig = cm.overWriteSelection;
+    attachVimImeGuard(asView(view), asCm(cm));
+    fireImeBeforeInput(view.contentDOM, "한");
+    cm.emit("normal");
+    cm.emit("replace");
+    cm.overWriteSelection("한");
+    expect(orig).toHaveBeenCalledWith("한");
   });
 
   it("only replace mode dedupes — other modes pass through untouched", () => {
@@ -329,7 +365,7 @@ describe("replace-mode IME overwrite dedupe", () => {
     const orig = cm.overWriteSelection;
     attachVimImeGuard(asView(view), asCm(cm));
     cm.emit("insert");
-    fireComposition(view.contentDOM, "compositionstart");
+    view.compositionStarted = true;
     cm.overWriteSelection("ㅇ");
     expect(orig).toHaveBeenCalledWith("ㅇ");
   });
