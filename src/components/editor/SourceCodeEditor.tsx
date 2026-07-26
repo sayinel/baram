@@ -122,6 +122,14 @@ export function SourceCodeEditor({
         // keeps working only because vim binds no <M-/>/<C-/>; the real
         // source-mode escape hatch is the window-level dispatcher (S3).
         Prec.highest(keymap.of([{ key: "Mod-/", run: () => true }])),
+        // §298 diagnosis tripwire — when ANY view extension crashes (update
+        // or measure phase), CodeMirror logs one console.error and silently
+        // deactivates the plugin: vim would die with no visible symptom
+        // except ghost cursors / dead keybindings. Route it through our
+        // logger so the next occurrence leaves a durable, greppable stack.
+        EditorView.exceptionSink.of((err) => {
+          logger.error("[source-editor] CodeMirror extension crashed:", err);
+        }),
         vimCompartment.of([]),
         vimEditableCompartment.of([]),
         keymap.of([
