@@ -13,6 +13,17 @@
 // insertion is cancelled and the following keydown drives vim's literal
 // replacement, which is correct (Codex plan review).
 //
+// Replace-mode double input (real-device smoke, 2026-07-27): the adapter's
+// overwrite branch manually inserts `e.key` on keydown whenever key.length
+// is 1 — and macOS WKWebView reports the REAL jamo on Korean keydowns
+// (key="ㅇ"), so vim inserts it AND the (non-cancelable) composition commits
+// it again: two characters per press. Fix: in replace mode, non-ASCII
+// printable keydowns are stopped in the capture phase on view.dom, before
+// vim's handler — the composition alone owns the key. Interim semantics:
+// R + Korean INSERTS composed syllables without consuming the character
+// under the cursor (overwrite emulation is a follow-up pending device
+// iteration); English R overwrite is untouched.
+//
 // Static imports here are type-only for @replit/codemirror-vim — anything
 // runtime would pull the vim chunk into the main bundle.
 
@@ -40,26 +51,42 @@ export function attachVimImeGuard(
   cm: CodeMirror,
   onModeChange?: (mode: VimModeName) => void,
 ): () => void {
-  let blocking = shouldBlockImeInput(initialVimMode(cm));
+  let mode = initialVimMode(cm);
 
   const onBeforeInput = (e: Event) => {
     const { inputType } = e as InputEvent;
-    if (blocking && BLOCKED_INPUT_TYPES.has(inputType)) e.preventDefault();
+    if (shouldBlockImeInput(mode) && BLOCKED_INPUT_TYPES.has(inputType)) {
+      e.preventDefault();
+    }
   };
   // Capture phase: cancel before CodeMirror's own handlers see the event.
   view.contentDOM.addEventListener("beforeinput", onBeforeInput, true);
 
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (mode !== "replace") return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    // Non-ASCII printable key = IME-bound. Stop it before vim's overwrite
+    // branch double-inserts (see header). Esc/Enter/Backspace have
+    // multi-char key names and pass through untouched.
+    if (e.key.length !== 1 || e.key.charCodeAt(0) < 128) return;
+    e.stopPropagation();
+  };
+  // view.dom capture: fires while descending toward contentDOM, i.e. before
+  // ANY contentDOM listener (vim's handler is registered at the target,
+  // where capture flags no longer order anything).
+  view.dom.addEventListener("keydown", onKeyDown, true);
+
   const onVimModeChange = (ev: { mode: string }) => {
-    const mode = ev.mode as VimModeName;
-    blocking = shouldBlockImeInput(mode);
+    mode = ev.mode as VimModeName;
     onModeChange?.(mode);
   };
   cm.on("vim-mode-change", onVimModeChange);
-  onModeChange?.(initialVimMode(cm));
+  onModeChange?.(mode);
 
   return () => {
     cm.off("vim-mode-change", onVimModeChange);
     view.contentDOM.removeEventListener("beforeinput", onBeforeInput, true);
+    view.dom.removeEventListener("keydown", onKeyDown, true);
   };
 }
 

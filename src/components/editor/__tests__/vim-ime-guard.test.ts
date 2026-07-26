@@ -63,11 +63,15 @@ function makeCm(
   };
 }
 
-function makeView(): { contentDOM: HTMLElement } {
-  return { contentDOM: document.createElement("div") };
+function makeView(): { contentDOM: HTMLElement; dom: HTMLElement } {
+  const dom = document.createElement("div");
+  const contentDOM = document.createElement("div");
+  dom.appendChild(contentDOM);
+  return { contentDOM, dom };
 }
 
-const asView = (v: { contentDOM: HTMLElement }) => v as unknown as EditorView;
+const asView = (v: { contentDOM: HTMLElement; dom: HTMLElement }) =>
+  v as unknown as EditorView;
 const asCm = (c: FakeCm) => c as unknown as CodeMirror;
 
 describe("shouldBlockImeInput — mode matrix", () => {
@@ -233,5 +237,75 @@ describe("attachVimImeGuard", () => {
     ).toBe(false);
     expect(cm.offCalls).toBe(1);
     expect(cm.handlers.get("vim-mode-change")).toEqual([]);
+  });
+});
+
+// Replace-mode double input (2026-07-27 smoke): vim's overwrite branch
+// inserts e.key manually while the composition commits it again. The guard
+// stops IME-bound keydowns on view.dom (capture) so they never reach vim's
+// contentDOM handler — pinned here by whether the target listener fires.
+describe("replace-mode IME keydown intercept", () => {
+  function pressKey(
+    target: HTMLElement,
+    key: string,
+    init: KeyboardEventInit = {},
+  ): boolean {
+    let reachedTarget = false;
+    const probe = () => {
+      reachedTarget = true;
+    };
+    target.addEventListener("keydown", probe);
+    target.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        key,
+        ...init,
+      }),
+    );
+    target.removeEventListener("keydown", probe);
+    return reachedTarget;
+  }
+
+  it("replace mode: a Korean jamo keydown never reaches the editor", () => {
+    const view = makeView();
+    attachVimImeGuard(asView(view), asCm(makeCm({ insertMode: true }, true)));
+    expect(pressKey(view.contentDOM, "ㅇ")).toBe(false);
+  });
+
+  it("replace mode: ASCII overwrite keys pass through untouched", () => {
+    const view = makeView();
+    attachVimImeGuard(asView(view), asCm(makeCm({ insertMode: true }, true)));
+    expect(pressKey(view.contentDOM, "a")).toBe(true);
+  });
+
+  it("replace mode: Esc and modifier combos pass through", () => {
+    const view = makeView();
+    attachVimImeGuard(asView(view), asCm(makeCm({ insertMode: true }, true)));
+    expect(pressKey(view.contentDOM, "Escape")).toBe(true);
+    expect(pressKey(view.contentDOM, "ㅇ", { metaKey: true })).toBe(true);
+  });
+
+  it("normal mode: Korean keydowns still flow (langmap motions need them)", () => {
+    const view = makeView();
+    const cm = makeCm({});
+    attachVimImeGuard(asView(view), asCm(cm));
+    expect(pressKey(view.contentDOM, "ㅓ")).toBe(true);
+    // Entering replace live must flip the intercept on...
+    cm.emit("replace");
+    expect(pressKey(view.contentDOM, "ㅓ")).toBe(false);
+    // ...and leaving it must flip it back off.
+    cm.emit("insert");
+    expect(pressKey(view.contentDOM, "ㅓ")).toBe(true);
+  });
+
+  it("dispose removes the keydown intercept", () => {
+    const view = makeView();
+    const dispose = attachVimImeGuard(
+      asView(view),
+      asCm(makeCm({ insertMode: true }, true)),
+    );
+    dispose();
+    expect(pressKey(view.contentDOM, "ㅇ")).toBe(true);
   });
 });
