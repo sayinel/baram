@@ -1,0 +1,23 @@
+{
+  "id": "baram-sandbox-smoke",
+  "name": "Sandbox Smoke",
+  "description": "§260 Phase 3c-3 — exercises the sandboxed tier's brokered surface (storage, files allow+deny, ai) from inside a real plugin webview and reports the outcome as one toast.",
+  "version": "1.0.0",
+  "author": "Baram",
+  "license": "Apache-2.0",
+  "main": "index.mjs",
+  "engines": { "baram": ">=0.4.0" },
+  "trust": "sandboxed",
+  "capabilities": ["ai", "commands", "files:readonly", "storage"],
+  "contributions": {
+    "commands": [
+      {
+        "id": "run",
+        "title": "Sandbox Smoke: run all checks",
+        "palette": true
+      }
+    ]
+  },
+  "icon": "🧪",
+  "keywords": ["internal", "smoke", "sandbox"]
+}
