@@ -792,6 +792,28 @@ mod tests {
         std::fs::remove_dir_all(&base).ok();
     }
 
+    /// §260 3c-3 — the live smoke fixture is loaded through `plugin_add_dev_folder`,
+    /// which calls `read_manifest_at`, which applies the RUST validator (a separate
+    /// list from the TS one: its own capability allowlist and id rules). The TS test
+    /// beside the fixture cannot see those, so a fixture that passes there could still
+    /// fail at "Add dev folder" — during a scarce user-run smoke.
+    #[test]
+    fn the_smoke_fixture_loads_through_the_rust_dev_folder_path() {
+        let dir = Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../examples/plugins/sandbox-smoke"
+        ));
+        let manifest = read_manifest_at(dir).expect("the smoke fixture must load");
+        assert_eq!(manifest.id, "baram-sandbox-smoke");
+        assert_eq!(manifest.trust, Some(PluginTrust::Sandboxed));
+        // The entry must exist on disk too: the manifest naming a missing file is the
+        // other way this fails, and it fails later — inside the sandbox, at activate.
+        assert!(
+            dir.join(&manifest.main).is_file(),
+            "manifest.main must point at a real file"
+        );
+    }
+
     /// §260 3c-2c — the extracted helper keeps the stat-before-read rule for the
     /// brokered `files` read too, and reports the size it refused (so a plugin author
     /// can tell "too big" from "unreadable").
