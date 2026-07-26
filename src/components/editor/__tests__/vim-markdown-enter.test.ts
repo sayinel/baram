@@ -220,6 +220,62 @@ describe("markdown list continuation under vim (§298 smoke bug)", () => {
     expect(view.state.doc.toString()).toBe("- item\n- ");
   });
 
+  it("macro replay keeps continuation: @a replays x,o identically (round 3)", () => {
+    // curOp.lastChange is operation-scoped and macro replay shares ONE op
+    // across all recorded keys — the discriminator must not be poisoned by
+    // the replayed `x` that precedes `o`.
+    const view = makeEditor("- item", 2, true);
+    const cm = getCM(view);
+    Vim.handleKey(cm!, "q", "user");
+    Vim.handleKey(cm!, "a", "user");
+    Vim.handleKey(cm!, "x", "user");
+    Vim.handleKey(cm!, "o", "user");
+    Vim.handleKey(cm!, "<Esc>", "user");
+    Vim.handleKey(cm!, "q", "user");
+    const recorded = view.state.doc.toString();
+    expect(recorded).toBe("- tem\n- ");
+
+    const view2 = makeEditor("- item", 2, true);
+    const cm2 = getCM(view2);
+    Vim.handleKey(cm2!, "@", "user");
+    Vim.handleKey(cm2!, "a", "user");
+    expect(view2.state.doc.toString()).toBe(recorded);
+  });
+
+  it("counted 3o keeps stock undo grouping (round 3, finding 2)", () => {
+    // Esc-time repetitions run with NO curOp and must tag plain .compose —
+    // a constant .start would give each repeated line its own undo group
+    // (four undos instead of stock's two).
+    const view = makeEditor("- item", 2, true);
+    const cm = getCM(view);
+    Vim.handleKey(cm!, "3", "user");
+    Vim.handleKey(cm!, "o", "user");
+    const head = view.state.selection.main.head;
+    view.dispatch({
+      changes: { from: head, insert: "x" },
+      selection: EditorSelection.cursor(head + 1),
+      userEvent: "input.type",
+    });
+    Vim.handleKey(cm!, "<Esc>", "user");
+    expect(view.state.doc.toString()).toBe("- item\n- x\n- x\n- x");
+    Vim.handleKey(cm!, "u", "user");
+    Vim.handleKey(cm!, "u", "user");
+    expect(view.state.doc.toString()).toBe("- item");
+  });
+
+  it("accepted deviation: <C-o>r<CR> on a line's LAST char gains a bullet", () => {
+    // The EOL discriminator cannot see this one case (the pre-delete puts
+    // the cursor exactly at the new line end). It behaves like Enter at
+    // EOL — benign, pinned so a future fix surfaces here.
+    const view = makeEditor("- item", 5, true); // cursor on "m"
+    const cm = getCM(view);
+    Vim.handleKey(cm!, "i", "user");
+    Vim.handleKey(cm!, "<C-o>", "user");
+    Vim.handleKey(cm!, "r", "user");
+    Vim.handleKey(cm!, "<CR>", "user");
+    expect(view.state.doc.toString()).toBe("- ite\n- ");
+  });
+
   it("known limitation: O on the FIRST document line opens without a bullet", () => {
     // The adapter special-cases first-line O with a raw replaceRange and
     // never consults the continuation slot — pinned so an upstream change

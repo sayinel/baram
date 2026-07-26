@@ -68,8 +68,9 @@ export function registerExCommands(mod: VimModule): void {
  *
  * The Enter command cannot be reused verbatim (Codex BLOCK review,
  * session 019f9c90): its transaction is captured, inspected, and rebuilt —
- * - r<CR> keeps a plain line break: `o`/`O` set vim.insertMode BEFORE the
- *   slot runs, `replace` never does, which discriminates the call sites;
+ * - r<CR> keeps a plain line break: call sites are discriminated by
+ *   insertMode PLUS cursor-at-line-end (see the inline notes — state flags
+ *   and curOp both proved unreliable across <C-o>, macros, and counts);
  * - the Enter command's empty-item branch DELETES the marker — destructive
  *   for `o`. Any replaced range starting before the cursor is that branch
  *   (renumbering rewrites start after the cursor), so it falls back;
@@ -92,18 +93,23 @@ export function registerListContinuation(mod: VimModule): void {
     // writes under state.readOnly, but insertNewlineContinueMarkup has no
     // such guard (verified: no readOnly check in @codemirror/lang-markdown).
     if (view.state.readOnly) return;
-    // Call-site discrimination (probe-verified: vim state flags are IDENTICAL
-    // for `o` and `<C-o>r<CR>` at slot time, so flags alone cannot work):
-    // - !insertMode → plain/visual r<CR> (replace never enters insert);
-    // - op.lastChange → a change already ran in this op. o/O reach the slot
-    //   as the op's FIRST change; every r<CR> variant (incl. <C-o>r<CR>)
-    //   deletes the replaced character through the adapter first.
-    const op = (cm as { curOp?: null | { lastChange?: unknown } }).curOp;
-    if (!cm.state.vim?.insertMode || op?.lastChange) {
+    const head = view.state.selection.main.head;
+    // Call-site discrimination, probe history (Codex rounds 2–3):
+    // - vim state flags are IDENTICAL for `o` and `<C-o>r<CR>` at slot time;
+    // - curOp.lastChange is OPERATION-scoped — macro replay runs many
+    //   commands in one op, so a replayed `x` before `o` poisons it.
+    // Intrinsic signals instead: o/O always move the cursor to the END of
+    // the anchor line before the slot runs, on every path (direct, count,
+    // dot-repeat, macro, mapping). Plain/visual/replayed r<CR> run with
+    // insertMode=false (visual skips the pre-delete entirely and is caught
+    // here too); <C-o>r<CR> runs in insert mode but sits at the replaced
+    // character — mid-line except for a line's LAST character, the one
+    // accepted micro-deviation (pinned by test: it behaves like Enter at
+    // EOL and gains a continued bullet).
+    if (!cm.state.vim?.insertMode || head !== view.state.doc.lineAt(head).to) {
       commands.newlineAndIndent(cm);
       return;
     }
-    const head = view.state.selection.main.head;
     let captured: null | Transaction = null;
     const ran = insertNewlineContinueMarkup({
       dispatch: (tr) => {
@@ -140,14 +146,20 @@ export function registerListContinuation(mod: VimModule): void {
       commands.newlineAndIndent(cm);
       return;
     }
+    // Mirror the adapter's dispatchChange tagging exactly: .start only for
+    // an op's first change; counted-`o` repetitions replay at Esc time with
+    // NO curOp at all and must tag plain .compose so history joins them the
+    // same way the stock path does (Codex round 3, finding 2).
+    const op = (cm as { curOp?: null | { lastChange?: unknown } }).curOp;
     view.dispatch({
       changes: tr.changes,
       effects: tr.effects,
       scrollIntoView: true,
       selection: tr.selection,
-      // The discriminator above guarantees this is the op's first change,
-      // matching what the adapter's dispatchChange would tag here.
-      userEvent: "input.type.compose.start",
+      userEvent:
+        op && !op.lastChange
+          ? "input.type.compose.start"
+          : "input.type.compose",
     });
   };
   listContinuationRegistered = true;
