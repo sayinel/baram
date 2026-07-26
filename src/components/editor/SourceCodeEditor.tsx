@@ -14,7 +14,12 @@ import {
   indentUnit,
   syntaxHighlighting,
 } from "@codemirror/language";
-import { Compartment, EditorSelection, EditorState } from "@codemirror/state";
+import {
+  Compartment,
+  EditorSelection,
+  EditorState,
+  Prec,
+} from "@codemirror/state";
 import {
   drawSelection,
   EditorView,
@@ -25,6 +30,8 @@ import {
 import { getHighlightStyle } from "../../extensions/nodes/code-block-highlight";
 import { getLanguageExtension } from "../../extensions/nodes/code-block-languages";
 import { useSettingsStore } from "../../stores/settings/store";
+import { logger } from "../../utils/logger";
+import { loadVimExtension } from "./vim-mode";
 
 export interface SourceCodeEditorRef {
   getContent(): string;
@@ -96,12 +103,22 @@ export function SourceCodeEditor({
     const langCompartment = new Compartment();
     const isMarkdown = !language || language === "markdown";
     const initialLang = isMarkdown ? markdown() : [];
+    // §298 vim slot — empty unless the setting is on; filled asynchronously so
+    // users who never enable vim never download the module.
+    const vimCompartment = new Compartment();
 
     const state = EditorState.create({
       doc: content,
       extensions: [
+        // Swallow Mod-/ — handled by App's global shortcut. NOTE: this does
+        // NOT sit "above" vim in DOM order — ALL keymaps run through a single
+        // Prec.default DOM handler (@codemirror/view handleKeyEvents), so
+        // vim's own Prec.highest ViewPlugin handler sees keys first. Mod-/
+        // keeps working only because vim binds no <M-/>/<C-/>; the real
+        // source-mode escape hatch is the window-level dispatcher (S3).
+        Prec.highest(keymap.of([{ key: "Mod-/", run: () => true }])),
+        vimCompartment.of([]),
         keymap.of([
-          { key: "Mod-/", run: () => true }, // Swallow — handled by App's global shortcut
           ...defaultKeymap,
           ...historyKeymap,
           ...(autoPair ? closeBracketsKeymap : []),
@@ -154,6 +171,39 @@ export function SourceCodeEditor({
       });
     }
 
+    // §298 Vim keybindings (Phase 0a) — async load + live toggle.
+    //
+    // Local `vimDisposed`/`vimRevision` instead of the shared isDestroyingRef:
+    // that ref is reset to false by the NEXT effect run (StrictMode double
+    // invoke), so a late promise from a destroyed generation could dispatch
+    // into a dead view. The revision token also drops a stale load that
+    // resolves after the user toggled the setting off (Codex plan review).
+    let vimDisposed = false;
+    let vimRevision = 0;
+    const applyVim = (enabled: boolean) => {
+      const token = ++vimRevision;
+      if (!enabled) {
+        view.dispatch({ effects: vimCompartment.reconfigure([]) });
+        return;
+      }
+      loadVimExtension()
+        .then((ext) => {
+          if (vimDisposed || token !== vimRevision) return;
+          view.dispatch({ effects: vimCompartment.reconfigure(ext) });
+        })
+        .catch((err: unknown) => {
+          // Editor stays fully usable without vim; the loader does not cache
+          // rejections, so the next toggle/mount retries the chunk load.
+          if (!vimDisposed) logger.error("[vim] Failed to load vim:", err);
+        });
+    };
+    applyVim(useSettingsStore.getState().vimMode);
+    // Apply setting changes while the editor is open (mount-time read alone
+    // would ignore a toggle until the next source-mode entry).
+    const unsubscribeVim = useSettingsStore.subscribe((s, prev) => {
+      if (s.vimMode !== prev.vimMode) applyVim(s.vimMode);
+    });
+
     // Two-phase init: focus first (triggers WebKit artifacts), then clean up
     requestAnimationFrame(() => {
       if (isDestroyingRef.current) return;
@@ -193,6 +243,9 @@ export function SourceCodeEditor({
 
     return () => {
       isDestroyingRef.current = true;
+      vimDisposed = true;
+      vimRevision++;
+      unsubscribeVim();
       view.destroy();
       viewRef.current = null;
     };

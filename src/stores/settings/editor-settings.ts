@@ -29,12 +29,16 @@ export interface EditorSettingsSlice {
   setSpellCheck: (enabled: boolean) => void;
   setStrikethrough: (enabled: boolean) => void;
   setTabSize: (size: number) => void;
+  setVimMode: (enabled: boolean) => void;
   setVirtualizeLargeDocs: (enabled: boolean) => void;
   setZoomLevel: (level: number) => void;
   smartPunctuation: boolean;
   spellCheck: boolean;
   strikethrough: boolean;
   tabSize: number;
+  // §298 Vim keybindings in source mode (Phase 0a). Off by default; the vim
+  // module is dynamically imported only when enabled.
+  vimMode: boolean;
   // §perf-large-file C4: window large docs (display:none off-screen blocks).
   // Kill-switch — default on; active only on the large keep-alive editor.
   virtualizeLargeDocs: boolean;
@@ -59,6 +63,7 @@ export const createEditorSettingsSlice: StateCreator<
   editorMaxWidth: 800,
   zoomLevel: 1,
   spellCheck: false,
+  vimMode: false,
   virtualizeLargeDocs: true,
 
   // Markdown
@@ -86,6 +91,7 @@ export const createEditorSettingsSlice: StateCreator<
       zoomLevel: Math.round(Math.max(0.5, Math.min(2, zoomLevel)) * 100) / 100,
     }),
   setSpellCheck: (spellCheck) => set({ spellCheck }),
+  setVimMode: (vimMode) => set({ vimMode }),
   setVirtualizeLargeDocs: (virtualizeLargeDocs) => set({ virtualizeLargeDocs }),
 
   // Markdown setters

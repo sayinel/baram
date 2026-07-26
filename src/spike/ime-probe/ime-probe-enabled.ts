@@ -8,7 +8,9 @@
 //   VITE_IME_PROBE=1 npm run tauri dev   # authoritative (WKWebView)
 //   VITE_IME_PROBE=1 npm run dev         # quick first look (Safari, NOT authoritative)
 //
-// Production bundles never set it, so the probe is inert in every shipped artifact.
+// The DEV check makes production impossibility a code guarantee rather than a
+// convention: even if someone sets VITE_IME_PROBE=1 in a production build
+// environment, the probe stays inert (Codex plan-review hardening).
 export function isImeProbeEnabled(): boolean {
-  return import.meta.env.VITE_IME_PROBE === "1";
+  return import.meta.env.DEV && import.meta.env.VITE_IME_PROBE === "1";
 }

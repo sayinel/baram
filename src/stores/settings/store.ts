@@ -116,8 +116,11 @@ export const useSettingsStore = create<SettingsState>()(
         locale: state.locale,
         keybindingOverrides: state.keybindingOverrides,
         autoCheckUpdates: state.autoCheckUpdates,
+        // §298 vim keybindings — partialize is a whitelist; omitting this
+        // would silently drop the setting on every restart.
+        vimMode: state.vimMode,
       }),
-      version: 16,
+      version: 17,
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as Record<string, unknown>;
 
@@ -310,6 +313,13 @@ export const useSettingsStore = create<SettingsState>()(
         if (version < 16) {
           if (state.autoCheckUpdates === undefined) {
             state.autoCheckUpdates = true;
+          }
+        }
+
+        // v16 → v17: §298 Vim keybindings in source mode (default off)
+        if (version < 17) {
+          if (state.vimMode === undefined) {
+            state.vimMode = false;
           }
         }
 
