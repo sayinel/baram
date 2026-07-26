@@ -78,6 +78,7 @@ import {
   startAppUpdateChecker,
   stopAppUpdateChecker,
 } from "./services/app-update";
+import { isImeProbeEnabled } from "./spike/ime-probe/ime-probe-enabled";
 import { useAIStore } from "./stores/ai/ai";
 import { useEditorStore } from "./stores/editor/editor";
 import { isFileTab, isGraphTab } from "./stores/editor/editor";
@@ -149,6 +150,11 @@ const AboutModal = lazy(() =>
   import("./components/settings/AboutModal").then((m) => ({
     default: m.AboutModal,
   })),
+);
+// §298 Vim Phase 0a IME measurement spike. Lazy so it stays out of the main
+// bundle; the chunk is never requested unless VITE_IME_PROBE=1.
+const ImeProbe = lazy(() =>
+  import("./spike/ime-probe/ImeProbe").then((m) => ({ default: m.ImeProbe })),
 );
 const UpdateDialog = lazy(() =>
   import("./components/settings/UpdateDialog").then((m) => ({
@@ -1009,6 +1015,15 @@ function App() {
 
 /** §89 Root component — routes between vault mode and file mode. */
 function AppRoot() {
+  // §298 IME probe spike — replaces the app UI entirely. Gate is off in every
+  // shipped build (see spike/ime-probe/ime-probe-enabled.ts).
+  if (isImeProbeEnabled()) {
+    return (
+      <Suspense fallback={null}>
+        <ImeProbe />
+      </Suspense>
+    );
+  }
   if (FILE_MODE_PATH) {
     return (
       <Suspense fallback={null}>
