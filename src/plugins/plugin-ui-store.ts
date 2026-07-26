@@ -92,7 +92,17 @@ export const usePluginUIStore = create<PluginUIState>()((set) => ({
       };
     }),
 
-  /** The plugin's command handlers are registered: its items are clickable now. */
+  /**
+   * The plugin's command handlers are registered: its items are clickable now.
+   *
+   * Clearing `pending` per PLUGIN rather than per ITEM is only sound because
+   * `validateContributions` refuses a `statusBar[].command` that names an undeclared
+   * command — so every declared command is guaranteed a handler, and "this plugin's
+   * handlers are registered" really does mean "all of its items are clickable". Without
+   * that cross-check a one-character typo in a `command` would clear `pending` along with
+   * its siblings and leave a permanently enabled, permanently dead button (§260 Phase 4a
+   * code review). The two guards hold this invariant up together; do not remove one.
+   */
   markPluginCommandsReady: (pluginId) =>
     set((state) => {
       if (
