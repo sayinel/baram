@@ -141,6 +141,22 @@ impl ContextManager {
         self.active_id.read().await.clone()
     }
 
+    /// §260 Phase 4a — the canonical root a vault-RELATIVE path resolves against,
+    /// with the entry's type, for one registered context.
+    ///
+    /// Exists for the sandboxed plugin tier, whose paths are relative to a root it is
+    /// never told (`plugin_cmd::resolve_plugin_path`): an absolute path would disclose
+    /// the user's home directory to every `files`-granted plugin. The type comes along
+    /// because a `File` context (§89 single-file mode) has no directory to join to.
+    ///
+    /// Returns the CANONICAL path, so the join happens below a symlink-resolved root and
+    /// `validate_path_any`'s later `starts_with` compares like with like.
+    pub async fn context_root(&self, context_id: &str) -> Option<(PathBuf, ContextType)> {
+        let map = self.contexts.read().await;
+        map.get(context_id)
+            .map(|s| (s.canonical_path.clone(), s.info.context_type.clone()))
+    }
+
     // ── Listing ────────────────────────────────────────────────────────────────
 
     /// Return all registered contexts sorted by `added_at` (ascending).

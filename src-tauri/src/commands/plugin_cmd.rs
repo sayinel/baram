@@ -369,6 +369,95 @@ fn reject_app_state_path(resolved: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
+/// §260 Phase 4a — a sandboxed plugin's path, validated as VAULT-RELATIVE.
+///
+/// The sandboxed tier cannot express an absolute path: the host never tells a sandbox
+/// a root (that would hand every `files`-granted plugin the user's home directory and
+/// username), so a path from that realm is always relative to a context root resolved
+/// here. Refusing anything but plain components is what makes the domain small enough
+/// to reason about — `..`, a leading `/`, and a Windows prefix (`C:`, `\\server\share`)
+/// are all rejected before any filesystem call.
+///
+/// This NARROWS the input; it does not replace the vault rule. `ensure_path_in_vault`
+/// still runs on the resolved path, which is what catches the case this check cannot
+/// see: an in-vault symlink whose target is outside.
+///
+/// `""` and `"."` are accepted and mean the context root, so a plugin needs no
+/// bootstrap path at all — `listDir("")` enumerates the vault.
+fn vault_relative(path: &str) -> Result<&std::path::Path, String> {
+    use std::path::Component;
+    let relative = std::path::Path::new(path);
+    for component in relative.components() {
+        match component {
+            Component::CurDir | Component::Normal(_) => {}
+            // Deliberately does not echo which rule was hit: one message for every
+            // rejected shape is less to keep in sync, and a plugin learns nothing
+            // useful from the distinction.
+            _ => {
+                return Err(format!(
+                    "path \"{path}\" must be relative to the context root \
+                     (no absolute paths, no \"..\")"
+                ))
+            }
+        }
+    }
+    Ok(relative)
+}
+
+/// Where a sandboxed plugin's relative path lands, given its anchor context.
+///
+/// Extracted from `check_plugin_file_path` so the whole decision is unit-testable
+/// without an `AppHandle` (the 3c-2a M4 / 3c-2c `admit_op` pattern): a test that can
+/// only assert on `vault_relative` in isolation would still pass if the caller stopped
+/// calling it.
+fn plugin_target_path(
+    root: std::path::PathBuf,
+    context_type: &crate::context::types::ContextType,
+    path: &str,
+) -> Result<std::path::PathBuf, String> {
+    let relative = vault_relative(path)?;
+    // A `File` context (§89 single-file mode) is a file, not a directory, so the only
+    // path it can anchor is the file itself. Joining onto it would produce a path that
+    // cannot exist, and the error would read as "not found" rather than "there is no
+    // directory here".
+    if *context_type == crate::context::types::ContextType::File {
+        if relative.components().any(|c| c.as_os_str() != ".") {
+            return Err(format!(
+                "path \"{path}\": this context is a single file, so only \"\" names it"
+            ));
+        }
+        return Ok(root);
+    }
+    Ok(root.join(relative))
+}
+
+/// The context a relative path resolves against: the one the caller named, else the
+/// active one. Returns its canonical root and type.
+///
+/// Naming a context is not an escalation — `ensure_path_in_vault` already admits any
+/// registered context, so this reaches the same tree either way. It exists because a
+/// plugin that hears `file:open` for context A must be able to read that file while the
+/// user works in context B.
+async fn plugin_path_anchor(
+    app: &tauri::AppHandle,
+    context: Option<&str>,
+) -> Result<(std::path::PathBuf, crate::context::types::ContextType), String> {
+    use tauri::Manager;
+    let manager = app.state::<crate::context::ContextManager>();
+    let id = match context {
+        Some(id) => id.to_string(),
+        None => manager
+            .active_id()
+            .await
+            .ok_or_else(|| "no context is open".to_string())?,
+    };
+    manager
+        .context_root(&id)
+        .await
+        // Echoes the id the CALLER sent, which it already knows.
+        .ok_or_else(|| format!("unknown context \"{id}\""))
+}
+
 /// Every check a brokered file op needs, and the path the op must then act on.
 ///
 /// Resolved ONCE (3c-2c review, F7): the vault rule, the app-state carve-out and the
@@ -384,11 +473,17 @@ fn reject_app_state_path(resolved: &std::path::Path) -> Result<(), String> {
 ///
 /// The vault rule itself is `fs_cmd::ensure_path_in_vault` — the same §88
 /// multi-context, deny-when-nothing-is-open decision `read_file` makes, not a copy.
+///
+/// §260 Phase 4a — the incoming `path` is vault-RELATIVE (`vault_relative`) and is
+/// joined onto the anchor context's canonical root before any of that runs.
 async fn check_plugin_file_path(
     app: &tauri::AppHandle,
+    context: Option<&str>,
     path: &str,
 ) -> Result<std::path::PathBuf, String> {
-    let resolved = crate::context::manager::resolve_canonical(path)?;
+    let (root, context_type) = plugin_path_anchor(app, context).await?;
+    let target = plugin_target_path(root, &context_type, path)?;
+    let resolved = crate::context::manager::resolve_canonical(authorized_path_str(&target)?)?;
     let resolved_str = authorized_path_str(&resolved)?;
     super::fs_cmd::ensure_path_in_vault(app, resolved_str).await?;
     reject_app_state_path(&resolved)?;
@@ -437,15 +532,19 @@ async fn execute_op(
         // §260 3c-2c — vault-bounded file ops. Authorization (files / files:readonly)
         // already happened in `plugin_call`; what is left is WHERE, which is the same
         // decision `read_file` makes, plus the `.baram` carve-out.
-        FilesRead { path } => {
-            let resolved = check_plugin_file_path(app, &path).await?;
+        FilesRead { context, path } => {
+            let resolved = check_plugin_file_path(app, context.as_deref(), &path).await?;
             let text = plugin::read_text_capped(&resolved, MAX_PLUGIN_FILE_BYTES)
                 .await
                 .map_err(|e| format!("file \"{path}\" {e}"))?;
             Ok(serde_json::json!(text))
         }
-        FilesWrite { path, content } => {
-            let resolved = check_plugin_file_path(app, &path).await?;
+        FilesWrite {
+            content,
+            context,
+            path,
+        } => {
+            let resolved = check_plugin_file_path(app, context.as_deref(), &path).await?;
             // Measured on the string we already hold (Tauri parsed the op before this
             // command ran), so unlike the read there is nothing to save by checking
             // first — this bounds what reaches the DISK, not what reaches memory.
@@ -470,8 +569,8 @@ async fn execute_op(
                 .map_err(|_| format!("file \"{path}\" could not be written"))?;
             Ok(serde_json::Value::Null)
         }
-        FilesList { path } => {
-            let resolved = check_plugin_file_path(app, &path).await?;
+        FilesList { context, path } => {
+            let resolved = check_plugin_file_path(app, context.as_deref(), &path).await?;
             // Names only — parity with the trusted tier's `FilesAPI.listDir`, and
             // strictly less than `FileEntry` (no sizes, no mtimes) for the same call.
             // Non-recursive: a recursive walk of a large vault is a cost a plugin
@@ -811,6 +910,51 @@ mod tests {
         let resolved = crate::context::manager::resolve_canonical(path.to_str().unwrap())?;
         reject_app_state_path(&resolved)?;
         Ok(resolved)
+    }
+
+    /// §260 Phase 4a — the sandboxed tier's whole path domain, asserted through the
+    /// function the op actually calls.
+    ///
+    /// The point of the phase is that a sandbox is never told a root, so it cannot form
+    /// an absolute path; these are the shapes a plugin could still try. Every rejection
+    /// here happens before any filesystem call.
+    #[test]
+    fn a_sandbox_path_cannot_leave_its_context_root() {
+        use crate::context::types::ContextType;
+        let root = std::path::PathBuf::from(if cfg!(windows) { r"C:\vault" } else { "/vault" });
+        let vault = |p: &str| plugin_target_path(root.clone(), &ContextType::Vault, p);
+
+        // Plain relative paths land under the root.
+        assert_eq!(vault("note.md").unwrap(), root.join("note.md"));
+        assert_eq!(
+            vault("notes/deep/a.md").unwrap(),
+            root.join("notes").join("deep").join("a.md")
+        );
+        // …and the root itself needs no path at all, which is what frees a plugin from
+        // having to learn one (the smoke fixture's deleted `VAULT_DIR`).
+        assert_eq!(vault("").unwrap(), root);
+        assert_eq!(vault(".").unwrap(), root);
+        assert_eq!(vault("./note.md").unwrap(), root.join("note.md"));
+
+        let refused = |p: &str| {
+            let e = vault(p).expect_err(&format!("must be refused: {p:?}"));
+            assert!(e.contains("must be relative"), "unexpected error: {e}");
+        };
+        refused("/etc/passwd"); // absolute
+        refused("../../etc/passwd"); // traversal
+        refused("notes/../../escape.md"); // traversal after a valid component
+        refused(".."); // bare traversal
+        if cfg!(windows) {
+            refused(r"C:\Windows\System32\x"); // a drive prefix is absolute here
+            refused(r"\\server\share\x"); // and so is a UNC path
+            refused(r"\Windows\x"); // rooted, no prefix
+        }
+
+        // §89 single-file context: it anchors only itself.
+        let file = |p: &str| plugin_target_path(root.clone(), &ContextType::File, p);
+        assert_eq!(file("").unwrap(), root);
+        let e = file("sibling.md").expect_err("a file context has no directory");
+        assert!(e.contains("single file"), "unexpected error: {e}");
     }
 
     /// §260 3c-2c — `.baram/` is the app's own per-vault state, so a plugin that could

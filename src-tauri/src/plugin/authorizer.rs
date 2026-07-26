@@ -41,14 +41,24 @@ pub enum PluginOp {
     /// SAME vault rule as `read_file` (`fs_cmd::ensure_path_in_vault`), so a
     /// sandboxed plugin reaches exactly the tree the trusted tier does, minus the
     /// app's own `.baram` state (see `plugin_cmd::reject_app_state_path`).
+    ///
+    /// §260 Phase 4a — `path` is **relative to a context root** and an absolute one is
+    /// refused (`plugin_cmd::vault_relative`). The sandbox is never told a root, so it
+    /// cannot form an absolute path in the first place; this keeps the user's home
+    /// directory out of the tier entirely. `context` names which registered context to
+    /// anchor to — a plugin learns ids from delivered events — and defaults to the
+    /// active one.
     FilesList {
+        context: Option<String>,
         path: String,
     },
     FilesRead {
+        context: Option<String>,
         path: String,
     },
     FilesWrite {
         content: String,
+        context: Option<String>,
         path: String,
     },
     StorageRead {
@@ -309,12 +319,17 @@ mod tests {
             "/p/alpha".into(),
         );
         let read = PluginOp::FilesRead {
-            path: "/v/note.md".into(),
+            context: None,
+            path: "note.md".into(),
         };
-        let list = PluginOp::FilesList { path: "/v".into() };
+        let list = PluginOp::FilesList {
+            context: None,
+            path: String::new(),
+        };
         let write = PluginOp::FilesWrite {
-            path: "/v/note.md".into(),
             content: "x".into(),
+            context: None,
+            path: "note.md".into(),
         };
         assert_eq!(a.authorize_op("plugin-alpha", &read).unwrap(), "alpha");
         assert_eq!(a.authorize_op("plugin-alpha", &list).unwrap(), "alpha");
@@ -341,7 +356,8 @@ mod tests {
             .authorize_op(
                 "plugin-alpha",
                 &PluginOp::FilesRead {
-                    path: "/v/note.md".into()
+                    context: None,
+                    path: "note.md".into()
                 }
             )
             .is_ok());
@@ -349,8 +365,9 @@ mod tests {
             .authorize_op(
                 "plugin-alpha",
                 &PluginOp::FilesWrite {
-                    path: "/v/note.md".into(),
-                    content: "x".into()
+                    content: "x".into(),
+                    context: None,
+                    path: "note.md".into()
                 }
             )
             .is_ok());
@@ -366,7 +383,8 @@ mod tests {
             .authorize_op(
                 "plugin-alpha",
                 &PluginOp::FilesRead {
-                    path: "/v/note.md".into(),
+                    context: None,
+                    path: "note.md".into(),
                 },
             )
             .expect_err("no grant must be refused");
