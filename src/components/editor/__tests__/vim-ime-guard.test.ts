@@ -7,7 +7,7 @@
 import type { EditorView } from "@codemirror/view";
 import type { CodeMirror } from "@replit/codemirror-vim";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   attachVimImeGuard,
@@ -22,6 +22,7 @@ interface FakeCm {
   off(type: string, f: (ev: { mode: string }) => void): void;
   offCalls: number;
   on(type: string, f: (ev: { mode: string }) => void): void;
+  overWriteSelection: (text: string) => void;
   state: {
     overwrite?: boolean;
     vim?: { insertMode?: boolean; visualMode?: boolean };
@@ -46,6 +47,7 @@ function makeCm(
   return {
     handlers,
     offCalls: 0,
+    overWriteSelection: vi.fn(),
     state: { overwrite, vim },
     on(type, f) {
       handlers.set(type, [...(handlers.get(type) ?? []), f]);
@@ -241,71 +243,104 @@ describe("attachVimImeGuard", () => {
 });
 
 // Replace-mode double input (2026-07-27 smoke): vim's overwrite branch
-// inserts e.key manually while the composition commits it again. The guard
-// stops IME-bound keydowns on view.dom (capture) so they never reach vim's
-// contentDOM handler — pinned here by whether the target listener fires.
-describe("replace-mode IME keydown intercept", () => {
-  function pressKey(
-    target: HTMLElement,
-    key: string,
-    init: KeyboardEventInit = {},
-  ): boolean {
-    let reachedTarget = false;
-    const probe = () => {
-      reachedTarget = true;
-    };
-    target.addEventListener("keydown", probe);
-    target.dispatchEvent(
-      new KeyboardEvent("keydown", {
-        bubbles: true,
-        cancelable: true,
-        key,
-        ...init,
-      }),
-    );
-    target.removeEventListener("keydown", probe);
-    return reachedTarget;
+// inserts e.key manually while the composition commits it again. Fix shape
+// per Codex round 5: keydowns are NEVER touched (CodeMirror's
+// compositionPendingKey bookkeeping must keep running); instead the
+// adapter's overWriteSelection is wrapped and skipped only when the IME
+// owns the text.
+describe("replace-mode IME overwrite dedupe", () => {
+  function fireComposition(el: HTMLElement, type: string) {
+    el.dispatchEvent(new Event(type, { bubbles: true }));
   }
 
-  it("replace mode: a Korean jamo keydown never reaches the editor", () => {
-    const view = makeView();
-    attachVimImeGuard(asView(view), asCm(makeCm({ insertMode: true }, true)));
-    expect(pressKey(view.contentDOM, "ㅇ")).toBe(false);
-  });
-
-  it("replace mode: ASCII overwrite keys pass through untouched", () => {
-    const view = makeView();
-    attachVimImeGuard(asView(view), asCm(makeCm({ insertMode: true }, true)));
-    expect(pressKey(view.contentDOM, "a")).toBe(true);
-  });
-
-  it("replace mode: Esc and modifier combos pass through", () => {
-    const view = makeView();
-    attachVimImeGuard(asView(view), asCm(makeCm({ insertMode: true }, true)));
-    expect(pressKey(view.contentDOM, "Escape")).toBe(true);
-    expect(pressKey(view.contentDOM, "ㅇ", { metaKey: true })).toBe(true);
-  });
-
-  it("normal mode: Korean keydowns still flow (langmap motions need them)", () => {
-    const view = makeView();
-    const cm = makeCm({});
-    attachVimImeGuard(asView(view), asCm(cm));
-    expect(pressKey(view.contentDOM, "ㅓ")).toBe(true);
-    // Entering replace live must flip the intercept on...
-    cm.emit("replace");
-    expect(pressKey(view.contentDOM, "ㅓ")).toBe(false);
-    // ...and leaving it must flip it back off.
-    cm.emit("insert");
-    expect(pressKey(view.contentDOM, "ㅓ")).toBe(true);
-  });
-
-  it("dispose removes the keydown intercept", () => {
-    const view = makeView();
-    const dispose = attachVimImeGuard(
-      asView(view),
-      asCm(makeCm({ insertMode: true }, true)),
+  function fireImeBeforeInput(el: HTMLElement, data: string) {
+    el.dispatchEvent(
+      new InputEvent("beforeinput", {
+        bubbles: true,
+        cancelable: true,
+        data,
+        inputType: "insertText",
+      }),
     );
+  }
+
+  it("keydowns are left alone — even Korean jamo in replace mode", () => {
+    const view = makeView();
+    attachVimImeGuard(asView(view), asCm(makeCm({ insertMode: true }, true)));
+    let reached = false;
+    view.contentDOM.addEventListener("keydown", () => {
+      reached = true;
+    });
+    view.contentDOM.dispatchEvent(
+      new KeyboardEvent("keydown", { bubbles: true, key: "ㅇ" }),
+    );
+    expect(reached).toBe(true);
+  });
+
+  it("skips the manual overwrite while a composition is active", () => {
+    const view = makeView();
+    const cm = makeCm({ insertMode: true }, true);
+    const orig = cm.overWriteSelection;
+    attachVimImeGuard(asView(view), asCm(cm));
+    fireComposition(view.contentDOM, "compositionstart");
+    cm.overWriteSelection("ㅇ");
+    expect(orig).not.toHaveBeenCalled();
+  });
+
+  it("direct-layout characters keep full overwrite semantics", () => {
+    // é/ñ/κ arrive with no composition and no preceding IME beforeinput —
+    // the wrapper must pass them through (Codex round 5, MEDIUM finding).
+    const view = makeView();
+    const cm = makeCm({ insertMode: true }, true);
+    const orig = cm.overWriteSelection;
+    attachVimImeGuard(asView(view), asCm(cm));
+    cm.overWriteSelection("é");
+    expect(orig).toHaveBeenCalledWith("é");
+  });
+
+  it("composition end restores overwrite for subsequent direct keys", () => {
+    const view = makeView();
+    const cm = makeCm({ insertMode: true }, true);
+    const orig = cm.overWriteSelection;
+    attachVimImeGuard(asView(view), asCm(cm));
+    fireComposition(view.contentDOM, "compositionstart");
+    fireComposition(view.contentDOM, "compositionend");
+    cm.overWriteSelection("x");
+    expect(orig).toHaveBeenCalledWith("x");
+  });
+
+  it("skips when a just-seen insertText beforeinput carries the same text", () => {
+    // Probe-page IME mode: cancelable insertText arrives BEFORE the keydown.
+    const view = makeView();
+    const cm = makeCm({ insertMode: true }, true);
+    const orig = cm.overWriteSelection;
+    attachVimImeGuard(asView(view), asCm(cm));
+    fireImeBeforeInput(view.contentDOM, "한");
+    cm.overWriteSelection("한");
+    expect(orig).not.toHaveBeenCalled();
+    // A DIFFERENT character is not the IME's — it must overwrite.
+    cm.overWriteSelection("z");
+    expect(orig).toHaveBeenCalledWith("z");
+  });
+
+  it("only replace mode dedupes — other modes pass through untouched", () => {
+    const view = makeView();
+    const cm = makeCm({ insertMode: true }, true);
+    const orig = cm.overWriteSelection;
+    attachVimImeGuard(asView(view), asCm(cm));
+    cm.emit("insert");
+    fireComposition(view.contentDOM, "compositionstart");
+    cm.overWriteSelection("ㅇ");
+    expect(orig).toHaveBeenCalledWith("ㅇ");
+  });
+
+  it("dispose restores the original overWriteSelection reference", () => {
+    const view = makeView();
+    const cm = makeCm({ insertMode: true }, true);
+    const orig = cm.overWriteSelection;
+    const dispose = attachVimImeGuard(asView(view), asCm(cm));
+    expect(cm.overWriteSelection).not.toBe(orig);
     dispose();
-    expect(pressKey(view.contentDOM, "ㅇ")).toBe(true);
+    expect(cm.overWriteSelection).toBe(orig);
   });
 });

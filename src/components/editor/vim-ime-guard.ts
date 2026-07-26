@@ -17,12 +17,22 @@
 // overwrite branch manually inserts `e.key` on keydown whenever key.length
 // is 1 — and macOS WKWebView reports the REAL jamo on Korean keydowns
 // (key="ㅇ"), so vim inserts it AND the (non-cancelable) composition commits
-// it again: two characters per press. Fix: in replace mode, non-ASCII
-// printable keydowns are stopped in the capture phase on view.dom, before
-// vim's handler — the composition alone owns the key. Interim semantics:
-// R + Korean INSERTS composed syllables without consuming the character
-// under the cursor (overwrite emulation is a follow-up pending device
-// iteration); English R overwrite is untouched.
+// it again: two characters per press.
+//
+// Fix shape (Codex round 5): the keydown must keep flowing — stopping it
+// starves CodeMirror's InputState bookkeeping (compositionPendingKey never
+// clears → Safari swallows the user's next Esc), and any key-based
+// predicate breaks direct non-Latin layouts (é/ñ/κ overwrite). Instead,
+// `cm.overWriteSelection` is wrapped per editor: when the IME owns the text
+// (composition active — WebKit fires composition events BEFORE the trailing
+// keydown, spike-measured — or a just-seen matching insertText beforeinput,
+// the probe-page mode), the manual overwrite is skipped and the composition
+// inserts alone. Direct-layout characters see no composition and keep full
+// overwrite semantics. Wrapping the METHOD also closes the adapter's
+// keypress side-door (dead-key completions reach the same branch there).
+// Interim semantics: R + IME text INSERTS composed syllables without
+// consuming the character under the cursor (overwrite emulation is a
+// follow-up pending device iteration).
 //
 // Static imports here are type-only for @replit/codemirror-vim — anything
 // runtime would pull the vim chunk into the main bundle.
@@ -52,9 +62,18 @@ export function attachVimImeGuard(
   onModeChange?: (mode: VimModeName) => void,
 ): () => void {
   let mode = initialVimMode(cm);
+  let composing = false;
+  let lastImeText: null | string = null;
+  let lastImeAt = 0;
 
   const onBeforeInput = (e: Event) => {
-    const { inputType } = e as InputEvent;
+    const { data, inputType } = e as InputEvent;
+    if (inputType === "insertText" || inputType === "insertCompositionText") {
+      // Evidence trail for the overwrite wrapper (probe-page IME mode
+      // delivers a cancelable insertText BEFORE the keydown).
+      lastImeText = data ?? null;
+      lastImeAt = Date.now();
+    }
     if (shouldBlockImeInput(mode) && BLOCKED_INPUT_TYPES.has(inputType)) {
       e.preventDefault();
     }
@@ -62,19 +81,33 @@ export function attachVimImeGuard(
   // Capture phase: cancel before CodeMirror's own handlers see the event.
   view.contentDOM.addEventListener("beforeinput", onBeforeInput, true);
 
-  const onKeyDown = (e: KeyboardEvent) => {
-    if (mode !== "replace") return;
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
-    // Non-ASCII printable key = IME-bound. Stop it before vim's overwrite
-    // branch double-inserts (see header). Esc/Enter/Backspace have
-    // multi-char key names and pass through untouched.
-    if (e.key.length !== 1 || e.key.charCodeAt(0) < 128) return;
-    e.stopPropagation();
+  const onCompositionStart = () => {
+    composing = true;
   };
-  // view.dom capture: fires while descending toward contentDOM, i.e. before
-  // ANY contentDOM listener (vim's handler is registered at the target,
-  // where capture flags no longer order anything).
-  view.dom.addEventListener("keydown", onKeyDown, true);
+  const onCompositionEnd = () => {
+    composing = false;
+  };
+  view.contentDOM.addEventListener(
+    "compositionstart",
+    onCompositionStart,
+    true,
+  );
+  view.contentDOM.addEventListener("compositionend", onCompositionEnd, true);
+
+  // Replace-mode dedupe: skip vim's manual overwrite when the IME owns the
+  // text (see header). The keydown itself is never touched, so CodeMirror's
+  // InputState bookkeeping stays intact.
+  const origOverWrite = cm.overWriteSelection;
+  cm.overWriteSelection = function (text: string) {
+    const imeOwns =
+      composing ||
+      view.composing ||
+      (lastImeText !== null &&
+        lastImeText === text &&
+        Date.now() - lastImeAt < 100);
+    if (mode === "replace" && imeOwns) return;
+    origOverWrite.call(cm, text);
+  };
 
   const onVimModeChange = (ev: { mode: string }) => {
     mode = ev.mode as VimModeName;
@@ -86,7 +119,17 @@ export function attachVimImeGuard(
   return () => {
     cm.off("vim-mode-change", onVimModeChange);
     view.contentDOM.removeEventListener("beforeinput", onBeforeInput, true);
-    view.dom.removeEventListener("keydown", onKeyDown, true);
+    view.contentDOM.removeEventListener(
+      "compositionstart",
+      onCompositionStart,
+      true,
+    );
+    view.contentDOM.removeEventListener(
+      "compositionend",
+      onCompositionEnd,
+      true,
+    );
+    cm.overWriteSelection = origOverWrite;
   };
 }
 
