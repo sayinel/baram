@@ -36,16 +36,26 @@ pub enum PluginOp {
         url: String,
         init: Option<PluginFetchInit>,
     },
+    /// §260 Phase 3c-2b — hand the caller its OWN plugin bundle so it can import it
+    /// from a `blob:` URL. Takes no path: Rust resolves the caller's directory from
+    /// the label-derived id, which is why the sandbox realm needs no `asset:` (and
+    /// therefore has no file-read capability at all).
+    SourceRead,
 }
 
 impl PluginOp {
-    pub fn required_capability(&self) -> &'static str {
+    /// The capability a caller must have been granted, or `None` for an op that
+    /// needs no grant — only a verified, registered identity.
+    pub fn required_capability(&self) -> Option<&'static str> {
         match self {
             PluginOp::StorageRead { .. }
             | PluginOp::StorageWrite { .. }
             | PluginOp::StorageList
-            | PluginOp::StorageRemove { .. } => "storage",
-            PluginOp::HttpFetch { .. } => "network",
+            | PluginOp::StorageRemove { .. } => Some("storage"),
+            PluginOp::HttpFetch { .. } => Some("network"),
+            // Reading one's own code is not a grantable privilege: it is the bytes
+            // the host was about to hand over anyway, and the op names no file.
+            PluginOp::SourceRead => None,
         }
     }
 }
@@ -86,6 +96,24 @@ impl PluginAuthorizer {
         plugin_id_from_label(label).is_some() && self.granted.lock().unwrap().contains_key(label)
     }
 
+    /// Authorize one op by the caller's label: verifies identity + registration
+    /// always, and the op's capability when it declares one. Preferred over
+    /// `authorize` at call sites, so the "does this op need a grant?" decision lives
+    /// with the op rather than being re-derived by every caller.
+    pub fn authorize_op(&self, label: &str, op: &PluginOp) -> Result<String, AuthzError> {
+        match op.required_capability() {
+            Some(cap) => self.authorize(label, cap),
+            None => {
+                let plugin_id = plugin_id_from_label(label).ok_or(AuthzError::NotASandbox)?;
+                if self.granted.lock().unwrap().contains_key(label) {
+                    Ok(plugin_id)
+                } else {
+                    Err(AuthzError::Unregistered)
+                }
+            }
+        }
+    }
+
     /// On success returns the caller's plugin id (derived from the label) so the
     /// broker uses the CALLER identity — never a client-supplied id — for the op.
     pub fn authorize(&self, label: &str, cap: &str) -> Result<String, AuthzError> {
@@ -112,11 +140,55 @@ mod tests {
     }
 
     #[test]
+    fn source_read_needs_no_capability_only_registration() {
+        // Reading one's OWN bundle is not a grantable privilege: it is the bytes the
+        // host was about to hand over anyway, and the op names no file. Identity is
+        // still verified, and an unregistered or non-sandbox caller is still refused.
+        assert_eq!(PluginOp::SourceRead.required_capability(), None);
+        let a = PluginAuthorizer::new();
+        assert!(matches!(
+            a.authorize_op("plugin-alpha", &PluginOp::SourceRead),
+            Err(AuthzError::Unregistered)
+        ));
+        a.register("plugin-alpha".into(), vec![]); // zero capabilities granted
+        assert_eq!(
+            a.authorize_op("plugin-alpha", &PluginOp::SourceRead)
+                .unwrap(),
+            "alpha"
+        );
+        assert!(matches!(
+            a.authorize_op("main", &PluginOp::SourceRead),
+            Err(AuthzError::NotASandbox)
+        ));
+    }
+
+    #[test]
+    fn authorize_op_still_enforces_capabilities_for_grantable_ops() {
+        let a = PluginAuthorizer::new();
+        a.register("plugin-alpha".into(), vec!["storage".into()]);
+        assert_eq!(
+            a.authorize_op("plugin-alpha", &PluginOp::StorageList)
+                .unwrap(),
+            "alpha"
+        );
+        assert!(matches!(
+            a.authorize_op(
+                "plugin-alpha",
+                &PluginOp::HttpFetch {
+                    url: "http://x".into(),
+                    init: None
+                }
+            ),
+            Err(AuthzError::Denied(_))
+        ));
+    }
+
+    #[test]
     fn required_capability_mapping() {
-        assert_eq!(PluginOp::StorageList.required_capability(), "storage");
+        assert_eq!(PluginOp::StorageList.required_capability(), Some("storage"));
         assert_eq!(
             PluginOp::StorageRead { key: "k".into() }.required_capability(),
-            "storage"
+            Some("storage")
         );
         assert_eq!(
             PluginOp::HttpFetch {
@@ -124,7 +196,7 @@ mod tests {
                 init: None
             }
             .required_capability(),
-            "network"
+            Some("network")
         );
     }
 

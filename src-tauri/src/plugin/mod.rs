@@ -539,6 +539,28 @@ fn plugin_data_dir(plugin_id: &str) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
+/// §260 Phase 3c-2b — read a plugin's entry bundle out of ITS OWN directory, for
+/// the `SourceRead` broker op that lets a sandbox `blob:`-import its code without
+/// any `asset:` (i.e. without a file-read capability).
+///
+/// `main` comes from the manifest, not from the caller, but it is still treated as
+/// untrusted input: both paths are canonicalized and the file must resolve inside
+/// `dir`, so a crafted manifest cannot walk out with `../` or a symlink.
+pub fn read_bundle_in(dir: &Path, main: &str) -> Result<String, String> {
+    let canonical_dir =
+        std::fs::canonicalize(dir).map_err(|e| format!("plugin directory is unreadable: {e}"))?;
+    let candidate = canonical_dir.join(main);
+    let canonical_file = std::fs::canonicalize(&candidate)
+        .map_err(|e| format!("plugin entry \"{main}\" is unreadable: {e}"))?;
+    if !canonical_file.starts_with(&canonical_dir) {
+        return Err(format!(
+            "plugin entry \"{main}\" resolves outside its own directory"
+        ));
+    }
+    std::fs::read_to_string(&canonical_file)
+        .map_err(|e| format!("could not read plugin entry \"{main}\": {e}"))
+}
+
 /// Resolves `key` to a path inside `dir`, rejecting any key that is not a
 /// single safe path segment so the result can never escape `dir`.
 fn resolve_key_path(dir: &Path, key: &str) -> Result<PathBuf, String> {
@@ -678,6 +700,37 @@ pub fn read_manifest_at(folder: &Path) -> Result<PluginManifest, PluginError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// §260 3c-2b — the bundle read backing `SourceRead`. `main` is manifest-supplied
+    /// and therefore untrusted: it must not be able to name a file outside the
+    /// plugin's own directory, or the op would become the file-read capability that
+    /// dropping `asset:` exists to remove.
+    #[test]
+    fn read_bundle_in_reads_own_entry_and_refuses_escapes() {
+        let base = std::env::temp_dir().join(format!("baram-src-{}", std::process::id()));
+        let plugin = base.join("plugin-a");
+        std::fs::create_dir_all(plugin.join("nested")).unwrap();
+        std::fs::write(
+            plugin.join("index.mjs"),
+            "export const activate = () => {};",
+        )
+        .unwrap();
+        std::fs::write(plugin.join("nested").join("deep.mjs"), "// deep").unwrap();
+        std::fs::write(base.join("secret.mjs"), "// another plugin's code").unwrap();
+
+        // The declared entry, and a nested file inside the plugin, are both fine.
+        assert!(read_bundle_in(&plugin, "index.mjs")
+            .unwrap()
+            .contains("activate"));
+        assert!(read_bundle_in(&plugin, "nested/deep.mjs").is_ok());
+
+        // Traversal out of the plugin dir is refused, as is a missing entry.
+        let escaped = read_bundle_in(&plugin, "../secret.mjs");
+        assert!(escaped.is_err(), "traversal must be refused: {escaped:?}");
+        assert!(read_bundle_in(&plugin, "nope.mjs").is_err());
+
+        std::fs::remove_dir_all(&base).ok();
+    }
 
     /// §260 3c-2a final pass (Q3) — two callers want OPPOSITE comparisons off this
     /// helper (`>` for the report cap, `>=` for the 8 KiB channel-queue threshold,

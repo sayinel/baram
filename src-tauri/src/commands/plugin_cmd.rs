@@ -267,11 +267,44 @@ fn send_to_sandbox(
     channels.send(&format!("plugin-{plugin_id}"), msg)
 }
 
+/// §260 3c-2b — resolve a plugin id to the directory that plugin was loaded from,
+/// then read its declared entry bundle. Installed plugins live under the plugin dir;
+/// a dev plugin lives in a registered dev folder, so those are scanned by manifest
+/// id. Nothing here takes a caller-supplied path.
+fn read_own_source(app: &tauri::AppHandle, plugin_id: &str) -> Result<String, String> {
+    let installed = plugin::get_plugin_dir()
+        .map_err(|e| e.to_string())?
+        .join(plugin_id);
+    if installed.is_dir() {
+        let manifest = plugin::read_manifest_at(&installed).map_err(|e| e.to_string())?;
+        return plugin::read_bundle_in(&installed, &manifest.main);
+    }
+    for folder in read_dev_folders(app)? {
+        let path = std::path::Path::new(&folder);
+        match plugin::read_manifest_at(path) {
+            Ok(manifest) if manifest.id == plugin_id => {
+                return plugin::read_bundle_in(path, &manifest.main);
+            }
+            // A dev folder whose manifest is missing or broken is simply not this
+            // plugin; `plugin_list_dev` already surfaces those to the user.
+            _ => continue,
+        }
+    }
+    Err(format!("plugin {plugin_id} is not installed"))
+}
+
 /// Execute an authorized op using the CALLER-derived plugin id (never a
 /// client-supplied id). Storage is namespaced per plugin id → isolation.
-async fn execute_op(plugin_id: &str, op: plugin::PluginOp) -> Result<serde_json::Value, String> {
+async fn execute_op(
+    app: &tauri::AppHandle,
+    plugin_id: &str,
+    op: plugin::PluginOp,
+) -> Result<serde_json::Value, String> {
     use plugin::PluginOp::*;
     match op {
+        // §260 3c-2b — the caller's OWN bundle, resolved from its label-derived id.
+        // No path argument exists, so a sandbox cannot name another plugin's file.
+        SourceRead => Ok(serde_json::json!(read_own_source(app, plugin_id)?)),
         StorageRead { key } => Ok(serde_json::json!(
             plugin::storage_read(plugin_id.to_string(), key).await?
         )),
@@ -386,12 +419,15 @@ pub async fn plugin_sandbox_send(
 pub async fn plugin_call(
     window: tauri::WebviewWindow,
     op: plugin::PluginOp,
+    app: tauri::AppHandle,
     authorizer: tauri::State<'_, plugin::PluginAuthorizer>,
 ) -> Result<serde_json::Value, String> {
+    // `authorize_op` keeps the "does this op need a grant?" decision on the op
+    // (§260 3c-2b: `SourceRead` needs none), so no call site can get it wrong.
     let plugin_id = authorizer
-        .authorize(window.label(), op.required_capability())
+        .authorize_op(window.label(), &op)
         .map_err(|e| e.to_string())?;
-    execute_op(&plugin_id, op).await
+    execute_op(&app, &plugin_id, op).await
 }
 
 #[cfg(test)]
