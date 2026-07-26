@@ -124,25 +124,87 @@ describe("SandboxSession host requests (§260 3c-2c)", () => {
     });
   });
 
-  it("times out a handler that never settles and RELEASES the slot", async () => {
+  it("times out a handler that never settles but KEEPS holding its slot", async () => {
+    // §260 3c-2c security review (F4): nothing cancels the provider stream, so
+    // freeing the slot at timeout let a plugin fire 4, wait out the timeout, fire 4
+    // more — unbounded concurrent LLM streams, defeating the bound's purpose. The
+    // sandbox is still ANSWERED at the timeout; it just cannot start more work.
     vi.useFakeTimers();
-    const handler = vi.fn(async () => new Promise(() => {}));
+    let settle: (v: unknown) => void = () => {};
+    const handler = vi.fn(
+      async () =>
+        new Promise((res) => {
+          settle = res;
+        }),
+    );
     const { ask, seen } = harness(handler);
-    ask("r1");
+    for (let i = 0; i < MAX_INFLIGHT_HOST_REQUESTS; i++) ask(`r${i}`);
     await vi.advanceTimersByTimeAsync(1);
     vi.advanceTimersByTime(HOST_REQUEST_TIMEOUT_MS);
     await vi.advanceTimersByTimeAsync(1);
 
     expect(seen).toContainEqual({
       type: "hostResponse",
-      requestId: "r1",
+      requestId: "r0",
       ok: false,
       error: expect.stringContaining("timed out") as unknown as string,
     });
-    // The slot is free again: a fresh request reaches the handler.
-    ask("r2");
+
+    ask("after-timeout");
     await vi.advanceTimersByTimeAsync(1);
-    expect(handler).toHaveBeenCalledTimes(2);
+    expect(handler).toHaveBeenCalledTimes(MAX_INFLIGHT_HOST_REQUESTS);
+    const refusal = seen.find(
+      (m) => (m as { requestId?: string }).requestId === "after-timeout",
+    );
+    expect((refusal as { error: string }).error).toContain("too many");
+
+    // Settling — not answering — is what frees the slots.
+    settle("done");
+    await vi.advanceTimersByTimeAsync(1);
+    ask("after-settle");
+    await vi.advanceTimersByTimeAsync(1);
+    expect(handler).toHaveBeenCalledTimes(MAX_INFLIGHT_HOST_REQUESTS + 1);
+  });
+
+  it("refuses a replayed id while its old handler is still alive", async () => {
+    // §260 3c-2c security review (F5): duplicates used to be refused only WHILE
+    // unanswered, so after a timeout the same id could be re-sent and the abandoned
+    // handler would stream stale tokens into the new callback and answer the new
+    // request with the old result.
+    vi.useFakeTimers();
+    let settle: (v: unknown) => void = () => {};
+    let leak: (t: string) => void = () => {};
+    const { ask, seen } = harness(async (_req, onToken) => {
+      leak = onToken;
+      return new Promise((res) => {
+        settle = res;
+      });
+    });
+    ask("r1");
+    await vi.advanceTimersByTimeAsync(1);
+    vi.advanceTimersByTime(HOST_REQUEST_TIMEOUT_MS);
+    await vi.advanceTimersByTimeAsync(1);
+
+    const before = seen.length;
+    ask("r1"); // the sandbox reuses the id it believes is finished
+    await vi.advanceTimersByTimeAsync(1);
+    const refusal = seen[before] as { error: string };
+    expect(refusal.error).toContain("already in flight");
+
+    // And the abandoned handler can neither stream nor answer into anything.
+    leak("stale");
+    settle("stale-result");
+    await vi.advanceTimersByTimeAsync(1);
+    expect(
+      seen.filter((m) => (m as { type: string }).type === "hostStreamToken"),
+    ).toEqual([]);
+    expect(
+      seen.filter(
+        (m) =>
+          (m as { requestId?: string; type: string }).type === "hostResponse" &&
+          (m as { requestId: string }).requestId === "r1",
+      ),
+    ).toHaveLength(2); // the timeout answer + the replay refusal, nothing else
   });
 
   it("does not answer twice when a timed-out handler settles late", async () => {

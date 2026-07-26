@@ -64,15 +64,26 @@ export class SandboxSession {
     (event: string, args: unknown[]) => void
   >();
   /**
-   * §260 3c-2c — in-flight mediated requests, by the sandbox's correlation id.
-   * Membership IS the "unanswered" state: `answerHostRequest` deletes before
-   * sending, which is what makes exactly one response per id (a handler settling
-   * after its timeout finds no entry) and what frees the in-flight slot. The timer
-   * guarantees an entry is eventually removed even if the handler never settles.
+   * §260 3c-2c — mediated requests this session is carrying, by the sandbox's
+   * correlation id.
+   *
+   * Two distinct states, because they end at different times (3c-2c security review,
+   * F4/F5):
+   * - `answered` — a `hostResponse` has been sent. At most one per id, ever.
+   * - membership — the request is still OCCUPYING a slot, which lasts until the
+   *   handler actually settles, NOT until it is answered.
+   *
+   * Freeing the slot at answer time was the defect: on timeout the provider stream
+   * keeps running (nothing cancels it), so a plugin could fire 4, wait out the
+   * timeout, fire 4 more, and hold unbounded concurrent LLM streams — defeating the
+   * bound whose stated purpose is to limit what one plugin can spend. Keeping the
+   * entry until settle also means a timed-out id cannot be replayed while its old
+   * handler is alive, which is what kept old tokens from streaming into a new
+   * request's callback.
    */
   private readonly inflightHost = new Map<
     string,
-    ReturnType<typeof setTimeout>
+    { answered: boolean; timer: null | ReturnType<typeof setTimeout> }
   >();
   private readonly offMessage: () => void;
   private readonly pending = new Map<string, Pending>();
@@ -135,6 +146,7 @@ export class SandboxSession {
     // Answer, don't just forget: the awaiting promise lives in the SANDBOX, so a
     // dropped frame would hang the plugin's `await` instead of failing it. Sent
     // before `transport.close()` below, which is why dispose's order matters.
+    // (`answerHostRequest` skips ids already answered, e.g. timed out.)
     for (const requestId of [...this.inflightHost.keys()]) {
       this.answerHostRequest(requestId, {
         type: "hostResponse",
@@ -142,6 +154,11 @@ export class SandboxSession {
         ok: false,
         error: "Sandbox session disposed",
       });
+    }
+    // Timers were cleared as each id was answered; anything still answered-but-held
+    // only occupied a slot, and the slot dies with the session.
+    for (const entry of this.inflightHost.values()) {
+      if (entry.timer) clearTimeout(entry.timer);
     }
     this.inflightHost.clear();
     this.emitHandlers.clear();
@@ -168,16 +185,17 @@ export class SandboxSession {
   }
 
   /**
-   * Send the one response an id gets, and free its slot. Idempotent because the
-   * entry is removed first: whichever of {handler settles, timeout, dispose} arrives
-   * second finds nothing and drops out, so no id can be answered twice (and the
-   * in-flight bound can never be silently over-subscribed).
+   * Send the one response an id gets. Idempotent: whichever of {handler settles,
+   * timeout, dispose} arrives second sees `answered` and drops out, so no id is ever
+   * answered twice. Does NOT free the slot — see `inflightHost` and
+   * `releaseHostRequest`.
    */
   private answerHostRequest(requestId: string, msg: HostToSandbox): void {
-    const timer = this.inflightHost.get(requestId);
-    if (timer === undefined) return;
-    clearTimeout(timer);
-    this.inflightHost.delete(requestId);
+    const entry = this.inflightHost.get(requestId);
+    if (!entry || entry.answered) return;
+    entry.answered = true;
+    if (entry.timer) clearTimeout(entry.timer);
+    entry.timer = null;
     this.transport.send(msg);
   }
 
@@ -237,7 +255,8 @@ export class SandboxSession {
     if (this.inflightHost.size >= MAX_INFLIGHT_HOST_REQUESTS) {
       this.handleHostRequestRefusal(
         requestId,
-        `too many host requests in flight (max ${MAX_INFLIGHT_HOST_REQUESTS})`,
+        `too many host requests in flight (max ${MAX_INFLIGHT_HOST_REQUESTS}); ` +
+          `a timed-out request still holds its slot until the provider finishes`,
       );
       return;
     }
@@ -249,32 +268,44 @@ export class SandboxSession {
         error: `Host request timed out after ${HOST_REQUEST_TIMEOUT_MS}ms`,
       });
     }, HOST_REQUEST_TIMEOUT_MS);
-    this.inflightHost.set(requestId, timer);
+    this.inflightHost.set(requestId, { answered: false, timer });
 
     // Tokens stop once the request is answered (timed out or disposed): the sandbox
-    // has already rejected, so a later token would arrive for an id it no longer
-    // knows — and after `dispose` the transport is closed anyway.
+    // has already rejected, so a later token would arrive for an id whose promise is
+    // settled — and after `dispose` the transport is closed anyway.
     const onToken = (token: string) => {
-      if (this.inflightHost.has(requestId)) {
+      if (this.inflightHost.get(requestId)?.answered === false) {
         this.transport.send({ type: "hostStreamToken", requestId, token });
       }
     };
-    this.hostRequestHandler(request, onToken).then(
-      (value) =>
-        this.answerHostRequest(requestId, {
-          type: "hostResponse",
-          requestId,
-          ok: true,
-          value,
-        }),
-      (err: unknown) =>
-        this.answerHostRequest(requestId, {
-          type: "hostResponse",
-          requestId,
-          ok: false,
-          error: err instanceof Error ? err.message : String(err),
-        }),
-    );
+    this.hostRequestHandler(request, onToken)
+      .then(
+        (value) =>
+          this.answerHostRequest(requestId, {
+            type: "hostResponse",
+            requestId,
+            ok: true,
+            value,
+          }),
+        (err: unknown) =>
+          this.answerHostRequest(requestId, {
+            type: "hostResponse",
+            requestId,
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+      )
+      // Settling — not answering — is what frees the slot, so the bound tracks live
+      // provider work. `finally` so a handler that throws still releases.
+      .finally(() => this.releaseHostRequest(requestId));
+  }
+
+  /** Give up the slot: the handler is done, however it ended. */
+  private releaseHostRequest(requestId: string): void {
+    const entry = this.inflightHost.get(requestId);
+    if (!entry) return;
+    if (entry.timer) clearTimeout(entry.timer);
+    this.inflightHost.delete(requestId);
   }
 
   private validate(
