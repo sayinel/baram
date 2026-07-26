@@ -19,14 +19,24 @@ const DECLARED: PluginContributions = {
   commands: [{ id: "ping", title: "Ping" }],
 };
 
-function fakeFactory(created: string[], closed: string[]) {
+function fakeFactory(
+  created: string[],
+  closed: string[],
+  // §260 3c-2a review (M3): the factory's 2nd arg is the plugin ID, not the label.
+  // Confusing them silently breaks the whole transport (`plugin_sandbox_send` would
+  // target `plugin-plugin-alpha` and the s2h filter would never match), so record
+  // it and assert.
+  pluginIds: string[] = [],
+) {
   return (
     label: string,
+    pluginId: string,
   ): {
     close: () => void;
     transport: SandboxTransport<SandboxToHost, HostToSandbox>;
   } => {
     created.push(label);
+    pluginIds.push(pluginId);
     const { host, sandbox } = createChannelPair();
     startSandboxClient(
       sandbox,
@@ -42,7 +52,8 @@ function fakeFactory(created: string[], closed: string[]) {
 describe("SandboxHost (§260 lifecycle)", () => {
   it("start() creates one window per plugin, activates, returns a live session", async () => {
     const created: string[] = [];
-    const host = new SandboxHost(fakeFactory(created, []));
+    const pluginIds: string[] = [];
+    const host = new SandboxHost(fakeFactory(created, [], pluginIds));
     const session = await host.start(
       "alpha",
       "/p/alpha",
@@ -50,6 +61,8 @@ describe("SandboxHost (§260 lifecycle)", () => {
       DECLARED,
     );
     expect(created).toEqual(["plugin-alpha"]);
+    // The label is prefixed; the transport must get the BARE id (see fakeFactory).
+    expect(pluginIds).toEqual(["alpha"]);
     expect(session.contributions).toBe(DECLARED);
     await expect(session.invokeCommand("ping")).resolves.toBe("pong");
   });

@@ -26,17 +26,22 @@ export async function createHostTransport(
   const unlisten = await listen<S2HEnvelope>("plugin:s2h", (event) => {
     if (closed) return;
     const envelope = event.payload;
-    // Defensive: this event is app-internal, but a malformed payload must never
-    // throw inside the Tauri listener (it would kill later deliveries).
     if (typeof envelope !== "object" || envelope === null) return;
     if (envelope.pluginId !== pluginId) return; // another sandbox's report
-    if (typeof envelope.msg !== "object" || envelope.msg === null) return;
+    if (!isWellFormed(envelope.msg)) {
+      logger.debug(`[Sandbox] dropped malformed s2h frame from ${pluginId}`);
+      return;
+    }
     handlers.forEach((h) => h(envelope.msg));
   });
   return {
     close: () => {
       closed = true;
-      unlisten();
+      // `unlisten()` invokes `plugin:event|unlisten`, so it really can reject
+      // during window/app teardown — but Tauri types `UnlistenFn` as `() => void`
+      // while the implementation returns a promise, so wrap before catching or the
+      // rejection is unhandled (and `.catch` does not typecheck).
+      void Promise.resolve(unlisten() as unknown).catch(() => {});
       handlers.clear();
     },
     onMessage: (h) => {
@@ -52,4 +57,38 @@ export async function createHostTransport(
       });
     },
   };
+}
+
+/**
+ * §260 3c-2a review (M1) — `msg` is fully attacker-controlled: Rust forwards an
+ * unvalidated `serde_json::Value`, so the sandbox picks the shape. Validate the
+ * discriminant AND the fields each branch of `SandboxSession.handle` dereferences,
+ * or e.g. `{type:"ready",registered:null}` reaches `report.commands` and throws out
+ * of this listener. Unknown shapes are dropped, not repaired.
+ */
+function isWellFormed(msg: unknown): msg is SandboxToHost {
+  if (typeof msg !== "object" || msg === null) return false;
+  const m = msg as Record<string, unknown>;
+  switch (m.type) {
+    case "activateError":
+      return typeof m.error === "string";
+    case "callResult":
+      return (
+        typeof m.callId === "string" &&
+        (m.ok === true || (m.ok === false && typeof m.error === "string"))
+      );
+    case "emitEvent":
+      return typeof m.event === "string" && Array.isArray(m.args);
+    case "ready": {
+      const r = m.registered as null | Record<string, unknown> | undefined;
+      return (
+        typeof r === "object" &&
+        r !== null &&
+        Array.isArray(r.commands) &&
+        Array.isArray(r.events)
+      );
+    }
+    default:
+      return false;
+  }
 }

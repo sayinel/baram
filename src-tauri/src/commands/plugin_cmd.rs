@@ -193,19 +193,51 @@ fn host_window_guard(label: &str) -> Result<(), String> {
 /// Rate limiting is a separate follow-up (a cap alone does not stop a flood).
 const MAX_SANDBOX_REPORT_BYTES: usize = 8 * 1024 * 1024;
 
+/// A sink that only counts, and stops the serializer as soon as the cap is passed —
+/// so measuring an oversized frame neither allocates it nor walks all of it.
+struct CapCounter {
+    cap: usize,
+    written: usize,
+}
+
+impl std::io::Write for CapCounter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.written += buf.len();
+        if self.written > self.cap {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "over cap",
+            ));
+        }
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 /// Bound an attacker-controlled sandbox→host frame before forwarding it: the emit
 /// re-serializes into the main window's event loop and JS heap, so one plugin must
 /// not be able to stall the editor with a multi-MB frame. Tauri has already parsed
 /// `msg` by the time a command runs, so this caps the FORWARD, not the initial
 /// parse — the latter would need an IPC-layer limit Tauri v2 does not expose.
+///
+/// Measured through `CapCounter` rather than `to_vec().len()` (§260 3c-2a review,
+/// M6): the naive form allocates the whole frame just to learn its size, so the
+/// cost of refusing scaled with the input the check exists to refuse.
 fn check_report_size(msg: &serde_json::Value) -> Result<(), String> {
-    let len = serde_json::to_vec(msg).map_err(|e| e.to_string())?.len();
-    if len > MAX_SANDBOX_REPORT_BYTES {
-        return Err(format!(
-            "sandbox message too large: {len} bytes (max {MAX_SANDBOX_REPORT_BYTES})"
-        ));
+    let mut counter = CapCounter {
+        cap: MAX_SANDBOX_REPORT_BYTES,
+        written: 0,
+    };
+    match serde_json::to_writer(&mut counter, msg) {
+        Ok(()) => Ok(()),
+        // Any serializer error here is the cap tripping (a `Value` cannot fail to
+        // serialize otherwise); report the bound, not the unknown true size.
+        Err(_) => Err(format!(
+            "sandbox message too large: over {MAX_SANDBOX_REPORT_BYTES} bytes"
+        )),
     }
-    Ok(())
 }
 
 /// The mirror of `host_window_guard`: only a `plugin-<id>` window may use the
@@ -214,6 +246,51 @@ fn check_report_size(msg: &serde_json::Value) -> Result<(), String> {
 fn sandbox_window_guard(label: &str) -> Result<String, String> {
     plugin::plugin_id_from_label(label)
         .ok_or_else(|| "only sandbox windows may use the sandbox message channel".to_string())
+}
+
+// §260 3c-2a review (M4) — the boundary checks live in free functions so the
+// wiring that actually enforces them is unit-testable; the `#[tauri::command]`s
+// below are thin adapters that only supply `window.label()` and managed state.
+
+/// Gate for both sandbox-side transport commands: the caller must be a sandbox
+/// window AND still be registered by the host. Returns the caller-derived id.
+fn authorize_sandbox_caller(
+    label: &str,
+    authorizer: &plugin::PluginAuthorizer,
+) -> Result<String, String> {
+    let plugin_id = sandbox_window_guard(label)?;
+    // The host registers capabilities BEFORE creating the webview, so a live
+    // session is always registered; a stopped one is fully mute (fail closed).
+    if !authorizer.is_registered(label) {
+        return Err("this sandbox is not registered".to_string());
+    }
+    Ok(plugin_id)
+}
+
+/// Host-only: revoke a sandbox's capabilities AND its inbound channel together, so
+/// a stopped plugin can neither act nor be messaged.
+fn deregister_sandbox(
+    caller_label: &str,
+    plugin_id: &str,
+    authorizer: &plugin::PluginAuthorizer,
+    channels: &plugin::SandboxChannels,
+) -> Result<(), String> {
+    host_window_guard(caller_label)?;
+    let label = format!("plugin-{plugin_id}");
+    authorizer.deregister(&label);
+    channels.disconnect(&label);
+    Ok(())
+}
+
+/// Host-only: deliver one frame to a sandbox over its own IPC channel.
+fn send_to_sandbox(
+    caller_label: &str,
+    plugin_id: &str,
+    msg: serde_json::Value,
+    channels: &plugin::SandboxChannels,
+) -> Result<(), String> {
+    host_window_guard(caller_label)?;
+    channels.send(&format!("plugin-{plugin_id}"), msg)
 }
 
 /// Execute an authorized op using the CALLER-derived plugin id (never a
@@ -262,11 +339,7 @@ pub async fn plugin_sandbox_deregister(
     authorizer: tauri::State<'_, plugin::PluginAuthorizer>,
     channels: tauri::State<'_, plugin::SandboxChannels>,
 ) -> Result<(), String> {
-    host_window_guard(window.label())?;
-    let label = format!("plugin-{plugin_id}");
-    authorizer.deregister(&label);
-    channels.disconnect(&label);
-    Ok(())
+    deregister_sandbox(window.label(), &plugin_id, &authorizer, &channels)
 }
 
 /// §260 Phase 3c-2a sandbox-only — hand the host an IPC channel for inbound
@@ -281,10 +354,9 @@ pub async fn plugin_sandbox_connect(
     channels: tauri::State<'_, plugin::SandboxChannels>,
 ) -> Result<(), String> {
     let label = window.label().to_string();
-    sandbox_window_guard(&label)?;
-    if !authorizer.is_registered(&label) {
-        return Err("this sandbox is not registered".to_string());
-    }
+    // The derived id is unused here (the label IS the channel key); connect only
+    // needs the gate. `report` below is what acts as the id.
+    authorize_sandbox_caller(&label, &authorizer)?;
     channels.connect(label, channel);
     Ok(())
 }
@@ -306,13 +378,7 @@ pub async fn plugin_sandbox_report(
     authorizer: tauri::State<'_, plugin::PluginAuthorizer>,
 ) -> Result<(), String> {
     use tauri::Emitter;
-    let plugin_id = sandbox_window_guard(window.label())?;
-    // Symmetric with connect, and it makes a deregistered sandbox fully mute: the
-    // host registers capabilities BEFORE creating the webview, so a live session
-    // is always registered; a stopped one can no longer talk to the host at all.
-    if !authorizer.is_registered(window.label()) {
-        return Err("this sandbox is not registered".to_string());
-    }
+    let plugin_id = authorize_sandbox_caller(window.label(), &authorizer)?;
     check_report_size(&msg)?;
     app.emit(
         "plugin:s2h",
@@ -330,8 +396,7 @@ pub async fn plugin_sandbox_send(
     msg: serde_json::Value,
     channels: tauri::State<'_, plugin::SandboxChannels>,
 ) -> Result<(), String> {
-    host_window_guard(window.label())?;
-    channels.send(&format!("plugin-{plugin_id}"), msg)
+    send_to_sandbox(window.label(), &plugin_id, msg, &channels)
 }
 
 /// The sole IPC entry point a sandboxed plugin may use for privileged ops. Every
@@ -366,6 +431,72 @@ mod tests {
         assert!(host_window_guard("file-1").is_ok());
     }
 
+    /// A registered authorizer + an empty channel map, the state every sandbox
+    /// transport command runs against.
+    fn state() -> (plugin::PluginAuthorizer, plugin::SandboxChannels) {
+        (
+            plugin::PluginAuthorizer::new(),
+            plugin::SandboxChannels::new(),
+        )
+    }
+
+    fn dummy_channel() -> tauri::ipc::Channel<serde_json::Value> {
+        tauri::ipc::Channel::new(|_| Ok(()))
+    }
+
+    #[test]
+    fn sandbox_caller_gate_requires_a_sandbox_label_and_registration() {
+        let (authorizer, _) = state();
+        // A host window may never use the sandbox-side transport commands.
+        assert!(authorize_sandbox_caller("main", &authorizer).is_err());
+        assert!(authorize_sandbox_caller("file-1", &authorizer).is_err());
+        // A sandbox window the host never registered is refused (fail closed).
+        assert!(authorize_sandbox_caller("plugin-alpha", &authorizer).is_err());
+        authorizer.register("plugin-alpha".into(), vec![]);
+        assert_eq!(
+            authorize_sandbox_caller("plugin-alpha", &authorizer).unwrap(),
+            "alpha"
+        );
+    }
+
+    #[test]
+    fn deregister_revokes_capabilities_and_the_channel_together() {
+        let (authorizer, channels) = state();
+        authorizer.register("plugin-alpha".into(), vec!["storage".into()]);
+        channels.connect("plugin-alpha".into(), dummy_channel());
+        assert!(channels.send("plugin-alpha", serde_json::json!({})).is_ok());
+
+        deregister_sandbox("main", "alpha", &authorizer, &channels).unwrap();
+
+        // Mute in both directions: cannot be messaged, cannot report or broker.
+        assert!(channels
+            .send("plugin-alpha", serde_json::json!({}))
+            .is_err());
+        assert!(authorize_sandbox_caller("plugin-alpha", &authorizer).is_err());
+        assert!(authorizer.authorize("plugin-alpha", "storage").is_err());
+    }
+
+    #[test]
+    fn deregister_and_send_are_host_only() {
+        let (authorizer, channels) = state();
+        authorizer.register("plugin-alpha".into(), vec![]);
+        channels.connect("plugin-alpha".into(), dummy_channel());
+        // A sandbox must not be able to revoke, or message, another sandbox.
+        assert!(deregister_sandbox("plugin-evil", "alpha", &authorizer, &channels).is_err());
+        assert!(send_to_sandbox("plugin-evil", "alpha", serde_json::json!({}), &channels).is_err());
+        // …and the host still can, proving the guard is what rejected above.
+        assert!(send_to_sandbox("main", "alpha", serde_json::json!({}), &channels).is_ok());
+    }
+
+    #[test]
+    fn send_targets_the_label_derived_from_the_plugin_id() {
+        let (_, channels) = state();
+        channels.connect("plugin-alpha".into(), dummy_channel());
+        assert!(send_to_sandbox("main", "alpha", serde_json::json!({}), &channels).is_ok());
+        // Guards against passing a label where an id belongs (would key plugin-plugin-alpha).
+        assert!(send_to_sandbox("main", "plugin-alpha", serde_json::json!({}), &channels).is_err());
+    }
+
     #[test]
     fn report_size_cap_admits_control_frames_and_rejects_oversized() {
         let ready = serde_json::json!({
@@ -373,7 +504,21 @@ mod tests {
             "registered": { "commands": ["hello"], "events": [] }
         });
         assert!(check_report_size(&ready).is_ok());
-        // A frame just over the cap is refused rather than forwarded to the host.
+
+        // Pin the boundary (the check is `>`, not `>=`): a JSON string serializes to
+        // its length plus the two quotes, so this frame is EXACTLY the cap.
+        let exact = serde_json::Value::String("x".repeat(MAX_SANDBOX_REPORT_BYTES - 2));
+        assert!(
+            check_report_size(&exact).is_ok(),
+            "a frame of exactly the cap must be admitted"
+        );
+        let one_over = serde_json::Value::String("x".repeat(MAX_SANDBOX_REPORT_BYTES - 1));
+        assert!(
+            check_report_size(&one_over).is_err(),
+            "one byte over the cap must be refused"
+        );
+
+        // A frame well over the cap is refused rather than forwarded to the host.
         let huge = serde_json::json!({ "type": "emitEvent", "args": ["x".repeat(MAX_SANDBOX_REPORT_BYTES)] });
         let err = check_report_size(&huge).expect_err("oversized frame must be refused");
         assert!(err.contains("too large"), "unexpected error: {err}");

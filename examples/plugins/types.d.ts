@@ -69,6 +69,13 @@ export interface LoadedPlugin {
     id: string;
     manifest: PluginManifest;
     module: PluginModule;
+    /**
+     * §260 3c-2a — async teardown the loader AWAITS on unload. `Disposable.dispose`
+     * is sync-only, but sandbox teardown must complete before the next load or a
+     * late `plugin_sandbox_deregister` revokes the new registration. Sandboxed
+     * plugins only.
+     */
+    teardown?: () => Promise<void>;
 }
 export interface NetworkAPI {
     fetch(url: string, init?: PluginFetchInit): Promise<PluginFetchResponse>;

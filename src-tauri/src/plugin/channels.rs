@@ -13,10 +13,62 @@ use std::sync::Mutex;
 
 use tauri::ipc::Channel;
 
+/// Label → value map that guarantees **no value is ever dropped, or used, while
+/// the lock is held**. That is not a style preference: a `Channel` obtained from a
+/// command argument carries an `on_drop` that evals `{end:true}` into its webview
+/// (tauri `ipc/channel.rs`), and `Webview::eval` reaches the event loop — under the
+/// `tracing` feature it even blocks on a reply from the main thread, and on the main
+/// thread it runs `handle_user_message` inline. Holding a lock across that is a
+/// deadlock waiting for a main-thread caller of this map.
+///
+/// The subtlety this type exists to contain: `map.lock().unwrap().insert(k, v);` as
+/// a bare statement drops the **returned old value first** (temporaries drop in
+/// reverse creation order, and the guard was created first), i.e. under the lock.
+/// Returning the displaced value to the caller moves that drop past the guard.
+struct LabelMap<T> {
+    inner: Mutex<HashMap<String, T>>,
+}
+
+impl<T> Default for LabelMap<T> {
+    fn default() -> Self {
+        Self {
+            inner: Mutex::new(HashMap::new()),
+        }
+    }
+}
+
+impl<T> LabelMap<T> {
+    /// Test-only probe: is the map lockable right now? Used to prove that values
+    /// drop with the lock released (a same-thread `try_lock` fails while held).
+    #[cfg(test)]
+    fn is_unlocked(&self) -> bool {
+        self.inner.try_lock().is_ok()
+    }
+}
+
+impl<T: Clone> LabelMap<T> {
+    /// Insert, returning any displaced value so it drops in the CALLER, lock-free.
+    #[must_use = "the displaced value must drop outside the lock"]
+    fn insert(&self, label: String, value: T) -> Option<T> {
+        self.inner.lock().unwrap().insert(label, value)
+    }
+
+    /// Remove, returning the value so it drops in the CALLER, lock-free.
+    #[must_use = "the removed value must drop outside the lock"]
+    fn remove(&self, label: &str) -> Option<T> {
+        self.inner.lock().unwrap().remove(label)
+    }
+
+    /// Clone out of the lock so the caller can use the value lock-free.
+    fn get(&self, label: &str) -> Option<T> {
+        self.inner.lock().unwrap().get(label).cloned()
+    }
+}
+
 /// Managed state: sandbox window label (`plugin-<id>`) → its inbound channel.
 #[derive(Default)]
 pub struct SandboxChannels {
-    connected: Mutex<HashMap<String, Channel<serde_json::Value>>>,
+    connected: LabelMap<Channel<serde_json::Value>>,
 }
 
 impl SandboxChannels {
@@ -24,29 +76,45 @@ impl SandboxChannels {
         Self::default()
     }
 
-    /// Record (or replace) the inbound channel a sandbox handed us at boot.
+    /// Record (or replace) the inbound channel a sandbox handed us at boot. A
+    /// replaced channel (sandbox reload) drops here, after the lock is released.
     pub fn connect(&self, label: String, channel: Channel<serde_json::Value>) {
-        self.connected.lock().unwrap().insert(label, channel);
+        drop(self.connected.insert(label, channel));
     }
 
     /// Drop a sandbox's channel — called when its capabilities are deregistered
     /// (plugin stopped/disabled), so a stale webview can no longer be messaged.
     pub fn disconnect(&self, label: &str) {
-        self.connected.lock().unwrap().remove(label);
+        drop(self.connected.remove(label));
     }
 
     /// Deliver one host→sandbox message. Fails closed when the sandbox has not
     /// connected yet (the host's activate retry covers that window) or is gone.
     pub fn send(&self, label: &str, msg: serde_json::Value) -> Result<(), String> {
-        // Clone out of the lock: never hold the mutex across the channel send,
-        // which re-enters Tauri (webview eval) and could deadlock.
         let channel = self
             .connected
-            .lock()
-            .unwrap()
             .get(label)
-            .cloned()
             .ok_or_else(|| format!("sandbox \"{label}\" is not connected"))?;
+        // §260 3c-2a review (I3): a frame ≥ MAX_JSON_DIRECT_EXECUTE_THRESHOLD
+        // (8 KiB) is staged in tauri's app-global `ChannelDataIpcQueue` and fetched
+        // by the webview through `FETCH_CHANNEL_DATA_COMMAND`, which is ACL-EXEMPT
+        // and takes only a guessable sequential id — so another sandbox could race
+        // that fetch and steal (and wedge) this frame. Every frame we send today is
+        // far under it; warn loudly in dev if that ever stops being true.
+        #[cfg(debug_assertions)]
+        {
+            const CHANNEL_QUEUE_THRESHOLD: usize = 8192;
+            if let Ok(bytes) = serde_json::to_vec(&msg) {
+                if bytes.len() >= CHANNEL_QUEUE_THRESHOLD {
+                    log::warn!(
+                        "§260: h2s frame for {label} is {} bytes (≥{CHANNEL_QUEUE_THRESHOLD}) — it \
+                         takes tauri's shared channel-data queue, which is ACL-exempt and \
+                         guessable; chunk it before this ships",
+                        bytes.len()
+                    );
+                }
+            }
+        }
         channel.send(msg).map_err(|e| e.to_string())
     }
 }
@@ -71,6 +139,50 @@ mod tests {
             Ok(())
         });
         (channel, seen)
+    }
+
+    /// §260 3c-2a review (I1) — the real `Channel`'s `Drop` evals into its webview,
+    /// so a value must never drop while the map's lock is held. `Channel::new` cannot
+    /// carry an `on_drop` (only the command-argument path does), so the property is
+    /// pinned on `LabelMap` itself with a probe that observes lock state at drop.
+    #[test]
+    fn displaced_and_removed_values_drop_with_the_lock_released() {
+        #[derive(Clone)]
+        struct Probe {
+            map: Arc<LabelMap<Probe>>,
+            observations: Arc<Mutex<Vec<bool>>>,
+        }
+        impl Drop for Probe {
+            fn drop(&mut self) {
+                let unlocked = self.map.is_unlocked();
+                if let Ok(mut o) = self.observations.lock() {
+                    o.push(unlocked);
+                }
+            }
+        }
+
+        let map: Arc<LabelMap<Probe>> = Arc::new(LabelMap::default());
+        let observations = Arc::new(Mutex::new(Vec::new()));
+        let probe = |m: &Arc<LabelMap<Probe>>| Probe {
+            map: m.clone(),
+            observations: observations.clone(),
+        };
+
+        drop(map.insert("plugin-a".into(), probe(&map))); // first insert: nothing displaced
+        drop(map.insert("plugin-a".into(), probe(&map))); // replace → old value drops
+        drop(map.remove("plugin-a")); // remove → value drops
+        drop(map.get("plugin-a")); // absent, no clone
+
+        let seen = observations.lock().unwrap().clone();
+        assert!(
+            seen.len() >= 2,
+            "expected the displaced + removed values to drop, saw {} drops",
+            seen.len()
+        );
+        assert!(
+            seen.iter().all(|&unlocked| unlocked),
+            "a value dropped while the map lock was held: {seen:?}"
+        );
     }
 
     #[test]

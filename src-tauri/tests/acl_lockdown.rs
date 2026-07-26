@@ -124,7 +124,14 @@ fn sandbox_tier_grants_exactly_its_allowlist() {
     // `llm:token`, `file:changed`, etc. The sandbox transport therefore uses
     // per-webview IPC instead: `plugin_sandbox_connect` (inbound ipc::Channel) +
     // `plugin_sandbox_report` (outbound, caller-identified), plus the broker
-    // `plugin_call`. Nothing else.
+    // `plugin_call`.
+    //
+    // This asserts the GRANTED set, which is not identical to the REACHABLE set:
+    // tauri hardcodes an ACL bypass for `FETCH_CHANNEL_DATA_COMMAND`
+    // (`plugin:__TAURI_CHANNEL__|fetch`, `webview/mod.rs`, marked `TODO: Remove
+    // this special check in v3`), so every webview can invoke that one regardless
+    // of its capability. It is how a >8 KiB `ipc::Channel` frame is delivered; see
+    // `SandboxChannels::send`, which warns in dev if our frames ever get that big.
     // `norm()` maps `-`->`_`, so kebab permission ids compare stably.
     let json: serde_json::Value = serde_json::from_str(&read("capabilities/plugin-sandbox.json"))
         .expect("parse capability json");

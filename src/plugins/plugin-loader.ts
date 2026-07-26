@@ -203,6 +203,20 @@ export class PluginLoader {
       }
     }
 
+    // §260 3c-2a review (I2) — sandbox teardown must be AWAITED, not fired off a
+    // `Disposable` (whose `dispose(): void` cannot express async). A `deregister`
+    // still in flight when the next `loadPlugin` runs — `reloadPlugin`, or a quick
+    // disable/enable — would revoke the NEW registration, so the freshly booted
+    // sandbox's `plugin_sandbox_connect` fails closed and activate times out; the
+    // not-yet-closed webview would also collide on the `plugin-<id>` label.
+    if (plugin.teardown) {
+      try {
+        await plugin.teardown();
+      } catch (e) {
+        logger.error(`[PluginLoader] Sandbox teardown error for ${id}:`, e);
+      }
+    }
+
     // Belt-and-suspenders: sweep any UI state the plugin left behind
     unregisterPluginUI(id);
 
@@ -272,19 +286,19 @@ export class PluginLoader {
         });
       }
     }
-    // stop the sandbox + drop its capability grant on unload
-    disposables.push({
-      dispose: () => {
-        void this.sandboxHost.stop(manifest.id);
-        void pluginSandboxDeregister(manifest.id);
-      },
-    });
-
     this.loaded.set(manifest.id, {
       id: manifest.id,
       manifest,
       module: {},
       disposables,
+      // Ordered and awaited by `unloadPlugin`: stop the session (which closes the
+      // webview, freeing the `plugin-<id>` label) BEFORE dropping the grant, so a
+      // subsequent load cannot race either. Awaiting the deregister is what keeps
+      // it from landing after the next `plugin_sandbox_register`.
+      teardown: async () => {
+        await this.sandboxHost.stop(manifest.id);
+        await pluginSandboxDeregister(manifest.id);
+      },
     });
   }
 }

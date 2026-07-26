@@ -77,6 +77,8 @@ async function defaultWindowFactory(
     decorations: false,
     focus: false,
     skipTaskbar: true,
+    // `label` is a debugging aid only — the sandbox reads no URL params (its
+    // identity is the Tauri window label, which Rust derives, never the query).
     url: `sandbox.html?label=${encodeURIComponent(label)}`,
     visible: false,
   });
