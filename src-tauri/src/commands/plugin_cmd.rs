@@ -186,6 +186,28 @@ fn host_window_guard(label: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Upper bound on one sandbox→host frame (§260 Phase 3c-2a). Today's frames
+/// (ready / emitEvent / callResult) are kilobytes, but a Phase-4 document-transform
+/// contribution returns whole documents, and Baram targets 10,000-line files — so
+/// the ceiling is set to bound a monster frame, not to police normal traffic.
+/// Rate limiting is a separate follow-up (a cap alone does not stop a flood).
+const MAX_SANDBOX_REPORT_BYTES: usize = 8 * 1024 * 1024;
+
+/// Bound an attacker-controlled sandbox→host frame before forwarding it: the emit
+/// re-serializes into the main window's event loop and JS heap, so one plugin must
+/// not be able to stall the editor with a multi-MB frame. Tauri has already parsed
+/// `msg` by the time a command runs, so this caps the FORWARD, not the initial
+/// parse — the latter would need an IPC-layer limit Tauri v2 does not expose.
+fn check_report_size(msg: &serde_json::Value) -> Result<(), String> {
+    let len = serde_json::to_vec(msg).map_err(|e| e.to_string())?.len();
+    if len > MAX_SANDBOX_REPORT_BYTES {
+        return Err(format!(
+            "sandbox message too large: {len} bytes (max {MAX_SANDBOX_REPORT_BYTES})"
+        ));
+    }
+    Ok(())
+}
+
 /// The mirror of `host_window_guard`: only a `plugin-<id>` window may use the
 /// sandbox-side channel commands, and the id it acts as is derived from the
 /// Tauri-verified label — never from an argument.
@@ -291,6 +313,7 @@ pub async fn plugin_sandbox_report(
     if !authorizer.is_registered(window.label()) {
         return Err("this sandbox is not registered".to_string());
     }
+    check_report_size(&msg)?;
     app.emit(
         "plugin:s2h",
         serde_json::json!({ "pluginId": plugin_id, "msg": msg }),
@@ -341,6 +364,19 @@ mod tests {
         assert!(host_window_guard("plugin-evil").is_err());
         assert!(host_window_guard("main").is_ok());
         assert!(host_window_guard("file-1").is_ok());
+    }
+
+    #[test]
+    fn report_size_cap_admits_control_frames_and_rejects_oversized() {
+        let ready = serde_json::json!({
+            "type": "ready",
+            "registered": { "commands": ["hello"], "events": [] }
+        });
+        assert!(check_report_size(&ready).is_ok());
+        // A frame just over the cap is refused rather than forwarded to the host.
+        let huge = serde_json::json!({ "type": "emitEvent", "args": ["x".repeat(MAX_SANDBOX_REPORT_BYTES)] });
+        let err = check_report_size(&huge).expect_err("oversized frame must be refused");
+        assert!(err.contains("too large"), "unexpected error: {err}");
     }
 
     #[test]
