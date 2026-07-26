@@ -18,20 +18,33 @@ export function PluginStatusBarItems({
   if (items.length === 0) return null;
   return (
     <>
-      {items.map((item) =>
+      {items.map((item) => {
         // §260 Phase 4a — an item that declared a command is a button; one that did not
-        // stays exactly as it was. A sandboxed plugin's item is registered from the
-        // manifest before any of its code runs, so this is the tier's first UI presence.
-        item.command ? (
+        // stays exactly as it was. A sandboxed plugin's item comes from its manifest and
+        // is registered before its code runs (see `registerDeclaredStatusBar`), so this
+        // is the tier's first UI presence.
+        const { command } = item;
+        if (!command) {
+          return (
+            <span
+              className="status-plugin-item cursor-default"
+              key={item.itemId}
+              title={item.tooltip}
+            >
+              {item.text}
+            </span>
+          );
+        }
+        return (
           <button
             className="status-plugin-item btn-unstyled"
             key={item.itemId}
             onClick={() => {
               // The handler routes to `session.invokeCommand`, whose rejection is the
               // plugin's problem, not the status bar's — never let it escape into React.
-              void executePluginCommand(item.command!).catch((err: unknown) => {
+              void executePluginCommand(command).catch((err: unknown) => {
                 logger.error(
-                  `[Plugin] status-bar command ${item.command} failed:`,
+                  `[Plugin] status-bar command ${command} failed:`,
                   err,
                 );
               });
@@ -41,16 +54,8 @@ export function PluginStatusBarItems({
           >
             {item.text}
           </button>
-        ) : (
-          <span
-            className="status-plugin-item cursor-default"
-            key={item.itemId}
-            title={item.tooltip}
-          >
-            {item.text}
-          </span>
-        ),
-      )}
+        );
+      })}
     </>
   );
 }

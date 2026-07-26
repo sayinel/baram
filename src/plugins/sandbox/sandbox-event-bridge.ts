@@ -85,10 +85,14 @@ export function deliverSandboxEvent(
     if (typeof absolute !== "string") return;
     const located = resolveContext(absolute);
     if (!located) {
-      // §89 single-file mode, or a file in no registered context. Dropped rather than
-      // degraded to an absolute path: the whole point of the translation is that this
-      // tier never sees one, and "no event" is the honest answer to "which vault-relative
-      // path is this?" when there is none.
+      // A file in no registered context. Dropped rather than degraded to an absolute
+      // path: the whole point of the translation is that this tier never sees one, and
+      // "no event" is the honest answer to "which vault-relative path is this?" when
+      // there is none.
+      //
+      // NOT the §89 single-file case, as this comment used to claim (code review M3):
+      // `locateInContext` resolves a `file` context to `{context, path: ""}`, which is a
+      // valid anchor Rust accepts, so those events ARE delivered.
       logger.debug(
         `[Sandbox] ${event} not delivered — the file is outside every context`,
       );

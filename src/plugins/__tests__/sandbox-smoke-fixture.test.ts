@@ -76,11 +76,18 @@ describe("sandbox smoke fixture (§260 3c-3)", () => {
     const declared = (manifest.contributions?.statusBar ?? []).map((i) => i.id);
     expect(declared).toEqual(["smoke", "file"]);
     const source = readFileSync(resolve(dir, manifest.main), "utf8");
+    // Extracted with a regex rather than searched for as a literal call: a formatter
+    // wrapping the arguments onto the next line broke the substring form, which made the
+    // guard fail for a reason that had nothing to do with what it guards.
+    const addressed = [
+      ...source.matchAll(/setStatusBarText\(\s*"([^"]+)"/g),
+    ].map((m) => m[1]);
     for (const id of declared) {
-      expect(source).toContain(`setStatusBarText("${id}"`);
+      expect(addressed, `"${id}" is declared but never set`).toContain(id);
     }
-    // …and it deliberately calls one UNDECLARED id, to show the refusal in the console.
-    expect(source).toContain('setStatusBarText("not-declared"');
+    // …and it deliberately addresses one UNDECLARED id, to show the refusal in the
+    // sandbox console.
+    expect(addressed).toContain("not-declared");
   });
 
   it("ships a single self-contained ESM — no imports, since a blob module has no base URL", () => {

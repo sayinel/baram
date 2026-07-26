@@ -145,7 +145,7 @@ impl ContextManager {
     /// with the entry's type, for one registered context.
     ///
     /// Exists for the sandboxed plugin tier, whose paths are relative to a root it is
-    /// never told (`plugin_cmd::resolve_plugin_path`): an absolute path would disclose
+    /// never told (`plugin_cmd::check_plugin_file_path`): an absolute path would disclose
     /// the user's home directory to every `files`-granted plugin. The type comes along
     /// because a `File` context (§89 single-file mode) has no directory to join to.
     ///

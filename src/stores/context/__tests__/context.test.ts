@@ -82,6 +82,65 @@ describe("§81 contextStore", () => {
     expect(found).toBeNull();
   });
 
+  // §260 Phase 4a code review (I3) — this rule decides which vault a file belongs to,
+  // and since Phase 4a it also decides what a sandboxed plugin may read. It had NO test
+  // for its separator handling: a change here stayed green either way.
+  describe("getContextForPath separator handling", () => {
+    /** Contexts are inserted directly: `addContext` canonicalises through Rust. */
+    const withRoots = (...paths: string[]) =>
+      useContextStore.setState({
+        contexts: paths.map((path, i) => ({
+          added_at: i,
+          color: "#000",
+          context_type: "vault",
+          contextType: "vault",
+          id: `ctx-${i}`,
+          label: path,
+          path,
+        })) as never,
+      });
+    const idFor = (p: string) =>
+      useContextStore.getState().getContextForPath(p)?.id ?? null;
+
+    it("requires a separator after the root", () => {
+      withRoots("/Users/me/work");
+      expect(idFor("/Users/me/work/note.md")).toBe("ctx-0");
+      // The reason the check exists: a sibling whose name merely starts the same.
+      expect(idFor("/Users/me/workspace/note.md")).toBeNull();
+      // The root itself is not a file inside it.
+      expect(idFor("/Users/me/work")).toBeNull();
+    });
+
+    it("matches a Windows root, which is backslash-delimited on both sides", () => {
+      // Appending "/" (the original rule) matched nothing here, so EVERY caller got
+      // "no context" on Windows — including the §260 event bridge, which then delivers
+      // no file events at all.
+      withRoots("C:\\Users\\me\\vault");
+      expect(idFor("C:\\Users\\me\\vault\\note.md")).toBe("ctx-0");
+      expect(idFor("C:\\Users\\me\\vault-other\\note.md")).toBeNull();
+    });
+
+    it("matches a POSIX root that contains a backslash", () => {
+      // A backslash is a legal character in a POSIX directory name, so the separator
+      // cannot be INFERRED from the root — inferring it broke this case while fixing
+      // Windows. Tested at the boundary instead.
+      withRoots("/home/me/my\\dir");
+      expect(idFor("/home/me/my\\dir/note.md")).toBe("ctx-0");
+    });
+
+    it("tolerates a trailing separator on the root", () => {
+      withRoots("/Users/me/work/");
+      expect(idFor("/Users/me/work/note.md")).toBe("ctx-0");
+    });
+
+    it("prefers the innermost of nested roots", () => {
+      // Which one wins decides which root a plugin's relative path resolves against.
+      withRoots("/vaults/a", "/vaults/a/nested");
+      expect(idFor("/vaults/a/nested/deep/note.md")).toBe("ctx-1");
+      expect(idFor("/vaults/a/other/note.md")).toBe("ctx-0");
+    });
+  });
+
   it("vaultContexts filters by type", async () => {
     await useContextStore.getState().addContext("vault", "/Users/test/a");
     await useContextStore.getState().addContext("folder", "/Users/test/b");

@@ -260,17 +260,25 @@ export const useContextStore = create<ContextState>()(
             if (filePath === ctx.path) return ctx;
             continue;
           }
-          // Vault/Folder: must match with trailing separator to avoid
-          // "/Users/me/work" matching "/Users/me/workspace/note.md".
-          // The separator comes from the path itself: on Windows both sides are
-          // backslash-delimited, and appending "/" there matched nothing — so every
-          // caller silently got "no context" (§260 Phase 4a, where a wrong answer would
-          // mean a sandboxed plugin hears no file events at all on Windows).
-          const sep = ctx.path.includes("\\") ? "\\" : "/";
-          const prefix = ctx.path.endsWith(sep) ? ctx.path : ctx.path + sep;
-          if (filePath.startsWith(prefix) && ctx.path.length > bestLen) {
+          // Vault/Folder: the root must be followed by a SEPARATOR, or
+          // "/Users/me/work" would match "/Users/me/workspace/note.md".
+          //
+          // Either separator satisfies it, tested at the boundary rather than inferred
+          // from the root (§260 Phase 4a code review, I3). The original appended "/",
+          // which on Windows — where both sides are backslash-delimited — matched
+          // nothing, so every caller silently got "no context". Inferring the separator
+          // from the root instead (`path.includes("\\") ? "\\" : "/"`) fixed Windows but
+          // broke POSIX, where a backslash is a legal character in a directory name:
+          // a vault at `/home/me/my\dir` would have inferred `"\\"` and then never
+          // matched its own files.
+          const root = ctx.path.replace(/[/\\]+$/, "");
+          const boundary = filePath[root.length];
+          const contains =
+            filePath.startsWith(root) &&
+            (boundary === "/" || boundary === "\\");
+          if (contains && root.length > bestLen) {
             best = ctx;
-            bestLen = ctx.path.length;
+            bestLen = root.length;
           }
         }
         return best;

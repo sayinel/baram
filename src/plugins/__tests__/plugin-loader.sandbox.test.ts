@@ -330,6 +330,45 @@ describe("PluginLoader sandboxed path (§260 3c-1)", () => {
         },
       });
 
+    it("registers declared items BEFORE the sandbox starts", async () => {
+      // §260 Phase 4a code review (M1) — four comments claimed the tier's items appear
+      // "before the plugin's code runs", while registration in fact sat after
+      // `start()`, which awaits `activate`: up to 15s on a cold dev start, and never at
+      // all if activate fails. Asserted from inside `start` so the ORDER is the subject,
+      // not just the end state.
+      const f = fakeHost();
+      let itemsWhenStarting: string[] = [];
+      f.start.mockImplementation(async (_id, declared) => {
+        itemsWhenStarting = usePluginUIStore
+          .getState()
+          .statusBarItems.map((i) => i.itemId);
+        return {
+          contributions: declared,
+          deliverEvent: f.deliverEvent,
+          invokeCommand: f.invokeCommand,
+        };
+      });
+      const loader = new PluginLoader(undefined, f.host);
+
+      await loader.loadPlugin("/p/demo", withStatusBar());
+
+      expect(itemsWhenStarting).toEqual(["demo:sb:count", "demo:sb:plain"]);
+    });
+
+    it("removes them again when the load fails before completing", async () => {
+      // The other half of registering early: a plugin that never finishes loading must
+      // not leave its declaration in the chrome.
+      const f = fakeHost();
+      f.start.mockRejectedValue(new Error("webview creation failed"));
+      const loader = new PluginLoader(undefined, f.host);
+
+      await expect(
+        loader.loadPlugin("/p/demo", withStatusBar()),
+      ).rejects.toThrow(/webview creation failed/);
+
+      expect(usePluginUIStore.getState().statusBarItems).toEqual([]);
+    });
+
     it("registers declared status-bar items from the MANIFEST", async () => {
       // No plugin code has run at this point beyond `activate`; the item exists because
       // the manifest declared it, which is what makes it the tier's first UI presence.

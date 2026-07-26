@@ -463,7 +463,7 @@ fn plugin_target_path(
     if *context_type == crate::context::types::ContextType::File {
         if relative.components().any(|c| c.as_os_str() != ".") {
             return Err(format!(
-                "path \"{path}\": this context is a single file, so only \"\" names it"
+                "path \"{path}\": this context is a single file, so only \"\" or \".\" names it"
             ));
         }
         return Ok(root);

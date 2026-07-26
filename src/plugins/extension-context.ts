@@ -33,6 +33,7 @@ import { logger } from "../utils/logger";
 import { getConfigForTask } from "../utils/model-selection";
 import { isLLMAllowed } from "../utils/privacy-check";
 import { usePluginUIStore } from "./plugin-ui-store";
+import { UI_CAPABILITIES } from "./types";
 
 // --- AI API ---
 // Exported (§260 3c-2c) so the SANDBOXED tier's host-mediated `ai` runs the very
@@ -292,12 +293,13 @@ export function createExtensionContext(
     ? createStorageAPI(manifest.id)
     : (createDeniedProxy("storage", "storage") as StorageAPI);
 
-  const ui: UIAPI =
-    hasCapability("sidebar") ||
-    hasCapability("statusbar") ||
-    hasCapability("settings")
-      ? createUIAPI(manifest.id, capabilities, disposables)
-      : (createDeniedProxy("ui", "sidebar") as UIAPI);
+  // §260 Phase 4a code review (M5) — the SHARED list, not a second inline copy of it.
+  // `UI_CAPABILITIES` claimed to be the one rule both tiers use while this chain was
+  // still hand-written here; a comment that says "one list" over two lists is how one
+  // gets fixed and the other forgotten.
+  const ui: UIAPI = UI_CAPABILITIES.some(hasCapability)
+    ? createUIAPI(manifest.id, capabilities, disposables)
+    : (createDeniedProxy("ui", "sidebar") as UIAPI);
 
   return {
     ai,

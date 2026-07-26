@@ -352,6 +352,38 @@ describe("validateManifest — trust tier (§260)", () => {
       ).toContain("contributions.statusBar[0].command");
     });
 
+    it("rejects duplicate ids within a section", () => {
+      // Two items with one id become two store entries with the same `itemId`: a
+      // duplicate React key, and one `setStatusBarText` driving both.
+      expect(
+        fieldsOf(
+          sandboxed({
+            statusBar: [
+              { id: "x", text: "a" },
+              { id: "x", text: "b" },
+            ],
+          }),
+        ),
+      ).toContain("contributions.statusBar[1].id");
+      expect(
+        fieldsOf(
+          sandboxed({
+            commands: [
+              { id: "run", title: "A" },
+              { id: "run", title: "B" },
+            ],
+          }),
+        ),
+      ).toContain("contributions.commands[1].id");
+      // The same id in DIFFERENT sections is fine — they namespace apart.
+      expect(
+        sandboxed({
+          commands: [{ id: "run", title: "Run" }],
+          statusBar: [{ id: "run", text: "x" }],
+        }).valid,
+      ).toBe(true);
+    });
+
     it("caps how many status-bar items one plugin may declare", () => {
       // Unbounded, a manifest alone could fill the app chrome — no code, and (before
       // MEDIUM-3) no capability either.

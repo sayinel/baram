@@ -51,8 +51,13 @@ narrower, data-only context. Two differences matter when writing one:
   `contributions.statusBar`. No `addStyle`, no panel `onMount(el)` — those need
   `"trust": "trusted"`.
 
-Declared status-bar items appear as soon as the plugin loads, before `activate` runs, and
-one with a `command` is clickable.
+Declared status-bar items are registered from the manifest before your plugin's code
+runs — so they show up while the sandbox is still booting — and one with a `command` is
+clickable. They are removed again if the load fails.
+
+When your plugin finishes activating, the host delivers a synthetic `file:open` for the
+file that is already open, if any. That way a plugin loaded at startup does not have to
+wait for the user to switch tabs before it knows where it is.
 
 A plugin project looks like this:
 

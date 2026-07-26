@@ -50,10 +50,21 @@ export async function activate(ctx) {
     events += 1;
   });
 
-  /** Report through the host: a transient toast plus the persistent status item. */
+  /**
+   * Report through the host: the full line as a transient toast, a SHORT summary in the
+   * persistent status item.
+   *
+   * The bar caps text at 64 characters (§260 Phase 4a code review, M8): the full SMOKE
+   * line is ~77, so putting it there silently dropped the last few checks — and the bar
+   * is the only report left when the toast is throttled.
+   */
   const report = (line) => {
-    ctx.ui.showNotification(line, line.includes("✗") ? "error" : "info");
-    ctx.ui.setStatusBarText("smoke", line);
+    const failed = line.split(" ").filter((f) => f.includes("✗") || f.includes("~"));
+    ctx.ui.showNotification(line, failed.length ? "error" : "info");
+    ctx.ui.setStatusBarText(
+      "smoke",
+      failed.length ? `🧪 ${failed.length} failed: ${failed[0]}` : "🧪 all ✓",
+    );
   };
 
   // TWO commands, not one (§260 3c-3 code review, M3). `SandboxSession`'s

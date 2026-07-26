@@ -276,7 +276,33 @@ function validateContributions(
     }
   });
 
+  /**
+   * Duplicate ids within one section (code review M9). Two entries with the same id
+   * become two store items with the SAME `itemId`, which React renders with a duplicate
+   * key and which `updateStatusBarText`/`removeStatusBarItem` then touch together — a
+   * plugin addressing "its" item would silently drive both.
+   */
+  const rejectDuplicateIds = (
+    section: string,
+    list: Record<string, unknown>[],
+  ) => {
+    const seen = new Set<string>();
+    list.forEach((entry, i) => {
+      const id = entry.id;
+      if (typeof id !== "string") return; // already reported by requireId
+      if (seen.has(id)) {
+        errors.push({
+          field: `contributions.${section}[${i}].id`,
+          message: `duplicate id "${id}"`,
+        });
+      }
+      seen.add(id);
+    });
+  };
+  if (commands) rejectDuplicateIds("commands", commands);
+
   const statusBar = entries("statusBar");
+  if (statusBar) rejectDuplicateIds("statusBar", statusBar);
   if (statusBar && statusBar.length > MAX_STATUS_BAR_ITEMS) {
     errors.push({
       field: "contributions.statusBar",

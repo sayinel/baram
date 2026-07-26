@@ -6,6 +6,7 @@ import type {
   AIAPI,
   AIModel,
   NetworkAPI,
+  PluginFileEvent,
   SandboxFilesAPI,
   SandboxUIAPI,
   StorageAPI,
@@ -43,6 +44,15 @@ export interface SandboxContext {
   };
   events: {
     emit(event: string, ...args: unknown[]): void;
+    /**
+     * §260 Phase 4a — overloaded so the file events' payload actually reaches plugin
+     * code as `PluginFileEvent` (code review nit): with only the `unknown[]` signature an
+     * author had to cast to learn the shape of the very thing this phase added.
+     */
+    on(
+      event: "file:open" | "file:save",
+      handler: (file: PluginFileEvent) => void,
+    ): void;
     on(event: string, handler: (...args: unknown[]) => void): void;
   };
   // §260 3c-1 — brokered privileged APIs. Routed through `broker` (= plugin_call
@@ -209,9 +219,12 @@ export function startSandboxClient(
           );
         }
       },
-      on(event, handler) {
+      on(event: string, handler: (...args: never[]) => void) {
         const list = eventHandlers.get(event) ?? [];
-        list.push(handler);
+        // The overloads on `SandboxContext.events.on` are what give plugin authors a
+        // typed `PluginFileEvent`; the registry itself holds the erased form, because
+        // one list carries handlers for every event name.
+        list.push(handler as (...args: unknown[]) => void);
         eventHandlers.set(event, list);
       },
     },

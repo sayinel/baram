@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { useUIStore } from "../../../stores/ui/ui";
 import {
   createUIRequestHandler,
   MIN_NOTIFY_INTERVAL_MS,
@@ -86,6 +87,31 @@ describe("createUIRequestHandler (§260 Phase 4a)", () => {
       await handler({ kind: "ui_notify", message: "hi" });
       expect(toasts[0].source).toBe("acme.notes");
     }
+  });
+
+  it("reaches the real UI store when no toast function is injected", async () => {
+    // §260 Phase 4a code review (M10) — every other test here asserts on a fake it also
+    // supplied, so the PRODUCTION wiring (`useUIStore.showToast`) was the last path in
+    // this phase that nothing executed. That is the shape of defect this issue keeps
+    // producing: a feature that works only against the double.
+    useUIStore.setState({ toast: null });
+    const handler = createUIRequestHandler({
+      capabilities: ["statusbar"],
+      declaredStatusBarIds: [],
+      pluginId: "acme.notes",
+      pluginName: "Acme Notes",
+    });
+
+    await handler({
+      kind: "ui_notify",
+      message: "from production",
+      type: "info",
+    });
+
+    const { toast } = useUIStore.getState();
+    expect(toast?.message).toBe("from production");
+    expect(toast?.source).toBe("Acme Notes");
+    expect(toast?.type).toBe("info");
   });
 
   it("flattens control characters and truncates", async () => {

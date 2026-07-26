@@ -307,23 +307,31 @@ export class PluginLoader {
         logger.error(`[PluginLoader] ${manifest.id}: teardown wait failed`, e);
       }
     }
-    // installPath goes to RUST, never to the sandbox: it binds which directory
-    // `source_read` may read, so the executed bundle matches this manifest.
-    await pluginSandboxRegister(
-      manifest.id,
-      manifest.capabilities,
-      installPath,
-    );
-    // §260 Phase 4a security review (HIGH-2) — everything from here to
-    // `this.loaded.set` is one unit of work, because a throw anywhere in it used to
-    // leave the WORST possible state: the sandbox running with its Rust grants, the
-    // webview holding its label, and NOTHING in `this.loaded` — so `unloadPlugin`
-    // early-returned and the user disabling the plugin was a no-op. A malformed
-    // `contributions.statusBar` entry was enough to reach it. `disposables` is declared
-    // out here so the rollback can undo whatever had already landed.
+    // §260 Phase 4a security review (HIGH-2) — this whole block is ONE unit of work,
+    // because a throw partway used to leave the WORST possible state: the sandbox
+    // running with its Rust grants, the webview holding its label, and NOTHING in
+    // `this.loaded` — so `unloadPlugin` early-returned and the user disabling the plugin
+    // was a no-op. A malformed `contributions.statusBar` entry was enough to reach it.
+    // `disposables` is declared out here so the rollback can undo whatever landed;
+    // `pluginSandboxRegister` is inside so the rollback's `deregister` covers it too
+    // (that call is idempotent in Rust, so covering a grant that was never made is free).
     const disposables: Disposable[] = [];
     let session: SandboxSession | undefined;
     try {
+      // Declared status-bar items go up FIRST, before any grant or webview exists
+      // (code review M1). Four comments claimed the tier's items "appear before the
+      // plugin's code runs" while the registration in fact sat after `start()`, which
+      // awaits `activate` — up to 15s on a cold dev start, and never at all if activate
+      // fails. Registering here makes the documented behaviour the real one, and the
+      // rollback below removes them if the load does not complete.
+      this.registerDeclaredStatusBar(manifest, disposables);
+      // installPath goes to RUST, never to the sandbox: it binds which directory
+      // `source_read` may read, so the executed bundle matches this manifest.
+      await pluginSandboxRegister(
+        manifest.id,
+        manifest.capabilities,
+        installPath,
+      );
       // §260 3c-2b — no path is handed over: the sandbox pulls its own bundle
       // through the broker, resolved in Rust from its window label.
       session = await this.sandboxHost.start(
@@ -360,6 +368,52 @@ export class PluginLoader {
       // sandbox is alive). Never let a rollback failure mask the original error.
       await this.rollbackSandboxLoad(manifest.id, session, disposables);
       throw err;
+    }
+  }
+
+  /**
+   * Map a started sandbox's declared contributions onto the host: status-bar items,
+   * palette commands, event delivery. Everything it registers is pushed onto
+   * `disposables`, which is both the unload path and the rollback path.
+   */
+  /**
+   * §260 Phase 4a — declarative status bar, straight from the MANIFEST: no plugin code
+   * has run when this happens, which is what lets an item show up while the sandbox is
+   * still booting. Text is sanitised on the way in — it is author-controlled and reaches
+   * the bar directly — and `command` becomes the full id the handler registry knows.
+   *
+   * Gated on `statusbar` (security review MEDIUM-3): updating an item already required
+   * it, so creating one must too, or `capabilities: []` still buys space in the app
+   * chrome — and declining the capability at Phase 5 would not take it away. Skipped with
+   * a warning rather than failing the load: an ignored decoration should not stop a
+   * plugin whose commands are fine.
+   */
+  private registerDeclaredStatusBar(
+    manifest: PluginManifest,
+    disposables: Disposable[],
+  ): void {
+    const declaredItems = manifest.contributions?.statusBar ?? [];
+    if (declaredItems.length === 0) return;
+    if (!manifest.capabilities.includes("statusbar")) {
+      logger.warn(
+        `[PluginLoader] ${manifest.id} declares statusBar items without the ` +
+          `"statusbar" capability — ignoring them`,
+      );
+      return;
+    }
+    for (const item of declaredItems) {
+      const itemId = statusBarItemId(manifest.id, item.id);
+      usePluginUIStore.getState().registerStatusBarItem({
+        align: "right",
+        command: item.command ? `${manifest.id}.${item.command}` : undefined,
+        itemId,
+        pluginId: manifest.id,
+        text: sanitizeStatusBarText(item.text),
+        tooltip: item.tooltip && sanitizeStatusBarText(item.tooltip),
+      });
+      disposables.push({
+        dispose: () => usePluginUIStore.getState().removeStatusBarItem(itemId),
+      });
     }
   }
 
@@ -504,52 +558,11 @@ export class PluginLoader {
     };
   }
 
-  /**
-   * Map a started sandbox's declared contributions onto the host: status-bar items,
-   * palette commands, event delivery. Everything it registers is pushed onto
-   * `disposables`, which is both the unload path and the rollback path.
-   */
   private wireSandboxContributions(
     manifest: PluginManifest,
     session: SandboxSession,
     disposables: Disposable[],
   ): void {
-    // §260 Phase 4a — declarative status bar: registered from the MANIFEST, so an item
-    // appears without the plugin's code having run (and stays if `activate` never binds
-    // anything). Text is sanitised on the way in — it is author-controlled and reaches
-    // the bar directly — and `command` becomes the full id the handler registry knows.
-    //
-    // Gated on `statusbar` (security review MEDIUM-3): updating an item already required
-    // it, so creating one must too, or `capabilities: []` still buys space in the app
-    // chrome — and declining the capability at Phase 5 would not take it away. Skipped
-    // with a warning rather than failing the load: an ignored decoration should not stop
-    // a plugin whose commands are fine.
-    const declaredItems = manifest.contributions?.statusBar ?? [];
-    if (
-      declaredItems.length > 0 &&
-      !manifest.capabilities.includes("statusbar")
-    ) {
-      logger.warn(
-        `[PluginLoader] ${manifest.id} declares statusBar items without the ` +
-          `"statusbar" capability — ignoring them`,
-      );
-    } else {
-      for (const item of declaredItems) {
-        const itemId = statusBarItemId(manifest.id, item.id);
-        usePluginUIStore.getState().registerStatusBarItem({
-          align: "right",
-          command: item.command ? `${manifest.id}.${item.command}` : undefined,
-          itemId,
-          pluginId: manifest.id,
-          text: sanitizeStatusBarText(item.text),
-          tooltip: item.tooltip && sanitizeStatusBarText(item.tooltip),
-        });
-        disposables.push({
-          dispose: () =>
-            usePluginUIStore.getState().removeStatusBarItem(itemId),
-        });
-      }
-    }
     for (const cmd of session.contributions?.commands ?? []) {
       const fullId = `${manifest.id}.${cmd.id}`;
       // Always register the handler so a command can be invoked via menu or
