@@ -374,14 +374,23 @@ export function PluginMarketplace() {
       const newEnabled = !plugin.enabled;
       setEnabled(id, newEnabled);
       if (newEnabled) {
-        pluginLoader
-          .loadPlugin(plugin.installPath, plugin.manifest)
-          .catch((err) => {
+        pluginLoader.loadPlugin(plugin.installPath, plugin.manifest).then(
+          // §260 3c-3 — clear the previous failure once the plugin loads. Same
+          // defect as the dev-plugin card: the error was written on failure and
+          // never removed, so a plugin the user has since fixed and enabled
+          // successfully kept displaying why it once failed.
+          () => setError(id, null),
+          (err: unknown) => {
             setError(id, String(err));
             setEnabled(id, false);
-          });
+          },
+        );
       } else {
-        pluginLoader.unloadPlugin(id);
+        // Unloading a sandboxed plugin awaits its teardown, so this can reject —
+        // it was a floating promise, i.e. an unhandled rejection on any failure.
+        pluginLoader.unloadPlugin(id).catch((err: unknown) => {
+          setError(id, String(err));
+        });
       }
     },
     [installedPlugins, setEnabled, setError],
