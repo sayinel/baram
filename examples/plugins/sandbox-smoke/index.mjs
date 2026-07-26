@@ -12,7 +12,7 @@
 // today. Phase 4's contribution mapping should give the tier a real one.
 
 /** ⚠️ SET THIS to the absolute path of the vault folder you open in the app. */
-const VAULT_DIR = "";
+const VAULT_DIR = "/Users/donghoon.yoo/Downloads/baram-test";
 
 /** Trim a failure message so several fit in one toast. */
 const brief = (e) => String(e?.message ?? e).slice(0, 70);
@@ -77,7 +77,10 @@ export async function activate(ctx) {
       //    op admitted and the other not.
       out.push(
         await expectDenied("ro", "not granted", () =>
-          ctx.files.writeFile(`${VAULT_DIR}/baram-smoke-should-not-exist.md`, "x"),
+          ctx.files.writeFile(
+            `${VAULT_DIR}/baram-smoke-should-not-exist.md`,
+            "x",
+          ),
         ),
       );
 
@@ -100,12 +103,32 @@ export async function activate(ctx) {
         return `(${models.length})`;
       }),
     );
+    // 8. ai.complete + ai.stream under IDENTICAL options, reported by LENGTH.
+    //
+    // The first live run returned `ai✓()` — resolved, but with an empty string. These
+    // two checks separate the candidate causes instead of guessing at one:
+    //   • both empty            → no token ever reached the host (relay or provider)
+    //   • stream>0, complete=0  → the host's buffering in `createAIAPI.complete`
+    //   • both non-empty now    → the first run's `maxTokens: 8` was simply too tight
+    //     for the configured model (a reasoning model can spend that budget before
+    //     emitting content), i.e. a fixture artifact, not a product defect
+    const PROMPT = "Reply with the single word OK.";
+    const OPTS = { maxTokens: 64 };
     out.push(
       await expectOk("ai", async () => {
-        const text = await ctx.ai.complete("Reply with the single word OK.", {
-          maxTokens: 8,
+        const text = await ctx.ai.complete(PROMPT, OPTS);
+        return `(len=${text.length}:${text.trim().slice(0, 12)})`;
+      }),
+    );
+    out.push(
+      await expectOk("stream", async () => {
+        let tokens = 0;
+        let chars = 0;
+        await ctx.ai.stream(PROMPT, OPTS, (t) => {
+          tokens += 1;
+          chars += String(t).length;
         });
-        return `(${text.trim().slice(0, 12)})`;
+        return `(${tokens}tok/${chars}ch)`;
       }),
     );
 

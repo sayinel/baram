@@ -38,7 +38,15 @@ rejections, so throwing is the only channel that reaches the screen today.
 | `ro✓` | a write was refused — the readonly grant does not admit it (any-of authz) |
 | `state✓` | `<vault>/.baram/config.json` was refused as app state |
 | `models✓(n)` | `ai.listModels()` through the host bridge |
-| `ai✓(OK)` | `ai.complete()` — **the path 3c-2c's review found was dead** |
+| `ai✓(len=n:…)` | `ai.complete()` — **the path 3c-2c's review found was dead** |
+| `stream✓(n tok/m ch)` | `ai.stream()` under the SAME options as `complete` |
+
+`ai` and `stream` are deliberately reported by size and run with identical options,
+because the first live run (2026-07-26) returned `ai✓()` — resolved, but empty. The
+pair localizes that without guessing: both empty ⇒ no token reached the host; stream
+non-empty while complete is empty ⇒ the host's buffering; both non-empty ⇒ the first
+run's `maxTokens: 8` was simply too tight for the configured model (a reasoning model
+can spend that budget before emitting any content), i.e. a fixture artifact.
 
 `✗` = that check failed. `~` = it was refused, but with an unexpected message (still
 worth reporting verbatim). Anything other than all-`✓` means stop and fix before
