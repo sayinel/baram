@@ -5,8 +5,9 @@
 import type {
   AIAPI,
   AIModel,
-  FilesAPI,
   NetworkAPI,
+  SandboxFilesAPI,
+  SandboxUIAPI,
   StorageAPI,
 } from "../types";
 import type { PluginOp } from "./plugin-op";
@@ -48,9 +49,16 @@ export interface SandboxContext {
   // in production). Exposed unconditionally: the Rust authorizer, keyed on the
   // Tauri-verified window.label(), is the real per-call capability gate — an
   // op for an unregistered capability fails closed there, not here.
-  files: FilesAPI;
+  files: SandboxFilesAPI;
   network: NetworkAPI;
   storage: StorageAPI;
+  /**
+   * §260 Phase 4a — data-only UI: the host renders on this plugin's behalf, so there is
+   * no DOM or CSS here (that is the trusted tier's `UIAPI`). Host-mediated like `ai`,
+   * and gated there — attribution, sanitising and rate limiting cannot be enforced in
+   * this realm.
+   */
+  ui: SandboxUIAPI;
 }
 
 interface PluginModule {
@@ -140,17 +148,51 @@ export function startSandboxClient(
         NetworkAPI["fetch"]
       >,
   };
-  // §260 3c-2c — same shape as the trusted tier's FilesAPI, so a plugin's file code
-  // is tier-independent. Nothing is interpreted here: a broker rejection (denied
-  // capability, path outside the vault, `.baram`, over the cap) propagates to the
-  // plugin, because a sandbox that softened a deny into `undefined` would let the
-  // plugin proceed as though the write had landed.
-  const files: FilesAPI = {
-    listDir: (path) =>
-      broker({ kind: "files_list", path }) as Promise<string[]>,
-    readFile: (path) => broker({ kind: "files_read", path }) as Promise<string>,
-    writeFile: (path, content) =>
-      broker({ content, kind: "files_write", path }) as Promise<void>,
+  // §260 3c-2c — the same three operations as the trusted tier's FilesAPI. Nothing is
+  // interpreted here: a broker rejection (denied capability, path outside the vault,
+  // `.baram`, over the cap) propagates to the plugin, because a sandbox that softened a
+  // deny into `undefined` would let the plugin proceed as though the write had landed.
+  //
+  // §260 Phase 4a — `path` is CONTEXT-RELATIVE and `opts.context` names the anchor. This
+  // realm is told no root, so it cannot form an absolute path, and Rust refuses one if it
+  // tries; passing the `context` from a delivered event is what keeps a call aimed at the
+  // vault the event came from when the user has since switched.
+  const files: SandboxFilesAPI = {
+    listDir: (path, opts) =>
+      broker({
+        context: opts?.context,
+        kind: "files_list",
+        path,
+      }) as Promise<string[]>,
+    readFile: (path, opts) =>
+      broker({
+        context: opts?.context,
+        kind: "files_read",
+        path,
+      }) as Promise<string>,
+    writeFile: (path, content, opts) =>
+      broker({
+        content,
+        context: opts?.context,
+        kind: "files_write",
+        path,
+      }) as Promise<void>,
+  };
+  // §260 Phase 4a — void-returning like the trusted tier's `UIAPI`, so a plugin is not
+  // forced to await a toast. The underlying request still has an answer: log a refusal
+  // (denied capability, undeclared item, throttled) rather than leaving an unhandled
+  // rejection, which in this realm would be invisible.
+  const fireUI = (request: SandboxHostRequest): void => {
+    void hostRequest(request).catch((err: unknown) => {
+      logger.warn(
+        `[Sandbox] ${request.kind} refused: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
+  };
+  const ui: SandboxUIAPI = {
+    setStatusBarText: (id, text) => fireUI({ id, kind: "ui_status_bar", text }),
+    showNotification: (message, type) =>
+      fireUI({ kind: "ui_notify", message, type }),
   };
 
   const ctx: SandboxContext = {
@@ -176,6 +218,7 @@ export function startSandboxClient(
     files,
     network,
     storage,
+    ui,
   };
 
   async function onActivate(): Promise<void> {

@@ -11,6 +11,10 @@ import { createChannelPair } from "./channel-pair";
 // serde contract deserializes (internally tagged on `kind`, snake_case). The
 // authorization and the vault bound live in Rust; what is testable here is the
 // wire shape and that a denial is not swallowed.
+//
+// §260 Phase 4a — paths are CONTEXT-RELATIVE (Rust refuses an absolute one), and
+// `opts.context` must reach the op, or a call aimed at the vault an event came from
+// would silently resolve against whichever vault is active when it lands.
 describe("startSandboxClient files (§260 3c-2c)", () => {
   it("routes ctx.files through the broker with exact op shapes", async () => {
     const ops: PluginOp[] = [];
@@ -28,9 +32,11 @@ describe("startSandboxClient files (§260 3c-2c)", () => {
       sandbox,
       async () => ({
         activate: async (ctx: SandboxContext) => {
-          readResult = await ctx.files.readFile("/v/note.md");
-          await ctx.files.writeFile("/v/note.md", "# edited");
-          listResult = await ctx.files.listDir("/v");
+          readResult = await ctx.files.readFile("note.md");
+          await ctx.files.writeFile("notes/a.md", "# edited", {
+            context: "ctx-7",
+          });
+          listResult = await ctx.files.listDir("");
         },
       }),
       broker,
@@ -38,10 +44,23 @@ describe("startSandboxClient files (§260 3c-2c)", () => {
     const s = new SandboxSession(host);
     await s.activate("p", { commands: [] });
 
-    expect(ops.filter((o) => o.kind !== "source_read")).toEqual([
-      { kind: "files_read", path: "/v/note.md" },
-      { kind: "files_write", content: "# edited", path: "/v/note.md" },
-      { kind: "files_list", path: "/v" },
+    // Compared AFTER a JSON round-trip, because that is the wire format Tauri uses and
+    // it is the only way to see that `context: undefined` leaves no key at all —
+    // `toEqual` treats an undefined-valued key as absent, so it would pass either way.
+    // Rust reads a missing `Option<String>` as `None` and anchors to the active context;
+    // a key present with a `null` value would be a different contract.
+    const wire = ops
+      .filter((o) => o.kind !== "source_read")
+      .map((o) => JSON.parse(JSON.stringify(o)) as unknown);
+    expect(wire).toStrictEqual([
+      { kind: "files_read", path: "note.md" },
+      {
+        content: "# edited",
+        context: "ctx-7",
+        kind: "files_write",
+        path: "notes/a.md",
+      },
+      { kind: "files_list", path: "" },
     ]);
     expect(readResult).toBe("# note");
     expect(listResult).toEqual(["a.md", "b.md"]);
@@ -62,7 +81,7 @@ describe("startSandboxClient files (§260 3c-2c)", () => {
       async () => ({
         activate: async (ctx: SandboxContext) => {
           try {
-            await ctx.files.writeFile("/v/note.md", "x");
+            await ctx.files.writeFile("note.md", "x");
           } catch (e) {
             caught = e;
           }

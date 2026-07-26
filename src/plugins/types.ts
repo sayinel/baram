@@ -151,6 +151,18 @@ export interface PluginFetchResponse {
   status: number;
 }
 
+/**
+ * §260 Phase 4a — what a sandboxed plugin is told when a file event fires. Carries a
+ * VAULT-RELATIVE path and the context to resolve it against; no absolute path ever
+ * crosses the sandbox boundary (see `SandboxFilesAPI`). Pass `context` straight back to
+ * `files.*` so a vault switch between the event and the call cannot silently redirect
+ * it to a same-named file in another vault.
+ */
+export interface PluginFileEvent {
+  context: string;
+  path: string;
+}
+
 export interface PluginManifest {
   author: string;
   capabilities: PluginCapability[];
@@ -221,6 +233,54 @@ export interface RegistryIndex {
   updatedAt?: string;
 }
 
+export interface SandboxFileOptions {
+  /** Registered context id to resolve `path` against. Default: the active context. */
+  context?: string;
+}
+
+/**
+ * §260 Phase 4a — the sandboxed tier's file API.
+ *
+ * Same three operations as `FilesAPI`, but `path` is **relative to a context root the
+ * plugin is never told**: the host discloses no absolute path, and Rust refuses one
+ * (along with `..`) outright. `""` is the context root, so `listDir("")` enumerates the
+ * vault without any bootstrap path.
+ *
+ * `opts.context` anchors the call to a specific registered context — use the `context`
+ * from a `PluginFileEvent`. Omitted, it means whichever context is active *now*.
+ */
+export interface SandboxFilesAPI {
+  listDir(path: string, opts?: SandboxFileOptions): Promise<string[]>;
+  readFile(path: string, opts?: SandboxFileOptions): Promise<string>;
+  writeFile(
+    path: string,
+    content: string,
+    opts?: SandboxFileOptions,
+  ): Promise<void>;
+}
+
+/**
+ * §260 Phase 4a — the sandboxed tier's UI surface: no DOM, no CSS, no element handle.
+ * Everything here is data the host renders on the plugin's behalf, which is why it can
+ * be offered to code the app does not trust. Arbitrary-DOM panels and injected styles
+ * remain trusted-tier only (see `UIAPI`).
+ */
+export interface SandboxUIAPI {
+  /**
+   * Update one status-bar item this plugin DECLARED in `contributions.statusBar`. The
+   * host resolves `id` against that declaration, so a plugin can neither invent an item
+   * nor touch another plugin's.
+   */
+  setStatusBarText(id: string, text: string): void;
+  /**
+   * Show a transient toast. The host prefixes the plugin's name — a plugin must not be
+   * able to render a message that reads as the app speaking — caps the length, and
+   * rate-limits it, because the app has a single toast slot a plugin could otherwise
+   * hold against the app's own messages.
+   */
+  showNotification(message: string, type?: "error" | "info" | "warning"): void;
+}
+
 export interface StatusBarItem {
   dispose(): void;
   setText(text: string): void;
@@ -246,6 +306,18 @@ export interface UIAPI {
   showNotification(message: string, type?: "error" | "info" | "warning"): void;
   showStatusBarItem(text: string, align?: "left" | "right"): StatusBarItem;
 }
+
+/**
+ * Capabilities that admit the `ui` surface. Shared by both tiers on purpose: the
+ * trusted tier hands out a `UIAPI` when a plugin holds any of these, and the sandboxed
+ * tier answers `ui` requests under the same rule (§260 Phase 4a). One list, so "can this
+ * plugin speak to the screen?" cannot come to two different answers.
+ */
+export const UI_CAPABILITIES: readonly PluginCapability[] = [
+  "settings",
+  "sidebar",
+  "statusbar",
+];
 
 /** Human-readable descriptions for capabilities */
 export const CAPABILITY_DESCRIPTIONS: Record<PluginCapability, string> = {
