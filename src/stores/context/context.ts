@@ -261,8 +261,13 @@ export const useContextStore = create<ContextState>()(
             continue;
           }
           // Vault/Folder: must match with trailing separator to avoid
-          // "/Users/me/work" matching "/Users/me/workspace/note.md"
-          const prefix = ctx.path.endsWith("/") ? ctx.path : ctx.path + "/";
+          // "/Users/me/work" matching "/Users/me/workspace/note.md".
+          // The separator comes from the path itself: on Windows both sides are
+          // backslash-delimited, and appending "/" there matched nothing — so every
+          // caller silently got "no context" (§260 Phase 4a, where a wrong answer would
+          // mean a sandboxed plugin hears no file events at all on Windows).
+          const sep = ctx.path.includes("\\") ? "\\" : "/";
+          const prefix = ctx.path.endsWith(sep) ? ctx.path : ctx.path + sep;
           if (filePath.startsWith(prefix) && ctx.path.length > bestLen) {
             best = ctx;
             bestLen = ctx.path.length;
