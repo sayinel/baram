@@ -24,6 +24,13 @@ pub enum RateClass {
     /// The CORS-free HTTP proxy: an exfiltration and abuse primitive, and the one
     /// op whose cost lands on someone else's server. Deliberately much tighter.
     Network,
+    /// §260 3c-2c review (F3) — sandbox→host FRAMES (`plugin_sandbox_report`), not
+    /// broker ops. A separate bucket because it is a different pipe with a different
+    /// cost: each frame is re-serialized into the main window's event loop, and
+    /// `MAX_SANDBOX_REPORT_BYTES` bounds one frame at 8 MiB while saying in its own
+    /// comment that a cap does not stop a flood. It also carries `hostRequest`, so
+    /// without this the host-mediated `ai` path had no Rust-side limit at all.
+    Transport,
 }
 
 impl RateClass {
@@ -34,6 +41,11 @@ impl RateClass {
             // throttled to 100/s instead of as fast as the disk answers.
             RateClass::Default => (200.0, 100.0),
             RateClass::Network => (20.0, 5.0),
+            // Generous: a plugin legitimately emits events and command results in
+            // bursts, and this is the only channel it has for ALL of them, so
+            // throttling here stalls correctness-bearing traffic, not just abuse.
+            // Finite is the point.
+            RateClass::Transport => (300.0, 150.0),
         }
     }
 }
@@ -203,6 +215,33 @@ mod tests {
             .is_err());
         assert!(limiter
             .check_at("plugin-a", RateClass::Default, now)
+            .is_ok());
+    }
+
+    /// §260 3c-2c review (F3) — the frame pipe is bounded, and separately from the
+    /// broker: a plugin doing legitimate `ai` work over the transport must not lose
+    /// its ability to read its own storage, and vice versa.
+    #[test]
+    fn the_transport_class_is_bounded_and_independent() {
+        let limiter = PluginRateLimiter::new();
+        let now = T0();
+        let (burst, rate) = RateClass::Transport.budget();
+        assert!(burst.is_finite() && rate.is_finite());
+
+        for _ in 0..burst as u32 {
+            limiter
+                .check_at("plugin-a", RateClass::Transport, now)
+                .unwrap();
+        }
+        assert!(limiter
+            .check_at("plugin-a", RateClass::Transport, now)
+            .is_err());
+        // Its own bucket: the broker classes are untouched.
+        assert!(limiter
+            .check_at("plugin-a", RateClass::Default, now)
+            .is_ok());
+        assert!(limiter
+            .check_at("plugin-a", RateClass::Network, now)
             .is_ok());
     }
 

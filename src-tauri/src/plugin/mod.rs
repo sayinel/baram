@@ -555,7 +555,7 @@ const MAX_BUNDLE_BYTES: u64 = 4 * 1024 * 1024;
 /// `main` comes from the manifest, not from the caller, but it is still treated as
 /// untrusted input: both paths are canonicalized and the file must resolve inside
 /// `dir`, so a crafted manifest cannot walk out with `../` or a symlink.
-pub fn read_bundle_in(dir: &Path, main: &str) -> Result<String, String> {
+pub async fn read_bundle_in(dir: &Path, main: &str) -> Result<String, String> {
     let canonical_dir =
         std::fs::canonicalize(dir).map_err(|e| format!("plugin directory is unreadable: {e}"))?;
     let candidate = canonical_dir.join(main);
@@ -569,6 +569,7 @@ pub fn read_bundle_in(dir: &Path, main: &str) -> Result<String, String> {
     // Space-joined, not colon-joined: the helper's messages are written to read as
     // predicates ("is N bytes, over the …"), so this composes into a sentence.
     read_text_capped(&canonical_file, MAX_BUNDLE_BYTES)
+        .await
         .map_err(|e| format!("plugin entry \"{main}\" {e}"))
 }
 
@@ -578,8 +579,15 @@ pub fn read_bundle_in(dir: &Path, main: &str) -> Result<String, String> {
 /// before it): every byte here crosses IPC into a sandbox's JS heap, so the cost of
 /// refusing must not scale with the input being refused. Shared by the bundle read
 /// and the brokered `files` read (Phase 3c-2c) so there is one implementation of it.
-pub fn read_text_capped(path: &Path, cap: u64) -> Result<String, String> {
-    let size = std::fs::metadata(path)
+///
+/// `tokio::fs`, not `std::fs` (§260 3c-2c security review, F2): both callers run
+/// inside `plugin_call`, an async command on the tokio runtime, and a plugin can ask
+/// for up to the cap at up to the rate limit. Blocking reads there would let one
+/// plugin stall unrelated IPC — autosave, search, the editor's own file work — which
+/// is a denial of service on the app rather than on the plugin.
+pub async fn read_text_capped(path: &Path, cap: u64) -> Result<String, String> {
+    let size = tokio::fs::metadata(path)
+        .await
         // Distinct from a read failure, so a diagnosis can tell "cannot be stat'ed"
         // from "stat'ed fine but unreadable".
         .map_err(|e| format!("cannot be measured: {e}"))?
@@ -587,7 +595,9 @@ pub fn read_text_capped(path: &Path, cap: u64) -> Result<String, String> {
     if size > cap {
         return Err(format!("is {size} bytes, over the {cap}-byte limit"));
     }
-    std::fs::read_to_string(path).map_err(|e| format!("could not be read: {e}"))
+    tokio::fs::read_to_string(path)
+        .await
+        .map_err(|e| format!("could not be read: {e}"))
 }
 
 /// Resolves `key` to a path inside `dir`, rejecting any key that is not a
@@ -734,8 +744,8 @@ mod tests {
     /// and therefore untrusted: it must not be able to name a file outside the
     /// plugin's own directory, or the op would become the file-read capability that
     /// dropping `asset:` exists to remove.
-    #[test]
-    fn read_bundle_in_reads_own_entry_and_refuses_escapes() {
+    #[tokio::test]
+    async fn read_bundle_in_reads_own_entry_and_refuses_escapes() {
         let base = std::env::temp_dir().join(format!("baram-src-{}", std::process::id()));
         let plugin = base.join("plugin-a");
         std::fs::create_dir_all(plugin.join("nested")).unwrap();
@@ -749,14 +759,15 @@ mod tests {
 
         // The declared entry, and a nested file inside the plugin, are both fine.
         assert!(read_bundle_in(&plugin, "index.mjs")
+            .await
             .unwrap()
             .contains("activate"));
-        assert!(read_bundle_in(&plugin, "nested/deep.mjs").is_ok());
+        assert!(read_bundle_in(&plugin, "nested/deep.mjs").await.is_ok());
 
         // Traversal out of the plugin dir is refused, as is a missing entry.
-        let escaped = read_bundle_in(&plugin, "../secret.mjs");
+        let escaped = read_bundle_in(&plugin, "../secret.mjs").await;
         assert!(escaped.is_err(), "traversal must be refused: {escaped:?}");
-        assert!(read_bundle_in(&plugin, "nope.mjs").is_err());
+        assert!(read_bundle_in(&plugin, "nope.mjs").await.is_err());
 
         std::fs::remove_dir_all(&base).ok();
     }
@@ -764,17 +775,19 @@ mod tests {
     /// §260 3c-2b security review (F2) — the bundle is attacker-shipped and crosses
     /// IPC into the sandbox's heap on every activate, so an oversized entry must be
     /// refused. Checked by metadata, so the refusal never allocates the file.
-    #[test]
-    fn read_bundle_in_refuses_an_oversized_entry() {
+    #[tokio::test]
+    async fn read_bundle_in_refuses_an_oversized_entry() {
         let base = std::env::temp_dir().join(format!("baram-big-{}", std::process::id()));
         std::fs::create_dir_all(&base).unwrap();
         let big = vec![b'x'; (MAX_BUNDLE_BYTES + 1) as usize];
         std::fs::write(base.join("big.mjs"), &big).unwrap();
         std::fs::write(base.join("ok.mjs"), "// small").unwrap();
 
-        let err = read_bundle_in(&base, "big.mjs").expect_err("oversized must be refused");
+        let err = read_bundle_in(&base, "big.mjs")
+            .await
+            .expect_err("oversized must be refused");
         assert!(err.contains("over the"), "unexpected error: {err}");
-        assert!(read_bundle_in(&base, "ok.mjs").is_ok());
+        assert!(read_bundle_in(&base, "ok.mjs").await.is_ok());
 
         std::fs::remove_dir_all(&base).ok();
     }
@@ -782,22 +795,26 @@ mod tests {
     /// §260 3c-2c — the extracted helper keeps the stat-before-read rule for the
     /// brokered `files` read too, and reports the size it refused (so a plugin author
     /// can tell "too big" from "unreadable").
-    #[test]
-    fn read_text_capped_refuses_over_cap_and_admits_at_cap() {
+    #[tokio::test]
+    async fn read_text_capped_refuses_over_cap_and_admits_at_cap() {
         let base = std::env::temp_dir().join(format!("baram-capped-{}", std::process::id()));
         std::fs::create_dir_all(&base).unwrap();
         let exact = base.join("exact.md");
         std::fs::write(&exact, "12345").unwrap();
 
-        assert_eq!(read_text_capped(&exact, 5).unwrap(), "12345"); // == cap → admitted
-        let err = read_text_capped(&exact, 4).expect_err("one over the cap must be refused");
+        assert_eq!(read_text_capped(&exact, 5).await.unwrap(), "12345"); // == cap → admitted
+        let err = read_text_capped(&exact, 4)
+            .await
+            .expect_err("one over the cap must be refused");
         assert!(err.contains("is 5 bytes"), "unexpected error: {err}");
         assert!(
             err.contains("over the 4-byte limit"),
             "unexpected error: {err}"
         );
         // A missing file is a distinct failure, not "too large".
-        let missing = read_text_capped(&base.join("nope.md"), 5).expect_err("missing must fail");
+        let missing = read_text_capped(&base.join("nope.md"), 5)
+            .await
+            .expect_err("missing must fail");
         assert!(
             missing.contains("cannot be measured"),
             "unexpected: {missing}"

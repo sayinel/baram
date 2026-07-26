@@ -285,7 +285,7 @@ fn send_to_sandbox(
 /// cannot name a file, so `SourceRead` remains argument-free. The containment check
 /// is defence in depth: even a buggy host cannot point a sandbox at somewhere that
 /// is not a plugin directory.
-fn read_own_source(
+async fn read_own_source(
     app: &tauri::AppHandle,
     label: &str,
     authorizer: &plugin::PluginAuthorizer,
@@ -298,7 +298,7 @@ fn read_own_source(
         return Err("plugin source directory is not a plugin location".to_string());
     }
     let manifest = plugin::read_manifest_at(dir).map_err(|e| e.to_string())?;
-    plugin::read_bundle_in(dir, &manifest.main)
+    plugin::read_bundle_in(dir, &manifest.main).await
 }
 
 /// Is `dir` a plugin location — the installed plugin dir's child, or a registered
@@ -334,24 +334,30 @@ const VAULT_STATE_DIR: &str = ".baram";
 
 /// §260 Phase 3c-2c — refuse the `.baram` tree even inside an open vault.
 ///
-/// The `files` capability is consented to as "read and write notes in the vault",
-/// and `.baram/` is not notes — it is app state, and letting a plugin write it is a
-/// strictly larger privilege than the grant describes:
+/// A `files` grant is described to the user as reading and writing files in the
+/// vault, and `.baram/` is not user content — it is the app's own per-vault state, so
+/// writing it is a strictly larger privilege than the grant describes:
 ///
-/// - `.baram/config.json` holds the vault's `ai` section, **including `baseUrl`**.
-///   A plugin that can rewrite it redirects every later LLM call in the app — the
-///   user's own prompts and document context — to an endpoint of its choosing. That
-///   is an exfiltration channel obtained without the `network` capability.
+/// - `.baram/config.json` is the vault's SETTINGS OVERRIDE layer (§86,
+///   `context/vault_config.rs`), applied over the user's global settings. It carries
+///   `ai.privacyMode` — a plugin that can write it can turn the privacy restriction
+///   **off**, after which the app itself is permitted to send document content to a
+///   cloud provider — plus `ai.model`, `extensions.enabled/disabled` (silently
+///   disabling editor features), `editor.skillsFolder`, and
+///   `markdown.serializationRules`, which changes how every document in the vault is
+///   written back to disk.
 /// - `.baram/snapshots/` holds copies of earlier file versions (§71), i.e. content
 ///   the user may believe they deleted.
+///
+/// (An earlier version of this comment claimed the AI `baseUrl` lives here. It does
+/// not — 3c-2c security review, F6: `AiSection` is model/privacyMode/contextScope,
+/// and `baseUrl` comes from the app-global settings store via `ollamaUrl`. The
+/// carve-out stands on what is actually in the file.)
 ///
 /// Matched on path COMPONENTS after canonicalization, so `..` tricks, a nested
 /// `sub/.baram/x`, and a symlink into the tree are all covered, while a file merely
 /// named `.baramish` is not.
-/// Returns the resolved path so the caller can operate on THAT, not the original —
-/// see `check_plugin_file_path`.
-fn reject_app_state_path(path: &str) -> Result<std::path::PathBuf, String> {
-    let resolved = crate::context::manager::resolve_canonical(path)?;
+fn reject_app_state_path(resolved: &std::path::Path) -> Result<(), String> {
     if resolved
         .components()
         .any(|c| c.as_os_str() == VAULT_STATE_DIR)
@@ -360,25 +366,33 @@ fn reject_app_state_path(path: &str) -> Result<std::path::PathBuf, String> {
             "access denied: {VAULT_STATE_DIR}/ is app state, not vault content"
         ));
     }
-    Ok(resolved)
+    Ok(())
 }
 
-/// Every check a brokered file op needs, cheapest-failing first: the vault rule
-/// shared with `read_file` (§88 multi-context, canonicalizing, deny-by-default when
-/// nothing is open), then the app-state carve-out.
+/// Every check a brokered file op needs, and the path the op must then act on.
 ///
-/// Returns the CANONICAL path, and the ops use it instead of the caller's string.
-/// Unlike the app's own file commands, both halves of a symlink swap are available to
-/// this caller: a `files`-granted plugin can create a symlink inside the vault
-/// (pointing in-vault, so the check passes) and repoint it at `/etc` before the read
-/// lands. Acting on the canonical path closes that window — it names only real
-/// directories, so no later symlink change can redirect it.
+/// Resolved ONCE (3c-2c review, F7): the vault rule, the app-state carve-out and the
+/// operation all judge and use the *same* `PathBuf`. Checking one resolution and
+/// acting on a second — which is what happens if each step canonicalizes for itself —
+/// leaves a window where the two disagree.
+///
+/// Acting on the canonical path matters more here than for the app's own file
+/// commands, because both halves of a symlink swap are available to this caller: a
+/// `files`-granted plugin can create a symlink inside the vault (pointing in-vault, so
+/// the check passes) and repoint it before the read lands. A canonical path names only
+/// real directories, so no later symlink change can redirect it.
+///
+/// The vault rule itself is `fs_cmd::ensure_path_in_vault` — the same §88
+/// multi-context, deny-when-nothing-is-open decision `read_file` makes, not a copy.
 async fn check_plugin_file_path(
     app: &tauri::AppHandle,
     path: &str,
 ) -> Result<std::path::PathBuf, String> {
-    super::fs_cmd::ensure_path_in_vault(app, path).await?;
-    reject_app_state_path(path)
+    let resolved = crate::context::manager::resolve_canonical(path)?;
+    let resolved_str = authorized_path_str(&resolved)?;
+    super::fs_cmd::ensure_path_in_vault(app, resolved_str).await?;
+    reject_app_state_path(&resolved)?;
+    Ok(resolved)
 }
 
 /// The canonical path as a `&str` for the `crate::fs` helpers, which take one. A
@@ -402,7 +416,9 @@ async fn execute_op(
     match op {
         // §260 3c-2b — the caller's OWN bundle, from the directory the host bound at
         // registration. No path argument exists, so a sandbox cannot name a file.
-        SourceRead => Ok(serde_json::json!(read_own_source(app, label, authorizer)?)),
+        SourceRead => Ok(serde_json::json!(
+            read_own_source(app, label, authorizer).await?
+        )),
         StorageRead { key } => Ok(serde_json::json!(
             plugin::storage_read(plugin_id.to_string(), key).await?
         )),
@@ -424,6 +440,7 @@ async fn execute_op(
         FilesRead { path } => {
             let resolved = check_plugin_file_path(app, &path).await?;
             let text = plugin::read_text_capped(&resolved, MAX_PLUGIN_FILE_BYTES)
+                .await
                 .map_err(|e| format!("file \"{path}\" {e}"))?;
             Ok(serde_json::json!(text))
         }
@@ -525,9 +542,19 @@ pub async fn plugin_sandbox_report(
     msg: serde_json::Value,
     app: tauri::AppHandle,
     authorizer: tauri::State<'_, plugin::PluginAuthorizer>,
+    limiter: tauri::State<'_, plugin::PluginRateLimiter>,
 ) -> Result<(), String> {
     use tauri::Emitter;
     let plugin_id = authorize_sandbox_caller(window.label(), &authorizer)?;
+    // §260 3c-2c review (F3) — rate-limit the FRAME pipe, not just `plugin_call`.
+    // `check_report_size` bounds one frame at 8 MiB and its own comment says a cap
+    // does not stop a flood; this is that follow-up. It also covers `hostRequest`,
+    // which rides this command, so the host-mediated `ai` path is no longer the one
+    // sandbox→host route with no Rust-side limit. Its own bucket, so a plugin's
+    // frames and its broker ops cannot starve each other.
+    limiter
+        .check(window.label(), plugin::RateClass::Transport)
+        .map_err(|e| e.to_string())?;
     check_report_size(&msg)?;
     app.emit(
         "plugin:s2h",
@@ -711,9 +738,19 @@ mod tests {
         assert!(err.contains("too large"), "unexpected error: {err}");
     }
 
-    /// §260 3c-2c — `.baram/` is app state, and a plugin that can WRITE
-    /// `.baram/config.json` can repoint the vault's AI `baseUrl` and exfiltrate every
-    /// later prompt without holding `network`. Component-matched after
+    /// The resolution step of `check_plugin_file_path` plus the guard. The vault check
+    /// that sits between them needs an `AppHandle`, so it is exercised by the
+    /// `fs_cmd` tests; what matters here is that the guard always judges a RESOLVED
+    /// path, never the caller's string.
+    fn resolve_then_reject(path: &std::path::Path) -> Result<std::path::PathBuf, String> {
+        let resolved = crate::context::manager::resolve_canonical(path.to_str().unwrap())?;
+        reject_app_state_path(&resolved)?;
+        Ok(resolved)
+    }
+
+    /// §260 3c-2c — `.baram/` is the app's own per-vault state, so a plugin that could
+    /// write it could flip `ai.privacyMode` off or rewrite
+    /// `markdown.serializationRules` for every document. Component-matched after
     /// canonicalization, so nesting and `..` are covered and a similarly-named file
     /// is not.
     #[test]
@@ -728,8 +765,8 @@ mod tests {
         std::fs::write(base.join(".baramish").as_path(), "not app state").unwrap();
 
         let denied = |p: std::path::PathBuf| {
-            let e = reject_app_state_path(p.to_str().unwrap())
-                .expect_err(&format!("must be refused: {}", p.display()));
+            let e =
+                resolve_then_reject(&p).expect_err(&format!("must be refused: {}", p.display()));
             assert!(e.contains("app state"), "unexpected error: {e}");
         };
         denied(state.join("config.json"));
@@ -745,31 +782,42 @@ mod tests {
         );
 
         // Ordinary content, and a file merely NAMED like the state dir, are fine.
-        assert!(reject_app_state_path(base.join("note.md").to_str().unwrap()).is_ok());
-        assert!(reject_app_state_path(base.join(".baramish").to_str().unwrap()).is_ok());
+        assert!(resolve_then_reject(&base.join("note.md")).is_ok());
+        assert!(resolve_then_reject(&base.join(".baramish")).is_ok());
 
         std::fs::remove_dir_all(&base).ok();
     }
 
     /// §260 3c-2c — the ops act on the RESOLVED path, which is what closes the
     /// symlink-swap window a `files`-granted plugin could otherwise open (it controls
-    /// both the path it asks for and, inside the vault, what that path points at).
+    /// both the path it asks for and, inside the vault, what that path points at) —
+    /// and it is also what stops a symlink from disguising an app-state target.
     #[cfg(unix)]
     #[test]
-    fn the_authorized_path_is_the_resolved_one() {
+    fn resolution_defeats_a_symlink_and_the_guard_judges_the_target() {
         let base = std::env::temp_dir().join(format!("baram-link-{}", std::process::id()));
         std::fs::create_dir_all(base.join("real")).unwrap();
+        std::fs::create_dir_all(base.join(VAULT_STATE_DIR)).unwrap();
         let target = base.join("real").join("note.md");
         std::fs::write(&target, "# hi").unwrap();
+        std::fs::write(base.join(VAULT_STATE_DIR).join("config.json"), "{}").unwrap();
+
+        // An innocent link resolves to its target, and THAT is what the op receives.
         let link = base.join("link.md");
         std::os::unix::fs::symlink(&target, &link).unwrap();
-
-        let resolved = reject_app_state_path(link.to_str().unwrap()).unwrap();
         assert_eq!(
-            resolved,
+            resolve_then_reject(&link).unwrap(),
             std::fs::canonicalize(&target).unwrap(),
             "a symlinked path must resolve to its target before the op runs"
         );
+
+        // A link whose name says "note" but which points into app state is refused,
+        // because the guard sees the resolved path, not the innocuous one.
+        let disguise = base.join("innocent.md");
+        std::os::unix::fs::symlink(base.join(VAULT_STATE_DIR).join("config.json"), &disguise)
+            .unwrap();
+        let err = resolve_then_reject(&disguise).expect_err("a disguised link must be refused");
+        assert!(err.contains("app state"), "unexpected error: {err}");
 
         std::fs::remove_dir_all(&base).ok();
     }
