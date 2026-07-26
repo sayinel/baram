@@ -11,7 +11,10 @@ export type HostToSandbox =
       type: "invokeCommand";
     }
   | { args: unknown[]; event: string; type: "deliverEvent" }
-  | { pluginId: string; pluginUrl: string; type: "activate" }
+  // §260 3c-2b — no URL: the sandbox pulls its own bundle through the broker
+  // (`source_read`, resolved in Rust from the caller's window label) and imports it
+  // from a blob URL, so the realm needs no `asset:` and holds no file-read power.
+  | { pluginId: string; type: "activate" }
   | { type: "deactivate" };
 
 /**

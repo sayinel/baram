@@ -163,7 +163,7 @@ describe("createHostTransport (§260 host end)", () => {
 
       const transport = await createHostTransport("alpha");
       const session = new SandboxSession(transport);
-      const activated = session.activate("alpha", "asset://x", DECLARED);
+      const activated = session.activate("alpha", DECLARED);
 
       await vi.advanceTimersByTimeAsync(300); // every send so far rejected
       expect(sent).toEqual([]);

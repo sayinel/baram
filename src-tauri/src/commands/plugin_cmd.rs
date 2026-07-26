@@ -267,11 +267,70 @@ fn send_to_sandbox(
     channels.send(&format!("plugin-{plugin_id}"), msg)
 }
 
+/// §260 3c-2b — read the caller's entry bundle from the directory the host BOUND at
+/// registration, not from a directory re-derived here.
+///
+/// The earlier version searched (installed dir first, then dev folders) and got the
+/// precedence backwards: the host deliberately lets a dev folder override an
+/// installed copy of the same id (`plugin-lifecycle.ts`), so a search could return
+/// the installed bundle while the host had validated and authorized the DEV
+/// manifest — executing one plugin's code under another's grants, silently
+/// (3c-2b review, I2).
+///
+/// The path comes from the trusted host, once, at register time; the sandbox still
+/// cannot name a file, so `SourceRead` remains argument-free. The containment check
+/// is defence in depth: even a buggy host cannot point a sandbox at somewhere that
+/// is not a plugin directory.
+fn read_own_source(
+    app: &tauri::AppHandle,
+    label: &str,
+    authorizer: &plugin::PluginAuthorizer,
+) -> Result<String, String> {
+    let dir = authorizer
+        .source_dir(label)
+        .ok_or_else(|| "this sandbox is not registered".to_string())?;
+    let dir = std::path::Path::new(&dir);
+    if !is_plugin_directory(app, dir)? {
+        return Err("plugin source directory is not a plugin location".to_string());
+    }
+    let manifest = plugin::read_manifest_at(dir).map_err(|e| e.to_string())?;
+    plugin::read_bundle_in(dir, &manifest.main)
+}
+
+/// Is `dir` a plugin location — the installed plugin dir's child, or a registered
+/// dev folder? Canonicalized on both sides so a symlink cannot disguise the answer.
+fn is_plugin_directory(app: &tauri::AppHandle, dir: &std::path::Path) -> Result<bool, String> {
+    let canonical = std::fs::canonicalize(dir)
+        .map_err(|e| format!("plugin source directory is unreadable: {e}"))?;
+    if let Ok(root) = plugin::get_plugin_dir() {
+        if let Ok(canonical_root) = std::fs::canonicalize(&root) {
+            if canonical.parent() == Some(canonical_root.as_path()) {
+                return Ok(true);
+            }
+        }
+    }
+    for folder in read_dev_folders(app)? {
+        if std::fs::canonicalize(&folder).is_ok_and(|dev| dev == canonical) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 /// Execute an authorized op using the CALLER-derived plugin id (never a
 /// client-supplied id). Storage is namespaced per plugin id → isolation.
-async fn execute_op(plugin_id: &str, op: plugin::PluginOp) -> Result<serde_json::Value, String> {
+async fn execute_op(
+    app: &tauri::AppHandle,
+    label: &str,
+    plugin_id: &str,
+    op: plugin::PluginOp,
+    authorizer: &plugin::PluginAuthorizer,
+) -> Result<serde_json::Value, String> {
     use plugin::PluginOp::*;
     match op {
+        // §260 3c-2b — the caller's OWN bundle, from the directory the host bound at
+        // registration. No path argument exists, so a sandbox cannot name a file.
+        SourceRead => Ok(serde_json::json!(read_own_source(app, label, authorizer)?)),
         StorageRead { key } => Ok(serde_json::json!(
             plugin::storage_read(plugin_id.to_string(), key).await?
         )),
@@ -297,10 +356,14 @@ pub async fn plugin_sandbox_register(
     window: tauri::WebviewWindow,
     plugin_id: String,
     capabilities: Vec<String>,
+    install_path: String,
     authorizer: tauri::State<'_, plugin::PluginAuthorizer>,
 ) -> Result<(), String> {
     host_window_guard(window.label())?;
-    authorizer.register(format!("plugin-{plugin_id}"), capabilities);
+    // §260 3c-2b — the host binds the directory it resolved and validated together
+    // with the grants, so `SourceRead` reads the code that matches THIS manifest (a
+    // dev folder legitimately shadows an installed copy of the same id).
+    authorizer.register(format!("plugin-{plugin_id}"), capabilities, install_path);
     Ok(())
 }
 
@@ -386,12 +449,15 @@ pub async fn plugin_sandbox_send(
 pub async fn plugin_call(
     window: tauri::WebviewWindow,
     op: plugin::PluginOp,
+    app: tauri::AppHandle,
     authorizer: tauri::State<'_, plugin::PluginAuthorizer>,
 ) -> Result<serde_json::Value, String> {
+    // `authorize_op` keeps the "does this op need a grant?" decision on the op
+    // (§260 3c-2b: `SourceRead` needs none), so no call site can get it wrong.
     let plugin_id = authorizer
-        .authorize(window.label(), op.required_capability())
+        .authorize_op(window.label(), &op)
         .map_err(|e| e.to_string())?;
-    execute_op(&plugin_id, op).await
+    execute_op(&app, window.label(), &plugin_id, op, &authorizer).await
 }
 
 #[cfg(test)]
@@ -426,7 +492,7 @@ mod tests {
         assert!(authorize_sandbox_caller("file-1", &authorizer).is_err());
         // A sandbox window the host never registered is refused (fail closed).
         assert!(authorize_sandbox_caller("plugin-alpha", &authorizer).is_err());
-        authorizer.register("plugin-alpha".into(), vec![]);
+        authorizer.register("plugin-alpha".into(), vec![], "/p/alpha".into());
         assert_eq!(
             authorize_sandbox_caller("plugin-alpha", &authorizer).unwrap(),
             "alpha"
@@ -436,7 +502,11 @@ mod tests {
     #[test]
     fn deregister_revokes_capabilities_and_the_channel_together() {
         let (authorizer, channels) = state();
-        authorizer.register("plugin-alpha".into(), vec!["storage".into()]);
+        authorizer.register(
+            "plugin-alpha".into(),
+            vec!["storage".into()],
+            "/p/alpha".into(),
+        );
         channels.connect("plugin-alpha".into(), dummy_channel());
         assert!(channels.send("plugin-alpha", serde_json::json!({})).is_ok());
 
@@ -453,7 +523,7 @@ mod tests {
     #[test]
     fn deregister_and_send_are_host_only() {
         let (authorizer, channels) = state();
-        authorizer.register("plugin-alpha".into(), vec![]);
+        authorizer.register("plugin-alpha".into(), vec![], "/p/alpha".into());
         channels.connect("plugin-alpha".into(), dummy_channel());
         // A sandbox must not be able to revoke, or message, another sandbox.
         assert!(deregister_sandbox("plugin-evil", "alpha", &authorizer, &channels).is_err());

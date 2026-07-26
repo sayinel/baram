@@ -16,6 +16,7 @@ describe("startSandboxClient broker (§260 storage/network)", () => {
     const ops: PluginOp[] = [];
     const broker = vi.fn(async (op: PluginOp) => {
       ops.push(op);
+      if (op.kind === "source_read") return "// bundle";
       return op.kind === "storage_read"
         ? "v"
         : op.kind === "storage_list"
@@ -38,9 +39,9 @@ describe("startSandboxClient broker (§260 storage/network)", () => {
       broker,
     );
     const s = new SandboxSession(host);
-    await s.activate("p", "u", { commands: [] });
+    await s.activate("p", { commands: [] });
 
-    expect(ops).toEqual([
+    expect(ops.filter((o) => o.kind !== "source_read")).toEqual([
       { kind: "storage_write", key: "k", value: "v" },
       { kind: "storage_read", key: "k" },
       { kind: "storage_list" },
@@ -54,6 +55,7 @@ describe("startSandboxClient broker (§260 storage/network)", () => {
     const ops: PluginOp[] = [];
     const broker = vi.fn(async (op: PluginOp) => {
       ops.push(op);
+      if (op.kind === "source_read") return "// bundle";
       return { body: "", headers: {}, status: 200 };
     });
     const { host, sandbox } = createChannelPair();
@@ -67,9 +69,9 @@ describe("startSandboxClient broker (§260 storage/network)", () => {
       broker,
     );
     const s = new SandboxSession(host);
-    await s.activate("p", "u", { commands: [] });
+    await s.activate("p", { commands: [] });
 
-    expect(ops).toEqual([
+    expect(ops.filter((o) => o.kind !== "source_read")).toEqual([
       { kind: "http_fetch", url: "https://x.test", init: { method: "GET" } },
     ]);
   });

@@ -36,16 +36,26 @@ pub enum PluginOp {
         url: String,
         init: Option<PluginFetchInit>,
     },
+    /// §260 Phase 3c-2b — hand the caller its OWN plugin bundle so it can import it
+    /// from a `blob:` URL. Takes no path: Rust resolves the caller's directory from
+    /// the label-derived id, which is why the sandbox realm needs no `asset:` (and
+    /// therefore has no file-read capability at all).
+    SourceRead,
 }
 
 impl PluginOp {
-    pub fn required_capability(&self) -> &'static str {
+    /// The capability a caller must have been granted, or `None` for an op that
+    /// needs no grant — only a verified, registered identity.
+    pub fn required_capability(&self) -> Option<&'static str> {
         match self {
             PluginOp::StorageRead { .. }
             | PluginOp::StorageWrite { .. }
             | PluginOp::StorageList
-            | PluginOp::StorageRemove { .. } => "storage",
-            PluginOp::HttpFetch { .. } => "network",
+            | PluginOp::StorageRemove { .. } => Some("storage"),
+            PluginOp::HttpFetch { .. } => Some("network"),
+            // Reading one's own code is not a grantable privilege: it is the bytes
+            // the host was about to hand over anyway, and the op names no file.
+            PluginOp::SourceRead => None,
         }
     }
 }
@@ -60,10 +70,22 @@ pub enum AuthzError {
     Denied(String),
 }
 
-/// Managed state: `label` → granted capability strings.
+/// What the host granted one sandbox: its capabilities and the directory its code
+/// came from. Binding the directory here (§260 3c-2b review, I2) rather than
+/// re-deriving it per call is what keeps the executed bundle and the
+/// validated/authorized manifest from disagreeing — the host resolves both together
+/// (a dev folder overrides an installed copy of the same id), so Rust must not
+/// re-guess.
+#[derive(Debug, Clone)]
+pub struct SandboxGrant {
+    pub capabilities: Vec<String>,
+    pub source_dir: String,
+}
+
+/// Managed state: `label` → what the host granted it.
 #[derive(Default)]
 pub struct PluginAuthorizer {
-    granted: Mutex<HashMap<String, Vec<String>>>,
+    granted: Mutex<HashMap<String, SandboxGrant>>,
 }
 
 impl PluginAuthorizer {
@@ -71,12 +93,28 @@ impl PluginAuthorizer {
         Self::default()
     }
 
-    pub fn register(&self, label: String, capabilities: Vec<String>) {
-        self.granted.lock().unwrap().insert(label, capabilities);
+    pub fn register(&self, label: String, capabilities: Vec<String>, source_dir: String) {
+        self.granted.lock().unwrap().insert(
+            label,
+            SandboxGrant {
+                capabilities,
+                source_dir,
+            },
+        );
     }
 
     pub fn deregister(&self, label: &str) {
         self.granted.lock().unwrap().remove(label);
+    }
+
+    /// The directory the host loaded this sandbox's plugin from. `None` when the
+    /// label is not a registered sandbox, so `SourceRead` fails closed.
+    pub fn source_dir(&self, label: &str) -> Option<String> {
+        self.granted
+            .lock()
+            .unwrap()
+            .get(label)
+            .map(|g| g.source_dir.clone())
     }
 
     /// Whether the host has registered this label at all (any capability set,
@@ -86,13 +124,31 @@ impl PluginAuthorizer {
         plugin_id_from_label(label).is_some() && self.granted.lock().unwrap().contains_key(label)
     }
 
+    /// Authorize one op by the caller's label: verifies identity + registration
+    /// always, and the op's capability when it declares one. Preferred over
+    /// `authorize` at call sites, so the "does this op need a grant?" decision lives
+    /// with the op rather than being re-derived by every caller.
+    pub fn authorize_op(&self, label: &str, op: &PluginOp) -> Result<String, AuthzError> {
+        match op.required_capability() {
+            Some(cap) => self.authorize(label, cap),
+            None => {
+                let plugin_id = plugin_id_from_label(label).ok_or(AuthzError::NotASandbox)?;
+                if self.granted.lock().unwrap().contains_key(label) {
+                    Ok(plugin_id)
+                } else {
+                    Err(AuthzError::Unregistered)
+                }
+            }
+        }
+    }
+
     /// On success returns the caller's plugin id (derived from the label) so the
     /// broker uses the CALLER identity — never a client-supplied id — for the op.
     pub fn authorize(&self, label: &str, cap: &str) -> Result<String, AuthzError> {
         let plugin_id = plugin_id_from_label(label).ok_or(AuthzError::NotASandbox)?;
         let map = self.granted.lock().unwrap();
-        let caps = map.get(label).ok_or(AuthzError::Unregistered)?;
-        if caps.iter().any(|c| c == cap) {
+        let grant = map.get(label).ok_or(AuthzError::Unregistered)?;
+        if grant.capabilities.iter().any(|c| c == cap) {
             Ok(plugin_id)
         } else {
             Err(AuthzError::Denied(cap.to_string()))
@@ -112,11 +168,59 @@ mod tests {
     }
 
     #[test]
+    fn source_read_needs_no_capability_only_registration() {
+        // Reading one's OWN bundle is not a grantable privilege: it is the bytes the
+        // host was about to hand over anyway, and the op names no file. Identity is
+        // still verified, and an unregistered or non-sandbox caller is still refused.
+        assert_eq!(PluginOp::SourceRead.required_capability(), None);
+        let a = PluginAuthorizer::new();
+        assert!(matches!(
+            a.authorize_op("plugin-alpha", &PluginOp::SourceRead),
+            Err(AuthzError::Unregistered)
+        ));
+        a.register("plugin-alpha".into(), vec![], "/p/plugin-alpha".into()); // zero capabilities granted
+        assert_eq!(
+            a.authorize_op("plugin-alpha", &PluginOp::SourceRead)
+                .unwrap(),
+            "alpha"
+        );
+        assert!(matches!(
+            a.authorize_op("main", &PluginOp::SourceRead),
+            Err(AuthzError::NotASandbox)
+        ));
+    }
+
+    #[test]
+    fn authorize_op_still_enforces_capabilities_for_grantable_ops() {
+        let a = PluginAuthorizer::new();
+        a.register(
+            "plugin-alpha".into(),
+            vec!["storage".into()],
+            "/p/plugin-alpha".into(),
+        );
+        assert_eq!(
+            a.authorize_op("plugin-alpha", &PluginOp::StorageList)
+                .unwrap(),
+            "alpha"
+        );
+        assert!(matches!(
+            a.authorize_op(
+                "plugin-alpha",
+                &PluginOp::HttpFetch {
+                    url: "http://x".into(),
+                    init: None
+                }
+            ),
+            Err(AuthzError::Denied(_))
+        ));
+    }
+
+    #[test]
     fn required_capability_mapping() {
-        assert_eq!(PluginOp::StorageList.required_capability(), "storage");
+        assert_eq!(PluginOp::StorageList.required_capability(), Some("storage"));
         assert_eq!(
             PluginOp::StorageRead { key: "k".into() }.required_capability(),
-            "storage"
+            Some("storage")
         );
         assert_eq!(
             PluginOp::HttpFetch {
@@ -124,7 +228,7 @@ mod tests {
                 init: None
             }
             .required_capability(),
-            "network"
+            Some("network")
         );
     }
 
@@ -141,6 +245,7 @@ mod tests {
         a.register(
             "plugin-alpha".into(),
             vec!["storage".into(), "network".into()],
+            "/p/plugin-alpha".into(),
         );
         assert_eq!(a.authorize("plugin-alpha", "storage").unwrap(), "alpha");
         assert_eq!(a.authorize("plugin-alpha", "network").unwrap(), "alpha");
@@ -149,7 +254,11 @@ mod tests {
     #[test]
     fn authorize_denies_missing_capability() {
         let a = PluginAuthorizer::new();
-        a.register("plugin-alpha".into(), vec!["storage".into()]);
+        a.register(
+            "plugin-alpha".into(),
+            vec!["storage".into()],
+            "/p/plugin-alpha".into(),
+        );
         assert!(matches!(
             a.authorize("plugin-alpha", "network"),
             Err(AuthzError::Denied(_))
@@ -172,7 +281,11 @@ mod tests {
     #[test]
     fn deregister_revokes() {
         let a = PluginAuthorizer::new();
-        a.register("plugin-alpha".into(), vec!["storage".into()]);
+        a.register(
+            "plugin-alpha".into(),
+            vec!["storage".into()],
+            "/p/plugin-alpha".into(),
+        );
         a.deregister("plugin-alpha");
         assert!(matches!(
             a.authorize("plugin-alpha", "storage"),
@@ -184,11 +297,11 @@ mod tests {
     fn is_registered_tracks_registration_and_rejects_non_sandbox() {
         let a = PluginAuthorizer::new();
         assert!(!a.is_registered("plugin-alpha"));
-        a.register("plugin-alpha".into(), vec![]); // zero capabilities still counts
+        a.register("plugin-alpha".into(), vec![], "/p/plugin-alpha".into()); // zero capabilities still counts
         assert!(a.is_registered("plugin-alpha"));
         a.deregister("plugin-alpha");
         assert!(!a.is_registered("plugin-alpha"));
-        a.register("main".into(), vec!["storage".into()]); // not a sandbox label
+        a.register("main".into(), vec!["storage".into()], "/p/main".into()); // not a sandbox label
         assert!(!a.is_registered("main"));
     }
 
@@ -197,8 +310,16 @@ mod tests {
         // The isolation guarantee: each label authorizes as its OWN id, so the
         // broker (Task 2) namespaces storage by the caller, never a shared arg.
         let a = PluginAuthorizer::new();
-        a.register("plugin-a".into(), vec!["storage".into()]);
-        a.register("plugin-b".into(), vec!["storage".into()]);
+        a.register(
+            "plugin-a".into(),
+            vec!["storage".into()],
+            "/p/plugin-a".into(),
+        );
+        a.register(
+            "plugin-b".into(),
+            vec!["storage".into()],
+            "/p/plugin-b".into(),
+        );
         assert_eq!(a.authorize("plugin-a", "storage").unwrap(), "a");
         assert_eq!(a.authorize("plugin-b", "storage").unwrap(), "b");
     }

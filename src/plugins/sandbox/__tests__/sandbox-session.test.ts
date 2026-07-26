@@ -17,7 +17,7 @@ describe("SandboxSession (§260 host router)", () => {
         sandbox.send({ type: "ready", registered: REPORT });
     });
     const s = new SandboxSession(host);
-    const rec = await s.activate("p", "u", DECLARED);
+    const rec = await s.activate("p", DECLARED);
     expect(rec).toBe(DECLARED);
     expect(s.contributions).toBe(DECLARED);
   });
@@ -30,7 +30,7 @@ describe("SandboxSession (§260 host router)", () => {
         sandbox.send({ type: "ready", registered: REPORT });
     });
     const s = new SandboxSession(host);
-    await expect(s.activate("p", "u", DECLARED)).resolves.toBe(DECLARED);
+    await expect(s.activate("p", DECLARED)).resolves.toBe(DECLARED);
     expect(seen).toBeGreaterThanOrEqual(2);
   });
 
@@ -41,7 +41,7 @@ describe("SandboxSession (§260 host router)", () => {
         sandbox.send({ type: "activateError", error: "boom" });
     });
     await expect(
-      new SandboxSession(host).activate("p", "u", DECLARED),
+      new SandboxSession(host).activate("p", DECLARED),
     ).rejects.toThrow(/boom/);
   });
 
@@ -59,7 +59,7 @@ describe("SandboxSession (§260 host router)", () => {
         });
     });
     const s = new SandboxSession(host);
-    await s.activate("p", "u", DECLARED);
+    await s.activate("p", DECLARED);
     await expect(s.invokeCommand("c1", ["hi"])).resolves.toBe("hi");
   });
 
@@ -77,7 +77,7 @@ describe("SandboxSession (§260 host router)", () => {
         });
     });
     const s = new SandboxSession(host);
-    await s.activate("p", "u", DECLARED);
+    await s.activate("p", DECLARED);
     await expect(s.invokeCommand("c1")).rejects.toThrow(/nope/);
   });
 
@@ -100,7 +100,7 @@ describe("SandboxSession (§260 host router)", () => {
         sandbox.send({ type: "ready", registered: REPORT });
     });
     const s = new SandboxSession(host);
-    await s.activate("p", "u", DECLARED);
+    await s.activate("p", DECLARED);
     const pending = s.invokeCommand("c1");
     s.dispose();
     await Promise.resolve();

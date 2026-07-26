@@ -40,6 +40,12 @@ type Importer = (url: string) => Promise<PluginModule>;
 export class PluginLoader {
   private readonly importer: Importer;
   private loaded = new Map<string, LoadedPlugin>();
+  /**
+   * §260 3c-2b — sandbox teardowns still running after `unloadPlugin` gave up
+   * waiting. A load for the same id awaits the entry first, so a late
+   * `plugin_sandbox_deregister` can never revoke the grant the new load just made.
+   */
+  private readonly pendingTeardowns = new Map<string, Promise<void>>();
   private reloadCounter = 0;
   private readonly sandboxHost: SandboxHost;
 
@@ -223,12 +229,31 @@ export class PluginLoader {
     // running, so revocation still lands — just late enough that a reload inside
     // the window could race it, hence the loud log.
     if (plugin.teardown) {
+      // Track the UN-timed-out promise: after the timeout below the teardown is
+      // still running, and the next load has to wait for it (see
+      // `loadSandboxedPlugin`) or its `deregister` lands after the new register and
+      // revokes the fresh grant. `.catch` keeps the tracked copy from becoming an
+      // unhandled rejection — the real error is reported here.
+      const running = plugin.teardown();
+      // Identity check before deleting (§260 3c-2b review, M3): `unloadPlugin` only
+      // removes from `this.loaded` at the very end, so two concurrent calls for the
+      // same id both start a teardown. Without this, whichever finishes first would
+      // delete the OTHER one's entry and the next load would stop waiting —
+      // resurrecting the exact race this map exists to prevent.
+      const tracked: Promise<void> = running
+        .catch(() => {})
+        .finally(() => {
+          if (this.pendingTeardowns.get(id) === tracked) {
+            this.pendingTeardowns.delete(id);
+          }
+        });
+      this.pendingTeardowns.set(id, tracked);
       try {
         await withTimeout(
-          plugin.teardown(),
+          running,
           TEARDOWN_TIMEOUT,
           `Plugin ${id} sandbox teardown timed out after ${TEARDOWN_TIMEOUT}ms — ` +
-            `capability revocation may still be in flight; a reload right now could race it`,
+            `capability revocation is still in flight; the next load will wait for it`,
         );
       } catch (e) {
         logger.error(`[PluginLoader] Sandbox teardown error for ${id}:`, e);
@@ -260,13 +285,37 @@ export class PluginLoader {
         `Plugin ${manifest.id}: sandbox runtime is gated off in this build (#260 Phase 5).`,
       );
     }
-    await pluginSandboxRegister(manifest.id, manifest.capabilities);
+    // §260 3c-2b — a teardown from a previous load may still be in flight (its
+    // `deregister` outlived `unloadPlugin`'s wait). Register only after it lands, or
+    // it revokes the grant we are about to make and the new sandbox's connect fails
+    // closed. Bounded: a permanently hung teardown degrades to the old racy
+    // behaviour rather than blocking loads forever.
+    const pending = this.pendingTeardowns.get(manifest.id);
+    if (pending) {
+      try {
+        await withTimeout(
+          pending,
+          TEARDOWN_TIMEOUT,
+          `Plugin ${manifest.id}: previous sandbox teardown is still in flight after ` +
+            `${TEARDOWN_TIMEOUT}ms — loading anyway, which may race its revocation`,
+        );
+      } catch (e) {
+        logger.error(`[PluginLoader] ${manifest.id}: teardown wait failed`, e);
+      }
+    }
+    // installPath goes to RUST, never to the sandbox: it binds which directory
+    // `source_read` may read, so the executed bundle matches this manifest.
+    await pluginSandboxRegister(
+      manifest.id,
+      manifest.capabilities,
+      installPath,
+    );
     let session: SandboxSession;
     try {
+      // §260 3c-2b — no path is handed over: the sandbox pulls its own bundle
+      // through the broker, resolved in Rust from its window label.
       session = await this.sandboxHost.start(
         manifest.id,
-        installPath,
-        manifest.main,
         manifest.contributions ?? {},
       );
     } catch (err) {

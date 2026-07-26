@@ -1,5 +1,3 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
-
 // §260 SandboxHost — lifecycle of per-plugin sandbox WebviewWindows + sessions.
 // windowFactory is injectable (unit-testable); production uses a hidden
 // WebviewWindow whose transport is the Phase-3c-2a per-webview IPC channel
@@ -36,10 +34,13 @@ export class SandboxHost {
     private readonly windowFactory: SandboxWindowFactory = defaultWindowFactory,
   ) {}
 
+  /**
+   * §260 3c-2b — no install path or entry file: the sandbox pulls its own bundle
+   * through the broker, where Rust resolves the directory from the caller's window
+   * label. The host never hands over a path, so there is nothing to point elsewhere.
+   */
   async start(
     pluginId: string,
-    installPath: string,
-    mainFile: string,
     declared: PluginContributions,
   ): Promise<SandboxSession> {
     const existing = this.live.get(pluginId);
@@ -49,8 +50,7 @@ export class SandboxHost {
     const session = new SandboxSession(window.transport);
     this.live.set(pluginId, { session, window });
     try {
-      const pluginUrl = convertFileSrc(`${installPath}/${mainFile}`);
-      await session.activate(pluginId, pluginUrl, declared);
+      await session.activate(pluginId, declared);
       return session;
     } catch (err) {
       this.live.delete(pluginId);

@@ -61,11 +61,8 @@ describe("createSandboxTransport (§260 sandbox end)", () => {
     connectedChannel().onmessage({
       type: "activate",
       pluginId: "alpha",
-      pluginUrl: "asset://x",
     });
-    expect(seen).toEqual([
-      { type: "activate", pluginId: "alpha", pluginUrl: "asset://x" },
-    ]);
+    expect(seen).toEqual([{ type: "activate", pluginId: "alpha" }]);
 
     off();
     connectedChannel().onmessage({ type: "deactivate" });

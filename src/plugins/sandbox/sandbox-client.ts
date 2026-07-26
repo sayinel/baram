@@ -31,7 +31,10 @@ interface PluginModule {
 
 export function startSandboxClient(
   transport: SandboxTransport<HostToSandbox, SandboxToHost>,
-  importer: (url: string) => Promise<PluginModule>,
+  // §260 3c-2b — takes the plugin's SOURCE, not a URL: production wraps it in a
+  // blob URL (see sandbox-entry.ts), tests pass a module directly. Injectable so no
+  // test needs `URL.createObjectURL`.
+  importer: (source: string) => Promise<PluginModule>,
   broker: (op: PluginOp) => Promise<unknown>,
 ): void {
   const commands = new Map<string, (...args: unknown[]) => unknown>();
@@ -76,13 +79,31 @@ export function startSandboxClient(
     storage,
   };
 
-  async function onActivate(pluginUrl: string): Promise<void> {
+  async function onActivate(): Promise<void> {
     if (activateState !== "idle") return; // M4: ignore repeated activate
     activateState = "activating";
     commands.clear(); // each attempt starts clean — no stale regs from a failed retry
     eventHandlers.clear();
     try {
-      const mod = await importer(pluginUrl);
+      // Our own bundle, resolved in Rust from this window's label.
+      //
+      // ‼️ INVARIANT (§260 3c-2b review, M1): the result must stay a SCALAR JSON
+      // string. An invoke result is not automatically safe from tauri's shared
+      // channel-data queue — `ipc/protocol.rs` sends results through a `Channel`, and
+      // `ipc/channel.rs` routes any payload ≥8 KiB whose JSON starts with `{` or `[`
+      // through the app-global `ChannelDataIpcQueue`, fetched via the ACL-exempt
+      // `FETCH_CHANNEL_DATA_COMMAND` with a guessable sequential id (3c-2a review
+      // I3). Today this is safe on two counts: desktop uses the custom-protocol IPC
+      // path (result returns as an HTTP body), and even on the postMessage fallback a
+      // bare JSON string never matches the `{`/`[` condition. Wrap this in an object
+      // (e.g. `{source, hash}`) and a 4 MiB bundle becomes stealable by another
+      // sandbox on non-macOS — so if that shape must change, chunk it or keep it out
+      // of the channel path deliberately.
+      const source = await broker({ kind: "source_read" });
+      if (typeof source !== "string") {
+        throw new Error("broker returned a non-string plugin source");
+      }
+      const mod = await importer(source);
       if (typeof mod.activate === "function") await mod.activate(ctx);
       activateState = "done";
       transport.send({
@@ -133,7 +154,7 @@ export function startSandboxClient(
   transport.onMessage((m) => {
     switch (m.type) {
       case "activate":
-        void onActivate(m.pluginUrl);
+        void onActivate();
         break;
       case "deactivate":
         transport.close();

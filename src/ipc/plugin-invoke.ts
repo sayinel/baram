@@ -94,12 +94,23 @@ export async function pluginSandboxDeregister(pluginId: string): Promise<void> {
   return invoke<void>("plugin_sandbox_deregister", { pluginId });
 }
 
-/** §260 host-only — register a sandbox plugin's granted capabilities. */
+/**
+ * §260 host-only — register a sandbox plugin's granted capabilities together with
+ * the directory the host resolved its manifest from. Binding both at once is what
+ * keeps `source_read` returning the code that matches THIS manifest: a dev folder
+ * legitimately shadows an installed copy of the same id, and Rust must not re-guess
+ * which one won (§260 3c-2b review, I2).
+ */
 export async function pluginSandboxRegister(
   pluginId: string,
   capabilities: string[],
+  installPath: string,
 ): Promise<void> {
-  return invoke<void>("plugin_sandbox_register", { pluginId, capabilities });
+  return invoke<void>("plugin_sandbox_register", {
+    pluginId,
+    capabilities,
+    installPath,
+  });
 }
 
 /**
