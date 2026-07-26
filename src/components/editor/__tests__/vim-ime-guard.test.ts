@@ -166,6 +166,27 @@ describe("attachVimImeGuard", () => {
     expect(seen).toEqual(["normal", "insert", "normal"]);
   });
 
+  it("keeps blocking through r / operator-pending — no mode event is emitted", () => {
+    // lowercase r and operator-pending (d, c, y …) emit NO vim-mode-change.
+    // The guard must keep blocking across consecutive inputs: the raw
+    // insertion is cancelled and the keydown drives vim's literal
+    // replacement / pending operator (plan constraint, Codex final gate).
+    const view = makeView();
+    const cm = makeCm({});
+    attachVimImeGuard(asView(view), asCm(cm));
+    expect(
+      fireBeforeInput(view.contentDOM, "insertText").defaultPrevented,
+    ).toBe(true);
+    expect(
+      fireBeforeInput(view.contentDOM, "insertReplacementText")
+        .defaultPrevented,
+    ).toBe(true);
+    expect(
+      fireBeforeInput(view.contentDOM, "insertText").defaultPrevented,
+    ).toBe(true);
+    expect(cm.handlers.get("vim-mode-change")?.length).toBe(1); // still just the guard's listener; nothing was emitted
+  });
+
   it("cancels in the CAPTURE phase — a bubble listener already sees defaultPrevented", () => {
     // Regression: with the guard on bubble instead of capture, this bubble
     // observer (registered FIRST) would run before the guard and see false.

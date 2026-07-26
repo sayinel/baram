@@ -123,16 +123,21 @@ describe("createVimController", () => {
     expect(f.attachGuard).not.toHaveBeenCalled();
   });
 
-  it("unmount after attach: dispose detaches the guard", async () => {
+  it("unmount after attach: dispose detaches the guard AND resets the mode to null", async () => {
     const f = makeFakes();
+    const onModeChange = vi.fn();
     const controller = createVimController(asView(f.view), f.compartment, {
       attachGuard: f.attachGuard,
       loadModule: () => Promise.resolve(asModule(f.mod)),
+      onModeChange,
     });
     controller.apply(true);
     await flush();
     controller.dispose();
     expect(f.guardDispose).toHaveBeenCalledTimes(1);
+    // The StatusBar store feed must be cleared on unmount — a lingering mode
+    // would only be masked by the source-mode render gate (Codex final gate).
+    expect(onModeChange).toHaveBeenLastCalledWith(null);
   });
 
   it("load failure reports onError; after dispose it stays silent", async () => {

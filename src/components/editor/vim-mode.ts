@@ -40,7 +40,6 @@ export function loadVimModule(): Promise<VimModule> {
  */
 export function registerExCommands(mod: VimModule): void {
   if (exCommandsRegistered) return;
-  exCommandsRegistered = true;
   mod.Vim.defineEx("write", "w", () => {
     getAction("file.save")?.();
   });
@@ -48,4 +47,7 @@ export function registerExCommands(mod: VimModule): void {
     // Goes through the app's close flow, so the unsaved-changes guard applies.
     getAction("file.closeTab")?.();
   });
+  // Set AFTER both registrations succeed — if defineEx ever threw mid-way, a
+  // pre-set flag would skip retries forever (Codex final gate, hardening).
+  exCommandsRegistered = true;
 }

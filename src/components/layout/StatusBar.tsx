@@ -59,8 +59,11 @@ interface StatusBarProps {
 }
 
 export function StatusBar({ editor, mode }: StatusBarProps) {
-  // §298 vim S3 — single-field selector (no useShallow needed for a scalar)
-  const vimStatusMode = useUIStore((s) => s.vimStatusMode);
+  // §298 vim S3 — repo rule: store subscriptions use the useShallow selector
+  // form without exception (AGENTS.md), even for a single scalar.
+  const { vimStatusMode } = useUIStore(
+    useShallow((s) => ({ vimStatusMode: s.vimStatusMode })),
+  );
   // §4.8 Live word count + cursor position. The Tiptap Editor instance is a
   // stable reference whose `.state` mutates in place, so a `useMemo([editor])`
   // never recomputes on typing or cursor moves — it stayed frozen at the empty

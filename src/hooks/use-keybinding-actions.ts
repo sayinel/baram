@@ -230,12 +230,21 @@ export function useGlobalKeyboard({
         return;
       }
 
-      // §298 vim S3 — keys consumed inside an editor (vim preventDefaults
-      // everything it handles) must not double-fire registry commands: on
-      // Windows/Linux vim's Ctrl+D/Ctrl+O/Ctrl+F would otherwise ALSO run
-      // bookmark/open/find (research §4.1). Hardcoded branches above keep
-      // their own preventDefault handling.
-      if (e.defaultPrevented) return;
+      // §298 vim S3 — guard SCOPED to a live vim source session. The vim
+      // adapter stopPropagations the keys it handles (they never reach
+      // window); what arrives here defaultPrevented are CM-keymap-handled
+      // keys from the source editor, which must not double-fire registry
+      // commands during a vim session. Deliberately NOT a blanket
+      // defaultPrevented guard: WYSIWYG extensions also preventDefault
+      // (e.g. Mod+Shift+B blockquote) and their long-standing double-fire
+      // semantics (blockquote + backlinks) are outside this change's scope
+      // (Codex final gate — a blanket guard regressed that key).
+      const isVimSourceEvent =
+        e.defaultPrevented &&
+        e.target instanceof Element &&
+        e.target.closest(".source-code-editor") !== null &&
+        useUIStore.getState().vimStatusMode !== null;
+      if (isVimSourceEvent) return;
 
       if (command) {
         const action = getAction(command.id);

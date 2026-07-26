@@ -232,7 +232,7 @@ Enable **Settings > Editor > Vim Keybindings** (off by default), then enter Sour
 
 **Korean IME**: vim commands work with the Korean input source active — in normal/visual mode keys are resolved by physical position (pressing the `j` key moves down even when it would type `ㅓ`), and stray jamo insertion is blocked. Insert mode types Korean normally. This behavior is verified on macOS; Windows/Linux are not yet validated.
 
-Vim mode currently applies to Source Mode only (not the WYSIWYG editor or code blocks). Vim key sequences are not remappable via Settings > Keybindings.
+Vim mode applies wherever the source editor is used: markdown Source Mode (`Cmd+/`) and code-file tabs (JSON, Python, …). It does not apply to the WYSIWYG editor or to code blocks embedded in WYSIWYG documents. Vim key sequences are not remappable via Settings > Keybindings.
 
 ---
 

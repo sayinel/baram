@@ -646,7 +646,7 @@ In Source Mode, you edit raw markdown text in a CodeMirror 6 editor with:
 - Full markdown source visibility
 - Undo/Redo (`Cmd+Z` / `Cmd+Shift+Z`)
 - Line numbers (configurable in Settings > Editor)
-- Optional **Vim keybindings** (Settings > Editor > Vim Keybindings) — full modal editing with `:w`/`:q`, Korean-IME compatible; see [Keyboard Shortcuts](keyboard-shortcuts.md#vim-mode-source-mode)
+- Optional **Vim keybindings** (Settings > Editor > Vim Keybindings) — full modal editing with `:w`/`:q`, Korean-IME compatible (verified on macOS; Windows/Linux not yet validated); see [Keyboard Shortcuts](keyboard-shortcuts.md#vim-mode-source-mode)
 - All changes sync back to WYSIWYG mode when you switch
 
 This is useful for precise markdown editing or debugging formatting issues.
