@@ -100,6 +100,39 @@ export function validateManifest(
     });
   }
 
+  // §260 3c-2b — sandboxed-tier constraints that follow from HOW its code is
+  // loaded, not from taste. The bundle is imported from a `blob:` URL, which has no
+  // base URL, so nothing inside it can resolve a sibling module; and Rust reads it
+  // out of the plugin's own directory, so `main` must stay inside that directory.
+  // Both are install-time errors here rather than opaque failures in the sandbox.
+  if (obj.trust === "sandboxed") {
+    const main = typeof obj.main === "string" ? obj.main : "";
+    const escapes =
+      main.startsWith("/") ||
+      main.startsWith("\\") ||
+      /^[A-Za-z]:/.test(main) ||
+      main.split(/[/\\]/).includes("..");
+    if (escapes) {
+      errors.push({
+        field: "main",
+        message:
+          "a sandboxed plugin's main must be a single bundled file inside the " +
+          "plugin directory (no absolute paths, no ..)",
+      });
+    }
+    if (
+      Array.isArray(obj.tiptapExtensions) &&
+      obj.tiptapExtensions.length > 0
+    ) {
+      errors.push({
+        field: "tiptapExtensions",
+        message:
+          "tiptapExtensions require the main realm and are only available to " +
+          'trust: "trusted" — a sandboxed plugin contributes declaratively',
+      });
+    }
+  }
+
   // Contributions (optional, sandboxed tier) — shallow shape check only
   if (
     obj.contributions !== undefined &&

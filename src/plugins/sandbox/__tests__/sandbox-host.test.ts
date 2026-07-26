@@ -3,18 +3,14 @@ import type { HostToSandbox, SandboxToHost } from "../protocol";
 import type { SandboxWindow } from "../sandbox-host";
 import type { SandboxTransport } from "../transport";
 
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { startSandboxClient } from "../sandbox-client";
 import { SandboxHost } from "../sandbox-host";
 import { createChannelPair } from "./channel-pair";
 
-// same pattern as plugin-loader.test.ts — the global test-setup.ts mock for
-// "@tauri-apps/api/core" only provides `invoke`; SandboxHost.start needs
-// `convertFileSrc` too.
-vi.mock("@tauri-apps/api/core", () => ({
-  convertFileSrc: (p: string) => `asset://localhost/${p}`,
-}));
+// §260 3c-2b — no `convertFileSrc` mock is needed any more: the host stopped
+// building an asset URL when the sandbox took over resolving its own bundle.
 
 const DECLARED: PluginContributions = {
   commands: [{ id: "ping", title: "Ping" }],

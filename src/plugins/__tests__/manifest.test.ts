@@ -37,6 +37,17 @@ describe("validateManifest", () => {
       homepage: "https://example.com",
       icon: "📊",
       keywords: ["word", "count", "statistics"],
+      // NOTE: tiptapExtensions is deliberately NOT here — the fixture is
+      // `trust: "sandboxed"`, and §260 3c-2b rejects extensions on that tier (they
+      // need the main realm). The trusted-tier case is covered below.
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  test("accepts tiptapExtensions on the trusted tier", () => {
+    const result = validateManifest({
+      ...validManifest,
+      trust: "trusted",
       tiptapExtensions: [
         { type: "plugin", name: "wordCount", exportName: "WordCountExtension" },
       ],
@@ -220,6 +231,45 @@ describe("validateManifest — trust tier (§260)", () => {
   it("accepts trust=sandboxed and trust=trusted", () => {
     expect(validateManifest({ ...base, trust: "sandboxed" }).valid).toBe(true);
     expect(validateManifest({ ...base, trust: "trusted" }).valid).toBe(true);
+  });
+
+  // §260 3c-2b — a sandboxed plugin is imported from a blob URL, which has no base
+  // URL, so sibling/relative specifiers inside the bundle cannot resolve. Catch that
+  // at install time instead of as a puzzling runtime failure inside the sandbox.
+  it("rejects tiptapExtensions on a sandboxed manifest", () => {
+    const r = validateManifest({
+      ...base,
+      trust: "sandboxed",
+      tiptapExtensions: [{ type: "node", name: "x", exportName: "X" }],
+    });
+    expect(r.valid).toBe(false);
+    if (!r.valid) {
+      expect(r.errors.some((e) => e.field === "tiptapExtensions")).toBe(true);
+    }
+    // …and the trusted tier, which does run in the main realm, still allows them.
+    expect(
+      validateManifest({
+        ...base,
+        trust: "trusted",
+        tiptapExtensions: [{ type: "node", name: "x", exportName: "X" }],
+      }).valid,
+    ).toBe(true);
+  });
+
+  it("requires a sandboxed main to be a single relative bundle file", () => {
+    for (const main of ["../outside.mjs", "/abs/index.mjs", "./a/../b.mjs"]) {
+      const r = validateManifest({ ...base, trust: "sandboxed", main });
+      expect(r.valid, `main "${main}" must be rejected`).toBe(false);
+      if (!r.valid) {
+        expect(r.errors.some((e) => e.field === "main")).toBe(true);
+      }
+    }
+    // A plain entry, and one in a subdirectory, are both fine.
+    expect(validateManifest({ ...base, trust: "sandboxed" }).valid).toBe(true);
+    expect(
+      validateManifest({ ...base, trust: "sandboxed", main: "dist/index.mjs" })
+        .valid,
+    ).toBe(true);
   });
 
   it("rejects a non-object contributions field", () => {
