@@ -76,8 +76,9 @@ export function createVimController(
     });
     if (!editable && document.activeElement !== view.contentDOM) {
       // Keys must keep landing on contentDOM (tabindex makes it focusable —
-      // measured, probe step 3v).
-      view.contentDOM.focus();
+      // measured, probe step 3v). view.focus() over raw contentDOM.focus():
+      // it re-syncs the DOM selection and prevents scroll jumps (Codex).
+      view.focus();
     }
   };
 

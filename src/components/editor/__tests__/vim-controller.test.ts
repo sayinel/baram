@@ -41,6 +41,8 @@ function makeFakes() {
   const view = {
     contentDOM: document.createElement("div"),
     dispatch: vi.fn(),
+    // 3v focus fallback uses view.focus() (selection resync + prevent-scroll).
+    focus: vi.fn(),
   };
   const compartment = new Compartment();
   const guardDispose = vi.fn();
@@ -209,6 +211,9 @@ describe("createVimController", () => {
     modeCb!("normal"); // → editing host removed (one editable dispatch)
     expect(f.view.dispatch.mock.calls.length).toBe(base + 1);
     expect(onModeChange).toHaveBeenLastCalledWith("normal");
+    // Focus fallback: activeElement is body in jsdom, so the host removal
+    // must re-focus via view.focus() (Codex 3v review note pinned here).
+    expect(f.view.focus).toHaveBeenCalled();
 
     modeCb!("insert"); // → editing host restored
     expect(f.view.dispatch.mock.calls.length).toBe(base + 2);
