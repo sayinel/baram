@@ -162,6 +162,52 @@ fn sandbox_tier_grants_exactly_its_allowlist() {
     );
 }
 
+/// §260 Phase 3c-3 — the host realm must be able to CLOSE a sandbox webview.
+///
+/// Found by the live smoke: `WebviewWindow.close()` was denied
+/// (`core:window:allow-close` missing), so from 3c-1 onward the app could create a
+/// per-plugin webview but never destroy one. Every teardown logged a swallowed
+/// "Sandbox stop failed" and left the plugin RUNNING with its Rust capabilities —
+/// the next load then died on the taken label. Unit tests could not see it: they
+/// inject a fake window whose `close()` always resolves.
+///
+/// Pinned here, next to the grant it belongs to, because the symptom (a label
+/// collision) points nowhere near the cause (a missing permission).
+#[test]
+fn host_tier_can_close_the_webviews_it_creates() {
+    let json: serde_json::Value =
+        serde_json::from_str(&read("capabilities/default.json")).expect("parse capability json");
+    let perms: BTreeSet<String> = json["permissions"]
+        .as_array()
+        .expect("permissions array")
+        .iter()
+        .filter_map(|p| p.as_str())
+        .map(norm)
+        .collect();
+    for required in [
+        "core:window:allow_create",
+        "core:window:allow_close",
+        "core:webview:allow_create_webview_window",
+    ] {
+        assert!(
+            perms.contains(required),
+            "host windows need {required}: creating a sandbox webview without being able \
+             to close it leaves a running plugin that keeps its capabilities"
+        );
+    }
+    // …and the sandbox tier must never get it — a plugin-* window holding
+    // `allow-close` could close the MAIN window. `sandbox_tier_grants_exactly_its_
+    // allowlist` enforces that exhaustively; this states the specific hazard.
+    let sandbox: serde_json::Value =
+        serde_json::from_str(&read("capabilities/plugin-sandbox.json"))
+            .expect("parse capability json");
+    let sandbox_perms = serde_json::to_string(&sandbox["permissions"]).unwrap_or_default();
+    assert!(
+        !sandbox_perms.contains("window"),
+        "the sandbox tier must hold no window permission at all: {sandbox_perms}"
+    );
+}
+
 #[test]
 fn main_tier_gets_everything_except_sandbox_only_commands() {
     let registered = generate_handler_commands();

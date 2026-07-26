@@ -1,11 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "§260 Phase 3b — capability for the main window and file-mode windows. As of Phase 3b, build.rs registers every app command in the Tauri ACL (AppManifest), so custom #[tauri::command]s ARE now ACL-gated. This capability grants host windows (main, file-*) every app command EXCEPT plugin_call (the sandbox-only broker channel). Sandbox windows (plugin-*) are governed by plugin-sandbox.json and get only plugin_call. Keep this list in sync with generate_handler! in lib.rs — tests/acl_lockdown.rs enforces it. core:window/webview allow-create are required by §89 file-mode (src/utils/file-window.ts) and MUST NOT be removed.",
+  "description": "§260 Phase 3b — capability for the main window and file-mode windows. As of Phase 3b, build.rs registers every app command in the Tauri ACL (AppManifest), so custom #[tauri::command]s ARE now ACL-gated. This capability grants host windows (main, file-*) every app command EXCEPT plugin_call (the sandbox-only broker channel). Sandbox windows (plugin-*) are governed by plugin-sandbox.json and get only plugin_call. Keep this list in sync with generate_handler! in lib.rs — tests/acl_lockdown.rs enforces it. core:window/webview allow-create are required by §89 file-mode (src/utils/file-window.ts) and MUST NOT be removed. core:window:allow-close is required to CLOSE a sandbox webview (§260 3c-3): without it every WebviewWindow.close() from this realm was denied, so a stopped plugin's webview kept running with its capabilities — the app could create sandboxes but never destroy them. Host windows only; plugin-* must never receive it (a sandbox could close the main window), which tests/acl_lockdown.rs pins.",
   "windows": ["main", "file-*"],
   "permissions": [
     "core:default",
     "core:window:allow-create",
+    "core:window:allow-close",
     "core:webview:allow-create-webview-window",
     "opener:default",
     "dialog:default",
