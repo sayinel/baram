@@ -1,4 +1,4 @@
-# Sandbox Smoke (§260 Phase 3c-3 / 4a)
+# Sandbox Smoke (§260 Phase 3c-3 / 4a / 4b)
 
 An internal fixture, not a real plugin: it exercises everything a **sandboxed** plugin
 can reach and reports the outcome through `ctx.ui`. Headless CI cannot create a real
@@ -55,6 +55,9 @@ the vault-relative path the sandbox was told about.
 | `dotdot✓` | `../../../etc/hosts` was refused the same way |
 | `ro✓` | a write was refused — the readonly grant does not admit it (any-of authz) |
 | `state✓` | `.baram/config.json` was refused as app state, inside the vault |
+| `md✓(nb)` | `editor.getMarkdown()` — the document, delivered through the STAGED pull rather than in a frame |
+| `sel✓(a-b:nb)` | `editor.getSelection()` — ProseMirror positions plus the text they cover |
+| `ro-md✓` / `ro-ins✓` | both writes refused: the fixture holds `editor:readonly`, so the any-of gate admits the reads above and nothing else |
 | `models✓(n)` | `ai.listModels()` through the host bridge |
 | `ai1✓(len=n:…)` | `ai.complete()` — **the path 3c-2c's review found was dead** |
 | `stream✓(n tok/m ch)` | `ai.stream()` under the SAME options as `complete` |
@@ -92,8 +95,8 @@ Also check, by eye:
   bound is deliberately longer than a toast's own lifetime. The status-bar item still
   carries the line.
 
-## Still missing (Phase 4b)
+## Still missing (Phase 4c)
 
-`editor` content and selection, document transforms, declarative `settings`, `menu`
-mapping, and sidebar panels. A sandboxed plugin can now orient itself and report; it
-still cannot read or change the document.
+Document/selection **transform** contributions, declarative `settings`, `menu` mapping,
+and sidebar panels. A sandboxed plugin can now orient itself, report, and read or change
+the document.

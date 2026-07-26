@@ -45,6 +45,17 @@ narrower, data-only context. Two differences matter when writing one:
     const text = await ctx.files.readFile(path, { context });
   });
   ```
+- **`editor` is markdown, and async.** `getMarkdown()` / `setMarkdown()` go through the
+  app's own round-trip pipeline, so what you read is exactly what you can write back;
+  `getSelection()` gives ProseMirror positions plus the text they cover, and
+  `insertText()` types at the cursor. Every write is one undo step. Reads need `editor` or
+  `editor:readonly`; writes need `editor`.
+  ```js
+  const before = await ctx.editor.getMarkdown();
+  await ctx.editor.setMarkdown(`${before}\n\n---\n`);
+  ```
+  A document read does not travel in the response — the host parks it and the sandbox
+  collects it — but that is invisible to you; `getMarkdown()` is just a promise.
 - **`ui` is data, not DOM.** `ctx.ui.showNotification(message, type?)` (the host labels
   the toast with your plugin's name in its own badge, and rate-limits you to one every
   four seconds — the app has a single toast slot) and

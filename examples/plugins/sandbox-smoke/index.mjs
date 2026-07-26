@@ -162,7 +162,35 @@ export async function activate(ctx) {
       ),
     );
 
-    // 9. A status-bar item this plugin did NOT declare must be refused. The refusal is
+    // 9. editor — the document, through the staged pull. A read must come back with
+    //    real content, and a round trip must not change it.
+    out.push(
+      await expectOk("md", async () => {
+        const markdown = await ctx.editor.getMarkdown();
+        if (typeof markdown !== "string") throw new Error("not a string");
+        return `(${markdown.length}b)`;
+      }),
+    );
+    out.push(
+      await expectOk("sel", async () => {
+        const { from, to, text } = await ctx.editor.getSelection();
+        return `(${from}-${to}:${text.length}b)`;
+      }),
+    );
+    // 10. …and a WRITE must be refused: this fixture holds `editor:readonly`, so the
+    //     any-of gate must admit the two reads above and refuse both writes.
+    out.push(
+      await expectDenied("ro-md", "requires one of", () =>
+        ctx.editor.setMarkdown("# overwritten by the smoke fixture\n"),
+      ),
+    );
+    out.push(
+      await expectDenied("ro-ins", "requires one of", () =>
+        ctx.editor.insertText("SHOULD NOT APPEAR"),
+      ),
+    );
+
+    // 11. A status-bar item this plugin did NOT declare must be refused. The refusal is
     //    host-side and this API is void, so it shows up in the sandbox console — the
     //    check here is only that calling it does not break the command.
     ctx.ui.setStatusBarText("not-declared", "should not appear");

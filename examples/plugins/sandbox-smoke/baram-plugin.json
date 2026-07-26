@@ -1,7 +1,7 @@
 {
   "id": "baram-sandbox-smoke",
   "name": "Sandbox Smoke",
-  "description": "§260 Phase 3c-3/4a — exercises the sandboxed tier's brokered surface (storage, relative-path files allow+deny, delivered events, ai) from inside a real plugin webview and reports through ctx.ui.",
+  "description": "§260 Phase 3c-3/4a/4b — exercises the sandboxed tier's brokered surface (storage, relative-path files allow+deny, delivered events, staged document reads, ai) from inside a real plugin webview and reports through ctx.ui.",
   "version": "1.1.0",
   "author": "Baram",
   "license": "Apache-2.0",
@@ -11,6 +11,7 @@
   "capabilities": [
     "ai",
     "commands",
+    "editor:readonly",
     "events",
     "files:readonly",
     "statusbar",

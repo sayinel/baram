@@ -61,6 +61,9 @@ describe("sandbox smoke fixture (§260 3c-3)", () => {
     expect([...manifest.capabilities].sort()).toEqual([
       "ai",
       "commands",
+      // §260 Phase 4b — readonly keeps the smoke non-destructive AND proves the editor
+      // any-of gate: the two reads are admitted, both writes refused.
+      "editor:readonly",
       // §260 Phase 4a — `events` is how it learns a path at all, and `statusbar` is how
       // it reports; without them the fixture is back to throwing to be heard.
       "events",
