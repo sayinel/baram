@@ -569,7 +569,9 @@ pub fn read_bundle_in(dir: &Path, main: &str) -> Result<String, String> {
     // allocating it — the same "never allocate to measure" rule as
     // `serialized_len_capped`. A bundled ESM is normally well under 1 MiB.
     let size = std::fs::metadata(&canonical_file)
-        .map_err(|e| format!("plugin entry \"{main}\" is unreadable: {e}"))?
+        // Distinct from the canonicalize failure above, so a diagnosis can tell
+        // "entry does not resolve" from "entry resolved but cannot be stat'ed".
+        .map_err(|e| format!("plugin entry \"{main}\" cannot be measured: {e}"))?
         .len();
     if size > MAX_BUNDLE_BYTES {
         return Err(format!(

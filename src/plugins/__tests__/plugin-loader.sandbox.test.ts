@@ -83,11 +83,16 @@ describe("PluginLoader sandboxed path (§260 3c-1)", () => {
 
     await loader.loadPlugin("/p/demo", manifest);
 
-    expect(pluginSandboxRegister).toHaveBeenCalledWith("demo", [
-      "storage",
-      "commands",
-    ]);
-    // §260 3c-2b — the host passes NO path: Rust resolves the plugin's own
+    // §260 3c-2b (review I2) — the install path is bound WITH the grants, so Rust
+    // reads the bundle from the directory the host actually resolved. A dev folder
+    // may shadow an installed copy of the same id; letting Rust re-guess would run
+    // one plugin's code under the other's manifest and grants.
+    expect(pluginSandboxRegister).toHaveBeenCalledWith(
+      "demo",
+      ["storage", "commands"],
+      "/p/demo",
+    );
+    // …but the SANDBOX still gets no path: Rust resolves the plugin's own
     // directory from the sandbox's window label when it asks for its bundle.
     expect(f.start).toHaveBeenCalledWith("demo", manifest.contributions);
     expect(loader.isLoaded("demo")).toBe(true);

@@ -22,7 +22,20 @@
          single self-contained ESM (enforced in manifest validation).
 
          connect-src stays the IPC channel only (invoke + the ipc::Channel
-         large-payload fetch path) — no direct network from this realm. -->
+         large-payload fetch path) — no direct network from this realm.
+
+         ‼️ A meta CSP can only TIGHTEN, never widen: in a PACKAGED build Tauri also
+         serves this document with the global `csp` from tauri.conf.json as a
+         response header (manager/mod.rs set_csp → protocol/tauri.rs), and a resource
+         must pass BOTH policies. The global script-src does NOT list `blob:` today,
+         so blob import would be blocked there — sandboxed plugins only work because
+         creation is dev-gated, and in dev the webview loads the Vite devUrl directly
+         with no Tauri header. Phase 5 (lifting the release gate) MUST decide this:
+         adding `blob:` to the global script-src also lets the MAIN realm execute
+         constructed modules, which is a real (if modest) XSS amplification given
+         script-src has no 'unsafe-inline'/'unsafe-eval'. Per-window header CSP does
+         not exist in Tauri v2. A guardrail test couples the two so the gate cannot
+         be lifted without this decision — see plugins-enabled.csp.test.ts. -->
     <meta
       http-equiv="Content-Security-Policy"
       content="default-src 'none'; script-src 'self' blob:; connect-src ipc: http://ipc.localhost"

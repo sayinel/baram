@@ -85,9 +85,20 @@ export function startSandboxClient(
     commands.clear(); // each attempt starts clean — no stale regs from a failed retry
     eventHandlers.clear();
     try {
-      // Our own bundle, resolved in Rust from this window's label. It arrives as an
-      // invoke RESULT, so it never enters tauri's shared channel-data queue (which
-      // is ACL-exempt and guessable — §260 3c-2a review I3).
+      // Our own bundle, resolved in Rust from this window's label.
+      //
+      // ‼️ INVARIANT (§260 3c-2b review, M1): the result must stay a SCALAR JSON
+      // string. An invoke result is not automatically safe from tauri's shared
+      // channel-data queue — `ipc/protocol.rs` sends results through a `Channel`, and
+      // `ipc/channel.rs` routes any payload ≥8 KiB whose JSON starts with `{` or `[`
+      // through the app-global `ChannelDataIpcQueue`, fetched via the ACL-exempt
+      // `FETCH_CHANNEL_DATA_COMMAND` with a guessable sequential id (3c-2a review
+      // I3). Today this is safe on two counts: desktop uses the custom-protocol IPC
+      // path (result returns as an HTTP body), and even on the postMessage fallback a
+      // bare JSON string never matches the `{`/`[` condition. Wrap this in an object
+      // (e.g. `{source, hash}`) and a 4 MiB bundle becomes stealable by another
+      // sandbox on non-macOS — so if that shape must change, chunk it or keep it out
+      // of the channel path deliberately.
       const source = await broker({ kind: "source_read" });
       if (typeof source !== "string") {
         throw new Error("broker returned a non-string plugin source");

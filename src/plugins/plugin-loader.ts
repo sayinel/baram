@@ -119,7 +119,7 @@ export class PluginLoader {
     // (declarative contributions + brokered ops); `trusted` keeps the same-realm
     // path below.
     if (pluginTrustOf(manifest) === "sandboxed") {
-      await this.loadSandboxedPlugin(manifest);
+      await this.loadSandboxedPlugin(installPath, manifest);
       logger.info(
         `[PluginLoader] Loaded sandboxed plugin: ${manifest.id} v${manifest.version}`,
       );
@@ -235,10 +235,19 @@ export class PluginLoader {
       // revokes the fresh grant. `.catch` keeps the tracked copy from becoming an
       // unhandled rejection — the real error is reported here.
       const running = plugin.teardown();
-      this.pendingTeardowns.set(
-        id,
-        running.catch(() => {}).finally(() => this.pendingTeardowns.delete(id)),
-      );
+      // Identity check before deleting (§260 3c-2b review, M3): `unloadPlugin` only
+      // removes from `this.loaded` at the very end, so two concurrent calls for the
+      // same id both start a teardown. Without this, whichever finishes first would
+      // delete the OTHER one's entry and the next load would stop waiting —
+      // resurrecting the exact race this map exists to prevent.
+      const tracked: Promise<void> = running
+        .catch(() => {})
+        .finally(() => {
+          if (this.pendingTeardowns.get(id) === tracked) {
+            this.pendingTeardowns.delete(id);
+          }
+        });
+      this.pendingTeardowns.set(id, tracked);
       try {
         await withTimeout(
           running,
@@ -265,7 +274,10 @@ export class PluginLoader {
    * main realm; storage/network reach the Rust broker (`plugin_call`) from inside
    * the sandbox, authorized by window label + capability.
    */
-  private async loadSandboxedPlugin(manifest: PluginManifest): Promise<void> {
+  private async loadSandboxedPlugin(
+    installPath: string,
+    manifest: PluginManifest,
+  ): Promise<void> {
     // Belt-and-suspenders over arePluginsEnabled: never create a sandbox webview
     // in a packaged build (release gate lifts in Phase 5).
     if (!isSandboxRuntimeAllowed()) {
@@ -288,10 +300,16 @@ export class PluginLoader {
             `${TEARDOWN_TIMEOUT}ms — loading anyway, which may race its revocation`,
         );
       } catch (e) {
-        logger.error(`[PluginLoader] ${String(e)}`);
+        logger.error(`[PluginLoader] ${manifest.id}: teardown wait failed`, e);
       }
     }
-    await pluginSandboxRegister(manifest.id, manifest.capabilities);
+    // installPath goes to RUST, never to the sandbox: it binds which directory
+    // `source_read` may read, so the executed bundle matches this manifest.
+    await pluginSandboxRegister(
+      manifest.id,
+      manifest.capabilities,
+      installPath,
+    );
     let session: SandboxSession;
     try {
       // §260 3c-2b — no path is handed over: the sandbox pulls its own bundle

@@ -70,10 +70,22 @@ pub enum AuthzError {
     Denied(String),
 }
 
-/// Managed state: `label` → granted capability strings.
+/// What the host granted one sandbox: its capabilities and the directory its code
+/// came from. Binding the directory here (§260 3c-2b review, I2) rather than
+/// re-deriving it per call is what keeps the executed bundle and the
+/// validated/authorized manifest from disagreeing — the host resolves both together
+/// (a dev folder overrides an installed copy of the same id), so Rust must not
+/// re-guess.
+#[derive(Debug, Clone)]
+pub struct SandboxGrant {
+    pub capabilities: Vec<String>,
+    pub source_dir: String,
+}
+
+/// Managed state: `label` → what the host granted it.
 #[derive(Default)]
 pub struct PluginAuthorizer {
-    granted: Mutex<HashMap<String, Vec<String>>>,
+    granted: Mutex<HashMap<String, SandboxGrant>>,
 }
 
 impl PluginAuthorizer {
@@ -81,12 +93,28 @@ impl PluginAuthorizer {
         Self::default()
     }
 
-    pub fn register(&self, label: String, capabilities: Vec<String>) {
-        self.granted.lock().unwrap().insert(label, capabilities);
+    pub fn register(&self, label: String, capabilities: Vec<String>, source_dir: String) {
+        self.granted.lock().unwrap().insert(
+            label,
+            SandboxGrant {
+                capabilities,
+                source_dir,
+            },
+        );
     }
 
     pub fn deregister(&self, label: &str) {
         self.granted.lock().unwrap().remove(label);
+    }
+
+    /// The directory the host loaded this sandbox's plugin from. `None` when the
+    /// label is not a registered sandbox, so `SourceRead` fails closed.
+    pub fn source_dir(&self, label: &str) -> Option<String> {
+        self.granted
+            .lock()
+            .unwrap()
+            .get(label)
+            .map(|g| g.source_dir.clone())
     }
 
     /// Whether the host has registered this label at all (any capability set,
@@ -119,8 +147,8 @@ impl PluginAuthorizer {
     pub fn authorize(&self, label: &str, cap: &str) -> Result<String, AuthzError> {
         let plugin_id = plugin_id_from_label(label).ok_or(AuthzError::NotASandbox)?;
         let map = self.granted.lock().unwrap();
-        let caps = map.get(label).ok_or(AuthzError::Unregistered)?;
-        if caps.iter().any(|c| c == cap) {
+        let grant = map.get(label).ok_or(AuthzError::Unregistered)?;
+        if grant.capabilities.iter().any(|c| c == cap) {
             Ok(plugin_id)
         } else {
             Err(AuthzError::Denied(cap.to_string()))
@@ -150,7 +178,7 @@ mod tests {
             a.authorize_op("plugin-alpha", &PluginOp::SourceRead),
             Err(AuthzError::Unregistered)
         ));
-        a.register("plugin-alpha".into(), vec![]); // zero capabilities granted
+        a.register("plugin-alpha".into(), vec![], "/p/plugin-alpha".into()); // zero capabilities granted
         assert_eq!(
             a.authorize_op("plugin-alpha", &PluginOp::SourceRead)
                 .unwrap(),
@@ -165,7 +193,11 @@ mod tests {
     #[test]
     fn authorize_op_still_enforces_capabilities_for_grantable_ops() {
         let a = PluginAuthorizer::new();
-        a.register("plugin-alpha".into(), vec!["storage".into()]);
+        a.register(
+            "plugin-alpha".into(),
+            vec!["storage".into()],
+            "/p/plugin-alpha".into(),
+        );
         assert_eq!(
             a.authorize_op("plugin-alpha", &PluginOp::StorageList)
                 .unwrap(),
@@ -213,6 +245,7 @@ mod tests {
         a.register(
             "plugin-alpha".into(),
             vec!["storage".into(), "network".into()],
+            "/p/plugin-alpha".into(),
         );
         assert_eq!(a.authorize("plugin-alpha", "storage").unwrap(), "alpha");
         assert_eq!(a.authorize("plugin-alpha", "network").unwrap(), "alpha");
@@ -221,7 +254,11 @@ mod tests {
     #[test]
     fn authorize_denies_missing_capability() {
         let a = PluginAuthorizer::new();
-        a.register("plugin-alpha".into(), vec!["storage".into()]);
+        a.register(
+            "plugin-alpha".into(),
+            vec!["storage".into()],
+            "/p/plugin-alpha".into(),
+        );
         assert!(matches!(
             a.authorize("plugin-alpha", "network"),
             Err(AuthzError::Denied(_))
@@ -244,7 +281,11 @@ mod tests {
     #[test]
     fn deregister_revokes() {
         let a = PluginAuthorizer::new();
-        a.register("plugin-alpha".into(), vec!["storage".into()]);
+        a.register(
+            "plugin-alpha".into(),
+            vec!["storage".into()],
+            "/p/plugin-alpha".into(),
+        );
         a.deregister("plugin-alpha");
         assert!(matches!(
             a.authorize("plugin-alpha", "storage"),
@@ -256,11 +297,11 @@ mod tests {
     fn is_registered_tracks_registration_and_rejects_non_sandbox() {
         let a = PluginAuthorizer::new();
         assert!(!a.is_registered("plugin-alpha"));
-        a.register("plugin-alpha".into(), vec![]); // zero capabilities still counts
+        a.register("plugin-alpha".into(), vec![], "/p/plugin-alpha".into()); // zero capabilities still counts
         assert!(a.is_registered("plugin-alpha"));
         a.deregister("plugin-alpha");
         assert!(!a.is_registered("plugin-alpha"));
-        a.register("main".into(), vec!["storage".into()]); // not a sandbox label
+        a.register("main".into(), vec!["storage".into()], "/p/main".into()); // not a sandbox label
         assert!(!a.is_registered("main"));
     }
 
@@ -269,8 +310,16 @@ mod tests {
         // The isolation guarantee: each label authorizes as its OWN id, so the
         // broker (Task 2) namespaces storage by the caller, never a shared arg.
         let a = PluginAuthorizer::new();
-        a.register("plugin-a".into(), vec!["storage".into()]);
-        a.register("plugin-b".into(), vec!["storage".into()]);
+        a.register(
+            "plugin-a".into(),
+            vec!["storage".into()],
+            "/p/plugin-a".into(),
+        );
+        a.register(
+            "plugin-b".into(),
+            vec!["storage".into()],
+            "/p/plugin-b".into(),
+        );
         assert_eq!(a.authorize("plugin-a", "storage").unwrap(), "a");
         assert_eq!(a.authorize("plugin-b", "storage").unwrap(), "b");
     }
