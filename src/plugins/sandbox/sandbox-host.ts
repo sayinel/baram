@@ -57,12 +57,17 @@ export class SandboxHost {
     const label = `plugin-${pluginId}`;
     const window = await this.windowFactory(label, pluginId);
     const session = new SandboxSession(window.transport, hostRequestHandler);
-    this.live.set(pluginId, { session, window });
+    const entry = { session, window };
+    this.live.set(pluginId, entry);
     try {
       await session.activate(pluginId, declared);
       return session;
     } catch (err) {
-      this.live.delete(pluginId);
+      // Identity check (§260 3c-3 security review, M2), the same guard
+      // `unloadPlugin` uses on `pendingTeardowns`: with two loads in flight for one
+      // id, a failing activate must not evict the OTHER load's live entry — that
+      // leaves `stop()` a permanent no-op and its webview running until app exit.
+      if (this.live.get(pluginId) === entry) this.live.delete(pluginId);
       session.dispose();
       // Awaited for the same reason as `stop()`: the label must be free before the
       // caller's rollback finishes, or a retry collides with a dying webview.

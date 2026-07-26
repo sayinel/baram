@@ -208,6 +208,38 @@ fn host_tier_can_close_the_webviews_it_creates() {
     );
 }
 
+/// §260 Phase 3c-3 (security review, M6) — the tiers are only separated if the
+/// capability `windows` globs stay separated, and nothing pinned them.
+///
+/// Everything else in this file guards WHICH permissions each capability lists; a
+/// capability is only meaningful together with WHICH windows it applies to. Adding
+/// `plugin-*` (or `*`) to the host capability would hand sandbox webviews the entire
+/// host command set — and, since 3c-3, the ability to close the main window.
+#[test]
+fn the_two_tiers_apply_to_disjoint_window_sets() {
+    let windows_of = |rel: &str| -> Vec<String> {
+        let json: serde_json::Value =
+            serde_json::from_str(&read(rel)).expect("parse capability json");
+        json["windows"]
+            .as_array()
+            .expect("capability must declare `windows`")
+            .iter()
+            .filter_map(|w| w.as_str())
+            .map(str::to_string)
+            .collect()
+    };
+    assert_eq!(
+        windows_of("capabilities/default.json"),
+        vec!["main".to_string(), "file-*".to_string()],
+        "the host capability must apply to host windows only"
+    );
+    assert_eq!(
+        windows_of("capabilities/plugin-sandbox.json"),
+        vec!["plugin-*".to_string()],
+        "the sandbox capability must apply to sandbox windows only"
+    );
+}
+
 #[test]
 fn main_tier_gets_everything_except_sandbox_only_commands() {
     let registered = generate_handler_commands();

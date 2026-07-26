@@ -12,7 +12,7 @@
 // today. Phase 4's contribution mapping should give the tier a real one.
 
 /** ⚠️ SET THIS to the absolute path of the vault folder you open in the app. */
-const VAULT_DIR = "/Users/donghoon.yoo/Downloads/baram-test";
+const VAULT_DIR = "";
 
 /** Trim a failure message so several fit in one toast. */
 const brief = (e) => String(e?.message ?? e).slice(0, 70);

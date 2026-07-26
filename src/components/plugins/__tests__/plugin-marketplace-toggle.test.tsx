@@ -92,6 +92,30 @@ describe("marketplace enable toggle (§260 3c-3)", () => {
     );
   });
 
+  it("ignores a second click while the first is still in flight", async () => {
+    // §260 3c-3 review (M5): the store flips immediately, so a double-click used to
+    // read the already-flipped value and call `unloadPlugin` mid-load. That unload
+    // early-returned (nothing in `loaded` yet), the load then completed, and the
+    // session ended with a running, GRANTED sandbox the UI showed as disabled — and
+    // nothing would tear it down, because a later toggle-on early-returns too.
+    let finishLoad: () => void = () => {};
+    loadPlugin.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finishLoad = resolve;
+      }),
+    );
+    const toggle = await installedToggle();
+    fireEvent.click(toggle);
+    fireEvent.click(toggle);
+
+    expect(unloadPlugin).not.toHaveBeenCalled();
+    expect(loadPlugin).toHaveBeenCalledTimes(1);
+    finishLoad();
+    await waitFor(() =>
+      expect(usePluginStore.getState().pluginErrors.demo ?? null).toBeNull(),
+    );
+  });
+
   it("does not leave an unhandled rejection when disabling fails", async () => {
     // `unloadPlugin` awaits sandbox teardown, so it can reject; it used to be a
     // floating promise. A rejection must surface as the plugin's error instead.

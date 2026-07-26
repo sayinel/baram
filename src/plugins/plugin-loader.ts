@@ -14,6 +14,7 @@ import {
   pluginSandboxDeregister,
   pluginSandboxRegister,
 } from "../ipc/plugin-invoke";
+import { usePluginStore } from "../stores/system/plugin";
 import { logger } from "../utils/logger";
 import {
   createExtensionContext,
@@ -40,6 +41,11 @@ type Importer = (url: string) => Promise<PluginModule>;
 
 export class PluginLoader {
   private readonly importer: Importer;
+  /**
+   * §260 3c-3 — loads currently running, by plugin id. `loaded` cannot serve this
+   * purpose: it is populated only when a load completes. See `loadPlugin`.
+   */
+  private readonly inFlightLoads = new Map<string, Promise<void>>();
   private loaded = new Map<string, LoadedPlugin>();
   /**
    * §260 3c-2b — sandbox teardowns still running after `unloadPlugin` gave up
@@ -86,7 +92,18 @@ export class PluginLoader {
     return this.loaded.has(id);
   }
 
-  /** Load and activate a single plugin */
+  /**
+   * Load and activate a single plugin.
+   *
+   * §260 3c-3 (security review, M2) — CONCURRENT calls for the same id join the
+   * first instead of racing it. `this.loaded` is only populated when a load
+   * *finishes*, so it cannot dedupe two loads in flight, and two are the normal case:
+   * `React.StrictMode` double-invokes mount effects, and dev is the only environment
+   * where the sandbox runs at all (`isSandboxRuntimeAllowed`). Racing loads fight
+   * over one `plugin-<id>` webview label and one Rust grant — one of them ends up
+   * revoking the other's capabilities or closing its window, leaving `loaded` and
+   * `live` describing different plugins.
+   */
   async loadPlugin(
     installPath: string,
     manifest: PluginManifest,
@@ -100,71 +117,24 @@ export class PluginLoader {
       );
     }
 
-    if (this.loaded.has(manifest.id)) {
-      logger.warn(`[PluginLoader] Plugin ${manifest.id} is already loaded`);
-      return;
-    }
-
-    // 1. Validate manifest
-    const validation = validateManifest(manifest);
-    if (!validation.valid) {
-      throw new Error(
-        `Invalid manifest for ${manifest.id}: ${validation.errors.map((e) => e.message).join(", ")}`,
+    const inFlight = this.inFlightLoads.get(manifest.id);
+    if (inFlight) {
+      logger.warn(
+        `[PluginLoader] Plugin ${manifest.id} is already loading — joining that load`,
       );
+      return inFlight;
     }
-
-    // §260 — route by trust tier. `validateManifest` above already rejects a
-    // legacy (trust-less) manifest ("trust is required …"), which the install UI
-    // surfaces for re-validation, so here trust is guaranteed "trusted" |
-    // "sandboxed". `sandboxed` runs in an isolated webview via SandboxHost
-    // (declarative contributions + brokered ops); `trusted` keeps the same-realm
-    // path below.
-    if (pluginTrustOf(manifest) === "sandboxed") {
-      await this.loadSandboxedPlugin(installPath, manifest);
-      logger.info(
-        `[PluginLoader] Loaded sandboxed plugin: ${manifest.id} v${manifest.version}`,
-      );
-      return;
-    }
-
-    // 2. Construct asset URL for the main entry (cache-busted for reload)
-    const mainPath = `${installPath}/${manifest.main}`;
-    const assetUrl = `${convertFileSrc(mainPath)}?v=${++this.reloadCounter}`;
-
-    // 3. Dynamic import (via injectable importer)
-    let module: PluginModule;
-    try {
-      module = await this.importer(assetUrl);
-    } catch (err) {
-      throw new Error(`Failed to load plugin module ${manifest.id}: ${err}`, {
-        cause: err,
-      });
-    }
-
-    // 4. Create extension context
-    const context = createExtensionContext(manifest, installPath);
-
-    // 5. Activate with timeout
-    if (typeof module.activate === "function") {
-      await withTimeout(
-        Promise.resolve(module.activate(context)),
-        ACTIVATE_TIMEOUT,
-        `Plugin ${manifest.id} activation timed out after ${ACTIVATE_TIMEOUT}ms`,
-      );
-    }
-
-    // 6. Store loaded plugin
-    this.loaded.set(manifest.id, {
-      id: manifest.id,
-      manifest,
-      module,
-      context,
-      disposables: context.subscriptions,
-    });
-
-    logger.info(
-      `[PluginLoader] Loaded plugin: ${manifest.id} v${manifest.version}`,
+    const tracked: Promise<void> = this.runLoad(installPath, manifest).finally(
+      () => {
+        // Identity check for the same reason `pendingTeardowns` has one (3c-2b, M3):
+        // a later load must not have its entry deleted by an earlier one finishing.
+        if (this.inFlightLoads.get(manifest.id) === tracked) {
+          this.inFlightLoads.delete(manifest.id);
+        }
+      },
     );
+    this.inFlightLoads.set(manifest.id, tracked);
+    return tracked;
   }
 
   /** Reload a plugin: clean unload (disposes subscriptions) then fresh load. */
@@ -258,6 +228,21 @@ export class PluginLoader {
         );
       } catch (e) {
         logger.error(`[PluginLoader] Sandbox teardown error for ${id}:`, e);
+        // …and make it VISIBLE (§260 3c-3 security review, M3). This catch is
+        // exactly where the dangerous case lands: `plugin_sandbox_deregister`
+        // rejecting inside the teardown's `finally` leaves the Rust grant REGISTERED
+        // while the lines below forget the plugin entirely. Logging alone meant the
+        // user saw a clean disable while an unsupervised sandbox kept its
+        // capabilities — the one path where that can still happen. Rethrowing is not
+        // an option: `unloadAll()` is sequential, so it would strand every later
+        // plugin (the bound that 3c-2a's N3 added exists for that reason).
+        usePluginStore
+          .getState()
+          .setError(
+            id,
+            `Teardown failed — this plugin may still hold its capabilities until ` +
+              `restart: ${e instanceof Error ? e.message : String(e)}`,
+          );
       }
     }
 
@@ -401,6 +386,77 @@ export class PluginLoader {
         }
       },
     });
+  }
+
+  private async runLoad(
+    installPath: string,
+    manifest: PluginManifest,
+  ): Promise<void> {
+    if (this.loaded.has(manifest.id)) {
+      logger.warn(`[PluginLoader] Plugin ${manifest.id} is already loaded`);
+      return;
+    }
+
+    // 1. Validate manifest
+    const validation = validateManifest(manifest);
+    if (!validation.valid) {
+      throw new Error(
+        `Invalid manifest for ${manifest.id}: ${validation.errors.map((e) => e.message).join(", ")}`,
+      );
+    }
+
+    // §260 — route by trust tier. `validateManifest` above already rejects a
+    // legacy (trust-less) manifest ("trust is required …"), which the install UI
+    // surfaces for re-validation, so here trust is guaranteed "trusted" |
+    // "sandboxed". `sandboxed` runs in an isolated webview via SandboxHost
+    // (declarative contributions + brokered ops); `trusted` keeps the same-realm
+    // path below.
+    if (pluginTrustOf(manifest) === "sandboxed") {
+      await this.loadSandboxedPlugin(installPath, manifest);
+      logger.info(
+        `[PluginLoader] Loaded sandboxed plugin: ${manifest.id} v${manifest.version}`,
+      );
+      return;
+    }
+
+    // 2. Construct asset URL for the main entry (cache-busted for reload)
+    const mainPath = `${installPath}/${manifest.main}`;
+    const assetUrl = `${convertFileSrc(mainPath)}?v=${++this.reloadCounter}`;
+
+    // 3. Dynamic import (via injectable importer)
+    let module: PluginModule;
+    try {
+      module = await this.importer(assetUrl);
+    } catch (err) {
+      throw new Error(`Failed to load plugin module ${manifest.id}: ${err}`, {
+        cause: err,
+      });
+    }
+
+    // 4. Create extension context
+    const context = createExtensionContext(manifest, installPath);
+
+    // 5. Activate with timeout
+    if (typeof module.activate === "function") {
+      await withTimeout(
+        Promise.resolve(module.activate(context)),
+        ACTIVATE_TIMEOUT,
+        `Plugin ${manifest.id} activation timed out after ${ACTIVATE_TIMEOUT}ms`,
+      );
+    }
+
+    // 6. Store loaded plugin
+    this.loaded.set(manifest.id, {
+      id: manifest.id,
+      manifest,
+      module,
+      context,
+      disposables: context.subscriptions,
+    });
+
+    logger.info(
+      `[PluginLoader] Loaded plugin: ${manifest.id} v${manifest.version}`,
+    );
   }
 }
 

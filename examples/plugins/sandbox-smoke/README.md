@@ -5,6 +5,14 @@ can reach and reports the outcome in one toast. Headless CI cannot create a real
 `WebviewWindow`, so this is the only way to verify that the sandboxed runtime works
 outside unit tests.
 
+## What it costs you
+
+Running the command sends **three real LLM requests** (`complete`, `stream`, `complete`)
+plus a `listModels` to whichever provider you have configured, using your key. The
+prompt is one sentence and `maxTokens` is 64, so the spend is negligible — but it is
+not zero, and the prompt does leave your machine. Its only file access is a single
+`listDir`; it never reads a file's contents.
+
 ## Run it
 
 1. `git checkout` a build that has §260 3c-2c (PR #302) merged.
