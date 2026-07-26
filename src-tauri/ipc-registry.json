@@ -965,7 +965,34 @@
       "module": "plugin",
       "spec": "§260",
       "status": "implemented",
-      "description": "§260 host-only — drop a sandbox plugin's registered capabilities"
+      "description": "§260 host-only — drop a sandbox plugin's registered capabilities and its inbound message channel"
+    },
+    {
+      "name": "plugin_sandbox_connect",
+      "input": { "channel": "Channel<HostToSandbox>" },
+      "output": "void",
+      "module": "plugin",
+      "spec": "§260",
+      "status": "implemented",
+      "description": "§260 sandbox-only — register this webview's inbound IPC channel (requires prior host registration); a plugin-* window holds no event permission, so this is its only inbound path"
+    },
+    {
+      "name": "plugin_sandbox_report",
+      "input": { "msg": "SandboxToHost" },
+      "output": "void",
+      "module": "plugin",
+      "spec": "§260",
+      "status": "implemented",
+      "description": "§260 sandbox-only — sandbox→host message; re-emitted as plugin:s2h with the plugin id stamped from the caller's window label"
+    },
+    {
+      "name": "plugin_sandbox_send",
+      "input": { "plugin_id": "string", "msg": "HostToSandbox" },
+      "output": "void",
+      "module": "plugin",
+      "spec": "§260",
+      "status": "implemented",
+      "description": "§260 host-only — host→sandbox message over that sandbox's own IPC channel (fails closed if it has not connected)"
     },
     {
       "name": "embed_text",
@@ -1282,6 +1309,15 @@
       "phase": 2,
       "milestone": "M7",
       "description": "인덱스 갱신 완료"
+    },
+    {
+      "name": "plugin:s2h",
+      "payload": { "pluginId": "string", "msg": "SandboxToHost" },
+      "module": "plugin",
+      "spec": "§260",
+      "phase": 3,
+      "milestone": "M11",
+      "description": "§260 sandbox→host 메시지 (plugin_sandbox_report가 재발행, pluginId는 caller window label에서 확정). 호스트 윈도우만 수신 — plugin-* 윈도우에는 core:event 권한이 없음"
     }
   ]
 }
