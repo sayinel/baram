@@ -9,6 +9,7 @@ import type { Editor } from "@tiptap/react";
 import { EditorState, TextSelection } from "@tiptap/pm/state";
 
 import { forceCollapseSyntaxReveal } from "../extensions/plugins/syntax-reveal";
+import { replaceEditorStateWithVim } from "../extensions/plugins/vim/replace-editor-state";
 import {
   markdownToProsemirror,
   mdastBlocksToPmNodes,
@@ -200,7 +201,11 @@ export function useSourceMode({
             };
 
             setTimeout(() => {
-              editor.view.updateState(firstState);
+              replaceEditorStateWithVim(
+                editor.view,
+                firstState,
+                "source-return",
+              );
               if (restChunks.length === 0) {
                 finishLoad();
                 return;
@@ -246,7 +251,7 @@ export function useSourceMode({
         plugins: editor.state.plugins,
         selection: TextSelection.atStart(newDoc),
       });
-      editor.view.updateState(tempState);
+      replaceEditorStateWithVim(editor.view, tempState, "source-return");
 
       // Cache state with correct selection for tab-switching safety
       const targetPos = clampedPos;
