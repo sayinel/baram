@@ -25,13 +25,44 @@ const ACTIVATE_TIMEOUT_MS = import.meta.env.DEV ? 15_000 : 5_000;
 const ACTIVATE_RETRY_MS = 250;
 const CALL_TIMEOUT_MS = 30_000;
 
+export type HostService = ServiceOf<SandboxHostRequest["kind"]>;
+/** The service a mediated request belongs to, from its `kind` prefix. */
+type ServiceOf<K> = K extends `${infer S}_${string}` ? S : never;
+
 /**
- * §260 3c-2c — how many host-mediated requests one plugin may have outstanding.
- * Each `ai` request costs the user tokens (money) and holds a provider connection,
- * so a plugin must not be able to park an unbounded number. Low on purpose: a
- * plugin doing real work awaits its completion before asking for the next.
+ * §260 3c-2c / 4b — how many mediated requests of each SERVICE one plugin may have
+ * outstanding.
+ *
+ * Originally one budget of 4 for everything, justified by `ai`: each request costs the
+ * user tokens and holds a provider connection, so a plugin must not park an unbounded
+ * number. But a slot is held until the handler SETTLES, and an `ai` stream may legitimately
+ * run for `HOST_REQUEST_TIMEOUT_MS` — so four concurrent completions starved every other
+ * service. The 4a review already noted the consequence for `ui` (a plugin could not show
+ * the toast reporting its own AI failure); Phase 4b makes it worse, because a plugin doing
+ * AI work then cannot read the document either.
+ *
+ * Split per service, because the reason for the bound is per service: `ai` is bounded by
+ * what it COSTS, `editor` and `ui` by what they can do to the main thread — and neither of
+ * those spends anything outside the app. A `Record` over the services derived from the
+ * request union, so TypeScript refuses a new service without a budget.
  */
-export const MAX_INFLIGHT_HOST_REQUESTS = 4;
+export const INFLIGHT_BUDGET: Record<HostService, number> = {
+  ai: 4,
+  editor: 4,
+  ui: 8,
+};
+
+/**
+ * Which budget a request draws on. Unknown prefixes are refused rather than defaulted:
+ * `budget[unknown]` is `undefined`, and `size >= undefined` is false — i.e. an unrecognised
+ * kind would have been UNBOUNDED. Fail closed instead.
+ */
+function serviceOf(kind: string): HostService | null {
+  const service = kind.slice(0, kind.indexOf("_"));
+  return Object.hasOwn(INFLIGHT_BUDGET, service)
+    ? (service as HostService)
+    : null;
+}
 
 /**
  * Host-side bound on one mediated request — a STALL detector, not a wall-clock
@@ -94,7 +125,12 @@ export class SandboxSession {
    */
   private readonly inflightHost = new Map<
     string,
-    { answered: boolean; timer: null | ReturnType<typeof setTimeout> }
+    {
+      answered: boolean;
+      /** Which budget this entry occupies (§260 Phase 4b). */
+      service: HostService;
+      timer: null | ReturnType<typeof setTimeout>;
+    }
   >();
   private readonly offMessage: () => void;
   private readonly pending = new Map<string, Pending>();
@@ -272,11 +308,23 @@ export class SandboxSession {
       );
       return;
     }
-    if (this.inflightHost.size >= MAX_INFLIGHT_HOST_REQUESTS) {
+    const service = serviceOf(request.kind);
+    if (!service) {
       this.handleHostRequestRefusal(
         requestId,
-        `too many host requests in flight (max ${MAX_INFLIGHT_HOST_REQUESTS}); ` +
-          `a timed-out request still holds its slot until the provider finishes`,
+        `unknown host service for request "${request.kind}"`,
+      );
+      return;
+    }
+    const budget = INFLIGHT_BUDGET[service];
+    const inFlightForService = [...this.inflightHost.values()].filter(
+      (e) => e.service === service,
+    ).length;
+    if (inFlightForService >= budget) {
+      this.handleHostRequestRefusal(
+        requestId,
+        `too many "${service}" requests in flight (max ${budget}); ` +
+          `a timed-out request still holds its slot until the handler settles`,
       );
       return;
     }
@@ -289,7 +337,7 @@ export class SandboxSession {
           error: `Host request produced nothing for ${HOST_REQUEST_TIMEOUT_MS}ms`,
         });
       }, HOST_REQUEST_TIMEOUT_MS);
-    const entry = { answered: false, timer: startTimer() };
+    const entry = { answered: false, service, timer: startTimer() };
     this.inflightHost.set(requestId, entry);
 
     const onToken = (token: string) => {

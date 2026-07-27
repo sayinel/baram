@@ -35,6 +35,9 @@ import { logger } from "../../utils/logger";
  * - `"path"` — `args[0]` is an absolute path; translate it or drop the event.
  * - `"none"` — no payload to translate; forwarded as-is.
  */
+/** What a just-activated plugin is told about the file already open. */
+const REPLAYED_EVENT: PluginEventName = "file:open";
+
 const EVENT_PAYLOADS: Record<PluginEventName, "none" | "path"> = {
   "editor:ready": "none",
   "file:open": "path",
@@ -79,29 +82,8 @@ export function deliverSandboxEvent(
     logger.debug(`[Sandbox] no delivery rule for event "${event}" — dropped`);
     return;
   }
-  let payload: unknown[];
-  if (kind === "path") {
-    const absolute = args[0];
-    if (typeof absolute !== "string") return;
-    const located = resolveContext(absolute);
-    if (!located) {
-      // A file in no registered context. Dropped rather than degraded to an absolute
-      // path: the whole point of the translation is that this tier never sees one, and
-      // "no event" is the honest answer to "which vault-relative path is this?" when
-      // there is none.
-      //
-      // NOT the §89 single-file case, as this comment used to claim (code review M3):
-      // `locateInContext` resolves a `file` context to `{context, path: ""}`, which is a
-      // valid anchor Rust accepts, so those events ARE delivered.
-      logger.debug(
-        `[Sandbox] ${event} not delivered — the file is outside every context`,
-      );
-      return;
-    }
-    payload = [located];
-  } else {
-    payload = args;
-  }
+  const payload = translate(event, kind, args);
+  if (!payload) return;
   for (const { capabilities, session } of subscribers.values()) {
     if (!capabilities.includes("events")) continue;
     session.deliverEvent(event, payload);
@@ -122,9 +104,13 @@ export function replayCurrentState(
   currentFile: null | string,
 ): void {
   if (!subscriber.capabilities.includes("events") || !currentFile) return;
-  const located = resolveContext(currentFile);
-  if (!located) return;
-  subscriber.session.deliverEvent("file:open", [located]);
+  // Through the SAME record and the same translator as a real event, so a replay can never
+  // carry a shape a live `file:open` would not.
+  const payload = translate(REPLAYED_EVENT, EVENT_PAYLOADS[REPLAYED_EVENT], [
+    currentFile,
+  ]);
+  if (!payload) return;
+  subscriber.session.deliverEvent(REPLAYED_EVENT, payload);
 }
 
 /** Test seam: drop all subscribers and the resolver. */
@@ -151,4 +137,37 @@ export function subscribeSandbox(subscriber: Subscriber): () => void {
       subscribers.delete(subscriber.pluginId);
     }
   };
+}
+
+/**
+ * One event's payload as this tier is allowed to see it, or `null` to drop the event.
+ *
+ * The single translation site (§260 Phase 4a code review, carried into 4b):
+ * `replayCurrentState` used to build its own `file:open` payload, so a change to that
+ * event's rule would have reached one caller and not the other — the same
+ * one-rule-two-places shape the `EVENT_PAYLOADS` record exists to prevent.
+ */
+function translate(
+  event: PluginEventName,
+  kind: "none" | "path",
+  args: unknown[],
+): null | unknown[] {
+  if (kind !== "path") return args;
+  const absolute = args[0];
+  if (typeof absolute !== "string") return null;
+  const located = resolveContext(absolute);
+  if (!located) {
+    // A file in no registered context. Dropped rather than degraded to an absolute path:
+    // the whole point of the translation is that this tier never sees one, and "no event"
+    // is the honest answer to "which vault-relative path is this?" when there is none.
+    //
+    // NOT the §89 single-file case, as an earlier comment claimed (code review M3):
+    // `locateInContext` resolves a `file` context to `{context, path: ""}`, which is a
+    // valid anchor Rust accepts, so those events ARE delivered.
+    logger.debug(
+      `[Sandbox] ${event} not delivered — the file is outside every context`,
+    );
+    return null;
+  }
+  return [located];
 }
