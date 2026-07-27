@@ -21,25 +21,38 @@ import { invalidateEditorMutationTasks } from "../../utils/editor/mutation-tasks
 
 interface Deferred<T> {
   promise: Promise<T>;
+  reject: (e: unknown) => void;
   resolve: (v: T) => void;
 }
 
 function deferred<T>(): Deferred<T> {
+  let reject!: (e: unknown) => void;
   let resolve!: (v: T) => void;
-  const promise = new Promise<T>((r) => {
-    resolve = r;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
   });
-  return { promise, resolve };
+  // Nothing awaits a rejection until the test wires it up.
+  promise.catch(() => {});
+  return { promise, reject, resolve };
 }
 
 const createDirGate = { current: null as Deferred<void> | null };
 const importedFiles: string[] = [];
+/** Per-path gates so a test can park the flow inside importFile. */
+const importGates = new Map<string, Deferred<void>>();
+
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+  open: vi.fn(() => dialogGate.current?.promise ?? Promise.resolve(null)),
+}));
+
+const dialogGate = { current: null as Deferred<null | string[]> | null };
 
 vi.mock("../../ipc/invoke", () => ({
   createDir: vi.fn(() => createDirGate.current?.promise ?? Promise.resolve()),
   importFile: vi.fn((from: string) => {
     importedFiles.push(from);
-    return Promise.resolve();
+    return importGates.get(from)?.promise ?? Promise.resolve();
   }),
   getConfig: vi.fn(() => Promise.resolve(null)),
   listDir: vi.fn(() => Promise.resolve([])),
@@ -58,8 +71,10 @@ import { listen } from "@tauri-apps/api/event";
 
 import { act, renderHook } from "@testing-library/react";
 
+import { buildSlashItems } from "../../extensions/plugins/slash-command-items";
 import { llmComplete } from "../../ipc/invoke";
 import { useAIStore } from "../../stores/ai/ai";
+import { executeBlockAIWithDiff } from "../../utils/block-ai-diff";
 import { handleEditorDrop } from "../use-external-drop";
 import { useGhostText } from "../use-ghost-text";
 import { useInlineAI } from "../use-inline-ai";
@@ -82,7 +97,9 @@ function makeEditor(content = "<p>original</p>"): Editor {
 
 beforeEach(async () => {
   createDirGate.current = null;
+  dialogGate.current = null;
   importedFiles.length = 0;
+  importGates.clear();
   vi.mocked(llmComplete).mockClear();
   const { useEditorStore } = await import("../../stores/editor/editor");
   useEditorStore.setState({
@@ -213,6 +230,30 @@ describe("inline AI — invalidation during listener setup (§12-9, R7 finding 3
     expect(vi.mocked(llmComplete)).not.toHaveBeenCalled();
   });
 
+  it("the abort-induced llmComplete rejection does not reset UI on the new document", async () => {
+    // llmCancel makes the Rust side return Err("Request cancelled"), so the
+    // catch block ALSO runs on the abort path — after the document has been
+    // replaced. It must not touch the replacing tab's UI or AI diff.
+    const editor = makeEditor("<p>hello</p>");
+    const pending = deferred<void>();
+    vi.mocked(llmComplete).mockReturnValueOnce(pending.promise);
+
+    const result = renderSubmit(editor);
+    await act(async () => {
+      result.current.submitPrompt("rewrite");
+      await flush();
+    });
+    expect(result.current.phase).toBe("streaming");
+
+    invalidateEditorMutationTasks(editor.view);
+    await act(async () => {
+      pending.reject(new Error("Request cancelled"));
+      await flush();
+    });
+
+    expect(result.current.phase).toBe("streaming");
+  });
+
   it("listeners installed before the invalidation are torn down", async () => {
     const editor = makeEditor("<p>hello</p>");
     const { gate, unlistens } = gateListenAt(1); // park on the SECOND listen
@@ -283,5 +324,114 @@ describe("ghost text — invalidation during the debounce (§12-9, R7 finding 1)
     });
 
     expect(vi.mocked(llmComplete)).not.toHaveBeenCalled();
+  });
+});
+
+describe("R8 follow-ups — stale work on the failure and dialog paths (§12-9c)", () => {
+  it("slash photo import bound before the picker does not land in the replacing document", async () => {
+    const editor = makeEditor("<p>doc A</p>");
+    const gate = deferred<null | string[]>();
+    dialogGate.current = gate;
+
+    const photo = buildSlashItems(editor).find((i) => i.id === "photo");
+    expect(photo).toBeDefined();
+
+    const running = photo!.action();
+    await flush(); // parked inside the native picker
+
+    invalidateEditorMutationTasks(editor.view);
+
+    gate.resolve(["/outside/photo.png"]);
+    await running;
+    await flush();
+
+    // Registering only AFTER open() would have re-bound the photo to the
+    // new generation and inserted it here.
+    expect(importedFiles).toEqual([]);
+    expect(editor.state.doc.toString()).not.toContain("image");
+  });
+
+  it("CONTROL: an uninterrupted slash photo import does insert", async () => {
+    const editor = makeEditor("<p>doc A</p>");
+    const gate = deferred<null | string[]>();
+    dialogGate.current = gate;
+
+    const photo = buildSlashItems(editor).find((i) => i.id === "photo");
+    const running = photo!.action();
+    await flush();
+    gate.resolve(["/outside/photo.png"]);
+    await running;
+    await flush();
+
+    expect(editor.state.doc.toString()).toContain("image");
+  });
+
+  it("a rejected import does not let the dead drop flow copy the next file", async () => {
+    const editor = makeEditor();
+    const firstImport = deferred<void>();
+    importGates.set("/outside/one.png", firstImport);
+
+    const done = handleEditorDrop(
+      ["/outside/one.png", "/outside/two.png"],
+      editor,
+      1,
+    );
+    await flush();
+    // Parked inside the first importFile; the second has not started.
+    expect(importedFiles).toEqual(["/outside/one.png"]);
+
+    invalidateEditorMutationTasks(editor.view);
+    firstImport.reject(new Error("copy failed")); // I/O failure, not a cancel
+    await done;
+
+    // The per-iteration liveness gate must stop the loop: a check placed only
+    // after a SUCCESSFUL import would let the catch fall through and copy
+    // the second file into the previous tab's assets dir.
+    expect(importedFiles).not.toContain("/outside/two.png");
+    expect(editor.state.doc.toString()).not.toContain("image");
+  });
+});
+
+describe("block AI — invalidation during stream setup (§12-9c, R8 finding 3)", () => {
+  /** Park `listen` on its first call so the task can die mid-setup. */
+  function gateFirstListen() {
+    const gate = deferred<void>();
+    let n = 0;
+    vi.mocked(listen).mockImplementation(async () => {
+      if (n++ === 0) await gate.promise;
+      return () => {};
+    });
+    return gate;
+  }
+
+  beforeEach(() => {
+    // Local provider needs no API key, so the configured-gate lets us through.
+    useAIStore.setState({ autoModelEnabled: false, provider: "ollama" });
+  });
+
+  it("CONTROL: an uninterrupted block AI run fires the request", async () => {
+    const editor = makeEditor("<p>target text</p>");
+    void executeBlockAIWithDiff(editor, 0, "target text", "p", "sys");
+    await flush();
+
+    expect(vi.mocked(llmComplete)).toHaveBeenCalledTimes(1);
+    document.querySelector(".block-ai-diff-overlay")?.remove();
+  });
+
+  it("a task that dies during createLLMStream neither requests nor leaves a panel", async () => {
+    const editor = makeEditor("<p>target text</p>");
+    const gate = gateFirstListen();
+
+    void executeBlockAIWithDiff(editor, 0, "target text", "p", "sys");
+    await flush(); // parked inside createLLMStream
+
+    invalidateEditorMutationTasks(editor.view);
+    gate.resolve();
+    await flush();
+
+    // Without the post-setup gate the request would fire with its listeners
+    // already removed, stranding a "Streaming…" panel over the new tab.
+    expect(vi.mocked(llmComplete)).not.toHaveBeenCalled();
+    expect(document.querySelector(".block-ai-diff-overlay")).toBeNull();
   });
 });

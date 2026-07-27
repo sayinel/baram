@@ -240,7 +240,16 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
           store.privacyMode,
         );
       } catch {
+        // This catch is also the ABORT path: our own cleanup calls llmCancel,
+        // and llm_complete resolves to Err("Request cancelled") — so by the
+        // time we get here the document may already have been replaced.
+        // Read liveness before finishing, and always tear the listeners down
+        // (a plain network error would otherwise strand all three handles,
+        // since the next submit resets unlistenRefs).
+        const live = task.isLive();
+        void cleanupListeners();
         task.finish();
+        if (!live) return;
         setPhase("input");
         try {
           dispatchAIDiffClear(editor.view);

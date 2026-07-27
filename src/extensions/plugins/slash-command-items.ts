@@ -482,6 +482,25 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
       description: "Insert photo from file picker",
       mdHint: "📷",
       action: async () => {
+        // §12-9c (design §5c): bind BEFORE the dialog. Reading the store
+        // afterwards would re-bind the photo to whichever tab is active when
+        // the picker closes — and with no task registered during the dialog,
+        // a state install in that window has nothing to invalidate, so the
+        // insert would land in the wrong document (and resolve the journal
+        // assets dir from the wrong file).
+        const task = registerEditorMutationTask(editor.view);
+        const activeTabId = useEditorStore.getState().activeTabId;
+        const tabs = useEditorStore.getState().tabs;
+        const activeTab = tabs.find(
+          (t: { id: string }) => t.id === activeTabId,
+        );
+        const filePath = activeTab?.filePath ?? "";
+        const rootPath = useFileStore.getState().rootPath ?? "";
+        const journalDir = useSettingsStore.getState().journalDirectory ?? "";
+        const journalAbsPath =
+          rootPath && journalDir ? `${rootPath}/${journalDir}` : "";
+        const isJournal = journalAbsPath && filePath.startsWith(journalAbsPath);
+
         try {
           const selected = await open({
             multiple: true,
@@ -492,27 +511,11 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
               },
             ],
           });
-          if (!selected) return;
+          if (!selected || !task.isLive()) return;
 
           const paths = Array.isArray(selected) ? selected : [selected];
 
-          // Check journal context
-          const activeTabId = useEditorStore.getState().activeTabId;
-          const tabs = useEditorStore.getState().tabs;
-          const activeTab = tabs.find(
-            (t: { id: string }) => t.id === activeTabId,
-          );
-          const filePath = activeTab?.filePath ?? "";
-          const rootPath = useFileStore.getState().rootPath ?? "";
-          const journalDir = useSettingsStore.getState().journalDirectory ?? "";
-          const journalAbsPath =
-            rootPath && journalDir ? `${rootPath}/${journalDir}` : "";
-          const isJournal =
-            journalAbsPath && filePath.startsWith(journalAbsPath);
-
-          // §12-9b: dialog + per-file import gaps (design §5c)
-          const task = registerEditorMutationTask(editor.view);
-          try {
+          {
             for (const p of paths) {
               if (!task.isLive()) return;
               if (isJournal && rootPath && journalDir) {
@@ -557,11 +560,13 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
                   .run();
               }
             }
-          } finally {
-            task.finish();
           }
         } catch {
           // Dialog cancelled or error
+        } finally {
+          // Covers the cancelled-dialog and thrown-dialog paths too — the
+          // task is registered before open(), so every exit must close it.
+          task.finish();
         }
       },
     },

@@ -90,6 +90,12 @@ export async function handleEditorDrop(
     let pos = insertPos;
 
     for (const sourcePath of imagePaths) {
+      // Re-check per iteration, not only after a SUCCESSFUL import: a
+      // rejected import lands in the catch below, which would otherwise let
+      // the loop start copying the next file into the previous tab's
+      // assets dir long after the task died.
+      if (!task.isLive()) return;
+
       const originalName = sourcePath.split("/").pop() ?? "";
       if (!originalName) continue;
 

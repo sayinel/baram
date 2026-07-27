@@ -1129,6 +1129,13 @@ function SmartTemplateDialogWrapper({
           llmCancel(requestId).catch(() => {});
           cleanupFn();
         });
+        // A task that died while createLLMStream was awaited has already had
+        // its listeners removed; firing the request anyway would bill an
+        // answer nobody can receive.
+        if (!task.isLive()) {
+          task.finish();
+          return;
+        }
         try {
           await llmComplete(
             prompt,

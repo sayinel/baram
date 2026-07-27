@@ -172,6 +172,16 @@ export async function executeBlockAIWithDiff(
     llmCancel(requestId).catch(() => {});
   });
 
+  // Final gate before the outbound request: if the task died while
+  // createLLMStream was awaited, its listeners are already gone (so the panel
+  // would hang on "Streaming…" over the replacing tab) and llmCancel cannot
+  // stop a request the backend has not registered yet.
+  if (!task.isLive()) {
+    task.finish();
+    panel.remove();
+    return;
+  }
+
   // Fire LLM request
   llmComplete(
     prompt,
