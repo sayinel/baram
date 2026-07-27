@@ -95,8 +95,20 @@ export async function executeAICommand(
     }
   };
   editor.on("transaction", trackPos);
+  let detached = false;
+  const detachTrackPos = () => {
+    if (detached) return;
+    detached = true;
+    editor.off("transaction", trackPos);
+  };
 
   const task = registerEditorMutationTask(editor.view);
+  // Detaching only in the finally is not enough: if a state install happens
+  // while createLLMStream or llmComplete is pending and that promise never
+  // settles, the finally never runs and this handler keeps mapping a stale
+  // position across every transaction of the NEW document — on the shared
+  // editor, forever. Hang it on the task so invalidation always detaches.
+  task.addCleanup(detachTrackPos);
   // The whole flow lives in the try so a createLLMStream rejection cannot
   // strand the task (its await used to sit outside any handler).
   let cleanupStream: (() => void) | undefined;
@@ -133,7 +145,7 @@ export async function executeAICommand(
   } catch {
     logger.error("LLM request failed");
   } finally {
-    editor.off("transaction", trackPos);
+    detachTrackPos();
     cleanupStream?.();
     task.finish();
   }

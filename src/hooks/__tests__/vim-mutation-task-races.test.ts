@@ -661,6 +661,34 @@ describe("R10 follow-ups — call sites and lifecycle safety (§12-9g)", () => {
     await running;
   });
 
+  it("an invalidated AI command detaches its transaction listener even if the request never settles", async () => {
+    // The finally cannot save us here: the request stays pending forever, so
+    // detach has to hang off the mutation task. A leaked handler would keep
+    // mapping a stale position across the NEW document's transactions.
+    useAIStore.setState({ autoModelEnabled: false, provider: "ollama" });
+    const editor = makeEditor("<p>hello</p>");
+    const never = deferred<void>();
+    vi.mocked(llmComplete).mockReturnValueOnce(never.promise);
+
+    const offSpy = vi.spyOn(editor, "off");
+
+    void executeAICommand(editor, "p", "s");
+    await flush();
+    // Sanity: the command attached its position tracker.
+    expect(offSpy).not.toHaveBeenCalledWith(
+      "transaction",
+      expect.any(Function),
+    );
+
+    simulateStateInstall(editor.view);
+    await flush();
+
+    expect(offSpy).toHaveBeenCalledWith("transaction", expect.any(Function));
+
+    never.resolve();
+    offSpy.mockRestore();
+  });
+
   it("dispatchCustomInstruction abandons its prompt when the document is replaced", async () => {
     // targetPos/blockText below are bound to THIS document — applying them
     // after a state install would write at a stale position.
@@ -691,6 +719,25 @@ describe("R10 follow-ups — call sites and lifecycle safety (§12-9g)", () => {
     dispatchCustomInstruction(editor, 0);
     await flush();
     gate.resolve("make it shorter");
+    await flush();
+
+    expect(vi.mocked(llmComplete)).toHaveBeenCalledTimes(1);
+    promptSpy.mockRestore();
+  });
+
+  it("CONTROL: the slash ai-write action runs when nothing invalidates", async () => {
+    useAIStore.setState({ autoModelEnabled: false, provider: "ollama" });
+    const editor = makeEditor("<p>doc</p>");
+    const gate = deferred<null | string>();
+    const promptSpy = vi
+      .spyOn(aiCommands, "showPrompt")
+      .mockReturnValue(gate.promise);
+
+    const item = buildSlashItems(editor).find((i) => i.id === "ai-write");
+    const running = item!.action();
+    await flush();
+    gate.resolve("a topic");
+    await running;
     await flush();
 
     expect(vi.mocked(llmComplete)).toHaveBeenCalledTimes(1);
