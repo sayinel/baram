@@ -80,7 +80,7 @@ export interface LoadedPlugin {
 export interface NetworkAPI {
     fetch(url: string, init?: PluginFetchInit): Promise<PluginFetchResponse>;
 }
-export type PluginCapability = "ai" | "commands" | "editor" | "editor:readonly" | "events" | "files" | "files:readonly" | "network" | "settings" | "sidebar" | "statusbar" | "storage";
+export type PluginCapability = "ai" | "commands" | "editor" | "editor:readonly" | "events" | "files" | "files:readonly" | "network" | "settings" | "sidebar" | "statusbar" | "storage" | "viewer";
 /**
  * §260 declarative contribution surface for sandboxed plugins. Populated in
  * the manifest; consumed by the sandbox runtime in later phases. Every field
@@ -132,6 +132,41 @@ export interface PluginFetchResponse {
 export interface PluginFileEvent {
     context: string;
     path: string;
+}
+/**
+ * What the host tells a file viewer when it mounts or updates. `assetUrl` is
+ * the file served over the asset: protocol, already cache-busted with
+ * `refreshKey` — a viewer that just needs to display the file never touches
+ * the filesystem APIs.
+ */
+export interface PluginFileViewerContext {
+    assetUrl: string;
+    filePath: string;
+    /** Bumped on every save / external reload — re-fetch the file when it changes. */
+    refreshKey: number;
+    /**
+     * Shared editor zoom factor (0.5–2.0) driven by useZoom (Cmd+= / Cmd+- /
+     * Cmd+0, Ctrl+wheel, pinch). The host container does NOT apply CSS zoom to
+     * viewer content — scaling is the viewer's job, with this value.
+     */
+    zoomLevel: number;
+}
+/**
+ * A custom read-only renderer for file extensions the core editor does not
+ * handle itself. Registered via `ui.registerFileViewer` (capability
+ * "viewer"). For text files the host keeps its preview ↔ source toggle: the
+ * viewer renders the preview side, CodeMirror the source side. Binary
+ * safety (skipping UTF-8 reads, blocking saves) stays in the host — a viewer
+ * only ever draws.
+ */
+export interface PluginFileViewerOptions {
+    /** Extensions without the leading dot, lowercase (e.g. ["png", "svg"]). */
+    extensions: string[];
+    id: string;
+    onMount(el: HTMLElement, ctx: PluginFileViewerContext): void;
+    onUnmount?(el: HTMLElement): void;
+    /** Called when ctx changes (zoom / refresh) while mounted. */
+    onUpdate?(el: HTMLElement, ctx: PluginFileViewerContext): void;
 }
 export interface PluginManifest {
     author: string;
@@ -287,6 +322,7 @@ export interface UIAPI {
     addSettingsTab(opts: PluginSettingsTabOptions): Disposable;
     addSidebarPanel(opts: PluginSidebarPanelOptions): Disposable;
     addStyle(css: string): Disposable;
+    registerFileViewer(opts: PluginFileViewerOptions): Disposable;
     showNotification(message: string, type?: "error" | "info" | "warning"): void;
     showStatusBarItem(text: string, align?: "left" | "right"): StatusBarItem;
 }

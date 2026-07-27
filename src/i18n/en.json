@@ -511,5 +511,7 @@
 
   "htmlPreview.showPreview": "Preview",
   "htmlPreview.showSource": "Source",
-  "htmlPreview.toggleTitle": "Toggle HTML preview / source"
+  "htmlPreview.toggleTitle": "Toggle HTML preview / source",
+
+  "viewer.noPlugin": "No viewer plugin is enabled for this file type."
 }

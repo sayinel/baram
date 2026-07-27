@@ -50,6 +50,38 @@ export function isHtmlFile(filePath: string | undefined): boolean {
   return HTML_EXTENSIONS.has(ext);
 }
 
+const IMAGE_EXTENSIONS = new Set([
+  "avif",
+  "bmp",
+  "gif",
+  "ico",
+  "jpeg",
+  "jpg",
+  "png",
+  "webp",
+]);
+
+/**
+ * Binary files shown in a read-only viewer (PDF built-in; images via a
+ * viewer plugin). Every text path — UTF-8 reads, saves, tab-switch
+ * serialization — must skip these regardless of whether a viewer plugin is
+ * enabled: file safety cannot depend on an optional plugin.
+ */
+export function isBinaryViewerFile(filePath: string | undefined): boolean {
+  return isImageFile(filePath) || isPdfFile(filePath);
+}
+
+/**
+ * Returns true for raster image files — binary, never read with the UTF-8
+ * readFile IPC and never written by any save path. Rendering is delegated
+ * to a "viewer" plugin (built-in: media-viewer).
+ */
+export function isImageFile(filePath: string | undefined): boolean {
+  if (!filePath) return false;
+  const ext = filePath.split(".").pop()?.toLowerCase();
+  return ext !== undefined && IMAGE_EXTENSIONS.has(ext);
+}
+
 /** Returns true for .md, .markdown, .mdx — and for untitled files (no path). */
 export function isMarkdownFile(filePath: string | undefined): boolean {
   if (!filePath) return true; // untitled → treat as markdown

@@ -18,6 +18,7 @@ import { useShallow } from "zustand/shallow";
 import { InlineAIPrompt } from "./components/ai/InlineAIPrompt";
 import { PromptLintPanel } from "./components/ai/PromptLintPanel";
 import { FindReplaceBar } from "./components/editor/FindReplaceBar";
+import { PluginViewerHost } from "./components/editor/PluginViewerHost";
 import { UnsavedChangesModal } from "./components/editor/UnsavedChangesModal";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AppLayout } from "./components/layout/AppLayout";
@@ -70,6 +71,7 @@ import {
   shutdownPlugins,
 } from "./plugins/plugin-lifecycle";
 import { pluginLoader } from "./plugins/plugin-loader";
+import { matchFileViewer, usePluginUIStore } from "./plugins/plugin-ui-store";
 import {
   startUpdateChecker,
   stopUpdateChecker,
@@ -88,7 +90,9 @@ import { useUIStore } from "./stores/ui/ui";
 import { initPerfTrace, instrumentEditor } from "./utils/editor/perf-trace";
 import {
   getLanguageForFile,
+  isBinaryViewerFile,
   isHtmlFile,
+  isImageFile,
   isMarkdownFile,
   isPdfFile,
 } from "./utils/file-type";
@@ -213,6 +217,19 @@ const FileEditorLayout = lazy(() =>
   })),
 );
 
+// A tab that toggles between rendered preview and raw source: HTML (built-in
+// iframe preview) or any TEXT file a viewer plugin claims (e.g. SVG via the
+// built-in media-viewer). Binary files never toggle — they have no source
+// view. Reads the plugin registry non-reactively: callers are user-action
+// callbacks, and the render path derives the same answer reactively.
+function isPreviewToggleFile(filePath: string | undefined): boolean {
+  if (!filePath || isMarkdownFile(filePath) || isBinaryViewerFile(filePath)) {
+    return false;
+  }
+  if (isHtmlFile(filePath)) return true;
+  return !!matchFileViewer(usePluginUIStore.getState().fileViewers, filePath);
+}
+
 // §89 File mode detection — resolved once at module load (URL params don't change)
 const _fileModeParams = new URLSearchParams(window.location.search);
 const FILE_MODE_PATH =
@@ -252,8 +269,22 @@ function App() {
     ? getLanguageForFile(activeTabFilePath)
     : null;
 
-  // PDF file viewer — read-only, rendered by the webview's native PDF engine
+  // PDF file viewer — read-only, built-in (PDF.js)
   const isPdfTab = !!activeTabFilePath && isPdfFile(activeTabFilePath);
+  // Raster images — binary, rendered by a "viewer" plugin (built-in
+  // media-viewer). The binary guards hold with or without a plugin.
+  const isImageTab = !!activeTabFilePath && isImageFile(activeTabFilePath);
+
+  // Plugin-registered file viewer matching the active tab (§69 "viewer")
+  const fileViewers = usePluginUIStore((s) => s.fileViewers);
+  const pluginViewer = matchFileViewer(
+    fileViewers,
+    activeTabFilePath ?? undefined,
+  );
+  // Text files a plugin claims (e.g. SVG) get the same preview ↔ source
+  // toggle as HTML; binary files (images) are preview-only.
+  const isPluginPreviewTab =
+    !!pluginViewer && isCodeFile && !isPdfTab && !isImageTab;
 
   // HTML file viewer — rendered preview (default) vs raw source, tracked
   // per tab so toggling one tab doesn't affect others.
@@ -262,10 +293,11 @@ function App() {
     () => new Set(),
   );
   const isHtmlSourceView = !!activeTabId && htmlSourceTabs.has(activeTabId);
-  // Viewer iframes reload whenever the file's saved/reloaded mtime bumps
+  // Viewers reload whenever the file's saved/reloaded mtime bumps
   // (manual save, auto-save, toggle-flush, or external auto-reload)
   const previewFileMtime = useFileStore((s) =>
-    (isHtmlTab || isPdfTab) && activeTabFilePath
+    (isHtmlTab || isPdfTab || isImageTab || isPluginPreviewTab) &&
+    activeTabFilePath
       ? (s.fileMtimes.get(activeTabFilePath)?.lastSaveMtime ?? 0)
       : 0,
   );
@@ -614,14 +646,14 @@ function App() {
     [markDirty],
   );
 
-  // Toggle rendered preview ↔ raw source for the active HTML tab.
-  // The preview iframe loads the file from disk (asset: protocol), so when
+  // Toggle rendered preview ↔ raw source for the active HTML / plugin-viewed
+  // text tab. The preview loads the file from disk (asset: protocol), so when
   // leaving source view with unsaved edits, flush them first — the mtime bump
-  // then reloads the iframe with the fresh content.
+  // then reloads the preview with the fresh content.
   const toggleHtmlView = useCallback(() => {
     const { activeTabId: tabId, tabs: currentTabs } = useEditorStore.getState();
     const tab = currentTabs.find((t) => t.id === tabId);
-    if (!tab || !isFileTab(tab) || !isHtmlFile(tab.filePath)) return;
+    if (!tab || !isFileTab(tab) || !isPreviewToggleFile(tab.filePath)) return;
     const leavingSourceView = htmlSourceTabs.has(tab.id);
     if (leavingSourceView && tab.isDirty && tab.filePath) {
       const filePath = tab.filePath;
@@ -647,12 +679,13 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [htmlSourceTabs, markDirty]);
 
-  // Cmd+/ — route to the HTML preview/source toggle when an HTML tab is
-  // active; otherwise fall through to the markdown source-mode toggle.
+  // Cmd+/ — route to the preview/source toggle when an HTML or plugin-viewed
+  // text tab is active; otherwise fall through to the markdown source-mode
+  // toggle.
   const handleToggleSourceMode = useCallback(() => {
     const { activeTabId: tabId, tabs: currentTabs } = useEditorStore.getState();
     const tab = currentTabs.find((t) => t.id === tabId);
-    if (tab && isFileTab(tab) && isHtmlFile(tab.filePath)) {
+    if (tab && isFileTab(tab) && isPreviewToggleFile(tab.filePath)) {
       toggleHtmlView();
       return;
     }
@@ -748,7 +781,9 @@ function App() {
               mode={
                 isGraphTabActive
                   ? "graph"
-                  : isPdfTab || (isHtmlTab && !isHtmlSourceView)
+                  : isPdfTab ||
+                      isImageTab ||
+                      ((isHtmlTab || isPluginPreviewTab) && !isHtmlSourceView)
                     ? "preview"
                     : isCodeFile || isSourceMode
                       ? "source"
@@ -817,9 +852,31 @@ function App() {
                 />
               </Suspense>
             </div>
+          ) : isImageTab && activeTabFilePath ? (
+            <div
+              className="editor-area-scroll plugin-viewer-scroll"
+              data-editor-scroll
+            >
+              {pluginViewer ? (
+                <PluginViewerHost
+                  filePath={activeTabFilePath}
+                  refreshKey={previewFileMtime}
+                  viewer={pluginViewer}
+                />
+              ) : (
+                <div className="viewer-missing">{t("viewer.noPlugin")}</div>
+              )}
+            </div>
           ) : isCodeFile ? (
-            <div className="editor-area-scroll" data-editor-scroll>
-              {isHtmlTab && (
+            <div
+              className={
+                isPluginPreviewTab && !isHtmlSourceView
+                  ? "editor-area-scroll plugin-viewer-scroll"
+                  : "editor-area-scroll"
+              }
+              data-editor-scroll
+            >
+              {(isHtmlTab || isPluginPreviewTab) && (
                 <button
                   className="mode-toggle-btn html-view-toggle"
                   onClick={toggleHtmlView}
@@ -837,6 +894,15 @@ function App() {
                     filePath={activeTabFilePath}
                     refreshKey={previewFileMtime}
                     title={activeTabFilePath}
+                  />
+                ) : isPluginPreviewTab &&
+                  !isHtmlSourceView &&
+                  activeTabFilePath &&
+                  pluginViewer ? (
+                  <PluginViewerHost
+                    filePath={activeTabFilePath}
+                    refreshKey={previewFileMtime}
+                    viewer={pluginViewer}
                   />
                 ) : (
                   <SourceCodeEditor

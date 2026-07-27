@@ -1,7 +1,9 @@
 import type {
+  ExtensionContext,
   InstalledPlugin,
   PluginEventName,
   PluginFileEvent,
+  PluginModule,
 } from "./types";
 
 import {
@@ -12,7 +14,12 @@ import {
 import { contextRootOf, useContextStore } from "../stores/context/context";
 import { usePluginStore } from "../stores/system/plugin";
 import { logger } from "../utils/logger";
-import { emitPluginEvent } from "./extension-context";
+import { BUILTIN_PLUGINS } from "./builtin";
+import {
+  createExtensionContext,
+  emitPluginEvent,
+  unregisterPluginUI,
+} from "./extension-context";
 // §69 Plugin Lifecycle — App-level plugin management
 import { pluginLoader } from "./plugin-loader";
 import { arePluginsEnabled } from "./plugins-enabled";
@@ -21,6 +28,12 @@ import {
   setContextResolver,
 } from "./sandbox/sandbox-event-bridge";
 import { closeOrphanSandboxWebviews } from "./sandbox/sandbox-orphans";
+
+interface ActiveBuiltin {
+  context: ExtensionContext;
+  id: string;
+  module: PluginModule;
+}
 
 /** Initialize all enabled plugins at app startup. Budget: 200ms total. */
 export async function initializePlugins(): Promise<void> {
@@ -51,6 +64,13 @@ export async function initializePlugins(): Promise<void> {
   // fail-closed is the right default for the one translation that keeps the user's home
   // directory out of the sandboxed tier.
   setContextResolver(locateInContext);
+
+  // Built-in plugins load BEFORE (and regardless of) the §259 gate: that gate
+  // contains UNTRUSTED external code from disk, while built-ins are app code
+  // compiled into this bundle — the plugin API is their integration surface,
+  // not a trust boundary. Without this exemption, release builds would lose
+  // every built-in viewer.
+  await loadBuiltinPlugins();
 
   if (!arePluginsEnabled()) {
     logger.info(
@@ -177,14 +197,40 @@ export function notifyFileOpen(filePath: string): void {
   notifyPlugins("file:open", filePath);
 }
 
+// --- Built-in plugins (§69) ---
+
 /** Called when a file is saved */
 export function notifyFileSave(filePath: string): void {
   notifyPlugins("file:save", filePath);
 }
 
+const activeBuiltins: ActiveBuiltin[] = [];
+
 /** Cleanup all plugins on app shutdown */
 export async function shutdownPlugins(): Promise<void> {
+  await shutdownBuiltinPlugins();
   await pluginLoader.unloadAll();
+}
+
+/**
+ * Activate the compiled-in plugins through the same ExtensionContext external
+ * plugins get. Idempotent: React.StrictMode double-invokes the mounting
+ * effect in dev, and a second activation would register every viewer twice.
+ */
+async function loadBuiltinPlugins(): Promise<void> {
+  if (activeBuiltins.length > 0) return;
+  for (const { manifest, module } of BUILTIN_PLUGINS) {
+    try {
+      const context = createExtensionContext(manifest, "");
+      await module.activate?.(context);
+      activeBuiltins.push({ context, id: manifest.id, module });
+    } catch (err) {
+      logger.error(
+        `[PluginLifecycle] builtin ${manifest.id} activate failed:`,
+        err,
+      );
+    }
+  }
 }
 
 /**
@@ -199,6 +245,30 @@ export async function shutdownPlugins(): Promise<void> {
 function notifyPlugins(event: PluginEventName, ...args: unknown[]): void {
   emitPluginEvent(event, ...args);
   deliverSandboxEvent(event, args);
+}
+
+async function shutdownBuiltinPlugins(): Promise<void> {
+  for (const builtin of activeBuiltins.splice(0)) {
+    try {
+      await builtin.module.deactivate?.();
+    } catch (err) {
+      logger.error(
+        `[PluginLifecycle] builtin ${builtin.id} deactivate failed:`,
+        err,
+      );
+    }
+    for (const disposable of builtin.context.subscriptions) {
+      try {
+        disposable.dispose();
+      } catch (err) {
+        logger.error(
+          `[PluginLifecycle] builtin ${builtin.id} dispose failed:`,
+          err,
+        );
+      }
+    }
+    unregisterPluginUI(builtin.id);
+  }
 }
 
 /** Simple topological sort by dependencies */

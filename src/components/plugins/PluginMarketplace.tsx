@@ -92,6 +92,11 @@ const STYLES = {
     color: "var(--color-status-danger)",
     fontWeight: 500,
   } as React.CSSProperties,
+  builtinBadge: {
+    fontSize: "11px",
+    color: "var(--color-accent-default)",
+    fontWeight: 500,
+  } as React.CSSProperties,
   installedPluginDescription: {
     margin: "2px 0 0",
     fontSize: "12px",
@@ -173,6 +178,7 @@ import type {
 
 import { readFile } from "../../ipc/invoke";
 import { pluginInstall, pluginUninstall } from "../../ipc/plugin-invoke";
+import { BUILTIN_PLUGINS } from "../../plugins/builtin";
 import { pluginLoader } from "../../plugins/plugin-loader";
 import { arePluginsEnabled } from "../../plugins/plugins-enabled";
 import {
@@ -427,9 +433,33 @@ export function PluginMarketplace() {
           <h2 style={STYLES.title}>Plugins</h2>
         </div>
         <div style={STYLES.centeredMessage}>
-          Plugins are temporarily disabled while the plugin security model is
-          hardened (see issues #259 / #260). Installing and running third-party
-          plugins is turned off in this build.
+          Third-party plugins are temporarily disabled while the plugin security
+          model is hardened (see issues #259 / #260). Installing and running
+          third-party plugins is turned off in this build. Built-in plugins ship
+          with the app and remain active:
+        </div>
+        <div>
+          {BUILTIN_PLUGINS.map(({ manifest }) => (
+            <div key={manifest.id} style={STYLES.installedRow}>
+              <div style={STYLES.installedRowInner}>
+                <div style={STYLES.installedRowInfo}>
+                  <div style={STYLES.installedRowNameRow}>
+                    <span style={STYLES.installedPluginName}>
+                      {manifest.icon ? `${manifest.icon} ` : ""}
+                      {manifest.name}
+                    </span>
+                    <span style={STYLES.installedPluginVersion}>
+                      v{manifest.version}
+                    </span>
+                    <span style={STYLES.builtinBadge}>Built-in · On</span>
+                  </div>
+                  <p style={STYLES.installedPluginDescription}>
+                    {manifest.description}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     );
