@@ -45,7 +45,11 @@ import { createCapabilityGate } from "./capability-gate";
  * The unit is a CPU proxy, NOT bytes, and the names say so. Reads are charged
  * `doc.content.size` (ProseMirror positions — the right denominator for a walk, but ~3x
  * under UTF-8 for Korean text, so it must not be read as a memory bound; Rust's 8 MiB
- * `MAX_PLUGIN_FILE_BYTES` is what bounds memory). Writes are charged their character count.
+ * `MAX_PLUGIN_FILE_BYTES` is what bounds memory). Writes are charged the DOCUMENT they
+ * re-render, floored, and only additionally their payload where that is larger — see
+ * `WRITE_TRANSACTION_FLOOR`. (An earlier version of this line said "their character
+ * count", which stopped being true when the charge became document-proportional and left
+ * this summary contradicting the rule stated below it.)
  *
  * Derivation, stated as such: §8.4 budgets a save — which includes `prosemirrorToMarkdown`
  * — under 100 ms for a ~500 KB, 10,000-line file, i.e. roughly 6-10 MB/s. The refill is
@@ -86,7 +90,7 @@ export const DOCUMENT_BUDGET_REFILL_PER_SECOND = 512 * 1024;
  * ProseMirror groups undo by TRANSACTION, so a thousand tokens would be a thousand Cmd+Z
  * presses. Buffer and insert in batches. `SandboxEditorAPI.insertText` says so too.
  */
-const WRITE_TRANSACTION_FLOOR = 8 * 1024;
+export const WRITE_TRANSACTION_FLOOR = 8 * 1024;
 
 export interface EditorRequestHandlerOptions {
   /**
@@ -190,15 +194,26 @@ export function createEditorRequestHandler(
         // staged, not only when large: one path has no threshold to get wrong, and the
         // extra round trip is invisible next to a user-driven call.
         //
-        // ‼️ SIBLING, out of this phase's scope: `ai_complete` also answers inline and an
-        // LLM completion routinely exceeds 8 KiB. Lower severity — it is the plugin's own
-        // output, not the user's document — but it is the same queue.
+        // ‼️ SIBLING, deferred to 4c with the composition visible rather than just the
+        // severity: `ai_complete` also answers inline and an LLM completion routinely
+        // exceeds 8 KiB. Lower severity because it is the plugin's own output — but the
+        // natural use of `ai` in this tier is "read the document, summarise it", so a
+        // plugin holding `editor:readonly` + `ai` can route DOCUMENT-DERIVED text into the
+        // same queue, which is much of what staging this call just closed. `ai_stream` is
+        // already fine (tokens ride individual `hostStreamToken` frames, each far under the
+        // threshold), so the gap is exactly non-streaming `complete`.
         budget.spend(to - from, "getSelection");
+        // A bare caret is the common case and its text is `""`. Staging that would buy a
+        // Rust slot write and a broker pull to deliver nothing, and would occupy the ONE
+        // shared slot, serialising an empty read against an in-flight `getMarkdown` (code
+        // review N1). Not a size judgement — empty or not is exact — so it keeps the
+        // "no threshold to get wrong" property.
+        if (from === to) return { from, staged: false, to };
         // `readSelection` is shared with the trusted tier so the position/offset rule
         // cannot diverge between them.
         const selection = readSelection(instance);
         await stage(pluginId, selection.text);
-        return { from: selection.from, to: selection.to };
+        return { from: selection.from, staged: true, to: selection.to };
       }
       case "editor_insert_text": {
         requireCapability(EDITOR_WRITE_CAPABILITIES, "insertText");
@@ -219,10 +234,15 @@ export function createEditorRequestHandler(
       case "editor_set_markdown": {
         requireCapability(EDITOR_WRITE_CAPABILITIES, "setMarkdown");
         const instance = live("setMarkdown");
-        budget.spend(
-          writeCost(request.markdown.length, instance, limits),
-          "setMarkdown",
-        );
+        // SPLIT along the two costs (§260 Phase 4b code review, M1). The payload is
+        // charged now, because the worker parse and the transfer really happen; the
+        // TRANSACTION is charged after the identity guard, because a lost race dispatches
+        // nothing. Charging both up front meant a user keystroke during the parse — which
+        // the guard refuses by design, and which is likeliest on the large documents where
+        // the parse is slowest — burned a full document-sized charge per attempt, so a
+        // plugin obeying the error's "retry" advice exhausted its burst and was then told
+        // "document budget is exhausted": a diagnostic pointing away from the cause.
+        budget.spend(request.markdown.length, "setMarkdown");
         // The ASYNC pipeline, which parses in the app's own Web Worker (security review
         // MEDIUM-2): the synchronous form put an attacker-sized remark parse on the thread
         // this tier exists to protect.
@@ -277,6 +297,7 @@ export function createEditorRequestHandler(
             "editor.setMarkdown: the document changed while this one was parsing — retry",
           );
         }
+        budget.spend(transactionCost(target, limits), "setMarkdown");
         target.view.dispatch(
           target.state.tr.replaceWith(
             0,
@@ -301,7 +322,7 @@ export function createEditorRequestHandler(
  * a burst lets ordinary use through in one go, while a runaway loop settles to the refill
  * rate instead of pinning the main thread.
  */
-function createMeter(
+export function createMeter(
   now: () => number,
   burst: number,
   perSecond: number,
@@ -336,16 +357,29 @@ function createMeter(
 }
 
 /** What one write transaction costs: its payload, or the document it re-renders. */
-function writeCost(
+export function writeCost(
   payloadLength: number,
   editor: PluginEditorHandle,
   limits: { burst: number; writeFloor?: number },
 ): number {
-  // Capped by the burst as well, so a write can never be priced above what the bucket can
-  // ever hold — the Q4 rule, restated at the charge rather than only at the meter.
+  return Math.max(payloadLength, transactionCost(editor, limits));
+}
+
+/**
+ * What the DISPATCH costs: the document it re-renders, never less than the floor.
+ *
+ * ‼️ Unbounded above on purpose — `spend` is what clamps a charge to the burst (the Q4
+ * rule), and an earlier comment here wrongly claimed this function did it too. The
+ * `Math.min` below applies to the FLOOR alone, so a test-injected budget smaller than the
+ * floor is not swamped by it.
+ */
+function transactionCost(
+  editor: PluginEditorHandle,
+  limits: { burst: number; writeFloor?: number },
+): number {
   const floor = Math.min(
     limits.writeFloor ?? WRITE_TRANSACTION_FLOOR,
     limits.burst,
   );
-  return Math.max(payloadLength, editor.state.doc.content.size, floor);
+  return Math.max(editor.state.doc.content.size, floor);
 }

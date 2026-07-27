@@ -29,7 +29,7 @@ export async function createHostTransport(
 ): Promise<SandboxTransport<SandboxToHost, HostToSandbox>> {
   const handlers = new Set<(m: SandboxToHost) => void>();
   /**
-   * Request ids this transport has forwarded and not yet seen answered.
+   * Request ids this transport has forwarded, COUNTED, and not yet seen answered.
    *
    * §260 Phase 4b code review (M3) — `refuseIfAwaited` must not answer an id the SESSION
    * is still working on. The session owns that bookkeeping (`inflightHost`, and it
@@ -38,8 +38,14 @@ export async function createHostTransport(
    * transport sees both halves — the forwarded request and the outgoing `hostResponse` —
    * so it can answer the question locally: a malformed frame reusing a live id is dropped
    * as before, leaving the real answer to arrive.
+   *
+   * ‼️ A COUNT, not a set (code review N2). A response does not mean the request it names
+   * is finished: a sandbox can send the same id twice, and the session answers the second
+   * as a replay while the first is still running — which, with a set, deleted the id and
+   * reopened the guard for a third, malformed frame. Counting forwards against responses
+   * keeps an id live until as many answers have gone out as requests came in.
    */
-  const liveRequests = new Set<string>();
+  const liveRequests = new Map<string, number>();
   let closed = false;
   const unlisten = await listen<S2HEnvelope>("plugin:s2h", (event) => {
     if (closed) return;
@@ -57,8 +63,10 @@ export async function createHostTransport(
       logger.debug(`[Sandbox] dropped malformed s2h frame from ${pluginId}`);
       return;
     }
-    if (envelope.msg.type === "hostRequest")
-      liveRequests.add(envelope.msg.requestId);
+    if (envelope.msg.type === "hostRequest") {
+      const id = envelope.msg.requestId;
+      liveRequests.set(id, (liveRequests.get(id) ?? 0) + 1);
+    }
     handlers.forEach((h) => h(envelope.msg));
   });
   return {
@@ -82,7 +90,11 @@ export async function createHostTransport(
     send: (msg) => {
       // The session answers every id it accepts — on success, on timeout and on dispose —
       // so this is what keeps `liveRequests` from growing for the life of the sandbox.
-      if (msg.type === "hostResponse") liveRequests.delete(msg.requestId);
+      if (msg.type === "hostResponse") {
+        const outstanding = (liveRequests.get(msg.requestId) ?? 0) - 1;
+        if (outstanding > 0) liveRequests.set(msg.requestId, outstanding);
+        else liveRequests.delete(msg.requestId);
+      }
       void pluginSandboxSend(pluginId, msg).catch((err: unknown) => {
         logger.debug(`[Sandbox] send to ${pluginId} failed:`, err);
       });
@@ -243,7 +255,7 @@ function isWellFormed(msg: unknown): msg is SandboxToHost {
 function refuseIfAwaited(
   pluginId: string,
   msg: unknown,
-  liveRequests: ReadonlySet<string>,
+  liveRequests: ReadonlyMap<string, number>,
 ): void {
   if (typeof msg !== "object" || msg === null) return;
   const m = msg as Fields;

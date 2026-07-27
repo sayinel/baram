@@ -9,7 +9,14 @@ import { prosemirrorToMarkdown } from "../../../pipeline/pm-to-md";
 import { useEditorStore } from "../../../stores/editor/editor";
 import { markContentLoaded } from "../../../utils/editor/programmatic-update";
 import { setEditorSurfaceBlocked } from "../../extension-context";
-import { createEditorRequestHandler } from "../host-editor-bridge";
+import {
+  createEditorRequestHandler,
+  createMeter,
+  DOCUMENT_BUDGET_BURST,
+  DOCUMENT_BUDGET_REFILL_PER_SECOND,
+  WRITE_TRANSACTION_FLOOR,
+  writeCost,
+} from "../host-editor-bridge";
 
 // §260 Phase 4b — the sandboxed tier's document access. The editor lives in the main
 // realm, so this is where the capability check has to be enforcing, and where the design's
@@ -182,18 +189,37 @@ describe("createEditorRequestHandler (§260 Phase 4b)", () => {
     // §260 Phase 4b code review (I1) — Cmd+A makes this a whole-document read, and an
     // inline answer over 8 KiB enters tauri's shared channel-data queue (ACL-exempt,
     // guessable id). Positions come back in the frame; the text takes the staged path.
-    const { handler, staged } = harness("First para\n\nSecond para\n", [
+    const { editor, handler, staged } = harness("First para\n\nSecond para\n", [
       "editor:readonly",
     ]);
+    editor.select(1, editor.handle.state.doc.content.size - 1);
 
     const answer = (await handler({ kind: "editor_get_selection" })) as Record<
       string,
       unknown
     >;
 
-    expect(Object.keys(answer).sort()).toEqual(["from", "to"]);
+    expect(Object.keys(answer).sort()).toEqual(["from", "staged", "to"]);
+    expect(answer.staged).toBe(true);
     expect(JSON.stringify(answer)).not.toContain("para");
     expect(staged).toHaveLength(1);
+  });
+
+  it("answers a bare caret inline, staging nothing", async () => {
+    // §260 Phase 4b code review (N1) — the common case is an empty selection. Staging ""
+    // would buy a Rust slot write and a broker pull to deliver nothing, and would occupy
+    // the ONE shared slot against an in-flight `getMarkdown`. Exact, not a size threshold.
+    const { editor, handler, staged } = harness("Hello\n", ["editor:readonly"]);
+    editor.select(3, 3);
+
+    const answer = (await handler({ kind: "editor_get_selection" })) as {
+      from: number;
+      staged: boolean;
+      to: number;
+    };
+
+    expect(answer).toEqual({ from: 3, staged: false, to: 3 });
+    expect(staged).toEqual([]);
   });
 
   it("stages selection text across a block boundary, not a flat-string slice", async () => {
@@ -478,5 +504,83 @@ describe("createEditorRequestHandler (§260 Phase 4b)", () => {
     await expect(
       handler({ kind: "editor_set_markdown", markdown: "# b\n" }),
     ).rejects.toThrow(/no editor is open/);
+  });
+});
+
+// §260 Phase 4b re-review (Q3) — the meter and the charge are pure, so the PRODUCTION
+// constants can be pinned directly, with no document at all. That closes the gap the test
+// seam left open: behaviour is covered with small injected numbers, but a typo in a
+// constant (`512` for `512 * 1024`) would otherwise ship silently. These also hold the
+// module comment's own arithmetic to the code, since prose no test enforces is what goes
+// stale on this branch.
+describe("the production budget (§260 Phase 4b)", () => {
+  /** A handle that is nothing but a document size — all `writeCost` reads. */
+  const sized = (size: number) =>
+    ({ state: { doc: { content: { size } } } }) as PluginEditorHandle;
+  const limits = { burst: DOCUMENT_BUDGET_BURST };
+
+  it("charges a write the document it re-renders, floored", () => {
+    // The C4 measurement: cost tracks rendered block count, so a 500 KB document costs
+    // ~500 KB whatever the edit, and a scratch note costs the floor rather than ~nothing.
+    expect(writeCost(1, sized(500_000), limits)).toBe(500_000);
+    expect(writeCost(1, sized(500), limits)).toBe(WRITE_TRANSACTION_FLOOR);
+    // …and the payload wins when IT is the larger cost.
+    expect(writeCost(900_000, sized(500_000), limits)).toBe(900_000);
+  });
+
+  it("admits the rates its own comment claims", () => {
+    let clock = 0;
+    const meter = () =>
+      createMeter(
+        () => clock,
+        DOCUMENT_BUDGET_BURST,
+        DOCUMENT_BUDGET_REFILL_PER_SECOND,
+        "b",
+      );
+    const admits = (m: ReturnType<typeof meter>, cost: number) => {
+      let n = 0;
+      for (;;) {
+        try {
+          m.spend(cost, "x");
+          n++;
+        } catch {
+          return n;
+        }
+      }
+    };
+
+    // "~64 writes/s on a scratch note": from a cold second, refill ÷ floor.
+    expect(DOCUMENT_BUDGET_REFILL_PER_SECOND / WRITE_TRANSACTION_FLOOR).toBe(
+      64,
+    );
+    // "~1/s at 500 KB".
+    expect(Math.round(DOCUMENT_BUDGET_REFILL_PER_SECOND / 500_000)).toBeCloseTo(
+      1,
+      0,
+    );
+    // Burst absorbs 8 whole-document writes at 500 KB before throttling.
+    expect(admits(meter(), 500_000)).toBe(8);
+
+    // A throttle, not a ban: a second of refill buys another 500 KB write.
+    const m = meter();
+    admits(m, 500_000);
+    clock += 1000;
+    expect(() => m.spend(500_000, "x")).not.toThrow();
+  });
+
+  it("clamps a charge larger than the burst instead of refusing forever", () => {
+    // The Q4 rule at the real numbers: an 8 MiB document — Rust's own staging cap — is
+    // twice the burst, and must still be readable once per refill cycle.
+    let clock = 0;
+    const m = createMeter(
+      () => clock,
+      DOCUMENT_BUDGET_BURST,
+      DOCUMENT_BUDGET_REFILL_PER_SECOND,
+      "b",
+    );
+    expect(() => m.spend(8 * 1024 * 1024, "getMarkdown")).not.toThrow();
+    expect(() => m.spend(8 * 1024 * 1024, "getMarkdown")).toThrow(/exhausted/);
+    clock += (DOCUMENT_BUDGET_BURST / DOCUMENT_BUDGET_REFILL_PER_SECOND) * 1000;
+    expect(() => m.spend(8 * 1024 * 1024, "getMarkdown")).not.toThrow();
   });
 });

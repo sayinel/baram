@@ -233,12 +233,15 @@ export function startSandboxClient(
   let stagedReads: Promise<unknown> = Promise.resolve();
   const readStaged = async (
     request: SandboxHostRequest,
+    /** Whether the host staged anything for this answer. Default: it always does. */
+    didStage: (value: unknown) => boolean = () => true,
   ): Promise<{ payload: string; value: unknown }> => {
     const run = async () => {
       // The response VALUE is kept, not discarded: `getSelection` answers with its
       // positions inline (two numbers) and stages only the text, so the caller needs both
       // halves. `getMarkdown` has no inline half and ignores it.
       const value = await hostRequest(request);
+      if (!didStage(value)) return { payload: "", value };
       const payload = await broker({ kind: "staged_read" });
       if (typeof payload !== "string") {
         throw new Error("the host staged a non-string payload");
@@ -262,9 +265,14 @@ export function startSandboxClient(
     // inline answer over 8 KiB enters tauri's shared channel-data queue (code review I1).
     // Positions come back in the response; only the text takes the staged path.
     getSelection: async () => {
-      const { payload, value } = await readStaged({
-        kind: "editor_get_selection",
-      });
+      const { payload, value } = await readStaged(
+        { kind: "editor_get_selection" },
+        // The host tells us whether it staged anything; a bare caret answers inline with
+        // no text at all, so pulling would find an empty slot (code review N1). An
+        // explicit flag rather than re-deriving `from === to` here, so the rule lives in
+        // ONE place — the side that decided.
+        (v) => (v as { staged?: boolean }).staged === true,
+      );
       const { from, to } = value as { from: number; to: number };
       return { from, text: payload, to };
     },
