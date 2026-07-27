@@ -246,6 +246,12 @@ export function createEditorRequestHandler(
         // the parse is slowest — burned a full document-sized charge per attempt, so a
         // plugin obeying the error's "retry" advice exhausted its burst and was then told
         // "document budget is exhausted": a diagnostic pointing away from the cause.
+        //
+        // ‼️ The SUM is intended, and it is a real increase: this used to charge
+        // `max(payload, transaction)`, so replacing a 500 KB document with 500 KB of
+        // markdown went from ~500K to ~1M. Both costs are genuinely incurred on the
+        // success path, and the direction is conservative — the trade is that a lost race
+        // got much cheaper while a completed write got somewhat dearer.
         budget.spend(request.markdown.length, "setMarkdown");
         // The ASYNC pipeline, which parses in the app's own Web Worker (security review
         // MEDIUM-2): the synchronous form put an attacker-sized remark parse on the thread

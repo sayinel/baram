@@ -98,7 +98,15 @@ export function loadedTabId(): null | string {
   return lastLoadedTabId;
 }
 
-/** Mark a tab as having just loaded content — the next update will capture baseline */
+/**
+ * Mark a tab as having just loaded content — the next update will capture the baseline.
+ *
+ * ‼️ LOAD-BEARING beyond dirty tracking (§260 Phase 4b). The plugin editor surface refuses
+ * every read and write while `loadedTabId() !== activeTabId`, so any install path that
+ * makes a tab active without calling this leaves that tab's editor API blocked — and any
+ * early return in the tab-switch effect must therefore either mark, or be a state where
+ * the content genuinely was not installed (which is the honest answer anyway).
+ */
 export function markContentLoaded(tabId: string): void {
   pendingTabs.add(tabId);
   lastLoadedTabId = tabId;

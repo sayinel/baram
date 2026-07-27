@@ -50,12 +50,31 @@ narrower, data-only context. Two differences matter when writing one:
   `getSelection()` gives ProseMirror positions plus the text they cover, and
   `insertText()` types at the cursor. Every write is one undo step. Reads need `editor` or
   `editor:readonly`; writes need `editor`.
+
   ```js
   const before = await ctx.editor.getMarkdown();
   await ctx.editor.setMarkdown(`${before}\n\n---\n`);
   ```
+
   A document read does not travel in the response — the host parks it and the sandbox
   collects it — but that is invisible to you; `getMarkdown()` is just a promise.
+
+  Two things worth designing around:
+  - **`setMarkdown()` can refuse, and you should retry.** It parses off the main thread,
+    and if the document changes while that runs — a tab switch, or the user typing a
+    single character — it rejects with "the document changed" rather than overwriting the
+    change. On a large document with an active typist this can fail repeatedly; that is
+    deliberate, since the alternative is silently discarding what the user just wrote.
+  - **Batch your inserts.** `insertText()` is one transaction, and ProseMirror groups undo
+    by transaction, so inserting an AI stream token by token gives the user a thousand
+    Cmd+Z presses — and each transaction costs the whole document to re-render, so the
+    host throttles them on large files. Buffer and insert in chunks.
+
+  Editor calls are metered by the work they cost, not by how often you call them: reading
+  a scratch note is nearly free, reading a 10,000-line file repeatedly is not. If you see
+  "document budget is exhausted", you are polling something you should be getting from
+  `ctx.events` instead.
+
 - **`ui` is data, not DOM.** `ctx.ui.showNotification(message, type?)` (the host labels
   the toast with your plugin's name in its own badge, and rate-limits you to one every
   four seconds — the app has a single toast slot) and
