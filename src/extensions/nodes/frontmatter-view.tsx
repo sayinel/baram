@@ -131,6 +131,7 @@ export function FrontmatterView({ node, editor, getPos }: NodeViewProps) {
             <input
               aria-label="Add tag"
               className="fm-tag-input"
+              data-vim-suspend=""
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Add tag..."

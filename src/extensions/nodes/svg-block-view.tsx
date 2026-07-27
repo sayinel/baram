@@ -278,6 +278,7 @@ export function SvgBlockView({
                   autoFocus
                   className="svg-block-textarea"
                   data-gramm="false"
+                  data-vim-suspend=""
                   onChange={(e) => setFullscreenCode(e.target.value)}
                   ref={fullscreenTextareaRef}
                   spellCheck={false}
@@ -523,6 +524,7 @@ export function SvgBlockView({
         autoCorrect="off"
         className="svg-block-textarea"
         data-gramm="false"
+        data-vim-suspend=""
         onChange={(e) => setLocalCode(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder='<svg viewBox="0 0 100 100">...</svg>'

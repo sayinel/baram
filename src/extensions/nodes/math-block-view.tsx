@@ -230,6 +230,7 @@ export function MathBlockView({
         autoCorrect="off"
         className="math-block-textarea"
         data-gramm="false"
+        data-vim-suspend=""
         onChange={(e) => setLocalFormula(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="LaTeX formula..."

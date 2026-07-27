@@ -147,6 +147,7 @@ export function ImageView({
           <figcaption className="image-caption image-caption-editing">
             <input
               className="image-caption-input"
+              data-vim-suspend=""
               onBlur={handleCaptionSave}
               onChange={(e) => setCaptionText(e.target.value)}
               onKeyDown={handleCaptionKeyDown}

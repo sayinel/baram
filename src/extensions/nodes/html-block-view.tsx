@@ -145,6 +145,7 @@ export function HtmlBlockView({
         autoCorrect="off"
         className="html-block-textarea"
         data-gramm="false"
+        data-vim-suspend=""
         onChange={(e) => setLocalContent(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="<div>...</div>"

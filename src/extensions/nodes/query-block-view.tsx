@@ -111,7 +111,9 @@ export function QueryBlockView({
         </div>
 
         {selected && (
-          <div className="qb-builder">
+          // §298 §12-3: one marker on the builder panel covers every
+          // input/select/button inside it (composedPath hits it first — §4).
+          <div className="qb-builder" data-vim-suspend="">
             {/* Filters */}
             <div className="qb-section">
               <div className="qb-section-label">Filters</div>

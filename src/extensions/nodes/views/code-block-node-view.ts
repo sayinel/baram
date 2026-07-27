@@ -63,6 +63,10 @@ export class CodeBlockNodeView implements NodeView {
     // Build DOM
     const wrapper = document.createElement("div");
     wrapper.classList.add("code-block-wrapper");
+    // §298 §12-3: wrapper marker covers the CM island AND the header
+    // language select / AI button (design §4 — no contentDOM here, so no
+    // [data-node-view-content] can shadow it).
+    wrapper.setAttribute("data-vim-suspend", "");
     const lang = (node.attrs.language as string) || "";
     wrapper.dataset.language = lang;
     wrapper.dataset.style = useSettingsStore.getState().codeBlockStyle;

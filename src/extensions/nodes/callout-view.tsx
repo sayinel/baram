@@ -129,7 +129,12 @@ export function CalloutView({
       data-callout-type={type}
       data-type="callout"
     >
-      <div className="callout-header" contentEditable={false}>
+      {/* §298 §12-3: header marker covers the type picker AND title input (§4) */}
+      <div
+        className="callout-header"
+        contentEditable={false}
+        data-vim-suspend=""
+      >
         <div className="callout-icon-wrapper" ref={pickerRef}>
           <button
             className="callout-icon-btn"

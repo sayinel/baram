@@ -114,6 +114,7 @@ export function TagNodeView({
         <span className="tag-node-hash">#</span>
         <input
           className="tag-node-input"
+          data-vim-suspend=""
           onBlur={commitEdit}
           onChange={(e) => setEditValue(e.target.value)}
           onKeyDown={handleInputKeyDown}

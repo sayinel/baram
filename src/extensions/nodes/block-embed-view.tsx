@@ -110,6 +110,7 @@ export function BlockEmbedView({
         </div>
         <textarea
           className="block-embed-textarea"
+          data-vim-suspend=""
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           ref={textareaRef}

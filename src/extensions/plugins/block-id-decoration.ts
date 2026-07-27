@@ -809,6 +809,9 @@ function createEditWidget(
   const wrapper = document.createElement("span");
   wrapper.className = "block-id-editing";
   wrapper.contentEditable = "false";
+  // §298 §12-3: input island — vim suspends while focus is inside (design §4).
+  // The widget is recreated every render, so the marker must be set here.
+  wrapper.setAttribute("data-vim-suspend", "");
 
   const caret = document.createElement("span");
   caret.className = "block-id-caret";

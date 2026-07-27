@@ -370,6 +370,7 @@ export function MermaidBlockView({
                   autoFocus
                   className="mermaid-block-textarea"
                   data-gramm="false"
+                  data-vim-suspend=""
                   onChange={(e) => setFullscreenCode(e.target.value)}
                   ref={fullscreenTextareaRef}
                   spellCheck={false}
@@ -674,6 +675,7 @@ export function MermaidBlockView({
         autoCorrect="off"
         className="mermaid-block-textarea"
         data-gramm="false"
+        data-vim-suspend=""
         onChange={(e) => setLocalCode(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="flowchart LR&#10;  A --> B"
