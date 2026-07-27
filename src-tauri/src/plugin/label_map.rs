@@ -47,18 +47,23 @@ impl<T> LabelMap<T> {
     pub(super) fn remove(&self, label: &str) -> Option<T> {
         self.inner.lock().unwrap().remove(label)
     }
+
+    /// Insert, returning any displaced value so it drops in the CALLER, lock-free.
+    ///
+    /// Deliberately NOT in the `T: Clone` block below (§260 Phase 4b): insertion needs no
+    /// `Clone`, and requiring one would have pushed `StagedPayloads` into deriving it on a
+    /// type holding a whole document — next to a `get` that clones under the lock, which
+    /// is the stall this module exists to prevent.
+    #[must_use = "the displaced value must drop outside the lock"]
+    pub(super) fn insert(&self, label: String, value: T) -> Option<T> {
+        self.inner.lock().unwrap().insert(label, value)
+    }
 }
 
 impl<T: Clone> LabelMap<T> {
     /// Clone out of the lock so the caller can use the value lock-free.
     pub(super) fn get(&self, label: &str) -> Option<T> {
         self.inner.lock().unwrap().get(label).cloned()
-    }
-
-    /// Insert, returning any displaced value so it drops in the CALLER, lock-free.
-    #[must_use = "the displaced value must drop outside the lock"]
-    pub(super) fn insert(&self, label: String, value: T) -> Option<T> {
-        self.inner.lock().unwrap().insert(label, value)
     }
 }
 

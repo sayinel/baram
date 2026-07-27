@@ -26,7 +26,7 @@ import { EDITOR_READ_CAPABILITIES, EDITOR_WRITE_CAPABILITIES } from "../types";
 import { createCapabilityGate } from "./capability-gate";
 
 /**
- * §260 Phase 4b security review (MEDIUM-1/2) — a budget denominated in BYTES, per plugin.
+ * §260 Phase 4b security review (MEDIUM-1/2) — a budget denominated in WORK, per plugin.
  *
  * The document ops are the first requests whose main-realm cost tracks the DOCUMENT rather
  * than the request: a ~90-byte `editor_get_markdown` frame buys a whole
@@ -34,33 +34,51 @@ import { createCapabilityGate } from "./capability-gate";
  * its own JS, so it can drive the transport command in a loop rather than going through
  * `ctx.editor`. Nothing upstream bounds that usefully — the frame validator cannot cap what
  * is not in the frame, the in-flight slot recycles as soon as staging returns, and
- * `RateClass::Transport` admits 150/s, which is 5–15× more whole-document work than the
+ * `RateClass::Transport` admits 150/s, which is far more whole-document work than the
  * thread can perform. The result would be an indefinite editor freeze bought with
  * `editor:readonly`, the grant a user reads as harmless.
  *
  * So the meter charges what the work costs. A per-CALL limit cannot do this — the same call
- * is free on a scratch note and expensive on a 10,000-line one — while a byte budget lets a
- * small document be polled freely and throttles a large one in proportion. The refill is
- * set well under the thread's serialization throughput (§8.4 puts a save, which includes
- * `prosemirrorToMarkdown`, under 100 ms for a document of a few hundred KiB), so a
- * saturating plugin costs a fraction of a frame rather than all of it.
+ * is free on a scratch note and expensive on a 10,000-line one — while this lets a small
+ * document be polled freely and throttles a large one in proportion.
  *
- * NOT memoised on document identity as well: the IPC copy into `plugin_sandbox_stage` is
- * O(document) too, so caching the serialization would not change the worst case this
- * bucket already bounds — it would only add a second retained copy of the user's document.
+ * The unit is a CPU proxy, NOT bytes, and the names say so. Reads are charged
+ * `doc.content.size` (ProseMirror positions — the right denominator for a walk, but ~3x
+ * under UTF-8 for Korean text, so it must not be read as a memory bound; Rust's 8 MiB
+ * `MAX_PLUGIN_FILE_BYTES` is what bounds memory). Writes are charged their character count.
+ *
+ * Derivation, stated as such: §8.4 budgets a save — which includes `prosemirrorToMarkdown`
+ * — under 100 ms for a ~500 KB, 10,000-line file, i.e. roughly 6-10 MB/s. The refill is
+ * ~5-8% of that. Derived from the project's TARGET, not measured; a benchmark on a 10k-line
+ * fixture would turn it from plausible into known. The burst is deliberately ~0.4-0.7 s of
+ * contiguous serialization: a sub-second hitch is accepted so bursty use is not throttled.
+ *
+ * NOT memoised on document identity as well. The bucket bounds the worst case whether or
+ * not a cache exists, so a memo would buy PERFORMANCE, not safety — and it would retain a
+ * second copy of the user's document. (An earlier version of this note claimed the IPC copy
+ * is as expensive as the serialization, which is wrong: `prosemirrorToMarkdown` builds an
+ * mdast tree and runs remark-stringify with escaping, far costlier per byte than a copy.
+ * The decision stands; the reasoning written here did not.)
  */
-export const DOCUMENT_BUDGET_BURST_BYTES = 4 * 1024 * 1024;
-export const DOCUMENT_BUDGET_REFILL_BYTES_PER_SECOND = 512 * 1024;
+export const DOCUMENT_BUDGET_BURST = 4 * 1024 * 1024;
+export const DOCUMENT_BUDGET_REFILL_PER_SECOND = 512 * 1024;
 
 /**
- * What one `insertText` transaction is charged even when its text is short.
+ * Writes get a SECOND, count-based meter, because their cost is not in their payload.
  *
- * 32 KiB works out to ~16 inserts/second sustained and 128 back to back — well above
- * typing speed and well below the rate at which whole-document re-renders make the app
- * unresponsive. A plugin that wants to install a large block should use `setMarkdown`,
- * which is charged and capped for exactly that.
+ * `dev/impl-notes/large-file-perf-c4-handoff.md` measured it: `view.dispatch` forces a
+ * synchronous layout of the whole contenteditable for selection sync — ~53 ms on a huge
+ * document versus ~4 ms on a small one, linear in RENDERED BLOCK COUNT rather than in the
+ * size of the edit. So a 4 KiB `insertText` at the transport's 150/s is ~8 seconds of
+ * layout per second of wall clock: a hard freeze from a tiny frame. Pricing the payload
+ * cannot see that, and pricing it at the document's size would make incremental writing —
+ * the main use of the `editor` grant — unusable.
+ *
+ * 5/s caps the worst document at ~26% of the thread and costs legitimate use nothing:
+ * `insertText` is one per user action, not one per keystroke.
  */
-const INSERT_TRANSACTION_COST_BYTES = 32 * 1024;
+export const WRITE_BURST = 20;
+export const WRITE_PER_SECOND = 5;
 
 export interface EditorRequestHandlerOptions {
   /** Grants recorded at install, as the manifest declared them. */
@@ -89,7 +107,18 @@ export function createEditorRequestHandler(
     stage = pluginSandboxStage,
     surfaceBlocked = editorSurfaceBlocked,
   } = options;
-  const budget = createDocumentBudget(now);
+  const budget = createMeter(
+    now,
+    DOCUMENT_BUDGET_BURST,
+    DOCUMENT_BUDGET_REFILL_PER_SECOND,
+    "document budget",
+  );
+  const writes = createMeter(
+    now,
+    WRITE_BURST,
+    WRITE_PER_SECOND,
+    "write budget",
+  );
   const requireCapability = createCapabilityGate(
     pluginId,
     capabilities,
@@ -152,10 +181,7 @@ export function createEditorRequestHandler(
         // real per-transaction cost is still under-priced relative to a read. Pricing it
         // properly would need the document's size, which is the thing that breaks
         // streaming.
-        budget.spend(
-          Math.max(request.text.length, INSERT_TRANSACTION_COST_BYTES),
-          "insertText",
-        );
+        writes.spend(1, "insertText");
         // ONE transaction: ProseMirror's history groups by transaction, so this is a
         // single Cmd+Z for the user. `insertText` over the selection range is what makes
         // it behave like typing — replacing a selection rather than appending beside it.
@@ -167,6 +193,7 @@ export function createEditorRequestHandler(
       case "editor_set_markdown": {
         requireCapability(EDITOR_WRITE_CAPABILITIES, "setMarkdown");
         const instance = live("setMarkdown");
+        writes.spend(1, "setMarkdown");
         budget.spend(request.markdown.length, "setMarkdown");
         // The ASYNC pipeline, which parses in the app's own Web Worker (security review
         // MEDIUM-2): the synchronous form put an attacker-sized remark parse on the thread
@@ -185,19 +212,41 @@ export function createEditorRequestHandler(
         // Parsed with the LIVE schema, not a fresh one: a node built against a different
         // Schema instance fails ProseMirror's identity-based validation on insert (the
         // keep-alive lesson from the large-file work).
+        // ‼️ Captured BEFORE the await, into a local. `handle.state` is a live getter (it
+        // reads `view.state`), so comparing `instance.state.doc` afterwards would compare
+        // the new document with ITSELF and the guard below could never fire. The first
+        // version of that guard did exactly this; the tab-switch test is what caught it.
+        const parsedFrom = instance.state.doc;
         const next = await markdownToProsemirrorAsync(
           request.markdown,
           instance.schema,
         );
-        // Re-resolved after the await, because awaiting yields to the app: the user may
-        // have switched tabs (handing over a keep-alive editor with its OWN Schema),
-        // toggled source mode, or closed the file. Dispatching into the old instance would
-        // write to a detached document; dispatching nodes built against the old schema
-        // into a new one is the cross-schema validation failure above.
+        // ‼️ The DOCUMENT must still be the one we parsed against, by identity.
+        //
+        // §260 Phase 4b security review, NEW HIGH — an earlier version compared schemas,
+        // which catches only a keep-alive handover. The ordinary tab switch installs a
+        // different document into the SAME editor with the SAME schema
+        // (`editor.view.updateState(cachedState)`, `use-tab-switching.ts`), so the schema
+        // check passed and this replaced ANOTHER FILE's document with content parsed for
+        // this one — then marked it dirty, so autosave could write it to disk. No hostile
+        // plugin required; an ordinary `setMarkdown` racing a tab switch was enough. The
+        // synchronous version could not do this: making the parse async introduced it.
+        //
+        // Identity, not a change signal, because a signal can be missed: there are at
+        // least five paths that install a document via `updateState`, and two of them
+        // (external file reload and the §72 properties refresh, `use-editor-effects.ts`)
+        // do not call `markContentLoaded`. Comparing the node we hold is the only form
+        // that cannot be outrun by a path nobody enumerated.
+        //
+        // The cost is that a user keystroke during the parse also refuses. That is the
+        // right trade for a WHOLE-DOCUMENT replace: the plugin gets an error it can retry,
+        // where the alternative is discarding an edit the user just made — the same
+        // silent-loss class as LOW-3. Identity also subsumes the schema case, since nodes
+        // built against different Schema instances are never the same object.
         const target = live("setMarkdown");
-        if (target.schema !== instance.schema) {
+        if (target.state.doc !== parsedFrom) {
           throw new Error(
-            "editor.setMarkdown: the editor changed while the document was parsing",
+            "editor.setMarkdown: the document changed while this one was parsing — retry",
           );
         }
         target.view.dispatch(
@@ -220,32 +269,40 @@ export function createEditorRequestHandler(
 }
 
 /**
- * A token bucket in bytes — the same shape as Rust's `PluginRateLimiter`, and for the same
- * reason: a burst lets ordinary use through in one go, while a runaway loop settles to the
- * refill rate instead of pinning the main thread.
+ * A token bucket — the same shape as Rust's `PluginRateLimiter`, and for the same reason:
+ * a burst lets ordinary use through in one go, while a runaway loop settles to the refill
+ * rate instead of pinning the main thread.
  */
-function createDocumentBudget(now: () => number) {
-  let tokens = DOCUMENT_BUDGET_BURST_BYTES;
+function createMeter(
+  now: () => number,
+  burst: number,
+  perSecond: number,
+  what: string,
+) {
+  let tokens = burst;
   let updated = now();
   return {
-    spend(bytes: number, method: string): void {
+    spend(cost: number, method: string): void {
       const at = now();
       // `max(0, …)`: a clock that goes backwards must neither mint tokens nor, by rewinding
       // `updated`, hand the NEXT call a larger elapsed to mint from.
       const elapsed = Math.max(0, at - updated) / 1000;
-      tokens = Math.min(
-        DOCUMENT_BUDGET_BURST_BYTES,
-        tokens + elapsed * DOCUMENT_BUDGET_REFILL_BYTES_PER_SECOND,
-      );
+      tokens = Math.min(burst, tokens + elapsed * perSecond);
       if (at > updated) updated = at;
-      if (tokens < bytes) {
+      // ‼️ CLAMPED to the burst (§260 Phase 4b security review, Q4). `tokens` can never
+      // exceed `burst`, so an uncapped charge above it would make the call fail FOREVER —
+      // a document larger than the burst would be permanently unreadable, while the error
+      // told the plugin to try less often, which could not possibly help. Reachable: a user
+      // can open a 5 MB note, and Rust stages up to 8 MiB. Clamping costs one full burst
+      // for such a document, i.e. one read per refill cycle, which is a throttle rather
+      // than a wall.
+      const charge = Math.min(cost, burst);
+      if (tokens < charge) {
         throw new Error(
-          `editor.${method}: this plugin's document budget is exhausted ` +
-            `(${DOCUMENT_BUDGET_REFILL_BYTES_PER_SECOND} bytes/second, burst ` +
-            `${DOCUMENT_BUDGET_BURST_BYTES}); read or write the document less often.`,
+          `editor.${method}: this plugin's ${what} is exhausted; slow down and retry.`,
         );
       }
-      tokens -= bytes;
+      tokens -= charge;
     },
   };
 }

@@ -29,7 +29,9 @@ import {
   pluginStorageWrite,
 } from "../ipc/plugin-invoke";
 import { useAIStore } from "../stores/ai/ai";
+import { useEditorStore } from "../stores/editor/editor";
 import { useUIStore } from "../stores/ui/ui";
+import { isTabLoading } from "../utils/editor/programmatic-update";
 import { createLLMStream } from "../utils/llm-stream";
 import { logger } from "../utils/logger";
 import { getConfigForTask } from "../utils/model-selection";
@@ -365,7 +367,18 @@ export function createExtensionContext(
  * really is the tab's content. See `editorSurfaceBlockedReason`.
  */
 export function editorSurfaceBlocked(): null | string {
-  return editorSurfaceBlockedReason;
+  if (editorSurfaceBlockedReason) return editorSurfaceBlockedReason;
+  // Progressive load, checked LIVE rather than through the App effect (§260 Phase 4b
+  // security review, Q6): during a large-document tab switch or source-mode toggle the
+  // editor holds only the first chunk while `appendChunksProgressively` fills the rest, so
+  // a read here returns a TRUNCATED document and a read-modify-write would save the
+  // truncation. `loadingTabs` is a plain Set — it changes without a React render, so an
+  // effect would observe it late; reading it per request cannot.
+  const { activeTabId } = useEditorStore.getState();
+  if (activeTabId && isTabLoading(activeTabId)) {
+    return "the document is still loading";
+  }
+  return null;
 }
 
 /** Emit a plugin event from the host */

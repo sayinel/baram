@@ -260,9 +260,17 @@ fn authorize_sandbox_caller(
 /// plugin.
 fn staged_read_result(
     staged: &plugin::StagedPayloads,
+    authorizer: &plugin::PluginAuthorizer,
     label: &str,
 ) -> Result<serde_json::Value, String> {
-    let payload = staged.take(label).ok_or_else(|| {
+    // The CURRENT registration's epoch: a slot staged for a previous life of this label is
+    // dropped rather than delivered (security review Q5). `authorize_op` already proved
+    // the label is registered, so `None` here means it was deregistered in between —
+    // fail closed.
+    let epoch = authorizer
+        .epoch(label)
+        .ok_or_else(|| "this sandbox is not registered".to_string())?;
+    let payload = staged.take(label, epoch).ok_or_else(|| {
         // Distinguishable from an empty document on purpose: "" is a legitimate
         // document, and a plugin that pulls twice must not be handed one.
         "nothing is staged for this plugin".to_string()
@@ -600,7 +608,7 @@ async fn execute_op(
             read_own_source(app, label, authorizer).await?
         )),
         // §260 Phase 4b — collect what the host staged for this sandbox.
-        StagedRead => staged_read_result(staged, label),
+        StagedRead => staged_read_result(staged, authorizer, label),
         StorageRead { key } => Ok(serde_json::json!(
             plugin::storage_read(plugin_id.to_string(), key).await?
         )),
@@ -707,15 +715,17 @@ pub async fn plugin_sandbox_register(
 ///
 /// §260 Phase 4b security review (LOW-1) — `deregister_sandbox` already forgets the
 /// staged slot, but deregister is not the only way a session ends: a killed webview
-/// leaves the slot behind, and `admit_staging`'s registration check and
-/// `StagedPayloads::stage` take separate locks, so a `check(registered) → forget →
-/// stage` interleaving across tokio workers can park a document for a plugin that is
-/// no longer registered. `StagedRead` needs no capability, so the next instance of the
-/// same id — a dev reload, a disable/enable — would inherit that document even if its
-/// reloaded manifest declares no editor grant at all.
+/// leaves the slot behind, and the next instance of the same id would find it there.
+/// `StagedRead` needs no capability, so it would be readable even by a reloaded plugin
+/// whose manifest declares no editor grant at all.
 ///
-/// Clearing HERE makes the invariant hold by construction rather than by ordering: a
-/// staged payload can only ever be read within the registration that produced it.
+/// ‼️ Clearing here is the MEMORY half only, and the earlier version of this comment
+/// overstated it (Q5 in the follow-up review): `forget` and `register` take separate
+/// locks, so a stage still in flight from the previous session can land after both and
+/// re-park a document under the new registration. What makes the invariant hold is the
+/// registration EPOCH — `StagedPayloads` records the epoch staging was admitted under and
+/// refuses to deliver across a mismatch. This call keeps a document from lingering; the
+/// epoch keeps it from being read.
 fn register_sandbox(
     caller_label: &str,
     plugin_id: &str,
@@ -842,13 +852,13 @@ pub async fn plugin_sandbox_stage(
     authorizer: tauri::State<'_, plugin::PluginAuthorizer>,
     staged: tauri::State<'_, plugin::StagedPayloads>,
 ) -> Result<(), String> {
-    let label = admit_staging(
+    let (label, epoch) = admit_staging(
         window.label(),
         &plugin_id,
         payload.len() as u64,
         &authorizer,
     )?;
-    staged.stage(label, payload);
+    staged.stage(label, epoch, payload);
     Ok(())
 }
 
@@ -862,17 +872,17 @@ fn admit_staging(
     plugin_id: &str,
     payload_len: u64,
     authorizer: &plugin::PluginAuthorizer,
-) -> Result<String, String> {
+) -> Result<(String, u64), String> {
     host_window_guard(caller_label)?;
     let label = format!("plugin-{plugin_id}");
     // Fail closed for a plugin nobody registered: staging for it would retain a document
     // for a sandbox that cannot legally pull anything, and a host that stages for an
     // unknown id has a bug worth surfacing rather than leaking memory over.
-    if !authorizer.is_registered(&label) {
-        return Err(format!(
-            "plugin \"{plugin_id}\" is not a registered sandbox"
-        ));
-    }
+    // The epoch IS the registration check — `None` means unregistered — and capturing it
+    // here is what ties the payload to the life of the plugin that earned it (Q5).
+    let epoch = authorizer
+        .epoch(&label)
+        .ok_or_else(|| format!("plugin \"{plugin_id}\" is not a registered sandbox"))?;
     // Bounds what we RETAIN, not what we parsed — tauri deserialized `payload` before the
     // command body ran, the same limitation `check_report_size` and the `files_write` cap
     // record.
@@ -881,7 +891,7 @@ fn admit_staging(
             "staged payload is {payload_len} bytes, over the {MAX_PLUGIN_FILE_BYTES}-byte limit"
         ));
     }
-    Ok(label)
+    Ok((label, epoch))
 }
 
 /// The sole IPC entry point a sandboxed plugin may use for privileged ops. Every
@@ -1226,15 +1236,18 @@ mod tests {
     /// with a guessable sequential id.
     #[test]
     fn a_staged_document_is_delivered_outside_the_shared_queue() {
+        let authorizer = plugin::PluginAuthorizer::new();
+        let epoch =
+            authorizer.register("plugin-alpha".into(), vec!["editor".into()], "/p/a".into());
         let staged = plugin::StagedPayloads::new();
         // Far over the 8 KiB threshold — a real document, not a toy.
         let document = "# note\n".repeat(4_000);
         assert!(document.len() > CHANNEL_QUEUE_THRESHOLD * 2);
-        staged.stage("plugin-alpha".into(), document.clone());
+        staged.stage("plugin-alpha".into(), epoch, document.clone());
 
         // The REAL arm, not a copy of it (code review I1): rebuilding the expression here
         // meant wrapping the document in an object left every Rust test green.
-        let result = staged_read_result(&staged, "plugin-alpha").unwrap();
+        let result = staged_read_result(&staged, &authorizer, "plugin-alpha").unwrap();
 
         assert!(
             matches!(result, serde_json::Value::String(_)),
@@ -1256,7 +1269,7 @@ mod tests {
         );
 
         // Consumed by the real arm too, so a replayed pull cannot re-read the document.
-        let second = staged_read_result(&staged, "plugin-alpha")
+        let second = staged_read_result(&staged, &authorizer, "plugin-alpha")
             .expect_err("a second pull must not be answered");
         assert!(second.contains("nothing is staged"), "unexpected: {second}");
     }
@@ -1309,7 +1322,12 @@ mod tests {
             &staged,
         )
         .unwrap();
-        staged.stage("plugin-alpha".into(), "# the user's document".into());
+        let first_epoch = authorizer.epoch("plugin-alpha").expect("registered");
+        staged.stage(
+            "plugin-alpha".into(),
+            first_epoch,
+            "# the user's document".into(),
+        );
 
         // The webview dies without a deregister — or a stage lands just after one.
         register_sandbox(
@@ -1322,8 +1340,10 @@ mod tests {
         )
         .unwrap();
 
+        let second_epoch = authorizer.epoch("plugin-alpha").expect("registered");
+        assert_ne!(first_epoch, second_epoch, "a reload is a new registration");
         assert_eq!(
-            staged.take("plugin-alpha"),
+            staged.take("plugin-alpha", second_epoch),
             None,
             "the reloaded instance must not inherit the previous session's document"
         );
@@ -1345,11 +1365,12 @@ mod tests {
     #[test]
     fn staging_is_host_only_registered_and_capped() {
         let authorizer = plugin::PluginAuthorizer::new();
-        authorizer.register("plugin-alpha".into(), vec!["editor".into()], "/p/a".into());
+        let epoch =
+            authorizer.register("plugin-alpha".into(), vec!["editor".into()], "/p/a".into());
 
         assert_eq!(
             admit_staging("main", "alpha", 10, &authorizer).unwrap(),
-            "plugin-alpha"
+            ("plugin-alpha".to_string(), epoch)
         );
         // A file-mode window is a host realm too (§89) — consistent with register /
         // deregister / send, which all admit one. Nothing exercises it today: file windows

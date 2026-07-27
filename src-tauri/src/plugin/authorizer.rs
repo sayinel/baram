@@ -4,6 +4,7 @@
 // unforgeable (Tauri sets it); the granted set is populated by the host window
 // via `plugin_sandbox_register` (a plugin window is rejected from registering).
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use serde::Deserialize;
@@ -151,6 +152,17 @@ pub enum AuthzError {
 #[derive(Debug, Clone)]
 pub struct SandboxGrant {
     pub capabilities: Vec<String>,
+    /// Which REGISTRATION this grant is, globally and monotonically.
+    ///
+    /// §260 Phase 4b security review (Q5) — a label is reused across a plugin's lives
+    /// (dev reload, disable→enable), so "is `plugin-x` registered?" cannot distinguish
+    /// one life from the next. Staging reads that answer under one lock and writes the
+    /// slot under another, so a stage still in flight when a reload lands could park the
+    /// old session's document under the NEW registration — and `StagedRead` needs no
+    /// capability, so the reloaded plugin could read it with no editor grant declared.
+    /// Carrying the epoch into the slot and requiring it to match on the way out makes
+    /// that impossible rather than merely unlikely.
+    pub epoch: u64,
     pub source_dir: String,
 }
 
@@ -158,6 +170,9 @@ pub struct SandboxGrant {
 #[derive(Default)]
 pub struct PluginAuthorizer {
     granted: Mutex<HashMap<String, SandboxGrant>>,
+    /// Monotonic across ALL labels, so an epoch identifies a registration outright and
+    /// two plugins can never present the same one.
+    next_epoch: AtomicU64,
 }
 
 impl PluginAuthorizer {
@@ -165,14 +180,24 @@ impl PluginAuthorizer {
         Self::default()
     }
 
-    pub fn register(&self, label: String, capabilities: Vec<String>, source_dir: String) {
+    /// Bind a sandbox's grants, and return the epoch identifying this registration.
+    pub fn register(&self, label: String, capabilities: Vec<String>, source_dir: String) -> u64 {
+        let epoch = self.next_epoch.fetch_add(1, Ordering::Relaxed);
         self.granted.lock().unwrap().insert(
             label,
             SandboxGrant {
                 capabilities,
+                epoch,
                 source_dir,
             },
         );
+        epoch
+    }
+
+    /// The current registration's epoch, or `None` when the label is not registered.
+    /// Read together with the registration check so staging cannot straddle a reload.
+    pub fn epoch(&self, label: &str) -> Option<u64> {
+        self.granted.lock().unwrap().get(label).map(|g| g.epoch)
     }
 
     pub fn deregister(&self, label: &str) {

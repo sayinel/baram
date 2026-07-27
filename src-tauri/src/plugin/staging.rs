@@ -25,7 +25,21 @@ use super::label_map::LabelMap;
 /// reason `SourceRead` takes no path: a sandbox cannot name whose payload it wants.
 #[derive(Default)]
 pub struct StagedPayloads {
-    slots: LabelMap<String>,
+    slots: LabelMap<Staged>,
+}
+
+/// A parked payload and the registration it belongs to.
+struct Staged {
+    /// `PluginAuthorizer`'s registration epoch, captured when staging was ADMITTED.
+    ///
+    /// §260 Phase 4b security review (Q5) — the label alone cannot tell one life of a
+    /// plugin from the next, and admission and insertion take different locks, so a stage
+    /// in flight when a reload lands would otherwise park the previous session's document
+    /// under the new registration. `StagedRead` requires no capability, so the reloaded
+    /// plugin could then read it with no editor grant at all. Requiring the epoch to match
+    /// on the way out closes it by construction rather than by narrowing the window.
+    epoch: u64,
+    payload: String,
 }
 
 impl StagedPayloads {
@@ -40,8 +54,8 @@ impl StagedPayloads {
     /// request — and delivering the older document would be worse than dropping it. The
     /// displaced value drops in the caller, outside the lock (see `LabelMap`), which for a
     /// multi-megabyte document is the difference between a free() and a stall.
-    pub fn stage(&self, label: String, payload: String) {
-        drop(self.slots.insert(label, payload));
+    pub fn stage(&self, label: String, epoch: u64, payload: String) {
+        drop(self.slots.insert(label, Staged { epoch, payload }));
     }
 
     /// Take the payload waiting for this sandbox, if any.
@@ -56,8 +70,13 @@ impl StagedPayloads {
     /// `plugin_sandbox_deregister` clear it, so it cannot survive the session
     /// (§260 Phase 4b code review, P1).
     #[must_use]
-    pub fn take(&self, label: &str) -> Option<String> {
-        self.slots.remove(label)
+    pub fn take(&self, label: &str, epoch: u64) -> Option<String> {
+        let staged = self.slots.remove(label)?;
+        // REMOVED either way: a slot whose epoch does not match belongs to a registration
+        // that is over, so it can never become readable and holding it would only keep a
+        // document alive. Returning `None` makes the caller answer "nothing is staged",
+        // which is exactly true for the plugin now asking.
+        (staged.epoch == epoch).then_some(staged.payload)
     }
 
     /// Drop whatever is parked for a sandbox — called on deregister, so a stopped plugin
@@ -72,21 +91,25 @@ impl StagedPayloads {
 mod tests {
     use super::*;
 
+    /// Every test here stages under one registration, so the epoch is fixed; the epoch's
+    /// own property has its own test below.
+    const E: u64 = 7;
+
     #[test]
     fn a_staged_payload_is_delivered_once_and_only_to_its_own_label() {
         let staged = StagedPayloads::new();
-        staged.stage("plugin-alpha".into(), "# alpha".into());
-        staged.stage("plugin-beta".into(), "# beta".into());
+        staged.stage("plugin-alpha".into(), E, "# alpha".into());
+        staged.stage("plugin-beta".into(), E, "# beta".into());
 
         // Isolation: the label is the key, and the pull resolves it from the caller's
         // window — a plugin cannot name someone else's slot.
-        assert_eq!(staged.take("plugin-beta").as_deref(), Some("# beta"));
-        assert_eq!(staged.take("plugin-alpha").as_deref(), Some("# alpha"));
+        assert_eq!(staged.take("plugin-beta", E).as_deref(), Some("# beta"));
+        assert_eq!(staged.take("plugin-alpha", E).as_deref(), Some("# alpha"));
 
         // Consumed: a second pull gets nothing, so a replayed request cannot re-read a
         // document the plugin was already given.
-        assert_eq!(staged.take("plugin-alpha"), None);
-        assert_eq!(staged.take("plugin-beta"), None);
+        assert_eq!(staged.take("plugin-alpha", E), None);
+        assert_eq!(staged.take("plugin-beta", E), None);
     }
 
     #[test]
@@ -94,18 +117,44 @@ mod tests {
         // The slot answers the request currently in flight; an older document would be a
         // wrong answer, not a queued one.
         let staged = StagedPayloads::new();
-        staged.stage("plugin-alpha".into(), "first".into());
-        staged.stage("plugin-alpha".into(), "second".into());
-        assert_eq!(staged.take("plugin-alpha").as_deref(), Some("second"));
-        assert_eq!(staged.take("plugin-alpha"), None);
+        staged.stage("plugin-alpha".into(), E, "first".into());
+        staged.stage("plugin-alpha".into(), E, "second".into());
+        assert_eq!(staged.take("plugin-alpha", E).as_deref(), Some("second"));
+        assert_eq!(staged.take("plugin-alpha", E), None);
+    }
+
+    /// §260 Phase 4b security review (Q5) — the property `forget`-on-register could only
+    /// narrow: a stage ADMITTED under the previous registration but landing after the
+    /// reload must not be readable by the new one, whatever the interleaving.
+    #[test]
+    fn a_payload_admitted_under_an_earlier_registration_is_never_delivered() {
+        let staged = StagedPayloads::new();
+
+        // The old session's stage lands LAST — after the reload has already cleared the
+        // slot and re-registered. `forget` alone cannot help here; the epoch can.
+        staged.stage(
+            "plugin-alpha".into(),
+            1,
+            "the previous session's document".into(),
+        );
+
+        assert_eq!(
+            staged.take("plugin-alpha", 2),
+            None,
+            "a document from a registration that is over must not be readable, even \
+             though the reloaded plugin may declare no editor grant at all"
+        );
+        // And it is GONE, not merely withheld: a stale slot can never become valid, so
+        // keeping it would only hold a document in memory.
+        assert_eq!(staged.take("plugin-alpha", 1), None);
     }
 
     #[test]
     fn forget_leaves_no_document_behind() {
         let staged = StagedPayloads::new();
-        staged.stage("plugin-alpha".into(), "# secret".into());
+        staged.stage("plugin-alpha".into(), E, "# secret".into());
         staged.forget("plugin-alpha");
-        assert_eq!(staged.take("plugin-alpha"), None);
+        assert_eq!(staged.take("plugin-alpha", E), None);
         // Forgetting an unknown label is a no-op, like the other per-plugin teardowns.
         staged.forget("plugin-ghost");
     }
@@ -115,8 +164,8 @@ mod tests {
         // The caller must be able to tell "nothing was staged for you" from "your document
         // is empty" — an empty string is a legitimate document.
         let staged = StagedPayloads::new();
-        assert_eq!(staged.take("plugin-alpha"), None);
-        staged.stage("plugin-alpha".into(), String::new());
-        assert_eq!(staged.take("plugin-alpha").as_deref(), Some(""));
+        assert_eq!(staged.take("plugin-alpha", E), None);
+        staged.stage("plugin-alpha".into(), E, String::new());
+        assert_eq!(staged.take("plugin-alpha", E).as_deref(), Some(""));
     }
 }
