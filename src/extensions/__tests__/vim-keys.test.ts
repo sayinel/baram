@@ -9,7 +9,13 @@ import { Plugin } from "@tiptap/pm/state";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createBaramExtensions } from "..";
-import { isWysiwygVimModal, vimPluginKey } from "../plugins/vim/vim-keys";
+import {
+  chainWithVimExternalEdit,
+  isVimExternalEdit,
+  isWysiwygVimModal,
+  vimPluginKey,
+  withVimExternalEdit,
+} from "../plugins/vim/vim-keys";
 
 const editors: Editor[] = [];
 
@@ -46,5 +52,43 @@ describe("isWysiwygVimModal (§12-5)", () => {
     [{ enabled: false, mode: "normal" }, false],
   ] as [VimStateSnapshot, boolean][])("%o → modal=%s", (snapshot, expected) => {
     expect(isWysiwygVimModal(makeEditor(snapshot).state)).toBe(expected);
+  });
+});
+
+describe("vimExternalEdit provenance (§12-6)", () => {
+  it("withVimExternalEdit tags, isVimExternalEdit reads, untagged is false", () => {
+    const editor = makeEditor();
+    const tagged = withVimExternalEdit(editor.state.tr);
+    expect(isVimExternalEdit(tagged)).toBe(true);
+    expect(isVimExternalEdit(editor.state.tr)).toBe(false);
+  });
+
+  it("chainWithVimExternalEdit covers every command in the chain (one tr)", () => {
+    const editor = makeEditor();
+    const seen: boolean[] = [];
+    editor.registerPlugin(
+      new Plugin({
+        state: {
+          apply: (tr, v: null) => {
+            if (tr.docChanged) seen.push(isVimExternalEdit(tr));
+            return v;
+          },
+          init: () => null,
+        },
+      }),
+    );
+
+    chainWithVimExternalEdit(editor)
+      .setTextSelection({ from: 1, to: 2 })
+      .toggleBold()
+      .insertContentAt(editor.state.doc.content.size, "<p>tail</p>")
+      .run();
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.every(Boolean)).toBe(true);
+
+    // Plain chain stays untagged.
+    seen.length = 0;
+    editor.chain().insertContentAt(0, "<p>head</p>").run();
+    expect(seen).toEqual([false]);
   });
 });

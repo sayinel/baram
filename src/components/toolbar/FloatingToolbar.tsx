@@ -1,4 +1,3 @@
-// §4.7 Floating Toolbar — BubbleMenu on text selection
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Editor } from "@tiptap/react";
@@ -8,6 +7,8 @@ import { CellSelection } from "@tiptap/pm/tables";
 import { BubbleMenu } from "@tiptap/react/menus";
 import { Sparkles } from "lucide-react";
 
+// §4.7 Floating Toolbar — BubbleMenu on text selection
+import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
 import {
   executeAICommand,
   getSelectedText,
@@ -182,43 +183,57 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
       <ToolbarButton
         isActive={editor.isActive("bold")}
         label="B"
-        onClick={() => editor.chain().focus().toggleBold().run()}
+        onClick={() =>
+          chainWithVimExternalEdit(editor).focus().toggleBold().run()
+        }
         title="Bold (Cmd+B)"
       />
       <ToolbarButton
         isActive={editor.isActive("italic")}
         label="I"
-        onClick={() => editor.chain().focus().toggleItalic().run()}
+        onClick={() =>
+          chainWithVimExternalEdit(editor).focus().toggleItalic().run()
+        }
         title="Italic (Cmd+I)"
       />
       <ToolbarButton
         isActive={editor.isActive("strike")}
         label="S"
-        onClick={() => editor.chain().focus().toggleStrike().run()}
+        onClick={() =>
+          chainWithVimExternalEdit(editor).focus().toggleStrike().run()
+        }
         title="Strikethrough (Cmd+Shift+X)"
       />
       <ToolbarButton
         isActive={editor.isActive("highlight")}
         label="H"
-        onClick={() => editor.chain().focus().toggleHighlight().run()}
+        onClick={() =>
+          chainWithVimExternalEdit(editor).focus().toggleHighlight().run()
+        }
         title="Highlight (Cmd+Shift+H)"
       />
       <ToolbarButton
         isActive={editor.isActive("superscript")}
         label="X²"
-        onClick={() => editor.chain().focus().toggleSuperscript().run()}
+        onClick={() =>
+          chainWithVimExternalEdit(editor).focus().toggleSuperscript().run()
+        }
         title="Superscript"
       />
       <ToolbarButton
         isActive={editor.isActive("subscript")}
         label="X₂"
-        onClick={() => editor.chain().focus().toggleSubscript().run()}
+        onClick={() =>
+          chainWithVimExternalEdit(editor).focus().toggleSubscript().run()
+        }
         title="Subscript"
       />
       <ToolbarButton
         isActive={editor.isActive("code")}
         label="<>"
-        onClick={() => editor.chain().focus().toggleCode().run()}
+        onClick={() =>
+          chainWithVimExternalEdit(editor).focus().toggleCode().run()
+        }
         title="Inline Code (Cmd+E)"
       />
       <ToolbarButton
@@ -226,7 +241,7 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         label="Lk"
         onClick={async () => {
           if (editor.isActive("link")) {
-            editor.chain().focus().unsetLink().run();
+            chainWithVimExternalEdit(editor).focus().unsetLink().run();
             return;
           }
           const result = await showFieldDialog({
@@ -237,7 +252,10 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
             editor.commands.focus();
             return;
           }
-          editor.chain().focus().setLink({ href: result.url }).run();
+          chainWithVimExternalEdit(editor)
+            .focus()
+            .setLink({ href: result.url })
+            .run();
         }}
         title="Link"
       />
@@ -245,32 +263,48 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
       <ToolbarButton
         isActive={editor.isActive("heading", { level: 1 })}
         label="H1"
-        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+        onClick={() =>
+          chainWithVimExternalEdit(editor)
+            .focus()
+            .toggleHeading({ level: 1 })
+            .run()
+        }
         title="Heading 1"
       />
       <ToolbarButton
         isActive={editor.isActive("heading", { level: 2 })}
         label="H2"
-        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+        onClick={() =>
+          chainWithVimExternalEdit(editor)
+            .focus()
+            .toggleHeading({ level: 2 })
+            .run()
+        }
         title="Heading 2"
       />
       <div className="floating-toolbar-separator" />
       <ToolbarButton
         isActive={editor.isActive("blockquote")}
         label="Q"
-        onClick={() => editor.chain().focus().toggleBlockquote().run()}
+        onClick={() =>
+          chainWithVimExternalEdit(editor).focus().toggleBlockquote().run()
+        }
         title="Blockquote"
       />
       <ToolbarButton
         isActive={editor.isActive("bulletList")}
         label="UL"
-        onClick={() => editor.chain().focus().toggleBulletList().run()}
+        onClick={() =>
+          chainWithVimExternalEdit(editor).focus().toggleBulletList().run()
+        }
         title="Unordered List"
       />
       <ToolbarButton
         isActive={editor.isActive("orderedList")}
         label="OL"
-        onClick={() => editor.chain().focus().toggleOrderedList().run()}
+        onClick={() =>
+          chainWithVimExternalEdit(editor).focus().toggleOrderedList().run()
+        }
         title="Ordered List"
       />
       <div className="floating-toolbar-separator" />
