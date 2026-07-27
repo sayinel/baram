@@ -20,6 +20,7 @@ import {
   getSelectionOrParagraph,
   showPrompt,
 } from "../../utils/ai-commands";
+import { awaitBoundToEditor } from "../../utils/editor/mutation-tasks";
 import { fuzzyMatch } from "../../utils/file-search";
 
 export interface CommandItem {
@@ -540,9 +541,15 @@ function buildCommands(
           await showPrompt("Please select text to translate.");
           return;
         }
-        const lang = await showPrompt("Target language:", "", {
-          presets: ["English", "Korean"],
-        });
+        // §12-9d (design §5c): the selection came from THIS document — hold
+        // it with a bound task so a state install during the prompt cannot
+        // land the translation in the replacing document.
+        const lang = await awaitBoundToEditor(
+          editor.view,
+          showPrompt("Target language:", "", {
+            presets: ["English", "Korean"],
+          }),
+        );
         if (!lang) return;
         executeAICommand(
           editor,

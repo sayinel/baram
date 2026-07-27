@@ -22,7 +22,10 @@ import {
   type AIAction,
   getActionsForMode,
 } from "../../utils/contextual-ai-actions";
-import { registerEditorMutationTask } from "../../utils/editor/mutation-tasks";
+import {
+  awaitBoundToEditor,
+  registerEditorMutationTask,
+} from "../../utils/editor/mutation-tasks";
 import { showFieldDialog } from "../../utils/field-dialog";
 
 interface FloatingToolbarProps {
@@ -56,6 +59,28 @@ function ToolbarButton({
 
 // §6.2 / §11.2.3 Selection-based contextual AI commands in FloatingToolbar dropdown
 const AFTER_SEL = { afterSelection: true } as const;
+
+/** Contextual AI actions that ask for one value before running. */
+const CONTEXTUAL_PROMPTS: Record<
+  string,
+  { label: string; presets: string[]; token: string }
+> = {
+  "convert-lang": {
+    label: "Target language:",
+    presets: ["Python", "JavaScript", "TypeScript", "Rust"],
+    token: "{language}",
+  },
+  tone: {
+    label: "Select tone:",
+    presets: ["Formal", "Casual", "Professional", "Friendly"],
+    token: "{tone}",
+  },
+  translate: {
+    label: "Target language:",
+    presets: ["English", "Korean"],
+    token: "{language}",
+  },
+};
 
 export function FloatingToolbar({ editor }: FloatingToolbarProps) {
   const [aiOpen, setAiOpen] = useState(false);
@@ -118,48 +143,28 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
         return;
       }
       setAiOpen(false);
-      if (action.id === "translate") {
-        showPrompt("Target language:", "", {
-          presets: ["English", "Korean"],
-        }).then((lang) => {
-          if (lang) {
-            executeAICommand(
-              editor,
-              selection,
-              action.systemPrompt.replace("{language}", lang),
-              AFTER_SEL,
-            );
-          }
-        });
-      } else if (action.id === "tone") {
-        showPrompt("Select tone:", "", {
-          presets: ["Formal", "Casual", "Professional", "Friendly"],
-        }).then((tone) => {
-          if (tone) {
-            executeAICommand(
-              editor,
-              selection,
-              action.systemPrompt.replace("{tone}", tone),
-              AFTER_SEL,
-            );
-          }
-        });
-      } else if (action.id === "convert-lang") {
-        showPrompt("Target language:", "", {
-          presets: ["Python", "JavaScript", "TypeScript", "Rust"],
-        }).then((lang) => {
-          if (lang) {
-            executeAICommand(
-              editor,
-              selection,
-              action.systemPrompt.replace("{language}", lang),
-              AFTER_SEL,
-            );
-          }
-        });
-      } else {
+
+      const spec = CONTEXTUAL_PROMPTS[action.id];
+      if (!spec) {
         executeAICommand(editor, selection, action.systemPrompt, AFTER_SEL);
+        return;
       }
+      // §12-9d (design §5c): the selection was captured from THIS document,
+      // so the prompt must be held by a task bound to it — otherwise a state
+      // install while the prompt is open would send the old selection and
+      // insert the answer into the replacing document.
+      void awaitBoundToEditor(
+        editor.view,
+        showPrompt(spec.label, "", { presets: spec.presets }),
+      ).then((value) => {
+        if (!value) return; // cancelled, or the document was replaced
+        executeAICommand(
+          editor,
+          selection,
+          action.systemPrompt.replace(spec.token, value),
+          AFTER_SEL,
+        );
+      });
     },
     [editor],
   );

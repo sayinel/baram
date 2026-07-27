@@ -247,9 +247,14 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
         // (a plain network error would otherwise strand all three handles,
         // since the next submit resets unlistenRefs).
         const live = task.isLive();
-        void cleanupListeners();
+        // cleanupListeners operates on the SHARED refs, so only the request
+        // that still owns them may run it — otherwise a late rejection from
+        // an aborted request would cancel (and unlisten) the submit the user
+        // started afterwards.
+        const ownsRequest = activeRequestRef.current === requestId;
+        if (ownsRequest) void cleanupListeners();
         task.finish();
-        if (!live) return;
+        if (!live || !ownsRequest) return;
         setPhase("input");
         try {
           dispatchAIDiffClear(editor.view);

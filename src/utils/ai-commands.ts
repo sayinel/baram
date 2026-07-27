@@ -80,21 +80,29 @@ export async function executeAICommand(
   // if the task dies (state install / vim mode exit), late tokens must not
   // touch the editor, and the listeners are the cancelable source.
   const task = registerEditorMutationTask(editor.view);
-  const cleanupStream = await createLLMStream(requestId, {
-    onToken: (token) => {
-      if (!task.isLive()) return;
-      editor.chain().focus().insertContentAt(currentPos, token).run();
-      currentPos += token.length;
-    },
-    onError: (error) => logger.error("AI command error:", error),
-  });
-  task.addCleanup(() => {
-    llmCancel(requestId).catch(() => {}); // stop the Rust-side stream
-    cleanupStream(); // idempotent (llm-stream drains its list)
-  });
-
-  // Fire LLM request; cleanup listeners always to prevent leaks
+  // The whole flow lives in the try so a createLLMStream rejection cannot
+  // strand the task (its await used to sit outside any handler).
+  let cleanupStream: (() => void) | undefined;
   try {
+    cleanupStream = await createLLMStream(requestId, {
+      onToken: (token) => {
+        if (!task.isLive()) return;
+        editor.chain().focus().insertContentAt(currentPos, token).run();
+        currentPos += token.length;
+      },
+      onError: (error) => logger.error("AI command error:", error),
+    });
+    const stopStream = cleanupStream;
+    task.addCleanup(() => {
+      llmCancel(requestId).catch(() => {}); // stop the Rust-side stream
+      stopStream(); // idempotent (llm-stream drains its list)
+    });
+
+    // Setup was awaited: if the document was replaced meanwhile the cleanup
+    // above already removed the listeners, so firing the request would bill
+    // an answer nothing can receive.
+    if (!task.isLive()) return;
+
     await llmComplete(
       prompt,
       inlineCfg.model,
@@ -108,7 +116,7 @@ export async function executeAICommand(
   } catch {
     logger.error("LLM request failed");
   } finally {
-    cleanupStream();
+    cleanupStream?.();
     task.finish();
   }
 }

@@ -18,6 +18,8 @@ import { getFilePrivacy, isLLMAllowed } from "./privacy-check";
 // ── Apply result to the target block ────────────────────────────────
 
 interface DiffPanel {
+  /** Settle a pending decision as "reject" and tear the overlay down. */
+  abort: () => void;
   remove: () => void;
   setError: (msg: string) => void;
   showActions: () => void;
@@ -170,6 +172,10 @@ export async function executeBlockAIWithDiff(
   task.addCleanup(() => {
     cleanupStream(); // idempotent
     llmCancel(requestId).catch(() => {});
+    // Invalidation can also land while we are parked on waitForDecision.
+    // Without this the overlay would sit on top of the replacing tab with
+    // its "Streaming…" header and the execute promise would never settle.
+    panel.abort();
   });
 
   // Final gate before the outbound request: if the task died while
@@ -302,8 +308,15 @@ function createDiffPanel(
 
   // ── Panel API ───────────────────────────────────────────────
 
+  let aborted = false;
   let resolveDecision: ((d: "accept" | "reject") => void) | null = null;
   let keyHandler: ((e: KeyboardEvent) => void) | null = null;
+
+  function abort() {
+    aborted = true;
+    cleanup("reject");
+    overlay.remove();
+  }
 
   function updateDiff(original: string, ai: string) {
     content.innerHTML = "";
@@ -360,6 +373,9 @@ function createDiffPanel(
   }
 
   function waitForDecision(): Promise<"accept" | "reject"> {
+    // Aborted before anyone awaited: settle immediately so the caller's
+    // await cannot hang forever on a panel that no longer exists.
+    if (aborted) return Promise.resolve("reject");
     return new Promise((resolve) => {
       resolveDecision = resolve;
 
@@ -383,7 +399,7 @@ function createDiffPanel(
     });
   }
 
-  return { updateDiff, showActions, setError, waitForDecision, remove };
+  return { abort, updateDiff, showActions, setError, waitForDecision, remove };
 }
 
 function stripCodeFences(text: string, nodeType: string): string {

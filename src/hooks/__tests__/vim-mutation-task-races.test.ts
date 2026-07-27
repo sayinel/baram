@@ -15,7 +15,11 @@ import { Editor } from "@tiptap/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createBaramExtensions } from "../../extensions";
-import { invalidateEditorMutationTasks } from "../../utils/editor/mutation-tasks";
+import {
+  abortEditorMutationTasks,
+  awaitBoundToEditor,
+  invalidateEditorMutationTasks,
+} from "../../utils/editor/mutation-tasks";
 
 // ── deferred IPC doubles ───────────────────────────────────────────────────
 
@@ -72,8 +76,9 @@ import { listen } from "@tauri-apps/api/event";
 import { act, renderHook } from "@testing-library/react";
 
 import { buildSlashItems } from "../../extensions/plugins/slash-command-items";
-import { llmComplete } from "../../ipc/invoke";
+import { llmCancel, llmComplete } from "../../ipc/invoke";
 import { useAIStore } from "../../stores/ai/ai";
+import { executeAICommand } from "../../utils/ai-commands";
 import { executeBlockAIWithDiff } from "../../utils/block-ai-diff";
 import { handleEditorDrop } from "../use-external-drop";
 import { useGhostText } from "../use-ghost-text";
@@ -95,12 +100,23 @@ function makeEditor(content = "<p>original</p>"): Editor {
   return editor;
 }
 
+/**
+ * The exact pair replaceEditorStateWithVim performs around an install.
+ * Flows parked on a promise that only a cleanup can settle (the block-AI
+ * decision) need the abort half, not just the invalidate half.
+ */
+function simulateStateInstall(view: Editor["view"]): void {
+  invalidateEditorMutationTasks(view);
+  abortEditorMutationTasks(view);
+}
+
 beforeEach(async () => {
   createDirGate.current = null;
   dialogGate.current = null;
   importedFiles.length = 0;
   importGates.clear();
   vi.mocked(llmComplete).mockClear();
+  vi.mocked(llmCancel).mockClear();
   const { useEditorStore } = await import("../../stores/editor/editor");
   useEditorStore.setState({
     activeTabId: "tab-a",
@@ -433,5 +449,143 @@ describe("block AI — invalidation during stream setup (§12-9c, R8 finding 3)"
     // already removed, stranding a "Streaming…" panel over the new tab.
     expect(vi.mocked(llmComplete)).not.toHaveBeenCalled();
     expect(document.querySelector(".block-ai-diff-overlay")).toBeNull();
+  });
+});
+
+describe("R9 follow-ups — ownership and late invalidation (§12-9d)", () => {
+  it("awaitBoundToEditor returns null when the document was replaced while waiting", async () => {
+    const editor = makeEditor();
+    const dialog = deferred<string>();
+
+    const pending = awaitBoundToEditor(editor.view, dialog.promise);
+    invalidateEditorMutationTasks(editor.view);
+    dialog.resolve("English");
+
+    expect(await pending).toBeNull();
+  });
+
+  it("awaitBoundToEditor passes the value through when nothing invalidates", async () => {
+    const editor = makeEditor();
+    const dialog = deferred<string>();
+
+    const pending = awaitBoundToEditor(editor.view, dialog.promise);
+    dialog.resolve("English");
+
+    expect(await pending).toBe("English");
+  });
+
+  it("a late rejection from an aborted inline-AI request leaves the NEXT submit alone", async () => {
+    // The catch runs on the abort path, and cleanupListeners works on shared
+    // refs — so without request ownership it would cancel submit B.
+    const editor = makeEditor("<p>hello</p>");
+    const first = deferred<void>();
+    vi.mocked(llmComplete).mockReturnValueOnce(first.promise);
+
+    const { result } = renderHook(() => useInlineAI(editor));
+    act(() => result.current.activate());
+
+    await act(async () => {
+      result.current.submitPrompt("A");
+      await flush();
+    });
+    invalidateEditorMutationTasks(editor.view); // request A dies
+
+    await act(async () => {
+      result.current.submitPrompt("B"); // user resubmits
+      await flush();
+    });
+    expect(result.current.phase).toBe("streaming");
+
+    // cleanupListeners reads the SHARED activeRequestRef, so an unguarded
+    // catch would cancel B here. Count cancels across the rejection instead
+    // of asserting on phase: the dead-task branch returns before setPhase,
+    // so the damage is invisible in the UI state.
+    const cancelsBefore = vi.mocked(llmCancel).mock.calls.length;
+    await act(async () => {
+      first.reject(new Error("Request cancelled")); // A's late rejection
+      await flush();
+    });
+
+    expect(vi.mocked(llmCancel).mock.calls.length).toBe(cancelsBefore);
+    expect(result.current.phase).toBe("streaming");
+  });
+
+  it("an explicit cancel then resubmit: the old rejection cannot reset the new run", async () => {
+    // cancel() does NOT invalidate the mutation task, so task A stays live —
+    // an unguarded catch would take the full UI-reset branch and knock B's
+    // phase back to "input" while it is still streaming.
+    const editor = makeEditor("<p>hello</p>");
+    const first = deferred<void>();
+    vi.mocked(llmComplete).mockReturnValueOnce(first.promise);
+
+    const { result } = renderHook(() => useInlineAI(editor));
+    act(() => result.current.activate());
+    await act(async () => {
+      result.current.submitPrompt("A");
+      await flush();
+    });
+
+    act(() => result.current.cancel());
+    act(() => result.current.activate());
+    await act(async () => {
+      result.current.submitPrompt("B");
+      await flush();
+    });
+    expect(result.current.phase).toBe("streaming");
+
+    const cancelsBefore = vi.mocked(llmCancel).mock.calls.length;
+    await act(async () => {
+      first.reject(new Error("Request cancelled"));
+      await flush();
+    });
+
+    expect(vi.mocked(llmCancel).mock.calls.length).toBe(cancelsBefore);
+    expect(result.current.phase).toBe("streaming");
+  });
+
+  it("block AI invalidated while awaiting the decision settles and removes the panel", async () => {
+    useAIStore.setState({ autoModelEnabled: false, provider: "ollama" });
+    const editor = makeEditor("<p>target text</p>");
+
+    let settled = false;
+    const running = executeBlockAIWithDiff(
+      editor,
+      0,
+      "target text",
+      "p",
+      "sys",
+    ).then(() => {
+      settled = true;
+    });
+    await flush();
+    expect(document.querySelector(".block-ai-diff-overlay")).not.toBeNull();
+
+    // Late invalidation: we are parked on waitForDecision.
+    simulateStateInstall(editor.view);
+    await flush();
+    await running;
+
+    expect(settled).toBe(true);
+    expect(document.querySelector(".block-ai-diff-overlay")).toBeNull();
+  });
+
+  it("executeAICommand does not fire the request when its stream setup was invalidated", async () => {
+    useAIStore.setState({ autoModelEnabled: false, provider: "ollama" });
+    const editor = makeEditor("<p>hello</p>");
+    const gate = deferred<void>();
+    let n = 0;
+    vi.mocked(listen).mockImplementation(async () => {
+      if (n++ === 0) await gate.promise;
+      return () => {};
+    });
+
+    const running = executeAICommand(editor, "prompt", "sys");
+    await flush(); // parked inside createLLMStream
+
+    invalidateEditorMutationTasks(editor.view);
+    gate.resolve();
+    await running;
+
+    expect(vi.mocked(llmComplete)).not.toHaveBeenCalled();
   });
 });

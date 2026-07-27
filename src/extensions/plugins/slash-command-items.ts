@@ -530,6 +530,11 @@ export function buildSlashItems(editor: Editor): SlashMenuItem[] {
                 } catch {
                   /* already exists */
                 }
+                // createDir is an async gap of its own: without this check a
+                // task that died here would still copy the photo into the
+                // PREVIOUS document's journal assets dir, leaving a file
+                // nothing references.
+                if (!task.isLive()) return;
 
                 const destName = generatePhotoFilename(fileName, now);
                 const absoluteDest = `${absoluteAssetsDir}/${destName}`;

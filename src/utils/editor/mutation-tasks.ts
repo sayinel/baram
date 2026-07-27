@@ -67,6 +67,28 @@ export function abortEditorMutationTasks(view: PMView): void {
 }
 
 /**
+ * Await a dialog/picker while holding a task bound to the document that
+ * opened it, and report whether that document is still installed.
+ *
+ * Pass the promise directly — `awaitBoundToEditor(view, showPrompt(...))`.
+ * Dialog helpers build their promise synchronously, so registration still
+ * happens before any suspension point. Resolves to `null` when the document
+ * was replaced while waiting; the caller must then do nothing.
+ */
+export async function awaitBoundToEditor<T>(
+  view: PMView,
+  pending: Promise<T>,
+): Promise<null | T> {
+  const task = registerEditorMutationTask(view);
+  try {
+    const value = await pending;
+    return task.isLive() ? value : null;
+  } finally {
+    task.finish();
+  }
+}
+
+/**
  * SYNC kill switch: after this returns, every outstanding task's isLive()
  * is false. Does NOT run cleanups — call abortEditorMutationTasks next.
  */
