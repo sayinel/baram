@@ -209,19 +209,91 @@ describe("createVimController", () => {
 
     const base = f.view.dispatch.mock.calls.length;
     modeCb!("normal"); // → editing host removed (one editable dispatch)
-    expect(f.view.dispatch.mock.calls.length).toBe(base + 1);
+    // The flip is deferred by one microtask so it can never land inside
+    // CodeMirror's update cycle (see setEditingHost) — the mode callback
+    // itself must stay synchronous for the StatusBar feed.
     expect(onModeChange).toHaveBeenLastCalledWith("normal");
+    expect(f.view.dispatch.mock.calls.length).toBe(base);
+    await flush();
+    expect(f.view.dispatch.mock.calls.length).toBe(base + 1);
     // Focus fallback: activeElement is body in jsdom, so the host removal
     // must re-focus via view.focus() (Codex 3v review note pinned here).
     expect(f.view.focus).toHaveBeenCalled();
 
     modeCb!("insert"); // → editing host restored
+    await flush();
     expect(f.view.dispatch.mock.calls.length).toBe(base + 2);
     expect(onModeChange).toHaveBeenLastCalledWith("insert");
 
     controller.apply(false); // → restore host + clear vim slot + tabindex off
     expect(f.view.contentDOM.getAttribute("tabindex")).toBeNull();
     expect(onModeChange).toHaveBeenLastCalledWith(null);
+  });
+
+  it("never flips the editing host from inside a CodeMirror update", async () => {
+    // The real crash this fixes: @replit/codemirror-vim signals
+    // vim-mode-change from onBeforeEndOperation — i.e. while CodeMirror is
+    // mid-update — whenever a mouse selection reaches handleExternalSelection.
+    // A synchronous dispatch there throws, CodeMirror logs once and
+    // DEACTIVATES the plugin, and its abandoned cursor layer is the second
+    // caret users reported. The flip must therefore land outside the update.
+    const f = makeFakes();
+    const editableCompartment = new Compartment();
+    let modeCb: ((m: null | VimModeName) => void) | undefined;
+    const attachGuard = vi.fn((_view: unknown, _cm: unknown, cb?: unknown) => {
+      modeCb = cb as (m: null | VimModeName) => void;
+      return f.guardDispose;
+    });
+    const controller = createVimController(asView(f.view), f.compartment, {
+      attachGuard,
+      editableCompartment,
+      loadModule: () => Promise.resolve(asModule(f.mod)),
+    });
+    controller.apply(true);
+    await flush();
+
+    // Stand in for CodeMirror's own re-entrancy guard.
+    let inUpdate = true;
+    f.view.dispatch.mockImplementation(() => {
+      if (inUpdate) {
+        throw new Error(
+          "Calls to EditorView.update are not allowed while an update is in progress",
+        );
+      }
+    });
+
+    const before = f.view.dispatch.mock.calls.length;
+    expect(() => modeCb!("normal")).not.toThrow();
+    expect(f.view.dispatch.mock.calls.length).toBe(before); // nothing yet
+
+    inUpdate = false; // CodeMirror's update has unwound
+    await flush();
+    expect(f.view.dispatch.mock.calls.length).toBe(before + 1);
+  });
+
+  it("drops a deferred editing-host flip after dispose", async () => {
+    const f = makeFakes();
+    const editableCompartment = new Compartment();
+    let modeCb: ((m: null | VimModeName) => void) | undefined;
+    const attachGuard = vi.fn((_view: unknown, _cm: unknown, cb?: unknown) => {
+      modeCb = cb as (m: null | VimModeName) => void;
+      return f.guardDispose;
+    });
+    const controller = createVimController(asView(f.view), f.compartment, {
+      attachGuard,
+      editableCompartment,
+      loadModule: () => Promise.resolve(asModule(f.mod)),
+    });
+    controller.apply(true);
+    await flush();
+
+    modeCb!("normal");
+    controller.dispose(); // unmount lands between the request and the flush
+    const before = f.view.dispatch.mock.calls.length;
+    await flush();
+    // Dispatching into a view the component is tearing down would throw on a
+    // destroyed CodeMirror instance.
+    expect(f.view.dispatch.mock.calls.length).toBe(before);
   });
 
   it("apply after dispose is a no-op (does not even hit the loader)", () => {
