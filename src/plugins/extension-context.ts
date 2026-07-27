@@ -31,7 +31,7 @@ import {
 import { useAIStore } from "../stores/ai/ai";
 import { useEditorStore } from "../stores/editor/editor";
 import { useUIStore } from "../stores/ui/ui";
-import { isTabLoading } from "../utils/editor/programmatic-update";
+import { isTabLoading, loadedTabId } from "../utils/editor/programmatic-update";
 import { createLLMStream } from "../utils/llm-stream";
 import { logger } from "../utils/logger";
 import { getConfigForTask } from "../utils/model-selection";
@@ -377,8 +377,16 @@ export function editorSurfaceBlocked(): null | string {
   // truncation. `loadingTabs` is a plain Set — it changes without a React render, so an
   // effect would observe it late; reading it per request cannot.
   const { activeTabId } = useEditorStore.getState();
-  if (activeTabId && isTabLoading(activeTabId)) {
-    return "the document is still loading";
+  if (!activeTabId) return null;
+  if (isTabLoading(activeTabId)) return "the document is still loading";
+  // …and the window BEFORE that flag is set (§260 Phase 4b security review, LOW). The
+  // store's `activeTabId` flips at the start of a tab switch while installation is still
+  // deferred, so for a macrotask (cache hit) or a worker round trip (cache miss) the editor
+  // still holds the OUTGOING tab's document — a read would return another file's content
+  // and a write would be discarded by the pending `updateState`. Every install path ends at
+  // `markContentLoaded`, so this is exactly "has the editor caught up yet?".
+  if (loadedTabId() !== activeTabId) {
+    return "the editor has not finished switching to this tab";
   }
   return null;
 }

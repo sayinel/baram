@@ -72,11 +72,25 @@ impl StagedPayloads {
     #[must_use]
     pub fn take(&self, label: &str, epoch: u64) -> Option<String> {
         let staged = self.slots.remove(label)?;
-        // REMOVED either way: a slot whose epoch does not match belongs to a registration
-        // that is over, so it can never become readable and holding it would only keep a
-        // document alive. Returning `None` makes the caller answer "nothing is staged",
-        // which is exactly true for the plugin now asking.
-        (staged.epoch == epoch).then_some(staged.payload)
+        if staged.epoch == epoch {
+            return Some(staged.payload);
+        }
+        // §260 Phase 4b security re-review (INFO) — WHICH side is stale decides whether the
+        // slot is discarded or put back.
+        //
+        // `staged.epoch < epoch`: the payload belongs to a registration that is over, so it
+        // can never become readable and holding it would only keep a document alive. Let it
+        // drop here, outside the lock.
+        //
+        // `staged.epoch > epoch`: the CALLER is stale — a reload and a fresh stage completed
+        // between this pull reading the current epoch and reaching the slot, and the label
+        // is the identity, so an old webview's in-flight call can still get this far.
+        // Dropping then would destroy the NEW instance's document for a liveness bug nobody
+        // could diagnose. Put it back; the pull that owns it will find it.
+        if staged.epoch > epoch {
+            drop(self.slots.insert(label.to_string(), staged));
+        }
+        None
     }
 
     /// Drop whatever is parked for a sandbox — called on deregister, so a stopped plugin
@@ -144,9 +158,30 @@ mod tests {
             "a document from a registration that is over must not be readable, even \
              though the reloaded plugin may declare no editor grant at all"
         );
-        // And it is GONE, not merely withheld: a stale slot can never become valid, so
-        // keeping it would only hold a document in memory.
+        // And it is GONE, not merely withheld: a slot from a registration that is over can
+        // never become valid, so keeping it would only hold a document in memory.
         assert_eq!(staged.take("plugin-alpha", 1), None);
+    }
+
+    /// The mirror case (§260 Phase 4b security re-review, INFO): when the CALLER is the
+    /// stale one — an old webview's pull arriving after a reload has already staged for the
+    /// new instance — the new document must survive, or a liveness bug destroys a payload
+    /// nobody can trace.
+    #[test]
+    fn a_stale_pull_does_not_destroy_a_newer_registrations_payload() {
+        let staged = StagedPayloads::new();
+        staged.stage(
+            "plugin-alpha".into(),
+            2,
+            "the new session's document".into(),
+        );
+
+        assert_eq!(staged.take("plugin-alpha", 1), None, "not for this caller");
+        assert_eq!(
+            staged.take("plugin-alpha", 2).as_deref(),
+            Some("the new session's document"),
+            "the pull that owns it must still find it"
+        );
     }
 
     #[test]

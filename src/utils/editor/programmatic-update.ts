@@ -29,6 +29,24 @@ const loadingTabs = new Set<string>();
  */
 const contentLoadedListeners = new Set<(tabId: string) => void>();
 
+/**
+ * The tab whose content was last installed into the editor.
+ *
+ * §260 Phase 4b security review (LOW) — a VALIDITY predicate, not a change counter. At the
+ * start of a tab switch the store's `activeTabId` has already flipped to the incoming tab
+ * while installation is still deferred (a `setTimeout` on the cache-hit path, a worker
+ * round trip on the miss path, with `setTabLoading` only set inside the `.then()`). In that
+ * window the editor still holds the OUTGOING tab's document, and nothing else says so. The
+ * plugin editor surface compares this against `activeTabId` to refuse rather than answer
+ * with another file's content.
+ *
+ * ‼️ Deliberately not used as a "did the document change?" signal: two paths install a
+ * whole document without coming through here (`use-editor-effects.ts` — external file
+ * reload and the §72 properties refresh), which is why the write guard compares document
+ * identity instead. This answers only "is the editor showing the active tab yet?".
+ */
+let lastLoadedTabId: null | string = null;
+
 /** Subscribe to content-loaded notifications. Returns an unsubscribe function. */
 export function subscribeContentLoaded(
   fn: (tabId: string) => void,
@@ -75,9 +93,15 @@ export function isTabLoading(tabId: string): boolean {
   return loadingTabs.has(tabId);
 }
 
+/** The tab whose content the editor currently holds. See `lastLoadedTabId`. */
+export function loadedTabId(): null | string {
+  return lastLoadedTabId;
+}
+
 /** Mark a tab as having just loaded content — the next update will capture baseline */
 export function markContentLoaded(tabId: string): void {
   pendingTabs.add(tabId);
+  lastLoadedTabId = tabId;
   // Called synchronously right after the content is installed into the editor,
   // so listeners read the freshly-loaded doc. See contentLoadedListeners.
   for (const fn of contentLoadedListeners) fn(tabId);

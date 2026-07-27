@@ -6,6 +6,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import { markdownToProsemirror } from "../../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../../pipeline/pm-to-md";
+import { useEditorStore } from "../../../stores/editor/editor";
+import { markContentLoaded } from "../../../utils/editor/programmatic-update";
+import { setEditorSurfaceBlocked } from "../../extension-context";
 import { createEditorRequestHandler } from "../host-editor-bridge";
 
 // §260 Phase 4b — the sandboxed tier's document access. The editor lives in the main
@@ -236,6 +239,122 @@ describe("createEditorRequestHandler (§260 Phase 4b)", () => {
 
     await handler({ kind: "editor_get_markdown" });
     expect(staged[0][1]).toBe(source);
+  });
+
+  it("refuses every op when the editor is not the tab's content", async () => {
+    // §260 Phase 4b security review (LOW-3) — in source mode the user edits CodeMirror
+    // while the Tiptap doc keeps its pre-toggle content, and `handleSave` ignores that doc
+    // entirely. A read would be silently stale and a write silently dropped, so both are
+    // refused with a reason the plugin can show.
+    const { editor, handler, staged } = harness("# a\n", ["editor"], {
+      surfaceBlocked: () => "the document is open in source mode",
+    });
+
+    for (const request of [
+      { kind: "editor_get_markdown" },
+      { kind: "editor_get_selection" },
+      { kind: "editor_insert_text", text: "x" },
+      { kind: "editor_set_markdown", markdown: "# b\n" },
+    ] as const) {
+      await expect(handler(request)).rejects.toThrow(/source mode/);
+    }
+    // Distinguishable from "no editor is open": a plugin that cannot tell them apart
+    // cannot tell the user what to do about it.
+    await expect(handler({ kind: "editor_get_markdown" })).rejects.not.toThrow(
+      /no editor is open/,
+    );
+    expect(staged).toEqual([]);
+    expect(editor.dispatched).toEqual([]);
+  });
+
+  it("refuses to write when a tab switch installed another document mid-parse", async () => {
+    // §260 Phase 4b security review, NEW HIGH. The ordinary tab switch calls
+    // `editor.view.updateState(cachedState)` on the SAME editor with the SAME schema, so
+    // the schema comparison this replaced passed and the write landed in ANOTHER FILE —
+    // then marked it dirty, so autosave could put it on disk. The previous test only built
+    // a distinct Schema, i.e. it exercised the path that WAS caught.
+    const editor = fakeEditor("# file A\n");
+    const otherFile = markdownToProsemirror(
+      "# file B — do not touch\n",
+      schema,
+    );
+    const handler = createEditorRequestHandler({
+      capabilities: ["editor"] as never,
+      editor: () => editor.handle,
+      pluginId: "acme.notes",
+      stage: vi.fn(),
+      surfaceBlocked: () => null,
+    });
+
+    const writing = handler({
+      kind: "editor_set_markdown",
+      markdown: "# replacement\n",
+    });
+    editor.installDocument(otherFile); // the tab switch — same instance, same schema
+
+    await expect(writing).rejects.toThrow(/document changed/);
+    expect(editor.dispatched).toEqual([]);
+    expect(editor.markdown()).toBe("# file B — do not touch\n");
+  });
+
+  it("still writes when nothing displaced the document", async () => {
+    // The guard must not make `setMarkdown` simply not work — the counterpart to the test
+    // above, so a refusal that is always true would fail here.
+    const { editor, handler } = harness("# old\n", ["editor"]);
+    await handler({ kind: "editor_set_markdown", markdown: "# new\n" });
+    expect(editor.markdown()).toBe("# new\n");
+  });
+
+  it("refuses through the REAL surface predicate while a tab switch is in flight", async () => {
+    // §260 Phase 4b security review (LOW) — the window BEFORE `setTabLoading`: the store's
+    // `activeTabId` flips at the start of a tab switch while installation is still deferred
+    // (a `setTimeout` on the cache-hit path, a worker round trip on the miss path), so the
+    // editor still holds the OUTGOING tab's document and no other flag says so.
+    //
+    // Driven through the REAL `editorSurfaceBlocked` rather than an injected stub, because
+    // the defect was in that predicate — a stubbed surface would have passed either way.
+    setEditorSurfaceBlocked(null); // the App has reported a normal markdown tab
+    useEditorStore.setState({ activeTabId: "tab-B" });
+    markContentLoaded("tab-A"); // …but the editor still shows tab A
+
+    const editor = fakeEditor("# file A\n");
+    const handler = createEditorRequestHandler({
+      capabilities: ["editor"] as never,
+      editor: () => editor.handle,
+      pluginId: "acme.notes",
+      stage: vi.fn(),
+    });
+
+    await expect(handler({ kind: "editor_get_markdown" })).rejects.toThrow(
+      /has not finished switching/,
+    );
+    await expect(
+      handler({ kind: "editor_set_markdown", markdown: "# b\n" }),
+    ).rejects.toThrow(/has not finished switching/);
+    expect(editor.dispatched).toEqual([]);
+
+    // Once the switch completes the same handler works — a window, not a ban.
+    markContentLoaded("tab-B");
+    await expect(
+      handler({ kind: "editor_get_markdown" }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("refuses reads and writes while a document is still loading progressively", async () => {
+    // §260 Phase 4b security review, Q6 — during a large-document tab switch the editor
+    // holds only the first chunk, so a read returns a TRUNCATED document and a
+    // read-modify-write would save the truncation back.
+    const { editor, handler, staged } = harness("# a\n", ["editor"], {
+      surfaceBlocked: () => "the document is still loading",
+    });
+    await expect(handler({ kind: "editor_get_markdown" })).rejects.toThrow(
+      /still loading/,
+    );
+    await expect(
+      handler({ kind: "editor_set_markdown", markdown: "# b\n" }),
+    ).rejects.toThrow(/still loading/);
+    expect(staged).toEqual([]);
+    expect(editor.dispatched).toEqual([]);
   });
 
   it("throttles whole-document reads by SIZE, and recovers as the budget refills", async () => {
