@@ -88,9 +88,11 @@ import { useUIStore } from "./stores/ui/ui";
 import { initPerfTrace, instrumentEditor } from "./utils/editor/perf-trace";
 import {
   getLanguageForFile,
-  isHtmlFile,
+  isImageFile,
   isMarkdownFile,
   isPdfFile,
+  isRenderedPreviewFile,
+  isSvgFile,
 } from "./utils/file-type";
 import { createLLMStream } from "./utils/llm-stream";
 import { logger } from "./utils/logger";
@@ -113,6 +115,11 @@ const HtmlPreview = lazy(() =>
 const PdfPreview = lazy(() =>
   import("./components/editor/PdfPreview").then((m) => ({
     default: m.PdfPreview,
+  })),
+);
+const ImagePreview = lazy(() =>
+  import("./components/editor/ImagePreview").then((m) => ({
+    default: m.ImagePreview,
   })),
 );
 const CommandPalette = lazy(() =>
@@ -252,20 +259,22 @@ function App() {
     ? getLanguageForFile(activeTabFilePath)
     : null;
 
-  // PDF file viewer — read-only, rendered by the webview's native PDF engine
+  // Read-only binary viewers: PDF (PDF.js) and raster images (<img>)
   const isPdfTab = !!activeTabFilePath && isPdfFile(activeTabFilePath);
+  const isImageTab = !!activeTabFilePath && isImageFile(activeTabFilePath);
 
-  // HTML file viewer — rendered preview (default) vs raw source, tracked
+  // HTML/SVG file viewer — rendered preview (default) vs raw source, tracked
   // per tab so toggling one tab doesn't affect others.
-  const isHtmlTab = !!activeTabFilePath && isHtmlFile(activeTabFilePath);
+  const isRenderedPreviewTab =
+    !!activeTabFilePath && isRenderedPreviewFile(activeTabFilePath);
   const [htmlSourceTabs, setHtmlSourceTabs] = useState<Set<string>>(
     () => new Set(),
   );
   const isHtmlSourceView = !!activeTabId && htmlSourceTabs.has(activeTabId);
-  // Viewer iframes reload whenever the file's saved/reloaded mtime bumps
+  // Viewers reload whenever the file's saved/reloaded mtime bumps
   // (manual save, auto-save, toggle-flush, or external auto-reload)
   const previewFileMtime = useFileStore((s) =>
-    (isHtmlTab || isPdfTab) && activeTabFilePath
+    (isRenderedPreviewTab || isPdfTab || isImageTab) && activeTabFilePath
       ? (s.fileMtimes.get(activeTabFilePath)?.lastSaveMtime ?? 0)
       : 0,
   );
@@ -586,14 +595,14 @@ function App() {
     [markDirty],
   );
 
-  // Toggle rendered preview ↔ raw source for the active HTML tab.
+  // Toggle rendered preview ↔ raw source for the active HTML/SVG tab.
   // The preview iframe loads the file from disk (asset: protocol), so when
   // leaving source view with unsaved edits, flush them first — the mtime bump
   // then reloads the iframe with the fresh content.
   const toggleHtmlView = useCallback(() => {
     const { activeTabId: tabId, tabs: currentTabs } = useEditorStore.getState();
     const tab = currentTabs.find((t) => t.id === tabId);
-    if (!tab || !isFileTab(tab) || !isHtmlFile(tab.filePath)) return;
+    if (!tab || !isFileTab(tab) || !isRenderedPreviewFile(tab.filePath)) return;
     const leavingSourceView = htmlSourceTabs.has(tab.id);
     if (leavingSourceView && tab.isDirty && tab.filePath) {
       const filePath = tab.filePath;
@@ -619,12 +628,12 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [htmlSourceTabs, markDirty]);
 
-  // Cmd+/ — route to the HTML preview/source toggle when an HTML tab is
+  // Cmd+/ — route to the preview/source toggle when an HTML/SVG tab is
   // active; otherwise fall through to the markdown source-mode toggle.
   const handleToggleSourceMode = useCallback(() => {
     const { activeTabId: tabId, tabs: currentTabs } = useEditorStore.getState();
     const tab = currentTabs.find((t) => t.id === tabId);
-    if (tab && isFileTab(tab) && isHtmlFile(tab.filePath)) {
+    if (tab && isFileTab(tab) && isRenderedPreviewFile(tab.filePath)) {
       toggleHtmlView();
       return;
     }
@@ -720,7 +729,9 @@ function App() {
               mode={
                 isGraphTabActive
                   ? "graph"
-                  : isPdfTab || (isHtmlTab && !isHtmlSourceView)
+                  : isPdfTab ||
+                      isImageTab ||
+                      (isRenderedPreviewTab && !isHtmlSourceView)
                     ? "preview"
                     : isCodeFile || isSourceMode
                       ? "source"
@@ -789,9 +800,30 @@ function App() {
                 />
               </Suspense>
             </div>
+          ) : isImageTab && activeTabFilePath ? (
+            <div
+              className="editor-area-scroll image-preview-scroll"
+              data-editor-scroll
+            >
+              <Suspense fallback={null}>
+                <ImagePreview
+                  filePath={activeTabFilePath}
+                  refreshKey={previewFileMtime}
+                />
+              </Suspense>
+            </div>
           ) : isCodeFile ? (
-            <div className="editor-area-scroll" data-editor-scroll>
-              {isHtmlTab && (
+            <div
+              className={
+                isRenderedPreviewTab &&
+                !isHtmlSourceView &&
+                isSvgFile(activeTabFilePath)
+                  ? "editor-area-scroll image-preview-scroll"
+                  : "editor-area-scroll"
+              }
+              data-editor-scroll
+            >
+              {isRenderedPreviewTab && (
                 <button
                   className="mode-toggle-btn html-view-toggle"
                   onClick={toggleHtmlView}
@@ -804,12 +836,23 @@ function App() {
                 </button>
               )}
               <Suspense fallback={null}>
-                {isHtmlTab && !isHtmlSourceView && activeTabFilePath ? (
-                  <HtmlPreview
-                    filePath={activeTabFilePath}
-                    refreshKey={previewFileMtime}
-                    title={activeTabFilePath}
-                  />
+                {isRenderedPreviewTab &&
+                !isHtmlSourceView &&
+                activeTabFilePath ? (
+                  isSvgFile(activeTabFilePath) ? (
+                    // SVG previews render as <img>: vector-sharp zoom via the
+                    // shared zoomLevel, and no iframe to swallow wheel/keys
+                    <ImagePreview
+                      filePath={activeTabFilePath}
+                      refreshKey={previewFileMtime}
+                    />
+                  ) : (
+                    <HtmlPreview
+                      filePath={activeTabFilePath}
+                      refreshKey={previewFileMtime}
+                      title={activeTabFilePath}
+                    />
+                  )
                 ) : (
                   <SourceCodeEditor
                     content={sourceContent}

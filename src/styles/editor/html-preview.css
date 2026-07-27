@@ -1,8 +1,9 @@
 /* §5.1 HTML/PDF file viewers — iframe previews + preview/source toggle */
 
-/* PDF zoom re-renders pages at the target scale (see PdfPreview.tsx) —
+/* PDF/image zoom scales content directly (see PdfPreview/ImagePreview) —
    neutralize the container's CSS zoom so the two mechanisms don't multiply,
    and allow horizontal scroll for zoom levels above 100%. */
+.editor-area-scroll.image-preview-scroll,
 .editor-area-scroll.pdf-preview-scroll {
   overflow: auto;
   zoom: 1;
@@ -58,6 +59,22 @@
   padding: 2em;
   font-size: 0.85rem;
   color: var(--color-text-muted);
+}
+
+/* §5.1 Image/SVG file viewer — <img> whose width = fit-base × zoomLevel */
+.image-preview {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  width: max-content;
+  min-width: 100%;
+  min-height: 100%;
+  padding: 24px;
+}
+
+.image-preview img {
+  max-width: 100%;
+  height: auto;
 }
 
 .html-preview-frame {

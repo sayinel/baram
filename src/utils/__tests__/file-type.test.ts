@@ -2,9 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   getLanguageForFile,
+  isBinaryViewerFile,
   isHtmlFile,
+  isImageFile,
   isMarkdownFile,
   isPdfFile,
+  isRenderedPreviewFile,
+  isSvgFile,
 } from "../file-type";
 
 describe("isMarkdownFile", () => {
@@ -54,6 +58,54 @@ describe("isPdfFile", () => {
     expect(isPdfFile("/vault/pdf")).toBe(false);
     expect(isPdfFile(undefined)).toBe(false);
     expect(isPdfFile("")).toBe(false);
+  });
+});
+
+describe("isImageFile / isBinaryViewerFile", () => {
+  it("returns true for raster image extensions", () => {
+    expect(isImageFile("/vault/photo.png")).toBe(true);
+    expect(isImageFile("/vault/photo.jpg")).toBe(true);
+    expect(isImageFile("/vault/photo.JPEG")).toBe(true);
+    expect(isImageFile("/vault/photo.bmp")).toBe(true);
+    expect(isImageFile("/vault/photo.webp")).toBe(true);
+    expect(isImageFile("/vault/photo.gif")).toBe(true);
+  });
+
+  it("returns false for svg (text, editable) and other files", () => {
+    expect(isImageFile("/vault/logo.svg")).toBe(false);
+    expect(isImageFile("/vault/note.md")).toBe(false);
+    expect(isImageFile(undefined)).toBe(false);
+  });
+
+  it("isBinaryViewerFile covers images and pdf, not text formats", () => {
+    expect(isBinaryViewerFile("/vault/photo.png")).toBe(true);
+    expect(isBinaryViewerFile("/vault/doc.pdf")).toBe(true);
+    expect(isBinaryViewerFile("/vault/logo.svg")).toBe(false);
+    expect(isBinaryViewerFile("/vault/page.html")).toBe(false);
+    expect(isBinaryViewerFile("/vault/note.md")).toBe(false);
+  });
+});
+
+describe("isRenderedPreviewFile", () => {
+  it("returns true for html and svg", () => {
+    expect(isRenderedPreviewFile("/vault/page.html")).toBe(true);
+    expect(isRenderedPreviewFile("/vault/page.htm")).toBe(true);
+    expect(isRenderedPreviewFile("/vault/logo.svg")).toBe(true);
+  });
+
+  it("returns false for binaries and markdown", () => {
+    expect(isRenderedPreviewFile("/vault/photo.png")).toBe(false);
+    expect(isRenderedPreviewFile("/vault/doc.pdf")).toBe(false);
+    expect(isRenderedPreviewFile("/vault/note.md")).toBe(false);
+    expect(isRenderedPreviewFile(undefined)).toBe(false);
+  });
+
+  it("isSvgFile matches only .svg", () => {
+    expect(isSvgFile("/vault/logo.svg")).toBe(true);
+    expect(isSvgFile("/vault/LOGO.SVG")).toBe(true);
+    expect(isSvgFile("/vault/page.html")).toBe(false);
+    expect(isSvgFile("/vault/photo.png")).toBe(false);
+    expect(isSvgFile(undefined)).toBe(false);
   });
 });
 
