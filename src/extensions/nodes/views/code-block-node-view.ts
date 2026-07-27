@@ -12,7 +12,7 @@ import {
   indentUnit,
   syntaxHighlighting,
 } from "@codemirror/language";
-import { EditorState as CMState } from "@codemirror/state";
+import { EditorState as CMState, Compartment } from "@codemirror/state";
 import {
   EditorView as CMView,
   drawSelection,
@@ -30,6 +30,7 @@ import {
   getLanguageExtension,
   LANGUAGE_OPTIONS,
 } from "../code-block-languages";
+import { registerCodeBlockEditableSync } from "./code-block-cm-registry";
 import { onFirstVisible } from "./lazy-visible";
 
 export class CodeBlockNodeView implements NodeView {
@@ -44,8 +45,12 @@ export class CodeBlockNodeView implements NodeView {
   private lazyDispose: (() => void) | null = null;
   private node: PMNode;
   private pendingSelection: null | { anchor: number; head: number } = null;
+  // §298 §12-4: readOnly must be reconfigurable after creation — vim toggles
+  // PM editable without triggering NodeView.update(), and broadcasts instead.
+  private readOnlyCompartment = new Compartment();
   private settingsUnsub: (() => void) | null = null;
   private tiptapEditor: import("@tiptap/core").Editor;
+  private unregisterEditableSync: (() => void) | null = null;
   private updating = false;
   private view: PMView;
 
@@ -146,6 +151,21 @@ export class CodeBlockNodeView implements NodeView {
     cmContainer.appendChild(placeholder);
     this.lazyDispose = onFirstVisible(wrapper, () => this.ensureCM());
 
+    // §298 §12-4: registry membership for editable broadcasts. If CM is not
+    // created yet the callback is a no-op — deferred initCM reads the live
+    // view.editable at creation time, so it can never observe a stale value.
+    this.unregisterEditableSync = registerCodeBlockEditableSync(
+      view,
+      (editable) => {
+        if (!this.cmView) return;
+        this.cmView.dispatch({
+          effects: this.readOnlyCompartment.reconfigure(
+            CMState.readOnly.of(!editable),
+          ),
+        });
+      },
+    );
+
     // Subscribe to settings changes for live updates
     this.settingsUnsub = useSettingsStore.subscribe((state, prev) => {
       if (
@@ -176,6 +196,10 @@ export class CodeBlockNodeView implements NodeView {
 
   destroy() {
     this.destroyed = true;
+    if (this.unregisterEditableSync) {
+      this.unregisterEditableSync();
+      this.unregisterEditableSync = null;
+    }
     if (this.lazyDispose) {
       this.lazyDispose();
       this.lazyDispose = null;
@@ -449,7 +473,7 @@ export class CodeBlockNodeView implements NodeView {
       CMView.lineWrapping,
       CMState.tabSize.of(tabSize),
       indentUnit.of(" ".repeat(tabSize)),
-      CMState.readOnly.of(!this.view.editable),
+      this.readOnlyCompartment.of(CMState.readOnly.of(!this.view.editable)),
       // Sync CodeMirror → ProseMirror
       CMView.updateListener.of((update: ViewUpdate) => {
         if (!update.docChanged || this.updating) return;
