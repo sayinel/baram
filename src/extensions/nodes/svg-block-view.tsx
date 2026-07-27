@@ -28,6 +28,7 @@ import {
   setSvgRootWidth,
 } from "../../utils/markdown/svg-utils";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
+import { updateNodeAttributesWithVim } from "../plugins/vim/vim-keys";
 import { svgBlockEntryKey } from "./svg-block";
 import { BlockCaption } from "./views/BlockCaption";
 import { MediaToolbar, MediaToolbarButton } from "./views/MediaToolbar";
@@ -153,9 +154,10 @@ export function SvgBlockView({
 
   const closeFullscreen = useCallback(() => {
     setLocalCode(fullscreenCode);
-    updateAttributes({ code: fullscreenCode });
+    // §12-6: fullscreen Close button commit — tagged chrome (design §5b)
+    updateNodeAttributesWithVim(editor, getPos, { code: fullscreenCode });
     setFullscreen(false);
-  }, [fullscreenCode, updateAttributes]);
+  }, [fullscreenCode, editor, getPos]);
 
   const closeViewFullscreen = useCallback(() => {
     setViewFullscreen(false);
@@ -185,7 +187,8 @@ export function SvgBlockView({
 
   // Resize: width persisted as width="N%" on the root <svg> (round-trips).
   const { dragPct, startResize } = useMediaResize(renderRef, (pct) => {
-    updateAttributesRef.current({
+    // §12-6: resize drag commit — tagged chrome (design §5b)
+    updateNodeAttributesWithVim(editor, getPos, {
       code: setSvgRootWidth(codeRef.current, pct),
     });
   });

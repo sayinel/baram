@@ -1,4 +1,3 @@
-// §3.3 Image NodeView — edge-drag resize, caption editing, AI menu
 import { useCallback, useMemo, useRef, useState } from "react";
 
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -8,6 +7,8 @@ import { Captions, Sparkles } from "lucide-react";
 
 import { useEditorStore } from "../../stores/editor/editor";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
+// §3.3 Image NodeView — edge-drag resize, caption editing, AI menu
+import { updateNodeAttributesWithVim } from "../plugins/vim/vim-keys";
 import { MediaToolbar, MediaToolbarButton } from "./views/MediaToolbar";
 import { useMediaResize } from "./views/use-media-resize";
 
@@ -43,7 +44,8 @@ export function ImageView({
   // figure is centered, so the same centre-distance maths apply; width persists
   // to the widthPercent attr (already serialized to `<img width="X%">`).
   const { dragPct, startResize } = useMediaResize(containerRef, (pct) => {
-    updateAttributes({ widthPercent: pct });
+    // §12-6: resize drag commit — tagged chrome (design §5b)
+    updateNodeAttributesWithVim(editor, getPos, { widthPercent: pct });
   });
   const effectiveWidth = dragPct ?? widthPercent;
 

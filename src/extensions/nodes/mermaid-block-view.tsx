@@ -17,6 +17,7 @@ import {
   sanitizeMermaidSvg,
 } from "../../utils/markdown/mermaid-utils";
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
+import { updateNodeAttributesWithVim } from "../plugins/vim/vim-keys";
 import { mermaidBlockEntryKey } from "./mermaid-block";
 import { BlockCaption } from "./views/BlockCaption";
 import { onFirstVisible } from "./views/lazy-visible";
@@ -247,7 +248,8 @@ export function MermaidBlockView({
   const widthPercent = (node.attrs.width as null | number) ?? null;
   const caption = (node.attrs.caption as null | string) ?? null;
   const { dragPct, startResize } = useMediaResize(renderRef, (pct) => {
-    updateAttributesRef.current({ width: pct });
+    // §12-6: resize drag commit — tagged chrome (design §5b)
+    updateNodeAttributesWithVim(editor, getPos, { width: pct });
   });
   const effectivePct = dragPct ?? widthPercent;
   const commitCaption = useCallback(
@@ -268,9 +270,10 @@ export function MermaidBlockView({
   const closeFullscreen = useCallback(() => {
     // Save fullscreen changes back
     setLocalCode(fullscreenCode);
-    updateAttributes({ code: fullscreenCode });
+    // §12-6: fullscreen Close button commit — tagged chrome (design §5b)
+    updateNodeAttributesWithVim(editor, getPos, { code: fullscreenCode });
     setFullscreen(false);
-  }, [fullscreenCode, updateAttributes]);
+  }, [fullscreenCode, editor, getPos]);
 
   const detectedType = detectMermaidType(localCode);
 

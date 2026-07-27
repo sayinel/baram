@@ -2,6 +2,7 @@ import type { MenuItem } from "./context-menu-types";
 // §4.8 Context Menu — mermaid block menu builder
 import type { Editor } from "@tiptap/react";
 
+import { withVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
 import {
   copyMermaidPng,
   copyMermaidSource,
@@ -63,7 +64,7 @@ export function buildMermaidBlockMenu(
       action: () => {
         const { tr } = editor.state;
         tr.delete(pmPos, pmPos + node.nodeSize);
-        editor.view.dispatch(tr);
+        editor.view.dispatch(withVimExternalEdit(tr));
       },
     },
   ];

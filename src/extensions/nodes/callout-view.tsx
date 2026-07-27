@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 
 import { showNodeViewAIMenu } from "../../utils/nodeview-ai-menu";
+import { updateNodeAttributesWithVim } from "../plugins/vim/vim-keys";
 
 /** Callout type definition with Lucide icon and display label */
 interface CalloutTypeDef {
@@ -65,8 +66,9 @@ export function CalloutView({
   const pickerRef = useRef<HTMLDivElement>(null);
 
   const toggleCollapsed = useCallback(() => {
-    updateAttributes({ collapsed: !collapsed });
-  }, [collapsed, updateAttributes]);
+    // §12-6: chrome control — tagged (design §5b)
+    updateNodeAttributesWithVim(editor, getPos, { collapsed: !collapsed });
+  }, [collapsed, editor, getPos]);
 
   const handleTitleDoubleClick = useCallback(() => {
     if (!editor.isEditable) return;
@@ -88,10 +90,10 @@ export function CalloutView({
 
   const handleTypeSelect = useCallback(
     (newType: string) => {
-      updateAttributes({ type: newType });
+      updateNodeAttributesWithVim(editor, getPos, { type: newType });
       setIsPickerOpen(false);
     },
-    [updateAttributes],
+    [editor, getPos],
   );
 
   useEffect(() => {

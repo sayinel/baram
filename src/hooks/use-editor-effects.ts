@@ -8,6 +8,7 @@ import { useShallow } from "zustand/shallow";
 
 import { dispatchSetSearchTerm } from "../extensions/plugins/find-replace";
 import { replaceEditorStateWithVim } from "../extensions/plugins/vim/replace-editor-state";
+import { withVimExternalEdit } from "../extensions/plugins/vim/vim-keys";
 import { markdownToProsemirror } from "../pipeline/md-to-pm";
 import { isFileTab } from "../stores/editor/editor";
 import { useEditorStore } from "../stores/editor/editor";
@@ -64,7 +65,9 @@ export function useEditorEffects({
         const doc = markdownToProsemirror(content, editor.schema);
         const slice = doc.content;
         editor.view.dispatch(
-          editor.state.tr.insert(from, slice).scrollIntoView(),
+          withVimExternalEdit(
+            editor.state.tr.insert(from, slice).scrollIntoView(),
+          ),
         );
         editor.view.focus();
       }

@@ -22,6 +22,7 @@ import {
   type AIAction,
   getActionsForMode,
 } from "../../utils/contextual-ai-actions";
+import { registerEditorMutationTask } from "../../utils/editor/mutation-tasks";
 import { showFieldDialog } from "../../utils/field-dialog";
 
 interface FloatingToolbarProps {
@@ -244,12 +245,16 @@ export function FloatingToolbar({ editor }: FloatingToolbarProps) {
             chainWithVimExternalEdit(editor).focus().unsetLink().run();
             return;
           }
+          // §12-9b: dialog resolution is an async gap (design §5c)
+          const task = registerEditorMutationTask(editor.view);
           const result = await showFieldDialog({
             title: "Insert Link",
             fields: [{ key: "url", label: "URL", placeholder: "https://..." }],
           });
-          if (!result?.url) {
-            editor.commands.focus();
+          const live = task.isLive();
+          task.finish();
+          if (!result?.url || !live) {
+            if (live) editor.commands.focus();
             return;
           }
           chainWithVimExternalEdit(editor)

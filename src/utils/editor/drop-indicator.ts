@@ -1,3 +1,7 @@
+import type { Editor } from "@tiptap/core";
+import type { Node as PMNode } from "@tiptap/pm/model";
+import type { EditorView } from "@tiptap/pm/view";
+
 // Drop indicator bar — shows the exact insertion line when dragging images into the editor.
 // DOM-managed (not React) to avoid re-renders on every mousemove/over event.
 //
@@ -5,9 +9,7 @@
 // - Inserting between top-level blocks (paragraphs, headings, etc.)
 // - Inserting between list items at any nesting depth (splits the list on insertion)
 // - Reliable DOM rect scanning (no posAtCoords — avoids WKWebView native drag issues)
-import type { Editor } from "@tiptap/core";
-import type { Node as PMNode } from "@tiptap/pm/model";
-import type { EditorView } from "@tiptap/pm/view";
+import { withVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
 
 export interface InsertTarget {
   indicatorLeft: number;
@@ -61,12 +63,12 @@ export function insertNodeAtPos(
       }
     }
 
-    editor.view.dispatch(tr);
+    editor.view.dispatch(withVimExternalEdit(tr));
     return betweenLists + node.nodeSize;
   }
 
   tr.insert(pos, node);
-  editor.view.dispatch(tr);
+  editor.view.dispatch(withVimExternalEdit(tr));
   return pos + node.nodeSize;
 }
 

@@ -25,6 +25,7 @@ import { TextSelection } from "@tiptap/pm/state";
 
 import { useSettingsStore } from "../../../stores/settings/store";
 import { showNodeViewAIMenu } from "../../../utils/nodeview-ai-menu";
+import { withVimExternalEdit } from "../../plugins/vim/vim-keys";
 import { getHighlightStyle } from "../code-block-highlight";
 import {
   getLanguageExtension,
@@ -108,7 +109,7 @@ export class CodeBlockNodeView implements NodeView {
         ...this.node.attrs,
         language: select.value || null,
       });
-      this.view.dispatch(tr);
+      this.view.dispatch(withVimExternalEdit(tr));
     });
 
     header.appendChild(select);

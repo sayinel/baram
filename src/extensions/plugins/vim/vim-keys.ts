@@ -67,6 +67,31 @@ export function isVimExternalEdit(tr: Transaction): boolean {
 }
 
 /**
+ * Tagged replacement for the NodeView `updateAttributes` prop, whose
+ * internal dispatch cannot carry provenance. Chrome controls inside
+ * NodeViews (collapse toggles, pickers, resize commits) use this;
+ * focus-local input islands keep the untagged prop (design §5b/§4).
+ */
+export function updateNodeAttributesWithVim(
+  editor: Editor,
+  getPos: () => number | undefined,
+  attrs: Record<string, unknown>,
+): void {
+  const pos = getPos();
+  if (typeof pos !== "number") return;
+  const node = editor.state.doc.nodeAt(pos);
+  if (!node) return;
+  editor.view.dispatch(
+    withVimExternalEdit(
+      editor.state.tr.setNodeMarkup(pos, undefined, {
+        ...node.attrs,
+        ...attrs,
+      }),
+    ),
+  );
+}
+
+/**
  * Tag a transaction as an explicit user command. Chainable usage inside
  * Tiptap (one chain = one transaction, so the whole chain is covered):
  *

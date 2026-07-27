@@ -60,7 +60,7 @@ import { type AppendHandleRef, useSourceMode } from "./hooks/use-source-mode";
 import { useTabSwitching } from "./hooks/use-tab-switching";
 import { useZoom } from "./hooks/use-zoom";
 import { useTranslation } from "./i18n/useTranslation";
-import { llmComplete, readFile, writeFile } from "./ipc/invoke";
+import { llmCancel, llmComplete, readFile, writeFile } from "./ipc/invoke";
 import { mergeTexts } from "./ipc/snapshot";
 import { markdownToProsemirror } from "./pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "./pipeline/pm-to-md";
@@ -86,6 +86,7 @@ import { useSnapshotStore } from "./stores/editor/snapshot";
 import { useFileStore } from "./stores/file/file";
 import { useSettingsStore } from "./stores/settings/store";
 import { useUIStore } from "./stores/ui/ui";
+import { registerEditorMutationTask } from "./utils/editor/mutation-tasks";
 import { initPerfTrace, instrumentEditor } from "./utils/editor/perf-trace";
 import {
   getLanguageForFile,
@@ -1103,12 +1104,15 @@ function SmartTemplateDialogWrapper({
       let accumulated = "";
 
       void (async () => {
+        // §298 §12-9b (design §5c): the insert lands when the stream ends —
+        // a dead task (state install / vim mode exit) must not dispatch.
+        const task = registerEditorMutationTask(editor.view);
         const cleanupFn = await createLLMStream(requestId, {
           onToken: (token) => {
             accumulated += token;
           },
           onDone: () => {
-            if (accumulated.trim()) {
+            if (accumulated.trim() && task.isLive()) {
               const doc = markdownToProsemirror(accumulated, editor.schema);
               const { from } = editor.state.selection;
               editor.view.dispatch(
@@ -1120,6 +1124,10 @@ function SmartTemplateDialogWrapper({
           onError: (error) => {
             logger.error("SmartTemplate error:", error);
           },
+        });
+        task.addCleanup(() => {
+          llmCancel(requestId).catch(() => {});
+          cleanupFn();
         });
         try {
           await llmComplete(
@@ -1136,6 +1144,7 @@ function SmartTemplateDialogWrapper({
           logger.error(e);
         } finally {
           cleanupFn();
+          task.finish();
         }
       })();
     },

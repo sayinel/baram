@@ -4,7 +4,10 @@ import type { Node as PmNode } from "@tiptap/pm/model";
 import { Selection } from "@tiptap/pm/state";
 
 // §4.8 "Turn into" block-type conversion builder for the block handle menu.
-import { chainWithVimExternalEdit } from "../../extensions/plugins/vim/vim-keys";
+import {
+  chainWithVimExternalEdit,
+  withVimExternalEdit,
+} from "../../extensions/plugins/vim/vim-keys";
 
 export interface TurnIntoItem {
   isActive: boolean;
@@ -44,7 +47,7 @@ function runMath(editor: Editor, pos: number): void {
     pos + node.nodeSize,
     mathType.create({ formula: node.textContent }),
   );
-  editor.view.dispatch(tr);
+  editor.view.dispatch(withVimExternalEdit(tr));
 }
 
 // Order mirrors Notion: text → headings → lists → toggles → other blocks, with a
