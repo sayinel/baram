@@ -254,6 +254,22 @@ function createEventsAPI(disposables: Disposable[]): EventsAPI {
 
 let editorInstance: null | PluginEditorHandle = null;
 
+/**
+ * Why the Tiptap document is not the tab's authoritative content right now, or `null`.
+ *
+ * §260 Phase 4b security review (LOW-3) — an editor instance being present does not mean
+ * it holds what the user is editing. In Source Mode the user edits CodeMirror while the
+ * Tiptap doc keeps its pre-toggle content (`use-source-mode.ts`), and for a source-mode or
+ * non-markdown tab `handleSave` writes `sourceContentRef` and ignores the Tiptap doc
+ * entirely (`use-file-operations.ts`). A plugin reading through this surface would then
+ * get a STALE document, and a write would be silently discarded on the next toggle or
+ * save — a read-modify-write losing the user's edits with no error anywhere.
+ *
+ * A string rather than a boolean so the refusal can say which case it is: a plugin that
+ * cannot distinguish "wrong surface" from "no editor" cannot tell the user what to do.
+ */
+let editorSurfaceBlockedReason: null | string = null;
+
 /** Create an ExtensionContext with capability-gated API access */
 // §259 SECURITY LIMITATION — this capability gate is NOT a trust boundary.
 //
@@ -332,6 +348,19 @@ export function createExtensionContext(
   };
 }
 
+/**
+ * The live editor, or `null` before one is mounted (and in a §89 file-mode window until
+ * its editor is ready). Exported for the sandboxed tier's host bridge, which needs the
+ * document and the schema rather than the trusted tier's convenience methods.
+ */
+/**
+ * Why the plugin editor surface is unusable right now, or `null` when the Tiptap document
+ * really is the tab's content. See `editorSurfaceBlockedReason`.
+ */
+export function editorSurfaceBlocked(): null | string {
+  return editorSurfaceBlockedReason;
+}
+
 /** Emit a plugin event from the host */
 export function emitPluginEvent(event: string, ...args: unknown[]): void {
   eventListeners.get(event)?.forEach((handler) => {
@@ -353,11 +382,6 @@ export async function executePluginCommand(
   return handler(...args);
 }
 
-/**
- * The live editor, or `null` before one is mounted (and in a §89 file-mode window until
- * its editor is ready). Exported for the sandboxed tier's host bridge, which needs the
- * document and the schema rather than the trusted tier's convenience methods.
- */
 export function getEditorInstance(): null | PluginEditorHandle {
   return editorInstance;
 }
@@ -400,6 +424,14 @@ export function registerHostCommandHandler(
 
 export function setEditorInstance(editor: unknown): void {
   editorInstance = editor as null | PluginEditorHandle;
+}
+
+/**
+ * Record why the Tiptap document is not the active tab's content, or `null` to clear it.
+ * Called by the app whenever the surface changes; see `editorSurfaceBlockedReason`.
+ */
+export function setEditorSurfaceBlocked(reason: null | string): void {
+  editorSurfaceBlockedReason = reason;
 }
 
 function createEditorAPI(readonly: boolean): EditorAPI {

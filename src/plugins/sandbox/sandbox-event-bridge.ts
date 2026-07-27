@@ -104,11 +104,16 @@ export function replayCurrentState(
   currentFile: null | string,
 ): void {
   if (!subscriber.capabilities.includes("events") || !currentFile) return;
+  const kind = EVENT_PAYLOADS[REPLAYED_EVENT];
+  // §260 Phase 4b security review (INFO) — by construction, not by inspection. `translate`
+  // returns `args` UNTOUCHED for `"none"`, so a `file:open` rule mis-set to `"none"` would
+  // make this replay hand the sandbox a raw absolute path — the one thing the translation
+  // exists to prevent. The live path has the same exposure to a mis-set record and cannot
+  // be closed this cheaply, but there is exactly one replayed event, so here it is free.
+  if (kind !== "path") return;
   // Through the SAME record and the same translator as a real event, so a replay can never
   // carry a shape a live `file:open` would not.
-  const payload = translate(REPLAYED_EVENT, EVENT_PAYLOADS[REPLAYED_EVENT], [
-    currentFile,
-  ]);
+  const payload = translate(REPLAYED_EVENT, kind, [currentFile]);
   if (!payload) return;
   subscriber.session.deliverEvent(REPLAYED_EVENT, payload);
 }

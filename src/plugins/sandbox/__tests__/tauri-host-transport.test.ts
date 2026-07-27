@@ -232,6 +232,35 @@ describe("createHostTransport (§260 host end)", () => {
     expect(seen).toHaveLength(6);
   });
 
+  it("caps the document a plugin may install, at the frame", async () => {
+    // §260 Phase 4b security review (MEDIUM-2) — `editor_set_markdown` is parsed and then
+    // replaces the whole document in one transaction (a full re-render with NodeView
+    // construction, measured in tens of seconds for a large document). Deferring to Rust's
+    // 8 MiB report cap let one frame hang the app, 150 times a second. Refused HERE, before
+    // the parse and the transaction, like any other malformed frame.
+    const transport = await createHostTransport("alpha");
+    const seen: SandboxToHost[] = [];
+    transport.onMessage((m) => seen.push(m));
+
+    const send = (markdown: string) =>
+      deliver({
+        pluginId: "alpha",
+        msg: {
+          type: "hostRequest",
+          requestId: "r",
+          request: { kind: "editor_set_markdown", markdown },
+        },
+      });
+
+    // Comfortably larger than the project's own 10,000-line target, so a real document is
+    // never the thing this refuses.
+    send("x".repeat(2 * 1024 * 1024));
+    expect(seen).toHaveLength(1);
+
+    send("x".repeat(2 * 1024 * 1024 + 1));
+    expect(seen).toHaveLength(1);
+  });
+
   it("swallows a rejected send — the sandbox may not have connected yet", async () => {
     const transport = await createHostTransport("alpha");
     invoke.mockRejectedValueOnce(new Error("sandbox is not connected"));

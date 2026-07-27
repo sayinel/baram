@@ -116,9 +116,10 @@ const HOST_REQUEST_VALIDATORS: {
   editor_get_selection: () => true,
   editor_insert_text: (r) => isRenderableText(r.text),
   // Not `isRenderableText`: a whole document legitimately exceeds the 4 KiB bound that
-  // exists for one-line UI strings. The size limit for this one is Rust's 8 MiB report
-  // cap, which already refused the frame before it reached this validator.
-  editor_set_markdown: (r) => typeof r.markdown === "string",
+  // exists for one-line UI strings. Its own cap instead — see `MAX_SET_MARKDOWN_CHARS`.
+  editor_set_markdown: (r) =>
+    typeof r.markdown === "string" &&
+    r.markdown.length <= MAX_SET_MARKDOWN_CHARS,
   ui_notify: (r) =>
     isRenderableText(r.message) &&
     (r.type === undefined ||
@@ -145,6 +146,19 @@ const HOST_REQUEST_LOOKUP = new Map(Object.entries(HOST_REQUEST_VALIDATORS));
  * any other malformed frame.
  */
 const MAX_UI_TEXT_CHARS = 4096;
+
+/**
+ * §260 Phase 4b security review (MEDIUM-2) — the largest document a plugin may install.
+ *
+ * `editor_set_markdown` is parsed and then replaces the whole document in one transaction,
+ * i.e. a full ProseMirror re-render with NodeView construction, which this project has
+ * measured in the tens of seconds for a large document. Deferring to Rust's 8 MiB report
+ * cap meant one frame could hang the app for a long time, 150 times a second. Two MiB is
+ * roughly seven times the project's own 10,000-line target (§8.4), so it bounds a
+ * pathological write without touching a real one, and it is refused HERE — before the
+ * parse, the budget and the transaction — like any other malformed frame.
+ */
+const MAX_SET_MARKDOWN_CHARS = 2 * 1024 * 1024;
 
 /** `AICompleteOptions`, or nothing. Type-checked only — a plugin may legitimately
  *  ask for a large `maxTokens`; that is within its `ai` grant, and the in-flight

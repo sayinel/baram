@@ -458,6 +458,25 @@ function App() {
     handleSourceChange,
   } = useSourceMode({ editor: activeEditor, appendHandleRef, pool: keepalive });
 
+  // §260 Phase 4b security review (LOW-3) — tell the plugin editor API when the Tiptap
+  // document is NOT what the active tab holds. An editor instance stays mounted in all of
+  // these states, so "an editor exists" is not the same question: in Source Mode the user
+  // edits CodeMirror while the Tiptap doc keeps its pre-toggle content, and `handleSave`
+  // writes `sourceContentRef` for a source-mode or non-markdown tab. Without this a plugin
+  // reads a stale document and its writes are dropped on the next toggle or save — silent
+  // data loss for the user, from an API that reported success.
+  useEffect(() => {
+    pluginLoader.setEditorSurfaceBlocked(
+      isGraphTabActive || isPdfTab
+        ? "no document is open in the editor"
+        : isSourceMode
+          ? "the document is open in source mode, so the editor is not its content"
+          : isCodeFile
+            ? "the active tab is not a markdown document"
+            : null,
+    );
+  }, [isCodeFile, isGraphTabActive, isPdfTab, isSourceMode]);
+
   // Auto-save for non-MD code files (debounced write when dirty)
   const { autoSave, autoSaveDelay } = useSettingsStore(
     useShallow((s) => ({

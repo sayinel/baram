@@ -674,12 +674,47 @@ pub async fn plugin_sandbox_register(
     capabilities: Vec<String>,
     install_path: String,
     authorizer: tauri::State<'_, plugin::PluginAuthorizer>,
+    staged: tauri::State<'_, plugin::StagedPayloads>,
 ) -> Result<(), String> {
-    host_window_guard(window.label())?;
+    register_sandbox(
+        window.label(),
+        &plugin_id,
+        capabilities,
+        install_path,
+        &authorizer,
+        &staged,
+    )
+}
+
+/// Host-only: bind a sandbox's grants, and clear anything the PREVIOUS life of that
+/// label left parked.
+///
+/// §260 Phase 4b security review (LOW-1) — `deregister_sandbox` already forgets the
+/// staged slot, but deregister is not the only way a session ends: a killed webview
+/// leaves the slot behind, and `admit_staging`'s registration check and
+/// `StagedPayloads::stage` take separate locks, so a `check(registered) → forget →
+/// stage` interleaving across tokio workers can park a document for a plugin that is
+/// no longer registered. `StagedRead` needs no capability, so the next instance of the
+/// same id — a dev reload, a disable/enable — would inherit that document even if its
+/// reloaded manifest declares no editor grant at all.
+///
+/// Clearing HERE makes the invariant hold by construction rather than by ordering: a
+/// staged payload can only ever be read within the registration that produced it.
+fn register_sandbox(
+    caller_label: &str,
+    plugin_id: &str,
+    capabilities: Vec<String>,
+    install_path: String,
+    authorizer: &plugin::PluginAuthorizer,
+    staged: &plugin::StagedPayloads,
+) -> Result<(), String> {
+    host_window_guard(caller_label)?;
+    let label = format!("plugin-{plugin_id}");
+    staged.forget(&label);
     // §260 3c-2b — the host binds the directory it resolved and validated together
     // with the grants, so `SourceRead` reads the code that matches THIS manifest (a
     // dev folder legitimately shadows an installed copy of the same id).
-    authorizer.register(format!("plugin-{plugin_id}"), capabilities, install_path);
+    authorizer.register(label, capabilities, install_path);
     Ok(())
 }
 
@@ -859,11 +894,43 @@ pub async fn plugin_call(
     result
 }
 
-/// Tauri's direct-eval threshold: at or above this, an `ipc::Channel` payload — and
-/// an invoke RESULT travels as one — is staged in the app-global `ChannelDataIpcQueue`
-/// and fetched via the ACL-exempt `FETCH_CHANNEL_DATA_COMMAND` with a sequential id
-/// (see `capabilities/plugin-sandbox.json`).
+/// Tauri's direct-eval threshold: **at or above** this, an `ipc::Channel` payload is
+/// staged in the app-global `ChannelDataIpcQueue` and fetched via the ACL-exempt
+/// `FETCH_CHANNEL_DATA_COMMAND` with a sequential id (see
+/// `capabilities/plugin-sandbox.json`). Tauri's own condition is
+/// `json_string.len() >= MAX_JSON_DIRECT_EXECUTE_THRESHOLD` — its direct-eval arms guard
+/// on `<` — so the boundary value itself is queued.
+///
+/// §260 Phase 4b security review (LOW-2) — scope, because an earlier version of this
+/// comment overstated it. `Channel::send`, i.e. `plugin_sandbox_send`, has NO platform
+/// exclusion, so the host→sandbox push is queue-bound everywhere and that is what
+/// justifies staging on every platform. An invoke RESULT is narrower: only the
+/// postMessage IPC handler can queue one, and it is compiled out on macOS/iOS, while the
+/// custom-protocol handler returns the body as an HTTP response and never queues. The
+/// predicate below therefore OVER-reports on macOS, which is the harmless direction for a
+/// dev warning.
 const CHANNEL_QUEUE_THRESHOLD: usize = 8 * 1024;
+
+/// Would tauri route this value through the app-global channel-data queue?
+///
+/// Both halves of tauri's condition, in one place: the payload reaches
+/// `CHANNEL_QUEUE_THRESHOLD` **and** its JSON starts with `{` or `[`. Extracted from the
+/// dev warning below so the property can be ASSERTED rather than described — §260 Phase 4b
+/// depends on it (a staged document is delivered as a scalar string precisely so this
+/// returns false), and a comment claiming that is one refactor away from being wrong.
+///
+/// The cap passed to the counter is one BELOW the threshold: `serialized_len_capped`
+/// admits a payload of exactly its cap, so passing the threshold itself implemented `>`
+/// where tauri means `>=` and under-reported a payload of exactly 8192 bytes (§260 Phase
+/// 4b security review, LOW-2).
+fn takes_the_shared_queue(value: &serde_json::Value) -> bool {
+    let json_object_or_array = matches!(
+        value,
+        serde_json::Value::Array(_) | serde_json::Value::Object(_)
+    );
+    json_object_or_array
+        && plugin::serialized_len_capped(value, CHANNEL_QUEUE_THRESHOLD - 1).is_none()
+}
 
 /// §260 3c-2c code review (MEDIUM-2) — warn in dev when a broker RESULT gets big
 /// enough to enter that shared queue.
@@ -879,21 +946,6 @@ const CHANNEL_QUEUE_THRESHOLD: usize = 8 * 1024;
 /// legitimate op, and the real fix is chunking (owed with Phase 4's document
 /// transforms, which will exceed this routinely). Measured with the short-circuiting
 /// counter so the check never allocates the payload twice.
-/// Would tauri route this value through the app-global channel-data queue?
-///
-/// Both halves of tauri's condition, in one place: the payload reaches
-/// `CHANNEL_QUEUE_THRESHOLD` **and** its JSON starts with `{` or `[`. Extracted from the
-/// dev warning below so the property can be ASSERTED rather than described — §260 Phase 4b
-/// depends on it (a staged document is delivered as a scalar string precisely so this
-/// returns false), and a comment claiming that is one refactor away from being wrong.
-fn takes_the_shared_queue(value: &serde_json::Value) -> bool {
-    let json_object_or_array = matches!(
-        value,
-        serde_json::Value::Array(_) | serde_json::Value::Object(_)
-    );
-    json_object_or_array && plugin::serialized_len_capped(value, CHANNEL_QUEUE_THRESHOLD).is_none()
-}
-
 #[cfg(debug_assertions)]
 fn warn_if_result_enters_the_shared_queue(value: &serde_json::Value) {
     if takes_the_shared_queue(value) {
@@ -1177,6 +1229,84 @@ mod tests {
             takes_the_shared_queue(&wrapped),
             "an over-threshold object must be recognised as queue-bound"
         );
+    }
+
+    /// §260 Phase 4b security review (LOW-2) — the predicate must agree with tauri at the
+    /// BOUNDARY, not one byte past it: tauri queues on `len >= threshold`, and the earlier
+    /// form implemented `>` because `serialized_len_capped` admits exactly its cap.
+    #[test]
+    fn the_queue_predicate_matches_tauri_at_the_exact_threshold() {
+        // Build an array whose serialization is exactly CHANNEL_QUEUE_THRESHOLD bytes.
+        // `["<pad>"]` is 2 brackets + 2 quotes = 4 bytes of framing.
+        let exact = serde_json::json!([("x".repeat(CHANNEL_QUEUE_THRESHOLD - 4))]);
+        assert_eq!(
+            serde_json::to_string(&exact).unwrap().len(),
+            CHANNEL_QUEUE_THRESHOLD,
+            "the fixture must sit exactly on the boundary or this test proves nothing"
+        );
+        assert!(
+            takes_the_shared_queue(&exact),
+            "a payload of exactly the threshold IS queued by tauri"
+        );
+
+        // One byte under is direct-eval'd, so the predicate must say so — otherwise the
+        // fix above would have been "always true" rather than "off by one".
+        let under = serde_json::json!([("x".repeat(CHANNEL_QUEUE_THRESHOLD - 5))]);
+        assert_eq!(
+            serde_json::to_string(&under).unwrap().len(),
+            CHANNEL_QUEUE_THRESHOLD - 1
+        );
+        assert!(!takes_the_shared_queue(&under));
+    }
+
+    /// §260 Phase 4b security review (LOW-1) — a new registration for a label must not
+    /// inherit the previous one's staged document.
+    ///
+    /// The reachable path is a dev reload or a disable→enable: `StagedRead` requires no
+    /// capability, so without this the reloaded instance's first pull would return the
+    /// PREVIOUS session's document even if its manifest now declares no editor grant.
+    #[test]
+    fn re_registering_a_plugin_clears_a_document_its_previous_life_left_staged() {
+        let authorizer = plugin::PluginAuthorizer::new();
+        let staged = plugin::StagedPayloads::new();
+
+        register_sandbox(
+            "main",
+            "alpha",
+            vec!["editor".into()],
+            "/p/a".into(),
+            &authorizer,
+            &staged,
+        )
+        .unwrap();
+        staged.stage("plugin-alpha".into(), "# the user's document".into());
+
+        // The webview dies without a deregister — or a stage lands just after one.
+        register_sandbox(
+            "main",
+            "alpha",
+            vec!["statusbar".into()],
+            "/p/a".into(),
+            &authorizer,
+            &staged,
+        )
+        .unwrap();
+
+        assert_eq!(
+            staged.take("plugin-alpha"),
+            None,
+            "the reloaded instance must not inherit the previous session's document"
+        );
+        // Still host-only, and the grants really were replaced.
+        assert!(register_sandbox(
+            "plugin-alpha",
+            "alpha",
+            vec![],
+            "/p/a".into(),
+            &authorizer,
+            &staged
+        )
+        .is_err());
     }
 
     /// §260 Phase 4b — staging is host-only, fails closed for an unregistered plugin, and
