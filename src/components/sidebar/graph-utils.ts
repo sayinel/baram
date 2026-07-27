@@ -67,11 +67,6 @@ export interface LocalGraphDirections {
 }
 
 /**
- * Transform a LinkGraph (from Rust IPC) into cytoscape-compatible elements.
- * Deduplicates edges and computes node degrees.
- * Creates ghost nodes for edge targets that are not in graph.nodes.
- */
-/**
  * §87 Map from node ID (file path) to vault context ID.
  * Used to detect cross-vault edges in multi-vault graph mode.
  */
@@ -191,6 +186,11 @@ export function nodeSize(degree: number, minSize = 20, maxSize = 60): number {
   return Math.min(minSize + Math.log2(degree + 1) * 10, maxSize);
 }
 
+/**
+ * Transform a LinkGraph (from Rust IPC) into cytoscape-compatible elements.
+ * Deduplicates edges and computes node degrees.
+ * Creates ghost nodes for edge targets that are not in graph.nodes.
+ */
 export function toGraphElements(
   graph: LinkGraph,
   rootPath?: string,

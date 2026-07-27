@@ -231,14 +231,19 @@ export function startSandboxClient(
   // that bypasses this and calls the broker directly can only confuse its OWN reads — the
   // slot is keyed by window label, so no other plugin is reachable either way.
   let stagedReads: Promise<unknown> = Promise.resolve();
-  const readStaged = async (request: SandboxHostRequest): Promise<string> => {
+  const readStaged = async (
+    request: SandboxHostRequest,
+  ): Promise<{ payload: string; value: unknown }> => {
     const run = async () => {
-      await hostRequest(request);
+      // The response VALUE is kept, not discarded: `getSelection` answers with its
+      // positions inline (two numbers) and stages only the text, so the caller needs both
+      // halves. `getMarkdown` has no inline half and ignores it.
+      const value = await hostRequest(request);
       const payload = await broker({ kind: "staged_read" });
       if (typeof payload !== "string") {
         throw new Error("the host staged a non-string payload");
       }
-      return payload;
+      return { payload, value };
     };
     // The CHAIN is what must not stay poisoned, so it is the chain that swallows: `next`
     // is handed to the caller with its rejection intact, while `stagedReads` continues
@@ -251,13 +256,18 @@ export function startSandboxClient(
   };
 
   const editor: SandboxEditorAPI = {
-    getMarkdown: () => readStaged({ kind: "editor_get_markdown" }),
-    getSelection: () =>
-      hostRequest({ kind: "editor_get_selection" }) as Promise<{
-        from: number;
-        text: string;
-        to: number;
-      }>,
+    getMarkdown: async () =>
+      (await readStaged({ kind: "editor_get_markdown" })).payload,
+    // Staged like `getMarkdown`, because Cmd+A makes this a whole-document read too and an
+    // inline answer over 8 KiB enters tauri's shared channel-data queue (code review I1).
+    // Positions come back in the response; only the text takes the staged path.
+    getSelection: async () => {
+      const { payload, value } = await readStaged({
+        kind: "editor_get_selection",
+      });
+      const { from, to } = value as { from: number; to: number };
+      return { from, text: payload, to };
+    },
     insertText: async (text) => {
       await hostRequest({ kind: "editor_insert_text", text });
     },

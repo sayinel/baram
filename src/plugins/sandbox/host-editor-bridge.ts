@@ -64,23 +64,38 @@ export const DOCUMENT_BUDGET_BURST = 4 * 1024 * 1024;
 export const DOCUMENT_BUDGET_REFILL_PER_SECOND = 512 * 1024;
 
 /**
- * Writes get a SECOND, count-based meter, because their cost is not in their payload.
+ * The floor on what one write transaction costs, for a document small enough that its own
+ * size would price it at almost nothing.
  *
- * `dev/impl-notes/large-file-perf-c4-handoff.md` measured it: `view.dispatch` forces a
- * synchronous layout of the whole contenteditable for selection sync — ~53 ms on a huge
- * document versus ~4 ms on a small one, linear in RENDERED BLOCK COUNT rather than in the
- * size of the edit. So a 4 KiB `insertText` at the transport's 150/s is ~8 seconds of
- * layout per second of wall clock: a hard freeze from a tiny frame. Pricing the payload
- * cannot see that, and pricing it at the document's size would make incremental writing —
- * the main use of the `editor` grant — unusable.
+ * §260 Phase 4b review — a write's cost is NOT in its payload. The C4 handoff notes
+ * (`dev/impl-notes/large-file-perf-c4-handoff.md`) measured `view.dispatch` forcing a
+ * synchronous layout of the whole contenteditable for selection sync: ~53 ms on a huge
+ * document versus ~4 ms on a small one, i.e. linear in RENDERED BLOCK COUNT. So a 4 KiB
+ * `insertText` at the transport's 150/s is seconds of layout per second of wall clock — a
+ * hard freeze from a tiny frame, invisible to any payload-based charge.
  *
- * 5/s caps the worst document at ~26% of the thread and costs legitimate use nothing:
- * `insertText` is one per user action, not one per keystroke.
+ * Charging the DOCUMENT's size expresses that measurement directly, and is why this is a
+ * floor rather than a flat rate. A flat rate was the first attempt and was wrong in both
+ * directions at once: it overcharged a 1 KB note 32x what READING that note costs, while
+ * still under-pricing a 500 KB one. Scaling with the document gives ~64 writes/s on a
+ * scratch note and ~1/s on a large file — throttling where the freeze actually is.
+ *
+ * ‼️ Streaming, stated because the natural composition hits it: `ctx.ai.stream` +
+ * `insertText` per token runs at 20-80/s, which this admits on a small note and refuses on
+ * a large document. That is deliberate — per-token insertion is already wrong there, since
+ * ProseMirror groups undo by TRANSACTION, so a thousand tokens would be a thousand Cmd+Z
+ * presses. Buffer and insert in batches. `SandboxEditorAPI.insertText` says so too.
  */
-export const WRITE_BURST = 20;
-export const WRITE_PER_SECOND = 5;
+const WRITE_TRANSACTION_FLOOR = 8 * 1024;
 
 export interface EditorRequestHandlerOptions {
+  /**
+   * Test seam, like `now`: the production values are MiB-scale, so exercising the meter
+   * against them would need MiB-scale fixtures — which cost seconds each under the full
+   * suite and made one test time out. Behaviour is pinned here with small numbers; the
+   * production values are a tuning decision, documented with their derivation above.
+   */
+  budget?: { burst: number; refillPerSecond: number; writeFloor?: number };
   /** Grants recorded at install, as the manifest declared them. */
   capabilities: readonly PluginCapability[];
   /** Injectable for tests; defaults to the live editor. */
@@ -100,6 +115,10 @@ export function createEditorRequestHandler(
   options: EditorRequestHandlerOptions,
 ): (request: EditorRequest) => Promise<unknown> {
   const {
+    budget: limits = {
+      burst: DOCUMENT_BUDGET_BURST,
+      refillPerSecond: DOCUMENT_BUDGET_REFILL_PER_SECOND,
+    },
     capabilities,
     editor = getEditorInstance,
     now = () => Date.now(),
@@ -109,15 +128,9 @@ export function createEditorRequestHandler(
   } = options;
   const budget = createMeter(
     now,
-    DOCUMENT_BUDGET_BURST,
-    DOCUMENT_BUDGET_REFILL_PER_SECOND,
+    limits.burst,
+    limits.refillPerSecond,
     "document budget",
-  );
-  const writes = createMeter(
-    now,
-    WRITE_BURST,
-    WRITE_PER_SECOND,
-    "write budget",
   );
   const requireCapability = createCapabilityGate(
     pluginId,
@@ -161,27 +174,40 @@ export function createEditorRequestHandler(
       }
       case "editor_get_selection": {
         requireCapability(EDITOR_READ_CAPABILITIES, "getSelection");
-        // Small by nature (a selection is what a user highlighted), so it answers inline
-        // and is not metered. `readSelection` is shared with the trusted tier so the
-        // position/offset rule cannot diverge between them.
-        return readSelection(live("getSelection"));
+        const instance = live("getSelection");
+        const { from, to } = instance.state.selection;
+        // ‼️ NOT "small by nature" (§260 Phase 4b code review, I1). One keystroke — Cmd+A —
+        // makes this a whole-document read, and the previous version was both UNMETERED
+        // and answered INLINE. Inline is the part that mattered: the response frame goes
+        // out over `SandboxChannels::send`, which has no cap (only a dev warning), so a
+        // frame at or above 8 KiB enters tauri's app-global channel-data queue — ACL-exempt,
+        // guessable sequential id, readable by another sandboxed plugin. That is exactly
+        // the disclosure this phase was built to prevent, reached through the read that was
+        // assumed too small to matter.
+        //
+        // So it is charged like a read (O(1) to compute, before the walk) and its text
+        // travels the SAME staged path as `getMarkdown` rather than in the frame. Always
+        // staged, not only when large: one path has no threshold to get wrong, and the
+        // extra round trip is invisible next to a user-driven call.
+        //
+        // ‼️ SIBLING, out of this phase's scope: `ai_complete` also answers inline and an
+        // LLM completion routinely exceeds 8 KiB. Lower severity — it is the plugin's own
+        // output, not the user's document — but it is the same queue.
+        budget.spend(to - from, "getSelection");
+        // `readSelection` is shared with the trusted tier so the position/offset rule
+        // cannot diverge between them.
+        const selection = readSelection(instance);
+        await stage(pluginId, selection.text);
+        return { from: selection.from, to: selection.to };
       }
       case "editor_insert_text": {
         requireCapability(EDITOR_WRITE_CAPABILITIES, "insertText");
         const instance = live("insertText");
         const { from, to } = instance.state.selection;
-        // Charged its own length, with a FLOOR (§260 Phase 4b code review, I2 follow-on):
-        // not the document's size, because that would make incremental writing — the main
-        // use of the `editor` grant — unusable, but not zero either, because a transaction
-        // on a large document costs in proportion to the mounted NodeView count, so 150
-        // tiny inserts per second is the same freeze by another route. The floor prices the
-        // TRANSACTION; the length prices the payload.
-        //
-        // Honest residual: the floor is a flat estimate, so on a very large document the
-        // real per-transaction cost is still under-priced relative to a read. Pricing it
-        // properly would need the document's size, which is the thing that breaks
-        // streaming.
-        writes.spend(1, "insertText");
+        budget.spend(
+          writeCost(request.text.length, instance, limits),
+          "insertText",
+        );
         // ONE transaction: ProseMirror's history groups by transaction, so this is a
         // single Cmd+Z for the user. `insertText` over the selection range is what makes
         // it behave like typing — replacing a selection rather than appending beside it.
@@ -193,8 +219,10 @@ export function createEditorRequestHandler(
       case "editor_set_markdown": {
         requireCapability(EDITOR_WRITE_CAPABILITIES, "setMarkdown");
         const instance = live("setMarkdown");
-        writes.spend(1, "setMarkdown");
-        budget.spend(request.markdown.length, "setMarkdown");
+        budget.spend(
+          writeCost(request.markdown.length, instance, limits),
+          "setMarkdown",
+        );
         // The ASYNC pipeline, which parses in the app's own Web Worker (security review
         // MEDIUM-2): the synchronous form put an attacker-sized remark parse on the thread
         // this tier exists to protect.
@@ -305,4 +333,19 @@ function createMeter(
       tokens -= charge;
     },
   };
+}
+
+/** What one write transaction costs: its payload, or the document it re-renders. */
+function writeCost(
+  payloadLength: number,
+  editor: PluginEditorHandle,
+  limits: { burst: number; writeFloor?: number },
+): number {
+  // Capped by the burst as well, so a write can never be priced above what the bucket can
+  // ever hold — the Q4 rule, restated at the charge rather than only at the meter.
+  const floor = Math.min(
+    limits.writeFloor ?? WRITE_TRANSACTION_FLOOR,
+    limits.burst,
+  );
+  return Math.max(payloadLength, editor.state.doc.content.size, floor);
 }

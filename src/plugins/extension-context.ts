@@ -273,8 +273,15 @@ let editorInstance: null | PluginEditorHandle = null;
  *
  * A string rather than a boolean so the refusal can say which case it is: a plugin that
  * cannot distinguish "wrong surface" from "no editor" cannot tell the user what to do.
+ *
+ * ‼️ Initialised BLOCKED, not clear (§260 Phase 4b code review, M4). For a guard whose
+ * whole job is preventing silent data loss, "nobody has told me yet" must not read as "all
+ * clear" — the same fail-closed rule as `serviceOf`'s unknown prefix and Rust's
+ * `is_registered`. The App effect clears it on mount, long before any plugin activates,
+ * so this costs nothing in practice; it just stops the guarantee resting on that ordering.
  */
-let editorSurfaceBlockedReason: null | string = null;
+let editorSurfaceBlockedReason: null | string =
+  "the editor surface has not been reported yet";
 
 /** Create an ExtensionContext with capability-gated API access */
 // §259 SECURITY LIMITATION — this capability gate is NOT a trust boundary.
@@ -358,11 +365,6 @@ export function createExtensionContext(
 }
 
 /**
- * The live editor, or `null` before one is mounted (and in a §89 file-mode window until
- * its editor is ready). Exported for the sandboxed tier's host bridge, which needs the
- * document and the schema rather than the trusted tier's convenience methods.
- */
-/**
  * Why the plugin editor surface is unusable right now, or `null` when the Tiptap document
  * really is the tab's content. See `editorSurfaceBlockedReason`.
  */
@@ -402,6 +404,11 @@ export async function executePluginCommand(
   return handler(...args);
 }
 
+/**
+ * The live editor, or `null` before one is mounted (and in a §89 file-mode window until
+ * its editor is ready). Exported for the sandboxed tier's host bridge, which needs the
+ * document and the schema rather than the trusted tier's convenience methods.
+ */
 export function getEditorInstance(): null | PluginEditorHandle {
   return editorInstance;
 }

@@ -327,6 +327,59 @@ describe("createHostTransport (§260 host end)", () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
+  it("does not answer an id the session is still working on", async () => {
+    // §260 Phase 4b code review (M3) — the session refuses a replayed id because answering
+    // one twice corrupts its bookkeeping, but this refusal runs BEFORE the session sees
+    // anything and cannot consult it. The transport sees both halves, so it answers the
+    // question locally: a malformed frame reusing a live id is dropped, leaving the real
+    // answer to arrive.
+    const transport = await createHostTransport("alpha");
+    const seen: SandboxToHost[] = [];
+    transport.onMessage((m) => seen.push(m));
+
+    // A legitimate request, forwarded and still unanswered.
+    deliver({
+      pluginId: "alpha",
+      msg: {
+        type: "hostRequest",
+        requestId: "req-live",
+        request: { kind: "editor_get_markdown" },
+      },
+    });
+    expect(seen).toHaveLength(1);
+    invoke.mockClear();
+
+    // The same id, now in a frame the validator rejects.
+    deliver({
+      pluginId: "alpha",
+      msg: {
+        type: "hostRequest",
+        requestId: "req-live",
+        request: { kind: "editor_insert_text", text: 42 },
+      },
+    });
+    expect(invoke).not.toHaveBeenCalled();
+
+    // Once the real answer has gone out, the id is no longer live and a later malformed
+    // frame reusing it is refused normally rather than leaving the plugin waiting.
+    transport.send({
+      type: "hostResponse",
+      ok: true,
+      requestId: "req-live",
+      value: 1,
+    });
+    invoke.mockClear();
+    deliver({
+      pluginId: "alpha",
+      msg: {
+        type: "hostRequest",
+        requestId: "req-live",
+        request: { kind: "editor_insert_text", text: 42 },
+      },
+    });
+    expect(invoke).toHaveBeenCalledTimes(1);
+  });
+
   it("swallows a rejected send — the sandbox may not have connected yet", async () => {
     const transport = await createHostTransport("alpha");
     invoke.mockRejectedValueOnce(new Error("sandbox is not connected"));

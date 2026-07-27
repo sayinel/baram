@@ -2,9 +2,13 @@
 //
 // One implementation because the MESSAGE is load-bearing, not just the check: the live
 // smoke fixture and several tests match on "requires one of", and a plugin author reads
-// it to learn which grant to declare. Two copies of it — `ai`/`ui`/`editor` each rolling
-// their own — is how one of them ends up saying something subtly different, or drifting
-// when the manifest field is renamed.
+// it to learn which grant to declare. Two copies of it is how one ends up saying something
+// subtly different, or drifting when the manifest field is renamed.
+//
+// `host-ai-bridge` is deliberately NOT a caller (§260 Phase 4b code review): `ai` is a
+// single required capability, not a set, so it says `requires the "ai" capability` — a
+// better error than "requires one of \"ai\"". This gate is for the services whose grant is
+// a CHOICE (`editor` / `editor:readonly`, and the three that admit `ui`).
 import type { PluginCapability } from "../types";
 
 /**

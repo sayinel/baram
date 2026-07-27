@@ -88,6 +88,7 @@ describe("editor end-to-end: real client ↔ real session (§260 Phase 4b)", () 
         stage: async (_pluginId, payload) => {
           slot = payload;
         },
+        surfaceBlocked: () => null,
       }),
     );
     await session.activate("p", { commands: [] });

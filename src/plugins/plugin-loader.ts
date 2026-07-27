@@ -526,9 +526,6 @@ export class PluginLoader {
    * all when `stop()` failed *because* the webview is still alive. `stop()` is
    * separately bounded so a wedged window-close cannot swallow the whole teardown
    * budget before revocation gets its turn.
-   */
-  /**
-   * Run a sandbox teardown with the two guarantees every caller needs, in one place.
    *
    * BOUNDED (3c-2a re-review N3): an unbounded await lets one wedged IPC hang the caller.
    * For `unloadPlugin` that meant stranding every later plugin in `unloadAll()`; for the

@@ -28,6 +28,18 @@ export async function createHostTransport(
   pluginId: string,
 ): Promise<SandboxTransport<SandboxToHost, HostToSandbox>> {
   const handlers = new Set<(m: SandboxToHost) => void>();
+  /**
+   * Request ids this transport has forwarded and not yet seen answered.
+   *
+   * §260 Phase 4b code review (M3) — `refuseIfAwaited` must not answer an id the SESSION
+   * is still working on. The session owns that bookkeeping (`inflightHost`, and it
+   * deliberately refuses a replayed id because answering one twice corrupts it), but the
+   * refusal happens before the session sees anything, so it cannot consult it. This
+   * transport sees both halves — the forwarded request and the outgoing `hostResponse` —
+   * so it can answer the question locally: a malformed frame reusing a live id is dropped
+   * as before, leaving the real answer to arrive.
+   */
+  const liveRequests = new Set<string>();
   let closed = false;
   const unlisten = await listen<S2HEnvelope>("plugin:s2h", (event) => {
     if (closed) return;
@@ -41,15 +53,18 @@ export async function createHostTransport(
       // own stall timer fires ~150 s later, so an over-cap `setMarkdown` looks to the
       // plugin like the app hung. The correlation id is already in hand and these caps
       // are deliberate refusals rather than corruption, so they can be reported.
-      refuseIfAwaited(pluginId, envelope.msg);
+      refuseIfAwaited(pluginId, envelope.msg, liveRequests);
       logger.debug(`[Sandbox] dropped malformed s2h frame from ${pluginId}`);
       return;
     }
+    if (envelope.msg.type === "hostRequest")
+      liveRequests.add(envelope.msg.requestId);
     handlers.forEach((h) => h(envelope.msg));
   });
   return {
     close: () => {
       closed = true;
+      liveRequests.clear();
       // `unlisten()` invokes `plugin:event|unlisten`, so it really can reject
       // during window/app teardown — but Tauri types `UnlistenFn` as `() => void`
       // while the implementation returns a promise, so wrap before catching or the
@@ -65,6 +80,9 @@ export async function createHostTransport(
     // `plugin_sandbox_connect`, which is the normal state during the session's
     // activate retry window. Log, never reject into the caller.
     send: (msg) => {
+      // The session answers every id it accepts — on success, on timeout and on dispose —
+      // so this is what keeps `liveRequests` from growing for the life of the sandbox.
+      if (msg.type === "hostResponse") liveRequests.delete(msg.requestId);
       void pluginSandboxSend(pluginId, msg).catch((err: unknown) => {
         logger.debug(`[Sandbox] send to ${pluginId} failed:`, err);
       });
@@ -222,10 +240,19 @@ function isWellFormed(msg: unknown): msg is SandboxToHost {
  *
  * Anything that is not a correlatable request is left dropped — there is no one waiting.
  */
-function refuseIfAwaited(pluginId: string, msg: unknown): void {
+function refuseIfAwaited(
+  pluginId: string,
+  msg: unknown,
+  liveRequests: ReadonlySet<string>,
+): void {
   if (typeof msg !== "object" || msg === null) return;
   const m = msg as Fields;
   if (m.type !== "hostRequest" || typeof m.requestId !== "string") return;
+  // Not an id the session is already working on: answering that one early would breach its
+  // one-answer-per-id invariant, and its real answer would then be dropped by the client as
+  // unknown. Self-inflicted only — ids are per-sandbox — but the invariant is the session's
+  // to keep, so this path must not step on it (code review M3).
+  if (liveRequests.has(m.requestId)) return;
   void pluginSandboxSend(pluginId, {
     error:
       "the host rejected this request: it is malformed or exceeds a size limit",

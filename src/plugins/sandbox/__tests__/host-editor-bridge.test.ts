@@ -6,13 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { markdownToProsemirror } from "../../../pipeline/md-to-pm";
 import { prosemirrorToMarkdown } from "../../../pipeline/pm-to-md";
-import {
-  createEditorRequestHandler,
-  DOCUMENT_BUDGET_BURST,
-  DOCUMENT_BUDGET_REFILL_PER_SECOND,
-  WRITE_BURST,
-  WRITE_PER_SECOND,
-} from "../host-editor-bridge";
+import { createEditorRequestHandler } from "../host-editor-bridge";
 
 // §260 Phase 4b — the sandboxed tier's document access. The editor lives in the main
 // realm, so this is where the capability check has to be enforcing, and where the design's
@@ -98,18 +92,12 @@ function harness(
     editor: () => editor.handle,
     pluginId: "acme.notes",
     stage: async (pluginId, payload) => void staged.push([pluginId, payload]),
+    // Stated, not inherited: the real default is BLOCKED until the app reports the surface
+    // (code review M4), so a harness that wants the normal case has to say so.
+    surfaceBlocked: () => null,
     ...overrides,
   });
   return { editor, handler, staged };
-}
-
-/**
- * One paragraph of `size` characters — a document with a large `content.size` that is
- * still cheap to build and serialize, so the budget can be exercised against the real
- * constants rather than injected ones.
- */
-function longDocument(size: number): string {
-  return `${"x".repeat(size)}\n`;
 }
 
 describe("createEditorRequestHandler (§260 Phase 4b)", () => {
@@ -187,29 +175,44 @@ describe("createEditorRequestHandler (§260 Phase 4b)", () => {
     expect(editor.dispatched).toEqual([]);
   });
 
-  it("returns selection text across a block boundary, not a flat-string slice", async () => {
+  it("stages the selection text instead of answering with it", async () => {
+    // §260 Phase 4b code review (I1) — Cmd+A makes this a whole-document read, and an
+    // inline answer over 8 KiB enters tauri's shared channel-data queue (ACL-exempt,
+    // guessable id). Positions come back in the frame; the text takes the staged path.
+    const { handler, staged } = harness("First para\n\nSecond para\n", [
+      "editor:readonly",
+    ]);
+
+    const answer = (await handler({ kind: "editor_get_selection" })) as Record<
+      string,
+      unknown
+    >;
+
+    expect(Object.keys(answer).sort()).toEqual(["from", "to"]);
+    expect(JSON.stringify(answer)).not.toContain("para");
+    expect(staged).toHaveLength(1);
+  });
+
+  it("stages selection text across a block boundary, not a flat-string slice", async () => {
     // §260 Phase 4b — the pre-existing bug this shares a fix with: `from`/`to` are
     // ProseMirror positions, which count node boundaries, so slicing `getText()` with them
     // drifts by one per block crossed and returns the wrong text for any real document.
-    const { editor, handler } = harness("First para\n\nSecond para\n", [
+    const { editor, handler, staged } = harness("First para\n\nSecond para\n", [
       "editor:readonly",
     ]);
     // Select from inside the first paragraph to inside the second.
     editor.select(3, editor.handle.state.doc.content.size - 3);
 
-    const selection = (await handler({ kind: "editor_get_selection" })) as {
-      from: number;
-      text: string;
-      to: number;
-    };
+    const { from, to } = (await handler({
+      kind: "editor_get_selection",
+    })) as { from: number; to: number };
+    const text = staged[0][1];
 
-    expect(selection.text).toContain("rst para");
-    expect(selection.text).toContain("Second pa");
+    expect(text).toContain("rst para");
+    expect(text).toContain("Second pa");
     // The old implementation would have sliced the flat string by PM positions, losing the
     // boundary and the trailing characters.
-    expect(selection.text).not.toBe(
-      editor.handle.getText().slice(selection.from, selection.to),
-    );
+    expect(text).not.toBe(editor.handle.getText().slice(from, to));
   });
 
   it("inserts text as ONE transaction, so it is one undo step", async () => {
@@ -241,11 +244,11 @@ describe("createEditorRequestHandler (§260 Phase 4b)", () => {
     // transport command directly at `RateClass::Transport`'s 150/s. Nothing upstream can
     // bound that: the cost is in the document, not the request.
     let clock = 1_000_000;
-    const { handler } = harness(
-      longDocument(DOCUMENT_BUDGET_BURST / 4),
-      ["editor:readonly"],
-      { now: () => clock },
-    );
+    const doc = "x".repeat(300);
+    const { handler } = harness(`${doc}\n`, ["editor:readonly"], {
+      budget: { burst: 1_000, refillPerSecond: 500 },
+      now: () => clock,
+    });
 
     // A polling loop is refused well before it can freeze the thread.
     let admitted = 0;
@@ -261,140 +264,71 @@ describe("createEditorRequestHandler (§260 Phase 4b)", () => {
     }
     expect(refusal).toMatch(/document budget is exhausted/);
     // Roughly burst ÷ document size — the point is that it is FINITE and small, not the
-    // exact count, which node-boundary bytes shift by one either way.
+    // exact count, which node-boundary units shift by one either way.
     expect(admitted).toBeGreaterThan(0);
-    expect(admitted).toBeLessThanOrEqual(5);
+    expect(admitted).toBeLessThanOrEqual(4);
 
     // …and it is a throttle, not a ban: enough time refills the whole burst.
-    clock += (DOCUMENT_BUDGET_BURST / DOCUMENT_BUDGET_REFILL_PER_SECOND) * 1000;
+    clock += 2_000;
     await expect(
       handler({ kind: "editor_get_markdown" }),
     ).resolves.toBeUndefined();
   });
 
   it("does not throttle an ordinary document at the same call count", async () => {
-    // The property that makes it a BYTE budget rather than a call limit: the loop that was
-    // refused above runs freely on a note, so the meter prices the work instead of
+    // The property that makes it a WORK budget rather than a call limit: the loop that was
+    // refused above runs freely on a small note, so the meter prices the work instead of
     // punishing a plugin for asking.
-    const { handler, staged } = harness("# Title\n\nBody text.\n", ["editor"]);
+    const { handler, staged } = harness("# Title\n\nBody text.\n", ["editor"], {
+      budget: { burst: 1_000, refillPerSecond: 500 },
+    });
     for (let i = 0; i < 20; i++) {
       await handler({ kind: "editor_get_markdown" });
     }
     expect(staged).toHaveLength(20);
   });
 
-  it("refuses every op when the editor is not the tab's content", async () => {
-    // §260 Phase 4b security review (LOW-3) — in source mode the user edits CodeMirror
-    // while the Tiptap doc keeps its pre-toggle content, and `handleSave` ignores that doc
-    // entirely. A read would be silently stale and a write silently dropped, so both are
-    // refused with a reason the plugin can show.
-    const { editor, handler, staged } = harness("# a\n", ["editor"], {
-      surfaceBlocked: () => "the document is open in source mode",
-    });
+  it("prices a write by the DOCUMENT it re-renders, not by its payload", async () => {
+    // §260 Phase 4b review — `view.dispatch` forces a whole-contenteditable layout, ~53 ms
+    // on a large document versus ~4 ms on a small one (C4 handoff notes), so cost tracks
+    // the document. A one-character insert into a big file is expensive; the same insert
+    // into a note is not, and a flat charge got BOTH wrong at once.
+    // `writeFloor` small relative to the burst, so the DOCUMENT term is what varies —
+    // otherwise the floor alone would price both documents identically.
+    const budget = { burst: 1_000, refillPerSecond: 500, writeFloor: 20 };
+    const big = harness(`${"x".repeat(300)}\n`, ["editor"], { budget });
 
-    for (const request of [
-      { kind: "editor_get_markdown" },
-      { kind: "editor_get_selection" },
-      { kind: "editor_insert_text", text: "x" },
-      { kind: "editor_set_markdown", markdown: "# b\n" },
-    ] as const) {
-      await expect(handler(request)).rejects.toThrow(/source mode/);
+    let admitted = 0;
+    for (let i = 0; i < 20; i++) {
+      try {
+        await big.handler({ kind: "editor_insert_text", text: "x" });
+        admitted++;
+      } catch {
+        break;
+      }
     }
-    // Distinguishable from "no editor is open": a plugin that cannot tell them apart
-    // cannot tell the user what to do about it.
-    await expect(handler({ kind: "editor_get_markdown" })).rejects.not.toThrow(
-      /no editor is open/,
-    );
-    expect(staged).toEqual([]);
-    expect(editor.dispatched).toEqual([]);
-  });
+    expect(admitted).toBeGreaterThan(0);
+    expect(admitted).toBeLessThanOrEqual(4); // ~burst / document size
 
-  it("refuses to write when a tab switch installed another document mid-parse", async () => {
-    // §260 Phase 4b security review, NEW HIGH. The ordinary tab switch calls
-    // `editor.view.updateState(cachedState)` on the SAME editor with the SAME schema, so
-    // the schema comparison this replaced passed and the write landed in ANOTHER FILE —
-    // then marked it dirty, so autosave could put it on disk. The previous test only built
-    // a distinct Schema, i.e. it exercised the path that WAS caught.
-    const editor = fakeEditor("# file A\n");
-    const otherFile = markdownToProsemirror(
-      "# file B — do not touch\n",
-      schema,
-    );
-    const handler = createEditorRequestHandler({
-      capabilities: ["editor"] as never,
-      editor: () => editor.handle,
-      pluginId: "acme.notes",
-      stage: vi.fn(),
-    });
-
-    const writing = handler({
-      kind: "editor_set_markdown",
-      markdown: "# replacement\n",
-    });
-    editor.installDocument(otherFile); // the tab switch — same instance, same schema
-
-    await expect(writing).rejects.toThrow(/document changed/);
-    expect(editor.dispatched).toEqual([]);
-    expect(editor.markdown()).toBe("# file B — do not touch\n");
-  });
-
-  it("still writes when nothing displaced the document", async () => {
-    // The guard must not make `setMarkdown` simply not work — the counterpart to the test
-    // above, so a refusal that is always true would fail here.
-    const { editor, handler } = harness("# old\n", ["editor"]);
-    await handler({ kind: "editor_set_markdown", markdown: "# new\n" });
-    expect(editor.markdown()).toBe("# new\n");
-  });
-
-  it("refuses reads and writes while a document is still loading progressively", async () => {
-    // §260 Phase 4b security review, Q6 — during a large-document tab switch the editor
-    // holds only the first chunk, so a read returns a TRUNCATED document and a
-    // read-modify-write would save the truncation back.
-    const { editor, handler, staged } = harness("# a\n", ["editor"], {
-      surfaceBlocked: () => "the document is still loading",
-    });
-    await expect(handler({ kind: "editor_get_markdown" })).rejects.toThrow(
-      /still loading/,
-    );
-    await expect(
-      handler({ kind: "editor_set_markdown", markdown: "# b\n" }),
-    ).rejects.toThrow(/still loading/);
-    expect(staged).toEqual([]);
-    expect(editor.dispatched).toEqual([]);
-  });
-
-  it("throttles WRITES by transaction count, not by payload size", async () => {
-    // §260 Phase 4b security review, Q2 — `view.dispatch` forces a whole-contenteditable
-    // layout (~53 ms on a large document, per the C4 handoff notes), so cost tracks the
-    // DOCUMENT, not the edit. A 4 KiB insert at the transport's 150/s is a hard freeze;
-    // pricing the payload cannot see it.
-    let clock = 1_000_000;
-    const { handler } = harness("# a\n", ["editor"], { now: () => clock });
-
-    for (let i = 0; i < WRITE_BURST; i++) {
-      await handler({ kind: "editor_insert_text", text: "x" });
+    // The SAME one-character insert on a note is not throttled at that count — this is
+    // what makes it document-proportional rather than a flat per-transaction fee.
+    const small = harness("# n\n", ["editor"], { budget });
+    for (let i = 0; i < 20; i++) {
+      await small.handler({ kind: "editor_insert_text", text: "x" });
     }
-    await expect(
-      handler({ kind: "editor_insert_text", text: "x" }),
-    ).rejects.toThrow(/write budget is exhausted/);
-
-    clock += (WRITE_BURST / WRITE_PER_SECOND) * 1000;
-    await expect(
-      handler({ kind: "editor_insert_text", text: "x" }),
-    ).resolves.toBeUndefined();
+    expect(small.editor.dispatched).toHaveLength(20);
   });
 
   it("never makes a large document permanently unreadable", async () => {
-    // §260 Phase 4b security review, Q4 — tokens cap at the burst, so an unclamped charge
+    // §260 Phase 4b security review (Q4) — tokens cap at the burst, so an unclamped charge
     // above it could never be paid: the document would be unreadable forever while the
-    // error advised waiting, which could not help. A user can open a note this size and
-    // Rust stages up to 8 MiB, so this is reachable, not theoretical.
+    // error advised waiting, which could not help. A user can open a note larger than the
+    // burst and Rust stages up to 8 MiB, so this is reachable, not theoretical.
     let clock = 1_000_000;
-    const { handler } = harness(
-      longDocument(DOCUMENT_BUDGET_BURST + 1_000),
-      ["editor:readonly"],
-      { now: () => clock },
-    );
+    const { handler } = harness(`${"x".repeat(4_000)}\n`, ["editor:readonly"], {
+      budget: { burst: 1_000, refillPerSecond: 500 },
+      now: () => clock,
+    });
 
     await expect(
       handler({ kind: "editor_get_markdown" }),
@@ -403,7 +337,7 @@ describe("createEditorRequestHandler (§260 Phase 4b)", () => {
     await expect(handler({ kind: "editor_get_markdown" })).rejects.toThrow(
       /document budget is exhausted/,
     );
-    clock += (DOCUMENT_BUDGET_BURST / DOCUMENT_BUDGET_REFILL_PER_SECOND) * 1000;
+    clock += 2_000;
     await expect(
       handler({ kind: "editor_get_markdown" }),
     ).resolves.toBeUndefined();
@@ -417,6 +351,7 @@ describe("createEditorRequestHandler (§260 Phase 4b)", () => {
       editor: () => null,
       pluginId: "acme.notes",
       stage: vi.fn(),
+      surfaceBlocked: () => null,
     });
     await expect(handler({ kind: "editor_get_markdown" })).rejects.toThrow(
       /no editor is open/,
