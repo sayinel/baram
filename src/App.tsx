@@ -79,6 +79,7 @@ import {
   stopAppUpdateChecker,
 } from "./services/app-update";
 import { isImeProbeEnabled } from "./spike/ime-probe/ime-probe-enabled";
+import { isVimWysiwygProbeEnabled } from "./spike/vim-wysiwyg-probe/vim-probe-enabled";
 import { useAIStore } from "./stores/ai/ai";
 import { useEditorStore } from "./stores/editor/editor";
 import { isFileTab, isGraphTab } from "./stores/editor/editor";
@@ -152,8 +153,13 @@ const AboutModal = lazy(() =>
     default: m.AboutModal,
   })),
 );
-// §298 Vim Phase 0a IME measurement spike. Lazy so it stays out of the main
-// bundle; the chunk is never requested unless VITE_IME_PROBE=1.
+// §298 measurement spikes. Lazy so they stay out of the main bundle; neither
+// chunk is requested unless its VITE_*_PROBE flag is set in a dev build.
+const VimWysiwygProbe = lazy(() =>
+  import("./spike/vim-wysiwyg-probe/VimWysiwygProbe").then((m) => ({
+    default: m.VimWysiwygProbe,
+  })),
+);
 const ImeProbe = lazy(() =>
   import("./spike/ime-probe/ImeProbe").then((m) => ({ default: m.ImeProbe })),
 );
@@ -1022,6 +1028,14 @@ function AppRoot() {
     return (
       <Suspense fallback={null}>
         <ImeProbe />
+      </Suspense>
+    );
+  }
+  // §298 Phase 1 mechanism probe — same never-in-production gate.
+  if (isVimWysiwygProbeEnabled()) {
+    return (
+      <Suspense fallback={null}>
+        <VimWysiwygProbe />
       </Suspense>
     );
   }
