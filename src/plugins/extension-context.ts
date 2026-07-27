@@ -382,7 +382,13 @@ export function editorSurfaceBlocked(): null | string {
   // it to be the content OF. Reachable — closing the last tab sets `activeTabId` to null
   // — and `setEditor` is never called with null (`App.tsx` falls back to the shared
   // editor), so `live()` would otherwise hand a plugin the document the user just closed
-  // as though it were open.
+  // as though it were open — for a macrotask while the deferred empty-document install is
+  // pending, and then indefinitely, since that branch never calls `markContentLoaded`.
+  //
+  // ‼️ A §89 single-file window has no tabs at all (`FileEditorLayout` never touches the
+  // tab store), so this would block its editor surface permanently. Harmless today because
+  // those realms skip `initializePlugins` entirely — but if plugins are ever loaded there,
+  // this predicate needs a file-window branch rather than a debugging session.
   if (!activeTabId) return "no document is open";
   if (isTabLoading(activeTabId)) return "the document is still loading";
   // …and the window BEFORE that flag is set (§260 Phase 4b security review, LOW). The
