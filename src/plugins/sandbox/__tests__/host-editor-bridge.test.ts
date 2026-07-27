@@ -14,8 +14,8 @@ import {
   createMeter,
   DOCUMENT_BUDGET_BURST,
   DOCUMENT_BUDGET_REFILL_PER_SECOND,
+  insertCost,
   WRITE_TRANSACTION_FLOOR,
-  writeCost,
 } from "../host-editor-bridge";
 
 // §260 Phase 4b — the sandboxed tier's document access. The editor lives in the main
@@ -323,6 +323,63 @@ describe("createEditorRequestHandler (§260 Phase 4b)", () => {
     expect(editor.markdown()).toBe("# file B — do not touch\n");
   });
 
+  it("charges a LOST setMarkdown race only its payload, not the transaction", async () => {
+    // §260 Phase 4b re-review (M1) — the guard refuses on any document change during the
+    // parse, including a user keystroke, and the parse is slowest exactly where the
+    // transaction charge is largest. Charging both up front meant a plugin obeying the
+    // error's "retry" advice burned its burst in a few attempts and was then told
+    // "document budget is exhausted" — a diagnostic pointing away from the cause.
+    //
+    // Sized to DISCRIMINATE, which needs care because split and single-charge differ by
+    // `min(payload, transaction)`: burst 500 against a ~402-unit document, so the old
+    // single charge leaves ~98 and the split leaves ~496. A 200-unit probe therefore
+    // passes only under the split.
+    const editor = fakeEditor(`${"x".repeat(400)}\n`);
+    const other = markdownToProsemirror("# elsewhere\n", schema);
+    const handler = createEditorRequestHandler({
+      budget: { burst: 500, refillPerSecond: 0, writeFloor: 1 },
+      capabilities: ["editor"] as never,
+      editor: () => editor.handle,
+      pluginId: "acme.notes",
+      stage: vi.fn(),
+      surfaceBlocked: () => null,
+    });
+
+    const lost = handler({ kind: "editor_set_markdown", markdown: "# a\n" });
+    editor.installDocument(other); // the race the guard exists for
+    await expect(lost).rejects.toThrow(/document changed/);
+
+    // 4 units spent, not ~402: the transaction never happened, so it was not billed.
+    await expect(
+      handler({ kind: "editor_insert_text", text: "z".repeat(200) }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("charges a SUCCESSFUL setMarkdown both its payload and its transaction", async () => {
+    // The other half of the split: parse and dispatch are separate costs and a completed
+    // write really incurs both, so it must not come out cheaper than the sum.
+    //
+    // Sized the same way: burst 1000, a ~402-unit document replaced by a ~402-unit one.
+    // Split spends ~802 and leaves ~198; a single `max` charge spends ~402 and leaves
+    // ~598. The follow-up insert costs ~402, so it is refused only under the split.
+    const editor = fakeEditor(`${"x".repeat(400)}\n`);
+    const handler = createEditorRequestHandler({
+      budget: { burst: 1_000, refillPerSecond: 0, writeFloor: 1 },
+      capabilities: ["editor"] as never,
+      editor: () => editor.handle,
+      pluginId: "acme.notes",
+      stage: vi.fn(),
+      surfaceBlocked: () => null,
+    });
+
+    await expect(
+      handler({ kind: "editor_set_markdown", markdown: "y".repeat(400) }),
+    ).resolves.toBeUndefined();
+    await expect(
+      handler({ kind: "editor_insert_text", text: "z" }),
+    ).rejects.toThrow(/exhausted/);
+  });
+
   it("still writes when nothing displaced the document", async () => {
     // The guard must not make `setMarkdown` simply not work — the counterpart to the test
     // above, so a refusal that is always true would fail here.
@@ -522,10 +579,10 @@ describe("the production budget (§260 Phase 4b)", () => {
   it("charges a write the document it re-renders, floored", () => {
     // The C4 measurement: cost tracks rendered block count, so a 500 KB document costs
     // ~500 KB whatever the edit, and a scratch note costs the floor rather than ~nothing.
-    expect(writeCost(1, sized(500_000), limits)).toBe(500_000);
-    expect(writeCost(1, sized(500), limits)).toBe(WRITE_TRANSACTION_FLOOR);
+    expect(insertCost(1, sized(500_000), limits)).toBe(500_000);
+    expect(insertCost(1, sized(500), limits)).toBe(WRITE_TRANSACTION_FLOOR);
     // …and the payload wins when IT is the larger cost.
-    expect(writeCost(900_000, sized(500_000), limits)).toBe(900_000);
+    expect(insertCost(900_000, sized(500_000), limits)).toBe(900_000);
   });
 
   it("admits the rates its own comment claims", () => {
@@ -553,11 +610,10 @@ describe("the production budget (§260 Phase 4b)", () => {
     expect(DOCUMENT_BUDGET_REFILL_PER_SECOND / WRITE_TRANSACTION_FLOOR).toBe(
       64,
     );
-    // "~1/s at 500 KB".
-    expect(Math.round(DOCUMENT_BUDGET_REFILL_PER_SECOND / 500_000)).toBeCloseTo(
-      1,
-      0,
-    );
+    // "~1/s at 500 KB" — pinned tightly, since `Math.round` + `toBeCloseTo(1, 0)` accepted
+    // any refill from 250 KB to 750 KB, a 3x window around the number it claimed to hold
+    // (re-review N1).
+    expect(DOCUMENT_BUDGET_REFILL_PER_SECOND / 500_000).toBeCloseTo(1.05, 2);
     // Burst absorbs 8 whole-document writes at 500 KB before throttling.
     expect(admits(meter(), 500_000)).toBe(8);
 

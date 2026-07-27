@@ -39,7 +39,10 @@ describe("editor end-to-end: real client ↔ real session (§260 Phase 4b)", () 
   const doc = markdownToProsemirror(SOURCE, schema);
   const DOCUMENT = prosemirrorToMarkdown(doc);
 
-  async function pair(capabilities: string[]) {
+  async function pair(
+    capabilities: string[],
+    selection: { from: number; to: number } = { from: 1, to: 5 },
+  ) {
     // Stands in for `StagedPayloads` + `plugin_call staged_read`: one slot, consumed on
     // read, keyed per plugin — the same contract `plugin/staging.rs` implements.
     let slot: null | string = null;
@@ -83,7 +86,7 @@ describe("editor end-to-end: real client ↔ real session (§260 Phase 4b)", () 
       createHostRequestHandler({
         capabilities: capabilities as never,
         declaredStatusBarIds: [],
-        editor: () => fakeEditorHandle(),
+        editor: () => fakeEditorHandle(selection),
         pluginId: "p",
         stage: async (_pluginId, payload) => {
           slot = payload;
@@ -97,8 +100,8 @@ describe("editor end-to-end: real client ↔ real session (§260 Phase 4b)", () 
   }
 
   /** A handle over the real document above; only the view is absent (no writes here). */
-  function fakeEditorHandle() {
-    return { schema, state: { doc, selection: { from: 1, to: 5 } } } as never;
+  function fakeEditorHandle(selection: { from: number; to: number }) {
+    return { schema, state: { doc, selection } } as never;
   }
 
   it("delivers the document through the staged pull, never in a frame", async () => {
@@ -128,6 +131,36 @@ describe("editor end-to-end: real client ↔ real session (§260 Phase 4b)", () 
 
     expect(both).toEqual([DOCUMENT, DOCUMENT]);
     expect(pulls).toHaveLength(2);
+  });
+
+  it("recombines a staged selection: text from the pull, positions from the frame", async () => {
+    // §260 Phase 4b re-review (M2) — the CLIENT half of the staged-selection protocol had
+    // no test. `getSelection` is the one call that splits its answer across both
+    // transports, and the recombination lived only in `sandbox-client`, which no test
+    // drove. This is the shape `tauri-host-transport`'s own header warns about: a protocol
+    // change whose new half the machinery tests do not exercise.
+    const { ctx, framesToSandbox, pulls } = await pair(["editor:readonly"]);
+
+    const selection = await ctx.editor.getSelection();
+
+    expect(selection.from).toBe(1);
+    expect(selection.to).toBe(5);
+    expect(selection.text).toBe(doc.textBetween(1, 5, "\n"));
+    expect(pulls).toEqual([selection.text]); // it really came through the broker
+    // And the text was never in a frame, same as `getMarkdown`.
+    expect(JSON.stringify(framesToSandbox)).not.toContain(selection.text);
+  });
+
+  it("answers a bare caret without touching the staged slot", async () => {
+    // The `staged: false` fast path (N1). Deleting the client's early return leaves the
+    // broker throwing "nothing is staged" — which nothing noticed, because nothing called
+    // `getSelection` through the real client.
+    const { ctx, pulls } = await pair(["editor:readonly"], { from: 3, to: 3 });
+
+    const selection = await ctx.editor.getSelection();
+
+    expect(selection).toEqual({ from: 3, text: "", to: 3 });
+    expect(pulls).toEqual([]); // no pull at all
   });
 
   it("surfaces a capability denial to plugin code", async () => {

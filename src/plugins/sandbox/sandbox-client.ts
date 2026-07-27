@@ -271,7 +271,7 @@ export function startSandboxClient(
         // no text at all, so pulling would find an empty slot (code review N1). An
         // explicit flag rather than re-deriving `from === to` here, so the rule lives in
         // ONE place — the side that decided.
-        (v) => (v as { staged?: boolean }).staged === true,
+        (v) => (v as undefined | { staged?: boolean })?.staged === true,
       );
       const { from, to } = value as { from: number; to: number };
       return { from, text: payload, to };

@@ -377,7 +377,13 @@ export function editorSurfaceBlocked(): null | string {
   // truncation. `loadingTabs` is a plain Set — it changes without a React render, so an
   // effect would observe it late; reading it per request cannot.
   const { activeTabId } = useEditorStore.getState();
-  if (!activeTabId) return null;
+  // The fourth instance of this class (§260 Phase 4b re-review, M3), and the same
+  // question: is the Tiptap document the tab's content? With no tab there is nothing for
+  // it to be the content OF. Reachable — closing the last tab sets `activeTabId` to null
+  // — and `setEditor` is never called with null (`App.tsx` falls back to the shared
+  // editor), so `live()` would otherwise hand a plugin the document the user just closed
+  // as though it were open.
+  if (!activeTabId) return "no document is open";
   if (isTabLoading(activeTabId)) return "the document is still loading";
   // …and the window BEFORE that flag is set (§260 Phase 4b security review, LOW). The
   // store's `activeTabId` flips at the start of a tab switch while installation is still

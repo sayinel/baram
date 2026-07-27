@@ -84,6 +84,10 @@ export const DOCUMENT_BUDGET_REFILL_PER_SECOND = 512 * 1024;
  * still under-pricing a 500 KB one. Scaling with the document gives ~64 writes/s on a
  * scratch note and ~1/s on a large file — throttling where the freeze actually is.
  *
+ * ‼️ Those rates are for ONE transaction, i.e. `insertText`. A successful `setMarkdown`
+ * spends payload AND transaction separately (see the M1 split there), so at 500 KB it
+ * costs ~1 MB — about 0.5/s, not the ~1/s a reader would carry over from this line.
+ *
  * ‼️ Streaming, stated because the natural composition hits it: `ctx.ai.stream` +
  * `insertText` per token runs at 20-80/s, which this admits on a small note and refuses on
  * a large document. That is deliberate — per-token insertion is already wrong there, since
@@ -220,7 +224,7 @@ export function createEditorRequestHandler(
         const instance = live("insertText");
         const { from, to } = instance.state.selection;
         budget.spend(
-          writeCost(request.text.length, instance, limits),
+          insertCost(request.text.length, instance, limits),
           "insertText",
         );
         // ONE transaction: ProseMirror's history groups by transaction, so this is a
@@ -297,6 +301,11 @@ export function createEditorRequestHandler(
             "editor.setMarkdown: the document changed while this one was parsing — retry",
           );
         }
+        // RESIDUAL, accepted (re-review Q1): this can refuse after the guard has already
+        // passed, so a budget-exhausted plugin can force a worker parse plus the transfer
+        // back per attempt and get nothing. Bounded — the validator's 2 MiB cap means two
+        // attempts on a full burst, then one per ~4 s — and the parse is off the main
+        // thread. The alternative, peeking then spending, puts a TOCTOU on the budget.
         budget.spend(transactionCost(target, limits), "setMarkdown");
         target.view.dispatch(
           target.state.tr.replaceWith(
@@ -356,8 +365,14 @@ export function createMeter(
   };
 }
 
-/** What one write transaction costs: its payload, or the document it re-renders. */
-export function writeCost(
+/**
+ * What ONE `insertText` costs: its payload, or the document it re-renders.
+ *
+ * Named for its single caller (§260 Phase 4b re-review, N2). `setMarkdown` does not use
+ * it — it composes the same two terms itself, but charges them at different moments; see
+ * the M1 note there.
+ */
+export function insertCost(
   payloadLength: number,
   editor: PluginEditorHandle,
   limits: { burst: number; writeFloor?: number },
