@@ -8,6 +8,7 @@ import diff from "fast-diff";
 
 import { llmCancel, llmComplete } from "../ipc/invoke";
 import { useAIStore } from "../stores/ai/ai";
+import { registerEditorMutationTask } from "./editor/mutation-tasks";
 import { createLLMStream } from "./llm-stream";
 import { logger } from "./logger";
 import { getConfigForTask } from "./model-selection";
@@ -133,6 +134,11 @@ export async function executeBlockAIWithDiff(
   let aiText = "";
   let completed = false;
 
+  // §298 §12-9b (design §5c): tokens only paint the DOM panel, but the
+  // APPLY lands after the dialog resolves — an unbounded async gap. A dead
+  // task (state install / vim mode exit) must not touch the editor.
+  const task = registerEditorMutationTask(editor.view);
+
   const cleanupStream = await createLLMStream(requestId, {
     onToken: (token) => {
       aiText += token;
@@ -149,6 +155,10 @@ export async function executeBlockAIWithDiff(
       panel.setError(error);
       panel.showActions();
     },
+  });
+  task.addCleanup(() => {
+    cleanupStream(); // idempotent
+    llmCancel(requestId).catch(() => {});
   });
 
   // Fire LLM request
@@ -174,11 +184,13 @@ export async function executeBlockAIWithDiff(
     llmCancel(requestId).catch(() => {});
   }
 
-  // Apply if accepted
-  if (decision === "accept" && aiText.trim()) {
+  // Apply if accepted — targetPos is only valid for the state the task
+  // was registered against (§5c: check right before touching the editor).
+  if (decision === "accept" && aiText.trim() && task.isLive()) {
     applyBlockAIResult(editor, targetPos, aiText);
   }
 
+  task.finish();
   panel.remove();
 }
 

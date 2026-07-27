@@ -29,6 +29,7 @@ import {
   resolveInsertTarget,
   showDropIndicator,
 } from "../utils/editor/drop-indicator";
+import { registerEditorMutationTask } from "../utils/editor/mutation-tasks";
 import { logger } from "../utils/logger";
 import { isImageFile, resolveNameConflict } from "../utils/path-utils";
 
@@ -234,28 +235,36 @@ async function handleEditorDrop(
 
   let pos = insertPos;
 
-  for (const sourcePath of imagePaths) {
-    const originalName = sourcePath.split("/").pop() ?? "";
-    if (!originalName) continue;
+  // §298 §12-9b (design §5c): each awaited importFile is an async gap — the
+  // copy may finish, but a dead task must not insert into the editor.
+  const task = registerEditorMutationTask(editor.view);
+  try {
+    for (const sourcePath of imagePaths) {
+      const originalName = sourcePath.split("/").pop() ?? "";
+      if (!originalName) continue;
 
-    const finalName = resolveNameConflict(originalName, existingNames);
-    const destPath = assetsDir + "/" + finalName;
+      const finalName = resolveNameConflict(originalName, existingNames);
+      const destPath = assetsDir + "/" + finalName;
 
-    try {
-      await importFile(sourcePath, destPath);
-      existingNames.add(finalName);
+      try {
+        await importFile(sourcePath, destPath);
+        existingNames.add(finalName);
+        if (!task.isLive()) return;
 
-      const relativeSrc = "./assets/" + finalName;
-      const alt = finalName.replace(/\.[^.]+$/, "");
+        const relativeSrc = "./assets/" + finalName;
+        const alt = finalName.replace(/\.[^.]+$/, "");
 
-      const imageNode = editor.state.schema.nodes.image.create({
-        src: relativeSrc,
-        alt,
-      });
-      pos = insertNodeAtPos(editor, pos, imageNode);
-    } catch (err) {
-      logger.error("[ExternalDrop] Image drop failed:", err);
+        const imageNode = editor.state.schema.nodes.image.create({
+          src: relativeSrc,
+          alt,
+        });
+        pos = insertNodeAtPos(editor, pos, imageNode);
+      } catch (err) {
+        logger.error("[ExternalDrop] Image drop failed:", err);
+      }
     }
+  } finally {
+    task.finish();
   }
 }
 

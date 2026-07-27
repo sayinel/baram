@@ -1,8 +1,9 @@
 // §6.2 Shared AI command utilities — used by slash menu, FloatingToolbar, CommandPalette
 import type { Editor } from "@tiptap/core";
 
-import { llmComplete } from "../ipc/invoke";
+import { llmCancel, llmComplete } from "../ipc/invoke";
 import { useAIStore } from "../stores/ai/ai";
+import { registerEditorMutationTask } from "./editor/mutation-tasks";
 import { createLLMStream } from "./llm-stream";
 import { logger } from "./logger";
 import { getConfigForTask } from "./model-selection";
@@ -73,12 +74,21 @@ export async function executeAICommand(
     currentPos = insertPos;
   }
 
+  // §298 §12-9b (design §5c): the token stream is a background mutation —
+  // if the task dies (state install / vim mode exit), late tokens must not
+  // touch the editor, and the listeners are the cancelable source.
+  const task = registerEditorMutationTask(editor.view);
   const cleanupStream = await createLLMStream(requestId, {
     onToken: (token) => {
+      if (!task.isLive()) return;
       editor.chain().focus().insertContentAt(currentPos, token).run();
       currentPos += token.length;
     },
     onError: (error) => logger.error("AI command error:", error),
+  });
+  task.addCleanup(() => {
+    llmCancel(requestId).catch(() => {}); // stop the Rust-side stream
+    cleanupStream(); // idempotent (llm-stream drains its list)
   });
 
   // Fire LLM request; cleanup listeners always to prevent leaks
@@ -97,6 +107,7 @@ export async function executeAICommand(
     logger.error("LLM request failed");
   } finally {
     cleanupStream();
+    task.finish();
   }
 }
 

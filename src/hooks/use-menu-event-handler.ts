@@ -12,6 +12,7 @@ import { getAction } from "../keybindings/keybinding-actions";
 import { useWorkspaceStore } from "../stores/file/workspace";
 import { useUIStore } from "../stores/ui/ui";
 import { showPrompt } from "../utils/ai-commands";
+import { registerEditorMutationTask } from "../utils/editor/mutation-tasks";
 
 interface MenuEventHandlerDeps {
   editor: Editor | null;
@@ -186,6 +187,8 @@ export function useMenuEventHandler({
           break;
         case "insert_image": {
           if (!editor) break;
+          // §298 §12-9b (design §5c): native dialog = unbounded async gap.
+          const task = registerEditorMutationTask(editor.view);
           const imagePath = await open({
             filters: [
               {
@@ -194,7 +197,9 @@ export function useMenuEventHandler({
               },
             ],
           });
-          if (imagePath) {
+          const live = task.isLive();
+          task.finish();
+          if (imagePath && live) {
             editor.chain().focus().setImage({ src: imagePath }).run();
           }
           break;
@@ -209,8 +214,12 @@ export function useMenuEventHandler({
           if (!editor) break;
           const { from, to } = editor.state.selection;
           if (from === to) break; // Need selection for link
+          // §298 §12-9b (design §5c): prompt dialog = unbounded async gap.
+          const task = registerEditorMutationTask(editor.view);
           showPrompt("Enter URL:").then((url) => {
-            if (url) {
+            const live = task.isLive();
+            task.finish();
+            if (url && live) {
               editor.chain().focus().toggleLink({ href: url }).run();
             }
           });

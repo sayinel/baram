@@ -29,6 +29,7 @@ import {
 } from "../extensions/plugins/ai-diff";
 import { llmCancel, llmComplete } from "../ipc/invoke";
 import { useAIStore } from "../stores/ai/ai";
+import { registerEditorMutationTask } from "../utils/editor/mutation-tasks";
 import { getConfigForTask } from "../utils/model-selection";
 import { getFilePrivacy, isLLMAllowed } from "../utils/privacy-check";
 
@@ -154,10 +155,17 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
         ? `Text to rewrite:\n${selectedText}\n\nInstruction: ${instruction}`
         : instruction;
 
+      // §298 §12-9b (design §5c): the diff stream is a background mutation.
+      // A dead task (state install / vim mode exit) must stop touching the
+      // editor; llmCancel + unlisten via cleanupListeners is the source abort.
+      const task = registerEditorMutationTask(editor.view);
+      task.addCleanup(() => void cleanupListeners());
+
       try {
         const tokenUn = await listen<LLMTokenPayload>("llm:token", (event) => {
           if (event.payload.requestId !== requestId) return;
           if (activeRequestRef.current !== requestId) return;
+          if (!task.isLive()) return;
           try {
             dispatchAIDiffChunk(editor.view, event.payload.token);
           } catch {
@@ -167,21 +175,27 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
 
         const doneUn = await listen<LLMDonePayload>("llm:done", (event) => {
           if (event.payload.requestId !== requestId) return;
-          try {
-            dispatchAIDiffDone(editor.view);
-          } catch {
-            // ignore
+          if (task.isLive()) {
+            try {
+              dispatchAIDiffDone(editor.view);
+            } catch {
+              // ignore
+            }
           }
+          task.finish();
           setPhase("completed");
         });
 
         const errorUn = await listen<LLMErrorPayload>("llm:error", (event) => {
           if (event.payload.requestId !== requestId) return;
-          try {
-            dispatchAIDiffClear(editor.view);
-          } catch {
-            // ignore
+          if (task.isLive()) {
+            try {
+              dispatchAIDiffClear(editor.view);
+            } catch {
+              // ignore
+            }
           }
+          task.finish();
           setPhase("input");
         });
 
@@ -207,7 +221,7 @@ export function useInlineAI(editor: Editor | null): UseInlineAIReturn {
         }
       }
     },
-    [editor, selectionFrom, selectionTo],
+    [editor, selectionFrom, selectionTo, cleanupListeners],
   );
 
   const applyContent = useCallback(

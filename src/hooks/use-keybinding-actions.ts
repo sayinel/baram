@@ -34,6 +34,7 @@ import { useFileStore } from "../stores/file/file";
 import { useWorkspaceStore } from "../stores/file/workspace";
 import { useSettingsStore } from "../stores/settings/store";
 import { useUIStore } from "../stores/ui/ui";
+import { registerEditorMutationTask } from "../utils/editor/mutation-tasks";
 import { isDateString } from "../utils/journal/journal";
 import { logger } from "../utils/logger";
 import { showTableGridPicker } from "../utils/table-grid-picker";
@@ -364,8 +365,13 @@ export function useKeybindingActions({
       if (editor && !editor.isActive("table")) {
         const { from } = editor.state.selection;
         const coords = editor.view.coordsAtPos(from);
+        // §298 §12-9b (design §5c): the picker resolves after an unbounded
+        // gap — a dead task must not insert into whatever doc is live then.
+        const task = registerEditorMutationTask(editor.view);
         showTableGridPicker(coords.left, coords.bottom + 4).then((result) => {
-          if (!result) return;
+          const live = task.isLive();
+          task.finish();
+          if (!result || !live) return;
           editor
             .chain()
             .focus()
@@ -557,6 +563,11 @@ export function useKeybindingActions({
         .slice(0, 3)
         .join(" ")
         .slice(0, 40);
+      // §298 §12-9b (design §5c): dialog + note creation are async gaps; the
+      // selection replacement must not land after a state install re-targets
+      // the shared editor. Registered before the dialog opens so a swap
+      // DURING the dialog also kills it.
+      const task = registerEditorMutationTask(activeEditor.view);
       useUIStore.getState().openZettelTitleDialog({
         onSubmit: (title) => {
           // openTab=false: stay on the current document — this note's own
@@ -564,7 +575,9 @@ export function useKeybindingActions({
           // must not be swapped to the newly created note first.
           createZettelNote(dir, title, selectionText, false)
             .then((result) => {
-              if (!result) return;
+              const live = task.isLive();
+              task.finish();
+              if (!result || !live) return;
               activeEditor
                 .chain()
                 .focus()
