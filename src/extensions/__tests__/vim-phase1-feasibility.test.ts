@@ -127,6 +127,35 @@ describe("hardBreak segment dd (§9 segment rules)", () => {
     editor.view.dispatch(tr);
     expect(editor.state.doc.textContent).toBe("a");
   });
+
+  it("segment dd inside a sole-child container deletes the segment, NOT the container (§12-8)", () => {
+    // §9 pin: segment units can never reach container escalation. Even though
+    // the blockquote has exactly one child (the escalation trigger for
+    // STRUCTURAL dd), a multi-segment paragraph resolves at segment level.
+    const editor = makeEditor("<blockquote><p>a<br>b</p></blockquote>");
+    const { pos } = findNode(editor, "paragraph");
+    const from = pos + 1; // start of "a"
+    const tr = editor.state.tr.delete(from, from + 2); // "a" + following break
+    expect(() => tr.doc.check()).not.toThrow();
+    editor.view.dispatch(tr);
+    const bq = findNode(editor, "blockquote").node;
+    expect(bq.childCount).toBe(1); // container survives
+    expect(editor.state.doc.textContent).toBe("b");
+    expect(prosemirrorToMarkdown(editor.state.doc)).toContain("> b");
+  });
+
+  it("after the last break is gone, structural dd on the now-single-segment child escalates to the container (§9 hand-off)", () => {
+    // Follow-up dd after the previous case: the paragraph has one segment
+    // left, so resolution is structural; sole-child rule deletes the
+    // blockquote itself.
+    const editor = makeEditor("<blockquote><p>b</p></blockquote><p>after</p>");
+    const { node: bq, pos } = findNode(editor, "blockquote");
+    expect(bq.childCount).toBe(1);
+    const tr = editor.state.tr.delete(pos, pos + bq.nodeSize);
+    expect(() => tr.doc.check()).not.toThrow();
+    editor.view.dispatch(tr);
+    expect(editor.state.doc.textContent).toBe("after");
+  });
 });
 
 describe("table row ops (§9 — delegate to prosemirror-tables)", () => {
